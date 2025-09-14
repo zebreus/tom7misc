@@ -3,6 +3,11 @@ do REQUIRE-LAYOUT
 
 datatype provide-animation = REQUIRE-ANIMATION
 
+(* TODO: This should be a datatype in bovex, and converted
+   internally. *)
+val AUTODRAW-POPULARITY = "pop"
+val AUTODRAW-TOP-TO-BOTTOM = "top"
+
 (* See animation.h for details on these parameters. *)
 object AutoDrawArg of
   { smooth-passes : int,
@@ -27,7 +32,12 @@ object AutoDrawArg of
        be a color in the image. *)
     background-color : int,
 
-    verbosity : int }
+    verbosity : int,
+
+    (* The ordering heuristic for the colors. Default
+       is popularity. *)
+    ordering : string
+ }
 
 
 (* TODO: Might be nice to return an object from the internal

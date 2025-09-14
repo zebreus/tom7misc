@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <functional>
 #include <map>
@@ -588,12 +587,13 @@ struct PeepholePass : public il::Pass<> {
           const double rhs = ees[1]->Float();
 
           if (VERBOSE > 1) {
-            printf("Simplifying float math %.3f and %.3f\n", lhs, rhs);
+            Print("Simplifying float math {:.3f} and {:.3f}\n", lhs, rhs);
           }
           switch (po) {
           case Primop::FLOAT_TIMES: {
             if (VERBOSE > 1) {
-              printf("Reducing %.3f * %.3f -> %.3f\n", lhs, rhs, lhs * rhs);
+              Print("Reducing {:.3f} * {:.3f} -> {:.3f}\n",
+                    lhs, rhs, lhs * rhs);
             }
             return pool->Float(lhs * rhs);
           }
@@ -807,7 +807,7 @@ struct PeepholePass : public il::Pass<> {
         !self.empty() && !ILUtil::IsExpVarFree(body, self)) {
       Simplified("remove recursive fn var");
       if (VERBOSE) {
-        printf("Removed var is " APURPLE("%s") "\n", self.c_str());
+        Print("Removed var is " APURPLE("{}") "\n", self);
       }
       return pool->Fn("", x, DoType(arrow_type), DoExp(body), guess);
     }
@@ -920,7 +920,7 @@ struct PeepholePass : public il::Pass<> {
     if ((opts & Simplification::O_DEAD_VARS) && count == 0) {
       Simplified("remove unused binding");
       if (VERBOSE) {
-        printf("  Unused var is " APURPLE("%s") "\n", x.c_str());
+        Print("  Unused var is " APURPLE("{}") "\n", x);
       }
 
       // Substitute away any tyvars, since they will no longer be
@@ -1097,12 +1097,12 @@ struct PeepholePass : public il::Pass<> {
     for (const Exp *c : v) vv.push_back(DoExp(c));
     std::vector<const Exp *> vflat;
     for (const Exp *c : vv) {
-      // printf("IsEffectless %s?\n", ExpString(c).c_str());
+      // Print("IsEffectless {}?\n", ExpString(c));
       if ((opts & Simplification::O_DEAD_CODE) &&
           IsDiscardable(c)) {
         Simplified("dropped effectless seq");
         if (VERBOSE) {
-          printf("  Exp was %s\n", ExpStringShort(c).c_str());
+          Print("  Exp was {}\n", ExpStringShort(c));
         }
       } else {
         if ((opts & Simplification::O_FLATTEN) &&
@@ -1240,8 +1240,8 @@ struct KnownPass : public il::Pass<Known> {
         for (int i = bindings.size() - 1; i >= 0; i--) {
           const auto &[var, arm_exp] = bindings[i];
           if (VERBOSE) {
-            printf("  serialized record field " APURPLE("%s") " = ...\n",
-                   var.c_str());
+            Print("  serialized record field " APURPLE("{}") " = ...\n",
+                  var);
           }
           CHECK(tyvars.empty());
           ret = pool->Let({}, var, arm_exp, ret);
@@ -1269,9 +1269,8 @@ struct KnownPass : public il::Pass<Known> {
       const auto &[tyvars, x] = e->Var();
       if (tyvars.empty()) {
         /*
-        printf("Check #" ABLUE("%s") " " ACYAN("%s") "?\n",
-               s.c_str(),
-               x.c_str());
+        Print("Check #" ABLUE("{}") " " ACYAN("{}") "?\n",
+              s, x);
         */
         if (std::shared_ptr<Knowledge> *kv = known.FindPtr(x)) {
           const Exp *rec = (*kv)->value;
@@ -1351,10 +1350,10 @@ struct GlobalInlining {
           ((opts & Simplification::O_GLOBAL_DEAD) && total_count == 0)) {
         progress->Record("drop/inline global");
         if (VERBOSE) {
-          printf("  There were " AYELLOW("%d") " occurrences.\n",
+          Print("  There were " AYELLOW("{}") " occurrences.\n",
                  total_count);
-          printf("  Inlined sym is " APURPLE("%s") " = %s\n",
-                 global.sym.c_str(), ExpStringShort(global.exp).c_str());
+          Print("  Inlined sym is " APURPLE("{}") " = {}\n",
+                global.sym, ExpStringShort(global.exp));
         }
 
         if (total_count > 0) {
@@ -1426,9 +1425,9 @@ struct FlattenLetPass : public il::Pass<> {
           ILUtil::AlphaVaryExp(pool, (int)ytyvars.size(), y, e2);
       progress->Record("flatten let");
       if (VERBOSE) {
-        printf("  on " APURPLE("%s") " and "
-               APURPLE("%s") " -> " APURPLE("%s") "\n",
-               x.c_str(), y.c_str(), new_y.c_str());
+        Print("  on " APURPLE("{}") " and "
+              APURPLE("{}") " -> " APURPLE("{}") "\n",
+              x, y, new_y);
       }
       return pool->Let(ytyvars, new_y, e1,
                        pool->Let(tyvars, x, new_e2, body));
@@ -1498,7 +1497,7 @@ struct EraseUnitPass : public il::TypedPass<> {
       if (IsUnit(tt)) {
         progress->Record("removed unit-type field from record exp");
         if (VERBOSE) {
-          printf("  label was " APURPLE("%s") "\n", l.c_str());
+          Print("  label was " APURPLE("{}") "\n", l);
         }
         // We still need to sequence the expression in case it
         // has effects, though.
@@ -1632,8 +1631,8 @@ struct RepresentEnumsPass : public il::TypedPass<> {
     if (GetEnum(mu).has_value()) {
       progress->Record("enum: rewrote type");
       if (VERBOSE) {
-        printf("   type rewritten from %s -> word\n",
-               TypeString(mu).c_str());
+        Print("   type rewritten from {} -> word\n",
+              TypeString(mu));
       }
       return pool->WordType();
     } else {
@@ -1752,8 +1751,8 @@ struct RepresentEnumsPass : public il::TypedPass<> {
 
       progress->Record("enum: rewrote unroll");
       if (VERBOSE) {
-        printf("(simplification:DoUnroll) returning %s\n",
-               TypeString(sum_type).c_str());
+        Print("(simplification:DoUnroll) returning {}\n",
+              TypeString(sum_type));
       }
 
       return {pool->WordCase(ee, arms, def), sum_type};
@@ -2119,21 +2118,21 @@ Program Simplification::Simplify(const Program &program_in,
 
   do {
     progress.Reset();
-    if (VERBOSE) printf(AWHITE("Peephole") ".\n");
+    if (VERBOSE) Print(AWHITE("Peephole") ".\n");
     program = peephole.DoProgram(program);
 
     constexpr uint64_t ANY_KNOWN =
       O_EXPLODE_RECORDS;
 
     if (opts & ANY_KNOWN) {
-      if (VERBOSE) printf(AWHITE("Known") ".\n");
+      if (VERBOSE) Print(AWHITE("Known") ".\n");
       program = known.DoProgram(program, Known());
     }
 
     if ((opts & O_REPRESENT_ENUMS) != 0 && !represent_enums.HasRun()) {
       if (VERBOSE) {
-        printf(AWHITE("Represent enums") ".\n");
-        // printf("%s\n", ProgramString(program).c_str());
+        Print(AWHITE("Represent enums") ".\n");
+        // Print("{}\n", ProgramString(program));
       }
 
       Context G;
@@ -2142,8 +2141,8 @@ Program Simplification::Simplify(const Program &program_in,
 
     if ((opts & O_ERASE_UNIT) != 0) {
       if (VERBOSE) {
-        printf(AWHITE("Erase unit") ".\n");
-        // printf("%s\n", ProgramString(program).c_str());
+        Print(AWHITE("Erase unit") ".\n");
+        // Print("{}\n", ProgramString(program));
       }
 
       Context G;
@@ -2152,15 +2151,15 @@ Program Simplification::Simplify(const Program &program_in,
 
     if (opts & O_CASE_OF_CASE) {
       if (VERBOSE) {
-        printf(AWHITE("Case of case") ".\n");
-        printf("%s\n", ProgramString(program).c_str());
+        Print(AWHITE("Case of case") ".\n");
+        Print("{}\n", ProgramString(program));
       }
       Context G;
       program = case_of_case.DoProgram(G, program);
     }
 
     if (opts & O_FLATTEN_LET) {
-      if (VERBOSE) printf(AWHITE("Flatten let") ".\n");
+      if (VERBOSE) Print(AWHITE("Flatten let") ".\n");
       program = flatten_let.DoProgram(program);
     }
 
@@ -2169,13 +2168,13 @@ Program Simplification::Simplify(const Program &program_in,
       O_GLOBAL_DEAD;
 
     if (opts & ANY_GLOBAL) {
-      if (VERBOSE) printf(AWHITE("Global") ".\n");
+      if (VERBOSE) Print(AWHITE("Global") ".\n");
       program = global_inlining.Run(program);
     }
 
     if (VERBOSE) {
-      printf("\n" AYELLOW("After simplification:\n"));
-      printf("%s\n", ProgramString(program).c_str());
+      Print("\n" AYELLOW("After simplification:\n"));
+      Print("{}\n", ProgramString(program));
     }
 
   } while (progress.MadeProgress());

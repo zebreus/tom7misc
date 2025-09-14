@@ -1,33 +1,33 @@
 
 #include "closure-conversion.h"
 
-#include <cstdio>
+#include <format>
 #include <string>
+
+#include "base/print.h"
+#include "base/logging.h"
+#include "ansi.h"
+#include "bignum/big-overloads.h"
 
 #include "il.h"
 #include "frontend.h"
 #include "simplification.h"
-
-#include "base/stringprintf.h"
-#include "base/logging.h"
-#include "ansi.h"
-#include "bignum/big-overloads.h"
 
 static constexpr bool VERBOSE = false;
 
 #define RunInternal(src, post_simplify)                 \
   ([&compiler](const std::string source) -> Program {   \
       if (VERBOSE) {                                    \
-        printf(                                         \
+        Print(                                          \
             ABGCOLOR(200, 0, 200,                       \
                      AFGCOLOR(0, 0, 0, "TEST:"))        \
-            "\n%s\n", source.c_str());                  \
+            "\n{}\n", source);                          \
       }                                                 \
       Frontend::Options options;                        \
       options.simplify = true;                          \
       const Program pgm =                               \
         compiler.frontend.RunFrontendOn(                \
-            StringPrintf("Test %s (%s:%d)",             \
+            std::format("Test {} ({}:{})",              \
                          __func__, __FILE__, __LINE__), \
             source,                                     \
             options);                                   \
@@ -72,7 +72,7 @@ static void TestCC() {
     Compiler compiler;
     const Program pgm = Run("(fn x => 7)");
     if (VERBOSE) {
-      printf("%s", ProgramString(pgm).c_str());
+      Print("{}", ProgramString(pgm));
     }
   }
 
@@ -85,6 +85,6 @@ int main(int argc, char **argv) {
 
   il::TestCC();
 
-  printf("CC tests OK\n");
+  Print("CC tests OK\n");
   return 0;
 }

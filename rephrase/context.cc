@@ -1,16 +1,17 @@
 #include "context.h"
 
+#include <format>
 #include <utility>
 #include <vector>
 #include <string>
 #include <variant>
 
-#include "functional-map.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "functional-map.h"
+#include "il.h"
 #include "unification.h"
 #include "util.h"
-#include "il.h"
 
 namespace il {
 
@@ -81,21 +82,21 @@ const VarInfo *ElabContext::FindByILVar(const std::string &s) const {
 std::string ElabContext::VarInfoString(const VarInfo &vi) {
   std::string ret;
   if (vi.primop.has_value()) {
-    StringAppendF(&ret, "primop\n");
+    AppendFormat(&ret, "primop\n");
   } else {
     std::string tyvars;
     if (!vi.tyvars.empty()) {
       tyvars = "(" + Util::Join(vi.tyvars, ", ") + ") ";
     }
-    StringAppendF(&ret, "%s : %s%s",
-                  vi.var.c_str(),
-                  tyvars.c_str(),
-                  TypeString(vi.type).c_str());
+    AppendFormat(&ret, "{} : {}{}",
+                 vi.var,
+                 tyvars,
+                 TypeString(vi.type));
 
     if (vi.ctor.has_value()) {
       const auto &[idx, mu_type, lab] = vi.ctor.value();
-      StringAppendF(&ret, " ctor #%d(%s) %s\n",
-                    idx, TypeString(mu_type).c_str(), lab.c_str());
+      AppendFormat(&ret, " ctor #{}({}) {}\n",
+                   idx, TypeString(mu_type), lab);
     }
     ret.push_back('\n');
   }
@@ -110,9 +111,9 @@ std::string ElabContext::ToString() const {
     case V::EXP: {
       const VarInfo *vi = std::get_if<VarInfo>(&v);
       CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
-      StringAppendF(&ret, "%s => %s ",
-                    k.first.c_str(),
-                    VarInfoString(*vi).c_str());
+      AppendFormat(&ret, "{} => {} ",
+                   k.first,
+                   VarInfoString(*vi));
       break;
     }
 
@@ -128,13 +129,13 @@ std::string ElabContext::ToString() const {
         }
       }
 
-      StringAppendF(&ret, "type %s = %s%s\n", k.first.c_str(), tyvars.c_str(),
-                    TypeString(tvi->type).c_str());
+      AppendFormat(&ret, "type {} = {}{}\n", k.first, tyvars,
+                   TypeString(tvi->type));
       break;
     }
 
     default:
-      StringAppendF(&ret, "Unimplemented variable type!");
+      AppendFormat(&ret, "Unimplemented variable type!");
       break;
     }
   }
@@ -142,26 +143,26 @@ std::string ElabContext::ToString() const {
 }
 
 std::string PolyTypeString(const PolyType &pt) {
-  return StringPrintf("(%s) %s", Util::Join(pt.first, ",").c_str(),
-                      TypeString(pt.second).c_str());
+  return std::format("({}) {}", Util::Join(pt.first, ","),
+                      TypeString(pt.second));
 }
 
 std::string Context::ToString() const {
 
   std::string ret;
-  StringAppendF(&ret, "Exp vars:\n");
+  AppendFormat(&ret, "Exp vars:\n");
   for (const auto &[k, v] : expmap.Export()) {
-    StringAppendF(&ret, "  %s: %s\n", k.c_str(), PolyTypeString(v).c_str());
+    AppendFormat(&ret, "  {}: {}\n", k, PolyTypeString(v));
   }
 
-  StringAppendF(&ret, "Global symbols:\n");
+  AppendFormat(&ret, "Global symbols:\n");
   for (const auto &[k, v] : symmap.Export()) {
-    StringAppendF(&ret, "  %s: %s\n", k.c_str(), PolyTypeString(v).c_str());
+    AppendFormat(&ret, "  {}: {}\n", k, PolyTypeString(v));
   }
 
-  StringAppendF(&ret, "Types:\n");
+  AppendFormat(&ret, "Types:\n");
   for (const auto &[k, v_] : symmap.Export()) {
-    StringAppendF(&ret, "  %s\n", k.c_str());
+    AppendFormat(&ret, "  {}\n", k);
   }
   return ret;
 }

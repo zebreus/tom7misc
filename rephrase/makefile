@@ -331,15 +331,15 @@ ifeq ($(ENABLE_LLM), true)
 endif
 
 %.o : %.cc $(BOVEX_HEADERS)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-	@bash -c echo -n "."
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
 CXXFLAGS_PARSING=$(filter-out -O3,$(CXXFLAGS)) -O
 parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
 	@$(CXX) $(CXXFLAGS_PARSING) -c $< -o $@
-	@bash -c echo -n ":"
+	@echo -n ":"
 
 
 # These programs require LLM

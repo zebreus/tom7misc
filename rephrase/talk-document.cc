@@ -20,6 +20,7 @@
 #include "base/stringprintf.h"
 #include "image.h"
 #include "periodically.h"
+#include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
@@ -68,6 +69,7 @@ void TalkDocument::GenerateOutput(
 
   // Shared status timer.
   Periodically status_per(1.0);
+  StatusBar status(1);
   Timer stickers_timer;
 
   int num_pages = 0;
@@ -115,16 +117,10 @@ void TalkDocument::GenerateOutput(
     }
 
     if (status_per.ShouldRun()) {
-      if (status_per.TimesRun() == 1) {
-        // The very first time, make space for the
-        // progress bar.
-        Print("\n");
-      }
-
-      Print(ANSI_UP "{}\n",
-            ANSI::ProgressBar(slides.size(), pages.size(),
-                              "Place stickers",
-                              stickers_timer.Seconds()));
+      status.Emit(
+          ANSI::ProgressBar(slides.size(), pages.size(),
+                            "Place stickers",
+                            stickers_timer.Seconds()));
     }
 
     slides.push_back(std::move(frames));
@@ -208,8 +204,8 @@ void TalkDocument::GenerateOutput(
                      "  {}\n",
                      framefile);
 
-        async.Run([&m, &num_done, &status_per, &talk_dir,
-                   &total_frames, &frames_timer,
+        async.Run([&m, &num_done, &status_per, &status,
+                   &talk_dir, &total_frames, &frames_timer,
                    fr = frame.get(), framefile]() {
             const std::string frameabsfile =
               Util::DirPlus(talk_dir, framefile);
@@ -218,18 +214,11 @@ void TalkDocument::GenerateOutput(
               MutexLock ml(&m);
               num_done++;
 
-              // TODO: Use StatusBar.
               if (status_per.ShouldRun()) {
-                if (status_per.TimesRun() == 1) {
-                  // The very first time, make space for the
-                  // progress bar.
-                  Print("\n");
-                }
-
-                Print(ANSI_UP "{}\n",
-                      ANSI::ProgressBar(num_done, total_frames,
-                                        "Write frames",
-                                        frames_timer.Seconds()));
+                status.EmitStatus(
+                    ANSI::ProgressBar(num_done, total_frames,
+                                      "Write frames",
+                                      frames_timer.Seconds()));
               }
             }
           });

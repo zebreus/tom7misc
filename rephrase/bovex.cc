@@ -12,12 +12,10 @@
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "ansi.h"
-#include "timer.h"
-#include "util.h"
-
 #include "achievements.h"
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "bc.h"
 #include "compiler.h"
 #include "document.h"
@@ -29,6 +27,8 @@
 #include "periodically.h"
 #include "rephrasing.h"
 #include "talk-document.h"
+#include "timer.h"
+#include "util.h"
 
 enum class OutputType {
   PDF,
@@ -212,7 +212,7 @@ static int Bovex(const std::string &program_dir,
     std::string_view arg(args[i]);
     if (Util::TryStripPrefix("-v", &arg)) {
       verbose++;
-      printf("Verbosity: %d\n", verbose);
+      Print("Verbosity: {}\n", verbose);
     } else if (Util::TryStripPrefix("-I", &arg)) {
       // Then this is -Istdlib
       if (!arg.empty()) {
@@ -363,7 +363,7 @@ static int Bovex(const std::string &program_dir,
     printf(AWHITE("The document") ":\n");
     for (const auto &[page_idx, anim] : pages) {
       for (const auto &[frame_idx, doc] : anim) {
-        printf("==== PAGE %d FRAME %d ====\n", page_idx, frame_idx);
+        Print("==== PAGE {} FRAME {} ====\n", page_idx, frame_idx);
         DebugPrintDocTree(doc);
       }
     }
@@ -378,11 +378,11 @@ static int Bovex(const std::string &program_dir,
   }
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
-  printf("Program size: " ABLUE("%zu") " bytes data, "
-         APURPLE("%d") " insts.\n", (size_t)data_bytes, (int)total_insts);
-  printf("Collected " AWHITE("%zu") " total cells\n",
-         (size_t)total_collected);
-  printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
+  Print("Program size: " ABLUE("{}") " bytes data, "
+        APURPLE("{}") " insts.\n", data_bytes, total_insts);
+  Print("Collected " AWHITE("{}") " total cells\n",
+        total_collected);
+  Print("Finished in {}\n", ANSI::Time(timer.Seconds()));
   return 0;
 }
 

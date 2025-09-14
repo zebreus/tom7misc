@@ -2,6 +2,7 @@
 #include "el.h"
 
 #include <cstddef>
+#include <format>
 #include <string>
 #include <vector>
 
@@ -22,31 +23,31 @@ std::string TypeString(const Type *t) {
     case 0:
       return t->var;
     case 1:
-      return StringPrintf("%s %s",
-                          TypeString(t->children[0]).c_str(),
-                          t->var.c_str());
+      return std::format("{} {}",
+                         TypeString(t->children[0]),
+                         t->var);
     default: {
       std::string args;
       for (int i = 0; i < (int)t->children.size(); i++) {
-        if (i != 0) StringAppendF(&args, ", ");
-        StringAppendF(&args, "%s", TypeString(t->children[i]).c_str());
+        if (i != 0) args += ", ";
+        AppendFormat(&args, "{}", TypeString(t->children[i]));
       }
-      return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
+      return std::format("({}) {}", args, t->var);
     }
   }
 
   case TypeType::ARROW:
-    return StringPrintf("(%s -> %s)",
-                        TypeString(t->a).c_str(),
-                        TypeString(t->b).c_str());
+    return std::format("({} -> {})",
+                       TypeString(t->a),
+                       TypeString(t->b));
 
   case TypeType::PRODUCT: {
     std::string ret = "(";
     for (int i = 0; i < (int)t->children.size(); i++) {
       const Type *child = t->children[i];
       if (i != 0)
-        StringAppendF(&ret, " * ");
-      StringAppendF(&ret, "%s", TypeString(child).c_str());
+        ret.append(" * ");
+      ret.append(TypeString(child));
     }
     ret.push_back(')');
     return ret;
@@ -57,10 +58,10 @@ std::string TypeString(const Type *t) {
     for (int i = 0; i < (int)t->str_children.size(); i++) {
       const auto &child = t->str_children[i];
       if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s: %s",
-                    child.first.c_str(),
-                    TypeString(child.second).c_str());
+        ret.append(", ");
+      AppendFormat(&ret, "{}: {}",
+                   child.first,
+                   TypeString(child.second));
     }
     ret.push_back('}');
     return ret;
@@ -86,13 +87,13 @@ std::string LayoutString(const Layout *lay) {
     case LayoutType::TEXT:
       return lay->str;
   case LayoutType::EXP:
-    return StringPrintf("[%s]", ExpString(lay->exp).c_str());
+    return std::format("[{}]", ExpString(lay->exp));
   case LayoutType::JOIN: {
     std::vector<std::string> body;
     for (const Layout *child : lay->children) {
       body.push_back(LayoutString(child));
     }
-    return StringPrintf("JOIN[%s]", Util::Join(body, ",").c_str());
+    return std::format("JOIN[{}]", Util::Join(body, ","));
   }
   }
   return "??LAYOUT??";
@@ -139,8 +140,8 @@ std::string PatString(const Pat *p) {
     for (int i = 0; i < (int)p->children.size(); i++) {
       const Pat *child = p->children[i];
       if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s", PatString(child).c_str());
+        ret.append(", ");
+      ret.append(PatString(child));
     }
     ret.push_back(')');
     return ret;
@@ -151,44 +152,44 @@ std::string PatString(const Pat *p) {
     for (int i = 0; i < (int)p->str_children.size(); i++) {
       const auto [lab, child] = p->str_children[i];
       if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s = %s",
-                    lab.c_str(),
-                    PatString(child).c_str());
+        ret.append(", ");
+      AppendFormat(&ret, "{} = {}",
+                   lab,
+                   PatString(child));
     }
     ret.push_back('}');
     return ret;
   }
 
   case PatType::OBJECT: {
-    std::string ret = StringPrintf("{(%s) ", p->str.c_str());
+    std::string ret = std::format("{{" "({}) ", p->str);
     for (int i = 0; i < (int)p->str_children.size(); i++) {
       const auto [lab, child] = p->str_children[i];
       if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s = %s",
-                    lab.c_str(),
-                    PatString(child).c_str());
+        ret.append(", ");
+      AppendFormat(&ret, "{} = {}",
+                   lab,
+                   PatString(child));
     }
     ret.push_back('}');
     return ret;
   }
 
   case PatType::ANN: {
-    return StringPrintf("%s : %s",
-                        PatString(p->a).c_str(),
-                        TypeString(p->ann).c_str());
+    return std::format("{} : {}",
+                       PatString(p->a),
+                       TypeString(p->ann));
   }
   case PatType::AS: {
-    return StringPrintf("%s as %s",
-                        PatString(p->a).c_str(),
-                        PatString(p->b).c_str());
+    return std::format("{} as {}",
+                       PatString(p->a),
+                       PatString(p->b));
   }
 
   case PatType::APP: {
-    return StringPrintf("%s %s",
-                        p->str.c_str(),
-                        PatString(p->a).c_str());
+    return std::format("{} {}",
+                       p->str,
+                       PatString(p->a));
   }
   }
   return "??PAT??";
@@ -199,27 +200,26 @@ std::string DecString(const Dec *d) {
   switch (d->type) {
 
   case DecType::VAL:
-    return StringPrintf("val %s = %s",
-                        PatString(d->pat).c_str(),
-                        ExpString(d->exp).c_str());
+    return std::format("val {} = {}",
+                       PatString(d->pat),
+                       ExpString(d->exp));
 
   case DecType::FUN: {
     std::string ret;
     for (int i = 0; i < (int)d->funs.size(); i++) {
       const FunDec &fd = d->funs[i];
-      StringAppendF(&ret, "%s ", i == 0 ? "fun" : "and");
+      AppendFormat(&ret, "{} ", i == 0 ? "fun" : "and");
       bool first = true;
       for (const auto &[cpat, cexp] : fd.clauses) {
         if (!first) {
-          StringAppendF(&ret, " | ");
+          ret.append(" | ");
         }
-        StringAppendF(&ret, "%s",
-                      fd.name.c_str());
+        ret.append(fd.name);
         for (const Pat *p : cpat) {
-          StringAppendF(&ret, " (%s)", PatString(p).c_str());
+          AppendFormat(&ret, " ({})", PatString(p));
         }
-        StringAppendF(&ret, " = %s\n",
-                      ExpString(cexp).c_str());
+        AppendFormat(&ret, " = {}\n",
+                     ExpString(cexp));
         first = false;
       }
     }
@@ -229,33 +229,31 @@ std::string DecString(const Dec *d) {
   case DecType::OBJECT: {
     std::vector<std::string> fs;
     for (const auto &[lab, t] : d->object.fields) {
-      fs.push_back(StringPrintf("%s : %s", lab.c_str(),
-                                TypeString(t).c_str()));
+      fs.push_back(std::format("{} : {}", lab, TypeString(t)));
     }
-    return StringPrintf("object %s of { %s }\n",
-                        d->object.name.c_str(),
-                        Util::Join(fs, ", ").c_str());
+    return std::format("object {} of {{ {} }}\n",
+                        d->object.name,
+                        Util::Join(fs, ", "));
   }
 
   case DecType::TYPE: {
     CHECK(d->tyvars.empty()) << "unimplemented";
-    return StringPrintf("type %s = %s\n",
-                        d->str.c_str(),
-                        TypeString(d->t).c_str());
+    return std::format("type {} = {}\n",
+                       d->str,
+                       TypeString(d->t));
   }
 
   case DecType::OPEN:
-    return StringPrintf("open %s\n",
-                        ExpString(d->exp).c_str());
+    return std::format("open {}\n", ExpString(d->exp));
 
   case DecType::LOCAL: {
     std::string ret = "local\n";
     for (const Dec *dec : d->decs1) {
-      StringAppendF(&ret, "  %s\n", DecString(dec).c_str());
+      AppendFormat(&ret, "  {}\n", DecString(dec));
     }
     ret += "in\n";
     for (const Dec *dec : d->decs2) {
-      StringAppendF(&ret, "  %s\n", DecString(dec).c_str());
+      AppendFormat(&ret, "  {}\n", DecString(dec));
     }
     ret += "end\n";
     return ret;
@@ -266,18 +264,18 @@ std::string DecString(const Dec *d) {
     if (!d->tyvars.empty()) {
       tyvars = "(" + Util::Join(d->tyvars, ",") + ") ";
     }
-    std::string ret = StringPrintf("datatype %s", tyvars.c_str());
+    std::string ret = std::format("datatype {}", tyvars);
     for (int i = 0; i < (int)d->datatypes.size(); i++) {
       const DatatypeDec &dd = d->datatypes[i];
-      if (i != 0) StringAppendF(&ret, "\nand");
-      StringAppendF(&ret, " %s =\n", dd.name.c_str());
+      if (i != 0) ret.append("\nand");
+      AppendFormat(&ret, " {} =\n", dd.name);
       for (int j = 0; j < (int)dd.arms.size(); j++) {
         const auto &arm = dd.arms[j];
-        if (j == 0) StringAppendF(&ret, "\n    ");
-        else StringAppendF(&ret, "\n  | ");
-        StringAppendF(&ret, "%s", arm.first.c_str());
+        if (j == 0) ret += "\n    ";
+        else ret += "\n  | ";
+        ret += arm.first;
         if (arm.second != nullptr){
-          StringAppendF(&ret, " of %s", TypeString(arm.second).c_str());
+          AppendFormat(&ret, " of {}", TypeString(arm.second));
         }
       }
     }
@@ -292,7 +290,7 @@ std::string ExpString(const Exp *e) {
   if (e == nullptr) return "NULL!?";
   switch (e->type) {
   case ExpType::STRING:
-    return StringPrintf("\"%s\"", EscapeString(e->str).c_str());
+    return std::format("\"{}\"", EscapeString(e->str));
 
   case ExpType::VAR:
     return e->str;
@@ -304,21 +302,21 @@ std::string ExpString(const Exp *e) {
     return e->boolean ? "true" : "false";
 
   case ExpType::FLOAT:
-    return StringPrintf("%.17g", e->d);
+    return std::format("{:.17g}", e->d);
 
   case ExpType::ANDALSO:
-    return StringPrintf("(%s) andalso (%s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str());
+    return std::format("({}) andalso ({})",
+                        ExpString(e->a),
+                        ExpString(e->b));
   case ExpType::ORELSE:
-    return StringPrintf("(%s) orelse (%s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str());
+    return std::format("({}) orelse ({})",
+                       ExpString(e->a),
+                       ExpString(e->b));
 
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
+      if (i != 0) ret.append(", ");
       ret += ExpString(e->children[i]);
     }
     ret += ")";
@@ -329,9 +327,9 @@ std::string ExpString(const Exp *e) {
     std::string ret = "{";
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
-      if (i != 0) StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s = %s",
-                    lab.c_str(), ExpString(child).c_str());
+      if (i != 0) ret.append(", ");
+      AppendFormat(&ret, "{} = {}",
+                   lab, ExpString(child));
     }
     ret += "}";
     return ret;
@@ -339,34 +337,34 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::OBJECT: {
     std::string ret =
-      StringPrintf("{(%s) ", e->str.c_str());
+      std::format("{{" "({}) ", e->str);
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
-      if (i != 0) StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s = %s",
-                    lab.c_str(), ExpString(child).c_str());
+      if (i != 0) ret.append(", ");
+      AppendFormat(&ret, "{} = {}",
+                   lab, ExpString(child));
     }
     ret += "}";
     return ret;
   }
 
   case ExpType::WITH:
-    return StringPrintf("(%s with (%s) %s = %s)",
-                        ExpString(e->a).c_str(),
-                        e->str.c_str(),
-                        e->str2.c_str(),
-                        ExpString(e->b).c_str());
+    return std::format("({} with ({}) {} = {})",
+                        ExpString(e->a),
+                        e->str,
+                        e->str2,
+                        ExpString(e->b));
 
   case ExpType::WITHOUT:
-    return StringPrintf("(%s without (%s) %s)",
-                        ExpString(e->a).c_str(),
-                        e->str.c_str(),
-                        e->str2.c_str());
+    return std::format("({} without ({}) {})",
+                        ExpString(e->a),
+                        e->str,
+                        e->str2);
 
   case ExpType::JOIN: {
     std::string ret = "[";
     for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
+      if (i != 0) ret += ", ";
       ret += ExpString(e->children[i]);
     }
     ret += "]";
@@ -379,34 +377,34 @@ std::string ExpString(const Exp *e) {
       decs.push_back(DecString(d));
     }
 
-    return StringPrintf("let %s in %s end",
-                        Util::Join(decs, "\n").c_str(),
-                        ExpString(e->a).c_str());
+    return std::format("let {} in {} end",
+                       Util::Join(decs, "\n"),
+                       ExpString(e->a));
   }
 
   case ExpType::IF: {
-    return StringPrintf("(if %s then %s else %s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str(),
-                        ExpString(e->c).c_str());
+    return std::format("(if {} then {} else {})",
+                       ExpString(e->a),
+                       ExpString(e->b),
+                       ExpString(e->c));
   }
 
   case ExpType::APP: {
-    return StringPrintf("(%s %s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str());
+    return std::format("({} {})",
+                       ExpString(e->a),
+                       ExpString(e->b));
   }
 
   case ExpType::FN: {
     const std::string as =
-      e->str.empty() ? "" : StringPrintf(" as %s", e->str.c_str());
-    std::string ret = StringPrintf("(fn%s ", as.c_str());
+      e->str.empty() ? "" : std::format(" as {}", e->str);
+    std::string ret = std::format("(fn{} ", as);
     bool first = true;
     for (const auto &[pat, body] : e->clauses) {
-      if (!first) StringAppendF(&ret, "\n | ");
-      StringAppendF(&ret, "%s => %s",
-                    PatString(pat).c_str(),
-                    ExpString(body).c_str());
+      if (!first) ret.append("\n | ");
+      AppendFormat(&ret, "{} => {}",
+                   PatString(pat),
+                   ExpString(body));
       first = false;
     }
     return ret + ")";
@@ -416,26 +414,26 @@ std::string ExpString(const Exp *e) {
     std::vector<std::string> arms;
     arms.reserve(e->clauses.size());
     for (const auto &[pat, exp] : e->clauses) {
-      arms.push_back(StringPrintf("%s => %s",
-                                  PatString(pat).c_str(),
-                                  ExpString(exp).c_str()));
+      arms.push_back(std::format("{} => {}",
+                                 PatString(pat),
+                                 ExpString(exp)));
     }
-    return StringPrintf("(case %s of\n"
-                        "   %s)",
-                        ExpString(e->a).c_str(),
-                        Util::Join(arms, "\n | ").c_str());
+    return std::format("(case {} of\n"
+                       "   {})",
+                       ExpString(e->a),
+                       Util::Join(arms, "\n | "));
   }
 
   case ExpType::FAIL:
-    return StringPrintf("(fail %s)", ExpString(e->a).c_str());
+    return std::format("(fail {})", ExpString(e->a));
 
   case ExpType::LAYOUT:
-    return StringPrintf("[%s]", LayoutString(e->layout).c_str());
+    return std::format("[{}]", LayoutString(e->layout));
 
   case ExpType::ANN:
-    return StringPrintf("(%s : %s)",
-                        ExpString(e->a).c_str(),
-                        TypeString(e->t).c_str());
+    return std::format("({} : {})",
+                       ExpString(e->a),
+                       TypeString(e->t));
   }
   return "??EXP??";
 }
@@ -564,9 +562,9 @@ std::string AstPool::NewInternalVar(const std::string &hint) {
   // Need something that's different from the IL's reserved symbol ($)
   // -- or else we would need to coordinate the counter with IL --
   // and can't be written by the user.
-  return StringPrintf("%s#%d",
-                      hint.empty() ? "internal" : hint.c_str(),
-                      next_internal_var);
+  return std::format("{}#{}",
+                     hint.empty() ? "internal" : hint,
+                     next_internal_var);
 }
 
 #define AKEYWORD(s) AFGCOLOR(221, 221, 170, s)
@@ -582,14 +580,14 @@ static std::string VeryShortColorExpString(const Exp *e) {
   case ExpType::STRING: {
     std::string ss = EscapeString(e->str);
     std::string s = ss.size() > 10 ?
-      StringPrintf("%s" AGREY("..."), ss.substr(0, 10).c_str()) :
+      std::format("{}" AGREY("..."), ss.substr(0, 10)) :
       ss;
-    return StringPrintf(ANSI_GREEN "\"%s" ANSI_GREEN "\"" ANSI_RESET,
-                        s.c_str());
+    return std::format(ANSI_GREEN "\"{}" ANSI_GREEN "\"" ANSI_RESET,
+                       s);
   }
 
   case ExpType::VAR:
-    return StringPrintf(AVAR("%s"), e->str.c_str());
+    return std::format(AVAR("{}"), e->str);
 
   case ExpType::INT:
     return e->integer.ToString();
@@ -598,7 +596,7 @@ static std::string VeryShortColorExpString(const Exp *e) {
     return e->boolean ? "true" : "false";
 
   case ExpType::FLOAT:
-    return StringPrintf("%.17g", e->d);
+    return std::format("{:.17g}", e->d);
 
   default: return AGREY("...");
   }
@@ -609,19 +607,19 @@ std::string VeryShortColorTypeString(const Type *t) {
   switch (t->type) {
   case TypeType::VAR:
     if (t->children.empty()) {
-      return StringPrintf(AVAR("%s"), t->var.c_str());
+      return std::format(AVAR("{}"), t->var);
     } else if (t->children.size() == 1) {
-      return StringPrintf("%s " AVAR("%s"),
-                          VeryShortColorTypeString(t->children[0]).c_str(),
-                          t->var.c_str());
+      return std::format("{} " AVAR("{}"),
+                         VeryShortColorTypeString(t->children[0]),
+                         t->var);
     } else {
-      return StringPrintf("(" AGREY("%d var") ") " AVAR("%s"),
-                          (int)t->children.size(),
-                          t->var.c_str());
+      return std::format("(" AGREY("{} var") ") " AVAR("{}"),
+                         t->children.size(),
+                         t->var);
     }
 
   default:
-    return StringPrintf(AWHITE("%s"), TypeTypeString(t->type));
+    return std::format(AWHITE("{}"), TypeTypeString(t->type));
   }
 }
 
@@ -632,16 +630,15 @@ std::string VeryShortColorPatString(const Pat *p) {
   case PatType::STRING: {
     std::string ss = EscapeString(p->str);
     std::string s = ss.size() > 10 ?
-      StringPrintf("%s" AGREY("..."), ss.substr(0, 10).c_str()) :
+      std::format("{}" AGREY("..."), ss.substr(0, 10)) :
       ss;
-    return StringPrintf(ANSI_GREEN "\"%s" ANSI_GREEN "\"" ANSI_RESET,
-                        s.c_str());
+    return std::format(ANSI_GREEN "\"{}" ANSI_GREEN "\"" ANSI_RESET, s);
   }
 
   case PatType::INT: return p->integer.ToString();
   case PatType::BOOL: return p->boolean ? "true" : "false";
   case PatType::WILD: return "_";
-  case PatType::VAR: return StringPrintf(AVAR("%s"), p->str.c_str());
+  case PatType::VAR: return std::format(AVAR("{}"), p->str);
   case PatType::TUPLE:
     if (p->children.empty()) return "()";
     else return "(" AGREY("...") ")";
@@ -649,13 +646,12 @@ std::string VeryShortColorPatString(const Pat *p) {
     if (p->str_children.empty()) return "{}";
     else return "{" AGREY("...") "}";
   case PatType::OBJECT:
-    return StringPrintf("{(" AOBJNAME("%s") ")" AGREY("...") "}",
-                        p->str.c_str());
+    return std::format("{{" "(" AOBJNAME("{}") ")" AGREY("...") "}}",
+                       p->str);
   case PatType::ANN: return AGREY("...") " : " AGREY("...");
   case PatType::AS: return AGREY("...") " " AKEYWORD("as") " " AGREY("...");
   case PatType::APP:
-    return StringPrintf(ABLUE("%s") " " AGREY("..."),
-                        p->str.c_str());
+    return std::format(ABLUE("{}") " " AGREY("..."), p->str);
   }
   return ARED("??PAT??");
 }
@@ -669,18 +665,18 @@ std::string ShortColorExpString(const Exp *e) {
   if (e == nullptr) return ARED("NULL!?");
   switch (e->type) {
   case ExpType::ANDALSO:
-    return StringPrintf("%s " AKEYWORD("andalso") " %s",
-                        VeryShortColorExpString(e->a).c_str(),
-                        VeryShortColorExpString(e->b).c_str());
+    return std::format("{} " AKEYWORD("andalso") " {}",
+                       VeryShortColorExpString(e->a),
+                       VeryShortColorExpString(e->b));
   case ExpType::ORELSE:
-    return StringPrintf("%s " AKEYWORD("orelse") " %s",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str());
+    return std::format("{} " AKEYWORD("orelse") " {}",
+                       ExpString(e->a),
+                       ExpString(e->b));
 
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
+      if (i != 0) ret += ", ";
       ret += VeryShortColorExpString(e->children[i]);
     }
     ret += ")";
@@ -691,10 +687,10 @@ std::string ShortColorExpString(const Exp *e) {
     std::string ret = "{";
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
-      if (i != 0) StringAppendF(&ret, ", ");
-      StringAppendF(&ret, ALABEL("%s") " = %s",
-                    lab.c_str(),
-                    VeryShortColorExpString(child).c_str());
+      if (i != 0) ret.append(", ");
+      AppendFormat(&ret, ALABEL("{}") " = {}",
+                   lab,
+                   VeryShortColorExpString(child));
     }
     ret += "}";
     return ret;
@@ -702,76 +698,76 @@ std::string ShortColorExpString(const Exp *e) {
 
   case ExpType::OBJECT: {
     std::string ret =
-      StringPrintf("{(" AOBJNAME ("%s") ") ", e->str.c_str());
+      std::format("{{" "(" AOBJNAME ("{}") ") ", e->str);
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
-      if (i != 0) StringAppendF(&ret, ", ");
-      StringAppendF(&ret, ALABEL("%s") " = %s",
-                    lab.c_str(),
-                    VeryShortColorExpString(child).c_str());
+      if (i != 0) ret.append(", ");
+      AppendFormat(&ret, ALABEL("{}") " = {}",
+                   lab,
+                   VeryShortColorExpString(child));
     }
     ret += "}";
     return ret;
   }
 
   case ExpType::WITH:
-    return StringPrintf("%s " AKEYWORD("with") "(" AOBJNAME("%s") ")"
-                        " " ALABEL("%s") " = %s",
-                        VeryShortColorExpString(e->a).c_str(),
-                        e->str.c_str(),
-                        e->str2.c_str(),
-                        VeryShortColorExpString(e->b).c_str());
+    return std::format("{} " AKEYWORD("with") "(" AOBJNAME("{}") ")"
+                       " " ALABEL("{}") " = {}",
+                       VeryShortColorExpString(e->a),
+                       e->str,
+                       e->str2,
+                       VeryShortColorExpString(e->b));
 
   case ExpType::WITHOUT:
-    return StringPrintf("%s " AKEYWORD("without") " (" AOBJNAME("%s") ") "
-                        ALABEL("%s"),
-                        VeryShortColorExpString(e->a).c_str(),
-                        e->str.c_str(),
-                        e->str2.c_str());
+    return std::format("{} " AKEYWORD("without") " (" AOBJNAME("{}") ") "
+                       ALABEL("{}"),
+                       VeryShortColorExpString(e->a),
+                       e->str,
+                       e->str2);
 
   case ExpType::JOIN: {
     std::string ret = "[";
     for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
-      ret += VeryShortColorExpString(e->children[i]);
+      if (i != 0) ret.append(", ");
+      ret.append(VeryShortColorExpString(e->children[i]));
     }
     ret += "]";
     return ret;
   }
 
   case ExpType::LET: {
-    return StringPrintf(AKEYWORD("let") " " AGREY("...") " "
-                        AKEYWORD("in") " %s "
-                        AKEYWORD("end"),
-                        VeryShortColorExpString(e->a).c_str());
+    return std::format(AKEYWORD("let") " " AGREY("...") " "
+                       AKEYWORD("in") " {} "
+                       AKEYWORD("end"),
+                       VeryShortColorExpString(e->a));
   }
 
   case ExpType::IF: {
-    return StringPrintf(AKEYWORD("if") " %s "
-                        AKEYWORD("then") " %s "
-                        AKEYWORD("else") " %s",
-                        VeryShortColorExpString(e->a).c_str(),
-                        VeryShortColorExpString(e->b).c_str(),
-                        VeryShortColorExpString(e->c).c_str());
+    return std::format(AKEYWORD("if") " {} "
+                       AKEYWORD("then") " {} "
+                       AKEYWORD("else") " {}",
+                       VeryShortColorExpString(e->a),
+                       VeryShortColorExpString(e->b),
+                       VeryShortColorExpString(e->c));
   }
 
   case ExpType::APP: {
-    return StringPrintf("%s %s",
-                        VeryShortColorExpString(e->a).c_str(),
-                        VeryShortColorExpString(e->b).c_str());
+    return std::format("{} {}",
+                       VeryShortColorExpString(e->a),
+                       VeryShortColorExpString(e->b));
   }
 
   case ExpType::FN: {
     const std::string as =
-      e->str.empty() ? "" : StringPrintf(" " AKEYWORD("as") " "
-                                         AVAR("%s"), e->str.c_str());
-    std::string ret = StringPrintf(AKEYWORD("fn") "%s ", as.c_str());
+      e->str.empty() ? "" : std::format(" " AKEYWORD("as") " "
+                                        AVAR("{}"), e->str);
+    std::string ret = std::format(AKEYWORD("fn") "{} ", as);
     CHECK(!e->clauses.empty());
-    StringAppendF(&ret, "%s => %s",
-                  VeryShortColorPatString(e->clauses[0].first).c_str(),
-                  VeryShortColorExpString(e->clauses[0].second).c_str());
+    AppendFormat(&ret, "{} => {}",
+                 VeryShortColorPatString(e->clauses[0].first),
+                 VeryShortColorExpString(e->clauses[0].second));
     if (e->clauses.size() > 1)
-      StringAppendF(&ret, " | " AGREY("..."));
+      ret += " | " AGREY("...");
 
     return ret;
   }
@@ -782,18 +778,18 @@ std::string ShortColorExpString(const Exp *e) {
   }
 
   case ExpType::FAIL:
-    return StringPrintf(AKEYWORD("fail") " %s",
-                        VeryShortColorExpString(e->a).c_str());
+    return std::format(AKEYWORD("fail") " {}",
+                       VeryShortColorExpString(e->a));
 
   case ExpType::LAYOUT:
     // XXX show something
-    // LayoutString(e->layout).c_str());
-    return StringPrintf("[" AGREY("...") "]");
+    // LayoutString(e->layout);
+    return "[" AGREY("...") "]";
 
   case ExpType::ANN:
-    return StringPrintf("%s : %s",
-                        VeryShortColorExpString(e->a).c_str(),
-                        VeryShortColorTypeString(e->t).c_str());
+    return std::format("{} : {}",
+                       VeryShortColorExpString(e->a),
+                       VeryShortColorTypeString(e->t));
 
   default:
     return VeryShortColorExpString(e);
@@ -807,34 +803,34 @@ std::string ShortColorDecString(const Dec *d) {
   switch (d->type) {
 
   case DecType::VAL:
-    return StringPrintf(AKEYWORD("val") " %s = %s",
-                        ShortColorPatString(d->pat).c_str(),
-                        ShortColorExpString(d->exp).c_str());
+    return std::format(AKEYWORD("val") " {} = {}",
+                       ShortColorPatString(d->pat),
+                       ShortColorExpString(d->exp));
 
   case DecType::FUN: {
     std::string ret = AKEYWORD("fun");
     if (d->funs.empty()) ret += " " ARED("EMPTY??");
     // TODO can use short pat, exp
-    else ret += StringPrintf(" " AVAR("%s") " " AGREY("..."),
-                             d->funs[0].name.c_str());
+    else AppendFormat(&ret, " " AVAR("{}") " " AGREY("..."),
+                      d->funs[0].name);
     return ret;
   }
 
   case DecType::OBJECT: {
-    return StringPrintf(AKEYWORD("object") " " AVAR("%s") " "
-                        AKEYWORD("of") " { " AGREY("...") " }",
-                        d->object.name.c_str());
+    return std::format(AKEYWORD("object") " " AVAR("{}") " "
+                       AKEYWORD("of") " {{ " AGREY("...") " }}",
+                       d->object.name);
   }
 
   case DecType::TYPE: {
-    return StringPrintf(AKEYWORD("type") " " AVAR("%s") " = %s",
-                        d->str.c_str(),
-                        VeryShortColorTypeString(d->t).c_str());
+    return std::format(AKEYWORD("type") " " AVAR("{}") " = {}",
+                       d->str,
+                       VeryShortColorTypeString(d->t));
   }
 
   case DecType::OPEN:
-    return StringPrintf(AKEYWORD("open") " %s\n",
-                        ShortColorExpString(d->exp).c_str());
+    return std::format(AKEYWORD("open") " {}\n",
+                       ShortColorExpString(d->exp));
 
   case DecType::LOCAL: {
     // XXX would be good to show one declaration for wayfinding
@@ -846,8 +842,8 @@ std::string ShortColorDecString(const Dec *d) {
   case DecType::DATATYPE: {
     std::string ret = AKEYWORD("datatype");
     if (d->datatypes.empty()) ret += " " ARED("EMPTY??");
-    else ret += StringPrintf(" " AVAR("%s") " = " AGREY("..."),
-                             d->datatypes[0].name.c_str());
+    else ret += std::format(" " AVAR("{}") " = " AGREY("..."),
+                            d->datatypes[0].name);
     return ret;
   }
   }

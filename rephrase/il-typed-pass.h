@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/print.h"
 #include "bignum/big.h"
 #include "context.h"
 #include "il-util.h"
@@ -422,12 +423,12 @@ struct TypedPass {
 
     const Exp *out = pool->Var(tts, v, guess);
     if (TYPED_PASS_VERBOSE) {
-      printf("Translated var " ABLUE("%s") "\n"
-             "to: " ABGCOLOR(0, 0, 40, "%s") "\n"
-             "which has type: %s\n",
-             ExpString(guess).c_str(),
-             ExpString(out).c_str(),
-             TypeString(t).c_str());
+      Print("Translated var " ABLUE("{}") "\n"
+            "to: " ABGCOLOR(0, 0, 40, "{}") "\n"
+            "which has type: {}\n",
+            ExpString(guess),
+            ExpString(out),
+            TypeString(t));
     }
 
     return {out, t};
@@ -577,12 +578,12 @@ struct TypedPass {
     const Type *utt = pool->UnrollType(tt);
 
     if (TYPED_PASS_VERBOSE) {
-      printf("(TypedPass:DoUnroll) translated exp ee is %s\n"
-             "and its translated type tt is %s\n"
-             "which unrolls to " ABGCOLOR(30, 0, 0, "%s") "\n",
-             ExpString(ee).c_str(),
-             TypeString(tt).c_str(),
-             TypeString(utt).c_str());
+      Print("(TypedPass:DoUnroll) translated exp ee is {}\n"
+            "and its translated type tt is {}\n"
+            "which unrolls to " ABGCOLOR(30, 0, 0, "{}") "\n",
+            ExpString(ee),
+            TypeString(tt),
+            TypeString(utt));
     }
 
     // DCHECK(TypeEq(tt, mu_tt));
@@ -619,9 +620,8 @@ struct TypedPass {
     Context GGG = G.Insert(x, {tyvars, tt});
     // This is wrong.
     if (TYPED_PASS_VERBOSE) {
-      printf("Inserting " ABLUE("%s") " with type %s\n",
-             x.c_str(),
-             TypeString(tt).c_str());
+      Print("Inserting " ABLUE("{}") " with type {}\n",
+            x, TypeString(tt));
     }
     const auto &[ebody, tbody] = DoExp(GGG, body, args...);
     return {pool->Let(tyvars, x, ee, ebody, guess), tbody};
@@ -810,21 +810,21 @@ struct TypedPass {
       Args... args) {
 
     if (TYPED_PASS_VERBOSE) {
-      printf("Sumcase of " AYELLOW("%s") " becomes\n", ExpString(obj).c_str());
+      Print("Sumcase of " AYELLOW("{}") " becomes\n", ExpString(obj));
     }
     const auto &[oe, ot] = DoExp(G, obj, args...);
     if (TYPED_PASS_VERBOSE) {
-      printf("Exp: " AORANGE("%s") "\nType: " ARED("%s") "\n",
-             ExpString(oe).c_str(),
-             TypeString(ot).c_str());
+      Print("Exp: " AORANGE("{}") "\nType: " ARED("{}") "\n",
+            ExpString(oe),
+            TypeString(ot));
     }
     std::unordered_map<std::string, const Type *> lab_types;
     for (const auto &[lab, t] : ot->Sum()) {
       // Types have already been translated!
       // lab_types[lab] = DoType(G, t, args...);
       if (TYPED_PASS_VERBOSE) {
-        printf("In sumcase, lab " APURPLE("%s") " : %s\n",
-               lab.c_str(), TypeString(t).c_str());
+        Print("In sumcase, lab " APURPLE("{}") " : {}\n",
+              lab, TypeString(t));
       }
       lab_types[lab] = t;
     }

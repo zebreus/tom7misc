@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -12,7 +13,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "context.h"
 #include "il-typed-pass.h"
 #include "il-util.h"
@@ -244,13 +245,13 @@ struct ConvertPass : public TypedPass<> {
     free_expvars_map.erase(x);
 
     if (VERBOSE) {
-      printf(AWHITE("Free expvars") ":\n");
+      Print(AWHITE("Free expvars") ":\n");
       for (const auto &[v, uses] : free_expvars_map) {
-        printf("  %s:\n", v.c_str());
+        Print("  {}:\n", v);
         for (const auto &types : uses) {
           std::vector<std::string> ts;
           for (const Type *t : types) ts.push_back(TypeString(t));
-          printf("    (%s)\n", Util::Join(ts, ",").c_str());
+          Print("    ({})\n", Util::Join(ts, ","));
         }
       }
     }
@@ -291,7 +292,7 @@ struct ConvertPass : public TypedPass<> {
       int suffix = 0;
       while (labels_used.contains(label)) {
         suffix++;
-        label = StringPrintf("%s_%d", pool->BaseVar(var).c_str(), suffix);
+        label = std::format("{}_{}", pool->BaseVar(var), suffix);
       }
       labels_used.insert(label);
       entry.env_label = std::move(label);
@@ -310,12 +311,12 @@ struct ConvertPass : public TypedPass<> {
         std::vector<std::string> ts;
         // for (const Type *t : entry.type_args) ts.push_back(TypeString(t));
 
-        printf(AORANGE("#%s") " = " ABLUE("%s") " (used as <%s>)\n"
-               "   polytype: %s\n" ,
-               entry.env_label.c_str(),
-               entry.il_var.c_str(),
-               Util::Join(ts, ",").c_str(),
-               PolyTypeString(entry.polytype).c_str());
+        Print(AORANGE("#{}") " = " ABLUE("{}") " (used as <{}>)\n"
+              "   polytype: {}\n" ,
+              entry.env_label,
+              entry.il_var,
+              Util::Join(ts, ","),
+              PolyTypeString(entry.polytype));
       }
     }
 
@@ -380,8 +381,7 @@ struct ConvertPass : public TypedPass<> {
     }
 
     const std::string global_sym =
-      pool->NewVar(
-          self.empty() ? "g_fn" : StringPrintf("g_%s", self.c_str()));
+      pool->NewVar(self.empty() ? "g_fn" : std::format("g_{}", self));
 
     // Since we call the function recursively through the global symbol,
     // we need to instantiate it again at the same type variables.

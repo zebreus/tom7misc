@@ -15,6 +15,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "map-util.h"
 #include "periodically.h"
 #include "status-bar.h"
@@ -86,7 +87,7 @@ int main(int argc, char **argv) {
 
   Periodically status_per(1.0);
   StatusBar status(1);
-  status.Printf("Num files: %lld\n", (int64)all_filenames.size());
+  status.Print("Num files: {}\n", all_filenames.size());
 
   Periodically spam_per(1.0);
 
@@ -114,7 +115,7 @@ int main(int argc, char **argv) {
         if (ttf_bytes.empty()) {
           MutexLock ml(&out_m);
           counters["cant_read"]++;
-          status.Printf("Can't read: %s\n", filename.c_str());
+          status.Print("Can't read: {}\n", filename);
           bad.push_back(filename);
           return;
         }
@@ -124,7 +125,7 @@ int main(int argc, char **argv) {
           total_bytes += ttf_bytes.size();
         }
 
-        // printf("%s\n", filename.c_str());
+        // Print("{}\n", filename);
         // fflush(stdout);
 
         stbtt_fontinfo font;
@@ -133,7 +134,7 @@ int main(int argc, char **argv) {
           MutexLock ml(&out_m);
           bad.push_back(filename);
           if (spam_per.ShouldRun()) {
-            status.Printf("Bad offset in %s", filename.c_str());
+            status.Print("Bad offset in {}", filename);
           }
           counters["bad_offset"]++;
           return;
@@ -144,7 +145,7 @@ int main(int argc, char **argv) {
           MutexLock ml(&out_m);
           bad.push_back(filename);
           if (spam_per.ShouldRun()) {
-            status.Printf("Can't init %s", filename.c_str());
+            status.Print("Can't init {}", filename);
           }
           counters["cant_init"]++;
           return;
@@ -157,7 +158,7 @@ int main(int argc, char **argv) {
         if ((ascent - descent) <= 0) {
           MutexLock ml(&out_m);
           if (spam_per.ShouldRun()) {
-            status.Printf("Bad vmetrics in %s", filename.c_str());
+            status.Print("Bad vmetrics in {}", filename);
           }
           counters["bad_vmetrics"]++;
           bad.push_back(filename);
@@ -167,15 +168,15 @@ int main(int argc, char **argv) {
         {
           int format_type = stbtt_GetEncodingFormat(&font);
 
-          std::unordered_map<uint16_t, uint32_t> codepoint_from_glyph =
-            stbtt_GetGlyphs(&font);
+          std::unordered_map<uint16_t, std::vector<uint32_t>>
+            codepoint_from_glyph = stbtt_GetGlyphs(&font);
 
           bool have_s = stbtt_FindGlyphIndex(&font, 's') != 0;
 
           if (codepoint_from_glyph.empty()) {
             MutexLock ml(&out_m);
             if (spam_per.ShouldRun()) {
-              status.Printf("No glyphs in %s", filename.c_str());
+              status.Print("No glyphs in {}", filename);
             }
             counters[std::format("no_glyphs({})({})", format_type,
                                  have_s ? "have_s" : "no_s")]++;
@@ -184,28 +185,34 @@ int main(int argc, char **argv) {
           }
 
           std::unordered_set<uint32_t> codepoints_found;
-          for (const auto &[glyph, codepoint] : codepoint_from_glyph) {
-            if (codepoint == 0) {
-              MutexLock ml(&out_m);
-              if (spam_per.ShouldRun()) {
-                status.Printf("codepoint zero in %s", filename.c_str());
+          for (const auto &[glyph, codepoints] : codepoint_from_glyph) {
+            // Note that this used to expect a single codepoint. At
+            // some point I updated the API to return all the codepoints
+            // that use a glyph, but I didn't really check this code
+            // (I don't even remember what this is for!) -tom7 14 Sep 2025
+            for (uint32_t codepoint : codepoints) {
+              if (codepoint == 0) {
+                MutexLock ml(&out_m);
+                if (spam_per.ShouldRun()) {
+                  status.Print("codepoint zero in {}", filename);
+                }
+                counters[std::format("zero_codepoint({})", format_type)]++;
+                bad.push_back(filename);
+                return;
               }
-              counters[std::format("zero_codepoint({})", format_type)]++;
-              bad.push_back(filename);
-              return;
-            }
-            codepoints_found.insert(codepoint);
+              codepoints_found.insert(codepoint);
 
-            if (stbtt_FindGlyphIndex(&font, codepoint) != glyph) {
-              MutexLock ml(&out_m);
-              if (spam_per.ShouldRun()) {
-                status.Printf("Bad cmap in %s", filename.c_str());
+              if (stbtt_FindGlyphIndex(&font, codepoint) != glyph) {
+                MutexLock ml(&out_m);
+                if (spam_per.ShouldRun()) {
+                  status.Print("Bad cmap in {}", filename);
+                }
+                counters[std::format("bad_cmap({})({})",
+                                     format_type,
+                                     have_s ? "have_s" : "no_s")]++;
+                bad.push_back(filename);
+                return;
               }
-              counters[std::format("bad_cmap({})({})",
-                                   format_type,
-                                   have_s ? "have_s" : "no_s")]++;
-              bad.push_back(filename);
-              return;
             }
           }
 
@@ -222,19 +229,19 @@ int main(int argc, char **argv) {
       },
       16);
 
-  printf("%lld bytes in %lld sec\n"
-         "%lld good and %lld bad\n"
-         "Bad:\n",
+  Print("{} bytes in {} sec\n"
+        "{} good and {} bad\n"
+        "Bad:\n",
          total_bytes, time(nullptr) - start,
          (int64)good.size(),
          (int64)bad.size());
   for (const auto &[name, count] : counters) {
-    printf("  %s: %lld\n", name.c_str(), count);
+    Print("  {}: {}\n", name, count);
   }
 
-  printf("Good with each format:\n");
+  Print("Good with each format:\n");
   for (const auto &[fmt, count] : CountMapToDescendingVector(good_by_format)) {
-    printf("  %d: %lld\n", fmt, count);
+    Print("  {}: {}\n", fmt, count);
   }
 
   Util::WriteLinesToFile("all_fonts_tmp.txt", good);

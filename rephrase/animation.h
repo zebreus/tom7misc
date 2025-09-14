@@ -1,5 +1,6 @@
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "image.h"
@@ -7,6 +8,16 @@
 
 // Automatic image tracing.
 struct Animation {
+
+  enum class Ordering {
+    // The simplest heuristic is to order by the number of
+    // total pixels; this makes the big chunks of color go
+    // first, and the highlights and shadows go after those.
+    POPULARITY,
+    // In the order that colors are seen in the image (first y
+    // position).
+    TOP_TO_BOTTOM,
+  };
 
   // You may need to tweak options to get good results. The
   // defaults are decent choices for my style of artwork on
@@ -60,10 +71,14 @@ struct Animation {
     int blend_frames = 20;
 
     // If this is not zero, start with a canvas of the given color.
+    // Otherwise, the canvas starts as alpha=0.
     uint32_t background_color = 0x00000000;
 
     // 0 = no output
     int verbosity = 1;
+
+    // The ordering heuristic to use for colors.
+    std::optional<Ordering> ordering;
   };
 
   // This keeps a reference to the image, which must outlive

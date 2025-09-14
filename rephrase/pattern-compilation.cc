@@ -2,6 +2,7 @@
 #include "pattern-compilation.h"
 
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <optional>
 #include <set>
@@ -14,6 +15,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
@@ -141,7 +143,7 @@ struct PatternCompilation::Matrix {
   void AddColumn(const std::string &el_obj_var,
                  const il::Type *obj_type) {
     if (VERBOSE) {
-      printf("AddColumn. current %dx%d\n", Width(), Height());
+      Print("AddColumn. current {}x{}\n", Width(), Height());
     }
     const int old_width = Width();
     const int old_height = Height();
@@ -322,33 +324,33 @@ struct PatternCompilation::Matrix {
     CHECK((int)objs.size() == Width());
     CHECK((int)types.size() == Width());
     for (int x = 0; x < Width(); x++) {
-      if (x != 0) StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s : %s",
-                    objs[x].c_str(),
-                    TypeString(types[x]).c_str());
+      if (x != 0) ret.append(", ");
+      AppendFormat(&ret, "{} : {}",
+                   objs[x],
+                   TypeString(types[x]));
     }
-    StringAppendF(&ret, ") of\n");
+    ret.append(") of\n");
 
     // Would be nice to use a table here.
     for (int y = 0; y < Height(); y++) {
-      StringAppendF(&ret, " |");
+      ret.append(" |");
       for (int x = 0; x < Width(); x++) {
         const Pat *p = Cell(x, y);
         if (p == nullptr) {
-          StringAppendF(&ret, " NULL?!");
+          ret.append(" NULL?!");
         } else {
-          StringAppendF(&ret, " %s", PatString(p).c_str());
+          AppendFormat(&ret, " {}", PatString(p));
         }
       }
 
       const el::Exp *exp = rows[y];
       if (exp == nullptr) {
-        StringAppendF(&ret, " => NULL!?");
+        ret.append(" => NULL!?");
       } else {
-        StringAppendF(&ret, " => %s\n", el::ExpString(exp).c_str());
+        AppendFormat(&ret, " => {}\n", el::ExpString(exp));
       }
     }
-    StringAppendF(&ret, "   _ => %s\n", el::ExpString(def).c_str());
+    AppendFormat(&ret, "   _ => {}\n", el::ExpString(def));
 
     return ret;
   }
@@ -357,21 +359,21 @@ struct PatternCompilation::Matrix {
 
   std::string ShortColorString() const {
     std::string ret =
-      StringPrintf(AKEYWORD("case") " %s " AKEYWORD("of") "\n",
-                   Util::Join(objs, AGREY(",") " ").c_str());
+      std::format(AKEYWORD("case") " {} " AKEYWORD("of") "\n",
+                  Util::Join(objs, AGREY(",") " "));
     // Would be nice to use a table here.
     for (int y = 0; y < Height(); y++) {
-      StringAppendF(&ret, " |");
+      AppendFormat(&ret, " |");
       for (int x = 0; x < Width(); x++) {
         const Pat *p = Cell(x, y);
-        StringAppendF(&ret, " %s", el::ShortColorPatString(p).c_str());
+        AppendFormat(&ret, " {}", el::ShortColorPatString(p));
       }
 
       const el::Exp *exp = rows[y];
-      StringAppendF(&ret, " => %s\n", el::ShortColorExpString(exp).c_str());
+      AppendFormat(&ret, " => {}\n", el::ShortColorExpString(exp));
     }
-    StringAppendF(&ret, "   " AORANGE("_") " => %s\n",
-                  el::ShortColorExpString(def).c_str());
+    AppendFormat(&ret, "   " AORANGE("_") " => {}\n",
+                 el::ShortColorExpString(def));
 
     return ret;
   }
@@ -427,7 +429,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     // XXX I think we want to use CompileIrrefutable for this.
     if (rows_in.size() > 1) {
       // XXX only for user patterns
-      // printf("Warning: redundant match?\n");
+      // Print("Warning: redundant match?\n");
     }
     el::AstPool *el_pool = elab->el_pool;
     il::AstPool *pool = elab->pool;
@@ -548,9 +550,9 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     };
 
   if (VERBOSE) {
-    printf(AWHITE("Comp():") "\n");
-    printf("%s\n",
-           matrix.ToString().c_str());
+    Print(AWHITE("Comp():") "\n");
+    Print("{}\n",
+          matrix.ToString());
   }
 
   // This follows the same approach as humlock, itself loosely
@@ -581,7 +583,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         const Pat *op = matrix.Cell(x, y);
         const std::string nv = op->str;
         if (VERBOSE) {
-          printf("Cleaned var " ABLUE("%s") "\n", nv.c_str());
+          Print("Cleaned var " ABLUE("{}") "\n", nv);
         }
         matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y],
                                     matrix.pos);
@@ -592,7 +594,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         const Pat *op = matrix.Cell(x, y);
         std::vector<std::pair<std::string, const Pat *>> rp;
         for (int i = 0; i < (int)op->children.size(); i++) {
-          rp.emplace_back(StringPrintf("%d", i + 1), op->children[i]);
+          rp.emplace_back(std::format("{}", i + 1), op->children[i]);
         }
         matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp),
                                                      matrix.pos);
@@ -608,9 +610,9 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
   }
 
   if (VERBOSE) {
-    printf(APURPLE("Cleaned") ":\n");
-    printf("%s\n",
-           matrix.ToString().c_str());
+    Print(APURPLE("Cleaned") ":\n");
+    Print("{}\n",
+          matrix.ToString());
   }
 
   // Once we find a row with all wildcards, the row and all following it
@@ -642,7 +644,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
   // row.
   if (matrix.Width() == 0) {
     if (matrix.Height() != 1) {
-      printf("Redundant match?\n");
+      Print("Redundant match?\n");
     }
     return elab->Elab(G, matrix.rows[0]);
   }
@@ -1145,8 +1147,8 @@ PatternCompilation::SplitAppPattern(
 
       const Type *monotype = elab->EVarize(vi->tyvars, mu_type);
       if (VERBOSE) {
-        printf("Mu Monotype: %s\n",
-               TypeString(monotype).c_str());
+        Print("Mu Monotype: {}\n",
+              TypeString(monotype));
       }
 
       return std::make_tuple(first_idx,
@@ -1235,11 +1237,11 @@ PatternCompilation::SplitAppPattern(
         Matrix mtx = mtx_small;
         const Type *sum_type = elab->pool->UnrollType(mu_type);
         if (VERBOSE) {
-          printf(
-              "Mu type: %s\n"
-              "Unrolled type: %s\n",
-              TypeString(mu_type).c_str(),
-              TypeString(sum_type).c_str());
+          Print(
+              "Mu type: {}\n"
+              "Unrolled type: {}\n",
+              TypeString(mu_type),
+              TypeString(sum_type));
         }
         const Type *col_type = SelectLabel(sum_type, label);
         const int new_x = mtx.Width();
@@ -1303,10 +1305,10 @@ PatternCompilation::SplitAppPattern(
     // Recursively compile the arm. It has a new variable
     // bound, which is the variable in the sumcase.
     if (VERBOSE) {
-      printf("Bind sumcase %s => %s : %s\n",
-             el_var.c_str(),
-             il_var.c_str(),
-             TypeString(typ).c_str());
+      Print("Bind sumcase {} => {} : {}\n",
+            el_var,
+            il_var,
+            TypeString(typ));
     }
 
     ElabContext GGG = GG.Insert(el_var,
@@ -1375,9 +1377,9 @@ PatternCompilation::SplitObjectPattern(
       for (const auto &[lab, pp] : p->str_children) {
         auto it = ovi->fields.find(lab);
         CHECK(it != ovi->fields.end()) <<
-          StringPrintf("The object " APURPLE("%s")
-                       " does not have a field called " ABLUE("%s") ".\n",
-                       p->str.c_str(), lab.c_str()) <<
+          std::format("The object " APURPLE("{}")
+                      " does not have a field called " ABLUE("{}") ".\n",
+                      p->str, lab) <<
           "When compiling object pattern: " << PatString(p);
         fields[lab] = std::make_pair(pp, it->second);
       }
@@ -1786,9 +1788,9 @@ PatternCompilation::SplitRecordPattern(
     const std::string ilv = elab->pool->NewVar(elv);
     il_objs.push_back(ilv);
     if (VERBOSE) {
-      printf("Bind %s : %s => %s\n", elv.c_str(),
-             TypeString(types[xx]).c_str(),
-             ilv.c_str());
+      Print("Bind {} : {} => {}\n", elv,
+            TypeString(types[xx]),
+            ilv);
     }
     GG = GG.Insert(elv,
                    VarInfo{
@@ -1838,16 +1840,16 @@ PatternCompilation::CompileIrrefutable(
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
   if (VERBOSE) {
-    printf(AWHITE("Decs") ":\n");
+    Print(AWHITE("Decs") ":\n");
     for (const Elaboration::ILDec &dec : decs) {
-      printf("  (%s) %s = %s\n", Util::Join(dec.tyvars, ",").c_str(),
-             dec.x.c_str(), ExpString(dec.rhs).c_str());
+      Print("  ({}) {} = {}\n", Util::Join(dec.tyvars, ","),
+            dec.x, ExpString(dec.rhs));
     }
 
     // Should print the bindings here instead of the context
 
-    printf(AWHITE("New context") ":\n%s\n(end)\n",
-           GG.ToString().c_str());
+    Print(AWHITE("New context") ":\n{}\n(end)\n",
+          GG.ToString());
   }
 
   return std::make_tuple(decs, binds, GG);
@@ -1870,10 +1872,10 @@ PatternCompilation::CompileIrrefutableRec(
   auto Error = [this, pos](const std::string &msg) {
       return std::function<std::string()>(
           [this, msg, pos]() {
-            return StringPrintf("%s"
-                                "Pattern compilation (irrefutable): %s",
-                                this->elab->ErrorAtPos(pos).c_str(),
-                                msg.c_str());
+            return std::format("{}"
+                               "Pattern compilation (irrefutable): {}",
+                               this->elab->ErrorAtPos(pos),
+                               msg);
           });
     };
 
@@ -1930,12 +1932,12 @@ PatternCompilation::CompileIrrefutableRec(
           std::vector<std::pair<std::string, const Pat *>> lpat;
           lpat.reserve(pat->children.size());
           for (int i = 0; i < (int)pat->children.size(); i++) {
-            lpat.emplace_back(StringPrintf("%d", i + 1),
+            lpat.emplace_back(std::format("{}", i + 1),
                               pat->children[i]);
             if (VERBOSE) {
-              printf("%d = %s\n",
-                     i + 1,
-                     PatString(pat->children[i]).c_str());
+              Print("{} = {}\n",
+                    i + 1,
+                    PatString(pat->children[i]));
             }
           }
           pat = el_pool->RecordPat(std::move(lpat), pos);
@@ -1948,7 +1950,7 @@ PatternCompilation::CompileIrrefutableRec(
     }());
 
   if (verbose >= 2) {
-    printf("Cleaned irrefutable pat: %s\n", PatString(pat).c_str());
+    Print("Cleaned irrefutable pat: {}\n", PatString(pat));
   }
 
   CHECK(pat->type == el::PatType::WILD ||
@@ -2058,11 +2060,11 @@ PatternCompilation::GeneralizeOne(
   std::vector<const Type *> gen_tyvar_args;
 
   if (VERBOSE > 1) {
-    printf(AYELLOW("Maybe generalize") " %s %s\n"
-           "with type %s\n",
-           Util::Join(vars, AGREY(",")).c_str(),
-           rhs_valuable ? AGREEN("valuable") : AORANGE("not valuable"),
-           TypeString(type).c_str());
+    Print(AYELLOW("Maybe generalize") " {} {}\n"
+          "with type {}\n",
+          Util::Join(vars, AGREY(",")),
+          rhs_valuable ? AGREEN("valuable") : AORANGE("not valuable"),
+          TypeString(type));
   }
 
   if (rhs_valuable && !vars.empty()) {
@@ -2072,10 +2074,10 @@ PatternCompilation::GeneralizeOne(
     std::vector<EVar> free_evars = EVar::FreeEVarsInType(type);
     if (VERBOSE > 1) {
       if (free_evars.empty()) {
-        printf("  " AORANGE("no free evars") "\n");
+        Print("  " AORANGE("no free evars") "\n");
       } else {
         for (const EVar &v : free_evars) {
-          printf("  Free: " ABLUE("%s") "\n", v.ToString().c_str());
+          Print("  Free: " ABLUE("{}") "\n", v.ToString());
         }
       }
     }
@@ -2086,12 +2088,12 @@ PatternCompilation::GeneralizeOne(
     for (const EVar &v : free_evars) {
       if (G.HasEVar(v)) {
         if (VERBOSE > 1) {
-          printf("  " AORANGE("still in context") "\n");
+          Print("  " AORANGE("still in context") "\n");
         }
       } else {
         gen_evars.push_back(v);
         if (VERBOSE > 1) {
-          printf("  " AGREEN("generalize") "!\n");
+          Print("  " AGREEN("generalize") "!\n");
         }
       }
     }
@@ -2171,12 +2173,12 @@ std::function<std::string()> PatternCompilation::MatrixError(
   // we sometimes modify it and temporarily put it in an invalid
   // state.
   return [this, matrix, e]() -> std::string {
-      return StringPrintf("%s"
-                          "Pattern compilation: %s\n"
-                          AWHITE("Matrix") ":\n%s\n",
-                          this->elab->ErrorAtPos(matrix.pos).c_str(),
-                          e.c_str(),
-                          matrix.ShortColorString().c_str());
+      return std::format("{}"
+                         "Pattern compilation: {}\n"
+                         AWHITE("Matrix") ":\n{}\n",
+                         this->elab->ErrorAtPos(matrix.pos),
+                         e,
+                         matrix.ShortColorString());
     };
 }
 

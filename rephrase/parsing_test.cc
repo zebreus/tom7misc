@@ -1,19 +1,20 @@
 
-#include "inclusion.h"
-#include "lexing.h"
 #include "parsing.h"
 
 #include <cstdio>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
 #include <optional>
 
-#include "el.h"
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "bignum/big-overloads.h"
-#include "base/stringprintf.h"
+#include "el.h"
+#include "inclusion.h"
+#include "lexing.h"
 
 namespace el {
 
@@ -30,7 +31,7 @@ static void TestParse() {
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("{}") "]:\n", s);
       }
       const Exp *parsed = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(parsed != nullptr) << "Parsing failed.";
@@ -38,7 +39,7 @@ static void TestParse() {
     };
 
   if (VERBOSE) {
-    printf("Start parser tests...\n");
+    Print("Start parser tests...\n");
     fflush(stdout);
   }
 
@@ -114,7 +115,7 @@ static void TestParse() {
   }
 
   if (VERBOSE) {
-    printf("Trivial parsing OK.\n");
+    Print("Trivial parsing OK.\n");
     fflush(stdout);
   }
 
@@ -649,20 +650,20 @@ static void TestParse() {
   }
 
 
-  printf("Exp parsing " AGREEN("OK") "\n");
+  Print("Exp parsing " AGREEN("OK") "\n");
 }
 
 static void TestParseType() {
   AstPool pool;
   auto ParseType = [&](const std::string &stype) -> const Type * {
-      std::string s = StringPrintf("0 : %s", stype.c_str());
+      std::string s = std::format("0 : {}", stype);
       SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("{}") "]:\n", s);
       }
       const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << stype;
@@ -790,21 +791,20 @@ static void TestParseType() {
   }
 
 
-  printf("Type parsing " AGREEN("OK") "\n");
+  Print("Type parsing " AGREEN("OK") "\n");
 }
 
 static void TestParsePat() {
   AstPool pool;
   auto ParsePat = [&](const std::string &spat) -> const Pat * {
-      std::string s = StringPrintf("let val %s = 0 in 1 end",
-                                   spat.c_str());
+      std::string s = std::format("let val {} = 0 in 1 end", spat);
       SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("%s") "]:\n", s);
       }
       const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << spat;
@@ -978,21 +978,20 @@ static void TestParsePat() {
     CHECK(pat->str_children.size() == 2);
   }
 
-  printf("Pattern parsing " AGREEN("OK") "\n");
+  Print("Pattern parsing " AGREEN("OK") "\n");
 }
 
 static void TestParseDec() {
   AstPool pool;
   auto ParseDec = [&](const std::string &sdec) -> const Dec * {
-      std::string s = StringPrintf("let %s in 7 end",
-                                   sdec.c_str());
+      std::string s = std::format("let {} in 7 end", sdec);
       SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("{}") "]:\n", s);
       }
       const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << sdec;
@@ -1070,7 +1069,7 @@ static void TestParseDec() {
     CHECK(dec->decs2[0]->type == DecType::OBJECT);
   }
 
-  printf("Dec parsing " AGREEN("OK") "\n");
+  Print("Dec parsing " AGREEN("OK") "\n");
 }
 
 static void TestParseLayout() {
@@ -1083,7 +1082,7 @@ static void TestParseLayout() {
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("{}") "]:\n", s);
       }
       const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e->type == ExpType::LAYOUT);
@@ -1105,7 +1104,7 @@ static void TestParseLayout() {
     const Layout *b = lay->children[1];
     const Layout *c = lay->children[2];
     if (VERBOSE) {
-      printf("Layout: [%s]\n", LayoutString(lay).c_str());
+      Print("Layout: [{}]\n", LayoutString(lay));
     }
     CHECK(a->type == LayoutType::TEXT);
     CHECK(a->str == "easy ");
@@ -1128,7 +1127,7 @@ static void TestParseLayout() {
     CHECK(b->str == " it");
   }
 
-  printf("Layout parsing " AGREEN("OK") "\n");
+  Print("Layout parsing " AGREEN("OK") "\n");
 }
 
 static void TestParsePos() {
@@ -1140,7 +1139,7 @@ static void TestParsePos() {
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
       if (VERBOSE) {
-        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+        Print("Parse [" AWHITE("{}") "]:\n", s);
       }
       return Parsing::Parse(&pool, source_map, s, tokens.value());
     };
@@ -1175,6 +1174,7 @@ static void TestParsePos() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
   el::TestParse();
   el::TestParseType();
   el::TestParsePat();
@@ -1182,6 +1182,6 @@ int main(int argc, char **argv) {
   el::TestParseLayout();
   el::TestParsePos();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

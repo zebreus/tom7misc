@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <map>
 #include <memory>
@@ -20,7 +21,7 @@
 #include "achievements.h"
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "bc.h"
 #include "bignum/big.h"
 #include "boxes-and-glue.h"
@@ -152,17 +153,17 @@ const DocTree *DocTree::GetLayoutAttr(const std::string &name) const {
 
 
 static std::string ShortColorLayout(const DocTree &doc) {
-  if (doc.IsText()) return StringPrintf(AWHITE("%s"), doc.text.c_str());
+  if (doc.IsText()) return std::format(AWHITE("{}"), doc.text);
   else return ATAG("<layout>");
 }
 
 std::string AttrValString(const AttrVal &val) {
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
-    return StringPrintf("\"%s\"", s->c_str());
+    return std::format("\"{}\"", *s);
   } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
-    return StringPrintf("%llu", *u);
+    return std::format("{}", *u);
   } else if (const double *d = std::get_if<double>(&val.v)) {
-    return StringPrintf("%.17g", *d);
+    return std::format("{:.17g}", *d);
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
     return b->ToString();
   } else if (const bool *b = std::get_if<bool>(&val.v)) {
@@ -319,8 +320,8 @@ AttrValToValue(std::vector<bc::Value *> *heap,
                const std::string &field,
                const AttrVal &val) {
   auto MakeField = [&field](const bc::ObjectFieldType oft) {
-      return StringPrintf("%c%s",
-                          ObjectFieldTypeTag(oft), field.c_str());
+      return std::format("{:c}{}",
+                         ObjectFieldTypeTag(oft), field);
     };
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
     return {MakeField(bc::ObjectFieldType::STRING), NewString(heap, *s)};
@@ -773,7 +774,7 @@ std::string Document::LoadImageFile(const std::string &filename) {
 std::string Document::AddImage(std::unique_ptr<ImageRGBA> img) {
   CHECK(img.get() != nullptr) << "Cannot add null image.";
 
-  std::string key = StringPrintf("img%d", image_counter);
+  std::string key = std::format("img{}", image_counter);
   image_counter++;
   CHECK(!images.contains(key));
   images[key] = std::move(img);
@@ -801,10 +802,10 @@ const ImageRGBA *Document::GetImageByName(const std::string &name) {
 }
 
 std::string Document::FontDescriptionString(const FontDescription &fd) {
-  return StringPrintf("{ font_family = %s, font_bold = %s, font_italic = %s }",
-                      fd.font_family.c_str(),
-                      fd.font_bold ? "true" : "false",
-                      fd.font_italic ? "true" : "false");
+  return std::format("{{ font_family = {}, font_bold = {}, font_italic = {} }}",
+                     fd.font_family,
+                     fd.font_bold ? "true" : "false",
+                     fd.font_italic ? "true" : "false");
 }
 
 void Document::RegisterFont(const FontDescription &desc, const Font *f) {
@@ -1248,7 +1249,7 @@ Document::PackBoxes(Algorithm algo,
       }
 
       image_num++;
-      img.Save(StringPrintf("boxes-and-glue-%d.png", image_num));
+      img.Save(std::format("boxes-and-glue-{}.png", image_num));
     }
     break;
   }
@@ -1307,7 +1308,7 @@ Document::PackBoxes(Algorithm algo,
           ins.AddChild(*insert);
           insertion = {std::move(ins)};
           if (VERBOSE) {
-            printf(ABGCOLOR(255, 255, 0, "HYPHEN:") "\n");
+            Print(ABGCOLOR(255, 255, 0, "HYPHEN:") "\n");
             DebugPrintDocTree(insertion.value());
           }
         }
@@ -1369,7 +1370,7 @@ void Document::PlaceStickersRec(Context context,
   }
 
   auto Error = [&doc]() -> const char * {
-      printf(ARED("In this document tree") ":\n");
+      Print(ARED("In this document tree") ":\n");
       DebugPrintDocTree(doc);
       return "\n";
     };

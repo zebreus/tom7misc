@@ -5,12 +5,11 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
+#include <format>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <numbers>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -21,7 +20,6 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "bounds.h"
 #include "color-util.h"
 #include "geom/tree-2d.h"
@@ -29,6 +27,7 @@
 #include "integer-voronoi.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
 
@@ -41,6 +40,7 @@ struct Region {
   // first. Priority of zero is the default and these are
   // ordered by layer size or other heuristics.
   int64_t priority = 0;
+  // Index as y * width + x.
   std::unordered_set<int> pixels;
   // L*A*B* color for nearest (perceptual) color computation.
   float l = 0.0, a = 0.0, b = 0.0;
@@ -58,6 +58,8 @@ struct AnimationImpl : public Animation {
   // Not owned.
   const ImageRGBA &in;
   const Animation::Options opt;
+
+  StatusBar status = StatusBar(1);
 
   std::unique_ptr<ImageRGBA> poster;
   // Gives the assigned layer (as an integer index) at each
@@ -227,14 +229,14 @@ struct AnimationImpl : public Animation {
         }
         connected_viz.Save("connected.png");
         fragile_viz.Save("fragile.png");
-        printf("Wrote conneted.png and fragile.png\n");
+        status.Print("Wrote conneted.png and fragile.png\n");
       }
     }
     const double fragile_seconds = fragile_timer.Seconds();
     if (opt.verbosity > 0) {
-      printf("There are %d/%d fragile pixels.\n",
-             (int)fragile_idx.size(),
-             (int)(in.Width() * in.Height()));
+      status.Print("There are {}/{} fragile pixels.\n",
+                   fragile_idx.size(),
+                   (in.Width() * in.Height()));
     }
 
     // Create the regions.
@@ -297,9 +299,9 @@ struct AnimationImpl : public Animation {
     }
 
     if (opt.verbosity > 0) {
-      printf("There are %d/%d ambiguous pixels.\n",
-             (int)ambiguous_xy.size(),
-             (int)(in.Width() * in.Height()));
+      status.Print("There are {}/{} ambiguous pixels.\n",
+                   ambiguous_xy.size(),
+                   (in.Width() * in.Height()));
     }
 
 
@@ -310,7 +312,7 @@ struct AnimationImpl : public Animation {
         ambiguous_viz.SetPixel32(x, y, 0xFF0000FF);
       }
       ambiguous_viz.Save("ambiguous.png");
-      printf("Wrote ambiguous.png\n");
+      status.Print("Wrote ambiguous.png\n");
     }
 
     // Now, a second pass for the ambiguous colors.
@@ -375,11 +377,10 @@ struct AnimationImpl : public Animation {
           for (const auto &[cc, region] : regions) {
             double de = ColorUtil::DeltaE(region.l, region.a, region.b,
                                           l, a, b);
-            printf("#%08x (%s): %.6f\n", cc, ColorSwatch(cc).c_str(),
-                   de);
+            status.Print("#{:08x} ({}): {:.6f}\n", cc, ColorSwatch(cc), de);
           }
           LOG(FATAL) << "No color was found for " <<
-            StringPrintf("#%08x", c) << " at " <<
+            std::format("#{:08x}", c) << " at " <<
             x << "," << y;
         }
 
@@ -404,9 +405,9 @@ struct AnimationImpl : public Animation {
     }
 
     if (opt.verbosity > 0) {
-      printf("Posterized in %s (%s fragile)\n",
-             ANSI::Time(posterize_timer.Seconds()).c_str(),
-             ANSI::Time(fragile_seconds).c_str());
+      status.Print("Posterized in {} ({} fragile)\n",
+                   ANSI::Time(posterize_timer.Seconds()),
+                   ANSI::Time(fragile_seconds));
     }
 
   }
@@ -427,7 +428,27 @@ struct AnimationImpl : public Animation {
     Prep();
 
     // First thing we do is order the regions.
-    //
+
+    switch (opt.ordering.value_or(Ordering::POPULARITY)) {
+    case Ordering::POPULARITY:
+      for (auto &[c, r] : regions) {
+        // More pixels earlier.
+        r.priority = -r.pixels.size();
+      }
+      break;
+    case Ordering::TOP_TO_BOTTOM:
+      for (auto &[c, r] : regions) {
+        int min_y = in.Height();
+        for (int idx : r.pixels) {
+          const auto &[x, y] = UnIdx(idx);
+          min_y = std::min(y, min_y);
+        }
+
+        r.priority = min_y;
+      }
+      break;
+    }
+
     // If we have a background color, that layer should
     // be first, as it is trivially satisfied.
     if (opt.background_color != 0x00000000) {
@@ -438,10 +459,6 @@ struct AnimationImpl : public Animation {
         std::numeric_limits<int64_t>::min();
     }
 
-    // The simplest heuristic is to order by the number of
-    // total pixels; this makes the big chunks of color go
-    // first, and the highlights and shadows go after those.
-
     for (const auto &[c, region] : regions)
       layer_colors.push_back(c);
     std::sort(layer_colors.begin(), layer_colors.end(),
@@ -449,7 +466,8 @@ struct AnimationImpl : public Animation {
                 const Region &r1 = regions[c1];
                 const Region &r2 = regions[c2];
                 if (r1.priority == r2.priority) {
-                  return r1.pixels.size() > r1.pixels.size();
+                  // Break ties deterministically by color.
+                  return c1 < c2;
                 } else {
                   return r1.priority < r2.priority;
                 }
@@ -569,13 +587,14 @@ struct AnimationImpl : public Animation {
       raster.SetPixel(x, y, true);
     }
 
-    auto SaveRaster = [&file_base_out, z, color](const Image1 &rast, int p) {
-        std::string file = StringPrintf("%s-region.%d.%d.png",
-                                        file_base_out.c_str(),
-                                        z, p);
+    auto SaveRaster = [this, &file_base_out, z, color](
+        const Image1 &rast, int p) {
+        std::string file = std::format("{}-region.{}.{}.png",
+                                       file_base_out,
+                                       z, p);
         // const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
         rast.MonoRGBA(color | 0xFF).Save(file);
-        printf("Wrote %s\n", file.c_str());
+        status.Print("Wrote " AGREEN("{}") "\n", file);
       };
 
     if (DEBUG_ANIMATION) {
@@ -583,8 +602,8 @@ struct AnimationImpl : public Animation {
     }
 
     if (opt.verbosity > 0) {
-      printf("Smooth layer %d (%s):\n",
-             z, ColorSwatch(color).c_str());
+      status.Print("Smooth layer {} ({}):\n",
+                   z, ColorSwatch(color));
     }
     Periodically status_per(1.0, false);
     Timer timer;
@@ -652,14 +671,11 @@ struct AnimationImpl : public Animation {
         if (opt.verbosity > 0 && status_per.ShouldRun()) {
           std::string prog =
             ANSI::ProgressBar(cy, in.Height(),
-                              StringPrintf("Pass %d/%d",
-                                           pass, max_passes),
+                              std::format("({}) Smoothing pass {}/{}",
+                                          ColorSwatch(color),
+                                          pass, max_passes),
                               timer.Seconds());
-          if (status_per.TimesRun() == 0) {
-            // Make room for progress bar.
-            printf("\n");
-          }
-          printf(ANSI_UP "%s\n", prog.c_str());
+          status.EmitStatus(prog);
         }
 
       }
@@ -680,7 +696,7 @@ struct AnimationImpl : public Animation {
       // changes. (Just kidding: The kernel grows with each step!)
       if (false && !added) {
         if (opt.verbosity > 0) {
-          printf("Reached a fixed point in %d pass(es).\n", pass + 1);
+          status.Print("Reached a fixed point in {} pass(es).\n", pass + 1);
         }
         break;
       }
@@ -702,7 +718,7 @@ struct AnimationImpl : public Animation {
     }
 
     if (opt.verbosity > 0) {
-      printf("Smoothed in %s\n", ANSI::Time(smooth_timer.Seconds()).c_str());
+      status.Print("Smoothed in {}\n", ANSI::Time(smooth_timer.Seconds()));
     }
   }
 
@@ -711,7 +727,7 @@ struct AnimationImpl : public Animation {
     CIRCLE,
   };
 
-  float ComputePenRadius(int z) const {
+  float ComputePenRadius(int z) {
     Timer pen_size_timer;
     // To figure out what pen size to use, we compute the average
     // distance to a pixel that's not in the region. We do this with a
@@ -768,7 +784,7 @@ struct AnimationImpl : public Animation {
     // (XXX Seems like this could just be a sum over everything at this
     // point!)
     // Now do some samples.
-    ArcFour rc(StringPrintf("layer%d", z));
+    ArcFour rc(std::format("layer{}", z));
     Shuffle(&rc, &sample);
 
 
@@ -786,12 +802,12 @@ struct AnimationImpl : public Animation {
                  opt.min_pen_radius, opt.max_pen_radius);
 
     if (opt.verbosity > 0) {
-      printf("Pen size for layer %d (%s) is %.3f (%s field; %s all)\n",
-             z,
-             ColorSwatch(color).c_str(),
-             pen_size,
-             ANSI::Time(field_seconds).c_str(),
-             ANSI::Time(pen_size_timer.Seconds()).c_str());
+      status.Print("Pen size for layer {} ({}) is {:.3f} ({} field; {} all)\n",
+                   z,
+                   ColorSwatch(color),
+                   pen_size,
+                   ANSI::Time(field_seconds),
+                   ANSI::Time(pen_size_timer.Seconds()));
     }
 
     return pen_size;
@@ -799,8 +815,8 @@ struct AnimationImpl : public Animation {
 
   static std::string ColorSwatch(uint32_t color) {
       const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
-    return StringPrintf("%s██" ANSI_RESET,
-                        ANSI::ForegroundRGB(r, g, b).c_str());
+      return std::format("{}██" ANSI_RESET,
+                         ANSI::ForegroundRGB(r, g, b));
   }
 
   void DrawLayer(ImageRGBA *frame,
@@ -908,6 +924,8 @@ struct AnimationImpl : public Animation {
                 }
               }
 
+              // frame.Save(std::format("f{}.png", fnum));
+
               {
                 std::unique_lock ml(m);
                 numbered_frames.emplace_back(fnum, std::move(frame));
@@ -940,7 +958,7 @@ struct AnimationImpl : public Animation {
 
     double sec = timer.Seconds();
     if (opt.verbosity > 0) {
-      printf("Built tree in %s\n", ANSI::Time(sec).c_str());
+      status.Print("Built tree in {}\n", ANSI::Time(sec));
     }
 
     while (!remaining.Empty()) {
@@ -996,8 +1014,6 @@ struct AnimationImpl : public Animation {
         std::vector<std::tuple<Pos, char, double>> inside_coarse =
           remaining.LookUp(Pos(std::round(cx), std::round(cy)),
                            PEN_SEARCH_RADIUS);
-
-        // TODO:
 
         // Since the pen may not be a circle, we look up by the
         // containing radius but then filter.
@@ -1083,11 +1099,11 @@ struct AnimationImpl : public Animation {
           const int pixels_done = start_pixels - remaining.Size();
           std::string prog =
             ANSI::ProgressBar(pixels_done, start_pixels,
-                              StringPrintf("Layer %d/%d",
-                                           z + 1,
-                                           (int)layer_colors.size()),
+                              std::format("Layer {}/{}",
+                                          z + 1,
+                                          layer_colors.size()),
                               timer.Seconds());
-          printf(ANSI_UP "%s\n", prog.c_str());
+          status.EmitStatus(prog);
         }
       }
     }
@@ -1105,8 +1121,8 @@ struct AnimationImpl : public Animation {
       frames_out->push_back(std::move(f));
 
     if (opt.verbosity > 0) {
-      printf("Finished layer in %d frames, %s.\n", layer_frames,
-             ANSI::Time(timer.Seconds()).c_str());
+      status.Print("Finished layer in {} frames, {}.\n", layer_frames,
+                   ANSI::Time(timer.Seconds()));
     }
   }
 

@@ -89,8 +89,7 @@ void MovieDocument::GenerateOutput(
 
     pages_done++;
     status_per.RunIf([&]() {
-        status.Status(
-            "{}",
+        status.EmitStatus(
             ANSI::ProgressBar(pages_done, pages.size(),
                               "Place stickers",
                               stickers_timer.Seconds()));
@@ -110,6 +109,8 @@ void MovieDocument::GenerateOutput(
         // offline there would be very little reason to want a faster but
         // worse codec. The Main thing would maybe be avoiding
         // indexed-color PNGs for compatibility sake.
+        // MOV::Codec::PNG);
+        // MOV::Codec::PNG_MINIZ);
         MOV::Codec::PNG_CCLIB);
 
   // XXX configurable?
@@ -132,8 +133,7 @@ void MovieDocument::GenerateOutput(
     recorder->AddFrame(*frame.image);
 
     status_per.RunIf([&]() {
-        status.Status(
-            "{}",
+        status.EmitStatus(
             ANSI::ProgressBar(i + 1, frames.size(),
                               "Write frames",
                               frames_timer.Seconds()));

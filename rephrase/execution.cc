@@ -21,6 +21,7 @@
 #include "animation.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "bc.h"
 #include "bignum/big.h"
@@ -30,7 +31,6 @@
 #include "primop.h"
 #include "rephrasing.h"
 #include "timer.h"
-#include "utf.h"
 #include "utf8.h"
 #include "util.h"
 
@@ -94,23 +94,23 @@ void Execution::FailHook(const std::string &msg) {
 }
 
 void Execution::ConsoleHook(const std::string &msg) {
-  printf("%s", msg.c_str());
+  Print("{}", msg);
 }
 
 void Execution::OutputLayoutHook(int page_idx, int frame_idx,
                                  const Value *doc) {
-  printf("(output layout ignored)\n");
+  Print("(output layout ignored)\n");
 }
 
 void Execution::EmitBadnessHook(double badness) {
-  printf("Badness " ARED("%.5f") "\n", badness);
+  Print("Badness " ARED("{:.5f}") "\n", badness);
 }
 
 double Execution::OptimizationHook(const std::string &name,
                                    double low,
                                    double start,
                                    double high) {
-  printf("(Base execution does not optimize.)\n");
+  Print("(Base execution does not optimize.)\n");
   return start;
 }
 
@@ -148,28 +148,28 @@ static std::string StateDump(const Execution::State &state) {
   const Execution::StackFrame &frame = state.stack.back();
   if (frame.insts == nullptr) return ARED("null instructions?");
 
-  StringAppendF(&ret, AWHITE("Locals:") "\n");
+  AppendFormat(&ret, AWHITE("Locals:") "\n");
   for (const auto &[x, v] : frame.locals) {
-    StringAppendF(&ret,
-                  "  " APURPLE("%s") " = %s\n",
-                  x.c_str(), ColorValuePtrString(v).c_str());
+    AppendFormat(&ret,
+                 "  " APURPLE("{}") " = {}\n",
+                 x, ColorValuePtrString(v));
   }
 
   // We have generally advanced the IP by this point.
   const int target_ip = frame.ip - 1;
-  StringAppendF(&ret, AWHITE("Fault here:") "\n");
+  AppendFormat(&ret, AWHITE("Fault here:") "\n");
   for (int i = std::max(0, frame.ip - 8);
        i < (int)frame.insts->size() && i < frame.ip + 4;
        i++) {
-    StringAppendF(&ret, "%s%s\n",
-                  // U+1F4A3 BOMB EMOJI
-                  // TODO: Use this again when mintty is fixed?
-                  // " 💣 "
-                  // " \U0001F4A3 "
-                  (i == target_ip) ?
-                  AFGCOLOR(255, 0, 0, " ‼ ")
-                  : "   ",
-                  ColorInstString((*frame.insts)[i]).c_str());
+    AppendFormat(&ret, "{}{}\n",
+                 // U+1F4A3 BOMB EMOJI
+                 // TODO: Use this again when mintty is fixed?
+                 // " 💣 "
+                 // " \U0001F4A3 "
+                 (i == target_ip) ?
+                 AFGCOLOR(255, 0, 0, " ‼ ")
+                 : "   ",
+                 ColorInstString((*frame.insts)[i]));
   }
 
  return ret;
@@ -596,31 +596,31 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
     Rephrasing *rephrasing = RephrasingHook();
     if (VERBOSE > 1) {
-      printf(ABGCOLOR(0, 0, 180, "Rephrase input doc:") "\n");
+      Print(ABGCOLOR(0, 0, 180, "Rephrase input doc:") "\n");
       DebugPrintDocTree(doc);
     }
     Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
     if (VERBOSE > 0) {
       std::string t = (VERBOSE > 1 || rep.text.size() < 40) ? rep.text :
         rep.text.substr(0, 40) + AGREY("...");
-      printf("Rephrase: [%s]\n", t.c_str());
+      Print("Rephrase: [{}]\n", t);
     }
     const int already_have = rephrasing->GetNumRephrasings(rep);
     if (VERBOSE > 0 && already_have > 0) {
-      printf("Already have " ACYAN("%d") " rephrasings from database!\n",
-             already_have);
+      Print("Already have " ACYAN("{}") " rephrasings from database!\n",
+            already_have);
     }
 
     if (doc.IsEmpty() || rep.text.empty()) {
       if (VERBOSE > 0) {
-        printf("Not rephrasing " AORANGE("empty doc") ".\n");
+        Print("Not rephrasing " AORANGE("empty doc") ".\n");
       }
     } else {
       // int max_attempts = std::min(20, times * 2);
       int max_attempts = times * 2;
       while (rephrasing->GetNumRephrasings(rep) < times) {
         if (rephrasing->Rephrase(rep)) {
-          // printf("\nRephrased " AGREEN("OK") "\n");
+          // Print("\nRephrased " AGREEN("OK") "\n");
         }
         max_attempts--;
         if (max_attempts < 0) break;
@@ -639,7 +639,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     orig.SetDoubleAttr("loss", 0.0);
     orig.AddChild(doc);
     if (VERBOSE > 1) {
-      printf("Now the doc is:\n");
+      Print("Now the doc is:\n");
       DebugPrintDocTree(orig);
     }
     ret.emplace_back(orig);
@@ -648,12 +648,12 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       DocTree one;
       std::string error;
       if (!rephrasing->Rejoin(rep, text, &one, &error)) {
-        printf(ARED("Should not happen!") " The rephrasing was supposedly "
-               "valid but I couldn't rejoin it.\n"
-               "Error: %s\n"
-               "Text:\n%s\n",
-               error.c_str(),
-               text.c_str());
+        Print(ARED("Should not happen!") " The rephrasing was supposedly "
+              "valid but I couldn't rejoin it.\n"
+              "Error: {}\n"
+              "Text:\n{}\n",
+              error,
+              text);
       } else {
         DocTree span;
         span.children = {std::make_shared<DocTree>(std::move(one))};
@@ -731,8 +731,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
     auto MakeField = [](const bc::ObjectFieldType oft,
                         const std::string &field) {
-        return StringPrintf("%c%s",
-                            ObjectFieldTypeTag(oft), field.c_str());
+        return std::format("{:c}{}",
+                           ObjectFieldTypeTag(oft), field);
       };
 
     map_type obj{
@@ -774,6 +774,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     CHECK(arg != nullptr) << Err() <<
       "Expected obj second argument to internal-auto-draw.";
 
+
+
     // Repeating defaults here for increased stability of BoVeX
     // documents in case I change the library's defaults.
     Animation::Options options{
@@ -788,6 +790,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       .blend_frames = 20,
       .background_color = 0x00000000,
       .verbosity = 0,
+      .ordering = Animation::Ordering::POPULARITY,
     };
 
 #   define SET_INT_FIELD(cpp, bovex) do {                               \
@@ -814,6 +817,17 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     SET_INT_FIELD(blend_frames, "blend-frames");
     SET_INT_FIELD(verbosity, "verbosity");
     SET_INT_FIELD(background_color, "background-color");
+
+    if (const std::string *s =
+        GetObjStringField("auto-draw", "ordering", *arg)) {
+      if (*s == "pop") {
+        options.ordering = {Animation::Ordering::POPULARITY};
+      } else if (*s == "top") {
+        options.ordering = {Animation::Ordering::TOP_TO_BOTTOM};
+      } else {
+        LOG(FATAL) << "Bad ordering value for internal-auto-draw: " << *s;
+      }
+    }
 
     Document *doc = DocumentHook();
     const ImageRGBA *image = doc->GetImageByName(*imghandle);
@@ -875,9 +889,9 @@ const std::string *Execution::GetObjStringField(const char *what,
                                                 const std::string &field,
                                                 const map_type &obj) {
   auto it = obj.find(
-      StringPrintf("%c%s",
-                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::STRING),
-                   field.c_str()));
+      std::format("{:c}{}",
+            bc::ObjectFieldTypeTag(bc::ObjectFieldType::STRING),
+            field));
   if (it == obj.end()) return nullptr;
 
   const std::string *s = std::get_if<std::string>(&it->second->v);
@@ -890,9 +904,9 @@ const BigInt *Execution::GetObjIntField(const char *what,
                                         const std::string &field,
                                         const map_type &obj) {
   auto it = obj.find(
-      StringPrintf("%c%s",
-                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT),
-                   field.c_str()));
+      std::format("{:c}{}",
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT),
+                  field));
   if (it == obj.end()) return nullptr;
 
   const BigInt *i = std::get_if<BigInt>(&it->second->v);
@@ -905,9 +919,9 @@ const double *Execution::GetObjDoubleField(const char *what,
                                            const std::string &field,
                                            const map_type &obj) {
   auto it = obj.find(
-      StringPrintf("%c%s",
-                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::FLOAT),
-                   field.c_str()));
+      std::format("{:c}{}",
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::FLOAT),
+                  field));
   if (it == obj.end()) return nullptr;
 
   const double *d = std::get_if<double>(&it->second->v);
@@ -921,9 +935,9 @@ const Value *Execution::GetRequiredObjField(const char *what,
                                             bc::ObjectFieldType oft,
                                             const map_type &obj) {
   auto it = obj.find(
-      StringPrintf("%c%s",
-                   bc::ObjectFieldTypeTag(oft),
-                   field.c_str()));
+      std::format("{:c}{}",
+                  bc::ObjectFieldTypeTag(oft),
+                  field));
   CHECK(it != obj.end()) << "(" << what <<
     ") Field " << field << " was required but not found.";
   return it->second;
@@ -1083,10 +1097,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     const std::string &s = GetString("string-first-codepoint");
     if (s.empty()) return Obj({}, state);
     const auto &[len, cp] = UTF8::ParsePrefix(s.data(), s.size());
-    std::string cp_field = StringPrintf(
-        "%ccp", ObjectFieldTypeTag(ObjectFieldType::INT));
-    std::string len_field = StringPrintf(
-        "%clen", ObjectFieldTypeTag(ObjectFieldType::INT));
+    std::string cp_field = std::format(
+        "{:c}cp", ObjectFieldTypeTag(ObjectFieldType::INT));
+    std::string len_field = std::format(
+        "{:c}len", ObjectFieldTypeTag(ObjectFieldType::INT));
     map_type m = {
       { cp_field, Big(BigInt(cp), state) },
       { len_field, Big(BigInt(len), state) },
@@ -1160,9 +1174,9 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     DebugPrintDocTree(doc);
     Rephrasing::Rephrasable rep =
       Rephrasing::GetTextToRephrase(doc);
-    printf("Rephrase: [%s]\n", rep.text.c_str());
+    Print("Rephrase: [{}]\n", rep.text);
     if (rephrasing->Rephrase(rep)) {
-      printf("\nRephrased " AGREEN("OK") "\n");
+      Print("\nRephrased " AGREEN("OK") "\n");
     }
 
     CHECK(!rep.text.empty()) << "Please fix this as in the REPHRASINGS case";
@@ -1180,13 +1194,13 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       rephrasing->GetRephrasings(rep);
 
     if (!reps.empty()) {
-      printf("Returning (score %.11g): %s\n",
+      Print("Returning (score {:.11g}): {}\n",
              reps[0].first,
-             reps[0].second.c_str());
+             reps[0].second);
       return DocTreeToValue(&state->heap.used, TextDoc(reps[0].second));
     }
 
-    printf("(returning original)");
+    Print("(returning original)");
     return a;
   }
 
@@ -1246,11 +1260,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     const std::string img = GetString("image-props");
     const ImageRGBA *image = DocumentHook()->GetImageByName(img);
     std::string width_field =
-      StringPrintf("%cwidth",
-                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+      std::format("{:c}width",
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
     std::string height_field =
-      StringPrintf("%cheight",
-                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+      std::format("{:c}height",
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
     map_type obj = {
       {width_field, Big(BigInt(image->Width()), state)},
       {height_field, Big(BigInt(image->Height()), state)}

@@ -10,8 +10,9 @@
 #include <vector>
 
 #include "ansi.h"
-#include "util.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "util.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -132,7 +133,7 @@ Hyphenation::Hyphenation(std::string_view database_dir) {
   }
 
   if (VERBOSE) {
-    printf("Loaded %d hyphenation patterns.\n", num_patterns);
+    Print("Loaded {} hyphenation patterns.\n", num_patterns);
   }
 }
 
@@ -153,12 +154,11 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
       if (it != patterns.end()) {
         const std::vector<uint8_t> &code = it->second;
         if (VERBOSE) {
-          printf("Matched " AYELLOW("%s") " with code ",
-                 part.c_str());
+          Print("Matched " AYELLOW("{}") " with code ", part);
           for (int i = 0; i < (int)code.size(); i++) {
-            printf("%d ", code[i]);
+            Print("{} ", code[i]);
           }
-          printf("\n");
+          Print("\n");
         }
         for (int i = 0; i < (int)code.size(); i++) {
           int outpos = start + i;
@@ -170,19 +170,19 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
   }
 
   if (VERBOSE) {
-    printf("For word [%s]:\n", std::string(word).c_str());
+    Print("For word [{}]:\n", std::string(word));
     for (int i = 0; i < (int)lword.size(); i++) {
-      printf(" %c", lword[i]);
+      Print(" {:c}", lword[i]);
     }
-    printf("\n");
+    Print("\n");
     for (int i = 0; i < (int)values.size(); i++) {
       if (values[i] & 1) {
-        printf(AGREEN("%c") " ", '0' + values[i]);
+        Print(AGREEN("{:c}") " ", '0' + values[i]);
       } else {
-        printf("%c ", '0' + values[i]);
+        Print("{:c} ", '0' + values[i]);
       }
     }
-    printf("\n");
+    Print("\n");
   }
 
   CHECK(values[0] == 0 && values.back() == 0) << "The patterns should "
@@ -205,12 +205,12 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
   if (VERBOSE) {
     for (int i = 0; i < (int)values.size(); i++) {
       if (values[i] & 1) {
-        printf(AGREEN("%c") " ", '0' + values[i]);
+        Print(AGREEN("{:c}") " ", '0' + values[i]);
       } else {
-        printf("%c ", '0' + values[i]);
+        Print("{:c} ", '0' + values[i]);
       }
     }
-    printf("\n");
+    Print("\n");
   }
 
   std::vector<std::string> out;

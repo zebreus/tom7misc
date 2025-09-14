@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "il.h"
 #include "lexing.h"
 #include "parsing.h"
@@ -47,22 +48,22 @@ Program Frontend::RunFrontend(const std::string &filename,
   const auto &[source, tokens, source_map] =
     Inclusion::Process(includepaths, filename);
   if (verbose > 1) {
-    printf("%s\nBytes: %d\n", source.c_str(), (int)source.size());
+    Print("{}\nBytes: {}\n", source, source.size());
   }
 
   const double load_sec = load_timer.Seconds();
   if (verbose > 0) {
-    printf(AWHITE("Loaded/lexed %s") " in %s.\n",
-           filename.c_str(), ANSI::Time(load_sec).c_str());
+    Print(AWHITE("Loaded/lexed {}") " in {}.\n",
+          filename, ANSI::Time(load_sec));
   }
   if (verbose > 1) {
     const auto &[csource, ctokens] =
       Lexing::ColorTokens(source, tokens);
-    printf("Tokenization:\n"
-           "%s\n"
-           "%s\n",
-           csource.c_str(),
-           ctokens.c_str());
+    Print("Tokenization:\n"
+          "{}\n"
+          "{}\n",
+          csource,
+          ctokens);
   }
 
   return RunFrontendInternal(source, tokens, source_map, options);
@@ -73,7 +74,7 @@ Program Frontend::RunFrontendOn(const std::string &error_context,
                                 Options options) {
   // Directly lex.
   if (verbose > 0) {
-    printf(AWHITE("Lexing...") "\n");
+    Print(AWHITE("Lexing...") "\n");
     fflush(stdout);
   }
 
@@ -93,10 +94,10 @@ Program Frontend::RunFrontendOn(const std::string &error_context,
   if (verbose > 1) {
     const auto &[source, ctokens] =
       Lexing::ColorTokens(contents, tokens);
-    printf(AWHITE("Lexed") " in %s:\n"
-           "%s\n%s\n",
-           ANSI::Time(lex_sec).c_str(),
-           source.c_str(), ctokens.c_str());
+    Print(AWHITE("Lexed") " in {}:\n"
+          "{}\n{}\n",
+          ANSI::Time(lex_sec),
+          source, ctokens);
   }
 
   return RunFrontendInternal(contents, tokens, source_map, options);
@@ -109,7 +110,7 @@ Program Frontend::RunFrontendInternal(
     Options options) {
 
   if (verbose > 0) {
-    printf("\n" AWHITE("Parsing...") "\n");
+    Print("\n" AWHITE("Parsing...") "\n");
     fflush(stdout);
   }
 
@@ -120,13 +121,13 @@ Program Frontend::RunFrontendInternal(
   const double parse_sec = parse_timer.Seconds();
 
   if (verbose > 0) {
-    printf(AWHITE("Parsed") " in %s.\n",
-           ANSI::Time(parse_sec).c_str());
+    Print(AWHITE("Parsed") " in {}.\n",
+          ANSI::Time(parse_sec));
   }
 
   if (verbose > 1) {
-    printf("%s\n",
-           el::ExpString(el_exp).c_str());
+    Print("{}\n",
+          el::ExpString(el_exp));
     fflush(stdout);
   }
 
@@ -137,16 +138,16 @@ Program Frontend::RunFrontendInternal(
   el_exp = uncurry.Rewrite(el_exp);
   const double rewrite_sec = rewrite_timer.Seconds();
   if (verbose > 1) {
-    printf(AWHITE("EL rewrites") " in %s:\n"
-           "%s\n",
-           ANSI::Time(rewrite_sec).c_str(),
-           el::ExpString(el_exp).c_str());
+    Print(AWHITE("EL rewrites") " in {}:\n"
+          "{}\n",
+          ANSI::Time(rewrite_sec),
+          el::ExpString(el_exp));
     fflush(stdout);
   }
 
 
   if (verbose > 0) {
-    printf("\n" AWHITE("Elaborating...") "\n");
+    Print("\n" AWHITE("Elaborating...") "\n");
   }
 
   Timer elab_timer;
@@ -155,11 +156,11 @@ Program Frontend::RunFrontendInternal(
   const double elab_sec = elab_timer.Seconds();
 
   if (verbose > 0) {
-    printf(AWHITE("Elaborated") " in %s.\n",
-           ANSI::Time(elab_sec).c_str());
+    Print(AWHITE("Elaborated") " in {}.\n",
+           ANSI::Time(elab_sec));
     if (verbose > 1) {
-      printf("%s\n",
-             il::ProgramString(il_pgm).c_str());
+      Print("{}\n",
+            il::ProgramString(il_pgm));
       fflush(stdout);
     }
   }
@@ -168,16 +169,16 @@ Program Frontend::RunFrontendInternal(
   il_pgm = ILUtil::FinalizeEVars(&il_pool, il_pgm);
   const double finalize_evars_sec = finalize_evars_timer.Seconds();
   if (verbose > 1) {
-    printf(AWHITE("Finalized evars") " in %s:\n"
-           "%s\n",
-           ANSI::Time(finalize_evars_sec).c_str(),
-           il::ProgramString(il_pgm).c_str());
+    Print(AWHITE("Finalized evars") " in {}:\n"
+          "{}\n",
+          ANSI::Time(finalize_evars_sec),
+          il::ProgramString(il_pgm));
     fflush(stdout);
   }
 
   if (options.simplify) {
     if (verbose > 0) {
-      printf("\n" AWHITE("Simplifying...") "\n");
+      Print("\n" AWHITE("Simplifying...") "\n");
     }
     Timer simplify_timer;
     Simplification simplification(&il_pool);

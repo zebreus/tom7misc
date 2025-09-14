@@ -1,21 +1,22 @@
 
 #include "optimization.h"
 
-#include <set>
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
+#include <format>
 #include <iterator>
 #include <optional>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <string>
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "bc.h"
 #include "hashing.h"
@@ -98,8 +99,8 @@ struct PeepholePass {
                 ret->arg == call->out) {
               progress->Record("make tail call");
               if (VERBOSE) {
-                printf("  Tail call to " APURPLE("%s") "\n",
-                       call->f.c_str());
+                Print("  Tail call to " APURPLE("{}") "\n",
+                      call->f);
               }
               new_block.insts.push_back(Inst{inst::TailCall{
                   .f = call->f,
@@ -126,7 +127,7 @@ struct PeepholePass {
   void DoProgram(SymbolicProgram *pgm) {
     for (auto &[fname, fn] : pgm->code) {
       if (VERBOSE) {
-        printf("do " APURPLE("%s") "\n", fname.c_str());
+        Print("do " APURPLE("{}") "\n", fname);
       }
       DoFn(fname, &fn);
     }
@@ -253,7 +254,7 @@ struct DeadPass {
     // used_functions maps.
     for (auto &[fname, fn] : pgm->code) {
       if (VERBOSE) {
-        printf("do " APURPLE("%s") "\n", fname.c_str());
+        Print("do " APURPLE("{}") "\n", fname);
       }
       DoFn(&used_data, &used_functions, fname, &fn);
     }
@@ -316,8 +317,8 @@ struct CoalescePass {
           }
           for (int i = 1; i < (int)names.size(); i++) {
             if (VERBOSE) {
-              printf("  " AGLOBAL_LAB("%s") " => " AGREEN("%s") "\n",
-                     names[i].c_str(), canon.c_str());
+              Print("  " AGLOBAL_LAB("{}") " => " AGREEN("{}") "\n",
+                    names[i], canon);
             }
             renamed[names[i]] = canon;
           }
@@ -328,7 +329,7 @@ struct CoalescePass {
         // Rename references in the code.
         for (auto &[fname, fn] : pgm->code) {
           if (VERBOSE) {
-            printf("do " APURPLE("%s") "\n", fname.c_str());
+            Print("do " APURPLE("{}") "\n", fname);
           }
           DoFn(renamed, fname, &fn);
         }
@@ -342,7 +343,7 @@ struct CoalescePass {
           if (renamed.contains(name)) {
             // Drop it.
             if (VERBOSE) {
-              printf("  dropped now-unused " AORANGE("%s") "\n", name.c_str());
+              Print("  dropped now-unused " AORANGE("{}") "\n", name);
             }
           } else {
             new_data[std::move(name)] = std::move(value);
@@ -406,8 +407,8 @@ struct InlinePass {
 
     if (VERBOSE) {
       for (const auto &[lab, num] : uses) {
-        printf("Label " AYELLOW("%s") " used " AWHITE("%d") " time(s)\n",
-               lab.c_str(), num);
+        Print("Label " AYELLOW("{}") " used " AWHITE("{}") " time(s)\n",
+              lab, num);
       }
     }
 
@@ -451,7 +452,7 @@ struct InlinePass {
             // be weird, but could happen), it cannot be dropped.
             if (uit->second == 1 && lab != fn->initial) {
               if (VERBOSE) {
-                printf("  Add " AYELLOW("%s") " to drop.\n", lab.c_str());
+                Print("  Add " AYELLOW("{}") " to drop.\n", lab);
               }
               drop.insert(lab);
             }
@@ -466,11 +467,11 @@ struct InlinePass {
             }
             progress->Record("inlined block");
             if (VERBOSE) {
-              printf("  Inlined " AYELLOW("%s") " into " AYELLOW("%s") "\n",
-                     lab.c_str(), block_name.c_str());
+              Print("  Inlined " AYELLOW("{}") " into " AYELLOW("{}") "\n",
+                    lab, block_name);
 
-              printf(" ====== resulting block " AYELLOW("%s") " =====\n",
-                     block_name.c_str());
+              Print(" ====== resulting block " AYELLOW("{}") " =====\n",
+                    block_name);
               PrintBlock(block);
             }
             // XXX Actually, we can keep processing the block...
@@ -483,7 +484,7 @@ struct InlinePass {
     if (VERBOSE) {
       SymbolicProgram tmp;
       tmp.code = {{fname, *fn}};
-      printf("=================== rewritten blocks =============\n");
+      Print("=================== rewritten blocks =============\n");
       PrintSymbolicProgram(tmp);
     }
 
@@ -496,7 +497,7 @@ struct InlinePass {
           new_blocks[lab] = std::move(block);
         } else {
           if (VERBOSE) {
-            printf("  drop " AYELLOW("%s") "\n", lab.c_str());
+            Print("  drop " AYELLOW("{}") "\n", lab);
           }
         }
       }
@@ -509,7 +510,7 @@ struct InlinePass {
       // Rewrites code in place.
       for (auto &[fname, fn] : pgm->code) {
         if (VERBOSE) {
-          printf("do " APURPLE("%s") "\n", fname.c_str());
+          Print("do " APURPLE("{}") "\n", fname);
         }
         DoFn(fname, &fn);
       }
@@ -697,7 +698,7 @@ static std::string StringSet(const C &ss) {
   if (v.size() == 1) return v[0];
   std::string out = v[0];
   for (int i = 1; i < (int)v.size(); i++) {
-    StringAppendF(&out, ", %s", v[i].c_str());
+    AppendFormat(&out, ", {}", v[i]);
   }
   return out;
 }
@@ -824,12 +825,12 @@ struct DataflowPass {
         const std::vector<T> &read_before_write = dataflow.state[block_name];
         for (int idx = 0; idx < (int)block.insts.size(); idx++) {
           const Inst &inst = block.insts[idx];
-          printf("  %s", ColorInstString(inst).c_str());
+          Print("  {}", ColorInstString(inst));
           if (!read_before_write[idx].empty()) {
-            printf("  // " ACYAN("%s"),
-                   StringSet(read_before_write[idx]).c_str());
+            Print("  // " ACYAN("{}"),
+                  StringSet(read_before_write[idx]));
           }
-          printf("\n");
+          Print("\n");
         }
       }
     }
@@ -879,10 +880,10 @@ struct DataflowPass {
             const char *what, const std::string &lab) {
             progress->Record(what);
             if (VERBOSE) {
-              printf("  Unused: %s\n", ColorInstString(inst).c_str());
+              Print("  Unused: {}\n", ColorInstString(inst));
             }
             block.insts[idx] =
-              inst::Note{.msg = StringPrintf("%s <- %s", lab.c_str(), what)};
+              inst::Note{.msg = std::format("{} <- {}", lab, what)};
           };
 
         if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
@@ -1025,7 +1026,7 @@ struct DataflowPass {
       // independently (and we could do this in parallel?)
       for (auto &[fname, fn] : pgm->code) {
         if (VERBOSE) {
-          printf("do " APURPLE("%s") "\n", fname.c_str());
+          Print("do " APURPLE("{}") "\n", fname);
         }
         DoFn(fname, &fn);
       }
@@ -1057,18 +1058,19 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   int passes = 0;
   do {
     if (VERBOSE > 0) {
-      printf(ABGCOLOR(200, 200, 200, AFGCOLOR(0, 0, 0, " Pass %d ")) "\n", passes);
+      Print(ABGCOLOR(200, 200, 200, AFGCOLOR(0, 0, 0, " Pass {} ")) "\n",
+            passes);
     }
     progress.Reset();
 
-    if (VERBOSE > 0) printf(AWHITE("Dead") ".\n");
+    if (VERBOSE > 0) Print(AWHITE("Dead") ".\n");
     dead.DoProgram(&program);
 
-    if (VERBOSE > 0) printf(AWHITE("Peephole") ".\n");
+    if (VERBOSE > 0) Print(AWHITE("Peephole") ".\n");
     peep.DoProgram(&program);
 
     if (VERBOSE > 0) {
-      printf(AWHITE("Inline") ".\n");
+      Print(AWHITE("Inline") ".\n");
       if (VERBOSE > 2) {
         PrintSymbolicProgram(program);
       }
@@ -1076,7 +1078,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
     inline_pass.DoProgram(&program);
 
     if (VERBOSE > 0) {
-      printf(AWHITE("Coalesce") ".\n");
+      Print(AWHITE("Coalesce") ".\n");
       if (VERBOSE > 2) {
         PrintSymbolicProgram(program);
       }
@@ -1084,7 +1086,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
     coalesce.DoProgram(&program);
 
     if (VERBOSE > 0) {
-      printf(AWHITE("Dataflow") ".\n");
+      Print(AWHITE("Dataflow") ".\n");
       if (VERBOSE > 2) {
         PrintSymbolicProgram(program);
       }
@@ -1093,7 +1095,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
     // LOG(FATAL) << "Stop early.";
 
     if (VERBOSE > 1) {
-      printf("\n" AYELLOW("After optimization:\n"));
+      Print("\n" AYELLOW("After optimization:\n"));
       PrintSymbolicProgram(program);
     }
 

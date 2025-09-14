@@ -4,17 +4,16 @@
 #ifndef _REPHRASE_PROGRESS_H
 #define _REPHRASE_PROGRESS_H
 
-#include <cstdio>
-
 #include "ansi.h"
+#include "base/print.h"
 
 template<bool VERBOSE>
 struct Progress {
   // Call this whenever the expression definitely got smaller.
   void Record(const char *msg) {
     if (VERBOSE) {
-      printf(AWHITE("S %d") " " AGREEN("%s") "\n",
-             simplified, msg);
+      Print(AWHITE("S {}") " " AGREEN("{}") "\n",
+            simplified, msg);
     }
     simplified++;
   }

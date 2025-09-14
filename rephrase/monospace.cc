@@ -3,27 +3,27 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
+#include <format>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
+#include "auto-histo.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
+#include "font-image.h"
+#include "image.h"
+#include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "auto-histo.h"
-#include "threadutil.h"
-#include "image.h"
-#include "color-util.h"
 
 #include "llama.h"
 #include "llm.h"
 #include "models.h"
-#include "font-image.h"
 
 using namespace std;
 
@@ -39,9 +39,9 @@ static constexpr float MIN_P = 0.05;
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
   if (odd) {
-    printf(AFGCOLOR(125, 125, 140, "%s"), tok.c_str());
+    Print(AFGCOLOR(125, 125, 140, "{}"), tok);
   } else {
-    printf(AFGCOLOR(190, 190, 225, "%s"), tok.c_str());
+    Print(AFGCOLOR(190, 190, 225, "{}"), tok);
   }
   odd = !odd;
 }
@@ -179,7 +179,7 @@ struct VizFrame {
 
 static void RephraseMono(
     LLM *llm, const string &prompt, const string &original) {
-  printf("Loaded prompt of %d chars\n", (int)prompt.size());
+  Print("Loaded prompt of {} chars\n", prompt.size());
 
   Asynchronously viz_async(8);
   std::unique_ptr<BitmapFont> font;
@@ -192,18 +192,18 @@ static void RephraseMono(
 
   // Prompt is instructions + original text + header:
   std::string full_prompt =
-    StringPrintf("%s\n"
-                 "\n"
-                 "Original text:\n\n"
-                 "%s\n"
-                 "\n"
-                 "Rephrased text:\n\n",
-                 prompt.c_str(), original.c_str());
+    std::format("{}\n"
+                "\n"
+                "Original text:\n\n"
+                "{}\n"
+                "\n"
+                "Rephrased text:\n\n",
+                prompt, original);
 
-  printf(AGREY("Full prompt: [%s]") "\n", full_prompt.c_str());
+  Print(AGREY("Full prompt: [{}]") "\n", full_prompt);
 
   llm->DoPrompt(full_prompt);
-  printf("(finished the prompt)\n");
+  Print("(finished the prompt)\n");
 
   // Now we greedily re-insert text.
   // For this version, we don't even try to preserve lines.
@@ -288,7 +288,7 @@ static void RephraseMono(
             font->DrawText(&img, xx, ypos, 0x77770099, " × ");
             xx += 3 * font_width;
             font->DrawText(&img, xx, ypos, 0x997700FF,
-                           StringPrintf("%d", times).c_str());
+                           std::format("{}", times));
           }
 
           ypos += font->Height();
@@ -301,7 +301,7 @@ static void RephraseMono(
             ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT,
                                         frame.temp - 1.0),
             // FIRE
-            StringPrintf("🔥 %.3f", frame.temp).c_str());
+            std::format("🔥 {:.3f}", frame.temp));
         ypos += font->Height();
 
         for (const auto &[s, p] : frame.nexts) {
@@ -309,17 +309,17 @@ static void RephraseMono(
             ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, p);
           color |= 0xFF;
           font->DrawText(&img, xpos, ypos,
-                            color,
-                            StringPrintf("%.1f%%", p * 100.0));
+                         color,
+                         std::format("{:.1f}%", p * 100.0));
           font->DrawText(&img, xpos + 7 * font_width,
-                            ypos,
-                            color,
-                            s);
+                         ypos,
+                         color,
+                         s);
           ypos += font->Height();
         }
 
         img.ScaleBy(2).Save(
-            StringPrintf("monospace/frame%d.png", frame.frame_num));
+            std::format("monospace/frame{}.png", frame.frame_num));
       });
     }
     };
@@ -327,20 +327,20 @@ static void RephraseMono(
   for (;;) {
 
     for (const std::string &line : lines) {
-      printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
+      Print(AFGCOLOR(200, 250, 200, "{}") "\n", line);
     }
 
     for (const auto &[line, times] : failures) {
-      printf(AFGCOLOR(190, 50, 50, "%s") "%s\n",
-             line.c_str(),
-             times > 1 ?
-             StringPrintf(" x " AYELLOW("%d"), times).c_str() : "");
+      Print(AFGCOLOR(190, 50, 50, "{}") "{}\n",
+            line,
+            times > 1 ?
+            std::format(" x " AYELLOW("{}"), times) : "");
     }
 
     if (current_temp > 1.0f) {
-      printf("Temperature: %.4f\n", current_temp);
+      Print("Temperature: {:.4f}\n", current_temp);
     }
-    printf("%s\n", LengthIndicator().c_str());
+    Print("{}\n", LengthIndicator());
 
     // As a loop invariant, line_beginning is the current state.
     std::string line;
@@ -387,7 +387,7 @@ static void RephraseMono(
       GenFrame(line, &next);
     }
 
-    printf("\n(Length: %d)\n", (int)line.size());
+    Print("\n(Length: {})\n", line.size());
 
     len_histo->Observe(line.size());
 
@@ -402,18 +402,17 @@ static void RephraseMono(
       // and continue with the next line.
 
     } else {
-      printf(ARED("Failed:") "\n"
-             "%s\n%s\n",
-             LengthIndicator().c_str(),
-             // std::string(WIDTH, '-').c_str(),
-             line.c_str());
+      Print(ARED("Failed:") "\n"
+            "{}\n{}\n",
+            LengthIndicator(),
+            line);
       current_temp += 0.0125;
 
-      printf("Histo:\n"
-             "%s\n",
-             len_histo->SimpleHorizANSI(11).c_str());
+      Print("Histo:\n"
+            "{}\n",
+            len_histo->SimpleHorizANSI(11));
 
-      // Whenever we get a repeat, increase temperature so
+      // whenever we get a repeat, increase temperature so
       // that we are getting more random samples.
       if (failures[line] > 0) {
         current_temp += 0.0125;
@@ -458,7 +457,7 @@ int main(int argc, char ** argv) {
   sparams.type = SampleType::GREEDY;
 
   LLM llm(cparams, sparams);
-  printf(AGREEN("Loaded model") ".\n");
+  Print(AGREEN("Loaded model") ".\n");
 
   RephraseMono(&llm, prompt, original);
 

@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "base/print.h"
 #include "inclusion.h"
 #include "context.h"
 #include "el.h"
@@ -77,7 +78,7 @@ Program Elaboration::Elaborate(const el::Exp *el_exp) {
 
   // Should check that the program has type layout?
   if (verbose > 0) {
-    printf("Program type: %s\n", TypeString(t).c_str());
+    Print("Program type: {}\n", TypeString(t));
   }
 
   Program pgm;
@@ -119,9 +120,9 @@ const il::Type *Elaboration::ElabType(const Context &G,
 
     const il::Type *t = k->type;
     if (VERBOSE) {
-      printf(AORANGE("Look up") " type var " APURPLE("%s") ": %s\n",
-             el_type->var.c_str(),
-             TypeString(t).c_str());
+      Print(AORANGE("Look up") " type var " APURPLE("{}") ": {}\n",
+             el_type->var,
+             TypeString(t));
     }
 
     CHECK(k->tyvars.size() == el_type->children.size()) <<
@@ -300,9 +301,9 @@ Elaboration::ElabDec(
         }();
 
       if (VERBOSE) {
-        printf("Free type variables:\n");
+        Print("Free type variables:\n");
         for (const EVar &ev : free_evars) {
-          printf("  %s\n", ev.ToString().c_str());
+          Print("  {}\n", ev.ToString());
         }
       }
 
@@ -380,11 +381,11 @@ Elaboration::ElabDec(
                 });
 
       if (VERBOSE) {
-        printf("Environment for mutually recursive fun dec:\n");
+        Print("Environment for mutually recursive fun dec:\n");
         for (const auto &[x, tv, t] : fvts) {
-          printf("  {%s} %s : %s\n",
-                 Util::Join(tv, ",").c_str(),
-                 x.c_str(), TypeString(t).c_str());
+          Print("  {{" "{}" "}} {} : {}\n",
+                Util::Join(tv, ","),
+                x.c_str(), TypeString(t));
         }
       }
 
@@ -722,10 +723,10 @@ Elaboration::ElabDec(
           // e.g. "list$1"
           const std::string il_tyvar = recvars[yother].second;
           if (VERBOSE) {
-            printf("[%s/%s]%s\n",
-                   TypeString(mu_other).c_str(),
-                   il_tyvar.c_str(),
-                   TypeString(dom).c_str());
+            Print("[{}/{}]{}\n",
+                  TypeString(mu_other),
+                  il_tyvar,
+                  TypeString(dom));
           }
           dom = pool->SubstType(mu_other, il_tyvar, dom);
         }
@@ -736,16 +737,16 @@ Elaboration::ElabDec(
             tyvars = std::format("(" AYELLOW("{}") ") ",
                                  Util::Join(il_tyvars, ","));
           }
-          printf("Binding constructor " ABLUE("%s") " : "
-                 "%s%s -> %s\n"
-                 "   with .ctor = %d  %s  %s\n",
-                 ctor.c_str(),
-                 tyvars.c_str(),
-                 TypeString(dom).c_str(),
-                 TypeString(cod).c_str(),
-                 y,
-                 TypeString(mu_type).c_str(),
-                 ctor.c_str());
+          Print("Binding constructor " ABLUE("{}") " : "
+                "{}{} -> {}\n"
+                "   with .ctor = {}  {}  {}\n",
+                ctor,
+                tyvars,
+                TypeString(dom),
+                TypeString(cod),
+                y,
+                TypeString(mu_type),
+                ctor);
         }
         VarInfo ctor_info = VarInfo{
           .tyvars = il_tyvars,
@@ -1018,9 +1019,9 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
                          << "Unbound variable: " << el_exp->str;
 
     if (VERBOSE) {
-      printf("Look up " ABLUE("%s") " : %s\n",
-             el_exp->str.c_str(),
-             Context::VarInfoString(*vi).c_str());
+      Print("Look up " ABLUE("{}") " : {}\n",
+            el_exp->str,
+            Context::VarInfoString(*vi));
     }
 
     // If the variable is polymorphic, then instantiate it with
@@ -1230,8 +1231,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const il::Type *cod = NewEVar();
 
     if (VERBOSE) {
-      printf("App F: %s : %s\n", ExpString(fe).c_str(), TypeString(ft).c_str());
-      printf("App X: %s : %s\n", ExpString(xe).c_str(), TypeString(xt).c_str());
+      Print("App F: {} : {}\n", ExpString(fe), TypeString(ft));
+      Print("App X: {} : {}\n", ExpString(xe), TypeString(xt));
     }
 
     Unification::Unify(Error("application-fn"), ft, pool->Arrow(dom, cod));

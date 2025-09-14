@@ -1,16 +1,16 @@
 
 #include <algorithm>
-#include <memory>
-#include <vector>
-#include <string>
 #include <cstdint>
-#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "image.h"
-#include "util.h"
-#include "threadutil.h"
-#include "color-util.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
+#include "image.h"
+#include "threadutil.h"
+#include "util.h"
 
 static void FixOne(ImageRGBA *img) {
   for (int y = 0; y < img->Height(); y++) {
@@ -49,7 +49,7 @@ int main(int argc, char **argv) {
       },
       16);
 
-  printf("Wrote %d files.\n", (int)files.size());
+  Print("Wrote {} files.\n", files.size());
 
   return 0;
 }

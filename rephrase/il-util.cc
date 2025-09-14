@@ -2,18 +2,18 @@
 #include "il-util.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <format>
 #include <optional>
+#include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <unordered_set>
-#include <string>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "functional-set.h"
 #include "il-pass.h"
 #include "il.h"
@@ -207,8 +207,8 @@ struct SubstPass : public Pass<> {
                    const Exp *guess) override {
     if (v == target_var) {
       if (VERBOSE) {
-        printf(AGREEN("%s") " with %d type params\n",
-               v.c_str(), (int)ts.size());
+        Print(AGREEN("{}") " with {} type params\n",
+              v, ts.size());
       }
       // The target variable.
       CHECK(ts.size() == tyvars.size()) << "Internal type error: When "
@@ -289,15 +289,15 @@ const Exp *ILUtil::SubstPolyExp(AstPool *pool,
                                 const Exp *e1, const std::string &x,
                                 const Exp *e2) {
   if (VERBOSE) {
-    printf(APURPLE("Subst") " [Λ(%s).%s/" ABLUE("%s") "](%s).\n",
-           Util::Join(tyvars, ",").c_str(),
-           ExpString(e1).c_str(), x.c_str(),
-           ExpString(e2).c_str());
+    Print(APURPLE("Subst") " [Λ({}).{}/" ABLUE("{}") "]({}).\n",
+          Util::Join(tyvars, ","),
+          ExpString(e1), x,
+          ExpString(e2));
   }
   SubstPass pass(pool, tyvars, e1, x);
   const Exp *ret = pass.DoExp(e2);
   if (VERBOSE) {
-    printf(AORANGE("Result") ":\n%s\n", ExpString(ret).c_str());
+    Print(AORANGE("Result") ":\n{}\n", ExpString(ret));
   }
   return ret;
 }
@@ -723,7 +723,7 @@ std::unordered_set<std::string> ILUtil::FreeTypeVarsInExp(const Exp *e) {
 std::string ILUtil::VarSetString(const std::unordered_set<std::string> &s) {
   std::vector<std::string> v(s.begin(), s.end());
   std::sort(v.begin(), v.end());
-  return StringPrintf("{%s}", Util::Join(v, ", ").c_str());
+  return std::format("{{" "{}" "}}", Util::Join(v, ", "));
 }
 
 std::optional<il::ObjFieldType> ILUtil::GetObjFieldType(const il::Type *t) {

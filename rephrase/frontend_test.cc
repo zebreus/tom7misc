@@ -2,13 +2,13 @@
 #include "frontend.h"
 
 #include <cstdint>
-#include <cstdio>
+#include <format>
 #include <string>
 #include <unordered_set>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "bignum/big-overloads.h"
 #include "il.h"
 #include "primop.h"
@@ -38,16 +38,16 @@ namespace il {
 #define RunInternal(src, simp)                      \
   ([&front](const std::string source) -> Program {  \
     if (VERBOSE) {                                  \
-      printf(                                       \
+      Print(                                        \
           ABGCOLOR(200, 0, 200,                     \
                    AFGCOLOR(0, 0, 0, "TEST:"))      \
-          "\n%s\n", source.c_str());                \
+          "\n{}\n", source);                        \
     }                                               \
     Frontend::Options options;                      \
     options.simplify = (simp);                      \
     const Program pgm = front.RunFrontendOn(        \
-        StringPrintf("Test %s (%s:%d)",             \
-                     __func__, __FILE__, __LINE__), \
+        std::format("Test {} ({}:{})",              \
+                    __func__, __FILE__, __LINE__),  \
         source,                                     \
         options);                                   \
     CHECK(pgm.body != nullptr) << "Rejected: "      \
@@ -88,7 +88,7 @@ static void TestLiterals() {
     CHECK(str_children[1].first == "2");
     CHECK(str_children[1].second->String() == "hi");
     if (VERBOSE) {
-      printf("... %s\n", ExpString(pgm.body).c_str());
+      Print("... {}\n", ExpString(pgm.body));
     }
   }
 
@@ -400,10 +400,10 @@ static void TestSimplify() {
       bool c = !!(bits & 1);
       bool expected_result = (a && b) || c;
       const std::string source_string =
-        StringPrintf("%s andalso %s orelse %s\n",
-                     a ? "true" : "false",
-                     b ? "true" : "false",
-                     c ? "true" : "false");
+        std::format("{} andalso {} orelse {}\n",
+                    a ? "true" : "false",
+                    b ? "true" : "false",
+                    c ? "true" : "false");
 
       const Program pgm = Run(source_string);
       CHECK(pgm.body->Bool() == expected_result) << source_string;
@@ -432,14 +432,14 @@ static void Simple() {
     const auto &[tyvars, x, rhs, body] = pgm.body->Let();
     CHECK(tyvars.empty());
     if (VERBOSE) {
-      printf("... %s\n", ProgramString(pgm).c_str());
+      Print("... {}\n", ProgramString(pgm));
     }
   }
 
   {
     const Program pgm = RunNoSimplify("let val (x, y) = (7, \"hi\") in x end");
     if (VERBOSE) {
-      printf("%s\n", ProgramString(pgm).c_str());
+      Print("{}\n", ProgramString(pgm));
     }
     // Should bind tuple, and the two vars.
     const auto &[tyvars, x, rhs, body] = pgm.body->Let();
@@ -457,7 +457,7 @@ static void Simple() {
         // positions like this. But we could add support back.
         "let val (x (* as z *), _) = (7, \"hi\") in x end");
     if (VERBOSE) {
-      printf("%s\n", ProgramString(pgm).c_str());
+      Print("{}\n", ProgramString(pgm));
     }
     const auto &[tyvars, x, rhs, body] = pgm.body->Let();
     CHECK(tyvars.empty()) << "Should not be polymorphic!";
@@ -634,7 +634,7 @@ static void TestFun() {
                             "end\n");
     // CHECK(pgm.body->Integer() == 7);
     if (VERBOSE) {
-      printf("%s\n", ProgramString(pgm).c_str());
+      Print("{}\n", ProgramString(pgm));
     }
   }
 
@@ -767,7 +767,7 @@ static void TestObjects() {
         "end");
     // Can't really test this without further simplifications.
     // But it should elaborate!
-    // printf("%s", ProgramString(pgm).c_str());
+    // Print("{}", ProgramString(pgm));
   }
 
   {
@@ -928,6 +928,6 @@ int main(int argc, char **argv) {
 
   il::NewTests();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
