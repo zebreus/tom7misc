@@ -1,6 +1,7 @@
 (*   -*- electric-indent-local-mode: -1 -*- *)
 let
   import "stdlib.bovex"
+  import "pdf-document.bovex"
   import "layout.bovex"
   import "palatino.bovex"
   import "cite.bovex"
@@ -1696,7 +1697,7 @@ and undistorted snub cube. This leads me to
 [blockquote[Conjecture: The snub cube is the smallest counterexample
 to the Rupert conjecture (by number of vertices).]]
 
-Here are some larger Noperts. Neither of these obviously resembles
+Here are some larger Noperts. None of these obviously resemble
 one of the wishlist polyhedra, so they may be new. On the other
 hand, they may also have solutions that I just didn’t find; in
 that case they are not that interesting:
