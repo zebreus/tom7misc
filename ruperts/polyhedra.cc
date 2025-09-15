@@ -22,6 +22,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "hashing.h"
 #include "hull3d.h"
@@ -249,11 +250,11 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
   std::vector<std::unordered_set<int>> collated(num_vertices);
   for (const std::vector<int> &face : v) {
     if (VERBOSE) {
-      printf("Face:");
+      Print("Face:");
       for (int i = 0; i < (int)face.size(); i++) {
-        printf(" %d", face[i]);
+        Print(" {}", face[i]);
       }
-      printf("\n");
+      Print("\n");
     }
     // Add each edge forwards and backwards.
     for (int i = 0; i < (int)face.size(); i++) {
@@ -270,13 +271,13 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
   neighbors.resize(num_vertices);
   for (int i = 0; i < (int)collated.size(); i++) {
     neighbors[i] = SetToSortedVec(collated[i]);
-    // printf("#%d has %d neighbors\n", i, (int)neighbors[i].size());
+    // Print("#{} has {} neighbors\n", i, (int)neighbors[i].size());
     // e.g. if there are points that are not on faces. One cause
     // of this would be if the convex hull and facetization disagree
     // on epsilon, and so there are disconnected points.
     if (neighbors[i].empty()) {
       if (VERBOSE) {
-        printf("Point %d is not on any face\n", i);
+        Print("Point {} is not on any face\n", i);
       }
       return false;
     }
@@ -692,24 +693,24 @@ std::vector<int> GiftWrapConvexHull(const std::vector<vec2> &vertices) {
     }();
 
   if (VERBOSE) {
-    printf("Start idx: %s\n", ColorIndex(start).c_str());
+    Print("Start idx: {}\n", ColorIndex(start));
 
     for (const vec2 &v : vertices) {
-      printf("vec2{%.17g, %.17g}, ", v.x, v.y);
+      Print("vec2{{" "{:.17g}, {:.17g}" "}}, ", v.x, v.y);
     }
   }
 
   const vec2 &vstart = vertices[start];
 
   if (VERBOSE) {
-    printf("\n");
+    Print("\n");
   }
 
   std::vector<int> hull;
   int cur = start;
   do {
     if (VERBOSE) {
-      printf("Loop with cur=%s\n", ColorIndex(cur).c_str());
+      Print("Loop with cur={}\n", ColorIndex(cur));
     }
 
     if (SELF_CHECK) {
@@ -760,16 +761,16 @@ std::vector<int> GiftWrapConvexHull(const std::vector<vec2> &vertices) {
     // We exhausted all of the nodes, so we must be done.
     if (next == -1) {
       if (VERBOSE) {
-        printf(ACYAN("No more nodes.") "\n");
+        Print(ACYAN("No more nodes.") "\n");
       }
       return hull;
     }
 
     for (int i = 0; i < vertices.size(); i++) {
       if (VERBOSE) {
-        printf("Inner loop at i=%s w/ next=%s.\n",
-               ColorIndex(i).c_str(),
-               ColorIndex(next).c_str());
+        Print("Inner loop at i={} w/ next={}.\n",
+              ColorIndex(i),
+              ColorIndex(next));
       }
       // We need to consider the start point as a candidate
       // (which will always have been marked 'used') because
@@ -792,9 +793,9 @@ std::vector<int> GiftWrapConvexHull(const std::vector<vec2> &vertices) {
         bool take = is_strictly_left;
 
         if (VERBOSE) {
-          printf("  Angle: %.17g. %s %s\n", angle,
-                 is_strictly_left ? " left" : "",
-                 take ? " take." : "");
+          Print("  Angle: {:.17g}. {} {}\n", angle,
+                is_strictly_left ? " left" : "",
+                take ? " take." : "");
         }
 
         if (take) {
@@ -814,7 +815,7 @@ std::vector<int> GiftWrapConvexHull(const std::vector<vec2> &vertices) {
   } while (cur != start);
 
   if (VERBOSE) {
-    printf(ACYAN("Returned to start.") "\n");
+    Print(ACYAN("Returned to start.") "\n");
   }
   return hull;
 }
@@ -1893,6 +1894,8 @@ Polyhedron PolyhedronByName(std::string_view name) {
   if (name == "pentakisdodecahedron") return PentakisDodecahedron();
   if (name == "disdyakistriacontahedron") return DisdyakisTriacontahedron();
   if (name == "pentagonalhexecontahedron") return PentagonalHexecontahedron();
+
+  if (name == "noperthedron") return Noperthedron();
   LOG(FATAL) << "Unknown polyhedron " << name;
 }
 
@@ -2402,8 +2405,8 @@ static bool InitPolyhedronInternal(
   };
 
   if (VERBOSE > 0) {
-    printf("%s: There are %d vertices.\n",
-           std::string(name).c_str(), (int)vertices.size());
+    Print("{}: There are {} vertices.\n",
+          name, vertices.size());
   }
 
   // wlog i > j > k.
@@ -2418,11 +2421,16 @@ static bool InitPolyhedronInternal(
     }
   }
 
-  if (degenerate) return false;
+  if (degenerate) {
+    if (FRAGILE) {
+      LOG(FATAL) << "Degenerate polyhedron.";
+    }
+    return false;
+  }
 
   if (VERBOSE > 0) {
-    printf("%s: There are %d distinct faces.\n",
-           std::string(name).c_str(), (int)all_faces.size());
+    Print("{}: There are {} distinct faces.\n",
+          name, all_faces.size());
   }
 
   // Make it deterministic.
@@ -2477,8 +2485,12 @@ static bool InitPolyhedronInternal(
   }
 
   out->faces = Faces::Create(vertices.size(), std::move(fs));
-  if (out->faces == nullptr)
+  if (out->faces == nullptr) {
+    if (FRAGILE) {
+      LOG(FATAL) << "Couldn't create faces.";
+    }
     return false;
+  }
 
   out->vertices = std::move(vertices);
   out->name = std::string(name);
@@ -2491,6 +2503,7 @@ static Polyhedron MakeConvexOrDie(
   Polyhedron poly;
   (void)InitPolyhedronInternal<true>(vertices, name, &poly);
   poly.symmetry = SYM_UNKNOWN;
+  CHECK(poly.faces != nullptr);
   return poly;
 }
 
@@ -3715,3 +3728,30 @@ Polyhedron PentagonalHexecontahedron() {
       SYM_ICOSAHEDRAL);
 }
 
+Polyhedron Noperthedron() {
+  std::vector<vec3> vertices;
+
+  vec3 c1 = vec3(152024884.0, 0.0, 210152163.0) / 259375205.0;
+  vec3 c2 = vec3(.6632738028, .6106948881, .3980949609);
+  vec3 c3 = vec3(.8193990033, .5928215096, .1230614493);
+
+  static constexpr double arc = (2.0 * std::numbers::pi) / 15.0;
+
+  for (int k = 0; k < 15; k++) {
+    frame3 rot = rotation_frame(vec3{0, 0, 1}, arc * k);
+    for (double s : {-1.0, 1.0}) {
+      vertices.push_back(s * transform_point(rot, c1));
+      vertices.push_back(s * transform_point(rot, c2));
+      vertices.push_back(s * transform_point(rot, c3));
+    }
+  }
+
+  CHECK(vertices.size() == 90);
+
+  for (vec3 p : vertices) {
+    Print("{}\n", VecString(p));
+  }
+  return MakeConvexOrDie(
+      std::move(vertices), "noperthedron",
+      SYM_UNKNOWN);
+}

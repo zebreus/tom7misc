@@ -1,0 +1,99 @@
+(*   -*- electric-indent-local-mode: -1 -*- *)
+let
+  import "stdlib.bovex"
+  import "pdf-document.bovex"
+  import "layout.bovex"
+  import "palatino.bovex"
+  import "cite.bovex"
+  import "ruperts.bib"
+
+  val doc-title = "It's just the bibliography"
+  val doc-subtitle = "For the video"
+
+  do set-doc-info {(PDFInfo)
+                   width = inch 8.5,
+                   height = inch 11.0,
+                   creator = "BoVeX",
+                   producer = "Huh?",
+                   title = doc-title,
+                   author = "Tom 7",
+                   subject = "Documents do not need a 'subject'"
+                   (* leaving out date, so it is the creation time. *) }
+
+  do SECTION-FONT-SIZE := point 15.0
+  do SUBSECTION-FONT-SIZE := point 14.0
+  do SUBSUBSECTION-FONT-SIZE := point 13.0
+
+  val tt = fixedersys
+
+  fun body-font lay = span
+    {(Span)
+     font-face = font-family PALATINO,
+     font-size = point 12.0,
+     line-spacing = point 1.5 } lay
+
+  val layout-sup = sup
+
+  fun sup lay =
+    span {(Span) font-size = 8.0,
+          (* Don't rephrase the text in these. *)
+          no-rephrase = true } lay
+
+  fun sub lay =
+    span {(Box) font-size = 8.0, dy = 8.0 } lay
+
+  fun footnote s = span {(Span) font-color = 0x999999FF, font-size = 9.0 }
+                   [ ([b[footnote]]: [s])]
+
+  val next-figure-id = ref 1
+  fun figure-id () =
+    let val s = int-to-string (!next-figure-id)
+    in
+      next-figure-id := !next-figure-id + 1;
+      layout s
+    end
+
+  fun string-pad-left (s, n, c) =
+    if string-size s >= n
+    then s
+    else string-pad-left (c ^ s, n, c)
+in
+
+(main-text (body-font
+[[title (layout doc-title)][vspace (point 5.0)][
+sub-title (layout doc-subtitle)]
+
+ [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2025]]
+
+
+[nocite gensane2008producing]
+[nocite ieee754]
+
+[nocite freytag2024known]
+[nocite chai2018rupert]
+[nocite lavau2019truncated]
+[nocite fredriksson2022optimizing]
+
+[nocite wikipedia-roll-pitch-yaw]
+[nocite vaneev2024biteopt]
+[nocite granlund2015gnu]
+
+[nocite schlafli1901theorie]
+[nocite coxeter1973regular]
+[nocite schulz1998predictive]
+[nocite steininger2025convex]
+[nocite roberts2024unlocked]
+[nocite healey2016proving]
+[nocite demoura2008z3]
+[nocite matiyasevich1970diophantine]
+[nocite tarski1951decision]
+[nocite collins1976quantifier]
+
+[section [Bibliography]]
+
+[bibliography()]
+
+]))
+
+
+end

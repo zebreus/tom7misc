@@ -46,8 +46,6 @@ DECLARE_COUNTERS(outside_triangle);
 
 using namespace yocto;
 
-#define USE_ND 1
-
 static constexpr int DIGITS = 24;
 
 // on each side
@@ -61,18 +59,21 @@ static inline vec2 VecFromPair(const std::pair<double, double> &p) {
 // Color map for spherical coordinates.
 struct SphereMap {
   // For x,y,z on unit sphere.
-  virtual uint32_t GetRGBA(const vec3 &v) {
+  virtual uint32_t GetRGBA(const vec3 &v) = 0;
+
+  virtual ~SphereMap() {}
+};
+
+struct Gradient : public SphereMap {
+  // For x,y,z on unit sphere.
+  uint32_t GetRGBA(const vec3 &v) override {
     auto To = [](double c) {
         return 0.1 + ((c + 1.0) * 0.5 * 0.9);
       };
 
-    uint32_t rgba = ColorUtil::FloatsTo32(
+    return ColorUtil::FloatsTo32(
         To(v.x), To(v.y), To(v.z), 1.0);
-
-    return rgba;
   }
-
-  virtual ~SphereMap() {}
 };
 
 // Global status.
@@ -84,6 +85,7 @@ static StatusBar status(1);
 static std::counting_semaphore load_semaphore(8);
 
 // Lazy scoremap using canonical patches.
+template<bool OUTER>
 struct ScoreMap {
   using Tree = TreeND<double, double>;
 
@@ -146,17 +148,23 @@ struct ScoreMap {
       for (auto &shard : shards) {
         for (int i = 0; i < shard->Size(); i++) {
           const auto &[key, score, outer_, inner_] = (*shard)[i];
-          // As the outer view.
           // tree->Insert(std::span(key.data(), 3), score);
-          batch.emplace_back(SliceArray<0, 3>(key), score);
+          if (OUTER) {
+            // As the outer view.
+            batch.emplace_back(SliceArray<0, 3>(key), score);
+          } else {
+            batch.emplace_back(SliceArray<3, 3>(key), score);
+          }
         }
       }
 
-      status.Print("Init batch size " AWHITE("{}") ":\n", (int64_t)batch.size());
+      status.Print("Init batch size " AWHITE("{}") ":\n",
+                   (int64_t)batch.size());
       // ugh...
       std::vector<std::pair<std::span<const double>, double>> batch_arg;
       batch_arg.reserve(batch.size());
       for (const auto &[key, val] : batch) {
+        static_assert(key.size() == 3);
         batch_arg.emplace_back(std::span<const double>(key.data(), 3), val);
       }
       tree->InitBatch(std::move(batch_arg));
@@ -212,7 +220,8 @@ struct ScoreMap {
 };
 
 
-struct TwoPatchOuterSphereMap : public SphereMap {
+template<bool OUTER>
+struct TwoPatchSphereMap : public SphereMap {
   // Precomputed, since we don't want to have to load all shards
   // just to get the bounds.
   /*
@@ -223,7 +232,7 @@ struct TwoPatchOuterSphereMap : public SphereMap {
 
   std::vector<double> quantiles;
 
-  TwoPatchOuterSphereMap() : score_map(LoadPatchInfo("scube-patchinfo.txt")) {
+  TwoPatchSphereMap() : score_map(LoadPatchInfo("scube-patchinfo.txt")) {
     for (const std::string &line :
            Util::ReadFileToLines("scube-score-quantiles.txt")) {
       std::optional<double> od = Util::ParseDoubleOpt(line);
@@ -257,11 +266,15 @@ struct TwoPatchOuterSphereMap : public SphereMap {
   }
 
  private:
-  ScoreMap score_map;
+  ScoreMap<OUTER> score_map;
 };
 
+using TwoPatchOuterSphereMap = TwoPatchSphereMap<true>;
+using TwoPatchInnerSphereMap = TwoPatchSphereMap<false>;
 
 struct PatchIDMap : public SphereMap {
+  static inline constexpr bool USE_CANONICAL = true;
+
   PatchInfo patch_info;
   BigPoly poly;
   Boundaries boundaries;
@@ -269,22 +282,32 @@ struct PatchIDMap : public SphereMap {
     patch_info(LoadPatchInfo("scube-patchinfo.txt")),
     poly(BigScube(DIGITS)), boundaries(poly) {
     ArcFour rc("deterministic");
-    std::unordered_map<uint64_t, double> canonical_hue;
+    std::unordered_map<uint64_t, double> canonical_hue, canonical_shade,
+      canonical_value;
     int h = 0;
     for (const auto &[code, _] : patch_info.canonical) {
       canonical_hue[code] = h / (double)patch_info.canonical.size();
+      canonical_shade[code] = 0.7 + RandDouble(&rc) * 0.3;
+      canonical_value[code] = 0.7 + RandDouble(&rc) * 0.3;
       h++;
     }
 
     for (const auto &[code, patch] : patch_info.all_codes) {
       double hue = canonical_hue[patch.canonical_code];
-      bool is_canon = canonical_hue.contains(code);
-      colored_codes[code] =
-        ColorUtil::HSVAToRGBA32(
-            hue,
-            (is_canon ? 1.0 : 0.25 + RandDouble(&rc) * 0.5),
-            (is_canon ? 1.0 : 0.4 + RandDouble(&rc) * 0.5),
-            1.0);
+      if (USE_CANONICAL) {
+        double shade = canonical_shade[patch.canonical_code];
+        double value = canonical_value[patch.canonical_code];
+        colored_codes[code] = ColorUtil::HSVAToRGBA32(hue, shade, value,
+                                                      1.0);
+      } else {
+        bool is_canon = canonical_hue.contains(code);
+        colored_codes[code] =
+          ColorUtil::HSVAToRGBA32(
+              hue,
+              (is_canon ? 1.0 : 0.25 + RandDouble(&rc) * 0.5),
+              (is_canon ? 1.0 : 0.4 + RandDouble(&rc) * 0.5),
+              1.0);
+      }
     }
   }
 
@@ -614,13 +637,41 @@ static TexturedMesh TextureSphere(SphereMap *sphere_map) {
   return ret;
 }
 
-static void Generate() {
+[[maybe_unused]]
+static void GenerateGradient() {
+  Timer timer;
+  std::unique_ptr<SphereMap> sphere_map(new Gradient);
+  TexturedMesh tmesh = TextureSphere(sphere_map.get());
+  SaveAsOBJ(tmesh, "snubcube-gradient");
+  Print("Took {}\n", ANSI::Time(timer.Seconds()));
+}
+
+[[maybe_unused]]
+static void GeneratePatchId() {
+  Timer timer;
+  std::unique_ptr<SphereMap> sphere_map(new PatchIDMap);
+  TexturedMesh tmesh = TextureSphere(sphere_map.get());
+  SaveAsOBJ(tmesh, "snubcube-patches");
+  Print("Took {}\n", ANSI::Time(timer.Seconds()));
+}
+
+[[maybe_unused]]
+static void GenerateTwoPatchOuter() {
   Timer timer;
   std::unique_ptr<SphereMap> sphere_map(new TwoPatchOuterSphereMap);
-  // std::unique_ptr<SphereMap> sphere_map(new PatchIDMap);
   // std::unique_ptr<SphereMap> sphere_map(new SphereMap);
   TexturedMesh tmesh = TextureSphere(sphere_map.get());
-  SaveAsOBJ(tmesh, "snubcube");
+  SaveAsOBJ(tmesh, "snubcube-outer");
+  Print("Took {}\n", ANSI::Time(timer.Seconds()));
+}
+
+[[maybe_unused]]
+static void GenerateTwoPatchInner() {
+  Timer timer;
+  std::unique_ptr<SphereMap> sphere_map(new TwoPatchInnerSphereMap);
+  // std::unique_ptr<SphereMap> sphere_map(new SphereMap);
+  TexturedMesh tmesh = TextureSphere(sphere_map.get());
+  SaveAsOBJ(tmesh, "snubcube-inner");
   Print("Took {}\n", ANSI::Time(timer.Seconds()));
 }
 
@@ -628,9 +679,15 @@ static void Generate() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  // GenerateGradient();
+
+  // GeneratePatchId();
+
   // TreeBench2();
 
-  Generate();
+  // GenerateTwoPatchOuter();
+
+  GenerateTwoPatchInner();
 
   return 0;
 }

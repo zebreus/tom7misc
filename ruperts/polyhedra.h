@@ -629,4 +629,6 @@ Polyhedron PentakisDodecahedron();
 Polyhedron DisdyakisTriacontahedron();
 Polyhedron PentagonalHexecontahedron();
 
+Polyhedron Noperthedron();
+
 #endif

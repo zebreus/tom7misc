@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <cstdio>
 #include <ctime>
 #include <format>
 #include <limits>
@@ -17,6 +16,7 @@
 #include "array-util.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "opt/opt.h"
 #include "periodically.h"
 #include "polyhedra.h"
@@ -300,19 +300,19 @@ struct Threeperts {
 
         const auto &[err1, err2] = LossParts(args);
 
-        printf("Err1: %.11g\n"
-               "Err2: %.11g\n", err1, err2);
+        Print("Err1: {:.11g}\n"
+              "Err2: {:.11g}\n", err1, err2);
 
         frame3 outer_frame = OuterFrame(args);
         frame3 middle_frame = MiddleFrame(args);
         frame3 inner_frame = InnerFrame(args);
 
-        printf("Outer:\n%s\n"
-               "Middle:\n%s\n"
-               "Inner:\n%s\n",
-               FrameString(outer_frame).c_str(),
-               FrameString(middle_frame).c_str(),
-               FrameString(inner_frame).c_str());
+        Print("Outer:\n{}\n"
+              "Middle:\n{}\n"
+              "Inner:\n{}\n",
+              FrameString(outer_frame),
+              FrameString(middle_frame),
+              FrameString(inner_frame));
 
         Rendering render(poly, 1920 * 2, 1080 * 2);
 

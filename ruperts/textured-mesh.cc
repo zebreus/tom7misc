@@ -22,7 +22,7 @@ void SaveAsOBJ(const TexturedMesh &tmesh, std::string_view filename_base) {
   std::string mtl_ref_name = Util::FileOf(mtl_filename);
 
   // Apparently it's just a convention.
-  std::string png_ref_name = std::format("{}.1001.png", base);
+  std::string png_ref_name = std::format("{}.<UDIM>.png", base);
   for (int idx = 0; idx < tmesh.texture.NumTextures(); idx++) {
     const auto &[uu, vv] = tmesh.texture.UnpackUV(idx);
     int filenum = tmesh.texture.Filenum(uu, vv);

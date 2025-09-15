@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <cstdint>
@@ -35,6 +36,7 @@
 #include "image.h"
 #include "lines.h"
 #include "periodically.h"
+#include "polyhedra.h"
 #include "util.h"
 
 #include "mesh.h"
@@ -47,6 +49,11 @@ using namespace std;
 
 using int64 = int64_t;
 using uint32 = uint32_t;
+
+static inline constexpr uint32_t CLIPPED_FRONTFACE_COLOR = 0x88000088;
+
+// static inline constexpr uint32_t BACKFACE_COLOR = 0x77440022;
+static inline constexpr uint32_t CLIPPED_BACKFACE_COLOR = 0x77440088;
 
 static constexpr bool TRACE = false;
 
@@ -199,14 +206,14 @@ struct Scene {
     constexpr double SCALE = 300.0;
 
     // Ideally this should happen from the transform itself
-    auto ToScreen = [img](vec3 v) {
+    auto ToScreen = [img](const auto &v) {
         // 0,0 in center.
         int x = std::round((img->Width() >> 1) + v.x * SCALE);
         int y = std::round((img->Height() >> 1) - v.y * SCALE);
         return std::make_pair(x, y);
       };
 
-    auto DrawLine = [&](const vec3 &a, const vec3 &b,
+    auto DrawLine = [&](const auto &a, const auto &b,
                         uint32_t color) {
         const auto &[x0, y0] = ToScreen(a);
         const auto &[x1, y1] = ToScreen(b);
@@ -214,8 +221,14 @@ struct Scene {
                                                0, 0, SCREENW, SCREENH);
         if (clip.has_value()) {
           const auto &[cx0, cy0, cx1, cy1] = clip.value();
-          img->BlendLine32(cx0, cy0, cx1, cy1, color);
+          // img->BlendLine32(cx0, cy0, cx1, cy1, color);
+          img->BlendThickLine32(cx0, cy0, cx1, cy1, 4.0f, color);
         }
+      };
+
+    auto DrawVertex = [&](const auto &a, uint32_t color) {
+        const auto &[x0, y0] = ToScreen(a);
+        img->BlendFilledCircle32(x0, y0, 6.0f, color);
       };
 
     static constexpr double ASPECT_RATIO = 1.0;
@@ -238,6 +251,13 @@ struct Scene {
     [[maybe_unused]]
     vec3 origin = ProjectPt(persp, transform_point(frame, vec3{0, 0, 0}));
 
+    std::vector<std::tuple<float, vec3, vec3, uint32_t>> lines;
+    lines.reserve(mesh.triangles.size() * 3);
+    auto AddLine = [&lines](const vec3 &v0, const vec3 &v1, uint32_t color) {
+        float z = v0.z + v1.z;
+        lines.emplace_back(z, v0, v1, color);
+      };
+
     for (const auto &[a, b, c] : mesh.triangles) {
       vec3 v0 = mesh.vertices[a];
       vec3 v1 = mesh.vertices[b];
@@ -258,14 +278,42 @@ struct Scene {
       uint32_t color = 0xFFFFFFAA;
 
       if (clipped) {
-        color = 0x88000088;
+        color = CLIPPED_FRONTFACE_COLOR;
       } else if (backface) {
-        color = 0x77440022;
+        color = CLIPPED_BACKFACE_COLOR;
       }
 
-      if (!planar01) DrawLine(v0, v1, color);
-      if (!planar12) DrawLine(v1, v2, color);
-      if (!planar20) DrawLine(v2, v0, color);
+      if (!planar01) AddLine(v0, v1, color);
+      if (!planar12) AddLine(v1, v2, color);
+      if (!planar20) AddLine(v2, v0, color);
+    }
+
+    std::sort(lines.begin(), lines.end(),
+              [](const auto &a, const auto &b) {
+                return std::get<0>(a) > std::get<0>(b);
+              });
+
+    for (const auto &[z_, v0, v1, color] : lines) {
+      DrawLine(v0, v1, color);
+    }
+
+    // 2d vertices.
+    std::vector<vec2> vertices;
+    vertices.reserve(mesh.vertices.size());
+    for (const vec3 &v : mesh.vertices) {
+      vertices.emplace_back(v.x, v.y);
+    }
+
+    std::vector<int> hull = GrahamScan(vertices);
+    for (int i = 0; i < hull.size(); i++) {
+      const vec2 &v0 = vertices[hull[i]];
+      const vec2 &v1 = vertices[hull[(i + 1) % hull.size()]];
+
+      DrawLine(v0, v1, 0xFFFF3399);
+    }
+    for (int i = 0; i < hull.size(); i++) {
+      const vec2 &v0 = vertices[hull[i]];
+      DrawVertex(v0, 0xFF3333AA);
     }
   }
 };
@@ -784,7 +832,8 @@ static void InitializeSDL() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  std::string stlfile = "../platonic-dodecahedron.stl";
+  // std::string stlfile = "../platonic-dodecahedron.stl";
+  std::string stlfile = "../archimedean-snubcube.stl";
   if (argc > 1) {
     stlfile = argv[1];
   }

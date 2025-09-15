@@ -13,6 +13,10 @@
 
 // UDIM textures store more than one unit square, which can also be of
 // different resolution.
+//
+// When loading a textured object in Blender, go into "shading" mode
+// and make sure the "base color" input for the "principled BSDF"
+// node is set to "UDIM tiles" and not "single image."
 struct UDimTexture {
   UDimTexture() {}
 
