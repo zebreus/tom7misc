@@ -228,6 +228,7 @@ std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
   return ret;
 }
 
+#if defined(__cpp_lib_span) && __cpp_lib_span >= 202002L
 std::span<const uint32_t> ImageRGBA::data() const {
   return std::span<const uint32_t>((const uint32_t*)rgba.data(), rgba.size());
 }
@@ -235,6 +236,7 @@ std::span<const uint32_t> ImageRGBA::data() const {
 std::span<uint32_t> ImageRGBA::data() {
   return std::span<uint32_t>((uint32_t*)rgba.data(), rgba.size());
 }
+#endif
 
 bool ImageRGBA::Save(std::string_view filename) const {
   std::string filename_string = std::string(filename);

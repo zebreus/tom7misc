@@ -12,6 +12,8 @@
 #include <span>
 #include <string_view>
 
+#include <version>
+
 // ImageRGBA is recommended for most uses, but other formats are
 // supported below.
 struct ImageRGB;
@@ -220,8 +222,10 @@ struct ImageRGBA {
 
   // View of the underlying words. There should be Width() * Height()
   // pixels, each packed R-G-B-A regardless of host byte order.
+#if defined(__cpp_lib_span) && __cpp_lib_span >= 202002L
   std::span<const uint32_t> data() const;
   std::span<uint32_t> data();
+#endif
 
  private:
   friend struct ImageResize;

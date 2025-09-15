@@ -1,8 +1,11 @@
 
 #include "stb_image.h"
-#include <format>
 
 #undef DEBUG_STB_IMAGE
+
+#if DEBUG_STB_IMAGE
+#include <format>
+#endif
 
 // This file was not written to be compliant with this warning.
 #pragma GCC diagnostic ignored "-Wcast-qual"
