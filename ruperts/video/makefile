@@ -1,5 +1,5 @@
 
-default : spirograph.exe math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov math-castle.mov so3-symmetries.mov cod-title.mov alien-dyson-sphere.mov alien-math-hole.mov quantiles.png
+default : spirograph.exe math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov math-castle.mov so3-symmetries.mov cod-title.mov alien-dyson-sphere.mov alien-math-hole.mov quantiles.png churros.mov
 
 REPHRASE=../../rephrase
 BOVEX=$(REPHRASE)/bovex.exe
@@ -72,6 +72,13 @@ spirograph.exe : spirograph.o $(OBJECTS)
 render-quantiles.exe : render-quantiles.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+all-churros.exe : all-churros.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+churros.mov : all-churros.exe
+	./all-churros.exe
 
 quantiles.png : render-quantiles.exe
 	./render-quantiles.exe
