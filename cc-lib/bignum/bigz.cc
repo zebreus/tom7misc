@@ -40,6 +40,7 @@
  */
 
 // TODO: Moved from header. Just inline it? -tom7
+
 #define BZ_OPTIMIZE_PRINT
 
 // what is this?! -tom7
@@ -50,11 +51,13 @@
 #define _CRT_NONSTDC_NO_DEPRECATE       1
 #endif
 
+#include "bignum/bigz.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "bignum/bigz.h"
+#include "bignum/bign.h"
 
 #define MaxInt(a, b)            (((a) < (b)) ? (b) : (a))
 #define AbsInt(x)               (((x) >= 0) ? (x) : -(x))

@@ -731,16 +731,12 @@ static void TestGCD() {
 }
 
 static void TestLog() {
-#if BIG_USE_GMP
   BigInt x = BigInt::LeftShift(BigInt(1), 301);
   double y = BigInt::LogBase2(x);
   CHECK(y >= 300.99 && y <= 301.01) << y;
 
   double z = BigInt::NaturalLog(x);
   CHECK(z >= 208.6 && z <= 208.7) << z;
-#else
-  printf("Warning: LogBase2 not implemented\n");
-#endif
 }
 
 static void TestShift() {
@@ -2054,6 +2050,26 @@ static void TestRatSmallAndLarge() {
   }
 }
 
+static void TestRatDiv() {
+  // Regression:
+  // Make sure 0 / negative doesn't produce something broken.
+  BigRat zero(0);
+  BigRat neg_one(-1);
+  BigRat result = BigRat::Div(zero, neg_one);
+
+  CHECK_REQ(result, zero);
+
+  CHECK_SEQ(result.ToString(), "0");
+  CHECK(BigRat::Sign(result) == 0);
+
+
+  BigRat neg_rat(-2, 3);
+  BigRat result2 = BigRat::Div(zero, neg_rat);
+  CHECK_REQ(result2, zero);
+  CHECK_SEQ(result2.ToString(), "0");
+  CHECK(BigRat::Sign(result2) == 0);
+}
+
 int main(int argc, char **argv) {
   constexpr bool SLOW = true;
 
@@ -2134,11 +2150,13 @@ int main(int argc, char **argv) {
   TestRatCbrt();
   TestRatSign();
   TestRatFloorCeil();
+  TestRatDiv();
 
   TestRatHashCode();
 
   TestRatElementaryBounds();
   TestSimplifyInterval();
+
 
   printf("OK\n");
 }

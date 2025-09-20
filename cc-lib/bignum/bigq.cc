@@ -1,5 +1,5 @@
 /*
- * $Id: bigq.c,v 1.62 2024/04/26 20:45:42 tom7 Exp $
+ * $Id: bigq.c,v 1.64 2025/09/20 14:39:22 tom7 Exp $
  */
 
 /*
@@ -35,6 +35,9 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "bignum/bign.h"
+#include "bignum/bigz.h"
 
 /*
  * Implementation note:
@@ -258,10 +261,16 @@ BqDiv(const BigQ a, const BigQ b) {
                 const BigZ n  = BzMultiply(an, bd);
                 const BigZ d  = BzMultiply(ad, bn);
 
-                if (BzGetSign(n) != BzGetSign(d)) {
-                        BzSetSign(n, BZ_MINUS);
-                } else  {
-                        BzSetSign(n, BZ_PLUS);
+                // Port note: Original code had a bug here where
+                // it would set a negative sign for zero in some
+                // cases. See the test in big_test.cc.
+                int sign_n = BzGetSign(n);
+                if (sign_n != BZ_ZERO) {
+                  if (sign_n != BzGetSign(d)) {
+                    BzSetSign(n, BZ_MINUS);
+                  } else  {
+                    BzSetSign(n, BZ_PLUS);
+                  }
                 }
                 BzSetSign(d, BZ_PLUS);
 
