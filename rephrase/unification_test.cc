@@ -3,6 +3,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "il.h"
 
 namespace il {
@@ -51,6 +52,6 @@ int main(int argc, char **argv) {
 
   il::Simple();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

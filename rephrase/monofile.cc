@@ -242,7 +242,7 @@ struct MonoFile {
     std::vector<std::string> paras_out;
     auto AddParagraph = [&outfile, &paras_out](const std::string &p) {
         paras_out.push_back(p);
-        fprintf(outfile, "%s\n\n", p.c_str());
+        Print(outfile, "{}\n\n", p);
         fflush(outfile);
       };
 

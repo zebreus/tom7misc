@@ -1,10 +1,9 @@
 
 #include "context.h"
 
-#include <cstdio>
-
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 
 namespace il {
 
@@ -28,6 +27,6 @@ int main(int argc, char **argv) {
   il::CreateAndDestroy();
   il::Simple();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

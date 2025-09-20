@@ -135,7 +135,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   auto BytePos = [&tokens](size_t token_pos) {
-      // printf("BytePos: %lld\n", (int64_t) token_pos);
+      // Print("BytePos: {}\n", token_pos);
       CHECK(token_pos < tokens.size()) << token_pos << " vs " << tokens.size();
       return tokens[token_pos].start;
     };
@@ -619,7 +619,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto StrLitExpr = Mark(StrLit)
     >[&](const auto &s_pos_len) -> const Exp * {
         const auto &[s, token_pos, token_len] = s_pos_len;
-        // printf("StrLitExp: %lld\n", (int64_t)token_pos);
+        // Print("StrLitExp: {}\n", token_pos);
         return pool->String(s, BytePos(token_pos));
     };
   const auto BoolExpr = Bool >[&](bool b) { return pool->Bool(b); };
@@ -855,7 +855,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             args.push_back(pool->WildPat());
           }
         }
-        // printf("ProjectExpr: %lld\n", (int64_t)token_start);
+        // Print("ProjectExpr: {}\n", token_start);
 
         return pool->Fn(
             // Not recursive

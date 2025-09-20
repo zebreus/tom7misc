@@ -1,13 +1,13 @@
 
 #include "talk.h"
 
-#include <cstdio>
 #include <cstdlib>
 #include <string>
 
 #include "ansi.h"
-#include "util.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "util.h"
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -22,5 +22,5 @@ int main(int argc, char **argv) {
       Util::BinaryDir(argv[0]),
       argv[1]);
 
-  printf("OK\n");
+  Print("OK\n");
 }

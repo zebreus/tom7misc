@@ -34,7 +34,7 @@ using Transform = Document::Transform;
 
 ImageFont::ImageFont(const std::string &name,
                      const std::string &filename) : name(name) {
-  fprintf(stderr, "Trying to load " AWHITE("%s") "\n", filename.c_str());
+  Print("Trying to load " AWHITE("{}") "\n", filename);
   ttf.reset(new TTF(filename));
   if (VERBOSE) {
     Print("** {} **\n", filename);

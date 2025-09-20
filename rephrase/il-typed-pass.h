@@ -3,13 +3,13 @@
 #define _REPHRASE_IL_CONTEXT_PASS_H
 
 #include <cstdint>
-#include <cstdio>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/print.h"
 #include "bignum/big.h"
 #include "context.h"
@@ -17,8 +17,6 @@
 #include "il.h"
 #include "primop.h"
 #include "unification.h"
-
-#include "ansi.h"
 
 namespace il {
 template<typename... Args>
@@ -47,12 +45,12 @@ struct TypedPass {
       Global gg;
       gg.tyvars = glob.tyvars;
       gg.sym = glob.sym;
-      // printf("Do global %s\n", glob.sym.c_str());
+      // Print("Do global {}\n", glob.sym);
       std::tie(gg.exp, gg.type) = DoExp(GG, glob.exp, args...);
       out.globals.push_back(std::move(gg));
     }
 
-    // printf("Do body: %s\n", ExpString(program.body).c_str());
+    // Print("Do body: {}\n", ExpString(program.body));
     const auto &[be, bt] = DoExp(GG, program.body, args...);
     out.body = be;
     return out;
@@ -838,8 +836,8 @@ struct TypedPass {
         " in sumcase not found in object type: " << TypeString(ot).c_str();
       Context GG = G.Insert(x, {{}, it->second});
       if (TYPED_PASS_VERBOSE) {
-        printf(AYELLOW("sumcase") " bound " APURPLE("%s") " : %s\n",
-               x.c_str(), TypeString(it->second).c_str());
+        Print(AYELLOW("sumcase") " bound " APURPLE("{}") " : {}\n",
+              x, TypeString(it->second));
       }
       const auto &[ae, at] = DoExp(GG, arm, args...);
       narms.emplace_back(lab, x, ae);

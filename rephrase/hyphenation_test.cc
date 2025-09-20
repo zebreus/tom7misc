@@ -60,6 +60,6 @@ int main(int argc, char **argv) {
 
   TestHyphenations();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

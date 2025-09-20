@@ -78,7 +78,7 @@ struct BovexOpt {
     auto it = var_nums.find(var);
     if (it == var_nums.end()) {
       if (verbose > 0) {
-        printf("New optimization var " ACYAN("%s") "\n", var.c_str());
+        Print("New optimization var " ACYAN("{}") "\n", var);
       }
       var_nums[var] = (int)vars.size();
       vars.emplace_back(var, low, start, high);
@@ -130,7 +130,7 @@ struct BovexExecution : public bc::Execution {
 
   void OutputLayoutHook(int page_idx, int frame_idx,
                         const bc::Value *v) override {
-    // printf(AGREEN("OUTPUT") "!\n");
+    // Print(AGREEN("OUTPUT") "!\n");
     pages[std::make_pair(page_idx, frame_idx)].push_back(ValueToDocTree(v));
   }
 
@@ -160,16 +160,16 @@ struct BovexExecution : public bc::Execution {
     for (const std::string &ipath : include_paths) {
       std::string f = Util::DirPlus(ipath, filename);
       if (Util::ExistsFile(f)) {
-        printf("Found " AGREEN("%s") " in " ACYAN("%s") "\n",
-               std::string(filename).c_str(), f.c_str());
+        Print("Found " AGREEN("{}") " in " ACYAN("{}") "\n",
+              filename, f);
         return f;
       }
     }
     if (verbose > 0) {
-      printf("File " ARED("%s") " not found in any include path:\n",
-             std::string(filename).c_str());
+      Print("File " ARED("{}") " not found in any include path:\n",
+            filename);
       for (const std::string &ipath : include_paths) {
-        printf("  " AGREY("%s") "\n", ipath.c_str());
+        Print("  " AGREY("{}") "\n", ipath);
       }
     }
     return std::string(filename);
@@ -232,11 +232,11 @@ static int Bovex(const std::string &program_dir,
   }
 
   if (verbose > 0) {
-    printf(AWHITE("Remaining args:"));
+    Print(AWHITE("Remaining args:"));
     for (const std::string &arg : leftover) {
-      printf(" " AGREY("[") "%s" AGREY("]"), arg.c_str());
+      Print(" " AGREY("[") "{}" AGREY("]"), arg);
     }
-    printf("\n");
+    Print("\n");
   }
 
   if (verbose > 16) {
@@ -303,7 +303,7 @@ static int Bovex(const std::string &program_dir,
     BovexExecution::State state = execution.Start();
 
     if (verbose > 0) {
-      printf(AWHITE("Running") ".\n");
+      Print(AWHITE("Running") ".\n");
       fflush(stdout);
     }
     Timer exec_timer;
@@ -312,7 +312,7 @@ static int Bovex(const std::string &program_dir,
     total_collected += state.collected;
 
     if (verbose > 0) {
-      printf(AWHITE("Executed") " in %s.\n", ANSI::Time(exec_sec).c_str());
+      Print(AWHITE("Executed") " in {}.\n", ANSI::Time(exec_sec));
     }
 
     did_rephrase = did_rephrase || execution.did_rephrase;
@@ -321,7 +321,7 @@ static int Bovex(const std::string &program_dir,
 
     // Measure final badness.
     const double total_badness = execution.total_badness;
-    printf("Total badness: " ARED("%.11g") "\n", total_badness);
+    Print("Total badness: " ARED("{:.11g}") "\n", total_badness);
     opt.Result(total_badness);
 
     if (!best_badness.has_value() || total_badness < best_badness.value()) {
@@ -360,7 +360,7 @@ static int Bovex(const std::string &program_dir,
   rephrasing->Save();
 
   if (verbose > 1) {
-    printf(AWHITE("The document") ":\n");
+    Print(AWHITE("The document") ":\n");
     for (const auto &[page_idx, anim] : pages) {
       for (const auto &[frame_idx, doc] : anim) {
         Print("==== PAGE {} FRAME {} ====\n", page_idx, frame_idx);

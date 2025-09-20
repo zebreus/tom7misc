@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "base64.h"
 #include "image.h"
 #include "util.h"
@@ -54,28 +55,28 @@ struct AchievementsImpl : public Achievements {
     if (!achieved.contains(name)) {
       if (trophy.get() != nullptr) {
         for (int y = 0; y < trophy->Height(); y++) {
-          printf("  ");
+          Print("  ");
           for (int x = 0; x < trophy->Width(); x++) {
             const auto &[r, g, b, a] = trophy->GetPixel(x, y);
             if (a > 127) {
-              printf("%s██" ANSI_RESET,
-                     ANSI::ForegroundRGB(r, g, b).c_str());
+              Print("{}██" ANSI_RESET,
+                    ANSI::ForegroundRGB(r, g, b));
             } else {
-              printf("  ");
+              Print("  ");
             }
           }
-          printf("\n");
+          Print("\n");
         }
       }
 
-      printf("\n"
-             AWHITE("       Achievement Unlocked!") "\n"
-             ACYAN("          ** %s **") "\n"
-             "%s\n\n",
-             name.c_str(), description.c_str());
+      Print("\n"
+            AWHITE("       Achievement Unlocked!") "\n"
+            ACYAN("          ** {} **") "\n"
+            "{}\n\n",
+            name, description);
 
       FILE *f = fopen(ACHIEVEMENTS_FILE, "ab");
-      fprintf(f, "%s\n", name.c_str());
+      Print(f, "{}\n", name);
       fclose(f);
     }
   }

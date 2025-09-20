@@ -88,8 +88,8 @@ void Execution::InternalFail(const std::string &msg, State *state) {
 
 // Certain hooks are useful for testing.
 void Execution::FailHook(const std::string &msg) {
-  fprintf(stderr, AWHITE("[") ARED("FAIL") AWHITE("]")
-          ": %s\n", msg.c_str());
+  Print(stderr, AWHITE("[") ARED("FAIL") AWHITE("]")
+        ": {}\n", msg);
   LOG(FATAL) << "Program aborted with " << AWHITE("fail") << ".";
 }
 
@@ -1312,10 +1312,10 @@ void Execution::Step(State *state) {
   // prints the stack trace as an effect.
   int error_ip = frame.ip;
   auto Error = [this, state, &error_ip]() -> std::string {
-      fprintf(stderr, "\n\n" ARED("Error") ":\n");
+      Print(stderr, "\n\n" ARED("Error") ":\n");
 
       if (state->stack.empty()) {
-        fprintf(stderr, "(stack is empty!)");
+        Print(stderr, "(stack is empty!)");
       } else {
         StackFrame &frame = state->stack.back();
 
@@ -1329,29 +1329,29 @@ void Execution::Step(State *state) {
           }
         }
 
-        fprintf(stderr, "In code " AYELLOW("%s") "\n", fn.c_str());
+        Print(stderr, "In code " AYELLOW("{}") "\n", fn);
 
-        fprintf(stderr, AWHITE("Globals") ":\n");
+        Print(stderr, AWHITE("Globals") ":\n");
         for (const auto &[global, value] : state->globals) {
           #define AGLOBAL_LAB(s) AFGCOLOR(200, 160, 40, s)
-          fprintf(stderr, " " AGLOBAL_LAB("%s") " = %s\n",
-                  global.c_str(), ColorValuePtrString(value).c_str());
+          Print(stderr, " " AGLOBAL_LAB("{}") " = {}\n",
+                global, ColorValuePtrString(value));
         }
 
-        fprintf(stderr, AWHITE("Locals") ":\n");
+        Print(stderr, AWHITE("Locals") ":\n");
         for (const auto &[local, value] : frame.locals) {
-          fprintf(stderr, " " ABLUE("%s") " = %s\n",
-                  local.c_str(), ColorValuePtrString(value).c_str());
+          Print(stderr, " " ABLUE("{}") " = {}\n",
+                local, ColorValuePtrString(value));
         }
 
-        fprintf(stderr, AWHITE("Executing") ":\n");
+        Print(stderr, AWHITE("Executing") ":\n");
         for (int i = error_ip - 3; i < error_ip + 3; i++) {
           if (i >= 0 && i < (int)frame.insts->size()) {
-            fprintf(stderr, "%s%05d" ANSI_RESET " %s\n",
-                    // color for line number
-                    (i == error_ip) ? ARED(">") ANSI_WHITE : " " ANSI_GREY,
-                    i,
-                    ColorInstString((*frame.insts)[i]).c_str());
+            Print(stderr, "{}{:05d}" ANSI_RESET " {}\n",
+                  // color for line number
+                  (i == error_ip) ? ARED(">") ANSI_WHITE : " " ANSI_GREY,
+                  i,
+                  ColorInstString((*frame.insts)[i]));
           }
         }
       }
@@ -1621,7 +1621,7 @@ void Execution::GC(State *state) {
   //    - copying GC to compact heap
   static constexpr bool VERBOSE_GC = true;
   if (VERBOSE_GC) {
-    fprintf(stderr, "GC:\n");
+    Print(stderr, "GC:\n");
   }
 
   Timer gc_timer;
@@ -1662,10 +1662,10 @@ void Execution::GC(State *state) {
 
   double mark_sec = gc_timer.Seconds();
   if (VERBOSE_GC) {
-    fprintf(stderr, "  Mark %zu/%zu allocs in %s\n",
-            reachable.size(),
-            state->heap.used.size(),
-            ANSI::Time(mark_sec).c_str());
+    Print(stderr, "  Mark {}/{} allocs in {}\n",
+          reachable.size(),
+          state->heap.used.size(),
+          ANSI::Time(mark_sec));
   }
 
   // Sweep.
@@ -1685,8 +1685,8 @@ void Execution::GC(State *state) {
 
   double total_sec = gc_timer.Seconds();
   if (VERBOSE_GC) {
-    fprintf(stderr, "  Finished in %s total.\n",
-            ANSI::Time(total_sec).c_str());
+    Print(stderr, "  Finished in {} total.\n",
+          ANSI::Time(total_sec));
   }
 
 }

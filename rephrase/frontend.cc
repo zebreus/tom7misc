@@ -41,7 +41,7 @@ Program Frontend::RunFrontend(const std::string &filename,
                               Options options) {
   Timer load_timer;
   if (verbose > 0) {
-    printf(AWHITE("Loading/lexing...") "\n");
+    Print(AWHITE("Loading/lexing...") "\n");
     fflush(stdout);
   }
 
@@ -187,12 +187,12 @@ Program Frontend::RunFrontendInternal(
 
     if (verbose > 0) {
       // TODO: Get stats.
-      printf(AWHITE("Simplified") " in %s:\n",
-             ANSI::Time(simplify_sec).c_str());
+      Print(AWHITE("Simplified") " in {}:\n",
+            ANSI::Time(simplify_sec));
 
       if (verbose > 1) {
-        printf(AFGCOLOR(200, 230, 200, "%s") "\n",
-               il::ProgramString(il_pgm).c_str());
+        Print(AFGCOLOR(200, 230, 200, "{}") "\n",
+              il::ProgramString(il_pgm));
         fflush(stdout);
       }
     }

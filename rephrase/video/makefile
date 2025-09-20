@@ -4,7 +4,43 @@ default: slides
 # not comparison -- it's so slow!!
 all : slides/video.talk lorem/lorem.talk knuth/knuth.talk editor/editor.talk torment/torment.talk tom7/tom7.talk gamefaq/gamefaq.talk features/features.talk motherbrain/motherbrain.talk
 
+GMP_LFLAGS=-lgmp
+GMP_CFLAGS=-DBIG_USE_GMP
+
+CXX=g++
+CC=gcc
+ifeq ($(UNAME),Darwin)
+  GMP_LFLAGS=`pkg-config --libs gmp`
+  GMP_CFLAGS=`pkg-config --cflags gmp` -DBIG_USE_GMP
+
+else
+  # Linux (and msys2)
+
+  # Check if g++ is actually clang
+  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l), 1)
+    CLANG=true
+    PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    # g++ says it supports --size but it doesn't work
+    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
+  endif
+
+endif
+
+OPTFLAGS=-O3 -march=native -mtune=native
+
+# These come from tom7's repository.
+CC_LIB=../../cc-lib
+
+CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/image-resize.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/qr-code.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o $(CC_LIB)/integer-voronoi.o $(CC_LIB)/bounds.o $(CC_LIB)/base64.o $(CC_LIB)/status-bar.o $(CC_LIB)/png.o
+
+CXXFLAGS = $(OPTFLAGS) -I. $(GMP_CFLAGS) -I$(CC_LIB) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
+LDFLAGS  = $(OPTFLAGS) -m64 $(GMP_LFLAGS) $(PLATFORM_LDFLAGS)
+
 slides : slides/video.talk
+
+wordle.exe : wordle.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 slides/video.talk : video.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
 	make -j -C .. makecodeimage.exe maketalk.exe bovex.exe

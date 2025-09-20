@@ -127,7 +127,7 @@ void MovieDocument::GenerateOutput(
     // TODO: We could easily repeat frames when the duration is set.
     // But I should figure out what the right semantics is.
     if (frame.duration != 0) {
-      fprintf(stderr, "Note: Ignoring duration\n");
+      Print(stderr, "Note: Ignoring duration\n");
     }
 
     recorder->AddFrame(*frame.image);

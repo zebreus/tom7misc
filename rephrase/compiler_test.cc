@@ -4,9 +4,10 @@
 #include <cstdio>
 #include <variant>
 
-#include "bc.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "bc.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -163,6 +164,6 @@ int main(int argc, char **argv) {
   Regression5668();
   Regression5743();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

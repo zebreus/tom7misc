@@ -9,6 +9,7 @@
 #include "ansi.h"
 #include "assembling.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bc.h"
 #include "closure-conversion.h"
 #include "frontend.h"
@@ -40,16 +41,16 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   il::Program il_pgm = std::move(pgm_in);
 
   if (verbose > 1) {
-    printf("\n\n" AWHITE("Closure convert this") ":\n"
-           "%s\n\n", il::ProgramString(il_pgm).c_str());
+    Print("\n\n" AWHITE("Closure convert this") ":\n"
+          "{}\n\n", il::ProgramString(il_pgm));
     fflush(stdout);
   }
 
   il_pgm = closure_conversion.Convert(il_pgm);
 
   if (verbose > 1) {
-    printf("\n\n" AWHITE("Simplify (post closure-conversion) this") ":\n"
-           "%s\n\n", il::ProgramString(il_pgm).c_str());
+    Print("\n\n" AWHITE("Simplify (post closure-conversion) this") ":\n"
+          "{}\n\n", il::ProgramString(il_pgm));
   }
 
   il::Simplification simplification(frontend.Pool());
@@ -64,28 +65,28 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
                                    il::ClosureConversion::SimplificationOpts());
 
   if (verbose > 2) {
-    printf("\n\n" AWHITE("Flatten this") ":\n"
-           "%s\n\n", il::ProgramString(il_pgm).c_str());
+    Print("\n\n" AWHITE("Flatten this") ":\n"
+          "{}\n\n", il::ProgramString(il_pgm));
     fflush(stdout);
   }
 
   il_pgm = flatten_globals.Flatten(il_pgm);
 
   if (verbose > 1) {
-    printf("\n\n" AWHITE("Convert this to bytecode") ":\n"
-           "%s\n\n", il::ProgramString(il_pgm).c_str());
+    Print("\n\n" AWHITE("Convert this to bytecode") ":\n"
+          "{}\n\n", il::ProgramString(il_pgm));
     fflush(stdout);
   }
 
   bc::SymbolicProgram bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
 
   if (verbose > 0) {
-    printf("\n" AWHITE("Optimizing...") "\n");
+    Print("\n" AWHITE("Optimizing...") "\n");
 
     if (verbose > 1) {
-      printf("\n\n" AWHITE("Optimize this") ":\n");
+      Print("\n\n" AWHITE("Optimize this") ":\n");
       bc::PrintSymbolicProgram(bc_symbolic_pgm);
-      printf("\n");
+      Print("\n");
       fflush(stdout);
     }
   }
@@ -96,14 +97,14 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   const double optimize_sec = optimize_timer.Seconds();
 
   if (verbose > 0) {
-    printf(AWHITE("Optimized") " in %s:\n",
-           ANSI::Time(optimize_sec).c_str());
+    Print(AWHITE("Optimized") " in {}:\n",
+          ANSI::Time(optimize_sec));
   }
 
   if (verbose > 1) {
-    printf("\n\n" AWHITE("Assemble this") ":\n");
+    Print("\n\n" AWHITE("Assemble this") ":\n");
     bc::PrintSymbolicProgram(bc_symbolic_pgm);
-    printf("\n");
+    Print("\n");
     fflush(stdout);
   }
 
@@ -111,13 +112,13 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
 
   if (verbose > 0) {
     if (verbose > 1) {
-      printf("\n\n" AWHITE("Bytecode") ":\n");
+      Print("\n\n" AWHITE("Bytecode") ":\n");
       bc::PrintProgram(bc_pgm);
-      printf("\n");
+      Print("\n");
     }
     const auto &[data_bytes, total_insts] = bc::ProgramSize(bc_pgm);
-    printf("Program size: " ABLUE("%zu") " bytes data, "
-           APURPLE("%zu") " insts.\n", (size_t)data_bytes, (size_t)total_insts);
+    Print("Program size: " ABLUE("{}") " bytes data, "
+          APURPLE("{}") " insts.\n", data_bytes, total_insts);
     fflush(stdout);
   }
 

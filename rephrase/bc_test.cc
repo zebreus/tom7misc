@@ -1,13 +1,14 @@
 
 #include "bc.h"
 
-#include "base/logging.h"
-#include "bignum/big.h"
 #include <cstdint>
-#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "base/logging.h"
+#include "base/print.h"
+#include "bignum/big.h"
 
 namespace bc {
 
@@ -45,6 +46,6 @@ static void TestValueEq() {
 int main(int argc, char **argv) {
   bc::TestValueEq();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

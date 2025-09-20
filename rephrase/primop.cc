@@ -1,14 +1,14 @@
 
 #include "primop.h"
 
-#include <cstdio>
 #include <tuple>
 #include <utility>
 #include <string>
 #include <vector>
 
-#include "il.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "il.h"
 
 const char *PrimopString(Primop po) {
   switch (po) {
@@ -378,7 +378,7 @@ bool IsPrimopTotal(Primop p) {
     LOG(FATAL) << "INVALID primop.";
   }
 
-  printf("Uknown primop in IsPrimopTotal");
+  Print("Uknown primop in IsPrimopTotal");
   return false;
 }
 

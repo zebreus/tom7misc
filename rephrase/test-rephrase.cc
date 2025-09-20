@@ -18,10 +18,9 @@
 #include "base/print.h"
 #include "color-util.h"
 #include "gtl/top_n.h"
+#include "llm.h"
 #include "timer.h"
 #include "util.h"
-
-#include "llm.h"
 
 using namespace std;
 
@@ -110,11 +109,11 @@ struct Rephrasing {
 
   void WriteResult(const Result &res) {
     FILE *f = fopen("results.txt", "a");
-    fprintf(f,
-            "psum %.4f, pnum %d, avg %.4f%%, %.1f sec:\n"
-            "%s\n\n",
-            res.psum, res.pnum, (100.0 * res.psum) / res.pnum,
-            res.sec, res.text.c_str());
+    Print(f,
+          "psum {:.4f}, pnum {}, avg {:.4f}%, {:.1f} sec:\n"
+          "{}\n\n",
+          res.psum, res.pnum, (100.0 * res.psum) / res.pnum,
+          res.sec, res.text);
     fclose(f);
   }
 

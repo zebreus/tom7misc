@@ -402,29 +402,29 @@ void DebugPrintDocTree(const DocTree &doc) {
         // We should be careful about normalizing whitespace here,
         // since it sometimes has meaning.
         const std::string t = Util::NormalizeWhitespace(doc.text);
-        printf("%s" ABGCOLOR(30, 30, 30, AFGCOLOR(255, 255, 255, "%s")) "\n",
-               Pad(depth).c_str(),
-               t.c_str());
+        Print("{}" ABGCOLOR(30, 30, 30, AFGCOLOR(255, 255, 255, "{}")) "\n",
+              Pad(depth),
+              t);
       } else {
         // Then it is a regular node.
         if (!doc.text.empty()) {
-          printf(ARED("INVALID TEXT \"") "%s" ARED("\""),
-                 doc.text.c_str());
+          Print(ARED("INVALID TEXT \"") "{}" ARED("\""),
+                doc.text);
         }
 
-        printf("%s" ATAG("<"), Pad(depth).c_str());
+        Print("{}" ATAG("<"), Pad(depth));
         bool first = true;
         for (const auto &[k, v] : doc.attrs) {
-          if (!first) printf(", ");
-          printf(AATTRNAME("%s") " = " AATTRVAL("%s"),
-                 k.c_str(), AttrValString(v).c_str());
+          if (!first) Print(", ");
+          Print(AATTRNAME("{}") " = " AATTRVAL("{}"),
+                k, AttrValString(v));
           first = false;
         }
-        printf(ATAG(">") "\n");
+        Print(ATAG(">") "\n");
         for (const auto &child : doc.children) {
           Rec(depth + 2, *child);
         }
-        printf("%s" ATAG("</>") "\n", Pad(depth).c_str());
+        Print("{}" ATAG("</>") "\n", Pad(depth));
       }
     };
   Rec(0, doc);
@@ -500,8 +500,8 @@ Document::BoxifyText(const TextProps &props,
   std::vector<DocTree> out;
 
   if (VERBOSE) {
-    printf("Boxify text with desc " ABLUE("%s") "\n",
-           FontDescriptionString(props.desc).c_str());
+    Print("Boxify text with desc " ABLUE("{}") "\n",
+          FontDescriptionString(props.desc));
   }
 
   const Font *font = GetDescribedFont(props.desc);
@@ -585,7 +585,7 @@ Document::BoxifyText(const TextProps &props,
     for (int hyidx = 0; hyidx < (int)hyphen_parts.size(); hyidx++) {
       const std::string &hypart = hyphen_parts[hyidx];
       if (VERBOSE) {
-        printf(AGREY("[%s]") "\n", hypart.c_str());
+        Print(AGREY("[{}]") "\n", hypart);
       }
       auto codepoints = UTF8Codepoints(hypart);
       for (auto it = codepoints.begin(); it != codepoints.end(); ++it) {
@@ -602,12 +602,12 @@ Document::BoxifyText(const TextProps &props,
           }();
 
         if (VERBOSE) {
-          printf("[%s] -> [%s] %.3f width%s%s\n",
-                 UTF8::Encode(prev).c_str(),
-                 UTF8::Encode(codepoint).c_str(),
-                 char_width,
-                 break_for_kern ? " " AGREEN("kern") : "",
-                 break_for_hyphen ? " " APURPLE("hyph") : "");
+          Print("[{}] -> [{}] {:.3f} width{}{}\n",
+                UTF8::Encode(prev),
+                UTF8::Encode(codepoint),
+                char_width,
+                break_for_kern ? " " AGREEN("kern") : "",
+                break_for_hyphen ? " " APURPLE("hyph") : "");
         }
 
         if (break_for_kern || break_for_hyphen) {
@@ -653,19 +653,19 @@ Document::BoxifyText(const TextProps &props,
           }
 
           if (VERBOSE) {
-            printf("Kerned '%s'+'%s'; chunk now '%s'\n",
-                   UTF8::Encode(prev).c_str(),
-                   UTF8::Encode(codepoint).c_str(),
-                   chunk.c_str());
+            Print("Kerned '{}'+'{}'; chunk now '{}'\n",
+                  UTF8::Encode(prev),
+                  UTF8::Encode(codepoint),
+                  chunk);
           }
         } else {
           // Extend the chunk.
           chunk += UTF8::Encode(codepoint);
           chunk_width += char_width;
           if (VERBOSE) {
-            printf("Added '%s'; chunk now '%s'\n",
-                   UTF8::Encode(codepoint).c_str(),
-                   chunk.c_str());
+            Print("Added '{}'; chunk now '{}'\n",
+                  UTF8::Encode(codepoint),
+                  chunk);
           }
         }
         prev = codepoint;
@@ -705,15 +705,15 @@ Document::BoxifyText(const TextProps &props,
   }
 
   if (VERBOSE) {
-    printf(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ==== Boxified ==== "))
-           "\n");
+    Print(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ==== Boxified ==== "))
+          "\n");
 
     for (const DocTree &x : out) {
       DebugPrintDocTree(x);
     }
 
-    printf(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ================== "))
-           "\n");
+    Print(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ================== "))
+          "\n");
   }
 
   return out;
@@ -784,9 +784,9 @@ std::string Document::AddImage(std::unique_ptr<ImageRGBA> img) {
 const Font *Document::GetFontByName(const std::string &font_name) {
   const auto it = fonts.find(font_name);
   if (it == fonts.end()) {
-    printf("Registered fonts:\n");
+    Print("Registered fonts:\n");
     for (const auto &[font_name, _] : fonts) {
-      printf("  %s\n", font_name.c_str());
+      Print("  {}\n", font_name);
     }
     LOG(FATAL) << "Unknown font name " << font_name;
   }
@@ -843,8 +843,8 @@ const Font *Document::GetDescribedFont(const FontDescription &desc) {
   const FontFamily &family = it->second;
 
   if (VERBOSE) {
-    printf("Get described font: " APURPLE("%s") "\n",
-           FontDescriptionString(desc).c_str());
+    Print("Get described font: " APURPLE("{}") "\n",
+          FontDescriptionString(desc));
   }
 
   if (desc.font_bold && desc.font_italic && family.bold_italic)
@@ -998,7 +998,7 @@ Document::PackBoxes(Algorithm algo,
   auto GetBox = [](const DocTree &doc) -> BoxIn {
       const double *width = doc.GetDoubleAttr("width");
       if (width == nullptr) {
-        printf("\n\nErroneous doc:\n");
+        Print("\n\nErroneous doc:\n");
         DebugPrintDocTree(doc);
         LOG(FATAL) << "In pack-boxes, encountered a top-level box "
           "that has no width. This probably means that you didn't do get-boxes "
@@ -1132,7 +1132,7 @@ Document::PackBoxes(Algorithm algo,
       constexpr int MARGIN_SIZE = 2;
       int WORD_COL = wordlen * FONT_SIZE + 4;
       ImageRGBA img(WORD_COL + num_before * CELL_SIZE, num_words * CELL_SIZE);
-      printf("Table size %d x %d\n", num_before, num_words);
+      Print("Table size {} x {}\n", num_before, num_words);
 
       // Get all values so we can compute rank.
       std::vector<double> values;
@@ -1220,7 +1220,7 @@ Document::PackBoxes(Algorithm algo,
         auto co = table->GetCell(word_idx, before);
         CHECK(co.has_value());
         const auto &[p, s, b] = co.value();
-        // printf("At %d,%d we have %s\n", dx, dy, b ? "BREAK" : "NO");
+        // Print("At {},{} we have {}\n", dx, dy, b ? "BREAK" : "NO");
         if (b) {
           int sx = 0;
           int sy = start_word;
@@ -1460,7 +1460,7 @@ void Document::PlaceStickersRec(Context context,
     const ImageRGBA *image = GetImageByName(*img);
     Transform ct = Translate(transform, *x, *y);
     if (image == nullptr) {
-      fprintf(stderr, ARED("Missing image: ") "%s\n", img->c_str());
+      Print(ARED("Missing image: ") "{}\n", *img);
     } else {
       page->DrawImage(ct.dx, ct.dy, *width, *height, *image);
     }
@@ -1480,7 +1480,7 @@ void Document::PlaceStickersRec(Context context,
   if (const std::string *font_name = doc.GetStringAttr("font-name")) {
     const Font *f = GetFontByName(*font_name);
     if (f == nullptr) {
-      fprintf(stderr, ARED("Missing font: ") "%s\n", font_name->c_str());
+      Print(ARED("Missing font: ") "{}\n", *font_name);
     } else {
       context.font = f;
     }

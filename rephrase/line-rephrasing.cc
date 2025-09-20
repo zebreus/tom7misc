@@ -5,16 +5,15 @@
 
 #include "line-rephrasing.h"
 
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 #include <utility>
 
-#include "base/logging.h"
 #include "ansi.h"
-
+#include "base/logging.h"
+#include "base/print.h"
 #include "color-util.h"
 #include "llama.h"
 #include "llm.h"
@@ -91,8 +90,8 @@ std::string LineRephrasing::RephraseOnce(
     pq.pop();
 
     if (!pend.prefix.empty()) {
-      printf(ABGCOLOR(50, 50, 50, "%s") ABLUE("...") "\n",
-             pend.prefix.c_str());
+      Print(ABGCOLOR(50, 50, 50, "{}") ABLUE("...") "\n",
+            pend.prefix);
       llm->InsertString(pend.prefix);
     }
     line = pend.prefix;
@@ -138,7 +137,7 @@ std::string LineRephrasing::RephraseOnce(
       const auto &[id, prob] = probdist[idx];
 
       std::string tok = llm->TokenString(id);
-      printf("[%s] ", ColorProbString(tok, prob).c_str());
+      Print("[{}] ", ColorProbString(tok, prob));
 
       // n.b. newline should be prohibited by the regex.
       const bool ended = id == llm->context.EOSToken() ||
@@ -163,7 +162,7 @@ std::string LineRephrasing::RephraseOnce(
       // Skip it if we've already done this prefix.
       std::string new_line = line + tok;
       if (already.contains(new_line)) {
-        printf(AORANGE("repeat") "\n");
+        Print(AORANGE("repeat") "\n");
         continue;
       }
 
@@ -177,14 +176,14 @@ std::string LineRephrasing::RephraseOnce(
           std::string alt_line = line + alt_tok;
           if (!already.contains(new_line)) {
 
-            printf("or [%s] ", ColorProbString(alt_tok, alt_prob).c_str());
+            Print("or [{}] ", ColorProbString(alt_tok, alt_prob));
 
             pq.push(Pending{.prefix = alt_line, .prob = alt_prob});
           }
         }
       }
 
-        printf("\n");
+      Print("\n");
 
       // Now take the token.
       llm->TakeToken(id);

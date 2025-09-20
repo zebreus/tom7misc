@@ -1,12 +1,12 @@
 
 #include "il-typed-pass.h"
 
-#include "frontend.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "context.h"
+#include "frontend.h"
 #include "il.h"
-#include <cstdio>
 
 static constexpr bool VERBOSE = false;
 
@@ -61,6 +61,6 @@ int main(int argc, char **argv) {
 
   TestIdentity();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

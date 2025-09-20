@@ -61,7 +61,7 @@ void PrintColor(const std::vector<Color> &colors,
       break;
     }
 
-    printf("%s %c " ANSI_RESET, a, guess[i] & ~32);
+    Print("{} {:c} " ANSI_RESET, a, guess[i] & ~32);
   }
 }
 
@@ -91,7 +91,7 @@ static void PrintBoard(
     const std::vector<std::pair<std::string, std::vector<Color>>> &board) {
   for (const auto &[guess, colors] : board) {
     PrintColor(colors, guess);
-    printf("\n");
+    Print("\n");
   }
 }
 
@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
       });
 
 
-  printf("\n------\n");
+  Print("\n------\n");
 
 
   for (const std::string secret : { "sorry", "fails", }) {
@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
 
               if ((green == 3 && yellow == 1) ||
                   (green == 1 && yellow == 3)) {
-                printf(AWHITE("Good!") " \n");
+                Print(AWHITE("Good!") " \n");
                 ShowPuzzle(words, secret,
                            {line1, line2, line3, line4, line5 });
               }
