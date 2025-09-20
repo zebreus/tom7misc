@@ -836,7 +836,7 @@ double BigRat::ToDoubleIterative(const BigRat &r_in) {
   }
   if (BigRat::Greater(r, rub)) {
     return neg ? -std::numeric_limits<double>::infinity() :
-      -std::numeric_limits<double>::infinity();
+      std::numeric_limits<double>::infinity();
   }
 
   // Now we have that lb < r <= ub.

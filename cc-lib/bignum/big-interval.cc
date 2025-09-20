@@ -205,6 +205,7 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
   BigRat current_term = x;
 
   const BigRat epsilon{BigInt(1), inv_epsilon};
+  const BigRat neg_epsilon = -epsilon;
 
   bool decreasing = false;
   for (BigInt two_k(2); true; two_k += 2) {
@@ -220,7 +221,7 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
           return Bigival(sum, next, false, false);
         }
       } else {
-        if (epsilon <= current_term) {
+        if (neg_epsilon <= current_term) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(next, sum, false, false);
         }
@@ -251,6 +252,7 @@ Bigival Bigival::Cos(
   if (BigRat::Sign(x) == 0) return Bigival(1);
 
   const BigRat epsilon{BigInt(1), inv_epsilon};
+  const BigRat neg_epsilon = -epsilon;
 
   BigRat sum(0);
 
@@ -286,7 +288,7 @@ Bigival Bigival::Cos(
           return Bigival(std::move(sum), std::move(next), false, false);
         }
       } else {
-        if (epsilon <= current_term) {
+        if (neg_epsilon <= current_term) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(std::move(next), std::move(sum), false, false);
         }
