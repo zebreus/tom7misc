@@ -12,4 +12,10 @@ inline void Print(std::format_string<Args...> fmt, Args &&...args) {
   fwrite(str.data(), 1, str.size(), stdout);
 }
 
+template<typename... Args>
+inline void Print(FILE *out, std::format_string<Args...> fmt, Args &&...args) {
+  auto str = std::format(fmt, std::forward<Args>(args)...);
+  fwrite(str.data(), 1, str.size(), out);
+}
+
 #endif
