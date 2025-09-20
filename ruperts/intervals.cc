@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "ansi.h"
-#include "big-interval.h"
 #include "big-polyhedra.h"
+#include "bignum/big-interval.h"
 #include "bignum/big.h"
 
 static constexpr bool SELF_CHECK = false;

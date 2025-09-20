@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "big-interval.h"
 #include "big-polyhedra.h"
+#include "bignum/big-interval.h"
 #include "bignum/big.h"
 
 // Vec3 where each component is an interval.

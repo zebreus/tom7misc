@@ -5,10 +5,16 @@ This is code relating to my paper:
    Tom Murphy VII, SIGBOVIK 2025, April 2025
    http://tom7.org/ruperts/
 
-which attempts unsuccessfully to resolve the question of whether
-there exist Rupert configurations for the Archimedean and Catalan
-solids (there are five unknown ones). You can read the paper for
-more background and more details.
+   and video
+   "Rupert's Snub Cube and other Math Holes"
+   @tom7 aka suckerpinch
+   https://youtu.be/QH4MviUE0_s
+
+which attempts unsuccessfully to resolve the question of whether there
+exist Rupert configurations for the Archimedean and Catalan solids
+(there are five unknown ones) and to find new "Noperts." You can read
+the paper for more background and more details. The video covers some
+newer attempts and results.
 
 Lots of this code works well, but I caution you against assuming
 that something in here is correct! There are things in here that
@@ -24,33 +30,36 @@ in directories parallel to this one. You need: cc-lib, codec, sqlite.
 After that, just run "make -j 12".
 
 External dependencies:
-  The GPU code needs OpenCL. The CPU versions are more mature, so I
+  The GPU code needs OpenCL. The CPU versions are way more mature, so I
   recommend looking at those to the extent that I recommend looking at
   anything.
 
-  The CPU versions benefit from GMP if you have it. If not, comment
-  out those lines at the beginning of the makefile and it will instead
-  use my plain C++ implementations from cc-lib.
+  The CPU versions that work with arbitrary precision rationals greatly
+  benefit from GMP if you have it. If not, comment out those lines at
+  the beginning of the makefile and it will instead use my plain, slow
+  C++ implementations from cc-lib.
 
 
-To reproduce results from the paper, start with ruperts.exe to generate
-solutions to various solids. You'll want to edit the code in main
-to enable the thing you want to do. Note that it will "solve" the
+To reproduce results from the paper, start with ruperts.exe to
+generate solutions to various solids. You'll want to edit the code in
+main to enable the thing you want to do. Note that it will "solve" the
 wishlist polyhedra due to floating point roundoff. If these are very
-close to 0.0 clearance or 1.0 ratio, then they are probably not
-actual solutions. ratperts can see if they are close to actual solutions.
+close to 0.0 clearance or 1.0 ratio, then they are probably not actual
+solutions (although sometimes such solutions do exist!). ratperts can
+see if they are close to actual solutions.
 
 Solutions are stored in an sqlite database (solutions.h), and you can
 see the current solutions with scoreboard.exe.
 
 If you have solutions and want to make them better, run imperts.exe.
 
-If you want to try to find more polyhedra that are hard to solve, run
-noperts.exe. You can see its finds with noboard.exe. (Once you have
-some of these, ruperts.exe can spend more time trying to solve them. I
-am interested if you find new-looking polyhedra that survive a lot of
-solution attempts. If it is less than 24 vertices, that is definitely
-interesting to me!)
+If you want to try to find more polyhedra that are hard to solve,
+customize and run noperts.exe. You can see its finds with noboard.exe.
+(Once you have some of these, ruperts.exe can spend more time trying
+to solve them, which is a good idea because sometimes they fall to
+extensive grinding. I am interested if you find new-looking polyhedra
+that survive a lot of solution attempts. If it is less than 24
+vertices, that is definitely interesting to me!)
 
 ratperts.exe attempts to solve using rational coordinates (much
 slower), and it tries starting with the floating-point-roundoff
@@ -71,13 +80,29 @@ readily produces such inputs. Still need to debug this.
 zuperts.exe generates a Z3 program (text) to try to solve or prove
 some of these impossible. I didn't have any luck with Z3.
 
+churro.exe investigates when a manhole cover becomes a churro; the
+video has an explainer on this question and pictures of the results
+so that you don't need to run it.
+
+footballs.exe investigates how stretching the snub cube affects
+(heuristic) solvability. The visualizations were so useless that I
+didn't even show them.
+
+twopatch.exe is the expensive process of mapping out the optimization
+surface on the snub cube using the "patches" formulation.
+
+inub.exe is the attempt to exhaustively check the snub cube (actually
+a rational approximation) to prove it is nopert.
+
 tostl.exe can turn shapes into STL files for 3D printing or whatever.
+
+tomov.exe renders a MOV file with the rotating polyhedron.
 
 soltostl.exe can compute the residue from a solution. It uses rational
 math so it should produce a proper mesh even for difficult solutions.
 It's pretty complicated, though. (The final STL output can of course
 have coincident vertices because it uses floating point numbers.) I
-use this to generate the residues in the paper.
+use this to generate the residues in the paper and video.
 
 In paper/ there are some tools that generate the images in the paper,
 and the BoVeX source of the paper.
@@ -86,3 +111,6 @@ In viewer/ there are some confusing tools for viewing STL meshes or
 shrinkwrap configurations. These are mostly so that I can create the
 ".view" matrices for rendering the angle I want of a shape for the
 paper.
+
+In video/ there are some other one-off tools for generating some of
+the animations and visuals in the video.

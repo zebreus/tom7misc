@@ -10,7 +10,6 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
 #include "polyhedra.h"

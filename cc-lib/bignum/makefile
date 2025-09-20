@@ -1,5 +1,5 @@
 
-default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe big-numbers_test.exe big-numbers-nogmp_test.exe polynomial_test.exe polynomial-nogmp_test.exe
+default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe big-numbers_test.exe big-numbers-nogmp_test.exe polynomial_test.exe polynomial-nogmp_test.exe big-interval_test.exe big-interval-nogmp_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -63,25 +63,32 @@ polynomial_test.exe : polynomial_test.o polynomial.o big.o big-numbers.o $(CCLIB
 big_bench.exe : big_bench.o big.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
+big-interval_test.exe : big-interval_test.o big.o big-numbers.o big-interval.o $(CCLIB_TEST_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
 # Without GMP
 
 # support objects
-BIG_NOGMP_OBJECTS=bigz-nogmp.o bign-nogmp.o bigq-nogmp.o
+BIG_NOGMP_OBJECTS=big-nogmp.o bigz-nogmp.o bign-nogmp.o bigq-nogmp.o polynomial-nogmp.o big-interval-nogmp.o big-numbers-nogmp.o
 
 %-nogmp.o : %.cc *.h makefile
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-big-nogmp_test.exe : big-nogmp.o big_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-nogmp_test.exe : big_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-big-overloads-nogmp_test.exe : big-nogmp.o big-overloads_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-overloads-nogmp_test.exe : big-overloads_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-big-numbers-nogmp_test.exe : big-numbers_test-nogmp.o big-nogmp.o big-numbers-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-numbers-nogmp_test.exe : big-numbers_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-polynomial-nogmp_test.exe : polynomial_test-nogmp.o polynomial-nogmp.o big-nogmp.o big-numbers-nogmp.o bigz-nogmp.o bign-nogmp.o bigq-nogmp.o $(CCLIB_TEST_OBJECTS)
+polynomial-nogmp_test.exe : polynomial_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
+big-interval-nogmp_test.exe : big-interval_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
 
 clean :
 	rm -f *.o *.exe $(CCLIB_TEST_OBJECTS)

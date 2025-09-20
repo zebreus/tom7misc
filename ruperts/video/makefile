@@ -1,5 +1,5 @@
 
-default : spirograph.exe math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov math-castle.mov so3-symmetries.mov cod-title.mov alien-dyson-sphere.mov alien-math-hole.mov quantiles.png churros.mov
+default : spirograph.exe math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov math-castle.mov so3-symmetries.mov cod-title.mov alien-dyson-sphere.mov alien-math-hole.mov quantiles.png churros.mov duals-mov.mov
 
 REPHRASE=../../rephrase
 BOVEX=$(REPHRASE)/bovex.exe
@@ -9,8 +9,6 @@ ifeq ($(findstring Linux,$(UNAME)),Linux)
 CC=clang
 CXX=clang++ -stdlib=libc++
 endif
-
-CL_LFLAGS=-lOpenCL
 
 # This is optional; if you want to use plain C++ code, just
 # comment it out. But GMP is much faster.
@@ -39,7 +37,9 @@ BIT7_OBJECTS=$(BIT7)/font-image.o
 
 CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
-OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(BIT7_OBJECTS)
+RUPERTS_OBJECTS=../polyhedra.o ../rendering.o ../hull3d.o ../mesh.o
+
+OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(BIT7_OBJECTS) $(RUPERTS_OBJECTS)
 
 BOVEX_LIB=$(REPHRASE)/stdlib.bovex $(REPHRASE)/cite.bovex $(REPHRASE)/layout.bovex $(REPHRASE)/palatino.bovex $(REPHRASE)/paper.bib $(REPHRASE)/hyph-en-us.tex
 
@@ -76,6 +76,13 @@ render-quantiles.exe : render-quantiles.o $(OBJECTS)
 all-churros.exe : all-churros.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+duals-mov.exe : duals-mov.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+duals-mov.mov : duals-mov.exe
+	./duals-mov.exe $@
 
 churros.mov : all-churros.exe
 	./all-churros.exe

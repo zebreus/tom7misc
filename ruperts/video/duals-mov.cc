@@ -1,5 +1,5 @@
 
-// Generate a movie of the named shape rotating in space.
+// Generate a movie of the polyhedra and their duals rotating calmly.
 
 #include <cmath>
 #include <cstdio>

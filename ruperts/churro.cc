@@ -1,4 +1,16 @@
 
+// See the section on "Manholes" vs "Churros" in the video. This tries
+// solving for a large sample of stretch factors d on a specific
+// number of sides n.
+//
+// Non-obvious thing that I gloss over in the video: The limit Q on
+// the optimization parameters is (I think) one of the reasons that we
+// get significant structure (concurrent lines) in the resulting
+// graphs; otherwise it would usually just find the globally
+// highest-clearance solution. This is a feature, not a bug, but it
+// could also lead to spurious "findings" like little peaks in the
+// graph which are just induced by the specific choice of parameter.
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -18,7 +30,6 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
-#include "base/stringprintf.h"
 #include "nd-solutions.h"
 #include "opt/opt.h"
 #include "periodically.h"

@@ -169,11 +169,11 @@ struct BigInt {
   inline static std::optional<BigInt> ModInverse(
       const BigInt &a, const BigInt &b);
 
-  #ifdef BIG_USE_GMP
   // Returns the approximate logarithm, base e.
+  // Note that functions using double like this are inexact and
+  // might differ between GMP and non-GMP.
   inline static double NaturalLog(const BigInt &a);
   inline static double LogBase2(const BigInt &a);
-  #endif
 
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
@@ -252,6 +252,9 @@ struct BigInt {
   // nullptr token here is just used to distinguish from the version
   // that takes an int64 (would be ambiguous with BigInt(0)).
   explicit BigInt(Rep z, std::nullptr_t token) : rep(z) {}
+
+  static double LogBase2Internal(const BigInt &a);
+
   #endif
 
  public:
@@ -2088,6 +2091,14 @@ uint64_t BigInt::BitwiseCtz(const BigInt &a) {
   uint64_t bit = 0;
   while (!BzTestBit(bit, a.rep)) bit++;
   return bit;
+}
+
+double BigInt::LogBase2(const BigInt &a) {
+  return LogBase2Internal(a);
+}
+
+double BigInt::NaturalLog(const BigInt &a) {
+  return LogBase2Internal(a) * std::log(2.0);
 }
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {

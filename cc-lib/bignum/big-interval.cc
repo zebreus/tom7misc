@@ -29,12 +29,6 @@ std::optional<Bigival> Bigival::MaybeIntersection(const Bigival &a,
     // of the upper bounds. But we want to round towards the
     // inside of the interval, since we are intersecting.
 
-    /*
-    printf("lb: %s\n"
-           "ub: %s\n",
-           lb.ToString().c_str(),
-           ub.ToString().c_str());
-    */
     if (lb.r == ub.r && (!lb.included || !ub.included)) {
       // Empty intersection.
       return std::nullopt;

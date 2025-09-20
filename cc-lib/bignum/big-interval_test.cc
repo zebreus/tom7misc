@@ -13,13 +13,13 @@
 static constexpr bool VERBOSE = false;
 
 #define CHECK_CONTAINS(ival_exp, v_exp) do {             \
-  auto ival = (ival_exp);                                \
-  auto v = (v_exp);                                      \
-  CHECK(ival.Contains(v)) << "Expected the interval "    \
-    #ival_exp " to contain the value " #v_exp << ":\n"   \
-    "ival: " << ival.ToString() << "\nvalue: " <<        \
-    v.ToString();                                        \
- } while (0)
+    const Bigival ival = (ival_exp);                     \
+    const BigRat v = (v_exp);                            \
+    CHECK(ival.Contains(v)) << "Expected the interval "  \
+      #ival_exp " to contain the value " #v_exp << ":\n" \
+      "ival: " << ival.ToString() << "\nvalue: " <<      \
+      v.ToString();                                      \
+  } while (0)
 
 #define CHECK_HAS(opt_exp) [&]() {                      \
   auto opt = (opt_exp);                                 \

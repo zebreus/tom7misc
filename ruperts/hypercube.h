@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-#include "big-interval.h"
+#include "bignum/big-interval.h"
 #include "bignum/big.h"
 #include "threadutil.h"
 

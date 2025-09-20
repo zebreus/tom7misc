@@ -768,6 +768,37 @@ static constexpr int FIRST_OMITTED_PRIME = 7927;
 
 #ifndef BIG_USE_GMP
 
+double BigInt::LogBase2Internal(const BigInt &a) {
+  int s = Sign(a);
+  if (s == 0) return -std::numeric_limits<double>::infinity();
+  if (s < 0) return std::numeric_limits<double>::quiet_NaN();
+
+  // Get the number of bits in the integer.
+  const BigZ z = a.GetRep();
+  BigNumLength num_digits = BzNumDigits(z);
+  CHECK(num_digits != 0) << "Sign is positive.";
+  BigNumDigit msd = BzGetDigit(z, num_digits - 1);
+  uint64_t bits_in_msd = BN_DIGIT_SIZE - BnnNumLeadingZeroBitsInDigit(msd);
+  uint64_t num_bits = (num_digits - 1) * BN_DIGIT_SIZE + bits_in_msd;
+
+  // If it fits in a double's mantissa, we can be exact.
+  if (num_bits <= 53) {
+    auto u64o = a.ToU64();
+    CHECK(u64o.has_value());
+    return std::log2((double)u64o.value());
+  }
+
+  // Extract top 53 bits for the mantissa.
+  const uint64_t shift_amount = num_bits - 53;
+  BigInt top_part = BigInt::RightShift(a, shift_amount);
+  auto top_part_u64 = top_part.ToU64();
+  CHECK(top_part_u64.has_value());
+  double mantissa = (double)top_part_u64.value();
+
+  // The result is log2(mantissa) + exponent.
+  return std::log2(mantissa) + shift_amount;
+}
+
 // PERF: There must be better ways to do this!
 double BigRat::ToDoubleIterative(const BigRat &r_in) {
   static constexpr bool VERBOSE = false;
