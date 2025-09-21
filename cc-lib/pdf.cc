@@ -68,8 +68,8 @@ Done.
 #include "qr-code.h"
 #include "stb_truetype.h"
 #include "utf8.h"
-#include "zip.h"
 #include "util.h"
+#include "zip.h"
 
 // XXX just for debugging output
 #include "ansi.h"
@@ -4141,68 +4141,10 @@ bool PDF::AddImageRGB(float x, float y,
                            page);
 }
 
-namespace {
-// TODO: To utf8.h?
-struct UTF8Codepoints {
-  UTF8Codepoints(std::string_view s) :
-    begin_it(s.data(), s.data() + s.size()),
-    end_it(s.data() + s.size(), s.data() + s.size()) {}
-
-  struct const_iterator {
-    constexpr const_iterator(const char *ptr, const char *limit) :
-      ptr(ptr), limit(limit) {}
-    constexpr const_iterator(const const_iterator &other) = default;
-    constexpr bool operator ==(const const_iterator &other) const {
-      return other.ptr == ptr;
-    }
-    constexpr bool operator !=(const const_iterator &other) const {
-      return other.ptr != ptr;
-    }
-    const_iterator &operator ++() {
-      // prefix.
-      uint32_t code_unused = 0;
-      const int code_len = utf8_to_utf32(ptr, limit - ptr, &code_unused);
-      CHECK(code_len > 0) << "Invalid UTF-8 encoding.";
-      ptr += code_len;
-      return *this;
-    }
-    const_iterator operator ++(int postfix) {
-      auto old = *this;
-      uint32_t code_unused = 0;
-      const int code_len = utf8_to_utf32(ptr, limit - ptr, &code_unused);
-      CHECK(code_len > 0) << "Invalid UTF-8 encoding.";
-      ptr += code_len;
-      return old;
-    }
-
-    uint32_t operator *() const {
-      uint32_t code = 0;
-      (void)utf8_to_utf32(ptr, limit - ptr, &code);
-      return code;
-    }
-
-  private:
-    const char *ptr = nullptr;
-    const char *limit = nullptr;
-  };
-
-  constexpr const_iterator begin() const {
-    return begin_it;
-  }
-
-  constexpr const_iterator end() const {
-    return end_it;
-  }
-
-private:
-  const const_iterator begin_it, end_it;
-};
-}  // namespace
-
 double PDF::Font::GetKernedWidth(std::string_view text) const {
   uint32_t prev_cp = 0;
   double width = 0.0;
-  for (uint32_t cp : UTF8Codepoints(text)) {
+  for (uint32_t cp : UTF8::Decoder(text)) {
     width += CharWidth(cp);
     auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
     if (kit != kerning.end()) {
@@ -4222,7 +4164,7 @@ PDF::SpacedLine PDF::Font::KernText(std::string_view text) const {
 
   uint32_t prev_cp = 0;
   std::string chunk;
-  for (uint32_t cp : UTF8Codepoints(text)) {
+  for (uint32_t cp : UTF8::Decoder(text)) {
     auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
     if (kit == kerning.end()) {
       // Keep accumulating with the default spacing.
