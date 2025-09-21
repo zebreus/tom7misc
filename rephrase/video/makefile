@@ -2,7 +2,7 @@
 default: slides
 
 # not comparison -- it's so slow!!
-all : slides/video.talk lorem/lorem.talk knuth/knuth.talk editor/editor.talk torment/torment.talk tom7/tom7.talk gamefaq/gamefaq.talk features/features.talk motherbrain/motherbrain.talk cyber-voronoi.exe makecodeimage.exe upcontrast.exe
+all : slides/video.talk lorem/lorem.talk knuth/knuth.talk editor/editor.talk torment/torment.talk tom7/tom7.talk gamefaq/gamefaq.talk features/features.talk motherbrain/motherbrain.talk cyber-voronoi.exe makecodeimage.exe upcontrast.exe animate.exe
 
 GMP_LFLAGS=-lgmp
 GMP_CFLAGS=-DBIG_USE_GMP
@@ -50,6 +50,7 @@ upcontrast.exe : upcontrast.o $(CC_LIB_OBJECTS)
 
 cyber-voronoi.exe : cyber-voronoi.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 
 slides/video.talk : makecodeimage.exe video.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
 	make -j -C .. maketalk.exe bovex.exe

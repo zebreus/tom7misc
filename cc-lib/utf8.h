@@ -5,9 +5,10 @@
 #ifndef _CC_LIB_UTF8_H
 #define _CC_LIB_UTF8_H
 
-#include <string_view>
+#include <cassert>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,7 +38,40 @@ struct UTF8 {
   // reads one byte and returns 0xFFFFFFFF, which is an invalid codepoint.
   static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
   static constexpr uint32_t INVALID = 0xFFFFFFFF;
+
+
+  // Iterate over the codepoints in a string without allocating a copy.
+  struct Decoder {
+    inline Decoder(std::string_view s);
+
+    struct const_iterator {
+      constexpr const_iterator(const char *ptr, const char *limit) :
+        ptr(ptr), limit(limit) {}
+      constexpr const_iterator(const const_iterator &other) = default;
+      inline constexpr bool operator ==(const const_iterator &other) const;
+      inline constexpr bool operator !=(const const_iterator &other) const;
+      inline const_iterator &operator ++();
+      inline const_iterator operator ++(int postfix);
+      inline uint32_t operator *() const;
+
+    private:
+      const char *ptr = nullptr;
+      const char *limit = nullptr;
+    };
+
+    constexpr const_iterator begin() const {
+      return begin_it;
+    }
+
+    constexpr const_iterator end() const {
+      return end_it;
+    }
+
+   private:
+    const const_iterator begin_it, end_it;
+  };
 };
+
 
 
 // Implementations follow.
@@ -249,6 +283,45 @@ std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
 
   return std::make_pair(len, ch);
 }
+
+UTF8::Decoder::Decoder(std::string_view s) :
+  begin_it(s.data(), s.data() + s.size()),
+  end_it(s.data() + s.size(), s.data() + s.size()) {}
+
+
+constexpr bool UTF8::Decoder::const_iterator::operator ==(
+    const const_iterator &other) const {
+  return other.ptr == ptr;
+}
+
+constexpr bool UTF8::Decoder::const_iterator::operator !=(
+    const const_iterator &other) const {
+  return other.ptr != ptr;
+}
+
+
+UTF8::Decoder::const_iterator &UTF8::Decoder::const_iterator::operator ++() {
+  // prefix.
+  const auto &[code_len, code] = UTF8::ParsePrefix(ptr, limit - ptr);
+  assert(code != UTF8::INVALID);
+  ptr += code_len;
+  return *this;
+}
+
+UTF8::Decoder::const_iterator
+UTF8::Decoder::const_iterator::operator ++(int postfix) {
+  auto old = *this;
+  const auto &[code_len, code] = UTF8::ParsePrefix(ptr, limit - ptr);
+  assert(code != UTF8::INVALID);
+  ptr += code_len;
+  return old;
+}
+
+uint32_t UTF8::Decoder::const_iterator::operator *() const {
+  const auto &[code_len_, code] = UTF8::ParsePrefix(ptr, limit - ptr);
+  return code;
+}
+
 
 
 #endif

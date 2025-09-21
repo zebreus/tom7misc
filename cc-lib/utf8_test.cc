@@ -1,13 +1,13 @@
 #include "utf8.h"
 
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "util.h"
 
 using namespace std;
@@ -68,18 +68,18 @@ static void TestUnicode() {
     std::vector<uint32_t> got = UTF8::Codepoints(str);
 
     if (expected != got) {
-      printf("For codepoint sequence: ");
+      Print("For codepoint sequence: ");
       for (uint32_t cp : expected) {
-        printf("%04x ", cp);
+        Print("{:04x} ", cp);
       }
-      printf("\n");
-      printf("Got string: %s\n",
-             Util::HexString(str, " ").c_str());
-      printf("Decoded to: ");
+      Print("\n");
+      Print("Got string: {}\n",
+            Util::HexString(str, " "));
+      Print("Decoded to: ");
       for (uint32_t cp : got) {
-        printf("%04x ", cp);
+        Print("{:04x} ", cp);
       }
-      printf("\n");
+      Print("\n");
       LOG(FATAL) << "Wrong! Rep " << rep;
     }
   }
@@ -87,10 +87,28 @@ static void TestUnicode() {
   // TODO: Test invalid encodings too.
 }
 
+static void TestDecoder() {
+  std::vector<uint32_t> decoded;
+  for (uint32_t cp : UTF8::Decoder("checkmate ♚!")) {
+    decoded.push_back(cp);
+  }
+  CHECK(decoded.size() == 12);
+  CHECK(decoded[0] == 'c');
+  CHECK(decoded[1] == 'h');
+  CHECK(decoded[10] == 0x265A);
+  CHECK(decoded[11] == '!');
+
+  {
+    auto empty = UTF8::Decoder("");
+    CHECK(empty.begin() == empty.end());
+  }
+}
+
 int main(int argc, char **argv) {
   TestUnicode();
+  TestDecoder();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
 

@@ -319,7 +319,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o movie-document.o rephrasing.o achievements.o execution.o animation.o
+LANG_OBJECTS=html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o movie-document.o rephrasing.o achievements.o execution.o animation.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS) $(CODEC_OBJECTS)
 BOVEX_HEADERS=*.h

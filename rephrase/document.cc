@@ -29,7 +29,6 @@
 #include "functional-set.h"
 #include "hyphenation.h"
 #include "image.h"
-#include "utf.h"
 #include "utf8.h"
 #include "util.h"
 
@@ -587,7 +586,7 @@ Document::BoxifyText(const TextProps &props,
       if (VERBOSE) {
         Print(AGREY("[{}]") "\n", hypart);
       }
-      auto codepoints = UTF8Codepoints(hypart);
+      auto codepoints = UTF8::Decoder(hypart);
       for (auto it = codepoints.begin(); it != codepoints.end(); ++it) {
         const uint32_t codepoint = *it;
         double char_width = font->CharWidth(codepoint);
