@@ -1,12 +1,12 @@
 
-default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe upcontrast.exe cyber-voronoi.exe
+default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe
 
 all : default monospace.exe monofile.exe test-rephrase.exe
 
 # for these ENABLE=true kinds of flags, you should *comment them out*
 # if you don't want them. ENABLE_LLM=false does the same thing as true.
 
-# ENABLE_LLM=true
+ENABLE_LLM=true
 
 # TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
 # Especially since some of these targets cannot even compile without LLM.
@@ -84,9 +84,11 @@ CC_LIB=../cc-lib
 BIT7_DIR=../bit7
 LLM_DIR=../llm
 CODEC_DIR=../codec
-# This directory comes from github.com/ggerganov/llama.cpp/tree/master
-# I think I made some local changes, though :/
-LLAMA_DIR=../llama
+# This is a fork of (some of the files from) the llama.cpp
+# github project. I made some local changes and don't want
+# to have to keep up with it for the "joke" parts of this
+# project, nor do you!
+LLAMA_DIR=llama
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
@@ -130,7 +132,7 @@ endif
 # Compile flags
 #
 
-CFLAGS   = $(OPTFLAGS) -I. $(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
+CFLAGS   = $(OPTFLAGS) -I. $(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
 CXXFLAGS = $(OPTFLAGS) -I. $(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) -m64 $(GMP_LFLAGS) $(PLATFORM_LDFLAGS)
 
@@ -276,7 +278,7 @@ endif
 # end enable LLM
 endif
 
-LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h $(LLAMA_DIR)/unicode.h $(LLAMA_DIR)/unicode-data.h $(LLAMA_DIR)/common/json-schema-to-grammar.h
+LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h $(LLAMA_DIR)/unicode.h $(LLAMA_DIR)/unicode-data.h
 
 ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS)   -c $< -o $@
@@ -311,13 +313,10 @@ unicode.o: $(LLAMA_DIR)/unicode.cpp $(LLAMA_HEADERS)
 unicode-data.o: $(LLAMA_DIR)/unicode-data.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-json-schema-to-grammar.o : $(LLAMA_DIR)/common/json-schema-to-grammar.cpp $(LLAMA_HEADERS)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
 # ggml-mpi.o
-LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o ggml-opencl.o unicode.o unicode-data.o json-schema-to-grammar.o
+LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o ggml-opencl.o unicode.o unicode-data.o
 
-LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
+LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o
 
 LANG_OBJECTS=html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o movie-document.o rephrasing.o achievements.o execution.o animation.o
 

@@ -1,0 +1,7 @@
+This is a clone of llama.cpp (https://github.com/ggml-org/llama.cpp),
+which has some local modifications and which I've snapshot to keep
+BoVeX more stable.
+
+This was the commit it's based off of:
+4e3880978f8b1bf546dd4e6f3b524d6b8739c49c
+
