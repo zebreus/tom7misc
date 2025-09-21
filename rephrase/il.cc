@@ -1000,7 +1000,7 @@ TypeCmp::Order TypeCmp::Compare(const Type *a, const Type *b) {
   case TypeType::EVAR:
     LOG(FATAL) << "Bug: EVars handled above.";
   case TypeType::REF: return Compare(a->Ref(), b->Ref());
-  case TypeType::VEC: return Compare(a->Ref(), b->Ref());
+  case TypeType::VEC: return Compare(a->Vec(), b->Vec());
   case TypeType::STRING: return Order::EQ;
   case TypeType::FLOAT: return Order::EQ;
   case TypeType::INT: return Order::EQ;

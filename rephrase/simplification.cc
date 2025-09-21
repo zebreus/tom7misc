@@ -1234,7 +1234,7 @@ struct KnownPass : public il::Pass<Known> {
       if (knowledge->was_used) {
         // Here we use the new exploded record.
         const Exp *ret =
-          pool->Let(tyvars, x, new_rhs, DoExp(body, known), guess);
+          pool->Let(tyvars, x, new_rhs, new_body, guess);
 
         // And wrap with bindings, preserving evaluation order.
         for (int i = bindings.size() - 1; i >= 0; i--) {

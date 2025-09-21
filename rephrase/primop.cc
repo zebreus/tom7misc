@@ -446,7 +446,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::VEC_UPDATE:
     return {{"a"}, pool->Arrow(
           pool->Product({Vec(Alpha()), Int, Alpha()}),
-          Alpha())};
+          Unit())};
   case Primop::VEC_EMPTY:
     return {{"a"}, pool->Arrow(Unit(), Vec(Alpha()))};
 

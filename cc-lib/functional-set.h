@@ -10,8 +10,8 @@
 #include "functional-map.h"
 #include "hashing.h"
 
-// This is a simple wrapper around FunctionalMap for the case that
-// the value type is uninteresting.
+// This is a simple wrapper around FunctionalMap for the case that the
+// value type is uninteresting. It also supports functionally removing elements.
 //
 // Value semantics.
 template<

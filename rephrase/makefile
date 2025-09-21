@@ -416,15 +416,6 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex palatino.bo
 paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex palatino.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
-makecodeimage.exe : makecodeimage.o $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
-upcontrast.exe : upcontrast.o $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
-wordle.exe : wordle.o $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
 sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v sigbovik.bovex -o sigbovik.talk
 	./maketalk.exe sigbovik sigbovik.talk
@@ -447,9 +438,6 @@ chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex la
 	./maketalk.exe chessdemo chessdemo.talk
 
 animate.exe : animation.o animate.o $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
-cyber-voronoi.exe : cyber-voronoi.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 checkfonts.exe : checkfonts.o $(CC_LIB_OBJECTS)

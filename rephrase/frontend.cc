@@ -133,6 +133,7 @@ Program Frontend::RunFrontendInternal(
 
   Timer rewrite_timer;
   el::Nullary nullary(&el_pool);
+  nullary.SetVerbose(verbose);
   el_exp = nullary.Rewrite(el_exp);
   el::Uncurry uncurry(&el_pool);
   el_exp = uncurry.Rewrite(el_exp);

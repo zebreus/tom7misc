@@ -14,7 +14,7 @@
 #include "primop.h"
 
 // Make all tests verbose.
-static constexpr bool VERBOSE = false;
+static constexpr int VERBOSE = 0;
 
 namespace il {
 
@@ -37,7 +37,7 @@ namespace il {
 
 #define RunInternal(src, simp)                      \
   ([&front](const std::string source) -> Program {  \
-    if (VERBOSE) {                                  \
+    if (VERBOSE > 0 ) {                             \
       Print(                                        \
           ABGCOLOR(200, 0, 200,                     \
                    AFGCOLOR(0, 0, 0, "TEST:"))      \
@@ -45,6 +45,7 @@ namespace il {
     }                                               \
     Frontend::Options options;                      \
     options.simplify = (simp);                      \
+    front.SetVerbose(VERBOSE);                      \
     const Program pgm = front.RunFrontendOn(        \
         std::format("Test {} ({}:{})",              \
                     __func__, __FILE__, __LINE__),  \
@@ -60,9 +61,7 @@ namespace il {
 
 static void TestLiterals() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(1);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = Run("42");
@@ -118,9 +117,7 @@ static void TestLiterals() {
 
 static void TestPrimops() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(1);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = RunNoSimplify("ref 7 : int ref");
@@ -188,9 +185,7 @@ static void TestPrimops() {
 
 static void TestSimplify() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(1);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = Run("(fn x => x) 7");
@@ -423,9 +418,7 @@ static void TestSimplify() {
 
 static void Simple() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(1);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = RunNoSimplify("let val x = 3 in x end");
@@ -487,9 +480,7 @@ static void Simple() {
 
 static void TestPatternCompilation() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(1);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm =
@@ -505,9 +496,7 @@ static void TestPatternCompilation() {
 
 static void TestDatatypes() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(2);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
@@ -528,6 +517,54 @@ static void TestDatatypes() {
                             "  | AAA => 7\n"
                             "end\n");
     CHECK(pgm.body->Int() == 7);
+  }
+
+  {
+    // Nullary local is potentially tricky.
+    const Program pgm = Run(R"(
+      let
+        local
+          datatype One = Ctor
+        in
+          datatype Two = TwoA | TwoB
+
+          val u : One = Ctor
+          val v = fn () => TwoA
+        end
+      in
+        case v () of
+          TwoA => 1
+        | TwoB => 2
+      end
+     )");
+  }
+
+  {
+    // More nullary shadowing.
+    const Program pgm = Run(R"(
+      let
+        datatype outer = Ctor
+      in
+        let
+          (* Shadow the constructor *)
+          fun Ctor (x : int) = x + 1
+        in
+          let
+            local
+              datatype inner = Ctor
+            in
+              val x : inner = Ctor
+            end
+          in
+            (* This should refer to the function *)
+            Ctor 5
+          end
+        end;
+
+        case Ctor of
+          Ctor : outer => ""
+      end
+    )");
   }
 
   {
@@ -607,9 +644,7 @@ static void TestDatatypes() {
 
 static void TestFun() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(2);
-  }
+  front.SetVerbose(VERBOSE);
 
   // No mutual recursion.
   {
@@ -742,9 +777,7 @@ static void TestFun() {
 
 static void TestObjects() {
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(2);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = Run(
@@ -771,11 +804,11 @@ static void TestObjects() {
   }
 
   {
-    const Program pgm = Run(
-        "let object Article of { title : string, year : int }\n"
-        "in\n"
-        "  {(Article) } with title = \"hi\"\n"
-        "end\n");
+    const Program pgm = Run(R"(
+        let object Article of { title : string, year : int }
+        in
+          {(Article) } with title = "hi"
+        end)");
     CHECK(pgm.body->type == ExpType::WITH);
   }
 
@@ -790,11 +823,9 @@ static void TestObjects() {
 }
 
 static void TestLayout() {
-  constexpr bool VERBOSE = false;
+  constexpr int VERBOSE = 0;
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(2);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     const Program pgm = Run(
@@ -814,9 +845,7 @@ static void TestLayout() {
 static void Regression() {
   static constexpr int VERBOSE = 0;
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(VERBOSE);
-  }
+  front.SetVerbose(VERBOSE);
 
   // r5668 generalization bug:
   // Failure to find free evars inside bound evars.
@@ -852,14 +881,29 @@ static void Regression() {
     )");
   }
 
+
+  {
+    // r6716. Shadowing of constructors was not handled correctly
+    // in the nullary pass.
+    const Program pgm = Run(R"(
+      let
+        datatype outer = C
+      in
+        let
+          fun C (x : int) = x + 1
+        in
+          C 5
+        end
+      end
+    )");
+
+  }
 }
 
 static void TestEnums() {
   static constexpr int VERBOSE = 0;
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(VERBOSE);
-  }
+  front.SetVerbose(VERBOSE);
 
   {
     // At r5848 this would fail in simplification
@@ -904,9 +948,7 @@ static void TestEnums() {
 static void NewTests() {
   static constexpr int VERBOSE = 2;
   Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(VERBOSE);
-  }
+  front.SetVerbose(VERBOSE);
 }
 
 }  // il

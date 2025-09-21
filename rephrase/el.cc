@@ -530,7 +530,7 @@ bool IsValuable(const Exp *e) {
     return IsLayoutValuable(e->layout);
 
   case ExpType::ANN:
-    return true;
+    return IsValuable(e->a);
 
   case ExpType::RECORD:
     for (const auto &[lab, child] : e->str_children)

@@ -1,3 +1,15 @@
+21 Sep 2025
+
+ * Fixed bug with type-annotated expressions always being considered
+   valuable for generalization.
+
+ * Fixed type of vec-update primop.
+
+ * Fixed another bug with vector type.
+
+ * Fixed bug where nullary constructors that were shadowed by function
+   declarations would not be rewritten properly.
+
 30 Mar 2025
 
  * Now when using layout.bovex, you can write \\ for a line break,
