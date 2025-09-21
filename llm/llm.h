@@ -3,10 +3,14 @@
 #define _LLM_LLM_H
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <memory>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "llama.h"  // IWYU pragma: export
 
@@ -238,7 +242,7 @@ struct Context {
   State SaveState() const;
   void LoadState(const State &state);
 
-private:
+ private:
   friend struct Sampler;
   friend struct LLM;
 
@@ -358,19 +362,9 @@ struct Sampler {
 
   // For debugging. Prints the last n tokens that the *sampler* has seen,
   // in forward order.
-  void PrintLast() {
-    printf("num_last: %d. ", num_last);
-    for (int i = num_last - 1; i >= 0; i--) {
-      auto t = last_n_tokens[i];
-      std::string tok = context->TokenString(t);
-      // Would be useful to have a general-purpose token escaping function.
-      if (tok == "\n") tok = "\\n";
-      printf("[@%d,%d=%s]", i, t, tok.c_str());
-    }
-    printf("\n");
-  }
+  void PrintLast();
 
-private:
+ private:
   Context *context = nullptr;
   // Would generally be ok to change these on the fly, but not e.g. the
   // last_n_tokens size.
@@ -389,7 +383,7 @@ private:
   // State for various sampler types.
   float mirostat_mu = 10.0f;
 
-public: // XXX
+ public: // XXX
   NFA<256> nfa;
   NFAMatcher<256> matcher;
 };

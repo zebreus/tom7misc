@@ -1,11 +1,23 @@
 
 #include "llm.h"
 
-#include <unordered_map>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
-#include <string>
+#include <cstdio>
+#include <ctime>
+#include <format>
+#include <functional>
+#include <iterator>
 #include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "base/stringprintf.h"
+#include "ggml.h"
 #include "llama.h"
 
 // TODO: Fix upstream?
@@ -13,15 +25,15 @@
 #include "common/common.h"
 #undef LOG
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
 #include "lastn-buffer.h"
 #include "nfa.h"
 #include "pcg.h"
-
-#include "timer.h"
-#include "ansi.h"
-#include "color-util.h"
 #include "periodically.h"
+#include "timer.h"
 
 static void LogLLM(enum ggml_log_level level,
                    const char * text,
@@ -29,7 +41,7 @@ static void LogLLM(enum ggml_log_level level,
   static constexpr bool LOCAL_VERBOSE = false;
   // Ignored.
   if (LOCAL_VERBOSE) {
-    printf(ACYAN("%s"), text);
+    Print(ACYAN("{}"), text);
   }
 }
 
@@ -47,19 +59,19 @@ Context::Context(const ContextParams &params) {
   auto Progress = [](float f, void *void_data) -> bool {
       ProgressData *data = (ProgressData*)void_data;
       if (data->per.ShouldRun()) {
-        printf(ANSI_UP
-               "%s\n", ANSI::ProgressBar(f * 100, 100,
-                                         data->name,
-                                         data->timer.Seconds()).c_str());
+        Print(ANSI_UP
+              "{}\n", ANSI::ProgressBar(f * 100, 100,
+                                        data->name,
+                                        data->timer.Seconds()));
       }
       // Always keep loading.
       return true;
     };
   auto Done = [&progress_data]() {
-      printf(ANSI_UP
-             "Loaded " AWHITE("%s") " in %s\n",
-             progress_data.name.c_str(),
-             ANSI::Time(progress_data.timer.Seconds()).c_str());
+      Print(ANSI_UP
+            "Loaded " AWHITE("{}") " in {}\n",
+            progress_data.name,
+            ANSI::Time(progress_data.timer.Seconds()));
     };
 
   // PERF need to tell llama about this now
@@ -155,7 +167,7 @@ void Context::TakeTokenBatch(const std::vector<llama_token> &batch,
       small_batch.push_back(batch[start_idx + i]);
     }
     if (VERBOSE) {
-      fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
+      Print(stderr, "Batch of size {}.\n", small_batch.size());
     }
     auto prog = [&progress, start_idx, &batch](int n, int d) {
         if (progress) progress(start_idx + n, batch.size());
@@ -169,9 +181,9 @@ void Context::TakeTokenSmallBatch(
     const std::vector<llama_token> &toks,
     const std::function<void(int, int)> &progress) {
   if (VERBOSE) {
-    printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
+    Print("TakeTokenSmallBatch(" APURPLE("{}") ")\n", toks.size());
     for (llama_token t : toks) {
-      printf("  %d=%s\n", t, TokenString(t).c_str());
+      Print("  {}={}\n", t, TokenString(t));
     }
   }
 
@@ -270,7 +282,7 @@ Context::Candidates::Candidates(llama_model *model, llama_context *lctx,
   CHECK(logits != nullptr);
   for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
     float f = logits[token_id];
-    // printf("  logits[%d] = %.6f\n", token_id, f);
+    // Print("  logits[{}] = {:.6f}\n", token_id, f);
     ltda.data[token_id] =
       llama_token_data{token_id, f, 0.0f};
   }
@@ -414,8 +426,8 @@ llama_token Sampler::SampleTokenMirostat(
   float sum_ti_bi = 0.0;
   float sum_ti_sq = 0.0;
   for (size_t i = 0; i < size_t(m - 1) && i < candidates->size - 1; ++i) {
-    float t_i = logf(float(i + 2) / float(i + 1));
-    float b_i = logf(candidates->data[i].p / candidates->data[i + 1].p);
+    float t_i = std::logf(float(i + 2) / float(i + 1));
+    float b_i = std::logf(candidates->data[i].p / candidates->data[i + 1].p);
     sum_ti_bi += t_i * b_i;
     sum_ti_sq += t_i * t_i;
   }
@@ -545,13 +557,13 @@ void Sampler::Observe(llama_token id) {
   // advance matcher state.
   std::string s = context->TokenString(id);
   for (uint8_t c : s) {
-    // printf("Before advance [%c]:", c);
-    // for (int n : matcher.GetStates()) printf(" %d", n);
-    // printf("\n");
+    // Print("Before advance [{:c}]:", c);
+    // for (int n : matcher.GetStates()) Print(" {}", n);
+    // Print("\n");
     matcher.Advance(c);
-    // printf("     after [%c]:", c);
-    // for (int n : matcher.GetStates()) printf(" %d", n);
-    // printf("\n");
+    // Print("     after [{:c}]:", c);
+    // for (int n : matcher.GetStates()) Print(" {}", n);
+    // Print("\n");
   }
 }
 
@@ -600,8 +612,8 @@ bool Sampler::FilterByNFA(Candidates *cands) const {
     CHECK(cand.id >= 0 && cand.id < vocab_size);
     std::string s = context->TokenString(cand.id);
     /*
-      printf("Cand " AWHITE("%s") " with score %.4f..\n",
-      s.c_str(), cand.logit);
+      Print("Cand " AWHITE("{}") " with score {:.4f}..\n",
+            s, cand.logit);
     */
 
     // Some special tokens (EOS, BOS) are empty. We should not
@@ -617,9 +629,9 @@ bool Sampler::FilterByNFA(Candidates *cands) const {
     for (uint8_t c : s) {
       mcopy.Advance(c);
       /*
-        printf("..'" AYELLOW("%02x") "=%c'..", c, c);
+        Print("..'" AYELLOW("{:02x}") "={:c}'..", c, c);
         if (mcopy.Stuck()) {
-        printf(ARED("STUCK"));
+        Print(ARED("STUCK"));
         }
       */
 
@@ -632,7 +644,7 @@ bool Sampler::FilterByNFA(Candidates *cands) const {
       any_left = true;
     }
   }
-  // printf("XXX exit\n");
+  // Print("XXX exit\n");
   // CHECK(false);
   return any_left;
 }
@@ -730,17 +742,17 @@ LLM::LLM(const ContextParams &context_params,
 llama_token LLM::Sample() {
   std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
   if (VERBOSE) {
-    printf(ABLUE("Original:") "\n");
+    Print(ABLUE("Original:") "\n");
     AnsiPrintCandidates(*candidates, 10);
   }
   sampler.Penalize(candidates.get());
   if (VERBOSE) {
-    printf(ACYAN("Penalized:") "\n");
+    Print(ACYAN("Penalized:") "\n");
     AnsiPrintCandidates(*candidates, 10);
   }
   sampler.FilterByNFA(candidates.get());
   if (VERBOSE) {
-    printf(APURPLE("Penalized, filtered:") "\n");
+    Print(APURPLE("Penalized, filtered:") "\n");
     AnsiPrintCandidates(*candidates, 10);
   }
   return sampler.SampleToken(std::move(candidates));
@@ -756,11 +768,11 @@ std::string LLM::SampleAndTake() {
 void LLM::TakeTokenBatch(const std::vector<llama_token> &batch,
                          bool progress_bar) {
   /*
-  printf("TakeTokenBatch:");
+  Print("TakeTokenBatch:");
   for (llama_token t : batch) {
-    printf(" %d=[%s]", t, context.TokenString(t).c_str());
+    Print(" {}=[{}]", t, context.TokenString(t));
   }
-  printf("\n");
+  Print("\n");
   */
   std::function<void(int, int)> progress;
   Timer take_timer;
@@ -772,14 +784,14 @@ void LLM::TakeTokenBatch(const std::vector<llama_token> &batch,
           if (!progress_bar_ran) {
             // Make sure we're on a new line so we don't overwrite
             // anything with the ansi "up".
-            printf("\n");
+            Print("\n");
             progress_bar_ran = true;
           }
-          printf(ANSI_UP
-                 "%s\n",
-                 ANSI::ProgressBar(n, d,
-                                   "TakeTokenBatch",
-                                   take_timer.Seconds()).c_str());
+          Print(ANSI_UP
+                "{}\n",
+                ANSI::ProgressBar(n, d,
+                                  "TakeTokenBatch",
+                                  take_timer.Seconds()));
         }
       };
   }
@@ -789,9 +801,9 @@ void LLM::TakeTokenBatch(const std::vector<llama_token> &batch,
 
   if (progress_bar_ran) {
     // Or just remove it?
-    printf(ANSI_UP
-           "TakeTokenBatch in %s\n",
-           ANSI::Time(take_timer.Seconds()).c_str());
+    Print(ANSI_UP
+          "TakeTokenBatch in {}\n",
+          ANSI::Time(take_timer.Seconds()));
   }
 }
 
@@ -863,7 +875,7 @@ LLM::State LLM::SaveState() const {
   state.sampler_copy = sampler;
 
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
-    printf("SaveState!\n");
+    Print("SaveState!\n");
     PrintCurrentState();
   }
   return state;
@@ -871,14 +883,14 @@ LLM::State LLM::SaveState() const {
 
 void LLM::LoadState(const State &state) {
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
-    printf("LoadState!\n");
+    Print("LoadState!\n");
     PrintCurrentState();
   }
   context.LoadState(state.context_state);
   sampler = state.sampler_copy;
 
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
-    printf("After LoadState:\n");
+    Print("After LoadState:\n");
     PrintCurrentState();
   }
 }
@@ -951,17 +963,17 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
       ColorUtil::Unpack32(
           ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
 
-    printf("  " AGREY("[") "%s" AGREY("]") " %s%.9f (%.4f%%)" ANSI_RESET "\n",
-           s.c_str(),
-           ANSI::ForegroundRGB(r, g, b).c_str(),
-           logit, prob * 100.0);
+    Print("  " AGREY("[") "{}" AGREY("]") " {}{:.9f} ({:.4f}%)" ANSI_RESET "\n",
+          s,
+          ANSI::ForegroundRGB(r, g, b),
+          logit, prob * 100.0);
   }
 }
 
 void LLM::PrintCurrentState() const {
-  printf(AWHITE("Context:") "\n");
-  printf("  num_last: %d\n", context.num_last);
-  printf("  last_batch_size: %d\n", context.last_batch_size);
+  Print(AWHITE("Context:") "\n");
+  Print("  num_last: {}\n", context.num_last);
+  Print("  last_batch_size: {}\n", context.last_batch_size);
   PrintKV();
 }
 
@@ -972,17 +984,17 @@ void LLM::PrintKV() const {
       context.lctx, NUM_SEQ);
   llama_kv_cache_view_update(context.lctx, &kcv);
 
-  printf(AWHITE("KV Cache:") "\n");
-  printf("  n_cells: %d\n", kcv.n_cells);
-  printf("  n_seq_max: %d\n", kcv.n_seq_max);
-  printf("  token_count: %d\n", kcv.token_count);
-  printf("  used_cells: %d\n", kcv.used_cells);
-  printf("  max_contiguous: %d\n", kcv.max_contiguous);
-  printf("  max_contiguous_idx: %d\n", kcv.max_contiguous_idx);
+  Print(AWHITE("KV Cache:") "\n");
+  Print("  n_cells: {}\n", kcv.n_cells);
+  Print("  n_seq_max: {}\n", kcv.n_seq_max);
+  Print("  token_count: {}\n", kcv.token_count);
+  Print("  used_cells: {}\n", kcv.used_cells);
+  Print("  max_contiguous: {}\n", kcv.max_contiguous);
+  Print("  max_contiguous_idx: {}\n", kcv.max_contiguous_idx);
 
   auto RangeString = [](int start, int past_end) {
-      if (start == past_end - 1) return StringPrintf("%d", start);
-      else return StringPrintf("%d-%d", start, past_end - 1);
+      if (start == past_end - 1) return std::format("{}", start);
+      else return std::format("{}-{}", start, past_end - 1);
     };
 
   // Since NUM_SEQ is forced to 1 here, there's at most one entry
@@ -1001,11 +1013,11 @@ void LLM::PrintKV() const {
     const int zero_run_end = EndOfZeroRun();
 
     if (zero_run_end != idx) {
-      StringAppendF(&cseq,
-                    ANSI_FG(40, 40,  90) "[@%s,"
-                    ANSI_FG(80, 80, 120) "0"
-                    ANSI_FG(40, 40,  90) "]",
-                    RangeString(idx, zero_run_end).c_str());
+      AppendFormat(&cseq,
+                   ANSI_FG(40, 40,  90) "[@{},"
+                   ANSI_FG(80, 80, 120) "0"
+                   ANSI_FG(40, 40,  90) "]",
+                   RangeString(idx, zero_run_end));
       idx = zero_run_end;
       continue;
     }
@@ -1019,24 +1031,23 @@ void LLM::PrintKV() const {
     const int neg_run_end = EndOfNegRun();
 
     if (neg_run_end != idx) {
-      StringAppendF(&cseq,
-                    ANSI_FG(40, 40, 40) "[@%s,"
-                    ANSI_FG(60, 60, 60) "-1"
-                    ANSI_FG(40, 40, 40) "]",
-                    RangeString(idx, neg_run_end).c_str());
+      AppendFormat(&cseq,
+                   ANSI_FG(40, 40, 40) "[@{},"
+                   ANSI_FG(60, 60, 60) "-1"
+                   ANSI_FG(40, 40, 40) "]",
+                   RangeString(idx, neg_run_end).c_str());
       idx = neg_run_end;
       continue;
     }
 
     // General case.
-    StringAppendF(&cseq, ANSI_RED "[@%d,%d]", idx,
-                  kcv.cells_sequences[idx]);
+    AppendFormat(&cseq, ANSI_RED "[@{},{}]", idx,
+                 kcv.cells_sequences[idx]);
     idx++;
   }
 
-  printf("  contents (ranges inclusive):\n");
-  printf("  cell seqs: %s" ANSI_RESET "\n",
-         cseq.c_str());
+  Print("  contents (ranges inclusive):\n");
+  Print("  cell seqs: {}" ANSI_RESET "\n", cseq);
 
 
   std::string cells;
@@ -1054,11 +1065,11 @@ void LLM::PrintKV() const {
 
     const int run_end = EndOfRun();
     if (run_end != idx) {
-      StringAppendF(&cells,
-                    ANSI_FG(40, 90,  40) "[@%s,"
-                    ANSI_FG(80, 120, 80) "id"
-                    ANSI_FG(40, 90,  40) "]",
-                    RangeString(idx, run_end).c_str());
+      AppendFormat(&cells,
+                   ANSI_FG(40, 90,  40) "[@{},"
+                   ANSI_FG(80, 120, 80) "id"
+                   ANSI_FG(40, 90,  40) "]",
+                   RangeString(idx, run_end));
       idx = run_end;
       continue;
     }
@@ -1073,22 +1084,21 @@ void LLM::PrintKV() const {
     const int neg_run_end = EndOfNegRun();
 
     if (neg_run_end != idx) {
-      StringAppendF(&cells,
-                    ANSI_FG(40, 40, 40) "[@%s,"
-                    ANSI_FG(60, 60, 60) "-1"
-                    ANSI_FG(40, 40, 40) "]",
-                    RangeString(idx, neg_run_end).c_str());
+      AppendFormat(&cells,
+                   ANSI_FG(40, 40, 40) "[@{},"
+                   ANSI_FG(60, 60, 60) "-1"
+                   ANSI_FG(40, 40, 40) "]",
+                   RangeString(idx, neg_run_end));
       idx = neg_run_end;
       continue;
     }
 
     // General case.
-    StringAppendF(&cells, ANSI_YELLOW "[@%d,%d]", idx, kcv.cells[idx].pos);
+    AppendFormat(&cells, ANSI_YELLOW "[@{},{}]", idx, kcv.cells[idx].pos);
     idx++;
   }
 
-  printf("  cells: %s" ANSI_RESET "\n",
-         cells.c_str());
+  Print("  cells: {}" ANSI_RESET "\n", cells);
 
   llama_kv_cache_view_free(&kcv);
 }
@@ -1102,9 +1112,9 @@ std::string LLM::AnsiToken(llama_token id, bool parity) const {
     std::string s = context.TokenString(id);
     // TODO: Do something for non-printable characters.
     if (parity) {
-      return StringPrintf(AFGCOLOR(250, 250, 250, "%s"), s.c_str());
+      return std::format(AFGCOLOR(250, 250, 250, "{}"), s);
     } else {
-      return StringPrintf(AFGCOLOR(240, 240, 240, "%s"), s.c_str());
+      return std::format(AFGCOLOR(240, 240, 240, "{}"), s);
     }
   }
 }
@@ -1128,4 +1138,17 @@ LLM::GetModelMetadata() const {
     ret.insert(std::make_pair(std::move(key), std::move(value)));
   }
   return ret;
+}
+
+
+void Sampler::PrintLast() {
+  Print("num_last: {}. ", num_last);
+  for (int i = num_last - 1; i >= 0; i--) {
+    auto t = last_n_tokens[i];
+    std::string tok = context->TokenString(t);
+    // Would be useful to have a general-purpose token escaping function.
+    if (tok == "\n") tok = "\\n";
+    Print("[@{},{}={}]", i, t, tok);
+  }
+  Print("\n");
 }
