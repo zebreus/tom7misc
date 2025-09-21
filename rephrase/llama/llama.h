@@ -302,21 +302,6 @@ extern "C" {
         void *              abort_callback_data;
     };
 
-    // model quantization parameters
-    typedef struct llama_model_quantize_params {
-        int32_t nthread;                     // number of threads to use for quantizing, if <=0 will use std::thread::hardware_concurrency()
-        enum llama_ftype ftype;              // quantize to this llama_ftype
-        enum ggml_type output_tensor_type;   // output tensor type
-        enum ggml_type token_embedding_type; // itoken embeddings tensor type
-        bool allow_requantize;               // allow quantizing non-f32/f16 tensors
-        bool quantize_output_tensor;         // quantize output.weight
-        bool only_copy;                      // only copy tensors - ftype, allow_requantize and quantize_output_tensor are ignored
-        bool pure;                           // quantize all tensors to the default type
-        bool keep_split;                     // quantize to the same number of shards
-        void * imatrix;                      // pointer to importance matrix data
-        void * kv_overrides;                 // pointer to vector containing overrides
-    } llama_model_quantize_params;
-
     // grammar types
     struct llama_grammar;
 
@@ -374,7 +359,6 @@ extern "C" {
     // Helpers for getting default parameters
     LLAMA_API struct llama_model_params llama_model_default_params(void);
     LLAMA_API struct llama_context_params llama_context_default_params(void);
-    LLAMA_API struct llama_model_quantize_params llama_model_quantize_default_params(void);
 
     // Initialize the llama + ggml backend
     // If numa is true, use NUMA optimizations
@@ -456,39 +440,6 @@ extern "C" {
 
     // Get a llama model tensor
     LLAMA_API struct ggml_tensor * llama_get_model_tensor(struct llama_model * model, const char * name);
-
-    // Returns 0 on success
-    LLAMA_API uint32_t llama_model_quantize(
-            const char * fname_inp,
-            const char * fname_out,
-            const llama_model_quantize_params * params);
-
-    // Apply a LoRA adapter to a loaded model
-    // path_base_model is the path to a higher quality model to use as a base for
-    // the layers modified by the adapter. Can be NULL to use the current loaded model.
-    // The model needs to be reloaded before applying a new adapter, otherwise the adapter
-    // will be applied on top of the previous one
-    // Returns 0 on success
-    LLAMA_API int32_t llama_model_apply_lora_from_file(
-            const struct llama_model * model,
-                          const char * path_lora,
-                               float   scale,
-                          const char * path_base_model,
-                             int32_t   n_threads);
-
-    // Apply a loaded control vector to a llama_context, or if data is NULL, clear
-    // the currently loaded vector.
-    // n_embd should be the size of a single layer's control, and data should point
-    // to an n_embd x n_layers buffer starting from layer 1.
-    // il_start and il_end are the layer range the vector should apply to (both inclusive)
-    // See llama_control_vector_load in common to load a control vector.
-    LLAMA_API int32_t llama_control_vector_apply(
-            struct llama_context * lctx,
-                     const float * data,
-                          size_t   len,
-                         int32_t   n_embd,
-                         int32_t   il_start,
-                         int32_t   il_end);
 
     //
     // KV cache
@@ -650,33 +601,6 @@ extern "C" {
             struct llama_context * ctx,
                    const uint8_t * src),
         "use llama_state_set_data instead");
-
-    // Save/load session file
-    LLAMA_API bool llama_state_load_file(
-            struct llama_context * ctx,
-                      const char * path_session,
-                     llama_token * tokens_out,
-                          size_t   n_token_capacity,
-                          size_t * n_token_count_out);
-    LLAMA_API DEPRECATED(bool llama_load_session_file(
-            struct llama_context * ctx,
-                      const char * path_session,
-                     llama_token * tokens_out,
-                          size_t   n_token_capacity,
-                          size_t * n_token_count_out),
-        "use llama_state_load_file instead");
-
-    LLAMA_API bool llama_state_save_file(
-            struct llama_context * ctx,
-                      const char * path_session,
-               const llama_token * tokens,
-                          size_t   n_token_count);
-    LLAMA_API DEPRECATED(bool llama_save_session_file(
-            struct llama_context * ctx,
-                      const char * path_session,
-               const llama_token * tokens,
-                          size_t   n_token_count),
-        "use llama_state_save_file instead");
 
     // Get the exact size needed to copy the KV cache of a single sequence
     LLAMA_API size_t llama_state_seq_get_size(

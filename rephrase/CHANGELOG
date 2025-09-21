@@ -1,5 +1,8 @@
 21 Sep 2025
 
+ * Now bundling my modified llama with the source code so that you
+   can compile the LLM stuff without imagining what changes I made.
+
  * Fixed bug with type-annotated expressions always being considered
    valuable for generalization.
 
