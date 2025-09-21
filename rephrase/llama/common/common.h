@@ -5,51 +5,14 @@
 
 #include "llama.h"
 
-#include "sampling.h"
-#include <cstdio>
-
-#define LOG_NO_FILE_LINE_FUNCTION
-#include "log.h"
-
-#include <cmath>
 #include <string>
 #include <vector>
-#include <random>
-#include <thread>
-#include <unordered_map>
-#include <tuple>
-
-#ifdef _WIN32
-#define DIRECTORY_SEPARATOR '\\'
-#else
-#define DIRECTORY_SEPARATOR '/'
-#endif // _WIN32
-
-#define die(msg) do {                  \
-    fputs("error: " msg "\n", stderr); \
-    exit(1); \
-  } while (0)
-#define die_fmt(fmt, ...) do {                        \
-    fprintf(stderr, "error: " fmt "\n", __VA_ARGS__); \
-    exit(1);                                          \
-  } while (0)
-
-#define print_build_info() do {                                         \
-    fprintf(stderr, "%s: build = %d (%s)\n", __func__,                  \
-            LLAMA_BUILD_NUMBER, LLAMA_COMMIT);                          \
-    fprintf(stderr, "%s: built with %s for %s\n",                       \
-            __func__, LLAMA_COMPILER, LLAMA_BUILD_TARGET);              \
-  } while(0)
-
-#define DEFAULT_MODEL_PATH "models/7B/ggml-model-f16.gguf"
 
 // build info
 extern int LLAMA_BUILD_NUMBER;
 extern char const *LLAMA_COMMIT;
 extern char const *LLAMA_COMPILER;
 extern char const *LLAMA_BUILD_TARGET;
-
-struct llama_control_vector_load_info;
 
 // Batch utils
 
@@ -98,27 +61,10 @@ void llama_embd_normalize(const float * inp, float * out, int n);
 float llama_embd_similarity_cos(const float * embd1, const float * embd2, int n);
 
 //
-// Control vector utils
-//
-
-struct llama_control_vector_data {
-    int n_embd;
-
-    // stores data for layers [1, n_layer] where n_layer = data.size() / n_embd
-    std::vector<float> data;
-};
-
-struct llama_control_vector_load_info {
-    float strength;
-
-    std::string fname;
-};
-
-//
 // Split utils
 //
-static const char * const LLM_KV_SPLIT_NO            = "split.no";
-static const char * const LLM_KV_SPLIT_COUNT         = "split.count";
-static const char * const LLM_KV_SPLIT_TENSORS_COUNT = "split.tensors.count";
+inline constexpr const char * const LLM_KV_SPLIT_NO            = "split.no";
+inline constexpr const char * const LLM_KV_SPLIT_COUNT         = "split.count";
+inline constexpr const char * const LLM_KV_SPLIT_TENSORS_COUNT = "split.tensors.count";
 
 #endif

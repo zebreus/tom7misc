@@ -313,7 +313,6 @@ unicode.o: $(LLAMA_DIR)/unicode.cpp $(LLAMA_HEADERS)
 unicode-data.o: $(LLAMA_DIR)/unicode-data.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# ggml-mpi.o
 LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o ggml-opencl.o unicode.o unicode-data.o
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o
