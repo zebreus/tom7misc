@@ -1011,17 +1011,139 @@ const std::vector<int> &PageBit7Extended2() {
     0x02FE, // (˾) Modifier Letter Open Shelf
     0x02FF, // (˿) Modifier Letter Low Left Arrow
 
+
+    // Unicode Phonetic Extensions
+
+    0x1D00, // (ᴀ) Latin Letter Small Capital A
+    0x1D01, // (ᴁ) Latin Letter Small Capital Ae
+    0x1D02, // (ᴂ) Latin Small Letter Turned Ae
+    0x1D03, // (ᴃ) Latin Letter Small Capital Barred B
+    0x1D04, // (ᴄ) Latin Letter Small Capital C
+    0x1D05, // (ᴅ) Latin Letter Small Capital D
+    0x1D06, // (ᴆ) Latin Letter Small Capital Eth
+    0x1D07, // (ᴇ) Latin Letter Small Capital E
+    0x1D08, // (ᴈ) Latin Small Letter Turned Open E
+    0x1D09, // (ᴉ) Latin Small Letter Turned I
+    0x1D0A, // (ᴊ) Latin Letter Small Capital J
+    0x1D0B, // (ᴋ) Latin Letter Small Capital K
+    0x1D0C, // (ᴌ) Latin Letter Small Capital L with Stroke
+    0x1D0D, // (ᴍ) Latin Letter Small Capital M
+    0x1D0E, // (ᴎ) Latin Letter Small Capital Reversed N
+    0x1D0F, // (ᴏ) Latin Letter Small Capital O
+    0x1D10, // (ᴐ) Latin Letter Small Capital Open O
+    0x1D11, // (ᴑ) Latin Small Letter Sideways O
+    0x1D12, // (ᴒ) Latin Small Letter Sideways Open O
+    0x1D13, // (ᴓ) Latin Small Letter Sideways O with Stroke
+    0x1D14, // (ᴔ) Latin Small Letter Turned Oe
+    0x1D15, // (ᴕ) Latin Letter Small Capital Ou
+    0x1D16, // (ᴖ) Latin Small Letter Top Half O
+    0x1D17, // (ᴗ) Latin Small Letter Bottom Half O
+    0x1D18, // (ᴘ) Latin Letter Small Capital P
+    0x1D19, // (ᴙ) Latin Letter Small Capital Reversed R
+    0x1D1A, // (ᴚ) Latin Letter Small Capital Turned R
+    0x1D1B, // (ᴛ) Latin Letter Small Capital T
+    0x1D1C, // (ᴜ) Latin Letter Small Capital U
+    0x1D1D, // (ᴝ) Latin Small Letter Sideways U
+    0x1D1E, // (ᴞ) Latin Small Letter Sideways Diaeresized U
+    0x1D1F, // (ᴟ) Latin Small Letter Sideways Turned M
+    0x1D20, // (ᴠ) Latin Letter Small Capital V
+    0x1D21, // (ᴡ) Latin Letter Small Capital W
+    0x1D22, // (ᴢ) Latin Letter Small Capital Z
+    0x1D23, // (ᴣ) Latin Letter Small Capital Ezh
+    0x1D24, // (ᴤ) Latin Letter Voiced Laryngeal Spirant
+    0x1D25, // (ᴥ) Latin Letter Ain
+    0x1D26, // (ᴦ) Greek Letter Small Capital Gamma
+    0x1D27, // (ᴧ) Greek Letter Small Capital Lamda
+    0x1D28, // (ᴨ) Greek Letter Small Capital Pi
+    0x1D29, // (ᴩ) Greek Letter Small Capital Rho
+    0x1D2A, // (ᴪ) Greek Letter Small Capital Psi
+    0x1D2B, // (ᴫ) Cyrillic Letter Small Capital El
+    0x1D2C, // (ᴬ) Modifier Letter Capital A
+    0x1D2D, // (ᴭ) Modifier Letter Capital Ae
+    0x1D2E, // (ᴮ) Modifier Letter Capital B
+    0x1D2F, // (ᴯ) Modifier Letter Capital Barred B
+    0x1D30, // (ᴰ) Modifier Letter Capital D
+    0x1D31, // (ᴱ) Modifier Letter Capital E
+    0x1D32, // (ᴲ) Modifier Letter Capital Reversed E
+    0x1D33, // (ᴳ) Modifier Letter Capital G
+    0x1D34, // (ᴴ) Modifier Letter Capital H
+    0x1D35, // (ᴵ) Modifier Letter Capital I
+    0x1D36, // (ᴶ) Modifier Letter Capital J
+    0x1D37, // (ᴷ) Modifier Letter Capital K
+    0x1D38, // (ᴸ) Modifier Letter Capital L
+    0x1D39, // (ᴹ) Modifier Letter Capital M
+    0x1D3A, // (ᴺ) Modifier Letter Capital N
+    0x1D3B, // (ᴻ) Modifier Letter Capital Reversed N
+    0x1D3C, // (ᴼ) Modifier Letter Capital O
+    0x1D3D, // (ᴽ) Modifier Letter Capital Ou
+    0x1D3E, // (ᴾ) Modifier Letter Capital P
+    0x1D3F, // (ᴿ) Modifier Letter Capital R
+    0x1D40, // (ᵀ) Modifier Letter Capital T
+    0x1D41, // (ᵁ) Modifier Letter Capital U
+    0x1D42, // (ᵂ) Modifier Letter Capital W
+    0x1D43, // (ᵃ) Modifier Letter Small A
+    0x1D44, // (ᵄ) Modifier Letter Small Turned A
+    0x1D45, // (ᵅ) Modifier Letter Small Alpha
+    0x1D46, // (ᵆ) Modifier Letter Small Turned Ae
+    0x1D47, // (ᵇ) Modifier Letter Small B
+    0x1D48, // (ᵈ) Modifier Letter Small D
+    0x1D49, // (ᵉ) Modifier Letter Small E
+    0x1D4A, // (ᵊ) Modifier Letter Small Schwa
+    0x1D4B, // (ᵋ) Modifier Letter Small Open E
+    0x1D4C, // (ᵌ) Modifier Letter Small Turned Open E
+    0x1D4D, // (ᵍ) Modifier Letter Small G
+    0x1D4E, // (ᵎ) Modifier Letter Small Turned I
+    0x1D4F, // (ᵏ) Modifier Letter Small K
+    0x1D50, // (ᵐ) Modifier Letter Small M
+    0x1D51, // (ᵑ) Modifier Letter Small Eng
+    0x1D52, // (ᵒ) Modifier Letter Small O
+    0x1D53, // (ᵓ) Modifier Letter Small Open O
+    0x1D54, // (ᵔ) Modifier Letter Small Top Half O
+    0x1D55, // (ᵕ) Modifier Letter Small Bottom Half O
+    0x1D56, // (ᵖ) Modifier Letter Small P
+    0x1D57, // (ᵗ) Modifier Letter Small T
+    0x1D58, // (ᵘ) Modifier Letter Small U
+    0x1D59, // (ᵙ) Modifier Letter Small Sideways U
+    0x1D5A, // (ᵚ) Modifier Letter Small Turned M
+    0x1D5B, // (ᵛ) Modifier Letter Small V
+    0x1D5C, // (ᵜ) Modifier Letter Small Ain
+    0x1D5D, // (ᵝ) Modifier Letter Small Beta
+    0x1D5E, // (ᵞ) Modifier Letter Small Greek Gamma
+    0x1D5F, // (ᵟ) Modifier Letter Small Delta
+    0x1D60, // (ᵠ) Modifier Letter Small Greek Phi
+    0x1D61, // (ᵡ) Modifier Letter Small Chi
+    0x1D62, // (ᵢ) Latin Subscript Small Letter I
+    0x1D63, // (ᵣ) Latin Subscript Small Letter R
+    0x1D64, // (ᵤ) Latin Subscript Small Letter U
+    0x1D65, // (ᵥ) Latin Subscript Small Letter V
+    0x1D66, // (ᵦ) Greek Subscript Small Letter Beta
+    0x1D67, // (ᵧ) Greek Subscript Small Letter Gamma
+    0x1D68, // (ᵨ) Greek Subscript Small Letter Rho
+    0x1D69, // (ᵩ) Greek Subscript Small Letter Phi
+    0x1D6A, // (ᵪ) Greek Subscript Small Letter Chi
+    0x1D6B, // (ᵫ) Latin Small Letter Ue
+    0x1D6C, // (ᵬ) Latin Small Letter B with Middle Tilde
+    0x1D6D, // (ᵭ) Latin Small Letter D with Middle Tilde
+    0x1D6E, // (ᵮ) Latin Small Letter F with Middle Tilde
+    0x1D6F, // (ᵯ) Latin Small Letter M with Middle Tilde
+    0x1D70, // (ᵰ) Latin Small Letter N with Middle Tilde
+    0x1D71, // (ᵱ) Latin Small Letter P with Middle Tilde
+    0x1D72, // (ᵲ) Latin Small Letter R with Middle Tilde
+    0x1D73, // (ᵳ) Latin Small Letter R with Fishhook and Middle Tilde
+    0x1D74, // (ᵴ) Latin Small Letter S with Middle Tilde
+    0x1D75, // (ᵵ) Latin Small Letter T with Middle Tilde
+    0x1D76, // (ᵶ) Latin Small Letter Z with Middle Tilde
+    0x1D77, // (ᵷ) Latin Small Letter Turned G
+    0x1D78, // (ᵸ) Modifier Letter Cyrillic En
+    0x1D79, // (ᵹ) Latin Small Letter Insular G
+    0x1D7A, // (ᵺ) Latin Small Letter Th with Strikethrough
+    0x1D7B, // (ᵻ) Latin Small Capital Letter I with Stroke
+    0x1D7C, // (ᵼ) Latin Small Letter Iota with Stroke
+    0x1D7D, // (ᵽ) Latin Small Letter P with Stroke
+    0x1D7E, // (ᵾ) Latin Small Capital Letter U with Stroke
+    0x1D7F, // (ᵿ) Latin Small Letter Upsilon with Stroke
+
     // Free to a good home
-
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
