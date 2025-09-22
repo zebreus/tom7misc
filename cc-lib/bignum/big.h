@@ -203,8 +203,16 @@ struct BigInt {
   static std::vector<std::pair<BigInt, int>>
   PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
 
-  // Exact primality test.
+  // Exact primality test. Numbers less than 2 are considered to be not
+  // prime.
   static bool IsPrime(const BigInt &x);
+
+  // Miller-Rabin probabilistic primality test. If this returns false,
+  // it is definitely not prime. If it returns true, the probability
+  // of being prime is about 1 - 1/(2^(num_steps * 2)). Note that this
+  // uses pseduorandom bases for the test, so it is not strong against
+  // an adversary.
+  static bool IsProbablyPrime(const BigInt &x, int num_steps = 64);
 
   // Get 64 (or so) bits of the number. Will be equal for equal a, but
   // no particular value is guaranteed. Not stable between backends or

@@ -419,6 +419,7 @@ static void TestPrimeFactors() {
     std::vector<std::pair<BigInt, int>> factors =
       BigInt::PrimeFactorization(p);
 
+    CHECK(BigInt::IsProbablyPrime(p, 32));
     CHECK(BigInt::IsPrime(p));
 
     CHECK(factors.size() == 1) << FTOS(factors);
@@ -465,8 +466,15 @@ static void TestPrimeFactors() {
     }
   }
 
+  CHECK(BigInt::IsProbablyPrime(BigInt("2847516444895613959067741"), 64));
   CHECK(BigInt::IsPrime(BigInt("2847516444895613959067741")));
+  CHECK(!BigInt::IsProbablyPrime(
+            BigInt("934765193746581762467777777777777777777777"), 64));
   CHECK(!BigInt::IsPrime(BigInt("934765193746581762467777777777777777777777")));
+  CHECK(!BigInt::IsProbablyPrime(
+            BigInt(
+                "934765193746581762467777777777777777777777"
+                "99999999999999999999999999"), 64));
   CHECK(!BigInt::IsPrime(BigInt(
                              "934765193746581762467777777777777777777777"
                              "99999999999999999999999999")));
@@ -474,9 +482,26 @@ static void TestPrimeFactors() {
   // This is 7907^8, bigger than 2^64 and only with factors in the
   // trial division list.
   CHECK(!BigInt::IsPrime(BigInt("15278964097073166593290816202401")));
+  CHECK(!BigInt::IsProbablyPrime(
+            BigInt("15278964097073166593290816202401"), 32));
 
   CHECK(BigInt::IsPrime(BigInt("351287497542881756276856991")));
+  CHECK(BigInt::IsProbablyPrime(BigInt("351287497542881756276856991"), 64));
   CHECK(!BigInt::IsPrime(BigInt("351287497542881756276856997")));
+  CHECK(!BigInt::IsProbablyPrime(BigInt("351287497542881756276856997"), 64));
+
+  CHECK(BigInt::IsProbablyPrime(
+            BigInt("36810898113683429059692379139738721323647376409491014157"), 64));
+
+  CHECK(BigInt::IsProbablyPrime(
+            BigInt("2871856218107427379960936944425882732846010327626613179095159878800893591143935691173601490558081638031076860171"), 64));
+
+
+  CHECK(BigInt::IsProbablyPrime(
+            BigInt("23778489029892836999435984213197969543147208"
+                   "12182515510434297800338407156682609569285213"
+                   "24829276602215887604926261909612695238233550"
+                   "161061361"), 64));
 
   /*
     too hard for current implementation

@@ -10,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <optional>
+#include <random>
 #include <stdlib.h>
 #include <string_view>
 #include <tuple>
@@ -1042,13 +1043,14 @@ static bool IsPrimeInternal(const BigInt &n) {
   }
 
   // Pre-computation for both tests.
-  BigInt nm1 = BigInt::Minus(n, BigInt{1});
+  const BigInt nm1 = BigInt::Minus(n, BigInt{1});
+  const int trailing_zeroes = BigInt::BitwiseCtz(nm1);
+  const BigInt nm1_shift = BigInt::RightShift(nm1, trailing_zeroes);
 
   // Quick Miller-Rabin check with base 2. This filters out most
   // composites very quickly.
   if (MillerRabinTest(n, nm1,
-                      BigInt::RightShift(nm1, BigInt::BitwiseCtz(nm1)),
-                      BigInt::BitwiseCtz(nm1),
+                      nm1_shift, trailing_zeroes,
                       BigInt(2))) {
     return false;
   }
@@ -1082,8 +1084,8 @@ static bool IsPrimeInternal(const BigInt &n) {
     // We already checked a=2. Don't re-check.
     if (PRIMES[i] > 2) {
       if (MillerRabinTest(n, nm1,
-                          BigInt::RightShift(nm1, BigInt::BitwiseCtz(nm1)),
-                          BigInt::BitwiseCtz(nm1), a)) {
+                          nm1_shift, trailing_zeroes,
+                          a)) {
         // Definitely composite.
         return false;
       }
@@ -1095,6 +1097,48 @@ static bool IsPrimeInternal(const BigInt &n) {
   return false;
 }
 
+
+// Deterministic primality test without trial division.
+static bool IsProbablyPrimeInternal(const BigInt &n, int steps) {
+  // We test in [2, n - 2].
+  const BigInt nm4 = BigInt::Minus(n, BigInt{4});
+  if (BigInt::Sign(nm4) != 1) [[unlikely]] {
+    if (BigInt::Eq(n, 3) || BigInt::Eq(n, 2)) return true;
+    return false;
+  }
+
+  // Precomputation.
+  const BigInt nm1 = BigInt::Minus(n, BigInt{1});
+  const int trailing_zeroes = BigInt::BitwiseCtz(nm1);
+  const BigInt nm1_shift = BigInt::RightShift(nm1, trailing_zeroes);
+
+  std::random_device rd;
+  std::mt19937_64 gen(rd());
+  auto RandFunc = [&]() { return gen(); };
+
+  // Quick Miller-Rabin check with base 2. This filters out most
+  // composites very quickly.
+  if (MillerRabinTest(n, nm1,
+                      BigInt::RightShift(nm1, BigInt::BitwiseCtz(nm1)),
+                      BigInt::BitwiseCtz(nm1),
+                      BigInt(2))) {
+    return false;
+  }
+
+  steps--;
+
+  for (; steps > 0; steps--) {
+    // Potential witness in [2, n-2].
+    BigInt a = BigInt::Plus(BigInt::RandTo(RandFunc, nm4), BigInt(2));
+
+    if (MillerRabinTest(n, nm1, nm1_shift, trailing_zeroes, a)) {
+      // Definitely composite.
+      return false;
+    }
+  }
+
+  return true;
+}
 
 static void FactorPollardRhoInner(
     const BigInt &n, int64_t a,
@@ -1490,6 +1534,9 @@ bool BigInt::IsPrime(const BigInt &x) {
   if (u64o.has_value()) {
     return Factor64::IsPrime(u64o.value());
   } else {
+    if (LessEq(x, BigInt(1)))
+      return false;
+
     // Quick trial division check.
     for (int64_t p : PRIMES) {
       if (BigInt::DivisibleBy(x, p)) return false;
@@ -1503,6 +1550,31 @@ bool BigInt::IsPrime(const BigInt &x) {
     #endif
   }
 }
+
+bool BigInt::IsProbablyPrime(const BigInt &x, int num_steps) {
+  std::optional<uint64_t> u64o = x.ToU64();
+  if (u64o.has_value()) {
+    // Just use the exact test, which is fast for 64 bits.
+    return Factor64::IsPrime(u64o.value());
+  } else {
+    if (LessEq(x, BigInt(1)))
+      return false;
+
+    #if BIG_USE_GMP
+    GmpRep::Lease x_tmp(x.rep);
+    return mpz_probab_prime_p(x_tmp.ConstMpz(), num_steps) > 0;
+    #else
+
+    // Quick trial division check.
+    for (int64_t p : PRIMES) {
+      if (BigInt::DivisibleBy(x, p)) return false;
+    }
+
+    return IsProbablyPrimeInternal(x, num_steps);
+    #endif
+  }
+}
+
 
 BigInt BigInt::PowMod(const BigInt &base_in, const BigInt &exp_in,
                       const BigInt &mod) {
