@@ -529,7 +529,7 @@ struct Factor64 {
     }
   }
 
-public:
+ public:
   static int FactorizePreallocated(
       uint64_t x,
       uint64_t *bases,
@@ -1506,6 +1506,18 @@ bool BigInt::IsPrime(const BigInt &x) {
 
 BigInt BigInt::PowMod(const BigInt &base_in, const BigInt &exp_in,
                       const BigInt &mod) {
+  #if BIG_USE_GMP
+  GmpRep::Lease base_tmp(base_in.rep);
+  GmpRep::Lease exp_tmp(exp_in.rep);
+  GmpRep::Lease mod_tmp(mod.rep);
+
+  BigInt ret;
+  mpz_powm(ret.rep.Mpz(), base_tmp.ConstMpz(), exp_tmp.ConstMpz(),
+           mod_tmp.ConstMpz());
+  return ret;
+
+  #else
+
   BigInt exp = exp_in;
   BigInt res(1);
   BigInt base = BigInt::CMod(base_in, mod);
@@ -1521,6 +1533,7 @@ BigInt BigInt::PowMod(const BigInt &base_in, const BigInt &exp_in,
     base = BigInt::CMod(base, mod);
   }
   return res;
+  #endif
 }
 
 
