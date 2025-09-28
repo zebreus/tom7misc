@@ -1,30 +1,34 @@
 
+#include <cstdio>
+#include <format>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
-#include <shared_mutex>
 #include <cstdint>
-#include <deque>
-#include <unordered_map>
 #include <unistd.h>
-#include <cmath>
-
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
 
 #include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/sdl/cursor.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/re2/re2.h"
-#include "../cc-lib/bounds.h"
+#include "SDL_mouse.h"
+#include "SDL_video.h"
+
+#include "base/logging.h"
+#include "base/print.h"
+#include "bounds.h"
+#include "lines.h"
+#include "re2/re2.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
 
 // Fork?
-#define FONTFILE "../chess/blind/font.png"
-#define FONTSMALLFILE "fontsmall.png"
+#define FONTFILE "../cc-lib/sdl/font.png"
+#define FONTSMALLFILE "../cc-lib/sdl/fontsmall.png"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?"
 
@@ -55,7 +59,7 @@ static constexpr double ZOOM_FACTOR = 0.15;
 static SDL_Surface *screen = nullptr;
 
 struct TraceRow {
-  uint64 timestamp;
+  uint64_t timestamp;
   bool on[6];
   int edges[6];
   int since[6];
@@ -168,7 +172,7 @@ struct UI {
   // Single nybble in [1, 15]. 0 is disallowed.
   int current_alpha = 15;
   inline uint32 GetColor() const {
-    uint8 aa = current_alpha | (current_alpha << 4);
+    uint8_t aa = current_alpha | (current_alpha << 4);
     return (current_color & 0xFFFFFF) | (aa << 24);
   }
 
@@ -187,14 +191,14 @@ UI::UI() {
 }
 
 static void DrawThickLine(SDL_Surface *surf, int x0, int y0,
-			  int x1, int y1,
-			  Uint32 color) {
+        int x1, int y1,
+        uint32_t color) {
   static constexpr int THICKNESS = 3;
   Line<int> l{x0, y0, x1, y1};
 
   const int w = surf->w, h = surf->h;
 
-  Uint32 *bufp = (Uint32 *)surf->pixels;
+  uint32_t *bufp = (uint32_t *)surf->pixels;
   int stride = surf->pitch >> 2;
   auto SetPixel = [color, w, h, bufp, stride](int x, int y) {
       if (x >= 0 && y >= 0 &&
@@ -223,8 +227,8 @@ static void DrawThickLine(SDL_Surface *surf, int x0, int y0,
 }
 
 static void DrawLine(SDL_Surface *surf, int x0, int y0,
-		     int x1, int y1,
-		     Uint32 color) {
+         int x1, int y1,
+         uint32_t color) {
   // PERF: when zooming, many lines will be completely off screen.
   // When clipping, have to be careful about the case that both
   // endpoints are offscreen, but the line crosses a corner.
@@ -233,7 +237,7 @@ static void DrawLine(SDL_Surface *surf, int x0, int y0,
 
   const int w = surf->w, h = surf->h;
 
-  Uint32 *bufp = (Uint32 *)surf->pixels;
+  uint32_t *bufp = (uint32_t *)surf->pixels;
   int stride = surf->pitch >> 2;
 #if 1
   auto SetPixel = [color, w, h, bufp, stride](int x, int y) {
@@ -247,7 +251,7 @@ static void DrawLine(SDL_Surface *surf, int x0, int y0,
   auto SetPixel = [surf, color, w, h, bufp, stride](int x, int y) {
       if (x >= 0 && y >= 0 &&
           x < w && y < h) {
-	uint32 prev = bufp[y * stride + x];
+  uint32 prev = bufp[y * stride + x];
         bufp[y * stride + x] = sdlutil::Mix2(surf, color, prev);
       }
     };
@@ -268,31 +272,31 @@ void UI::Loop() {
     // Zoom by the given amount, but then adjust the pan so that the
     // point under the cursor stays in the same place.
     auto ZoomBy = [this](double zx, double zy) {
-	// Position in absolute coordinates where the mouse currently
-	// points.
-	Bounds::Scaler old_scaler = GetScaler();
-	double amx = old_scaler.UnscaleX(mousex);
-	double amy = old_scaler.UnscaleY(mousey);
+      // Position in absolute coordinates where the mouse currently
+      // points.
+      Bounds::Scaler old_scaler = GetScaler();
+      double amx = old_scaler.UnscaleX(mousex);
+      double amy = old_scaler.UnscaleY(mousey);
 
-	zoom_x += zx;
-	zoom_y += zy;
+      zoom_x += zx;
+      zoom_y += zy;
 
-	Bounds::Scaler new_scaler = GetScaler();
-	double nsmx = new_scaler.ScaleX(amx);
-	double nsmy = new_scaler.ScaleY(amy);
+      Bounds::Scaler new_scaler = GetScaler();
+      double nsmx = new_scaler.ScaleX(amx);
+      double nsmy = new_scaler.ScaleY(amy);
 
-	/*
-	printf("mouse %d,%d = abs %.2f, %.2f now %.2f,%.2f\n",
-	       mousex, mousey, amx, amy, nsmx, nsmy);
-	fflush(stdout);
-	*/
+      /*
+      printf("mouse %d,%d = abs %.2f, %.2f now %.2f,%.2f\n",
+             mousex, mousey, amx, amy, nsmx, nsmy);
+      fflush(stdout);
+      */
 
-	// So, the pixel that used to be at mousex,mousey is now
-	// at nsmx,nsmy. Pan to put it at mousex,mousey by subtracting
-	// the "error".
-	pan_x -= (nsmx - mousex);
-	pan_y -= (nsmy - mousey);
-      };
+      // So, the pixel that used to be at mousex,mousey is now
+      // at nsmx,nsmy. Pan to put it at mousex,mousey by subtracting
+      // the "error".
+      pan_x -= (nsmx - mousex);
+      pan_y -= (nsmy - mousey);
+    };
 
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
@@ -310,8 +314,8 @@ void UI::Loop() {
         if (dragging) {
           switch (mode) {
           case Mode::PANNING:
-	    pan_x = start_pan_x + (mousex - drag_x);
-	    pan_y = start_pan_y + (mousey - drag_y);
+            pan_x = start_pan_x + (mousex - drag_x);
+            pan_y = start_pan_y + (mousey - drag_y);
             break;
           default:;
           }
@@ -327,23 +331,22 @@ void UI::Loop() {
           return;
 
         case SDLK_HOME: {
-	  pan_x = 0;
-	  pan_y = 0;
-	  zoom_x = 1.0;
-	  zoom_y = 1.0;
+          pan_x = 0;
+          pan_y = 0;
+          zoom_x = 1.0;
+          zoom_y = 1.0;
           break;
         }
 
         case SDLK_KP_PLUS:
         case SDLK_EQUALS:
         case SDLK_PLUS:
-	  ZoomBy(ZOOM_FACTOR, ZOOM_FACTOR);
+          ZoomBy(ZOOM_FACTOR, ZOOM_FACTOR);
           break;
-
 
         case SDLK_KP_MINUS:
         case SDLK_MINUS:
-	  ZoomBy(-ZOOM_FACTOR, -ZOOM_FACTOR);
+          ZoomBy(-ZOOM_FACTOR, -ZOOM_FACTOR);
           break;
 
         case SDLK_s: {
@@ -366,39 +369,39 @@ void UI::Loop() {
         mousex = e->x;
         mousey = e->y;
 
-	switch (e->button) {
-	case SDL_BUTTON_WHEELUP:
-	  ZoomBy(ZOOM_FACTOR, ZOOM_FACTOR);
-	  break;
-	case SDL_BUTTON_WHEELDOWN:
-	  ZoomBy(-ZOOM_FACTOR, -ZOOM_FACTOR);
-	  break;
-	case SDL_BUTTON_LEFT:
-	  dragging = true;
-	  start_pan_x = pan_x;
-	  start_pan_y = pan_y;
-	  drag_x = mousex;
-	  drag_y = mousey;
-	  SDL_SetCursor(cursor_hand_closed);
-	  break;
-	}
+        switch (e->button) {
+        case SDL_BUTTON_WHEELUP:
+          ZoomBy(ZOOM_FACTOR, ZOOM_FACTOR);
+          break;
+        case SDL_BUTTON_WHEELDOWN:
+          ZoomBy(-ZOOM_FACTOR, -ZOOM_FACTOR);
+          break;
+        case SDL_BUTTON_LEFT:
+          dragging = true;
+          start_pan_x = pan_x;
+          start_pan_y = pan_y;
+          drag_x = mousex;
+          drag_y = mousey;
+          SDL_SetCursor(cursor_hand_closed);
+          break;
+        }
 
         break;
       }
 
       case SDL_MOUSEBUTTONUP: {
         // LMB/RMB, drag, etc.
-	SDL_MouseButtonEvent *e = (SDL_MouseButtonEvent*)&event;
+        SDL_MouseButtonEvent *e = (SDL_MouseButtonEvent*)&event;
         mousex = e->x;
         mousey = e->y;
 
-	if (e->button == SDL_BUTTON_LEFT) {
-	  dragging = false;
-	  SDL_SetCursor(cursor_hand);
-	  pan_x = start_pan_x + (mousex - drag_x);
-	  pan_y = start_pan_y + (mousey - drag_y);
-	}
-	break;
+        if (e->button == SDL_BUTTON_LEFT) {
+          dragging = false;
+          SDL_SetCursor(cursor_hand);
+          pan_x = start_pan_x + (mousex - drag_x);
+          pan_y = start_pan_y + (mousey - drag_y);
+        }
+        break;
       }
 
       default:;
@@ -419,13 +422,14 @@ void UI::DrawStatus() {
   double ox, oy;
   std::tie(ox, oy) = scaler.Unscale({mousex, mousey});
   const string modestring =
-    StringPrintf("mouse %.4f,%.4f", ox, oy);
+    std::format("mouse {:.4f},{:.4f}", ox, oy);
   font2x->draw(5, SCREENH - (FONTHEIGHT * 2) - 1, modestring);
 }
 
+[[maybe_unused]]
 static void DrawArrow(SDL_Surface *surf,
                       int x0, int y0, int x1, int y1,
-                      Uint32 color) {
+                      uint32_t color) {
   // Main stem.
   DrawThickLine(surf, x0, y0, x1, y1, color);
   sdlutil::DrawCircle32(surf, x1, y1, 6, color);
@@ -455,8 +459,8 @@ void UI::Draw() {
     int y = (VIDEOH / (double)GRID_LINES) * (i + 1);
     DrawLine(screen, 0, y, SCREENW - 1, y, GRID_COLOR);
     font->draw(6, y - FONTHEIGHT - 1,
-	       StringPrintf("^6%.4f",
-			    scaler.UnscaleY(y)));
+               std::format("^6{:.4f}",
+                           scaler.UnscaleY(y)));
   }
 
   // Vertical
@@ -464,8 +468,8 @@ void UI::Draw() {
     int x = (SCREENW / (double)GRID_LINES) * (i + 1);
     DrawLine(screen, x, 0, x, SCREENH - 1, GRID_COLOR);
     font->draw(x + 2, VIDEOH - FONTHEIGHT - 1,
-	       StringPrintf("^6%.4f",
-			    scaler.UnscaleX(x)));
+               std::format("^6{:.4f}",
+                           scaler.UnscaleX(x)));
   }
 
   // Draw lines.
@@ -477,14 +481,14 @@ void UI::Draw() {
       double prev_y = scaler.ScaleY(series.Extract(the_rows[0], i));
 
       for (int r = 1; r < the_rows.size(); r++) {
-	const TraceRow &row = the_rows[r];
-	double x = scaler.ScaleX(row.timestamp);
-	double y = scaler.ScaleY(series.Extract(row, i));
+  const TraceRow &row = the_rows[r];
+  double x = scaler.ScaleX(row.timestamp);
+  double y = scaler.ScaleY(series.Extract(row, i));
 
-	DrawLine(screen, prev_x, prev_y, x, y, color);
+  DrawLine(screen, prev_x, prev_y, x, y, color);
 
-	prev_x = x;
-	prev_y = y;
+  prev_x = x;
+  prev_y = y;
       }
     }
   }
@@ -498,7 +502,7 @@ int main(int argc, char **argv) {
   CHECK(SDL_Init(SDL_INIT_VIDEO |
                  SDL_INIT_TIMER |
                  SDL_INIT_AUDIO) >= 0);
-  fprintf(stderr, "SDL initialized OK.\n");
+  Print(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
                       SDL_DEFAULT_REPEAT_INTERVAL);
@@ -514,10 +518,10 @@ int main(int argc, char **argv) {
   CHECK(screen);
 
   fontsmall = Font::Create(screen,
-			   FONTSMALLFILE,
-			   FONTCHARS,
-			   FONTSMALLWIDTH,
-			   FONTSMALLHEIGHT, FONTSTYLES, 0, 3);
+         FONTSMALLFILE,
+         FONTCHARS,
+         FONTSMALLWIDTH,
+         FONTSMALLHEIGHT, FONTSTYLES, 0, 3);
   CHECK(fontsmall != nullptr) << "Couldn't load fontsmall.";
 
   font = Font::Create(screen,
@@ -550,12 +554,12 @@ int main(int argc, char **argv) {
   SDL_ShowCursor(SDL_ENABLE);
 
   the_rows = ReadRows("trace.csv");
-  printf("Read %lld rows\n", (int64)the_rows.size());
+  Print("Read {} rows\n", the_rows.size());
 
   InitSeries();
-  printf("Bounds %f,%f -> %f,%f\n",
-	 max_bounds.MinX(), max_bounds.MinY(),
-	 max_bounds.MaxX(), max_bounds.MaxY());
+  Print("Bounds {},{} -> {},{}\n",
+        max_bounds.MinX(), max_bounds.MinY(),
+        max_bounds.MaxX(), max_bounds.MaxY());
   fflush(stdout);
 
   UI ui;

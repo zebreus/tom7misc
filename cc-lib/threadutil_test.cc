@@ -13,6 +13,7 @@
 #include "ansi.h"
 #include "base/do-not-optimize.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "periodically.h"
 #include "timer.h"
 
@@ -187,17 +188,17 @@ static void BenchParallelComp() {
       ITERS,
       [&run_timer, &bar_per](int64_t idx) {
         if (bar_per.ShouldRun()) {
-          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-                 ANSI_BEGINNING_OF_LINE "%s\n",
-                 ANSI::ProgressBar(idx,
-                                   ITERS,
-                                   "bench parallelcomp",
-                                   run_timer.Seconds()).c_str());
+          Print(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                ANSI_BEGINNING_OF_LINE "{}\n",
+                ANSI::ProgressBar(idx,
+                                  ITERS,
+                                  "bench parallelcomp",
+                                  run_timer.Seconds()));
         }
       },
       16);
 
-  printf("\nFinished in %s\n", ANSI::Time(run_timer.Seconds()).c_str());
+  Print("\nFinished in {}\n", ANSI::Time(run_timer.Seconds()));
 }
 
 int main(int argc, char **argv) {

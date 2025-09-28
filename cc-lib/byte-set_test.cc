@@ -3,7 +3,6 @@
 
 #include <array>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <numeric>
 #include <string>
@@ -13,6 +12,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "interval-cover.h"
 #include "randutil.h"
@@ -621,6 +621,6 @@ int main(int argc, char **argv) {
 
   TestMap();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

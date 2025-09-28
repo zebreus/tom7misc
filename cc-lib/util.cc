@@ -92,6 +92,33 @@ using uint8 = uint8_t;
 using int64 = int64_t;
 using uint64 = uint64_t;
 
+// TODO: This is used internally, but only for tempfile.
+// We should just use mkstmp, which also avoids races.
+static int Random();
+namespace {
+struct RandomSeeder {
+  RandomSeeder() {
+# if defined(WIN32) || defined(__MINGW32__)
+    srand((int)time(nullptr) ^ getpid());
+# else
+    srandom(time(0) ^ getpid());
+# endif
+  }
+};
+}
+
+static int Random() {
+  // Run exactly once, with initialization thread safe.
+  // Result is not used.
+  static RandomSeeder *unused = new RandomSeeder;
+  (void)unused;
+# if defined(WIN32) || defined(__MINGW32__)
+  return ::rand();
+# else
+  return ::random();
+# endif
+}
+
 string Util::itos(int i) {
   return std::format("{}", i);
 }
@@ -580,18 +607,6 @@ bool Util::WriteUint64File(const string &filename,
   return WriteFileBytes(filename, bytes);
 }
 
-
-string Util::sizes(int i) {
-  string s = "    ";
-  s[0] = 255&(i >> 24);
-  s[1] = 255&(i >> 16);
-  s[2] = 255&(i >> 8);
-  s[3] = 255& i;
-  return s;
-}
-
-/* XXX these have terrible names */
-
 unsigned int Util::hash(const string &s) {
   unsigned int h = 0x714FA5DD;
   for (unsigned int i = 0; i < s.length(); i ++) {
@@ -728,14 +743,6 @@ int Util::getpid() {
   return ::getpid();
 }
 
-/* XXX race. should use creat
-   with O_EXCL on unix, at least. */
-FILE *Util::open_new(string fname) {
-  if (!ExistsFile(fname))
-    return fopen(fname.c_str(), "wb+");
-  else return 0;
-}
-
 string Util::getline(string &chunk) {
   string ret;
   for (unsigned int i = 0; i < chunk.length(); i ++) {
@@ -856,7 +863,7 @@ double Util::ParseDouble(std::string_view s, double default_value) {
 }
 
 /* PERF same */
-string Util::chopto(char c, string &line) {
+string Util::ChopTo(char c, string &line) {
   string acc;
   for (unsigned int i = 0; i < line.length(); i ++) {
     if (line[i] != c) {
@@ -965,7 +972,7 @@ string Util::tempfile(const string &suffix) {
 
   do {
     fname = std::format("{}_{}_{}{}",
-                        tries, getpid(), random(),
+                        tries, getpid(), Random(),
                         suffix);
     tries++;
   } while (ExistsFile(fname));
@@ -1601,79 +1608,4 @@ const uint8_t *Util::MemMem(const uint8_t *haystack, size_t n,
     return (const uint8_t*)memchr(haystack, ((const uint8_t*)needle)[0], n);
   }
   return nullptr;
-}
-
-
-
-#ifdef WIN32
-// for ShellExecute
-# include <shellapi.h>
-# include <shlobj.h>
-#endif
-
-/* return true on success */
-bool Util::launchurl(const string &url) {
-  /* XXX ??? */
-#if 0
-#ifdef OSX
-  CFURLRef urlcfurl = CFURLCreateWithBytes(kCFAllocatorDefault,
-                                           (const UInt8*)url.c_str(),
-                                           (CFIndex)strlen(urlstring),
-                                           kCFStringEncodingASCII, nullptr);
-  if (urlcfurl) {
-      OSStatus status = LSOpenCFURLRef(urlcfurl, nullptr);
-      CFRelease(urlcfurl);
-      return (status == noErr);
-    }
-  return 0;
-#endif
-#endif
-
-#ifdef WIN32
-  return ((size_t)ShellExecute(nullptr, "open", url.c_str(),
-                               nullptr, nullptr, SW_SHOWNORMAL)) > 32;
-#endif
-
-  /* otherwise.. */
-  return false;
-}
-
-
-float Util::randfrac() {
-  return random() / (float)RAND_MAX;
-}
-
-/* XXX, could use better source of randomness (kernel)
-   on systems that support it. But we don't have any
-   real need for cryptographic randomness.
-
-   web sequence numbers are chosen randomly, now, so we
-   actually do.
-*/
-namespace {
-/* ensure that random is seeded */
-struct RandomSeeder {
-  RandomSeeder() {
-# if defined(WIN32) || defined(__MINGW32__)
-    srand((int)time(nullptr) ^ getpid());
-# else
-    srandom(time(0) ^ getpid());
-# endif
-    /* run it a bit */
-    for (int i = 0; i < 256; i ++)
-      (void)Util::random();
-  }
-};
-}  // namespace
-
-int Util::random() {
-  // Run exactly once, with initialization thread safe.
-  // Result is not used.
-  static RandomSeeder *unused = new RandomSeeder;
-  (void)unused;
-# if defined(WIN32) || defined(__MINGW32__)
-  return ::rand();
-# else
-  return ::random();
-# endif
 }

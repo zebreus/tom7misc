@@ -14,7 +14,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "textsvg.h"
@@ -58,10 +58,10 @@ struct Word {
 static void WriteData(const string &filename, const vector<Word> &words) {
   FILE *f = fopen(filename.c_str(), "wb");
   for (const Word &word : words) {
-    fprintf(f, "%d %s\n", word.idx, word.w.c_str());
+    Print(f, "{} {}\n", word.idx, word.w);
   }
   fclose(f);
-  printf("Wrote %s.\n", filename.c_str());
+  Print("Wrote {}.\n", filename);
 }
 
 static void WriteSVG(const string &filename, const vector<Word> &words) {
@@ -77,24 +77,24 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
   string svg = TextSVG::Header(SVGWIDTH, SVGHEIGHT);
 
   auto F = [](double d) {
-    string s = StringPrintf("%f", d);
-    while (!s.empty() && (s[s.size() - 1] == '0' || s[s.size() - 1] == '.')) {
-      s.resize(s.size() - 1);
-    }
+      string s = std::format("{:f}", d);
+      while (!s.empty() && (s[s.size() - 1] == '0' || s[s.size() - 1] == '.')) {
+        s.resize(s.size() - 1);
+      }
 
-    if (s.empty()) return string("0");
-    else return s;
+      if (s.empty()) return string("0");
+      else return s;
   };
 
   // Doesn't work to apply radius on <g> node, sadly.
   if (false) {
-    svg += StringPrintf("<g fill-opacity=\"0.2\">\n");
+    svg += "<g fill-opacity=\"0.2\">\n";
     for (const Word &w : words) {
-      svg += StringPrintf("<circle cx=\"%s\" cy=\"%s\" "
-        "r=\"%s\"/>\n",
-        F(w.X() * DOTSIZE + HALFDOT).c_str(),
-        F(w.Y() * DOTSIZE + HALFDOT).c_str(),
-        F(DOTSIZE * 0.4).c_str());
+      svg += std::format("<circle cx=\"{}\" cy=\"{}\" "
+                         "r=\"{}\"/>\n",
+        F(w.X() * DOTSIZE + HALFDOT),
+        F(w.Y() * DOTSIZE + HALFDOT),
+        F(DOTSIZE * 0.4));
     }
     svg += "</g>\n";
   }
@@ -117,12 +117,12 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
   for (const Word &w : words) {
     for (const Word *other : w.neighbors) {
       lines[Shared(w.w, other->w)].push_back(
-          StringPrintf(R"(<line x1="%s" y1="%s" x2="%s" y2="%s"/>)"
-                       "\n",
-                       F(w.X() * DOTSIZE + HALFDOT).c_str(),
-                       F(w.Y() * DOTSIZE + HALFDOT).c_str(),
-                       F(other->X() * DOTSIZE + HALFDOT).c_str(),
-                       F(other->Y() * DOTSIZE + HALFDOT).c_str()));
+          std::format(R"(<line x1="{}" y1="{}" x2="{}" y2="{}"/>)"
+                      "\n",
+                      F(w.X() * DOTSIZE + HALFDOT),
+                      F(w.Y() * DOTSIZE + HALFDOT),
+                      F(other->X() * DOTSIZE + HALFDOT),
+                      F(other->Y() * DOTSIZE + HALFDOT)));
     }
   }
 
@@ -139,11 +139,11 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
     double r = (s[0] - 'a') / 26.0;
     double g = (s[1] - 'a') / 26.0;
     double b = (s[2] - 'a') / 26.0;
-    string stroke = StringPrintf("%2x%2x%2x", uint8(r * 255.0),
-                                 uint8(g * 255.0), uint8(b * 255.0));
-    svg += StringPrintf(
-        "<g stroke-width=\"0.2\" stroke=\"#%s\" stroke-opacity=\"0.5\">\n",
-        stroke.c_str());
+    string stroke = std::format("{:2x}{:2x}{:2x}", uint8(r * 255.0),
+                                uint8(g * 255.0), uint8(b * 255.0));
+    svg += std::format(
+        "<g stroke-width=\"0.2\" stroke=\"#{}\" stroke-opacity=\"0.5\">\n",
+        stroke);
     for (const string &line : p.second) {
       svg += line;
     }
@@ -292,8 +292,8 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
         swaps++;
         energy = energy - oldeng + neweng;
         if (swaps % 17000 == 0) {
-          WriteSVG(StringPrintf("frame-%d.svg", framenum), words);
-          WriteData(StringPrintf("frame-%d.txt", framenum), words);
+          WriteSVG(std::format("frame-{}.svg", framenum), words);
+          WriteData(std::format("frame-{}.txt", framenum), words);
           framenum++;
         }
 
@@ -345,7 +345,7 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
       }
     }
 
-    printf("** One round in %.1fs **\n", one_round.MS() / 1000.0);
+    Print("** One round in {:.1f}s **\n", one_round.MS() / 1000.0);
   }
 
   // WriteSVG("grid.svg", words);

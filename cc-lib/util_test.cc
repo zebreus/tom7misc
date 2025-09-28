@@ -681,25 +681,25 @@ static void TestChopStringView() {
 static void TestChopTo() {
   {
     string s = "hello,world";
-    CHECK_EQ(Util::chopto(',', s), "hello");
+    CHECK_EQ(Util::ChopTo(',', s), "hello");
     CHECK_EQ(s, "world");
   }
 
   {
     string s = "hello";
-    CHECK_EQ(Util::chopto(',', s), "hello");
+    CHECK_EQ(Util::ChopTo(',', s), "hello");
     CHECK_EQ(s, "");
   }
 
   {
     string s = ",hello";
-    CHECK_EQ(Util::chopto(',', s), "");
+    CHECK_EQ(Util::ChopTo(',', s), "");
     CHECK_EQ(s, "hello");
   }
 
   {
     string s = "";
-    CHECK_EQ(Util::chopto(',', s), "");
+    CHECK_EQ(Util::ChopTo(',', s), "");
     CHECK_EQ(s, "");
   }
 }

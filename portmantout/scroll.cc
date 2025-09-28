@@ -1,21 +1,18 @@
-// Scroll a text file (the portmantout) 
+// Scroll a text file (the portmantout)
 
-#include <vector>
+#include <cstdint>
+#include <cstdio>
+#include <format>
+#include <mutex>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <algorithm>
-#include <deque>
+#include <vector>
 
-#include "util.h"
-#include "timer.h"
-#include "threadutil.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "base/logging.h"
-#include "textsvg.h"
-#include "base/stringprintf.h"
 #include "image.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
@@ -29,9 +26,9 @@ using namespace std;
 #define SCREENHEIGHT 1080
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {   \
+  MutexLock Printf_ml(&print_mutex);    \
+  printf(fmt, ##__VA_ARGS__);     \
   } while (0);
 
 #define CHECKMARK "\xF2"
@@ -44,7 +41,7 @@ std::mutex print_mutex;
 
 int main() {
   string port = Util::ReadFile("portmantout.txt");
-  
+
   ImageRGBA *font = ImageRGBA::Load("font.png");
 
   static constexpr int CHARSWIDE = 240;
@@ -88,12 +85,12 @@ int main() {
 "                                                          +-----------------------------------------------------------+                                                                                                                         ";
 
   // Init font.
-  
+
   string chars = FONTCHARS;
-  
+
   int fontx[255] = {0};
   for (unsigned int i = 0; i < chars.size(); i++) {
-    int idx = (uint8)chars[i];
+    int idx = (uint8_t)chars[i];
     fontx[idx] = i * FONTWIDTH;
   }
 
@@ -105,15 +102,10 @@ int main() {
   }
 
   ParallelComp(NUMFRAMES,
-	       [font, &fontx, &port, &colors, maxscroll](int f) {
+         [font, &fontx, &port, &colors, maxscroll](int f) {
 
       ImageRGBA *frame = new ImageRGBA(SCREENWIDTH, SCREENHEIGHT);
-      for (int i = 0; i < SCREENWIDTH * SCREENHEIGHT; i++) {
-	frame->rgba[i * 4 + 0] = 40;
-	frame->rgba[i * 4 + 1] = 0;
-	frame->rgba[i * 4 + 2] = 20;
-	frame->rgba[i * 4 + 3] = 255;
-      }
+      frame->Clear32(0x280014FF);
 
       // In pixels.
       int scrollpos = int((f / (double)NUMFRAMES) * maxscroll);
@@ -121,29 +113,30 @@ int main() {
       // Just draw the whole thing, it's simpler.
       int portheight = port.size() / CHARSWIDE + 1;
       for (int y = 0; y < portheight; y++) {
-	// screen space
-	int sy = (y * (FONTHEIGHT - 2)) - scrollpos;
-	// Quick skips.
-	if (sy < -FONTHEIGHT) continue;
-	if (sy > SCREENHEIGHT) continue;
+        // screen space
+        int sy = (y * (FONTHEIGHT - 2)) - scrollpos;
+        // Quick skips.
+        if (sy < -FONTHEIGHT) continue;
+        if (sy > SCREENHEIGHT) continue;
 
-	// Draw the whole line...
-	for (int x = 0; x < CHARSWIDE; x++) {
-	  int idx = y * CHARSWIDE + x;
-	  if (idx >= 0 && idx < port.size()) {
-	    int ch = port[idx];
-	    int color = colors[idx];
-	    frame->Blit(*font, fontx[ch], FONTHEIGHT * color,
-			FONTWIDTH, FONTHEIGHT,
-			x * (FONTWIDTH - 1),
-			sy);
-	  }
-	}
+        // Draw the whole line...
+        for (int x = 0; x < CHARSWIDE; x++) {
+          int idx = y * CHARSWIDE + x;
+          if (idx >= 0 && idx < port.size()) {
+            int ch = port[idx];
+            int color = colors[idx];
+            frame->BlendImageRect(
+                x * (FONTWIDTH - 1), sy,
+                *font,
+                fontx[ch], FONTHEIGHT * color,
+                FONTWIDTH, FONTHEIGHT);
+          }
+        }
       }
 
-      frame->Save(StringPrintf("scroll-%d.png", f));
+      frame->Save(std::format("scroll-{}.png", f));
       if (f % 10 == 0) {
-	Printf("Wrote %d.\n", f);
+        Printf("Wrote %d.\n", f);
       }
 
       delete frame;

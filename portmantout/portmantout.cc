@@ -1,4 +1,5 @@
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -13,7 +14,6 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "color-util.h"
 #include "image.h"
 #include "makejoin.h"
@@ -26,10 +26,10 @@
 
 using namespace std;
 
-std::mutex print_mutex;
-#define Printf(fmt, ...) do {   \
-  MutexLock Printf_ml(&print_mutex);    \
-  printf(fmt, ##__VA_ARGS__);     \
+static std::mutex print_mutex;
+#define Printf(fmt, ...) do {           \
+    MutexLock Printf_ml(&print_mutex);  \
+    printf(fmt, ##__VA_ARGS__);         \
   } while (0);
 
 static constexpr bool VALIDATE = false;
@@ -61,7 +61,7 @@ static unordered_map<string, GridDot> LoadGrid(const string &filename) {
 }
 
 static string F(double d) {
-  string s = StringPrintf("%f", d);
+  string s = std::format("{}", d);
   while (!s.empty() && (s[s.size() - 1] == '0' || s[s.size() - 1] == '.')) {
     s.resize(s.size() - 1);
   }
@@ -104,19 +104,19 @@ static void WriteSVGFrames1(const unordered_map<string, GridDot> &grid,
         float r, g, b;
         ColorUtil::HSVToRGB(nontrivial_idx / (float)nontrivial, 1.0f, 0.75f, &r,
                             &g, &b);
-        string rgb = StringPrintf("%02x%02x%02x", uint8(r * 255.0),
-                                  uint8(g * 255.0), uint8(b * 255.0));
+        string rgb = std::format("{:02x}{:02x}{:02x}", uint8_t(r * 255.0),
+                                 uint8_t(g * 255.0), uint8_t(b * 255.0));
         double opacity = nontrivial_idx < old_idx ? 0.05 : 0.75;
-        svg += StringPrintf(
-            "<polyline fill=\"none\" stroke=\"#%s\" opacity=\"%0.2f\" "
+        svg += std::format(
+            "<polyline fill=\"none\" stroke=\"#{}\" opacity=\"{:0.2f}\" "
             "stroke-width=\"0.5\" points=\"",
             rgb.c_str(), opacity);
         for (const string &word : round.path) {
           auto it = grid.find(word);
           CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
           int x = it->second.X(), y = it->second.Y();
-          svg += StringPrintf("%s,%s ", F(x * DOTSIZE + HALFDOT).c_str(),
-                              F(y * DOTSIZE + HALFDOT).c_str());
+          svg += std::format("{},{} ", F(x * DOTSIZE + HALFDOT),
+                             F(y * DOTSIZE + HALFDOT));
         }
         svg += "\"/>\n";
         nontrivial_idx++;
@@ -124,7 +124,7 @@ static void WriteSVGFrames1(const unordered_map<string, GridDot> &grid,
     }
     svg += TextSVG::Footer();
     {
-      string filename = StringPrintf("%s%d.svg", filebase.c_str(), frame);
+      string filename = std::format("{}{}.svg", filebase, frame);
       FILE *f = fopen(filename.c_str(), "wb");
       fprintf(f, "%s\n", svg.c_str());
       fclose(f);
@@ -165,50 +165,50 @@ static void WriteSVGFrames2(const unordered_map<string, GridDot> &grid,
     for (int i = 0; i < trace.rounds.size() && i < this_idx; i++) {
       const Round &round = trace.rounds[i];
       if (round.path.size() > 0 /* XXX */) {
-  float r, g, b;
-  ColorUtil::HSVToRGB(nontrivial_idx / (float)nontrivial, 1.0f, 1.0f,
-          &r, &g, &b);
-  string rgb = StringPrintf("%02x%02x%02x",
-          uint8(r * 255.0),
-          uint8(g * 255.0),
-          uint8(b * 255.0));
-  double opacity =
-    nontrivial_idx < old_idx ? 0.50 : 1.0;
+        float r, g, b;
+        ColorUtil::HSVToRGB(nontrivial_idx / (float)nontrivial, 1.0f, 1.0f,
+                            &r, &g, &b);
+        string rgb = std::format("{:02x}{:02x}{:02x}",
+                                  uint8_t(r * 255.0),
+                                  uint8_t(g * 255.0),
+                                  uint8_t(b * 255.0));
+        double opacity =
+          nontrivial_idx < old_idx ? 0.50 : 1.0;
 
-  svg += StringPrintf("<g fill=\"#%s\" opacity=\"%0.2f\">\n",
-          rgb.c_str(), opacity);
+        svg += std::format("<g fill=\"#{}\" opacity=\"{:.02f}\">\n",
+                            rgb, opacity);
 
-  for (const string &word : round.path) {
-    auto it = grid.find(word);
-    CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
-    int x = it->second.X(), y = it->second.Y();
-    svg += StringPrintf("<circle cx=\"%s\" cy=\"%s\" "
-            "r=\"%s\"/>\n",
-            F(x * DOTSIZE + HALFDOT).c_str(),
-            F(y * DOTSIZE + HALFDOT).c_str(),
-            F(DOTSIZE * 0.4).c_str());
-  }
-  svg += "</g>\n";
+        for (const string &word : round.path) {
+          auto it = grid.find(word);
+          CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
+          int x = it->second.X(), y = it->second.Y();
+          svg += std::format("<circle cx=\"{}\" cy=\"{}\" "
+                              "r=\"{}\"/>\n",
+                              F(x * DOTSIZE + HALFDOT),
+                              F(y * DOTSIZE + HALFDOT),
+                              F(DOTSIZE * 0.4));
+        }
+        svg += "</g>\n";
 
-  svg += StringPrintf("<g fill=\"#000\" opacity=\"%.02f\">\n", opacity);
-  for (const string &word : round.covered) {
-    auto it = grid.find(word);
-    CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
-    int x = it->second.X(), y = it->second.Y();
-    svg += StringPrintf("<circle cx=\"%s\" cy=\"%s\" "
-            "r=\"%s\"/>\n",
-            F(x * DOTSIZE + HALFDOT).c_str(),
-            F(y * DOTSIZE + HALFDOT).c_str(),
-            F(DOTSIZE * 0.4).c_str());
-  }
-  svg += "</g>\n";
+        svg += std::format("<g fill=\"#000\" opacity=\"{:.02f}\">\n", opacity);
+        for (const string &word : round.covered) {
+          auto it = grid.find(word);
+          CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
+          int x = it->second.X(), y = it->second.Y();
+          svg += std::format("<circle cx=\"{}\" cy=\"{}\" "
+                             "r=\"{}\"/>\n",
+                             F(x * DOTSIZE + HALFDOT),
+                             F(y * DOTSIZE + HALFDOT),
+                             F(DOTSIZE * 0.4));
+        }
+        svg += "</g>\n";
 
-  nontrivial_idx++;
+        nontrivial_idx++;
       }
     }
     svg += TextSVG::Footer();
     {
-      string filename = StringPrintf("%s%d.svg", filebase.c_str(), frame);
+      string filename = std::format("{}{}.svg", filebase, frame);
       FILE *f = fopen(filename.c_str(), "wb");
       fprintf(f, "%s\n", svg.c_str());
       fclose(f);
@@ -218,7 +218,8 @@ static void WriteSVGFrames2(const unordered_map<string, GridDot> &grid,
 }
 
 static void WritePNGFrames(const unordered_map<string, GridDot> &grid,
-         const string &filebase, int num_frames, const Trace &trace) {
+                           const string &filebase, int num_frames,
+                           const Trace &trace) {
   int nontrivial = trace.rounds.size();
 
   static constexpr int PNGWIDTH = 1920;
@@ -233,31 +234,36 @@ static void WritePNGFrames(const unordered_map<string, GridDot> &grid,
 
   for (int frame = 0; frame < num_frames; frame++) {
     ImageRGBA img{PNGWIDTH, PNGHEIGHT};
-    for (uint8 &b : img.rgba) b = 0xFF;
+    img.Clear32(0xFFFFFFFF);
 
     // Printf("%d.\n", (int)img.rgba.size());
 
+    auto BlendPixelf = [&img](int x, int y, float r, float g, float b, float a) {
+        uint32_t c = ColorUtil::FloatsTo32(r, g, b, a);
+        img.BlendPixel32(x, y, c);
+      };
+
     // Given top-left.
-    auto DrawDot = [&img](int x, int y, float r, float g, float b, float a) {
-      img.BlendPixelf(x + 0, y + 0, r, g, b, a * 0.25);
-      img.BlendPixelf(x + 1, y + 0, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 2, y + 0, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 3, y + 0, r, g, b, a * 0.25);
+    auto DrawDot = [&BlendPixelf](int x, int y, float r, float g, float b, float a) {
+      BlendPixelf(x + 0, y + 0, r, g, b, a * 0.25);
+      BlendPixelf(x + 1, y + 0, r, g, b, a * 0.5);
+      BlendPixelf(x + 2, y + 0, r, g, b, a * 0.5);
+      BlendPixelf(x + 3, y + 0, r, g, b, a * 0.25);
 
-      img.BlendPixelf(x + 0, y + 1, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 1, y + 1, r, g, b, a);
-      img.BlendPixelf(x + 2, y + 1, r, g, b, a);
-      img.BlendPixelf(x + 3, y + 1, r, g, b, a * 0.5);
+      BlendPixelf(x + 0, y + 1, r, g, b, a * 0.5);
+      BlendPixelf(x + 1, y + 1, r, g, b, a);
+      BlendPixelf(x + 2, y + 1, r, g, b, a);
+      BlendPixelf(x + 3, y + 1, r, g, b, a * 0.5);
 
-      img.BlendPixelf(x + 0, y + 2, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 1, y + 2, r, g, b, a);
-      img.BlendPixelf(x + 2, y + 2, r, g, b, a);
-      img.BlendPixelf(x + 3, y + 2, r, g, b, a * 0.5);
+      BlendPixelf(x + 0, y + 2, r, g, b, a * 0.5);
+      BlendPixelf(x + 1, y + 2, r, g, b, a);
+      BlendPixelf(x + 2, y + 2, r, g, b, a);
+      BlendPixelf(x + 3, y + 2, r, g, b, a * 0.5);
 
-      img.BlendPixelf(x + 0, y + 3, r, g, b, a * 0.25);
-      img.BlendPixelf(x + 1, y + 3, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 2, y + 3, r, g, b, a * 0.5);
-      img.BlendPixelf(x + 3, y + 3, r, g, b, a * 0.25);
+      BlendPixelf(x + 0, y + 3, r, g, b, a * 0.25);
+      BlendPixelf(x + 1, y + 3, r, g, b, a * 0.5);
+      BlendPixelf(x + 2, y + 3, r, g, b, a * 0.5);
+      BlendPixelf(x + 3, y + 3, r, g, b, a * 0.25);
     };
 
     // Stuff before this gets very faded out.
@@ -275,25 +281,25 @@ static void WritePNGFrames(const unordered_map<string, GridDot> &grid,
       double opacity = nontrivial_idx < old_idx ? 0.75 : 1.0;
 
       for (const string &word : round.path) {
-  auto it = grid.find(word);
-  CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
-  int x = it->second.X(), y = it->second.Y();
-  DrawDot(MARGINLEFT + x * DOTSIZE, MARGINTOP + y * DOTSIZE,
-    r, g, b, opacity);
+        auto it = grid.find(word);
+        CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
+        int x = it->second.X(), y = it->second.Y();
+        DrawDot(MARGINLEFT + x * DOTSIZE, MARGINTOP + y * DOTSIZE,
+                r, g, b, opacity);
       }
 
       for (const string &word : round.covered) {
-  auto it = grid.find(word);
-  CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
-  int x = it->second.X(), y = it->second.Y();
-  DrawDot(MARGINLEFT + x * DOTSIZE, MARGINTOP + y * DOTSIZE,
-    0, 0, 0, opacity);
+        auto it = grid.find(word);
+        CHECK(it != grid.end()) << "Word " << word << " not found in grid?";
+        int x = it->second.X(), y = it->second.Y();
+        DrawDot(MARGINLEFT + x * DOTSIZE, MARGINTOP + y * DOTSIZE,
+                0, 0, 0, opacity);
       }
 
       nontrivial_idx++;
     }
 
-    string filename = StringPrintf("%s%d.png", filebase.c_str(), frame);
+    string filename = std::format("{}{}.png", filebase, frame);
     img.Save(filename);
     Printf("Wrote %s\n", filename.c_str());
   }
@@ -360,7 +366,7 @@ int main() {
           CHECK(portmantout.find(w) != string::npos)
               << "FAILED: [" << portmantout << "] / " << w;
         }
-        valstr = StringPrintf(" [val %.1fs]", validation.MS() / 1000.0);
+        valstr = std::format(" [val {:.1f}s]", validation.MS() / 1000.0);
       }
 
       int sz = (int)portmantout.size();
@@ -368,7 +374,7 @@ int main() {
       string nb;
       {
         MutexLock ml(&best_m);
-        nb = StringPrintf("best: %6d", best_size);
+        nb = std::format("best: {:6d}", best_size);
         if (sz < best_size) {
           best_size = sz;
           FILE *f = fopen("portmantout.txt", "wb");
@@ -379,12 +385,13 @@ int main() {
       }
 
       Printf("%2d. %7d letters in [%.1fs]%s  %s\n", thread_id, sz,
-       one.MS() / 1000.0,
-       valstr.c_str(),
-       nb.c_str());
+             one.MS() / 1000.0,
+             valstr.c_str(),
+             nb.c_str());
 
-      if (true || JUST_ONE)
+      if (true || JUST_ONE) {
         return;
+      }
     }
   };
 
@@ -399,7 +406,9 @@ int main() {
       threads.emplace_back(Thread);
     }
     // Won't ever actually finish.
-    for (std::thread &t : threads) t.join();
+    for (std::thread &t : threads) {
+      t.join();
+    }
   }
 
   return 0;

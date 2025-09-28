@@ -1,8 +1,14 @@
+#include <cstdio>
+#include <stdlib.h>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "makejoin.h"
 #include "base/logging.h"
+
+using namespace std;
 
 namespace {
 struct Word;
@@ -25,26 +31,25 @@ vector<vector<Path>> MakeJoin(const vector<string> &dict) {
     if (w.size() > 1) {
       int st = w[0] - 'a';
       int en = w[w.size() - 1] - 'a';
-      if (st < 0 || st >= 26 ||
-	  en < 0 || en >= 26) {
-	printf("Bad: %s\n", w.c_str());
-	abort();
+      if (st < 0 || st >= 26 || en < 0 || en >= 26) {
+        printf("Bad: %s\n", w.c_str());
+        abort();
       }
 
       // Is this a single-word path better than we already have?
       Path *p = &matrix[st][en];
       if (!p->has) {
-	p->has = true;
-	p->word = w;
-	entries++;
+        p->has = true;
+        p->word = w;
+        entries++;
       } else if (w.size() < p->word.size()) {
-	p->word = w;
+        p->word = w;
       }
     }
   }
 
   printf("We were able to trivially fill %d entries (%.2f%%)\n",
-	 entries, (entries * 100.0) / (26 * 26));
+         entries, (entries * 100.0) / (26 * 26));
 
   // Now iteratively fill.
 
@@ -80,35 +85,35 @@ vector<vector<Path>> MakeJoin(const vector<string> &dict) {
     }
   }
   printf("Built prefix/suffix map.\n");
-  
+
   // Try two-word phrases.
   // Parallelize!
   for (const Word &word : words) {
-    if (word.w.size() <= 1) continue;
+    if (word.w.size() <= 1)
+      continue;
     // PERF check if we already have the whole src covered?
     int st = word.w[0] - 'a';
     for (const string &suffix : word.suffixes) {
       for (const Word *other : Forward(suffix)) {
-	int en = other->w[other->w.size() - 1] - 'a';
-	Path *p = &matrix[st][en];
-	int size = word.w.size() - suffix.size() + other->w.size();
-	if (!p->has) {
-	  p->has = true;
-	  p->word = word.w.substr(0, word.w.size() - suffix.size()) + other->w;
-	  entries++;
-	} else if (size < p->word.size()) {
-	  printf("[%s / %s / %s] Improved %s to ", 
-		 word.w.c_str(), suffix.c_str(), other->w.c_str(),
-		 p->word.c_str());
-	  p->word = word.w.substr(0, word.w.size() - suffix.size()) + other->w;
-	  printf("%s!\n", p->word.c_str());
-	}
+        int en = other->w[other->w.size() - 1] - 'a';
+        Path *p = &matrix[st][en];
+        int size = word.w.size() - suffix.size() + other->w.size();
+        if (!p->has) {
+          p->has = true;
+          p->word = word.w.substr(0, word.w.size() - suffix.size()) + other->w;
+          entries++;
+        } else if (size < p->word.size()) {
+          printf("[%s / %s / %s] Improved %s to ", word.w.c_str(),
+                 suffix.c_str(), other->w.c_str(), p->word.c_str());
+          p->word = word.w.substr(0, word.w.size() - suffix.size()) + other->w;
+          printf("%s!\n", p->word.c_str());
+        }
       }
     }
   }
 
   printf("With two word phrases, %d entries (%.2f%%)\n",
-	 entries, (entries * 100.0) / (26 * 26));
+         entries, (entries * 100.0) / (26 * 26));
 
   CHECK(entries == 26 * 26) << "Maybe need three-word phrases :(";
 

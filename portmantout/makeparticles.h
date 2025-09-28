@@ -1,19 +1,24 @@
 
+#ifndef _PORTMANTOUT_MAKEPARTICLES_H
+#define _PORTMANTOUT_MAKEPARTICLES_H
+
 #include <vector>
 #include <string>
-
-using namespace std;
 
 struct ArcFour;
 
 struct Round {
-  vector<string> path;
-  vector<string> covered;
+  std::vector<std::string> path;
+  std::vector<std::string> covered;
 };
+
 struct Trace {
-  vector<Round> rounds;
+  std::vector<Round> rounds;
 };
 
 // Trace can be null; it's expensive.
-vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbose,
-			     Trace *trace);
+std::vector<std::string> MakeParticles(
+    ArcFour *rc, const std::vector<std::string> &dict, bool verbose,
+    Trace *trace);
+
+#endif

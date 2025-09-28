@@ -22,23 +22,25 @@ else
   SOCK_LFLAGS=
 endif
 
+CC_LIB=../cc-lib
+
 # -fno-strict-aliasing
 
-UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o nice.o
+UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o image.o stb_image_write.o stb_image.o nice.o
 
-CPPFLAGS= -Wno-write-strings -m64 $(OPT) $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
+CPPFLAGS= -Wno-write-strings -m64 $(OPT) $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB) --std=c++20
 
-ALLDEPS=makefile ../cc-lib/interval-tree.h ../cc-lib/interval-tree-json.h
+ALLDEPS=makefile $(CC_LIB)/interval-tree.h $(CC_LIB)/interval-tree-json.h
 
 %.o : %.cc $(ALLDEPS)
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-%.o : ../cc-lib/%.cc $(ALLDEPS)
+%.o : $(CC_LIB)/%.cc $(ALLDEPS)
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-%.o : ../cc-lib/base/%.cc $(ALLDEPS)
+%.o : $(CC_LIB)/base/%.cc $(ALLDEPS)
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
@@ -71,7 +73,7 @@ validate.exe : $(OBJECTS) validate.o
 spans.exe : $(OBJECTS) spans.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-makeparticles_test.exe:  $(OBJECTS) makeparticles_test.o
+makeparticles_test.exe : $(OBJECTS) makeparticles_test.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 grid.exe : $(OBJECTS) grid.o

@@ -1,8 +1,13 @@
+#include <algorithm>
 #include <utility>
+#include <cstdio>
+#include <string>
 
 #include "makeparticles.h"
 
-int main () {
+using namespace std;
+
+int main() {
   int max_length = 4;
   string particle = "aaaaaaaaqwertyuiop";
 
@@ -11,7 +16,7 @@ int main () {
        st++) {
     for (int len = 1; len <= particle.size() - st; len++) {
       printf("%s\n", particle.substr(st, len).c_str());
-   }
+    }
   }
 
   for (int len = std::min(max_length, (int)particle.size()); len > 0; len--) {
@@ -19,4 +24,5 @@ int main () {
     printf(".. %s\n", suffix.c_str());
   }
 
+  return 0;
 }

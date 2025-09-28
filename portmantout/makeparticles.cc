@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -6,14 +7,15 @@
 #include <algorithm>
 #include <deque>
 
-#include "base/logging.h"
-#include "util.h"
-#include "timer.h"
 #include "arcfour.h"
+#include "base/logging.h"
 #include "randutil.h"
+#include "timer.h"
 
 #include "makeparticles.h"
-#include "base/logging.h"
+
+
+using namespace std;
 
 namespace {
 struct Word;
@@ -32,7 +34,7 @@ struct Word {
 static constexpr bool SCORED_WORDS = false;
 
 vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbose,
-			     Trace *trace) {
+           Trace *trace) {
   vector<Word> words;
   int total_letters = 0;
   int max_length = 0;
@@ -43,7 +45,7 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
     if (s.empty()) continue;
     for (char c : s) {
       if (c < 'a' || c > 'z') {
-	printf("Bad: [%s]\n", s.c_str());
+        printf("Bad: [%s]\n", s.c_str());
       }
     }
     words.push_back(Word{s});
@@ -73,7 +75,7 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
     }
   }
   if (verbose) printf("Built prefix map.\n");
-  
+
   vector<Word *> sorted;
   sorted.reserve(words.size());
   for (Word &word : words) sorted.push_back(&word);
@@ -82,11 +84,11 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
     for (Word &word : words) {
       // If there's a (forward) path to a word, increment its accessibility.
       for (const string &suffix : word.suffixes) {
-	vector<Word *> *nexts = Forward(suffix);
-	word.exitability += nexts->size();
-	for (Word *next : *nexts) {
-	  next->accessibility++;
-	}
+        vector<Word *> *nexts = Forward(suffix);
+        word.exitability += nexts->size();
+        for (Word *next : *nexts) {
+          next->accessibility++;
+        }
       }
     }
     for (Word &word : words) {
@@ -94,9 +96,9 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
     }
 
     std::sort(sorted.begin(), sorted.end(),
-	      [](const Word *l, const Word *r) {
-		return l->score < r->score;
-	      });
+              [](const Word *l, const Word *r) {
+                return l->score < r->score;
+              });
   } else {
     Shuffle(rc, &sorted);
   }
@@ -146,20 +148,20 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
   while (num_left > 0) {
     // Mark words that are substrings.
     for (int st = std::max(0, (int)particle.size() - max_length * 2);
-	 st < particle.size();
-	 st++) {
+         st < particle.size();
+         st++) {
       for (int len = 1; len <= particle.size() - st; len++) {
-	auto it = whole_word.find(particle.substr(st, len));
-	if (it != whole_word.end()) {
-	  Word *maybe = it->second;
-	  if (maybe->used == 0) {
-	    already_substr++;
-	    if (round != nullptr) {
-	      round->covered.push_back(maybe->w);
-	    }
-	    UseWord(maybe);
-	  }
-	}
+        auto it = whole_word.find(particle.substr(st, len));
+        if (it != whole_word.end()) {
+          Word *maybe = it->second;
+          if (maybe->used == 0) {
+            already_substr++;
+            if (round != nullptr) {
+              round->covered.push_back(maybe->w);
+            }
+            UseWord(maybe);
+          }
+        }
       }
     }
 
@@ -172,33 +174,33 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
       // Make sure the vector is just unused words.
       #if 1
       for (int i = 0; i < nexts->size(); i++) {
-	Word *maybe = (*nexts)[i];
-	if (maybe->used > 0) {
-	  // We don't want to keep seeing this used word in the vector.
-	  if (i != nexts->size() - 1) {
-	    // Swap.
-	    (*nexts)[i] = (*nexts)[nexts->size() - 1];
-	    // Morally, do this, but it is now dead.
-	    // nexts[nexts.size() - 1] = maybe;
-	  }
+        Word *maybe = (*nexts)[i];
+        if (maybe->used > 0) {
+          // We don't want to keep seeing this used word in the vector.
+          if (i != nexts->size() - 1) {
+            // Swap.
+            (*nexts)[i] = (*nexts)[nexts->size() - 1];
+            // Morally, do this, but it is now dead.
+            // nexts[nexts.size() - 1] = maybe;
+          }
 
-	  // Then chop.
-	  nexts->resize(nexts->size() - 1);
+          // Then chop.
+          nexts->resize(nexts->size() - 1);
 
-	  // And look again.
-	  i--;
-	}
+          // And look again.
+          i--;
+        }
       }
       #else
       {
-	// Preserve order.
-	vector<Word *> new_nexts;
-	for (Word *maybe : *nexts) {
-	  if (maybe->used == 0) {
-	    new_nexts.push_back(maybe);
-	  }
-	}
-	*nexts = std::move(new_nexts);
+        // Preserve order.
+        vector<Word *> new_nexts;
+        for (Word *maybe : *nexts) {
+          if (maybe->used == 0) {
+            new_nexts.push_back(maybe);
+          }
+        }
+        *nexts = std::move(new_nexts);
       }
       #endif
 
@@ -212,7 +214,7 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
       Word *choice = (*nexts)[next];
 
       if (round != nullptr) {
-	round->path.push_back(choice->w);
+        round->path.push_back(choice->w);
       }
       UseWord(choice);
       // This is maybe fastest way to add new suffix:
@@ -222,24 +224,24 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
       particle += choice->w;
 
       if (verbose && num_done % 1000 == 0) {
-	double per = loop_timer.MS() / num_done;
-	printf("[%6d parts, %6dms per word, %6ds left, %6d skip] %s\n",
-	       (int)particles.size(),
-	       (int)per,
-	       (int)((num_left * per) / 1000.0),
-	       already_substr,
-	       choice->w.c_str());
+        double per = loop_timer.MS() / num_done;
+        printf("[%6d parts, %6dms per word, %6ds left, %6d skip] %s\n",
+               (int)particles.size(),
+               (int)per,
+               (int)((num_left * per) / 1000.0),
+               already_substr,
+               choice->w.c_str());
       }
       goto success;
     }
 
     if (verbose && particles.size() % 10000 == 0) {
       printf("There were no new continuations for [%s].. (%d done, %d left).\n"
-	     "Already substr: %d\n"
-	     "Took %.1fs\n",
-	     particle.c_str(), num_done, num_left,
-	     already_substr,
-	     running.MS() / 1000.0);
+             "Already substr: %d\n"
+             "Took %.1fs\n",
+             particle.c_str(), num_done, num_left,
+             already_substr,
+             running.MS() / 1000.0);
     }
     particles.push_back(particle);
     particle_total += particle.size();
@@ -249,9 +251,9 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
       UseWord(restart);
       particle = restart->w;
       if (trace != nullptr) {
-	trace->rounds.push_back(Round());
-	round = &trace->rounds.back();
-	round->path.push_back(restart->w);
+        trace->rounds.push_back(Round());
+        round = &trace->rounds.back();
+        round->path.push_back(restart->w);
       }
     }
     continue;
@@ -263,13 +265,13 @@ vector<string> MakeParticles(ArcFour *rc, const vector<string> &dict, bool verbo
 
   if (verbose) {
     printf("Success! But I needed %d separate portmanteaus :(\n"
-	   "And that was %d characters! (of %d, %.2f%% of the size)\n"
-	   "I skipped %d words that were already substrs.\n"
-	   "Took %.1fs\n",
-	   (int)particles.size(),
-	   particle_total, total_letters, (100.0 * particle_total / total_letters),
-	   already_substr,
-	   running.MS() / 1000.0);
+           "And that was %d characters! (of %d, %.2f%% of the size)\n"
+           "I skipped %d words that were already substrs.\n"
+           "Took %.1fs\n",
+           (int)particles.size(),
+           particle_total, total_letters, (100.0 * particle_total / total_letters),
+           already_substr,
+           running.MS() / 1000.0);
   }
 
   return particles;

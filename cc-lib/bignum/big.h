@@ -224,7 +224,8 @@ struct BigInt {
 
  private:
   friend struct BigRat;
-#ifdef BIG_USE_GMP
+
+  #ifdef BIG_USE_GMP
 
   using Rep = GmpRep;
 

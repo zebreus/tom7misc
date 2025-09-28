@@ -118,11 +118,6 @@ struct Util {
   template<class F>
   static std::vector<std::string> Tokens(std::string_view s, F is_sep);
 
-
-
-  /* converts int to byte string that represents it */
-  static string sizes(int i);
-
   /* only read if the file begins with the magic string */
   static bool HasMagic(std::string_view filename, std::string_view magic);
   static string ReadFileMagic(std::string_view filename, std::string_view magic);
@@ -192,15 +187,9 @@ struct Util {
   // like 1,000,000.
   static string UnsignedWithCommas(uint64_t u);
 
-  /* open a new file. if it exists, return null */
-  static FILE *open_new(string s);
   /* 0 on failure */
   static int changedir(string s);
-  static int random();
-  /* random in 0.0 .. 1.0
-     Use randutil.h instead.
-   */
-  static float randfrac();
+
   static int getpid();
   /* anything ending with \n. ignores \r.
      modifies str. */
@@ -254,7 +243,7 @@ struct Util {
      occurrence of character c. The character
      is deleted from both the returned string and
      the line */
-  static string chopto(char c, string &line);
+  static string ChopTo(char c, string &line);
 
   /* erase any whitespace up to the first
      non-whitespace char. */
@@ -312,10 +301,6 @@ struct Util {
   static bool existsdir(const string &d);
 
   static bool MakeDir(const string &s);
-
-  /* try to launch the url with the default browser;
-     doesn't work on all platforms. true on success */
-  static bool launchurl(const string &);
 
   /* creates directories for f */
   static void CreatePathFor(const string &f);

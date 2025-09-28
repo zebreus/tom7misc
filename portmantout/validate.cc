@@ -1,18 +1,12 @@
 
+#include <utility>
 #include <vector>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <algorithm>
-#include <deque>
 
-#include "util.h"
-#include "timer.h"
-#include "threadutil.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
+#include "timer.h"
+#include "util.h"
 
 using namespace std;
 
@@ -29,12 +23,12 @@ int main(int argc, char **argv) {
   Timer validation;
   for (const string &w : dict) {
     CHECK(portmantout.find(w) != string::npos) << "FAILED: ["
-					       << portmantout
-					       << "] / " << w;
+                 << portmantout
+                 << "] / " << w;
   }
   double validation_ms = validation.MS();
 
-  printf("PASSED: %.1fs\n", validation_ms / 1000.0);
+  Print("PASSED: {:.1f}s\n", validation_ms / 1000.0);
 
   return 0;
 }

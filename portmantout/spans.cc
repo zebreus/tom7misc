@@ -3,12 +3,12 @@
 // portmantout the same way it was generated. (This is especially true if it
 // is inefficient.)
 
+#include <cstdio>
+#include <format>
+#include <mutex>
+#include <utility>
 #include <vector>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <algorithm>
-#include <deque>
 
 #include "util.h"
 #include "timer.h"
@@ -16,7 +16,6 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 #include "interval-tree.h"
 #include "interval-tree-json.h"
@@ -24,14 +23,14 @@
 using namespace std;
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {     \
-  MutexLock Printf_ml(&print_mutex);    \
-  printf(fmt, ##__VA_ARGS__);     \
+#define Printf(fmt, ...) do {           \
+    MutexLock Printf_ml(&print_mutex);  \
+    printf(fmt, ##__VA_ARGS__);         \
   } while (0);
 
-#define EPrintf(fmt, ...) do {      \
-  MutexLock Printf_ml(&print_mutex);    \
-  fprintf(stderr, fmt, ##__VA_ARGS__);    \
+#define EPrintf(fmt, ...) do {            \
+    MutexLock Printf_ml(&print_mutex);    \
+    fprintf(stderr, fmt, ##__VA_ARGS__);  \
   } while (0);
 
 int main(int argc, char **argv) {
@@ -48,7 +47,7 @@ int main(int argc, char **argv) {
   string portmantout = std::move(p[0]);
 
   EPrintf("Dictionary is %d words and portmantout is %d chars.\n",
-   (int)dict.size(), (int)portmantout.size());
+          (int)dict.size(), (int)portmantout.size());
 
   // Coarse locking. Mutex protects the interval tree.
   std::mutex mutex;
@@ -63,27 +62,28 @@ int main(int argc, char **argv) {
   vector<vector<int>> backward;
   backward.resize(dict.size());
   Timer find_timer;
-  ParallelComp(dict.size(),
-         [&portmantout, &dict, &mutex, &tree, &backward](int word_idx) {
-     const string &w = dict[word_idx];
-     auto pos = portmantout.find(w, 0);
-     CHECK(pos != string::npos) << "Word not found ever: " << w;
-     while (pos != string::npos) {
-       {
-   MutexLock ml(&mutex);
-   // PERF avoid inserting dumb ones.
-   tree.Insert(pos, pos + w.size(), word_idx);
-       }
-       backward[word_idx].push_back(pos);
+  ParallelComp(
+      dict.size(),
+      [&portmantout, &dict, &mutex, &tree, &backward](int word_idx) {
+        const string &w = dict[word_idx];
+        auto pos = portmantout.find(w, 0);
+        CHECK(pos != string::npos) << "Word not found ever: " << w;
+        while (pos != string::npos) {
+          {
+            MutexLock ml(&mutex);
+            // PERF avoid inserting dumb ones.
+            tree.Insert(pos, pos + w.size(), word_idx);
+          }
+          backward[word_idx].push_back(pos);
 
-       pos = portmantout.find(w, pos + 1);
-     }
+          pos = portmantout.find(w, pos + 1);
+        }
 
-     if (word_idx % 1000 == 0) {
-       EPrintf("Did %d.\n", word_idx);
-     }
-
-  }, 8);
+        if (word_idx % 1000 == 0) {
+          EPrintf("Did %d.\n", word_idx);
+        }
+      },
+      8);
   double find_ms = find_timer.MS();
   EPrintf("Found the words.\n");
 
@@ -95,22 +95,20 @@ int main(int argc, char **argv) {
   auto TJS = [](const int &i) -> string { return std::to_string(i); };
   Timer json_timer;
   IntervalTreeJSON<int, int> itjson{tree, IdxJS, TJS, 25};
-  const string json = itjson.ToCompactJSON([](const int &l, const int &r){
-    return l - r;
-  });
+  const string json =
+      itjson.ToCompactJSON([](const int &l, const int &r) { return l - r; });
   double json_ms = json_timer.MS();
   EPrintf(" %d bytes.\n", (int)json.size());
   Util::WriteFile("spanstest.js",
-      StringPrintf("var spans=%s;\n", json.c_str()));
+                  std::format("var spans={};\n", json));
   Util::WriteFile("portmantout.js",
-      StringPrintf("var portmantout='%s';\n",
-             portmantout.c_str()));
+                  std::format("var portmantout='{}';\n", portmantout));
   EPrintf("Written.\n");
 
   EPrintf("FIND: %.1fs\n"
-    "JSON: %.1fs\n",
-    find_ms / 1000.0,
-    json_ms / 1000.0);
+          "JSON: %.1fs\n",
+          find_ms / 1000.0,
+          json_ms / 1000.0);
 
   return 0;
 }
