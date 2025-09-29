@@ -2095,6 +2095,30 @@ static void TestRatDiv() {
   CHECK(BigRat::Sign(result2) == 0);
 }
 
+static void TestNumBits() {
+  BigInt z(0);
+  CHECK(BigInt::NumBits(z) == 0);
+  BigInt no(-1);
+  CHECK(BigInt::NumBits(no) == 1);
+  BigInt o(1);
+  CHECK(BigInt::NumBits(o) == 1);
+
+  BigInt m(std::numeric_limits<int64_t>::lowest());
+  CHECK(BigInt::NumBits(m) == 64);
+  CHECK(BigInt::NumBits(BigInt::Plus(m, o)) == 63);
+  CHECK(BigInt::NumBits(BigInt::Minus(m, o)) == 64);
+
+  // 2^128 - 159, the largest 128-bit prime
+  BigInt p128("340282366920938463463374607431768211297");
+  CHECK(BigInt::NumBits(p128) == 128);
+
+  // 2^165 - 25
+  BigInt p165("46768052394588893382517914646921056628989841375207");
+  CHECK(BigInt::NumBits(p165) == 165);
+  CHECK(BigInt::NumBits(BigInt::Negate(p165)) == 165);
+}
+
+
 int main(int argc, char **argv) {
   constexpr bool SLOW = true;
 
@@ -2165,6 +2189,7 @@ int main(int argc, char **argv) {
   TestSqrt();
   TestJacobi();
   TestInvert();
+  TestNumBits();
 
   TestSwap();
   TestRatSwap();

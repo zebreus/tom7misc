@@ -1099,6 +1099,7 @@ static bool IsPrimeInternal(const BigInt &n) {
 
 
 // Deterministic primality test without trial division.
+[[maybe_unused]]
 static bool IsProbablyPrimeInternal(const BigInt &n, int steps) {
   // We test in [2, n - 2].
   const BigInt nm4 = BigInt::Minus(n, BigInt{4});

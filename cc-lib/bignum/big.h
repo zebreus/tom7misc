@@ -175,6 +175,10 @@ struct BigInt {
   inline static double NaturalLog(const BigInt &a);
   inline static double LogBase2(const BigInt &a);
 
+  // The number of bits in the number. The sign is ignored.
+  // Zero is considered to have zero bits.
+  inline static size_t NumBits(const BigInt &a);
+
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
 
@@ -695,6 +699,28 @@ double BigInt::LogBase2(const BigInt &a) {
   signed long int exponent = 0;
   const double di = mpz_get_d_2exp(&exponent, tmp.ConstMpz());
   return std::log(di)/std::log(2.0) + (double)exponent;
+}
+
+size_t BigInt::NumBits(const BigInt &a) {
+  if (a.rep.IsSmall()) {
+    int64_t aa = a.rep.GetSmall();
+    if (aa == 0) return 0;
+    if (aa == std::numeric_limits<int64_t>::lowest())
+      [[unlikely]] {
+      return 64;
+    }
+    if (aa < 0) aa = -aa;
+
+    return 64 - std::countl_zero<uint64_t>(aa);
+
+  } else {
+    GmpRep::Lease a_tmp(a.rep);
+    // Otherwise this would return 1.
+    if (mpz_sgn(a.rep.ConstMpz()) == 0)
+      return 0;
+
+    return mpz_sizeinbase(a_tmp.ConstMpz(), 2);
+  }
 }
 
 int BigInt::Jacobi(const BigInt &a, const BigInt &b) {
@@ -1860,6 +1886,26 @@ int BigInt::Jacobi(const BigInt &a_input,
   } else {
     return 0;
   }
+}
+
+size_t BigInt::NumBits(const BigInt &a) {
+  int s = Sign(a);
+  if (s == 0) return 0;
+
+  BigInt x = a;
+
+  if (s == -1) {
+    x = BigInt::Negate(std::move(x));
+  }
+
+  // PERF: Can go in larger chunks
+  size_t bits = 0;
+  while (BigInt::Sign(x) != 0) {
+    bits++;
+    x = BigInt::RightShift(x, 1);
+  }
+
+  return bits;
 }
 
 std::tuple<BigInt, BigInt, BigInt>
