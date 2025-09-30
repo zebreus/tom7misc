@@ -26,14 +26,14 @@ Encoding::ParseSolutions(const string &filename) {
     line = Util::NormalizeWhitespace(line);
     if (line.empty()) continue;
 
-    string target = Util::chopto(' ', line);
+    string target = Util::ChopTo(' ', line);
     CHECK(target.size() == 2);
     CHECK(Util::IsHexDigit(target[0]) &&
           Util::IsHexDigit(target[1])) << target;
     uint8 t = Util::HexDigitValue(target[0]) * 16 +
       Util::HexDigitValue(target[1]);
 
-    string encoded = Util::chopto(' ', line);
+    string encoded = Util::ChopTo(' ', line);
     CHECK(!encoded.empty());
     CHECK(encoded.size() % 3 == 0);
 

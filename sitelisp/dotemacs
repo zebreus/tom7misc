@@ -1,7 +1,7 @@
 ;;                        -*- lisp -*-
 
- ;; Tom 7's .emacs file!
- ;; Code licensed under the GPL.
+;; Tom 7's .emacs file!
+;; Code licensed under the GPL.
 
 ;; To install this on a new machine, add something like this to your
 ;; ~/.emacs file:
@@ -247,6 +247,7 @@
   (list
    (list "FixederSys 2x-24:antialias=none" 80 64)
    (list "FixederSys 1x-12:antialias=none" 80 128)
+   (list "FixederSys 2x-48:antialias=none" 80 32)
    )
   "*List of font, width, height for zoom toggle. Experimental."
   )
@@ -411,7 +412,7 @@
       ;; misc math symbols a
       "⟀⟁⟂⟃⟄⟅⟆⟇⟈⟉⟊⟋⟌⟍⟎⟏ ⟐⟑⟒⟓⟔⟕⟖⟗⟘⟙⟚⟛⟜⟝⟞⟟ ⟠⟡⟢⟣⟤⟥⟦⟧⟨⟩⟪⟫⟬⟭⟮⟯\n"
       ""
-      "☠♔♕♕♖♗♘♙♚♛♜♝♞♟♥♫⚡⛔✓✔✗✘\n"
+      "☠♔♕♖♗♘♙♚♛♜♝♞♟♥♫⚡⛔✓✔✗✘\n"
       "☁"
       "\n"
       "Latin-1:\n"
@@ -438,7 +439,15 @@
       "℀℁ℂ℃℄℅℆ℇ℈℉ℊℋℌℍℎℏ  ℐℑℒℓ℔ℕ№℗℘ℙℚℛℜℝ℞℟\n"
       "℠℡™℣ℤ℥Ω℧ℨ℩KÅℬℭ℮ℯ  ℰℱℲℳℴℵℶℷℸℹ℺℻ℼℽℾℿ\n"
       "⅀⅁⅂⅃⅄ⅅⅆⅇⅈⅉ⅊⅋⅌⅍ⅎ⅏\n"
+      "\n"
+      "Phonetic extensions:\n"
+      "ᴀᴁᴂᴃᴄᴅᴆᴇᴈᴉᴊᴋᴌᴍᴎᴏ ᴐᴑᴒᴓᴔᴕᴖᴗᴘᴙᴚᴛᴜᴝᴞᴟ\n"
+      "ᴠᴡᴢᴣᴤᴥᴦᴧᴨᴩᴪᴫᴬᴭᴮᴯ ᴰᴱᴲᴳᴴᴵᴶᴷᴸᴹᴺᴻᴼᴽᴾᴿ\n"
+      "ᵀᵁᵂᵃᵄᵅᵆᵇᵈᵉᵊᵋᵌᵍᵎᵏ ᵐᵑᵒᵓᵔᵕᵖᵗᵘᵙᵚᵛᵜᵝᵞᵟ\n"
+      "ᵠᵡᵢᵣᵤᵥᵦᵧᵨᵩᵪᵫᵬᵭᵮᵯ ᵰᵱᵲᵳᵴᵵᵶᵷᵸᵹᵺᵻᵼᵽᵾᵿ\n"
+      "\n"
       ))
+    (goto-char (point-min))
     ))
 
 

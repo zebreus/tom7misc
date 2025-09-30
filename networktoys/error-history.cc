@@ -57,12 +57,12 @@ void ErrorHistory::Load() {
   records.reserve(lines.size());
   for (string &line : lines) {
     Record r;
-    r.round_number = std::stoll(Util::chopto('\t', line));
+    r.round_number = std::stoll(Util::ChopTo('\t', line));
     if (r.round_number == 0) continue;
-    r.model_index = std::stoi(Util::chopto('\t', line));
+    r.model_index = std::stoi(Util::ChopTo('\t', line));
     if (r.model_index < 0 || r.model_index >= num_models) continue;
-    r.is_eval = Util::chopto('\t', line) == "t";
-    r.error_per_example = std::stod(Util::chopto('\t', line));
+    r.is_eval = Util::ChopTo('\t', line) == "t";
+    r.error_per_example = std::stod(Util::ChopTo('\t', line));
     records.push_back(r);
   }
 

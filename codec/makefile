@@ -1,17 +1,17 @@
-default : mov_test.exe mov-recorder_test.exe dump.exe testbed.exe
+default : mov_test.exe mov-recorder_test.exe dump.exe testbed.exe catframes.exe
 
 codec : codec.dll
 
 CC_LIB=../cc-lib
 
-CXXFLAGS = --std=c++23 -g -O3 -I. -I$(CC_LIB) -Wall -fPIC
+CXXFLAGS = --std=c++23 -g -O3 -march=native -mtune=native -I. -I$(CC_LIB) -Wall -fPIC
 DLL_LDFLAGS = -shared -fPIC
 EXE_LDFLAGS =
 # EXE_LDFLAGS = -static
 
 OBJECTS = codec.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/png.o $(CC_LIB)/util.o $(CC_LIB)/opt/opt.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/png.o $(CC_LIB)/util.o $(CC_LIB)/status-bar.o $(CC_LIB)/opt/opt.o
 
 codec.dll: codec.o
 	$(CXX) $(CXXFLAGS) $(DLL_LDFLAGS) -o $@ $<
@@ -30,6 +30,9 @@ testbed.exe : testbed.o $(CC_LIB_OBJECTS)
 
 mov-recorder_test.exe : mov-recorder_test.o mov.o mov-recorder.o $(CC_LIB_OBJECTS)
 	$(CXX) $(EXE_LDFLAGS) $^ -o $@
+
+catframes.exe : catframes.o mov.o mov-recorder.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $(EXE_LDFLAGS) $^ -o $@
 
 clean:
 	rm -f *.o *.dll $(CC_LIB_OBJECTS)

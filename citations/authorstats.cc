@@ -1,13 +1,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <utility>
 #include <vector>
 #include <string>
 #include <unordered_map>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "citation-util.h"
 #include "nice.h"
 #include "re2/re2.h"
@@ -50,9 +51,9 @@ int main(int argc, char **argv) {
     }
   });
 
-  printf("Got stats for %lld keys, "
-         "with %lld rejected (%lld articles rejected)\n"
-         "Total kept articles: %lld  and citations: %lld\n",
+  Print("Got stats for {} keys, "
+         "with {} rejected ({} articles rejected)\n"
+         "Total kept articles: {}  and citations: {}\n",
          (int64)cite_stats.size(), authors_bad, articles_bad, articles_kept,
          citations_kept);
 
@@ -68,7 +69,7 @@ int main(int argc, char **argv) {
         return a.first < b.first;
       });
 
-  printf("Sorted.\n");
+  Print("Sorted.\n");
 
   // Now write CDFs.
   {
@@ -97,10 +98,10 @@ int main(int argc, char **argv) {
         double x = i / (double)rows.size();
         double ay = 1.0 - (articles / (double)articles_kept);
         double cy = 1.0 - (citations / (double)citations_kept);
-        articles_cdf += StringPrintf("%s,%s ", Rtos(x * XSCALE).c_str(),
+        articles_cdf += std::format("{},{} ", Rtos(x * XSCALE),
                                      Rtos(ay * YSCALE).c_str());
-        citations_cdf += StringPrintf("%s,%s ", Rtos(x * XSCALE).c_str(),
-                                      Rtos(cy * YSCALE).c_str());
+        citations_cdf += std::format("{},{} ", Rtos(x * XSCALE),
+                                     Rtos(cy * YSCALE));
 
         if (i % 1000000 == 0) {
           text += TextSVG::Text(x * XSCALE, 0.9 * YSCALE, "sans-serif", 12.0,
@@ -109,12 +110,12 @@ int main(int argc, char **argv) {
         }
 
         if (cy >= ay && !ahead) {
-          printf("Crossover to cy >= ay (%.4f <= %.4f) at %d. %s\n", cy, ay, i,
-                 rows[i].first.c_str());
+          Print("Crossover to cy >= ay ({:.4f} <= {:.4f}) at {}. {}\n", cy, ay, i,
+                 rows[i].first);
           ahead = true;
         } else if (cy <= ay && ahead) {
-          printf("Crossover to cy <= ay (%.4f <= %.4f) at %d. %s\n", cy, ay, i,
-                 rows[i].first.c_str());
+          Print("Crossover to cy <= ay ({:.4f} <= {:.4f}) at {}. {}\n", cy, ay, i,
+                 rows[i].first);
           ahead = false;
         }
       }
@@ -126,18 +127,18 @@ int main(int argc, char **argv) {
     svg += text;
     svg += TextSVG::Footer();
     Util::WriteFile(outfile, svg);
-    printf("Wrote %s\n", outfile.c_str());
+    Print("Wrote {}\n", outfile);
   }
 
   {
     string sorted_outfile = infile + "sorted.txt";
-    printf("Writing %lld sorted records to %s...\n", rows.size(),
-           sorted_outfile.c_str());
+    Print("Writing {} sorted records to {}...\n", rows.size(),
+          sorted_outfile);
     FILE *out = fopen(sorted_outfile.c_str(), "wb");
     CHECK(out != nullptr) << outfile.c_str();
     for (const auto &row : rows) {
-      fprintf(out, "%s\t%lld\t%lld\n", row.first.c_str(), row.second.articles,
-              row.second.citations);
+      Print(out, "{}\t{}\t{}\n", row.first, row.second.articles,
+            row.second.citations);
     }
     fclose(out);
   }

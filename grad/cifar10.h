@@ -3,13 +3,13 @@
 #define _GRAD_CIFAR10_H
 
 #include <cstdint>
+#include <format>
 #include <string>
 #include <vector>
 
 #include "util.h"
 #include "image.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 // Set of labeled images, which could be either train or test.
 struct CIFAR10 {
@@ -22,7 +22,7 @@ struct CIFAR10 {
       LoadImages(Util::DirPlus(dir, "test_batch.bin"));
     } else {
       for (int i = 1; i <= 5; i++) {
-        LoadImages(Util::DirPlus(dir, StringPrintf("data_batch_%d.bin", i)));
+        LoadImages(Util::DirPlus(dir, std::format("data_batch_{}.bin", i)));
       }
     }
 

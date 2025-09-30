@@ -23,7 +23,7 @@ struct MovRecorder {
   explicit MovRecorder(std::string_view filename,
                        int width, int height,
                        int duration = MOV::DURATION_60,
-                       MOV::Codec codec = MOV::Codec::PNG_MINIZ);
+                       MOV::Codec codec = MOV::Codec::PNG_CCLIB);
 
   // Use this many encoding threads. There is always one writing
   // thread, which is not counted here. n must be at least 1.

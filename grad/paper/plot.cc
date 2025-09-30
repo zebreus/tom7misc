@@ -142,7 +142,7 @@ static void PlotSVG(const string &outfile,
     points.emplace_back((double)x, (double)y);
     ux = NextAfter16(ux);
     /*
-    CHECK(ox != x) << StringPrintf("%04x %04x",
+    CHECK(ox != x) << std::format("{:04x} {:04x}",
                                    GradUtil::GetU16(ox),
                                    GradUtil::GetU16(x));
     */

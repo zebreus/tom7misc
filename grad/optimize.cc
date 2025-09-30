@@ -95,7 +95,7 @@ struct ReduceIters {
   bool Done() const { return !did_drop; }
 
   string CurrentDepth() const {
-    return StringPrintf("%lld", stop_depth);
+    return std::format("{}", stop_depth);
   }
   void NextDepth() { stop_depth++; }
 
@@ -198,7 +198,7 @@ struct DropNode {
   bool Done() const { return !did_drop; }
 
   string CurrentDepth() const {
-    return StringPrintf("%lld", stop_depth);
+    return std::format("{}", stop_depth);
   }
   void NextDepth() { stop_depth++; }
 
@@ -692,7 +692,7 @@ static void OptimizeOne(DB *db,
                         const DB::key_type &key,
                         const Exp *exp,
                         int *size_in, int *size_out) {
-  ArcFour rc(StringPrintf("%d.%lld", idx, time(nullptr)));
+  ArcFour rc(std::format("{}.{}", idx, time(nullptr)));
   Allocator *alloc = &db->alloc;
 
   static constexpr bool VERBOSE = true;

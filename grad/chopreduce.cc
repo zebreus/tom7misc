@@ -1,14 +1,14 @@
 
-#include <cstdio>
 #include <array>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
-#include "image.h"
+#include "base/print.h"
 #include "expression.h"
 #include "hashing.h"
+#include "image.h"
 
 #include "choppy.h"
 #include "grad-util.h"
@@ -54,7 +54,7 @@ static void Reduce(DB *db) {
       }
     };
 
-  printf("Find easy basis vectors:\n");
+  Print("Find easy basis vectors:\n");
   // Start with the easy case: (not necessarily normalized) basis
   // vectors that are already in the database.
   for (const auto &[k, v] : db->fns) {
@@ -77,7 +77,7 @@ static void Reduce(DB *db) {
   next:;
   }
 
-  printf("Easy pass solves %d.\n", (int)basis.fns.size());
+  Print("Easy pass solves {}.\n", basis.fns.size());
 
   // G-J Elimination would work here, but it likely will build
   // up very large expressions. Since our existing vectors are
@@ -92,7 +92,7 @@ static void Reduce(DB *db) {
       target_key[i] = (i == col) ? 1 : 0;
 
     if (!basis.fns.contains(target_key)) {
-      printf("Reducing column %d:\n", col);
+      Print("Reducing column {}:\n", col);
 
       // We just blank out the position in the key. Now multiple
       // expressions can be mapped to the same key (and this is what
@@ -107,7 +107,7 @@ static void Reduce(DB *db) {
         kk[col] = 0;
         rekeyed[kk].emplace_back(k[col], v);
       }
-      printf("There are %d rows now\n", (int)rekeyed.size());
+      Print("There are {} rows now\n", rekeyed.size());
 
       // Now look for cases where we have more than one expression.
       for (const auto &[k, vv] : rekeyed) {
@@ -148,8 +148,8 @@ static void Reduce(DB *db) {
     }
   }
 
-  printf("Single diff pass: %d now solved\n",
-         (int)basis.fns.size());
+  Print("Single diff pass: {} now solved\n",
+        basis.fns.size());
 
   // Finally, for each remaining row, shift it so that it has 1
   // in the unsolved column. Then eliminate any nonzero columns
@@ -170,7 +170,7 @@ static void Reduce(DB *db) {
 
   for (int col = 0; col < Choppy::GRID; col++) {
     if (solved[col] == nullptr) {
-      printf("Trying column-wise for col %d:\n", col);
+      Print("Trying column-wise for col {}:\n", col);
 
       for (const auto &[k, v] : db->fns) {
         // e.g. if the column currently has 0, we want to add 1.
@@ -211,7 +211,7 @@ static void Reduce(DB *db) {
 
           if (ar == DB::AddResult::SUCCESS_NEW ||
               ar == DB::AddResult::SUCCESS_SMALLER) {
-            printf("Solved col %d from %s\n", col, DB::KeyString(k).c_str());
+            Print("Solved col {} from {}\n", col, DB::KeyString(k));
             // XXX could continue to maybe find a
             // smaller solution
             goto next_columnwise_column;
@@ -225,20 +225,20 @@ static void Reduce(DB *db) {
     }
   }
 
-  printf("Column-wise pass: %d now solved\n",
-         (int)basis.fns.size());
+  Print("Column-wise pass: {} now solved\n",
+        basis.fns.size());
 
   // Util::WriteFile("basis.txt", basis.Dump());
 }
 
 int main(int argc, char **argv) {
   DB db;
-  printf("Load database:\n");
+  Print("Load database:\n");
   db.LoadFile("basis8.txt");
   db.Image().ScaleBy(10).Save("database.png");
 
   Reduce(&db);
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

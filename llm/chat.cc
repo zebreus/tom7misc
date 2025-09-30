@@ -190,7 +190,7 @@ struct Chatting {
 
     if (line[0] == '*' && line[1] == ' ') {
       line = line.substr(2, string::npos);
-      string ppt = Util::chopto(' ', line);
+      string ppt = Util::ChopTo(' ', line);
       ChatLine chat;
       chat.participant = std::move(ppt);
       chat.text = Util::LoseWhiteL(line);
@@ -199,7 +199,7 @@ struct Chatting {
 
     } else if (line[0] == '<') {
       line = line.substr(1, string::npos);
-      string ppt = Util::chopto('>', line);
+      string ppt = Util::ChopTo('>', line);
       ChatLine chat;
       chat.participant = std::move(ppt);
       chat.text = Util::LoseWhiteL(line);
@@ -470,7 +470,7 @@ struct Chatting {
       return false;
 
     } else if (Util::TryStripPrefix("/", &input)) {
-      string cmd = Util::chopto(' ', input);
+      string cmd = Util::ChopTo(' ', input);
       printf("Unknown command starting with " ARED("/%s") ".\n",
              cmd.c_str());
 

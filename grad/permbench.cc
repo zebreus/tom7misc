@@ -6,7 +6,7 @@
 #include <immintrin.h>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "timer.h"
 
 using namespace std;
@@ -238,9 +238,9 @@ double RunOne(const std::string &name, F f) {
   for (int i = 0; i < TIMES; i++)
     state = f(state);
   double sec = timer.Seconds();
-  // CHECK(state == 0x91b7d6ecb75846bd) << StringPrintf("%llx", state);
-  printf("%s: %llx\n", name.c_str(), state);
-  printf("%s: %.4f sec; %.3f/sec\n", name.c_str(), sec, TIMES / sec);
+  // CHECK(state == 0x91b7d6ecb75846bd) << std::format("{:x}", state);
+  Print("{}: {:x}\n", name.c_str(), state);
+  Print("{}: {:.4f} sec; {:.3f}/sec\n", name.c_str(), sec, TIMES / sec);
   return sec;
 }
 

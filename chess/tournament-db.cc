@@ -46,13 +46,13 @@ Outcomes TournamentDB::LoadFromFile(const string &filename,
     if (line.empty()) continue;
 
     Cell cell;
-    string white = Util::chopto('|', line);
-    string black = Util::chopto('|', line);
-    string wins_s = Util::chopto('|', line);
-    string losses_s = Util::chopto('|', line);
-    string draws_s = Util::chopto('|', line);
-    cell.example_win = Util::chopto('|', line);
-    cell.example_loss = Util::chopto('|', line);
+    string white = Util::ChopTo('|', line);
+    string black = Util::ChopTo('|', line);
+    string wins_s = Util::ChopTo('|', line);
+    string losses_s = Util::ChopTo('|', line);
+    string draws_s = Util::ChopTo('|', line);
+    cell.example_win = Util::ChopTo('|', line);
+    cell.example_loss = Util::ChopTo('|', line);
     cell.example_draw = line;
 
     cell.white_wins = strtoll(wins_s.c_str(), nullptr, 10);

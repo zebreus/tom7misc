@@ -1470,7 +1470,7 @@ struct EraseUnitPass : public il::TypedPass<> {
     std::vector<std::pair<std::string, const Type *>> vv;
     vv.reserve(v.size());
     for (const auto &[lab, t] : v) {
-      const Type *tt = DoType(G, tt);
+      const Type *tt = DoType(G, t);
       if (IsUnit(tt)) {
         progress->Record("removed unit from record type");
       } else {

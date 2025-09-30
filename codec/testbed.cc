@@ -23,15 +23,15 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "color-util.h"
 #include "image.h"
+#include "opt/optimizer.h"
+#include "png.h"
 #include "timer.h"
 #include "util.h"
 #include "zip.h"
-#include "png.h"
-
-#include "opt/optimizer.h"
 
 // Assumptions:
 //   All frames are a fixed size.
@@ -739,7 +739,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
       uint32_t cur = frame.GetPixel32(x, y);
       if (VERBOSE > 2) {
-        if (cur != 0) printf("%08x\n", cur);
+        if (cur != 0) Print("{:08x}\n", cur);
       }
 
       if (cur == prev) {
@@ -757,8 +757,8 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
   if (VERBOSE > 1) {
     for (const auto &[c, s] : run_scores) {
-      printf("Color #%08x (%s██" ANSI_RESET "): %.3f\n",
-             c, ANSI::ForegroundRGB32(c).c_str(), s);
+      Print("Color #{:08x} ({}██" ANSI_RESET "): {:.3f}\n",
+             c, ANSI::ForegroundRGB32(c), s);
     }
   }
 
@@ -776,7 +776,8 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   }
 
   const uint32_t bg = best_color;
-  if (VERBOSE > 0) printf("RLE best bgcolor: #%08x (%.3f)\n", bg, best_score);
+  if (VERBOSE > 0) Print("RLE best bgcolor: #{:08x} ({:.3f})\n",
+                         bg, best_score);
 
   {
     std::vector<int> runs;
@@ -797,7 +798,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
           run_length++;
         } else {
           if (VERBOSE > 1) {
-            printf("At %d,%d with background run of length %d\n",
+            Print("At {},{} with background run of length {}\n",
                    x, y, run_length);
           }
           // We must end the background run no matter what.
@@ -821,7 +822,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
           run_length++;
         } else {
           if (VERBOSE > 1) {
-            printf("At %d,%d with foreground run of length %d\n",
+            Print("At {},{} with foreground run of length {}\n",
                    x, y, run_length);
           }
 
@@ -836,9 +837,9 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     // The final run is implied by the frame size, so we just
     // leave it off.
     if (VERBOSE > 0) {
-      printf("%d runs. Last run was %s, of length %d\n",
-             (int)runs.size(),
-             in_background ? "bg" : "fg", run_length);
+      Print("{} runs. Last run was {}, of length {}\n",
+            (int)runs.size(),
+            in_background ? "bg" : "fg", run_length);
     }
 
     if ((int)runs.size() < 65536) {
@@ -929,7 +930,7 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     int rle_size = 2 + rle_mask.runs.size() * 2;
 
     if (VERBOSE > 1) {
-      printf(APURPLE("RLE") ":  %d pixels, %d size\n", rle_pixels, rle_size);
+      Print(APURPLE("RLE") ":  {} pixels, {} size\n", rle_pixels, rle_size);
     }
 
     candidates.push_back(
@@ -948,8 +949,8 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     int rect_size = 4 * 2;
 
     if (VERBOSE > 1) {
-      printf(APURPLE("RECT") ": %d pixels, %d size\n",
-             rect_pixels, rect_size);
+      Print(APURPLE("RECT") ": {} pixels, {} size\n",
+            rect_pixels, rect_size);
     }
 
     candidates.push_back(
@@ -962,9 +963,9 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
 
   if (VERBOSE > 1) {
-    printf(APURPLE("ALL") ":  %d pixels, %d size\n",
-           frame.Width() * frame.Height(),
-           1);
+    Print(APURPLE("ALL") ":  {} pixels, {} size\n",
+          frame.Width() * frame.Height(),
+          1);
   }
 
   candidates.push_back(
@@ -1118,16 +1119,16 @@ static bool ReadPalette(Palette *p,
 
 static void DebugParse(const char *what,
                        std::span<uint8_t> *v) {
-  printf(AWHITE("%s") ":", what);
+  Print(AWHITE("{}") ":", what);
   for (int i = 0; i < 16; i++) {
     if (i >= (int)v->size()) {
-      printf(ARED(" EOF"));
+      Print(ARED(" EOF"));
       break;
     } else {
-      printf(" %02x", (*v)[i]);
+      Print(" {:02x}", (*v)[i]);
     }
   }
-  printf("\n");
+  Print("\n");
 }
 
 static bool ReadMask(int frame_width,
@@ -1143,7 +1144,7 @@ static bool ReadMask(int frame_width,
 
   const uint8_t mask_type = Read8(v);
   if (VERBOSE > 0) {
-    printf("Got mask type %d\n", mask_type);
+    Print("Got mask type {}\n", mask_type);
   }
   switch (mask_type) {
   case MASK_ALL:
@@ -1176,7 +1177,7 @@ static bool ReadMask(int frame_width,
       .runs = std::move(runs),
     };
     if (VERBOSE > 1) {
-      printf("Read RLE mask with %d runs.\n", num);
+      Print("Read RLE mask with {} runs.\n", num);
     }
     return true;
   }
@@ -1304,7 +1305,7 @@ ParseIFrameHeader(int frame_width, int frame_height,
   }
 
   if (!ReadMask(frame_width, frame_height, &head.mask, v)) {
-    printf("Failed to read mask\n");
+    Print("Failed to read mask\n");
     return std::nullopt;
   }
 
@@ -1373,8 +1374,8 @@ static void WriteMask(const Mask &mask, Buf *buf) {
     }
 
     if (VERBOSE > 0) {
-      printf("Write RLE: %d runs, but write %d\n",
-             (int)r->runs.size(), r_size);
+      Print("Write RLE: {} runs, but write {}\n",
+            (int)r->runs.size(), r_size);
     }
 
     // Also,
@@ -1445,8 +1446,8 @@ static std::string PaletteString(const Palette &p) {
     auto it = p.indices.find(c);
     CHECK(it != p.indices.end()) << "palette index is wrong";
     CHECK(it->second == i) << "palette index is wrong";
-    StringAppendF(&ret, "%08x=%s██" ANSI_RESET, c,
-                  ANSI::ForegroundRGB32(c).c_str());
+    AppendFormat(&ret, "{:08x}={}██" ANSI_RESET, c,
+                 ANSI::ForegroundRGB32(c));
   }
   return ret;
 }
@@ -1487,8 +1488,8 @@ struct Encode {
     Mask mask = GetForegroundMask(frame, &bgcolor);
 
     if (VERBOSE > 1) {
-      printf("Mask %s with bgcolor: %08x\n",
-             MaskString(mask).c_str(), bgcolor);
+      Print("Mask {} with bgcolor: {:08x}\n",
+            MaskString(mask), bgcolor);
     }
 
     // Write.
@@ -1545,11 +1546,11 @@ struct Encode {
     }
 
     if (VERBOSE > 0) {
-      printf("Pixelformat %s. Palette size %d. Mask=%s (%zu bytes)\n",
-             PixelFormatString(pixel_format),
-             (int)palette.entries.size(),
-             MaskString(mask).c_str(),
-             mask_bytes);
+      Print("Pixelformat {}. Palette size {}. Mask={} ({} bytes)\n",
+            PixelFormatString(pixel_format),
+            (int)palette.entries.size(),
+            MaskString(mask),
+            mask_bytes);
     }
 
     // Now the image pixels, but only from the mask.
@@ -1573,7 +1574,7 @@ struct Decode {
       ParseIFrameHeader(frame_width, frame_height, v);
 
     if (head.has_value()) {
-      printf("Decode: %s\n", MaskString(head->mask).c_str());
+      Print("Decode: {}\n", MaskString(head->mask));
 
       switch (MaskType(head->mask)) {
       case MASK_RECT:
@@ -1687,7 +1688,7 @@ static TestStats RunTestcase(const Testcase &t) {
   Decode decode(width, height);
 
   // All I-frame.
-  printf("original\tpng\tenc\tzip\n");
+  Print("original\tpng\tenc\tzip\n");
   for (const ImageRGBA &frame : frames) {
     Timer filter_timer;
     Buf buf = encode.EncodeIFrame(frame);
@@ -1716,19 +1717,11 @@ static TestStats RunTestcase(const Testcase &t) {
     stats.cmp_bytes = h777.size();
     [[maybe_unused]] double h777_ratio = orig / (double)h777.size();
 
-    /*
-    printf("%d\t%.1fx\t%.1fx\t%.1fx\n",
-           (int)orig,
-           miniz_png_ratio,
-           enc_ratio,
-           h777_ratio);
-    */
-
-    printf("%d\t%d\t%d\t%d\n",
-           (int)orig,
-           (int)miniz_png.size(),
-           (int)buf.Size(),
-           (int)h777.size());
+    Print("{}\t{}\t{}\t{}\n",
+          (int)orig,
+          (int)miniz_png.size(),
+          (int)buf.Size(),
+          (int)h777.size());
 
     bool failed = false;
 
@@ -1737,15 +1730,15 @@ static TestStats RunTestcase(const Testcase &t) {
       std::span v(buf.bytes);
       ImageRGBA f = decode.DecodeIFrame(&v);
       if (!v.empty()) {
-        printf(ARED("%d") " extra byte(s) at end\n",
-               (int)v.size());
+        Print(ARED("{}") " extra byte(s) at end\n",
+              (int)v.size());
         failed = true;
       }
 
       if (frame != f) {
         frame.Save("test-expected.png");
         f.Save("test-actual.png");
-        printf("encode/decode " ARED("round trip") " not equal.\n");
+        Print("encode/decode " ARED("round trip") " not equal.\n");
         failed = true;
       }
 
@@ -1804,14 +1797,14 @@ static void RunTests() {
   double h777_ratio = all_stats.raw_bytes / (double)all_stats.cmp_bytes;
   double h777_pct = 100.0 *
     (all_stats.cmp_bytes / (double)all_stats.png_bytes);
-  printf("\n" "== " AWHITE("TOTALS") " ==\n"
-         "Orig bytes: " AORANGE("%lld") "\n"
-         "PNG bytes: " AYELLOW("%lld") " (%.1f:1)\n"
-         "H777 bytes: " AGREEN("%lld")
-         " (%.1f:1; " AYELLOW("%.3f%%") " of PNG)\n",
-         all_stats.raw_bytes,
-         all_stats.png_bytes, png_ratio,
-         all_stats.cmp_bytes, h777_ratio, h777_pct);
+  Print("\n" "== " AWHITE("TOTALS") " ==\n"
+        "Orig bytes: " AORANGE("{}") "\n"
+        "PNG bytes: " AYELLOW("{}") " ({:.1f}:1)\n"
+        "H777 bytes: " AGREEN("{}")
+        " ({:.1f}:1; " AYELLOW("{:.3f}%") " of PNG)\n",
+        all_stats.raw_bytes,
+        all_stats.png_bytes, png_ratio,
+        all_stats.cmp_bytes, h777_ratio, h777_pct);
 }
 
 [[maybe_unused]]
@@ -1833,7 +1826,7 @@ static void Tune() {
     }
   }
 
-  printf("Corpus size: %zu\n", corpus.size());
+  Print("Corpus size: {}\n", corpus.size());
 
   auto ArgString = [](const IFrameOpt::arg_type &args) {
       const auto &[qtmr, rmbr] = args.first;
@@ -1851,7 +1844,7 @@ static void Tune() {
       std::tie(QUADTREE_BYTES_PER_NODE,
                BYTES_PER_BACKGROUND_PIXEL) = args.second;
       runs++;
-      printf("#%d Run %s:\n", runs, ArgString(args).c_str());
+      Print("#{} Run {}:\n", runs, ArgString(args));
 
       int64_t total = 0;
 
@@ -1863,9 +1856,9 @@ static void Tune() {
         total += h777.size();
       }
 
-      printf("[%s] Corpus compressed: " AWHITE("%lld") "\n",
-             ArgString(args).c_str(),
-             (int64_t)total);
+      Print("[{}] Corpus compressed: " AWHITE("{}") "\n",
+            ArgString(args),
+            (int64_t)total);
 
       return std::make_pair((double)total, std::make_optional('o'));
     },
@@ -1950,8 +1943,8 @@ static void Tune() {
                          std::optional<char>>> &datapoints,
                          bool images) {
 
-      printf("Explain using " AYELLOW("%s") " (%d pts)...\n",
-             name.c_str(), (int)datapoints.size());
+      Print("Explain using " AYELLOW("{}") " ({} pts)...\n",
+            name, (int)datapoints.size());
       const auto &[features, loss] =
         opt.Explain(
             datapoints,
@@ -1959,22 +1952,22 @@ static void Tune() {
             double_features,
             {"bias"});
 
-      printf("Loss: " AWHITE("%.11g") "\n", loss);
+      Print("Loss: " AWHITE("{:.11g}") "\n", loss);
       for (const IFrameOpt::Feature &f : features) {
         if (f.type == IFrameOpt::FeatureType::CATEGORICAL_INT) {
-          printf(ABLUE("%s") "=" APURPLE("%d") ": ",
-                 f.name.c_str(), f.categorical_value);
+          Print(ABLUE("{}") "=" APURPLE("{}") ": ",
+                f.name, f.categorical_value);
         } else {
-          printf(ABLUE("%s") ": ", f.name.c_str());
+          Print(ABLUE("{}") ": ", f.name);
         }
         if (f.coefficient < 0.0) {
-          printf(AGREEN("%.11g") "\n", f.coefficient);
+          Print(AGREEN("{:.11g}") "\n", f.coefficient);
         } else {
-          printf(ARED("+%.11g") "\n", f.coefficient);
+          Print(ARED("+{:.11g}") "\n", f.coefficient);
         }
       }
 
-      printf("\n");
+      Print("\n");
 
       // For every pair of features, plot image.
       if (false)
@@ -2049,9 +2042,9 @@ static void Tune() {
   auto besto = opt.GetBest();
   CHECK(besto.has_value()) << "Every arg is feasible??";
   const auto &[args, lowest_score, ot_] = besto.value();
-  printf("Best (score " AGREEN("%.1f") " bytes): %s\n",
+  Print("Best (score " AGREEN("{:.1f}") " bytes): {}\n",
          lowest_score,
-         ArgString(args).c_str());
+         ArgString(args));
 
   // Make images.
   const auto all = opt.GetAll();

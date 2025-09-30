@@ -379,7 +379,7 @@ Criteria ParseCriteria(const string &s) {
 uint32_t ParseCriteriaSet(string s) {
   uint32_t res = 0;
   for (;;) {
-    string tok = Util::chopto(',', s);
+    string tok = Util::ChopTo(',', s);
     if (tok.empty()) return res;
     res |= (1 << ParseCriteria(tok));
   }

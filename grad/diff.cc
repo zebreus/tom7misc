@@ -7,9 +7,9 @@
 
 #include "ansi.h"
 #include "base/stringprintf.h"
+#include "edit-distance.h"
 #include "expression.h"
 #include "util.h"
-#include "edit-distance.h"
 
 using std::string;
 
@@ -45,23 +45,23 @@ std::pair<string, string> ColorDiff(const Exp *a, const Exp *b) {
   string before, after;
   for (const EditDistance::Command &cmd : cmds) {
     if (cmd.Delete()) {
-      if (!before.empty()) StringAppendF(&before, " ");
-      StringAppendF(&before, ABGCOLOR(100, 0, 0, "%s"),
-                    v1[cmd.index1].c_str());
+      if (!before.empty()) before.append(" ");
+      AppendFormat(&before, ABGCOLOR(100, 0, 0, "{}"),
+                   v1[cmd.index1]);
     } else if (cmd.Insert()) {
       if (!after.empty()) StringAppendF(&after, " ");
-      StringAppendF(&after, ABGCOLOR(0, 100, 0, "%s"),
-                    v2[cmd.index2].c_str());
+      AppendFormat(&after, ABGCOLOR(0, 100, 0, "{}"),
+                   v2[cmd.index2]);
     } else {
       CHECK(cmd.Subst());
-      if (!before.empty()) StringAppendF(&before, " ");
-      if (!after.empty()) StringAppendF(&after, " ");
+      if (!before.empty()) before.append(" ");
+      if (!after.empty()) after.append(" ");
 
       const string &s1 = v1[cmd.index1];
       const string &s2 = v2[cmd.index2];
       if (s1 == s2) {
-        StringAppendF(&before, "%s", s1.c_str());
-        StringAppendF(&after, "%s", s2.c_str());
+        AppendFormat(&before, "{}", s1);
+        AppendFormat(&after, "{}", s2);
       } else {
         auto [ccmds, ccost_] = Compare(s1, s2);
         string bef, aft;
@@ -69,24 +69,24 @@ std::pair<string, string> ColorDiff(const Exp *a, const Exp *b) {
         // Not we use ANSI_FG so that we don't reset the active background.
         for (const EditDistance::Command &cc : ccmds) {
           if (cc.Delete()) {
-            StringAppendF(&bef, ANSI_FG(255, 0, 0) "%c", s1[cc.index1]);
+            AppendFormat(&bef, ANSI_FG(255, 0, 0) "{:c}", s1[cc.index1]);
           } else if (cc.Insert()) {
-            StringAppendF(&aft, ANSI_FG(0, 255, 0) "%c", s2[cc.index2]);
+            AppendFormat(&aft, ANSI_FG(0, 255, 0) "{:c}", s2[cc.index2]);
           } else {
             CHECK(cc.Subst());
             char c1 = s1[cc.index1];
             char c2 = s2[cc.index2];
             if (c1 == c2) {
-              StringAppendF(&bef, ANSI_FG(255, 255, 255) "%c", c1);
-              StringAppendF(&aft, ANSI_FG(255, 255, 255) "%c", c2);
+              AppendFormat(&bef, ANSI_FG(255, 255, 255) "{:c}", c1);
+              AppendFormat(&aft, ANSI_FG(255, 255, 255) "{:c}", c2);
             } else {
-              StringAppendF(&bef, ANSI_FG(255, 0, 0) "%c", c1);
-              StringAppendF(&aft, ANSI_FG(0, 255, 0) "%c", c2);
+              AppendFormat(&bef, ANSI_FG(255, 0, 0) "{:c}", c1);
+              AppendFormat(&aft, ANSI_FG(0, 255, 0) "{:c}", c2);
             }
           }
         }
-        StringAppendF(&before, ABGCOLOR(64, 64, 0, "%s"), bef.c_str());
-        StringAppendF(&after, ABGCOLOR(64, 64, 0, "%s"), aft.c_str());
+        AppendFormat(&before, ABGCOLOR(64, 64, 0, "{}"), bef);
+        AppendFormat(&after, ABGCOLOR(64, 64, 0, "{}"), aft);
       }
     }
   }

@@ -1,8 +1,8 @@
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <array>
 #include <string>
@@ -11,7 +11,7 @@
 #include "half.h"
 
 #include "arcfour.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "color-util.h"
 #include "expression.h"
 #include "grad-util.h"
@@ -104,11 +104,11 @@ struct Stats {
 
   void Report() {
     int64_t total_samples = samples_out + samples_in;
-    printf("Samples in: %.3f%% out: %.3f%%\n"
-           "Zero: %d/%lld (%.3f%%)\n",
-           (samples_in * 100.0) / total_samples,
-           (samples_out * 100.0) / total_samples,
-           iszero, (int64_t)denom, (iszero * 100.0) / denom);
+    Print("Samples in: {:.3f}% out: {:.3f}%\n"
+          "Zero: {}/{} ({:.3f}%)\n",
+          (samples_in * 100.0) / total_samples,
+          (samples_out * 100.0) / total_samples,
+          iszero, (int64_t)denom, (iszero * 100.0) / denom);
   }
 
 };
@@ -129,7 +129,7 @@ static void PlotOp2() {
   static constexpr int SAMPLES = 5000;
   Stats stats;
   for (int i = 0; i < SAMPLES; i++) {
-    if (i % 1000 == 0) printf("%d/%d\n", i, SAMPLES);
+    if (i % 1000 == 0) Print("{}/{}\n", i, SAMPLES);
     const auto [norm, scaled] = Sample(&rc, Op2::DOUBLE_BOUNDS);
     auto [rf, gf, bf] = norm;
 
@@ -283,7 +283,7 @@ static void PlotOp3() {
   static constexpr int STROBE_DIM = 0;
   Stats stats;
   for (int i = 0; i < SAMPLES; i++) {
-    if (i % 1000 == 0) printf("%d/%d\n", i, SAMPLES);
+    if (i % 1000 == 0) Print("{}/{}\n", i, SAMPLES);
     const auto [inorm, iscaled] = Sample(&rc, Op3::INT_BOUNDS);
     const auto [dnorm, dscaled] = Sample(&rc, Op3::DOUBLE_BOUNDS);
     auto [iterf] = inorm;
@@ -329,6 +329,7 @@ static void PlotOp3() {
   img.Save("op3.png");
 }
 
+[[maybe_unused]]
 static void PlotOp4() {
   ArcFour rc("op4");
 
@@ -347,7 +348,7 @@ static void PlotOp4() {
   static constexpr int STROBE_DIM = 1;
   Stats stats;
   for (int i = 0; i < SAMPLES; i++) {
-    if (i % 1000 == 0) printf("%d/%d\n", i, SAMPLES);
+    if (i % 1000 == 0) Print("{}/{}\n", i, SAMPLES);
     const auto [inorm, iscaled] = Sample(&rc, Op4::INT_BOUNDS);
     const auto [dnorm, dscaled] = Sample(&rc, Op4::DOUBLE_BOUNDS);
     auto [a, b, c] = inorm;
@@ -394,6 +395,7 @@ static void PlotOp4() {
   img.Save("op4.png");
 }
 
+[[maybe_unused]]
 static void PlotOp5() {
   ArcFour rc("op5");
 
@@ -412,7 +414,7 @@ static void PlotOp5() {
   static constexpr int STROBE_DIM = 1;
   Stats stats;
   for (int i = 0; i < SAMPLES; i++) {
-    if (i % 1000 == 0) printf("%d/%d\n", i, SAMPLES);
+    if (i % 1000 == 0) Print("{}/{}\n", i, SAMPLES);
     const auto [inorm, iscaled] = Sample(&rc, Op5::INT_BOUNDS);
     const auto [dnorm, dscaled] = Sample(&rc, Op5::DOUBLE_BOUNDS);
     auto [a, b] = inorm;
@@ -460,6 +462,7 @@ static void PlotOp5() {
 }
 
 // A nice discontinuous function; can we move it around?
+[[maybe_unused]]
 static void StrobeChoppy5() {
 
   Table target =
@@ -525,7 +528,7 @@ static void StrobeChoppy5() {
     Table result = Exp::TabulateExpression(exp);
     GradUtil::Graph(result, 0xFFFFFFAA, &img, 0);
     GradUtil::Graph(result, 0xFFFFFFAA, &img, 1);
-    printf("%s\n", Exp::ExpString(exp).c_str());
+    Print("{}\n", Exp::ExpString(exp));
 
     for (int i = 0; i < 16; i++) {
       half x = (half)((i / (double)8) - 1.0);
@@ -538,12 +541,12 @@ static void StrobeChoppy5() {
         // put above the line
         -16 +
         // 0 is the center
-        (IMAGE_SIZE / 2) +
-        (double)-y * (IMAGE_SIZE / 2);
+        (IMAGE_SIZE / 2.0f) +
+        (double)-y * (IMAGE_SIZE / 2.0f);
       img.BlendText32(i * (IMAGE_SIZE / 16) + 8,
                       ypos,
                       0xFFFFFFAA,
-                      StringPrintf("%.5f", yi));
+                      std::format("{:.5f}", yi));
     }
   }
 

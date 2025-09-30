@@ -80,13 +80,13 @@ void ErrorHistory::Load() {
   records.reserve(lines.size());
   for (string &line : lines) {
     Record r;
-    r.round_number = std::stoll(Util::chopto('\t', line));
+    r.round_number = std::stoll(Util::ChopTo('\t', line));
     if (r.round_number == 0) continue;
-    r.model_index = std::stoi(Util::chopto('\t', line));
+    r.model_index = std::stoi(Util::ChopTo('\t', line));
     if (r.model_index < 0 || r.model_index >= num_models) continue;
-    r.column_index = std::stoi(Util::chopto('\t', line));
+    r.column_index = std::stoi(Util::ChopTo('\t', line));
     if (r.column_index < 0) continue;
-    r.error_per_example = std::stod(Util::chopto('\t', line));
+    r.error_per_example = std::stod(Util::ChopTo('\t', line));
     records.push_back(r);
   }
 

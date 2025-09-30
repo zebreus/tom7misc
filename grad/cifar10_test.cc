@@ -3,13 +3,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <format>
 #include <string>
 
-#include "image.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "image.h"
 #include "randutil.h"
 
 static constexpr float NOISE_SCALE = 0.025f;
@@ -21,9 +22,9 @@ static constexpr bool SHOW_LABEL = false;
 int main(int argc, char **argv) {
   CIFAR10 cifar10("cifar10", false);
   CHECK(CIFAR10::WIDTH == CIFAR10::HEIGHT);
-  printf("%d labels, %d images.\n",
-         (int)cifar10.labels.size(),
-         (int)cifar10.images.size());
+  Print("{} labels, {} images.\n",
+        cifar10.labels.size(),
+        cifar10.images.size());
 
   ArcFour rc("test");
   RandomGaussian gauss(&rc);
@@ -71,13 +72,13 @@ int main(int argc, char **argv) {
       out.CopyImage(x * SQUARE, y * SQUARE, img_out);
       if (SHOW_LABEL) {
         out.BlendText32(x * SQUARE, y * SQUARE, 0xFF000055,
-                        StringPrintf("%c", cifar10.labels[idx] + '0'));
+                        std::format("{:c}", cifar10.labels[idx] + '0'));
       }
     }
   }
 
   out.ScaleBy(3).Save("cifar10-test.png");
 
-  printf("There are %d labels\n", (int)cifar10.labels.size());
+  Print("There are {} labels\n", cifar10.labels.size());
   return 0;
 }
