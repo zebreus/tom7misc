@@ -1,10 +1,12 @@
 <script>
- const SG = 22335113756362611231619557239211418767540489183409330290855802889083999107738484641106849613637628390352921208300323622519788757587605826611744426549833087972186751180934747355542952556469400709276066714782351279851504089936663676206255149709639743964301450072693148197457151205961671500775877483352290899047249330367207224058474491856089786759090104187768972719321429006117433077358431885437136586687529575468669014833350590999128537035494158851401435186029621297472110326935120229953843263452695861796711905300405424819149527937072767156433251714272239695385442632264521421836962029898840521629387809043196823277609n;
+ const SG = 97035875817856538071097984852143659850113040717180487875783371565273451246536742216736174708384786740533253396405747907150289525915530187570793986154826348563714376657128702681501301402031940740650862603724498556707966425139408498592844034405758710413665458781750608095937065069407231405292878119711821831393n;
 
  const P = SG * 2n + 1n;
 
+ const G = 7n;
+
  function Init() {
-   document.body.innerHTML = P.toString();
+   // document.body.innerHTML = P.toString();
  }
 
  function PowMod(base_in, exp, mod) {
@@ -87,9 +89,10 @@
 
  (() => {
    const base = 123456789n;
-   const exp = 12335113756362671231619857239211418767540489183409330290855802889083591112338484641106849613637628390352921208300323622519788757587605826611744426549833087972186751180934747355542952554469400709276066714782351279851504089936663676206255149709839743964301450072693148197457121202965475550775877483352290899047249330367207224058474491856089786759090104188768972719321429006117433077318431885437136586687529575468669014833350590999128537035494158851401435186029621287472110326935120229953843263452695861796711905300405424819149527937072765555555555555555555555555442632264521821836962029898840521629387809043196823277609n;
+   const exp = 12335113756362671231619n;
    const r = PowMod(base, exp, SG);
-   if (r != 610674829573818303292783731513797982444062213914375469384381933406150225017472051328880804883822021843141136271961480438531215353753902907977625195916895714138682565994642629568407846382288415719076905710786039519201632226176799927384045996263852490430883043000084660629484811504960131855685192228128806477179644700292611258858038976628200352872706766489411116129458324688430969030084406550409846297339951882365684768847033380768173060893873815898949814447954416348067112082251578968397792509703687559082965669798034901976021245479961945563246590972660627227395742158277811111134850640670836678261745054810859128444n) {
+   if (r != 89549230592244971229975513552128257877259550188799981026600345227666882990892585579185479464810825325533363915364165468561120948729143533998935753896801605248057541065413787845174472322212914373335058450251299377379916429852937109723112741859666398606654834348212486074366996798666835528985406815012420262632n) {
+     console.log(r);
      throw 'powmod self-check failed';
    }
 
@@ -101,15 +104,206 @@
    }
 
    let mo = ModInverse(12345678912345n, SG);
-   if (mo == null || mo != 4632460094272715054571324260454731885545277759437855224076795038684262395909955351124595017672288781649172825278509099793831622425807095495555981618617970743689443899480493818103321968026455087155645499125871619602960465063536837810212905249480921404461770607058346267524474886145196715992099217799588584533658349013504983732117664882555979540328304370432601522075902605140225510664379986608697060968100287979981517037423928599555720605868891500601394497759057352801286071172609119142647132724990122554808176845518947793742342128554345651710091341994267702112633717994828756749603117160925207658471896882462070132142n) {
+   if (mo == null || mo != 56945918582425221484443305220949382061444053705536457120944531037153213910657116640517008327376880851764334588275981915521856995455756014633848657707596860400777672275891808169044793952114909304235489861381315268395431784880870758297576662648259015874584125426380621082028277025788891125232353543599319223837n) {
      throw 'mod inverse self-check failed';
+   }
+
+   if (PowMod(G, 2n, P) == 1n ||
+       PowMod(G, SG, P) == 1n) {
+     throw 'g is not a generator';
    }
 
    console.log('self-check ok');
  })();
 
+ function error(s) {
+   let elt = document.getElementById('error');
+   if (!elt) {
+     alert(s);
+   } else {
+     elt.innerHTML = s;
+     elt.classList.remove('flash-error');
+     // Force reflow.
+     void elt.offsetWidth;
+     elt.classList.add('flash-error');
+   }
+ }
+
+ let secret_key = 1n;
+ let public_key = 1n;
+
+ function ReadTextArea(id) {
+   let e = document.getElementById(id);
+   return (e && e.value) || '';
+ }
+
+ function TextAreaNumber(id) {
+   let s = ReadTextArea(id).replace(/[^0-9]/g, '');
+   return (s === '') ? 0n : BigInt(s);
+ }
+
+ function SetNum(id, n) {
+   let elt = document.getElementById(id);
+   if (elt) {
+     elt.innerHTML = n.toString();
+   }
+ }
+
+ function GeneratePublic() {
+   secret_key = TextAreaNumber('secret_key');
+
+   if (secret_key <= 1n || secret_key >= P) {
+     error('secret key must be in the range 1..P-1. got: ' +
+           secret_key.toString());
+     public_key = 1n;
+   } else {
+     public_key = PowMod(G, secret_key, P);
+   }
+
+   SetNum('public_key', public_key);
+ }
+
+ // Generate a random number in 1...P-1.
+ function RandomP() {
+   for (;;) {
+     const num_bytes = Math.ceil(P.toString(16).length / 2) | 0;
+     const bytes = new Uint8Array(num_bytes);
+     window.crypto.getRandomValues(bytes);
+     let n = 0n;
+     for (let i = 0; i < num_bytes; i++) {
+       n = n * 256n + BigInt(bytes[i]);
+     }
+     // XXX should do rejection sampling here or something smart;
+     // modulus adds bias.
+     n = n % P;
+     if (n > 0n && n < P - 1n) {
+       return n;
+     }
+   }
+ }
+
+ // Base 100
+ function ASCIIToNum(s) {
+   let n = 0n;
+   for (let i = 0; i < s.length; i++) {
+     let d = s.charCodeAt(i) - 28;
+     // Encode newlines as DEL.
+     if (d == ('\n'.charCodeAt(0) - 28)) d = 127 - 28;
+     if (d <= 3 || d >= 100) {
+       error("must use only basic ascii. saw U+" +
+             s.charCodeAt(i).toString(16) + " => " +
+       d);
+     } else {
+       n = 100n * n + BigInt(d);
+     }
+   }
+   return n;
+ }
+
+ // This strips leading zeroes; those are invalid
+ // in this encoding anyway.
+ function NumToASCII(n) {
+   let a = [];
+   while (n > 0n) {
+     let d = Number(n % 100n);
+     n = n / 100n;
+     d += 28;
+     if (d == 127) d = '\n'.charCodeAt(0);
+     a.push_back(String.fromCharCode(d));
+   }
+   return a.reverse().join('');
+ }
+
+ function EncryptForm() {
+   let key = TextAreaNumber('enc_key');
+   let msg = ReadTextArea('enc_msg');
+
+   // HERE: Padding
+
+   let plain = ASCIIToNum(msg);
+   if (plain == 0n || plain >= P - 1n) {
+     error('message empty or too long!');
+   } else {
+     SetNum('enc_plain', plain);
+     let y = RandomP();
+     let s = PowMod(key, y, P);
+     let c1 = PowMod(G, y, P);
+     let c2 = (plain * s) % P;
+
+     SetNum('enc_c1', c1);
+     SetNum('enc_c2', c2);
+   }
+ }
+
 </script>
 
+<style>
+ body {
+   font: 14px helvetica,arial,sans-serif;
+ }
+
+ .number-out {
+   overflow-wrap: break-word;
+   font: 10px monospace;
+ }
+
+ .number-intermediate {
+   overflow-wrap: break-word;
+   font: 8px monospace;
+   color: #AAA;
+ }
+
+ .error {
+   border-radius: 5px;
+   padding: 10px;
+   font-weight: bold;
+   font-size: 14px;
+   color: #700;
+ }
+
+ @keyframes flash {
+   0% {
+     background-color: #fdd;
+     border: 4px solid #f77;
+   }
+   100% {
+     background-color: transparent;
+     border: 4px solid transparent;
+   }
+ }
+
+ .flash-error {
+   animation: flash 1.5s ease-out forwards;
+ }
+</style>
+
 <body onload="Init()">
-Hey
+  Hey
+
+  <div id="error" class="error"></div>
+
+  Your secret key is some number in [1, q-1].
+  <br>
+  <textarea id="secret_key" oninput="GeneratePublic()"></textarea>
+
+  <br><br>
+  The public key is derived from the secret key.
+  <div id="public_key" class="number-out">
+  </div>
+
+  <hr>
+
+  Place someone's public key here to encrypt with it.
+  <textarea id="enc_key" oninput="EncryptForm()"></textarea>
+
+  <br>Message to encode:
+  <textarea id="enc_msg" oninput="EncryptForm()">hi :)</textarea>
+
+  The plaintext message is this number:
+  <br><div id="enc_plain" class="number-intermediate"></div>
+
+  <br>The chipertext is TWO numbers:
+  <br><div id="enc_c1" class="number-out"></div>
+  <br><div id="enc_c2" class="number-out"></div>
+
 </body>

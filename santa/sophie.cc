@@ -81,6 +81,17 @@ BigInt GenerateSophieGermainPrime(int bits, CryptRand *cr) {
   return sg;
 }
 
+bool IsGenerator(const BigInt &sg, const BigInt &p, const BigInt &g) {
+  // Only 2 and sg are factors of p.
+  if (BigInt::PowMod(g, BigInt(2), p) == 1)
+    return false;
+
+  if (BigInt::PowMod(g, sg, p) == 1)
+    return false;
+
+  return true;
+}
+
 BigInt GetGenerator(const BigInt &sg, CryptRand *cr) {
   auto Rand = [&]() { return cr->Word64(); };
 
@@ -89,12 +100,9 @@ BigInt GetGenerator(const BigInt &sg, CryptRand *cr) {
     BigInt g = BigInt::RandTo(Rand, p - 2) + 1;
     CHECK(BigInt::Sign(g) == 1);
 
-    // Only 2 and sg are factors of p.
-    if (BigInt::PowMod(g, BigInt(2), p) == 1)
-      continue;
-
-    if (BigInt::PowMod(g, sg, p) == 1)
-      continue;
+    if (IsGenerator(sg, p, g)) {
+      return g;
+    }
 
     return g;
   }
@@ -103,22 +111,33 @@ BigInt GetGenerator(const BigInt &sg, CryptRand *cr) {
 static void Gen(int bits) {
   CryptRand cr;
   BigInt sg = GenerateSophieGermainPrime(bits, &cr);
+  BigInt p = sg * 2 + 1;
   Print(ABLUE("Sophie-Germain prime") ": {}\n"
         "\n"
         APURPLE("Safe prime 2p+1") ": {}\n",
-        sg.ToString(), (sg * 2 + 1).ToString());
+        sg.ToString(), p.ToString());
 
   BigInt g = GetGenerator(sg, &cr);
   Print("\n"
         ACYAN("Generator") ": {}\n",
         g.ToString());
+
+  Print("\n"
+        ACYAN("Small generators") ":");
+  for (int i = 2; i < 10; i++) {
+    if (IsGenerator(sg, p, BigInt(i))) {
+      Print(" {}", i);
+    }
+  }
+  Print("\n");
 }
 
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Gen(2048);
+  // Gen(2048);
+  Gen(1024);
 
   return 0;
 }
