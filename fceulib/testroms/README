@@ -1,0 +1,25 @@
+
+These are test roms for emulator_test.
+
+Only two are included in the repository:
+  escape.nes is Adam Goode's port of my GPL game Escape to NES.
+  test1.nes is a hand-made test cartridge that runs many exotic
+     instructions. You can find the source code in ../../grad/cart.
+
+The others are not hard to find, but of course they are copyrighted
+so they are not distributed with fceulib.
+
+$ shasum .nes
+f91281d5d9cc26bcf6fb4de2f5be086bc633d49b *castlevania3.nes
+f4759104bd0241ce3c038209446aeda79f170fdd *dw4.nes
+99c35cc9d3bb2eb275eb25d671b6f983f5031fb7 *escape.nes
+b851457b3b06524b3747aae41ed056d84aa914da *karate.nes
+f324e7c8c3ad102ecdcca011ecc494f6f345d768 *kirby.nes
+ea343f4e445a9050d4b4fbac2c77d0693b1d0922 *mario.nes
+3dd0ac6de9ff3f2dca5acccc2c7ad554d32e5afc *megaman7.nes
+ecf39ec5a33e6a6f832f03e8ffc61c5d53f4f90b *metroid.nes
+5bd7c1ea52f7f56139428d05443499feefa2f2ba *roadblasters.nes
+6b05670da10c0ba5eb33c94fb931a5464741239e *skull.nes
+07244009fa857e82517383959219fbb907145fff *test1.nes
+77747840541bfc62a28a5957692a98c550bd6b2b *tetris.nes
+89adf2d9e453fc7fc491f968495c80c0c4a568d5 *tmnt.nes

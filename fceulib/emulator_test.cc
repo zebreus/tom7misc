@@ -23,6 +23,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "randutil.h"
 #include "simplefm2.h"
 #include "simplefm7.h"
@@ -157,7 +158,7 @@ static SerialResult RunGameSerially(
 
   SerialResult res;
 
-  Update(std::format("Running " AWHITE("{}") "...", game.cart.c_str()));
+  Update(std::format("Running " AWHITE("{}") "...", game.cart));
 
   // Check that the emulator's machine checksum currently
   // matches the argument.
@@ -169,17 +170,17 @@ static SerialResult RunGameSerially(
       << (field) << "\nbut got " << cx;         \
   } while(0)
 
-  TRACE("RunGameSerially {}.", game.cart.c_str());
+  TRACE("RunGameSerially {}.", game.cart);
 
   // Save files are being successfully written and loaded now. TODO(twm):
   // Need to make the emulator not secretly touch the filesystem. These
   // should just be part of the savestate feature.
   if (0 == unlink(".sav")) {
-    fprintf(stderr, "NOTE: Removed .sav file before RunGameSerially.\n");
+    Print(stderr, "NOTE: Removed .sav file before RunGameSerially.\n");
   }
 
   if (!Util::RemoveFile(".sav")) {
-    fprintf(stderr, "NOTE: Removed .sav file (C++ style).\n");
+    Print(stderr, "NOTE: Removed .sav file (C++ style).\n");
   }
 
   CHECK(!ExistsFile(".sav")) << "\nJust tried to unlink this. "
@@ -225,9 +226,9 @@ static SerialResult RunGameSerially(
       CHECK(idx < (int)actual_rams.size());
       const uint64 cx = emu->MachineChecksum();
       if (cx != checksums[idx]) {
-        fprintf(stderr, "Bad RAM checksum at step %d. "
-                "Expected\n %llu\nbut got %llu.\n", idx,
-                checksums[idx], cx);
+        Print(stderr, "Bad RAM checksum at step {}. "
+              "Expected\n {}\nbut got {}.\n", idx,
+              checksums[idx], cx);
 
         const vector<uint8> mem = emu->GetMemory();
         CHECK(mem.size() == 0x800);
@@ -241,23 +242,24 @@ static SerialResult RunGameSerially(
                              actual_rams[idx][j]));
           }
         }
-        fprintf(stderr, "Total of %d byte mismatch(es):\n",
-                (int)mismatches.size());
+        Print(stderr, "Total of {} byte mismatch(es):\n",
+              mismatches.size());
         for (int j = 0; j < (int)mismatches.size(); j++) {
-          fprintf(stderr, "%s%s", mismatches[j].c_str(),
-                  j < (int)mismatches.size() - 1 ? ", " : "!");
+          Print(stderr, "{}{}", mismatches[j],
+                j < (int)mismatches.size() - 1 ? ", " : "!");
           if (j > 20) {
-            fprintf(stderr, "..."); break;
+            Print(stderr, "...");
+            break;
           }
         }
-        fprintf(stderr, "\n");
+        Print(stderr, "\n");
 
         TRACE("(crashed)");
         abort();
       }
     };
 
-  CHECK(emu.get() != nullptr) << game.cart.c_str();
+  CHECK(emu.get() != nullptr) << game.cart;
   CHECK_NES(EVERY_GAME_INITIAL_CHECKSUM);
 
   // Only needed for compressed saves.
@@ -347,7 +349,6 @@ static SerialResult RunGameSerially(
       }
     };
 
-  // fprintf(stderr, "Random seeks:\n");
   Update("Random seeks.");
   for (int i = 0; i < 500; i++) {
     const int seekto = RandTo(&rc, saves.size());
@@ -400,6 +401,14 @@ static std::vector<TestCase> TestCases() {
       tc.result.img_after_random = img_after_random;
       cases.push_back(std::move(tc));
     };
+
+  AddCase(
+      "test1.nes",
+      // No input.
+      "!1024_",
+      0x47d8448f2dfca78c, 0x27025ad8cd8c4f9b,
+      0xc69c09c660bf5638, 0x8ebd1aa4f181715c,
+      0xFF);
 
   // Regression -- Tengen cart wasn't saving all its state.
   AddCase(
@@ -643,7 +652,7 @@ int main(int argc, char **argv) {
     SerialResult result =
       RunGameSerially(
           [](const string &s) {
-            printf("[%s]\n", s.c_str());
+            Print("[{}]\n", s);
           }, tc.game);
     total++;
     bool is_correct =
@@ -653,14 +662,14 @@ int main(int argc, char **argv) {
       result.img_after_random == tc.result.img_after_random;
     if (is_correct)  {
       correct++;
-      printf("%s [%s]: " AGREEN("correct") "!\n",
-             tc.game.cart.c_str(),
-             ANSI::Time(serial_timer.Seconds()).c_str());
+      Print("{} [{}]: " AGREEN("correct") "!\n",
+             tc.game.cart,
+            ANSI::Time(serial_timer.Seconds()));
     } else {
-      printf("%s [%.2fs]:\n"
-             "      0x%016llx, 0x%016llx,\n"
-             "      0x%016llx, 0x%016llx,\n",
-             tc.game.cart.c_str(),
+      Print("{} [{:.2f}s]: " ARED("wrong") "! Got:\n"
+             "      0x{:016x}, 0x{:016x},\n"
+             "      0x{:016x}, 0x{:016x},\n",
+             tc.game.cart,
              serial_timer.Seconds(),
              result.nes_after_fixed,
              result.img_after_fixed,
@@ -669,9 +678,14 @@ int main(int argc, char **argv) {
     }
   }
 
-  printf("Ran everything in %s\n", ANSI::Time(test_timer.Seconds()).c_str());
+  Print("Ran everything in {}\n", ANSI::Time(test_timer.Seconds()));
 
-  CHECK(correct == total) << "Only " << correct << "/" << total
-                          << " were correct.";
+  if (correct != total) {
+    Print(ARED("FAILED") ": Only {}/{} were correct.\n",
+          correct, total);
+    return -1;
+  }
+
+  Print("OK\n");
   return 0;
 }
