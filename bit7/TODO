@@ -13,12 +13,6 @@ Glyphs todo:
  - irony mark (⸮) found in Unicode as U+2E2E
  - Generally, do the supplemental punctuation:
      https://www.compart.com/en/unicode/block/U+2E00
- - “ᴥ” (U+1D25) for ºᴥº
- - card suits
-    2660 ; UQ   # ♠ E0.6 spade suit
-    2665 ; UQ   # ♥ E0.6 heart suit
-    2666 ; UQ   # ♦ E0.6 diamond suit
-    2663 ; UQ   # ♣ E0.6 club suit
  - I want to use ↻ and friends!!
 
 For math like lean:

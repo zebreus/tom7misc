@@ -1,18 +1,20 @@
 #include "font-image.h"
 
+#include <array>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
 #include <map>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "utf8.h"
 #include "util.h"
@@ -30,6 +32,16 @@ enum PrivateUse : uint32_t {
   PUA_LC_SLASH1,
   PUA_SLASH_STEEP,
   PUA_SLASH,
+};
+
+struct PageInfo {
+  // Codepoint or -1.
+  std::vector<int> codepoints;
+  // Optional. Pairs of start index, length.
+  // Should not overlap. These are just used
+  // to distinguish sections by color in the
+  // images.
+  std::vector<std::pair<int, int>> sections;
 };
 
 // TODO: Need to add page for "old" DFX fonts.
@@ -72,8 +84,15 @@ inline static bool PageUsesEmptyGlyphs(Page p) {
 //    normalize, then set the sources to -1, then normalize again.
 
 // Standard size is: 16x24
-const std::vector<int> &PageBit7Classic() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7Classic() {
+  PageInfo info;
+  info.sections = {
+    // ASCII.
+    {4 * 16, 95},
+    {12 * 16, 6 * 16},
+  };
+
+  info.codepoints = {
     // First line
     // BLACK HEART SUIT
     0x2665,
@@ -232,13 +251,21 @@ const std::vector<int> &PageBit7Classic() {
     0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
   };
 
-  CHECK(CODEPOINTS.size() == 16 * 24);
-  return CODEPOINTS;
+  CHECK(info.codepoints.size() == 16 * 24);
+  return info;
 }
 
 // Standard size is: 16x24
-const std::vector<int> &PageBit7LatinABC() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7LatinABC() {
+  PageInfo info;
+  info.sections = {
+    {0, 8 * 16},
+    {8 * 16, 13 * 16},
+    {(8 + 13) * 16, 2 * 16},
+    {(8 + 13 + 2) * 16, 16},
+  };
+
+  info.codepoints = {
     // U+0100 through U+017F: Latin Extended-A
     0x0100,  // (Ā) Latin Capital letter A with macron
     0x0101,  // (ā) Latin Small letter A with macron
@@ -483,9 +510,7 @@ const std::vector<int> &PageBit7LatinABC() {
     0x01EA,  // (Ǫ) Latin Capital Letter O with Ogonek
     0x01EB,  // (ǫ) Latin Small Letter O with Ogonek
     0x01EC,  // (Ǭ) Latin Capital Letter O with Ogonek and Macron
-    //          (=Latin Capital Letter O with Macron and Ogonek)
     0x01ED,  // (ǭ) Latin Small Letter O with Ogonek and Macron
-    //          (=Latin Small Letter O with Macron and Ogonek)
     0x01EE,  // (Ǯ) Latin Capital Letter Ezh with Caron
     0x01EF,  // (ǯ) Latin Small Letter Ezh with Caron
     0x01F0,  // (ǰ) Latin Small Letter J with Caron
@@ -639,16 +664,20 @@ const std::vector<int> &PageBit7LatinABC() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
-  CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
-  return CODEPOINTS;
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
 }
 
-// TODO: Pages could also define sections, which just get colored
-// differently in generated images.
-
 // Standard size is: 16x24
-const std::vector<int> &PageBit7Extended() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7Extended() {
+  PageInfo info;
+
+  info.sections = {
+    {0, 16 * 3},
+    {18 * 16, 6 * 16},
+  };
+
+  info.codepoints = {
     // space for emoji
     // EMOJI: LIGHT BULB
     0x1F4A1,
@@ -867,13 +896,21 @@ const std::vector<int> &PageBit7Extended() {
     0x30FF, // ヿ Katakana Digraph Koto
   };
 
-  return CODEPOINTS;
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
 }
 
 
 // Standard size is: 16x24
-const std::vector<int> &PageBit7Extended2() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7Extended2() {
+  PageInfo info;
+  info.sections = {
+    {0, 16 * 3 - 4},
+    {16 * 3, 5 * 16},
+    {16 * 8, 16 * 8},
+  };
+
+  info.codepoints = {
     // Unicode superscripts and subscripts. Note that
     // there are some codepoints unassigned, and some
     // of these symbols appear in other blocks.
@@ -1154,15 +1191,21 @@ const std::vector<int> &PageBit7Extended2() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-
   };
 
-  CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
-  return CODEPOINTS;
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
 };
 
-const std::vector<int> &PageBit7Cyrillic() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7Cyrillic() {
+  PageInfo info;
+
+  info.sections = {
+    {0, 16 * 16},
+    {(24 - 8) * 16, 3 * 16},
+  };
+
+  info.codepoints = {
     // Cyrillic, exactly as Unicode U+0400 to U+04FF.
     0x0400, // (Ѐ) Cyrillic Capital Letter Ie with Grave
     0x0401, // (Ё) Cyrillic Capital Letter Io
@@ -1491,11 +1534,20 @@ const std::vector<int> &PageBit7Cyrillic() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
-  return CODEPOINTS;
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
 }
 
-const std::vector<int> &PageBit7Math() {
-  static const std::vector<int> CODEPOINTS = {
+static PageInfo PageBit7Math() {
+  PageInfo info;
+  info.sections = {
+    {0, 16 * 16},
+    {(24 - 8) * 16, 5 * 16},
+    {(24 - 3) * 16, 3 * 16},
+  };
+
+
+  info.codepoints = {
     0x2200,  // (∀) FOR ALL
     0x2201,  // (∁) COMPLEMENT
     0x2202,  // (∂) PARTIAL DIFFERENTIAL
@@ -1837,7 +1889,7 @@ const std::vector<int> &PageBit7Math() {
     0x214E,  // (ⅎ) TURNED SMALL F
     0x214F,  // (⅏) SYMBOL FOR SAMARITAN
 
-
+    // Miscellaneous Mathematical Symbols-A
     // Also from wikipedia.
     0x27C0,  // (⟀) THREE DIMENSIONAL ANGLE
     0x27C1,  // (⟁) WHITE TRIANGLE CONTAINING SMALL WHITE TRIANGLE
@@ -1889,10 +1941,12 @@ const std::vector<int> &PageBit7Math() {
     0x27EF,  // (⟯) MATHEMATICAL RIGHT FLATTENED PARENTHESIS
   };
 
-  return CODEPOINTS;
+
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
 };
 
-static const std::vector<int> &GetCodepointsForPage(Page p) {
+static PageInfo GetPageInfo(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
   case Page::BIT7_LATINABC: return PageBit7LatinABC();
@@ -1908,8 +1962,12 @@ static const std::vector<int> &GetCodepointsForPage(Page p) {
 // Both source and destination are Unicode codepoints.
 static constexpr std::initializer_list<std::pair<int, int>>
 REUSE_FOR = {
-  // hyphen used as minus
-  {0x002D, 0x2212},
+  // hyphen-minus used as hyphen or minus
+  {'-', 0x2010},
+  {'-', 0x2212},
+  // And non-breaking hyphen.
+  {'-', 0x2011},
+
   // Division slash
   {'/', 0x2215},
   {'\\', 0x2216},
@@ -2190,18 +2248,18 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
 
       if (width < 0) {
         if (!IsEmpty()) {
-          printf("%s: "
-                 "Character at cx=%d, cy=%d has no width (black column) but "
-                 "has a glyph (white pixels).\n",
-                 config.pngfile.c_str(), cx, cy);
+          Print("{}: "
+                "Character at cx={}, cy={} has no width (black column) but "
+                "has a glyph (white pixels).\n",
+                config.pngfile, cx, cy);
           CHECK(false);
         }
 
         continue;
       } else if (width == 0) {
-        printf("%s: Character at cx=%d, cy=%d has zero width; "
-               "not supported!\n",
-               config.pngfile.c_str(), cx, cy);
+        Print("{}: Character at cx={}, cy={} has zero width; "
+              "not supported!\n",
+              config.pngfile, cx, cy);
         CHECK(false);
       } else {
         // Glyph, but possibly an empty one...
@@ -2231,7 +2289,8 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
 
   // Now map the glyphs (glyphs[gidx]) from their position in the
   // image (cidx) using the page's mapping to unicode codepoints.
-  const std::vector<int> &codepoints = GetCodepointsForPage(p);
+  const PageInfo page_info = GetPageInfo(p);
+  const std::vector<int> &codepoints = page_info.codepoints;
 
   for (const auto &[cidx, gidx] : pos_to_glyph) {
     CHECK(gidx >= 0 && gidx < (int)glyphs.size());
@@ -2241,12 +2300,12 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
 
     if (cidx >= (int)codepoints.size()) {
       if (!ok_missing) {
-        printf("Skipping glyph at %d,%d because it is outside the codepoint "
-               "array for page %s! There are %d codepoints configured.\n",
-               cidx % config.chars_across, cidx / config.chars_across,
-               Config::PageString(p),
-               (int)codepoints.size());
-        printf("%s", GlyphString(glyph).c_str());
+        Print("Skipping glyph at {},{} because it is outside the codepoint "
+              "array for page {}! There are {} codepoints configured.\n",
+              cidx % config.chars_across, cidx / config.chars_across,
+              Config::PageString(p),
+              codepoints.size());
+        Print("{}", GlyphString(glyph));
       }
       continue;
     }
@@ -2255,12 +2314,12 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
     const int codepoint = codepoints[cidx];
     if (codepoint < 0) {
       if (!ok_missing) {
-        printf("Skipping glyph at %d = %d,%d because the codepoint is not "
-               "configured in page %s (it's %d)!\n",
-               cidx,
-               cidx % config.chars_across, cidx / config.chars_across,
-               Config::PageString(p), codepoint);
-        printf("%s", FontImage::GlyphString(glyph).c_str());
+        Print("Skipping glyph at {} = {},{} because the codepoint is not "
+              "configured in page {} (it's {})!\n",
+              cidx,
+              cidx % config.chars_across, cidx / config.chars_across,
+              Config::PageString(p), codepoint);
+        Print("{}", FontImage::GlyphString(glyph));
       }
 
     } else {
@@ -2335,12 +2394,89 @@ FontImage::FontImage(const Config &config) : config(config) {
       if (dit == unicode_to_glyph.end() ||
           EmptyGlyph(glyphs[dit->second])) {
         if (VERBOSE) {
-          printf("Copy %04x to %04x\n", src, dst);
+          Print("Copy {:04x} to {:04x}\n", src, dst);
         }
         unicode_to_glyph[dst] = unicode_to_glyph[src];
       }
     }
   }
+}
+
+namespace {
+inline static constexpr std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
+Unpack32(uint32_t color) {
+  return {(uint8_t)((color >> 24) & 255),
+          (uint8_t)((color >> 16) & 255),
+          (uint8_t)((color >> 8) & 255),
+          (uint8_t)(color & 255)};
+}
+
+inline static constexpr uint32_t Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+  return
+    ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | (uint32_t)a;
+}
+
+inline static constexpr uint32_t Darken(uint32_t c) {
+  const auto &[r, g, b, a] = Unpack32(c);
+
+  uint8_t rr = r * 0.5;
+  uint8_t gg = g * 0.5;
+  uint8_t bb = b * 0.5;
+
+  return Pack32(rr, gg, bb, a);
+}
+
+struct SectionColors {
+  // Anything other than the standard pair 0x828a19FF, 0x594d96FF.
+  static constexpr std::array ALT_COLORS = {
+    // std::pair<uint32_t, uint32_t>{0x3a5f62ff, 0x6f2f30ff},
+    // std::pair<uint32_t, uint32_t>{0x19561aff, 0x623a5dff},
+    // brown
+    std::pair<uint32_t, uint32_t>{0x6b4b1cff, 0x4b3514ff},
+    // blue
+    std::pair<uint32_t, uint32_t>{0x142a4bff, 0x1c3c6bff},
+    // red
+    std::pair<uint32_t, uint32_t>{0x4b1514ff, 0x6b1d1cff},
+  };
+
+  SectionColors(const Config &config,
+                const PageInfo &info) {
+    int size = config.chars_across * config.chars_down;
+    colors.resize(size);
+
+    // Pass the bright color; the darker color is computed automatically.
+    auto SetColor = [&config, this](int cidx, uint32_t ecolor, uint32_t ocolor) {
+        int x = cidx % config.chars_across;
+        int y = cidx / config.chars_across;
+        const bool odd = !!((x + y) & 1);
+
+        uint32_t c = odd ? ocolor : ecolor;
+
+        this->colors[cidx] = std::make_pair(c, Darken(c));
+      };
+
+    // First set plain background colors.
+    for (int cidx = 0; cidx < size; cidx++) {
+      SetColor(cidx, 0x828a19FF, 0x594d96FF);
+    }
+
+    // Now for each span.
+    int ac = 0;
+    for (const auto &[start, len] : info.sections) {
+      for (int off = 0; off < len; off++) {
+        int cidx = start + off;
+        CHECK(cidx < size);
+        SetColor(cidx, ALT_COLORS[ac].first, ALT_COLORS[ac].second);
+      }
+
+      ac ++;
+      ac %= ALT_COLORS.size();
+    }
+
+  }
+
+  std::vector<std::pair<uint32_t, uint32_t>> colors;
+};
 }
 
 ImageRGBA FontImage::ImagePage(Page p) {
@@ -2349,15 +2485,18 @@ ImageRGBA FontImage::ImagePage(Page p) {
   ImageRGBA out(config.chars_across * ww, config.chars_down * hh);
   out.Clear32(0xFF0000FF);
 
-  const std::vector<int> &codepoints = GetCodepointsForPage(p);
+  PageInfo page_info = GetPageInfo(p);
+  const std::vector<int> &codepoints = page_info.codepoints;
+
+  SectionColors section_colors(config, page_info);
 
   for (int y = 0; y < config.chars_down; y++) {
     for (int x = 0; x < config.chars_across; x++) {
       const int cidx = y * config.chars_across + x;
-      const bool odd = !!((x + y) & 1);
+      // const bool odd = !!((x + y) & 1);
 
-      const uint32_t bgcolor = odd ? 0x594d96FF : 0x828a19FF;
-      const uint32_t locolor = odd ? 0x453984FF : 0x636a0eFF;
+      const auto &[bgcolor, locolor] =
+        section_colors.colors[cidx];
 
       // Fill whole grid cell to start.
       int xs = x * ww;
@@ -2397,7 +2536,7 @@ ImageRGBA FontImage::ImagePage(Page p) {
 
       // Fill remaining horizontal with black.
       int sp = config.charbox_width - glyph_width;
-      // printf("%d - %d - %d\n", config.charbox_width, glyph_width, sp);
+      // Print("{} - {} - {}\n", config.charbox_width, glyph_width, sp);
       out.BlendRect32(xs + glyph_width, ys, sp, hh,
                       0x000000FF);
     }
@@ -2448,7 +2587,7 @@ int BitmapFont::Width(int cp) const {
 }
 
 void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
-                           uint32_t color,
+                          uint32_t color,
                           std::string_view s) const {
   std::vector<uint32_t> cps = UTF8::Codepoints(s);
   for (uint32_t cp : cps) {

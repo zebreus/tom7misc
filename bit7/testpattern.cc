@@ -56,8 +56,8 @@ int main(int argc, char **argv) {
   vector<string> testpattern =
     {(string)B7_ES + string(48, *B7_EW) + (string)B7_SW,
 
-     "  Welcome to my font!  it is cozy here " B7_SMILE "  (ok) ",
-     "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
+     ("  Welcome to my font!  it is cozy here " B7_SMILE "  (ok) "),
+     ("  Now is the FALL-TIME of our DISCONTENT !!|1Il "),
      "",
      "  " B7_FILL_6 B7_FILL_6 B7_FILL_6
      B7_FILL_5 B7_FILL_5 B7_FILL_5
@@ -81,20 +81,20 @@ int main(int argc, char **argv) {
      B7_FILL_1 B7_FILL_1 B7_FILL_1
      B7_FILL_0 B7_FILL_0 B7_FILL_0 "      B-L-A-S-T-E-D !",
      "",
-     "  " B7_UNCHECKED " Enable hyper-drive      for (;;) {",
-     "  " B7_CHECKED   " Enable ultra-disc         printf(\"hi?\\n\"); ",
-     "  " B7_CHECKED   " Disable introspection   }",
+     ("  " B7_UNCHECKED " Enable hyper-drive      for (;;) {"),
+     ("  " B7_CHECKED   " Enable ultra-disc         Print(\"hi?\\n\"); "),
+     ("  " B7_CHECKED   " Disable introspection   }"),
      "",
-     "  Mr. Jock, TV Quiz Ph.D., bags few lynx!  ",
-     "  (glib jocks quiz nymph to vex dwarf) ",
-     "  (SYMPATHIZING WOULD FIX QUAKER OBJECTIVES.) ",
-     "  XW!@#$%^&*()-=_+{}[]\\|:\";'<>?,./ZXCVB~` ",
+     ("  Mr. Jock, TV Quiz Ph.D., bags few lynx!  "),
+     ("  (glib jocks quiz nymph to vex dwarf) "),
+     ("  (SYMPATHIZING WOULD FIX QUAKER OBJECTIVES.) "),
+     ("  XW!@#$%^&*()-=_+{}[]\\|:\";'<>?,./ZXCVB~` "),
      "",
      "  123,456 * 7,890 = 974,067,840 ",
      "",
-     "  jungle quip, " B7_ES  B7_ESW  B7_SW  " If you knew where you'd fall,",
-     "  TTTTTT QQQQ` " B7_NES B7_NESW B7_NSW  " you'd put a pillow!",
-     "  http://.com/ " B7_NE  B7_NEW  B7_NW   " (watch--said I--beloved)",
+     ("  jungle quip, " B7_ES  B7_ESW  B7_SW  " If you knew where you'd fall,"),
+     ("  TTTTTT QQQQ` " B7_NES B7_NESW B7_NSW  " you'd put a pillow!"),
+     ("  http://.com/ " B7_NE  B7_NEW  B7_NW   " (watch--said I--beloved)"),
      (string)B7_NE + string(48, *B7_EW) + (string)B7_NW,};
 
   const int LINES = testpattern.size();
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     const string &line = testpattern[y];
     for (int x = 0; x < (int)line.size(); x++) {
       uint8 ch = line[x];
-      // printf("%c", ch);
+      // Print("{:c}", ch);
       font.Blit((int)ch, x * CHAR_WIDTH, y * CHAR_HEIGHT, SetPixel, ClearPixel);
     }
   }

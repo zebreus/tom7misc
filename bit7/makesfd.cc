@@ -6,7 +6,6 @@
 // TODO: I changed this encoding and I need to update the DFX fonts!
 
 #include <cstdint>
-#include <cstdio>
 #include <functional>
 #include <map>
 #include <set>
@@ -15,6 +14,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "fonts/island-finder.h"
 #include "fonts/ttf.h"
@@ -293,7 +293,7 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
     // only end when we approach it with right = RIGHT, right?
     if (px == startpx &&
         py == startpy && right == RIGHT)  {
-      // printf("Loop finished!\n");
+      // Print("Loop finished!\n");
       break;
     }
   }
@@ -312,7 +312,7 @@ static TTF::Char Vectorize(const Glyph &glyph) {
 
   std::function<vector<TTF::Contour>(int, uint8)> VectorizeRec =
     [&maps, &VectorizeRec](int d, uint8 parent) -> vector<TTF::Contour> {
-      if (VERBOSE) printf("DEPTH %d/%d\n", d, maps.max_depth);
+      if (VERBOSE) Print("DEPTH {}/{}\n", d, maps.max_depth);
       if (d > maps.max_depth) return {};
 
       std::vector<TTF::Contour> contours;
@@ -340,9 +340,9 @@ static TTF::Char Vectorize(const Glyph &glyph) {
       // Now, for each component...
       for (const auto &[this_eqc, descendants] : eqclasses) {
         if (VERBOSE) {
-          printf("Tracing eqc %d (descendants:", this_eqc);
-          for (uint8 d : descendants) printf(" %d", d);
-          printf(")\n");
+          Print("Tracing eqc {} (descendants:", this_eqc);
+          for (uint8 d : descendants) Print(" {}", d);
+          Print(")\n");
         }
         // Generate a simplified bitmap.
         ImageA bitmap(maps.eqclass.Width(), maps.eqclass.Height());
@@ -388,7 +388,7 @@ int main(int argc, char **argv) {
 
   const Config config = ParseAndCheckConfig(argv[1]);
   if (VERBOSE)
-    printf("Converting from %s\n", argv[1]);
+    Print("Converting from {}\n", argv[1]);
   const string out_sfd = argv[2];
   const string out_test_png = (argc > 3) ? argv[3] : "";
 
@@ -421,25 +421,25 @@ int main(int argc, char **argv) {
     #define NOTES "\x01"
     #define PLUSMINUS "\x03"
     #define DEG    "\x04"
-    vector<string> testpattern = {
-     "  Welcome to my font!  it is cozy here " HEART "  (ok) ",
-     "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
-     "",
-     "",
-     "  " NOTES " Enable hyper-drive      for (;;) {",
-     "  " NOTES " Enable ultra-disc         printf(\"hi?\\n\"); ",
-     "  " NOTES " Disable introspection   }",
-     "",
-     "  Mr. Jock, TV Quiz Ph.D., bags few lynx!  ",
-     "  (glib jocks quiz nymph to vex dwarf) ",
-     "  (SYMPATHIZING WOULD FIX QUAKER OBJECTIVES.) ",
-     "  XW!@#$%^&*()-=_+{}[]\\|:\";'<>?,./ZXCVB~` ",
-     "",
-     "  " PLUSMINUS "123,456 * 7,890 = 974,067,840" DEG,
-     "",
-     "  jungle quip, " INFTY " If you knew where you'd fall,",
-     "  TTTTTT QQQQ` " INFTY  " you'd put a pillow!",
-     "  http://.com/ " INFTY  " (watch--said I--beloved)",
+    std::vector<string> testpattern = {
+      ("  Welcome to my font!  it is cozy here " HEART "  (ok) "),
+      ("  Now is the FALL-TIME of our DISCONTENT !!|1Il "),
+      "",
+      "",
+      ("  " NOTES " Enable hyper-drive      for (;;) {"),
+      ("  " NOTES " Enable ultra-disc         Print(\"hi?\\n\"); "),
+      ("  " NOTES " Disable introspection   }"),
+      "",
+      "  Mr. Jock, TV Quiz Ph.D., bags few lynx!  ",
+      "  (glib jocks quiz nymph to vex dwarf) ",
+      "  (SYMPATHIZING WOULD FIX QUAKER OBJECTIVES.) ",
+      "  XW!@#$%^&*()-=_+{}[]\\|:\";'<>?,./ZXCVB~` ",
+      "",
+      ("  " PLUSMINUS "123,456 * 7,890 = 974,067,840" DEG),
+      "",
+      ("  jungle quip, " INFTY " If you knew where you'd fall,"),
+      ("  TTTTTT QQQQ` " INFTY  " you'd put a pillow!"),
+      ("  http://.com/ " INFTY  " (watch--said I--beloved)"),
     };
 
     ImageRGBA test(config.charbox_width * 48 + 2 * BORDER,

@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -12,6 +13,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "periodically.h"
 #include "threadutil.h"
@@ -107,24 +109,24 @@ static void Process() {
         const double total_sec = timer.MS() / 1000.0;
         {
           MutexLock ml(&count_mutex);
-          printf("%lld  [%.2f/sec] %lld count\n", num_articles,
+          Print("{}  [{:.2f}/sec] {} count\n", num_articles,
                  num_articles / total_sec, total_count);
         }
       }
     }
 
-    printf("Wait for async to finish.\n");
+    Print("Wait for async to finish.\n");
   }
 
-  printf("%lld articles done in %.3f minutes.\n",
-         num_articles, timer.Seconds() / 60.0);
+  Print("{} articles done in {:.3f} minutes.\n",
+        num_articles, timer.Seconds() / 60.0);
 
-  string out = StringPrintf("Total codepoints: %lld\n", total_count);
+  string out = std::format("Total codepoints: {}\n", total_count);
   std::vector<std::pair<uint32_t, int64_t>> sorted;
   sorted.reserve(counts.size());
   for (const auto &[code, count] : counts)
     sorted.emplace_back(code, count);
-  printf("%d nonzero codepoints\n", (int)sorted.size());
+  Print("{} nonzero codepoints\n", sorted.size());
 
   // Maybe could group some CJK codepoints into pages?
 
@@ -137,13 +139,13 @@ static void Process() {
   for (const auto &[code, count] : sorted) {
     if (!font.MappedCodepoint(code)) {
       std::string utf8 = UTF8::Encode(code);
-      StringAppendF(&out, "U+%04x (%s): %lld\n", code, utf8.c_str(), count);
+      AppendFormat(&out, "U+{:04x} ({}): {}\n", code, utf8, count);
     }
   }
 
   Util::WriteFile("unicode.txt", out);
-  printf("Wrote unicode.txt\n");
-  printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
+  Print("Wrote unicode.txt\n");
+  Print("Finished in {}\n", ANSI::Time(timer.Seconds()));
   wiki->PrintStats();
 }
 

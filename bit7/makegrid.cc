@@ -1,12 +1,12 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <memory>
 #include <string>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "image.h"
 
@@ -111,9 +111,9 @@ int main(int argc, char **argv) {
   for (int y = 0; y < CHARS_DOWN; y++) {
     for (int x = 0; x < CHARS_ACROSS; x++) {
       int c = y * CHARS_ACROSS + x;
-      printf("%c", (c < 32 || c >= 255) ? '_' : c);
+      Print("{:c}", (c < 32 || c >= 255) ? '_' : c);
     }
-    printf("\n");
+    Print("\n");
   }
 
   return 0;

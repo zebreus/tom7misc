@@ -1,14 +1,13 @@
 // Outputs all the unicode codepoints in a font, as UTF-8 strings.
 
 #include <algorithm>
-#include <cstdio>
-#include <string>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "utf8.h"
-#include "ansi.h"
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -26,9 +25,9 @@ int main(int argc, char **argv) {
   std::sort(codepoints.begin(), codepoints.end());
 
   for (int codepoint : codepoints) {
-    printf("%s", UTF8::Encode(codepoint).c_str());
+    Print("{}", UTF8::Encode(codepoint));
   }
-  printf("\n");
+  Print("\n");
 
   return 0;
 }

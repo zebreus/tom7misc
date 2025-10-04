@@ -1,10 +1,10 @@
 // Loads a font from one config, and writes it back out using another.
 
 #include <cstdint>
-#include <cstdio>
 #include <string>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "util.h"
 
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   CHECK(argc == 3) <<
     "Usage: ./reencode.exe config-in.cfg config-out.cfg";
 
-  printf("Normalize %s to %s\n", argv[1], argv[2]);
+  Print("Normalize {} to {}\n", argv[1], argv[2]);
   const Config config_in = ParseAndCheckConfig(argv[1]);
   const Config config_out = ParseAndCheckConfig(argv[2]);
 
@@ -47,8 +47,8 @@ int main(int argc, char **argv) {
 
   if (Util::ExistsFile(config_out.pngfile)) {
     std::string back = Util::BackupFile(config_out.pngfile);
-    printf("Moved old %s to %s\n", config_out.pngfile.c_str(),
-           back.c_str());
+    Print("Moved old {} to {}\n", config_out.pngfile,
+          back);
   }
   font_out.SaveImage(config_out.pngfile);
 

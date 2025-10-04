@@ -2,7 +2,6 @@
 // Needs UnicodeData.txt, e.g. from
 // https://www.unicode.org/Public/14.0.0/ucd/UnicodeData.txt
 
-#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <unordered_map>
@@ -11,6 +10,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "utf8.h"
 #include "util.h"
 
@@ -28,10 +28,10 @@ static void Dump(uint32_t start, uint32_t end) {
 
   // Now output.
   for (uint32_t codepoint = start; codepoint < end; codepoint++) {
-    printf("  0x%04x,  // (%s) %s\n",
-           codepoint,
-           UTF8::Encode(codepoint).c_str(),
-           names[codepoint].c_str());
+    Print("  0x{:04x},  // ({}) {}\n",
+          codepoint,
+          UTF8::Encode(codepoint),
+          names[codepoint]);
   }
 
 }

@@ -2,10 +2,10 @@
 // font image/config. Might do this if the image has something wrong
 // with it (stray pixels, etc.).
 
-#include <cstdio>
 #include <string>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "util.h"
 
@@ -39,8 +39,7 @@ int main(int argc, char **argv) {
 
   if (Util::ExistsFile(dest)) {
     std::string back = Util::BackupFile(dest);
-    printf("Moved old %s to %s\n", dest.c_str(),
-           back.c_str());
+    Print("Moved old {} to {}\n", dest, back);
   }
 
   font.SaveImage(dest);

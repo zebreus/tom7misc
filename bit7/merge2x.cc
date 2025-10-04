@@ -1,11 +1,11 @@
 // Copy characters from a 1x font to 2x font, if they aren't already
 // present there.
 
-#include <cstdio>
 #include <string>
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "font-image.h"
 #include "util.h"
 
@@ -60,8 +60,7 @@ int main(int argc, char **argv) {
 
   if (Util::ExistsFile(dest)) {
     std::string back = Util::BackupFile(dest);
-    printf("Moved old %s to %s\n", dest.c_str(),
-           back.c_str());
+    Print("Moved old {} to {}\n", dest, back);
   }
 
   CHECK(config1x.charbox_width * 2 == config2x.charbox_width);
