@@ -7,6 +7,8 @@
 
  function Init() {
    // document.body.innerHTML = P.toString();
+   // consult hash
+   Tab(0);
  }
 
  function PowMod(base_in, exp, mod) {
@@ -129,6 +131,12 @@
    }
  }
 
+ function ok() {
+   let elt = document.getElementById('error');
+   elt.classList.remove('flash-error');
+   elt.innerHTML = '';
+ }
+
  let secret_key = 1n;
  let public_key = 1n;
 
@@ -137,17 +145,19 @@
    return (e && e.value) || '';
  }
 
- function TextAreaNumber(id) {
-   let s = ReadTextArea(id).replace(/[^0-9]/g, '');
-   return (s === '') ? 0n : BigInt(s);
+ function ParseBigInt(s) {
+   let ss = s.replace(/[^0-9]/g, '');
+   return (ss === '') ? 0n : BigInt(ss);
  }
 
- function SetNum(id, n) {
+ function TextAreaNumber(id) { return ParseBigInt(ReadTextArea(id)); }
+
+ function SetPlain(id, s) {
    let elt = document.getElementById(id);
-   if (elt) {
-     elt.innerHTML = n.toString();
-   }
+   if (elt) { elt.innerHTML = s; }
  }
+
+ function SetNum(id, n) { SetPlain(id, n.toString()); }
 
  function GeneratePublic() {
    secret_key = TextAreaNumber('secret_key');
@@ -156,11 +166,13 @@
      error('secret key must be in the range 1..P-1. got: ' +
            secret_key.toString());
      public_key = 1n;
+     return;
    } else {
      public_key = PowMod(G, secret_key, P);
    }
 
    SetNum('public_key', public_key);
+   ok();
  }
 
  // Generate a random number in 1...P-1.
@@ -192,7 +204,8 @@
      if (d <= 3 || d >= 100) {
        error("must use only basic ascii. saw U+" +
              s.charCodeAt(i).toString(16) + " => " +
-       d);
+             d);
+       return null;
      } else {
        n = 100n * n + BigInt(d);
      }
@@ -208,8 +221,11 @@
      let d = Number(n % 100n);
      n = n / 100n;
      d += 28;
-     if (d == 127) d = '\n'.charCodeAt(0);
-     a.push_back(String.fromCharCode(d));
+     console.log(d);
+     if (d == 127) {
+       d = '\n'.charCodeAt(0);
+     }
+     a.push(String.fromCharCode(d));
    }
    return a.reverse().join('');
  }
@@ -221,7 +237,9 @@
    // HERE: Padding
 
    let plain = ASCIIToNum(msg);
-   if (plain == 0n || plain >= P - 1n) {
+   if (plain === null) {
+     // error already reported
+   } else if (plain == 0n || plain >= P - 1n) {
      error('message empty or too long!');
    } else {
      SetNum('enc_plain', plain);
@@ -230,8 +248,62 @@
      let c1 = PowMod(G, y, P);
      let c2 = (plain * s) % P;
 
-     SetNum('enc_c1', c1);
-     SetNum('enc_c2', c2);
+     SetPlain('enc_cipher',
+              c1.toString() + ',' + c2.toString());
+     ok();
+   }
+ }
+
+ function DecryptForm() {
+   let secret = TextAreaNumber('dec_secret');
+   let [c1s, c2s, ...rest] = ReadTextArea('dec_cipher').split(',');
+   let c1 = ParseBigInt(c1s || '');
+   let c2 = ParseBigInt(c2s || '');
+
+   if (c1 <= 0n || c2 <= 0n || rest.length != 0) {
+     error('ciphertext should be two numbers, separated by a comma');
+     return;
+   }
+
+   if (secret <= 1n || secret >= P) {
+     error('secret key must be in the range 1..P-1. got: ' +
+           secret.toString());
+     return;
+   }
+
+   // This will be the same s computed during encryption.
+   let s = PowMod(c1, secret, P);
+   let si = ModInverse(s, P);
+   // XXX actually check that it's the inverse, I guess?
+   if (si === null) {
+     error('something is wrong: couldn\'t compute s⁻¹ mod P');
+     return;
+   }
+
+   // c2 is m*s, so m*s*⁻¹ is just m.
+   let m = (c2 * si) % P;
+
+   SetNum('dec_plain', m);
+
+   // And then decode.
+   let plain = NumToASCII(m);
+   SetPlain('dec_msg', plain);
+   ok();
+ }
+
+
+ function Tab(n) {
+   const NUM_TABS = 3;
+   for (let i = 0; i < NUM_TABS; i++) {
+     let tab = document.getElementById('tab' + i);
+     let pane = document.getElementById('pane' + i);
+     if (n === i) {
+       tab.classList.add('selected');
+       pane.classList.add('selected');
+     } else {
+       tab.classList.remove('selected');
+       pane.classList.remove('selected');
+     }
    }
  }
 
@@ -240,6 +312,13 @@
 <style>
  body {
    font: 14px helvetica,arial,sans-serif;
+   background: #eee;
+ }
+
+ textarea {
+   font: 12px monospace;
+   width: 300px;
+   height: 200px;
  }
 
  .number-out {
@@ -253,12 +332,28 @@
    color: #AAA;
  }
 
+ .message-out {
+   overflow-wrap: break-word;
+   font: 12px monospace;
+   color: #111;
+   background: #eee;
+   border-radius: 4px;
+   padding: 6px;
+   white-space: pre-wrap;
+ }
+
  .error {
    border-radius: 5px;
    padding: 10px;
    font-weight: bold;
    font-size: 14px;
    color: #700;
+   width: 600px;
+   height: 1em;
+   border: 4px solid transparent;
+   overflow: hidden;
+   text-overflow: ellipsis;
+   white-space: nowrap;
  }
 
  @keyframes flash {
@@ -275,35 +370,93 @@
  .flash-error {
    animation: flash 1.5s ease-out forwards;
  }
+
+ .tab {
+   display: inline-block;
+   cursor: pointer;
+   width: 200px;
+   border: 2px solid #77A;
+   border-radius: 4px 4px 0 0;
+   border-width: 2px 2px 0 2px;
+   margin: 2px 2px 0 8px;
+   background: #ccc;
+   color: #005;
+   font: 20px;
+   font-weight: bold;
+   padding: 4px 12px;
+ }
+
+ .tab.selected {
+   cursor: normal;
+   border-color: #44A;
+   background: #fff;
+   color: #000;
+   border-bottom-color: #fff;
+   transform: translateY(2px);
+ }
+
+ .pane {
+   display: none;
+   border: 2px solid #777;
+   padding: 10px;
+   margin: 0 8px 8px 8px;
+   border-radius: 2px;
+   background: #fff;
+ }
+
+ .pane.selected {
+   display: block;
+ }
+
 </style>
 
 <body onload="Init()">
-  Hey
-
   <div id="error" class="error"></div>
 
-  Your secret key is some number in [1, q-1].
-  <br>
-  <textarea id="secret_key" oninput="GeneratePublic()"></textarea>
+  <div style="width:18px;display:inline-block"></div>
+  <div id="tab0" class="tab" onclick="Tab(0)">Keygen</div>
+  <div id="tab1" class="tab" onclick="Tab(1)">Encrypt</div>
+  <div id="tab2" class="tab" onclick="Tab(2)">Decrypt</div>
 
-  <br><br>
-  The public key is derived from the secret key.
-  <div id="public_key" class="number-out">
+  <div id="pane0" class="pane">
+    Your secret key is some number in [1, q-1].
+    <br>
+    <textarea id="secret_key" oninput="GeneratePublic()"></textarea>
+
+    <br><br>
+    The public key is derived from the secret key.
+    <div id="public_key" class="number-out"></div>
   </div>
 
-  <hr>
+  <div id="pane1" class="pane">
+    Place someone's public key here to encrypt with it.
+    <br><textarea id="enc_key" oninput="EncryptForm()"></textarea>
 
-  Place someone's public key here to encrypt with it.
-  <textarea id="enc_key" oninput="EncryptForm()"></textarea>
+    <p>Message to encode:
+    <br><textarea id="enc_msg" oninput="EncryptForm()">hi :)</textarea>
 
-  <br>Message to encode:
-  <textarea id="enc_msg" oninput="EncryptForm()">hi :)</textarea>
+    <p>The plaintext message is this number:
+    <br><div id="enc_plain" class="number-intermediate"></div>
 
-  The plaintext message is this number:
-  <br><div id="enc_plain" class="number-intermediate"></div>
+    <p>The chipertext is TWO numbers, separated by a comma.
+    <br><div id="enc_cipher" class="number-out"></div>
+  </div>
 
-  <br>The chipertext is TWO numbers:
-  <br><div id="enc_c1" class="number-out"></div>
-  <br><div id="enc_c2" class="number-out"></div>
+  <div id="pane2" class="pane">
+    Your secret key; the same number you used to generate your
+    public key in "Keygen."
+    <br><textarea id="dec_secret" oninput="DecryptForm()"></textarea>
+
+    <p>The ciphertext to decode. This is two big numbers,
+      separated by a comma.
+    <br><textarea id="dec_cipher" oninput="DecryptForm()"></textarea>
+
+    <p>The resulting plaintext is this number:
+    <br><div id="dec_plain" class="number-intermediate"></div>
+
+    <p>The resulting message:
+    <br><div id="dec_msg" class="message-out"></div>
+
+  </div>
 
 </body>
