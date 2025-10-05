@@ -62,6 +62,8 @@ lasa: .byte $00
 lasx: .byte $00
 lass: .byte $00
 ahxo: .byte $00
+if3o: .byte $00
+if3a: .byte $00
 
 fina: .byte $00
 finx: .byte $00
@@ -396,6 +398,44 @@ noflow:
   ldx #$f7
   .byte $9f,$00,$00
 
+
+;; Undocumented ISB (zp),Y, which is opcode $F3.
+;; Increments a memory location and then subtract-with-carry
+;; of that new value from A. We already tested ISB above,
+;; but we also want to test the rarely used RMW_IY ddressing mode.
+
+;; writes at the hard-coded RAM address $0410
+
+;; temporarily use the zero-page output bytes for the address
+;; $0400 (must be consecutive)
+  lda #$00
+  sta if3o
+  lda #$04
+  sta if3a
+
+  lda #$AA
+  sta $0410
+
+  ;; x should be unused, but a previous bug did use it.
+  ;; make sure it has a known value.
+  ldx #$05
+  ;; So that we compute $0400 + $10 = $0410.
+  ldy #$10
+
+  ;; set up accumulator for the SBC
+  lda #$FF
+  sec
+
+  .byte $F3, if3o
+  ;; a previous bug would read an additional byte. make sure
+  ;; we do something that affects the accumulator.
+  adc $91
+
+  sta if3a
+
+  lda $0410
+  sta if3o
+
 ;;; now dump state, for one more chance of catching any
 ;;;  discrepancies
 
@@ -410,15 +450,14 @@ noflow:
 
 ;;;  with the final expected memory contents (beginning of
 ;;;  zero page):
-;;;  00 06 14 1b 71 c0 42 0b 44 20 61 01 01 91 01 01
-;;;  13 18 ef 29 ec 54 50 29 3d 2b 87 bd 47 3c 54 2f
-;;;  46 3C 04 3D 1b 1b 7b 7a 7a 7a 01 33 f7 2a bd ff
-;;;  ff
-
+;;;    00 06 14 1B 71 C0 42 0B 44 20 61 01 01 91 01 01
+;;;    13 18 EF 29 3C 54 50 29 3D 2B 87 BD 47 3C 54 2F
+;;;    46 3C 04 3D 1B 1B 7B 7A 7A 7A 01 AB 55 AB 05 10
+;;;    BC FF FF
 
   jmp ActualStart
 
-  .asciiz "Test ROM #1 by Tom 7, 2023. Distribute freely. Exercises some undocumented and rare instructions. The bytes displayed in the video are the output (the beginning of the zero page). They are not checked by the ROM itself; instead you need to verify them against a known good emulator."
+  .asciiz "Test ROM #1 (v2) by Tom 7, 2025. Distribute freely. Exercises some undocumented and rare instructions. The bytes displayed in the video are the output (the beginning of the zero page). They are not checked by the ROM itself; instead you need to verify them against a known good emulator."
 
 ActualStart:
 :
@@ -503,7 +542,6 @@ irq:
 
 .segment "CHARS"
 
-                ; .incbin "Alpha.chr"
-    .incbin "tiles.chr"
+.incbin "tiles.chr"
 
 

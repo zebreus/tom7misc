@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "base/logging.h"
 #include "image.h"
 #include "util.h"
 

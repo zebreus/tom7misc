@@ -1,7 +1,7 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #include <vector>
 #include <string>
@@ -45,7 +45,8 @@ int main(int argc, char **argv) {
   }
 
   if (!got_type || args.size() != 2) {
-    fprintf(stderr, "usage: makeimage.exe [-mirror] -prg|-chr cart.nes cart.rom\n");
+    fprintf(stderr,
+            "usage: makeimage.exe [-mirror] -prg|-chr cart.nes cart.rom\n");
     return -1;
   }
 
