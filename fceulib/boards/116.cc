@@ -38,6 +38,17 @@
 
 #include "mapinc.h"
 
+#include <cstdint>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "x6502.h"
+
+using uint8 = uint8_t;
+using int32 = int32_t;
+using uint32 = uint32_t;
+
 namespace {
 struct Mapper116 final : public CartInterface {
   uint8 mode = 0;

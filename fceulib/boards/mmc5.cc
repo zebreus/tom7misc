@@ -20,12 +20,22 @@
 
 /* None of this code should use any of the iNES bank switching wrappers. */
 
-#include "mapinc.h"
 #include "mmc5.h"
 
+#include <cstdint>
 #include <cstring>
 #include <initializer_list>
-#include <cstdint>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "fsettings.h"
+#include "ppu.h"
+#include "sound.h"
+#include "state.h"
+#include "tracing.h"
+#include "utils/memory.h"
+#include "x6502.h"
 
 using uint32 = uint32_t;
 using uint8 = uint8_t;

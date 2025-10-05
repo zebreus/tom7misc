@@ -1,6 +1,6 @@
 
 This is Tom 7's attempt to make FCE Ultra into a thread-safe library.
-As of 2 Nov 2024, we have here:
+As of 5 Oct 2025, we have here:
 
  - The modernization I did for the Learnfun & Playfun project
    (../tasbot/) and major culling of unnecessary parts of FCEU.
@@ -10,6 +10,8 @@ As of 2 Nov 2024, we have here:
  - Transformed all of the modules into objects so they don't read
    and write global variables. Gosh, this was a huge pain in the ass!
    If you use this you may owe me a beer!
+ - Got rid of the macro hacks in the x6502 core, and other sanity
+   improvements here.
  - A new sensible interface in emulator.h.
  - A test suite in emulator_test. It includes the ability to
    instrument the emulator with tracing in case I introduce a bug
@@ -23,7 +25,7 @@ can't promise I'll be able to fix them!)
 
 Note that this port requires C++20 now and I have only tested 64-bit
 builds.
-On Windows I am using clang 18.1.8 through msys2, targeting x86_64-w64.
+On Windows I am using clang 21.1.1 through msys2, targeting x86_64-w64.
 It should also work well with modern G++ (say, 11+).
 
 The intention is that the library itself (emulator.h) has no external
@@ -34,4 +36,11 @@ require cc-lib, which can probably be found in ../cc-lib.
 All of the code in this directory is licensed under the terms of the
 GNU General Public License, which is contained in the file COPYING.
 The list of authors and copyright holders is in Authors.md.
+
+Some of my projects that use this:
+   http://tom7.org/mario/
+   http://tom7.org/zelda/
+   http://tom7.org/harder/
+   http://tom7.org/chess/
+   http://tom7.org/grad/
 

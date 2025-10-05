@@ -18,7 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
+#include <cstdint>
+
 #include "mapinc.h"
+#include "tracing.h"
+#include "x6502.h"
+
+using uint8 = uint8_t;
 
 namespace {
 struct Tengen final : public MapInterface {
