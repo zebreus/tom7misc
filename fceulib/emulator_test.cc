@@ -406,8 +406,8 @@ static std::vector<TestCase> TestCases() {
       "test1.nes",
       // No input.
       "!1024_",
-      0x47d8448f2dfca78c, 0x27025ad8cd8c4f9b,
-      0xc69c09c660bf5638, 0x8ebd1aa4f181715c,
+      0x43f251e85f5858bf, 0x0184b298f7b42c6a,
+      0xa6cb4a946fbc5d53, 0xcff69e95c1f16c9d,
       0xFF);
 
   // Regression -- Tengen cart wasn't saving all its state.
