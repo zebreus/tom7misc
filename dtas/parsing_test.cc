@@ -7,13 +7,14 @@
 #include <vector>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "formula.h"
 
 static constexpr bool VERBOSE = false;
 
 #define PARSE(str) []() {                                     \
     if (VERBOSE)                                              \
-      fprintf(stderr, "PARSE: [%s]\n", "" str "");            \
+      Print(stderr, "PARSE: [{}]\n", "" str "");              \
     std::vector<Token> tokens = Tokenize(0, "" str "");       \
     return ParseLine(tokens, []() {                           \
         return std::format("Test at {}:{}\nInput line: {}\n", \
@@ -165,6 +166,6 @@ int main(int argc, char **argv) {
   TestParseLine();
   TestParseFormulas();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

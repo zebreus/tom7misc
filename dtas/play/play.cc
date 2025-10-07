@@ -20,46 +20,45 @@
 #include <utility>
 #include <vector>
 
+#include "SDL.h"
 #include "SDL_error.h"
 #include "SDL_events.h"
 #include "SDL_joystick.h"
 #include "SDL_keyboard.h"
 #include "SDL_keysym.h"
+#include "SDL_main.h"
+#include "SDL_mouse.h"
 #include "SDL_timer.h"
 #include "SDL_video.h"
 
-#include "threadutil.h"
-#include "randutil.h"
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-
-#include "timer.h"
-#include "ansi.h"
-#include "periodically.h"
-
-#include "SDL.h"
-#include "SDL_main.h"
-#include "SDL_mouse.h"
-
-#include "util.h"
+#include "base/print.h"
 #include "image.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
-#include "sdl/sdlutil.h"
-#include "sdl/font.h"
-#include "sdl/cursor.h"
+#include "mov-recorder.h"
+#include "mov.h"
+
 #include "sdl/chars.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 #include "../../fceulib/emulator.h"
 #include "../../fceulib/simplefm2.h"
 #include "../../fceulib/simplefm7.h"
-#include "emulator-pool.h"
-#include "mario.h"
-#include "mario-util.h"
-#include "minus.h"
-#include "evaluator.h"
 
-#include "mov.h"
-#include "mov-recorder.h"
+#include "emulator-pool.h"
+#include "evaluator.h"
+#include "mario-util.h"
+#include "mario.h"
+#include "minus.h"
 
 using namespace std;
 
@@ -244,9 +243,9 @@ struct Movie {
         "With inputs: " << inputs.size() << " saves are " <<
         saves.size() << " vs " << (inputs.size() / SAVE_EVERY);
       /*
-      printf("OK: saves %d (want %d), inputs %d\n",
-             (int)saves.size(), (int)(inputs.size() / SAVE_EVERY),
-             (int)inputs.size());
+      Print("OK: saves {} (want {}), inputs {}\n",
+             saves.size(), (int)(inputs.size() / SAVE_EVERY),
+             inputs.size());
       */
       std::vector<uint8_t> *s = new std::vector<uint8_t>;
       emu->SaveUncompressed(s);
@@ -286,7 +285,7 @@ struct Movie {
                                                   << inputs.size();
     std::vector<uint8_t> trimmed = inputs;
     trimmed.resize(cursor);
-    printf("There are %d inputs.\n", (int)cursor);
+    Print("There are {} inputs.\n", cursor);
     return SimpleFM7::EncodeOneLine(trimmed);
   }
 
@@ -392,7 +391,7 @@ struct Game {
     CHECK(!level_start.empty());
     emu->LoadUncompressed(level_start);
     img = MarioUtil::Screenshot(emu.get());
-    if (TRACE) { printf("Created game (default ctor).\n"); }
+    if (TRACE) { Print("Created game (default ctor).\n"); }
   }
   #endif
 
@@ -559,7 +558,7 @@ struct GameArray {
   // in parallel and won't block on each other. Generally we just
   // have one std::function per Game, updating its state.
   void WorkerThread() {
-    if (TRACE) { printf("GameArray thread start.\n"); fflush(stdout); }
+    if (TRACE) { Print("GameArray thread start.\n"); fflush(stdout); }
     // TODO: Check exit condition.
     for (;;) {
       std::unique_lock<std::mutex> ml(m);
@@ -612,19 +611,20 @@ struct GameArray {
               if (txsub == xsub) count++;
 
               if (count > 3) {
-                printf("[%d] " ACYAN("%s") ": %s%02x %s%d %s%02x %s%d %s%02x "
-                       ANSI_RESET "\n",
-                       i, what,
-                       ground ? ANSI_GREEN : ANSI_GREY,
-                       emu->ReadRAM(PLAYER_STATE),
-                       dx == tdx ? ANSI_GREEN : ANSI_GREY,
-                       dx,
-                       facing == tfacing ? ANSI_GREEN : ANSI_GREY,
-                       facing,
-                       xmod == txmod ? ANSI_GREEN : ANSI_GREY,
-                       xmod,
-                       xsub == txsub ? ANSI_GREEN : ANSI_GREY,
-                       xsub);
+                Print("[{}] " ACYAN("{}") ": "
+                      "{}{:02x} {}{} {}{:02x} {}{} {}{:02x} "
+                      ANSI_RESET "\n",
+                      i, what,
+                      ground ? ANSI_GREEN : ANSI_GREY,
+                      emu->ReadRAM(PLAYER_STATE),
+                      dx == tdx ? ANSI_GREEN : ANSI_GREY,
+                      dx,
+                      facing == tfacing ? ANSI_GREEN : ANSI_GREY,
+                      facing,
+                      xmod == txmod ? ANSI_GREEN : ANSI_GREY,
+                      xmod,
+                      xsub == txsub ? ANSI_GREEN : ANSI_GREY,
+                      xsub);
               }
             };
 
@@ -632,17 +632,17 @@ struct GameArray {
           ShowDebug(MOTIF_3_TARGETS, "motif3");
 
           if (CanMotif3(emu)) {
-            printf("Trigger walljump 3 in emu %d [xlo=%d]\n", i,
-                   emu->ReadRAM(PLAYER_X_LO));
+            Print("Trigger walljump 3 in emu {} [xlo={}]\n", i,
+                  emu->ReadRAM(PLAYER_X_LO));
             EnqueueMotif(i, walljump_motif_3);
             focus_idx = i;
             // speed = Speed::PAUSE;
             return true;
           } else if (CanMotif2(emu)) {
-            printf("Trigger walljump in emu %d\n", i);
+            Print("Trigger walljump in emu {}\n", i);
             EnqueueMotif(i, walljump_motif_2);
           } else if (false && CanMotifReverse(emu)) {
-            printf("Trigger rev on emu %d\n", i);
+            Print("Trigger rev on emu {}\n", i);
             EnqueueMotif(i, reverse_motif);
           }
         }
@@ -665,7 +665,7 @@ struct GameArray {
     static constexpr int TURBO_JUMP_IDX = 3;
     static constexpr int NUM_TURBO = 3;
 
-    if (TRACE) { printf("Step %02x\n", orig); fflush(stdout); }
+    if (TRACE) { Print("Step {:02x}\n", orig); fflush(stdout); }
     RandomGaussian gauss(&rc);
     const int movie_size = games[focus_idx]->movie.Size();
     uint8_t prev_button = movie_size == 0 ? 0 :
@@ -792,9 +792,9 @@ struct GameArray {
       cv.notify_all();
     }
 
-    if (TRACE) { printf("Wait on work.\n"); fflush(stdout); }
+    if (TRACE) { Print("Wait on work.\n"); fflush(stdout); }
     WaitThreads();
-    if (TRACE) { printf("Step %02x done.\n", orig); fflush(stdout); }
+    if (TRACE) { Print("Step {:02x} done.\n", orig); fflush(stdout); }
   }
 
   void WaitThreads() {
@@ -807,7 +807,7 @@ struct GameArray {
           return work.empty();
         });
 
-      // printf("work queue empty, tasks=%lld\n", running_tasks);
+      // Print("work queue empty, tasks={}\n", running_tasks);
       // fflush(stdout);
 
       if (running_tasks == 0) break;
@@ -882,9 +882,9 @@ struct GameArray {
     ParallelAppi(games,
                  [](int idx, std::unique_ptr<Game> &g) {
                    CHECK(g.get() != nullptr);
-                   printf("Validate %d\n", idx);
+                   Print("Validate {}\n", idx);
                    g->Validate();
-                   printf("%d ok\n", idx);
+                   Print("{} ok\n", idx);
                 }, 12);
   }
 
@@ -1042,7 +1042,7 @@ void UI::Seek(int delta) {
 bool UI::MaybeRunEmulators(uint8_t buttons) {
 
   if (game_array == nullptr) {
-    printf("No game array!\n");
+    Print("No game array!\n");
     return false;
   }
 
@@ -1087,7 +1087,7 @@ UI::EventResult UI::HandleEvents() {
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
     case SDL_QUIT:
-      printf("QUIT.\n");
+      Print("QUIT.\n");
       return EventResult::EXIT;
 
     case SDL_MOUSEMOTION: {
@@ -1115,7 +1115,7 @@ UI::EventResult UI::HandleEvents() {
     case SDL_KEYDOWN: {
       switch (event.key.keysym.sym) {
       case SDLK_ESCAPE:
-        printf("ESCAPE.\n");
+        Print("ESCAPE.\n");
         return EventResult::EXIT;
 
       case SDLK_HOME: {
@@ -1204,15 +1204,15 @@ UI::EventResult UI::HandleEvents() {
         std::string filename = std::format("manual-{:02x}-{:02x}.fm7",
                                            major, minor);
         Util::WriteFile(filename, fm7);
-        printf("Saved " ACYAN("%s") ": " AGREY("%s") "\n",
-               filename.c_str(), fm7.c_str());
+        Print("Saved " ACYAN("{}") ": " AGREY("{}") "\n",
+              filename, fm7);
         break;
       }
 
       case SDLK_v: {
         Timer timer;
         game_array->Validate();
-        printf("Validated in %s.\n", ANSI::Time(timer.Seconds()).c_str());
+        Print("Validated in {}.\n", ANSI::Time(timer.Seconds()));
         break;
       }
 
@@ -1222,7 +1222,7 @@ UI::EventResult UI::HandleEvents() {
           // think is desirable. But we could make that also be
           // asynchronous.
           mov.reset();
-          printf("Stopped recording.\n");
+          Print("Stopped recording.\n");
         } else {
           std::string filename = std::format("rec-{:02x}-{:02x}.mov",
                                              major, minor);
@@ -1297,15 +1297,15 @@ UI::EventResult UI::HandleEvents() {
       case 8:
         if (checkpoint.has_value()) {
           checkpoint.reset();
-          printf("Cleared checkpoint.\n");
+          Print("Cleared checkpoint.\n");
         } else {
           checkpoint = game_array->Checkpoint();
-          printf("Saved checkpoint.\n");
+          Print("Saved checkpoint.\n");
         }
         break;
 
       default:
-        printf("Button %d unmapped.\n", event.jbutton.button);
+        Print("Button {} unmapped.\n", event.jbutton.button);
       }
       break;
 
@@ -1320,7 +1320,7 @@ UI::EventResult UI::HandleEvents() {
       case 0: current_gamepad &= ~INPUT_B; break;
       case 1: current_gamepad &= ~INPUT_A; break;
       default:
-        printf("Button %d unmapped.\n", event.jbutton.button);
+        Print("Button {} unmapped.\n", event.jbutton.button);
       }
       break;
 
@@ -1331,7 +1331,7 @@ UI::EventResult UI::HandleEvents() {
       //
       //    4
       if (TRACE)
-        printf("Hat %d moved to %d.\n", event.jhat.hat, event.jhat.value);
+        Print("Hat {} moved to {}.\n", event.jhat.hat, event.jhat.value);
 
       static constexpr uint8_t JHAT_UP = 1;
       static constexpr uint8_t JHAT_DOWN = 4;
@@ -1374,7 +1374,7 @@ void UI::Loop() {
   for (;;) {
     bool ui_dirty = false;
 
-    if (TRACE) printf("Handle events.\n");
+    if (TRACE) Print("Handle events.\n");
 
     switch (HandleEvents()) {
     case EventResult::EXIT: return;
@@ -1387,7 +1387,7 @@ void UI::Loop() {
 
     if (ui_dirty) {
       Draw();
-      // printf("Flip.\n");
+      // Print("Flip.\n");
       SDL_Flip(screen);
       ui_dirty = false;
     }
@@ -1601,7 +1601,7 @@ void UI::DrawMemory(int xx, int yy) {
 }
 
 void UI::Draw() {
-  if (TRACE) printf("Draw.\n");
+  if (TRACE) Print("Draw.\n");
 
   CHECK(font != nullptr);
   CHECK(drawing != nullptr);
@@ -1641,7 +1641,7 @@ void UI::Draw() {
   }
 
   frames_drawn++;
-  if (TRACE) printf("Drew %lld.\n", frames_drawn);
+  if (TRACE) Print("Drew {}.\n", frames_drawn);
 }
 
 static void InitializeSDL() {
@@ -1650,14 +1650,14 @@ static void InitializeSDL() {
                  SDL_INIT_TIMER |
                  SDL_INIT_JOYSTICK |
                  SDL_INIT_AUDIO) >= 0);
-  fprintf(stderr, "SDL initialized OK.\n");
+  Print(stderr, "SDL initialized OK.\n");
 
   if (SDL_NumJoysticks() == 0) {
-    printf("No joysticks were found.\n");
+    Print("No joysticks were found.\n");
   } else {
     joystick = SDL_JoystickOpen(0);
     if (joystick == nullptr) {
-      printf("Could not open joystick: %s\n", SDL_GetError());
+      Print("Could not open joystick: {}\n", SDL_GetError());
     }
   }
 
@@ -1670,7 +1670,7 @@ static void InitializeSDL() {
 
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen != nullptr);
-  if (TRACE) printf("Created screen.\n");
+  if (TRACE) Print("Created screen.\n");
 
   font = Font::Create(screen,
                       FONT_PNG,
@@ -1692,14 +1692,14 @@ static void InitializeSDL() {
                          FONTCHARS,
                          FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font4x != nullptr) << "Couldn't load font.";
-  if (TRACE) printf("Created fonts.\n");
+  if (TRACE) Print("Created fonts.\n");
 
   CHECK((cursor_arrow = Cursor::MakeArrow()));
   CHECK((cursor_bucket = Cursor::MakeBucket()));
   CHECK((cursor_hand = Cursor::MakeHand()));
   CHECK((cursor_hand_closed = Cursor::MakeHandClosed()));
   CHECK((cursor_eraser = Cursor::MakeEraser()));
-  if (TRACE) printf("Created cursors.\n");
+  if (TRACE) Print("Created cursors.\n");
 
   SDL_SetCursor(cursor_arrow);
   SDL_ShowCursor(SDL_ENABLE);
@@ -1747,13 +1747,13 @@ static std::optional<LevelId> GetLevel(MinusDB *db) {
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
       case SDL_QUIT:
-        printf("QUIT.\n");
+        Print("QUIT.\n");
         return std::nullopt;
 
       case SDL_KEYDOWN: {
         switch (event.key.keysym.sym) {
         case SDLK_ESCAPE:
-          printf("ESCAPE.\n");
+          Print("ESCAPE.\n");
           return std::nullopt;
         default:
           break;
@@ -1777,7 +1777,7 @@ static std::optional<LevelId> GetLevel(MinusDB *db) {
         if (e->button == SDL_BUTTON_LEFT) {
           int major = e->y / PX;
           int minor = e->x / PX;
-          printf("Click %d,%d\n", e->x, e->y);
+          Print("Click {},{}\n", e->x, e->y);
           if (major >= 0 && major < 256 &&
               minor >= 0 && minor < 256) {
             return {PackLevel(major, minor)};
@@ -1810,10 +1810,10 @@ void InitializeGraphics() {
 }
 
 int main(int argc, char **argv) {
-  if (TRACE) fprintf(stderr, "In main...\n");
+  if (TRACE) Print(stderr, "In main...\n");
   ANSI::Init();
 
-  if (TRACE) fprintf(stderr, "Try initialize SDL...\n");
+  if (TRACE) Print(stderr, "Try initialize SDL...\n");
   InitializeSDL();
 
   InitializeGraphics();
@@ -1825,9 +1825,9 @@ int main(int argc, char **argv) {
     if (auto lo = GetLevel(&db)) {
       level = lo.value();
     } else {
-      printf("Command-line usage:\n"
-             "./play.exe major minor [startmovie.fm7]\n\n"
-             "Major and minor are hex levels 00-ff.\n");
+      Print("Command-line usage:\n"
+            "./play.exe major minor [startmovie.fm7]\n\n"
+            "Major and minor are hex levels 00-ff.\n");
       return -1;
     }
 
@@ -1837,35 +1837,35 @@ int main(int argc, char **argv) {
     level = PackLevel(major, minor);
   }
 
-  printf("Play %s\n", ColorLevel(level).c_str());
+  Print("Play {}\n", ColorLevel(level));
 
   db.ForEachRejected([level](const MinusDB::RejectedRow &row) {
       if (row.level == level) {
-        printf("%s " ARED("REJECTED") " by %s on " AGREY("%lld") "\n",
-               ColorLevel(level).c_str(),
-               MinusDB::MethodName(row.method),
-               row.createdate);
+        Print("{} " ARED("REJECTED") " by {} on " AGREY("{}") "\n",
+              ColorLevel(level),
+              MinusDB::MethodName(row.method),
+              row.createdate);
       }
     });
 
   if (db.HasSolution(level)) {
-    printf(AWHITE("Note") ": %s has a solution already\n",
-           ColorLevel(level).c_str());
+    Print(AWHITE("Note") ": {} has a solution already\n",
+          ColorLevel(level));
   } else {
-    printf("No solution in database.\n");
+    Print("No solution in database.\n");
   }
 
   std::vector<uint8_t> startmovie;
   if (argc >= 4) {
     startmovie = SimpleFM7::ReadInputs(argv[3]);
-    printf("Start movie has " AWHITE("%d") " inputs.\n",
-           (int)startmovie.size());
+    Print("Start movie has " AWHITE("{}") " inputs.\n",
+          startmovie.size());
   }
 
   const auto &[major, minor] = UnpackLevel(level);
 
   emulator_pool = new EmulatorPool(ROMFILE);
-  if (TRACE) printf("Created emulator pool.\n");
+  if (TRACE) Print("Created emulator pool.\n");
   {
     CHECK(emulator_pool != nullptr);
     auto emu = emulator_pool->AcquireClean();
@@ -1875,20 +1875,20 @@ int main(int argc, char **argv) {
 
     evaluator = new Evaluator(emulator_pool, emu.get());
   }
-  if (TRACE) printf("Initialized emulator pool and evaluator.\n");
+  if (TRACE) Print("Initialized emulator pool and evaluator.\n");
 
   // PERF: We end up replaying the same movie for each game in
   // the array here.
   game_array = new GameArray(Movie(startmovie));
-  if (TRACE) printf("Created GameArray.\n");
+  if (TRACE) Print("Created GameArray.\n");
 
 
-  printf("Begin UI loop.\n");
+  Print("Begin UI loop.\n");
 
   UI ui(level);
   ui.Loop();
 
-  printf("Quit %s\n", ColorLevel(level).c_str());
+  Print("Quit {}\n", ColorLevel(level));
 
   SDL_Quit();
   return 0;

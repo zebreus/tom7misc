@@ -15,6 +15,7 @@
 #include "ansi.h"
 #include "assemble.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bounds.h"
 #include "byte-set.h"
 #include "formula.h"
@@ -91,9 +92,9 @@ static void Model() {
     .valid_values = ByteSet({0x00, 0x01, 0x02, 0x03}),
     };
 
-  printf("Constraint: %s\n",
-         modeling.ram_constraints[OPER_MODE].
-         valid_values.DebugString().c_str());
+  Print("Constraint: {}\n",
+        modeling.ram_constraints[OPER_MODE].
+        valid_values.DebugString());
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,
@@ -107,9 +108,9 @@ static void Model() {
 
   CHECK(!modeling.Done());
   /*
-  printf("%d blocks. %d dirty\n",
-         (int)modeling.blocks.size(),
-         (int)modeling.dirty.Size());
+  Print("{} blocks. {} dirty\n",
+        modeling.blocks.size(),
+        modeling.dirty.Size());
   */
 
   static constexpr int VERBOSE_ITER_START = 142500;
@@ -124,7 +125,7 @@ static void Model() {
   auto MaybeRender = [&save_async](const Modeling &modeling, int frame) {
       if (!WRITE_IMAGES) return;
       if ((frame % WRITE_EVERY) != 0) return;
-      printf("Render frame %d...\n", frame);
+      Print("Render frame {}...\n", frame);
 
       ByteSet zero;
       constexpr int LEFT = 8;
@@ -209,7 +210,7 @@ static void Model() {
       save_async.Run([image = std::move(img), frame]() {
           std::string filename = std::format("model-{}.png", frame);
           image.Save(filename);
-          printf("Wrote %s\n", filename.c_str());
+          Print("Wrote {}\n", filename);
         });
     };
 
@@ -233,7 +234,7 @@ static void Model() {
 
   auto Write = [&modeling, &source_map](const std::string &file) {
       modeling.WriteAnnotatedAssembly(source_map, file);
-      printf("Wrote " AGREEN("%s") "\n", file.c_str());
+      Print("Wrote " AGREEN("{}") "\n", file);
     };
 
   while (!modeling.Done()) {
@@ -255,23 +256,23 @@ static void Model() {
         px = sx;
         py = sy;
       }
-      printf("%s\n", ANSIImage::HalfChar(img).c_str());
+      Print("{}\n", ANSIImage::HalfChar(img));
 
       int64_t denom = modeling.blocks.size();
       int64_t remain = modeling.dirty.Size();
       [[maybe_unused]]
       int64_t numer = denom - remain;
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
-      printf("%lld iters, " ACYAN("%lld") " blocks in %s\n",
-             iters,
-             (int64_t)modeling.blocks.size(),
-             ANSI::Time(timer.Seconds()).c_str());
+      Print("{} iters, " ACYAN("{}") " blocks in {}\n",
+            iters,
+            modeling.blocks.size(),
+            ANSI::Time(timer.Seconds()));
     }
 
     if (iters > VERBOSE_ITER_START) {
-      printf(AWHITE("== starting iteration %lld ==") "\n", iters);
-      printf("Number of blocks: " ACYAN("%d") "\n",
-             (int)modeling.blocks.size());
+      Print(AWHITE("== starting iteration {} ==") "\n", iters);
+      Print("Number of blocks: " ACYAN("{}") "\n",
+            modeling.blocks.size());
       modeling.verbose = 2;
     }
 
@@ -301,19 +302,19 @@ static void Model() {
           };
 
         if (!OK()) {
-          printf("At iteration " AWHITE("%lld") ", "
-                 ARED("invariant violation") ":\n", iters);
-          printf("%s\n", block.state_in.DebugString().c_str());
+          Print("At iteration " AWHITE("{}") ", "
+                ARED("invariant violation") ":\n", iters);
+          Print("{}\n", block.state_in.DebugString());
           Write("violation.asm");
           LOG(FATAL) << "Invariant violation.";
         }
 
       } else {
-        printf("JumpEngine:");
+        Print("JumpEngine:");
         for (const BlockTag &tag : modeling.block_tags[JUMP_ENGINE]) {
-          printf(" %s", Modeling::TagString(tag).c_str());
+          Print(" {}", Modeling::TagString(tag));
         }
-        printf("\n");
+        Print("\n");
         Write("violation.asm");
         LOG(FATAL) << "Unexpected jumpengine call graph.";
       }
@@ -323,7 +324,7 @@ static void Model() {
     num_blocks_at_iter.push_back(modeling.blocks.size());
     iters++;
   }
-  status.Statusf("Done in " ACYAN("%lld") " iters.\n", iters);
+  status.Status("Done in " ACYAN("{}") " iters.", iters);
 }
 
 int main(int argc, char **argv) {

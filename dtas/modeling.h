@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "../fceulib/emulator.h"
+
 #include "base/logging.h"
 #include "byte-set.h"
 #include "formula.h"

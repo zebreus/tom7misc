@@ -27,18 +27,18 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "base/stringprintf.h"
+#include "color-util.h"
+#include "hashing.h"
 #include "image.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
-#include "hashing.h"
-#include "status-bar.h"
-#include "color-util.h"
 #include "util.h"
-
-#include "base/stringprintf.h"
-#include "base/logging.h"
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
@@ -289,8 +289,8 @@ struct MazeSolver {
 
         if (evaluator->Succeeded(emu.get())) {
           if (GetOutcome() == Outcome::SUCCESS) {
-            printf(AYELLOW("Simultaneously solved")
-                   " %s! Ignored.\n", ColorLevel(level_id).c_str());
+            Print(AYELLOW("Simultaneously solved")
+                   " {}! Ignored.\n", ColorLevel(level_id));
             return;
           }
 
@@ -299,9 +299,9 @@ struct MazeSolver {
           std::vector<uint8_t> full_sol = src_movie;
           for (uint8_t b : edge_movie) full_sol.push_back(b);
           db->AddSolution(level_id, full_sol, MinusDB::METHOD_MAZE);
-          printf(AGREEN("Solved") " %s: " AGREY("%s") "\n",
-                 ColorLevel(level_id).c_str(),
-                 SimpleFM7::EncodeOneLine(full_sol).c_str());
+          Print(AGREEN("Solved") " {}: " AGREY("{}") "\n",
+                ColorLevel(level_id),
+                SimpleFM7::EncodeOneLine(full_sol));
           levels_solved++;
           return;
         }
@@ -703,17 +703,17 @@ struct Solver {
           // Two workers might simultaneously pick states that are
           // right before the exit, for example.
           if (GetOutcome() == Outcome::SUCCESS) {
-            printf(AYELLOW("Simultaneously solved")
-                   " %s! Ignored.\n", ColorLevel(level_id).c_str());
+            Print(AYELLOW("Simultaneously solved")
+                  " {}! Ignored.\n", ColorLevel(level_id));
             return;
           }
           SetOutcome(Outcome::SUCCESS);
           std::vector<uint8_t> full_sol = start.movie;
           for (uint8_t b : f.moves) full_sol.push_back(b);
           db->AddSolution(level_id, full_sol, MinusDB::METHOD_SOLVE);
-          printf(AGREEN("Solved") " %s: " AGREY("%s") "\n",
-                 ColorLevel(level_id).c_str(),
-                 SimpleFM7::EncodeOneLine(full_sol).c_str());
+          Print(AGREEN("Solved") " {}: " AGREY("{}") "\n",
+                ColorLevel(level_id),
+                SimpleFM7::EncodeOneLine(full_sol));
           levels_solved++;
           return;
         }
@@ -834,47 +834,41 @@ struct Solver {
 
         std::string lines = ANSIScreenshotWithLock();
 
-        StringAppendF(
+        AppendFormat(
             &lines,
-            "%lld attempted. %s steps (%lld here; %.1f/sec). "
-            "Solved " AGREEN("%d") "\n",
+            "{} attempted. {} steps ({} here; {:.1f}/sec). "
+            "Solved " AGREEN("{}") "\n",
             levels_attempted.Read(),
-            MarioUtil::FormatNum(total_steps).c_str(),
+            MarioUtil::FormatNum(total_steps),
             attempt_steps, sps,
-            (int)levels_solved.Read());
-        StringAppendF(
+            levels_solved.Read());
+        AppendFormat(
             &lines,
-            "Running on %s. Pop size %d. %d stuck. "
-            "Elapsed %s/%s.\n",
-            ColorLevel(level_id).c_str(),
+            "Running on {}. Pop size {}. {} stuck. "
+            "Elapsed {}/{}.\n",
+            ColorLevel(level_id),
             (int)population.size(),
             (int)futures_stuck.Read(),
-            ANSI::Time(solve_timer.Seconds()).c_str(),
-            ANSI::Time(solve_time).c_str());
+            ANSI::Time(solve_timer.Seconds()),
+            ANSI::Time(solve_time));
 
         AutoHisto eval;
         AutoHisto moves;
         for (const State &state : population) {
           eval.Observe(state.eval);
           moves.Observe(state.movie.size());
-          /*
-            printf(AGREY("%02d") " " AWHITE("%d") " moves. "
-            "Eval " ABLUE("%.5f") "\n",
-            i, (int)population[i].movie.size(),
-            population[i].eval);
-          */
         }
 
-        StringAppendF(&lines,
-                      AWHITE("Eval") " %s:\n"
-                      "%s\n",
-                      eval.IsIntegral() ? "(integral)" : "(float)",
-                      eval.SimpleHorizANSI(12).c_str());
-        StringAppendF(&lines,
-                      AWHITE("Moves") " %s:\n"
-                      "%s\n",
-                      moves.IsIntegral() ? "(integral)" : "(float)",
-                      moves.SimpleHorizANSI(10).c_str());
+        AppendFormat(&lines,
+                     AWHITE("Eval") " {}:\n"
+                     "{}\n",
+                     eval.IsIntegral() ? "(integral)" : "(float)",
+                     eval.SimpleHorizANSI(12));
+        AppendFormat(&lines,
+                     AWHITE("Moves") " {}:\n"
+                     "{}\n",
+                     moves.IsIntegral() ? "(integral)" : "(float)",
+                     moves.SimpleHorizANSI(10));
 
         status.EmitStatus(lines);
       }
@@ -1102,14 +1096,14 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   #endif
 
   if (!do_first.empty()) {
-    printf(AWHITE("Do first:"));
+    Print(AWHITE("Do first:"));
     for (LevelId level : do_first) {
       if (!done.contains(level) && !rejected.contains(level)) {
-        printf(" %s", ColorLevel(level).c_str());
+        Print(" {}", ColorLevel(level));
         todo.push_back(level);
       }
     }
-    printf("\n");
+    Print("\n");
   }
 
   std::vector<LevelId> rest;
@@ -1123,7 +1117,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   Shuffle(rc, &rest);
   for (LevelId level : rest) todo.push_back(level);
 
-  printf("%d done. %d remain\n", (int)done.size(), (int)todo.size());
+  Print("{} done. {} remain\n", done.size(), todo.size());
 
   return todo;
 }
@@ -1143,8 +1137,8 @@ static void Solve() {
       continue;
     } else if (db.HasSolution(level)) {
       levels_skipped++;
-      printf("Level %s was solved in the meantime!\n",
-             ColorLevel(level).c_str());
+      Print("Level {} was solved in the meantime!\n",
+            ColorLevel(level));
       continue;
     }
     auto [major, minor] = UnpackLevel(level);
@@ -1167,8 +1161,8 @@ static void Maze() {
       continue;
     } else if (db.HasSolution(level)) {
       levels_skipped++;
-      printf("Level %s was solved in the meantime!\n",
-             ColorLevel(level).c_str());
+      Print("Level {} was solved in the meantime!\n",
+            ColorLevel(level));
       continue;
     }
     auto [major, minor] = UnpackLevel(level);
@@ -1182,7 +1176,7 @@ static void Cross(int64_t start_time) {
   ArcFour rc(std::format("cross.{}", time(nullptr)));
 
   StatusBar status(1);
-  status.Statusf("Preparing solutions.\n");
+  status.Status("Preparing solutions.\n");
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
 
@@ -1191,7 +1185,7 @@ static void Cross(int64_t start_time) {
   // solutions after the start_time.
   std::vector<MinusDB::SolutionRow> all_sols = db.GetAllSolutions();
   status.Print("There are " AGREEN("{}") " existing solutions.\n",
-               (int)all_sols.size());
+               all_sols.size());
 
   // Index of the earliest instance of that solution.
   std::unordered_map<std::vector<uint8_t>, int,
@@ -1216,7 +1210,7 @@ static void Cross(int64_t start_time) {
 
   status.Print("There are " APURPLE("{}") " distinct original sols "
                "after the start time of " ABLUE("{}") ".\n",
-               (int)provenance.size(),
+               provenance.size(),
                start_time);
 
   // Now put it in the form we like.
@@ -1243,7 +1237,7 @@ static void Cross(int64_t start_time) {
         if (db.HasSolution(level)) {
           levels_skipped++;
           status.Print("Level {} was solved in the meantime!\n",
-                       ColorLevel(level).c_str());
+                       ColorLevel(level));
           return;
         }
 
@@ -1324,9 +1318,9 @@ static void Cross(int64_t start_time) {
               const auto &[text, fgs, bgs_] = ANSI::Decompose(msg);
               std::string bar = ANSI::Composite(text, fgs, bgcolor);
 
-              status.Statusf(AWHITE("[") "%s" AWHITE("]") " %s\n",
-                             bar.c_str(),
-                             eta.c_str());
+              status.Status(AWHITE("[") "{}" AWHITE("]") " {}\n",
+                            bar,
+                            eta);
             });
         }
 
@@ -1334,9 +1328,9 @@ static void Cross(int64_t start_time) {
       },
       12);
 
-  printf("Finished cross in %s. New sols: " AGREEN("%d") "\n",
-         ANSI::Time(elapsed.Seconds()).c_str(),
-         (int)levels_solved.Read());
+  Print("Finished cross in {}. New sols: " AGREEN("{}") "\n",
+        ANSI::Time(elapsed.Seconds()),
+        levels_solved.Read());
 }
 
 static void Manual(LevelId level,
@@ -1346,10 +1340,10 @@ static void Manual(LevelId level,
   std::vector<uint8_t> movie = SimpleFM7::ReadInputs(fm7file);
 
   static constexpr int FRAMES_DENOUMENT = 4 * 60;
-  printf("Trying manual solution from " AWHITE("%s")
-         " (%d inputs + %d denoument) on %s.\n",
-         fm7file.c_str(), (int)movie.size(), FRAMES_DENOUMENT,
-         ColorLevel(level).c_str());
+  Print("Trying manual solution from " AWHITE("{}")
+        " ({} inputs + {} denoument) on {}.\n",
+        fm7file, (int)movie.size(), FRAMES_DENOUMENT,
+        ColorLevel(level));
 
   for (int i = 0; i < FRAMES_DENOUMENT; i++) movie.push_back(0);
 
@@ -1357,8 +1351,8 @@ static void Manual(LevelId level,
   bool do_write = true;
 
   if (db.HasSolution(level)) {
-    printf(AORANGE("Already solved: ") "%s" "\n",
-           ColorLevel(level).c_str());
+    Print(AORANGE("Already solved: ") "{}" "\n",
+          ColorLevel(level));
     do_write = false;
     // return;
   }
@@ -1441,8 +1435,8 @@ static void Never() {
   const std::unordered_set<LevelId> solved = db.GetSolved();
   const std::unordered_set<LevelId> rejected = db.GetRejected();
 
-  printf("%lld already done, %lld already rejected.\n",
-         (int64_t)solved.size(), (int64_t)rejected.size());
+  Print("{} already done, {} already rejected.\n",
+        solved.size(), rejected.size());
 
   Timer timer;
   Periodically status_per(5.0);
@@ -1495,13 +1489,13 @@ static void Never() {
           });
       }, 16);
 
-  printf("\n"
-         "Finished. " ARED("%lld") " were rejected as unsolvable.\n"
-         AYELLOW("%lld") " were skipped (already done).\n"
-         "Took: %s\n",
-         levels_solved.Read(),
-         levels_skipped.Read(),
-         ANSI::Time(timer.Seconds()).c_str());
+  Print("\n"
+        "Finished. " ARED("{}") " were rejected as unsolvable.\n"
+        AYELLOW("{}") " were skipped (already done).\n"
+        "Took: {}\n",
+        levels_solved.Read(),
+        levels_skipped.Read(),
+        ANSI::Time(timer.Seconds()));
 }
 
 // max_states is the largest number of states in the hash set before
@@ -1660,8 +1654,8 @@ static bool IsAlwaysDead(int max_states,
             if (x >= depths.size() || depths[x].memhisto.empty())
               continue;
 
-            StringAppendF(&content, "Depth %d (%d):", x,
-                          depths[x].occurrences);
+            AppendFormat(&content, "Depth {} ({}):", x,
+                         depths[x].occurrences);
 
             int variable_locations = 0;
             for (int y = 0; y < 2048; y++) {
@@ -1671,11 +1665,11 @@ static bool IsAlwaysDead(int max_states,
               }
             }
 
-            if (variable_locations == 0) StringAppendF(&content, " const.\n");
-            else StringAppendF(&content, "\n");
+            if (variable_locations == 0) content.append(" const.\n");
+            else content.append("\n");
 
             bool many = variable_locations > 64;
-            if (many) StringAppendF(&content, "  Many variable:");
+            if (many) content.append("  Many variable:");
 
             for (int y = 0; y < 2048; y++) {
               int distinct_values = (int)depths[x].memhisto[y].size();
@@ -1695,17 +1689,17 @@ static bool IsAlwaysDead(int max_states,
                 static constexpr bool SYMBOLIC = true;
                 if (many) {
                   if (SYMBOLIC) {
-                    StringAppendF(&content, " %s",
-                                  MarioUtil::DescribeAddress(y).c_str());
+                    AppendFormat(&content, " {}",
+                                 MarioUtil::DescribeAddress(y));
                   } else {
-                    StringAppendF(&content, " %04x", y);
+                    AppendFormat(&content, " {:04x}", y);
                   }
                 } else {
                   if (SYMBOLIC) {
-                    StringAppendF(&content, " %s:",
-                                  MarioUtil::DescribeAddress(y).c_str());
+                    AppendFormat(&content, " {}:",
+                                 MarioUtil::DescribeAddress(y));
                   } else {
-                    StringAppendF(&content, "  %04x:", y);
+                    AppendFormat(&content, "  {:04x}:", y);
                   }
                   std::vector<std::pair<int, int>> val_count;
                   for (const auto &[val, count] : depths[x].memhisto[y]) {
@@ -1722,22 +1716,22 @@ static bool IsAlwaysDead(int max_states,
                   for (int i = 0; i < val_count.size() && i < 6; i++) {
                     const auto &[val, count] = val_count[i];
                     if (count == 1) {
-                      StringAppendF(&content, " %02x", val);
+                      AppendFormat(&content, " {:02x}", val);
                     } else {
-                      StringAppendF(&content, " %02x[%d]", val, count);
+                      AppendFormat(&content, " {:02x}[{}]", val, count);
                     }
                   }
                   int remain = (int)val_count.size() - 6;
                   if (remain > 0) {
-                    StringAppendF(&content, " (%d more)\n", remain);
+                    AppendFormat(&content, " ({} more)\n", remain);
                   } else {
-                    StringAppendF(&content, "\n");
+                    AppendFormat(&content, "\n");
                   }
                 }
               }
             }
 
-            if (many) StringAppendF(&content, "\n");
+            if (many) AppendFormat(&content, "\n");
           }
 
 
@@ -1781,11 +1775,11 @@ static bool IsAlwaysDead(int max_states,
 
   if (InsertRec(0)) {
     status->Print(AGREEN("Always dead") " on {} ({} reachable states).\n",
-                  ColorLevel(level), (int64_t)states.size());
+                  ColorLevel(level), states.size());
     return true;
   } else {
     status->Print(AYELLOW("No joy") " on {} ({} reachable states).\n",
-                  ColorLevel(level), (int64_t)states.size());
+                  ColorLevel(level), states.size());
     return false;
   }
 }
@@ -1815,7 +1809,7 @@ static bool IsCutscene(int max_states,
   Timer timer;
 
   // Wait until the game gets into the interstitial mode.
-  status->LineStatusf(status_index, "Find intro subroutine");
+  status->LineStatus(status_index, "Find intro subroutine");
   for (int i = 0; i < 1000; i++) {
     const uint8_t mode = emu->ReadRAM(OPER_MODE);
     const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
@@ -1840,14 +1834,14 @@ static bool IsCutscene(int max_states,
     // at level start, anyway.
     const uint8_t aec = emu->ReadRAM(ALT_ENTRANCE_CONTROL);
     if (mode != 1 || task != 3 || sub != 7 || aec == 2) {
-      status->Printf(AYELLOW("Not cutscene") " on %s (%02x:%02x:%02x).\n",
-                     ColorLevel(level).c_str(),
-                     mode, task, sub);
+      status->Print(AYELLOW("Not cutscene") " on {} ({:02x}:{:02x}:{:02x}).\n",
+                    ColorLevel(level),
+                    mode, task, sub);
       return false;
     }
   }
 
-  status->LineStatusf(status_index, "Running cutscene");
+  status->LineStatus(status_index, "Running cutscene");
 
   // If mario has y pos < 0x30, he is automatically controlled (no inputs).
   //
@@ -1908,19 +1902,19 @@ static bool IsCutscene(int max_states,
     bool playing = mode == 1 && task == 3 && sub == 8;
     if (success || dead || playing) {
       // If we can win, die, or play, then we are not stuck.
-      status->Printf(AYELLOW("No joy") " on %s: %s%s%s\n",
-                     ColorLevel(level).c_str(),
-                     success ? "success " : "",
-                     dead ? "dead " : "",
-                     playing ? "playing " : "");
+      status->Print(AYELLOW("No joy") " on {}: {}{}{}\n",
+                    ColorLevel(level),
+                    success ? "success " : "",
+                    dead ? "dead " : "",
+                    playing ? "playing " : "");
       return false;
     }
 
     const uint8_t joy = emu->ReadRAM(LAST_JOYPAD);
     if (!(joy == 0x00 || joy == 0x01)) {
-      status->Printf(AORANGE("Not cutscene") " on %s because we seem to have "
-                     "control still??\n",
-                     ColorLevel(level).c_str());
+      status->Print(AORANGE("Not cutscene") " on {} because we seem to have "
+                    "control still??\n",
+                    ColorLevel(level));
       return false;
     }
 
@@ -1940,18 +1934,19 @@ static bool IsCutscene(int max_states,
     }
 
     if (stuck_frames == TARGET_STUCK_FRAMES) {
-      status->Printf(AGREEN("Stuck cutscene") " on %s after %d frames (%d stuck)\n",
-                     ColorLevel(level).c_str(),
-                     frames, stuck_frames);
+      status->Print(
+          AGREEN("Stuck cutscene") " on {} after {} frames ({} stuck)\n",
+          ColorLevel(level),
+          frames, stuck_frames);
       return true;
     }
   }
 
   // This is strange. We are moving for a long time but not reaching
   // either condition.
-  status->Printf(AORANGE("Too many frames") " on %s. Stuck %d.\n",
-                 ColorLevel(level).c_str(),
-                 stuck_frames);
+  status->Print(AORANGE("Too many frames") " on {}. Stuck {}.\n",
+                ColorLevel(level),
+                stuck_frames);
   return false;
 }
 
@@ -1971,15 +1966,15 @@ static void TryToReject(std::optional<LevelId> args,
   const std::unordered_set<LevelId> already =
     db.GetAttemptedByMethod(rejected_method);
 
-  printf(
-      "Trying to reject with " AWHITE("%s") ".\n"
-      "%lld already done.\n"
-      "%lld already attempted with this method.\n"
-      "%lld already rejected by any method.\n",
-      method_name.c_str(),
-      (int64_t)solved.size(),
-      (int64_t)already.size(),
-      (int64_t)rejected.size());
+  Print(
+      "Trying to reject with " AWHITE("{}") ".\n"
+      "{} already done.\n"
+      "{} already attempted with this method.\n"
+      "{} already rejected by any method.\n",
+      method_name,
+      solved.size(),
+      already.size(),
+      rejected.size());
 
   Timer timer;
   Periodically status_per(5.0);
@@ -1994,7 +1989,7 @@ static void TryToReject(std::optional<LevelId> args,
   std::mutex m;
   std::vector<LevelId> todo;
   if (args.has_value()) {
-    printf("Running only %s.\n", ColorLevel(args.value()).c_str());
+    Print("Running only {}.\n", ColorLevel(args.value()));
     todo.push_back(args.value());
   } else {
     for (int i = 0; i < 65536; i++) {
@@ -2038,9 +2033,9 @@ static void TryToReject(std::optional<LevelId> args,
             status.EmitLine(thread_idx, "no more work");
             return;
           } else {
-            status.LineStatusf(
+            status.LineStatus(
                 thread_idx,
-                "Start %s.", ColorLevel(level).c_str());
+                "Start {}.", ColorLevel(level));
           }
 
           const auto &[major, minor] = UnpackLevel(level);
@@ -2075,22 +2070,24 @@ static void TryToReject(std::optional<LevelId> args,
         }
       });
 
-  printf("\n"
-         "Finished. " ARED("%lld") " were rejected as unsolvable.\n"
-         AYELLOW("%lld") " were skipped (already done).\n"
-         "Took: %s\n",
-         levels_solved.Read(),
-         levels_skipped.Read(),
-         ANSI::Time(timer.Seconds()).c_str());
+  Print("\n"
+        "Finished. " ARED("{}") " were rejected as unsolvable.\n"
+        AYELLOW("{}") " were skipped (already done).\n"
+        "Took: {}\n",
+        levels_solved.Read(),
+        levels_skipped.Read(),
+        ANSI::Time(timer.Seconds()));
 }
 
 
 static void AlwaysDead(std::optional<LevelId> args) {
-  TryToReject(args, "alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 500000, IsAlwaysDead);
+  TryToReject(args, "alwaysdead",
+              MinusDB::REJECT_ALWAYS_DEAD, 500000, IsAlwaysDead);
 }
 
 static void Cutscene(std::optional<LevelId> args) {
-  TryToReject(args, "cutscene", MinusDB::REJECT_CUTSCENE, 100000, IsCutscene);
+  TryToReject(args, "cutscene",
+              MinusDB::REJECT_CUTSCENE, 100000, IsCutscene);
 }
 
 int main(int argc, char **argv) {

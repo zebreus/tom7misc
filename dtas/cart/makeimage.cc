@@ -1,11 +1,12 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <cstdint>
-
-#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
+#include <vector>
+
+#include "base/print.h"
 
 using namespace std;
 
@@ -25,14 +26,14 @@ int main(int argc, char **argv) {
     string arg = argv[i];
     if (arg == "-prg") {
       if (got_type) {
-        fprintf(stderr, "-prg or -chr only once.\n");
+        Print(stderr, "-prg or -chr only once.\n");
         return -1;
       }
       dump_prg = true;
       got_type = true;
     } else if (arg == "-chr") {
       if (got_type) {
-        fprintf(stderr, "-prg or -chr only once.\n");
+        Print(stderr, "-prg or -chr only once.\n");
         return -1;
       }
 
@@ -40,19 +41,19 @@ int main(int argc, char **argv) {
       got_type = true;
     } else if (arg == "-mirror") {
       if (i == argc - 1) {
-        fprintf(stderr, "Need argument to -mirror.\n");
+        Print(stderr, "Need argument to -mirror.\n");
         return -1;
       }
       mirror = atoi(argv[i + 1]);
       if (mirror == 0) {
-        fprintf(stderr, "Need numeric argument to -mirror; got: %s\n",
-                argv[i + 1]);
+        Print(stderr, "Need numeric argument to -mirror; got: {}\n",
+              argv[i + 1]);
         return -1;
       }
       i++;
 
     } else if (arg[0] == '-') {
-      fprintf(stderr, "Unknown flag %s\n", arg.c_str());
+      Print(stderr, "Unknown flag {}\n", arg);
       return -1;
     } else {
       args.push_back(arg);
@@ -60,9 +61,9 @@ int main(int argc, char **argv) {
   }
 
   if (!got_type || args.size() != 2) {
-    fprintf(stderr,
-            "usage: makeimage.exe [-mirror n] -prg|-chr "
-            "cart.nes cart.rom\n");
+    Print(stderr,
+          "usage: makeimage.exe [-mirror n] -prg|-chr "
+          "cart.nes cart.rom\n");
     return -1;
   }
 
@@ -71,66 +72,66 @@ int main(int argc, char **argv) {
 
   FILE *inf = fopen(infile.c_str(), "rb");
   if (inf == 0) {
-    fprintf(stderr, "Can't read %s\n", infile.c_str());
+    Print(stderr, "Can't read {}\n", infile);
     return -1;
   }
 
   FILE *outf = fopen(outfile.c_str(), "wb");
   if (outf == 0) {
     fclose(inf);
-    fprintf(stderr, "Can't open %s for writing\n", outfile.c_str());
+    Print(stderr, "Can't open {} for writing\n", outfile);
     return -1;
   }
 
   // Read the header.
   uint8_t header[16];
   if (16 != fread(&header, 1, 16, inf)) {
-    fprintf(stderr, "Can't read header\n");
+    Print(stderr, "Can't read header\n");
     return -1;
   }
 
   if (0 != memcmp("NES\x1a", header, 4)) {
-    fprintf(stderr, "Not a NES file\n");
+    Print(stderr, "Not a NES file\n");
     return -1;
   }
 
   int prg_bytes = header[4] * 16384;
   int chr_bytes = header[5] * 8192;
-  fprintf(stderr,
-          "%d prg banks (%d bytes) x %d mirrors = %d\n"
-          "%d chr banks (%d bytes)\n",
-          header[4], prg_bytes, mirror, mirror * prg_bytes,
-          header[5], chr_bytes);
+  Print(stderr,
+        "{} prg banks ({} bytes) x {} mirrors = {}\n"
+        "{} chr banks ({} bytes)\n",
+        header[4], prg_bytes, mirror, mirror * prg_bytes,
+        header[5], chr_bytes);
   uint8_t *prg = (uint8_t *)malloc(prg_bytes);
   if (prg_bytes != fread(prg, 1, prg_bytes, inf)) {
-    fprintf(stderr, "Couldn't read %d PRG bytes?\n", prg_bytes);
+    Print(stderr, "Couldn't read {} PRG bytes?\n", prg_bytes);
     return -1;
   }
 
   uint8_t *chr = (uint8_t *)malloc(chr_bytes);
   if (chr_bytes != fread(chr, 1, chr_bytes, inf)) {
-    fprintf(stderr, "Couldn't read %d CHR bytes?\n", chr_bytes);
+    Print(stderr, "Couldn't read {} CHR bytes?\n", chr_bytes);
     return -1;
   }
 
   if (dump_prg) {
     for (int i = 0; i < mirror; i++) {
       if (prg_bytes != fwrite(prg, 1, prg_bytes, outf)) {
-        fprintf(stderr, "Couldn't write %d rom bytes?\n", prg_bytes);
+        Print(stderr, "Couldn't write {} rom bytes?\n", prg_bytes);
         return -1;
       }
     }
-    fprintf(stderr, "Successfully wrote %d PRG Bytes to %s.\n",
-            mirror * prg_bytes, outfile.c_str());
+    Print(stderr, "Successfully wrote {} PRG Bytes to {}.\n",
+          mirror * prg_bytes, outfile);
   } else {
     for (int i = 0; i < mirror; i++) {
       if (chr_bytes != fwrite(chr, 1, chr_bytes, outf)) {
-        fprintf(stderr, "Couldn't write %d rom bytes?\n", chr_bytes);
+        Print(stderr, "Couldn't write {} rom bytes?\n", chr_bytes);
         return -1;
       }
     }
-    fprintf(stderr, "Successfully wrote %d CHR Bytes to %s.\n",
-            mirror * chr_bytes, outfile.c_str());
+    Print(stderr, "Successfully wrote {} CHR Bytes to {}.\n",
+          mirror * chr_bytes, outfile);
   }
 
   free(chr);

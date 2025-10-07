@@ -3,33 +3,33 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include <cstdio>
 
-#include "../fceulib/emulator.h"
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "csv.h"
 #include "util.h"
 
+#include "../fceulib/emulator.h"
+
 using namespace std;
 
-void BootReads() {
+[[maybe_unused]]
+static void BootReads() {
   // This function expects you to hack x6502.cc to add output
   // for every RdMem.
   const std::string cart_file = "cart/cart.nes";
 
   std::unique_ptr<Emulator> emu(Emulator::Create(cart_file));
 
-
-  printf("---loaded---\n");
+  Print("---loaded---\n");
   for (int i = 0; i < 10; i++) {
-    printf("== frame %d ==\n", i);
+    Print("== frame {} ==\n", i);
     emu->Step16(0);
   }
-
 }
 
-void BootCSV() {
+static void BootCSV() {
   std::vector<std::vector<std::string>> csv =
     CSV::ParseFile("newboot.csv");
   CHECK(!csv.empty());
@@ -42,11 +42,11 @@ void BootCSV() {
     CHECK(Util::TryStripPrefix("0x", &byte)) << byte;
     uint8_t x = std::stoul(byte, nullptr, 16);
 
-    printf("%.5f: %02x = ", t, x);
+    Print("{:.5f}: {:02x} = ", t, x);
     for (int i = 0; i < 8; i++) {
-      printf("%c", ((1 << (7 - i)) & x) ? '1' : '0');
+      Print("{:c}", ((1 << (7 - i)) & x) ? '1' : '0');
     }
-    printf(" %s\n", Emulator::Opcode(x));
+    Print(" {}\n", Emulator::Opcode(x));
   }
 }
 

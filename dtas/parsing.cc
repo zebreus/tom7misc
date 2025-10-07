@@ -262,7 +262,7 @@ static std::shared_ptr<Form> ParseForm(
         .unop = nullptr,
         .binop = [op](std::shared_ptr<Form> a, std::shared_ptr<Form> b) ->
         std::shared_ptr<Form> {
-          // printf("Make form %d (%s)\n", (int)op, BinopString(op));
+          // Print("Make form {} ({})\n", op, BinopString(op));
           return std::make_shared<Form>(BinForm{
               .op = op,
               .lhs = std::move(a),
@@ -280,7 +280,7 @@ static std::shared_ptr<Form> ParseForm(
         .unop = nullptr,
         .binop = [op](std::shared_ptr<Form> a, std::shared_ptr<Form> b) ->
         std::shared_ptr<Form> {
-          // printf("Make form %d (%s)\n", (int)op, BinopString(op));
+          // Print("Make form {} ({})\n", (int)op, BinopString(op));
           return std::make_shared<Form>(BinForm{
               .op = op,
               .lhs = std::move(a),

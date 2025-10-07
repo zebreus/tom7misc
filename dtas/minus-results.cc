@@ -7,6 +7,7 @@
 
 #include "ansi.h"
 #include "auto-histo.h"
+#include "base/print.h"
 #include "image.h"
 #include "minus.h"
 
@@ -40,7 +41,7 @@ static void Dump() {
 }
 
 static void Report() {
-  printf("\n");
+  Print("\n");
   MinusDB db;
 
   std::vector<SolutionRow> sol_rows = db.GetAllSolutions();
@@ -84,36 +85,36 @@ static void Report() {
   const double rejected_pct = (rejected.size() * 100.0) / 65536.0;
   const double done_pct = (done.size() * 100.0) / 65536.0;
   const double att_pct = (partial.size() * 100.0) / 65536.0;
-  printf(AGREEN("%d") "/" ABLUE("65536") " solved (%.2f%%)\n"
-         ARED("%d") "/" ABLUE("65536") " rejected (%.2f%%)\n"
-         APURPLE("%d") "/" ABLUE("65536") " done (%.2f%%)\n"
-         AYELLOW("%d") " attempted unsuccessfully (%.2f%%)\n",
-         (int)solved.size(), solved_pct,
-         (int)rejected.size(), rejected_pct,
-         (int)done.size(), done_pct,
-         (int)partial.size(), att_pct);
+  Print(AGREEN("{}") "/" ABLUE("65536") " solved ({:.2f}%)\n"
+        ARED("{}") "/" ABLUE("65536") " rejected ({:.2f}%)\n"
+        APURPLE("{}") "/" ABLUE("65536") " done ({:.2f}%)\n"
+        AYELLOW("{}") " attempted unsuccessfully ({:.2f}%)\n",
+        solved.size(), solved_pct,
+        rejected.size(), rejected_pct,
+        done.size(), done_pct,
+        partial.size(), att_pct);
 
 #define AMINT(s) ANSI_FG(220, 250, 195) s ANSI_RESET
 #define APINK(s) ANSI_FG(255, 222, 237) s ANSI_RESET
 
-  printf(AMINT("   SOLVE") ": %d\n"
-         AMINT("   CROSS") ": %d\n"
-         AMINT("    MAZE") ": %d\n"
-         AMINT("  MANUAL") ": %d\n",
-         method_count[MinusDB::METHOD_SOLVE],
-         method_count[MinusDB::METHOD_CROSS],
-         method_count[MinusDB::METHOD_MAZE],
-         method_count[MinusDB::METHOD_MANUAL]);
+  Print(AMINT("   SOLVE") ": {}\n"
+        AMINT("   CROSS") ": {}\n"
+        AMINT("    MAZE") ": {}\n"
+        AMINT("  MANUAL") ": {}\n",
+        method_count[MinusDB::METHOD_SOLVE],
+        method_count[MinusDB::METHOD_CROSS],
+        method_count[MinusDB::METHOD_MAZE],
+        method_count[MinusDB::METHOD_MANUAL]);
 
-  printf("------" "\n"
-         APINK("   NEVER") ": %d\n"
-         APINK("  ALWAYS") ": %d\n"
-         APINK("CUTSCENE") ": %d\n",
-         method_count[MinusDB::REJECT_NEVER],
-         method_count[MinusDB::REJECT_ALWAYS_DEAD],
-         method_count[MinusDB::REJECT_CUTSCENE]);
+  Print("------" "\n"
+        APINK("   NEVER") ": {}\n"
+        APINK("  ALWAYS") ": {}\n"
+        APINK("CUTSCENE") ": {}\n",
+        method_count[MinusDB::REJECT_NEVER],
+        method_count[MinusDB::REJECT_ALWAYS_DEAD],
+        method_count[MinusDB::REJECT_CUTSCENE]);
 
-  printf("\n");
+  Print("\n");
 
   // First fill in the table with basic color (in case a method
   // is missing).
@@ -165,13 +166,13 @@ static void Report() {
 
   AutoHisto moves_histo(100000);
   for (const SolutionRow &row : sol_rows) {
-      // printf("%lld\n", r.movie.size());
+      // Print("{}\n", r.movie.size());
       moves_histo.Observe(row.movie.size());
   }
-  printf(AWHITE("Number of moves") " (across %d solutions):\n"
-         "%s\n",
-         (int)moves_histo.NumSamples(),
-         moves_histo.SimpleANSI(24).c_str());
+  Print(AWHITE("Number of moves") " (across {} solutions):\n"
+        "{}\n",
+        moves_histo.NumSamples(),
+        moves_histo.SimpleANSI(24));
 }
 
 int main(int argc, char **argv) {

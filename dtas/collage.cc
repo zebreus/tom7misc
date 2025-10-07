@@ -7,13 +7,15 @@
 #include <unordered_set>
 #include <vector>
 
-#include "../fceulib/emulator.h"
 #include "ansi.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "image.h"
 #include "periodically.h"
+#include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
+
+#include "../fceulib/emulator.h"
 
 #include "minus.h"
 #include "mario.h"
@@ -56,6 +58,7 @@ int main(int argc, char **argv) {
 
   Timer run_timer;
   Periodically status_per(1.0);
+  StatusBar status(1);
 
   if (only_unsolved) {
     MinusDB db;
@@ -74,11 +77,12 @@ int main(int argc, char **argv) {
     const int num_images = (int)unknown.size();
     std::string filename = "unsolved-collage.png";
 
-    printf("Rendering %d unsolved levels...\n\n", num_images);
+    Print("Rendering {} unsolved levels...\n\n", num_images);
     std::vector<ImageRGBA> images =
       ParallelMap(
           unknown,
-          [&status_per, &run_timer, num_images, &filename](LevelId level) {
+          [&status_per, &status, &run_timer, num_images, &filename](
+              LevelId level) {
             ImageRGBA img = Render(level);
             const auto &[major, minor] = UnpackLevel(level);
             img.BlendText32(1, 1, 0x00FFFFFF,
@@ -86,17 +90,17 @@ int main(int argc, char **argv) {
 
             images_done++;
             if (status_per.ShouldRun()) {
-              printf(ANSI_UP "%s\n",
-                     ANSI::ProgressBar(images_done.Read(), num_images,
-                                       filename,
-                                       run_timer.Seconds()).c_str());
+              status.EmitStatus(
+                  ANSI::ProgressBar(images_done.Read(), num_images,
+                                    filename,
+                                    run_timer.Seconds()));
             }
 
             return img;
           },
           16);
 
-    printf("\nWrite huge image...\n");
+    Print("\nWrite huge image...\n");
 
     // How big does it need to be?
     const int SCREENS_WIDE = 256;
@@ -112,9 +116,9 @@ int main(int argc, char **argv) {
       out.CopyImageRect(x * 256, y * 240, images[i], 0, 0, 256, 240);
     }
 
-    printf("Save to disk...\n");
+    Print("Save to disk...\n");
     out.Save(filename);
-    printf("Done. Wrote to " AGREEN("%s") ".\n", filename.c_str());
+    Print("Done. Wrote to " AGREEN("{}") ".\n", filename);
 
   } else {
     // All of them, grouped by world.
@@ -135,9 +139,9 @@ int main(int argc, char **argv) {
       out.Save(filename);
 
       if (status_per.ShouldRun()) {
-        printf(ANSI_UP "%s\n",
-               ANSI::ProgressBar(major, 256, filename,
-                                 run_timer.Seconds()).c_str());
+        status.EmitStatus(
+            ANSI::ProgressBar(major, 256, filename,
+                              run_timer.Seconds()));
       }
     }
   }

@@ -9,11 +9,12 @@
 #include <utility>
 #include <vector>
 
-#include "util.h"
-#include "map-util.h"
-#include "crypt/sha256.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
+#include "base/print.h"
+#include "base/stringprintf.h"
+#include "crypt/sha256.h"
+#include "map-util.h"
+#include "util.h"
 
 SourceMap::SourceMap(const std::string &filename,
                      const std::string &contents) : filename(filename) {
@@ -61,10 +62,10 @@ SourceMap SourceMap::FromFile(const std::string &sourcemap_filename) {
   std::string actual_hash = SHA256::Ascii(SHA256::HashString(contents));
 
   if (actual_hash != ret.hash) {
-    fprintf(stderr, AORANGE("Warning") ": Source file " AWHITE("%s")
-            " hash does not agree with source map " AWHITE("%s") ".\n"
-            "It must have changed; using empty source map.\n",
-            ret.filename.c_str(), sourcemap_filename.c_str());
+    Print(stderr, AORANGE("Warning") ": Source file " AWHITE("%s")
+          " hash does not agree with source map " AWHITE("%s") ".\n"
+          "It must have changed; using empty source map.\n",
+          ret.filename, sourcemap_filename);
     return Empty();
   }
 

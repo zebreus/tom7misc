@@ -6,8 +6,9 @@
 #include <cstdint>
 #include <vector>
 
-#include "image.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "image.h"
 
 static constexpr int NUM_SHOW = 11;
 int main(int argc, char **argv) {
@@ -28,23 +29,23 @@ int main(int argc, char **argv) {
     }
 
     if (fail.size() > 0) {
-      printf("%04x: %.2f%% (%d fail)", addr,
+      Print("{:04x}: {:.2f}% ({} fail)", addr,
              (fail.size() * 100.0) / 256.0, (int)fail.size());
 
       if (ok.size() < NUM_SHOW) {
-        printf(" must be:");
+        Print(" must be:");
         for (int i = 0; i < std::min((int)ok.size(), NUM_SHOW); i++)
-          printf(" %02x", ok[i]);
-        if (ok.size() > NUM_SHOW) printf(" + %d...",
-                                         (int)ok.size() - NUM_SHOW);
-        printf("\n");
+          Print(" {:02x}", ok[i]);
+        if (ok.size() > NUM_SHOW) Print(" + {}...",
+                                        (int)ok.size() - NUM_SHOW);
+        Print("\n");
       } else {
-        printf(" can't be:");
+        Print(" can't be:");
         for (int i = 0; i < std::min((int)fail.size(), NUM_SHOW); i++)
-          printf(" %02x", fail[i]);
-        if (fail.size() > NUM_SHOW) printf(" + %d...",
-                                           (int)fail.size() - NUM_SHOW);
-        printf("\n");
+          Print(" {:02x}", fail[i]);
+        if (fail.size() > NUM_SHOW) Print(" + {}...",
+                                          (int)fail.size() - NUM_SHOW);
+        Print("\n");
       }
     }
   }

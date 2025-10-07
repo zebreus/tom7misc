@@ -10,6 +10,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "image.h"
 #include "randutil.h"
@@ -96,7 +97,7 @@ int main(int argc, char **argv) {
         }
 
         if ((numer & 15) == 0) {
-          printf("%d/%d\n", numer, MAX_DENOM);
+          Print("{}/{}\n", numer, MAX_DENOM);
         }
       },
       12);

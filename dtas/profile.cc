@@ -3,16 +3,14 @@
 // it with instrumentation enabled.
 
 #include <algorithm>
-#include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <format>
-#include <memory>
-#include <cstdint>
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/fc.h"
@@ -23,6 +21,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "emulator-pool.h"
 #include "evaluator.h"
@@ -161,7 +160,7 @@ static void GenProfile() {
       12);
 
   // Output histo.
-  printf("There are " AWHITE("%d") " reached instructions.\n",
+  Print("There are " AWHITE("{}") " reached instructions.\n",
          (int)reached.size());
 
   std::unordered_map<uint8_t, int64_t> opcode_count;
@@ -182,21 +181,21 @@ static void GenProfile() {
     }
   }
 
-  printf("There are " AWHITE("%d") " distinct opcodes reached.\n",
-         (int)opcode_count.size());
+  Print("There are " AWHITE("{}") " distinct opcodes reached.\n",
+        opcode_count.size());
   for (const auto &[opcode, count] :
          CountMapToDescendingVector(opcode_count)) {
     if (count > 0) {
-      printf("%lld" AGREY(" × ") AYELLOW("%02x") ": %s\n",
-             count, opcode, Opcodes::opcode_name[opcode]);
+      Print("{}" AGREY(" × ") AYELLOW("{:02x}") ": {}\n",
+            count, opcode, Opcodes::opcode_name[opcode]);
     }
   }
 
   for (uint64_t pt = cover.First(); !cover.IsAfterLast(pt);
        pt = cover.Next(pt)) {
     IntervalCover<int64_t>::Span s = cover.GetPoint(pt);
-    printf(AWHITE("%04x") "-" AWHITE("%04x") ": %lld\n", (int)s.start,
-           (int)s.end, s.data);
+    Print(AWHITE("{:04x}") "-" AWHITE("{:04x}") ": {}\n",
+          s.start, s.end, s.data);
   }
 
   // Output the model as "assembly."
@@ -205,32 +204,32 @@ static void GenProfile() {
        pt = cover.Next(pt)) {
     IntervalCover<int64_t>::Span s = cover.GetPoint(pt);
     if (s.data > 0) {
-      StringAppendF(&content, ";; [%04x, %04x) %lld times\n",
-                    (int)s.start, (int)s.end, s.data);
+      AppendFormat(&content, ";; [{:04x}, {:04x}) {} times\n",
+                   s.start, s.end, s.data);
       for (int addr = s.start; addr < s.end; /* in loop */) {
         if (auto lo = MarioUtil::GetLabel(addr)) {
-          StringAppendF(&content, "%s:\n", lo.value().c_str());
+          AppendFormat(&content, "{}:\n", lo.value());
         }
         const uint8_t opcode = prg.Read(addr);
         std::string stacks;
         auto it = stack_histo.find(addr);
         if (it != stack_histo.end()) {
-          StringAppendF(&content, ";; sp =");
+          AppendFormat(&content, ";; sp =");
           for (const auto &[sp, count] : it->second) {
-            StringAppendF(&content, " %02x×%lld", sp, count);
+            AppendFormat(&content, " {:02x}×{}", sp, count);
           }
-          StringAppendF(&content, "\n");
+          AppendFormat(&content, "\n");
         }
 
-        StringAppendF(&content, "%04x:  %s\n",
-                      addr,
-                      Opcodes::opcode_name[opcode]);
+        AppendFormat(&content, "{:04x}:  {}\n",
+                     addr,
+                     Opcodes::opcode_name[opcode]);
         addr += Opcodes::opcode_size[opcode];
       }
     }
   }
   Util::WriteFile("mario.model", content);
-  printf("Wrote mario.model.\n");
+  Print("Wrote mario.model.\n");
 }
 
 

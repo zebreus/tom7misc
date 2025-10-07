@@ -76,8 +76,7 @@ static void Diff2() {
     emu1->StepFull(0, 0);
     emu2->StepFull(0, 0);
   }
-  status.Printf("Done.\n");
-
+  status.Print("Done.\n");
 }
 
 

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "emulator-pool.h"
 #include "image.h"
 #include "minus.h"
@@ -33,7 +34,7 @@ static void Validate() {
   MinusDB db;
 
   std::vector<SolutionRow> all = db.GetAllSolutions();
-  printf("Validating %d solutions.\n", (int)all.size());
+  Print("Validating {} solutions.\n", all.size());
 
   EmulatorPool emulator_pool(ROMFILE);
 
@@ -91,12 +92,12 @@ static void Validate() {
           if (DELETE_INVALID) {
             db.DeleteSolution(row.id);
           }
-          status.Printf(
-              AWHITE("#%lld") " Invalid (%s) for %s: " AGREY("%s") ".%s\n",
+          status.Print(
+              AWHITE("#{}") " Invalid ({}) for {}: " AGREY("{}") ".{}\n",
               row.id,
-              what.c_str(),
-              ColorLevel(row.level).c_str(),
-              SimpleFM7::EncodeOneLine(row.movie).c_str(),
+              what,
+              ColorLevel(row.level),
+              SimpleFM7::EncodeOneLine(row.movie),
               DELETE_INVALID ? " " ARED("Deleted") "." : "");
           if (INVALID_IMAGES) {
             MarioUtil::Screenshot(emu.get()).Save(
@@ -125,10 +126,10 @@ static void Validate() {
       },
       12);
 
-  printf("\n\n"
-         "Done. " AGREEN("%lld") " are valid. "
-         ARED("%lld") " are invalid.\n",
-         valid, invalid);
+  Print("\n\n"
+        "Done. " AGREEN("{}") " are valid. "
+        ARED("{}") " are invalid.\n",
+        valid, invalid);
 }
 
 int main(int argc, char **argv) {

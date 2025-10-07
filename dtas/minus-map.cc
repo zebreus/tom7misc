@@ -2,13 +2,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "ansi.h"
+#include "base/print.h"
 #include "image.h"
 #include "minus.h"
-#include "ansi.h"
 
 #include "../fceulib/emulator.h"
 
@@ -37,10 +39,10 @@ static void MakeMap(LevelId level, const std::string &filename) {
     MarioUtil::DrawPath(path, &map, 0xFF0000AA);
 
     map.Save(filename);
-    printf("Wrote %s\n", filename.c_str());
+    Print("Wrote {}\n", filename);
 
   } else {
-    printf("No solution for %s.\n", ColorLevel(level).c_str());
+    Print("No solution for {}.\n", ColorLevel(level));
   }
 }
 

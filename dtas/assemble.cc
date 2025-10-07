@@ -18,6 +18,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "formula.h"
 #include "parsing.h"
@@ -276,14 +277,14 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
           std::shared_ptr<Exp> exp) {
           if (auto bo = Evaluate16(&assembly, exp.get(), Error)) {
             uint16_t v = bo.value();
-            // printf(ACYAN("%04x") "\n", v);
+            // Print(ACYAN("{:04x}") "\n", v);
             // Write in little-endian order.
             EmitByte(v & 0xFF);
             v >>= 8;
             EmitByte(v & 0xFF);
 
           } else {
-            // printf(APURPLE("delayed") "\n");
+            // Print(APURPLE("delayed") "\n");
             CurrentBank().delayed_16.push_back(Delayed{
                 .line_num = line_num,
                 .exp = std::move(exp),
@@ -386,15 +387,15 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
 
     case Line::Type::DIRECTIVE_ALWAYS:
 
-      printf("Ignoring formula: %s\n",
-             ColorForm(parsed_line.formula).c_str());
+      Print("Ignoring formula: {}\n",
+            ColorForm(parsed_line.formula));
       break;
 
     case Line::Type::DIRECTIVE_HERE: {
       const uint16_t addr = CurrentBank().NextAddress();
-      printf("Ignoring formula (at %04x): %s\n",
-             addr,
-             ColorForm(parsed_line.formula).c_str());
+      Print("Ignoring formula (at {:04x}): {}\n",
+            addr,
+            ColorForm(parsed_line.formula));
       break;
     }
 
@@ -688,16 +689,16 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
 
   }
 
-  printf(AYELLOW("assembly") "\n");
-  printf("  %d symbols\n", (int)assembly.symbols.size());
-  printf("  %d delayed symbols\n", (int)assembly.delayed_symbols.size());
+  Print(AYELLOW("assembly") "\n");
+  Print("  {} symbols\n", assembly.symbols.size());
+  Print("  {} delayed symbols\n", assembly.delayed_symbols.size());
 
-  printf("  There are %d banks.\n", (int)assembly.banks.size());
+  Print("  There are {} banks.\n", assembly.banks.size());
   for (const Bank &bank : assembly.banks) {
-    printf("  " AWHITE("bank") "\n");
-    printf("    %d delayed8\n", (int)bank.delayed_8.size());
-    printf("    %d delayed16\n", (int)bank.delayed_16.size());
-    printf("    %d bytes\n", (int)bank.bytes.size());
+    Print("  " AWHITE("bank") "\n");
+    Print("    {} delayed8\n", bank.delayed_8.size());
+    Print("    {} delayed16\n", bank.delayed_16.size());
+    Print("    {} bytes\n", bank.bytes.size());
   }
 
   auto ErrorAt = [&lines](int line_num) {
@@ -734,8 +735,8 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
         auto Error = ErrorAt(delayed.line_num);
         auto io = Evaluate(&assembly, delayed.exp.get(), Error);
         if (io.has_value()) {
-          printf("  " AGREY("%s") " => " ABLUE("%lld") "\n",
-                 sym.c_str(), io.value());
+          Print("  " AGREY("{}") " => " ABLUE("{}") "\n",
+                sym, io.value());
           assembly.symbols[sym] = io.value();
         } else {
           remaining.emplace_back(sym, delayed);
@@ -744,13 +745,13 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
 
       const size_t end_size = remaining.size();
       if (start_size == end_size) {
-        fprintf(stderr,
-                "In the second pass: Could not resolve symbolic "
-                "constants. There is probably an undefined symbol "
-                "or a cycle. These are the remaining symbols:\n");
+        Print(stderr,
+              "In the second pass: Could not resolve symbolic "
+              "constants. There is probably an undefined symbol "
+              "or a cycle. These are the remaining symbols:\n");
         for (const auto &[sym, delayed] : todo) {
-          fprintf(stderr, "  %s = %s\n",
-                  sym.c_str(), ExpString(delayed.exp.get()).c_str());
+          Print(stderr, "  {} = {}\n",
+                sym, ExpString(delayed.exp.get()));
         }
         LOG(FATAL) << "Failed due to unresolved symbols.";
       }
@@ -815,7 +816,7 @@ void Assembly::WriteToDisk(const std::string &rom_file) {
 
   // The ROM.
   Util::WriteFileBytes(rom_file, banks[0].bytes);
-  printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
+  Print("Wrote " AGREEN("{}") "\n", rom_file);
 
 
   // Debugging info.
@@ -829,19 +830,19 @@ void Assembly::WriteToDisk(const std::string &rom_file) {
     }
     std::string nlfile = std::format("{}.nes.0.nl", fbase);
     Util::WriteFile(nlfile, contents);
-    printf("Wrote " AGREEN("%s") "\n", nlfile.c_str());
+    Print("Wrote " AGREEN("{}") "\n", nlfile);
   }
 
   {
     std::string zonefile = std::format("{}.zoning", fbase);
     banks[0].zoning.Save(zonefile);
-    printf("Wrote " AGREEN("%s") "\n", zonefile.c_str());
+    Print("Wrote " AGREEN("{}") "\n", zonefile);
   }
 
   {
     std::string smfile = std::format("{}.sourcemap", fbase);
     banks[0].source_map.Save(smfile);
-    printf("Wrote " AGREEN("%s") "\n", smfile.c_str());
+    Print("Wrote " AGREEN("{}") "\n", smfile);
   }
 }
 

@@ -4,8 +4,9 @@
 
 #include <cstdint>
 
-#include "emulator-pool.h"
 #include "../fceulib/emulator.h"
+
+#include "emulator-pool.h"
 #include "mario.h"
 #include "mario-util.h"
 
@@ -24,10 +25,10 @@ struct Evaluator {
     for (int i = 0; i < 200; i++) {
       const uint8_t mode = emu->ReadRAM(OPER_MODE);
       const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
-      // printf("%d: %02x.%02x\n", i, mode, task);
+      // Print("{}: {:02x}.{:02x}\n", i, mode, task);
       if (mode == 1 && task == 3) {
         // Playing.
-        // printf("%d: Started! %02x.%02x\n\n\n\n", i, mode, task);
+        // Print("{}: Started! {:02x}.{:02x}\n\n\n\n", i, mode, task);
         started = true;
         break;
       }

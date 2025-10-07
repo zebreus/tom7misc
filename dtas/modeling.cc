@@ -23,6 +23,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "byte-set.h"
 #include "formula.h"
@@ -177,8 +178,8 @@ void Modeling::EnterBlock(const BlockTag &tag, const State &state) {
 
     if (0 == (zoning.addr[tag.addr] & Zoning::X)) {
       if (verbose > 0) {
-        printf("\nTried to enter non-executable address %s.\n",
-               TagString(tag).c_str());
+        Print("\nTried to enter non-executable address {}.\n",
+              TagString(tag));
       }
       // Do nothing.
     } else {
@@ -186,13 +187,13 @@ void Modeling::EnterBlock(const BlockTag &tag, const State &state) {
       if (verbose > 0) {
         const auto &v = block_tags[tag.addr];
         if (v.size() == 1) {
-          printf("New block %s\n", TagString(tag).c_str());
+          Print("New block {}\n", TagString(tag));
         } else {
-          printf("Addr " AYELLOW("%04x") " now has tags:", tag.addr);
+          Print("Addr " AYELLOW("{:04x}") " now has tags:", tag.addr);
           for (const BlockTag &otag : v) {
-            printf(" " ACYAN("%s"), otag.label.c_str());
+            Print(" " ACYAN("{}"), otag.label);
           }
-          printf("\n");
+          Print("\n");
         }
       }
       const int bidx = (int)blocks.size();
@@ -389,11 +390,11 @@ static void ZN(State *state, const ByteSet &s) {
   constexpr bool VERBOSE = false;
   CHECK(!s.Empty());
   if (VERBOSE) {
-    printf("ZN flags for: {");
+    Print("ZN flags for: {{");
     for (uint8_t v : s) {
-      printf("%02x, ", v);
+      Print("{:02x}, ", v);
     }
-    printf("}\n");
+    Print("}}\n");
   }
 
   ByteSet res;
@@ -411,10 +412,10 @@ static void ZN(State *state, const ByteSet &s) {
   }
 
   if (VERBOSE) {
-    printf("Contains z: %c p: %c n: %c\n",
-           contains_z ? 'X' : '_',
-           contains_pos ? 'X' : '_',
-           contains_neg ? 'X' : '_');
+    Print("Contains z: {:c} p: {:c} n: {:c}\n",
+          contains_z ? 'X' : '_',
+          contains_pos ? 'X' : '_',
+          contains_neg ? 'X' : '_');
   }
 
 
@@ -853,22 +854,21 @@ void Modeling::Expand() {
 
     if (inst_verbose > 1) {
       if (auto lo = rom.GetLabel(instruction_pc)) {
-        printf(AWHITE("%s") ":\n", lo.value().c_str());
+        Print(AWHITE("{}") ":\n", lo.value());
       }
-      printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
-             instruction_pc, opcode, Opcodes::opcode_name[opcode]);
+      Print("{:04x}: " ABLUE("{:02x}") " " AGREY("({})") "\n",
+            instruction_pc, opcode, Opcodes::opcode_name[opcode]);
 
       if (inst_verbose > 2) {
-        printf("Label: " ACYAN("%s") "\n", current_label.c_str());
-        printf("%s\n", state.DebugString().c_str());
+        Print("Label: " ACYAN("{}") "\n", current_label);
+        Print("{}\n", state.DebugString());
 
         // XXX make this configurable; this is hard coded for the
         // mario JumpEngine
-        for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x007,
-            0x0770}) {
-          printf("RAM[" AWHITE("%04x") "]: %s\n",
-                 addr,
-                 GetByteSet(state, addr).DebugString().c_str());
+        for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x007, 0x0770}) {
+          Print("RAM[" AWHITE("{:04x}") "]: {}\n",
+                addr,
+                GetByteSet(state, addr).DebugString());
         }
       }
     }
@@ -1109,13 +1109,13 @@ void Modeling::Expand() {
           // about static call graphs to do this better.
 
           if (inst_verbose > 0) {
-            printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
-                   ACYAN("%02x") "]: ", sp);
+            Print(ARED("Ugh") "! Multiple possible RTS destinations [sp="
+                  ACYAN("{:02x}") "]: ", sp);
           }
 
           int born = 0;
           int num_accepted = 0, num_rejected = 0;
-          // printf("\n");
+          // Print("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.RAM(saddr + 1).Contains(hi)) {
               for (int lo = 0; lo < 256; lo++) {
@@ -1129,7 +1129,7 @@ void Modeling::Expand() {
                   if (raddr >= 0x8000) {
                     if (false) {
                       for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
-                        printf("%04x: %02x%s\n",
+                        Print("{:04x}: {:02x}{}\n",
                                i,
                                rom.Read(i),
                                i == raddr ? AYELLOW(" <- raddr") : "");
@@ -1156,7 +1156,7 @@ void Modeling::Expand() {
 
                   if (allow) {
                     num_accepted++;
-                    if (inst_verbose > 0) printf(" %04x", raddr);
+                    if (inst_verbose > 0) Print(" {:04x}", raddr);
                     State ret_state = state;
                     // We know where the stack points, and what was
                     // there.
@@ -1180,11 +1180,11 @@ void Modeling::Expand() {
                     num_rejected++;
                     if (inst_verbose > 0) {
                       if (num_rejected < 10) {
-                        printf(" %s%04x" ANSI_RESET,
-                               unzoned ? ANSI_DARK_RED : ANSI_RED,
-                               raddr);
+                        Print(" {}{:04x}" ANSI_RESET,
+                              unzoned ? ANSI_DARK_RED : ANSI_RED,
+                              raddr);
                       } else if (num_rejected == 10) {
-                        printf(" " ARED("..."));
+                        Print(" " ARED("..."));
                       }
                     }
                   }
@@ -1192,12 +1192,12 @@ void Modeling::Expand() {
               }
             }
           }
-          if (inst_verbose > 0) printf("\n");
+          if (inst_verbose > 0) Print("\n");
 
           if (inst_verbose > 0 || (born > 16 && !quiet)) {
-            printf("RTS at " ACYAN("%04x")
-                   " added " AORANGE("%d") " new blocks. "
-                   "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
+            Print("RTS at " ACYAN("{:04x}")
+                   " added " AORANGE("{}") " new blocks. "
+                   "[acc " AGREEN("{}") "; rej " ARED("{}") "]\n",
                    instruction_pc, born, num_accepted, num_rejected);
             CHECK(born < 1000); // XXX
           }
@@ -1710,9 +1710,9 @@ void Modeling::Expand() {
       }
 
       if (inst_verbose > 0 || (born > 16 && !quiet)) {
-        printf("Indirect JMP at " AYELLOW("%04x")
-               " added " AORANGE("%d") " new blocks. "
-               "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
+        Print("Indirect JMP at " AYELLOW("{:04x}")
+               " added " AORANGE("{}") " new blocks. "
+               "[acc " AGREEN("{}") "; rej " ARED("{}") "]\n",
                instruction_pc, born, accepted, rejected);
         CHECK(born < 1000);
       }
@@ -1921,7 +1921,7 @@ void Modeling::Expand() {
       // if we want to be able to ask what values are possible after a
       // frame ends.
       if (inst_verbose > 1) {
-        printf(ANSI_DARK_GREEN "(return from interrupt)" "\n");
+        Print(ANSI_DARK_GREEN "(return from interrupt)" "\n");
       }
       return;
     }
@@ -2105,7 +2105,7 @@ void Modeling::Expand() {
   } while (!block_index.contains(BlockTag(current_label, pc)));
 
   if (verbose > 1) {
-    printf(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
+    Print(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
   }
 
   // If we get here, then the basic block has ended, but we treat
@@ -2132,20 +2132,20 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
           CHECK(blit != block_index.end());
           const BasicBlock &block = blocks[blit->second];
           CHECK(block.tag == tag);
-          StringAppendF(&out,
-                        ";** %s **\n",
-                        PlainTagString(block.tag).c_str());
+          AppendFormat(&out,
+                       ";** {} **\n",
+                       PlainTagString(block.tag));
 
           const State &state = block.state_in;
 
-          StringAppendF(
+          AppendFormat(
               &out,
-              "; A:%s\n"
-              "; X:%s\n"
-              "; Y:%s\n",
-              state.A.DebugString().c_str(),
-              state.X.DebugString().c_str(),
-              state.Y.DebugString().c_str());
+              "; A:{}\n"
+              "; X:{}\n"
+              "; Y:{}\n",
+              state.A.DebugString(),
+              state.X.DebugString(),
+              state.Y.DebugString());
           // Show stack, at least if stack is definite.
           if (state.S.Size() == 1) {
             uint8_t sp = state.S.GetSingleton();
@@ -2153,20 +2153,20 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
             for (int i = std::max((int)sp - 2, 0);
                  i < std::min((int)sp + 6, 0xFF);
                  i++) {
-              StringAppendF(&out,
-                            "; Stack[%02x] %s = %s\n",
-                            i,
-                            (i == sp) ? "**" : "  ",
-                            state.RAM(0x100 + i).DebugString().c_str());
+              AppendFormat(&out,
+                           "; Stack[{:02x}] {} = {}\n",
+                           i,
+                           (i == sp) ? "**" : "  ",
+                           state.RAM(0x100 + i).DebugString());
             }
           }
         }
       }
     }
 
-    StringAppendF(&out,
-                  "%s\n",
-                  source_map.lines[line_num].c_str());
+    AppendFormat(&out,
+                 "{}\n",
+                 source_map.lines[line_num]);
   }
 
   Util::WriteFile(std::string(filename), out);
@@ -2186,22 +2186,22 @@ void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
   const ValueConstraint &vc = it->second;
   const MemByteSet &actual = state.ram[addr];
   if (!ByteSet::Subset(actual, vc.valid_values)) {
-    printf("Memory invariant " AWHITE("%s") " violated."
-           "At: %s\n"
-           "Address " AYELLOW("%04x") " should contain only: %s\n"
-           "But it contained: %s\n",
-           vc.comment.c_str(),
-           ErrorLocString(loc).c_str(),
-           addr,
-           vc.valid_values.DebugString().c_str(),
-           actual.DebugString().c_str());
+    Print("Memory invariant " AWHITE("{}") " violated."
+          "At: {}\n"
+          "Address " AYELLOW("{:04x}") " should contain only: {}\n"
+          "But it contained: {}\n",
+          vc.comment,
+          ErrorLocString(loc),
+          addr,
+          vc.valid_values.DebugString(),
+          actual.DebugString());
     LOG(FATAL) << "Memory invariant violation.\n";
   }
 }
 
 
 void Modeling::AddConstraint(const Constraint &c) {
-  printf("Add constraint: %s\n", ColorConstraint(c).c_str());
+  Print("Add constraint: {}\n", ColorConstraint(c));
   if (const AlwaysConstraint *always = std::get_if<AlwaysConstraint>(&c)) {
     // Top-level AND constraints are the same as individual ones.
 
@@ -2220,6 +2220,6 @@ void Modeling::AddConstraint(const Constraint &c) {
 
 
   } else {
-    printf("  (" ARED("not implemented") ")\n");
+    Print("  (" ARED("not implemented") ")\n");
   }
 }
