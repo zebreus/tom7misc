@@ -15,7 +15,16 @@
     along with the this software.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "state.h"
+#include "fceu.h"
+#include "fc.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 // http://wiki.nesdev.com/w/index.php/INES_Mapper_028
 

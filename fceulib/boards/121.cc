@@ -25,8 +25,17 @@
  *
  */
 
-#include "mapinc.h"
 #include "mmc3.h"
+
+#include <cstdint>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 static constexpr uint8 const prot_array[16] = {0x83, 0x83, 0x42, 0x00};
 

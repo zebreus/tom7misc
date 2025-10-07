@@ -19,7 +19,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstring>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "ppu.h"
+#include "state.h"
+#include "x6502.h"
+
+using uint32 = uint32_t;
+using uint16 = uint16_t;
+using uint8 = uint8_t;
+
 //#define DEBUG90
 
 // Mapper 090 is simplest mapper hardware and have not extended nametable
@@ -278,10 +291,11 @@ struct Mapper90 final : public CartInterface {
       case 06:  // FCEU_printf("Xor Value: %d\n",V);
         IRQXOR = V;
         break;
-      case 07:  // if(!(IRQMode&8)) FCEU_printf("C001 is clear, no effect
-                // applied\n");
-        //     else if(V==0xFF) FCEU_printf("Prescaler is changed for 12bits\n");
-        //     else FCEU_printf("Counter Stopped\n");
+      case 07:
+        // if(!(IRQMode&8)) FCEU_printf("C001 is clear, no effect
+        // applied\n");
+        // else if(V==0xFF) FCEU_printf("Prescaler is changed for 12bits\n");
+        // else FCEU_printf("Counter Stopped\n");
         IRQPreSize = V;
         break;
     }

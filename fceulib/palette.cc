@@ -1,36 +1,34 @@
 /* FCE Ultra - NES/Famicom Emulator
-*
-* Copyright notice for this file:
-*  Copyright (C) 2002,2003 Xodnizel
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
-*
-* You should have received a copy of the GNU General Public License
-* along with this program; if not, write to the Free Software
-* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
-*/
+ *
+ * Copyright notice for this file:
+ *  Copyright (C) 2002,2003 Xodnizel
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ */
 
 #include "palette.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
+#include <cmath>
+#include <cstdlib>
 
 #include "fc.h"
-#include "git.h"
-#include "types.h"
 #include "fceu.h"
-#include "boards/mapinc.h"
-
+#include "git.h"
 #include "palettes/palettes.h"
+#include "types.h"
 
 // TODO: Now that these are compile-time constants, some of this stuff
 // can be shared instead of per-instance.
@@ -47,7 +45,7 @@ static constexpr PaletteEntry const *palpoint[] = {
 Palette::Palette(FC *fc) : fc(fc) {}
 
 void Palette::GetPalette(uint8 index,
-                               uint8 *r, uint8 *g, uint8 *b) const {
+                         uint8 *r, uint8 *g, uint8 *b) const {
   *r = s_psdl[index].r;
   *g = s_psdl[index].g;
   *b = s_psdl[index].b;

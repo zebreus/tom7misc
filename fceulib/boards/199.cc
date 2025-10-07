@@ -15,7 +15,8 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * Dragon Ball Z 2 - Gekishin Freeza! (C)
  * Dragon Ball Z Gaiden - Saiya Jin Zetsumetsu Keikaku (C)
@@ -23,13 +24,26 @@
  *
  */
 
-#include "mapinc.h"
 #include "mmc3.h"
 
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "utils/memory.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+
 static constexpr uint32 CHRRAMSIZE = 8192;
+
 namespace {
 struct Mapper199 final : public MMC3 {
   uint8 EXPREGS[8] = {};
+  // Note suspicious: This shadows a member of MMC3.
   uint8 *CHRRAM = nullptr;
 
   void PWrap(uint32 A, uint8 V) final override {

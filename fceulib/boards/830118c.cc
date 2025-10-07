@@ -15,13 +15,25 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  */
 
 // M-022 MMC3 based 830118C T-106 4M + 4M
 
-#include "mapinc.h"
 #include "mmc3.h"
+
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+
 
 namespace {
 struct BMC830118C final : public MMC3 {

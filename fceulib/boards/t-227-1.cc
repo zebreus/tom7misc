@@ -15,13 +15,24 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  */
 
 // T-227-1, 820632, MMC3 based, multimenu, 60000in1 (0010) dip switches
 
-#include "mapinc.h"
 #include "mmc3.h"
+
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "state.h"
+#include "fceu.h"
+#include "fc.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 namespace {
 struct BMCT2271 final : public MMC3 {

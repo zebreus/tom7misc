@@ -19,7 +19,17 @@
  *
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "utils/memory.h"
+
+using uint16 = uint16_t;
+using uint8 = uint8_t;
 
 static constexpr int WRAMSIZE = 8192;
 

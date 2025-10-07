@@ -15,12 +15,24 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  *
  * CAI Shogakko no Sansu
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "utils/memory.h"
+#include "x6502.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 static constexpr int CHRSIZE = 8192;
 static constexpr int WRAMSIZE = 8192 + 4096;

@@ -18,9 +18,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "utils/memory.h"
 
 static constexpr int WRAMSIZE = 8192;
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 namespace {
 struct Mapper156 final : public CartInterface {

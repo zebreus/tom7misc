@@ -15,10 +15,22 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  */
 
-#include "mapinc.h"
+#include <cstdint>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "unif.h"
+#include "utils/memory.h"
+#include "x6502.h"
+
+using uint16 = uint16_t;
+using uint8 = uint8_t;
 
 static constexpr int WRAMSIZE = 8192;
 
@@ -265,7 +277,7 @@ struct Mapper23 final : public VRC24<is_pirate, is_22> {
     // battery backed RAM, three more
     // shooters
     this->fc->cart->setprg8r(0x10, 0x6000, 0);
-    // (Parodius Da!, Gradius 2 and Crisis Force uses 2k or SRAM at
+    // Parodius Da!, Gradius 2 and Crisis Force uses 2k or SRAM at
     // 6000-67FF only
     this->fc->fceu->SetReadHandler(0x6000, 0x7FFF, Cart::CartBR);
     this->fc->fceu->SetWriteHandler(0x6000, 0x7FFF, Cart::CartBW);

@@ -19,8 +19,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "mapinc.h"
-#include "../ines.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "ines.h"
+#include "state.h"
+#include "utils/memory.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 static constexpr uint32 WRAMSIZE = 8192;
 
@@ -78,7 +88,7 @@ struct Mapper176 final : public CartInterface {
   }
 
   void M176Write_5FF2(DECLFW_ARGS) {
-    printf("%04X = $%02X\n", A, V);
+    // printf("%04X = $%02X\n", A, V);
     chr = V;
     Sync();
   }

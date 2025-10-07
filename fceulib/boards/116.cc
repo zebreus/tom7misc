@@ -36,13 +36,13 @@
  *
  */
 
-#include "mapinc.h"
-
 #include <cstdint>
 
 #include "cart.h"
 #include "fc.h"
 #include "fceu.h"
+#include "ppu.h"
+#include "state.h"
 #include "x6502.h"
 
 using uint8 = uint8_t;

@@ -1,4 +1,4 @@
-/***********************************************************************************
+/**************************************************************************
 
   emu2413.c -- YM2413 emulator written by Mitsutaka Okazaki 2001
 
@@ -48,12 +48,20 @@ among other things.
     YMU757 data sheet
     YM2143 data sheet
 
-**************************************************************************************/
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
+*********************************************************************/
+
 #include "emu2413.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <cstdint>
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using int32 = int32_t;
+using int16 = int16_t;
+using uint16 = uint16_t;
 
 /* Mask */
 #define OPLL_MASK_CH(x) (1 << (x))
@@ -452,8 +460,10 @@ void EMU2413::internal_refresh() {
   makeDphaseTable();
   makeDphaseARTable();
   makeDphaseDRTable();
-  pm_dphase = (uint32)rate_adjust(PM_SPEED * PM_DP_WIDTH / (clk / 72));
-  am_dphase = (uint32)rate_adjust(AM_SPEED * AM_DP_WIDTH / (clk / 72));
+  pm_dphase =
+    (uint32)rate_adjust(PM_SPEED * PM_DP_WIDTH / (uint32)(clk / 72));
+  am_dphase =
+    (uint32)rate_adjust(AM_SPEED * AM_DP_WIDTH / (uint32)(clk / 72));
 }
 
 void EMU2413::maketables(uint32 c, uint32 r) {

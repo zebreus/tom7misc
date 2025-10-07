@@ -18,7 +18,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "mapinc.h"
+#include <cstdint>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "ppu.h"
+#include "state.h"
+#include "x6502.h"
+
+using uint8 = uint8_t;
 
 namespace {
 struct Mapper91 final : public CartInterface {

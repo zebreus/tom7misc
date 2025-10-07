@@ -15,7 +15,9 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
+ *
  * Super Mario Bros 2 J alt version
  * as well as "Voleyball" FDS conversion, bank layout is similar but no
  * bankswitching and CHR ROM present
@@ -23,7 +25,17 @@
  * mapper seems wrongly researched by me ;( it should be mapper 43 modification
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "x6502.h"
+
+using uint8 = uint8_t;
+using uint16 = uint16_t;
 
 namespace {
 struct UNLSMB2J final : public CartInterface {

@@ -140,7 +140,7 @@ struct INes {
 };
 
 // These are allowed to be accessed by mappers. -tom7
-#ifdef INESPRIV
+// #ifdef INESPRIV
 
 // I think that this gross stuff is because the old style mappers
 // (_init in mappers/*) get some flat data block to work with,
@@ -171,7 +171,7 @@ struct INes {
 #define GMB_mapbyte3(fc)       (GMB_mapbyte2(fc) + 8)
 #define GMB_mapbyte4(fc)       (GMB_mapbyte3(fc) + 8)
 
-#endif  // INESPRIV
+// #endif  // INESPRIV
 
 // This list is pretty weird, I guess part of some transition
 // to the capital-i Init methods. Many of these are not even

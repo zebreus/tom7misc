@@ -20,13 +20,14 @@
  */
 
 #include <cstdint>
+#include <cstdlib>
 
-#include "../cart.h"
-#include "../fc.h"
-#include "../fceu.h"
-#include "../state.h"
-#include "../utils/memory.h"
-#include "../x6502.h"
+#include "cart.h"
+#include "state.h"
+#include "fceu.h"
+#include "x6502.h"
+#include "fc.h"
+#include "utils/memory.h"
 
 static constexpr uint8_t banks[4] = {0, 0, 1, 2};
 

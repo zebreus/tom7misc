@@ -19,7 +19,16 @@
  * NTDEC, ASDER games
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "cart.h"
+#include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "utils/memory.h"
+
+using uint8 = uint8_t;
 
 namespace {
 struct Mapper112 final : public CartInterface {

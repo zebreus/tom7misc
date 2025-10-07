@@ -15,11 +15,16 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
- * TXC mapper variation, F-15 City War
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA TXC mapper variation, F-15 City War
  */
 
-#include "mapinc.h"
+#include <cstdlib>
+
+#include "cart.h"
+#include "fceu.h"
+#include "fc.h"
+#include "ines.h"
 
 static DECLFW(Mapper79_write) {
   if (A < 0x8000 && ((A ^ 0x4100) == 0)) {
