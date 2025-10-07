@@ -192,7 +192,7 @@ std::vector<std::shared_ptr<Form>> SimplifyBoolFormula(
         return {BoolConst(false)};
       }
 
-    } else if (bf->op == Binop::AND) {
+    } else if (bf->op == Binop::OR) {
       CHECK(bf->op == Binop::OR);
 
       // TODO: Can push NOT down and just get a conjunctive

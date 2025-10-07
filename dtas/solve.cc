@@ -156,7 +156,7 @@ struct MazeSolver {
 
       for (int dy = -3; dy < 3; dy++) {
         for (int dx = -3; dx < 3; dx++) {
-          if (dy != 0 || dy != 0) {
+          if (dx != 0 || dy != 0) {
             CellId dst(src.x + dx, src.y + dy);
             /*
             status.Print("Dst {},{}. OnScreen: {}\n",
