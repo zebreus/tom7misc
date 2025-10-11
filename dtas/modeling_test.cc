@@ -185,14 +185,9 @@ static void TestSBC() {
   }
 
   {
-    // Subtle overflow bug case.
+    // Subtle overflow bug case, like in ADC.
     // A=-128 (0x80), M=1 (0x01), C=0 (borrow).
     // The operation is A - M - 1, which is -128 - 1 - 1 = -130.
-    // This wraps to 126 (0x7E), which is a positive result.
-    // Since negative - positive gave positive, this is an overflow.
-    // A buggy implementation might precompute A-borrow = 0x80-1 = 0x7F,
-    // see that as positive, and then fail to detect overflow when
-    // subtracting M=0x01 (pos - pos).
     State state;
     state.A = ByteSet::Singleton(0x80);
     state.P = ByteSet::Singleton(0x00);

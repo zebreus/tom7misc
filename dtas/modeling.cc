@@ -482,8 +482,8 @@ void Modeling::AddWithCarry(State *state, const ByteSet &values) {
 
         // we have overflow if the signs
         // started the same, but end different.
-        uint8_t s1 = v & 0x80;
-        uint8_t s2 = a & 0x80;
+        uint8_t s1 = a & 0x80;
+        uint8_t s2 = v & 0x80;
         uint8_t sr = res8 & 0x80;
         uint8_t overflow = (s1 == s2 && sr != s1) ? V_FLAG : 0;
 
@@ -512,33 +512,38 @@ void Modeling::SubtractWithCarry(State *state, const ByteSet &values) {
     else has_nocarry = true;
   }
 
-  // Use wide addition so that we can test for carry,
-  // overflow, etc. First blend possible carry flags
-  // with possible values for A.
-  std::unordered_set<uint32_t> acarry;
-  for (uint8_t a : state->A) {
-    // Note: The sense of the carry bit is reversed here
-    // (carry ZERO means DO subtract 1).
-    if (has_carry) acarry.insert(a);
-    if (has_nocarry) acarry.insert(a - 1);
-  }
+  // Like above. Note that the sense of the carry is
+  // reversed here (carry ZERO means DO subtract 1).
+  ByteSet borrow_values;
+  if (has_carry) borrow_values.Add(0x00);
+  if (has_nocarry) borrow_values.Add(0x01);
 
   // Now all possible sums.
   ByteSet flags_nzcv;
   ByteSet results;
   for (uint8_t v : values) {
-    for (uint32_t a : acarry) {
-      uint32_t l = a - v;
+    for (uint8_t a : state->A) {
+      for (uint8_t borrow : borrow_values) {
+        uint32_t l = (uint32_t)a - (uint32_t)borrow - (uint32_t)v;
 
-      uint8_t res8 = l & 0xFF;
-      results.Add(res8);
+        uint8_t res8 = l & 0xFF;
+        results.Add(res8);
 
-      uint8_t flags =
-        (((l >> 8) & C_FLAG) ^ C_FLAG) |
-        (res8 == 0 ? Z_FLAG : 0) |
-        ((res8 & 0x80) ? N_FLAG : 0);
-      // FIXME! also the overflow flag
-      flags_nzcv.Add(flags);
+        // we have overflow if the signs
+        // started different (because the RHS is negated)
+        // and result in a sign different from the LHS.
+        uint8_t s1 = a & 0x80;
+        uint8_t s2 = v & 0x80;
+        uint8_t sr = res8 & 0x80;
+        uint8_t overflow = (s1 != s2 && sr != s1) ? V_FLAG : 0;
+
+        uint8_t flags =
+          (((l >> 8) & C_FLAG) ^ C_FLAG) |
+          (res8 == 0 ? Z_FLAG : 0) |
+          ((res8 & 0x80) ? N_FLAG : 0) |
+          overflow;
+        flags_nzcv.Add(flags);
+      }
     }
   }
 
