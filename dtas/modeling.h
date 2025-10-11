@@ -215,8 +215,11 @@ struct Modeling {
   void AddConstraint(const Constraint &c);
 
 
-  // The stuff below is mostly implementation details.
+  // The stuff below is mostly implementation details, perhaps
+  // exposed for testing.
 
+  static void AddWithCarry(State *state, const ByteSet &values);
+  static void SubtractWithCarry(State *state, const ByteSet &values);
 
   // Used internally to print the location of an error like a
   // memory invariant violation.

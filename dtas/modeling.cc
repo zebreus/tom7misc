@@ -397,18 +397,12 @@ static void ZN(State *state, const ByteSet &s) {
     Print("}}\n");
   }
 
-  ByteSet res;
   bool contains_z = s.Contains(0);
   bool contains_pos = false;
   bool contains_neg = false;
-  for (int i = 0; i < 256; i++) {
-    if (s.Contains(i)) {
-      if (i < 0x80) {
-        contains_pos = true;
-      } else {
-        contains_neg = true;
-      }
-    }
+  for (uint8_t v : s) {
+    if (v > 0 && v < 0x80) contains_pos = true;
+    else if (v >= 0x80) contains_neg = true;
   }
 
   if (VERBOSE) {
@@ -456,39 +450,50 @@ static void Compare(State *state, const ByteSet &reg, const ByteSet &op) {
 
 // A <- A + Value + Carry
 // updating neg, zero, carry, overflow flags
-static void AddWithCarry(State *state, const ByteSet &values) {
+void Modeling::AddWithCarry(State *state, const ByteSet &values) {
   bool has_carry = false;
   bool has_nocarry = false;
-  for (uint8_t flags : state->S) {
+  for (uint8_t flags : state->P) {
     if (flags & C_FLAG) has_carry = true;
     else has_nocarry = true;
   }
 
-  // Use wide addition so that we can test for carry,
-  // overflow, etc. First blend possible carry flags
-  // with possible values for A.
-  std::unordered_set<uint32_t> acarry;
-  for (uint8_t a : state->A) {
-    if (has_nocarry) acarry.insert(a);
-    if (has_carry) acarry.insert(a + 1);
-  }
+  // We need to iterate over (a, c) pairs rather than summing
+  // them ahead of time into a set. This is because the overflow
+  // flag depends on a, not a+c.
+  ByteSet carry_values;
+  if (has_carry) carry_values.Add(0x01);
+  if (has_nocarry) carry_values.Add(0x00);
 
   // Now all possible sums.
   ByteSet flags_nzcv;
   ByteSet results;
   for (uint8_t v : values) {
-    for (uint32_t a : acarry) {
-      uint32_t l = a + v;
+    for (uint8_t a : state->A) {
+      for (uint8_t c : carry_values) {
 
-      uint8_t res8 = l & 0xFF;
-      results.Add(res8);
+        // Use wide addition so that we can test for carry,
+        // overflow, etc. First blend possible carry flags
+        // with possible values for A.
+        uint32_t l = (uint32_t)a + (uint32_t)c + (uint32_t)v;
 
-      uint8_t flags =
-        ((l >> 8) & C_FLAG) |
-        (res8 == 0 ? Z_FLAG : 0) |
-        ((res8 & 0x80) ? N_FLAG : 0);
-      // FIXME! also the overflow flag
-      flags_nzcv.Add(flags);
+        uint8_t res8 = l & 0xFF;
+        results.Add(res8);
+
+        // we have overflow if the signs
+        // started the same, but end different.
+        uint8_t s1 = v & 0x80;
+        uint8_t s2 = a & 0x80;
+        uint8_t sr = res8 & 0x80;
+        uint8_t overflow = (s1 == s2 && sr != s1) ? V_FLAG : 0;
+
+        uint8_t flags =
+          ((l >> 8) & C_FLAG) |
+          (res8 == 0 ? Z_FLAG : 0) |
+          ((res8 & 0x80) ? N_FLAG : 0) |
+          overflow;
+        flags_nzcv.Add(flags);
+      }
     }
   }
 
@@ -498,11 +503,11 @@ static void AddWithCarry(State *state, const ByteSet &values) {
 
 // A <- A - Value - ~Carry
 // updating neg, zero, carry, overflow flags
-static void SubtractWithCarry(State *state, const ByteSet &values) {
+void Modeling::SubtractWithCarry(State *state, const ByteSet &values) {
   // Test whether we always/sometimes/never have carry bit.
   bool has_carry = false;
   bool has_nocarry = false;
-  for (uint8_t flags : state->S) {
+  for (uint8_t flags : state->P) {
     if (flags & C_FLAG) has_carry = true;
     else has_nocarry = true;
   }
@@ -705,12 +710,13 @@ void Modeling::Expand() {
       ByteSet new_a;
       ByteSet zncflags;
       for (uint8_t b : src) {
+        const uint8_t value = b >> 1;
+
         uint8_t f = 0;
         if (b & 1) f |= C_FLAG;
-        uint8_t v = f >> 1;
 
-        if (has_carry) new_a.Add(v | 0x80);
-        if (has_no_carry) new_a.Add(v);
+        if (has_carry) new_a.Add(value | 0x80);
+        if (has_no_carry) new_a.Add(value);
 
         // C flag is always determined from the lsb of the input value.
         // But the negative flag and zero flags depend on the old carry.
@@ -719,7 +725,7 @@ void Modeling::Expand() {
           zncflags.Add(f | N_FLAG);
         }
         if (has_no_carry) {
-          if (v == 0) {
+          if (value == 0) {
             zncflags.Add(f | Z_FLAG);
           } else {
             zncflags.Add(f);
@@ -947,6 +953,8 @@ void Modeling::Expand() {
       for (uint8_t addr_lo : GetByteSet(state, zpg_addr)) {
         for (uint8_t addr_hi : GetByteSet(state, (uint8_t)(zpg_addr + 1))) {
           for (uint8_t y : state.Y) {
+            LOG(FATAL) << "The next line is probably wrong. It "
+              "should be uint16_t, right?";
             uint8_t effective_addr = Word16(addr_hi, addr_lo) + y;
             state.A.AddSet(GetByteSet(state, effective_addr));
           }
@@ -1229,6 +1237,8 @@ void Modeling::Expand() {
           return v + 1;
         });
 
+      ZN(&state, state.A);
+
       break;
     }
     case 0x48: { // PHA
@@ -1473,6 +1483,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xbc: { // LDY a,x
+      LOG(FATAL) << "The next line should be 16-bit, right?";
       uint8_t addr = Next16();
       state.Y.Clear();
       for (uint8_t v : state.X) {
@@ -1519,6 +1530,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xb6: { // LDX d,y
+      LOG(FATAL) << "The next line should read one byte, maybe?";
       uint8_t addr = Next16();
       state.X.Clear();
       for (uint8_t v : state.Y) {
@@ -1868,12 +1880,14 @@ void Modeling::Expand() {
     }
     case 0xdd: { // CMP a,x
       uint16_t addr = Next16();
+      LOG(FATAL) << "This should not read zero page?";
       Compare(&state, state.A,
               GetByteSetFromOffsetsZpg(state, addr, state.X));
       break;
     }
     case 0xd9: { // CMP a,y
       uint16_t addr = Next16();
+      LOG(FATAL) << "This should not read zero page?";
       Compare(&state, state.A,
               GetByteSetFromOffsetsZpg(state, addr, state.Y));
       break;
@@ -2209,6 +2223,7 @@ void Modeling::AddConstraint(const Constraint &c) {
       SimplifyBoolFormula(always->form);
 
     for (const std::shared_ptr<Form> &form : conj) {
+      (void)form;
       // Find formulas of the form ram[constant] in S, and promote
       // those to ValueConstraints.
       //
@@ -2216,8 +2231,6 @@ void Modeling::AddConstraint(const Constraint &c) {
       // formulas.
       LOG(FATAL) << "Unimplemented";
     }
-
-
 
   } else {
     Print("  (" ARED("not implemented") ")\n");
