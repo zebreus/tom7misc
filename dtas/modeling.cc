@@ -269,6 +269,7 @@ ByteSet Modeling::GetByteSetFromOffsets16(
   return ret;
 }
 
+// For 8-bit addresses into the zero page (wrap-around).
 ByteSet Modeling::GetByteSetFromOffsetsZpg(
     const State &state, uint8_t addr, const ByteSet &offsets) const {
   ByteSet ret;
@@ -958,9 +959,7 @@ void Modeling::Expand() {
       for (uint8_t addr_lo : GetByteSet(state, zpg_addr)) {
         for (uint8_t addr_hi : GetByteSet(state, (uint8_t)(zpg_addr + 1))) {
           for (uint8_t y : state.Y) {
-            LOG(FATAL) << "The next line is probably wrong. It "
-              "should be uint16_t, right?";
-            uint8_t effective_addr = Word16(addr_hi, addr_lo) + y;
+            uint16_t effective_addr = Word16(addr_hi, addr_lo) + y;
             state.A.AddSet(GetByteSet(state, effective_addr));
           }
         }
@@ -1488,8 +1487,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xbc: { // LDY a,x
-      LOG(FATAL) << "The next line should be 16-bit, right?";
-      uint8_t addr = Next16();
+      uint16_t addr = Next16();
       state.Y.Clear();
       for (uint8_t v : state.X) {
         state.Y.AddSet(GetByteSet(state, addr + v));
@@ -1535,12 +1533,11 @@ void Modeling::Expand() {
       break;
     }
     case 0xb6: { // LDX d,y
-      LOG(FATAL) << "The next line should read one byte, maybe?";
-      uint8_t addr = Next16();
+      uint8_t zpg_addr = Next8();
       state.X.Clear();
       for (uint8_t v : state.Y) {
         // Zero-page wraparound.
-        uint8_t eaddr = addr + v;
+        uint8_t eaddr = zpg_addr + v;
         state.X.AddSet(GetByteSet(state, eaddr));
       }
       ZN(&state, state.X);
@@ -1885,16 +1882,14 @@ void Modeling::Expand() {
     }
     case 0xdd: { // CMP a,x
       uint16_t addr = Next16();
-      LOG(FATAL) << "This should not read zero page?";
       Compare(&state, state.A,
-              GetByteSetFromOffsetsZpg(state, addr, state.X));
+              GetByteSetFromOffsets16(state, addr, state.X));
       break;
     }
     case 0xd9: { // CMP a,y
       uint16_t addr = Next16();
-      LOG(FATAL) << "This should not read zero page?";
       Compare(&state, state.A,
-              GetByteSetFromOffsetsZpg(state, addr, state.Y));
+              GetByteSetFromOffsets16(state, addr, state.Y));
       break;
     }
 
