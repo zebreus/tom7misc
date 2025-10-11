@@ -220,6 +220,12 @@ struct Modeling {
 
   static void AddWithCarry(State *state, const ByteSet &values);
   static void SubtractWithCarry(State *state, const ByteSet &values);
+  // Returns (values, flags). This depends on the state and affects
+  // flags because the carry flag is rotated into the value.
+  static std::pair<ByteSet, ByteSet> RotateRight(
+      const State &state, const ByteSet &src);
+  static std::pair<ByteSet, ByteSet> RotateLeft(
+      const State &state, const ByteSet &src);
 
   // Used internally to print the location of an error like a
   // memory invariant violation.

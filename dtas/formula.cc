@@ -1,9 +1,8 @@
 #include "formula.h"
 
 #include <format>
-#include <string>
 #include <memory>
-#include <cinttypes>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -76,6 +75,7 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
                         BinopString(b->op),
                         r);
   } else if (const ByteSetForm *s = std::get_if<ByteSetForm>(form.get())) {
+    (void)s;
     return std::format(AWHITE("{{") " "
                        ARED("unimplemented: byteset")
                        " " AWHITE("}}"));

@@ -552,6 +552,77 @@ void Modeling::SubtractWithCarry(State *state, const ByteSet &values) {
   CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
 }
 
+std::pair<ByteSet, ByteSet> Modeling::RotateRight(
+    const State &state, const ByteSet &src) {
+  bool has_carry = false;
+  bool has_no_carry = false;
+  for (uint8_t f : state.P) {
+    if (f & C_FLAG) has_carry = true;
+    else has_no_carry = true;
+  }
+
+  CHECK(has_carry || has_no_carry);
+
+  ByteSet new_a;
+  ByteSet zncflags;
+  for (uint8_t b : src) {
+    const uint8_t value = b >> 1;
+
+    uint8_t f = 0;
+    if (b & 1) f |= C_FLAG;
+
+    if (has_carry) new_a.Add(value | 0x80);
+    if (has_no_carry) new_a.Add(value);
+
+    // C flag is always determined from the lsb of the input value.
+    // But the negative flag and zero flags depend on the old carry.
+    if (has_carry) {
+      // Can't be zero.
+      zncflags.Add(f | N_FLAG);
+    }
+    if (has_no_carry) {
+      if (value == 0) {
+        zncflags.Add(f | Z_FLAG);
+      } else {
+        zncflags.Add(f);
+      }
+    }
+  }
+
+  return std::make_pair(new_a, zncflags);
+}
+
+std::pair<ByteSet, ByteSet> Modeling::RotateLeft(
+    const State &state, const ByteSet &src) {
+  bool has_carry = false;
+  bool has_no_carry = false;
+  for (uint8_t f : state.P) {
+    if (f & C_FLAG) has_carry = true;
+    else has_no_carry = true;
+  }
+
+  CHECK(has_carry || has_no_carry);
+
+  ByteSet zncflags;
+  ByteSet new_a;
+  for (uint8_t b : src) {
+    uint8_t f = 0;
+    // Can shift into carry flag.
+    if (b & 0x80) f |= C_FLAG;
+    uint8_t v = b << 1;
+    // Reuslt can be negative, or zero.
+    if (v & 0x80) f |= N_FLAG;
+    else if (v == 0 && has_no_carry) f |= Z_FLAG;
+
+    if (has_carry) new_a.Add(v | 0x01);
+    if (has_no_carry) new_a.Add(v);
+
+    zncflags.Add(f);
+  }
+
+  return std::make_pair(new_a, zncflags);
+}
+
 
 void Modeling::Expand() {
   // Loop over basic blocks.
@@ -665,81 +736,6 @@ void Modeling::Expand() {
           });
         EnterBlock(BlockTag(current_label, pc), state);
       }
-    };
-
-  // XXX should do this like RotateRight, returning flags
-  auto RotateLeft = [](State *state, const ByteSet &src) {
-      bool has_carry = false;
-      bool has_no_carry = false;
-      for (uint8_t f : state->P) {
-        if (f & C_FLAG) has_carry = true;
-        else has_no_carry = true;
-      }
-
-      CHECK(has_carry || has_no_carry);
-
-      ByteSet zncflags;
-      ByteSet new_a;
-      for (uint8_t b : src) {
-        uint8_t f = 0;
-        if (b & 0x80) f |= C_FLAG;
-        uint8_t v = b << 1;
-        if (v & 0x80) f |= N_FLAG;
-        else if (v == 0 && has_no_carry) f |= Z_FLAG;
-
-        if (has_carry) new_a.Add(v | 0x01);
-        if (has_no_carry) new_a.Add(v);
-
-        zncflags.Add(f);
-      }
-      state->A = std::move(new_a);
-      CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
-      CHECK(!state->A.Empty());
-      CHECK(!state->P.Empty());
-    };
-
-  // Returns (values, flags).
-  // This depends on the state (and cannot just return one value) because
-  // the carry flag is rotated into the value.
-  auto RotateRight = [](const State &state, const ByteSet &src) ->
-    std::pair<ByteSet, ByteSet> {
-
-      bool has_carry = false;
-      bool has_no_carry = false;
-      for (uint8_t f : state.P) {
-        if (f & C_FLAG) has_carry = true;
-        else has_no_carry = true;
-      }
-
-      CHECK(has_carry || has_no_carry);
-
-      ByteSet new_a;
-      ByteSet zncflags;
-      for (uint8_t b : src) {
-        const uint8_t value = b >> 1;
-
-        uint8_t f = 0;
-        if (b & 1) f |= C_FLAG;
-
-        if (has_carry) new_a.Add(value | 0x80);
-        if (has_no_carry) new_a.Add(value);
-
-        // C flag is always determined from the lsb of the input value.
-        // But the negative flag and zero flags depend on the old carry.
-        if (has_carry) {
-          // Can't be zero.
-          zncflags.Add(f | N_FLAG);
-        }
-        if (has_no_carry) {
-          if (value == 0) {
-            zncflags.Add(f | Z_FLAG);
-          } else {
-            zncflags.Add(f);
-          }
-        }
-      }
-
-      return std::make_pair(new_a, zncflags);
     };
 
   // f takes ByteSet and returns a pair of ByteSets,
@@ -877,7 +873,7 @@ void Modeling::Expand() {
 
         // XXX make this configurable; this is hard coded for the
         // mario JumpEngine
-        for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x007, 0x0770}) {
+        for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x0007, 0x0770}) {
           Print("RAM[" AWHITE("{:04x}") "]: {}\n",
                 addr,
                 GetByteSet(state, addr).DebugString());
@@ -1346,7 +1342,9 @@ void Modeling::Expand() {
     }
 
     case 0x2a: { // ROL
-      RotateLeft(&state, state.A);
+      ByteSet flags;
+      std::tie(state.A, flags) = RotateLeft(state, state.A);
+      CombineFlags(&state, flags, N_FLAG | Z_FLAG | C_FLAG);
       break;
     }
     case 0x26: { // ROL d

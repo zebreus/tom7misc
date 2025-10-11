@@ -203,11 +203,97 @@ static void TestSBC() {
   }
 }
 
+static void TestRotateRight() {
+  // Simple right shift, no carry in/out.
+  {
+    State state;
+    state.P = ByteSet::Singleton(0x00);
+    ByteSet src = ByteSet::Singleton(0b00000010);
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet::Singleton(0b00000001));
+    // C=0, Z=0, N=0
+    CHECK(flags == ByteSet::Singleton(0x00));
+  }
+
+  // Carry out, no carry in.
+  {
+    State state;
+    state.P = ByteSet::Singleton(0x00);
+    ByteSet src = ByteSet::Singleton(0b00000011);
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet::Singleton(0b00000001));
+    // C=1, Z=0, N=0
+    CHECK(flags == ByteSet::Singleton(C_FLAG));
+  }
+
+  // Carry in, no carry out.
+  {
+    State state;
+    state.P = ByteSet::Singleton(C_FLAG);
+    ByteSet src = ByteSet::Singleton(0b00000010);
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet::Singleton(0b10000001));
+    // C=0, Z=0, N=1
+    CHECK(flags == ByteSet::Singleton(N_FLAG));
+  }
+
+  // Zero result.
+  {
+    State state;
+    state.P = ByteSet::Singleton(0x00); // Carry clear
+    ByteSet src = ByteSet::Singleton(0b00000001);
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet::Singleton(0x00));
+    // C=1, Z=1, N=0
+    CHECK(flags == ByteSet::Singleton(C_FLAG | Z_FLAG));
+  }
+
+  // Indeterminate carry.
+  {
+    State state;
+    state.P = ByteSet({0x00, C_FLAG});
+    ByteSet src = ByteSet::Singleton(0b00000010);
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet({0b00000001, 0b10000001}));
+    // Case C=0: C_out=0, N=0, Z=0. flags=0x00
+    // Case C=1: C_out=0, N=1, Z=0. flags=N_FLAG
+    CHECK(flags == ByteSet({0x00, N_FLAG}));
+  }
+
+  // Indeterminate source.
+  {
+    State state;
+    state.P = ByteSet::Singleton(0x00);
+    ByteSet src = ByteSet({0b10, 0b11});
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet::Singleton(0b01));
+    // Case src=0b10: C_out=0, N=0, Z=0. flags=0x00
+    // Case src=0b11: C_out=1, N=0, Z=0. flags=C_FLAG
+    CHECK(flags == ByteSet({0x00, C_FLAG}));
+  }
+
+  // Indeterminate source and carry.
+  {
+    State state;
+    state.P = ByteSet({0x00, C_FLAG});
+    ByteSet src = ByteSet({0x00, 0x01});
+    auto [res, flags] = Modeling::RotateRight(state, src);
+    CHECK(res == ByteSet({0x00, 0x80}));
+    // ROR 0x00, C_in=0 -> res=0x00, flags={C=0,Z=1,N=0} -> Z_FLAG
+    // ROR 0x00, C_in=1 -> res=0x80, flags={C=0,Z=0,N=1} -> N_FLAG
+    // ROR 0x01, C_in=0 -> res=0x00, flags={C=1,Z=1,N=0} -> C_FLAG|Z_FLAG
+    // ROR 0x01, C_in=1 -> res=0x80, flags={C=1,Z=0,N=1} -> C_FLAG|N_FLAG
+    CHECK(flags == ByteSet({Z_FLAG, N_FLAG,
+                            C_FLAG | Z_FLAG, C_FLAG | N_FLAG}));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestADC();
   TestSBC();
+  TestRotateRight();
 
   Print("OK\n");
   return 0;
