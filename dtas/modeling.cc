@@ -261,6 +261,11 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
   }
 
   // TODO: Special cases for memory-mapped addresses.
+  if (!quiet) {
+    Print("Note: Reading from address that may be memory-mapped: "
+          AORANGE("${:04x}") ". Returns " AYELLOW("Top") "!\n",
+          addr);
+  }
 
   // Otherwise, treat it as though any value is possible.
   return ByteSet::Top();
@@ -988,8 +993,8 @@ void Modeling::Expand() {
       //               dst hi
       // The thing pushed on the stack is actually pc+1,
       // which is weird because it's between the two address bytes.
-      // I guess it's just a pipelining quirk. RTI adds 1 to the
-      // that it pops.
+      // I guess it's just a pipelining quirk. RTS adds 1 to the
+      // address that it pops.
       const uint16_t stored_pc = pc + 1;
 
       ByteSet ret_hi = MemByteSet::Singleton(stored_pc >> 8);
@@ -1234,71 +1239,32 @@ void Modeling::Expand() {
       // Here any of the Zero, Negative, and Carry
       // flags are modified.
 
-      // Look at the values before shifting to
-      // determine the possible flags that can
-      // result:
-      bool has_carry = false;
-      bool has_no_carry = false;
-      bool has_zero = false;
-      bool has_nonzero = false;
-      bool has_neg = false;
-      bool has_pos = false;
-      for (int i = 0; i < 256; i++) {
-        if (state.A.Contains(i)) {
-          if (i & 0x80) {
-            has_carry = true;
-          } else {
-            has_no_carry = true;
-          }
+      ByteSet results;
+      ByteSet zncflags;
+      for (uint8_t a : state.A) {
+        // The flags that would result when shifting
+        // this value.
+        uint8_t f = 0;
 
-          if (i & 0x7f) {
-            has_nonzero = true;
-          } else {
-            has_zero = true;
-          }
-
-          // bit that gets shifted into negative bit.
-          if (i & 0b01000000) {
-            has_neg = true;
-          } else {
-            has_pos = true;
-          }
+        // Value before shifting determines the carry.
+        if (a & 0x80) {
+          f |= C_FLAG;
         }
+
+        uint8_t v = a << 1;
+
+        if (v == 0) {
+          f |= Z_FLAG;
+        } else if (v & 0x80) {
+          f |= N_FLAG;
+        }
+
+        zncflags.Add(f);
+        results.Add(v);
       }
 
-      CHECK(has_carry || has_no_carry);
-      std::vector<uint8_t> carry_flags;
-      if (has_carry) carry_flags.push_back(C_FLAG);
-      if (has_no_carry) carry_flags.push_back(0);
-
-      CHECK(has_neg || has_pos);
-      std::vector<uint8_t> neg_flags;
-      if (has_neg) neg_flags.push_back(N_FLAG);
-      if (has_pos) neg_flags.push_back(0);
-
-      CHECK(has_zero || has_nonzero);
-      std::vector<uint8_t> zero_flags;
-      if (has_zero) zero_flags.push_back(Z_FLAG);
-      if (has_nonzero) zero_flags.push_back(0);
-
-      state.A = state.A.Map([](uint8_t v) { return v << 1; });
-
-      // TODO: CombineFlags
-      // No combination of flags is contradictory, so we
-      // add all of them:
-      ByteSet new_flags;
-      for (uint8_t v : state.P) {
-        v &= ~(C_FLAG | N_FLAG | Z_FLAG);
-
-        for (uint8_t c : carry_flags) {
-          for (uint8_t n : neg_flags) {
-            for (uint8_t z : zero_flags) {
-              new_flags.Add(v | c | n | z);
-            }
-          }
-        }
-      }
-      state.P = std::move(new_flags);
+      state.A = std::move(results);
+      CombineFlags(&state, zncflags, N_FLAG | Z_FLAG | C_FLAG);
       break;
     }
 
