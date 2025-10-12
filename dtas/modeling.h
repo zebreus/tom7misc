@@ -22,7 +22,7 @@
 #include "byte-set.h"
 #include "formula.h"
 #include "hashing.h"
-#include "sourcemap.h"
+#include "assemble.h"
 #include "zoning.h"
 
 // Can use ByteSet64, which reduces the memory requirements to 25%,
@@ -43,8 +43,12 @@ struct Bank {
   std::vector<uint8_t> rom;
 
   // For ROM addresses. If the address has a symbolic label (from the
-  // assembly file), return it. (This is hard-coded to mario.nes!)
+  // assembly file), return it. (XXX This is hard-coded to mario.nes!
+  // We should instead be passing this stuff through directly after
+  // assembling.)
   std::optional<std::string> GetLabel(uint16_t addr) const;
+  // Always succeeds, perhaps with (0000, "top").
+  std::pair<uint16_t, std::string> GetRecentLabel(uint16_t addr) const;
 };
 
 // Abstract state of the machine at a particular program point. It
@@ -278,7 +282,7 @@ struct Modeling {
 
   // Write the current model as an .asm file with annotations on
   // basic blocks.
-  void WriteAnnotatedAssembly(const SourceMap &source_map,
+  void WriteAnnotatedAssembly(const Assembly::Bank &bank,
                               std::string_view filename) const;
 
   // Color to-string methods for modeling data types.

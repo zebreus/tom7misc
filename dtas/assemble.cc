@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <optional>
@@ -846,4 +847,12 @@ void Assembly::WriteToDisk(const std::string &rom_file) {
   }
 }
 
-
+std::pair<uint16_t, std::string>
+Assembly::Bank::GetMostRecentLabel(uint16_t addr) const {
+  auto it = debug_labels.upper_bound(addr);
+  if (it == debug_labels.begin()) {
+    return std::make_pair(0x0000, "zero");
+  } else {
+    return *std::prev(it);
+  }
+}

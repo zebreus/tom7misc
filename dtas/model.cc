@@ -6,6 +6,7 @@
 #include <memory>
 #include <cstdint>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -79,7 +80,6 @@ static void Model() {
   // SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
 
   modeling.zoning = assembly.banks[0].zoning;
-  const SourceMap &source_map = assembly.banks[0].source_map;
   CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
 
   for (const Constraint &c : assembly.banks[0].constraints) {
@@ -232,8 +232,15 @@ static void Model() {
   }
   */
 
-  auto Write = [&modeling, &source_map](const std::string &file) {
-      modeling.WriteAnnotatedAssembly(source_map, file);
+  const std::unordered_set<std::string> allowed_jumpengine = {
+    // SkipSprite0 > OperModeExecutionTree
+    "top.8175.8215",
+    // SkipSprite0 > OperModeExecutionTree > GameMode
+    "top.8175.8215.aedf",
+  };
+
+  auto Write = [&modeling, &assembly](const std::string &file) {
+      modeling.WriteAnnotatedAssembly(assembly.banks[0], file);
       Print("Wrote " AGREEN("{}") "\n", file);
     };
 
@@ -285,10 +292,19 @@ static void Model() {
     if (modeling.block_tags.contains(JUMP_ENGINE)) {
       // Relevant JumpEngine call graphs:
       //   top.8175.8215   (SkipSprite0 > OperModeExecutionTree)
+      //   top.8175.8215.aedf  (SkipSprite0 > OperModeExecutionTree > GameMode)
 
-      if (modeling.block_tags[JUMP_ENGINE].size() == 1 &&
-          modeling.block_tags[JUMP_ENGINE][0].label == "top.8175.8215") {
-        const auto &tag = modeling.block_tags[JUMP_ENGINE][0];
+      for (const auto &tag : modeling.block_tags[JUMP_ENGINE]) {
+        if (!allowed_jumpengine.contains(tag.label)) {
+          Print("JumpEngine:");
+          for (const BlockTag &tag : modeling.block_tags[JUMP_ENGINE]) {
+            Print(" {}", Modeling::TagString(tag));
+          }
+          Print("\n");
+          Write("violation.asm");
+          LOG(FATAL) << "Unexpected jumpengine call graph.";
+        }
+
         auto idx_it = modeling.block_index.find(tag);
         CHECK(idx_it != modeling.block_index.end());
         const BasicBlock &block = modeling.blocks[idx_it->second];
@@ -308,15 +324,6 @@ static void Model() {
           Write("violation.asm");
           LOG(FATAL) << "Invariant violation.";
         }
-
-      } else {
-        Print("JumpEngine:");
-        for (const BlockTag &tag : modeling.block_tags[JUMP_ENGINE]) {
-          Print(" {}", Modeling::TagString(tag));
-        }
-        Print("\n");
-        Write("violation.asm");
-        LOG(FATAL) << "Unexpected jumpengine call graph.";
       }
     }
 

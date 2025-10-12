@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../fceulib/emulator.h"
@@ -68,6 +69,9 @@ struct MarioUtil {
   // For ROM addresses. If the address has a symbolic label (from the
   // assembly file), return it.
   static std::optional<std::string> GetLabel(uint16_t addr);
+  // Return the most recent label. So that there's always an answer,
+  // we pretend (0000, "zero") begins the program.
+  static std::pair<uint16_t, std::string> GetRecentLabel(uint16_t addr);
 };
 
 inline bool operator== (const MarioUtil::Pos &a, const MarioUtil::Pos &b) {

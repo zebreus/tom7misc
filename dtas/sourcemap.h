@@ -9,12 +9,10 @@
 #define _DTAS_SOURCEMAP_H
 
 #include <string>
-#include <utility>
 #include <vector>
 #include <cstdint>
 #include <unordered_map>
 
-#include "util.h"
 #include "base/logging.h"
 
 struct SourceMap {

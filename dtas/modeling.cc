@@ -22,6 +22,7 @@
 #include "../fceulib/opcodes.h"
 
 #include "ansi.h"
+#include "assemble.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
@@ -45,12 +46,18 @@
 #define Z_FLAG 0x02
 #define C_FLAG 0x01
 
+#define ABLOOD(s) AFGCOLOR(148, 0, 0, s)
+
 static inline uint16_t Word16(uint8_t hi, uint8_t lo) {
   return (((uint16_t)hi) << 8) | lo;
 }
 
 std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
   return MarioUtil::GetLabel(addr);
+}
+
+std::pair<uint16_t, std::string> Bank::GetRecentLabel(uint16_t addr) const {
+  return MarioUtil::GetRecentLabel(addr);
 }
 
 // Manipulates labels for call stacks. This might not work as expected if
@@ -610,14 +617,21 @@ std::pair<ByteSet, ByteSet> Modeling::RotateLeft(
     // Can shift into carry flag.
     if (b & 0x80) f |= C_FLAG;
     uint8_t v = b << 1;
-    // Reuslt can be negative, or zero.
+    // Result can be negative.
     if (v & 0x80) f |= N_FLAG;
-    else if (v == 0 && has_no_carry) f |= Z_FLAG;
 
-    if (has_carry) new_a.Add(v | 0x01);
-    if (has_no_carry) new_a.Add(v);
-
-    zncflags.Add(f);
+    if (has_carry) {
+      new_a.Add(v | 0x01);
+      zncflags.Add(f);
+    }
+    if (has_no_carry) {
+      new_a.Add(v);
+      if (v == 0x00) {
+        zncflags.Add(f | Z_FLAG);
+      } else {
+        zncflags.Add(f);
+      }
+    }
   }
 
   return std::make_pair(new_a, zncflags);
@@ -1019,7 +1033,7 @@ void Modeling::Expand() {
       // control this, we track the call stack using block tags whenever
       // we do a RTS (in essence duplicating the subroutine).
       //
-      // What's pushed:
+      // The three bytes of the opcode are like this:
       //               opcode
       // (current pc)  dst lo
       //               dst hi
@@ -1029,19 +1043,20 @@ void Modeling::Expand() {
       // that it pops.
       const uint16_t stored_pc = pc + 1;
 
+      ByteSet ret_hi = MemByteSet::Singleton(stored_pc >> 8);
+      ByteSet ret_lo = MemByteSet::Singleton(stored_pc & 0xFF);
+
       // XXX Could be WriteStack etc.
       if (state.S.Size() == 1) {
+        const uint8_t sp = state.S.GetSingleton();
         // Then it is definitely stored in the stack here,
         // so we can replace the memory location.
-        uint16_t saddr = 0x0100 + *state.S.begin();
-        // Push low, then push high. Note this actually puts them
-        // in "big-endian" order if you are looking at memory,
-        // since the stack grows downward.
-        WriteMemByteSet(loc, &state, saddr,
-                        MemByteSet::Singleton(stored_pc & 0xFF));
-        WriteMemByteSet(loc, &state, saddr - 1,
-                        MemByteSet::Singleton(stored_pc >> 8));
-        state.S = ByteSet::Singleton(saddr - 2);
+        const uint16_t saddr = 0x0100 + sp;
+        // Push high, then push low (see x6502's PUSH16). Remember
+        // that the stack grows downward.
+        WriteMemByteSet(loc, &state, saddr, ret_hi);
+        WriteMemByteSet(loc, &state, saddr - 1, ret_lo);
+        state.S = ByteSet::Singleton(sp - 2);
       } else {
         // Not great: The stack pointer has an uncertain value.
         // We don't know where the stored_pc goes, and so we also
@@ -1051,15 +1066,17 @@ void Modeling::Expand() {
         // are not always aligned to 16 bits in this set, we
         // could conflate high bytes with low bytes, and then
         // it will look like we can return to nonsense addresses.)
+
+        if (inst_verbose > 0 && !quiet) {
+          Print(ARED("Ugh") "! JSR at " AYELLOW("{:04x}")
+                " with indeterminate stack pointer ({} values).\n",
+                instruction_pc, state.S.Size());
+        }
+
         for (uint8_t sp : state.S) {
           uint16_t saddr = 0x0100 + sp;
-          // Push low, then push high. Note this actually puts them
-          // in "big-endian" order if you are looking at memory,
-          // since the stack grows downward.
-          MergeWriteByteSet(loc, &state, saddr,
-                            MemByteSet::Singleton(stored_pc & 0xFF));
-          MergeWriteByteSet(loc, &state, saddr - 1,
-                            MemByteSet::Singleton(stored_pc >> 8));
+          MergeWriteByteSet(loc, &state, saddr, ret_hi);
+          MergeWriteByteSet(loc, &state, saddr - 1, ret_lo);
         }
         state.S = state.S.Map([](uint8_t v) {
             return v - 2;
@@ -1087,8 +1104,8 @@ void Modeling::Expand() {
             state.RAM(saddr + 2).Size() == 1) {
           // Only one value for the stack at this point.
           // This is the reasonable case.
-          uint16_t hi = state.RAM(saddr + 1).GetSingleton();
-          uint16_t lo = state.RAM(saddr + 2).GetSingleton();
+          uint16_t lo = state.RAM(saddr + 1).GetSingleton();
+          uint16_t hi = state.RAM(saddr + 2).GetSingleton();
           // +1 is just how it works; a quirk of JSR and RTS.
           uint16_t raddr = ((hi << 8) | lo) + 1;
           State ret_state = state;
@@ -1124,77 +1141,72 @@ void Modeling::Expand() {
           int born = 0;
           int num_accepted = 0, num_rejected = 0;
           // Print("\n");
-          for (int hi = 0; hi < 256; hi++) {
-            if (state.RAM(saddr + 1).Contains(hi)) {
-              for (int lo = 0; lo < 256; lo++) {
-                if (state.RAM(saddr + 2).Contains(lo)) {
-                  uint16_t raddr = ((hi << 8) | lo) + 1;
-
-                  // See above.
-                  bool allow = false;
-                  bool unzoned = false;
-                  // Only ROM code addresses.
-                  if (raddr >= 0x8000) {
-                    if (false) {
-                      for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
-                        Print("{:04x}: {:02x}{}\n",
-                               i,
-                               rom.Read(i),
-                               i == raddr ? AYELLOW(" <- raddr") : "");
-                      }
-                    }
-                    // JSR memory layout is
-                    // 0x20 HI LO next
-                    //            ^
-                    //            raddr points here (we already
-                    //            added 1 1)
-                    if (raddr - 3 >= 0x8000 &&
-                        rom.Read(raddr - 3) == 0x20) {
-
-                      if (zoning.addr[raddr - 3] & Zoning::X) {
-                        allow = true;
-                      } else {
-                        // Disallow, but show in a different color
-                        // to distinguish it; this is a bit of a
-                        // stronger assumption.
-                        unzoned = true;
-                      }
-                    }
+          for (uint8_t lo : state.RAM(saddr + 1)) {
+            for (uint8_t hi : state.RAM(saddr + 2)) {
+              uint16_t raddr = ((uint16_t(hi) << 8) | uint16_t(lo)) + 1;
+              // See above.
+              bool allow = false;
+              bool unzoned = false;
+              // Only ROM code addresses.
+              if (raddr >= 0x8000) {
+                if (false) {
+                  for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
+                    Print("{:04x}: {:02x}{}\n",
+                           i,
+                           rom.Read(i),
+                           i == raddr ? AYELLOW(" <- raddr") : "");
                   }
+                }
+                // JSR memory layout is
+                // 0x20 LO HI next
+                //            ^
+                //            raddr points here (we already
+                //            added 1 1)
+                if (raddr - 3 >= 0x8000 &&
+                    rom.Read(raddr - 3) == 0x20) {
 
-                  if (allow) {
-                    num_accepted++;
-                    if (inst_verbose > 0) Print(" {:04x}", raddr);
-                    State ret_state = state;
-                    // We know where the stack points, and what was
-                    // there.
-                    ret_state.S = ByteSet::Singleton(sp + 2);
-                    WriteMemByteSet(loc, &ret_state, saddr + 1,
-                                    MemByteSet::Singleton(hi));
-                    WriteMemByteSet(loc, &ret_state, saddr + 2,
-                                    MemByteSet::Singleton(lo));
-
-                    // TODO: We might want to split by the value of the
-                    // stack pointer here, since it's quite bad if that
-                    // is indefinite (e.g. if we encounter another RTS).
-                    // The contents of the stack is not very important
-                    // though, because we just popped it.
-                    BlockTag ret_tag =
-                      BlockTag(PopLabel(current_label), raddr);
-
-                    if (!HasBlock(ret_tag)) born++;
-                    EnterBlock(ret_tag, std::move(ret_state));
+                  if (zoning.addr[raddr - 3] & Zoning::X) {
+                    allow = true;
                   } else {
-                    num_rejected++;
-                    if (inst_verbose > 0) {
-                      if (num_rejected < 10) {
-                        Print(" {}{:04x}" ANSI_RESET,
-                              unzoned ? ANSI_DARK_RED : ANSI_RED,
-                              raddr);
-                      } else if (num_rejected == 10) {
-                        Print(" " ARED("..."));
-                      }
-                    }
+                    // Disallow, but show in a different color
+                    // to distinguish it; this is a bit of a
+                    // stronger assumption.
+                    unzoned = true;
+                  }
+                }
+              }
+
+              if (allow) {
+                num_accepted++;
+                if (inst_verbose > 0) Print(" {:04x}", raddr);
+                State ret_state = state;
+                // We know where the stack points, and what was
+                // there.
+                ret_state.S = ByteSet::Singleton(sp + 2);
+                WriteMemByteSet(loc, &ret_state, saddr + 1,
+                                MemByteSet::Singleton(lo));
+                WriteMemByteSet(loc, &ret_state, saddr + 2,
+                                MemByteSet::Singleton(hi));
+
+                // TODO: We might want to split by the value of the
+                // stack pointer here, since it's quite bad if that
+                // is indefinite (e.g. if we encounter another RTS).
+                // The contents of the stack is not very important
+                // though, because we just popped it.
+                BlockTag ret_tag =
+                  BlockTag(PopLabel(current_label), raddr);
+
+                if (!HasBlock(ret_tag)) born++;
+                EnterBlock(ret_tag, std::move(ret_state));
+              } else {
+                num_rejected++;
+                if (inst_verbose > 0) {
+                  if (num_rejected < 10) {
+                    Print(" {}{:04x}" ANSI_RESET,
+                          unzoned ? ANSI_DARK_RED : ANSI_RED,
+                          raddr);
+                  } else if (num_rejected == 10) {
+                    Print(" " ARED("..."));
                   }
                 }
               }
@@ -1702,7 +1714,12 @@ void Modeling::Expand() {
       uint16_t indirect_addr = Next16();
 
       ByteSet addr_lo = GetByteSet(state, indirect_addr);
-      ByteSet addr_hi = GetByteSet(state, indirect_addr + 1);
+      // 6502 address decoding has a notorious bug here. If the
+      // load crosses a page boundary, the high byte is not incremented.
+      const uint16_t hi_byte_addr =
+        ((indirect_addr & 0xFF) == 0xFF) ? (indirect_addr & 0xFF00) :
+        (indirect_addr + 1);
+      ByteSet addr_hi = GetByteSet(state, hi_byte_addr);
 
       int accepted = 0, rejected = 0, born = 0;
       for (uint8_t hi : addr_hi) {
@@ -1909,7 +1926,8 @@ void Modeling::Expand() {
 
       state.P.Clear();
       for (uint8_t sp : state.S) {
-        uint16_t saddr = 0x0100 + sp;
+        // Stack pointer is incremented before reading (see POP).
+        uint16_t saddr = 0x0100 + sp + 1;
         state.P.AddSet(RegByteSet(state.RAM(saddr).Map([](uint8_t flags) {
             // Note that this behavior differs in fceulib; see x6502.cc.
             return flags & ~B_FLAG;
@@ -2128,14 +2146,21 @@ void Modeling::Expand() {
 
 // Write the current model as an .asm file with annotations on
 // basic blocks.
-void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
+void Modeling::WriteAnnotatedAssembly(const Assembly::Bank &bank,
                                       std::string_view filename) const {
+  const SourceMap &source_map = bank.source_map;
   std::string out;
   auto invert = source_map.InvertCode();
   for (int line_num = 0; line_num < source_map.lines.size(); line_num++) {
     auto it = invert.find(line_num);
     if (it != invert.end()) {
       const uint16_t addr = it->second;
+
+      auto lit = bank.debug_labels.find(addr);
+      if (lit != bank.debug_labels.end()) {
+        AppendFormat(&out, "; ${:04x} = {}\n", addr, lit->second);
+      }
+
       auto bit = block_tags.find(addr);
       if (bit != block_tags.end()) {
         for (const BlockTag &tag : bit->second) {
@@ -2185,7 +2210,13 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
 }
 
 std::string Modeling::ErrorLocString(const ErrorLoc &loc) const {
-  return std::format("PC: " AORANGE("{:04x}"), loc.pc);
+  // Find what label this is within.
+  const auto &[laddr, llab] = rom.GetRecentLabel(loc.pc);
+  std::string proc =
+    laddr == loc.pc ? std::format(ACYAN("{}"), llab) :
+    std::format(ACYAN("{}") AGREY("+") ABLOOD("{:04x}"), llab,
+                laddr - loc.pc);
+  return std::format("PC: " AORANGE("{:04x}") " ({})", loc.pc, proc);
 }
 
 void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
@@ -2198,7 +2229,7 @@ void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
   const ValueConstraint &vc = it->second;
   const MemByteSet &actual = state.ram[addr];
   if (!ByteSet::Subset(actual, vc.valid_values)) {
-    Print("Memory invariant " AWHITE("{}") " violated."
+    Print("Memory invariant " AWHITE("{}") " violated.\n"
           "At: {}\n"
           "Address " AYELLOW("{:04x}") " should contain only: {}\n"
           "But it contained: {}\n",

@@ -18,7 +18,6 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "util.h"
 
 // MAJOR:MINOR, big endian.

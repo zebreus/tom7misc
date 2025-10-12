@@ -8,12 +8,16 @@
 // It might have bugs outside of the instructions and techniques that
 // mario.asm uses; no guarantees!
 
+#ifndef _DTAS_ASSEMBLE_H
+#define _DTAS_ASSEMBLE_H
+
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -64,6 +68,9 @@ struct Assembly {
     int origin = 0;
 
     std::map<uint16_t, std::string> debug_labels;
+    // Get the label and address from debug_labels, or (0, "zero") if
+    // the address is before any label.
+    std::pair<uint16_t, std::string> GetMostRecentLabel(uint16_t addr) const;
     // TODO: Comments too?
 
     // Debugging information about what addresses represent
@@ -143,5 +150,4 @@ struct Assembly {
   std::unordered_map<std::string, Delayed> delayed_symbols;
 };
 
-
-
+#endif

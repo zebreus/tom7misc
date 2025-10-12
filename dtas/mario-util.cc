@@ -1,15 +1,16 @@
 
 #include "mario-util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <iterator>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
-#include <algorithm>
-#include <cstdint>
-#include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -67,7 +68,17 @@ struct Labels {
     }
   }
 
-  std::unordered_map<uint16_t, std::string> names;
+  std::pair<uint16_t, std::string>
+  GetMostRecentLabel(uint16_t addr) const {
+    auto it = names.upper_bound(addr);
+    if (it == names.begin()) {
+      return std::make_pair(0x0000, "zero");
+    } else {
+      return *std::prev(it);
+    }
+  }
+
+  std::map<uint16_t, std::string> names;
 };
 
 static const MemoryMap &GetRamMap() {
@@ -261,4 +272,8 @@ std::optional<std::string> MarioUtil::GetLabel(uint16_t addr) {
   auto it = l.find(addr);
   if (it == l.end()) return std::nullopt;
   return {it->second};
+}
+
+std::pair<uint16_t, std::string> MarioUtil::GetRecentLabel(uint16_t addr) {
+  return GetRomLabels().GetMostRecentLabel(addr);
 }
