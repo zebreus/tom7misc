@@ -711,8 +711,6 @@ void Modeling::Expand() {
   // elements in the argument ByteSet.
   // mem[addr+offset] = f(mem[addr+offset]).first
   // flags = (flags & ~mask) | f(mem[addr+offset]).second
-  // FIXME: I think that we need a version for zero page, which
-  // wraps only to addresses on zero page.
   auto ReadModifyWrite = [this, &loc](State *state,
                                       uint8_t flag_mask,
                                       uint16_t addr_base,
@@ -744,10 +742,40 @@ void Modeling::Expand() {
       }
     };
 
+  // As above, but with an 8-bit on the zero page.
+  auto ReadModifyWriteZpg = [this, &loc](State *state,
+                                         uint8_t flag_mask,
+                                         uint8_t addr_base,
+                                         const ByteSet &addr_offset,
+                                         const auto &f) {
+      if (addr_offset.Size() == 1) {
+        uint8_t eaddr = addr_base + addr_offset.GetSingleton();
+        ByteSet before = this->GetByteSet(*state, eaddr);
+        const auto &[after, flags] = f(before);
+        // Overwrite, since this is a definite address.
+        this->WriteMemByteSet(loc, state, eaddr, MemByteSet(after));
+        CombineFlags(state, flags, flag_mask);
+      } else {
+        ByteSet merged_flags;
+        for (uint8_t o : addr_offset) {
+          uint8_t eaddr = addr_base + o;
+          ByteSet before = this->GetByteSet(*state, eaddr);
+          // Since we don't know whether we're actually writing
+          // here, the write is added to the possibilities.
+          const auto &[after, flags] = f(before);
+          merged_flags.AddSet(flags);
+          ByteSet together = ByteSet::Union(before, after);
+          this->WriteMemByteSet(loc, state, eaddr, MemByteSet(together));
+        }
+        // Update with the possible flag values.
+        CombineFlags(state, merged_flags, flag_mask);
+      }
+    };
+
   // A <- A + Value + Carry
   // updating neg, zero, carry, overflow flags
-  auto ReadAddWithCarry = [this](State *state, uint16_t addr_base,
-                                 const ByteSet &addr_offset) {
+  auto ReadAddWithCarry16 = [this](State *state, uint16_t addr_base,
+                                   const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
@@ -756,13 +784,36 @@ void Modeling::Expand() {
       return AddWithCarry(state, all_values);
     };
 
+  // As above, but with 8-bit address (zero-page wrapping).
+  auto ReadAddWithCarryZpg = [this](State *state, uint8_t addr_base,
+                                    const ByteSet &addr_offset) {
+      ByteSet all_values;
+      for (uint8_t off : addr_offset) {
+        uint8_t eaddr = addr_base + off;
+        all_values.AddSet(this->GetByteSet(*state, eaddr));
+      }
+      return AddWithCarry(state, all_values);
+    };
+
   // A <- A - *addr - ~Carry
   // updating neg, zero, carry, overflow flags
-  auto ReadSubtractWithCarry = [this](State *state, uint16_t addr_base,
-                                      const ByteSet &addr_offset) {
+  auto ReadSubtractWithCarry16 = [this](State *state, uint16_t addr_base,
+                                        const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
+        all_values.AddSet(this->GetByteSet(*state, eaddr));
+      }
+
+      return SubtractWithCarry(state, all_values);
+    };
+
+  // As previous, but with 8-bit address (zero-page wrapping).
+  auto ReadSubtractWithCarryZpg = [this](State *state, uint8_t addr_base,
+                                         const ByteSet &addr_offset) {
+      ByteSet all_values;
+      for (uint8_t off : addr_offset) {
+        uint8_t eaddr = addr_base + off;
         all_values.AddSet(this->GetByteSet(*state, eaddr));
       }
 
@@ -912,7 +963,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xa5: { // LDA d
-      uint16_t addr = Next8();
+      uint8_t addr = Next8();
       state.A = GetByteSet(state, addr);
       ZN(&state, state.A);
       break;
@@ -1276,8 +1327,8 @@ void Modeling::Expand() {
     }
     case 0x26: { // ROL d
       LOG(FATAL) << "Unimplemented ROL";
-      // XXX this needs to be ReadModifyWrite
-      // uint16_t addr = Next8();
+      // XXX this needs to be ReadModifyWriteZpg
+      // uint8_t addr = Next8();
       // RotateLeft(&state, GetByteSet(state, addr));
       break;
     }
@@ -1312,7 +1363,7 @@ void Modeling::Expand() {
     }
 
     case 0x85: { // STA d
-      uint16_t addr = Next8();
+      uint8_t addr = Next8();
       WriteMemByteSet(loc, &state, addr, MemByteSet(state.A));
       break;
     }
@@ -1364,7 +1415,7 @@ void Modeling::Expand() {
       break;
     }
     case 0x91: { // STA (d),y
-      const uint16_t zpg_addr = Next8();
+      const uint8_t zpg_addr = Next8();
 
       ByteSet addr_lo = GetByteSet(state, zpg_addr);
       ByteSet addr_hi = GetByteSet(state, (uint8_t)(zpg_addr + 1));
@@ -1437,7 +1488,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xa6: { // LDX d
-      uint16_t addr = Next8();
+      uint8_t addr = Next8();
       state.X = GetByteSet(state, addr);
       ZN(&state, state.X);
       break;
@@ -1508,54 +1559,54 @@ void Modeling::Expand() {
     }
     case 0x6d: { // ADC a
       uint16_t addr = Next16();
-      ReadAddWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadAddWithCarry16(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0x65: { // ADC d
       // A <- A + operand + carry
-      uint16_t addr = Next8();
-      ReadAddWithCarry(&state, addr, ByteSet::Singleton(0));
+      uint8_t addr = Next8();
+      ReadAddWithCarryZpg(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0x79: { // ADC a,y
       uint16_t addr = Next16();
-      ReadAddWithCarry(&state, addr, state.Y);
+      ReadAddWithCarry16(&state, addr, state.Y);
       break;
     }
     case 0x7d: { // ADC a,x
       uint16_t addr = Next16();
-      ReadAddWithCarry(&state, addr, state.X);
+      ReadAddWithCarry16(&state, addr, state.X);
       break;
     }
     case 0x75: { // ADC d,x
-      uint16_t addr = Next8();
-      ReadAddWithCarry(&state, addr, state.X);
+      uint8_t addr = Next8();
+      ReadAddWithCarryZpg(&state, addr, state.X);
       break;
     }
 
     case 0xed: { // SBC a
       uint16_t addr = Next16();
-      ReadSubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadSubtractWithCarry16(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0xe5: { // SBC d
-      uint16_t addr = Next8();
-      ReadSubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      uint8_t addr = Next8();
+      ReadSubtractWithCarryZpg(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0xf9: { // SBC a,y
       uint16_t addr = Next16();
-      ReadSubtractWithCarry(&state, addr, state.Y);
+      ReadSubtractWithCarry16(&state, addr, state.Y);
       break;
     }
     case 0xfd: { // SBC a,x
       uint16_t addr = Next16();
-      ReadSubtractWithCarry(&state, addr, state.X);
+      ReadSubtractWithCarry16(&state, addr, state.X);
       break;
     }
     case 0xf5: { // SBC d,x
-      uint16_t addr = Next8();
-      ReadSubtractWithCarry(&state, addr, state.X);
+      uint8_t addr = Next8();
+      ReadSubtractWithCarryZpg(&state, addr, state.X);
       break;
     }
     case 0xe9: { // SBC #i
@@ -1718,21 +1769,21 @@ void Modeling::Expand() {
     }
     case 0xc6: { // DEC d
       uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      Z_FLAG | N_FLAG,
-                      addr,
-                      // no offset
-                      ByteSet::Singleton(0),
-                      SimpleWithZN([](uint8_t v) { return v - 1; }));
+      ReadModifyWriteZpg(&state,
+                         Z_FLAG | N_FLAG,
+                         addr,
+                         // no offset
+                         ByteSet::Singleton(0),
+                         SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xd6: { // DEC d,x
-      uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      Z_FLAG | N_FLAG,
-                      addr,
-                      state.X,
-                      SimpleWithZN([](uint8_t v) { return v - 1; }));
+      uint8_t addr = Next8();
+      ReadModifyWriteZpg(&state,
+                         Z_FLAG | N_FLAG,
+                         addr,
+                         state.X,
+                         SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
 
@@ -1922,13 +1973,13 @@ void Modeling::Expand() {
 
 
     case 0xe6: { // INC d
-      uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      Z_FLAG | N_FLAG,
-                      addr,
-                      // no offset
-                      ByteSet::Singleton(0),
-                      SimpleWithZN([](uint8_t v) { return v + 1; }));
+      uint8_t addr = Next8();
+      ReadModifyWriteZpg(&state,
+                         Z_FLAG | N_FLAG,
+                         addr,
+                         // no offset
+                         ByteSet::Singleton(0),
+                         SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xee: { // INC a
@@ -1942,12 +1993,12 @@ void Modeling::Expand() {
       break;
     }
     case 0xf6: { // INC d,x
-      uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      Z_FLAG | N_FLAG,
-                      addr,
-                      state.X,
-                      SimpleWithZN([](uint8_t v) { return v + 1; }));
+      uint8_t addr = Next8();
+      ReadModifyWriteZpg(&state,
+                         Z_FLAG | N_FLAG,
+                         addr,
+                         state.X,
+                         SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xfe: { // INC a,x
@@ -1973,13 +2024,13 @@ void Modeling::Expand() {
     }
 
     case 0x46: { // LSR d
-      uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      C_FLAG | Z_FLAG | N_FLAG,
-                      addr,
-                      // no offset
-                      ByteSet::Singleton(0),
-                      LogicalShiftRight);
+      uint8_t addr = Next8();
+      ReadModifyWriteZpg(&state,
+                         C_FLAG | Z_FLAG | N_FLAG,
+                         addr,
+                         // no offset
+                         ByteSet::Singleton(0),
+                         LogicalShiftRight);
       break;
     }
     case 0x4e: { // LSR a
@@ -1994,12 +2045,12 @@ void Modeling::Expand() {
     }
 
     case 0x56: { // LSR d,x
-      uint16_t addr = Next8();
-      ReadModifyWrite(&state,
-                      C_FLAG | Z_FLAG | N_FLAG,
-                      addr,
-                      state.X,
-                      LogicalShiftRight);
+      uint8_t addr = Next8();
+      ReadModifyWriteZpg(&state,
+                         C_FLAG | Z_FLAG | N_FLAG,
+                         addr,
+                         state.X,
+                         LogicalShiftRight);
       break;
     }
     case 0x5e: { // LSR a,x
