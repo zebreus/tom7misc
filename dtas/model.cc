@@ -25,7 +25,6 @@
 #include "mario.h"
 #include "modeling.h"
 #include "periodically.h"
-#include "sourcemap.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -116,9 +115,9 @@ static void Model() {
   static constexpr int VERBOSE_ITER_START = 142500;
 
   // Write a diagnostic image to show the state of the model.
-  static constexpr bool WRITE_IMAGES = false;
+  static constexpr bool WRITE_IMAGES = true;
   // It's slow if you do it often!
-  static constexpr int WRITE_EVERY = 50;
+  static constexpr int WRITE_EVERY = 100;
 
   Asynchronously save_async(0); // (12);
 

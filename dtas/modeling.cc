@@ -347,54 +347,10 @@ static void CombineFlags(State *state, const ByteSet &flags, uint8_t mask) {
   state->P = std::move(new_flags);
 }
 
-namespace {
-struct ZNBools {
-  bool has_zero = false;
-  bool has_nonzero = false;
-  bool has_neg = false;
-  bool has_nonneg = false;
-};
-}
-
-static void CombineZNFlags(State *state,
-                           ZNBools bools) {
-  // Possible values for the ZN flags.
-  // We never have both Z and N, so this
-  // is some subset of 00, 10, 01.
-
-  // {10} - When the set contains only zero.
-  // {10, 00} - When the set contains zero and positive numbers.
-  // {10, 01} - When the set contains zero and negative numbers.
-  // {01} - When the set contains only negative numbers.
-  // {00} - When the set contains only positive numbers.
-  // ...
-  std::vector<uint8_t> zflags;
-  if (bools.has_zero) zflags.push_back(Z_FLAG);
-  if (bools.has_nonzero) zflags.push_back(0);
-
-  std::vector<uint8_t> nflags;
-  if (bools.has_neg) nflags.push_back(N_FLAG);
-  if (bools.has_nonneg) nflags.push_back(0);
-
-  CHECK(!zflags.empty() && !nflags.empty());
-
-  ByteSet new_flags;
-  for (uint8_t b : state->P) {
-    b &= ~(Z_FLAG | N_FLAG);
-
-    for (uint8_t z : zflags) {
-      for (uint8_t n : nflags) {
-        new_flags.Add(b | z | n);
-      }
-    }
-  }
-  state->P = std::move(new_flags);
-}
-
 // Compute the values of the Z and N flags in the status
 // register, given the byteset. Preserves the values of
 // the other flags.
-static void ZN(State *state, const ByteSet &s) {
+void Modeling::ZN(State *state, const ByteSet &s) {
   constexpr bool VERBOSE = false;
   CHECK(!s.Empty());
   if (VERBOSE) {
@@ -405,28 +361,18 @@ static void ZN(State *state, const ByteSet &s) {
     Print("}}\n");
   }
 
-  bool contains_z = s.Contains(0);
-  bool contains_pos = false;
-  bool contains_neg = false;
+  ByteSet znflags;
   for (uint8_t v : s) {
-    if (v > 0 && v < 0x80) contains_pos = true;
-    else if (v >= 0x80) contains_neg = true;
+    if (v == 0x00) {
+      znflags.Add(Z_FLAG);
+    } else if (v >= 0x80) {
+      znflags.Add(N_FLAG);
+    } else {
+      znflags.Add(0x00);
+    }
   }
 
-  if (VERBOSE) {
-    Print("Contains z: {:c} p: {:c} n: {:c}\n",
-          contains_z ? 'X' : '_',
-          contains_pos ? 'X' : '_',
-          contains_neg ? 'X' : '_');
-  }
-
-
-  CombineZNFlags(state,
-                 ZNBools{
-                   .has_zero = contains_z,
-                   .has_nonzero = contains_pos || contains_neg,
-                   .has_neg = contains_neg,
-                   .has_nonneg = contains_pos || contains_z});
+  CombineFlags(state, znflags, Z_FLAG | N_FLAG);
 }
 
 static void Compare(State *state, const ByteSet &reg, const ByteSet &op) {
@@ -674,6 +620,8 @@ void Modeling::Expand() {
   if (dirty.Empty())
     return;
 
+  steps++;
+
   // PERF: It should be feasible to do the analysis in parallel.
   // We just need to synchronize the updated states that we
   // deduce.
@@ -686,6 +634,7 @@ void Modeling::Expand() {
 
   ErrorLoc loc{
     .pc = pc,
+    .step = steps,
   };
 
   auto Next8 = [&]() -> uint8_t {
@@ -1751,38 +1700,28 @@ void Modeling::Expand() {
 
     case 0x05: { // ORA d
       uint16_t addr = Next8();
-      ZNBools bools;
       ByteSet new_a;
       for (uint8_t a : state.A) {
         for (uint8_t o : GetByteSet(state, addr)) {
           uint8_t r = a | o;
           new_a.Add(r);
-          if (r == 0) bools.has_zero = true;
-          else bools.has_nonzero = true;
-          if (r & 0x80) bools.has_neg = true;
-          else bools.has_nonneg = true;
         }
       }
       state.A = std::move(new_a);
-      CombineZNFlags(&state, bools);
+      ZN(&state, state.A);
       break;
     }
     case 0x0d: { // ORA a
       uint16_t addr = Next16();
-      ZNBools bools;
       ByteSet new_a;
       for (uint8_t a : state.A) {
         for (uint8_t o : GetByteSet(state, addr)) {
           uint8_t r = a | o;
           new_a.Add(r);
-          if (r == 0) bools.has_zero = true;
-          else bools.has_nonzero = true;
-          if (r & 0x80) bools.has_neg = true;
-          else bools.has_nonneg = true;
         }
       }
       state.A = std::move(new_a);
-      CombineZNFlags(&state, bools);
+      ZN(&state, state.A);
       break;
     }
     case 0x09: { // ORA #i
@@ -2216,7 +2155,8 @@ std::string Modeling::ErrorLocString(const ErrorLoc &loc) const {
     laddr == loc.pc ? std::format(ACYAN("{}"), llab) :
     std::format(ACYAN("{}") AGREY("+") ABLOOD("{:04x}"), llab,
                 laddr - loc.pc);
-  return std::format("PC: " AORANGE("{:04x}") " ({})", loc.pc, proc);
+  return std::format("Step {}. PC: " AORANGE("{:04x}") " ({})",
+                     loc.step, loc.pc, proc);
 }
 
 void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,

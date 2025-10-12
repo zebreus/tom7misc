@@ -193,6 +193,7 @@ struct Modeling {
   // might want to load a zoning file to make assumptions
   // about what addresses are actually code.
   Zoning zoning;
+  int64_t steps = 0;
   int verbose = 0;
   // Disable normal parsimonious messages like when we detect
   // a state space explosion.
@@ -230,11 +231,14 @@ struct Modeling {
       const State &state, const ByteSet &src);
   static std::pair<ByteSet, ByteSet> RotateLeft(
       const State &state, const ByteSet &src);
+  static void ZN(State *state, const ByteSet &s);
+
 
   // Used internally to print the location of an error like a
   // memory invariant violation.
   struct ErrorLoc {
     uint16_t pc = 0;
+    int64_t step = 0;
   };
 
   // Get the byteset for a specific memory location. If it's in ROM,

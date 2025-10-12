@@ -357,6 +357,27 @@ static void TestRotateLeft() {
   }
 }
 
+static void TestZN() {
+  State state;
+  // Start with some other flags set to ensure they are preserved.
+  state.P = ByteSet::Singleton(V_FLAG | C_FLAG);
+  ByteSet s({0x00, 0x80});
+  Modeling::ZN(&state, s);
+
+  // The Z flag can be set (for 0x00) or clear (for 0x80).
+  ASSERT_FLAG(state.P, Z_FLAG, CAN_BE_SET | CAN_BE_CLEAR);
+  // The N flag can be set (for 0x80) or clear (for 0x00).
+  ASSERT_FLAG(state.P, N_FLAG, CAN_BE_SET | CAN_BE_CLEAR);
+  // Other flags should be untouched.
+  ASSERT_FLAG(state.P, V_FLAG, CAN_BE_SET);
+  ASSERT_FLAG(state.P, C_FLAG, CAN_BE_SET);
+
+  CHECK(state.P == ByteSet(
+            {V_FLAG | C_FLAG | N_FLAG,
+             V_FLAG | C_FLAG | Z_FLAG})) << "Expected exactly two "
+    "flag states; we cannot have Z and N at the same time.";
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -364,6 +385,7 @@ int main(int argc, char **argv) {
   TestSBC();
   TestRotateRight();
   TestRotateLeft();
+  TestZN();
 
   Print("OK\n");
   return 0;
