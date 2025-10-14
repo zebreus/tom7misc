@@ -755,6 +755,16 @@ static void TestGCD() {
   CHECK(BigInt::Eq(g, BigInt(4)));
 }
 
+static void TestLCM() {
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(20), BigInt(40)), BigInt(40)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(3), BigInt(7)), BigInt(21)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(-1), BigInt(7)), BigInt(7)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(2), BigInt(-7)), BigInt(14)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(0), BigInt(-7)), BigInt(0)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(333), BigInt(0)), BigInt(0)));
+  CHECK(BigInt::Eq(BigInt::LCM(BigInt(0), BigInt(0)), BigInt(0)));
+}
+
 static void TestLog() {
   BigInt x = BigInt::LeftShift(BigInt(1), 301);
   double y = BigInt::LogBase2(x);
@@ -2151,6 +2161,7 @@ int main(int argc, char **argv) {
   TestMod();
   TestToInt();
   TestGCD();
+  TestLCM();
 
   TestLog();
 

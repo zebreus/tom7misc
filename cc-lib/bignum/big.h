@@ -139,6 +139,9 @@ struct BigInt {
   // Returns a = floor(sqrt(aa)) and aa - a^2.
   inline static std::pair<BigInt, BigInt> SqrtRem(const BigInt &aa);
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
+  // Always non-negative. Returns zero if either argument is zero.
+  static BigInt LCM(const BigInt &a, const BigInt &b);
+
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
@@ -160,7 +163,7 @@ struct BigInt {
                        const BigInt &mod);
 
   // Returns (g, s, t) where g is GCD(a, b) and as + bt = g.
-  // (the "Bezout coefficients".)
+  // ("Bézout coefficients" where |s| <= |b/d| and |y| <= |a/d|).
   inline static std::tuple<BigInt, BigInt, BigInt>
   ExtendedGCD(const BigInt &a, const BigInt &b);
 

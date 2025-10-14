@@ -301,7 +301,7 @@ struct Factor64 {
   /* Modular two-word multiplication, r = a * b mod m, with mi = m^(-1) mod B.
      Both a and b must be in redc form, the result will be in redc form too.
 
-     (Redc is "montgomery form". mi stands for modular inverse.
+     (Redc is "Montgomery form". mi stands for modular inverse.
       See https://en.wikipedia.org/wiki/Montgomery_modular_multiplication )
   */
   static inline uint64_t
@@ -1609,6 +1609,13 @@ BigInt BigInt::PowMod(const BigInt &base_in, const BigInt &exp_in,
   #endif
 }
 
+BigInt BigInt::LCM(const BigInt &a, const BigInt &b) {
+  if (BigInt::IsZero(a) || BigInt::IsZero(b)) return BigInt{0};
+  BigInt g = GCD(a, b);
+  // gcd must divide a, b so we can use DivExact.
+  return BigInt::Times(BigInt::Abs(a), BigInt::DivExact(BigInt::Abs(b), g));
+}
+
 
 BigRat BigRat::FromDecimal(std::string_view num) {
   // Parse numerator and denominator as bigints.
@@ -1673,11 +1680,12 @@ BigRat BigRat::FromDecimal(std::string_view num) {
 //   // larger than inv_epsilon.
 //   static BigRat UpperBound(const BigRat &a, const BigInt &inv_epsilon);
 
-// Note: The fact that this produces an interval of no larger than 1/inv_epsilon
-// in width is implied by the fact that it produces the closest lb and ub to 'a'.
-// This is because we could always find n/inv_epsilon and (n+1)/inv_epsilon that
-// bracket 'a', and those differ by exactly n/inv_epsilon. Since lb and ub are
-// at least as good, they will be at least as close.
+// Note: The fact that this produces an interval of no larger than
+// 1/inv_epsilon in width is implied by the fact that it produces the
+// closest lb and ub to 'a'. This is because we could always find
+// n/inv_epsilon and (n+1)/inv_epsilon that bracket 'a', and those
+// differ by exactly n/inv_epsilon. Since lb and ub are at least as
+// good, they will be at least as close.
 std::pair<BigRat, BigRat>
 BigRat::ElementaryBounds(const BigRat &a, const BigInt &inv_epsilon) {
   const int sign = BigRat::Sign(a);
