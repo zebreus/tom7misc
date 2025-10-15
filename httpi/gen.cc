@@ -6,17 +6,16 @@
 
 #include "ansi.h"
 #include "base/print.h"
-#include "base64.h"
-#include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "crypt/cryptrand.h"
 
 #include "asn1.h"
+#include "pem.h"
 #include "rsa.h"
 
 std::vector<uint8_t> EncodePKCS1(const RSA::Key &key) {
   return ASN1::EncodeSequence(ASN1::Concat(
-        // Version = RSA.
+        // Version 0 = RSA.
         ASN1::EncodeInt(BigInt{0}),
         ASN1::EncodeInt(key.n),
         ASN1::EncodeInt(key.e),
@@ -47,23 +46,31 @@ std::vector<uint8_t> EncodePKCS8(const RSA::Key &key) {
           ASN1::EncodeOctetString(EncodePKCS1(key))));
 }
 
+static RSA::Key GenerateBad(int bits, CryptRand *cr) {
+  BigInt q(31337);
+  const int prime_bits = bits - BigInt::NumBits(q);
+  for (;;) {
+    // Two distinct large prime numbers.
+    BigInt p = RSA::GeneratePrime(prime_bits, cr);
 
-
-std::string ToPEM(const std::vector<uint8_t> &der_bytes,
-                  const std::string &header) {
-  std::string b64 = Base64::EncodeV(der_bytes);
-  std::string pem = "-----BEGIN " + header + "-----\n";
-  for (size_t i = 0; i < b64.length(); i += 64) {
-    pem += b64.substr(i, 64) + "\n";
+    auto ko = RSA::KeyFromPrimes(std::move(p), q);
+    if (ko.has_value()) {
+      if (BigInt::NumBits(ko.value().n) == bits) {
+        return std::move(ko.value());
+      } else {
+        Print("Not enough bits.\n");
+      }
+    }
   }
-  pem += "-----END " + header + "-----\n";
-  return pem;
 }
 
 
 static void Generate() {
   CryptRand cr;
-  RSA::Key key = RSA::GenerateKey(4096, &cr);
+  // RSA::Key key = RSA::GenerateKey(4096, &cr);
+  RSA::Key key = GenerateBad(4096, &cr);
+
+
   Print("--------\n"
         "n: {}\n"
         "e: {}\n"
@@ -85,7 +92,7 @@ static void Generate() {
 
   Print("n bits: {}\n", BigInt::NumBits(key.n));
 
-  std::string pem = ToPEM(EncodePKCS8(key), "PRIVATE KEY");
+  std::string pem = PEM::ToPEM(EncodePKCS8(key), "PRIVATE KEY");
   Print("\n\n{}\n", pem);
 }
 

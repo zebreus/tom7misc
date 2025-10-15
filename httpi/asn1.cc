@@ -2,18 +2,20 @@
 #include "asn1.h"
 
 #include <algorithm>
-#include <utility>
+#include <span>
 #include <vector>
 
 #include "base/logging.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 
-inline static void AppendVec(std::vector<uint8_t> *out, const std::vector<uint8_t> &in) {
+inline static void AppendVec(std::vector<uint8_t> *out,
+                             std::span<const uint8_t> in) {
   out->insert(out->end(), in.begin(), in.end());
 }
 
-inline static void AppendWithLength(std::vector<uint8_t> *out, const std::vector<uint8_t> &in) {
+inline static void AppendWithLength(std::vector<uint8_t> *out,
+                                    std::span<const uint8_t> in) {
   AppendVec(out, ASN1::EncodeLength(in.size()));
   AppendVec(out, in);
 }
@@ -70,7 +72,8 @@ std::vector<uint8_t> ASN1::EncodeInt(const BigInt &n) {
   return result;
 }
 
-std::vector<uint8_t> ASN1::EncodeSequence(const std::vector<uint8_t> &content) {
+std::vector<uint8_t> ASN1::EncodeSequence(
+    std::span<const uint8_t> content) {
   std::vector<uint8_t> result;
   result.reserve(1 + 4 + content.size());
   result.push_back(TAG_SEQUENCE);
@@ -78,11 +81,37 @@ std::vector<uint8_t> ASN1::EncodeSequence(const std::vector<uint8_t> &content) {
   return result;
 }
 
-std::vector<uint8_t> ASN1::EncodeOctetString(const std::vector<uint8_t> &content) {
+std::vector<uint8_t> ASN1::EncodeOctetString(
+    std::span<const uint8_t> content) {
   std::vector<uint8_t> result;
   result.reserve(1 + 4 + content.size());
   result.push_back(TAG_OCTET_STRING);
   AppendWithLength(&result, content);
+  return result;
+}
+
+std::vector<uint8_t> ASN1::EncodeBitString(
+    std::span<const uint8_t> content,
+    int trailing_unused_bits) {
+  CHECK(trailing_unused_bits >= 0 &&
+        trailing_unused_bits < 8) << trailing_unused_bits;
+  CHECK(trailing_unused_bits == 0 || !content.empty());
+
+  std::vector<uint8_t> result;
+  result.reserve(1 + 4 + 1 + content.size());
+  result.push_back(TAG_BIT_STRING);
+  AppendVec(&result, ASN1::EncodeLength(1 + content.size()));
+  result.push_back((uint8_t)trailing_unused_bits);
+
+  for (int i = 0; i < content.size(); i++) {
+    uint8_t b = content[i];
+    if (i == content.size() - 1) {
+      b >>= trailing_unused_bits;
+      b <<= trailing_unused_bits;
+    }
+    result.push_back(b);
+  }
+
   return result;
 }
 
@@ -125,6 +154,17 @@ std::vector<uint8_t> ASN1::EncodeOID(const std::vector<uint64_t> &components) {
   std::vector<uint8_t> result;
   result.reserve(1 + 4 + content.size());
   result.push_back(TAG_OID);
+  AppendWithLength(&result, content);
+  return result;
+}
+
+std::vector<uint8_t> ASN1::EncodeContextSpecific(
+    uint8_t tag_num, std::span<const uint8_t> content) {
+  CHECK(tag_num < 0x1F) << "Context specific tags can only use 5 "
+    "bits with this encoding, and cannot be all 1 bits.";
+  std::vector<uint8_t> result;
+  result.reserve(1 + 4 + content.size());
+  result.push_back(0xA0 | tag_num);
   AppendWithLength(&result, content);
   return result;
 }
