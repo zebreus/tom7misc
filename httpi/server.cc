@@ -27,6 +27,8 @@
 // ?
 #define BACKLOG 24
 
+static constexpr int BUFFER_SIZE = 16384;
+
 enum ContentType : uint8_t {
   INVALID = 0,
   CHANGE_CIPHER_SPEC = 20,
@@ -46,6 +48,24 @@ struct TLSRecord {
   // and 2^14 + 2048 for ciphertext.
   std::vector<uint8_t> fragment;
 };
+
+static bool InternalWrite(int fd, std::vector<uint8_t> *v) {
+  CHECK(fd > 0);
+  if (v->empty()) return true;
+
+  int amount = send(fd, v->data(), v->size(), MSG_DONTWAIT);
+  if (amount == -1) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      // Connection still ok.
+      return true;
+    }
+
+    return false;
+  } else {
+    v->erase(v->begin(), v->begin() + amount);
+    return true;
+  }
+}
 
 struct ClientConnection {
   ClientConnection(int client_fd,
@@ -85,8 +105,6 @@ struct ClientConnection {
         return;
       }
       Shutdown("recv failed");
-      close(client_fd);
-      client_fd = 0;
       return;
     }
 
@@ -94,6 +112,18 @@ struct ClientConnection {
       incoming_partial.push_back(buf[i]);
     }
     ParsePackets();
+  }
+
+  void Write() {
+    if (!InternalWrite(client_fd, &send_buf)) {
+      // XXX: Might still be able to read data?
+      Shutdown("send failed");
+      return;
+    }
+  }
+
+  bool Connected() const {
+    return client_fd != 0;
   }
 
   // If incoming_partial starts with any complete packets, move them
@@ -138,6 +168,10 @@ struct ClientConnection {
     }
   }
 
+  bool Full() const {
+    return send_buf.size() >= BUFFER_SIZE;
+  }
+
   // For outgoing data, we just write the bytes and let the
   // network stack buffer them.
   // For incoming data, we may receive partial records or
@@ -146,11 +180,54 @@ struct ClientConnection {
   // Prefix of a packet.
   std::vector<uint8_t> incoming_partial;
 
+  std::vector<uint8_t> send_buf;
+
   // If zero, then the connection was closed.
   int client_fd = 0;
   struct sockaddr_in client_addr;
   std::string client_ip;
   int client_port = 0;
+};
+
+struct BackendConnection {
+  BackendConnection() {
+    CHECK(false) << "unimplemented";
+  }
+
+  bool Connected() const {
+    return backend_fd != 0;
+  }
+
+  bool Full() const {
+    return send_buf.size() >= BUFFER_SIZE;
+  }
+
+  void Write() {
+    if (!InternalWrite(backend_fd, &send_buf)) {
+      // XXX: Might still be able to read data?
+      Shutdown("send failed");
+      return;
+    }
+  }
+
+
+  void Shutdown(std::string_view msg) {
+    Print(stderr,
+          AGREY("[CHILD {}]") " Shut down {}:{} ({}).\n",
+          getpid(), backend_ip, backend_port, msg);
+    if (backend_fd) {
+      close(backend_fd);
+      backend_fd = 0;
+    }
+  }
+
+ private:
+  int backend_fd = 0;
+
+  std::vector<uint8_t> send_buf;
+
+  std::string backend_ip;
+  int backend_port = 0;
 };
 
 // epoll poll set (file desriptor) for a pair of bidirectional
@@ -193,11 +270,18 @@ struct PollSet {
     InternalCtl(backend_fd, true, false, false);
   }
 
+  // Caller must separately close the file descriptor.
   // Note that close() on a file descriptor removes it from all sets.
   // We might want to explicitly remove here, but then you have to
   // make sure closing happens after.
-  void DisconnectClient() { client_fd = 0; }
-  void DisconnectBackend() { backend_fd = 0; }
+  void DisconnectClient() {
+    client_fd = 0;
+    current_poll_set &= ~CLIENT_MASK;
+  }
+  void DisconnectBackend() {
+    backend_fd = 0;
+    current_poll_set &= ~BACKEND_MASK;
+  }
 
   // Only performs syscalls if the set has changed.
   // If the client or backend is disconnected, its flags are
@@ -215,6 +299,8 @@ struct PollSet {
         InternalCtl(backend_fd, false, s & BACKEND_READ, s & BACKEND_WRITE);
       }
     }
+
+    current_poll_set = s;
   }
 
  private:
@@ -256,6 +342,12 @@ struct Session {
     // Event loop.
     for (;;) {
 
+      uint32_t epoll_set = 0;
+      if (client.Connected())
+        epoll_set |= PollSet::CLIENT_READ;
+
+      if (backend.Connected())
+        epoll_set |= PollSet::BACKEND_READ;
 
       // Make socket set:
       //  - read from client if still active
@@ -264,7 +356,8 @@ struct Session {
       //  - write to backend if out queue not empty
       //  - detect socket closed for both
 
-      // ...
+
+
 
       // Use epoll to determine which events we can
       // perform without blocking.
@@ -285,7 +378,9 @@ struct Session {
   }
 
   ClientConnection client;
+
   // TODO: Proxied http connection ("backend")
+  BackendConnection backend;
 };
 
 struct Server {
