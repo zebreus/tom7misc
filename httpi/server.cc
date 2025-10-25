@@ -17,6 +17,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
+#include "timer.h"
 #include "hexdump.h"
 #include "ansi.h"
 #include "base/logging.h"
@@ -29,6 +30,8 @@
 #define BACKLOG 24
 
 static constexpr int BUFFER_SIZE = 16384;
+static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
+static constexpr double CLIENT_IDLE_TIMEOUT_SEC = 60.1;
 
 enum ContentType : uint8_t {
   INVALID = 0,
@@ -67,13 +70,18 @@ struct Connection {
     send_buf.reserve(BUFFER_SIZE);
   }
 
+  ~Connection() {
+    Shutdown("destructor");
+  }
+
   int FD() const { return fd; }
 
-  // With a already open file descriptor.
+  // With an already open file descriptor (in full-duplex mode).
   void SetFD(int fd_in) {
     CHECK(fd_in > 0);
     CHECK(fd == 0);
     fd = fd_in;
+    state = State::DUPLEX;
 
     // All non-blocking connections.
     int flags = fcntl(fd, F_GETFL, 0);
@@ -82,6 +90,8 @@ struct Connection {
       Shutdown("unable to set non-blocking");
       return;
     }
+
+    idle_timer.Reset();
   }
 
   void SetAddress(struct sockaddr_in peer_addr) {
@@ -103,13 +113,19 @@ struct Connection {
   }
 
   void Write() {
-    if (!InternalWrite(fd, &send_buf)) {
-      // XXX: Might still be able to read data?
+    if (!InternalWrite(&send_buf)) {
+      // If a
       Shutdown("send failed");
       return;
     }
   }
 
+  double IdleTime() const {
+    return idle_timer.Seconds();
+  }
+
+  // Transition to the fully-closed state and clean up.
+  // OK to call this in any valid state.
   void Shutdown(std::string_view msg) {
     Print(stderr,
           AGREY("[CHILD {}]") " Shut down {}:{} ({}).\n",
@@ -118,10 +134,45 @@ struct Connection {
       close(fd);
       fd = 0;
     }
+    state = State::CLOSED;
+    send_buf.clear();
+    // clear address?
   }
 
  protected:
-  bool InternalWrite(int fd, std::vector<uint8_t> *v) {
+  // Returns 0 for ok socket that would block or has gracefully
+  // completed. Negative on a fatal failure.
+  int InternalRead(uint8_t *buf, int buf_size) {
+    CHECK(state == State::DUPLEX || state == State::ONLY_READ);
+
+    int amount = recv(fd, buf, buf_size, MSG_DONTWAIT);
+    if (amount == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // Connection still ok.
+        return 0;
+      }
+      Shutdown("recv failed");
+      return -1;
+    }
+
+    idle_timer.Reset();
+
+    if (amount == 0) {
+      // This is the "EOF" signal.
+      if (state == State::ONLY_READ) {
+        Shutdown("graceful end of stream (r)");
+        return 0;
+      }
+      CHECK(state == State::DUPLEX);
+      state = State::ONLY_WRITE;
+      return 0;
+    }
+
+    return amount;
+  }
+
+  bool InternalWrite(std::vector<uint8_t> *v) {
+    CHECK(state == State::DUPLEX || state == State::ONLY_WRITE);
     CHECK(fd > 0);
     if (v->empty()) return true;
 
@@ -135,15 +186,53 @@ struct Connection {
       return false;
     } else {
       v->erase(v->begin(), v->begin() + amount);
+      idle_timer.Reset();
       return true;
     }
   }
 
-  std::vector<uint8_t> send_buf;
+  // Explicitly signal that we will not send any more data.
+  void InternalEndWrite() {
+    if (state == State::ONLY_WRITE) {
+      // This ends the connection, then.
+      Shutdown("graceful end of stream (w)");
+      return;
+    }
+    CHECK(state == State::DUPLEX);
+
+    if (shutdown(fd, SHUT_WR) == -1) {
+      if (errno == ENOTCONN) {
+        Shutdown("already closed in endwrite");
+        return;
+      }
+
+      perror("shutdown");
+      Shutdown("shutdown failed");
+      return;
+    }
+
+    state = State::ONLY_READ;
+  }
+
+  // This describes the low-level state of the connection (independent
+  // of our in-object buffers). It can be half-open, with one of the
+  // two directions still available.
+  enum class State {
+    // file descriptor must be 0
+    CLOSED,
+    // file descriptor valid
+    DUPLEX,
+    ONLY_READ,
+    ONLY_WRITE,
+  };
+  State state = State::CLOSED;
 
   // If zero, then the connection was closed (or hasn't been
   // set yet).
   int fd = 0;
+  std::vector<uint8_t> send_buf;
+  Timer idle_timer;
+
   struct sockaddr_in peer_addr;
   std::string peer_ip;
   int port = 0;
@@ -166,21 +255,21 @@ struct ClientConnection : public Connection {
   // at least one byte.
   void Read() {
     CHECK(fd > 0);
-    // PERF: Read directly into the incoming_partial buffer.
     uint8_t buf[1024];
-    int amount = recv(fd, &buf, 1024, MSG_DONTWAIT);
-    if (amount == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // Connection still ok.
-        return;
-      }
+    // PERF: Read directly into the incoming_partial buffer.
+    int amount = InternalRead(buf, sizeof (buf));
+    if (amount < 0) {
       Shutdown("recv failed");
       return;
     }
 
+    // Skip trying to parse packets if we got no data.
+    if (amount == 0) return;
+
     for (int i = 0; i < amount; i++) {
       incoming_partial.push_back(buf[i]);
     }
+
     ParsePackets();
   }
 
@@ -253,35 +342,12 @@ struct BackendConnection : public Connection {
     // CHECK(false) << "unimplemented";
   }
 
-  void Write() {
-    if (!InternalWrite(backend_fd, &send_buf)) {
-      // XXX: Might still be able to read data?
-      Shutdown("send failed");
-      return;
-    }
-  }
-
   void Read() {
     // CHECK(false) << "unimplemented";
   }
 
-  void Shutdown(std::string_view msg) {
-    Print(stderr,
-          AGREY("[CHILD {}]") " Shut down {}:{} ({}).\n",
-          getpid(), backend_ip, backend_port, msg);
-    if (backend_fd) {
-      close(backend_fd);
-      backend_fd = 0;
-    }
-  }
-
  private:
-  int backend_fd = 0;
 
-  std::vector<uint8_t> send_buf;
-
-  std::string backend_ip;
-  int backend_port = 0;
 };
 
 // epoll poll set (file desriptor) for a pair of bidirectional
@@ -385,7 +451,9 @@ struct PollSet {
     CHECK(fd != 0);
     struct epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLRDHUP | (r ? EPOLLIN : 0) | (w ? EPOLLOUT : 0);
+    // We don't want proactive "hangup" events; we handle that by
+    // reaching the end of the read stream.
+    event.events = (r ? EPOLLIN : 0) | (w ? EPOLLOUT : 0);
     CHECK(epoll_ctl(epoll_fd, adding ? EPOLL_CTL_ADD : EPOLL_CTL_MOD,
                     fd, &event) != -1);
   }
@@ -440,7 +508,10 @@ struct Session {
       poll_set.UpdatePollSet(epoll_set);
 
       Print("epoll set: {}\n", poll_set.ColorString());
-      int num_events = epoll_wait(poll_set.FD(), events, MAX_EVENTS, -1);
+      int num_events = epoll_wait(poll_set.FD(), events, MAX_EVENTS,
+                                  // Wake every three seconds even
+                                  // without events.
+                                  3000);
       if (num_events == -1) {
         if (errno == EINTR) continue;
         perror("epoll_wait");
@@ -459,11 +530,11 @@ struct Session {
         uint32_t flags = event.events;
 
         if (client.Connected() && event_fd == client.FD()) {
-          if (flags & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) client_err = true;
+          if (flags & (EPOLLHUP | EPOLLERR)) client_err = true;
           if (flags & EPOLLIN) client_read = true;
           if (flags & EPOLLOUT) client_write = true;
         } else if (backend.Connected() && event_fd == backend.FD()) {
-          if (flags & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) backend_err = true;
+          if (flags & (EPOLLHUP | EPOLLERR)) backend_err = true;
           // backend.Read() is not yet implemented.
           // if (flags & EPOLLIN) backend_read = true;
           if (flags & EPOLLOUT) backend_write = true;
@@ -471,7 +542,7 @@ struct Session {
       }
 
       if (client_err) client.Shutdown("epoll event");
-      if (backend_err) client.Shutdown("epoll event");
+      if (backend_err) backend.Shutdown("epoll event");
 
       // Writes first, to free up buffer space for reads.
       if (client.Connected() && client_write) client.Write();
@@ -479,6 +550,13 @@ struct Session {
 
       if (client.Connected() && client_read) client.Read();
       if (backend.Connected() && backend_read) backend.Read();
+
+      if (client.IdleTime() > CLIENT_IDLE_TIMEOUT_SEC) {
+        client.Shutdown("idle timeout");
+      }
+      if (backend.IdleTime() > BACKEND_IDLE_TIMEOUT_SEC) {
+        backend.Shutdown("idle timeout");
+      }
 
       // XXX cleaner way to do this?
       if (!client.Connected()) poll_set.DisconnectClient();
