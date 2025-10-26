@@ -99,7 +99,7 @@ static void SpaceLine() {
   info.producer = "Tom 7";
   info.title = "It is a test";
   info.author = "None";
-  info.author = "No subject";
+  info.subject = "No subject";
   info.date = "6 Apr 2025";
   pdf.SetInfo(info);
 
@@ -155,7 +155,7 @@ static void MakeSimplePDF() {
   info.producer = "Tom 7";
   info.title = "It is a test";
   info.author = "None";
-  info.author = "No subject";
+  info.subject = "No subject";
   info.date = "6 Apr 2025";
   pdf.SetInfo(info);
 
@@ -201,8 +201,13 @@ static void MakeSimplePDF() {
     CHECK(pdf.AddPolygon(Star(500, 150, 50, 100, 9), 2.0f,
                          PDF_RGB(0, 0, 0)));
 
-    CHECK(pdf.AddFilledPolygon(Star(500, 150, 25, 75, 9), 1.0f,
-                               PDF_RGB(0x70, 0x70, 0)));
+    CHECK(pdf.AddFilledPolygon(Star(500, 150, 25, 75, 9),
+                               PDF_RGB(0x00, 0xFF, 0x20),
+                               PDF_RGB(0xAA, 0x70, 0),
+                               2.0f));
+
+    CHECK(pdf.AddFilledPolygon(Star(500, 150, 15, 20, 9),
+                               PDF_RGB(0xAA, 0x00, 0x00)));
 
     pdf.SetFont(PDF::TIMES_ROMAN);
     CHECK(pdf.AddText("Title of PDF", 72,
@@ -396,7 +401,7 @@ static void MakeSimplePDF() {
 
     pdf.AddFilledRectangle(256, y, QR_SIZE, QR_SIZE, 0,
                            PDF_RGB(245, 245, 255),
-                           PDF_TRANSPARENT);
+                           PDF_NO_FILL);
     CHECK(pdf.AddQRCode(256, y, QR_SIZE, "HTTP:\\\\SIGBOVIK.ORG",
                         PDF_RGB(40, 0, 0)));
     y -= QR_SIZE + GAP;
@@ -411,7 +416,7 @@ static void MakeSimplePDF() {
 
     pdf.AddFilledRectangle(rx, ry, qp * 3, qp * 3, 0,
                            PDF_RGB(255, 255, 255),
-                           PDF_TRANSPARENT);
+                           PDF_NO_FILL);
     CHECK(pdf.AddQRCode(rx, ry, qp * 3, "so nosy :("));
 
     y -= QR_SIZE + GAP;
@@ -485,7 +490,7 @@ static void MakeMinimalPDF() {
   info.producer = "Tom 7";
   info.title = "Minimal PDF";
   info.author = "None";
-  info.author = "No subject";
+  info.subject = "No subject";
   info.date = "6 Apr 2025";
   pdf.SetInfo(info);
 
@@ -517,18 +522,41 @@ static void SimpleUnicode() {
   info.producer = "Tom 7";
   info.title = "Simple Unicode PDF";
   info.author = "None";
-  info.author = "No subject";
+  info.subject = "No subject";
   info.date = "6 Apr 2025";
   pdf.SetInfo(info);
 
   std::string pala_name = pdf.AddTTF("pala.ttf",
-                                         PDF::FontEncoding::UNICODE);
+                                     PDF::FontEncoding::UNICODE);
 
+  int yy = PDF::PDF_LETTER_HEIGHT - 72 - 36;
   pdf.SetFont(pala_name);
   CHECK(pdf.AddText("High-way ! \"OK\"?",
                     36,
-                    30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                    30, yy,
                     PDF_RGB(0, 0, 0)));
+  yy -= 36 + 12;
+
+  pdf.SetFont(pala_name);
+  CHECK(pdf.AddText("It’s “simple.” ... OK?",
+                    36,
+                    30, yy,
+                    PDF_RGB(0, 0, 0)));
+  yy -= 36 + 12;
+
+  pdf.SetFont(PDF::BuiltInFont::TIMES_ROMAN);
+  pdf.AddText("It’s “simple.” ... OK?",
+              36,
+              30, yy,
+              PDF_RGB(0, 0, 0));
+  yy -= 36 + 12;
+
+  pdf.SetFont(PDF::BuiltInFont::HELVETICA_OBLIQUE);
+  pdf.AddText("It’s “simple.” ... OK?",
+              36,
+              30, yy,
+              PDF_RGB(0, 0, 0));
+  yy -= 36 + 12;
 
   pdf.Save("simple.pdf");
   printf("Wrote " AGREEN("simple.pdf") "\n");

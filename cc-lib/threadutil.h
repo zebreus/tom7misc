@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <type_traits>
 #include <utility>
@@ -286,8 +287,8 @@ template<class F>
 auto ParallelTabulate(int64_t num,
                       const F &f,
                       int max_concurrency) ->
-  std::vector<decltype(f((int64_t)0))> {
-  using R = decltype(f((int64_t)0));
+  std::vector<decltype(f((int64_t)1))> {
+  using R = decltype(f((int64_t)1));
   static_assert(std::is_default_constructible<R>::value,
                 "result must be default constructible");
   std::vector<R> result;
@@ -308,8 +309,8 @@ template<class T, class F>
 auto ParallelMapi(const std::vector<T> &vec,
                   const F &f,
                   int max_concurrency) ->
-  std::vector<decltype(f((int64_t)0, vec.front()))> {
-  using R = decltype(f((int64_t)0, vec.front()));
+  std::vector<decltype(f((int64_t)1, vec.front()))> {
+  using R = decltype(f((int64_t)1, vec.front()));
   static_assert(std::is_default_constructible<R>::value,
                 "result must be default constructible");
   std::vector<R> result;
@@ -359,8 +360,8 @@ auto UnParallelMap(const std::vector<T> &vec,
 template<class T, class F>
 auto UnParallelMapi(const std::vector<T> &vec,
                     const F &f, int max_concurrency_ignored) ->
-  std::vector<decltype(f((int64_t)0, vec.front()))> {
-  using R = decltype(f((int64_t)0, vec.front()));
+  std::vector<decltype(f((int64_t)1, vec.front()))> {
+  using R = decltype(f((int64_t)1, vec.front()));
   static_assert(std::is_default_constructible<R>::value,
                 "result must be default constructible");
   std::vector<R> result;
@@ -372,6 +373,48 @@ auto UnParallelMapi(const std::vector<T> &vec,
 
   return result;
 }
+
+// f should take a thread_idx and return std::optional<R>. Runs f in multiple
+// threads until one of them returns a value. The result is that value. This
+// requires that the function always finishes in a finite amount of time, since
+// the utility waits until they all have finished.
+template<class F>
+auto ParallelAttempt(const F &f, int max_concurrency) ->
+  std::remove_reference<decltype(f(1).value())>::type {
+  using R = std::remove_reference<decltype(f(1).value())>::type;
+  std::mutex mu;
+  bool should_die = false;
+  std::vector<std::thread> threads;
+  std::optional<R> ret;
+  for (int i = 0; i < max_concurrency; i++) {
+    threads.emplace_back([&, i]() {
+        for (;;) {
+          {
+            std::unique_lock<std::mutex> ml(mu);
+            if (should_die) return;
+          }
+
+          auto ro = f(i);
+          if (ro.has_value()) {
+            std::unique_lock<std::mutex> ml(mu);
+            should_die = true;
+            if (!ret.has_value()) {
+              ret.emplace(std::move(ro.value()));
+            }
+            return;
+          }
+        }
+      });
+  }
+
+  for (std::thread &t : threads) {
+    t.join();
+  }
+
+  assert(ret.has_value() && "were there no threads?");
+  return ret.value();
+};
+
 
 // When going out of scope, wait for the given thread.
 struct ThreadJoiner {

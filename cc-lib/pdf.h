@@ -5,15 +5,15 @@
 #ifndef _CC_LIB_PDF_H
 #define _CC_LIB_PDF_H
 
-#include <stdint.h>
-#include <stdio.h>
+#include <cstdint>
+#include <cstdio>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 #include <unordered_map>
 #include <utility>
-#include <cstdint>
+#include <vector>
 
 #include "image.h"
 #include "hashing.h"
@@ -300,10 +300,13 @@ private:
   #define PDF_WHITE PDF_RGB(0xff, 0xff, 0xff)
 
   /*!
-   * Utility macro to provide a transparent color
-   * This is used in some places for 'fill' colors, where no fill is required
+   * Utility macro to specify "no fill"
+   * This is used in some places for 'fill' colors, where no fill is required.
+   * TODO: Note that this uses an "alpha" channel of FF, which is weird.
+   * We should just use RGBA and can special case alpha=0 for fills if we
+   * want.
    */
-  #define PDF_TRANSPARENT (uint32_t)(0xffu << 24)
+  #define PDF_NO_FILL (uint32_t)(0xffu << 24)
 
   using Options = internal::PDFOptions;
 
@@ -316,8 +319,7 @@ private:
   // since I haven't tested changing the page size mid-stream.
   void SetDimensions(float width, float height);
 
-  // Set the PDF header info. Fields are truncated to 63 characters
-  // in order to ensure nul-termination.
+  // Set the PDF header info.
   void SetInfo(const Info &info);
   const Info &GetInfo() const;
 
@@ -329,7 +331,7 @@ private:
   void ClearErr();
 
   // Set font to a font previously embedded with AddTTF.
-  bool SetFont(const std::string &font_name);
+  bool SetFont(std::string_view font_name);
 
   // Set font to one of the 14 built-ins.
   void SetFont(BuiltInFont font);
@@ -355,7 +357,7 @@ private:
   // Pass the name of the file to store the PDF into (NULL for stdout)
   // Returns < 0 on failure, >= 0 on success
   // int pdf_save(struct pdf_doc *pdf, const char *filename);
-  bool Save(const std::string &filename);
+  bool Save(std::string_view filename);
 
   // Add a line to the document. If page is null, then use the most
   // recently added page.
@@ -416,11 +418,12 @@ private:
       Page *page = nullptr);
 
   // Returns false if the polygon is invalid (empty).
-  // XXX I don't understand why this takes a single color
-  // but has border_width?
   bool AddFilledPolygon(
     const std::vector<std::pair<float, float>> &points,
-    float border_width, uint32_t color,
+    uint32_t fill_color,
+    uint32_t stroke_color = 0,
+    // No stroke with width <=0.
+    float stroke_width = 0.0f,
     Page *page = nullptr);
 
   // Barcodes.
@@ -525,12 +528,13 @@ private:
 
   // Returns nullptr if the font has not yet been loaded
   // with AddTTF.
-  const Font *GetFontByName(const std::string &name) const;
+  const Font *GetFontByName(std::string_view name) const;
   // For built-in fonts, we add it if it hasn't been added already.
   // Always succeeds.
   const Font *GetBuiltInFont(BuiltInFont font);
 
   // Returns true upon success.
+  // Note that this does not account for kerning.
   bool GetTextWidth(const std::string &text,
                     float size,
                     // Out parameter.
@@ -745,6 +749,7 @@ private:
   int SaveFile(FILE *fp);
   int SaveObject(FILE *fp, int index);
 
+  // Note that this does not account for kerning.
   bool PointWidthOfText(const char *text,
                         ptrdiff_t text_len, float size,
                         const Font *font,
@@ -807,7 +812,8 @@ private:
   // Indexed by font name. This is where the Font wrapper objects
   // are owned, but they contain pointers to objects internally
   // from the objects vector.
-  std::unordered_map<std::string, Font *> embedded_fonts;
+  std::unordered_map<std::string, Font *,
+                     Hashing<std::string>, std::equal_to<>> embedded_fonts;
   std::unordered_map<BuiltInFont, Font *> builtin_fonts;
 
   Object *last_objects[OBJ_count] = {};

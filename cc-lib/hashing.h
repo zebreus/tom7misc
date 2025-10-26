@@ -10,6 +10,9 @@
 //  using HashMap =
 //     std::unordered_map<std::pair<int, std::string>, int,
 //                        Hashing<std::pair<int, std::string>>;
+//
+// and if you want heterogeneous lookup, pass std::equal_to<> as
+// the last template parameter.
 
 #ifndef _CC_LIB_HASHING_H
 #define _CC_LIB_HASHING_H
@@ -18,6 +21,9 @@
 #include <bit>
 #include <cstddef>
 #include <functional>
+#include <span>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -30,6 +36,7 @@ namespace hashing_internal {
 
 template<size_t IDX, typename... Ts>
 struct HashTupleRec {
+  using is_transparent = void;
   using tuple_type = std::tuple<Ts...>;
   std::size_t operator()(size_t h, const tuple_type &t) const {
     if constexpr (IDX == sizeof... (Ts)) {
@@ -56,6 +63,18 @@ struct Hashing {
   }
 };
 
+template<>
+struct Hashing<std::string> {
+  // Enable heterogeneous lookups.
+  // Try:
+  //  unordered_set<std::string, T, Hashing<std::string>, std::equal_to<>>
+  // Then you can look up by string or string_view.
+  using is_transparent = void;
+  std::size_t operator()(std::string_view s) const {
+    return std::hash<std::string_view>()(s);
+  }
+};
+
 template<class T, class U>
 struct Hashing<std::pair<T, U>> {
   std::size_t operator()(const std::pair<T, U> &p) const {
@@ -69,9 +88,12 @@ struct Hashing<std::pair<T, U>> {
 
 // PERF: Probably should at least specialize for numeric types like
 // uint8_t.
+//
+// TODO: std::equal_to<> might not work for vector/span.
 template<class T>
 struct Hashing<std::vector<T>> {
-  std::size_t operator()(const std::vector<T> &v) const {
+  using is_transparent = void;
+  std::size_t operator()(std::span<const T> v) const {
     size_t h = 0xCAFED00D + v.size();
     for (const T &t : v) {
       h += Hashing<T>()(t);

@@ -186,6 +186,11 @@ inline BigInt &operator*=(BigInt &a, const BigInt &b) {
   return a;
 }
 
+inline BigInt &operator*=(BigInt &a, int64_t b) {
+  a = a * BigInt{b};
+  return a;
+}
+
 inline BigInt &operator/=(BigInt &a, const BigInt &b) {
   a = a / b;
   return a;

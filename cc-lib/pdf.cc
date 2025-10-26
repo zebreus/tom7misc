@@ -35,22 +35,21 @@ Done.
 
 #include <algorithm>
 #include <array>
+#include <cinttypes>
 #include <cmath>
+#include <cstdbool>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <ctype.h>
 #include <errno.h>
 #include <format>
 #include <initializer_list>
-#include <inttypes.h>
-#include <math.h>
 #include <numbers>
 #include <optional>
 #include <stdarg.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
@@ -382,7 +381,7 @@ const PDF::Object *PDF::FindLastObject(int type) const {
 }
 
 // Or returns nullptr if the font has not been loaded.
-const PDF::Font *PDF::GetFontByName(const std::string &font_name) const {
+const PDF::Font *PDF::GetFontByName(std::string_view font_name) const {
   auto it = embedded_fonts.find(font_name);
   if (it != embedded_fonts.end())
     return it->second;
@@ -426,7 +425,7 @@ const PDF::Font *PDF::GetBuiltInFont(BuiltInFont f) {
   return font;
 }
 
-bool PDF::SetFont(const std::string &font_name) {
+bool PDF::SetFont(std::string_view font_name) {
   // See if we've used this font before.
   if (const Font *font = GetFontByName(font_name)) {
     current_font = font;
@@ -1371,8 +1370,8 @@ int PDF::SaveFile(FILE *fp) {
   return 0;
 }
 
-bool PDF::Save(const std::string &filename) {
-  FILE *fp = fopen(filename.c_str(), "wb");
+bool PDF::Save(std::string_view filename) {
+  FILE *fp = fopen(std::string(filename).c_str(), "wb");
 
   if (fp == nullptr) {
     SetErr(-errno,
@@ -1547,7 +1546,7 @@ float PDF::pdf_barcode_128a_ch(float x, float y, float width, float height,
 
     if (!(i % 2))
       AddFilledRectangle(x, y, line_width * mask,
-                         height, 0, color, PDF_TRANSPARENT, page);
+                         height, 0, color, PDF_NO_FILL, page);
     x += line_width * mask;
   }
 
@@ -1647,13 +1646,13 @@ bool PDF::pdf_barcode_39_ch(float x, float y, float char_width, float height,
     case 0:
       // wide
       AddFilledRectangle(x, y, ww - 1, height, 0,
-                         color, PDF_TRANSPARENT, page);
+                         color, PDF_NO_FILL, page);
       x += ww;
       break;
     case 1:
       // narrow
       AddFilledRectangle(x, y, nw - 1, height, 0,
-                         color, PDF_TRANSPARENT, page);
+                         color, PDF_NO_FILL, page);
       x += nw;
       break;
     case 2:
@@ -1838,7 +1837,7 @@ bool PDF::pdf_barcode_eanupc_ch(float x, float y, float x_width,
     width *= x_width;
     if (bar) {
       AddFilledRectangle(x, y, width, height, 0,
-                         color, PDF_TRANSPARENT, page);
+                         color, PDF_NO_FILL, page);
     }
     x += width;
   }
@@ -1861,7 +1860,7 @@ void PDF::pdf_barcode_eanupc_aux(float x, float y,
       if ((i & 0x1) == 0) {
         AddFilledRectangle(x, y, x_width * value,
                            height, 0, color,
-                           PDF_TRANSPARENT, page);
+                           PDF_NO_FILL, page);
       }
       x += x_width * value;
     }
@@ -2294,7 +2293,7 @@ bool PDF::AddQRCode(float x, float y, float size,
                            size + y - (qy + 1) * pixel,
                            pixel, pixel,
                            0, color,
-                           PDF_TRANSPARENT, page);
+                           PDF_NO_FILL, page);
       }
     }
   }
@@ -2617,26 +2616,41 @@ bool PDF::AddPolygon(
 
 bool PDF::AddFilledPolygon(
     const std::vector<std::pair<float, float>> &points,
-    float border_width, uint32_t color,
+    uint32_t fill_color,
+    uint32_t stroke_color,
+    float stroke_width,
     Page *page) {
   if (points.empty()) return false;
 
   std::string str;
 
   // TODO: Use Float() in here.
-  AppendFormat(&str, "{} {} {} RG ",
-               PDF_RGB_R_FLOAT(color),
-               PDF_RGB_G_FLOAT(color),
-               PDF_RGB_B_FLOAT(color));
+  if (stroke_width > 0.0f) {
+    AppendFormat(&str, "{} {} {} RG ",
+                 PDF_RGB_R_FLOAT(stroke_color),
+                 PDF_RGB_G_FLOAT(stroke_color),
+                 PDF_RGB_B_FLOAT(stroke_color));
+  }
   AppendFormat(&str, "{} {} {} rg ",
-               PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color),
-               PDF_RGB_B_FLOAT(color));
-  AppendFormat(&str, "{} w ", border_width);
+               PDF_RGB_R_FLOAT(fill_color),
+               PDF_RGB_G_FLOAT(fill_color),
+               PDF_RGB_B_FLOAT(fill_color));
+  if (stroke_width > 0.0f) {
+    AppendFormat(&str, "{} w ", stroke_width);
+  }
   AppendFormat(&str, "{} {} m ", points[0].first, points[0].second);
   for (int i = 1; i < (int)points.size(); i++) {
     AppendFormat(&str, "{} {} l ", points[i].first, points[i].second);
   }
-  AppendFormat(&str, "h f");
+  // Close path.
+  AppendFormat(&str, "h ");
+  if (stroke_width > 0.0f) {
+    // Both fill and stroke.
+    AppendFormat(&str, "B");
+  } else {
+    // Just fill.
+    AppendFormat(&str, "f");
+  }
 
   AppendDrawCommand(page, std::move(str));
   return true;
@@ -2691,7 +2705,37 @@ static std::optional<std::vector<uint16_t>> TextToCIDs(
   return {ret};
 }
 
+static std::string EncodeWinAnsi(std::string_view text) {
+  std::string ret = "(";
+  ret.reserve(text.size() + 2);
+  std::string_view sv = text;
+  while (!sv.empty()) {
+    std::optional<uint32_t> cpo = UTF8NextCodepoint(&sv);
+    if (!cpo.has_value())
+      break;
 
+    if (std::optional<int> co = MapCodepointWinAnsi(cpo.value())) {
+      switch (co.value()) {
+      case '(':
+      case ')':
+      case '\\':
+        ret.push_back('\\');
+        ret.push_back(co.value());
+        break;
+      default:
+        // Other characters can be embedded directly.
+        // Note: PDF strings should not contain control characters,
+        // but WinAnsiEncoding maps to printable characters.
+        ret.push_back(co.value());
+        break;
+      }
+    } else {
+      // Otherwise it is dropped.
+    }
+  }
+  ret.push_back(')');
+  return ret;
+}
 
 // Encode the text using the given encoding, including the surrounding
 // () or <> characters as appropriate.
@@ -2700,7 +2744,7 @@ static std::optional<std::string> EncodePDFText(
     FontEncoding encoding,
     const std::unordered_map<uint32_t, uint16_t> &cmap) {
   if (encoding == FontEncoding::WIN_ANSI) {
-    return std::format("{}", PDFDocEncodeString(text));
+    return std::format("{}", EncodeWinAnsi(text));
 
   } else {
     std::string ret = "<";
