@@ -25,12 +25,15 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "tls.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
 // Incomplete. Inefficient.
 
 // ?
 #define BACKLOG 24
+
+#define SERIALIZE_CONNECTIONS true
 
 static constexpr int BUFFER_SIZE = 16384;
 static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
@@ -470,73 +473,6 @@ struct PollSet {
   int client_fd = 0, backend_fd = 0;
 };
 
-struct PacketParser {
-  PacketParser(std::span<const uint8_t> payload) :
-    original(payload), rest(payload) {
-  }
-
-  bool empty() const { return rest.empty(); }
-  size_t size() const { return rest.size(); }
-
-  // These consume from the head of the packet.
-  uint8_t Byte() {
-    CHECK(!rest.empty());
-    const uint8_t b = rest[0];
-    rest = rest.last(rest.size() - 1);
-    return b;
-  }
-
-  uint16_t W16() {
-    CHECK(rest.size() >= 2);
-    const uint16_t b1 = rest[0];
-    const uint16_t b2 = rest[1];
-    rest = rest.last(rest.size() - 2);
-    return (b1 << 8) | b2;
-  }
-
-  uint32_t W24() {
-    CHECK(rest.size() >= 3);
-    const uint32_t b1 = rest[0];
-    const uint32_t b2 = rest[1];
-    const uint32_t b3 = rest[2];
-    rest = rest.last(rest.size() - 3);
-    return (b2 << 16) | (b3 << 8) | b1;
-  }
-
-  uint32_t W32() {
-    CHECK(rest.size() >= 4);
-    const uint32_t b1 = rest[0];
-    const uint32_t b2 = rest[1];
-    const uint32_t b3 = rest[2];
-    const uint32_t b4 = rest[3];
-    rest = rest.last(rest.size() - 4);
-    return (b4 << 24) | (b2 << 16) | (b3 << 8) | b1;
-  }
-
-  void BytesTo(int num, uint8_t *out) {
-    CHECK(rest.size() >= num);
-    memcpy(out, rest.data(), num);
-    rest = rest.last(rest.size() - num);
-  }
-
-  // From the remaining payload.
-  uint8_t operator [](size_t idx) const {
-    CHECK(idx < rest.size());
-    return rest[idx];
-  }
-
-  PacketParser Subpacket(int len) {
-    CHECK(len < rest.size());
-    PacketParser p(rest.first(len));
-    rest = rest.last(rest.size() - len);
-    return p;
-  }
-
- private:
-  std::span<const uint8_t> original;
-  std::span<const uint8_t> rest;
-};
-
 struct Session {
   Session(int client_fd,
           struct sockaddr_in client_addr) :
@@ -665,8 +601,9 @@ struct Session {
 
       if (state == State::START) {
         // Parse ClientHello.
-        if (std::optional<ClientHello> och = ParseClientHello(packet)) {
-          PrintClientHello(och.value());
+        if (std::optional<TLS::ClientHello> och =
+            TLS::ParseClientHello(packet)) {
+          TLS::PrintClientHello(och.value());
         } else {
           LOG(FATAL) << "Invalid hello";
         }
@@ -677,158 +614,6 @@ struct Session {
 
     // XXX Process server packets too.
 
-  }
-
-  struct ServerNameIndication {
-    std::vector<std::string> hosts;
-  };
-
-  struct ClientHello {
-    uint8_t version_major = 0, version_minor = 0;
-    std::array<uint8_t, 32> client_random = {};
-    std::vector<uint8_t> session_id;
-    std::vector<uint16_t> cipher_suites;
-    std::vector<uint8_t> compression_methods;
-
-    using Extension = std::variant<ServerNameIndication, std::vector<uint8_t>>;
-    std::vector<Extension> extensions;
-  };
-
-  static void PrintClientHello(const ClientHello &hello) {
-    Print(AWHITE("ClientHello") " {}.{}\n",
-          hello.version_major, hello.version_minor);
-    Print("client_random:");
-    Print("{}\n", HexDump::Color(hello.client_random));
-    Print("session_id:");
-    Print("{}\n", HexDump::Color(hello.session_id));
-    Print("Cipher suites:\n");
-    for (uint16_t c : hello.cipher_suites) {
-      Print("  {:04x}\n", c);
-    }
-    Print("Compression methods:\n");
-    for (uint8_t c : hello.compression_methods) {
-      Print("  {:02x}\n", c);
-    }
-    Print("Extensions:\n");
-    for (const ClientHello::Extension &ext : hello.extensions) {
-      if (const ServerNameIndication *sni = std::get_if<ServerNameIndication>(&ext)) {
-        Print("ServerNameIndication:");
-        for (const std::string &h : sni->hosts) {
-          Print(" {}", h);
-        }
-        Print("\n");
-      } else if (const std::vector<uint8_t> *unk =
-                 std::get_if<std::vector<uint8_t>>(&ext)) {
-        Print("Unknown extension:\n"
-              "{}\n", HexDump::Color(*unk));
-      }
-    }
-  }
-
-  static std::optional<ServerNameIndication>
-  ParseServerNameIndication(PacketParser packet) {
-    if (packet.size() < 2) return std::nullopt;
-    uint16_t list_len = packet.W16();
-    if ((list_len & 1) || list_len < 2) return std::nullopt;
-    ServerNameIndication sni;
-    sni.hosts.reserve(list_len >> 1);
-    for (int i = 0; i < (list_len >> 1); i++) {
-      if (packet.empty()) return std::nullopt;
-      uint8_t name_type = packet.Byte();
-      if (name_type == 0) {
-        uint8_t host_len = packet.Byte();
-        if (host_len == 0) return std::nullopt;
-        if (packet.size() < host_len) return std::nullopt;
-        std::string host;
-        host.resize(host_len);
-        packet.BytesTo(host_len, (uint8_t*)host.data());
-        sni.hosts.push_back(std::move(host));
-      } else {
-        // We don't know how to parse the rest of the packet, even.
-        // But we can keep the hosts we've seen so far.
-        return sni;
-      }
-    }
-    return sni;
-  }
-
-  static std::optional<ClientHello> ParseClientHello(PacketParser packet) {
-    ClientHello hello;
-
-    if (packet.size() < 4) return std::nullopt;
-    // ClientHello type.
-    if (packet.Byte() != 1) return std::nullopt;
-
-    const uint32_t handshake_len = packet.W24();
-    if (handshake_len != packet.size()) return std::nullopt;
-
-    if (packet.size() < 34) return std::nullopt;
-    hello.version_major = packet.Byte();
-    hello.version_minor = packet.Byte();
-
-    packet.BytesTo(32, hello.client_random.data());
-
-    if (packet.empty()) return std::nullopt;
-    uint8_t session_id_len = packet.Byte();
-    if (session_id_len > 32) return std::nullopt;
-    if (packet.size() < session_id_len) return std::nullopt;
-    hello.session_id.resize(session_id_len);
-    packet.BytesTo(session_id_len, hello.session_id.data());
-
-    uint16_t cipher_suites_len = packet.W16();
-    if (cipher_suites_len & 1) return std::nullopt;
-    if (cipher_suites_len == 0) return std::nullopt;
-    hello.cipher_suites.resize(cipher_suites_len >> 1);
-    for (int i = 0; i < (cipher_suites_len >> 1); i++) {
-      if (packet.size() < 1) return std::nullopt;
-      hello.cipher_suites.push_back(packet.W16());
-    }
-
-    uint8_t compression_len = packet.Byte();
-    if (compression_len == 0) return std::nullopt;
-    if (packet.size() < compression_len) return std::nullopt;
-    hello.compression_methods.resize(compression_len);
-    packet.BytesTo(compression_len, hello.compression_methods.data());
-
-
-    if (packet.empty()) {
-      // Valid to have no extensions.
-      return {std::move(hello)};
-    }
-
-    if (packet.size() < 2) return std::nullopt;
-    uint16_t extensions_len = packet.W16();
-    if (packet.size() < extensions_len) return std::nullopt;
-
-    // Now repeatedly get extensions.
-
-    while (!packet.empty()) {
-      if (packet.size() < 4) return std::nullopt;
-      uint16_t type = packet.W16();
-      uint16_t len = packet.W16();
-
-      if (packet.size() < len) return std::nullopt;
-      switch (type) {
-      case 0: {
-        PacketParser ext_packet = packet.Subpacket(len);
-        if (std::optional<ServerNameIndication> osni =
-            ParseServerNameIndication(ext_packet)) {
-          hello.extensions.emplace_back(osni.value());
-        }
-        break;
-      }
-      default: {
-        std::vector<uint8_t> unk;
-        unk.resize(len);
-        packet.BytesTo(len, unk.data());
-        hello.extensions.emplace_back(std::move(unk));
-        break;
-      }
-      }
-    }
-
-    CHECK(packet.empty());
-    return {hello};
   }
 
   ~Session() {
@@ -934,6 +719,11 @@ struct Server {
         Print(stderr,
               AGREY("[PARENT {}]") " Forked child PID {}.\n",
               server_pid, pid);
+        if constexpr (SERIALIZE_CONNECTIONS) {
+          (void)waitpid(pid, nullptr, 0);
+          Print(stderr, AGREY("[PARENT {}]") " Child PID {} completed.\n",
+                server_pid, pid);
+        }
       }
     }
   }
