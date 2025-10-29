@@ -10,14 +10,15 @@
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "timer.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "timer.h"
 
-using uint64 = uint64_t;
 using int64 = int64_t;
-using uint8 = uint8_t;
 using uint16 = uint16_t;
+using uint64 = uint64_t;
+using uint8 = uint8_t;
 
 #if defined(__MINGW64__)
 #include <windows.h>
@@ -29,22 +30,22 @@ static void ListProviders() {
   DWORD dwIndex = 0;
   DWORD dwProvType = 0;
   DWORD dwNameLen = 0;
-  char szName[1024];
+  char name[1024];
 
-  printf("I want to load PROV_RSA_FULL which is %d\n",
+  Print("I want to load PROV_RSA_FULL which is {}\n",
          PROV_RSA_FULL);
 
-  std::cout << "Available Providers:\n";
-  std::cout << "--------------------\n";
+  Print("Available Providers:\n");
+  Print("--------------------\n");
 
   while (CryptEnumProviders(dwIndex, NULL, 0, &dwProvType, NULL, &dwNameLen)) {
     // Allocate a buffer for the provider name
-    szName[0] = '\0';
+    name[0] = '\0';
     if (CryptEnumProviders(dwIndex++, NULL, 0,
-                           &dwProvType, szName, &dwNameLen)) {
-      std::cout << "Provider Type: " << dwProvType << std::endl;
-      std::cout << "Provider Name: " << szName << std::endl;
-      std::cout << std::endl;
+                           &dwProvType, name, &dwNameLen)) {
+      Print("Provider Type: {}\n", dwProvType);
+      Print("Provider Name: {}\n", name);
+      Print("\n");
     }
   }
 }
@@ -60,7 +61,7 @@ static void ListProviders() {
 static void TestRand() {
   CryptRand cr;
   uint64 w = cr.Word64();
-  printf("This should be a different value each time: %" PRIx64 "\n", w);
+  Print("This should be a different value each time: {:x}\n", w);
 
   uint64 w2 = cr.Word64();
   CHECK(w != w2) << "Got same 64-bit value twice in a row, "
@@ -89,7 +90,7 @@ static void TestRand() {
   static constexpr int TRIALS = 1000000;
   Timer run_timer;
   for (int i = 0; i < TRIALS; i++) {
-    if (i % 10000 == 0) printf("%d/%d (%.2f%%)...\n",
+    if (i % 10000 == 0) Print("{}/{} ({:.2f}%)...\n",
                                i, TRIALS, (i * 100.0) / TRIALS);
     uint64 ww = cr.Word64();
     uint8 a = ww & 0xFF; ww >>= 8;
@@ -113,10 +114,10 @@ static void TestRand() {
   }
   double seconds = run_timer.Seconds();
 
-  printf("0 bits: %" PRId64 " (%.4f%%)\n"
-         "1 bits: %" PRId64 " (%.4f%%)\n",
-         bits[false], (bits[false] * 100.0) / (TRIALS * 64.0),
-         bits[true], (bits[true] * 100.0) / (TRIALS * 64.0));
+  Print("0 bits: {} ({:.4f}%)\n"
+        "1 bits: {} ({:.4f}%)\n",
+        bits[false], (bits[false] * 100.0) / (TRIALS * 64.0),
+        bits[true], (bits[true] * 100.0) / (TRIALS * 64.0));
 
   std::vector<std::pair<uint8, int64>> all;
   for (auto [byte, count] : bytes) all.emplace_back(byte, count);
@@ -132,17 +133,17 @@ static void TestRand() {
             });
 
   auto PrintOne = [&all](int idx) {
-    printf("%02x x %" PRId64 " (%.2f%%)\n",
-           all[idx].first,
-           all[idx].second, (100.0 * all[idx].second) / (TRIALS * 8.0));
+    Print("{:02x} x {} ({:.2f}%)\n",
+          all[idx].first,
+          all[idx].second, (100.0 * all[idx].second) / (TRIALS * 8.0));
     };
   for (int i = 0; i < 8; i++)
     PrintOne(i);
-  printf("...\n");
+  Print("...\n");
   for (int i = 0; i < 8; i++)
     PrintOne(256 - 8 + i);
 
-  printf("Throughput: " AGREEN("%.3f") " 64-bit words/sec\n",
+  Print("Throughput: " AGREEN("{:.3f}") " 64-bit words/sec\n",
          TRIALS / seconds);
 }
 
@@ -152,6 +153,6 @@ int main(int argc, char **argv) {
 
   TestRand();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

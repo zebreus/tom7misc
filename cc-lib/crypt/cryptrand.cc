@@ -79,6 +79,20 @@ uint64_t CryptRand::Word64() {
   */
 }
 
+#elif defined(__linux__)
+
+#include <sys/random.h>
+
+CryptRand::CryptRand() {}
+
+uint64_t CryptRand::Word64() {
+  uint64_t data = 0;
+  ssize_t bytes_read = getrandom(&data, sizeof (data), 0);
+  CHECK(bytes_read == sizeof (data)) << "This syscall is never supposed "
+    "to fail for reads of 256 or fewer bytes.";
+  return data;
+}
+
 #else
 
 CryptRand::CryptRand() {}

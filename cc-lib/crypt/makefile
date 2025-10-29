@@ -15,7 +15,8 @@ else
   CC=gcc
 endif
 
-OPT=-O3 -flto=auto -march=native -mtune=native
+# -flto=auto
+OPT=-O3 -march=native -mtune=native
 CXXFLAGS=-pipe -Wall -I.. --std=c++20 -static $(OPT)
 
 %.o : %.cc *.h makefile
