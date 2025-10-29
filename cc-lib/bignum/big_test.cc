@@ -30,11 +30,14 @@
 #include "randutil.h"
 #include "status-bar.h"
 #include "timer.h"
+#include "base/print.h"
 
 using int64 = int64_t;
 using namespace std;
 
 static constexpr bool RUN_BENCHMARKS = false;
+
+static constexpr bool VERBOSE = false;
 
 #define CHECK_SEQ(a, b) do {                                            \
     auto aa = (a);                                                      \
@@ -72,7 +75,9 @@ static void TestToString() {
 
   std::string max_neg =
     BigInt(std::numeric_limits<int64_t>::lowest()).ToString();
-  fprintf(stderr, "%s\n", max_neg.c_str());
+  if (VERBOSE) {
+    Print(stderr, "%s\n", max_neg.c_str());
+  }
 
   CHECK_SEQ(max_neg, "-9223372036854775808");
 }
@@ -142,6 +147,19 @@ static void TestToU64() {
   }
 }
 
+static void TestFromU64() {
+  BigInt b = BigInt::FromU64(0xDEADBEEF'CAFED00D);
+  CHECK(b.ToString() == "16045690984503103501") << b.ToString();
+}
+
+static void TestFromBigEndianBytes() {
+  std::vector<uint8_t> bytes = {
+    0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xD0, 0x0D,
+  };
+  BigInt b = BigInt::FromBigEndianBytes(bytes);
+  CHECK(b.ToString() == "16045690984503103501") << b.ToString();
+}
+
 static void HashCode() {
   BigInt a{1234};
   BigInt b{5678};
@@ -198,7 +216,7 @@ static void TestRatFromDouble() {
     double ud = 0.4999999999999431;
     CHECK(ud < 0.5);
     BigRat u = BigRat::FromDouble(ud);
-    printf("%s\n", u.ToString().c_str());
+    Print("%s\n", u.ToString());
     CHECK(BigRat::Less(u, BigRat(1, 2))) << u.ToString();
   }
 
@@ -247,7 +265,7 @@ static void TestRatFromDouble() {
     CHECK(BigRat::Eq(r, correct_r));
   }
 
-  printf("Rat FromDouble: OK\n");
+  Print("Rat FromDouble: OK\n");
 }
 
 static void TestRatToDouble() {
@@ -255,7 +273,7 @@ static void TestRatToDouble() {
     BigRat one_half(1, 2);
     double h = one_half.ToDouble();
     CHECK(std::abs(h - 0.5) < 1e-30) << h;
-    printf("OK: %.17g\n", h);
+    Print("OK: {:.17g}\n", h);
   }
 
   {
@@ -344,12 +362,11 @@ static BigInt ReferencePowMod(const BigInt &base, const BigInt &exp,
 }
 
 static void TestPowMod() {
-  for (const std::string &aa : {"0", "1", "2", "131", "1751", "31337"}) {
+  for (std::string_view aa : {"0", "1", "2", "131", "1751", "31337"}) {
     BigInt a(aa);
-    for (const std::string &bb : {"0", "1", "2", "17", "1331", "101017"}) {
+    for (std::string_view bb : {"0", "1", "2", "17", "1331", "101017"}) {
       BigInt b(bb);
-
-      for (const std::string &mm : {"2", "3", "5", "8", "65537"}) {
+      for (std::string_view mm : {"2", "3", "5", "8", "65537"}) {
         BigInt m(mm);
 
         BigInt r = BigInt::PowMod(a, b, m);
@@ -372,7 +389,7 @@ static void TestQuotRem() {
 
 static void TestPrimeFactors() {
   Timer timer;
-  printf("Prime factors..\n");
+  Print("Prime factors..\n");
   auto FTOS = [](const std::vector<std::pair<BigInt, int>> &fs) {
       string s;
       for (const auto &[b, i] : fs) {
@@ -540,8 +557,8 @@ static void TestPrimeFactors() {
     }
   }
 
-  printf("Prime factorization OK in %s.\n",
-         ANSI::Time(timer.Seconds()).c_str());
+  Print("Prime factorization OK in {}.\n",
+        ANSI::Time(timer.Seconds()));
 }
 
 
@@ -566,27 +583,27 @@ static void BenchDiv2() {
 
     total_sec += t.Seconds();
     if (i % 10 == 0) {
-      printf("%d/%d\n", i, iters);
+      Print("{}/{}\n", i, iters);
     }
   }
 
-  printf("%d iters in %.5fs = %.3f/s\n",
-         iters, total_sec, iters / total_sec);
+  Print("{} iters in {:.5f}s = {:.3f}/s\n",
+        iters, total_sec, iters / total_sec);
 }
 
 static void TestPi() {
-  printf("----\n");
+  Print("----\n");
   {
     BigInt i{int64_t{1234567}};
     BigInt j{int64_t{33}};
     BigInt k = BigInt::Times(i, j);
     BigInt m("102030405060708090987654321");
 
-    printf("Integer: %s %s %s\n%s\n",
-           i.ToString().c_str(),
-           j.ToString().c_str(),
-           k.ToString().c_str(),
-           m.ToString().c_str());
+    Print("Integer: {} {} {}\n{}\n",
+           i.ToString(),
+           j.ToString(),
+           k.ToString(),
+           m.ToString());
     fflush(stdout);
   }
 
@@ -604,12 +621,12 @@ static void TestPi() {
     sum = BigRat::Plus(sum, term);
     if (i < 50) {
       BigRat tpi = BigRat::Times(sum, BigRat{4,1});
-      printf("Approx pi: %s = %f\n",
-             tpi.ToString().c_str(),
-             tpi.ToDouble());
+      Print("Approx pi: {} = {}\n",
+            tpi.ToString(),
+            tpi.ToDouble());
       fflush(stdout);
     } else if (i % 1000 == 0) {
-      printf("%d...\n", i);
+      Print("{}...\n", i);
       fflush(stdout);
     }
   }
@@ -1010,7 +1027,7 @@ static void TestInvert() {
     }
   }
 
-  printf("Modular inverse OK.\n");
+  Print("Modular inverse OK.\n");
 }
 
 static void TestSwap() {
@@ -1161,7 +1178,7 @@ static void TestRatMove() {
 
 static void TestRatSqrt() {
   Timer timer;
-  printf("Test sqrt:\n");
+  Print("Test sqrt:\n");
   {
     BigInt inv_epsilon{1000000000};
     BigRat half = BigRat::Sqrt(BigRat(1, 4), inv_epsilon);
@@ -1256,7 +1273,7 @@ static void TestRatSqrt() {
     CHECK(BigRat::LessEq(err, BigRat(BigInt(1), inv_epsilon)));
   }
 
-  printf("Sqrt OK in %s\n", ANSI::Time(timer.Seconds()).c_str());
+  Print("Sqrt OK in {}\n", ANSI::Time(timer.Seconds()));
 }
 
 static void TestRatParts() {
@@ -1308,7 +1325,7 @@ static void TestRatSqrtBounds() {
     };
 
   Timer timer;
-  printf("Test sqrt:\n");
+  Print("Test sqrt:\n");
 
   struct Testcase {
     BigInt inv_epsilon;
@@ -1346,10 +1363,10 @@ static void TestRatSqrtBounds() {
     BigRat epsilon{BigInt(1), test.inv_epsilon};
     const auto &[lb, ub] = BigRat::SqrtBounds(test.xx, test.inv_epsilon);
 
-    printf("sqrt(%s) ∊ [%s, %s]\n",
-           test.xx.ToString().c_str(),
-           lb.ToString().c_str(),
-           ub.ToString().c_str());
+    Print("sqrt({}) ∊ [{}, {}]\n",
+          test.xx.ToString(),
+          lb.ToString(),
+          ub.ToString());
 
     BigRat width = BigRat::Minus(ub, lb);
     CHECK(BigRat::LessEq(width, epsilon)) <<
@@ -1373,7 +1390,7 @@ static void TestRatSqrtBounds() {
 
 
 static void TestRatCbrt() {
-  printf("Test cbrt:\n");
+  Print("Test cbrt:\n");
   {
     BigInt inv_epsilon = BigInt(int64_t{1000000000});
     BigRat half = BigRat::Cbrt(BigRat(1, 8), inv_epsilon);
@@ -1434,11 +1451,11 @@ static void TestRatCbrt() {
     BigRat eps2 = BigRat{BigInt(1), BigInt{INV_EPS2}};
     CHECK(BigRat::LessEq(err2, eps2)) << cube.ToDouble();
   }
-  printf("Cbrt OK\n");
+  Print("Cbrt OK\n");
 }
 
 static void TestRatTruncate() {
-  printf("Test rat truncate:\n");
+  Print("Test rat truncate:\n");
 
   {
     BigRat r = BigRat::Truncate(BigRat{1, 2}, BigInt(1000));
@@ -1500,11 +1517,11 @@ static void TestRatTruncate() {
     CHECK(r.ToString() == "0");
   }
 
-  printf("Truncate OK\n");
+  Print("Truncate OK\n");
 }
 
 static void TestRatElementaryBounds() {
-
+  Print("Elementary bounds...\n");
   {
     // If the fraction already fits in the denominator,
     // the result is exact.
@@ -1600,8 +1617,8 @@ static void TestRatElementaryBounds() {
       });
   }
 
-  printf("ElementaryBounds x %" PRIi64 " in %s\n",
-         TIMES, ANSI::Time(timer.Seconds()).c_str());
+  Print("ElementaryBounds x {} in {}\n",
+         TIMES, ANSI::Time(timer.Seconds()));
 }
 
 static void TestSimplifyInterval() {
@@ -1730,6 +1747,7 @@ static void TestRatHashCode() {
         BigRat{123, 2},
         BigRat{567, 2}
     }) {
+    Print("Hashcode {}\n", r.ToString());
     distinct.insert(BigRat::HashCode(r));
   }
   CHECK(distinct.size() == 4);
@@ -1752,6 +1770,7 @@ static void TestRatHashCode() {
 
   distinct.insert(BigRat::HashCode(BigRat(BigInt::Negate(n), d)));
   CHECK(distinct.size() == 7) << "Is it ignoring the sign bit?";
+  Print("RatHashCode OK\n");
 }
 
 static void TestRatSign() {
@@ -1765,6 +1784,7 @@ static void TestRatSign() {
   CHECK(BigRat::Sign(BigRat(0, -1)) == 0);
   CHECK(BigRat::Sign(BigRat(3215, 75)) == 1);
   CHECK(BigRat::Sign(BigRat(-3, -4)) == 1);
+  Print("RatSign OK\n");
 }
 
 static void TestRatFloorCeil() {
@@ -1801,7 +1821,7 @@ static void TestRatFloorCeil() {
   CHECK_IEQ(BigRat::Ceil(BigRat::Minus(BigRat("-36893488147419103232"),
                                        BigRat(1, 357))),
             BigInt("-36893488147419103232"));
-
+  Print("RatFoorCeil OK\n");
 }
 
 static void TestSmallAndLarge() {
@@ -2103,6 +2123,7 @@ static void TestRatDiv() {
   CHECK_REQ(result2, zero);
   CHECK_SEQ(result2.ToString(), "0");
   CHECK(BigRat::Sign(result2) == 0);
+  Print("RatDiv OK\n");
 }
 
 static void TestNumBits() {
@@ -2133,13 +2154,15 @@ int main(int argc, char **argv) {
   constexpr bool SLOW = true;
 
   ANSI::Init();
-  printf("Start.\n");
+  Print("Start.\n");
   fflush(stdout);
 
   CopyAndAssign();
   TestToString();
   TestSign();
   TestToU64();
+  TestFromU64();
+  TestFromBigEndianBytes();
 
   TestSmallAndLarge();
   TestRatSmallAndLarge();
@@ -2218,7 +2241,7 @@ int main(int argc, char **argv) {
   TestRatElementaryBounds();
   TestSimplifyInterval();
 
-
-  printf("OK\n");
+  Print("OK\n");
+  return 0;
 }
 

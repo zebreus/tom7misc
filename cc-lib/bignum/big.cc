@@ -1616,6 +1616,17 @@ BigInt BigInt::LCM(const BigInt &a, const BigInt &b) {
   return BigInt::Times(BigInt::Abs(a), BigInt::DivExact(BigInt::Abs(b), g));
 }
 
+BigInt BigInt::FromBigEndianBytes(std::span<const uint8_t> bytes) {
+  // PERF: Surely there is a faster way with gmp!
+  BigInt ret(0);
+  for (uint8_t b : bytes) {
+    ret = BigInt::LeftShift(std::move(ret), 8);
+    BigInt::PlusEq(ret, BigInt(b));
+  }
+  return ret;
+}
+
+
 
 BigRat BigRat::FromDecimal(std::string_view num) {
   // Parse numerator and denominator as bigints.

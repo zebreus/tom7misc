@@ -4,7 +4,7 @@
 #ifndef _CC_LIB_BIGNUM_BIG_H
 #define _CC_LIB_BIGNUM_BIG_H
 
-#include <stdlib.h>
+#include <cstdlib>
 #ifdef BIG_USE_GMP
 # include <gmp.h>
 # include "bignum/wrap-gmp.h"
@@ -14,6 +14,7 @@
 # include "bignum/bigq.h"
 #endif
 
+#include <span>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -55,6 +56,8 @@ struct BigInt {
   inline ~BigInt();
 
   static inline BigInt FromU64(uint64_t u);
+  // Big-endian, unsigned.
+  static BigInt FromBigEndianBytes(std::span<const uint8_t> bytes);
 
   // TODO: From doubles (rounding), which is useful because
   // uint64_t can't represent all large doubles.
@@ -1681,9 +1684,9 @@ uint64_t BigRat::HashCode(const BigRat &a) {
   // Might be good to do this as a mathematical function, then?
   GmpRepRat::Lease a_tmp(a.rep);
 
-  const auto &nrep = mpq_numref(a.rep.ConstMpq());
+  const auto &nrep = mpq_numref(a_tmp.ConstMpq());
   const size_t nlimbs = mpz_size(nrep);
-  const auto &drep = mpq_denref(a.rep.ConstMpq());
+  const auto &drep = mpq_denref(a_tmp.ConstMpq());
   const size_t dlimbs = mpz_size(drep);
 
   uint64_t h = 0xC0FFEE'777'1234567;
