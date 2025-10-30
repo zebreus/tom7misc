@@ -7,7 +7,6 @@
 
 struct BigInt;
 struct ASN1 {
-
   // Using DER (deterministic) format.
 
   static std::vector<uint8_t> EncodeLength(size_t length);

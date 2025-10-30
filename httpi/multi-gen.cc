@@ -44,7 +44,7 @@ static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {
 
 static void Generate() {
   CryptRand cr;
-  MultiRSA::Key key = Generate(3, 4096, &cr);
+  MultiRSA::Key key = Generate(3, 128, &cr);
 
   Print(stderr,
         "--------\n"

@@ -42,15 +42,30 @@ struct TLS {
     std::vector<Extension> extensions;
   };
 
+  struct ServerCertificate {
+    // In binary ASN.1 DER format.
+    std::vector<std::vector<uint8_t>> chain;
+  };
+
   static void PrintClientHello(const ClientHello &hello);
+
+  static bool HasCipherSuite(const ClientHello &hello, uint16_t cs) {
+    for (uint16_t c : hello.cipher_suites){
+      if (cs == c) return true;
+    }
+    return false;
+  }
 
   static std::optional<ServerNameIndication>
   ParseServerNameIndication(PacketParser packet);
 
   static std::optional<ClientHello> ParseClientHello(PacketParser packet);
 
-  std::optional<std::vector<uint8_t>> SerializeServerHello(
+  static std::optional<std::vector<uint8_t>> SerializeServerHello(
       const ServerHello &hello);
+
+  static std::optional<std::vector<uint8_t>> SerializeServerCertificate(
+      const ServerCertificate &cert);
 
   // For debug printing.
   static const char *CipherSuiteName(uint16_t c);

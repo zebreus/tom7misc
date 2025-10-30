@@ -13,6 +13,23 @@
 #include "base/print.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
+#include "packet-parser.h"
+
+bool MultiRSA::KeyEq(const Key &a, const Key &b) {
+  if (a.n != b.n ||
+      a.e != b.e ||
+      a.d != b.d ||
+      a.factors.size() != b.factors.size()) return false;
+
+  for (int i = 0; i < a.factors.size(); i++) {
+    if (a.factors[i].p != b.factors[i].p ||
+        a.factors[i].exp != b.factors[i].exp ||
+        a.factors[i].inv != b.factors[i].inv) {
+      return false;
+    }
+  }
+  return true;
+}
 
 std::optional<MultiRSA::Key> MultiRSA::KeyFromPrimes(
     std::vector<BigInt> primes) {
@@ -188,7 +205,6 @@ std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
 }
 
 std::vector<uint8_t> MultiRSA::EncodePKCS8(const MultiRSA::Key &key) {
-
   [[maybe_unused]] const bool is_multi = key.factors.size() > 2;
 
   std::vector<uint8_t> algorithm_identifier =
@@ -204,4 +220,118 @@ std::vector<uint8_t> MultiRSA::EncodePKCS8(const MultiRSA::Key &key) {
           ASN1::EncodeInt(BigInt{0}),
           algorithm_identifier,
           ASN1::EncodeOctetString(EncodePKCS1(key))));
+}
+
+// Parses a DER length field.
+static size_t ParseLength(PacketParser *p) {
+  uint8_t len_byte = p->Byte();
+  if ((len_byte & 0x80) == 0) {
+    return len_byte;
+  } else {
+    const int num_bytes = len_byte & 0x7F;
+    CHECK(num_bytes > 0 && num_bytes <= 4) << "Length field too long: "
+      << num_bytes;
+    size_t length = 0;
+    for (int i = 0; i < num_bytes; i++) {
+      length = (length << 8) | p->Byte();
+    }
+    return length;
+  }
+}
+
+// Consume a tag-length-value from the packet. Aborts if invalid.
+// Advances p past it, but returns a subpacket to the value portion.
+static PacketParser ParseTLV(PacketParser *p, uint8_t expected_tag) {
+  const uint8_t tag = p->Byte();
+  CHECK(tag == expected_tag) << "Expected tag " << (int)expected_tag
+                             << ", got " << (int)tag;
+  const size_t len = ParseLength(p);
+  return p->Subpacket(len);
+}
+
+static BigInt ParseInteger(PacketParser *p) {
+  return BigInt::FromBigEndianBytes(ParseTLV(p, ASN1::TAG_INTEGER).View());
+}
+
+std::optional<MultiRSA::Key>
+MultiRSA::DecodePKCS1(std::span<const uint8_t> contents) {
+  PacketParser packet(contents);
+
+  PacketParser seq = ParseTLV(&packet, ASN1::TAG_SEQUENCE);
+  // The whole thing should be a sequence.
+  if (!packet.empty()) return std::nullopt;
+
+  Key key;
+
+  BigInt version = ParseInteger(&seq);
+  key.n = ParseInteger(&seq);
+  key.e = ParseInteger(&seq);
+  key.d = ParseInteger(&seq);
+
+  // Note that these are encoded in the reverse order.
+  PrimeFactor q, p;
+  q.p = ParseInteger(&seq);
+  p.p = ParseInteger(&seq);
+
+  q.exp = ParseInteger(&seq);
+  p.exp = ParseInteger(&seq);
+  q.inv = ParseInteger(&seq);
+  p.inv = BigInt(1);
+
+  key.factors.emplace_back(std::move(p));
+  key.factors.emplace_back(std::move(q));
+
+  if (version == 0) {
+    // Two-prime RSA.
+    if (!seq.empty()) return std::nullopt;
+
+    return {std::move(key)};
+
+  } else if (version == 1) {
+    // Must have other primes if using version 1.
+    if (seq.empty()) return std::nullopt;
+
+    PacketParser other = ParseTLV(&seq, ASN1::TAG_SEQUENCE);
+    // Must have other primes if using version 1.
+    if (other.empty()) return std::nullopt;
+
+    while (!other.empty()) {
+      PrimeFactor f;
+      PacketParser prime = ParseTLV(&other, ASN1::TAG_SEQUENCE);
+      f.p = ParseInteger(&prime);
+      f.exp = ParseInteger(&prime);
+      f.inv = ParseInteger(&prime);
+      if (!prime.empty()) return std::nullopt;
+      key.factors.emplace_back(std::move(f));
+    }
+
+    // Should be no more data now.
+    if (!seq.empty()) return std::nullopt;
+    return {std::move(key)};
+
+  } else {
+    // Unknown version?
+    return std::nullopt;
+  }
+}
+
+std::optional<MultiRSA::Key>
+MultiRSA::DecodePKCS8(std::span<const uint8_t> contents) {
+  PacketParser p(contents);
+
+  PacketParser seq = ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  if (!p.empty()) return std::nullopt;
+
+  BigInt version = ParseInteger(&seq);
+  if (version != 0) return std::nullopt;
+
+  // AlgorithmIdentifier sequence
+  // TODO: Could check that this is what we expect, but if you wanna
+  // use an incorrectly-encoded key, be my guest!
+  ParseTLV(&seq, ASN1::TAG_SEQUENCE);
+
+  PacketParser key_bytes = ParseTLV(&seq, ASN1::TAG_OCTET_STRING);
+  if (!seq.empty()) return std::nullopt;
+
+  return DecodePKCS1(key_bytes.View());
 }

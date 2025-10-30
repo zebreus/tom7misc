@@ -229,6 +229,23 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
   return {std::move(packet).Release()};
 }
 
+std::optional<std::vector<uint8_t>> TLS::SerializeServerCertificate(
+    const ServerCertificate &cert) {
+  PacketWriter packet;
+  packet.Byte(11);
+  auto all_length = packet.Length24();
+
+  auto chain_length = packet.Length24();
+  for (const std::vector<uint8_t> &der : cert.chain) {
+    auto der_length = packet.Length24();
+    packet.Bytes(der);
+    der_length.Fill();
+  }
+  chain_length.Fill();
+
+  all_length.Fill();
+  return {std::move(packet).Release()};
+}
 
 const char *TLS::CipherSuiteName(uint16_t c) {
   switch (c) {

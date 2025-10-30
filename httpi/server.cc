@@ -28,7 +28,7 @@
 #include "tls.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
-// Incomplete. Inefficient.
+// (Very) Insecure. Incomplete. Inefficient.
 
 // ?
 #define BACKLOG 24
@@ -118,7 +118,12 @@ struct Connection {
     return !send_buf.empty();
   }
 
-  void Write() {
+  void Write(std::span<const uint8_t> data) {
+    // PERF: We can often send into the network buffer directly; try that first!
+    send_buf.insert(send_buf.end(), data.begin(), data.end());
+  }
+
+  void SendBuffered() {
     if (!InternalWrite(&send_buf)) {
       return;
     }
@@ -196,6 +201,7 @@ struct Connection {
       return false;
     } else {
       v->erase(v->begin(), v->begin() + amount);
+      Print("Wrote {} bytes. {} left\n", amount, v->size());
       idle_timer.Reset();
       return true;
     }
@@ -335,6 +341,19 @@ struct ClientConnection : public Connection {
     auto r = std::move(incoming.front());
     incoming.pop();
     return std::make_optional(std::move(r));
+  }
+
+  // Send a single already-encrypted TLSRecord.
+  void SendTLSRecord(ContentType ct, uint8_t version_major,
+                     uint8_t version_minor, std::span<const uint8_t> payload) {
+    std::array<uint8_t, 5> hdr;
+    hdr[0] = (uint8_t)ct;
+    hdr[1] = version_major;
+    hdr[2] = version_minor;
+    hdr[3] = (payload.size() >> 8) & 0xFF;
+    hdr[4] = payload.size() & 0xFF;
+    Write(hdr);
+    Write(payload);
   }
 
  private:
@@ -558,8 +577,8 @@ struct Session {
       if (backend_err) backend.Shutdown("epoll event");
 
       // Writes first, to free up buffer space for reads.
-      if (client.Connected() && client_write) client.Write();
-      if (backend.Connected() && backend_write) backend.Write();
+      if (client.Connected() && client_write) client.SendBuffered();
+      if (backend.Connected() && backend_write) backend.SendBuffered();
 
       if (client.Connected() && client_read) client.Read();
       if (backend.Connected() && backend_read) backend.Read();
@@ -577,6 +596,8 @@ struct Session {
 
 
       ProcessPackets();
+
+      if (state == State::DISCONNECTED) return;
     }
   }
 
@@ -604,16 +625,58 @@ struct Session {
         if (std::optional<TLS::ClientHello> och =
             TLS::ParseClientHello(packet)) {
           TLS::PrintClientHello(och.value());
+
+          memcpy(client_random.data(), och.value().client_random.data(), 32);
+
+          if (!TLS::HasCipherSuite(och.value(),
+                                   TLS::RSA_WITH_AES_256_CBC_SHA)) {
+            // Supposed to send specific error here.
+            AbortConnection();
+            return;
+          }
+
+          TLS::ServerHello shello;
+          // TLS 1.2
+          shello.version_major = 3;
+          shello.version_minor = 3;
+
+          // bogus server random
+          for (int i = 0; i < 32; i++)
+            shello.server_random[i] = i + 1;
+
+          // session ids not supported
+          shello.session_id.clear();
+          shello.cipher_suite = TLS::RSA_WITH_AES_256_CBC_SHA;
+          shello.compression_method = 0;
+
+          if (std::optional<std::vector<uint8_t>> po =
+              TLS::SerializeServerHello(shello)) {
+            client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
+            state = State::WAIT_KEY;
+            Print("Sent ServerHello:\n"
+                  "{}\n", HexDump::Color(po.value()));
+
+          } else {
+            LOG(FATAL) << "My ServerHello was invalid";
+          }
+
         } else {
-          LOG(FATAL) << "Invalid hello";
+          AbortConnection();
+          return;
         }
       } else {
-        LOG(FATAL) << "Unimplemented state";
+        AbortConnection();
+        return;
       }
     }
 
-    // XXX Process server packets too.
+    // XXX Process backend packets too.
+  }
 
+  void AbortConnection() {
+    client.Shutdown("server aborted");
+    backend.Shutdown("server aborted");
+    state = State::DISCONNECTED;
   }
 
   ~Session() {
@@ -621,9 +684,15 @@ struct Session {
 
   enum class State {
     START,
+    // Sent ServerHello. Waiting for ClientKeyExchange.
+    WAIT_KEY,
+    DISCONNECTED,
   };
 
   State state = State::START;
+
+  std::array<uint8_t, 32> client_random = {};
+  std::array<uint8_t, 32> server_random = {};
 
   ClientConnection client;
 

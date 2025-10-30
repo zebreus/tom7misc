@@ -13,6 +13,12 @@ struct PacketParser {
     original(payload), rest(payload) {
   }
 
+  PacketParser(std::string_view payload) :
+    PacketParser(std::span<const uint8_t>{
+                     (const uint8_t *)payload.data(),
+                     payload.size()}) {
+  }
+
   bool empty() const { return rest.empty(); }
   size_t size() const { return rest.size(); }
 
@@ -63,11 +69,16 @@ struct PacketParser {
     return rest[idx];
   }
 
+  // Extract and consume the next len bytes.
   PacketParser Subpacket(int len) {
-    CHECK(len < rest.size());
+    CHECK(len <= rest.size());
     PacketParser p(rest.first(len));
     rest = rest.last(rest.size() - len);
     return p;
+  }
+
+  std::span<const uint8_t> View() const {
+    return rest;
   }
 
  private:
