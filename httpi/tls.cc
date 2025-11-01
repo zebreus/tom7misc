@@ -13,6 +13,19 @@
 #include "hexdump.h"
 #include "packet-writer.h"
 
+enum : uint8_t {
+HELLO_REQUEST = 0,
+CLIENT_HELLO = 1,
+SERVER_HELLO = 2,
+CERTIFICATE = 11,
+SERVER_KEY_EXCHANGE = 12,
+CERTIFICATE_REQUEST = 13,
+SERVER_HELLO_DONE = 14,
+CERTIFICATE_VERIFY = 15,
+CLIENT_KEY_EXCHANGE = 16,
+FINISHED = 20,
+};
+
 void TLS::PrintClientHello(const ClientHello &hello) {
   Print(AWHITE("ClientHello") " {}.{}\n",
         hello.version_major, hello.version_minor);
@@ -50,11 +63,9 @@ std::optional<TLS::ServerNameIndication>
 TLS::ParseServerNameIndication(PacketParser packet) {
   if (packet.size() < 2) return std::nullopt;
   uint16_t list_len = packet.W16();
-  if ((list_len & 1) || list_len < 2) return std::nullopt;
+  if (packet.size() != list_len) return std::nullopt;
   ServerNameIndication sni;
-  sni.hosts.reserve(list_len >> 1);
-  for (int i = 0; i < (list_len >> 1); i++) {
-    if (packet.empty()) return std::nullopt;
+  while (!packet.empty()) {
     uint8_t name_type = packet.Byte();
     if (name_type == 0) {
       if (packet.size() < 2) return std::nullopt;
@@ -89,6 +100,7 @@ TLS::ParseClientHello(PacketParser packet) {
   hello.version_major = packet.Byte();
   hello.version_minor = packet.Byte();
 
+  CHECK(hello.client_random.size() == 32);
   packet.BytesTo(32, hello.client_random.data());
 
   if (packet.empty()) return std::nullopt;
@@ -121,10 +133,10 @@ TLS::ParseClientHello(PacketParser packet) {
 
   if (packet.size() < 2) return std::nullopt;
   uint16_t extensions_len = packet.W16();
-  if (packet.size() < extensions_len) return std::nullopt;
+  // Nothing can come after the extensions.
+  if (packet.size() != extensions_len) return std::nullopt;
 
   // Now repeatedly get extensions.
-
   while (!packet.empty()) {
     if (packet.size() < 4) return std::nullopt;
     uint16_t type = packet.W16();
@@ -136,7 +148,11 @@ TLS::ParseClientHello(PacketParser packet) {
       PacketParser ext_packet = packet.Subpacket(len);
       if (std::optional<ServerNameIndication> osni =
           ParseServerNameIndication(ext_packet)) {
+        // Print(AYELLOW("Got ServerNameIndication") ".\n");
         hello.extensions.emplace_back(osni.value());
+      } else {
+        // Print(AORANGE("Invalid ServerNameIndication") "\n");
+        return std::nullopt;
       }
       break;
     }
@@ -180,7 +196,7 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
 
   PacketWriter packet;
   // Server Hello
-  packet.Byte(2);
+  packet.Byte(SERVER_HELLO);
 
   // Placeholder for length, written at the end.
   size_t length_pos = packet.size();
@@ -232,7 +248,7 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
 std::optional<std::vector<uint8_t>> TLS::SerializeServerCertificate(
     const ServerCertificate &cert) {
   PacketWriter packet;
-  packet.Byte(11);
+  packet.Byte(CERTIFICATE);
   auto all_length = packet.Length24();
 
   auto chain_length = packet.Length24();
@@ -245,6 +261,14 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerCertificate(
 
   all_length.Fill();
   return {std::move(packet).Release()};
+}
+
+std::vector<uint8_t> TLS::SerializeServerHelloDone() {
+  PacketWriter packet;
+  packet.Byte(SERVER_HELLO_DONE);
+  // Empty body.
+  packet.W24(0);
+  return std::move(packet).Release();
 }
 
 const char *TLS::CipherSuiteName(uint16_t c) {

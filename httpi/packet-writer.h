@@ -65,6 +65,8 @@ struct PacketWriter {
   }
 
   void Bytes(std::span<const uint8_t> bs) {
+    // Avoid calling memcpy with possibly null data.
+    if (bs.empty()) return;
     size_t start = payload.size();
     payload.resize(payload.size() + bs.size());
     memcpy(payload.data() + start, bs.data(), bs.size());

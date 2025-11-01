@@ -58,6 +58,11 @@ struct PacketParser {
   }
 
   void BytesTo(int num, uint8_t *out) {
+    // Don't call memcpy with an invalid pointer
+    // (e.g. unallocated vector::data).
+    if (num == 0) return;
+
+    CHECK(out != nullptr) << num;
     CHECK(rest.size() >= num);
     memcpy(out, rest.data(), num);
     rest = rest.last(rest.size() - num);

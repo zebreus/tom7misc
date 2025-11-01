@@ -43,7 +43,7 @@ struct TLS {
   };
 
   struct ServerCertificate {
-    // In binary ASN.1 DER format.
+    // In binary ASN.1 DER format (X.509v3).
     std::vector<std::vector<uint8_t>> chain;
   };
 
@@ -66,6 +66,8 @@ struct TLS {
 
   static std::optional<std::vector<uint8_t>> SerializeServerCertificate(
       const ServerCertificate &cert);
+
+  static std::vector<uint8_t> SerializeServerHelloDone();
 
   // For debug printing.
   static const char *CipherSuiteName(uint16_t c);

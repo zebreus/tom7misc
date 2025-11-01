@@ -20,11 +20,17 @@ struct Config {
   };
 
   struct HostConfig {
+    std::string canonical;
     std::vector<std::string> aliases;
     const Key *key = nullptr;
     // Assume localhost, :80, etc.
   };
 
+  // null if unknown.
+  // Pass a lowercase host name.
+  const HostConfig *GetHostConfig(const std::string &host) const;
+
+ private:
   // Keyed by all aliases.
   // TODO: Support *. wildcard domains.
   std::unordered_map<std::string, const HostConfig *> hosts;

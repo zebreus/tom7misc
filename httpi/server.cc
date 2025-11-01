@@ -35,6 +35,7 @@
 #define BACKLOG 24
 
 #define SERIALIZE_CONNECTIONS true
+#define JUST_ONE_CONNECTION true
 
 static constexpr int BUFFER_SIZE = 16384;
 static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
@@ -494,9 +495,10 @@ struct PollSet {
 };
 
 struct Session {
-  Session(int client_fd,
+  Session(const Config &config,
+          int client_fd,
           struct sockaddr_in client_addr) :
-    client(client_fd, client_addr) {
+    config(config), client(client_fd, client_addr) {
 
     // Just let the OS clean up forked children when they exit.
     signal(SIGCHLD, SIG_IGN);
@@ -636,6 +638,42 @@ struct Session {
             return;
           }
 
+          // Need to know what virtual host we're talking to.
+          for (const auto &ext : och.value().extensions) {
+            if (const TLS::ServerNameIndication *sni =
+                std::get_if<TLS::ServerNameIndication>(&ext)) {
+              if (sni->hosts.size() != 1) {
+                Print("Want exactly one host.\n");
+                AbortConnection();
+                return;
+              }
+              server_name = sni->hosts[0];
+            }
+          }
+
+          if (server_name.empty()) {
+            // Could use some default config, but how is the
+            // client going to check the certificate?
+            Print("No SNI extension.\n");
+            AbortConnection();
+            return;
+          }
+
+          host_config = config.GetHostConfig(server_name);
+          if (host_config == nullptr) {
+            Print("Unknown host\n");
+            AbortConnection();
+            return;
+          }
+
+          if (host_config->key == nullptr ||
+              host_config->key->server_certificate.chain.empty()) {
+            Print("No key/cert configured for " ARED("{}") ".\n",
+                  host_config->canonical);
+            AbortConnection();
+            return;
+          }
+
           TLS::ServerHello shello;
           // TLS 1.2
           shello.version_major = 3;
@@ -653,13 +691,39 @@ struct Session {
           if (std::optional<std::vector<uint8_t>> po =
               TLS::SerializeServerHello(shello)) {
             client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
-            state = State::WAIT_KEY;
+
             Print("Sent ServerHello:\n"
                   "{}\n", HexDump::Color(po.value()));
 
           } else {
             LOG(FATAL) << "My ServerHello was invalid";
           }
+
+          // Also ServerCertificate.
+          CHECK(host_config->key != nullptr);
+          if (std::optional<std::vector<uint8_t>> co =
+              TLS::SerializeServerCertificate(
+                  host_config->key->server_certificate)) {
+            client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
+
+            Print("Sent ServerCertificate:\n"
+                  "{}\n", HexDump::Color(co.value()));
+
+          } else {
+            LOG(FATAL) << "My ServerCertificate was invalid";
+          }
+
+          // This is RSA, so no ServerKeyExchange message.
+
+          std::vector<uint8_t> shd =
+            TLS::SerializeServerHelloDone();
+          client.SendTLSRecord(HANDSHAKE, 3, 3, shd);
+          Print("Sent ServerHelloDone:\n"
+                "{}\n", HexDump::Color(shd));
+
+          Print("Server sent Hello/Cert/HelloDone\n");
+
+          state = State::WAIT_KEY;
 
         } else {
           AbortConnection();
@@ -683,17 +747,28 @@ struct Session {
   ~Session() {
   }
 
+ private:
   enum class State {
     START,
-    // Sent ServerHello. Waiting for ClientKeyExchange.
+    // Sent ServerHello..HelloDone. Waiting for ClientKeyExchange.
     WAIT_KEY,
     DISCONNECTED,
   };
 
+  // Not owned.
+  const Config &config;
+
   State state = State::START;
 
-  std::array<uint8_t, 32> client_random = {};
-  std::array<uint8_t, 32> server_random = {};
+  [[maybe_unused]] std::array<uint8_t, 32> client_random = {};
+  [[maybe_unused]] std::array<uint8_t, 32> server_random = {};
+  // From the client; only validated inasmuch as it matches
+  // some host entry.
+  std::string server_name;
+  // Not owned.
+  const Config::HostConfig *host_config = nullptr;
+
+  // TODO: Need a hash of the handshake.
 
   ClientConnection client;
 
@@ -778,7 +853,7 @@ struct Server {
         // Child.
         close(listen_fd);
         {
-          Session session(client_fd, client_addr);
+          Session session(config, client_fd, client_addr);
           session.Loop();
         }
         exit(0);
@@ -793,6 +868,12 @@ struct Server {
           (void)waitpid(pid, nullptr, 0);
           Print(stderr, AGREY("[PARENT {}]") " Child PID {} completed.\n",
                 server_pid, pid);
+        }
+        if constexpr (JUST_ONE_CONNECTION) {
+          Print(stderr, AGREY("[PARENT {}]") " "
+                ARED("Exit after one connection.") "\n",
+                server_pid);
+          return;
         }
       }
     }

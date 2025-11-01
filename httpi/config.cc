@@ -97,6 +97,9 @@ Config Config::Load(std::string_view filename) {
       CHECK(current_key.get() != nullptr) << "Need a key before hosts.";
       EmitHost();
       current_host = std::make_unique<Config::HostConfig>();
+      current_host->canonical = std::string(line);
+      current_host->key = current_key.get();
+      CHECK(!current_host->canonical.empty());
       current_host->aliases.push_back(std::string(line));
     } else if (cmd == "alias") {
       CHECK(current_host.get() != nullptr) << "Need host first.";
@@ -109,4 +112,11 @@ Config Config::Load(std::string_view filename) {
   EmitKey();
 
   return config;
+}
+
+const Config::HostConfig *Config::GetHostConfig(
+    const std::string &host) const {
+  auto it = hosts.find(host);
+  if (it == hosts.end()) return nullptr;
+  return it->second;
 }
