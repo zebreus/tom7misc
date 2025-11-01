@@ -17,11 +17,16 @@ Config Config::Load(std::string_view filename) {
   Config config;
 
   auto EmitKey = [&config, &current_key]() {
+      if (current_key.get() == nullptr)
+        return;
       config.all_keys.emplace_back(std::move(current_key));
       current_key.reset(nullptr);
     };
 
   auto EmitHost = [&config, &current_host]() {
+      if (current_host.get() == nullptr)
+        return;
+
       for (const std::string &h : current_host->aliases) {
         CHECK(!config.hosts.contains(h)) << h;
         config.hosts[h] = current_host.get();
@@ -52,7 +57,13 @@ Config Config::Load(std::string_view filename) {
       CHECK(keys.size() == 1) << "Expected exactly one private key in "
         "the key file: " << filename << " (but got " << keys.size() << ")";
 
-      LOG(FATAL) << "Need to parse key file.";
+      std::optional<MultiRSA::Key> okey = MultiRSA::DecodePKCS8(keys[0]);
+      CHECK(okey.has_value()) << "Couldn't parse key from " << filename;
+      std::string error;
+      CHECK(MultiRSA::ValidateKey(okey.value(), &error)) << "Invalid "
+        "key (want multi-rsa key in PKCS8 format): " << filename;
+
+      current_key->rsa = std::move(okey.value());
 
     } else if (cmd == "cert") {
       CHECK(current_key.get() != nullptr) << "cert must be in a key";

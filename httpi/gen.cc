@@ -68,8 +68,8 @@ static RSA::Key GenerateBad(int bits, CryptRand *cr) {
 static void Generate() {
   CryptRand cr;
   // RSA::Key key = RSA::GenerateKey(4096, &cr);
-  RSA::Key key = GenerateBad(4096, &cr);
-
+  // RSA::Key key = GenerateBad(4096, &cr);
+  RSA::Key key = RSA::GenerateKey(2048, &cr);
 
   Print("--------\n"
         "n: {}\n"

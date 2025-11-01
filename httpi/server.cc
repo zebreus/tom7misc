@@ -26,6 +26,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "tls.h"
+#include "config.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
 // (Very) Insecure. Incomplete. Inefficient.
@@ -703,7 +704,7 @@ struct Session {
 };
 
 struct Server {
-  Server() {
+  Server(Config config) : config(std::move(config)) {
     memset(&server_addr, 0, sizeof (server_addr));
     server_pid = getpid();
   }
@@ -797,6 +798,8 @@ struct Server {
     }
   }
 
+ private:
+  Config config;
   int listen_fd = 0;
   struct sockaddr_in server_addr;
   int server_pid = 0;
@@ -805,8 +808,10 @@ struct Server {
 int main(int argc, char **arg) {
   ANSI::Init();
 
+  Config config = Config::Load("config.txt");
+
   {
-    Server server;
+    Server server(std::move(config));
     server.Listen(8877);
     server.Loop();
   }

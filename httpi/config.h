@@ -26,6 +26,7 @@ struct Config {
   };
 
   // Keyed by all aliases.
+  // TODO: Support *. wildcard domains.
   std::unordered_map<std::string, const HostConfig *> hosts;
 
   std::vector<std::unique_ptr<HostConfig>> all_hosts;
