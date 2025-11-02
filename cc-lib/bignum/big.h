@@ -58,6 +58,10 @@ struct BigInt {
   static inline BigInt FromU64(uint64_t u);
   // Big-endian, unsigned.
   static BigInt FromBigEndianBytes(std::span<const uint8_t> bytes);
+  // Copy a non-negative integer to the buffer in zero-padded,
+  // big-endian format. If the number is negative or the buffer is not
+  // at least NumBytes(a) in size, returns false.
+  static bool ToBigEndianBytes(const BigInt &a, std::span<uint8_t> bytes);
 
   // TODO: From doubles (rounding), which is useful because
   // uint64_t can't represent all large doubles.
@@ -184,6 +188,7 @@ struct BigInt {
   // The number of bits in the number. The sign is ignored.
   // Zero is considered to have zero bits.
   inline static size_t NumBits(const BigInt &a);
+  inline static size_t NumBytes(const BigInt &a);
 
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
@@ -460,6 +465,10 @@ inline BigInt BigInt::Max(const BigInt &a, const BigInt &b) {
 
 inline BigInt BigInt::Min(const BigInt &a, const BigInt &b) {
   return BigInt::Less(a, b) ? a : b;
+}
+
+size_t BigInt::NumBytes(const BigInt &a) {
+  return (NumBits(a) + 7) >> 3;
 }
 
 #if BIG_USE_GMP

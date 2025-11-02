@@ -160,6 +160,41 @@ static void TestFromBigEndianBytes() {
   CHECK(b.ToString() == "16045690984503103501") << b.ToString();
 }
 
+static void BigEndianBytesRoundTrip() {
+  uint64_t crap = 0x12345678CAFED00D;
+  auto RoundTrip = [&crap](const BigInt &a, int extra_space) {
+      std::vector<uint8_t> buf(BigInt::NumBytes(a) + extra_space);
+      // Start with junk in there.
+      for (uint8_t &b : buf) {
+        b = (uint8_t)crap;
+        crap ^= std::rotl<uint64_t>(crap, 17);
+        crap++;
+      }
+
+      CHECK(BigInt::ToBigEndianBytes(a, std::span<uint8_t>(buf)));
+      BigInt c = BigInt::FromBigEndianBytes(buf);
+      CHECK(BigInt::Eq(a, c)) << a.ToString() <<
+        "\nbecame\n" << c.ToString();
+    };
+
+  RoundTrip(BigInt(0), 0);
+  RoundTrip(BigInt(0), 1);
+  RoundTrip(BigInt(0), 2);
+  RoundTrip(BigInt(0), 17);
+
+  BigInt a{1};
+  for (int i = 0; i < 1371; i++) {
+    RoundTrip(a, i % 3);
+    a = BigInt::LeftShift(std::move(a), 1);
+    if (crap & 1) a = BigInt::BitwiseOr(std::move(a), BigInt{1});
+  }
+
+  std::vector<uint8_t> fails(6);
+  CHECK(!BigInt::ToBigEndianBytes(BigInt(-1), std::span<uint8_t>(fails)));
+  CHECK(!BigInt::ToBigEndianBytes(BigInt(int64_t{0xCAFED000000000D}),
+                                  std::span<uint8_t>(fails)));
+}
+
 static void HashCode() {
   BigInt a{1234};
   BigInt b{5678};
@@ -2163,6 +2198,7 @@ int main(int argc, char **argv) {
   TestToU64();
   TestFromU64();
   TestFromBigEndianBytes();
+  BigEndianBytesRoundTrip();
 
   TestSmallAndLarge();
   TestRatSmallAndLarge();

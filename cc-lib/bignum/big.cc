@@ -26,6 +26,8 @@
 # include "bignum/bigq.h"
 #endif
 
+#include "base/print.h"
+
 using namespace std;
 
 static constexpr bool VERBOSE = false;
@@ -1626,6 +1628,23 @@ BigInt BigInt::FromBigEndianBytes(std::span<const uint8_t> bytes) {
   return ret;
 }
 
+bool BigInt::ToBigEndianBytes(const BigInt &a, std::span<uint8_t> bytes) {
+  if (Sign(a) < 0) return false;
+  const size_t nonzero_bytes = NumBytes(a);
+  if (nonzero_bytes > bytes.size()) return false;
+  memset(bytes.data(), 0, bytes.size());
+
+  // PERF! Do something efficient in GMP.
+  // We could at least go 64 bits at a time!
+  BigInt aa = a;
+  for (size_t pos = 0; pos < nonzero_bytes; pos++) {
+    // Pos is the byte index in little-endian format.
+    uint8_t b = (uint8_t)BitwiseAnd(aa, 0xFF);
+    aa = BigInt::RightShift(std::move(aa), 8);
+    bytes[bytes.size() - 1 - pos] = b;
+  }
+  return true;
+}
 
 
 BigRat BigRat::FromDecimal(std::string_view num) {
