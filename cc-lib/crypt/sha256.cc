@@ -335,3 +335,43 @@ bool SHA256::UnAscii(const string &s, std::vector<uint8> *out) {
 
   return true;
 }
+
+std::array<uint8_t, 32> SHA256::HMAC(std::span<const uint8_t> key,
+                                     std::span<const uint8_t> message) {
+  static constexpr size_t BLOCK_SIZE = 64;
+  std::array<uint8_t, BLOCK_SIZE> processed_key{};
+
+  if (key.size() > BLOCK_SIZE) {
+    // If key is longer than block size, hash it.
+    Ctx ctx;
+    Init(&ctx);
+    Update(&ctx, key.data(), key.size());
+    Finalize(&ctx, processed_key.data());
+  } else {
+    // Otherwise, copy into the zero-initialized buffer.
+    memcpy(processed_key.data(), key.data(), key.size());
+  }
+
+  std::array<uint8_t, BLOCK_SIZE> inner_key_pad;
+  std::array<uint8_t, BLOCK_SIZE> outer_key_pad;
+
+  for (size_t i = 0; i < BLOCK_SIZE; i++) {
+    inner_key_pad[i] = processed_key[i] ^ 0x36;
+    outer_key_pad[i] = processed_key[i] ^ 0x5c;
+  }
+
+  Ctx ctx;
+
+  // Inner hash of: (K ^ ipad) || message
+  Init(&ctx);
+  Update(&ctx, inner_key_pad.data(), inner_key_pad.size());
+  Update(&ctx, message.data(), message.size());
+  std::array<uint8, SHA256::DIGEST_LENGTH> inner_hash =
+    SHA256::FinalArray(&ctx);
+
+  // Outer hash of: (K ^ opad) || inner_hash
+  Init(&ctx);
+  Update(&ctx, outer_key_pad.data(), outer_key_pad.size());
+  Update(&ctx, inner_hash.data(), inner_hash.size());
+  return FinalArray(&ctx);
+}

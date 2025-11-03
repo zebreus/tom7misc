@@ -51,6 +51,11 @@ struct SHA256 {
   static std::vector<uint8_t> HashSpan(std::span<const uint8_t> s);
   static std::vector<uint8_t> HashPtr(const void *ptr, size_t len);
   static std::vector<uint8_t> HashStringView(std::string_view s);
+
+  // Standard HMAC function (keyed hash) for arbitrary length key
+  // and message.
+  static std::array<uint8_t, 32> HMAC(std::span<const uint8_t> key,
+                                      std::span<const uint8_t> message);
 };
 
 #endif
