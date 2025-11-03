@@ -47,6 +47,17 @@ struct TLS {
     std::vector<std::vector<uint8_t>> chain;
   };
 
+  struct ClientKeyExchange {
+    // For RSA key exchange, this is the pre-master secret, encrypted
+    // with the server's public key.
+    std::vector<uint8_t> encrypted_pms;
+  };
+
+  struct HandshakeFinished {
+    // For TLS 1.2, this is 12 bytes.
+    std::array<uint8_t, 12> verify_data;
+  };
+
   static void PrintClientHello(const ClientHello &hello);
 
   static bool HasCipherSuite(const ClientHello &hello, uint16_t cs) {
@@ -61,6 +72,17 @@ struct TLS {
 
   static std::optional<ClientHello> ParseClientHello(PacketParser packet);
 
+  static std::optional<ClientKeyExchange> ParseClientKeyExchange(
+      PacketParser packet);
+
+  // This is always just a single 0x01, so we just return true if
+  // it is succesfully parsed. (Note that this is not a handshake
+  // message, though it is sent during the handshake process.)
+  static bool ParseChangeCipherSpec(PacketParser packet);
+
+  static std::optional<TLS::HandshakeFinished>
+  ParseHandshakeFinished(PacketParser packet);
+
   static std::optional<std::vector<uint8_t>> SerializeServerHello(
       const ServerHello &hello);
 
@@ -74,6 +96,14 @@ struct TLS {
 
   // The only cipher suite we support.
   static inline constexpr uint16_t RSA_WITH_AES_256_CBC_SHA = 0x0035;
+
+  // The pseudo-random function used for key derivation.
+  // This fills the entire output span.
+  static void PRF(
+      std::span<const uint8_t> secret,
+      std::string_view label,
+      std::span<const uint8_t> seed,
+      std::span<uint8_t> output);
 
  private:
   TLS() = delete;

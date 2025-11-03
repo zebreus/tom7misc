@@ -12,6 +12,7 @@
 #include "base/logging.h"
 #include "hexdump.h"
 #include "packet-writer.h"
+#include "crypt/sha256.h"
 
 enum : uint8_t {
 HELLO_REQUEST = 0,
@@ -170,6 +171,50 @@ TLS::ParseClientHello(PacketParser packet) {
   CHECK(packet.empty());
   return {hello};
 }
+
+std::optional<TLS::ClientKeyExchange>
+TLS::ParseClientKeyExchange(PacketParser packet) {
+  ClientKeyExchange kex;
+
+  if (packet.size() < 4) return std::nullopt;
+  if (packet.Byte() != CLIENT_KEY_EXCHANGE) return std::nullopt;
+
+  const uint32_t body_len = packet.W24();
+  if (body_len != packet.size()) return std::nullopt;
+
+  // For RSA, we have a 16-bit length and then exactly that many
+  // encrypted bytes.
+
+  if (packet.size() < 2) return std::nullopt;
+  const uint16_t encrypted_len = packet.W16();
+  if (packet.size() != encrypted_len) return std::nullopt;
+
+  kex.encrypted_pms.resize(encrypted_len);
+  packet.BytesTo(encrypted_len, kex.encrypted_pms.data());
+
+  CHECK(packet.empty());
+  return {kex};
+}
+
+bool TLS::ParseChangeCipherSpec(PacketParser packet) {
+  return packet.size() == 1 && packet.Byte() == 0x01;
+}
+
+std::optional<TLS::HandshakeFinished>
+TLS::ParseHandshakeFinished(PacketParser packet) {
+  HandshakeFinished finished;
+
+  if (packet.size() < 4) return std::nullopt;
+  if (packet.Byte() != FINISHED) return std::nullopt;
+  // Fixed size.
+  if (packet.W32() != 12) return std::nullopt;
+  if (packet.size() != 12) return std::nullopt;
+
+  packet.BytesTo(12, finished.verify_data.data());
+
+  return {std::move(finished)};
+}
+
 
 std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
     const ServerHello &hello) {
@@ -332,5 +377,39 @@ const char *TLS::CipherSuiteName(uint16_t c) {
   case 0xCCA9: return "ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256";
 
   default: return "??";
+  }
+}
+
+void TLS::PRF(std::span<const uint8_t> secret,
+              std::string_view label,
+              std::span<const uint8_t> seed,
+              std::span<uint8_t> output) {
+
+  if (output.empty()) return;
+
+  // We'll iteratively hash a buffer of the form A(i) || label || seed.
+  std::vector<uint8_t> hmac_vec(32 + label.size() + seed.size());
+  memcpy(hmac_vec.data() + 32, label.data(), label.size());
+  memcpy(hmac_vec.data() + 32 + label.size(), seed.data(), seed.size());
+  std::span<uint8_t> hmac_buffer(hmac_vec);
+
+  // Each block uses a different A(i). The first is the hash of just the
+  // label+seed, which is already in the buffer. This is A_1:
+  std::array<uint8_t, 32> A_i = SHA256::HMAC(secret, hmac_buffer.subspan(32));
+
+  for (;;) {
+    // Put A_i at the beginning of the buffer. The rest remains the same.
+    memcpy(hmac_buffer.data(), A_i.data(), 32);
+
+    // Calculate the next block of output and append it.
+    std::array<uint8_t, 32> block = SHA256::HMAC(secret, hmac_buffer);
+    size_t amount = std::min(output.size(), (size_t)32);
+    memcpy(output.data(), block.data(), amount);
+    output = output.subspan(amount);
+    if (output.empty()) return;
+
+    // Calculate the next A(i) for the following iteration:
+    //  A(i+1) = HMAC(secret, A(i))
+    A_i = SHA256::HMAC(secret, A_i);
   }
 }
