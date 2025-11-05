@@ -134,3 +134,57 @@ void SHA1::Finalize(Ctx *context, uint8_t *digest) {
   memset(context->count, 0, 8);
   memset(finalcount, 0, 8);
 }
+
+std::vector<uint8_t> SHA1::FinalVector(SHA1::Ctx *ctx) {
+  std::vector<uint8_t> result(SHA1::DIGEST_LENGTH);
+  SHA1::Finalize(ctx, result.data());
+  return result;
+}
+
+std::array<uint8_t, SHA1::DIGEST_LENGTH> SHA1::FinalArray(SHA1::Ctx *ctx) {
+  std::array<uint8_t, SHA1::DIGEST_LENGTH> result;
+  SHA1::Finalize(ctx, result.data());
+  return result;
+}
+
+
+std::array<uint8_t, 20>
+SHA1::HMAC(std::span<const uint8_t> key,
+           std::span<const uint8_t> message) {
+  static constexpr size_t BLOCK_SIZE = 64;
+  std::array<uint8_t, BLOCK_SIZE> processed_key{};
+
+  if (key.size() > BLOCK_SIZE) {
+    // If key is longer than block size, hash it.
+    Ctx ctx;
+    Init(&ctx);
+    Update(&ctx, key.data(), key.size());
+    Finalize(&ctx, processed_key.data());
+  } else {
+    // Otherwise, copy into the zero-initialized buffer.
+    memcpy(processed_key.data(), key.data(), key.size());
+  }
+
+  std::array<uint8_t, BLOCK_SIZE> inner_key_pad;
+  std::array<uint8_t, BLOCK_SIZE> outer_key_pad;
+
+  for (size_t i = 0; i < BLOCK_SIZE; i++) {
+    inner_key_pad[i] = processed_key[i] ^ 0x36;
+    outer_key_pad[i] = processed_key[i] ^ 0x5c;
+  }
+
+  Ctx ctx;
+
+  // Inner hash of: (K ^ ipad) || message
+  Init(&ctx);
+  Update(&ctx, inner_key_pad.data(), inner_key_pad.size());
+  Update(&ctx, message.data(), message.size());
+  std::array<uint8_t, SHA1::DIGEST_LENGTH> inner_hash =
+    SHA1::FinalArray(&ctx);
+
+  // Outer hash of: (K ^ opad) || inner_hash
+  Init(&ctx);
+  Update(&ctx, outer_key_pad.data(), outer_key_pad.size());
+  Update(&ctx, inner_hash.data(), inner_hash.size());
+  return FinalArray(&ctx);
+}

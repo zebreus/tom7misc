@@ -2,8 +2,11 @@
 #ifndef _CC_LIB_CRYPT_SHA1_H
 #define _CC_LIB_CRYPT_SHA1_H
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
+#include <span>
 
 // Note that SHA-1 is considered insecure for signature applications.
 // Full collisions are known and prefix attacks are practical.
@@ -28,8 +31,14 @@ struct SHA1 {
   static void Init(Ctx *context);
   static void Update(Ctx *context, const uint8_t *data, size_t len);
   static void Finalize(Ctx *context, uint8_t *digest);
+  static std::vector<uint8_t> FinalVector(Ctx *c);
+  static std::array<uint8_t, DIGEST_LENGTH> FinalArray(Ctx *c);
 
-  // void sha1_32a( const void * key, int len, uint32_t seed, void * out );
+  // Keyed hash function.
+  static std::array<uint8_t, DIGEST_LENGTH>
+  HMAC(std::span<const uint8_t> key,
+       std::span<const uint8_t> message);
+
  private:
   SHA1() = delete;
 };

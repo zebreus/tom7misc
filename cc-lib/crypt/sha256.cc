@@ -43,16 +43,6 @@ void SHA256::Init(SHA256::Ctx *c) {
   c->h[7] = 0x5be0cd19UL;
 }
 
-/*
-static string ResultAsString(SHA256::Ctx *ctx) {
-  uint8 result[32];
-  SHA256::Finalize(ctx, result);
-  string r = "0123456789ABCDEF0123456789ABCDEF";
-  for (int i = 0; i < 32; i++) r[i] = (char)result[i];
-  return r;
-}
-*/
-
 std::vector<uint8> SHA256::FinalVector(SHA256::Ctx *ctx) {
   std::vector<uint8> result(32);
   SHA256::Finalize(ctx, result.data());

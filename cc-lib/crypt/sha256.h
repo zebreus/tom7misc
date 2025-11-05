@@ -38,7 +38,7 @@ struct SHA256 {
   // Finalize but return a new vector of 32 bytes.
   static std::vector<uint8_t> FinalVector(Ctx *c);
   // Or an array by value.
-  static std::array<uint8_t, 32> FinalArray(Ctx *c);
+  static std::array<uint8_t, DIGEST_LENGTH> FinalArray(Ctx *c);
 
   // Convert from 32-byte digest to lowercase hex string.
   static std::string Ascii(const std::vector<uint8_t> &v);
@@ -54,8 +54,9 @@ struct SHA256 {
 
   // Standard HMAC function (keyed hash) for arbitrary length key
   // and message.
-  static std::array<uint8_t, 32> HMAC(std::span<const uint8_t> key,
-                                      std::span<const uint8_t> message);
+  static std::array<uint8_t, DIGEST_LENGTH>
+  HMAC(std::span<const uint8_t> key,
+       std::span<const uint8_t> message);
 };
 
 #endif
