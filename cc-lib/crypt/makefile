@@ -1,5 +1,5 @@
 
-default : aes_test.exe sha256_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
+default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
 
 # For tests.
 CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o
@@ -50,6 +50,12 @@ sha512_test.o : sha512_test.cc sha512.h
 sha512_test.exe : sha512.o sha512_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+sha1.o : sha1.cc sha1.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+sha1_test.exe : sha1.o sha1_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 cryptrand.o : cryptrand.cc cryptrand.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
@@ -62,7 +68,7 @@ cryptrand_test.exe : cryptrand.o cryptrand_test.o $(CC_LIB_OBJECTS)
 md5_test.exe : md5_test.o md5.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-hash_bench.exe : sha256.o md5.o hash_bench.o $(CC_LIB_OBJECTS)
+hash_bench.exe : sha256.o md5.o sha1.o hash_bench.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 lfsr_test.exe : lfsr_test.o $(CC_LIB_OBJECTS)
