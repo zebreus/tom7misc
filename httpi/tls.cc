@@ -15,16 +15,16 @@
 #include "crypt/sha256.h"
 
 enum : uint8_t {
-HELLO_REQUEST = 0,
-CLIENT_HELLO = 1,
-SERVER_HELLO = 2,
-CERTIFICATE = 11,
-SERVER_KEY_EXCHANGE = 12,
-CERTIFICATE_REQUEST = 13,
-SERVER_HELLO_DONE = 14,
-CERTIFICATE_VERIFY = 15,
-CLIENT_KEY_EXCHANGE = 16,
-FINISHED = 20,
+  HELLO_REQUEST = 0,
+  CLIENT_HELLO = 1,
+  SERVER_HELLO = 2,
+  CERTIFICATE = 11,
+  SERVER_KEY_EXCHANGE = 12,
+  CERTIFICATE_REQUEST = 13,
+  SERVER_HELLO_DONE = 14,
+  CERTIFICATE_VERIFY = 15,
+  CLIENT_KEY_EXCHANGE = 16,
+  FINISHED = 20,
 };
 
 void TLS::PrintClientHello(const ClientHello &hello) {
@@ -200,6 +200,10 @@ bool TLS::ParseChangeCipherSpec(PacketParser packet) {
   return packet.size() == 1 && packet.Byte() == 0x01;
 }
 
+std::vector<uint8_t> TLS::SerializeChangeCipherSpec() {
+  return {0x01};
+}
+
 std::optional<TLS::HandshakeFinished>
 TLS::ParseHandshakeFinished(PacketParser packet) {
   HandshakeFinished finished;
@@ -207,7 +211,7 @@ TLS::ParseHandshakeFinished(PacketParser packet) {
   if (packet.size() < 4) return std::nullopt;
   if (packet.Byte() != FINISHED) return std::nullopt;
   // Fixed size.
-  if (packet.W32() != 12) return std::nullopt;
+  if (packet.W24() != 12) return std::nullopt;
   if (packet.size() != 12) return std::nullopt;
 
   packet.BytesTo(12, finished.verify_data.data());

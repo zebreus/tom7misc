@@ -80,6 +80,8 @@ struct TLS {
   // message, though it is sent during the handshake process.)
   static bool ParseChangeCipherSpec(PacketParser packet);
 
+  static std::vector<uint8_t> SerializeChangeCipherSpec();
+
   static std::optional<TLS::HandshakeFinished>
   ParseHandshakeFinished(PacketParser packet);
 
@@ -98,6 +100,7 @@ struct TLS {
   static inline constexpr uint16_t RSA_WITH_AES_256_CBC_SHA = 0x0035;
 
   // The pseudo-random function used for key derivation.
+  // (Using HMAC SHA-256.)
   // This fills the entire output span.
   static void PRF(
       std::span<const uint8_t> secret,

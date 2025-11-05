@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <span>
 #include <variant>
+#include <chrono>
+#include <thread>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -20,13 +22,21 @@
 #include <fcntl.h>
 #include <signal.h>
 
-#include "timer.h"
-#include "hexdump.h"
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "tls.h"
 #include "config.h"
+#include "crypt/cryptrand.h"
+#include "crypt/sha1.h"
+#include "crypt/sha256.h"
+#include "crypt/aes.h"
+#include "hexdump.h"
+#include "randutil.h"
+#include "timer.h"
+#include "tls.h"
+#include "packet-writer.h"
+#include "packet-parser.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
 // (Very) Insecure. Incomplete. Inefficient.
@@ -497,13 +507,19 @@ struct PollSet {
 struct Session {
   Session(const Config &config,
           int client_fd,
-          struct sockaddr_in client_addr) :
-    config(config), client(client_fd, client_addr) {
+          struct sockaddr_in client_addr,
+          ArcFour *rc) :
+    config(config), rc(rc), client(client_fd, client_addr) {
 
     // Just let the OS clean up forked children when they exit.
     signal(SIGCHLD, SIG_IGN);
 
     poll_set.ConnectClient(client_fd);
+    SHA256::Init(&handshake_ctx);
+
+    // Bogus server_random.
+    for (int i = 0; i < 32; i++)
+      server_random[i] = i + 1;
   }
 
   PollSet poll_set;
@@ -611,7 +627,6 @@ struct Session {
       // TODO: We should perhaps assemble fragmented packets,
       // but as a simplification and safety measure, we require
       // handshake messages to be in their own packets.
-      // the
       TLSRecord &r = ro.value();
       PacketParser packet(r.fragment);
 
@@ -624,9 +639,16 @@ struct Session {
             HexDump::Color(r.fragment));
 
       if (state == State::START) {
+        if (r.type != ContentType::HANDSHAKE) {
+          Print("Only handshake messages now!\n");
+          AbortConnection();
+          return;
+        }
+
         // Parse ClientHello.
         if (std::optional<TLS::ClientHello> och =
             TLS::ParseClientHello(packet)) {
+          RecordHandshake(packet.View());
           TLS::PrintClientHello(och.value());
 
           memcpy(client_random.data(), och.value().client_random.data(), 32);
@@ -674,6 +696,9 @@ struct Session {
             return;
           }
 
+          // PERF: At this point we could begin initiating the backend
+          // connection, which could perhaps reduce latency.
+
           TLS::ServerHello shello;
           // TLS 1.2
           shello.version_major = 3;
@@ -681,7 +706,7 @@ struct Session {
 
           // bogus server random
           for (int i = 0; i < 32; i++)
-            shello.server_random[i] = i + 1;
+            shello.server_random[i] = server_random[i];
 
           // session ids not supported
           shello.session_id.clear();
@@ -690,6 +715,7 @@ struct Session {
 
           if (std::optional<std::vector<uint8_t>> po =
               TLS::SerializeServerHello(shello)) {
+            RecordHandshake(po.value());
             client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
 
             Print("Sent ServerHello:\n"
@@ -704,6 +730,7 @@ struct Session {
           if (std::optional<std::vector<uint8_t>> co =
               TLS::SerializeServerCertificate(
                   host_config->key->server_certificate)) {
+            RecordHandshake(co.value());
             client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
 
             Print("Sent ServerCertificate:\n"
@@ -717,6 +744,7 @@ struct Session {
 
           std::vector<uint8_t> shd =
             TLS::SerializeServerHelloDone();
+          RecordHandshake(shd);
           client.SendTLSRecord(HANDSHAKE, 3, 3, shd);
           Print("Sent ServerHelloDone:\n"
                 "{}\n", HexDump::Color(shd));
@@ -729,6 +757,194 @@ struct Session {
           AbortConnection();
           return;
         }
+      } else if (state == State::WAIT_KEY) {
+        if (r.type != ContentType::HANDSHAKE) {
+          Print("Only handshake messages now!\n");
+          AbortConnection();
+          return;
+        }
+
+        // We always proceed to avoid "padding oracle" attacks.
+        // But the client key will be deliberately random garbage.
+        for (int i = 0; i < client_pre_master_secret.size(); i++) {
+          client_pre_master_secret[i] = rc->Byte();
+        }
+
+        RecordHandshake(packet.View());
+        if (std::optional<TLS::ClientKeyExchange> ockx =
+            TLS::ParseClientKeyExchange(packet)) {
+          std::vector<uint8_t> &ckx_pms = ockx.value().encrypted_pms;
+          const int block_size = MultiRSA::BlockSize(host_config->key->rsa);
+          if (ckx_pms.size() == block_size) {
+            MultiRSA::RawDecryptInPlace(host_config->key->rsa,
+                                        std::span<uint8_t>(ckx_pms));
+            if (std::optional<std::span<const uint8_t>> omsg =
+                MultiRSA::ExtractPadded(ckx_pms)) {
+              if (omsg.value().size() == client_pre_master_secret.size()) {
+                memcpy(client_pre_master_secret.data(),
+                       omsg.value().data(),
+                       client_pre_master_secret.size());
+                Print(AGREEN("Got pre-master secret from client") ".\n");
+              } else {
+                Print(ARED("Wrong pre-master secret size") " (got {})\n",
+                      omsg.value().size());
+              }
+            } else {
+              Print(ARED("Couldn't decrypt") "\n");
+            }
+
+          } else {
+            Print(ARED("Wrong block size") " (got {})\n",
+                  ckx_pms.size());
+          }
+        }
+
+        // Regardless, continue with the handshake.
+        // XXX
+        handshake_validation = SHA256::FinalArray(&handshake_ctx);
+        Print("Handshake hash (SHA-256); same for both client and server:\n"
+              "{}\n", HexDump::Color(handshake_validation));
+
+        // Derive master secret from the pre-master secret.
+        std::array<uint8_t, 64> random_seed;
+        memcpy(random_seed.data(), client_random.data(), 32);
+        memcpy(random_seed.data() + 32, server_random.data(), 32);
+        TLS::PRF(client_pre_master_secret, "master secret",
+                 random_seed, master_secret);
+        Print("Master secret:\n"
+              "{}\n", HexDump::Color(master_secret));
+
+        memcpy(random_seed.data(), server_random.data(), 32);
+        memcpy(random_seed.data() + 32, client_random.data(), 32);
+
+        // The key data all come from one PRF stream.
+        std::array<uint8_t, 2 * (20 + 32 + 16)> key_bytes;
+        TLS::PRF(master_secret, "key expansion", random_seed, key_bytes);
+        std::span<const uint8_t> remaining = key_bytes;
+        auto Consume = [&remaining](auto &out) {
+            CHECK(remaining.size() >= out.size());
+            memcpy(out.data(), remaining.data(), out.size());
+            remaining = remaining.subspan(out.size());
+          };
+
+        Consume(client_write_mac_key);
+        Consume(server_write_mac_key);
+        Consume(client_write_key);
+        Consume(server_write_key);
+        Consume(client_write_iv);
+        Consume(server_write_iv);
+        CHECK(remaining.empty());
+
+        Print("client_write_mac_key:\n"
+              "{}\n", HexDump::Color(client_write_mac_key));
+        Print("server_write_mac_key:\n"
+              "{}\n", HexDump::Color(server_write_mac_key));
+        Print("client_write_key:\n"
+              "{}\n", HexDump::Color(client_write_key));
+        Print("server_write_key:\n"
+              "{}\n", HexDump::Color(server_write_key));
+        Print("client_write_iv:\n"
+              "{}\n", HexDump::Color(client_write_iv));
+        Print("server_write_iv:\n"
+              "{}\n", HexDump::Color(server_write_iv));
+
+        state = State::WAIT_CLIENT_CHANGE;
+
+      } else if (state == State::WAIT_CLIENT_CHANGE) {
+        if (r.type != ContentType::CHANGE_CIPHER_SPEC) {
+          Print("Only cipher spec change!\n");
+          AbortConnection();
+          return;
+        }
+
+        if (TLS::ParseChangeCipherSpec(packet)) {
+          Print(AGREEN("Cipher change spec OK") "\n");
+
+          state = State::WAIT_HANDSHAKE_FINISH;
+
+        } else {
+          Print("Incorrect cipher change message.\n");
+          AbortConnection();
+          return;
+        }
+
+      } else if (state == State::WAIT_HANDSHAKE_FINISH) {
+
+        if (r.type != ContentType::HANDSHAKE) {
+          Print("Expected encrypted handshake message.\n");
+          AbortConnection();
+          return;
+        }
+
+        if (auto hopt = DecryptRecord(
+                client_write_mac_key,
+                client_write_key,
+                client_seq_num,
+                r)) {
+
+          client_seq_num++;
+
+          Print("Decrypted message:\n{}\n",
+                HexDump::Color(hopt.value()));
+
+          if (std::optional<TLS::HandshakeFinished> ohf =
+              TLS::ParseHandshakeFinished(hopt.value())) {
+
+            const std::array<uint8_t, 12> &client_verify_data =
+              ohf.value().verify_data;
+
+            std::array<uint8_t, 12> expected;
+            TLS::PRF(master_secret, "client finished", handshake_validation,
+                     expected);
+
+            Print("Actual:\n"
+                  "{}\n"
+                  "Expected:\n"
+                  "{}\n",
+                  HexDump::Color(client_verify_data),
+                  HexDump::Color(expected));
+
+            if (client_verify_data != expected) {
+              Print("Wrong verify_data.\n");
+              AbortConnection();
+              return;
+            }
+
+            Print("Successful HandshakeFinished.\n");
+
+            // Now send the server messages.
+            client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
+                                 TLS::SerializeChangeCipherSpec());
+
+            TLS::HandshakeFinished finished;
+            TLS::PRF(master_secret, "server finished", handshake_validation,
+                     finished.verify_data);
+
+
+            LOG(FATAL) << "I need to send the server handshakefinished";
+
+            // Encrypt record, send...
+            // client.SendTLSRecord(HANDSHAKE, 3, 3,
+
+            state = State::STEADY_STATE;
+
+          } else {
+            Print("Couldn't parse HandshakeFinished.\n");
+            AbortConnection();
+            return;
+          }
+
+        } else {
+          Print("Couldn't decrypt.\n");
+          AbortConnection();
+          return;
+        }
+
+      } else if (state == State::STEADY_STATE) {
+
+        Print("Unimplemented: steady-state communication.\n");
+        AbortConnection();
+
       } else {
         AbortConnection();
         return;
@@ -739,6 +955,11 @@ struct Session {
   }
 
   void AbortConnection() {
+    // Partly mitigate timing attacks.
+    uint64_t ns = 10000 + RandTo(rc, 1000000);
+    std::chrono::nanoseconds dur(ns);
+    std::this_thread::sleep_for(dur);
+
     client.Shutdown("server aborted");
     backend.Shutdown("server aborted");
     state = State::DISCONNECTED;
@@ -748,10 +969,118 @@ struct Session {
   }
 
  private:
+  void RecordHandshake(std::span<const uint8_t> bytes) {
+    SHA256::UpdateSpan(&handshake_ctx, bytes);
+  }
+
+  // Decrypts a TLS record. If successful, span will refer into the
+  // record, which is modified into place.
+  std::optional<std::span<const uint8_t>> DecryptRecord(
+      std::span<const uint8_t> mac_key,
+      std::span<const uint8_t> enc_key,
+      uint64_t seq_num,
+      // Modified by decryption.
+      TLSRecord &record) {
+
+    // "GenericBlockCipher" structure:
+    // IV (16 bytes) + Content + MAC (20 bytes) + Padding
+    std::span<uint8_t> payload(record.fragment);
+    // Careful: SHA-1 for the record HMAC.
+    static constexpr int MAC_SIZE = 20;
+
+    if (payload.size() < AES256::BLOCKLEN + MAC_SIZE + 1 ||
+        (payload.size() % AES256::BLOCKLEN) != 0) {
+      Print("Payload too small or wrong block size.");
+      return std::nullopt;
+    }
+
+    std::span<const uint8_t> iv = payload.subspan(0, 16);
+    std::span<uint8_t> buffer = payload.subspan(16);
+
+    Print("Encrypted payload:\n{}\n",
+          HexDump::Color(buffer));
+
+    // Decrypt in place.
+    AES256::Ctx aes;
+    AES256::InitCtxIV(&aes, enc_key.data(), iv.data());
+    AES256::DecryptCBC(&aes, buffer.data(), buffer.size());
+
+    Print("Decrypted payload:\n{}\n",
+          HexDump::Color(buffer));
+
+    // Final byte is padding length.
+    // In a secure implementation, you would want to make
+    // sure the authentication/error checking happens in constant
+    // time so that an attacker can't figure out anything about
+    // any bytes with timing attacks.
+
+    CHECK(!buffer.empty());
+    const int num_pad = buffer.back();
+    const int actual_length = buffer.size() - (num_pad + 1);
+    if (actual_length < 0) {
+      Print("Invalid padding length.\n");
+      return std::nullopt;
+    }
+
+    // Check padding.
+    for (size_t i = 0; i < num_pad + 1; i++) {
+      if (buffer[actual_length + i] != num_pad) {
+        Print("Invalid padding.\n");
+        return std::nullopt;
+      }
+    }
+
+    // Verify and remove MAC.
+    const int content_len = actual_length - MAC_SIZE;
+    if (content_len < 0) {
+      Print("Negative content length.\n");
+      return std::nullopt;
+    }
+    // Note the buffer still has the padding in it.
+    std::span<const uint8_t> content = buffer.subspan(0, content_len);
+    std::span<const uint8_t> received_mac =
+      buffer.subspan(content_len, MAC_SIZE);
+    CHECK(received_mac.size() == MAC_SIZE) <<
+      std::format("Had:\n"
+                  "Buffer {} bytes\n"
+                  "content_len {}\n"
+                  "received_mac {} bytes (want {})\n",
+                  buffer.size(),
+                  content_len,
+                  received_mac.size(), MAC_SIZE);
+
+    // PERF can probably do this in place?
+    PacketWriter hash_buffer;
+    hash_buffer.reserve(8 + 1 + 2 + 2 + content.size());
+    hash_buffer.W64(seq_num);
+    hash_buffer.Byte(record.type);
+    hash_buffer.Byte(record.version_major);
+    hash_buffer.Byte(record.version_minor);
+    hash_buffer.W16(content.size());
+    hash_buffer.Bytes(content);
+
+    static_assert(MAC_SIZE == SHA1::DIGEST_LENGTH);
+    std::array<uint8_t, SHA1::DIGEST_LENGTH> expected_mac =
+      SHA1::HMAC(mac_key, hash_buffer.View());
+
+    if (0 != memcmp(expected_mac.data(), received_mac.data(), MAC_SIZE)) {
+      Print("Wrong HMAC.\n");
+      return std::nullopt;
+    }
+
+    return std::make_optional(std::span<const uint8_t>(content));
+  }
+
   enum class State {
     START,
     // Sent ServerHello..HelloDone. Waiting for ClientKeyExchange.
     WAIT_KEY,
+    // Awaiting change cipher spec.
+    WAIT_CLIENT_CHANGE,
+    // Awaiting handshake finish.
+    WAIT_HANDSHAKE_FINISH,
+    // Encrypted application traffic.
+    STEADY_STATE,
     DISCONNECTED,
   };
 
@@ -762,11 +1091,31 @@ struct Session {
 
   [[maybe_unused]] std::array<uint8_t, 32> client_random = {};
   [[maybe_unused]] std::array<uint8_t, 32> server_random = {};
+  std::array<uint8_t, 48> client_pre_master_secret = {};
+  std::array<uint8_t, 48> master_secret = {};
+
+  // For RSA_WITH_AES_256_CBC_SHA:
+  // MAC: SHA1 (20 bytes)
+  // Enc: AES-256 (32 bytes)
+  // IV: AES block size (16 bytes)
+  std::array<uint8_t, 20> client_write_mac_key = {};
+  std::array<uint8_t, 20> server_write_mac_key = {};
+  std::array<uint8_t, 32> client_write_key = {};
+  std::array<uint8_t, 32> server_write_key = {};
+  std::array<uint8_t, 16> client_write_iv = {};
+  std::array<uint8_t, 16> server_write_iv = {};
+
+  uint64_t client_seq_num = 0;
+  uint64_t server_seq_num = 0;
+
   // From the client; only validated inasmuch as it matches
   // some host entry.
   std::string server_name;
   // Not owned.
   const Config::HostConfig *host_config = nullptr;
+  ArcFour *rc = nullptr;
+  SHA256::Ctx handshake_ctx = {};
+  std::array<uint8_t, 32> handshake_validation = {};
 
   // TODO: Need a hash of the handshake.
 
@@ -779,9 +1128,14 @@ struct Session {
 };
 
 struct Server {
-  Server(Config config) : config(std::move(config)) {
+  Server(Config config) : config(std::move(config)),
+                          rc(std::format("{:x}.{:x}.{:x}",
+                                         CryptRand().Word64(),
+                                         CryptRand().Word64(),
+                                         CryptRand().Word64())) {
     memset(&server_addr, 0, sizeof (server_addr));
     server_pid = getpid();
+    rc.Discard(1024);
   }
 
   void Listen(int port) {
@@ -839,6 +1193,9 @@ struct Server {
         continue;
       }
 
+      ArcFour client_rc(std::format("{:x}.{:x}",
+                                    rc.Word64(), rc.Word64()));
+
       // Each connection is handled by its own process for simplicity.
       // forking is kinda slow, but I can do at least 300 a second:
       //  while (true); do date --utc; done | uniq -c
@@ -853,8 +1210,9 @@ struct Server {
         // Child.
         close(listen_fd);
         {
-          Session session(config, client_fd, client_addr);
-          session.Loop();
+          std::unique_ptr<Session> session{
+            new Session(config, client_fd, client_addr, &client_rc)};
+          session->Loop();
         }
         exit(0);
 
@@ -881,6 +1239,8 @@ struct Server {
 
  private:
   Config config;
+  // Fast source of mediocre randomness.
+  ArcFour rc;
   int listen_fd = 0;
   struct sockaddr_in server_addr;
   int server_pid = 0;
@@ -899,4 +1259,3 @@ int main(int argc, char **arg) {
 
   return 0;
 }
-

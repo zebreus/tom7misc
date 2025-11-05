@@ -159,6 +159,51 @@ bool MultiRSA::ValidateKey(const MultiRSA::Key &key, std::string *err) {
   return true;
 }
 
+int MultiRSA::BlockSize(const Key &key) {
+  return BigInt::NumBytes(key.n);
+}
+
+void MultiRSA::RawDecryptInPlace(const Key &key,
+                                 std::span<uint8_t> buffer) {
+  int byte_len = BlockSize(key);
+  CHECK(buffer.size() == byte_len) << "Wrong buffer size.";
+
+  BigInt c = BigInt::FromBigEndianBytes(buffer);
+  BigInt m = BigInt::PowMod(c, key.d, key.n);
+
+  // The buffer will have space, since this is performed mod n.
+  CHECK(BigInt::ToBigEndianBytes(m, buffer));
+}
+
+std::optional<std::span<const uint8_t>> MultiRSA::ExtractPadded(
+    std::span<const uint8_t> buffer) {
+  PacketParser packet(buffer);
+
+  // Must have at least a header, minimal padding, and separator.
+  if (packet.size() < 11) {
+    return std::nullopt;
+  }
+
+  if (packet.Byte() != 0x00 ||
+      packet.Byte() != 0x02) {
+    return std::nullopt;
+  }
+
+  {
+    // Now find the 0x00 byte that terminates padding.
+    int padding_len = 0;
+    for (;;) {
+      if (packet.empty()) return std::nullopt;
+      if (packet.Byte() == 0x00) break;
+      padding_len++;
+    }
+    if (padding_len < 8) return std::nullopt;
+  }
+
+  return packet.View();
+}
+
+
 std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
   CHECK(key.factors.size() >= 2) << "Need at least two factors.";
 

@@ -13,6 +13,7 @@ struct PacketWriter {
 
   bool empty() const { return payload.empty(); }
   size_t size() const { return payload.size(); }
+  void reserve(size_t n) { payload.reserve(n); }
 
   void SetW8(size_t idx, uint8_t b) {
     CHECK(idx < payload.size());
@@ -62,6 +63,12 @@ struct PacketWriter {
     payload.push_back((w >> 16) & 0xFF);
     payload.push_back((w >> 8) & 0xFF);
     payload.push_back(w & 0xFF);
+  }
+
+  void W64(uint64_t w) {
+    for (int i = 7; i >= 0; i--) {
+      payload.push_back((w >> (i * 8)) & 0xFF);
+    }
   }
 
   void Bytes(std::span<const uint8_t> bs) {
