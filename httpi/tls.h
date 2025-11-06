@@ -82,8 +82,11 @@ struct TLS {
 
   static std::vector<uint8_t> SerializeChangeCipherSpec();
 
-  static std::optional<TLS::HandshakeFinished>
+  static std::optional<HandshakeFinished>
   ParseHandshakeFinished(PacketParser packet);
+
+  static std::vector<uint8_t> SerializeHandshakeFinished(
+      const HandshakeFinished &h);
 
   static std::optional<std::vector<uint8_t>> SerializeServerHello(
       const ServerHello &hello);

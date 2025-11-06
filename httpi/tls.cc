@@ -219,6 +219,15 @@ TLS::ParseHandshakeFinished(PacketParser packet) {
   return {std::move(finished)};
 }
 
+std::vector<uint8_t> TLS::SerializeHandshakeFinished(
+    const HandshakeFinished &h) {
+  PacketWriter packet;
+  packet.reserve(1 + 3 + h.verify_data.size());
+  packet.Byte(FINISHED);
+  packet.W24(h.verify_data.size());
+  packet.Bytes(h.verify_data);
+  return {std::move(packet).Release()};
+}
 
 std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
     const ServerHello &hello) {

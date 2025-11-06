@@ -122,6 +122,7 @@ struct PacketWriter {
 
 
   std::span<const uint8_t> View() const { return payload; }
+  uint8_t *data() { return payload.data(); }
   std::vector<uint8_t> &&Release() && { return std::move(payload); }
 
  private:

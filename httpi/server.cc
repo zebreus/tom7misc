@@ -145,6 +145,16 @@ struct Connection {
     return idle_timer.Seconds();
   }
 
+  void DoneSending() {
+    CHECK(state == State::ONLY_WRITE ||
+          state == State::DUPLEX);
+    CHECK(!send_buf_eof);
+    send_buf_eof = true;
+    if (send_buf.empty()) {
+      InternalEndWrite();
+    }
+  }
+
   // Transition to the fully-closed state and clean up.
   // OK to call this in any valid state.
   void Shutdown(std::string_view msg) {
@@ -215,12 +225,23 @@ struct Connection {
       v->erase(v->begin(), v->begin() + amount);
       Print("Wrote {} bytes. {} left\n", amount, v->size());
       idle_timer.Reset();
+
+      // Maybe transition to half-closed, if we've marked EOF.
+      if (v->empty() && send_buf_eof) {
+        InternalEndWrite();
+      }
+
       return true;
     }
   }
 
   // Explicitly signal that we will not send any more data.
+  // Should only do this after the explicit buffer has been
+  // drained (or cleared).
   void InternalEndWrite() {
+    CHECK(send_buf.empty());
+    // Don't care about whether we sent an explicit eof, though.
+
     if (state == State::ONLY_WRITE) {
       // This ends the connection, then.
       Shutdown("graceful end of stream (w)");
@@ -259,6 +280,9 @@ struct Connection {
   // set yet).
   int fd = 0;
   std::vector<uint8_t> send_buf;
+  // Once this is true, we have finalized the send_buf and
+  // no more shall be added.
+  bool send_buf_eof = false;
   Timer idle_timer;
 
   struct sockaddr_in peer_addr;
@@ -355,7 +379,8 @@ struct ClientConnection : public Connection {
     return std::make_optional(std::move(r));
   }
 
-  // Send a single already-encrypted TLSRecord.
+  // Send a single TLSRecord. This is typically used for unencrypted
+  // packets.
   void SendTLSRecord(ContentType ct, uint8_t version_major,
                      uint8_t version_minor, std::span<const uint8_t> payload) {
     std::array<uint8_t, 5> hdr;
@@ -366,6 +391,10 @@ struct ClientConnection : public Connection {
     hdr[4] = payload.size() & 0xFF;
     Write(hdr);
     Write(payload);
+  }
+
+  void SendRaw(std::span<const uint8_t> bytes) {
+    Write(bytes);
   }
 
  private:
@@ -920,11 +949,8 @@ struct Session {
             TLS::PRF(master_secret, "server finished", handshake_validation,
                      finished.verify_data);
 
-
-            LOG(FATAL) << "I need to send the server handshakefinished";
-
-            // Encrypt record, send...
-            // client.SendTLSRecord(HANDSHAKE, 3, 3,
+            SendEncrypted(HANDSHAKE, 3, 3,
+                          TLS::SerializeHandshakeFinished(finished));
 
             state = State::STEADY_STATE;
 
@@ -942,8 +968,22 @@ struct Session {
 
       } else if (state == State::STEADY_STATE) {
 
+        // XXX forward to backend!
+        // Also need to read from backend and forward
+        // proactively.
+
+        std::string response = "What do ya want for nothing?\n\n";
+        SendEncrypted(APPLICATION_DATA, 3, 3,
+                      std::span<const uint8_t>((const uint8_t *)
+                                               response.data(),
+                                               response.size()));
+
+        client.DoneSending();
+
+        // TODO: need to send close_notify
+
         Print("Unimplemented: steady-state communication.\n");
-        AbortConnection();
+        return;
 
       } else {
         AbortConnection();
@@ -952,6 +992,22 @@ struct Session {
     }
 
     // XXX Process backend packets too.
+  }
+
+  void SendEncrypted(ContentType ct,
+                     uint8_t version_major, uint8_t version_minor,
+                     std::span<const uint8_t> content) {
+    std::vector<uint8_t> record =
+      MakeEncryptedRecord(
+          server_write_mac_key,
+          server_write_key,
+          server_seq_num,
+          ct, version_major, version_minor,
+          content);
+
+    server_seq_num++;
+
+    client.SendRaw(record);
   }
 
   void AbortConnection() {
@@ -973,9 +1029,12 @@ struct Session {
     SHA256::UpdateSpan(&handshake_ctx, bytes);
   }
 
-  // Decrypts a TLS record. If successful, span will refer into the
-  // record, which is modified into place.
-  std::optional<std::span<const uint8_t>> DecryptRecord(
+  // Careful: SHA-1 for the record HMAC.
+  static constexpr int MAC_SIZE = 20;
+
+  // Decrypts a TLS record. If successful, the span will refer into
+  // the record, which is modified into place.
+  static std::optional<std::span<const uint8_t>> DecryptRecord(
       std::span<const uint8_t> mac_key,
       std::span<const uint8_t> enc_key,
       uint64_t seq_num,
@@ -985,8 +1044,6 @@ struct Session {
     // "GenericBlockCipher" structure:
     // IV (16 bytes) + Content + MAC (20 bytes) + Padding
     std::span<uint8_t> payload(record.fragment);
-    // Careful: SHA-1 for the record HMAC.
-    static constexpr int MAC_SIZE = 20;
 
     if (payload.size() < AES256::BLOCKLEN + MAC_SIZE + 1 ||
         (payload.size() % AES256::BLOCKLEN) != 0) {
@@ -1070,6 +1127,79 @@ struct Session {
 
     return std::make_optional(std::span<const uint8_t>(content));
   }
+
+  // Encrypt the payload of a TLS record and construct the record.
+  // This allocates a new record because we have to add the
+  // padding and HMAC. The record is ready to put on the wire.
+  //
+  // PERF unnecessary copying here. Perhaps we could have
+  // some kind of staging area for the preparation of packets,
+  // which has e.g. space for the sequence num, but we also need
+  // space after for the hmac and padding.
+  static std::vector<uint8_t> MakeEncryptedRecord(
+      std::span<const uint8_t> mac_key,
+      std::span<const uint8_t> enc_key,
+      uint64_t seq_num,
+      ContentType ct, uint8_t version_major, uint8_t version_minor,
+      std::span<const uint8_t> content) {
+
+    const int unpadded_length = content.size() + MAC_SIZE;
+    const int pad_len =
+      AES256::BLOCKLEN - (unpadded_length % AES256::BLOCKLEN);
+    CHECK(pad_len > 0);
+
+    // For HMAC calculation.
+    PacketWriter hash_buffer;
+    hash_buffer.reserve(8 + 1 + 2 + 2 + content.size());
+    hash_buffer.W64(seq_num);
+    hash_buffer.Byte(ct);
+    hash_buffer.Byte(version_major);
+    hash_buffer.Byte(version_minor);
+    hash_buffer.W16(content.size());
+    hash_buffer.Bytes(content);
+
+    static_assert(MAC_SIZE == SHA1::DIGEST_LENGTH);
+    std::array<uint8_t, SHA1::DIGEST_LENGTH> hmac =
+      SHA1::HMAC(mac_key, hash_buffer.View());
+
+    std::array<uint8_t, AES256::BLOCKLEN> iv = {};
+    // Server chooses the IV. Bogus!
+    for (int i = 0; i < iv.size(); i++) {
+      iv[i] = (i << 4) | i;
+    }
+
+    // Now prep the encrypted packet.
+    const int enc_len = unpadded_length + pad_len;
+    CHECK((enc_len % AES256::BLOCKLEN) == 0);
+    // With the IV, also one encryption block.
+    const int fragment_len = AES256::BLOCKLEN + enc_len;
+
+    PacketWriter record;
+    record.reserve(1 + 2 + 2 + fragment_len);
+    record.Byte(ct);
+    record.Byte(version_major);
+    record.Byte(version_minor);
+    record.W16(fragment_len);
+    record.Bytes(iv);
+
+    const int enc_pos = record.size();
+    record.Bytes(content);
+    record.Bytes(hmac);
+    for (int i = 0; i < pad_len; i++)
+      record.Byte(pad_len - 1);
+    CHECK(enc_len == record.size() - enc_pos);
+    CHECK(enc_pos + enc_len == record.size());
+
+    // Encrypt in place.
+    AES256::Ctx aes;
+    AES256::InitCtxIV(&aes, enc_key.data(), iv.data());
+    AES256::EncryptCBC(&aes,
+                       record.data() + enc_pos,
+                       enc_len);
+
+    return std::move(record).Release();
+  }
+
 
   enum class State {
     START,
