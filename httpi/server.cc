@@ -829,10 +829,14 @@ struct Session {
         }
 
         // Regardless, continue with the handshake.
-        // XXX
-        handshake_validation = SHA256::FinalArray(&handshake_ctx);
-        Print("Handshake hash (SHA-256); same for both client and server:\n"
-              "{}\n", HexDump::Color(handshake_validation));
+        {
+          SHA256::Ctx client_handshake_ctx = handshake_ctx;
+          client_handshake_validation =
+            SHA256::FinalArray(&client_handshake_ctx);
+          Print("Handshake hash (SHA-256) for client:\n"
+                "{}\n", HexDump::Color(client_handshake_validation));
+        }
+
 
         // Derive master secret from the pre-master secret.
         std::array<uint8_t, 64> random_seed;
@@ -913,8 +917,13 @@ struct Session {
 
           client_seq_num++;
 
+          // We saved the hash of the client's handshake sequence,
+          // so we update it for the server's calculation next.
+          RecordHandshake(hopt.value());
+
           Print("Decrypted message:\n{}\n",
                 HexDump::Color(hopt.value()));
+
 
           if (std::optional<TLS::HandshakeFinished> ohf =
               TLS::ParseHandshakeFinished(hopt.value())) {
@@ -923,8 +932,8 @@ struct Session {
               ohf.value().verify_data;
 
             std::array<uint8_t, 12> expected;
-            TLS::PRF(master_secret, "client finished", handshake_validation,
-                     expected);
+            TLS::PRF(master_secret, "client finished",
+                     client_handshake_validation, expected);
 
             Print("Actual:\n"
                   "{}\n"
@@ -945,8 +954,17 @@ struct Session {
             client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
                                  TLS::SerializeChangeCipherSpec());
 
+            {
+              SHA256::Ctx server_handshake_ctx = handshake_ctx;
+              server_handshake_validation =
+                SHA256::FinalArray(&server_handshake_ctx);
+              Print("Handshake hash (SHA-256) for server:\n"
+                    "{}\n", HexDump::Color(server_handshake_validation));
+            }
+
             TLS::HandshakeFinished finished;
-            TLS::PRF(master_secret, "server finished", handshake_validation,
+            TLS::PRF(master_secret, "server finished",
+                     server_handshake_validation,
                      finished.verify_data);
 
             SendEncrypted(HANDSHAKE, 3, 3,
@@ -968,19 +986,47 @@ struct Session {
 
       } else if (state == State::STEADY_STATE) {
 
+        // Decrypt the packet.
+        if (auto hopt = DecryptRecord(
+                client_write_mac_key,
+                client_write_key,
+                client_seq_num,
+                r)) {
+          client_seq_num++;
+
+          Print("Client packet ({}.{}.{}):\n"
+                "{}\n",
+                (uint8_t)r.type,
+                r.version_major,
+                r.version_minor,
+                HexDump::Color(hopt.value()));
+
+        } else {
+          Print("Couldn't decrypt.\n");
+          AbortConnection();
+          return;
+        }
+
         // XXX forward to backend!
         // Also need to read from backend and forward
         // proactively.
 
-        std::string response = "What do ya want for nothing?\n\n";
+        std::string body = "What do ya want for nothing?\n\n";
+        std::string response =
+          std::format(
+              "HTTP/1.1 200 OK\n"
+              "Content-Type: text/plain\n"
+              "Content-Length: {}\n"
+              "\n\n"
+              "{}",
+              body.size(), body);
+
         SendEncrypted(APPLICATION_DATA, 3, 3,
                       std::span<const uint8_t>((const uint8_t *)
                                                response.data(),
                                                response.size()));
 
-        client.DoneSending();
-
-        // TODO: need to send close_notify
+        HangUp();
 
         Print("Unimplemented: steady-state communication.\n");
         return;
@@ -994,6 +1040,13 @@ struct Session {
     // XXX Process backend packets too.
   }
 
+  void HangUp() {
+    Print("Hanging up.\n");
+    SendEncrypted(ALERT, 3, 3, TLS::SerializeCloseNotify());
+    client.DoneSending();
+    state = State::HANG_UP;
+  }
+
   void SendEncrypted(ContentType ct,
                      uint8_t version_major, uint8_t version_minor,
                      std::span<const uint8_t> content) {
@@ -1005,8 +1058,33 @@ struct Session {
           ct, version_major, version_minor,
           content);
 
+    {
+      PacketParser pp(record);
+      TLSRecord rec;
+      rec.type = (ContentType)pp.Byte();
+      rec.version_major = pp.Byte();
+      rec.version_minor = pp.Byte();
+      int len = pp.W16();
+      CHECK(pp.size() == len);
+      rec.fragment.resize(len);
+      memcpy(rec.fragment.data(), pp.data(), pp.size());
+
+      auto ro = DecryptRecord(server_write_mac_key,
+                              server_write_key,
+                              server_seq_num,
+                              rec);
+      CHECK(ro.has_value());
+      Print("[send] Round trip decrypt:\n{}\n",
+            HexDump::Color(ro.value()));
+      CHECK(ro.value().size() == content.size());
+      CHECK(0 == memcmp(ro.value().data(), content.data(),
+                        content.size()));
+    }
+
     server_seq_num++;
 
+    Print("Sending encrypted:\n{}\n",
+          HexDump::Color(record));
     client.SendRaw(record);
   }
 
@@ -1211,6 +1289,8 @@ struct Session {
     WAIT_HANDSHAKE_FINISH,
     // Encrypted application traffic.
     STEADY_STATE,
+    // Sent close notification; waiting for disconnection.
+    HANG_UP,
     DISCONNECTED,
   };
 
@@ -1245,7 +1325,8 @@ struct Session {
   const Config::HostConfig *host_config = nullptr;
   ArcFour *rc = nullptr;
   SHA256::Ctx handshake_ctx = {};
-  std::array<uint8_t, 32> handshake_validation = {};
+  std::array<uint8_t, 32> client_handshake_validation = {};
+  std::array<uint8_t, 32> server_handshake_validation = {};
 
   // TODO: Need a hash of the handshake.
 

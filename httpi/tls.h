@@ -80,13 +80,8 @@ struct TLS {
   // message, though it is sent during the handshake process.)
   static bool ParseChangeCipherSpec(PacketParser packet);
 
-  static std::vector<uint8_t> SerializeChangeCipherSpec();
-
   static std::optional<HandshakeFinished>
   ParseHandshakeFinished(PacketParser packet);
-
-  static std::vector<uint8_t> SerializeHandshakeFinished(
-      const HandshakeFinished &h);
 
   static std::optional<std::vector<uint8_t>> SerializeServerHello(
       const ServerHello &hello);
@@ -95,6 +90,13 @@ struct TLS {
       const ServerCertificate &cert);
 
   static std::vector<uint8_t> SerializeServerHelloDone();
+
+  static std::vector<uint8_t> SerializeChangeCipherSpec();
+
+  static std::vector<uint8_t> SerializeHandshakeFinished(
+      const HandshakeFinished &h);
+
+  static std::vector<uint8_t> SerializeCloseNotify();
 
   // For debug printing.
   static const char *CipherSuiteName(uint16_t c);

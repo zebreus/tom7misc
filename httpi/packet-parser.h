@@ -86,6 +86,8 @@ struct PacketParser {
     return rest;
   }
 
+  const uint8_t *data() const { return rest.data(); }
+
  private:
   // We keep the original payload but it is not currently
   // used.

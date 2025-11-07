@@ -200,10 +200,6 @@ bool TLS::ParseChangeCipherSpec(PacketParser packet) {
   return packet.size() == 1 && packet.Byte() == 0x01;
 }
 
-std::vector<uint8_t> TLS::SerializeChangeCipherSpec() {
-  return {0x01};
-}
-
 std::optional<TLS::HandshakeFinished>
 TLS::ParseHandshakeFinished(PacketParser packet) {
   HandshakeFinished finished;
@@ -217,16 +213,6 @@ TLS::ParseHandshakeFinished(PacketParser packet) {
   packet.BytesTo(12, finished.verify_data.data());
 
   return {std::move(finished)};
-}
-
-std::vector<uint8_t> TLS::SerializeHandshakeFinished(
-    const HandshakeFinished &h) {
-  PacketWriter packet;
-  packet.reserve(1 + 3 + h.verify_data.size());
-  packet.Byte(FINISHED);
-  packet.W24(h.verify_data.size());
-  packet.Bytes(h.verify_data);
-  return {std::move(packet).Release()};
 }
 
 std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
@@ -329,6 +315,26 @@ std::vector<uint8_t> TLS::SerializeServerHelloDone() {
   return std::move(packet).Release();
 }
 
+std::vector<uint8_t> TLS::SerializeChangeCipherSpec() {
+  return {0x01};
+}
+
+
+std::vector<uint8_t> TLS::SerializeHandshakeFinished(
+    const HandshakeFinished &h) {
+  PacketWriter packet;
+  packet.reserve(1 + 3 + h.verify_data.size());
+  packet.Byte(FINISHED);
+  packet.W24(h.verify_data.size());
+  packet.Bytes(h.verify_data);
+  return {std::move(packet).Release()};
+}
+
+std::vector<uint8_t> TLS::SerializeCloseNotify() {
+  return {0x01, 0x00};
+}
+
+
 const char *TLS::CipherSuiteName(uint16_t c) {
   switch (c) {
     // TLS 1.2
@@ -426,3 +432,4 @@ void TLS::PRF(std::span<const uint8_t> secret,
     A_i = SHA256::HMAC(secret, A_i);
   }
 }
+
