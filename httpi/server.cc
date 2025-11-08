@@ -47,41 +47,15 @@
 #define SERIALIZE_CONNECTIONS true
 #define JUST_ONE_CONNECTION true
 
+static constexpr bool SELF_CHECK = true;
+
+using enum TLS::ContentType;
+using ContentType = TLS::ContentType;
+using TLSRecord = TLS::Record;
+
 static constexpr int BUFFER_SIZE = 16384;
 static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
 static constexpr double CLIENT_IDLE_TIMEOUT_SEC = 60.1;
-
-enum ContentType : uint8_t {
-  INVALID = 0,
-  CHANGE_CIPHER_SPEC = 20,
-  ALERT = 21,
-  HANDSHAKE = 22,
-  APPLICATION_DATA = 23,
-};
-
-static inline bool IsValidContentType(uint8_t c) {
-  switch (c) {
-  case CHANGE_CIPHER_SPEC:
-  case ALERT:
-  case HANDSHAKE:
-  case APPLICATION_DATA:
-    return true;
-  default:
-    return false;
-  }
-}
-
-// The "record layer".
-// In RFC 5246, this struct is "TLSPlaintext" and "TLSCiphertext"
-// (and TLSCompressed).
-struct TLSRecord {
-  ContentType type = INVALID;
-  uint8_t version_major = 0;
-  uint8_t version_minor = 0;
-  // Maximum of 2^14 for plaintext,
-  // and 2^14 + 2048 for ciphertext.
-  std::vector<uint8_t> fragment;
-};
 
 struct Connection {
   Connection() {
@@ -331,7 +305,7 @@ struct ClientConnection : public Connection {
     while (!incoming_partial.empty()) {
       // Once we have any data, check to make sure this is TLS
       // traffic.
-      if (!IsValidContentType(incoming_partial[0])) {
+      if (!TLS::IsValidContentType(incoming_partial[0])) {
         Shutdown("invalid tls record type");
         return;
       }
@@ -864,6 +838,7 @@ struct Session {
         Consume(server_write_mac_key);
         Consume(client_write_key);
         Consume(server_write_key);
+        // PERF: These are actually unused.
         Consume(client_write_iv);
         Consume(server_write_iv);
         CHECK(remaining.empty());
@@ -909,7 +884,7 @@ struct Session {
           return;
         }
 
-        if (auto hopt = DecryptRecord(
+        if (auto hopt = TLS::DecryptRecord(
                 client_write_mac_key,
                 client_write_key,
                 client_seq_num,
@@ -987,7 +962,7 @@ struct Session {
       } else if (state == State::STEADY_STATE) {
 
         // Decrypt the packet.
-        if (auto hopt = DecryptRecord(
+        if (auto hopt = TLS::DecryptRecord(
                 client_write_mac_key,
                 client_write_key,
                 client_seq_num,
@@ -1051,14 +1026,14 @@ struct Session {
                      uint8_t version_major, uint8_t version_minor,
                      std::span<const uint8_t> content) {
     std::vector<uint8_t> record =
-      MakeEncryptedRecord(
+      TLS::MakeEncryptedRecord(
           server_write_mac_key,
           server_write_key,
           server_seq_num,
           ct, version_major, version_minor,
           content);
 
-    {
+    if (SELF_CHECK) {
       PacketParser pp(record);
       TLSRecord rec;
       rec.type = (ContentType)pp.Byte();
@@ -1069,10 +1044,10 @@ struct Session {
       rec.fragment.resize(len);
       memcpy(rec.fragment.data(), pp.data(), pp.size());
 
-      auto ro = DecryptRecord(server_write_mac_key,
-                              server_write_key,
-                              server_seq_num,
-                              rec);
+      auto ro = TLS::DecryptRecord(server_write_mac_key,
+                                   server_write_key,
+                                   server_seq_num,
+                                   rec);
       CHECK(ro.has_value());
       Print("[send] Round trip decrypt:\n{}\n",
             HexDump::Color(ro.value()));
@@ -1106,178 +1081,6 @@ struct Session {
   void RecordHandshake(std::span<const uint8_t> bytes) {
     SHA256::UpdateSpan(&handshake_ctx, bytes);
   }
-
-  // Careful: SHA-1 for the record HMAC.
-  static constexpr int MAC_SIZE = 20;
-
-  // Decrypts a TLS record. If successful, the span will refer into
-  // the record, which is modified into place.
-  static std::optional<std::span<const uint8_t>> DecryptRecord(
-      std::span<const uint8_t> mac_key,
-      std::span<const uint8_t> enc_key,
-      uint64_t seq_num,
-      // Modified by decryption.
-      TLSRecord &record) {
-
-    // "GenericBlockCipher" structure:
-    // IV (16 bytes) + Content + MAC (20 bytes) + Padding
-    std::span<uint8_t> payload(record.fragment);
-
-    if (payload.size() < AES256::BLOCKLEN + MAC_SIZE + 1 ||
-        (payload.size() % AES256::BLOCKLEN) != 0) {
-      Print("Payload too small or wrong block size.");
-      return std::nullopt;
-    }
-
-    std::span<const uint8_t> iv = payload.subspan(0, 16);
-    std::span<uint8_t> buffer = payload.subspan(16);
-
-    Print("Encrypted payload:\n{}\n",
-          HexDump::Color(buffer));
-
-    // Decrypt in place.
-    AES256::Ctx aes;
-    AES256::InitCtxIV(&aes, enc_key.data(), iv.data());
-    AES256::DecryptCBC(&aes, buffer.data(), buffer.size());
-
-    Print("Decrypted payload:\n{}\n",
-          HexDump::Color(buffer));
-
-    // Final byte is padding length.
-    // In a secure implementation, you would want to make
-    // sure the authentication/error checking happens in constant
-    // time so that an attacker can't figure out anything about
-    // any bytes with timing attacks.
-
-    CHECK(!buffer.empty());
-    const int num_pad = buffer.back();
-    const int actual_length = buffer.size() - (num_pad + 1);
-    if (actual_length < 0) {
-      Print("Invalid padding length.\n");
-      return std::nullopt;
-    }
-
-    // Check padding.
-    for (size_t i = 0; i < num_pad + 1; i++) {
-      if (buffer[actual_length + i] != num_pad) {
-        Print("Invalid padding.\n");
-        return std::nullopt;
-      }
-    }
-
-    // Verify and remove MAC.
-    const int content_len = actual_length - MAC_SIZE;
-    if (content_len < 0) {
-      Print("Negative content length.\n");
-      return std::nullopt;
-    }
-    // Note the buffer still has the padding in it.
-    std::span<const uint8_t> content = buffer.subspan(0, content_len);
-    std::span<const uint8_t> received_mac =
-      buffer.subspan(content_len, MAC_SIZE);
-    CHECK(received_mac.size() == MAC_SIZE) <<
-      std::format("Had:\n"
-                  "Buffer {} bytes\n"
-                  "content_len {}\n"
-                  "received_mac {} bytes (want {})\n",
-                  buffer.size(),
-                  content_len,
-                  received_mac.size(), MAC_SIZE);
-
-    // PERF can probably do this in place?
-    PacketWriter hash_buffer;
-    hash_buffer.reserve(8 + 1 + 2 + 2 + content.size());
-    hash_buffer.W64(seq_num);
-    hash_buffer.Byte(record.type);
-    hash_buffer.Byte(record.version_major);
-    hash_buffer.Byte(record.version_minor);
-    hash_buffer.W16(content.size());
-    hash_buffer.Bytes(content);
-
-    static_assert(MAC_SIZE == SHA1::DIGEST_LENGTH);
-    std::array<uint8_t, SHA1::DIGEST_LENGTH> expected_mac =
-      SHA1::HMAC(mac_key, hash_buffer.View());
-
-    if (0 != memcmp(expected_mac.data(), received_mac.data(), MAC_SIZE)) {
-      Print("Wrong HMAC.\n");
-      return std::nullopt;
-    }
-
-    return std::make_optional(std::span<const uint8_t>(content));
-  }
-
-  // Encrypt the payload of a TLS record and construct the record.
-  // This allocates a new record because we have to add the
-  // padding and HMAC. The record is ready to put on the wire.
-  //
-  // PERF unnecessary copying here. Perhaps we could have
-  // some kind of staging area for the preparation of packets,
-  // which has e.g. space for the sequence num, but we also need
-  // space after for the hmac and padding.
-  static std::vector<uint8_t> MakeEncryptedRecord(
-      std::span<const uint8_t> mac_key,
-      std::span<const uint8_t> enc_key,
-      uint64_t seq_num,
-      ContentType ct, uint8_t version_major, uint8_t version_minor,
-      std::span<const uint8_t> content) {
-
-    const int unpadded_length = content.size() + MAC_SIZE;
-    const int pad_len =
-      AES256::BLOCKLEN - (unpadded_length % AES256::BLOCKLEN);
-    CHECK(pad_len > 0);
-
-    // For HMAC calculation.
-    PacketWriter hash_buffer;
-    hash_buffer.reserve(8 + 1 + 2 + 2 + content.size());
-    hash_buffer.W64(seq_num);
-    hash_buffer.Byte(ct);
-    hash_buffer.Byte(version_major);
-    hash_buffer.Byte(version_minor);
-    hash_buffer.W16(content.size());
-    hash_buffer.Bytes(content);
-
-    static_assert(MAC_SIZE == SHA1::DIGEST_LENGTH);
-    std::array<uint8_t, SHA1::DIGEST_LENGTH> hmac =
-      SHA1::HMAC(mac_key, hash_buffer.View());
-
-    std::array<uint8_t, AES256::BLOCKLEN> iv = {};
-    // Server chooses the IV. Bogus!
-    for (int i = 0; i < iv.size(); i++) {
-      iv[i] = (i << 4) | i;
-    }
-
-    // Now prep the encrypted packet.
-    const int enc_len = unpadded_length + pad_len;
-    CHECK((enc_len % AES256::BLOCKLEN) == 0);
-    // With the IV, also one encryption block.
-    const int fragment_len = AES256::BLOCKLEN + enc_len;
-
-    PacketWriter record;
-    record.reserve(1 + 2 + 2 + fragment_len);
-    record.Byte(ct);
-    record.Byte(version_major);
-    record.Byte(version_minor);
-    record.W16(fragment_len);
-    record.Bytes(iv);
-
-    const int enc_pos = record.size();
-    record.Bytes(content);
-    record.Bytes(hmac);
-    for (int i = 0; i < pad_len; i++)
-      record.Byte(pad_len - 1);
-    CHECK(enc_len == record.size() - enc_pos);
-    CHECK(enc_pos + enc_len == record.size());
-
-    // Encrypt in place.
-    AES256::Ctx aes;
-    AES256::InitCtxIV(&aes, enc_key.data(), iv.data());
-    AES256::EncryptCBC(&aes,
-                       record.data() + enc_pos,
-                       enc_len);
-
-    return std::move(record).Release();
-  }
-
 
   enum class State {
     START,

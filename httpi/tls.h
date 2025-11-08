@@ -11,6 +11,20 @@
 #include "packet-parser.h"
 
 struct TLS {
+  // SHA-1 for the record HMAC. Note that we also use
+  // SHA-256 for handshake negotiation.
+  static constexpr int MAC_SIZE = 20;
+
+  enum ContentType : uint8_t {
+    INVALID = 0,
+    CHANGE_CIPHER_SPEC = 20,
+    ALERT = 21,
+    HANDSHAKE = 22,
+    APPLICATION_DATA = 23,
+  };
+
+  static bool IsValidContentType(uint8_t c);
+
   struct ServerNameIndication {
     std::vector<std::string> hosts;
   };
@@ -112,6 +126,36 @@ struct TLS {
       std::string_view label,
       std::span<const uint8_t> seed,
       std::span<uint8_t> output);
+
+  // The "record layer".
+  // In RFC 5246, this struct is "TLSPlaintext" and "TLSCiphertext"
+  // (and TLSCompressed).
+  struct Record {
+    ContentType type = INVALID;
+    uint8_t version_major = 0;
+    uint8_t version_minor = 0;
+    // XXX on the wire, there is a length field here
+    // Maximum of 2^14 for plaintext,
+    // and 2^14 + 2048 for ciphertext.
+    std::vector<uint8_t> fragment;
+  };
+
+  // Encrypt the payload of a TLS record and construct the record.
+  // This allocates a new record because we have to add the
+  // padding and HMAC. The record is ready to put on the wire.
+  static std::vector<uint8_t> MakeEncryptedRecord(
+      std::span<const uint8_t> mac_key,
+      std::span<const uint8_t> enc_key,
+      uint64_t seq_num,
+      ContentType ct, uint8_t version_major, uint8_t version_minor,
+      std::span<const uint8_t> content);
+
+  static std::optional<std::span<const uint8_t>> DecryptRecord(
+      std::span<const uint8_t> mac_key,
+      std::span<const uint8_t> enc_key,
+      uint64_t seq_num,
+      // Modified by decryption.
+      Record &record);
 
  private:
   TLS() = delete;
