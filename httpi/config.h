@@ -23,7 +23,8 @@ struct Config {
     std::string canonical;
     std::vector<std::string> aliases;
     const Key *key = nullptr;
-    // Assume localhost, :80, etc.
+    // Assume localhost, etc.
+    int port = 80;
   };
 
   // null if unknown.

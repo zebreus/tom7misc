@@ -382,16 +382,89 @@ struct ClientConnection : public Connection {
 };
 
 struct BackendConnection : public Connection {
+  // Hard-coded to connect to localhost.
   BackendConnection() {
-    // CHECK(false) << "unimplemented";
+    fd = 0;
+    state = State::CLOSED;
+  }
+
+  void Connect(int p) {
+    port = p;
+    peer_ip = "127.0.0.1";
+    memset(&peer_addr, 0, sizeof(peer_addr));
+    peer_addr.sin_family = AF_INET;
+    peer_addr.sin_port = htons(port);
+    peer_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    int backend_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (backend_fd == -1) {
+      perror("backend socket");
+      state = State::CLOSED;
+      return;
+    }
+
+    if (connect(backend_fd,
+                (struct sockaddr *)&peer_addr,
+                sizeof(peer_addr)) < 0) {
+      perror("backend connect");
+      close(backend_fd);
+      state = State::CLOSED;
+      return;
+    }
+
+    state = State::DUPLEX;
+    SetFD(backend_fd);
+    idle_timer.Reset();
+  }
+
+  #if 0
+  // If successful, returns a span within the argument buffer.
+  std::span<const uint8_t> Read(std::span<uint8_t> buf) {
+    if (buf.empty()) return buf;
+
+    int amount = InternalRead(buf.data(), buf.size());
+    if (amount < 0) {
+      // InternalRead handles state changes for us.
+      return {};
+    }
+
+    CHECK(amount <= buf.size());
+    return buf.subspan(0, amount);
+  }
+  #endif
+
+  bool ReadIsFull() const {
+    return read_pos == read_buf.size();
   }
 
   void Read() {
-    // CHECK(false) << "unimplemented";
+    if (read_pos < read_buf.size()) {
+      int amount = InternalRead(read_buf.data() + read_pos,
+                                read_buf.size() - read_pos);
+      if (amount < 0) {
+        // InternalRead does the state change.
+        return;
+      }
+
+      Print("Backend read {}\n", amount);
+      read_pos += amount;
+      CHECK(read_pos <= read_buf.size());
+    }
+  }
+
+  // These are stateful, so don't interleave them with
+  // Read() calls!
+  std::span<const uint8_t> CurrentRead() const {
+    return std::span<const uint8_t>(read_buf.data(), read_pos);
+  }
+  void ClearRead() {
+    read_pos = 0;
   }
 
  private:
-
+  // [0, read_pos) contains data.
+  size_t read_pos = 0;
+  std::array<uint8_t, BUFFER_SIZE> read_buf;
 };
 
 // epoll poll set (file desriptor) for a pair of bidirectional
@@ -549,7 +622,10 @@ struct Session {
       if (client.Connected() && !backend.Full())
         epoll_set |= PollSet::CLIENT_READ;
 
-      if (backend.Connected() && !client.Full())
+      // The backend also has buffered reads because we might not
+      // have negotiated an encrypted channel with the client yet;
+      // and so we can't send proxied traffic to them.
+      if (backend.Connected() && !backend.ReadIsFull() && !client.Full())
         epoll_set |= PollSet::BACKEND_READ;
 
       // And ask for write events if we have buffered data.
@@ -589,8 +665,7 @@ struct Session {
           if (flags & EPOLLOUT) client_write = true;
         } else if (backend.Connected() && event_fd == backend.FD()) {
           if (flags & (EPOLLHUP | EPOLLERR)) backend_err = true;
-          // backend.Read() is not yet implemented.
-          // if (flags & EPOLLIN) backend_read = true;
+          if (flags & EPOLLIN) backend_read = true;
           if (flags & EPOLLOUT) backend_write = true;
         }
       }
@@ -600,7 +675,10 @@ struct Session {
 
       // Writes first, to free up buffer space for reads.
       if (client.Connected() && client_write) client.SendBuffered();
-      if (backend.Connected() && backend_write) backend.SendBuffered();
+      if (backend.Connected() && backend_write) {
+        Print("Backend SendBuffered.\n");
+        backend.SendBuffered();
+      }
 
       if (client.Connected() && client_read) client.Read();
       if (backend.Connected() && backend_read) backend.Read();
@@ -626,6 +704,49 @@ struct Session {
   // Process any packets that we've read from the client or
   // backend.
   void ProcessPackets() {
+    if (state == State::STEADY_STATE) {
+      // Then we are proxying traffic. Forward reads from
+      // the backend.
+      std::span<const uint8_t> backend_data =
+        backend.CurrentRead();
+      if (!backend_data.empty()) {
+        Print("Send {} from backend.\n", backend_data.size());
+
+        // XXX deal with maximum packet size
+        SendEncrypted(APPLICATION_DATA, 3, 3, backend_data);
+        backend.ClearRead();
+      }
+
+      // And any client records.
+
+      while (auto ro = client.GetNextRecord()) {
+        TLSRecord &r = ro.value();
+
+        // TODO: Should handle alert, etc. here
+        CHECK(r.type == APPLICATION_DATA);
+
+        if (auto hopt = TLS::DecryptRecord(
+                client_write_mac_key,
+                client_write_key,
+                client_seq_num,
+                r)) {
+
+          client_seq_num++;
+
+          Print("Send {} from client.\n", hopt.value().size());
+          backend.Write(hopt.value());
+
+        } else {
+          LOG(FATAL) << "Failed to decrypt";
+        }
+
+      }
+
+      return;
+    }
+
+    // Otherwise, still in the handshake.
+
     while (auto ro = client.GetNextRecord()) {
       // TODO: We should perhaps assemble fragmented packets,
       // but as a simplification and safety measure, we require
@@ -699,9 +820,6 @@ struct Session {
             return;
           }
 
-          // PERF: At this point we could begin initiating the backend
-          // connection, which could perhaps reduce latency.
-
           TLS::ServerHello shello;
           // TLS 1.2
           shello.version_major = 3;
@@ -753,6 +871,12 @@ struct Session {
                 "{}\n", HexDump::Color(shd));
 
           Print("Server sent Hello/Cert/HelloDone\n");
+
+          // PERF: Could try doing this earlier or later, with
+          // different effects on latency. Since we're
+          // single-threaded, it seems best to do it while we're
+          // waiting for a message from the client.
+          ConnectBackend();
 
           state = State::WAIT_KEY;
 
@@ -961,6 +1085,9 @@ struct Session {
 
       } else if (state == State::STEADY_STATE) {
 
+        LOG(FATAL) << "Should have been handled above.\n";
+
+        #if 0
         // Decrypt the packet.
         if (auto hopt = TLS::DecryptRecord(
                 client_write_mac_key,
@@ -985,7 +1112,6 @@ struct Session {
         // XXX forward to backend!
         // Also need to read from backend and forward
         // proactively.
-
         std::string body = "What do ya want for nothing?\n\n";
         std::string response =
           std::format(
@@ -1005,6 +1131,7 @@ struct Session {
 
         Print("Unimplemented: steady-state communication.\n");
         return;
+        #endif
 
       } else {
         AbortConnection();
@@ -1013,6 +1140,18 @@ struct Session {
     }
 
     // XXX Process backend packets too.
+  }
+
+  // Connect (once) to the backend, once we know what host
+  // we are asking for.
+  void ConnectBackend() {
+    CHECK(host_config != nullptr);
+    Print("Connecting to " AYELLOW("{}") "\n", host_config->canonical);
+
+    backend.Connect(host_config->port);
+    if (backend.Connected()) {
+      poll_set.ConnectBackend(backend.FD());
+    }
   }
 
   void HangUp() {
