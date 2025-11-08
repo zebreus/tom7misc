@@ -45,7 +45,7 @@
 #define BACKLOG 24
 
 #define SERIALIZE_CONNECTIONS true
-#define JUST_ONE_CONNECTION true
+#define JUST_ONE_CONNECTION false
 
 static constexpr bool SELF_CHECK = true;
 
@@ -102,6 +102,10 @@ struct Connection {
 
   bool HasSendData() const {
     return !send_buf.empty();
+  }
+
+  void Write(std::string_view str) {
+    Write(std::span<const uint8_t>((const uint8_t *)str.data(), str.size()));
   }
 
   void Write(std::span<const uint8_t> data) {
@@ -446,8 +450,11 @@ struct BackendConnection : public Connection {
         return;
       }
 
-      Print("Backend read {}\n", amount);
       read_pos += amount;
+      Print("Backend read {}:\n{}\n",
+            amount,
+            HexDump::Color(
+                std::span<const uint8_t>(read_buf.data(), read_pos)));
       CHECK(read_pos <= read_buf.size());
     }
   }
@@ -876,7 +883,7 @@ struct Session {
           // different effects on latency. Since we're
           // single-threaded, it seems best to do it while we're
           // waiting for a message from the client.
-          ConnectBackend();
+          ConnectBackend("1.2.3.4", 1234);
 
           state = State::WAIT_KEY;
 
@@ -1144,13 +1151,20 @@ struct Session {
 
   // Connect (once) to the backend, once we know what host
   // we are asking for.
-  void ConnectBackend() {
+  void ConnectBackend(std::string_view client_ip, int client_port) {
     CHECK(host_config != nullptr);
     Print("Connecting to " AYELLOW("{}") "\n", host_config->canonical);
 
     backend.Connect(host_config->port);
     if (backend.Connected()) {
       poll_set.ConnectBackend(backend.FD());
+
+      if (host_config->use_proxy_protocol) {
+        std::string proxy_msg =
+          std::format("PROXY TCP4 {} 127.0.0.1 {} 80\r\n",
+                      client_ip, client_port);
+        backend.Write(proxy_msg);
+      }
     }
   }
 

@@ -24,7 +24,10 @@ struct Config {
     std::vector<std::string> aliases;
     const Key *key = nullptr;
     // Assume localhost, etc.
-    int port = 80;
+
+    // XXX allow configuring these!
+    int port = 81;
+    bool use_proxy_protocol = true;
   };
 
   // null if unknown.
