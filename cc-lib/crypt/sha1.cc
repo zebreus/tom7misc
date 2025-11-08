@@ -11,21 +11,23 @@
 #include <cstdlib>
 #include <bit>
 
-/* blk0() and blk() perform the initial expand. */
-/* I got the idea of expanding during the round function from SSLeay */
-/* FIXME: can we do this in an endian-proof way? */
-
 static inline uint32_t rol(uint32_t w, int bits) {
   return std::rotl<uint32_t>(w, bits);
 }
 
-#ifdef WORDS_BIGENDIAN
-#define blk0(i) block->l[i]
+static inline uint32_t bswap_32(uint32_t val) {
+#if defined(__GNUC__) || defined(__clang__)
+  return __builtin_bswap32(val);
 #else
-#define blk0(i) (block->l[i] = (rol(block->l[i],24)&0xFF00FF00) | (rol(block->l[i],8)&0x00FF00FF))
+  return (val << 24) | ((val << 8) & 0x00ff0000) |
+    ((val >> 8) & 0x0000ff00) | (val >> 24);
 #endif
+}
 
-#define blk(i) (block->l[i&15] = rol(block->l[(i+13)&15]^block->l[(i+8)&15] ^ block->l[(i+2)&15]^block->l[i&15],1))
+/* blk0() and blk() perform the initial expand. */
+#define blk0(i) w[i]
+#define blk(i) (w[i&15] = rol(w[(i+13)&15]^w[(i+8)&15] ^ w[(i+2)&15]^w[i&15],1))
+
 /* (R0+R1), R2, R3, R4 are the different operations used in SHA1 */
 #define R0(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk0(i)+0x5A827999+rol(v,5);w=rol(w,30);
 #define R1(v,w,x,y,z,i) z+=((w&(x^y))^y)+blk(i)+0x5A827999+rol(v,5);w=rol(w,30);
@@ -36,11 +38,20 @@ static inline uint32_t rol(uint32_t w, int bits) {
 /* Hash a single 512-bit block. This is the core of the algorithm. */
 static void SHA1Transform(uint32_t state[5], const uint8_t buffer[64]) {
   uint32_t a, b, c, d, e;
-  typedef union {
-    uint8_t c[64];
-    uint32_t l[16];
-  } CHAR64LONG16;
-  CHAR64LONG16* block = (CHAR64LONG16*)buffer;
+
+  // This local array will hold the 16 words of the message schedule.
+  uint32_t w[16];
+
+  // Convert into 16 big-endian uint32_t words. memcpy avoids
+  // strict-aliasing issues.
+  for (int i = 0; i < 16; ++i) {
+    memcpy(&w[i], buffer + i * 4, 4);
+    // The SHA-1 standard expects the data in big-endian format.
+    // If our system is little-endian, we must byte-swap.
+    if constexpr (std::endian::native == std::endian::little) {
+      w[i] = bswap_32(w[i]);
+    }
+  }
 
   /* Copy context->state[] to working vars */
   a = state[0];
@@ -70,14 +81,17 @@ static void SHA1Transform(uint32_t state[5], const uint8_t buffer[64]) {
   R4(c,d,e,a,b,68); R4(b,c,d,e,a,69); R4(a,b,c,d,e,70); R4(e,a,b,c,d,71);
   R4(d,e,a,b,c,72); R4(c,d,e,a,b,73); R4(b,c,d,e,a,74); R4(a,b,c,d,e,75);
   R4(e,a,b,c,d,76); R4(d,e,a,b,c,77); R4(c,d,e,a,b,78); R4(b,c,d,e,a,79);
+
   /* Add the working vars back into context.state[] */
   state[0] += a;
   state[1] += b;
   state[2] += c;
   state[3] += d;
   state[4] += e;
+
   /* Wipe variables */
   a = b = c = d = e = 0;
+  memset((void *volatile)w, 0, sizeof(w));
 }
 
 /* SHA1Init - Initialize new context */
