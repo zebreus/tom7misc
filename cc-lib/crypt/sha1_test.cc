@@ -6,9 +6,13 @@
 
 #include "sha1.h"
 
+#include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <span>
+#include <string_view>
+#include <vector>
 
 #include "base/print.h"
 #include "base/logging.h"
@@ -22,76 +26,6 @@
     }                                           \
   } while (0)
 
-
-/*
-Test Vectors (from FIPS PUB 180-1)
-"abc"
-  A9993E36 4706816A BA3E2571 7850C26C 9CD0D89D
-"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
-  84983E44 1C3BD26E BAAE4AA1 F95129E5 E54670F1
-A million repetitions of "a"
-  34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F
-*/
-
-
-static const char *test_data[] = {
-    "abc",
-    "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
-    "A million repetitions of 'a'"};
-static const char *test_results[] = {
-    "A9993E36 4706816A BA3E2571 7850C26C 9CD0D89D",
-    "84983E44 1C3BD26E BAAE4AA1 F95129E5 E54670F1",
-    "34AA973C D4C4DAA4 F61EEB2B DBAD2731 6534016F"};
-static void digest_to_hex(const uint8_t digest[SHA1::DIGEST_LENGTH],
-                          char *output) {
-    int i,j;
-    char *c = output;
-    for (i = 0; i < SHA1::DIGEST_LENGTH / 4; i++) {
-        for (j = 0; j < 4; j++) {
-            sprintf(c,"%02X", digest[i*4+j]);
-            c += 2;
-        }
-        sprintf(c, " ");
-        c += 1;
-    }
-    *(c - 1) = '\0';
-}
-
-static void ReidTests() {
-  SHA1::Ctx context;
-  uint8_t digest[20];
-  char output[80];
-
-  for (int k = 0; k < 2; k++) {
-    SHA1::Init(&context);
-    SHA1::Update(&context, (uint8_t*)test_data[k], strlen(test_data[k]));
-    SHA1::Finalize(&context, digest);
-    digest_to_hex(digest, output);
-    if (strcmp(output, test_results[k])) {
-      fprintf(stdout, "FAIL\n");
-      fprintf(stderr,"* hash of \"%s\" incorrect:\n", test_data[k]);
-      fprintf(stderr,"\t%s returned\n", output);
-      fprintf(stderr,"\t%s is correct\n", test_results[k]);
-      LOG(FATAL) << "Failed";
-    }
-  }
-
-  /* million 'a' vector we feed separately */
-  SHA1::Init(&context);
-  for (int k = 0; k < 1000000; k++) {
-    SHA1::Update(&context, (uint8_t*)"a", 1);
-  }
-  SHA1::Finalize(&context, digest);
-  digest_to_hex(digest, output);
-  if (strcmp(output, test_results[2])) {
-    fprintf(stdout, "FAIL\n");
-    fprintf(stderr,"* hash of \"%s\" incorrect:\n", test_data[2]);
-    fprintf(stderr,"\t%s returned\n", output);
-    fprintf(stderr,"\t%s is correct\n", test_results[2]);
-    LOG(FATAL) << "Failed";
-  }
-}
-
 static std::vector<uint8_t> StringVec(std::string_view v) {
   std::vector<uint8_t> ret(v.size());
   for (size_t i = 0; i < v.size(); i++) {
@@ -99,6 +33,46 @@ static std::vector<uint8_t> StringVec(std::string_view v) {
   }
   return ret;
 }
+
+// Test Vectors (from FIPS PUB 180-1)
+static void ReidTests() {
+  auto Test = [](std::span<const uint8_t> input,
+                 const std::array<uint8_t, SHA1::DIGEST_LENGTH> &expected) {
+      SHA1::Ctx context;
+      SHA1::Init(&context);
+      SHA1::Update(&context, input.data(), input.size());
+      const std::array<uint8_t, SHA1::DIGEST_LENGTH> actual =
+        SHA1::FinalArray(&context);
+
+      CHECK_SPAN_EQ(expected, actual);
+    };
+
+  Test(StringVec("abc"),
+       {0xA9, 0x99, 0x3E, 0x36, 0x47, 0x06, 0x81, 0x6A, 0xBA, 0x3E,
+        0x25, 0x71, 0x78, 0x50, 0xC2, 0x6C, 0x9C, 0xD0, 0xD8, 0x9D});
+
+  Test(StringVec(
+           "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
+       {0x84, 0x98, 0x3E, 0x44, 0x1C, 0x3B, 0xD2, 0x6E, 0xBA, 0xAE,
+        0x4A, 0xA1, 0xF9, 0x51, 0x29, 0xE5, 0xE5, 0x46, 0x70, 0xF1});
+
+  {
+    // 1 million 'a' characters.
+    SHA1::Ctx context;
+    uint8_t digest[20];
+    SHA1::Init(&context);
+    for (int k = 0; k < 1000000; k++) {
+      SHA1::Update(&context, (uint8_t*)"a", 1);
+    }
+    SHA1::Finalize(&context, digest);
+
+    std::array<uint8_t, SHA1::DIGEST_LENGTH> expected =
+      {0x34, 0xAA, 0x97, 0x3C, 0xD4, 0xC4, 0xDA, 0xA4, 0xF6, 0x1E,
+       0xEB, 0x2B, 0xDB, 0xAD, 0x27, 0x31, 0x65, 0x34, 0x01, 0x6F};
+    CHECK_SPAN_EQ(digest, expected);
+  }
+}
+
 
 static void TestHMAC() {
   {

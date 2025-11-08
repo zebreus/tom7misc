@@ -5,11 +5,14 @@
 
 #include "crypt/sha1.h"
 
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <span>
+#include <vector>
 
 static inline uint32_t rol(uint32_t w, int bits) {
   return std::rotl<uint32_t>(w, bits);
