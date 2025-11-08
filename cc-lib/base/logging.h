@@ -16,6 +16,7 @@
 
 #include <stdlib.h>
 #include <iostream>
+#include <utility>
 
 // Always-on checking
 #define CHECK(x)        if(x){}else LogMessageFatal(__FILE__, __LINE__).stream() << "Check failed: " #x "\n"

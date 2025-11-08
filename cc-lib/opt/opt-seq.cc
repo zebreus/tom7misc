@@ -2,6 +2,7 @@
 #include "opt-seq.h"
 
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <optional>
 #include <span>
