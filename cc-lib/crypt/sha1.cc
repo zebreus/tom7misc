@@ -5,11 +5,11 @@
 
 #include "crypt/sha1.h"
 
-#include <cstdio>
-#include <cstring>
-#include <cstdint>
-#include <cstdlib>
 #include <bit>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 static inline uint32_t rol(uint32_t w, int bits) {
   return std::rotl<uint32_t>(w, bits);
@@ -21,6 +21,17 @@ static inline uint32_t bswap_32(uint32_t val) {
 #else
   return (val << 24) | ((val << 8) & 0x00ff0000) |
     ((val >> 8) & 0x0000ff00) | (val >> 24);
+#endif
+}
+
+static inline uint64_t bswap_64(uint64_t val) {
+#if defined(__GNUC__) || defined(__clang__)
+  return __builtin_bswap64(val);
+#else
+  val = (val & 0x00000000FFFFFFFF) << 32 | (val & 0xFFFFFFFF00000000) >> 32;
+  val = (val & 0x0000FFFF0000FFFF) << 16 | (val & 0xFFFF0000FFFF0000) >> 16;
+  val = (val & 0x00FF00FF00FF00FF) << 8  | (val & 0xFF00FF00FF00FF00) >> 8;
+  return val;
 #endif
 }
 
@@ -124,40 +135,55 @@ void SHA1::Update(Ctx *context, const uint8_t *data, size_t len) {
 }
 
 void SHA1::Finalize(Ctx *context, uint8_t *digest) {
+
+  // First, prepare the 64-bit message length in big-endian format.
+  // The length must be calculated *before* we add the final padding.
   uint8_t finalcount[8];
-  for (uint32_t i = 0; i < 8; i++) {
-    finalcount[i] = (unsigned char)((context->count[(i >= 4 ? 0 : 1)] >>
-                                     ((3-(i & 3)) * 8) ) & 255);
+  uint64_t bit_count =
+    (static_cast<uint64_t>(context->count[1]) << 32) | context->count[0];
+
+  uint64_t bit_count_be = bit_count;
+  if constexpr (std::endian::native == std::endian::little) {
+    bit_count_be = bswap_64(bit_count);
+  }
+  memcpy(finalcount, &bit_count_be, 8);
+
+  // Now, apply the padding. Append the '1' bit (0x80).
+  Update(context, (const uint8_t *)"\x80", 1);
+
+  // Pad with zeros until we have space for the 8-byte length.
+  // The last block must be filled to 56 bytes (64 - 8).
+  while ((context->count[0] >> 3) % 64 != (64 - 8)) {
+    Update(context, (const uint8_t *)"\0", 1);
   }
 
-  SHA1::Update(context, (uint8_t *)"\200", 1);
-  while ((context->count[0] & 504) != 448) {
-    SHA1::Update(context, (uint8_t *)"\0", 1);
+  // Append the original message length. This will trigger the final transform.
+  Update(context, finalcount, 8);
+
+  // Convert the final state (5 uint32_t words) to a 20-byte big-endian digest.
+  for (size_t i = 0; i < DIGEST_LENGTH / 4; i++) {
+    uint32_t word = context->state[i];
+    if constexpr (std::endian::native == std::endian::little) {
+      word = bswap_32(word);
+    }
+    memcpy(digest + i * 4, &word, 4);
   }
 
-  // Should cause a SHA1Transform call.
-  SHA1::Update(context, finalcount, 8);
-
-  for (size_t i = 0; i < SHA1::DIGEST_LENGTH; i++) {
-    digest[i] = (uint8_t)
-      ((context->state[i>>2] >> ((3-(i & 3)) * 8) ) & 0xFF);
-  }
-
-  memset(context->buffer, 0, 64);
-  memset(context->state, 0, 20);
-  memset(context->count, 0, 8);
-  memset(finalcount, 0, 8);
+  memset((void* volatile)context->buffer, 0, 64);
+  memset((void* volatile)context->state, 0, 20);
+  memset((void* volatile)context->count, 0, 8);
+  memset((void* volatile)finalcount, 0, 8);
 }
 
 std::vector<uint8_t> SHA1::FinalVector(SHA1::Ctx *ctx) {
-  std::vector<uint8_t> result(SHA1::DIGEST_LENGTH);
-  SHA1::Finalize(ctx, result.data());
+  std::vector<uint8_t> result(DIGEST_LENGTH);
+  Finalize(ctx, result.data());
   return result;
 }
 
 std::array<uint8_t, SHA1::DIGEST_LENGTH> SHA1::FinalArray(SHA1::Ctx *ctx) {
-  std::array<uint8_t, SHA1::DIGEST_LENGTH> result;
-  SHA1::Finalize(ctx, result.data());
+  std::array<uint8_t, DIGEST_LENGTH> result;
+  Finalize(ctx, result.data());
   return result;
 }
 
@@ -193,8 +219,7 @@ SHA1::HMAC(std::span<const uint8_t> key,
   Init(&ctx);
   Update(&ctx, inner_key_pad.data(), inner_key_pad.size());
   Update(&ctx, message.data(), message.size());
-  std::array<uint8_t, SHA1::DIGEST_LENGTH> inner_hash =
-    SHA1::FinalArray(&ctx);
+  std::array<uint8_t, DIGEST_LENGTH> inner_hash = FinalArray(&ctx);
 
   // Outer hash of: (K ^ opad) || inner_hash
   Init(&ctx);
