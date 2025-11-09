@@ -1,20 +1,20 @@
 
 #include "tls.h"
 
-#include <vector>
-#include <variant>
-#include <string>
 #include <cstdint>
+#include <string>
+#include <variant>
+#include <vector>
 
-#include "packet-parser.h"
 #include "ansi.h"
-#include "base/print.h"
 #include "base/logging.h"
-#include "hexdump.h"
-#include "packet-writer.h"
-#include "crypt/sha256.h"
+#include "base/print.h"
 #include "crypt/aes.h"
 #include "crypt/sha1.h"
+#include "crypt/sha256.h"
+#include "hexdump.h"
+#include "packet-parser.h"
+#include "packet-writer.h"
 
 enum : uint8_t {
   HELLO_REQUEST = 0,
@@ -334,6 +334,10 @@ std::vector<uint8_t> TLS::SerializeChangeCipherSpec() {
   return {0x01};
 }
 
+std::vector<uint8_t> TLS::SerializeHandshakeFailure() {
+  return {0x02, 0x28};
+}
+
 
 std::vector<uint8_t> TLS::SerializeHandshakeFinished(
     const HandshakeFinished &h) {
@@ -455,7 +459,9 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
     std::span<const uint8_t> enc_key,
     uint64_t seq_num,
     // Modified by decryption.
-    TLS::Record &record) {
+    TLS::Record &record,
+    bool verbose_errors,
+    bool verbose_steps) {
 
   // "GenericBlockCipher" structure:
   // IV (16 bytes) + Content + MAC (20 bytes) + Padding
@@ -463,23 +469,29 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
 
   if (payload.size() < AES256::BLOCKLEN + MAC_SIZE + 1 ||
       (payload.size() % AES256::BLOCKLEN) != 0) {
-    Print("Payload too small or wrong block size.");
+    if (verbose_errors) {
+      Print("Payload too small or wrong block size.");
+    }
     return std::nullopt;
   }
 
   std::span<const uint8_t> iv = payload.subspan(0, 16);
   std::span<uint8_t> buffer = payload.subspan(16);
 
-  Print("Encrypted payload:\n{}\n",
-        HexDump::Color(buffer));
+  if (verbose_steps) {
+    Print(AGREY("[DecryptRecord]") " Encrypted payload:\n{}\n",
+          HexDump::Color(buffer));
+  }
 
   // Decrypt in place.
   AES256::Ctx aes;
   AES256::InitCtxIV(&aes, enc_key.data(), iv.data());
   AES256::DecryptCBC(&aes, buffer.data(), buffer.size());
 
-  Print("Decrypted payload:\n{}\n",
-        HexDump::Color(buffer));
+  if (verbose_steps) {
+    Print(AGREY("[DecryptRecord]") " Decrypted payload:\n{}\n",
+          HexDump::Color(buffer));
+  }
 
   // Final byte is padding length.
   // In a secure implementation, you would want to make
@@ -491,14 +503,18 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
   const int num_pad = buffer.back();
   const int actual_length = buffer.size() - (num_pad + 1);
   if (actual_length < 0) {
-    Print("Invalid padding length.\n");
+    if (verbose_errors) {
+      Print("Invalid padding length.\n");
+    }
     return std::nullopt;
   }
 
   // Check padding.
   for (size_t i = 0; i < num_pad + 1; i++) {
     if (buffer[actual_length + i] != num_pad) {
-      Print("Invalid padding.\n");
+      if (verbose_errors) {
+        Print("Invalid padding.\n");
+      }
       return std::nullopt;
     }
   }
@@ -506,7 +522,9 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
   // Verify and remove MAC.
   const int content_len = actual_length - MAC_SIZE;
   if (content_len < 0) {
-    Print("Negative content length.\n");
+    if (verbose_errors) {
+      Print("Negative content length.\n");
+    }
     return std::nullopt;
   }
   // Note the buffer still has the padding in it.
@@ -514,7 +532,7 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
   std::span<const uint8_t> received_mac =
     buffer.subspan(content_len, MAC_SIZE);
   CHECK(received_mac.size() == MAC_SIZE) <<
-    std::format("Had:\n"
+    std::format("Bug in parsing. Had:\n"
                 "Buffer {} bytes\n"
                 "content_len {}\n"
                 "received_mac {} bytes (want {})\n",
@@ -537,7 +555,9 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
     SHA1::HMAC(mac_key, hash_buffer.View());
 
   if (0 != memcmp(expected_mac.data(), received_mac.data(), MAC_SIZE)) {
-    Print("Wrong HMAC.\n");
+    if (verbose_errors) {
+      Print("Wrong HMAC.\n");
+    }
     return std::nullopt;
   }
 

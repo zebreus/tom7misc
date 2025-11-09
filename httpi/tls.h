@@ -107,6 +107,8 @@ struct TLS {
 
   static std::vector<uint8_t> SerializeChangeCipherSpec();
 
+  static std::vector<uint8_t> SerializeHandshakeFailure();
+
   static std::vector<uint8_t> SerializeHandshakeFinished(
       const HandshakeFinished &h);
 
@@ -155,7 +157,11 @@ struct TLS {
       std::span<const uint8_t> enc_key,
       uint64_t seq_num,
       // Modified by decryption.
-      Record &record);
+      Record &record,
+      // TODO: Can probably make error reporting the caller's
+      // responsibility
+      bool verbose_errors = false,
+      bool verbose_steps = false);
 
  private:
   TLS() = delete;

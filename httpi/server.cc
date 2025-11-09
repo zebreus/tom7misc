@@ -49,6 +49,13 @@
 
 static constexpr bool SELF_CHECK = true;
 
+// 0 = quiet
+// 1 = major events
+// 2 = minor events
+// 3 = handshake messages
+// 4 = all messages
+static constexpr int VERBOSE = 1;
+
 using enum TLS::ContentType;
 using ContentType = TLS::ContentType;
 using TLSRecord = TLS::Record;
@@ -136,9 +143,11 @@ struct Connection {
   // Transition to the fully-closed state and clean up.
   // OK to call this in any valid state.
   void Shutdown(std::string_view msg) {
-    Print(stderr,
-          AGREY("[CHILD {}]") " Shut down {}:{} ({}).\n",
-          getpid(), peer_ip, port, msg);
+    if (VERBOSE >= 2) {
+      Print(stderr,
+            AGREY("[CHILD {}]") " Shut down {}:{} ({}).\n",
+            getpid(), peer_ip, port, msg);
+    }
     if (fd != 0) {
       close(fd);
       fd = 0;
@@ -147,6 +156,9 @@ struct Connection {
     send_buf.clear();
     // clear address?
   }
+
+  std::string_view PeerIP() const { return peer_ip; }
+  int PeerPort() const { return port; }
 
  protected:
   // Returns 0 for ok socket that would block or has gracefully
@@ -201,7 +213,9 @@ struct Connection {
       return false;
     } else {
       v->erase(v->begin(), v->begin() + amount);
-      Print("Wrote {} bytes. {} left\n", amount, v->size());
+      if (VERBOSE >= 3) {
+        Print("Wrote {} bytes. {} left\n", amount, v->size());
+      }
       idle_timer.Reset();
 
       // Maybe transition to half-closed, if we've marked EOF.
@@ -334,8 +348,10 @@ struct ClientConnection : public Connection {
 
       TLSRecord rec;
 
-      Print("Packet with content type " AGREEN("{}") "\n",
-            incoming_partial[0]);
+      if (VERBOSE >= 2) {
+        Print("Packet with content type " AGREEN("{}") "\n",
+              incoming_partial[0]);
+      }
 
       rec.type = (ContentType)incoming_partial[0];
       rec.version_major = incoming_partial[1];
@@ -451,10 +467,12 @@ struct BackendConnection : public Connection {
       }
 
       read_pos += amount;
-      Print("Backend read {}:\n{}\n",
-            amount,
-            HexDump::Color(
-                std::span<const uint8_t>(read_buf.data(), read_pos)));
+      if (VERBOSE >= 4) {
+        Print("Backend read {}:\n{}\n",
+              amount,
+              HexDump::Color(
+                  std::span<const uint8_t>(read_buf.data(), read_pos)));
+      }
       CHECK(read_pos <= read_buf.size());
     }
   }
@@ -566,6 +584,9 @@ struct PollSet {
     current_poll_set = s;
   }
 
+  // e.g. for debugging output.
+  uint32_t Bits() const { return current_poll_set; }
+
  private:
   static constexpr uint32_t CLIENT_MASK = CLIENT_WRITE | CLIENT_READ;
   static constexpr uint32_t BACKEND_MASK = BACKEND_WRITE | BACKEND_READ;
@@ -609,11 +630,16 @@ struct Session {
 
   // Run the session until termination.
   void Loop() {
-    Print(AWHITE("Session loop begins") "\n");
+    if (VERBOSE >= 2) {
+      Print(AWHITE("Session loop begins") "\n");
+    }
 
     constexpr int MAX_EVENTS = 10;
     struct epoll_event events[MAX_EVENTS];
     memset(events, 0, sizeof (epoll_event) * MAX_EVENTS);
+
+    // Just used for debug output.
+    uint32_t prev_poll_bits = 0;
 
     // Event loop.
     while (client.Connected() || backend.Connected()) {
@@ -644,7 +670,13 @@ struct Session {
 
       poll_set.UpdatePollSet(epoll_set);
 
-      Print("epoll set: {}\n", poll_set.ColorString());
+      if (VERBOSE >= 4 || poll_set.Bits() != prev_poll_bits) {
+        prev_poll_bits = poll_set.Bits();
+        if (VERBOSE >= 2) {
+          Print("epoll set: {}\n", poll_set.ColorString());
+        }
+      }
+
       int num_events = epoll_wait(poll_set.FD(), events, MAX_EVENTS,
                                   // Wake every three seconds even
                                   // without events.
@@ -683,7 +715,9 @@ struct Session {
       // Writes first, to free up buffer space for reads.
       if (client.Connected() && client_write) client.SendBuffered();
       if (backend.Connected() && backend_write) {
-        Print("Backend SendBuffered.\n");
+        if (VERBOSE >= 2) {
+          Print("Backend SendBuffered.\n");
+        }
         backend.SendBuffered();
       }
 
@@ -717,10 +751,13 @@ struct Session {
       std::span<const uint8_t> backend_data =
         backend.CurrentRead();
       if (!backend_data.empty()) {
-        Print("Send {} from backend.\n", backend_data.size());
+        if (VERBOSE >= 2) {
+          Print("Send {} from backend.\n", backend_data.size());
+        }
 
         // XXX deal with maximum packet size
-        SendEncrypted(APPLICATION_DATA, 3, 3, backend_data);
+        SendEncrypted(APPLICATION_DATA, 3, 3, backend_data,
+                      VERBOSE >= 4);
         backend.ClearRead();
       }
 
@@ -729,22 +766,30 @@ struct Session {
       while (auto ro = client.GetNextRecord()) {
         TLSRecord &r = ro.value();
 
-        // TODO: Should handle alert, etc. here
-        CHECK(r.type == APPLICATION_DATA);
+        if (r.type != APPLICATION_DATA) {
+          // TODO: Should handle alert, etc. here.
+          // An alert to hang up is normal.
+          AbortConnection("Not APPLICATION_DATA in steady state.");
+          return;
+        }
 
         if (auto hopt = TLS::DecryptRecord(
                 client_write_mac_key,
                 client_write_key,
                 client_seq_num,
-                r)) {
+                r, VERBOSE >= 2, VERBOSE >= 4)) {
 
           client_seq_num++;
 
-          Print("Send {} from client.\n", hopt.value().size());
+          if (VERBOSE >= 2) {
+            Print("Send {} from client.\n", hopt.value().size());
+          }
+
           backend.Write(hopt.value());
 
         } else {
-          LOG(FATAL) << "Failed to decrypt";
+          AbortConnection("Failed to decrypt steady-state message.");
+          return;
         }
 
       }
@@ -761,18 +806,19 @@ struct Session {
       TLSRecord &r = ro.value();
       PacketParser packet(r.fragment);
 
-      Print(stderr, "client record: {}.{}.{} len={}\n"
-            "{}\n",
-            (uint8_t)r.type,
-            r.version_major,
-            r.version_minor,
-            r.fragment.size(),
-            HexDump::Color(r.fragment));
+      if (VERBOSE >= 3) {
+        Print(stderr, "client record: {}.{}.{} len={}\n"
+              "{}\n",
+              (uint8_t)r.type,
+              r.version_major,
+              r.version_minor,
+              r.fragment.size(),
+              HexDump::Color(r.fragment));
+      }
 
       if (state == State::START) {
         if (r.type != ContentType::HANDSHAKE) {
-          Print("Only handshake messages now!\n");
-          AbortConnection();
+          AbortConnection("Only handshake messages now!");
           return;
         }
 
@@ -786,8 +832,15 @@ struct Session {
 
           if (!TLS::HasCipherSuite(och.value(),
                                    TLS::RSA_WITH_AES_256_CBC_SHA)) {
-            // Supposed to send specific error here.
-            AbortConnection();
+            if (VERBOSE >= 1) {
+              Print(ARED("Can't handshake") ": "
+                    "Client doesn't support our basic 1.2 cipher suite.");
+            }
+
+            // This is an orderly shutdown, though.
+            client.SendTLSRecord(ALERT, 3, 3,
+                                 TLS::SerializeHandshakeFailure());
+            HangUp();
             return;
           }
 
@@ -796,8 +849,7 @@ struct Session {
             if (const TLS::ServerNameIndication *sni =
                 std::get_if<TLS::ServerNameIndication>(&ext)) {
               if (sni->hosts.size() != 1) {
-                Print("Want exactly one host.\n");
-                AbortConnection();
+                AbortConnection("Want exactly one host in SNI.");
                 return;
               }
               server_name = sni->hosts[0];
@@ -807,22 +859,22 @@ struct Session {
           if (server_name.empty()) {
             // Could use some default config, but how is the
             // client going to check the certificate?
-            Print("No SNI extension.\n");
-            AbortConnection();
+            AbortConnection("No SNI extension.");
             return;
           }
 
           host_config = config.GetHostConfig(server_name);
           if (host_config == nullptr) {
-            Print("Unknown host\n");
-            AbortConnection();
+            AbortConnection("Unknown host");
             return;
           }
 
           if (host_config->key == nullptr ||
               host_config->key->server_certificate.chain.empty()) {
-            Print("No key/cert configured for " ARED("{}") ".\n",
-                  host_config->canonical);
+            if (VERBOSE >= 1) {
+              Print("No key/cert configured for " ARED("{}") ".\n",
+                    host_config->canonical);
+            }
             AbortConnection();
             return;
           }
@@ -832,7 +884,7 @@ struct Session {
           shello.version_major = 3;
           shello.version_minor = 3;
 
-          // bogus server random
+          // Insecure! Bogus server random:
           for (int i = 0; i < 32; i++)
             shello.server_random[i] = server_random[i];
 
@@ -846,8 +898,10 @@ struct Session {
             RecordHandshake(po.value());
             client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
 
-            Print("Sent ServerHello:\n"
-                  "{}\n", HexDump::Color(po.value()));
+            if (VERBOSE >= 3) {
+              Print("Sent ServerHello:\n"
+                    "{}\n", HexDump::Color(po.value()));
+            }
 
           } else {
             LOG(FATAL) << "My ServerHello was invalid";
@@ -861,8 +915,10 @@ struct Session {
             RecordHandshake(co.value());
             client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
 
-            Print("Sent ServerCertificate:\n"
-                  "{}\n", HexDump::Color(co.value()));
+            if (VERBOSE >= 3) {
+              Print("Sent ServerCertificate:\n"
+                    "{}\n", HexDump::Color(co.value()));
+            }
 
           } else {
             LOG(FATAL) << "My ServerCertificate was invalid";
@@ -874,27 +930,31 @@ struct Session {
             TLS::SerializeServerHelloDone();
           RecordHandshake(shd);
           client.SendTLSRecord(HANDSHAKE, 3, 3, shd);
-          Print("Sent ServerHelloDone:\n"
-                "{}\n", HexDump::Color(shd));
+          if (VERBOSE >= 3) {
+            Print("Sent ServerHelloDone:\n"
+                  "{}\n", HexDump::Color(shd));
+          }
 
-          Print("Server sent Hello/Cert/HelloDone\n");
+          if (VERBOSE >= 1) {
+            Print(ACYAN("Server sent Hello/Cert/HelloDone") "\n");
+          }
 
           // PERF: Could try doing this earlier or later, with
-          // different effects on latency. Since we're
+          // different implications for latency. Since we're
           // single-threaded, it seems best to do it while we're
-          // waiting for a message from the client.
-          ConnectBackend("1.2.3.4", 1234);
+          // waiting for an expensive message from the client.
+          ConnectBackend(client.PeerIP(), client.PeerPort());
 
           state = State::WAIT_KEY;
 
         } else {
-          AbortConnection();
+          AbortConnection("Invalid ClientHello.");
           return;
         }
+
       } else if (state == State::WAIT_KEY) {
         if (r.type != ContentType::HANDSHAKE) {
-          Print("Only handshake messages now!\n");
-          AbortConnection();
+          AbortConnection("Only handshake messages now!");
           return;
         }
 
@@ -918,18 +978,26 @@ struct Session {
                 memcpy(client_pre_master_secret.data(),
                        omsg.value().data(),
                        client_pre_master_secret.size());
-                Print(AGREEN("Got pre-master secret from client") ".\n");
+                if (VERBOSE >= 2) {
+                  Print(AGREEN("Got pre-master secret from client") ".\n");
+                }
               } else {
-                Print(ARED("Wrong pre-master secret size") " (got {})\n",
-                      omsg.value().size());
+                if (VERBOSE >= 2) {
+                  Print(ARED("Wrong pre-master secret size") " (got {})\n",
+                        omsg.value().size());
+                }
               }
             } else {
-              Print(ARED("Couldn't decrypt") "\n");
+              if (VERBOSE >= 2) {
+                Print(ARED("Couldn't decrypt") "\n");
+              }
             }
 
           } else {
-            Print(ARED("Wrong block size") " (got {})\n",
-                  ckx_pms.size());
+            if (VERBOSE >= 2) {
+              Print(ARED("Wrong block size") " (got {})\n",
+                    ckx_pms.size());
+            }
           }
         }
 
@@ -938,8 +1006,10 @@ struct Session {
           SHA256::Ctx client_handshake_ctx = handshake_ctx;
           client_handshake_validation =
             SHA256::FinalArray(&client_handshake_ctx);
-          Print("Handshake hash (SHA-256) for client:\n"
-                "{}\n", HexDump::Color(client_handshake_validation));
+          if (VERBOSE >= 3) {
+            Print("Handshake hash (SHA-256) for client:\n"
+                  "{}\n", HexDump::Color(client_handshake_validation));
+          }
         }
 
 
@@ -949,8 +1019,10 @@ struct Session {
         memcpy(random_seed.data() + 32, server_random.data(), 32);
         TLS::PRF(client_pre_master_secret, "master secret",
                  random_seed, master_secret);
-        Print("Master secret:\n"
-              "{}\n", HexDump::Color(master_secret));
+        if (VERBOSE >= 3) {
+          Print("Master secret:\n"
+                "{}\n", HexDump::Color(master_secret));
+        }
 
         memcpy(random_seed.data(), server_random.data(), 32);
         memcpy(random_seed.data() + 32, client_random.data(), 32);
@@ -974,44 +1046,45 @@ struct Session {
         Consume(server_write_iv);
         CHECK(remaining.empty());
 
-        Print("client_write_mac_key:\n"
-              "{}\n", HexDump::Color(client_write_mac_key));
-        Print("server_write_mac_key:\n"
-              "{}\n", HexDump::Color(server_write_mac_key));
-        Print("client_write_key:\n"
-              "{}\n", HexDump::Color(client_write_key));
-        Print("server_write_key:\n"
-              "{}\n", HexDump::Color(server_write_key));
-        Print("client_write_iv:\n"
-              "{}\n", HexDump::Color(client_write_iv));
-        Print("server_write_iv:\n"
-              "{}\n", HexDump::Color(server_write_iv));
+        if (VERBOSE >= 3) {
+          Print("client_write_mac_key:\n"
+                "{}\n", HexDump::Color(client_write_mac_key));
+          Print("server_write_mac_key:\n"
+                "{}\n", HexDump::Color(server_write_mac_key));
+          Print("client_write_key:\n"
+                "{}\n", HexDump::Color(client_write_key));
+          Print("server_write_key:\n"
+                "{}\n", HexDump::Color(server_write_key));
+          Print("client_write_iv:\n"
+                "{}\n", HexDump::Color(client_write_iv));
+          Print("server_write_iv:\n"
+                "{}\n", HexDump::Color(server_write_iv));
+        }
 
         state = State::WAIT_CLIENT_CHANGE;
 
       } else if (state == State::WAIT_CLIENT_CHANGE) {
         if (r.type != ContentType::CHANGE_CIPHER_SPEC) {
-          Print("Only cipher spec change!\n");
-          AbortConnection();
+          AbortConnection("Expected only cipher spec change!");
           return;
         }
 
         if (TLS::ParseChangeCipherSpec(packet)) {
-          Print(AGREEN("Cipher change spec OK") "\n");
+          if (VERBOSE >= 2) {
+            Print(AGREEN("Cipher change spec OK") "\n");
+          }
 
           state = State::WAIT_HANDSHAKE_FINISH;
 
         } else {
-          Print("Incorrect cipher change message.\n");
-          AbortConnection();
+          AbortConnection("Incorrect cipher change message.");
           return;
         }
 
       } else if (state == State::WAIT_HANDSHAKE_FINISH) {
 
         if (r.type != ContentType::HANDSHAKE) {
-          Print("Expected encrypted handshake message.\n");
-          AbortConnection();
+          AbortConnection("Expected encrypted handshake message.");
           return;
         }
 
@@ -1019,17 +1092,15 @@ struct Session {
                 client_write_mac_key,
                 client_write_key,
                 client_seq_num,
-                r)) {
+                r,
+                VERBOSE >= 2,
+                VERBOSE >= 3)) {
 
           client_seq_num++;
 
           // We saved the hash of the client's handshake sequence,
           // so we update it for the server's calculation next.
           RecordHandshake(hopt.value());
-
-          Print("Decrypted message:\n{}\n",
-                HexDump::Color(hopt.value()));
-
 
           if (std::optional<TLS::HandshakeFinished> ohf =
               TLS::ParseHandshakeFinished(hopt.value())) {
@@ -1041,20 +1112,23 @@ struct Session {
             TLS::PRF(master_secret, "client finished",
                      client_handshake_validation, expected);
 
-            Print("Actual:\n"
-                  "{}\n"
-                  "Expected:\n"
-                  "{}\n",
-                  HexDump::Color(client_verify_data),
-                  HexDump::Color(expected));
+            if (VERBOSE >= 3) {
+              Print("Client verify data. Actual:\n"
+                    "{}\n"
+                    "Expected:\n"
+                    "{}\n",
+                    HexDump::Color(client_verify_data),
+                    HexDump::Color(expected));
+            }
 
             if (client_verify_data != expected) {
-              Print("Wrong verify_data.\n");
-              AbortConnection();
+              AbortConnection("Wrong verify_data.");
               return;
             }
 
-            Print("Successful HandshakeFinished.\n");
+            if (VERBOSE >= 2) {
+              Print("Successful HandshakeFinished.\n");
+            }
 
             // Now send the server messages.
             client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
@@ -1064,8 +1138,10 @@ struct Session {
               SHA256::Ctx server_handshake_ctx = handshake_ctx;
               server_handshake_validation =
                 SHA256::FinalArray(&server_handshake_ctx);
-              Print("Handshake hash (SHA-256) for server:\n"
-                    "{}\n", HexDump::Color(server_handshake_validation));
+              if (VERBOSE >= 3) {
+                Print("Handshake hash (SHA-256) for server:\n"
+                      "{}\n", HexDump::Color(server_handshake_validation));
+              }
             }
 
             TLS::HandshakeFinished finished;
@@ -1079,74 +1155,43 @@ struct Session {
             state = State::STEADY_STATE;
 
           } else {
-            Print("Couldn't parse HandshakeFinished.\n");
-            AbortConnection();
+            AbortConnection("Couldn't parse HandshakeFinished.");
             return;
           }
 
         } else {
-          Print("Couldn't decrypt.\n");
-          AbortConnection();
+          AbortConnection("Couldn't decrypt client "
+                          "handshake finished message.");
           return;
         }
 
       } else if (state == State::STEADY_STATE) {
-
-        LOG(FATAL) << "Should have been handled above.\n";
-
-        #if 0
-        // Decrypt the packet.
-        if (auto hopt = TLS::DecryptRecord(
-                client_write_mac_key,
-                client_write_key,
-                client_seq_num,
-                r)) {
-          client_seq_num++;
-
-          Print("Client packet ({}.{}.{}):\n"
-                "{}\n",
-                (uint8_t)r.type,
-                r.version_major,
-                r.version_minor,
-                HexDump::Color(hopt.value()));
-
-        } else {
-          Print("Couldn't decrypt.\n");
-          AbortConnection();
-          return;
-        }
-
-        // XXX forward to backend!
-        // Also need to read from backend and forward
-        // proactively.
-        std::string body = "What do ya want for nothing?\n\n";
-        std::string response =
-          std::format(
-              "HTTP/1.1 200 OK\n"
-              "Content-Type: text/plain\n"
-              "Content-Length: {}\n"
-              "\n\n"
-              "{}",
-              body.size(), body);
-
-        SendEncrypted(APPLICATION_DATA, 3, 3,
-                      std::span<const uint8_t>((const uint8_t *)
-                                               response.data(),
-                                               response.size()));
-
-        HangUp();
-
-        Print("Unimplemented: steady-state communication.\n");
-        return;
-        #endif
+        LOG(FATAL) << "Bug: Should have been handled above.\n";
 
       } else {
-        AbortConnection();
-        return;
+        LOG(FATAL) << "Bug: Unexpected/unhandled state?\n";
       }
     }
 
-    // XXX Process backend packets too.
+  }
+
+  [[maybe_unused]]
+  void SendHTTPError(std::string_view msg, int status_code = 500) {
+    std::string response =
+      std::format(
+          "HTTP/1.1 {} Error\n"
+          "Content-Type: text/plain\n"
+          "Content-Length: {}\n"
+          "\n\n"
+          "{}",
+          status_code, msg.size(), msg);
+
+    SendEncrypted(APPLICATION_DATA, 3, 3,
+                  std::span<const uint8_t>((const uint8_t *)
+                                           response.data(),
+                                           response.size()));
+
+    HangUp();
   }
 
   // Connect (once) to the backend, once we know what host
@@ -1177,7 +1222,8 @@ struct Session {
 
   void SendEncrypted(ContentType ct,
                      uint8_t version_major, uint8_t version_minor,
-                     std::span<const uint8_t> content) {
+                     std::span<const uint8_t> content,
+                     bool verbose = false) {
     std::vector<uint8_t> record =
       TLS::MakeEncryptedRecord(
           server_write_mac_key,
@@ -1202,8 +1248,10 @@ struct Session {
                                    server_seq_num,
                                    rec);
       CHECK(ro.has_value());
-      Print("[send] Round trip decrypt:\n{}\n",
-            HexDump::Color(ro.value()));
+      if (verbose) {
+        Print("[send] Round trip decrypt:\n{}\n",
+              HexDump::Color(ro.value()));
+      }
       CHECK(ro.value().size() == content.size());
       CHECK(0 == memcmp(ro.value().data(), content.data(),
                         content.size()));
@@ -1211,12 +1259,22 @@ struct Session {
 
     server_seq_num++;
 
-    Print("Sending encrypted:\n{}\n",
-          HexDump::Color(record));
+    if (verbose) {
+      Print("Sending encrypted:\n{}\n",
+            HexDump::Color(record));
+    }
     client.SendRaw(record);
   }
 
-  void AbortConnection() {
+  void AbortConnection(std::string_view log = "") {
+    if (VERBOSE >= 1) {
+      if (log.empty()) {
+        Print(ARED("Connection aborted") " by server.\n");
+      } else {
+        Print(ARED("Abort") ": {}\n", log);
+      }
+    }
+
     // Partly mitigate timing attacks.
     uint64_t ns = 10000 + RandTo(rc, 1000000);
     std::chrono::nanoseconds dur(ns);
@@ -1284,13 +1342,10 @@ struct Session {
   std::array<uint8_t, 32> client_handshake_validation = {};
   std::array<uint8_t, 32> server_handshake_validation = {};
 
-  // TODO: Need a hash of the handshake.
-
+  // The user making the request.
   ClientConnection client;
 
-  // Proxied http connection ("backend")
-  // TODO: Make this connection once we know what site we're
-  // talking to.
+  // Proxied http connection ("backend").
   BackendConnection backend;
 };
 
