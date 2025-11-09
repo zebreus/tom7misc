@@ -16,6 +16,7 @@ Config Config::Load(std::string_view filename) {
   std::unique_ptr<Config::Key> current_key;
   Config config;
 
+  int default_port = 81;
   auto EmitKey = [&config, &current_key]() {
       if (current_key.get() == nullptr)
         return;
@@ -99,11 +100,25 @@ Config Config::Load(std::string_view filename) {
       current_host = std::make_unique<Config::HostConfig>();
       current_host->canonical = std::string(line);
       current_host->key = current_key.get();
+      current_host->port = default_port;
       CHECK(!current_host->canonical.empty());
       current_host->aliases.push_back(std::string(line));
     } else if (cmd == "alias") {
       CHECK(current_host.get() != nullptr) << "Need host first.";
       current_host->aliases.push_back(std::string(line));
+    } else if (cmd == "port") {
+      int p = atoi(std::string(line).c_str());
+      CHECK(p > 0) << "Port must be a positive number.";
+      CHECK(current_host.get() != nullptr) << "Use default-port to set "
+        "the port outside a host.";
+      current_host->port = p;
+    } else if (cmd == "default-port") {
+      int p = atoi(std::string(line).c_str());
+      CHECK(p > 0) << "Port must be a positive number.";
+      CHECK(current_host.get() == nullptr) << "Use port to set the port "
+        "within a host. Otherwise, default-port comes before any host.";
+      default_port = p;
+
     } else {
       LOG(FATAL) << "Unknown config command: " << cmd;
     }

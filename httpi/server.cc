@@ -54,7 +54,7 @@ static constexpr bool SELF_CHECK = true;
 // 2 = minor events
 // 3 = handshake messages
 // 4 = all messages
-static constexpr int VERBOSE = 1;
+static constexpr int VERBOSE = 2;
 
 using enum TLS::ContentType;
 using ContentType = TLS::ContentType;
@@ -101,7 +101,15 @@ struct Connection {
     port = ntohs(peer_addr.sin_port);
   }
 
+  // These are about the low-level socket state, not
+  // our buffers.
   bool Connected() const { return fd != 0; }
+  bool CanRead() const {
+    return state == State::ONLY_READ || state == State::DUPLEX;
+  }
+  bool CanWrite() const {
+    return state == State::ONLY_WRITE || state == State::DUPLEX;
+  }
 
   bool Full() const {
     return send_buf.size() >= BUFFER_SIZE;
@@ -128,6 +136,14 @@ struct Connection {
 
   double IdleTime() const {
     return idle_timer.Seconds();
+  }
+
+  // Precondition: CanWrite() is true.
+  // True iff we've marked the send buffer as done.
+  bool IsDoneSending() const {
+    CHECK(state == State::ONLY_WRITE ||
+          state == State::DUPLEX);
+    return send_buf_eof;
   }
 
   void DoneSending() {
@@ -198,7 +214,8 @@ struct Connection {
     CHECK(fd > 0);
     if (v->empty()) return true;
 
-    int amount = send(fd, v->data(), v->size(), MSG_DONTWAIT);
+    int amount = send(fd, v->data(), v->size(),
+                      MSG_DONTWAIT | MSG_NOSIGNAL);
     if (amount == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // Connection still ok.
@@ -267,6 +284,16 @@ struct Connection {
     ONLY_WRITE,
   };
   State state = State::CLOSED;
+
+  static std::string_view StateString(State state) {
+    switch (state) {
+    case State::CLOSED: return "CLOSED";
+    case State::DUPLEX: return "DUPLEX";
+    case State::ONLY_READ: return "ONLY_READ";
+    case State::ONLY_WRITE: return "ONLY_WRITE";
+    default: return "???";
+    }
+  }
 
   // If zero, then the connection was closed (or hasn't been
   // set yet).
@@ -436,22 +463,6 @@ struct BackendConnection : public Connection {
     SetFD(backend_fd);
     idle_timer.Reset();
   }
-
-  #if 0
-  // If successful, returns a span within the argument buffer.
-  std::span<const uint8_t> Read(std::span<uint8_t> buf) {
-    if (buf.empty()) return buf;
-
-    int amount = InternalRead(buf.data(), buf.size());
-    if (amount < 0) {
-      // InternalRead handles state changes for us.
-      return {};
-    }
-
-    CHECK(amount <= buf.size());
-    return buf.subspan(0, amount);
-  }
-  #endif
 
   bool ReadIsFull() const {
     return read_pos == read_buf.size();
@@ -652,20 +663,21 @@ struct Session {
       // (localhost) and is sending a large file, but the
       // client does not. In this case we certainly don't want
       // to buffer the entire file in RAM.
-      if (client.Connected() && !backend.Full())
+      if (client.Connected() && client.CanRead() && !backend.Full())
         epoll_set |= PollSet::CLIENT_READ;
 
       // The backend also has buffered reads because we might not
       // have negotiated an encrypted channel with the client yet;
       // and so we can't send proxied traffic to them.
-      if (backend.Connected() && !backend.ReadIsFull() && !client.Full())
+      if (backend.Connected() && backend.CanRead() &&
+          !backend.ReadIsFull() && !client.Full())
         epoll_set |= PollSet::BACKEND_READ;
 
       // And ask for write events if we have buffered data.
-      if (client.Connected() && client.HasSendData())
+      if (client.Connected() && client.CanWrite() && client.HasSendData())
         epoll_set |= PollSet::CLIENT_WRITE;
 
-      if (backend.Connected() && backend.HasSendData())
+      if (backend.Connected() && backend.CanWrite() && backend.HasSendData())
         epoll_set |= PollSet::BACKEND_WRITE;
 
       poll_set.UpdatePollSet(epoll_set);
@@ -713,21 +725,48 @@ struct Session {
       if (backend_err) backend.Shutdown("epoll event");
 
       // Writes first, to free up buffer space for reads.
-      if (client.Connected() && client_write) client.SendBuffered();
-      if (backend.Connected() && backend_write) {
+      if (client.Connected() && client.CanWrite() && client_write)
+        client.SendBuffered();
+      if (backend.Connected() && backend.CanWrite() && backend_write) {
         if (VERBOSE >= 2) {
           Print("Backend SendBuffered.\n");
         }
         backend.SendBuffered();
       }
 
-      if (client.Connected() && client_read) client.Read();
-      if (backend.Connected() && backend_read) backend.Read();
+      // Perform reads if epoll told us it's possible.
+      if (client.Connected() && client.CanRead() && client_read)
+        client.Read();
+      if (backend.Connected() && backend.CanRead() && backend_read)
+        backend.Read();
 
-      if (client.IdleTime() > CLIENT_IDLE_TIMEOUT_SEC) {
+      // If one side of the connection is closed, propagate that.
+      if (client.Connected() &&
+          !client.CanRead() && backend.CanWrite()) {
+        if (!backend.IsDoneSending()) {
+          if (VERBOSE >= 1) {
+            Print("Client read closed, so mark backend as half-open\n");
+          }
+          backend.DoneSending();
+        }
+      }
+      if (backend.Connected() &&
+          !backend.CanRead() && client.CanWrite()) {
+        if (!client.IsDoneSending()) {
+          if (VERBOSE >= 1) {
+            Print("Backend read closed, so hang up on client.\n");
+          }
+          HangUp();
+        }
+      }
+
+
+      if (client.Connected() &&
+          client.IdleTime() > CLIENT_IDLE_TIMEOUT_SEC) {
         client.Shutdown("idle timeout");
       }
-      if (backend.IdleTime() > BACKEND_IDLE_TIMEOUT_SEC) {
+      if (backend.Connected() &&
+          backend.IdleTime() > BACKEND_IDLE_TIMEOUT_SEC) {
         backend.Shutdown("idle timeout");
       }
 
@@ -826,7 +865,9 @@ struct Session {
         if (std::optional<TLS::ClientHello> och =
             TLS::ParseClientHello(packet)) {
           RecordHandshake(packet.View());
-          TLS::PrintClientHello(och.value());
+          if (VERBOSE >= 3) {
+            TLS::PrintClientHello(och.value());
+          }
 
           memcpy(client_random.data(), och.value().client_random.data(), 32);
 
@@ -1169,7 +1210,8 @@ struct Session {
         LOG(FATAL) << "Bug: Should have been handled above.\n";
 
       } else {
-        LOG(FATAL) << "Bug: Unexpected/unhandled state?\n";
+        LOG(FATAL) << "Bug: Unexpected/unhandled state: " <<
+          StateString(state);
       }
     }
 
@@ -1307,6 +1349,19 @@ struct Session {
     HANG_UP,
     DISCONNECTED,
   };
+
+  static std::string_view StateString(State state) {
+    switch (state) {
+    case State::START: return "START";
+    case State::WAIT_KEY: return "WAIT_KEY";
+    case State::WAIT_CLIENT_CHANGE: return "WAIT_CLIENT_CHANGE";
+    case State::WAIT_HANDSHAKE_FINISH: return "WAIT_HANDSHAKE_FINISH";
+    case State::STEADY_STATE: return "STEADY_STATE";
+    case State::HANG_UP: return "HANG_UP";
+    case State::DISCONNECTED: return "DISCONNECTED";
+    default: return "???";
+    }
+  }
 
   // Not owned.
   const Config &config;
