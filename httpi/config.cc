@@ -96,8 +96,12 @@ Config Config::Load(std::string_view filename) {
         }
       }
 
-      Print("Got {} certs from " AWHITE("{}") "\n",
-            chain.size(), line);
+      if (chain.empty()) {
+        Print("No certs found from " ARED("{}") "!\n", line);
+      } else {
+        Print("Got {} certs from " AWHITE("{}") "\n",
+              chain.size(), line);
+      }
 
       CHECK(current_key->server_certificate.chain.empty()) << "More than "
         "one certificate chain is not handled.";

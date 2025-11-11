@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/epoll.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -637,6 +638,55 @@ struct Session {
   }
 
   PollSet poll_set;
+
+  // Set limits for the process that runs a single session.
+  // This is just to prevent bugs or certain kinds of denial
+  // of service attacks, so we continue even if we fail to
+  // set limits.
+  void SetLimits() {
+    // TODO: Make configurable?
+
+    // Use no more than 50 MB of virtual address space.
+    struct rlimit mem_limit;
+    mem_limit.rlim_cur = 50 * 1024 * 1024;
+    mem_limit.rlim_max = 50 * 1024 * 1024;
+
+    if (setrlimit(RLIMIT_AS, &mem_limit) == -1) {
+      if (VERBOSE >= 1) {
+        perror("setrlimit(RLIMIT_AS)");
+      }
+    }
+
+    // Should need only a very modest number of file
+    // descriptors (for network sockets).
+    struct rlimit nofile_limit;
+    nofile_limit.rlim_cur = 12;
+    nofile_limit.rlim_max = 12;
+    if (setrlimit(RLIMIT_NOFILE, &nofile_limit) == -1) {
+      if (VERBOSE >= 1) {
+        perror("setrlimit(RLIMIT_NOFILE)");
+      }
+    }
+
+    // Should not need to write any regular files at all.
+    // FYI: There's a chance this would interact badly with
+    // libraries (e.g. lock files), and prohibits core
+    // dumps.
+    struct rlimit fsize_limit;
+    fsize_limit.rlim_cur = 0;
+    fsize_limit.rlim_max = 0;
+    if (setrlimit(RLIMIT_FSIZE, &fsize_limit) == -1) {
+      if (VERBOSE >= 1) {
+        perror("setrlimit(RLIMIT_CPU)");
+      }
+    }
+
+    // Could also consider RLIMIT_CPU, but we don't
+    // really want to prevent downloading large files.
+    if (VERBOSE >= 2) {
+      Print("Set child process limits.\n");
+    }
+  }
 
   // Run the session until termination.
   void Loop() {
@@ -1526,6 +1576,7 @@ struct Server {
         {
           std::unique_ptr<Session> session{
             new Session(config, client_fd, client_addr, &client_rc)};
+          session->SetLimits();
           session->Loop();
         }
         exit(0);
@@ -1536,11 +1587,17 @@ struct Server {
         Print(stderr,
               AGREY("[PARENT {}]") " Forked child PID {}.\n",
               server_pid, pid);
+
         if constexpr (SERIALIZE_CONNECTIONS) {
           (void)waitpid(pid, nullptr, 0);
           Print(stderr, AGREY("[PARENT {}]") " Child PID {} completed.\n",
                 server_pid, pid);
+        } else {
+          // Detach process so that it doesn't become a zombie; we
+          // don't need anything from it.
+          waitpid(-1, NULL, WNOHANG);
         }
+
         if constexpr (JUST_ONE_CONNECTION) {
           Print(stderr, AGREY("[PARENT {}]") " "
                 ARED("Exit after one connection.") "\n",
