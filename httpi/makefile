@@ -18,10 +18,12 @@ endif
 
 CC_LIB=../cc-lib
 
+HARDEN=-fstack-protector-strong -fPIE -pie -D_FORTIFY_SOURCE=2 -Wl,-z,relro,-z,now
+
 # OPT=-O -g
 # OPT=-O3 -flto=thin
 ASAN=-g -fsanitize=address -fsanitize=undefined
-OPT=-O
+OPT=-O2
 
 CXXFLAGS=$(REMARKS) $(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi  -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) --std=c++23
 LFLAGS=$(ASAN) $(GMP_LFLAGS) -flto

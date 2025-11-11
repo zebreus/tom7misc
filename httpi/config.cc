@@ -6,15 +6,20 @@
 #include <unordered_map>
 #include <memory>
 
+#include <pwd.h>
+#include <sys/types.h>
+
 #include "base/print.h"
 #include "ansi.h"
 #include "util.h"
 #include "pem.h"
 
+
 Config Config::Load(std::string_view filename) {
   std::unique_ptr<Config::HostConfig> current_host;
   std::unique_ptr<Config::Key> current_key;
   Config config;
+  config.user = "nobody";
 
   int default_port = 81;
   auto EmitKey = [&config, &current_key]() {
@@ -44,7 +49,11 @@ Config Config::Load(std::string_view filename) {
 
     std::string_view cmd = Util::Chop(&line);
     Util::RemoveOuterWhitespace(&line);
-    if (cmd == "key") {
+    if (cmd == "user") {
+      CHECK(current_key.get() == nullptr) << "Set user at the top.";
+      config.user = line;
+
+    } else if (cmd == "key") {
       EmitHost();
       EmitKey();
       current_key = std::make_unique<Config::Key>();
@@ -125,6 +134,13 @@ Config Config::Load(std::string_view filename) {
   }
   EmitHost();
   EmitKey();
+
+  if (!config.user.empty()) {
+    struct passwd *pw = getpwnam(config.user.c_str());
+    CHECK(pw != nullptr) << "User " << config.user << " not found!";
+    config.gid = pw->pw_gid;
+    config.uid = pw->pw_uid;
+  }
 
   return config;
 }

@@ -1,8 +1,16 @@
 
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <unistd.h>
 #include <queue>
 #include <vector>
 #include <string>
@@ -12,15 +20,6 @@
 #include <variant>
 #include <chrono>
 #include <thread>
-
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/wait.h>
-#include <signal.h>
-#include <sys/epoll.h>
-#include <fcntl.h>
-#include <signal.h>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -44,7 +43,7 @@
 // ?
 #define BACKLOG 24
 
-#define SERIALIZE_CONNECTIONS true
+#define SERIALIZE_CONNECTIONS false
 #define JUST_ONE_CONNECTION false
 
 static constexpr bool SELF_CHECK = true;
@@ -642,7 +641,9 @@ struct Session {
   // Run the session until termination.
   void Loop() {
     if (VERBOSE >= 2) {
-      Print(AWHITE("Session loop begins") "\n");
+      Print(AWHITE("Session loop begins") " for peer "
+            AYELLOW("{}") ":" ACYAN("{}") "\n",
+            client.PeerIP(), client.PeerPort());
     }
 
     constexpr int MAX_EVENTS = 10;
@@ -875,7 +876,7 @@ struct Session {
                                    TLS::RSA_WITH_AES_256_CBC_SHA)) {
             if (VERBOSE >= 1) {
               Print(ARED("Can't handshake") ": "
-                    "Client doesn't support our basic 1.2 cipher suite.");
+                    "Client doesn't support our basic 1.2 cipher suite.\n");
             }
 
             // This is an orderly shutdown, though.
@@ -900,6 +901,9 @@ struct Session {
           if (server_name.empty()) {
             // Could use some default config, but how is the
             // client going to check the certificate?
+            Print("Bad handshake:\n{}\nwhich is:\n",
+                  HexDump::Color(r.fragment));
+            TLS::PrintClientHello(och.value());
             AbortConnection("No SNI extension.");
             return;
           }
@@ -1206,8 +1210,16 @@ struct Session {
           return;
         }
 
+      } else if (state == State::HANG_UP) {
+
+        if (VERBOSE >= 2) {
+          Print("Discarding {} packet after hang-up.\n",
+                TLS::ContentTypeString(r.type));
+        }
+
       } else if (state == State::STEADY_STATE) {
         LOG(FATAL) << "Bug: Should have been handled above.\n";
+
 
       } else {
         LOG(FATAL) << "Bug: Unexpected/unhandled state: " <<
@@ -1453,6 +1465,31 @@ struct Server {
     }
   }
 
+  void DropPrivileges() {
+    // TODO: chroot jail. We may need to make sure /dev/urandom
+    // is available (mknod) and link statically.
+
+    if (config.User().empty() ||
+        config.GID() == 0 ||
+        config.UID() == 0) {
+      Print(ARED("Running as root!") "\n");
+    } else {
+      if (setgid(config.GID()) != 0) {
+        perror("setgid");
+        LOG(FATAL) << "Failed to set group ID.";
+      }
+
+      if (setuid(config.UID()) != 0) {
+        perror("setuid");
+        LOG(FATAL) << "Failed to set user ID.";
+      }
+
+      Print(ACYAN("Running now as ") AYELLOW("{}") "\n",
+            config.User());
+    }
+
+  }
+
   void Loop() {
     Print(AGREY("[PARENT {}]") " Server listening...\n",
           server_pid);
@@ -1530,7 +1567,8 @@ int main(int argc, char **arg) {
 
   {
     Server server(std::move(config));
-    server.Listen(8877);
+    server.Listen(443);
+    server.DropPrivileges();
     server.Loop();
   }
 

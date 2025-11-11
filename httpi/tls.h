@@ -24,6 +24,7 @@ struct TLS {
   };
 
   static bool IsValidContentType(uint8_t c);
+  static std::string_view ContentTypeString(ContentType ct);
 
   struct ServerNameIndication {
     std::vector<std::string> hosts;

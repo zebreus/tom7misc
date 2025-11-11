@@ -41,6 +41,16 @@ bool TLS::IsValidContentType(uint8_t c) {
   }
 }
 
+std::string_view TLS::ContentTypeString(ContentType ct) {
+  switch (ct) {
+  case INVALID: return "INVALID";
+  case CHANGE_CIPHER_SPEC: return "CHANGE_CIPHER_SPEC";
+  case ALERT: return "ALERT";
+  case HANDSHAKE: return "HANDSHAKE";
+  case APPLICATION_DATA: return "APPLICATION_DATA";
+  default: return "???";
+  }
+}
 
 void TLS::PrintClientHello(const ClientHello &hello) {
   Print(AWHITE("ClientHello") " {}.{}\n",

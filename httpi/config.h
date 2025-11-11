@@ -34,6 +34,11 @@ struct Config {
   // Pass a lowercase host name.
   const HostConfig *GetHostConfig(const std::string &host) const;
 
+  // ""/0/0 if not set.
+  std::string User() const { return user; }
+  int UID() const { return uid; }
+  int GID() const { return gid; }
+
  private:
   // Keyed by all aliases.
   // TODO: Support *. wildcard domains.
@@ -41,6 +46,8 @@ struct Config {
 
   std::vector<std::unique_ptr<HostConfig>> all_hosts;
   std::vector<std::unique_ptr<Key>> all_keys;
+  std::string user;
+  int uid = 0, gid = 0;
 };
 
 #endif
