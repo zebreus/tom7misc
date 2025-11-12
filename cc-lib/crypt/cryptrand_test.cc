@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "timer.h"
+#include "status-bar.h"
 
 using int64 = int64_t;
 using uint16 = uint16_t;
@@ -33,7 +34,7 @@ static void ListProviders() {
   char name[1024];
 
   Print("I want to load PROV_RSA_FULL which is {}\n",
-         PROV_RSA_FULL);
+        PROV_RSA_FULL);
 
   Print("Available Providers:\n");
   Print("--------------------\n");
@@ -85,39 +86,40 @@ static void TestRand() {
         bits[b & 1]++;
         b >>= 1;
       }
-  };
+    };
 
-  static constexpr int TRIALS = 1000000;
+  // Keep reusing the buffer, which will catch if it is not
+  // completely overwritten.
+  std::vector<uint8_t> buf(640);
+  for (int i = 0; i < buf.size(); i++) buf[i] = i & 0xFF;
+
+  static constexpr int TRIALS = 100000;
   Timer run_timer;
+  StatusBar status(1);
   for (int i = 0; i < TRIALS; i++) {
-    if (i % 10000 == 0) Print("{}/{} ({:.2f}%)...\n",
-                               i, TRIALS, (i * 100.0) / TRIALS);
-    uint64 ww = cr.Word64();
-    uint8 a = ww & 0xFF; ww >>= 8;
-    uint8 b = ww & 0xFF; ww >>= 8;
-    uint8 c = ww & 0xFF; ww >>= 8;
-    uint8 d = ww & 0xFF; ww >>= 8;
-    uint8 e = ww & 0xFF; ww >>= 8;
-    uint8 f = ww & 0xFF; ww >>= 8;
-    uint8 g = ww & 0xFF; ww >>= 8;
-    uint8 h = ww & 0xFF; ww >>= 8;
-    bytes[a]++;
-    bytes[b]++;
-    bytes[c]++;
-    bytes[d]++;
-    bytes[e]++;
-    bytes[f]++;
-    bytes[g]++;
-    bytes[h]++;
-    for (uint8 byte : {a, b, c, d, e, f, g, h})
+    if (i % 10000 == 0) {
+      status.Status("{}/{} ({:.2f}%)\n",
+                    i, TRIALS, (i * 100.0) / TRIALS);
+    }
+
+    cr.Bytes(buf);
+
+    for (uint8_t byte : buf) {
+      bytes[byte]++;
       IncBits(byte);
+    }
   }
   double seconds = run_timer.Seconds();
 
+  double frac0 = bits[false] / (double)(TRIALS * buf.size() * 8.0);
+  double frac1 = bits[true] / (double)(TRIALS * buf.size() * 8.0);
+
   Print("0 bits: {} ({:.4f}%)\n"
         "1 bits: {} ({:.4f}%)\n",
-        bits[false], (bits[false] * 100.0) / (TRIALS * 64.0),
-        bits[true], (bits[true] * 100.0) / (TRIALS * 64.0));
+        bits[false], frac0 * 100.0,
+        bits[true], frac1 * 100.0);
+
+  CHECK(frac0 >= 0.495 && frac0 <= 0.505) << "Bits are way too biased!";
 
   std::vector<std::pair<uint8, int64>> all;
   for (auto [byte, count] : bytes) all.emplace_back(byte, count);
@@ -143,8 +145,8 @@ static void TestRand() {
   for (int i = 0; i < 8; i++)
     PrintOne(256 - 8 + i);
 
-  Print("Throughput: " AGREEN("{:.3f}") " 64-bit words/sec\n",
-         TRIALS / seconds);
+  Print("Throughput: " AGREEN("{:.3f}") " bytes/sec\n",
+        (TRIALS * buf.size()) / seconds);
 }
 
 int main(int argc, char **argv) {

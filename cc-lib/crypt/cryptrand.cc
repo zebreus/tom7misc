@@ -1,7 +1,10 @@
 
 #include "crypt/cryptrand.h"
 
+#include <array>
 #include <cstdint>
+#include <cstring>
+#include <span>
 #include <string>
 
 #include "base/logging.h"
@@ -28,7 +31,7 @@ BOOLEAN RtlGenRandom(
 // it's dumb for us to keep creating crypto contexts.)
 CryptRand::CryptRand() {}
 
-uint64_t CryptRand::Word64() {
+void CryptRand::Bytes(std::span<uint8_t> buffer) {
   HCRYPTPROV hCryptProv;
 
   // TODO: I guess I need to port to the "Cryptography Next Generation
@@ -63,20 +66,11 @@ uint64_t CryptRand::Word64() {
     LOG(FATAL) << err;
   }
 
-  uint64_t data = 0ULL;
-  CHECK(CryptGenRandom(hCryptProv, sizeof (data), (uint8_t*)&data));
+  CHECK(CryptGenRandom(hCryptProv, buffer.size(), buffer.data()));
 
   if (hCryptProv) {
     CHECK(CryptReleaseContext(hCryptProv, 0));
   }
-
-  return data;
-
-  /*
-  uint64_t data;
-  CHECK(RtlGenRandom((void*)&data, sizeof (data)));
-  return data;
-  */
 }
 
 #elif defined(__linux__)
@@ -85,35 +79,46 @@ uint64_t CryptRand::Word64() {
 
 CryptRand::CryptRand() {}
 
-uint64_t CryptRand::Word64() {
-  uint64_t data = 0;
-  ssize_t bytes_read = getrandom(&data, sizeof (data), 0);
-  CHECK(bytes_read == sizeof (data)) << "This syscall is never supposed "
-    "to fail for reads of 256 or fewer bytes.";
-  return data;
+uint64_t CryptRand::Bytes(std::span<uint8_t> buffer) {
+  while (!buffer.empty()) {
+    size_t chunk = std::min(buffer.size(), 256);
+    ssize_t bytes_read = getrandom(&data, buffer.data(), chunk);
+    CHECK(bytes_read == sizeof (data)) << "This syscall is never supposed "
+      "to fail for reads of 256 or fewer bytes.";
+    buffer = buffer.subspan(bytes_read);
+  }
 }
 
 #else
 
 CryptRand::CryptRand() {}
 
-uint64_t CryptRand::Word64() {
+uint64_t CryptRand::Bytes(std::span<uint8_t> buffer) {
   FILE *f = fopen("/dev/urandom", "rb");
   CHECK(f) << "/dev/urandom not available?";
-  uint64_t data = 0ULL;
-  for (int i = 0; i < 8; i++) {
+
+  // PERF: Read larger chunks like above
+  while (!buffer.empty()) {
     int c = fgetc(f);
     CHECK(c != EOF);
-    data <<= 8;
-    data |= (c & 0xFF);
+    buffer[0] = c;
+    buffer = buffe.subspan(1);
   }
 
   fclose(f);
-  return data;
 }
 
 #endif
 
 uint8_t CryptRand::Byte() {
   return Word64() & 0xFF;
+}
+
+uint64_t CryptRand::Word64() {
+  std::array<uint8_t, 8> buf;
+  Bytes(buf);
+  uint64_t ret = 0;
+  static_assert(sizeof (uint64_t) == 8);
+  memcpy(&ret, buf.data(), buf.size());
+  return ret;
 }

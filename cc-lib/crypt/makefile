@@ -2,7 +2,7 @@
 default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
 
 # For tests.
-CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o
+CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o ../status-bar.o
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
