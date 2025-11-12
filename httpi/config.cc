@@ -1,21 +1,25 @@
 
 #include "config.h"
 
+#include <pwd.h>
+#include <sys/types.h>
+
 #include <string_view>
 #include <string>
 #include <unordered_map>
 #include <memory>
 
-#include <pwd.h>
-#include <sys/types.h>
-
-#include "base/print.h"
 #include "ansi.h"
-#include "util.h"
+#include "base/print.h"
 #include "pem.h"
+#include "util.h"
 
 
-Config Config::Load(std::string_view filename) {
+Config Config::Load() {
+  std::string filename = std::format("{}/config.txt", CONFIG_DIR);
+  CHECK(Util::ExistsFile(filename)) << "Missing required config: "
+                                    << filename;
+
   std::unique_ptr<Config::HostConfig> current_host;
   std::unique_ptr<Config::Key> current_key;
   Config config;

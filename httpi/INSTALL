@@ -1,0 +1,61 @@
+
+First: Don't install this if you like PRIVACY!
+These are primarily notes to myself for when I have to install this again
+five years from now.
+
+It expects to find its configuration in /etc/httpi.
+You put keys in here (example.key) and certificate configs (domain.conf)
+and use Let's Encrypt to generate certificate chains (example.domain.cert).
+
+In /etc/httpi there should also be config.txt, which configures httpi itself.
+
+use "make install" to build the executable and put it in /usr/local/sbin/httpi.exe
+
+
+To run this as a service, create
+/etc/systemd/system/httpi.service
+
+
+[Unit]
+Description=HTTPI
+# Wait until networking is up.
+# could also depend on apache2.service if you want
+After=network.target
+
+[Service]
+ExecStart=/usr/local/sbin/httpi.exe
+# Automatically restart the service if it crashes
+Restart=always
+RestartSec=5
+
+# Maximum number of forked children (concurrent requests).
+TasksMax=256
+
+NoNewPrivileges=yes
+
+# The daemon doesn't write files, so just lock it down.
+# But the approach below is better.
+# PrivateTmp=yes
+# ProtectSystem=full
+# ProtectHome=yes
+
+# In fact, just construct the filesystem.
+TemporaryFileSystem=/
+# Dash in front of these means mount them.
+BindReadOnlyPaths=-/usr/local/sbin/httpi.exe
+BindReadOnlyPaths=-/etc/httpi
+# Actually, also need /etc/passwd etc. to swich users
+BindReadOnlyPaths=-/etc
+# Need to find some shared objects. use "ldd httpi.exe" to see what paths are needed
+BindReadOnlyPaths=-/lib
+BindReadOnlyPaths=-/lib64
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target
+
+
+Then:
+systemctl daemon-reload
+systemctl restart httpi
+systemctl status httpi

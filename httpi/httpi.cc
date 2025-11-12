@@ -1620,7 +1620,7 @@ struct Server {
 int main(int argc, char **arg) {
   ANSI::Init();
 
-  Config config = Config::Load("config.txt");
+  Config config = Config::Load();
 
   {
     Server server(std::move(config));

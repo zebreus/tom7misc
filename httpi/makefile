@@ -61,9 +61,12 @@ tls_test.exe : tls_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-server.exe : server.o $(OBJECTS)
+httpi.exe : httpi.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+install : httpi.exe
+	cp httpi.exe /usr/local/sbin/httpi.exe
 
 clean :
 	rm -f *.o *.exe $(OBJECTS)

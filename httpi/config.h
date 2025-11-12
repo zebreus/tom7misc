@@ -10,8 +10,10 @@
 #include "tls.h"
 
 struct Config {
+  static constexpr std::string_view CONFIG_DIR = "/etc/httpi";
 
-  static Config Load(std::string_view config_file);
+  // Loads from CONFIG_DIR/config.txt
+  static Config Load();
 
   struct Key {
     // Prepared to send to client.
