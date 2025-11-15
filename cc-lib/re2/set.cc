@@ -4,17 +4,19 @@
 
 #include "re2/set.h"
 
-#include <stddef.h>
 #include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
 #include "re2/pod_array.h"
 #include "re2/prog.h"
 #include "re2/re2.h"
 #include "re2/regexp.h"
-#include "re2/stringpiece.h"
+#include "re2/sparse_set.h"
+#include "re2/util/logging.h"
 
 namespace re2 {
 
@@ -33,7 +35,7 @@ RE2::Set::~Set() {
   delete prog_;
 }
 
-int RE2::Set::Add(const StringPiece& pattern, std::string* error) {
+int RE2::Set::Add(std::string_view pattern, std::string* error) {
   if (compiled_) {
     LOG(DFATAL) << "RE2::Set::Add() called after compiling";
     return -1;
@@ -102,11 +104,11 @@ bool RE2::Set::Compile() {
   return prog_ != NULL;
 }
 
-bool RE2::Set::Match(const StringPiece& text, std::vector<int>* v) const {
+bool RE2::Set::Match(std::string_view text, std::vector<int>* v) const {
   return Match(text, v, NULL);
 }
 
-bool RE2::Set::Match(const StringPiece& text, std::vector<int>* v,
+bool RE2::Set::Match(std::string_view text, std::vector<int>* v,
                      ErrorInfo* error_info) const {
   if (!compiled_) {
     LOG(DFATAL) << "RE2::Set::Match() called before compiling";

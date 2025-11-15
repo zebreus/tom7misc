@@ -1,5 +1,8 @@
 This is cc-lib's local copy of RE2, a good free Regular Expression
-library. 
+library. I forked this a long time ago so you can probably find
+a better modernized version elsewhere. I have made some changes
+to it, like replacing StringPiece with string_view and other
+modernization.
 
 The syntax is described in syntax.txt. The main thing to remember
 is that unlike emacs regexes, special characters are mostly special

@@ -17,10 +17,11 @@
 // SearchBitState is a fast replacement for the NFA code on small
 // regexps and texts when SearchOnePass cannot be used.
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <limits>
+#include <string_view>
 #include <utility>
 
 #include "re2/util/logging.h"
@@ -42,9 +43,9 @@ class BitState {
 
   // The usual Search prototype.
   // Can only call Search once per BitState.
-  bool Search(const StringPiece& text, const StringPiece& context,
+  bool Search(std::string_view text, std::string_view context,
               bool anchored, bool longest,
-              StringPiece* submatch, int nsubmatch);
+              std::string_view* submatch, int nsubmatch);
 
  private:
   inline bool ShouldVisit(int id, const char* p);
@@ -54,12 +55,12 @@ class BitState {
 
   // Search parameters
   Prog* prog_;              // program being run
-  StringPiece text_;        // text being searched
-  StringPiece context_;     // greater context of text being searched
+  std::string_view text_;        // text being searched
+  std::string_view context_;     // greater context of text being searched
   bool anchored_;           // whether search is anchored at text.begin()
   bool longest_;            // whether search wants leftmost-longest match
   bool endmatch_;           // whether match must end at text.end()
-  StringPiece* submatch_;   // submatches to fill in
+  std::string_view* submatch_;   // submatches to fill in
   int nsubmatch_;           //   # of submatches to fill in
 
   // Search state
@@ -245,17 +246,26 @@ bool BitState::TrySearch(int id0, const char* p0) {
         if (nsubmatch_ == 0)
           return true;
 
-        // Record best match so far.
-        // Only need to check end point, because this entire
-        // call is only considering one start position.
-        matched = true;
-        cap_[1] = p;
-        if (submatch_[0].data() == NULL ||
-            (longest_ && p > submatch_[0].data() + submatch_[0].size())) {
-          for (int i = 0; i < nsubmatch_; i++)
-            submatch_[i] =
-                StringPiece(cap_[2 * i],
-                            static_cast<size_t>(cap_[2 * i + 1] - cap_[2 * i]));
+        {
+          // Port note: I had to update the logic here to
+          // use the capture array rather than the output array
+          // when moving to string_view, which can't be null.
+
+          // Record best match so far.
+          // Only need to check end point, because this entire
+          // call is only considering one start position.
+          matched = true;
+          const char *old_match_end = cap_[1];
+          cap_[1] = p;
+          if (old_match_end == nullptr ||
+              (longest_ && p > old_match_end)) {
+            for (int i = 0; i < nsubmatch_; i++) {
+              const char *start = cap_[2 * i];
+              const char *end = cap_[2 * i + 1];
+              submatch_[i] =
+                start == nullptr ? "" : std::string_view(start, end - start);
+            }
+          }
         }
 
         // If going for first match, we're done.
@@ -282,9 +292,9 @@ bool BitState::TrySearch(int id0, const char* p0) {
 }
 
 // Search text (within context) for prog_.
-bool BitState::Search(const StringPiece& text, const StringPiece& context,
+bool BitState::Search(std::string_view text, std::string_view context,
                       bool anchored, bool longest,
-                      StringPiece* submatch, int nsubmatch) {
+                      std::string_view* submatch, int nsubmatch) {
   // Search parameters.
   text_ = text;
   context_ = context;
@@ -299,8 +309,10 @@ bool BitState::Search(const StringPiece& text, const StringPiece& context,
   endmatch_ = prog_->anchor_end();
   submatch_ = submatch;
   nsubmatch_ = nsubmatch;
-  for (int i = 0; i < nsubmatch_; i++)
-    submatch_[i] = StringPiece();
+  for (int i = 0; i < nsubmatch_; i++) {
+    submatch_[i] = "";
+    assert(submatch_[i].data() != nullptr);
+  }
 
   // Allocate scratch space.
   int nvisited = prog_->list_count() * static_cast<int>(text.size()+1);
@@ -351,16 +363,16 @@ bool BitState::Search(const StringPiece& text, const StringPiece& context,
 }
 
 // Bit-state search.
-bool Prog::SearchBitState(const StringPiece& text,
-                          const StringPiece& context,
+bool Prog::SearchBitState(std::string_view text,
+                          std::string_view context,
                           Anchor anchor,
                           MatchKind kind,
-                          StringPiece* match,
+                          std::string_view* match,
                           int nmatch) {
   // If full match, we ask for an anchored longest match
   // and then check that match[0] == text.
   // So make sure match[0] exists.
-  StringPiece sp0;
+  std::string_view sp0;
   if (kind == kFullMatch) {
     anchor = kAnchored;
     if (nmatch < 1) {

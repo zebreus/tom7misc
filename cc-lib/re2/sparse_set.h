@@ -52,13 +52,12 @@
 #define __has_feature(x) 0
 #endif
 
-#include <assert.h>
-#include <stdint.h>
+#include <cassert>
+#include <cstdint>
 #if __has_feature(memory_sanitizer)
 #include <sanitizer/msan_interface.h>
 #endif
 #include <algorithm>
-#include <memory>
 #include <utility>
 
 #include "re2/pod_array.h"

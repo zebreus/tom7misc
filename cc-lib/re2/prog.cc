@@ -7,17 +7,22 @@
 
 #include "re2/prog.h"
 
+#include <mutex>
 #include <stdint.h>
 #include <string.h>
 #include <algorithm>
-#include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
+#include "re2/pod_array.h"
+#include "re2/sparse_array.h"
+#include "re2/sparse_set.h"
 #include "re2/util/util.h"
 #include "re2/util/logging.h"
 #include "re2/util/strutil.h"
 #include "re2/bitmap256.h"
-#include "re2/stringpiece.h"
 
 namespace re2 {
 
@@ -122,7 +127,7 @@ Prog::~Prog() {
   DeleteDFA(dfa_first_);
 }
 
-typedef SparseSet Workq;
+using Workq = SparseSet;
 
 static inline void AddToQueue(Workq* q, int id) {
   if (id != 0)
@@ -284,7 +289,7 @@ static bool IsMatch(Prog* prog, Prog::Inst* ip) {
   }
 }
 
-uint32_t Prog::EmptyFlags(const StringPiece& text, const char* p) {
+uint32_t Prog::EmptyFlags(std::string_view text, const char* p) {
   int flags = 0;
 
   // ^ and \A
@@ -805,7 +810,7 @@ void Prog::EmitList(int root, SparseArray<int>* rootmap,
         flat->back().set_opcode(kInstAltMatch);
         flat->back().set_out(static_cast<int>(flat->size()));
         flat->back().out1_ = static_cast<uint32_t>(flat->size())+1;
-        FALLTHROUGH_INTENDED;
+        [[fallthrough]];
 
       case kInstAlt:
         stk->push_back(ip->out1());

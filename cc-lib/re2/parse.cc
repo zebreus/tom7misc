@@ -3,37 +3,35 @@
 // license that can be found in the LICENSE file.
 
 // Regular expression parser.
-
+//
 // The parser is a simple precedence-based parser with a
 // manual stack.  The parsing work is done by the methods
 // of the ParseState class.  The Regexp::Parse function is
 // essentially just a lexer that calls the ParseState method
 // for each token.
-
+//
 // The parser recognizes POSIX extended regular expressions
 // excluding backreferences, collating elements, and collating
 // classes.  It also allows the empty string as a regular expression
 // and recognizes the Perl escape sequences \d, \s, \w, \D, \S, and \W.
 // See regexp.h for rationale.
 
-#include <ctype.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
 #include <algorithm>
-#include <map>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <ctype.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
-#include "re2/util/strutil.h"
-#include "re2/util/utf.h"
 #include "re2/pod_array.h"
 #include "re2/regexp.h"
-#include "re2/stringpiece.h"
 #include "re2/unicode_casefold.h"
 #include "re2/unicode_groups.h"
+#include "re2/util/logging.h"
+#include "re2/util/utf.h"
+#include "re2/util/util.h"
 #include "re2/walker-inl.h"
 
 #if defined(RE2_USE_ICU)
@@ -70,7 +68,7 @@ static const int kMaxRepeat = 1000;
 
 class Regexp::ParseState {
  public:
-  ParseState(ParseFlags flags, const StringPiece& whole_regexp,
+  ParseState(ParseFlags flags, std::string_view whole_regexp,
              RegexpStatus* status);
   ~ParseState();
 
@@ -107,18 +105,18 @@ class Regexp::ParseState {
   // Pushes a repeat operator regexp onto the stack.
   // A valid argument for the operator must already be on the stack.
   // s is the name of the operator, for use in error messages.
-  bool PushRepeatOp(RegexpOp op, const StringPiece& s, bool nongreedy);
+  bool PushRepeatOp(RegexpOp op, std::string_view s, bool nongreedy);
 
   // Pushes a repetition regexp onto the stack.
   // A valid argument for the operator must already be on the stack.
-  bool PushRepetition(int min, int max, const StringPiece& s, bool nongreedy);
+  bool PushRepetition(int min, int max, std::string_view s, bool nongreedy);
 
   // Checks whether a particular regexp op is a marker.
   bool IsMarker(RegexpOp op);
 
   // Processes a left parenthesis in the input.
   // Pushes a marker onto the stack.
-  bool DoLeftParen(const StringPiece& name);
+  bool DoLeftParen(std::string_view name);
   bool DoLeftParenNoCapture();
 
   // Processes a vertical bar in the input.
@@ -142,23 +140,23 @@ class Regexp::ParseState {
 
   // Parse a character class into *out_re.
   // Removes parsed text from s.
-  bool ParseCharClass(StringPiece* s, Regexp** out_re,
+  bool ParseCharClass(std::string_view* s, Regexp** out_re,
                       RegexpStatus* status);
 
   // Parse a character class character into *rp.
   // Removes parsed text from s.
-  bool ParseCCCharacter(StringPiece* s, Rune *rp,
-                        const StringPiece& whole_class,
+  bool ParseCCCharacter(std::string_view* s, Rune *rp,
+                        std::string_view whole_class,
                         RegexpStatus* status);
 
   // Parse a character class range into rr.
   // Removes parsed text from s.
-  bool ParseCCRange(StringPiece* s, RuneRange* rr,
-                    const StringPiece& whole_class,
+  bool ParseCCRange(std::string_view* s, RuneRange* rr,
+                    std::string_view whole_class,
                     RegexpStatus* status);
 
   // Parse a Perl flag set or non-capturing group from s.
-  bool ParsePerlFlags(StringPiece* s);
+  bool ParsePerlFlags(std::string_view* s);
 
 
   // Finishes the current concatenation,
@@ -177,7 +175,7 @@ class Regexp::ParseState {
 
 private:
   ParseFlags flags_;
-  StringPiece whole_regexp_;
+  std::string_view whole_regexp_;
   RegexpStatus* status_;
   Regexp* stacktop_;
   int ncap_;  // number of capturing parens seen
@@ -192,7 +190,7 @@ const RegexpOp kLeftParen = static_cast<RegexpOp>(kMaxRegexpOp+1);
 const RegexpOp kVerticalBar = static_cast<RegexpOp>(kMaxRegexpOp+2);
 
 Regexp::ParseState::ParseState(ParseFlags flags,
-                               const StringPiece& whole_regexp,
+                               std::string_view whole_regexp,
                                RegexpStatus* status)
   : flags_(flags), whole_regexp_(whole_regexp),
     status_(status), stacktop_(NULL), ncap_(0) {
@@ -305,7 +303,7 @@ Rune ApplyFold(const CaseFold *f, Rune r) {
     case EvenOddSkip:  // even <-> odd but only applies to every other
       if ((r - f->lo) % 2)
         return r;
-      FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case EvenOdd:  // even <-> odd
       if (r%2 == 0)
         return r + 1;
@@ -314,7 +312,7 @@ Rune ApplyFold(const CaseFold *f, Rune r) {
     case OddEvenSkip:  // odd <-> even but only applies to every other
       if ((r - f->lo) % 2)
         return r;
-      FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case OddEven:  // odd <-> even
       if (r%2 == 1)
         return r + 1;
@@ -472,7 +470,7 @@ bool Regexp::ParseState::PushSimpleOp(RegexpOp op) {
 // Pushes a repeat operator regexp onto the stack.
 // A valid argument for the operator must already be on the stack.
 // The char c is the name of the operator, for use in error messages.
-bool Regexp::ParseState::PushRepeatOp(RegexpOp op, const StringPiece& s,
+bool Regexp::ParseState::PushRepeatOp(RegexpOp op, std::string_view s,
                                       bool nongreedy) {
   if (stacktop_ == NULL || IsMarker(stacktop_->op())) {
     status_->set_code(kRegexpRepeatArgument);
@@ -566,7 +564,7 @@ int RepetitionWalker::ShortVisit(Regexp* re, int parent_arg) {
 // Pushes a repetition regexp onto the stack.
 // A valid argument for the operator must already be on the stack.
 bool Regexp::ParseState::PushRepetition(int min, int max,
-                                        const StringPiece& s,
+                                        std::string_view s,
                                         bool nongreedy) {
   if ((max != -1 && max < min) || min > kMaxRepeat || max > kMaxRepeat) {
     status_->set_code(kRegexpRepeatSize);
@@ -607,7 +605,7 @@ bool Regexp::ParseState::IsMarker(RegexpOp op) {
 
 // Processes a left parenthesis in the input.
 // Pushes a marker onto the stack.
-bool Regexp::ParseState::DoLeftParen(const StringPiece& name) {
+bool Regexp::ParseState::DoLeftParen(std::string_view name) {
   Regexp* re = new Regexp(kLeftParen, flags_);
   re->cap_ = ++ncap_;
   if (name.data() != NULL)
@@ -1323,7 +1321,7 @@ bool Regexp::ParseState::MaybeConcatString(int r, ParseFlags flags) {
 
 // Parses a decimal integer, storing it in *np.
 // Sets *s to span the remainder of the string.
-static bool ParseInteger(StringPiece* s, int* np) {
+static bool ParseInteger(std::string_view* s, int* np) {
   if (s->empty() || !isdigit((*s)[0] & 0xFF))
     return false;
   // Disallow leading zeros.
@@ -1349,10 +1347,10 @@ static bool ParseInteger(StringPiece* s, int* np) {
 // sets *hi to -1 to signify this.
 // {,2} is NOT a valid suffix.
 // The Maybe in the name signifies that the regexp parse
-// doesn't fail even if ParseRepetition does, so the StringPiece
+// doesn't fail even if ParseRepetition does, so the std::string_view
 // s must NOT be edited unless MaybeParseRepetition returns true.
-static bool MaybeParseRepetition(StringPiece* sp, int* lo, int* hi) {
-  StringPiece s = *sp;
+static bool MaybeParseRepetition(std::string_view* sp, int* lo, int* hi) {
+  std::string_view s = *sp;
   if (s.empty() || s[0] != '{')
     return false;
   s.remove_prefix(1);  // '{'
@@ -1383,12 +1381,12 @@ static bool MaybeParseRepetition(StringPiece* sp, int* lo, int* hi) {
   return true;
 }
 
-// Removes the next Rune from the StringPiece and stores it in *r.
+// Removes the next Rune from the std::string_view and stores it in *r.
 // Returns number of bytes removed from sp.
 // Behaves as though there is a terminating NUL at the end of sp.
 // Argument order is backwards from usual Google style
 // but consistent with chartorune.
-static int StringPieceToRune(Rune *r, StringPiece *sp, RegexpStatus* status) {
+static int StringViewToRune(Rune *r, std::string_view *sp, RegexpStatus* status) {
   // fullrune() takes int, not size_t. However, it just looks
   // at the leading byte and treats any length >= 4 the same.
   if (fullrune(sp->data(), static_cast<int>(std::min(size_t{4}, sp->size())))) {
@@ -1408,17 +1406,17 @@ static int StringPieceToRune(Rune *r, StringPiece *sp, RegexpStatus* status) {
   }
 
   status->set_code(kRegexpBadUTF8);
-  status->set_error_arg(StringPiece());
+  status->set_error_arg(std::string_view());
   return -1;
 }
 
 // Return whether name is valid UTF-8.
 // If not, set status to kRegexpBadUTF8.
-static bool IsValidUTF8(const StringPiece& s, RegexpStatus* status) {
-  StringPiece t = s;
+static bool IsValidUTF8(std::string_view s, RegexpStatus* status) {
+  std::string_view t = s;
   Rune r;
   while (!t.empty()) {
-    if (StringPieceToRune(&r, &t, status) < 0)
+    if (StringViewToRune(&r, &t, status) < 0)
       return false;
   }
   return true;
@@ -1446,23 +1444,23 @@ static int UnHex(int c) {
 // Parse an escape sequence (e.g., \n, \{).
 // Sets *s to span the remainder of the string.
 // Sets *rp to the named character.
-static bool ParseEscape(StringPiece* s, Rune* rp,
+static bool ParseEscape(std::string_view* s, Rune* rp,
                         RegexpStatus* status, int rune_max) {
   const char* begin = s->data();
   if (s->empty() || (*s)[0] != '\\') {
     // Should not happen - caller always checks.
     status->set_code(kRegexpInternalError);
-    status->set_error_arg(StringPiece());
+    status->set_error_arg(std::string_view());
     return false;
   }
   if (s->size() == 1) {
     status->set_code(kRegexpTrailingBackslash);
-    status->set_error_arg(StringPiece());
+    status->set_error_arg(std::string_view());
     return false;
   }
   Rune c, c1;
   s->remove_prefix(1);  // backslash
-  if (StringPieceToRune(&c, s, status) < 0)
+  if (StringViewToRune(&c, s, status) < 0)
     return false;
   int code;
   switch (c) {
@@ -1488,7 +1486,7 @@ static bool ParseEscape(StringPiece* s, Rune* rp,
       // Single non-zero octal digit is a backreference; not supported.
       if (s->empty() || (*s)[0] < '0' || (*s)[0] > '7')
         goto BadEscape;
-      FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case '0':
       // consume up to three octal digits; already have one.
       code = c - '0';
@@ -1512,7 +1510,7 @@ static bool ParseEscape(StringPiece* s, Rune* rp,
     case 'x':
       if (s->empty())
         goto BadEscape;
-      if (StringPieceToRune(&c, s, status) < 0)
+      if (StringViewToRune(&c, s, status) < 0)
         return false;
       if (c == '{') {
         // Any number of digits in braces.
@@ -1521,7 +1519,7 @@ static bool ParseEscape(StringPiece* s, Rune* rp,
         // Perl accepts any text at all; it ignores all text
         // after the first non-hex digit.  We require only hex digits,
         // and at least one.
-        if (StringPieceToRune(&c, s, status) < 0)
+        if (StringViewToRune(&c, s, status) < 0)
           return false;
         int nhex = 0;
         code = 0;
@@ -1532,7 +1530,7 @@ static bool ParseEscape(StringPiece* s, Rune* rp,
             goto BadEscape;
           if (s->empty())
             goto BadEscape;
-          if (StringPieceToRune(&c, s, status) < 0)
+          if (StringViewToRune(&c, s, status) < 0)
             return false;
         }
         if (c != '}' || nhex == 0)
@@ -1543,7 +1541,7 @@ static bool ParseEscape(StringPiece* s, Rune* rp,
       // Easy case: two hex digits.
       if (s->empty())
         goto BadEscape;
-      if (StringPieceToRune(&c1, s, status) < 0)
+      if (StringViewToRune(&c1, s, status) < 0)
         return false;
       if (!IsHex(c) || !IsHex(c1))
         goto BadEscape;
@@ -1591,7 +1589,7 @@ BadEscape:
   // Unrecognized escape sequence.
   status->set_code(kRegexpBadEscape);
   status->set_error_arg(
-      StringPiece(begin, static_cast<size_t>(s->data() - begin)));
+      std::string_view(begin, static_cast<size_t>(s->data() - begin)));
   return false;
 }
 
@@ -1619,21 +1617,21 @@ void CharClassBuilder::AddRangeFlags(
 }
 
 // Look for a group with the given name.
-static const UGroup* LookupGroup(const StringPiece& name,
+static const UGroup* LookupGroup(std::string_view name,
                                  const UGroup *groups, int ngroups) {
   // Simple name lookup.
   for (int i = 0; i < ngroups; i++)
-    if (StringPiece(groups[i].name) == name)
+    if (std::string_view(groups[i].name) == name)
       return &groups[i];
   return NULL;
 }
 
 // Look for a POSIX group with the given name (e.g., "[:^alpha:]")
-static const UGroup* LookupPosixGroup(const StringPiece& name) {
+static const UGroup* LookupPosixGroup(std::string_view name) {
   return LookupGroup(name, posix_groups, num_posix_groups);
 }
 
-static const UGroup* LookupPerlGroup(const StringPiece& name) {
+static const UGroup* LookupPerlGroup(std::string_view name) {
   return LookupGroup(name, perl_groups, num_perl_groups);
 }
 
@@ -1644,9 +1642,9 @@ static URange32 any32[] = { { 65536, Runemax } };
 static UGroup anygroup = { "Any", +1, any16, 1, any32, 1 };
 
 // Look for a Unicode group with the given name (e.g., "Han")
-static const UGroup* LookupUnicodeGroup(const StringPiece& name) {
+static const UGroup* LookupUnicodeGroup(std::string_view name) {
   // Special case: "Any" means any.
-  if (name == StringPiece("Any"))
+  if (name == std::string_view("Any"))
     return &anygroup;
   return LookupGroup(name, unicode_groups, num_unicode_groups);
 }
@@ -1703,15 +1701,15 @@ static void AddUGroup(CharClassBuilder *cc, const UGroup *g, int sign,
 // not the Perl empty-string classes (\b \B \A \Z \z).
 // On success, sets *s to span the remainder of the string
 // and returns the corresponding UGroup.
-// The StringPiece must *NOT* be edited unless the call succeeds.
-const UGroup* MaybeParsePerlCCEscape(StringPiece* s, Regexp::ParseFlags parse_flags) {
+// The string_view must *NOT* be edited unless the call succeeds.
+const UGroup* MaybeParsePerlCCEscape(std::string_view* s, Regexp::ParseFlags parse_flags) {
   if (!(parse_flags & Regexp::PerlClasses))
     return NULL;
   if (s->size() < 2 || (*s)[0] != '\\')
     return NULL;
-  // Could use StringPieceToRune, but there aren't
+  // Could use StringViewToRune, but there aren't
   // any non-ASCII Perl group names.
-  StringPiece name(s->data(), 2);
+  std::string_view name(s->data(), 2);
   const UGroup *g = LookupPerlGroup(name);
   if (g == NULL)
     return NULL;
@@ -1727,7 +1725,7 @@ enum ParseStatus {
 
 // Maybe parses a Unicode character group like \p{Han} or \P{Han}
 // (the latter is a negated group).
-ParseStatus ParseUnicodeGroup(StringPiece* s, Regexp::ParseFlags parse_flags,
+ParseStatus ParseUnicodeGroup(std::string_view* s, Regexp::ParseFlags parse_flags,
                               CharClassBuilder *cc,
                               RegexpStatus* status) {
   // Decide whether to parse.
@@ -1743,34 +1741,34 @@ ParseStatus ParseUnicodeGroup(StringPiece* s, Regexp::ParseFlags parse_flags,
   int sign = +1;  // -1 = negated char class
   if (c == 'P')
     sign = -sign;
-  StringPiece seq = *s;  // \p{Han} or \pL
-  StringPiece name;  // Han or L
+  std::string_view seq = *s;  // \p{Han} or \pL
+  std::string_view name;  // Han or L
   s->remove_prefix(2);  // '\\', 'p'
 
-  if (!StringPieceToRune(&c, s, status))
+  if (!StringViewToRune(&c, s, status))
     return kParseError;
   if (c != '{') {
     // Name is the bit of string we just skipped over for c.
     const char* p = seq.data() + 2;
-    name = StringPiece(p, static_cast<size_t>(s->data() - p));
+    name = std::string_view(p, static_cast<size_t>(s->data() - p));
   } else {
     // Name is in braces. Look for closing }
     size_t end = s->find('}', 0);
-    if (end == StringPiece::npos) {
+    if (end == std::string_view::npos) {
       if (!IsValidUTF8(seq, status))
         return kParseError;
       status->set_code(kRegexpBadCharRange);
       status->set_error_arg(seq);
       return kParseError;
     }
-    name = StringPiece(s->data(), end);  // without '}'
+    name = std::string_view(s->data(), end);  // without '}'
     s->remove_prefix(end + 1);  // with '}'
     if (!IsValidUTF8(name, status))
       return kParseError;
   }
 
   // Chop seq where s now begins.
-  seq = StringPiece(seq.data(), static_cast<size_t>(s->data() - seq.data()));
+  seq = std::string_view(seq.data(), static_cast<size_t>(s->data() - seq.data()));
 
   if (!name.empty() && name[0] == '^') {
     sign = -sign;
@@ -1818,7 +1816,7 @@ ParseStatus ParseUnicodeGroup(StringPiece* s, Regexp::ParseFlags parse_flags,
 // Parses a character class name like [:alnum:].
 // Sets *s to span the remainder of the string.
 // Adds the ranges corresponding to the class to ranges.
-static ParseStatus ParseCCName(StringPiece* s, Regexp::ParseFlags parse_flags,
+static ParseStatus ParseCCName(std::string_view* s, Regexp::ParseFlags parse_flags,
                                CharClassBuilder *cc,
                                RegexpStatus* status) {
   // Check begins with [:
@@ -1838,7 +1836,7 @@ static ParseStatus ParseCCName(StringPiece* s, Regexp::ParseFlags parse_flags,
 
   // Got it.  Check that it's valid.
   q += 2;
-  StringPiece name(p, static_cast<size_t>(q - p));
+  std::string_view name(p, static_cast<size_t>(q - p));
 
   const UGroup *g = LookupPosixGroup(name);
   if (g == NULL) {
@@ -1856,8 +1854,8 @@ static ParseStatus ParseCCName(StringPiece* s, Regexp::ParseFlags parse_flags,
 // There are fewer special characters here than in the rest of the regexp.
 // Sets *s to span the remainder of the string.
 // Sets *rp to the character.
-bool Regexp::ParseState::ParseCCCharacter(StringPiece* s, Rune *rp,
-                                          const StringPiece& whole_class,
+bool Regexp::ParseState::ParseCCCharacter(std::string_view* s, Rune *rp,
+                                          std::string_view whole_class,
                                           RegexpStatus* status) {
   if (s->empty()) {
     status->set_code(kRegexpMissingBracket);
@@ -1871,7 +1869,7 @@ bool Regexp::ParseState::ParseCCCharacter(StringPiece* s, Rune *rp,
     return ParseEscape(s, rp, status, rune_max_);
 
   // Otherwise take the next rune.
-  return StringPieceToRune(rp, s, status) >= 0;
+  return StringViewToRune(rp, s, status) >= 0;
 }
 
 // Parses a character class character, or, if the character
@@ -1879,10 +1877,10 @@ bool Regexp::ParseState::ParseCCCharacter(StringPiece* s, Rune *rp,
 // For single characters, rr->lo == rr->hi.
 // Sets *s to span the remainder of the string.
 // Sets *rp to the character.
-bool Regexp::ParseState::ParseCCRange(StringPiece* s, RuneRange* rr,
-                                      const StringPiece& whole_class,
+bool Regexp::ParseState::ParseCCRange(std::string_view* s, RuneRange* rr,
+                                      std::string_view whole_class,
                                       RegexpStatus* status) {
-  StringPiece os = *s;
+  std::string_view os = *s;
   if (!ParseCCCharacter(s, &rr->lo, whole_class, status))
     return false;
   // [a-] means (a|-), so check for final ].
@@ -1893,7 +1891,7 @@ bool Regexp::ParseState::ParseCCRange(StringPiece* s, RuneRange* rr,
     if (rr->hi < rr->lo) {
       status->set_code(kRegexpBadCharRange);
       status->set_error_arg(
-          StringPiece(os.data(), static_cast<size_t>(s->data() - os.data())));
+          std::string_view(os.data(), static_cast<size_t>(s->data() - os.data())));
       return false;
     }
   } else {
@@ -1905,14 +1903,14 @@ bool Regexp::ParseState::ParseCCRange(StringPiece* s, RuneRange* rr,
 // Parses a possibly-negated character class expression like [^abx-z[:digit:]].
 // Sets *s to span the remainder of the string.
 // Sets *out_re to the regexp for the class.
-bool Regexp::ParseState::ParseCharClass(StringPiece* s,
+bool Regexp::ParseState::ParseCharClass(std::string_view* s,
                                         Regexp** out_re,
                                         RegexpStatus* status) {
-  StringPiece whole_class = *s;
+  std::string_view whole_class = *s;
   if (s->empty() || (*s)[0] != '[') {
     // Caller checked this.
     status->set_code(kRegexpInternalError);
-    status->set_error_arg(StringPiece());
+    status->set_error_arg(std::string_view());
     return false;
   }
   bool negated = false;
@@ -1934,16 +1932,16 @@ bool Regexp::ParseState::ParseCharClass(StringPiece* s,
     // Except that Perl allows - anywhere.
     if ((*s)[0] == '-' && !first && !(flags_&PerlX) &&
         (s->size() == 1 || (*s)[1] != ']')) {
-      StringPiece t = *s;
+      std::string_view t = *s;
       t.remove_prefix(1);  // '-'
       Rune r;
-      int n = StringPieceToRune(&r, &t, status);
+      int n = StringViewToRune(&r, &t, status);
       if (n < 0) {
         re->Decref();
         return false;
       }
       status->set_code(kRegexpBadCharRange);
-      status->set_error_arg(StringPiece(s->data(), 1+n));
+      status->set_error_arg(std::string_view(s->data(), 1+n));
       re->Decref();
       return false;
     }
@@ -2016,7 +2014,7 @@ bool Regexp::ParseState::ParseCharClass(StringPiece* s,
 // PCRE limits names to 32 bytes.
 // Python rejects names starting with digits.
 // We don't enforce either of those.
-static bool IsValidCaptureName(const StringPiece& name) {
+static bool IsValidCaptureName(std::string_view name) {
   if (name.empty())
     return false;
   for (size_t i = 0; i < name.size(); i++) {
@@ -2036,8 +2034,8 @@ static bool IsValidCaptureName(const StringPiece& name) {
 // The caller must check that s begins with "(?".
 // Returns true on success.  If the Perl flag is not
 // well-formed or not supported, sets status_ and returns false.
-bool Regexp::ParseState::ParsePerlFlags(StringPiece* s) {
-  StringPiece t = *s;
+bool Regexp::ParseState::ParsePerlFlags(std::string_view* s) {
+  std::string_view t = *s;
 
   // Caller is supposed to check this.
   if (!(flags_ & PerlX) || t.size() < 2 || t[0] != '(' || t[1] != '?') {
@@ -2066,7 +2064,7 @@ bool Regexp::ParseState::ParsePerlFlags(StringPiece* s) {
   if (t.size() > 2 && t[0] == 'P' && t[1] == '<') {
     // Pull out name.
     size_t end = t.find('>', 2);
-    if (end == StringPiece::npos) {
+    if (end == std::string_view::npos) {
       if (!IsValidUTF8(*s, status_))
         return false;
       status_->set_code(kRegexpBadNamedCapture);
@@ -2075,8 +2073,8 @@ bool Regexp::ParseState::ParsePerlFlags(StringPiece* s) {
     }
 
     // t is "P<name>...", t[end] == '>'
-    StringPiece capture(t.data()-2, end+3);  // "(?P<name>"
-    StringPiece name(t.data()+2, end-2);     // "name"
+    std::string_view capture(t.data()-2, end+3);  // "(?P<name>"
+    std::string_view name(t.data()+2, end-2);     // "name"
     if (!IsValidUTF8(name, status_))
       return false;
     if (!IsValidCaptureName(name)) {
@@ -2102,7 +2100,7 @@ bool Regexp::ParseState::ParsePerlFlags(StringPiece* s) {
   for (bool done = false; !done; ) {
     if (t.empty())
       goto BadPerlOp;
-    if (StringPieceToRune(&c, &t, status_) < 0)
+    if (StringViewToRune(&c, &t, status_) < 0)
       return false;
     switch (c) {
       default:
@@ -2175,7 +2173,7 @@ bool Regexp::ParseState::ParsePerlFlags(StringPiece* s) {
 BadPerlOp:
   status_->set_code(kRegexpBadPerlOp);
   status_->set_error_arg(
-      StringPiece(s->data(), static_cast<size_t>(t.data() - s->data())));
+      std::string_view(s->data(), static_cast<size_t>(t.data() - s->data())));
   return false;
 }
 
@@ -2183,7 +2181,7 @@ BadPerlOp:
 // into UTF8 encoding in string.
 // Can't use EncodingUtils::EncodeLatin1AsUTF8 because it is
 // deprecated and because it rejects code points 0x80-0x9F.
-void ConvertLatin1ToUTF8(const StringPiece& latin1, std::string* utf) {
+void ConvertLatin1ToUTF8(std::string_view latin1, std::string* utf) {
   char buf[UTFmax];
 
   utf->clear();
@@ -2198,7 +2196,7 @@ void ConvertLatin1ToUTF8(const StringPiece& latin1, std::string* utf) {
 // returning the corresponding Regexp tree.
 // The caller must Decref the return value when done with it.
 // Returns NULL on error.
-Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
+Regexp* Regexp::Parse(std::string_view s, ParseFlags global_flags,
                       RegexpStatus* status) {
   // Make status non-NULL (easier on everyone else).
   RegexpStatus xstatus;
@@ -2206,7 +2204,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
     status = &xstatus;
 
   ParseState ps(global_flags, s, status);
-  StringPiece t = s;
+  std::string_view t = s;
 
   // Convert regexp to UTF-8 (easier on the rest of the parser).
   if (global_flags & Latin1) {
@@ -2220,7 +2218,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
     // Special parse loop for literal string.
     while (!t.empty()) {
       Rune r;
-      if (StringPieceToRune(&r, &t, status) < 0)
+      if (StringViewToRune(&r, &t, status) < 0)
         return NULL;
       if (!ps.PushLiteral(r))
         return NULL;
@@ -2228,13 +2226,13 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
     return ps.DoFinish();
   }
 
-  StringPiece lastunary = StringPiece();
+  std::string_view lastunary = std::string_view();
   while (!t.empty()) {
-    StringPiece isunary = StringPiece();
+    std::string_view isunary = std::string_view();
     switch (t[0]) {
       default: {
         Rune r;
-        if (StringPieceToRune(&r, &t, status) < 0)
+        if (StringViewToRune(&r, &t, status) < 0)
           return NULL;
         if (!ps.PushLiteral(r))
           return NULL;
@@ -2253,7 +2251,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
           if (!ps.DoLeftParenNoCapture())
             return NULL;
         } else {
-          if (!ps.DoLeftParen(StringPiece()))
+          if (!ps.DoLeftParen(std::string_view()))
             return NULL;
         }
         t.remove_prefix(1);  // '('
@@ -2309,7 +2307,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
         op = kRegexpQuest;
         goto Rep;
       Rep:
-        StringPiece opstr = t;
+        std::string_view opstr = t;
         bool nongreedy = false;
         t.remove_prefix(1);  // '*' or '+' or '?'
         if (ps.flags() & PerlX) {
@@ -2322,13 +2320,13 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
             //   a** is a syntax error, not a double-star.
             // (and a++ means something else entirely, which we don't support!)
             status->set_code(kRegexpRepeatOp);
-            status->set_error_arg(StringPiece(
+            status->set_error_arg(std::string_view(
                 lastunary.data(),
                 static_cast<size_t>(t.data() - lastunary.data())));
             return NULL;
           }
         }
-        opstr = StringPiece(opstr.data(),
+        opstr = std::string_view(opstr.data(),
                             static_cast<size_t>(t.data() - opstr.data()));
         if (!ps.PushRepeatOp(op, opstr, nongreedy))
           return NULL;
@@ -2338,7 +2336,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
 
       case '{': {  // Counted repetition.
         int lo, hi;
-        StringPiece opstr = t;
+        std::string_view opstr = t;
         if (!MaybeParseRepetition(&t, &lo, &hi)) {
           // Treat like a literal.
           if (!ps.PushLiteral('{'))
@@ -2355,13 +2353,13 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
           if (!lastunary.empty()) {
             // Not allowed to stack repetition operators.
             status->set_code(kRegexpRepeatOp);
-            status->set_error_arg(StringPiece(
+            status->set_error_arg(std::string_view(
                 lastunary.data(),
                 static_cast<size_t>(t.data() - lastunary.data())));
             return NULL;
           }
         }
-        opstr = StringPiece(opstr.data(),
+        opstr = std::string_view(opstr.data(),
                             static_cast<size_t>(t.data() - opstr.data()));
         if (!ps.PushRepetition(lo, hi, opstr, nongreedy))
           return NULL;
@@ -2412,7 +2410,7 @@ Regexp* Regexp::Parse(const StringPiece& s, ParseFlags global_flags,
                 break;
               }
               Rune r;
-              if (StringPieceToRune(&r, &t, status) < 0)
+              if (StringViewToRune(&r, &t, status) < 0)
                 return NULL;
               if (!ps.PushLiteral(r))
                 return NULL;

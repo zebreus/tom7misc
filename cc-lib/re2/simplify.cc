@@ -7,8 +7,8 @@
 // Also sort and simplify character classes.
 
 #include <string>
+#include <string_view>
 
-#include "re2/util/util.h"
 #include "re2/util/logging.h"
 #include "re2/util/utf.h"
 #include "re2/pod_array.h"
@@ -19,15 +19,15 @@ namespace re2 {
 
 // Parses the regexp src and then simplifies it and sets *dst to the
 // string representation of the simplified form.  Returns true on success.
-// Returns false and sets *error (if error != NULL) on error.
-bool Regexp::SimplifyRegexp(const StringPiece& src, ParseFlags flags,
+// Returns false and sets *error (if error != nullptr) on error.
+bool Regexp::SimplifyRegexp(std::string_view src, ParseFlags flags,
                             std::string* dst, RegexpStatus* status) {
   Regexp* re = Parse(src, flags, status);
-  if (re == NULL)
+  if (re == nullptr)
     return false;
   Regexp* sre = re->Simplify();
   re->Decref();
-  if (sre == NULL) {
+  if (sre == nullptr) {
     // Should not happen, since Simplify never fails.
     LOG(ERROR) << "Simplify failed on " << src;
     if (status) {
@@ -70,7 +70,7 @@ bool Regexp::ComputeSimple() {
       return true;
     case kRegexpCharClass:
       // Simple as long as the char class is not empty, not full.
-      if (ccb_ != NULL)
+      if (ccb_ != nullptr)
         return !ccb_->empty() && !ccb_->full();
       return !cc_->empty() && !cc_->full();
     case kRegexpCapture:
@@ -178,11 +178,11 @@ class SimplifyWalker : public Regexp::Walker<Regexp*> {
 
 Regexp* Regexp::Simplify() {
   CoalesceWalker cw;
-  Regexp* cre = cw.Walk(this, NULL);
-  if (cre == NULL)
+  Regexp* cre = cw.Walk(this, nullptr);
+  if (cre == nullptr)
     return cre;
   SimplifyWalker sw;
-  Regexp* sre = sw.Walk(cre, NULL);
+  Regexp* sre = sw.Walk(cre, nullptr);
   cre->Decref();
   return sre;
 }
@@ -450,7 +450,7 @@ Regexp* SimplifyWalker::PreVisit(Regexp* re, Regexp* parent_arg, bool* stop) {
     *stop = true;
     return re->Incref();
   }
-  return NULL;
+  return nullptr;
 }
 
 Regexp* SimplifyWalker::PostVisit(Regexp* re,
@@ -611,7 +611,7 @@ Regexp* SimplifyWalker::SimplifyRepeat(Regexp* re, int min, int max,
   // so that x{2,5} = xx(x(x(x)?)?)?
 
   // Build leading prefix: xx.  Capturing only on the last one.
-  Regexp* nre = NULL;
+  Regexp* nre = nullptr;
   if (min > 0) {
     PODArray<Regexp*> nre_subs(min);
     for (int i = 0; i < min; i++)
@@ -624,13 +624,13 @@ Regexp* SimplifyWalker::SimplifyRepeat(Regexp* re, int min, int max,
     Regexp* suf = Regexp::Quest(re->Incref(), f);
     for (int i = min+1; i < max; i++)
       suf = Regexp::Quest(Concat2(re->Incref(), suf, f), f);
-    if (nre == NULL)
+    if (nre == nullptr)
       nre = suf;
     else
       nre = Concat2(nre, suf, f);
   }
 
-  if (nre == NULL) {
+  if (nre == nullptr) {
     // Some degenerate case, like min > max, or min < max < 0.
     // This shouldn't happen, because the parser rejects such regexps.
     LOG(DFATAL) << "Malformed repeat " << re->ToString() << " " << min << " " << max;

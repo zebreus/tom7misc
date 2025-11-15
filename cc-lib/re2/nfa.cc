@@ -24,12 +24,12 @@
 // Like Thompson's original machine and like the DFA implementation, this
 // implementation notices a match only once it is one byte past it.
 
-#include <stdio.h>
-#include <string.h>
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <string>
+#include <string_view>
 #include <utility>
-#include <vector>
 
 #include "re2/util/logging.h"
 #include "re2/util/strutil.h"
@@ -59,9 +59,9 @@ class NFA {
   // Submatch[0] is the entire match.  When there is a choice in
   // which text matches each subexpression, the submatch boundaries
   // are chosen to match what a backtracking implementation would choose.
-  bool Search(const StringPiece& text, const StringPiece& context,
+  bool Search(std::string_view text, std::string_view context,
               bool anchored, bool longest,
-              StringPiece* submatch, int nsubmatch);
+              std::string_view* submatch, int nsubmatch);
 
  private:
   struct Thread {
@@ -91,7 +91,7 @@ class NFA {
   // Enqueues only the ByteRange instructions that match byte c.
   // context is used (with p) for evaluating empty-width specials.
   // p is the current input position, and t0 is the current thread.
-  void AddToThreadq(Threadq* q, int id0, int c, const StringPiece& context,
+  void AddToThreadq(Threadq* q, int id0, int c, std::string_view context,
                     const char* p, Thread* t0);
 
   // Run runq on byte c, appending new states to nextq.
@@ -101,7 +101,7 @@ class NFA {
   // p-1 will be used when processing Match instructions.
   // Frees all the threads on runq.
   // If there is a shortcut to the end, returns that shortcut.
-  int Step(Threadq* runq, Threadq* nextq, int c, const StringPiece& context,
+  int Step(Threadq* runq, Threadq* nextq, int c, std::string_view context,
            const char* p);
 
   // Returns text version of capture information, for debugging.
@@ -197,7 +197,7 @@ void NFA::CopyCapture(const char** dst, const char** src) {
 // Enqueues only the ByteRange instructions that match byte c.
 // context is used (with p) for evaluating empty-width specials.
 // p is the current input position, and t0 is the current thread.
-void NFA::AddToThreadq(Threadq* q, int id0, int c, const StringPiece& context,
+void NFA::AddToThreadq(Threadq* q, int id0, int c, std::string_view context,
                        const char* p, Thread* t0) {
   if (id0 == 0)
     return;
@@ -333,7 +333,7 @@ void NFA::AddToThreadq(Threadq* q, int id0, int c, const StringPiece& context,
 // p-1 will be used when processing Match instructions.
 // Frees all the threads on runq.
 // If there is a shortcut to the end, returns that shortcut.
-int NFA::Step(Threadq* runq, Threadq* nextq, int c, const StringPiece& context,
+int NFA::Step(Threadq* runq, Threadq* nextq, int c, std::string_view context,
               const char* p) {
   nextq->clear();
 
@@ -446,13 +446,13 @@ std::string NFA::FormatCapture(const char** capture) {
   return s;
 }
 
-bool NFA::Search(const StringPiece& text, const StringPiece& const_context,
+bool NFA::Search(std::string_view text, std::string_view const_context,
             bool anchored, bool longest,
-            StringPiece* submatch, int nsubmatch) {
+            std::string_view* submatch, int nsubmatch) {
   if (start_ == 0)
     return false;
 
-  StringPiece context = const_context;
+  std::string_view context = const_context;
   if (context.data() == NULL)
     context = text;
 
@@ -616,10 +616,13 @@ bool NFA::Search(const StringPiece& text, const StringPiece& const_context,
     Decref(i->value());
 
   if (matched_) {
-    for (int i = 0; i < nsubmatch; i++)
-      submatch[i] =
-          StringPiece(match_[2 * i],
-                      static_cast<size_t>(match_[2 * i + 1] - match_[2 * i]));
+    for (int i = 0; i < nsubmatch; i++) {
+      const char* start = match_[2 * i];
+      const char* end   = match_[2 * i + 1];
+      submatch[i] = (start == nullptr) ? "" :
+        std::string_view(start, end - start);
+    }
+
     if (ExtraDebug)
       fprintf(stderr, "match (%d,%d)\n",
               (int)(match_[0] - btext_),
@@ -691,14 +694,14 @@ int Prog::ComputeFirstByte() {
 }
 
 bool
-Prog::SearchNFA(const StringPiece& text, const StringPiece& context,
+Prog::SearchNFA(std::string_view text, std::string_view context,
                 Anchor anchor, MatchKind kind,
-                StringPiece* match, int nmatch) {
+                std::string_view* match, int nmatch) {
   if (ExtraDebug)
     Dump();
 
   NFA nfa(this);
-  StringPiece sp;
+  std::string_view sp;
   if (kind == kFullMatch) {
     anchor = kAnchored;
     if (nmatch == 0) {

@@ -6,8 +6,9 @@
 
 #include <stddef.h>
 #include <string>
+#include <string_view>
+#include <vector>
 
-#include "re2/util/util.h"
 #include "re2/util/logging.h"
 #include "re2/prefilter.h"
 #include "re2/prefilter_tree.h"
@@ -30,7 +31,7 @@ FilteredRE2::~FilteredRE2() {
   delete prefilter_tree_;
 }
 
-RE2::ErrorCode FilteredRE2::Add(const StringPiece& pattern,
+RE2::ErrorCode FilteredRE2::Add(std::string_view pattern,
                                 const RE2::Options& options, int* id) {
   RE2* re = new RE2(pattern, options);
   RE2::ErrorCode code = re->error_code();
@@ -69,14 +70,14 @@ void FilteredRE2::Compile(std::vector<std::string>* atoms) {
   compiled_ = true;
 }
 
-int FilteredRE2::SlowFirstMatch(const StringPiece& text) const {
+int FilteredRE2::SlowFirstMatch(std::string_view text) const {
   for (size_t i = 0; i < re2_vec_.size(); i++)
     if (RE2::PartialMatch(text, *re2_vec_[i]))
       return static_cast<int>(i);
   return -1;
 }
 
-int FilteredRE2::FirstMatch(const StringPiece& text,
+int FilteredRE2::FirstMatch(std::string_view text,
                             const std::vector<int>& atoms) const {
   if (!compiled_) {
     LOG(DFATAL) << "FirstMatch called before Compile.";
@@ -91,7 +92,7 @@ int FilteredRE2::FirstMatch(const StringPiece& text,
 }
 
 bool FilteredRE2::AllMatches(
-    const StringPiece& text,
+    std::string_view text,
     const std::vector<int>& atoms,
     std::vector<int>* matching_regexps) const {
   matching_regexps->clear();

@@ -4,6 +4,8 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string>
+#include <string_view>
 
 #include "re2/util/strutil.h"
 
@@ -65,7 +67,7 @@ static size_t CEscapeString(const char* src, size_t src_len,
 //    Copies 'src' to result, escaping dangerous characters using
 //    C-style escape sequences.  'src' and 'dest' should not overlap.
 // ----------------------------------------------------------------------
-std::string CEscape(const StringPiece& src) {
+std::string CEscape(std::string_view src) {
   const size_t dest_len = src.size() * 4 + 1; // Maximum possible expansion
   char* dest = new char[dest_len];
   const size_t used = CEscapeString(src.data(), src.size(),

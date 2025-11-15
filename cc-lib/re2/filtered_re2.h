@@ -22,6 +22,7 @@
 // regexp matches.
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "re2/re2.h"
@@ -39,7 +40,7 @@ class FilteredRE2 {
   // Uses RE2 constructor to create a RE2 object (re). Returns
   // re->error_code(). If error_code is other than NoError, then re is
   // deleted and not added to re2_vec_.
-  RE2::ErrorCode Add(const StringPiece& pattern,
+  RE2::ErrorCode Add(std::string_view pattern,
                      const RE2::Options& options,
                      int *id);
 
@@ -55,17 +56,17 @@ class FilteredRE2 {
   // Returns -1 on no match. Can be called prior to Compile.
   // Does not do any filtering: simply tries to Match the
   // regexps in a loop.
-  int SlowFirstMatch(const StringPiece& text) const;
+  int SlowFirstMatch(std::string_view text) const;
 
   // Returns the index of the first matching regexp.
   // Returns -1 on no match. Compile has to be called before
   // calling this.
-  int FirstMatch(const StringPiece& text,
+  int FirstMatch(std::string_view text,
                  const std::vector<int>& atoms) const;
 
   // Returns the indices of all matching regexps, after first clearing
   // matched_regexps.
-  bool AllMatches(const StringPiece& text,
+  bool AllMatches(std::string_view text,
                   const std::vector<int>& atoms,
                   std::vector<int>* matching_regexps) const;
 

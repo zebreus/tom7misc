@@ -50,21 +50,20 @@
 // See also Anne Brüggemann-Klein and Derick Wood,
 // "One-unambiguous regular languages", Information and Computation 142(2).
 
-#include <stdint.h>
-#include <string.h>
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
-#include "re2/util/strutil.h"
-#include "re2/util/utf.h"
 #include "re2/pod_array.h"
 #include "re2/prog.h"
 #include "re2/sparse_set.h"
-#include "re2/stringpiece.h"
+#include "re2/util/logging.h"
+#include "re2/util/strutil.h"
+#include "re2/util/utf.h"
 
 // Silence "zero-sized array in struct/union" warning for OneState::action.
 #ifdef _MSC_VER
@@ -189,7 +188,7 @@ void OnePass_Checks() {
                 "kMaxCap disagrees with kMaxOnePassCapture");
 }
 
-static bool Satisfy(uint32_t cond, const StringPiece& context, const char* p) {
+static bool Satisfy(uint32_t cond, std::string_view context, const char* p) {
   uint32_t satisfied = Prog::EmptyFlags(context, p);
   if (cond & kEmptyAllFlags & ~satisfied)
     return false;
@@ -211,10 +210,10 @@ static inline OneState* IndexToNode(uint8_t* nodes, int statesize,
   return reinterpret_cast<OneState*>(nodes + statesize*nodeindex);
 }
 
-bool Prog::SearchOnePass(const StringPiece& text,
-                         const StringPiece& const_context,
+bool Prog::SearchOnePass(std::string_view text,
+                         std::string_view const_context,
                          Anchor anchor, MatchKind kind,
-                         StringPiece* match, int nmatch) {
+                         std::string_view* match, int nmatch) {
   if (anchor != kAnchored && kind != kFullMatch) {
     LOG(DFATAL) << "Cannot use SearchOnePass for unanchored matches.";
     return false;
@@ -228,14 +227,14 @@ bool Prog::SearchOnePass(const StringPiece& text,
 
   const char* cap[kMaxCap];
   for (int i = 0; i < ncap; i++)
-    cap[i] = NULL;
+    cap[i] = nullptr;
 
   const char* matchcap[kMaxCap];
   for (int i = 0; i < ncap; i++)
-    matchcap[i] = NULL;
+    matchcap[i] = nullptr;
 
-  StringPiece context = const_context;
-  if (context.data() == NULL)
+  std::string_view context = const_context;
+  if (context.data() == nullptr)
     context = text;
   if (anchor_start() && context.begin() != text.begin())
     return false;
@@ -268,7 +267,7 @@ bool Prog::SearchOnePass(const StringPiece& text,
       state = IndexToNode(nodes, statesize, nextindex);
       nextmatchcond = state->matchcond;
     } else {
-      state = NULL;
+      state = nullptr;
       nextmatchcond = kImpossible;
     }
 
@@ -315,7 +314,7 @@ bool Prog::SearchOnePass(const StringPiece& text,
     }
 
   skipmatch:
-    if (state == NULL)
+    if (state == nullptr)
       goto done;
     if ((cond & kCapMask) && nmatch > 1)
       ApplyCaptures(cond, p, cap, ncap);
@@ -335,13 +334,15 @@ bool Prog::SearchOnePass(const StringPiece& text,
     }
   }
 
-done:
+ done:
   if (!matched)
     return false;
-  for (int i = 0; i < nmatch; i++)
-    match[i] =
-        StringPiece(matchcap[2 * i],
-                    static_cast<size_t>(matchcap[2 * i + 1] - matchcap[2 * i]));
+  for (int i = 0; i < nmatch; i++) {
+    const char* start = matchcap[2 * i];
+    const char* end   = matchcap[2 * i + 1];
+    match[i] = (start == nullptr) ? std::string_view() :
+      std::string_view(start, end - start);
+  }
   return true;
 }
 
@@ -350,7 +351,7 @@ done:
 
 // If ip is not on workq, adds ip to work queue and returns true.
 // If ip is already on work queue, does nothing and returns false.
-// If ip is NULL, does nothing and returns true (pretends to add it).
+// If ip is nullptr, does nothing and returns true (pretends to add it).
 typedef SparseSet Instq;
 static bool AddQ(Instq *q, int id) {
   if (id == 0)
@@ -383,7 +384,7 @@ struct InstCond {
 // Constructs and saves corresponding one-pass NFA on success.
 bool Prog::IsOnePass() {
   if (did_onepass_)
-    return onepass_nodes_.data() != NULL;
+    return onepass_nodes_.data() != nullptr;
   did_onepass_ = true;
 
   if (start() == 0)  // no match

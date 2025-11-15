@@ -61,7 +61,7 @@
 // have succeeded or one conversion has failed.
 // On conversion failure, the pointees will be in an indeterminate state
 // because the caller has no way of knowing which conversion failed.
-// However, conversion cannot fail for types like string and StringPiece
+// However, conversion cannot fail for types like string and std::string_view
 // that do not inspect the substring contents. Hence, in the common case
 // where all of the pointees are of such types, failure is always due to
 // match failure and thus none of the pointees will have been modified.
@@ -126,12 +126,12 @@
 //
 // The "Consume" operation may be useful if you want to repeatedly
 // match regular expressions at the front of a string and skip over
-// them as they match.  This requires use of the "StringPiece" type,
+// them as they match.  This requires use of the "std::string_view" type,
 // which represents a sub-range of a real string.
 //
 // Example: read lines of the form "var = value" from a string.
 //      std::string contents = ...;     // Fill string somehow
-//      StringPiece input(contents);    // Wrap a StringPiece around it
+//      std::string_view input(contents);    // Wrap a std::string_view around it
 //
 //      std::string var;
 //      int value;
@@ -188,20 +188,19 @@
 //         RE2::Octal(&a), RE2::Hex(&b), RE2::CRadix(&c), RE2::CRadix(&d));
 // will leave 64 in a, b, c, and d.
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
-
-#include "re2/stringpiece.h"  // IWYU pragma: export
+#include <string_view>
 
 namespace re2 {
 class Prog;
 class Regexp;
-}  // namespace re2
 
-namespace re2 {
+// This is deprecated. Just use string_view now.
+using StringPiece = std::string_view;
 
 // Interface for regular expression matching.  Also corresponds to a
 // pre-compiled regular expression.  An "RE2" object is safe for
@@ -251,13 +250,13 @@ class RE2 {
 
   // Need to have the const char* and const std::string& forms for implicit
   // conversions when passing string literals to FullMatch and PartialMatch.
-  // Otherwise the StringPiece form would be sufficient.
+  // Otherwise the std::string_view form would be sufficient.
 #ifndef SWIG
   RE2(const char* pattern);
   RE2(const std::string& pattern);
 #endif
-  RE2(const StringPiece& pattern);
-  RE2(const StringPiece& pattern, const Options& options);
+  RE2(std::string_view pattern);
+  RE2(std::string_view pattern, const Options& options);
   ~RE2();
 
   // Returns whether RE2 was created properly.
@@ -302,13 +301,13 @@ class RE2 {
   // the functions whose names are the prefix before the 'N'. It is sometimes
   // useful to invoke them directly, but the syntax is awkward, so the 'N'-less
   // versions should be preferred.
-  static bool FullMatchN(const StringPiece& text, const RE2& re,
+  static bool FullMatchN(std::string_view text, const RE2& re,
                          const Arg* const args[], int n);
-  static bool PartialMatchN(const StringPiece& text, const RE2& re,
+  static bool PartialMatchN(std::string_view text, const RE2& re,
                             const Arg* const args[], int n);
-  static bool ConsumeN(StringPiece* input, const RE2& re,
+  static bool ConsumeN(std::string_view* input, const RE2& re,
                        const Arg* const args[], int n);
-  static bool FindAndConsumeN(StringPiece* input, const RE2& re,
+  static bool FindAndConsumeN(std::string_view* input, const RE2& re,
                               const Arg* const args[], int n);
 
 #ifndef SWIG
@@ -341,10 +340,10 @@ class RE2 {
   //
   // The provided pointer arguments can be pointers to any scalar numeric
   // type, or one of:
-  //    std::string     (matched piece is copied to string)
-  //    StringPiece     (StringPiece is mutated to point to matched piece)
-  //    T               (where "bool T::ParseFrom(const char*, size_t)" exists)
-  //    (void*)NULL     (the corresponding matched sub-pattern is not copied)
+  //    std::string       (matched piece is copied to string)
+  //    std::string_view  (std::string_view is mutated to point to matched piece)
+  //    T                 (where "bool T::ParseFrom(const char*, size_t)" exists)
+  //    (void*)NULL       (the corresponding matched sub-pattern is not copied)
   //
   // Returns true iff all of the following conditions are satisfied:
   //   a. "text" matches "re" exactly
@@ -356,20 +355,20 @@ class RE2 {
   //      ignored.
   //
   // CAVEAT: An optional sub-pattern that does not exist in the
-  // matched string is assigned the empty string.  Therefore, the
+  // matched string results in an empty string_view.  Therefore, the
   // following will return false (because the empty string is not a
   // valid number):
   //    int number;
   //    RE2::FullMatch("abc", "[a-z]+(\\d+)?", &number);
   template <typename... A>
-  static bool FullMatch(const StringPiece& text, const RE2& re, A&&... a) {
+  static bool FullMatch(std::string_view text, const RE2& re, A&&... a) {
     return Apply(FullMatchN, text, re, Arg(std::forward<A>(a))...);
   }
 
   // Exactly like FullMatch(), except that "re" is allowed to match
   // a substring of "text".
   template <typename... A>
-  static bool PartialMatch(const StringPiece& text, const RE2& re, A&&... a) {
+  static bool PartialMatch(std::string_view text, const RE2& re, A&&... a) {
     return Apply(PartialMatchN, text, re, Arg(std::forward<A>(a))...);
   }
 
@@ -378,7 +377,7 @@ class RE2 {
   // text.  Note: "input" is modified iff this routine returns true
   // and "re" matched a non-empty substring of "text".
   template <typename... A>
-  static bool Consume(StringPiece* input, const RE2& re, A&&... a) {
+  static bool Consume(std::string_view* input, const RE2& re, A&&... a) {
     return Apply(ConsumeN, input, re, Arg(std::forward<A>(a))...);
   }
 
@@ -387,7 +386,7 @@ class RE2 {
   // of "input".  For example, "FindAndConsume(s, "(\\w+)", &word)" finds
   // the next word in "s" and stores it in "word".
   template <typename... A>
-  static bool FindAndConsume(StringPiece* input, const RE2& re, A&&... a) {
+  static bool FindAndConsume(std::string_view* input, const RE2& re, A&&... a) {
     return Apply(FindAndConsumeN, input, re, Arg(std::forward<A>(a))...);
   }
 #endif
@@ -407,7 +406,7 @@ class RE2 {
   // false otherwise.
   static bool Replace(std::string* str,
                       const RE2& re,
-                      const StringPiece& rewrite);
+                      std::string_view rewrite);
 
   // Like Replace(), except replaces successive non-overlapping occurrences
   // of the pattern in the string with the rewrite. E.g.
@@ -424,7 +423,7 @@ class RE2 {
   // Returns the number of replacements made.
   static int GlobalReplace(std::string* str,
                            const RE2& re,
-                           const StringPiece& rewrite);
+                           std::string_view rewrite);
 
   // Like Replace, except that if the pattern matches, "rewrite"
   // is copied into "out" with substitutions.  The non-matching
@@ -434,9 +433,9 @@ class RE2 {
   // successfully;  if no match occurs, the string is left unaffected.
   //
   // REQUIRES: "text" must not alias any part of "*out".
-  static bool Extract(const StringPiece& text,
+  static bool Extract(std::string_view text,
                       const RE2& re,
-                      const StringPiece& rewrite,
+                      std::string_view rewrite,
                       std::string* out);
 
   // Escapes all potentially meaningful regexp characters in
@@ -445,7 +444,7 @@ class RE2 {
   //           1.5-2.0?
   // may become:
   //           1\.5\-2\.0\?
-  static std::string QuoteMeta(const StringPiece& unquoted);
+  static std::string QuoteMeta(std::string_view unquoted);
 
   // Computes range for any strings matching regexp. The min and max can in
   // some cases be arbitrarily precise, so the caller gets to specify the
@@ -495,9 +494,14 @@ class RE2 {
   // Returns true if match found, false if not.
   // On a successful match, fills in submatch[] (up to nsubmatch entries)
   // with information about submatches.
-  // I.e. matching RE2("(foo)|(bar)baz") on "barbazbla" will return true, with
-  // submatch[0] = "barbaz", submatch[1].data() = NULL, submatch[2] = "bar",
-  // submatch[3].data() = NULL, ..., up to submatch[nsubmatch-1].data() = NULL.
+  //
+  // Port note: Note that since I modified this to use string_view
+  // (which cannot correctly use a NULL data pointer), the interface
+  // does not distinguish a non-match from an empty match. -tom7
+  //
+  // Matching RE2("(foo)|(bar)baz") on "barbazbla" will return true, with
+  // submatch[0] = "barbaz", submatch[1] = "", submatch[2] = "bar",
+  // submatch[3] = "", ..., up to submatch[nsubmatch-1] = "".
   // Caveat: submatch[] may be clobbered even on match failure.
   //
   // Don't ask for more match information than you will use:
@@ -505,16 +509,11 @@ class RE2 {
   // runs even faster if nsubmatch == 0.
   // Doesn't make sense to use nsubmatch > 1 + NumberOfCapturingGroups(),
   // but will be handled correctly.
-  //
-  // Passing text == StringPiece(NULL, 0) will be handled like any other
-  // empty string, but note that on return, it will not be possible to tell
-  // whether submatch i matched the empty string or did not match:
-  // either way, submatch[i].data() == NULL.
-  bool Match(const StringPiece& text,
+  bool Match(std::string_view text,
              size_t startpos,
              size_t endpos,
              Anchor re_anchor,
-             StringPiece* submatch,
+             std::string_view* submatch,
              int nsubmatch) const;
 
   // Check that the given rewrite string is suitable for use with this
@@ -525,12 +524,12 @@ class RE2 {
   //     '\' followed by anything other than a digit or '\'.
   // A true return value guarantees that Replace() and Extract() won't
   // fail because of a bad rewrite string.
-  bool CheckRewriteString(const StringPiece& rewrite,
+  bool CheckRewriteString(std::string_view rewrite,
                           std::string* error) const;
 
   // Returns the maximum submatch needed for the rewrite to be done by
   // Replace(). E.g. if rewrite == "foo \\2,\\1", returns 2.
-  static int MaxSubmatch(const StringPiece& rewrite);
+  static int MaxSubmatch(std::string_view rewrite);
 
   // Append the "rewrite" string, with backslash subsitutions from "vec",
   // to string "out".
@@ -538,8 +537,8 @@ class RE2 {
   // rewrite string.  CheckRewriteString guarantees that the rewrite will
   // be sucessful.
   bool Rewrite(std::string* out,
-               const StringPiece& rewrite,
-               const StringPiece* vec,
+               std::string_view rewrite,
+               const std::string_view* vec,
                int veclen) const;
 
   // Constructor options
@@ -725,9 +724,9 @@ class RE2 {
   static inline Arg Octal(unsigned long long* x);
 
  private:
-  void Init(const StringPiece& pattern, const Options& options);
+  void Init(std::string_view pattern, const Options& options);
 
-  bool DoMatch(const StringPiece& text,
+  bool DoMatch(std::string_view text,
                Anchor re_anchor,
                size_t* consumed,
                const Arg* const args[],
@@ -803,7 +802,7 @@ class RE2::Arg {
   MAKE_PARSER(float,              parse_float)
   MAKE_PARSER(double,             parse_double)
   MAKE_PARSER(std::string,        parse_string)
-  MAKE_PARSER(StringPiece,        parse_stringpiece)
+  MAKE_PARSER(std::string_view,   parse_stringview)
 
   MAKE_PARSER(short,              parse_short)
   MAKE_PARSER(unsigned short,     parse_ushort)
@@ -836,7 +835,7 @@ class RE2::Arg {
   static bool parse_float         (const char* str, size_t n, void* dest);
   static bool parse_double        (const char* str, size_t n, void* dest);
   static bool parse_string        (const char* str, size_t n, void* dest);
-  static bool parse_stringpiece   (const char* str, size_t n, void* dest);
+  static bool parse_stringview    (const char* str, size_t n, void* dest);
 
 #define DECLARE_INTEGER_PARSER(name)                                       \
  private:                                                                  \
