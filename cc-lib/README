@@ -78,6 +78,9 @@ integer-voronoi is a simple C++ wrapper around Nicholas Vining's
 public domain single-file library. You can consider my modifications
 to be public domain as well.
 
+UnicodeData.txt is included. This is © 2025 Unicode®, Inc.
+See UNICODE.LICENSE for (just) this file.
+
 My own fresh code is licensed under the GPL, which can be found in
 COPYING.
 
@@ -289,6 +292,9 @@ symmetric-matrix:
   Simple compact symmetric matrix template.
 top:
   Enumerate the names of the running processes.
+unicode-data:
+  Simple utilities for loading UnicodeData.txt and accessing it
+  in memory.
 utf8:
   Utilities for manipulating UTF8-encoded strings.
 wikipedia:
@@ -296,4 +302,3 @@ wikipedia:
   the text in a Wikipedia dump.
 work-queue:
   Thread-safe work queue, which can batch inputs.
-

@@ -33,6 +33,10 @@ struct Util {
   // Same but returns nullopt if the file can't be read.
   static std::optional<string> ReadFileOpt(std::string_view filename);
 
+  // Read the remainder of stdin to a single string. Blocks until EOF
+  // or error.
+  static std::string ReadStdin();
+
   // Returns true upon success.
   static bool WriteFile(std::string_view filename,
                         std::string_view contents);
@@ -342,9 +346,13 @@ struct Util {
                                const char *sep = nullptr,
                                const char *prefix = nullptr);
 
-  // Requires that the string consist only of '1's and '0's.
+  // Requires that the string consist only of '1's and '0's, and
+  // the bit width cannot exceed 64 (even with leading zeroes).
   // May not be empty.
   static std::optional<uint64_t> ParseBinary(std::string_view s);
+  // Accepting 0-9A-Fa-f. No 0x prefix allowed. Can't exceed 16
+  // characters (even with leading zeroes). May not be empty.
+  static std::optional<uint64_t> ParseHex(std::string_view s);
 
   // See utf8.h for UTF utilities that used to be here.
 
@@ -385,11 +393,25 @@ void Util::ForEachLineInFile(std::string_view filename, F f) {
   fclose(file);
 }
 
+
 template<class F>
 void Util::ForEachLineInString(std::string_view sv, F f) {
-  // PERF: Do this in place instead of copying.
-  std::vector<std::string> lines = SplitToLines(sv);
-  for (const std::string &line : lines) f(line);
+  while (!sv.empty()) {
+    size_t pos = sv.find('\n');
+    // If newline isn't found, this is the remainder.
+    std::string_view line = sv.substr(0, pos);
+    if (pos == std::string_view::npos) {
+      // This is the last line.
+      sv = {};
+    } else {
+      sv.remove_prefix(pos + 1);
+    }
+
+    if (!line.empty() && line.back() == '\r') {
+      line.remove_suffix(1);
+    }
+    f(line);
+  }
 }
 
 template<class F>

@@ -1,4 +1,5 @@
 
+#include <array>
 #include <charconv>
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
@@ -190,6 +191,21 @@ std::optional<uint64_t> Util::ParseBinary(std::string_view s) {
   return {out};
 }
 
+std::optional<uint64_t> Util::ParseHex(std::string_view s) {
+  if (s.empty()) return std::nullopt;
+  if (s.size() > 16) return std::nullopt;
+
+  uint64_t out = 0;
+  for (size_t i = 0; i < s.size(); i++) {
+    char c = s[i];
+    if (!IsHexDigit(c)) return std::nullopt;
+    out <<= 4;
+    out |= HexDigitValue(c);
+  }
+
+  return {out};
+}
+
 bool Util::isdir(std::string_view filename) {
   struct stat st;
   std::string f{filename};
@@ -213,6 +229,32 @@ bool Util::MakeDir(const string &d) {
 # else /* posix */
   return !mkdir(d.c_str(), 0755);
 # endif
+}
+
+std::string Util::ReadStdin() {
+  constexpr size_t BUFFER_SIZE = 4096;
+  // PERF: Use uninitialized resize.
+  std::string content(BUFFER_SIZE, 0);
+  size_t offset = 0;
+
+  // 2. Read from stdin in chunks until EOF is reached.
+  for (;;) {
+    assert(content.size() >= offset);
+    // Make space to read at least BUFFER_SIZE bytes.
+    while (content.size() - offset < BUFFER_SIZE) {
+      // PERF: Uninitialized resize.
+      content.resize(std::max((size_t)(content.size() * 1.5), content.size() + BUFFER_SIZE));
+    }
+
+    size_t bytes_read = std::fread(content.data() + offset, 1, BUFFER_SIZE, stdin);
+    offset += bytes_read;
+    // Upon any short read, we are done. We don't distinguish errors from EOF.
+    if (bytes_read < BUFFER_SIZE) {
+      content.resize(offset);
+      content.shrink_to_fit();
+      return content;
+    }
+  }
 }
 
 // Internal helper used by ReadFile, ReadFileMagic, ReadFileBytes.

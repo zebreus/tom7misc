@@ -733,6 +733,22 @@ static void TestParseBinary() {
                       "111111111111111111111111"), ~uint64_t(0));
 }
 
+static void TestParseHex() {
+  CHECK(!Util::ParseHex("").has_value());
+  CHECK(!Util::ParseHex("100z").has_value());
+  CHECK(!Util::ParseHex("z").has_value());
+  CHECK(!Util::ParseHex("0xBEEF").has_value());
+  CHECK(!Util::ParseHex("cafed00dcafed00d7").has_value()) <<
+    "too many digits";
+
+  CHECK_OPT_VALUE(Util::ParseHex("0101010"), uint64_t{0x0101010});
+  CHECK_OPT_VALUE(Util::ParseHex("0"), uint64_t{0x0});
+  CHECK_OPT_VALUE(Util::ParseHex("a"), uint64_t{0xA});
+  CHECK_OPT_VALUE(Util::ParseHex("A"), uint64_t{0xA});
+  CHECK_OPT_VALUE(Util::ParseHex("CAFED00DDEAD1234"),
+                  uint64_t{0xCAFED00DDEAD1234});
+}
+
 static void TestPathOf() {
   CHECK_SEQ(Util::PathOf("/asdf"), "/");
   CHECK_SEQ(Util::PathOf("/asdf/file.txt"), "/asdf/");
@@ -804,6 +820,7 @@ int main(int argc, char **argv) {
   TestFormatTime();
   TestContains();
   TestParseBinary();
+  TestParseHex();
   TestPathOf();
   TestFileOf();
   TestForEachLineInString();

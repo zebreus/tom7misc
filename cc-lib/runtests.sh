@@ -74,3 +74,5 @@ make -j
 ./wikipedia_test.exe
 ./symmetric-matrix_test.exe
 ./utf8_test.exe
+./string-table_test.exe
+./unicode-data_test.exe
