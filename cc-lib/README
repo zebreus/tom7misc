@@ -283,6 +283,8 @@ status-bar:
   ANSI terminal status bar, for keeping some fixed thing on the
   bottom of the screen while still allowing console output (as
   long as you only use this).
+string-table:
+  Table of "interned" strings for memory-efficient storage.
 symmetric-matrix:
   Simple compact symmetric matrix template.
 top:

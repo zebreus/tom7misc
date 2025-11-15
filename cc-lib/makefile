@@ -303,5 +303,9 @@ symmetric-matrix_test.exe : symmetric-matrix_test.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
+string-table_test.exe : string-table_test.o $(BASE) $(TEST_UTIL)
+	@$(CXX) $(CXXFLAGS) $^ -o $@
+	@echo -n "!"
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(TEST_UTIL) $(BASE) $(RE2_OBJECTS)
