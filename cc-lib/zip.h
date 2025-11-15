@@ -3,6 +3,7 @@
 #define _CC_LIB_ZIP_H
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -102,11 +103,17 @@ struct ZIP {
   // Custom file format. I should also support pkzip and gzip here.
   // gzip, annoyingly, stores the size mod 2^32, which is a practical
   // problem for modern files (e.g. wikipedia far exceeds this).
+  //
+  // The format is just this header followed by a raw flate stream
+  // (use DecodeBuffer).
   struct CCLibHeader {
     // Always 16 bytes.
+    static constexpr size_t SIZE = 4 + 4 + 8;
+
     uint8_t magic[4] = {'C', 'c', 'Z', 'z'};
     uint8_t flags_msb_first[4] = {};
     uint8_t size_msb_first[8] = {};
+
 
     // Flags are not used yet, so they should all be zero.
     // This could include stuff like a delta coder.
@@ -118,19 +125,23 @@ struct ZIP {
 
     bool HasCorrectMagic() const;
 
-    // Just memcpy into the struct.
-    void ParseHeader(uint8_t *data);
+    // Just memcpy into the struct. No validation.
+    void ParseHeader(const uint8_t *data);
   };
 
   // TODO
   /*
-  std::vector<uint8_t> CompressWithHeader(const uint8_t *data,
-                                          size_t size,
-                                          int level = 7);
 
-  std::vector<uint8_t> DecompressWithHeader(const uint8_t *data,
-                                            size_t size);
   */
+
+  // Convenience methods. If you want stuff like graceful error handling
+  // or streaming, you should use the above instead.
+  // Encode as CCZ in memory, including a header.
+  static std::vector<uint8_t> CCZ(std::span<const uint8_t> data, int level = 7);
+
+  // Decode a CCZ file including its header.
+  // Aborts if malformed.
+  static std::vector<uint8_t> UnCCZ(std::span<const uint8_t> data);
 
   // With a ZLIB header and Adler-32 checksum at the end (RFC 1950).
   static std::vector<uint8_t> ZlibVector(const std::vector<uint8_t> &v,

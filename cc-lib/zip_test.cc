@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <format>
 #include <utility>
 #include <vector>
@@ -14,6 +15,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "randutil.h"
 #include "util.h"
@@ -204,20 +206,14 @@ static std::string DumpVectorDiff(const std::vector<uint8_t> &v1,
 }
 
 static void TestOneRoundTrip(const std::string &s) {
-  // printf("Input string:\n%s\n", DumpString(s).c_str());
-  // printf(AWHITE("Encode %d bytes:") "\n", (int)s.size());
   std::string enc = StreamZipString(s, 7);
-  // printf(AWHITE("Decode %d bytes:") "\n", (int)enc.size());
-  // printf("Encoded:\n%s\n", DumpString(enc).c_str());
   std::string dec = StreamUnzipString(enc);
-  // printf(AWHITE("Got %d bytes.") "\n", (int)dec.size());
   if (dec != s) {
+    Print("{}\n", DumpStringDiff(s, dec));
 
-    printf("%s\n", DumpStringDiff(s, dec).c_str());
-
-    printf("Input " AWHITE("%d") " bytes, encoded " AYELLOW("%d")
-           ", decoded " APURPLE("%d") "\n",
-           (int)s.size(), (int)enc.size(), (int)dec.size());
+    Print("Input " AWHITE("{}") " bytes, encoded " AYELLOW("{}")
+          ", decoded " APURPLE("{}") "\n",
+          (int)s.size(), (int)enc.size(), (int)dec.size());
 
     LOG(FATAL) << "Diffs";
     LOG(FATAL) << "Round trip failed for: " << s << "\n"
@@ -227,20 +223,19 @@ static void TestOneRoundTrip(const std::string &s) {
 }
 
 static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
-  // printf("Test vec:\n%s\n", DumpVector(v).c_str());
   std::vector<uint8_t> enc = StreamZipVector(v, 7);
   std::vector<uint8_t> dec_raw = ZIP::UnzipPtr(enc.data(), enc.size());
   std::vector<uint8_t> dec = StreamUnzipVector(enc);
   if (dec_raw != v) {
     if (dec_raw == dec) {
-      printf("Streamed and raw decompression match!\n");
+      Print("Streamed and raw decompression match!\n");
     }
     LOG(FATAL) << "'Raw' decompression didn't work!\n";
   }
 
   if (dec != v) {
 
-    printf("%s\n", DumpVectorDiff(v, dec).c_str());
+    Print("{}\n", DumpVectorDiff(v, dec));
     LOG(FATAL) << "Diffs.\n";
 
     LOG(FATAL) << "Round trip failed for: " << DumpVector(v) << "\n"
@@ -303,10 +298,10 @@ static void TestRoundTripRandom() {
 
     TestOneRoundTrip(v);
     if (status_per.ShouldRun()) {
-      printf(ANSI_UP "%s\n",
-             ANSI::ProgressBar(i, NUM_ROUNDS,
-                               "Random vector round-trips",
-                               timer.Seconds()).c_str());
+      Print(ANSI_UP "{}\n",
+            ANSI::ProgressBar(i, NUM_ROUNDS,
+                              "Random vector round-trips",
+                              timer.Seconds()));
     }
   }
 }
@@ -318,7 +313,7 @@ static bool RoundTripOK(const std::vector<uint8_t> &v) {
 }
 
 static void ShrinkExample(std::vector<uint8_t> v) {
-  printf("Shrinking example of size %d.\n", (int)v.size());
+  Print("Shrinking example of size {}.\n", (int)v.size());
   Periodically status_per(1.0);
   Periodically save_per(60.0);
   bool dirty = true;
@@ -326,7 +321,7 @@ static void ShrinkExample(std::vector<uint8_t> v) {
       if (dirty) {
         const std::string filename = "counterexample";
         Util::WriteFileBytes(filename, v);
-        printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+        Print("Wrote " AGREEN("{}") "\n", filename);
         dirty = false;
       }
     };
@@ -346,10 +341,10 @@ static void ShrinkExample(std::vector<uint8_t> v) {
       shrunk++;
     }
     if (status_per.ShouldRun()) {
-      printf("shrunk %d. lb %d, size %d\n", shrunk, (int)lb, (int)v.size());
+      Print("shrunk {}. lb {}, size {}\n", shrunk, (int)lb, (int)v.size());
     }
   }
-  printf("Binary search to size %d.\n", (int)v.size());
+  Print("Binary search to size %d.\n", (int)v.size());
   Save();
 
   int pos = 0;
@@ -379,8 +374,8 @@ static void ShrinkExample(std::vector<uint8_t> v) {
     pos++;
 
     if (status_per.ShouldRun()) {
-      printf("Current size %d. Shrunk %d. Printified %d.\n",
-             (int)v.size(), shrunk, printified);
+      Print("Current size {}. Shrunk {}. Printified {}.\n",
+            (int)v.size(), shrunk, printified);
     }
     if (save_per.ShouldRun()) Save();
   }
@@ -399,8 +394,8 @@ static void FindCounterexample() {
     for (int x = 0; x < size; x++) v.push_back(rc.Byte());
 
     if (!RoundTripOK(v)) {
-      printf("Found counterexample with %d bytes.\n",
-             (int)v.size());
+      Print("Found counterexample with {} bytes.\n",
+            (int)v.size());
       ShrinkExample(std::move(v));
       return;
     }
@@ -423,7 +418,7 @@ static void TestRoundTripFixed() {
       "0000000001111111112222222222333333333\n"
       "2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384\n");
 
-  printf("Fixed tests " AGREEN("OK") "\n");
+  Print("Fixed tests " AGREEN("OK") "\n");
 }
 
 static void TestRegression1() {
@@ -434,14 +429,14 @@ static void TestRegression1() {
 static void TestRegression2() {
   std::vector<uint8_t> ctr = Util::ReadFileBytes("counterexample");
   if (ctr.empty()) {
-    printf("Note: Missing the file 'counterexample'!\n");
+    Print("Note: Missing the file 'counterexample'!\n");
     return;
   }
   std::vector<uint8_t> enc_raw = ZIP::ZipPtr(ctr.data(), ctr.size());
   std::vector<uint8_t> enc = StreamZipPtr(ctr.data(), ctr.size());
   if (enc_raw != enc) {
-    printf("Encoded differ!!\n");
-    printf("%s\n", DumpVectorDiff(enc_raw, enc).c_str());
+    Print("Encoded differ!!\n");
+    Print("{}\n", DumpVectorDiff(enc_raw, enc));
   }
 
   std::vector<uint8_t> dec_raw = ZIP::UnzipPtr(enc_raw.data(),
@@ -450,7 +445,7 @@ static void TestRegression2() {
                                            enc.size());
   CHECK(dec_raw == ctr);
   CHECK(dec == ctr);
-  printf("Regression 2 " AGREEN("OK") "\n");
+  Print("Regression 2 " AGREEN("OK") "\n");
 }
 
 static void TestLong1() {
@@ -469,7 +464,7 @@ static void TestLong2() {
   }
   TestOneRoundTrip(s);
 
-  printf("Long 2 " AGREEN("OK") "\n");
+  Print("Long 2 " AGREEN("OK") "\n");
 }
 
 static void TestRegression3() {
@@ -477,7 +472,7 @@ static void TestRegression3() {
   Periodically status_per(0.25);
   Timer timer;
 
-  printf("Regression 3:\n");
+  Print("Regression 3:\n");
   static constexpr int SIZE = 1 << 16;
   for (int64_t s = 1; s < SIZE; s += 97) {
 
@@ -509,13 +504,13 @@ static void TestRegression3() {
 
     CHECK(dec == compressible) << s;
     if (status_per.ShouldRun()) {
-      printf(ANSI_UP "%s\n",
-             ANSI::ProgressBar(s, SIZE, "Regression 3",
-                               timer.Seconds()).c_str());
+      Print(ANSI_UP "{}\n",
+            ANSI::ProgressBar(s, SIZE, "Regression 3",
+                              timer.Seconds()));
     }
   }
 
-  printf("Regression 3 " AGREEN("OK") "\n");
+  Print("Regression 3 " AGREEN("OK") "\n");
 }
 
 static void TestZlib() {
@@ -525,14 +520,14 @@ static void TestZlib() {
       "15:05:42 15:05:43 15:05:44 15:05:45 15:05:46 15:05:47",
       "",
       "a",
-      "\xFF\x01\xFF" "1234567891234566789",
+      ("\xFF\x01\xFF" "1234567891234566789"),
     }) {
-    printf("[%s]\n", s.c_str());
+    Print("[{}]\n", s);
     std::string enc = ZIP::ZlibString(s);
     std::string dec = ZIP::UnZlibString(enc);
     CHECK(s == dec) << s;
   }
-  printf("zlib round trip " AGREEN("OK") "\n");
+  Print("zlib round trip " AGREEN("OK") "\n");
 }
 
 static void TestPNGRGBA() {
@@ -580,6 +575,32 @@ static void TestPNGRGB() {
   CHECK(img == img2);
 }
 
+static std::vector<uint8_t> StringVec(std::string_view s) {
+  std::vector<uint8_t> v(s.size());
+  memcpy(v.data(), s.data(), s.size());
+  return v;
+}
+
+static void TestCCZ() {
+  for (std::string_view s : {
+      ("215E;VULGAR FRACTION SEVEN EIGHTHS;No;0;ON;"
+       "<fraction> 0037 2044 0038;;;7/8;N;FRACTION SEVEN EIGHTHS;;;;"),
+      "consectetur adipiscing elit, sed do eiusmod tempor incididunt",
+      "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0",
+      "11:12:02 11:12:03 11:12:04 11:12:05 11:12:06 11:12:08",
+      "",
+      " ",
+      ("\xFF\x01\xFF" "1234567891234566789" "\xFF"),
+    }) {
+    std::vector<uint8_t> v = StringVec(s);
+    std::vector<uint8_t> enc = ZIP::CCZ(v);
+    std::vector<uint8_t> dec = ZIP::UnCCZ(enc);
+    CHECK(v == dec) << s;
+  }
+  Print("ccz round trip " AGREEN("OK") "\n");
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -595,7 +616,8 @@ int main(int argc, char **argv) {
 
   TestPNGRGBA();
   TestPNGRGB();
+  TestCCZ();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

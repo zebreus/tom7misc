@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <span>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -786,4 +787,43 @@ bool ZIP::CCLibHeader::HasCorrectMagic() const {
     r.magic[1] == magic[1] &&
     r.magic[2] == magic[2] &&
     r.magic[3] == magic[3];
+}
+
+void ZIP::CCLibHeader::ParseHeader(const uint8_t *data) {
+  memcpy(this, data, CCLibHeader::SIZE);
+}
+
+std::vector<uint8_t> ZIP::CCZ(std::span<const uint8_t> data, int level) {
+  CCLibHeader header;
+  CHECK(header.HasCorrectMagic());
+  header.SetFlags(0);
+  header.SetSize(data.size());
+  // PERF: Avoid copying!
+  std::vector<uint8_t> flate_payload = ZipPtr(data.data(), data.size(), level);
+  std::vector<uint8_t> out(CCLibHeader::SIZE + flate_payload.size());
+  memcpy(out.data(), &header, CCLibHeader::SIZE);
+  memcpy(out.data() + CCLibHeader::SIZE, flate_payload.data(), flate_payload.size());
+  return out;
+}
+
+std::vector<uint8_t> ZIP::UnCCZ(std::span<const uint8_t> data) {
+  CHECK(data.size() >= CCLibHeader::SIZE) << "Incomplete CCZ header.";
+  CCLibHeader header;
+  header.ParseHeader(data.data());
+  CHECK(header.HasCorrectMagic()) << "Not a CCZ header.";
+  CHECK(header.GetFlags() == 0) << "Unsupported flags: " << header.GetFlags();
+  std::vector<uint8_t> out(header.GetSize());
+  CHECK(out.size() == header.GetSize());
+
+/* tdefl_compress_mem_to_mem() compresses a block in memory to another block in memory. */
+/* Returns 0 on failure. */
+
+  std::span<const uint8_t> flate_payload = data.subspan(CCLibHeader::SIZE);
+
+  size_t decoded =
+    tinfl_decompress_mem_to_mem(out.data(), out.size(),
+                                flate_payload.data(), flate_payload.size(),
+                                TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  CHECK(decoded == out.size());
+  return out;
 }

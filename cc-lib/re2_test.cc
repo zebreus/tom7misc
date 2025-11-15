@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <string>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 using namespace std;
 
@@ -40,10 +42,28 @@ void TestObject() {
   CHECK(!RE2::FullMatch("Lz Phr", liz));
 }
 
+#define ANY_CHAR "(?:.|[\n])"
+void TestConsume() {
+  const std::string msg =
+    "This is the part to ignore.\n"
+    "And then <THIS> is the good stuff.</THIS>bye.\n";
+
+  re2::StringPiece view(msg);
+
+  std::string prefix, body;
+  CHECK(RE2::Consume(&view, "(" ANY_CHAR "*)<THIS>(" ANY_CHAR "*)</THIS>",
+                     &prefix, &body));
+  CHECK_EQ(prefix, "This is the part to ignore.\nAnd then ");
+  CHECK_EQ(body, " is the good stuff.");
+  CHECK_EQ(view, "bye.\n");
+}
+
 int main(int argc, char **argv) {
+  ANSI::Init();
   TestSimple();
   TestReplace();
   TestObject();
-  printf("OK\n");
+  TestConsume();
+  Print("OK\n");
   return 0;
 }

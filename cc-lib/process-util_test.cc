@@ -7,10 +7,12 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "hexdump.h"
 
 using namespace std;
 
 int main(int argc, char **argv) {
+  ANSI::Init();
 
   if (argc > 1) {
     string arg = argv[1];
@@ -20,7 +22,8 @@ int main(int argc, char **argv) {
       return 0;
     } else if (arg == "-longchild") {
       for (int i = 0; i < 555; i++) {
-        printf("%c", (i & 255));
+        unsigned char c = (i & 255);
+        fwrite(&c, 1, 1, stdout);
       }
       return 0;
     }
@@ -40,7 +43,9 @@ int main(int argc, char **argv) {
         ProcessUtil::GetOutput(cmd1);
 
       CHECK(reso.has_value());
-      CHECK_EQ(reso.value(), "i am child (:\n") << reso.value();
+      CHECK_EQ(reso.value(), "i am child (:\r\n") <<
+        "Got:\n" << HexDump::Color(reso.value());
+
     }
 
     {
@@ -52,9 +57,11 @@ int main(int argc, char **argv) {
 
       CHECK(reso.has_value());
       const string &res = reso.value();
-      CHECK_EQ(res.size(), 555) << res.size() << "\n" << res;
+      CHECK_EQ(res.size(), 555) << res.size() << "\nGot:\n"
+                                << HexDump::Color(res);
       for (int i = 0; i < (int)res.size(); i++) {
-        CHECK_EQ(res[i], i & 255) << i;
+        CHECK_EQ(res[i], i & 255) << i << " got " << (int)res[i] <<
+          "\nFull result:\n" << HexDump::Color(res);
       }
     }
 
