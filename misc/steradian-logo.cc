@@ -5,6 +5,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "randutil.h"
 #include "threadutil.h"
@@ -203,7 +204,7 @@ struct ZImage {
 };
 
 ImageRGBA RenderOne(int frame, float yaw, float pitch, float roll) {
-  // printf("%.3f %.3f %.3f\n", yaw, pitch, roll);
+  // Print("{:.3f} {:.3f} {:.3f}\n", yaw, pitch, roll);
   const Mat3 rm = Rot(yaw, pitch, roll);
   auto Rotate = [rm](Vec3 v) -> Vec3 {
       return Mat33TimesVec3(rm, v);
@@ -240,7 +241,7 @@ ImageRGBA RenderOne(int frame, float yaw, float pitch, float roll) {
       zimg.ImageAt(sz).BlendRect32(sx - 3, sy - 3, 7, 7, c);
     };
 
-  // ArcFour rc(StringPrintf("test.%d", frame));
+  // ArcFour rc(std::format("test.{}", frame));
   ArcFour rc("test");
   static constexpr int NUM_RAYS = 50000;
   // random in [-1, 1].
@@ -303,7 +304,7 @@ static void Render() {
                                     ToRad(8.0 + 360.0 * t),
                                     ROLL);
         frame.Save(std::format("logo{:03}.png", i));
-        printf("%d\n", i);
+        Print("{}\n", i);
       });
 
   }

@@ -1,4 +1,4 @@
-all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe clicks.exe
+all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe clicks.exe unname-unicode.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -33,7 +33,10 @@ CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 $(OPT
 CC_LIB_OBJECTS = $(CC_LIB)/base64.o $(CC_LIB)/util.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha512.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/ansi.o
 CC_LIB_IMAGE=$(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o
 
+CC_LIB_UNICODE=$(CC_LIB)/unicode-data.o
 CC_LIB_ZIP=$(CC_LIB)/zip.o $(CC_LIB)/miniz.o
+
+RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o  $(CC_LIB)/re2-util.o
 
 %.o : %.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -83,7 +86,7 @@ qr.exe : qr.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
 curve.exe : curve.o $(CC_LIB)/opt/opt.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-logo.exe : logo.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
+steradian-logo.exe : steradian-logo.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 compress.exe : compress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP)
@@ -104,6 +107,9 @@ clicks.exe : clicks.o $(CC_LIB_OBJECTS) $(CC_LIB)/mp3.o $(CC_LIB_IMAGE)
 randomize.exe : randomize.o $(CC_LIB_OBJECTS) $(CC_LIB)/crypt/cryptrand.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+unname-unicode.exe : unname-unicode.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB_UNICODE) $(RE2_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
-	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB_ZIP)
+	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB_ZIP) $(CC_LIB_UNICODE) $(RE2_OBJECTS)
 
