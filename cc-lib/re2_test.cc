@@ -927,10 +927,10 @@ static void FloatingPointFullMatchTypes() {
     // implementation of strtof(3). And apparently MSVC too. Sigh.
 #if !defined(_MSC_VER) && !defined(__CYGWIN__) && !defined(__MINGW32__)
     CHECK(RE2::FullMatch("0.1", "(.*)", &v));
-    CHECK_EQ(v, 0.1f) << absl::StrFormat("%.8g != %.8g", v, 0.1f);
+    CHECK_EQ(v, 0.1f) << std::format("{:.8g} != {:.8g}", v, 0.1f);
     CHECK(RE2::FullMatch("6700000000081920.1", "(.*)", &v));
     CHECK_EQ(v, 6700000000081920.1f)
-      << absl::StrFormat("%.8g != %.8g", v, 6700000000081920.1f);
+      << std::format("{:.8g} != {:.8g}", v, 6700000000081920.1f);
 #endif
   }
   {
