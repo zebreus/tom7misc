@@ -519,6 +519,7 @@ class RE2 {
   //     '\' followed by anything other than a digit or '\'.
   // A true return value guarantees that Replace() and Extract() won't
   // fail because of a bad rewrite string.
+  // Sets the error string upon failure if it is non-null.
   bool CheckRewriteString(std::string_view rewrite,
                           std::string* error) const;
 

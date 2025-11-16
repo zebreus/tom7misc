@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <format>
 #include <map>
 #include <stdint.h>
 #include <stdlib.h>
@@ -367,6 +368,18 @@ bool RE2::FindAndConsumeN(std::string_view* input, const RE2& re,
 bool RE2::Replace(std::string* str,
                   const RE2& re,
                   std::string_view rewrite) {
+  if (re.options().log_errors()) {
+    std::string error;
+    if (!re.CheckRewriteString(rewrite, &error)) {
+      LOG(ERROR) << "Invalid rewrite string: " << error;
+      return false;
+    }
+  } else {
+    if (!re.CheckRewriteString(rewrite, nullptr)) {
+      return false;
+    }
+  }
+
   std::string_view vec[kVecSize];
   int nvec = 1 + MaxSubmatch(rewrite);
   if (nvec > static_cast<int>(arraysize(vec)))
@@ -387,6 +400,18 @@ bool RE2::Replace(std::string* str,
 int RE2::GlobalReplace(std::string* str,
                        const RE2& re,
                        std::string_view rewrite) {
+  if (re.options().log_errors()) {
+    std::string error;
+    if (!re.CheckRewriteString(rewrite, &error)) {
+      LOG(ERROR) << "Invalid rewrite string: " << error;
+      return false;
+    }
+  } else {
+    if (!re.CheckRewriteString(rewrite, nullptr)) {
+      return false;
+    }
+  }
+
   std::string_view vec[kVecSize];
   int nvec = 1 + MaxSubmatch(rewrite);
   if (nvec > static_cast<int>(arraysize(vec)))
@@ -459,6 +484,18 @@ bool RE2::Extract(std::string_view text,
                   const RE2& re,
                   std::string_view rewrite,
                   std::string* out) {
+  if (re.options().log_errors()) {
+    std::string error;
+    if (!re.CheckRewriteString(rewrite, &error)) {
+      LOG(ERROR) << "Invalid rewrite string: " << error;
+      return false;
+    }
+  } else {
+    if (!re.CheckRewriteString(rewrite, nullptr)) {
+      return false;
+    }
+  }
+
   std::string_view vec[kVecSize];
   int nvec = 1 + MaxSubmatch(rewrite);
   if (nvec > static_cast<int>(arraysize(vec)))
@@ -868,7 +905,9 @@ bool RE2::CheckRewriteString(std::string_view rewrite,
       continue;
     }
     if (++s == end) {
-      *error = "Rewrite schema error: '\\' not allowed at end.";
+      if (error != nullptr) {
+        *error = "Rewrite schema error: '\\' not allowed at end.";
+      }
       return false;
     }
     c = *s;
@@ -876,8 +915,10 @@ bool RE2::CheckRewriteString(std::string_view rewrite,
       continue;
     }
     if (!isdigit(c)) {
-      *error = "Rewrite schema error: "
-               "'\\' must be followed by a digit or '\\'.";
+      if (error != nullptr) {
+        *error = "Rewrite schema error: "
+          "'\\' must be followed by a digit or '\\'.";
+      }
       return false;
     }
     int n = (c - '0');
@@ -887,10 +928,12 @@ bool RE2::CheckRewriteString(std::string_view rewrite,
   }
 
   if (max_token > NumberOfCapturingGroups()) {
-    *error = StringPrintf(
-        "Rewrite schema requests %d matches, but the regexp only has %d "
-        "parenthesized subexpressions.",
-        max_token, NumberOfCapturingGroups());
+    if (error != nullptr) {
+      *error = std::format(
+          "Rewrite schema requests {} matches, but the regexp only has {} "
+          "parenthesized subexpressions.",
+          max_token, NumberOfCapturingGroups());
+    }
     return false;
   }
   return true;
