@@ -1,6 +1,5 @@
 
 #include <algorithm>
-#include <cstdio>
 #include <cstring>
 #include <format>
 #include <memory>
@@ -19,6 +18,7 @@
 #include "base/print.h"
 #include "bounds.h"
 #include "byte-set.h"
+#include "crypt/sha256.h"
 #include "formula.h"
 #include "image.h"
 #include "mario-util.h"
@@ -65,15 +65,35 @@ static void Model() {
 
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
   CHECK(emu.get() != nullptr) << "Failed to load " << ROMFILE;
-  MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
+
+  // MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
+  MarioUtil::WarpTo(emu.get(), 0x00, 0x00, 0);
+
   // The stack pointer is 0xFC when entering NonMaskableInterrupt.
   const State start_state = State::FromEmulator(emu.get(), 0xFC);
 
-  // TODO: Can get this from Assembly, though we should probably
-  // verify that it matches the historic ROM.
-  Modeling modeling(GetPRG());
-
   CHECK(assembly.banks.size() == 1) << "Only one bank is supported";
+
+  // We use the assembled ROM data, but it should be exactly the
+  // same as what's stored in the original NES game dump.
+  {
+    Bank orig_bank = GetPRG();
+    std::string nes_rom_sha = SHA256::Ascii(SHA256::HashSpan(
+                                                orig_bank.rom));
+    std::string asm_rom_sha = SHA256::Ascii(SHA256::HashSpan(
+                                                assembly.banks[0].bytes));
+
+    CHECK(nes_rom_sha == asm_rom_sha) << std::format(
+        "The assembled ROM does not "
+        "match the original ROM! You can do it by disabling this error, "
+        "but it's probably a mistake?\n"
+        "Orig SHA: " AWHITE("{}") "\n"
+        "Asm  SHA: " AORANGE("{}") "\n",
+        nes_rom_sha,
+        asm_rom_sha);
+  }
+  Bank bank = {.rom = assembly.banks[0].bytes};
+  Modeling modeling(bank);
 
   // modeling.zoning = Zoning::FromFile("mario.zoning");
   // SourceMap source_map = SourceMap::FromFile("mario.sourcemap");

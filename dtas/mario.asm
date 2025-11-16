@@ -3925,7 +3925,8 @@ Hole_Water:
 QuestionBlockRow_High:
       lda #$03    ;start on the fourth row
       .db $2c     ;BIT instruction opcode
-
+    ;(which makes it treat the next instruction
+    ; as an absolute address, effectively skipping it)
 QuestionBlockRow_Low:
       lda #$07             ;start on the eighth row
       pha                  ;save whatever row to the stack for now

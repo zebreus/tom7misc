@@ -11,7 +11,13 @@ CC65FLAGS=-Orsi -g
 AFLAGS=-I $(CC65_DIR)/asminc
 LD64FLAGS=
 
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
 CXX=x86_64-w64-mingw32-g++
+else
+CXX=g++
+endif
+
 CXXFLAGS=-I $(CC_LIB) -O2 -m64 -march=native --std=c++20
 
 cart.nes: cart.o reset.o input.o dma.o nes.cfg

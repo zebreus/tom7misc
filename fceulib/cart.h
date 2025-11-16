@@ -1,10 +1,11 @@
 #ifndef _FCEULIB_CART_H
 #define _FCEULIB_CART_H
 
-#include "types.h"
-#include "fceu.h"
+#include <cstdint>
 
 #include "fc.h"
+#include "types.h"
+#include "fceu.h"
 
 struct CartInterface {
   explicit CartInterface(FC *fc) : fc(fc) {}
@@ -38,9 +39,9 @@ struct CartInfo {
   // Maybe some of this should go into CartInterface.
 
   /* Pointers to memory to save/load. */
-  uint8 *SaveGame[4];
+  uint8_t *SaveGame[4];
   /* How much memory to save/load. */
-  uint32 SaveGameLen[4];
+  uint32_t SaveGameLen[4];
 
   /* Set by iNES/UNIF loading code. */
   /* As set in the header or chunk.
@@ -51,11 +52,11 @@ struct CartInfo {
   int mirror;
   /* Presence of an actual battery. */
   int battery;
-  uint8 MD5[16];
+  uint8_t MD5[16];
   /* Should be set by the iNES/UNIF loading
      code, used by mapper/board code, maybe
      other code in the future. */
-  uint32 CRC32;
+  uint32_t CRC32;
 };
 
 struct Cart {
@@ -70,17 +71,17 @@ struct Cart {
 
   // Should use these accessors instead of modifying the pages
   // directly.
-  void WritePage(uint32 A, uint8 V) { Page[A >> 11][A] = V; }
-  uint8 ReadPage(uint32 A) const { return Page[A >> 11][A]; }
+  void WritePage(uint32_t A, uint8_t V) { Page[A >> 11][A] = V; }
+  uint8_t ReadPage(uint32_t A) const { return Page[A >> 11][A]; }
 
-  void WriteVPage(uint32 A, uint8 V) { VPage[A >> 10][A] = V; }
-  uint8 ReadVPage(uint32 A) const { return VPage[A >> 10][A]; }
-  const uint8 *VPagePointer(uint32 A) const { return &VPage[A >> 10][A]; }
+  void WriteVPage(uint32_t A, uint8_t V) { VPage[A >> 10][A] = V; }
+  uint8_t ReadVPage(uint32_t A) const { return VPage[A >> 10][A]; }
+  const uint8_t *VPagePointer(uint32_t A) const { return &VPage[A >> 10][A]; }
   // TODO: Gross, but better than just modifying VPage from afar.
   // Maybe can update callers to use setvramb*.
-  void SetVPage(uint32 A, uint8 *p) { VPage[A >> 10] = p - A; }
+  void SetVPage(uint32_t A, uint8_t *p) { VPage[A >> 10] = p - A; }
   // Ugh, even worse!
-  void SetSpecificVPage(int num, uint32 A, uint8 *p) { VPage[num] = p - A; }
+  void SetSpecificVPage(int num, uint32_t A, uint8_t *p) { VPage[num] = p - A; }
 
  private:
   // Each page is a 2k chunk of memory, corresponding to the address
@@ -89,39 +90,39 @@ struct Cart {
   // TODO: Make private and use accessors so that we can either keep
   // the address offsetting trick internal, or even stamp it out
   // TODO: In the process of making these private. -tom7
-  uint8 *Page[32] = {};
-  uint8 *VPage[8] = {};
- public:
+  uint8_t *Page[32] = {};
+  uint8_t *VPage[8] = {};
 
+ public:
   // A cartridge consists of a set of PRG and CHR (video) ROMs (or RAMs),
   // each usually a chip on the board. These can be set up by the mapper
   // or by the cart format itself (e.g., iNES always sets chip 0 to "the
   // ROM" and the unif format describes the chips with metadata).
   void ResetCartMapping();
-  void SetupCartPRGMapping(int chip, uint8 *p, uint32 size, bool is_ram);
-  void SetupCartCHRMapping(int chip, uint8 *p, uint32 size, bool is_ram);
+  void SetupCartPRGMapping(int chip, uint8_t *p, uint32_t size, bool is_ram);
+  void SetupCartCHRMapping(int chip, uint8_t *p, uint32_t size, bool is_ram);
   // m is sometimes one of the mirroring types, sometimes 4; document!
-  void SetupCartMirroring(int m, int hard, uint8 *extra);
+  void SetupCartMirroring(int m, int hard, uint8_t *extra);
 
   // Maybe should always be true? -tom7
   static constexpr bool disableBatteryLoading = false;
 
-  uint8 *PRGptr[32] = {};
-  uint8 *CHRptr[32] = {};
+  uint8_t *PRGptr[32] = {};
+  uint8_t *CHRptr[32] = {};
 
-  uint32 PRGsize[32] = {};
-  uint32 CHRsize[32] = {};
+  uint32_t PRGsize[32] = {};
+  uint32_t CHRsize[32] = {};
 
-  uint32 PRGmask2[32] = {};
-  uint32 PRGmask4[32] = {};
-  uint32 PRGmask8[32] = {};
-  uint32 PRGmask16[32] = {};
-  uint32 PRGmask32[32] = {};
+  uint32_t PRGmask2[32] = {};
+  uint32_t PRGmask4[32] = {};
+  uint32_t PRGmask8[32] = {};
+  uint32_t PRGmask16[32] = {};
+  uint32_t PRGmask32[32] = {};
 
-  uint32 CHRmask1[32] = {};
-  uint32 CHRmask2[32] = {};
-  uint32 CHRmask4[32] = {};
-  uint32 CHRmask8[32] = {};
+  uint32_t CHRmask1[32] = {};
+  uint32_t CHRmask2[32] = {};
+  uint32_t CHRmask4[32] = {};
+  uint32_t CHRmask8[32] = {};
 
 
   // These functions perform bank switching. The versions without r
@@ -135,11 +136,11 @@ struct Cart {
   //
   // I haven't figured it out beyond that.
   // -tom7
-  void setprg2(uint32 A, uint32 V);
-  void setprg4(uint32 A, uint32 V);
-  void setprg8(uint32 A, uint32 V);
-  void setprg16(uint32 A, uint32 V);
-  void setprg32(uint32 A, uint32 V);
+  void setprg2(uint32_t A, uint32_t V);
+  void setprg4(uint32_t A, uint32_t V);
+  void setprg8(uint32_t A, uint32_t V);
+  void setprg16(uint32_t A, uint32_t V);
+  void setprg32(uint32_t A, uint32_t V);
 
   void setprg2r(int r, unsigned int A, unsigned int V);
   void setprg4r(int r, unsigned int A, unsigned int V);
@@ -157,17 +158,17 @@ struct Cart {
   void setchr4(unsigned int A, unsigned int V);
   void setchr8(unsigned int V);
 
-  void setvram4(uint32 A, uint8 *p);
-  void setvram8(uint8 *p);
+  void setvram4(uint32_t A, uint8_t *p);
+  void setvram8(uint8_t *p);
 
-  void setvramb1(uint8 *p, uint32 A, uint32 b);
-  void setvramb2(uint8 *p, uint32 A, uint32 b);
-  void setvramb4(uint8 *p, uint32 A, uint32 b);
-  void setvramb8(uint8 *p, uint32 b);
+  void setvramb1(uint8_t *p, uint32_t A, uint32_t b);
+  void setvramb2(uint8_t *p, uint32_t A, uint32_t b);
+  void setvramb4(uint8_t *p, uint32_t A, uint32_t b);
+  void setvramb8(uint8_t *p, uint32_t b);
 
   void setmirror(int t);
   void setmirrorw(int a, int b, int c, int d);
-  void setntamem(uint8 *p, int ram, uint32 b);
+  void setntamem(uint8_t *p, int ram, uint32_t b);
 
   Cart(FC *fc);
 
@@ -187,7 +188,7 @@ struct Cart {
   bool PRGIsRAM[32] = { };  /* This page is/is not PRG RAM. */
 
   // Used as an initial destination for page and vpage.
-  uint8 nothing[8192] = { };
+  uint8_t nothing[8192] = { };
 
   /* 16 are (sort of) reserved for UNIF/iNES and 16 to map other stuff. */
   bool CHRram[32] = { };
@@ -195,7 +196,7 @@ struct Cart {
 
   int mirrorhard = 0;
 
-  void SetPagePtr(int s, uint32 A, uint8 *p, bool is_ram);
+  void SetPagePtr(int s, uint32_t A, uint8_t *p, bool is_ram);
 
   FC *fc;
 };

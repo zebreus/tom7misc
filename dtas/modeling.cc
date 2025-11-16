@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <compare>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <functional>
 #include <memory>
@@ -13,7 +12,6 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -250,7 +248,8 @@ SimpleWithZN(F f_in) {
 // fixed contents. If it's in RAM, we use the set
 // in that slot from the state. If it's memory-mapped,
 // then we have special cases.
-ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
+ByteSet Modeling::GetByteSet(const ErrorLoc &loc,
+                             const State &state, uint16_t addr) const {
   // ROM reads.
   if (addr >= rom.ORIGIN)
     return ByteSet::Singleton(rom.Read(addr));
@@ -260,11 +259,35 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
     return RegByteSet(state.RAM(addr));
   }
 
+  switch (addr) {
+  case 0x2002:
+    // PPU Status. The top three bits are
+    //   vblank (unreliable)
+    //   sprite 0 (reliable but hard for us to track here, since we
+    //             are not emulating PPU)
+    //   sprite overflow (unreliable)
+    // The remaining bits are "open bus" so they generally return
+    // the bits of the address.
+    // Mario definitely uses Sprite 0, but I don't think it relies
+    // on any of the other values. So Top is reasonable and conservative
+    // here, but we may need to figure out something for Sprite 0.
+    return ByteSet::Top();
+
+  case 0x4016:
+  case 0x4017:
+    // Joystick reads. One bit depends on the joystic state, and the
+    // others are open bus. So Top is correct here.
+    return ByteSet::Top();
+
+  default:;
+  }
+
   // TODO: Special cases for memory-mapped addresses.
   if (!quiet) {
-    Print("Note: Reading from address that may be memory-mapped: "
+    Print("At: {} Note: Unknown memory-mapped(?) read: "
           AORANGE("${:04x}") ". Returns " AYELLOW("Top") "!\n",
-          addr);
+          ErrorLocString(loc), addr);
+    LOG(FATAL) << "Unimplemented.";
   }
 
   // Otherwise, treat it as though any value is possible.
@@ -273,21 +296,23 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
 
 // For 16-bit addresses.
 ByteSet Modeling::GetByteSetFromOffsets16(
+    const ErrorLoc &loc,
     const State &state, uint16_t addr, const ByteSet &offsets) const {
   ByteSet ret;
   for (uint8_t o : offsets) {
-    ret.AddSet(GetByteSet(state, addr + o));
+    ret.AddSet(GetByteSet(loc, state, addr + o));
   }
   return ret;
 }
 
 // For 8-bit addresses into the zero page (wrap-around).
 ByteSet Modeling::GetByteSetFromOffsetsZpg(
+    const ErrorLoc &loc,
     const State &state, uint8_t addr, const ByteSet &offsets) const {
   ByteSet ret;
   for (uint8_t o : offsets) {
     uint8_t zpg_addr = addr + o;
-    ret.AddSet(GetByteSet(state, zpg_addr));
+    ret.AddSet(GetByteSet(loc, state, zpg_addr));
   }
   return ret;
 }
@@ -638,10 +663,13 @@ void Modeling::Expand() {
   uint16_t pc = block.StartAddr();
 
   ErrorLoc loc{
+    .block = pc,
     .pc = pc,
     .step = steps,
   };
 
+  // Get the next byte after the program counter, and advance.
+  // For instructions that take an immediate, or zero-page addr, etc.
   auto Next8 = [&]() -> uint8_t {
       uint8_t ret = rom.Read(pc);
       pc++;
@@ -718,7 +746,7 @@ void Modeling::Expand() {
                                       const auto &f) {
       if (addr_offset.Size() == 1) {
         uint16_t eaddr = addr_base + addr_offset.GetSingleton();
-        ByteSet before = this->GetByteSet(*state, eaddr);
+        ByteSet before = this->GetByteSet(loc, *state, eaddr);
         const auto &[after, flags] = f(before);
         // Overwrite, since this is a definite address.
         this->WriteMemByteSet(loc, state, eaddr, MemByteSet(after));
@@ -729,7 +757,7 @@ void Modeling::Expand() {
           // TODO: Make sure we're handling page wrapping
           // correctly here.
           uint16_t eaddr = addr_base + o;
-          ByteSet before = this->GetByteSet(*state, eaddr);
+          ByteSet before = this->GetByteSet(loc, *state, eaddr);
           // Since we don't know whether we're actually writing
           // here, the write is added to the possibilities.
           const auto &[after, flags] = f(before);
@@ -742,7 +770,7 @@ void Modeling::Expand() {
       }
     };
 
-  // As above, but with an 8-bit on the zero page.
+  // As above, but with an 8-bit address on the zero page.
   auto ReadModifyWriteZpg = [this, &loc](State *state,
                                          uint8_t flag_mask,
                                          uint8_t addr_base,
@@ -750,7 +778,7 @@ void Modeling::Expand() {
                                          const auto &f) {
       if (addr_offset.Size() == 1) {
         uint8_t eaddr = addr_base + addr_offset.GetSingleton();
-        ByteSet before = this->GetByteSet(*state, eaddr);
+        ByteSet before = this->GetByteSet(loc, *state, eaddr);
         const auto &[after, flags] = f(before);
         // Overwrite, since this is a definite address.
         this->WriteMemByteSet(loc, state, eaddr, MemByteSet(after));
@@ -759,7 +787,7 @@ void Modeling::Expand() {
         ByteSet merged_flags;
         for (uint8_t o : addr_offset) {
           uint8_t eaddr = addr_base + o;
-          ByteSet before = this->GetByteSet(*state, eaddr);
+          ByteSet before = this->GetByteSet(loc, *state, eaddr);
           // Since we don't know whether we're actually writing
           // here, the write is added to the possibilities.
           const auto &[after, flags] = f(before);
@@ -774,47 +802,47 @@ void Modeling::Expand() {
 
   // A <- A + Value + Carry
   // updating neg, zero, carry, overflow flags
-  auto ReadAddWithCarry16 = [this](State *state, uint16_t addr_base,
-                                   const ByteSet &addr_offset) {
+  auto ReadAddWithCarry16 = [this, &loc](State *state, uint16_t addr_base,
+                                         const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
-        all_values.AddSet(this->GetByteSet(*state, eaddr));
+        all_values.AddSet(this->GetByteSet(loc, *state, eaddr));
       }
       return AddWithCarry(state, all_values);
     };
 
-  // As above, but with 8-bit address (zero-page wrapping).
-  auto ReadAddWithCarryZpg = [this](State *state, uint8_t addr_base,
-                                    const ByteSet &addr_offset) {
+  // As previous, but with an 8-bit address (zero-page wrapping).
+  auto ReadAddWithCarryZpg = [this, &loc](State *state, uint8_t addr_base,
+                                          const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint8_t eaddr = addr_base + off;
-        all_values.AddSet(this->GetByteSet(*state, eaddr));
+        all_values.AddSet(this->GetByteSet(loc, *state, eaddr));
       }
       return AddWithCarry(state, all_values);
     };
 
   // A <- A - *addr - ~Carry
   // updating neg, zero, carry, overflow flags
-  auto ReadSubtractWithCarry16 = [this](State *state, uint16_t addr_base,
-                                        const ByteSet &addr_offset) {
+  auto ReadSubtractWithCarry16 = [this, &loc](State *state, uint16_t addr_base,
+                                              const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
-        all_values.AddSet(this->GetByteSet(*state, eaddr));
+        all_values.AddSet(this->GetByteSet(loc, *state, eaddr));
       }
 
       return SubtractWithCarry(state, all_values);
     };
 
-  // As previous, but with 8-bit address (zero-page wrapping).
-  auto ReadSubtractWithCarryZpg = [this](State *state, uint8_t addr_base,
-                                         const ByteSet &addr_offset) {
+  // As previous, but with an 8-bit address (zero-page wrapping).
+  auto ReadSubtractWithCarryZpg = [this, &loc](State *state, uint8_t addr_base,
+                                               const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint8_t eaddr = addr_base + off;
-        all_values.AddSet(this->GetByteSet(*state, eaddr));
+        all_values.AddSet(this->GetByteSet(loc, *state, eaddr));
       }
 
       return SubtractWithCarry(state, all_values);
@@ -844,9 +872,9 @@ void Modeling::Expand() {
     };
 
   // A strange case.
-  auto Bit = [this](State *state, uint16_t addr) {
+  auto Bit = [this, &loc](State *state, uint16_t addr) {
       ByteSet nzv_flags;
-      ByteSet s = GetByteSet(*state, addr);
+      ByteSet s = GetByteSet(loc, *state, addr);
       for (uint8_t b : s) {
         const uint8_t nv = b & (N_FLAG | V_FLAG);
         for (uint8_t a : state->A) {
@@ -860,6 +888,7 @@ void Modeling::Expand() {
   // Keep reading instructions until we reach the end of the block.
   do {
     const uint16_t instruction_pc = pc;
+    loc.pc = pc;
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
 
@@ -895,7 +924,7 @@ void Modeling::Expand() {
         for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x0007, 0x0770}) {
           Print("RAM[" AWHITE("{:04x}") "]: {}\n",
                 addr,
-                GetByteSet(state, addr).DebugString());
+                GetByteSet(loc, state, addr).DebugString());
         }
       }
     }
@@ -958,24 +987,26 @@ void Modeling::Expand() {
     }
     case 0xad: { // LDA a
       uint16_t addr = Next16();
-      state.A = GetByteSet(state, addr);
+      state.A = GetByteSet(loc, state, addr);
       ZN(&state, state.A);
       break;
     }
     case 0xa5: { // LDA d
       uint8_t addr = Next8();
-      state.A = GetByteSet(state, addr);
+      state.A = GetByteSet(loc, state, addr);
       ZN(&state, state.A);
       break;
     }
     case 0xb1: { // LDA (d),y
       uint8_t zpg_addr = Next8();
       state.A.Clear();
-      for (uint8_t addr_lo : GetByteSet(state, zpg_addr)) {
-        for (uint8_t addr_hi : GetByteSet(state, (uint8_t)(zpg_addr + 1))) {
+      for (uint8_t addr_lo :
+             GetByteSet(loc, state, zpg_addr)) {
+        for (uint8_t addr_hi :
+               GetByteSet(loc, state, (uint8_t)(zpg_addr + 1))) {
           for (uint8_t y : state.Y) {
             uint16_t effective_addr = Word16(addr_hi, addr_lo) + y;
-            state.A.AddSet(GetByteSet(state, effective_addr));
+            state.A.AddSet(GetByteSet(loc, state, effective_addr));
           }
         }
       }
@@ -987,7 +1018,7 @@ void Modeling::Expand() {
       state.A.Clear();
       for (uint8_t y : state.Y) {
         uint16_t effective_addr = base_addr + y;
-        state.A.AddSet(GetByteSet(state, effective_addr));
+        state.A.AddSet(GetByteSet(loc, state, effective_addr));
       }
       ZN(&state, state.A);
       break;
@@ -998,7 +1029,7 @@ void Modeling::Expand() {
       for (uint8_t x : state.X) {
         // Overflow stays on the zero page.
         uint8_t zeropage_effective = zeropage_base + x;
-        state.A.AddSet(GetByteSet(state, zeropage_effective));
+        state.A.AddSet(GetByteSet(loc, state, zeropage_effective));
       }
       ZN(&state, state.A);
       break;
@@ -1007,7 +1038,7 @@ void Modeling::Expand() {
       uint16_t addr = Next16();
       state.A.Clear();
       for (uint8_t v : state.X) {
-        state.A.AddSet(GetByteSet(state, addr + v));
+        state.A.AddSet(GetByteSet(loc, state, addr + v));
       }
       ZN(&state, state.A);
       break;
@@ -1329,13 +1360,13 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented ROL";
       // XXX this needs to be ReadModifyWriteZpg
       // uint8_t addr = Next8();
-      // RotateLeft(&state, GetByteSet(state, addr));
+      // RotateLeft(&state, GetByteSet(loc, state, addr));
       break;
     }
     case 0x2e: { // ROL a
       LOG(FATAL) << "Unimplemented ROL";
       // uint16_t addr = Next16();
-      // RotateLeft(&state, GetByteSet(state, addr));
+      // RotateLeft(&state, GetByteSet(loc, state, addr));
       break;
     }
 
@@ -1417,8 +1448,8 @@ void Modeling::Expand() {
     case 0x91: { // STA (d),y
       const uint8_t zpg_addr = Next8();
 
-      ByteSet addr_lo = GetByteSet(state, zpg_addr);
-      ByteSet addr_hi = GetByteSet(state, (uint8_t)(zpg_addr + 1));
+      ByteSet addr_lo = GetByteSet(loc, state, zpg_addr);
+      ByteSet addr_hi = GetByteSet(loc, state, (uint8_t)(zpg_addr + 1));
 
       if (addr_hi.Size() == 1 && addr_lo.Size() == 1 &&
           state.Y.Size() == 1) {
@@ -1452,13 +1483,13 @@ void Modeling::Expand() {
     }
     case 0xac: { // LDY a
       uint16_t addr = Next16();
-      state.Y = GetByteSet(state, addr);
+      state.Y = GetByteSet(loc, state, addr);
       ZN(&state, state.Y);
       break;
     }
     case 0xa4: { // LDY d
       uint8_t addr = Next8();
-      state.Y = GetByteSet(state, addr);
+      state.Y = GetByteSet(loc, state, addr);
       ZN(&state, state.Y);
       break;
     }
@@ -1466,7 +1497,7 @@ void Modeling::Expand() {
       uint16_t addr = Next16();
       state.Y.Clear();
       for (uint8_t v : state.X) {
-        state.Y.AddSet(GetByteSet(state, addr + v));
+        state.Y.AddSet(GetByteSet(loc, state, addr + v));
       }
       ZN(&state, state.Y);
       break;
@@ -1475,7 +1506,7 @@ void Modeling::Expand() {
       uint8_t zpg_addr = Next8();
       state.Y.Clear();
       for (uint8_t v : state.X) {
-        state.Y.AddSet(GetByteSet(state, zpg_addr + v));
+        state.Y.AddSet(GetByteSet(loc, state, zpg_addr + v));
       }
       ZN(&state, state.Y);
       break;
@@ -1489,13 +1520,13 @@ void Modeling::Expand() {
     }
     case 0xa6: { // LDX d
       uint8_t addr = Next8();
-      state.X = GetByteSet(state, addr);
+      state.X = GetByteSet(loc, state, addr);
       ZN(&state, state.X);
       break;
     }
     case 0xae: { // LDX a
       uint16_t addr = Next16();
-      state.X = GetByteSet(state, addr);
+      state.X = GetByteSet(loc, state, addr);
       ZN(&state, state.X);
       break;
     }
@@ -1503,7 +1534,7 @@ void Modeling::Expand() {
       uint16_t addr = Next16();
       state.X.Clear();
       for (uint8_t v : state.Y) {
-        state.X.AddSet(GetByteSet(state, addr + v));
+        state.X.AddSet(GetByteSet(loc, state, addr + v));
       }
       ZN(&state, state.X);
       break;
@@ -1514,7 +1545,7 @@ void Modeling::Expand() {
       for (uint8_t v : state.Y) {
         // Zero-page wraparound.
         uint8_t eaddr = zpg_addr + v;
-        state.X.AddSet(GetByteSet(state, eaddr));
+        state.X.AddSet(GetByteSet(loc, state, eaddr));
       }
       ZN(&state, state.X);
       break;
@@ -1679,13 +1710,13 @@ void Modeling::Expand() {
       // we have to combine the two bytes.
       uint16_t indirect_addr = Next16();
 
-      ByteSet addr_lo = GetByteSet(state, indirect_addr);
+      ByteSet addr_lo = GetByteSet(loc, state, indirect_addr);
       // 6502 address decoding has a notorious bug here. If the
       // load crosses a page boundary, the high byte is not incremented.
       const uint16_t hi_byte_addr =
         ((indirect_addr & 0xFF) == 0xFF) ? (indirect_addr & 0xFF00) :
         (indirect_addr + 1);
-      ByteSet addr_hi = GetByteSet(state, hi_byte_addr);
+      ByteSet addr_hi = GetByteSet(loc, state, hi_byte_addr);
 
       int accepted = 0, rejected = 0, born = 0;
       for (uint8_t hi : addr_hi) {
@@ -1719,7 +1750,7 @@ void Modeling::Expand() {
       uint16_t addr = Next8();
       ByteSet new_a;
       for (uint8_t a : state.A) {
-        for (uint8_t o : GetByteSet(state, addr)) {
+        for (uint8_t o : GetByteSet(loc, state, addr)) {
           uint8_t r = a | o;
           new_a.Add(r);
         }
@@ -1732,7 +1763,7 @@ void Modeling::Expand() {
       uint16_t addr = Next16();
       ByteSet new_a;
       for (uint8_t a : state.A) {
-        for (uint8_t o : GetByteSet(state, addr)) {
+        for (uint8_t o : GetByteSet(loc, state, addr)) {
           uint8_t r = a | o;
           new_a.Add(r);
         }
@@ -1799,7 +1830,7 @@ void Modeling::Expand() {
       uint8_t zpg_addr = Next8();
       ByteSet new_a;
       for (uint8_t a : state.A) {
-        for (uint8_t m : GetByteSet(state, zpg_addr)) {
+        for (uint8_t m : GetByteSet(loc, state, zpg_addr)) {
           new_a.Add(a ^ m);
         }
       }
@@ -1821,12 +1852,12 @@ void Modeling::Expand() {
     }
     case 0xc4: { // CPY d
       uint8_t zpg_addr = Next8();
-      Compare(&state, state.Y, GetByteSet(state, zpg_addr));
+      Compare(&state, state.Y, GetByteSet(loc, state, zpg_addr));
       break;
     }
     case 0xcc: { // CPY a
       uint16_t addr = Next16();
-      Compare(&state, state.Y, GetByteSet(state, addr));
+      Compare(&state, state.Y, GetByteSet(loc, state, addr));
       break;
     }
 
@@ -1837,30 +1868,30 @@ void Modeling::Expand() {
     }
     case 0xc5: { // CMP d
       uint8_t zpg_addr = Next8();
-      Compare(&state, state.A, GetByteSet(state, zpg_addr));
+      Compare(&state, state.A, GetByteSet(loc, state, zpg_addr));
       break;
     }
     case 0xd5: { // CMP d,x
       uint8_t zpg_addr = Next8();
       Compare(&state, state.A,
-              GetByteSetFromOffsetsZpg(state, zpg_addr, state.X));
+              GetByteSetFromOffsetsZpg(loc, state, zpg_addr, state.X));
       break;
     }
     case 0xcd: { // CMP a
       uint16_t addr = Next16();
-      Compare(&state, state.A, GetByteSet(state, addr));
+      Compare(&state, state.A, GetByteSet(loc, state, addr));
       break;
     }
     case 0xdd: { // CMP a,x
       uint16_t addr = Next16();
       Compare(&state, state.A,
-              GetByteSetFromOffsets16(state, addr, state.X));
+              GetByteSetFromOffsets16(loc, state, addr, state.X));
       break;
     }
     case 0xd9: { // CMP a,y
       uint16_t addr = Next16();
       Compare(&state, state.A,
-              GetByteSetFromOffsets16(state, addr, state.Y));
+              GetByteSetFromOffsets16(loc, state, addr, state.Y));
       break;
     }
 
@@ -1920,7 +1951,7 @@ void Modeling::Expand() {
     }
     case 0x39: { // AND a,y
       uint16_t addr = Next16();
-      ByteSet ms = GetByteSetFromOffsets16(state, addr, state.Y);
+      ByteSet ms = GetByteSetFromOffsets16(loc, state, addr, state.Y);
 
       ByteSet new_a;
       for (uint8_t m : ms) {
@@ -1934,7 +1965,7 @@ void Modeling::Expand() {
     }
     case 0x3d: { // AND a,x
       uint16_t addr = Next16();
-      ByteSet ms = GetByteSetFromOffsets16(state, addr, state.X);
+      ByteSet ms = GetByteSetFromOffsets16(loc, state, addr, state.X);
 
       ByteSet new_a;
       for (uint8_t m : ms) {
@@ -1949,7 +1980,7 @@ void Modeling::Expand() {
     case 0x2d: { // AND a
       uint16_t addr = Next16();
       ByteSet new_a;
-      for (uint8_t m : GetByteSet(state, addr)) {
+      for (uint8_t m : GetByteSet(loc, state, addr)) {
         for (uint8_t a : state.A) {
           new_a.Add(m & a);
         }
@@ -1961,7 +1992,7 @@ void Modeling::Expand() {
     case 0x25: { // AND d
       uint16_t addr = Next8();
       ByteSet new_a;
-      for (uint8_t m : GetByteSet(state, addr)) {
+      for (uint8_t m : GetByteSet(loc, state, addr)) {
         for (uint8_t a : state.A) {
           new_a.Add(m & a);
         }
@@ -2171,7 +2202,7 @@ std::string Modeling::ErrorLocString(const ErrorLoc &loc) const {
   std::string proc =
     laddr == loc.pc ? std::format(ACYAN("{}"), llab) :
     std::format(ACYAN("{}") AGREY("+") ABLOOD("{:04x}"), llab,
-                laddr - loc.pc);
+                loc.pc - laddr);
   return std::format("Step {}. PC: " AORANGE("{:04x}") " ({})",
                      loc.step, loc.pc, proc);
 }
@@ -2186,7 +2217,7 @@ void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
   const ValueConstraint &vc = it->second;
   const MemByteSet &actual = state.ram[addr];
   if (!ByteSet::Subset(actual, vc.valid_values)) {
-    Print("Memory invariant " AWHITE("{}") " violated.\n"
+    Print("Memory invariant " AWHITE("{}") " " ARED("violated") ".\n"
           "At: {}\n"
           "Address " AYELLOW("{:04x}") " should contain only: {}\n"
           "But it contained: {}\n",

@@ -3,23 +3,26 @@
 #include <algorithm>
 #include <cstdint>
 #include <ctime>
+#include <format>
 #include <mutex>
+#include <cstdio>
+#include <stdio.h>
 #include <string>
+#include <string_view>
 #include <tuple>
+#include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <stdio.h>
-#include <unistd.h>
-#include <string_view>
-#include <unordered_set>
 
-#include "util.h"
-#include "re2/re2.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
-#include "threadutil.h"
 #include "edit-distance.h"
+#include "re2/re2.h"
+#include "threadutil.h"
+#include "util.h"
 
 #include "headers.h"
 #include "guitarchive.h"
@@ -80,7 +83,7 @@ struct Parser {
                    const string &contents,
                    string *title,
                    string *artist) const {
-    re2::StringPiece cont(contents);
+    std::string_view cont(contents);
     if (RE2::Consume(&cont, explicit_meta, title, artist)) {
       return true;
     }
@@ -103,12 +106,12 @@ struct Parser {
     if (Extract1(filename, &contents, &title, &artist) ||
         Extract2(filename, &contents, &title, &artist) ||
         Extract3(filename, &contents, &title, &artist)) {
-      contents = StringPrintf("Title: %s\n"
-                              "Artist: %s\n"
-                              "%s",
-                              title.c_str(),
-                              artist.c_str(),
-                              contents.c_str());
+      contents = std::format("Title: {}\n"
+                             "Artist: {}\n"
+                             "{}",
+                             title,
+                             artist,
+                             contents);
     }
     return contents;
   }
@@ -131,7 +134,7 @@ struct Parser {
 
   bool Extract1(const string &filename, string *contents,
                 string *title, string *artist) const {
-    re2::StringPiece cont(*contents);
+    std::string_view cont(*contents);
     string h1, h2;
     if (RE2::Consume(&cont, dashedheader, &h1, title, artist, &h2)) {
       if (EditDistance::Ukkonen(h1, h2, 5) > 3) return false;
@@ -160,7 +163,7 @@ struct Parser {
         }
         // XXX thresholds?
 
-        *contents = cont.as_string();
+        *contents = std::string(cont);
         return true;
       }
     }
@@ -169,7 +172,7 @@ struct Parser {
 
   bool Extract2(const string &filename, string *contents,
                 string *title, string *artist) const {
-    re2::StringPiece cont(*contents);
+    std::string_view cont(*contents);
     if (RE2::Consume(&cont, byline, title, artist) ||
         RE2::Consume(&cont, quotedmultiby, title, artist)) {
       *title = Util::LoseWhiteR(*title);
@@ -222,7 +225,7 @@ struct Parser {
         if (same_loss > 10)
           return false;
 
-        *contents = cont.as_string();
+        *contents = std::string(cont);
         return true;
       }
     }
@@ -231,7 +234,7 @@ struct Parser {
 
   bool Extract3(const string &filename, string *contents,
                 string *title, string *artist) const {
-    re2::StringPiece cont(*contents);
+    std::string_view cont(*contents);
     if (RE2::Consume(&cont, dashline, title, artist)) {
       *title = Util::LoseWhiteR(*title);
       *artist = Util::LoseWhiteR(*artist);
@@ -277,7 +280,7 @@ struct Parser {
         if (std::min(same_loss, diff_loss) > 10)
           return false;
 
-        *contents = cont.as_string();
+        *contents = std::string(cont);
         return true;
       }
     }
@@ -303,10 +306,10 @@ struct Parser {
   // Extract Key: Value headers starting the file.
   vector<pair<string, string>> ExtractHeaders(string *contents) const {
     vector<pair<string, string>> hdrs;
-    re2::StringPiece cont(*contents);
+    std::string_view cont(*contents);
 
     do {
-      re2::StringPiece tmp = cont;
+      std::string_view tmp = cont;
       string key, value;
 
       // Note: Be careful about cases where an earlier RE matches and so
@@ -370,7 +373,7 @@ struct Parser {
       cont = tmp;
     } while (true);
 
-    *contents = cont.as_string();
+    *contents = std::string(cont);
     return hdrs;
   }
 
@@ -740,7 +743,7 @@ struct Parser {
     DeduplicateHeaders(filename, &hdrs);
     SortHeaders(&hdrs);
     for (const auto &p : hdrs) {
-      out += StringPrintf("%s: %s\n", p.first.c_str(), p.second.c_str());
+      out += std::format("{}: {}\n", p.first, p.second);
     }
     out += contents;
     return out;
@@ -849,7 +852,7 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
   // if the files share a line exactly.
 
   const int64 start = time(nullptr);
-  printf("Get all lines...\n");
+  Print("Get all lines...\n");
   fflush(stdout);
   std::mutex m;
   std::unordered_map<string, vector<int>> all_lines;
@@ -872,7 +875,7 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
                  }
                }, 12);
   const int64 took = time(nullptr) - start;
-  printf("[Took %lld sec.] %lld distinct lines...\n",
+  Print("[Took {} sec.] {} distinct lines...\n",
          took,
          (int64)all_lines.size());
 
@@ -919,9 +922,9 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
     }
   }
 
-  printf("%lld occur more than once. %lld are too common.\n"
-         "%lld pairs remain to compare!\n",
-         non_singleton, huge, (int64)to_compare.size());
+  Print("{} occur more than once. {} are too common.\n"
+        "{} pairs remain to compare!\n",
+        non_singleton, huge, to_compare.size());
   fflush(stdout);
 
   vector<pair<int, int>> to_compare_vec;
@@ -990,7 +993,7 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
       return CLEAN;
     };
 
-  printf("%d elts in to_compare_vec\n", (int)to_compare_vec.size());
+  Print("{} elts in to_compare_vec\n", to_compare_vec.size());
   fflush(stdout);
 
   const int compare_start = time(nullptr);
@@ -1148,9 +1151,9 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
                         deleted++;
                       } else {
                         MutexLock ml(&m);
-                        printf("Unable to remove [%s]; this can happen if "
-                               "it was already removed for another reason!\n",
-                               ff.c_str());
+                        Print("Unable to remove [{}]; this can happen if "
+                              "it was already removed for another reason!\n",
+                              ff);
                       }
                     };
 
@@ -1173,14 +1176,14 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
                     if (body_a == body_b)
                       match = "Body";
                     info.push_back(
-                        StringPrintf("%s duplicates (%d bytes):\n"
-                                     "  %s%s\n"
-                                     "  %s%s\n",
-                                     match.c_str(),
-                                     (int)contents_a.size(),
-                                     file_a.c_str(),
+                        std::format("{} duplicates ({} bytes):\n"
+                                     "  {}{}\n"
+                                     "  {}{}\n",
+                                     match,
+                                     contents_a.size(),
+                                     file_a,
                                      delete_a ? " (DELETE)" : "",
-                                     file_b.c_str(),
+                                     file_b,
                                      delete_b ? " (DELETE)" : ""));
                   }
                 }
@@ -1189,16 +1192,16 @@ void FindDuplicates(const vector<pair<string, string>> &db) {
   {
     FILE *ff = fopen("dups.txt", "wb");
     for (const string &line : info) {
-      fprintf(ff, "%s\n", line.c_str());
+      Print(ff, "{}\n", line);
     }
     fclose(ff);
   }
   const int64 compare_sec = time(nullptr) - compare_start;
-  printf("[%lld sec] Possible duplicates in dups.txt: %d\n",
+  Print("[{} sec] Possible duplicates in dups.txt: {}\n",
          compare_sec,
-         (int)info.size());
+         info.size());
   if (deleted > 0)
-    printf("Actually deleted %d files.\n", deleted);
+    Print("Actually deleted {} files.\n", deleted);
   fflush(stdout);
 }
 
@@ -1239,29 +1242,29 @@ void ComputeDistances(const vector<pair<string, string>> &contents) {
                      }
                      if (pr) {
                        int64 secs = time(nullptr) - start;
-                       printf("%d = (%.2f%%), %.2f/s\n",
-                              td,
-                              (td * 100.0) / (n * (n - 1) / 2.0),
-                              td / (double)secs);
+                       Print("{} = ({:.2f}%), {:.2f}/s\n",
+                             td,
+                             (td * 100.0) / (n * (n - 1) / 2.0),
+                             td / (double)secs);
                        fflush(stdout);
                      }
                    }
                  },
                  42);
-  printf("Done computing distances.\n");
+  Print("Done computing distances.\n");
 
   FILE *f = fopen("similar.txt", "wb");
   for (int y = 0; y < n; y++) {
     for (int x = 0; x < y; x++) {
       int dist = distances[y * n + x];
       if (dist < SIMILAR_DISTANCE) {
-        fprintf(f,
-                "Very similar (%d):\n"
-                "  %s\n"
-                "  %s\n",
-                dist,
-                contents[x].first.c_str(),
-                contents[y].first.c_str());
+        Print(f,
+              "Very similar ({}):\n"
+              "  {}\n"
+              "  {}\n",
+              dist,
+              contents[x].first,
+              contents[y].first);
       }
     }
   }
@@ -1360,7 +1363,7 @@ static string NormalizeHeaderOuterWhitespace(const Parser &p, string body) {
 
   string out;
   for (const auto &[key, val] : hdrs) {
-    out += StringPrintf("%s: %s\n", key.c_str(), val.c_str());
+    AppendFormat(&out, "{}: {}\n", key, val);
   }
 
   // Exactly one blank line after headers. Leading blanks were stripped
@@ -1399,7 +1402,7 @@ string RewriteHeader(const string &contents) {
     "<pre><h2 style='color:#000000'><a style='color:#000000' "
     "href='[^']*'>([^<]*)</a> "};
 
-  re2::StringPiece cont(contents);
+  std::string_view cont(contents);
   string artist;
   if (RE2::Consume(&cont, *gt1, &artist)) {
     // Skip '227'
@@ -1408,11 +1411,10 @@ string RewriteHeader(const string &contents) {
       {" <a style='color:#000000' href='[^']*'>([^<]*) Tab</a></h2>\n"};
     string title;
     if (RE2::Consume(&cont, *gt2, &title)) {
-      return
-        StringPrintf("Title: %s\n"
-                     "Artist: %s\n"
-                     "%s", title.c_str(), artist.c_str(),
-                     cont.ToString().c_str());
+      return std::format("Title: {}\n"
+                         "Artist: {}\n"
+                         "{}", title, artist,
+                         cont);
     }
   }
   return contents;
@@ -1445,7 +1447,7 @@ string AdHocSubstitutions(string s) {
 
   /*
   string rest;
-  re2::StringPiece cont(s);
+  std::string_view cont(s);
   if (RE2::Consume(&cont, "#-------------------------+#\n"))
     s = cont.ToString();
   */
@@ -1566,7 +1568,7 @@ int main(int argc, char **argv) {
     Guitarchive::AddAllFilesRec(d, &all_filenames);
   }
 
-  printf("Num files: %lld\n", (int64)all_filenames.size());
+  Print("Num files: {}\n", all_filenames.size());
 
   std::unordered_set<string> filename_set;
   for (const string &f : all_filenames) {
@@ -1584,14 +1586,16 @@ int main(int argc, char **argv) {
         num_mangled++;
         string norm = part + ".txt";
         if (filename_set.find(norm) != filename_set.end()) {
-          printf("[!!] Has both %s and %s\n", norm.c_str(), f.c_str());
+          Print("[!!] Has both {} and {}\n", norm, f);
           continue;
         }
-        if (num_mangled % 100 == 0) printf("[%d] [%s] -> [%s]\n", num_mangled, f.c_str(), norm.c_str());
+        if (num_mangled % 100 == 0) {
+          Print("[{}] [{}] -> [{}]\n", num_mangled, f, norm);
+        }
         // CHECK(Util::RelocateFile(f, norm)) << f;
       }
     }
-    printf("Num mangled: %d\n", num_mangled);
+    Print("Num mangled: {}\n", num_mangled);
     // After moving files, we have the wrong filenames, so force exit.
     return 0;
   }
@@ -1605,22 +1609,22 @@ int main(int argc, char **argv) {
       string start, ext;
       if (RE2::FullMatch(f, mangled, &start, &num, &ext)) {
         num_mangled++;
-        string norm = StringPrintf("%s_%d.%s", start.c_str(), num, ext.c_str());
+        string norm = std::format("{}_{}.{}", start, num, ext);
         if (filename_set.find(norm) != filename_set.end()) {
-          printf("[!!] Has both %s and %s\n", norm.c_str(), f.c_str());
+          Print("[!!] Has both {} and {}\n", norm, f);
           continue;
         }
-        printf("[%d] [%s] -> [%s]\n", num_mangled, f.c_str(), norm.c_str());
+        Print("[{}] [{}] -> [{}]\n", num_mangled, f, norm);
         CHECK(Util::RelocateFile(f, norm)) << f;
       }
     }
-    printf("Num mangled: %d\n", num_mangled);
+    Print("Num mangled: {}\n", num_mangled);
     // After moving files, we have the wrong filenames, so force exit.
     return 0;
   }
 
 
-  printf("Read files..\n");
+  Print("Read files..\n");
   fflush(stdout);
   vector<pair<string, string>> files =
     ParallelMap(all_filenames,
@@ -1635,12 +1639,12 @@ int main(int argc, char **argv) {
     /*
       string bogus =
       Util::ReadFile("d:\\temp\\tabs\\a\\audioslave\\be_yourself_drum_tab.txt");
-      printf("Bogus: %s\n", bogus.c_str());
+      Print("Bogus: {}\n", bogus);
       CHECK(!bogus.empty());
 
       for (const auto &p : files) {
       if (p.second == bogus) {
-      printf("Remove bogus %s...\n", p.first.c_str());
+      Print("Remove bogus {}...\n", p.first);
       Util::RemoveFile(p.first);
       }
       }
@@ -1657,17 +1661,17 @@ int main(int argc, char **argv) {
       total_bytes += p.second.size();
       /*
         if ((int)p.second.size() > 100000) {
-        printf("Large file [%lld]: %s\n", (int64)p.second.size(), p.first.c_str());
+        Print("Large file [{}]: {}\n", p.second.size(), p.first);
         }
       */
       if (HasNonAscii(p.second)) {
         non_ascii++;
-        // printf("Non-ascii: %s\n", p.first.c_str());
+        // Print("Non-ascii: {}\n", p.first);
       }
     }
-    printf("Filename bytes: %lld\n", filename_bytes);
-    printf("Content bytes: %lld\n", total_bytes);
-    printf("Non-ascii files: %d\n", non_ascii);
+    Print("Filename bytes: {}\n", filename_bytes);
+    Print("Content bytes: {}\n", total_bytes);
+    Print("Non-ascii files: {}\n", non_ascii);
     fflush(stdout);
   }
 
@@ -1728,16 +1732,16 @@ int main(int argc, char **argv) {
             MutexLock ml(&m);
             todo.push_back(row.first);
             if (has_marker < 20 || (has_marker % 10000 == 0)) {
-              printf("Marker? %s\n", row.first.c_str());
+              Print("Marker? {}\n", row.first);
             }
             has_marker++;
           }
         },
         32);
-    printf("May still have markers: %d\n", has_marker);
+    Print("May still have markers: {}\n", has_marker);
     FILE *ff = fopen("markers_todo.txt", "wb");
     for (const string &file : todo) {
-      fprintf(ff, "%s\n", file.c_str());
+      Print(ff, "{}\n", file);
     }
     fclose(ff);
     fflush(stdout);
@@ -1752,12 +1756,12 @@ int main(int argc, char **argv) {
                   string title, artist;
                   if (p.GetMetadata(row.first, row.second, &title, &artist)) {
                     MutexLock ml(&m);
-                    // printf("[%s] by [%s]\n", title.c_str(), artist.c_str());
+                    // Print("[{}] by [{}]\n", title, artist);
                     has_meta++;
                   }
                 },
                 32);
-    printf("Total with metadata: %d\n", has_meta);
+    Print("Total with metadata: {}\n", has_meta);
     fflush(stdout);
   }
 
@@ -1775,18 +1779,18 @@ int main(int argc, char **argv) {
                   if (p.Extract3(row.first, &contents, &title, &artist)) {
                     MutexLock ml(&m);
                     examples.push_back(
-                        StringPrintf("[%s] by [%s] (%s)\n",
-                                     title.c_str(), artist.c_str(),
-                                     row.first.c_str()));
+                        std::format("[{}] by [{}] ({})\n",
+                                     title, artist,
+                                     row.first));
                     has_extraction++;
                   }
                 },
                 32);
-    printf("Total with extractions: %d\n", has_extraction);
+    Print("Total with extractions: {}\n", has_extraction);
     fflush(stdout);
     FILE *f = fopen("extractions.txt", "wb");
     for (const string &s : examples)
-      fprintf(f, "%s", s.c_str());
+      Print(f, "{}", s);
     fclose(f);
   }
 
@@ -1811,8 +1815,8 @@ int main(int argc, char **argv) {
                     if (orig_hdrs != hdrs) {
                       string ex = row.first + (string)"\n";
                       for (const auto &p : hdrs) {
-                        ex += StringPrintf("  [%s] = [%s]\n",
-                                           p.first.c_str(), p.second.c_str());
+                        AppendFormat(&ex, "  [{}] = [{}]\n",
+                                     p.first, p.second);
                       }
 
                       MutexLock ml(&m);
@@ -1822,11 +1826,11 @@ int main(int argc, char **argv) {
                   }
                 },
                 32);
-    printf("Total with extractions: %d\n", has_extraction);
+    Print("Total with extractions: {}\n", has_extraction);
     fflush(stdout);
     FILE *f = fopen("extractions.txt", "wb");
     for (const string &s : examples)
-      fprintf(f, "%s", s.c_str());
+      Print(f, "{}", s);
     fclose(f);
   }
 
@@ -1856,7 +1860,7 @@ int main(int argc, char **argv) {
                   }
                 },
                 32);
-    printf("Total different keys: %d\n", (int)keys.size());
+    Print("Total different keys: {}\n", keys.size());
     fflush(stdout);
 
     vector<pair<int, string>> sorted;
@@ -1867,9 +1871,8 @@ int main(int argc, char **argv) {
       string value, file;
       std::tie(count, value, file) = r.second;
       sorted.emplace_back(count,
-                          StringPrintf("[%s] = [%s] %s",
-                                       key.c_str(), value.c_str(),
-                                       file.c_str()));
+                          std::format("[{}] = [{}] {}",
+                                      key, value, file));
     }
 
     std::sort(sorted.begin(), sorted.end(),
@@ -1880,7 +1883,7 @@ int main(int argc, char **argv) {
 
     FILE *f = fopen("keys.txt", "wb");
     for (const auto &r : sorted) {
-      fprintf(f, "%d %s\n", r.first, r.second.c_str());
+      Print(f, "{} {}\n", r.first, r.second);
     }
     fclose(f);
   }
@@ -1952,10 +1955,10 @@ int main(int argc, char **argv) {
 
 
                       MutexLock ml(&m);
-                      string out = StringPrintf("** %s\n"
-                                                "(+%d before)\n",
-                                                filename.c_str(),
-                                                same_begin);
+                      string out = std::format("** {}\n"
+                                               "(+{} before)\n",
+                                               filename,
+                                               same_begin);
                       for (const string &s : s1) {
                         out += s;
                         out += "\n";
@@ -1965,7 +1968,7 @@ int main(int argc, char **argv) {
                         out += s;
                         out += "\n";
                       }
-                      out += StringPrintf("(+%d after)\n", same_end);
+                      AppendFormat(&out, "(+{} after)\n", same_end);
                       previews.push_back(out);
                     } else {
                       CHECK(Util::WriteFile(filename, c)) << filename;
@@ -1974,10 +1977,10 @@ int main(int argc, char **argv) {
                       changed++;
                       if (changed < 10 ||
                           (changed % 1000 == 0)) {
-                        printf("[%d] Write [%s] (%d -> %d)\n",
-                               changed,
-                               filename.c_str(),
-                               (int)row.second.size(), (int)c.size());
+                        Print("[{}] Write [{}] ({} -> {})\n",
+                              changed,
+                              filename,
+                              row.second.size(), c.size());
                       }
                     }
                   }
@@ -1986,19 +1989,19 @@ int main(int argc, char **argv) {
     if (DRY_RUN) {
       FILE *f = fopen("dry-run.txt", "wb");
       for (const string &p : previews) {
-        fprintf(f, "%s\n", p.c_str());
+        Print(f, "{}\n", p);
       }
       fclose(f);
-      printf("Wrote %d changes for dry run.\n", (int)previews.size());
+      Print("Wrote {} changes for dry run.\n", previews.size());
     } else {
-      printf("Modified %d files in place.\n", changed);
+      Print("Modified {} files in place.\n", changed);
     }
     fflush(stdout);
   }
 
   // FindDuplicates(files);
 
-  printf("Done.\n");
+  Print("Done.\n");
   fflush(stdout);
 
 

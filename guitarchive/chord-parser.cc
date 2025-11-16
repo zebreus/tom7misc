@@ -2,6 +2,7 @@
 #include "chord-parser.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdint>
 #include <utility>
@@ -169,23 +170,24 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
     if (RE2::FullMatch(line, *line_of_chords_re)) {
       cl++;
 
-      re2::StringPiece l(line);
+      std::string_view l(line);
 
       vector<string> line_chords;
       string chord;
       while (RE2::Consume(&l, *extract_chord_line_re, &chord)) {
-  line_chords.push_back(std::move(chord));
+        line_chords.push_back(std::move(chord));
       }
 
       if (AcceptLineChords(line_chords)) {
-  chords.reserve(chords.size() + line_chords.size());
-  for (string &s : line_chords)
-    chords.push_back(std::move(s));
+        chords.reserve(chords.size() + line_chords.size());
+        for (string &s : line_chords) {
+          chords.push_back(std::move(s));
+        }
       }
     } else if (RE2::FullMatch(line, *line_with_crd_re)) {
       crdl++;
 
-      re2::StringPiece l(line);
+      std::string_view l(line);
 
       // TODO: Reject labeled tablature like this:
       // [E]--------------------------------------------|
@@ -193,22 +195,20 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
       // [G]--------------------------------------------|
       // ...
 
-
       vector<string> line_chords;
       string bracketed;
       while (RE2::Consume(&l, *extract_bracketed_re, &bracketed) &&
-       RE2::FullMatch(bracketed, *standard_chord_re)) {
-  line_chords.push_back(std::move(bracketed));
+             RE2::FullMatch(bracketed, *standard_chord_re)) {
+        line_chords.push_back(std::move(bracketed));
       }
 
       if (AcceptCrdChords(line_chords)) {
-  chords.reserve(chords.size() + line_chords.size());
-  for (string &s : line_chords)
-    chords.push_back(std::move(s));
+        chords.reserve(chords.size() + line_chords.size());
+        for (string &s : line_chords)
+          chords.push_back(std::move(s));
       }
     }
   }
-
 
   // Here we declare that every song is produced from a cycle of
   // chords, A B C. This trivially includes cycles repeated only
@@ -220,13 +220,13 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
   // Usually the verse itself repeats, too.)
 
   auto PrefixExplainsSong = [&chords](int length) {
-      CHECK(length <= (int)chords.size());
-      for (int i = 0; i < (int)chords.size(); i++) {
-  if (chords[i] != chords[i % length])
-    return false;
-      }
-      return true;
-    };
+    CHECK(length <= (int)chords.size());
+    for (int i = 0; i < (int)chords.size(); i++) {
+      if (chords[i] != chords[i % length])
+        return false;
+    }
+    return true;
+  };
 
   int truncated = 0;
   for (int len = 1; len <= (int)chords.size(); len++) {

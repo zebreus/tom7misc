@@ -1,20 +1,21 @@
 #include "chord-parser.h"
 
-#include <cstdio>
 #include <string>
 #include <vector>
 
+#include "ansi.h"
+#include "base/print.h"
 #include "base/logging.h"
 #include "util.h"
 
 using namespace std;
 
-#define CHECK_VEQ(v1, v2)       \
-  do {              \
-    auto vv1 = (v1);          \
-    auto vv2 = (v2);          \
-    CHECK_EQ(vv1, vv2) << #v1 " vs " #v2 ":\n" << \
-      Util::Join(vv1, "|") << "\n" <<     \
+#define CHECK_VEQ(v1, v2)                               \
+  do {                                                  \
+    auto vv1 = (v1);                                    \
+    auto vv2 = (v2);                                    \
+    CHECK_EQ(vv1, vv2) << #v1 " vs " #v2 ":\n" <<       \
+      Util::Join(vv1, "|") << "\n" <<                   \
       Util::Join(vv2, "|");                             \
   } while (0)
 
@@ -122,9 +123,11 @@ LOST, and in this week's podcast  scoff
 
 
 int main (int argc, char **argv) {
+  ANSI::Init();
+
   TestChordLines();
   TestChordCrd();
 
-  printf("OK.\n");
+  Print("OK.\n");
   return 0;
 }

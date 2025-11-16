@@ -133,7 +133,6 @@ void MarioUtil::WarpTo(Emulator *emu,
   emu->SetRAM(HALFWAY_PAGE, halfway);
 
   emu->StepFull(INPUT_T, 0);
-
 }
 
 MarioUtil::Pos MarioUtil::GetPos(const Emulator *emu) {

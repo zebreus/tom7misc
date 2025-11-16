@@ -1,12 +1,12 @@
 
 #include "hyphenation.h"
 
-#include <cstdio>
 #include <string>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "util.h"
 
 #undef CHECK_EQ

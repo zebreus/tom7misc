@@ -7,9 +7,10 @@
 #include <utility>
 #include <optional>
 
-#include "threadutil.h"
 #include "base/logging.h"
 #include "guitar/guitar.h"
+#include "threadutil.h"
+#include "base/print.h"
 
 #include "guitarchive.h"
 #include "chord-parser.h"
@@ -24,7 +25,7 @@ int main(int argc, char **argv) {
   ChordParser parser;
   vector<Entry> entries = Guitarchive::Load(16);
 
-  printf("Process..\n");
+  Print("Process..\n");
   fflush(stdout);
 
   vector<pair<string, ChordParser::Parsed>> chords_debug = ParallelMap(
@@ -34,7 +35,7 @@ int main(int argc, char **argv) {
       },
       16);
 
-  printf("Get unknown..\n");
+  Print("Get unknown..\n");
   std::unordered_map<string, int> unknown_chords;
   std::unordered_map<string, int> unfingered_chords;
   int64 known = 0, unfingered = 0, unknown = 0;
@@ -57,7 +58,7 @@ int main(int argc, char **argv) {
   }
 
   fflush(stdout);
-  printf("Stats..\n");
+  Print("Stats..\n");
   // Tally stats:
   int64 all_lines = 0, chord_lines = 0, crd_lines = 0;
   int64 intro_lines = 0;
@@ -81,21 +82,21 @@ int main(int argc, char **argv) {
       multiple_intro_files++;
   }
 
-  printf("Number of entries: %lld\n", (int64)entries.size());
-  printf(
-      "All lines: %lld\n"
-      "Chord lines: %lld (%.2f%%)\n"
-      "CRD lines: %lld (%.2f%%)\n"
-      "Intro lines: %lld (%.2f%%)\n"
-      "Total chords: %lld\n"
-      "Cycle chords removed: %lld\n"
-      "All files: %lld\n"
-      "Multiformat: %lld (%.2f%%)\n"
-      "No chords: %lld (%.2f%%)\n"
-      "Multiple intro: %lld (%.2f%%)\n"
-      "Chords known: %lld\n"
-      "Chords unfingered: %lld\n"
-      "Chords unknown: %lld\n",
+  Print("Number of entries: {}\n", entries.size());
+  Print(
+      "All lines: {}\n"
+      "Chord lines: {} ({:.2f}%)\n"
+      "CRD lines: {} ({:.2f}%)\n"
+      "Intro lines: {} ({:.2f}%)\n"
+      "Total chords: {}\n"
+      "Cycle chords removed: {}\n"
+      "All files: {}\n"
+      "Multiformat: {} ({:.2f}%)\n"
+      "No chords: {} ({:.2f}%)\n"
+      "Multiple intro: {} ({:.2f}%)\n"
+      "Chords known: {}\n"
+      "Chords unfingered: {}\n"
+      "Chords unknown: {}\n",
       all_lines,
       chord_lines,
       (chord_lines * 100.0) / all_lines,
@@ -106,7 +107,7 @@ int main(int argc, char **argv) {
       num_chords,
       chords_truncated,
       // Files
-      (int64)entries.size(),
+      entries.size(),
       multiformat_files,
       (multiformat_files * 100.0) / entries.size(),
       unextracted_files,
@@ -117,18 +118,18 @@ int main(int argc, char **argv) {
       unfingered,
       unknown);
 
-  printf("Writing to files...\n");
+  Print("Writing to files...\n");
   {
     FILE *f = fopen("chords.lines", "wb");
     CHECK(f);
     for (const auto &[filename, parsed] : chords_debug) {
       const auto &chords = parsed.chords;
       if (!chords.empty()) {
-        fprintf(f, "\n# %s\n", filename.c_str());
+        Print(f, "\n# {}\n", filename);
         for (const string &s : chords) {
-          fprintf(f, "%s ", s.c_str());
+          Print(f, "{} ", s);
         }
-        fprintf(f, "\n");
+        Print(f, "\n");
       }
     }
     fclose(f);
@@ -139,24 +140,24 @@ int main(int argc, char **argv) {
     FILE *f = fopen("multiformat.txt", "wb");
     for (const auto &[filename, parsed] : chords_debug) {
       if (parsed.chord_lines > 0 && parsed.crd_lines > 0) {
-        fprintf(f, "%s %d %d\n", filename.c_str(), parsed.chord_lines,
-                parsed.crd_lines);
+        Print(f, "{} {} {}\n", filename, parsed.chord_lines,
+              parsed.crd_lines);
       }
     }
     fclose(f);
   }
 
-  printf("Unfingered chords:\n");
+  Print("Unfingered chords:\n");
   for (const auto &[s, count] : unfingered_chords) {
-    printf(" % 6d: %s\n", count, s.c_str());
+    Print(" {: 6d}: {}\n", count, s);
   }
-  printf("\n");
+  Print("\n");
 
-  printf("Unknown chords:\n");
+  Print("Unknown chords:\n");
   for (const auto &[s, count] : unknown_chords) {
-    printf(" % 6d: %s\n", count, s.c_str());
+    Print(" {: 6d}: {}\n", count, s);
   }
-  printf("\n");
+  Print("\n");
 
   /*
 Number of entries: 445764
@@ -164,6 +165,6 @@ All lines: 49052253
 Chord lines: 4222050 (8.61%)
   */
 
-  printf("Done.\n");
+  Print("Done.\n");
   return 0;
 }

@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -62,7 +63,7 @@ std::vector<Token> Tokenize(int line_num,
 
   static const RE2 ident("([A-Za-z_][A-Za-z_0-9]*)");
 
-  re2::StringPiece input(input_string);
+  std::string_view input(input_string);
 
   std::vector<Token> ret;
   auto AddSimpleToken = [&ret, &input](TokenType t) {

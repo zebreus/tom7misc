@@ -41,6 +41,33 @@ static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {
   }
 }
 
+static MultiRSA::Key GenerateBad(int num_factors, int bits, CryptRand *cr) {
+
+  for (;;) {
+    std::vector<BigInt> factors;
+    int bits_left = bits;
+    int factors_left = num_factors;
+    while (factors_left > 0) {
+      const int prime_bits = bits_left / factors_left;
+      BigInt p = RSA::GeneratePrime(prime_bits, cr);
+      bits_left -= BigInt::NumBits(p);
+      factors_left--;
+      factors.emplace_back(std::move(p));
+    }
+
+    auto ko = MultiRSA::KeyFromPrimes(std::move(factors));
+    if (ko.has_value()) {
+      if (BigInt::NumBits(ko.value().n) == bits) {
+        CHECK(MultiRSA::ValidateKey(ko.value()));
+        return std::move(ko.value());
+      } else {
+        Print("Not enough bits.\n");
+      }
+    }
+  }
+}
+
+
 
 static void Generate() {
   CryptRand cr;

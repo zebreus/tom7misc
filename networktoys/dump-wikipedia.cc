@@ -2,23 +2,24 @@
 #include "wikipedia.h"
 
 #include <cstdint>
+#include <format>
 #include <string>
 #include <optional>
 #include <memory>
 #include <stdio.h>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
+#include "city/city.h"
 #include "re2/re2.h"
 #include "timer.h"
-#include "city/city.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 using re2::RE2;
-using re2::StringPiece;
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -38,7 +39,7 @@ static void Dump() {
 
   std::vector<FILE *> outfiles;
   for (int i = 0; i < NUM_SHARDS; i++) {
-    outfiles.push_back(fopen(StringPrintf("wikibits/wiki-%d.txt", i).c_str(),
+    outfiles.push_back(fopen(std::format("wikibits/wiki-{}.txt", i).c_str(),
                              "wb"));
     CHECK(outfiles.back() != nullptr);
   }
@@ -55,7 +56,7 @@ static void Dump() {
   std::unordered_map<string, int> entities;
   [[maybe_unused]]
   auto CountEntities = [&](const string &body) {
-      StringPiece input(body);
+      std::string_view input(body);
       string ent;
       while (RE2::FindAndConsume(&input, entity_re, &ent))
         entities[ent]++;
@@ -73,14 +74,14 @@ static void Dump() {
     // CountEntities(article.body);
     #if 0
     if (entities.find("&ndash;") != entities.end()) {
-      printf("??:\n%s\n", article.body.c_str());
+      Print("??:\n{}\n", article.body);
       return;
     }
     #endif
-    // printf("Title [%s]\n", article.title.c_str());
+    // Print("Title [{}]\n", article.title);
     num_articles++;
     if (wiki->IsRedirect(article)) {
-      // printf("(redirect)\n");
+      // Print("(redirect)\n");
       num_redirects++;
     } else {
       const uint64 h = CityHash64(article.title.data(),
@@ -107,18 +108,18 @@ static void Dump() {
 
     if (num_articles % 10000 == 0) {
       double total_sec = timer.MS() / 1000.0;
-      printf("%lld  [%.2f/sec]\n", num_articles,
-             num_articles / total_sec);
+      Print("{}  [{:.2f}/sec]\n", num_articles,
+            num_articles / total_sec);
 #if 0
       for (const auto &[ent, count] : entities) {
-        printf("%s: %d\n", ent.c_str(), count);
+        Print("{}: {}\n", ent, count);
       }
 #endif
     }
   }
 
-  printf("%lld articles. %lld are redirects\n",
-         num_articles, num_redirects);
+  Print("{} articles. %{} are redirects\n",
+        num_articles, num_redirects);
 
   for (FILE *f : outfiles) fclose(f);
 }

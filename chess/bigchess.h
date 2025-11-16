@@ -141,7 +141,7 @@ struct WorkQueue {
     no_more_work = true;
   }
 
-private:
+ private:
   const F f;
   const int num_workers;
   std::shared_mutex m;

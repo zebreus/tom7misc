@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "re2/re2.h"
 #include "threadutil.h"
 #include "util.h"
@@ -27,9 +28,9 @@ static constexpr const char *DIRS[] = {
 void Guitarchive::AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
     const string filename = Util::DirPlus(dir, f);
-    // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
+    // Print("{} + {} = {}\n", dir, f, filename);
     if (Util::isdir(filename)) {
-      // printf("Dir: [%s]\n", filename.c_str());
+      // Print("Dir: [{}]\n", filename);
       AddAllFilesRec(filename, all_files);
     } else {
       if (!filename.empty() &&
@@ -67,7 +68,7 @@ string Guitarchive::Backslash(const string &s) {
 
 vector<Entry> Guitarchive::Load(int threads) {
 
-  printf("List files..\n");
+  Print("List files..\n");
   fflush(stdout);
 
   vector<string> all_filenames;
@@ -75,7 +76,7 @@ vector<Entry> Guitarchive::Load(int threads) {
     Guitarchive::AddAllFilesRec(d, &all_filenames);
   }
 
-  printf("Num files: %lld\nReading..\n", (int64)all_filenames.size());
+  Print("Num files: {}\nReading..\n", all_filenames.size());
   fflush(stdout);
 
   // For a well-formed file, this will stop on the blank line after the
@@ -87,7 +88,7 @@ vector<Entry> Guitarchive::Load(int threads) {
       Entry entry;
       entry.filename = filename;
 
-      re2::StringPiece cont(contents);
+      std::string_view cont(contents);
       string key, val;
       while (RE2::Consume(&cont, normalized_header, &key, &val)) {
         if (key == "Title") {
@@ -101,7 +102,7 @@ vector<Entry> Guitarchive::Load(int threads) {
         }
       }
 
-      entry.body = cont.as_string();
+      entry.body = std::string(cont);
       return entry;
     };
 

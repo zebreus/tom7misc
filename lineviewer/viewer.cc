@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <format>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -75,7 +76,7 @@ static vector<TraceRow> ReadRows(const string &filename) {
 
   // skip first line, which is header.
   for (int r = 1; r < lines.size(); r++) {
-    re2::StringPiece line(lines[r]);
+    std::string_view line(lines[r]);
     TraceRow row;
     if (!RE2::Consume(&line, number, &row.timestamp))
       break;

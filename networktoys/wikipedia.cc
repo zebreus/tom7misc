@@ -7,6 +7,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -17,7 +18,6 @@
 
 using namespace std;
 using re2::RE2;
-using re2::StringPiece;
 
 using uint8 = uint8_t;
 using int64 = int64_t;
@@ -249,10 +249,10 @@ struct WikipediaImpl : public Wikipedia {
     string out;
     out.reserve(body.size());
 
-    StringPiece input(body);
+    std::string_view input(body);
 
     size_t pos = 0;
-    StringPiece submatch;
+    std::string_view submatch;
     while (start_re.Match(input,
                           pos,
                           input.size(),

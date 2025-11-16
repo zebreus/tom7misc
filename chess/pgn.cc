@@ -4,14 +4,14 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "re2/re2.h"
 #include "base/logging.h"
+#include "re2/re2.h"
 
 using namespace std;
-using StringPiece = re2::StringPiece;
 
 #define ANY_NOT_CLOSING_QUOTE "(?:[^\n\"\\\\]|\\\"|\\\\)*"
 static constexpr const char *META_LINE_RE =
@@ -57,7 +57,7 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
   // TODO: Parse (and drop?) alternate lines, which look like
   // (3. Bg2 e6 4. d3 Nc6 5. Nf3 Bxf3 6. Bxf3 Qh4+ 7. Kf1 Bd6)
 
-  re2::StringPiece input(s);
+  std::string_view input(s);
   string key, value;
 
   // If text ends without termination marker, treat this
@@ -66,7 +66,7 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
 
   while (RE2::Consume(&input, meta_line_re, &key, &value)) {
     // TODO: Actually need to unquote " and \ in value.
-    // printf("[%s] [%s]\n", key.c_str(), value.c_str());
+    // Print("[{}] [{}]\n", key, value);
     pgn->meta[key] = value;
   }
 
@@ -76,7 +76,7 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
 
   string move;
   while (RE2::Consume(&input, move_re, &move)) {
-    // printf("[%s] + [%s]\n", move.c_str(), post.c_str());
+    // Print("[{}] + [{}]\n", move, post);
 
     if (move == "1-0") {
       pgn->result = PGN::Result::WHITE_WINS;
@@ -104,7 +104,7 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
     // Note that checkmate and stalemate do not receive evals!
     string post;
     while (RE2::Consume(&input, comment_re, &post)) {
-      re2::StringPiece post_input(post);
+      std::string_view post_input(post);
       for (;;) {
         if (std::string e;
             RE2::Consume(&post_input, eval_re, &e)) {

@@ -2,11 +2,12 @@
 #ifndef _GRAD_HFLUINT8_H
 #define _GRAD_HFLUINT8_H
 
-#include <cstdint>
 #include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 
 #include "half.h"
-#include "expression.h"
 
 // If set, use uint8 to implement it (for debugging)
 #define HFLUINT8_WRAP 0

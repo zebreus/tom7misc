@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstddef>
 #include <format>
+#include <string_view>
 #include <utility>
 #include <optional>
 #include <cstdint>
@@ -305,7 +306,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"/", SLASH},
   };
 
-  re2::StringPiece input(input_string);
+  std::string_view input(input_string);
 
   // Get the current offset of the stringpiece.
   auto Pos = [&input_string, &input]() {
@@ -408,7 +409,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
         // The only thing that ends this is *].
         auto comment_len = input.find("*]");
 
-        if (comment_len == re2::StringPiece::npos) {
+        if (comment_len == std::string_view::npos) {
           if (error != nullptr) {
             *error =
               std::format("Unterminated [* layout comment *] "

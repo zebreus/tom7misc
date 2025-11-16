@@ -4,6 +4,7 @@
 #include <format>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,7 +58,7 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       }
     };
 
-  re2::StringPiece in(input);
+  std::string_view in(input);
   std::string match;
   while (RE2::Consume(&in, text_re, &match)) {
     // TODO: unescape html
@@ -81,7 +82,7 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       node.is_tag = true;
       node.str = {tag};
 
-      re2::StringPiece a(attrs);
+      std::string_view a(attrs);
       std::string attr, value;
       while (RE2::Consume(&a, attr_re, &attr, &value)) {
         if (VERBOSE) {

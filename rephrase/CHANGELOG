@@ -1,3 +1,10 @@
+26 Oct 2025
+
+ * Fixed a problem with the pdf generation code that would drop
+   all non-ascii codepoints for built-in fonts. We can't have full
+   Unicode support for these fonts (only WinAnsi), so I still
+   recommend against them.
+
 21 Sep 2025
 
  * Now bundling my modified llama with the source code so that you

@@ -7,15 +7,13 @@
 
 #include "re2/re2.h"
 
-using namespace std;
-
 struct ChordParser {
  public:
   ChordParser();
   ~ChordParser();
 
   struct Parsed {
-    vector<string> chords;
+    std::vector<std::string> chords;
     int lines = 0;
     int intro_lines = 0;
     int chord_lines = 0, crd_lines = 0;
@@ -23,7 +21,7 @@ struct ChordParser {
   };
 
   // Thread safe.
-  Parsed ExtractChords(const string &body);
+  Parsed ExtractChords(const std::string &body);
 
  private:
   RE2 *standard_chord_re = nullptr;

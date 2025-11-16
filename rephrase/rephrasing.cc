@@ -239,7 +239,7 @@ struct Database {
         " *([0-9]+) +([0-9]+) "
         "+([0-9A-Fa-f]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) *");
     Path path;
-    re2::StringPiece input(str);
+    std::string_view input(str);
     // while (!input.empty() && input[0] == ' ') input.remove_prefix(1);
     int tok = 0, depth = 0;
     std::string pskip, p, pnext;

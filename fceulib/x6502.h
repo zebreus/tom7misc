@@ -485,14 +485,14 @@ struct X6502 {
   template<class F>
   void LD_AB(F op) {
     const uint16_t AA = GetAB();
-    [[maybe_unused]] const uint8_t x = RdMem(AA);
+    const uint8_t x = RdMem(AA);
     op(x);
   }
 
   template<class F>
   void LD_ABI(uint8_t reg, F op) {
     const uint16_t AA = GetABIRD(reg);
-    [[maybe_unused]] const uint8_t x = RdMem(AA);
+    const uint8_t x = RdMem(AA);
     op(x);
   }
   template<class F> void LD_ABX(F op) { LD_ABI(reg_X, op); }

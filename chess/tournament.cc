@@ -527,8 +527,8 @@ static string RenderMoves(const vector<Move> &moves) {
   for (int n = 0; n < moves.size(); n++) {
     if (!pgn.empty()) pgn.push_back(' ');
     if (n % 2 == 0)
-      pgn += StringPrintf("%d.", (n >> 1) + 1);
-    pgn += StringPrintf(" %s", pos.ShortMoveString(moves[n]).c_str());
+      AppendFormat(&pgn, "{}.", (n >> 1) + 1);
+    AppendFormat(&pgn, " {}", pos.ShortMoveString(moves[n]));
     CHECK(pos.IsLegal(moves[n])) << pos.BoardString() << "\n"
                                  << pos.LongMoveString(moves[n]);
     pos.ApplyMove(moves[n]);
@@ -693,12 +693,12 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
       int64 minutes = total_seconds / 60;
       int seconds = total_seconds % 60;
       if (minutes == 0)
-        return StringPrintf(ANSI_CYAN "%d" ANSI_RESET "s",
-                            seconds);
+        return std::format(ANSI_CYAN "{}" ANSI_RESET "s",
+                           seconds);
       else
-        return StringPrintf(ANSI_CYAN "%lld" ANSI_RESET "m"
-                            ANSI_CYAN "%d" ANSI_RESET "s",
-                            minutes, seconds);
+        return std::format(ANSI_CYAN "{}" ANSI_RESET "m"
+                           ANSI_CYAN "{}" ANSI_RESET "s",
+                           minutes, seconds);
     };
 
   for (int i = 0; i < status.size() + 3; i++) {
@@ -716,8 +716,8 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
          ANSI_WHITE " ---------" ANSI_CLEARTOEOL "\n",
          done_all, free_all, AnsiMinSec(total_seconds).c_str());
   for (int i = 0; i < status.size(); i++) {
-    string num = Util::Pad(-2, StringPrintf("%d", i + 1));
-    string done = Util::Pad(-3, StringPrintf("%d", status[i].done_games));
+    string num = Util::Pad(-2, std::format("{}", i + 1));
+    string done = Util::Pad(-3, std::format("{}", status[i].done_games));
     string minsec;
     if (status[i].run_start > 0)
       minsec = AnsiMinSec(now - status[i].run_start);

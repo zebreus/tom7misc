@@ -7,32 +7,31 @@
 #include <string>
 
 
-using namespace std;
-
 // Parsed entry from disk. This is not sufficient to exactly recreate
 // the file; see cleandb.cc for round-trip stuff.
 struct Entry {
   // These are removed from the headers if present.
-  string artist;
-  string title;
-  string album;
+  std::string artist;
+  std::string title;
+  std::string album;
   // Other headers as key, value.
-  vector<pair<string, string>> headers;
+  std::vector<std::pair<std::string, std::string>> headers;
 
-  string filename;
+  std::string filename;
 
   // Unparsed body.
-  string body;
+  std::string body;
 };
 
 struct Guitarchive {
-  static void AddAllFilesRec(const string &dir, vector<string> *all_files);
+  static void AddAllFilesRec(const std::string &dir,
+                             std::vector<std::string> *all_files);
 
-  static string Frontslash(const string &s);
-  static string Backslash(const string &s);
+  static std::string Frontslash(const std::string &s);
+  static std::string Backslash(const std::string &s);
 
   // Load everything, with headers.
-  static vector<Entry> Load(int threads = 16);
+  static std::vector<Entry> Load(int threads = 16);
 };
 
 #endif

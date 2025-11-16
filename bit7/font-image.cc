@@ -226,10 +226,11 @@ static PageInfo PageBit7Classic() {
     // Line 2:
     // eta, theta, iota, kappa, lambda, mu, (no nu), xi, (no omicron)
     0x03B7, 0x03B8, 0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BE,
-    // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi, (no chi), omega
+    // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi (the letter,
+    // which is typically loopy), (no chi), omega
     0x03C0, 0x03C1, 0x03C2, 0x03C3, 0x03C4, 0x03C6, 0x03C8, 0x03C9,
-    // one unclaimed spot at the end of greek
-    -1,
+    // mathematical phi symbol (closed)
+    0x03D5,
 
     // This was once some basic math symbols, but I moved them
     // to the proper unicode page.

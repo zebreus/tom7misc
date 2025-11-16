@@ -26,7 +26,7 @@
 #include "zoning.h"
 
 // Can use ByteSet64, which reduces the memory requirements to 25%,
-// but is slower and less accurate.
+// but is slower and less accurate. Not recommended.
 using MemByteSet = ByteSet;
 #define RegByteSet(x) x
 
@@ -237,7 +237,11 @@ struct Modeling {
   // Used internally to print the location of an error like a
   // memory invariant violation.
   struct ErrorLoc {
+    // Start of the basic block being analyzed.
+    uint16_t block = 0;
+    // PC of the instruction.
     uint16_t pc = 0;
+    // Number of modeling expansions so far.
     int64_t step = 0;
   };
 
@@ -245,7 +249,8 @@ struct Modeling {
   // it will be a singleton set with the fixed contents. If it's in
   // RAM, we use the set in that slot from the state. If it's
   // memory-mapped, then we have special cases.
-  ByteSet GetByteSet(const State &state, uint16_t addr) const;
+  ByteSet GetByteSet(const ErrorLoc &loc,
+                     const State &state, uint16_t addr) const;
   // Conversely, write to an address (typically a RAM address).
   void WriteMemByteSet(const ErrorLoc &loc,
                        State *state, uint16_t addr,
@@ -261,8 +266,10 @@ struct Modeling {
   // address case from the zero page case, since the latter only
   // wraps around on the zero page.
   ByteSet GetByteSetFromOffsets16(
+      const ErrorLoc &loc,
       const State &state, uint16_t addr, const ByteSet &offsets) const;
   ByteSet GetByteSetFromOffsetsZpg(
+      const ErrorLoc &loc,
       const State &state, uint8_t addr, const ByteSet &offsets) const;
 
   // True if we have this block in our analysis.
