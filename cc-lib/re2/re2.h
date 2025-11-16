@@ -908,11 +908,14 @@ MAKE_INTEGER_PARSER(unsigned long long, ulonglong)
 // it constructs: that's a feature, so that it can be used
 // for global and function static variables.
 class LazyRE2 {
- private:
-  struct NoArg {};
-
  public:
-  typedef RE2 element_type;  // support std::pointer_traits
+  LazyRE2(const char* pattern, RE2::CannedOptions options = RE2::DefaultOptions)
+      : pattern_(pattern),
+        options_(options),
+        ptr_(nullptr) {
+  }
+
+  using element_type = RE2;  // support std::pointer_traits
 
   // Constructor omitted to preserve braced initialization in C++98.
 
@@ -926,15 +929,13 @@ class LazyRE2 {
     return ptr_;
   }
 
-  // All data fields must be public to support {"foo"} initialization.
+ private:
   const char* pattern_;
   RE2::CannedOptions options_;
-  NoArg barrier_against_excess_initializers_;
 
   mutable RE2* ptr_;
   mutable std::once_flag once_;
 
- private:
   static void Init(const LazyRE2* lazy_re2) {
     lazy_re2->ptr_ = new RE2(lazy_re2->pattern_, lazy_re2->options_);
   }
