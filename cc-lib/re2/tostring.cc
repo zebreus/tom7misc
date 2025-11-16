@@ -8,11 +8,10 @@
 #include <string.h>
 #include <string>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
+#include "re2/regexp.h"
 #include "re2/util/strutil.h"
 #include "re2/util/utf.h"
-#include "re2/regexp.h"
 #include "re2/walker-inl.h"
 
 namespace re2 {

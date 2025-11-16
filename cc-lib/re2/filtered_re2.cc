@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/prefilter.h"
 #include "re2/prefilter_tree.h"
 

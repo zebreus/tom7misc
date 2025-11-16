@@ -9,7 +9,7 @@
 #include <string>
 #include <string_view>
 
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/utf.h"
 #include "re2/pod_array.h"
 #include "re2/regexp.h"

@@ -8,11 +8,11 @@
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif
-#include <stdint.h>
-#include <string.h>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include <cstdint>
+#include <cstring>
+
+#include "base/logging.h"
 
 namespace re2 {
 

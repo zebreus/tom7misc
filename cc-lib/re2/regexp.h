@@ -86,13 +86,13 @@
 // form accessible to clients, so that client code can analyze the
 // parsed regular expressions.
 
-#include <stdint.h>
 #include <map>
 #include <set>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/utf.h"
 
 namespace re2 {

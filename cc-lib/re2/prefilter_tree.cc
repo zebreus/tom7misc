@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/strutil.h"
 #include "re2/prefilter.h"
 #include "re2/re2.h"

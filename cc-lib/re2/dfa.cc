@@ -36,13 +36,14 @@
 #include <utility>
 #include <vector>
 
-#include "re2/util/logging.h"
-#include "re2/util/mix.h"
-#include "re2/util/mutex.h"
-#include "re2/util/strutil.h"
+#include "base/logging.h"
 #include "re2/pod_array.h"
 #include "re2/prog.h"
 #include "re2/sparse_set.h"
+#include "re2/util/mix.h"
+#include "re2/util/mutex.h"
+#include "re2/util/strutil.h"
+#include "re2/util/util.h"
 
 // Silence "zero-sized array in struct/union" warning for DFA::State::next_.
 #ifdef _MSC_VER

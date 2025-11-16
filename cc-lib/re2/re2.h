@@ -248,13 +248,8 @@ class RE2 {
     Quiet // do not log about regexp parse errors
   };
 
-  // Need to have the const char* and const std::string& forms for implicit
-  // conversions when passing string literals to FullMatch and PartialMatch.
-  // Otherwise the std::string_view form would be sufficient.
-#ifndef SWIG
   RE2(const char* pattern);
   RE2(const std::string& pattern);
-#endif
   RE2(std::string_view pattern);
   RE2(std::string_view pattern, const Options& options);
   ~RE2();

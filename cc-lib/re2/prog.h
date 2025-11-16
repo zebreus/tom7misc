@@ -17,7 +17,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/pod_array.h"
 #include "re2/re2.h"
 #include "re2/sparse_array.h"

@@ -17,10 +17,10 @@
 #include <string_view>
 #include <vector>
 
-#include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/mutex.h"
 #include "re2/util/utf.h"
+#include "re2/util/util.h"
 #include "re2/walker-inl.h"
 
 namespace re2 {

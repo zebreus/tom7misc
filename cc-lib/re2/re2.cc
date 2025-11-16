@@ -24,7 +24,7 @@
 #include <utility>
 
 #include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/strutil.h"
 #include "re2/util/utf.h"
 #include "re2/prog.h"
@@ -106,7 +106,7 @@ static std::string trunc(std::string_view pattern) {
 
 
 RE2::RE2(const char* pattern) {
-  Init(pattern, DefaultOptions);
+  Init(pattern == nullptr ? "" : pattern, DefaultOptions);
 }
 
 RE2::RE2(const std::string& pattern) {

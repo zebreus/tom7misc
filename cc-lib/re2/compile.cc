@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/utf.h"
 #include "re2/pod_array.h"
 #include "re2/prog.h"

@@ -61,7 +61,7 @@
 #include "re2/pod_array.h"
 #include "re2/prog.h"
 #include "re2/sparse_set.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/strutil.h"
 #include "re2/util/utf.h"
 

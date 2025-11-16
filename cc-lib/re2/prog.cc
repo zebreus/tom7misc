@@ -20,7 +20,7 @@
 #include "re2/sparse_array.h"
 #include "re2/sparse_set.h"
 #include "re2/util/util.h"
-#include "re2/util/logging.h"
+#include "base/logging.h"
 #include "re2/util/strutil.h"
 #include "re2/bitmap256.h"
 
