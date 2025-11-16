@@ -18,20 +18,20 @@ static void TestUnicodeData() {
   std::unique_ptr<UnicodeData> ud = UnicodeData::FromContent(SAMPLE_DATA);
   CHECK(ud.get() != nullptr);
 
-  auto cp_a = ud->GetByName(0x41);
+  auto cp_a = ud->GetByCodepoint(0x41);
   CHECK(cp_a.has_value());
   CHECK(cp_a->codepoint == 0x41);
   CHECK(cp_a->name == "LATIN CAPITAL LETTER A");
 
-  auto cp_frac = ud->GetByName(0x215E);
+  auto cp_frac = ud->GetByCodepoint(0x215E);
   CHECK(cp_frac.has_value());
   CHECK(cp_frac->codepoint == 0x215E);
   CHECK(cp_frac->name == "VULGAR FRACTION SEVEN EIGHTHS");
 
   // Not in there.
-  CHECK(!ud->GetByName(0xFFFF).has_value());
-  CHECK(!ud->GetByName(0x0007).has_value());
-  CHECK(!ud->GetByName(0x8000215E).has_value());
+  CHECK(!ud->GetByCodepoint(0xFFFF).has_value());
+  CHECK(!ud->GetByCodepoint(0x0007).has_value());
+  CHECK(!ud->GetByCodepoint(0x8000215E).has_value());
 
   auto name_b = ud->GetByName("LATIN CAPITAL LETTER B");
   CHECK(name_b.has_value());

@@ -15,7 +15,6 @@
 
 using namespace std;
 using int64 = int64_t;
-using StringPiece = re2::StringPiece;
 
 SimpleDXF::ValueType SimpleDXF::CodeType(int code) {
   if (code >= 0 && code <= 9) return ValueType::STRING;

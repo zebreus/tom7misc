@@ -28,7 +28,7 @@ struct UnicodeData {
   // Note that some codepoints don't have good names and so they can't really
   // be looked up this way. Like, there are a bunch named "<control>".
   virtual std::optional<CodepointData> GetByName(std::string_view name) const = 0;
-  virtual std::optional<CodepointData> GetByName(uint32_t codepoint) const = 0;
+  virtual std::optional<CodepointData> GetByCodepoint(uint32_t codepoint) const = 0;
 
  protected:
   // Use factory.

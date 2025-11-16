@@ -129,6 +129,9 @@ edit-distance_test.exe : edit-distance_test.o edit-distance.o $(BASE)
 re2_test.exe : re2_test.o $(RE2_OBJECTS) $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@ -lpthread
 
+re2-util_test.exe : re2_test.o $(RE2_OBJECTS) $(BASE) $(TEST_UTIL)
+	$(CXX) $(CXXFLAGS) $^ -o $@ -lpthread
+
 webserver_test.exe : webserver_test.o webserver.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(SOCK_LFLAGS) -lpthread
 
