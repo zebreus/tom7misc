@@ -52,6 +52,36 @@ void TestObject() {
   CHECK(!RE2::FullMatch("Lz Phr", liz));
 }
 
+void TestUnicodeRange() {
+  CHECK(RE2::FullMatch("λ", "[α-ω]"));
+}
+
+void TestAnyBytes() {
+  // A valid UTF-8 sequence for 'español'.
+  std::string good_utf8 = "espa\xc3\xb1ol";
+  // Malformed UTF-8 with space after a UTF-8 continuation byte.
+  std::string bad_utf8 = "espa\xc3 ol";
+
+  std::string with_null("espa\x00ol", 7);
+  CHECK(with_null.size() == 7);
+
+  CHECK(RE2::FullMatch(good_utf8, ".+"));
+  CHECK(!RE2::FullMatch(bad_utf8, ".+")) << ". will match proper codepoints, "
+    "but not busted UTF-8.";
+  CHECK(RE2::FullMatch(with_null, ".+")) << "U+0000 is ok.";
+
+  CHECK(RE2::FullMatch(with_null, with_null));
+
+  // In RE2, Latin1 is apparently the right way to write the regex as
+  // raw bytes.
+  RE2::Options binary_options;
+  binary_options.set_encoding(RE2::Options::EncodingLatin1);
+
+  CHECK(RE2::FullMatch(good_utf8, good_utf8));
+  CHECK(RE2::FullMatch(bad_utf8, RE2(bad_utf8, binary_options)));
+  CHECK(RE2::FullMatch(with_null, RE2(with_null, binary_options)));
+}
+
 #define ANY_CHAR "(?:.|[\n])"
 void TestConsume() {
   const std::string msg =
@@ -309,6 +339,8 @@ static void Extract() {
 }
 
 static void MaxSubmatchTooLarge() {
+  // We could maybe turn off verbose mode?
+  Print("Some error printouts are expected here:\n");
   std::string s;
   CHECK(!RE2::Extract("foo", "f(o+)", "\\1\\2", &s));
   s = "foo";
@@ -1165,7 +1197,6 @@ static void UngreedyUTF8() {
 }
 
 static void Rejects() {
-  printf("Parse errors are expected here:\n");
   {
     RE2 re("a\\1", RE2::Quiet);
     CHECK(!re.ok()); }
@@ -1736,6 +1767,8 @@ int main(int argc, char **argv) {
   TestObject();
   TestConsume();
   TestBitStateFirstMatchBug();
+  TestUnicodeRange();
+  TestAnyBytes();
 
   // re2 tests
   HexTests();
@@ -1816,6 +1849,7 @@ int main(int argc, char **argv) {
   TestIssue477();
   TestInitNull();
 
+  Print("\n");
   Print("OK\n");
   return 0;
 }
