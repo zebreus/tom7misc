@@ -104,9 +104,17 @@ static void TestDecoder() {
   }
 }
 
+static void TestCodepoint() {
+  CHECK(UTF8::Codepoint("7") == (uint32_t)'7');
+  CHECK(UTF8::Codepoint("∃") == 0x2203);
+  CHECK(UTF8::Codepoint("♜") == 0x265C);
+  CHECK(UTF8::Codepoint("💡") == 0x1F4A1);
+}
+
 int main(int argc, char **argv) {
   TestUnicode();
   TestDecoder();
+  TestCodepoint();
 
   Print("OK\n");
   return 0;

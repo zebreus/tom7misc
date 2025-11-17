@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -23,6 +24,11 @@ struct UTF8 {
   // encodings are transformed to U+FFFD, the replacement character,
   // but the algorithm for doing this is unspecified.
   static inline std::vector<uint32_t> Codepoints(std::string_view utf8);
+
+  // Decode a string literal to a single codepoint at compile time.
+  // Requires a single, valid, canonical UTF-8 sequence.
+  // TODO: Make this consteval when compilers are ready.
+  static inline constexpr uint32_t Codepoint(std::string_view sv);
 
   // Get the number of codepoints in the UTF-8 string, assuming it is
   // encoded correctly. Doesn't handle stuff like combining
@@ -70,6 +76,10 @@ struct UTF8 {
    private:
     const const_iterator begin_it, end_it;
   };
+
+ private:
+  // Helper used for Codepoint(); could make sense to expose it.
+  static inline constexpr std::optional<uint32_t> DecodeOpt(std::string_view sv);
 };
 
 
@@ -284,6 +294,78 @@ std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
   return std::make_pair(len, ch);
 }
 
+
+constexpr std::optional<uint32_t> UTF8::DecodeOpt(std::string_view sv) {
+  if (sv.empty()) {
+    return std::nullopt;
+  }
+
+  const uint8_t b1 = (uint8_t)sv[0];
+  uint32_t cp = 0;
+  size_t len = 0;
+  uint32_t min_cp = 0;
+
+  // Get expected length.
+  if ((b1 & 0x80) == 0) { // 0xxxxxxx
+    len = 1;
+    cp = b1;
+    min_cp = 0;
+  } else if ((b1 & 0xE0) == 0xC0) { // 110xxxxx
+    len = 2;
+    cp = b1 & 0x1F;
+    min_cp = 0x80;
+  } else if ((b1 & 0xF0) == 0xE0) { // 1110xxxx
+    len = 3;
+    cp = b1 & 0x0F;
+    min_cp = 0x800;
+  } else if ((b1 & 0xF8) == 0xF0) { // 11110xxx
+    len = 4;
+    cp = b1 & 0x07;
+    min_cp = 0x10000;
+  } else {
+    // Invalid (e.g., 10xxxxxx or 11111xxx)
+    return std::nullopt;
+  }
+
+  if (sv.size() != (size_t)len) {
+    return std::nullopt;
+  }
+
+  // Loop to process continuation bytes (10xxxxxx).
+  for (size_t i = 1; i < len; i++) {
+    const uint8_t byte = (uint8_t)sv[i];
+    if ((byte & 0xC0) != 0x80) {
+      // Invalid continuation byte.
+      return std::nullopt;
+    }
+    cp = (cp << 6) | (byte & 0x3F);
+  }
+
+  if (cp < min_cp) {
+    // Overlong (non-canonical) encoding.
+    return std::nullopt;
+  }
+
+  if (cp > 0x10FFFF) {
+    return std::nullopt;
+  }
+
+  if (cp >= 0xD800 && cp <= 0xDFFF) {
+    // A UTF-16 surrogate.
+    return std::nullopt;
+  }
+
+  return cp;
+}
+
+constexpr uint32_t UTF8::Codepoint(std::string_view sv) {
+  std::optional<uint32_t> co = DecodeOpt(sv);
+  if (!co.has_value()) {
+    throw "Invalid UTF-8 sequence provided to UTF8::Codepoint";
+  }
+  return co.value();
+}
+
 UTF8::Decoder::Decoder(std::string_view s) :
   begin_it(s.data(), s.data() + s.size()),
   end_it(s.data() + s.size(), s.data() + s.size()) {}
@@ -321,6 +403,7 @@ uint32_t UTF8::Decoder::const_iterator::operator *() const {
   const auto &[code_len_, code] = UTF8::ParsePrefix(ptr, limit - ptr);
   return code;
 }
+
 
 
 
