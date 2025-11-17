@@ -15,9 +15,6 @@ struct HTMLEntities {
   // multiple codepoints, although it is usually just one.
   static std::optional<std::string> GetEntity(std::string_view ent);
 
-  // XXX
-  static const std::unordered_map<std::string, std::string> &GetMap();
-
 };
 
 #endif

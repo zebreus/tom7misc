@@ -1,15 +1,20 @@
 
 #include "html-entities.h"
 
+#include <functional>
+#include <optional>
 #include <unordered_map>
 #include <string>
 #include <string_view>
 
+#include "hashing.h"
 
-const std::unordered_map<std::string, std::string> &HTMLEntities::GetMap() {
+static const std::unordered_map<std::string, std::string,
+                                Hashing<std::string>, std::equal_to<>> &GetMap() {
   // Not trying to do anything fancy with storage here, since
   // these will almost always fit in the short string optimization.
-  static const std::unordered_map<std::string, std::string> m = {
+  static const std::unordered_map<std::string, std::string,
+                                  Hashing<std::string>, std::equal_to<>> m = {
   { "AElig", "\u00c6" },
   { "AMP", "\u0026" },
   { "Aacute", "\u00c1" },
@@ -2140,10 +2145,10 @@ const std::unordered_map<std::string, std::string> &HTMLEntities::GetMap() {
   return m;
 }
 
-#if 0
 std::optional<std::string> HTMLEntities::GetEntity(std::string_view ent) {
-  const std::unordered_map<std::string, std::string> &m =
-
-  auto it =
+  const auto &m = GetMap();
+  auto it = m.find(ent);
+  if (it == m.end()) return std::nullopt;
+  return it->second;
 }
-#endif
+

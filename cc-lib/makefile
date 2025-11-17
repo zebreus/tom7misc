@@ -318,7 +318,7 @@ fix-encoding_test.exe : fix-encoding_test.o fix-encoding.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
-html-entities_test.exe : html-entities_test.o html-entities.o $(BASE) $(TEST_UTIL) $(RE2_OBJECTS)
+html-entities_test.exe : html-entities_test.o html-entities.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
