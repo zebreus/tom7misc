@@ -143,6 +143,16 @@ void TestBitStateFirstMatchBug() {
   }
 }
 
+static void TestReps() {
+  static LazyRE2 HTML_ENTITY_RE = { "&#?[0-9A-Za-z]{1,24};" };
+  CHECK(RE2::FullMatch("&okay;", *HTML_ENTITY_RE));
+  CHECK(RE2::FullMatch("&o;", *HTML_ENTITY_RE));
+  CHECK( RE2::FullMatch("&zzzzzzzzzzzzzzzzzzzzzzzz;", *HTML_ENTITY_RE));
+  CHECK(!RE2::FullMatch("&;", *HTML_ENTITY_RE));
+  // Too long.
+  CHECK(!RE2::FullMatch("&zzzzzzzzzzzzzzzzzzzzzzzzz;", *HTML_ENTITY_RE));
+}
+
 static void HexTests() {
   #define CHECK_HEX(type, value) do {                                   \
       type v;                                                           \
@@ -1632,12 +1642,11 @@ static void Bug18458852() {
   // causing compiler to fail in ABSL_DCHECK() in UTF-8
   // character class code.
   const char b[] = {
-      (char)0x28, (char)0x05, (char)0x05, (char)0x41, (char)0x41, (char)0x28,
-      (char)0x24, (char)0x5b, (char)0x5e, (char)0xf5, (char)0x87, (char)0x87,
-      (char)0x90, (char)0x29, (char)0x5d, (char)0x29, (char)0x29, (char)0x00,
+    (char)0x28, (char)0x05, (char)0x05, (char)0x41, (char)0x41, (char)0x28,
+    (char)0x24, (char)0x5b, (char)0x5e, (char)0xf5, (char)0x87, (char)0x87,
+    (char)0x90, (char)0x29, (char)0x5d, (char)0x29, (char)0x29, (char)0x00,
   };
-  printf("A parse error is expected here:\n");
-  RE2 re(b);
+  RE2 re(b, RE2::Quiet);
   CHECK(!re.ok());
 }
 
@@ -1769,6 +1778,7 @@ int main(int argc, char **argv) {
   TestBitStateFirstMatchBug();
   TestUnicodeRange();
   TestAnyBytes();
+  TestReps();
 
   // re2 tests
   HexTests();

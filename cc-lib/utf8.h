@@ -47,6 +47,10 @@ struct UTF8 {
 
 
   // Iterate over the codepoints in a string without allocating a copy.
+  // You can do
+  //   for (uint32_t codepoint : UTF8::Decoder(s)) {
+  //     ...
+  //   }
   struct Decoder {
     inline Decoder(std::string_view s);
 
@@ -60,7 +64,7 @@ struct UTF8 {
       inline const_iterator operator ++(int postfix);
       inline uint32_t operator *() const;
 
-    private:
+     private:
       const char *ptr = nullptr;
       const char *limit = nullptr;
     };

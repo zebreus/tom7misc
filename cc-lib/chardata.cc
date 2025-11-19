@@ -11,15 +11,19 @@
 #include <cstdint>
 #include <format>
 #include <initializer_list>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
+#include "base/logging.h"
+#include "html-entities.h"
 #include "re2-util.h"
 #include "re2/re2.h"
 #include "utf8.h"
-
 
 #if 0
 // These are the encodings we will try to fix in ftfy, in the
@@ -73,17 +77,7 @@ def _build_regexes() -> dict[str, re.Pattern[str]]:
     return encoding_regexes
 
 ENCODING_REGEXES = _build_regexes()
-#endif
 
-// XXX is this syntax supported by re2?
-static LazyRE2 HTML_ENTITY_RE = { "&#?[0-9A-Za-z]{1,24};" };
-
-// HTML entities are in html-entities.h.
-// Note that ftfy will also decode some nonstandard ones like
-// "NTILDE" (should be Ntilde) to handle cases where the string
-// was uppercased in ASCII. Not done here.
-
-#if 0
 def possible_encoding(text: str, encoding: str) -> bool:
     """
     Given text and a single-byte encoding, check whether that text could have
@@ -93,32 +87,98 @@ def possible_encoding(text: str, encoding: str) -> bool:
     sloppily.
     """
     return bool(ENCODING_REGEXES[encoding].match(text))
-
-
-def _build_control_char_mapping() -> dict[int, None]:
-    """
-    Build a translate mapping that strips likely-unintended control characters.
-    See :func:`ftfy.fixes.remove_control_chars` for a description of these
-    codepoint ranges and why they should be removed.
-    """
-    control_chars: dict[int, None] = {}
-
-    for i in itertools.chain(
-        range(0x00, 0x09),
-        [0x0B],
-        range(0x0E, 0x20),
-        [0x7F],
-        range(0x206A, 0x2070),
-        [0xFEFF],
-        range(0xFFF9, 0xFFFD),
-    ):
-        control_chars[i] = None
-
-    return control_chars
-
-
-CONTROL_CHARS = _build_control_char_mapping()
 #endif
+
+
+// HTML entities are in html-entities.h.
+// Note that ftfy will also decode some nonstandard ones like
+// "NTILDE" (should be Ntilde) to handle cases where the string
+// was uppercased in ASCII. Not done here.
+std::string UnescapeHTML(std::string_view text) {
+  // {1,24} means from one to 24 repetitions, inclusive.
+  static LazyRE2 HTML_ENTITY_RE = { "&(#?[0-9A-Za-z]{1,24});" };
+  auto ReplaceEntity = [](std::span<const std::string_view> match) -> std::string {
+      std::string_view ent = match[1];
+      CHECK(!ent.empty());
+      if (ent[0] == '#') {
+        // TODO: Implement numeric entities.
+        return std::string(match[0]);
+      } else {
+        if (std::optional<std::string> dec = HTMLEntities::GetEntity(ent)) {
+          return dec.value();
+        } else {
+          return std::string(match[0]);
+        }
+      }
+    };
+
+  return RE2Util::MapReplacement(text, *HTML_ENTITY_RE, ReplaceEntity);
+}
+
+// Set of likely-unintended control characters.
+static std::unordered_set<uint32_t> ControlChars() {
+  std::unordered_set<uint32_t> ret;
+  auto Range = [&ret](uint32_t lo, uint32_t hi) {
+      for (uint32_t i = lo; i < hi; i++) {
+        ret.insert(i);
+      }
+    };
+
+  Range(0x0000, 0x0009);
+  ret.insert(0x000B);
+  Range(0x000E, 0x0020);
+  ret.insert(0x007F);
+  Range(0x206A, 0x2070);
+  ret.insert(0xFEFF);
+  Range(0xFFF9, 0xFFFD);
+
+  return ret;
+}
+
+//  Remove various control characters that you probably didn't intend to be in
+//  your text. Many of these characters appear in the table of "Characters not
+//  suitable for use with markup" at
+//  http://www.unicode.org/reports/tr20/tr20-9.html.
+//
+//  This includes:
+//
+//  - ASCII control characters, except for the important whitespace characters
+//    (U+00 to U+08, U+0B, U+0E to U+1F, U+7F)
+//  - Deprecated Arabic control characters (U+206A to U+206F)
+//  - Interlinear annotation characters (U+FFF9 to U+FFFB)
+//  - The Object Replacement Character (U+FFFC)
+//  - The byte order mark (U+FEFF)
+//
+//  However, these similar characters are left alone:
+//
+//  - Control characters that produce whitespace (U+09, U+0A, U+0C, U+0D,
+//    U+2028, and U+2029)
+//  - C1 control characters (U+80 to U+9F) -- even though they are basically
+//    never used intentionally, they are important clues about what mojibake
+//    has happened
+//  - Control characters that affect glyph rendering, such as joiners and
+//    right-to-left marks (U+200C to U+200F, U+202A to U+202E)
+//  - Musical notation control characters (U+1D173 to U+1D17A) because wow if
+//    you're using those you probably have a good reason
+//  - Tag characters, because they are now used in emoji sequences such as
+//    "Flag of Wales"
+std::string RemoveControlChars(std::string_view text) {
+  static const std::unordered_set<uint32_t> cc = ControlChars();
+
+  std::string ret;
+  ret.reserve(text.size());
+
+  for (uint32_t codepoint : UTF8::Decoder(text)) {
+    if (!cc.contains(codepoint)) {
+      // Encoding will always fit in SSO here, so there are no
+      // allocations. But it might be good to have an EncodeTo?
+      ret.append(UTF8::Encode(codepoint));
+    }
+  }
+
+  return ret;
+}
+
 
 // Recognize UTF-8 sequences that would be valid if it weren't for a b'\xa0'
 // that some Windows-1252 program converted to a plain space.
@@ -192,42 +252,6 @@ static LazyRE2 LOSSY_UTF8_RE = {
 // This regex matches C1 control characters, which occupy some of the positions
 // in the Latin-1 character map that Windows assigns to other characters instead.
 static LazyRE2 C1_CONTROL_RE = { "[\x80-\x9f]", BINARY_REGEX };
-
-// A translate mapping that breaks ligatures made of Latin letters. While
-// ligatures may be important to the representation of other languages, in Latin
-// letters they tend to represent a copy/paste error. It omits ligatures such
-// as æ that are frequently used intentionally.
-//
-// This list additionally includes some Latin digraphs that represent two
-// characters for legacy encoding reasons, not for typographical reasons.
-//
-// Ligatures and digraphs may also be separated by NFKC normalization, but that
-// is sometimes more normalization than you want.
-
-static std::initializer_list<std::pair<uint32_t, std::string_view>> LIGATURES = {
-  { UTF8::Codepoint("Ĳ"), "IJ" },
-  { UTF8::Codepoint("ĳ"), "ij" },
-  { UTF8::Codepoint("ŉ"), "ʼn" },
-  { UTF8::Codepoint("Ǳ"), "DZ" },
-  { UTF8::Codepoint("ǲ"), "Dz" },
-  { UTF8::Codepoint("ǳ"), "dz" },
-  { UTF8::Codepoint("Ǆ"), "DŽ" },
-  { UTF8::Codepoint("ǅ"), "Dž" },
-  { UTF8::Codepoint("ǆ"), "dž" },
-  { UTF8::Codepoint("Ǉ"), "LJ" },
-  { UTF8::Codepoint("ǈ"), "Lj" },
-  { UTF8::Codepoint("ǉ"), "lj" },
-  { UTF8::Codepoint("Ǌ"), "NJ" },
-  { UTF8::Codepoint("ǋ"), "Nj" },
-  { UTF8::Codepoint("ǌ"), "nj" },
-  { UTF8::Codepoint("ﬀ"), "ff" },
-  { UTF8::Codepoint("ﬁ"), "fi" },
-  { UTF8::Codepoint("ﬂ"), "fl" },
-  { UTF8::Codepoint("ﬃ"), "ffi" },
-  { UTF8::Codepoint("ﬄ"), "ffl" },
-  { UTF8::Codepoint("ﬅ"), "ſt" },
-  { UTF8::Codepoint("ﬆ"), "st" },
-};
 
 // Port note: I removed the width stuff. I don't see any reason to
 // normalize away halfwidth/fullwidth forms. -tom7
@@ -684,6 +708,7 @@ std::string DecodeInconsistentUTF8(std::string_view text) {
     StrCat(
         // the negative lookbehind, but capture this so we can replace it,
         "([^", UTF8_CONTINUATION_STRICT, "]|^)",
+        // The actual mojibake sequence.
         "("
         // non-capturing group for the +
         "(?:[", UTF8_FIRST_OF_2, "][", UTF8_CONTINUATION, "]|"
@@ -709,4 +734,233 @@ std::string DecodeInconsistentUTF8(std::string_view text) {
     };
 
   return RE2Util::MapReplacement(text, utf8_detector_re, FixEmbeddedMojibake);
+}
+
+// Strip out "ANSI" terminal escape sequences, such as those that produce
+// colored text on Unix.
+std::string RemoveTerminalEscapes(std::string_view text) {
+  static LazyRE2 ANSI_RE = { "\033\\[((?:\\d|;)*)([a-zA-Z])" };
+  std::string ret(text);
+  RE2::GlobalReplace(&ret, *ANSI_RE, "");
+  return ret;
+}
+
+
+// Replace curly; quotation marks with straight equivalents.
+std::string UncurlQuotes(std::string_view text) {
+  static LazyRE2 SINGLE_QUOTE_RE = { "[\u02bc\u2018-\u201b]" };
+  static LazyRE2 DOUBLE_QUOTE_RE = { "[\u201c-\u201f]" };
+  std::string ret(text);
+  RE2::GlobalReplace(&ret, *SINGLE_QUOTE_RE, "'");
+  RE2::GlobalReplace(&ret, *DOUBLE_QUOTE_RE, "\"");
+  return ret;
+}
+
+// Replace single-character ligatures of Latin letters, such as 'ﬁ',
+// with the characters that they contain, as in 'fi'. Latin ligatures
+// are usually not intended in text strings (though they're lovely in
+// *rendered* text). If you have such a ligature in your string, it is
+// probably a result of a copy-and-paste glitch.
+//
+// We leave ligatures in other scripts alone to be safe. They may be
+// intended, and removing them may lose information. If you want to
+// take apart nearly all ligatures, use NFKC normalization.
+std::string FixLatinLigatures(std::string_view text) {
+  // A mapping that breaks ligatures made of Latin letters. While
+  // ligatures may be important to the representation of other
+  // languages, in Latin letters they tend to represent a copy/paste
+  // error. It omits ligatures such as æ that are frequently used
+  // intentionally.
+  //
+  // This list additionally includes some Latin digraphs that
+  // represent two characters for legacy encoding reasons, not for
+  // typographical reasons.
+  //
+  // Ligatures and digraphs may also be separated by NFKC
+  // normalization, but that is sometimes more normalization than you
+  // want.
+  static std::unordered_map<uint32_t, std::string_view> LIGATURES = [](){
+      return std::unordered_map<uint32_t, std::string_view> {
+        { UTF8::Codepoint("Ĳ"), "IJ" },
+        { UTF8::Codepoint("ĳ"), "ij" },
+        { UTF8::Codepoint("ŉ"), "ʼn" },
+        { UTF8::Codepoint("Ǳ"), "DZ" },
+        { UTF8::Codepoint("ǲ"), "Dz" },
+        { UTF8::Codepoint("ǳ"), "dz" },
+        { UTF8::Codepoint("Ǆ"), "DŽ" },
+        { UTF8::Codepoint("ǅ"), "Dž" },
+        { UTF8::Codepoint("ǆ"), "dž" },
+        { UTF8::Codepoint("Ǉ"), "LJ" },
+        { UTF8::Codepoint("ǈ"), "Lj" },
+        { UTF8::Codepoint("ǉ"), "lj" },
+        { UTF8::Codepoint("Ǌ"), "NJ" },
+        { UTF8::Codepoint("ǋ"), "Nj" },
+        { UTF8::Codepoint("ǌ"), "nj" },
+        { UTF8::Codepoint("ﬀ"), "ff" },
+        { UTF8::Codepoint("ﬁ"), "fi" },
+        { UTF8::Codepoint("ﬂ"), "fl" },
+        { UTF8::Codepoint("ﬃ"), "ffi" },
+        { UTF8::Codepoint("ﬄ"), "ffl" },
+        { UTF8::Codepoint("ﬅ"), "ſt" },
+        { UTF8::Codepoint("ﬆ"), "st" },
+      };
+    }();
+
+  std::string ret;
+  ret.reserve(text.size());
+
+  for (uint32_t codepoint : UTF8::Decoder(text)) {
+    auto it = LIGATURES.find(codepoint);
+    if (it == LIGATURES.end()) {
+      ret.append(UTF8::Encode(codepoint));
+    } else {
+      ret.append(it->second);
+    }
+  }
+
+  return ret;
+}
+
+// Convert all line breaks to Unix style.
+//
+// This will convert the following sequences into the standard \\n
+// line break:
+//
+// - CRLF (\\r\\n), used on Windows and in some communication protocols
+// - CR (\\r), once used on Mac OS Classic, and now kept alive by misguided
+//   software such as Microsoft Office for Mac
+// - LINE SEPARATOR (\\u2028) and PARAGRAPH SEPARATOR (\\u2029), defined by
+//   Unicode and used to sow confusion and discord
+// - NEXT LINE (\\x85), a C1 control character that is certainly not what you
+//   meant
+//
+// The NEXT LINE character is a bit of an odd case, because it
+// usually won't show up if `fix_encoding` is also being run.
+// \\x85 is very common mojibake for \\u2026, HORIZONTAL ELLIPSIS.
+std::string FixLineBreaks(std::string_view text) {
+  static LazyRE2 CRLF_RE = { "\r\n" };
+  static LazyRE2 WEIRD_LINE_END_RE = { "[\r\u2028\u2029\u0085]" };
+
+  std::string s(text);
+  // First replace \r\n so that we don't get double newlines.
+  RE2::GlobalReplace(&s, *CRLF_RE, "\n");
+  RE2::GlobalReplace(&s, *WEIRD_LINE_END_RE, "\n");
+  return s;
+}
+
+std::string FixSurrogates(std::string_view text) {
+  // Port note: ftfy uses literals like \ud800 here, but those are not
+  // valid entities in C++.
+
+  std::string out;
+  out.reserve(text.size());
+
+  auto dec = UTF8::Decoder(text);
+  for (auto it = dec.begin(); it != dec.end(); ++it) {
+    uint32_t cp = *it;
+
+    if (cp >= 0xd800 && cp <= 0xdfff) {
+      // Valid?
+      auto next = it;
+      ++next;
+      if (cp >= 0xd800 && cp <= 0xdbff &&
+          next != dec.end() &&
+          *next >= 0xdc00 && *next <= 0xdfff) {
+        uint32_t full = 0x10000 + (cp - 0xD800) * 0x400 + (*next - 0xDC00);
+        out.append(UTF8::Encode(full));
+        // Consume the second.
+        ++it;
+      } else {
+        // Just replace the first, following ftfy.
+        // If we have hi/lo/hi, then the second pair is
+        // decoded.
+        out.append(UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
+      }
+    }
+  }
+
+  return out;
+}
+
+// Remove a byte-order mark that was accidentally decoded as if it were part
+// of the text.
+std::string RemoveBOM(std::string_view text) {
+  while (!text.empty()) {
+    const auto &[n, cp] = UTF8::ParsePrefix(text.data(), text.size());
+    if (cp == 0xFEFF) {
+      text.remove_prefix(n);
+    } else {
+      break;
+    }
+  }
+
+  return std::string(text);
+}
+
+// Port note: No decode_escapes support; it's not run by default in ftfy
+// and isn't really in scope IMO.
+
+static std::string ReplaceByte(std::string_view s, uint8_t src, uint8_t dst) {
+  std::string out(s);
+  for (size_t i = 0; i < out.size(); i++) {
+    if (out[i] == src) out[i] = dst;
+  }
+  return out;
+}
+
+
+// Some mojibake has been additionally altered by a process that said "hmm,
+// byte A0, that's basically a space!" and replaced it with an ASCII space.
+// When the A0 is part of a sequence that we intend to decode as UTF-8,
+// changing byte A0 to 20 would make it fail to decode.
+//
+// This process finds sequences that would convincingly decode as UTF-8 if
+// byte 20 were changed to A0, and puts back the A0. For the purpose of
+// deciding whether this is a good idea, this step gets a cost of twice
+// the number of bytes that are changed.
+std::string RestoreByteA0(std::string_view text) {
+  // Port note: ftfy uses negative lookahead, not supported by RE2.
+  // Since the match must start with literally "\xc3 " I'm just doing
+  // this as a simple find loop for the prefix, and rejecting if it matches
+  // this pattern with a (positive)
+  static LazyRE2 A_GRAVE_WORD_RE = {
+    "^\xc3 (?: |quele|quela|quilo|s )", BINARY_REGEX
+  };
+
+  std::string out;
+  out.reserve(text.size());
+
+  for (;;) {
+    auto pos = text.find("\xc3 ");
+
+    if (pos == std::string_view::npos) {
+      out.append(text);
+      return out;
+    }
+
+    // Output everything up to the match, and remove
+    // it from the text.
+    out.append(text.substr(pos));
+    text.remove_prefix(pos);
+
+    if (RE2::StartMatch(text, *A_GRAVE_WORD_RE)) {
+      // Suppressed.
+      out.append("\xc3 ");
+      text.remove_prefix(2);
+    } else {
+      // Here \xc3\xa0 is UTF-8 for à, and we *also* preserve the
+      // space (following ftfy), with the idea that it was probably
+      // coalesced with the \xa0 (non-breaking space). The
+      // A_GRAVE_WORD_RE prevented us from doing this for some
+      // common words starting with à.
+      out.append("\xc3\xa0 ");
+      text.remove_prefix(2);
+    }
+  }
+
+  auto Replacement = [](std::span<const std::string_view> match) {
+      return ReplaceByte(match[0], 0x20, 0xa0);
+    };
+
+  return RE2Util::MapReplacement(out, *ALTERED_UTF8_RE, Replacement);
 }

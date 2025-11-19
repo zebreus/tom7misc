@@ -5,7 +5,6 @@
 #include <optional>
 #include <string_view>
 #include <string>
-#include <unordered_map>
 
 struct HTMLEntities {
 

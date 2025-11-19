@@ -300,6 +300,8 @@ class RE2 {
                          const Arg* const args[], int n);
   static bool PartialMatchN(std::string_view text, const RE2& re,
                             const Arg* const args[], int n);
+  static bool StartMatchN(std::string_view text, const RE2& re,
+                          const Arg* const args[], int n);
   static bool ConsumeN(std::string_view* input, const RE2& re,
                        const Arg* const args[], int n);
   static bool FindAndConsumeN(std::string_view* input, const RE2& re,
@@ -365,6 +367,13 @@ class RE2 {
   template <typename... A>
   static bool PartialMatch(std::string_view text, const RE2& re, A&&... a) {
     return Apply(PartialMatchN, text, re, Arg(std::forward<A>(a))...);
+  }
+
+  // Exactly like FullMatch(), except that "re" is allowed to match
+  // a prefix of "text".
+  template <typename... A>
+  static bool StartMatch(std::string_view text, const RE2& re, A&&... a) {
+    return Apply(StartMatchN, text, re, Arg(std::forward<A>(a))...);
   }
 
   // Like FullMatch() and PartialMatch(), except that "re" has to match
@@ -917,8 +926,6 @@ class LazyRE2 {
   }
 
   using element_type = RE2;  // support std::pointer_traits
-
-  // Constructor omitted to preserve braced initialization in C++98.
 
   // Pretend to be a pointer to Type (never NULL due to on-demand creation):
   RE2& operator*() const { return *get(); }

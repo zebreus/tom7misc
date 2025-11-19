@@ -76,3 +76,4 @@ make -j
 ./utf8_test.exe
 ./string-table_test.exe
 ./unicode-data_test.exe
+./html-entities_test.exe

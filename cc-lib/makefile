@@ -314,7 +314,7 @@ unicode-data_test.exe : unicode-data_test.o unicode-data.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
-fix-encoding_test.exe : fix-encoding_test.o fix-encoding.o chardata.o re2-util.o $(BASE) $(TEST_UTIL) $(RE2_OBJECTS)
+fix-encoding_test.exe : fix-encoding_test.o fix-encoding.o chardata.o html-entities.o re2-util.o $(BASE) $(TEST_UTIL) $(RE2_OBJECTS)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 

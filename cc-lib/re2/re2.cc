@@ -343,6 +343,11 @@ bool RE2::PartialMatchN(std::string_view text, const RE2& re,
   return re.DoMatch(text, UNANCHORED, NULL, args, n);
 }
 
+bool RE2::StartMatchN(std::string_view text, const RE2& re,
+                      const Arg* const args[], int n) {
+  return re.DoMatch(text, ANCHOR_START, NULL, args, n);
+}
+
 bool RE2::ConsumeN(std::string_view* input, const RE2& re,
                    const Arg* const args[], int n) {
   size_t consumed;

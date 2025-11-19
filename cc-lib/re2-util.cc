@@ -45,3 +45,4 @@ std::string RE2Util::MapReplacement(
 
   return result;
 }
+
