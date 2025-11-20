@@ -23,6 +23,13 @@ struct RE2Util {
       const RE2 &pattern,
       const std::function<std::string(std::span<const std::string_view>)> &f);
 
+  // Like RE2::GlobalReplace, but making a copy.
+  // Supports single-digit references like \1, \2 ...
+  static std::string GlobalReplace(
+      std::string_view source,
+      const RE2 &pattern,
+      std::string_view replacement);
+
 };
 
 

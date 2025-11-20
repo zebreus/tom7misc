@@ -46,3 +46,15 @@ std::string RE2Util::MapReplacement(
   return result;
 }
 
+
+std::string RE2Util::GlobalReplace(
+    std::string_view source,
+    const RE2 &pattern,
+    std::string_view replacement) {
+  std::string ret(source);
+  (void)RE2::GlobalReplace(&ret, pattern, replacement);
+  return ret;
+}
+
+
+

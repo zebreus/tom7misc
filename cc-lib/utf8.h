@@ -16,7 +16,7 @@
 struct UTF8 {
   // Encode the codepoint as a 1-4 byte string. Returns the empty string
   // if the codepoint is out of range.
-  static inline std::string Encode(uint32_t codepoint);
+  static inline constexpr std::string Encode(uint32_t codepoint);
 
   static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
   // Decode the string as a vector of codepoints, assuming it is
@@ -47,10 +47,12 @@ struct UTF8 {
 
 
   // Iterate over the codepoints in a string without allocating a copy.
-  // You can do
-  //   for (uint32_t codepoint : UTF8::Decoder(s)) {
-  //     ...
-  //   }
+  // You can do:
+  /*
+    for (uint32_t codepoint : UTF8::Decoder(s)) {
+      ...
+    }
+  */
   struct Decoder {
     inline Decoder(std::string_view s);
 
@@ -90,7 +92,7 @@ struct UTF8 {
 
 // Implementations follow.
 
-std::string UTF8::Encode(uint32_t codepoint) {
+constexpr std::string UTF8::Encode(uint32_t codepoint) {
   if (codepoint < 0x80) {
     std::string s;
     s.resize(1);

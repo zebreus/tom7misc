@@ -2,8 +2,14 @@
 // This file only: A rough port of "ftfy" ("fixes text for you")
 // by Robyn Speer (see APACHE20.txt for license).
 
-// from charadata.py
+// Notes for people that don't know Python (like me):
+//   Python strings are natively sequences of unicode codepoints.
+//   Python has built-in encoders. Encoding is unicode codepoints -> bytes,
+//   and decoding is the reverse.
+
+// from chardata.py
 // XXX: Nice to just make this one file if possible.
+
 
 // XXX fix recursive
 #include "fix-encoding.h"
@@ -23,24 +29,8 @@
 #include "html-entities.h"
 #include "re2-util.h"
 #include "re2/re2.h"
+#include "text-codec.h"
 #include "utf8.h"
-
-#if 0
-// These are the encodings we will try to fix in ftfy, in the
-// order that they should be tried.
-CHARMAP_ENCODINGS = [
-    "latin-1",
-    "sloppy-windows-1252",
-    "sloppy-windows-1251",
-    "sloppy-windows-1250",
-    "sloppy-windows-1253",
-    "sloppy-windows-1254",
-    "sloppy-windows-1257",
-    "iso-8859-2",
-    "macroman",
-    "cp437",
-]
-#endif
 
 // In RE2, setting Latin1 mode allows the input regex to have
 // invalid UTF-8, which we need. Note that this affects the match, too.
@@ -247,11 +237,6 @@ static LazyRE2 LOSSY_UTF8_RE = {
   "|\x1a",
   BINARY_REGEX
 };
-
-
-// This regex matches C1 control characters, which occupy some of the positions
-// in the Latin-1 character map that Windows assigns to other characters instead.
-static LazyRE2 C1_CONTROL_RE = { "[\x80-\x9f]", BINARY_REGEX };
 
 // Port note: I removed the width stuff. I don't see any reason to
 // normalize away halfwidth/fullwidth forms. -tom7
@@ -940,13 +925,12 @@ std::string RestoreByteA0(std::string_view text) {
 
     // Output everything up to the match, and remove
     // it from the text.
-    out.append(text.substr(pos));
+    out.append(text.substr(0, pos));
     text.remove_prefix(pos);
 
     if (RE2::StartMatch(text, *A_GRAVE_WORD_RE)) {
-      // Suppressed.
+      // Suppressed. Preserve the original bytes.
       out.append("\xc3 ");
-      text.remove_prefix(2);
     } else {
       // Here \xc3\xa0 is UTF-8 for à, and we *also* preserve the
       // space (following ftfy), with the idea that it was probably
@@ -954,8 +938,9 @@ std::string RestoreByteA0(std::string_view text) {
       // A_GRAVE_WORD_RE prevented us from doing this for some
       // common words starting with à.
       out.append("\xc3\xa0 ");
-      text.remove_prefix(2);
     }
+
+    text.remove_prefix(2);
   }
 
   auto Replacement = [](std::span<const std::string_view> match) {
@@ -964,3 +949,29 @@ std::string RestoreByteA0(std::string_view text) {
 
   return RE2Util::MapReplacement(out, *ALTERED_UTF8_RE, Replacement);
 }
+
+
+// Identifies sequences where information has been lost in
+// a "sloppy" codec, indicated by byte 1A, and if they would otherwise look
+// like a UTF-8 sequence, it replaces them with the UTF-8 sequence for U+FFFD.
+std::string ReplaceLossySequences(std::string_view str) {
+  return RE2Util::GlobalReplace(str, *LOSSY_UTF8_RE,
+                                UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
+}
+
+// If text still contains C1 control characters, treat them as their
+// Windows-1252 equivalents. This matches what Web browsers do.
+std::string FixC1Controls(std::string_view str) {
+  // This regex matches C1 control characters, which occupy some of the positions
+  // in the Latin-1 character map that Windows assigns to other characters instead.
+  static LazyRE2 C1_CONTROL_RE = { "[\x80-\x9f]", BINARY_REGEX };
+
+  auto C1Fixer = [](std::span<const std::string_view> match) {
+      std::optional<std::string> lat = Latin1().Encode(match[0]);
+      CHECK(lat.has_value()) << "Latin-1 should always succeed.";
+      return Windows1252().DecodeSloppy(lat.value());
+    };
+
+  return RE2Util::MapReplacement(str, *C1_CONTROL_RE, C1Fixer);
+}
+

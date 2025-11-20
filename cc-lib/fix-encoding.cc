@@ -16,6 +16,10 @@ using RE2 = re2::RE2;
 // These are character classes that are used for "badness" heuristics.
 
 
+static_assert(sizeof("€") == 4 &&
+              "€"[0] == '\xE2' && "€"[1] == '\x82' && "€"[2] == '\xAC' &&
+              "This library requires string literals to be UTF-8 encoded.");
+
 // Characters that appear in many different contexts. Sequences that contain
 // them are not inherently mojibake
 static std::string_view COMMON = {
@@ -31,8 +35,12 @@ static std::string_view COMMON = {
 };
 
 // the C1 control character range, which have no uses outside of mojibake anymore
+// Note that ftfy often uses something like \x80 in a string, which could
+// (especially in this context!) be taken to mean the byte 0x80. But if the
+// string is not using the b (binary) prefix, it always consists of unicode
+// codepoints. So we actually want \xYY to be written \u00YY in C++.
 static std::string_view C1 = {
-  "\x80-\x9f",
+  "\u0080-\u009f",
 };
 
 // Characters that are nearly 100% used in mojibake
@@ -152,7 +160,7 @@ static std::string_view KAOMOJI = {
 
 static std::string_view UPPER_ACCENTED = {
   // LATIN CAPITAL LETTER A WITH GRAVE - LATIN CAPITAL LETTER N WITH TILDE
-  "\xc0-\xd1"
+  "\u00c0-\u00d1"
   // skip capital O's and U's that could be used in kaomoji, but
   // include Ø because it's very common in Arabic mojibake:
   "\u00d8"  // LATIN CAPITAL LETTER O WITH STROKE
@@ -200,7 +208,7 @@ static std::string_view UPPER_ACCENTED = {
 static std::string_view LOWER_ACCENTED = {
   "\u00df"  // LATIN SMALL LETTER SHARP S
   // LATIN SMALL LETTER A WITH GRAVE - LATIN SMALL LETTER N WITH TILDE
-  "\xe0-\xf1"
+  "\u00e0-\u00f1"
   // skip o's and u's that could be used in kaomoji
   "\u0103"  // LATIN SMALL LETTER A WITH BREVE
   "\u0105"  // LATIN SMALL LETTER A WITH OGONEK
@@ -362,7 +370,7 @@ static std::string MakeBadnessRE() {
   Bar();
 
   // Common Windows-1252 2-character mojibake that isn't covered above.
-  AppendStrs(&regex, "[ÂÃÎÐ][€œŠš¢£Ÿž\xa0\xad®©°·»", START_PUNCTUATION,
+  AppendStrs(&regex, "[ÂÃÎÐ][€œŠš¢£Ÿž\u00a0\u00ad®©°·»", START_PUNCTUATION,
              END_PUNCTUATION, "–—´]");
   Bar();
   AppendStrs(&regex, "×[²³]");
@@ -407,7 +415,7 @@ static std::string MakeBadnessRE() {
   Bar();
 
   // Windows-1252 encodings of 'à' and 'á', as well as NO-BREAK SPACE itself.
-  AppendStrs(&regex, "Ã[\xa0¡]");
+  AppendStrs(&regex, "Ã[\u00a0¡]");
   Bar();
   AppendStrs(&regex, "[a-z]\\s?[ÃÂ][ ]");
   Bar();
@@ -421,7 +429,7 @@ static std::string MakeBadnessRE() {
   Bar();
 
   // Windows-1253 (Greek) mojibake of characters in the U+2000 range.
-  AppendStrs(&regex, "β€[™\xa0Ά\xad®°]");
+  AppendStrs(&regex, "β€[™\u00a0Ά\u00ad®°]");
   Bar();
 
   // Windows-1253 mojibake of Latin-1 characters and/or the Greek alphabet.
