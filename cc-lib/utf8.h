@@ -39,9 +39,10 @@ struct UTF8 {
   // Truncate to at most the given number of codepoints.
   static inline std::string Truncate(std::string_view utf8, int max_length);
 
-  // Convert up to len bytes of utf8 data to get one codepoint. Return
-  // the number of bytes read and the codepoint. If the data are invalid,
-  // reads one byte and returns 0xFFFFFFFF, which is an invalid codepoint.
+  // Convert up to len bytes of utf8 data to get one codepoint. There
+  // must be at least 1 byte in the input. Return the number of bytes
+  // read and the codepoint. If the data are invalid, reads one byte
+  // and returns 0xFFFFFFFF, which is an invalid codepoint.
   static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
   static constexpr uint32_t INVALID = 0xFFFFFFFF;
 
@@ -274,37 +275,44 @@ std::string UTF8::Truncate(std::string_view utf8, int max_length) {
   }
 }
 
-std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
-  uint8_t mask = 0;
-  uint32_t ch = *(const uint8_t *)utf8;
+std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int buffer_len) {
+  // Always need at least one byte!
+  // This is a precondition of the function, but at least don't crash.
+  if (buffer_len <= 0) return std::make_pair(1, INVALID);
+
+  uint32_t ch = (uint8_t)utf8[0];
+  int enc_len = 0;
   if ((ch & 0x80) == 0) {
-    len = 1;
-    mask = 0x7f;
-  } else if ((ch & 0xe0) == 0xc0 && len >= 2) {
-    len = 2;
-    mask = 0x1f;
-  } else if ((ch & 0xf0) == 0xe0 && len >= 3) {
-    len = 3;
-    mask = 0xf;
-  } else if ((ch & 0xf8) == 0xf0 && len >= 4) {
-    len = 4;
-    mask = 0x7;
+    return std::make_pair(1, ch);
+  } else if ((ch & 0xe0) == 0xc0 && buffer_len >= 2) {
+    ch = ((uint32_t)ch & 0x1f) << 6;
+    enc_len = 2;
+
+  } else if ((ch & 0xf0) == 0xe0 && buffer_len >= 3) {
+    ch = ((uint32_t)ch & 0x0f) << 12;
+    enc_len = 3;
+
+  } else if ((ch & 0xf8) == 0xf0 && buffer_len >= 4) {
+    ch = ((uint32_t)ch & 0x7) << 18;
+    enc_len = 4;
+
   } else {
     return std::make_pair(1, INVALID);
   }
 
-  ch = 0;
-  for (int i = 0; i < len; i++) {
-    int shift = (len - i - 1) * 6;
-    if (!*utf8)
+  // Process (only) the continuation bytes.
+  for (int i = 1; i < enc_len; i++) {
+    const uint8_t b = (uint8_t)utf8[i];
+    int shift = (enc_len - i - 1) * 6;
+    // The continuation byte must be of the form 0b10xxxxxx.
+    if ((b & 0b11000000) != 0b10000000) {
       return std::make_pair(1, INVALID);
-    if (i == 0)
-      ch |= ((uint32_t)(*utf8++) & mask) << shift;
-    else
-      ch |= ((uint32_t)(*utf8++) & 0x3f) << shift;
+    } else {
+      ch |= ((uint32_t)b & 0x3f) << shift;
+    }
   }
 
-  return std::make_pair(len, ch);
+  return std::make_pair(enc_len, ch);
 }
 
 inline uint32_t UTF8::ConsumePrefix(std::string_view *utf8) {

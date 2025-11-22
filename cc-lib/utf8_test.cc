@@ -113,6 +113,46 @@ static void TestCodepoint() {
   CHECK(UTF8::Codepoint("💡") == 0x1F4A1);
 }
 
+static void TestParsePrefix() {
+  // Test that ParsePrefix does not consume invalid continuation
+  // bytes.
+  //   E9       : Starts a 3-byte sequence (1110xxxx)
+  //   85       : Valid continuation (10xxxxxx)
+  //   20       : INVALID continuation (00100000)
+  {
+    const std::string_view bad = "\xE9\x85\x20";
+    CHECK(!UTF8::IsValid(bad));
+    auto [len, cp] = UTF8::ParsePrefix(bad.data(), bad.size());
+    CHECK(cp == UTF8::INVALID);
+    CHECK(len == 1);
+  }
+
+  // Same, but with a two-byte sequence.
+  {
+    std::string_view bad = "\xC3\x20";
+    auto [len, cp] = UTF8::ParsePrefix(bad.data(), bad.size());
+    CHECK(cp == UTF8::INVALID);
+    CHECK(len == 1);
+  }
+
+  {
+    std::string_view valid = "\xE9\x85\xA0";
+    CHECK(UTF8::IsValid(valid));
+    auto [len, cp] = UTF8::ParsePrefix(valid.data(), valid.size());
+    CHECK(cp == 0x9160);
+    CHECK(len == 3);
+  }
+
+  // Valid prefix, but then end of string.
+  {
+    std::string_view truncated = "\xE9\x85";
+    CHECK(!UTF8::IsValid(truncated));
+    auto [len, cp] = UTF8::ParsePrefix(truncated.data(), truncated.size());
+    CHECK(cp == UTF8::INVALID);
+    CHECK(len == 1);
+  }
+}
+
 static void TestConsumePrefix() {
   {
     std::string_view s = "";
@@ -156,6 +196,7 @@ int main(int argc, char **argv) {
   TestUnicode();
   TestDecoder();
   TestCodepoint();
+  TestParsePrefix();
   TestConsumePrefix();
 
   Print("OK\n");
