@@ -7,10 +7,20 @@
 
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "base/logging.h"
+#include "base/print.h"
+#include "chardata.h"
+#include "hexdump.h"
+#include "re2-util.h"
 #include "re2/re2.h"
+#include "text-codec.h"
 #include "utf8.h"
 
 using RE2 = re2::RE2;
@@ -446,9 +456,6 @@ static std::string MakeBadnessRE() {
 }
 
 
-
-
-
 static const RE2 &BadnessRegex() {
   static RE2 *re = new RE2(MakeBadnessRE());
   return *re;
@@ -456,6 +463,7 @@ static const RE2 &BadnessRegex() {
 
 // Get the 'badness' of a sequence of text, counting the number of unlikely
 // character sequences. A badness greater than 0 indicates that some of it
+[[maybe_unused]]
 // seems to be mojibake.
 static int Badness(std::string_view s) {
   const RE2 &re = BadnessRegex();
@@ -520,17 +528,213 @@ std::optional<std::string> FixEncoding::DecodeVariantUTF8(std::string_view bytes
   return {out};
 }
 
+// This regex matches C1 control characters, which occupy some of the positions
+// in the Latin-1 character map that Windows assigns to other characters instead.
+static LazyRE2 C1_CONTROL_RE = { "[\u0080-\u009f]" };
+
+static inline bool HasC1Controls(std::string_view str) {
+  return RE2::PartialMatch(str, *C1_CONTROL_RE);
+}
+
+// If text still contains C1 control characters, treat them as their
+// Windows-1252 equivalents. This matches what Web browsers do.
+std::string FixEncoding::FixC1Controls(std::string_view str) {
+  auto C1Fixer = [](std::span<const std::string_view> match) {
+      std::optional<std::string> lat = Latin1().Encode(match[0]);
+      CHECK(lat.has_value()) << "Latin-1 should always succeed for codepoints "
+        "in this range.";
+      return Windows1252().DecodeSloppy(lat.value());
+    };
+
+  return RE2Util::MapReplacement(str, *C1_CONTROL_RE, C1Fixer);
+}
+
+enum class Encoding {
+  LATIN1,
+  WINDOWS1252,
+  WINDOWS1251,
+  WINDOWS1250,
+  WINDOWS1253,
+  WINDOWS1254,
+  WINDOWS1257,
+  ISO8859_2,
+  MACROMAN,
+  CP437,
+};
+
+// These are the encodings we will try to fix, in the
+// order that they should be tried. Follows ftfy. If the
+// boolean is true, the "sloppy" version of the codec should
+// be used.
+static std::vector<std::tuple<Encoding, bool, const TextCodec *>> ENCODINGS = {
+  {Encoding::LATIN1, false, &Latin1()},
+  {Encoding::WINDOWS1252, true, &Windows1252()},
+  {Encoding::WINDOWS1251, true, &Windows1251()},
+  {Encoding::WINDOWS1250, true, &Windows1250()},
+  {Encoding::WINDOWS1253, true, &Windows1253()},
+  {Encoding::WINDOWS1254, true, &Windows1254()},
+  {Encoding::WINDOWS1257, true, &Windows1257()},
+  {Encoding::ISO8859_2, false, &ISO8859_2()},
+  {Encoding::MACROMAN, false, &MacRoman()},
+  {Encoding::CP437, false, &CP437()},
+};
+
+static std::string FixOneStep(std::string_view text) {
+  std::vector<Encoding> possible_1byte_encodings;
+  // We iterate through common single-byte encodings to see if the text
+  // decodes successfully from them.
+  for (const auto &[name, sloppy, codec] : ENCODINGS) {
+    std::optional<std::string> encoded =
+      sloppy ? codec->EncodeSloppy(text) : codec->Encode(text);
+    if (!encoded.has_value()) continue;
+
+    possible_1byte_encodings.push_back(name);
+    std::string bytes = std::move(encoded.value());
+
+    // Restore 0xA0 (NBSP) if it was converted to space. We skip this
+    // for Mac Roman because it produces false positives with en
+    // dashes.
+    if (name != Encoding::MACROMAN) {
+      bytes = RestoreByteA0(bytes);
+    }
+
+    // For sloppy codecs, undo the 0x1A hack so that we have the
+    // proper unicode replacement character again.
+    if (sloppy) {
+      bytes = ReplaceLossySequences(bytes);
+    }
+
+    // Check if we need the "utf-8-variants" decoder.
+    // This handles CESU-8 and Java's "Modified UTF-8" (nulls).
+    bool use_variants = false;
+    for (uint8_t c : bytes) {
+      if (c == 0xED || c == 0xC0) {
+        use_variants = true;
+        break;
+      }
+    }
+
+    if (use_variants) {
+      if (auto decoded = FixEncoding::DecodeVariantUTF8(bytes)) {
+        return decoded.value();
+      }
+    } else {
+      // If no variants are suspected and it is already valid UTF-8,
+      // then we are done.
+      if (UTF8::IsValid(bytes)) {
+        return bytes;
+      }
+    }
+  }
+
+  // Look for inconsistent UTF-8 (e.g. "Ã " patterns) that couldn't be
+  // solved by the single-byte method above.
+  std::string fixed = DecodeInconsistentUTF8(text);
+  if (fixed != text) {
+    return fixed;
+  }
+
+  // Latin-1 vs Windows-1252 Heuristic.
+  // If text encodes as Latin-1 but NOT Windows-1252, it implies C1
+  // control characters. We assume those were meant to be
+  // Windows-1252.
+  bool can_be_latin1 = false;
+  bool can_be_w1252 = false;
+  for (Encoding name : possible_1byte_encodings) {
+    if (name == Encoding::LATIN1) can_be_latin1 = true;
+    if (name == Encoding::WINDOWS1252) can_be_w1252 = true;
+  }
+
+  if (can_be_latin1) {
+    if (can_be_w1252) {
+      // It fits both. It's probably legitimate text (e.g. just "é").
+      return std::string(text);
+    } else {
+      // It has C1 controls. Transcode Latin-1 -> Windows-1252.
+      // Note: Latin1::Encode always succeeds if the previous check passed.
+      // Windows1252::DecodeSloppy always succeeds.
+      if (auto bytes = Latin1().Encode(text)) {
+        return Windows1252().DecodeSloppy(bytes.value());
+      }
+    }
+  }
+
+  // Last ditch: Fix C1 controls directly.
+  if (HasC1Controls(text)) {
+    return FixEncoding::FixC1Controls(text);
+  }
+
+  // No fixes found.
+  return std::string(text);
+}
+
+static void RepeatedlyFix(std::string *text) {
+  // PERF: Perhaps we shouldn't keep testing ascii, but just do
+  // that as an initial step in Fix.
+  while (!IsASCII(*text) && FixEncoding::IsBad(*text)) {
+    std::string fixed = FixOneStep(*text);
+    if (fixed == *text)
+      return;
+
+    *text = std::move(fixed);
+  }
+}
+
 // Returns true iff the given text looks like it contains mojibake.
 //
-// This can be faster than `badness`, because it returns when the first match
+// This can be faster than Badness, because it returns when the first match
 // is found to a regex instead of counting matches. Note that as strings get
-// longer, they have a higher chance of returning True for `is_bad(string)`.
+// longer, they have a higher chance of returning true for IsBad().
 bool FixEncoding::IsBad(std::string_view s) {
   return RE2::PartialMatch(s, BadnessRegex());
 }
 
-// XXX do something :)
-std::string FixEncoding::Fix(std::string_view s) {
-  return std::string(s);
+std::string FixEncoding::Fix(std::string_view s, uint64_t fixmask) {
+  std::string text(s);
+
+  static constexpr bool VERBOSE = false;
+
+  for (;;) {
+    std::string orig = text;
+    RepeatedlyFix(&text);
+    if (VERBOSE) Print("After repeatedly fixing:\n{}\n",
+                       HexDump::Color(text));
+
+    text = FixC1Controls(text);
+    if (VERBOSE) Print("After FixC1Controls:\n{}\n",
+                       HexDump::Color(text));
+
+    text = FixLatinLigatures(text);
+    if (VERBOSE) Print("After FixLatinLigatures:\n{}\n",
+                       HexDump::Color(text));
+
+    if (fixmask & UNCURL_QUOTES) {
+      text = UncurlQuotes(text);
+      if (VERBOSE) Print("After UncurlQuotes:\n{}\n",
+                         HexDump::Color(text));
+    }
+
+    text = FixLineBreaks(text);
+    if (VERBOSE) Print("After FixLineBreaks:\n{}\n",
+                       HexDump::Color(text));
+
+    text = FixSurrogates(text);
+    if (VERBOSE) Print("After FixSurrogates:\n{}\n",
+                       HexDump::Color(text));
+
+    text = RemoveTerminalEscapes(text);
+    if (VERBOSE) Print("After RemoveTerminalEscapes:\n{}\n",
+                       HexDump::Color(text));
+
+    text = RemoveControlChars(text);
+    if (VERBOSE) Print("After RemoveControlChars:\n{}\n",
+                       HexDump::Color(text));
+
+    // Port note: ftfy would do unicode normalization, but that
+    // requires ICU or some other source of unicode data. We just
+    // leave it unnormalized.
+
+    if (text == orig) return text;
+  }
 }
 

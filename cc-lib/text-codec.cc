@@ -385,7 +385,11 @@ std::string SloppyDecodeTable(std::string_view bytes) {
   std::string out;
   out.reserve(bytes.size());
   for (uint8_t byte : bytes) {
-    out.append(UTF8::Encode(SloppyCodepoint(DATA, byte)));
+    // ftfy uses 0x1A, the "substitute" control code, for
+    // UTF replacement char.
+    uint32_t cp = byte == 0x1A ? UTF8::REPLACEMENT_CODEPOINT :
+      SloppyCodepoint(DATA, byte);
+    out.append(UTF8::Encode(cp));
   }
   return out;
 }
@@ -416,11 +420,15 @@ std::optional<std::string> SloppyEncodeTable(std::string_view str) {
   std::string out;
   out.reserve(str.size());
   for (uint32_t codepoint : UTF8::Decoder(str)) {
-    auto bo = EncodeOne<DECODE, ENCODE>(codepoint);
-    if (!bo.has_value())
-      return std::nullopt;
+    if (codepoint == UTF8::REPLACEMENT_CODEPOINT) {
+      out.push_back(0x1A);
+    } else {
+      auto bo = EncodeOne<DECODE, ENCODE>(codepoint);
+      if (!bo.has_value())
+        return std::nullopt;
 
-    out.push_back(bo.value());
+      out.push_back(bo.value());
+    }
   }
   return out;
 }

@@ -20,5 +20,13 @@ struct TextCodec {
 // Singletons
 const TextCodec &Latin1();
 const TextCodec &Windows1252();
+const TextCodec &Windows1251();
+const TextCodec &Windows1250();
+const TextCodec &Windows1253();
+const TextCodec &Windows1254();
+const TextCodec &Windows1257();
+const TextCodec &ISO8859_2();
+const TextCodec &MacRoman();
+const TextCodec &CP437();
 
 #endif

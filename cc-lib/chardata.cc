@@ -10,8 +10,7 @@
 // from chardata.py
 // XXX: Nice to just make this one file if possible.
 
-
-// XXX fix recursive
+#include "chardata.h"
 #include "fix-encoding.h"
 
 #include <cstdint>
@@ -29,7 +28,6 @@
 #include "html-entities.h"
 #include "re2-util.h"
 #include "re2/re2.h"
-#include "text-codec.h"
 #include "utf8.h"
 
 // In RE2, setting Latin1 mode allows the input regex to have
@@ -38,47 +36,6 @@ static constexpr RE2::CannedOptions BINARY_REGEX = RE2::CannedOptions::Latin1;
 
 static LazyRE2 SINGLE_QUOTE_RE = { "[\u02bc\u2018-\u201b]" };
 static LazyRE2 DOUBLE_QUOTE_RE = { "[\u201c-\u201f]" };
-
-#if 0
-def _build_regexes() -> dict[str, re.Pattern[str]]:
-    """
-    ENCODING_REGEXES contain reasonably fast ways to detect if we
-    could represent a given string in a given encoding. The simplest one is
-    the 'ascii' detector, which of course just determines if all characters
-    are between U+0000 and U+007F.
-    """
-    # Define a regex that matches ASCII text.
-    encoding_regexes = {"ascii": re.compile("^[\x00-\x7f]*$")}
-
-    for encoding in CHARMAP_ENCODINGS:
-        // Make a sequence of characters that bytes \x80 to \xFF decode to
-        // in each encoding, as well as byte \x1A, which is used to represent
-        // the replacement character � in the sloppy-* encodings.
-        byte_range = bytes([*range(0x80, 0x100), 0x1A])
-        charlist = byte_range.decode(encoding)
-
-        # The rest of the ASCII bytes -- bytes \x00 to \x19 and \x1B
-        # to \x7F -- will decode as those ASCII characters in any encoding we
-        # support, so we can just include them as ranges. This also lets us
-        # not worry about escaping regex special characters, because all of
-        # them are in the \x1B to \x7F range.
-        regex = f"^[\x00-\x19\x1b-\x7f{charlist}]*$"
-        encoding_regexes[encoding] = re.compile(regex)
-    return encoding_regexes
-
-ENCODING_REGEXES = _build_regexes()
-
-def possible_encoding(text: str, encoding: str) -> bool:
-    """
-    Given text and a single-byte encoding, check whether that text could have
-    been decoded from that single-byte encoding.
-
-    In other words, check whether it can be encoded in that encoding, possibly
-    sloppily.
-    """
-    return bool(ENCODING_REGEXES[encoding].match(text))
-#endif
-
 
 // HTML entities are in html-entities.h.
 // Note that ftfy will also decode some nonstandard ones like
@@ -207,12 +164,12 @@ std::string RemoveControlChars(std::string_view text) {
 // We should consider checking for b'\x85' being converted to ... in the future.
 // I've seen it once, but the text still wasn't recoverable.
 static LazyRE2 ALTERED_UTF8_RE = {
-  "[\xc2\xc3\xc5\xce\xd0\xd9][ ]"
-  "|[\xe2\xe3][ ][\x80-\x84\x86-\x9f\xa1-\xbf]"
-  "|[\xe0-\xe3][\x80-\x84\x86-\x9f\xa1-\xbf][ ]"
-  "|[\xf0][ ][\x80-\xbf][\x80-\xbf]"
-  "|[\xf0][\x80-\xbf][ ][\x80-\xbf]"
-  "|[\xf0][\x80-\xbf][\x80-\xbf][ ]",
+  "[\\xc2\\xc3\\xc5\\xce\\xd0\\xd9][ ]"
+  "|[\\xe2\\xe3][ ][\\x80-\\x84\\x86-\\x9f\\xa1-\\xbf]"
+  "|[\\xe0-\\xe3][\\x80-\\x84\\x86-\\x9f\\xa1-\\xbf][ ]"
+  "|[\\xf0][ ][\\x80-\\xbf][\\x80-\\xbf]"
+  "|[\\xf0][\\x80-\\xbf][ ][\\x80-\\xbf]"
+  "|[\\xf0][\\x80-\\xbf][\\x80-\\xbf][ ]",
   BINARY_REGEX
 };
 
@@ -655,12 +612,12 @@ static constexpr std::string_view UTF8_CONTINUATION_STRICT = {
 };
 
 template<class ...Ts>
-static void AppendStrs(std::string *out, Ts &&...ts) {
+static constexpr void AppendStrs(std::string *out, Ts &&...ts) {
   ( (out->append(std::format("{}", std::forward<Ts>(ts)))), ... );
 }
 
 template<class ...Ts>
-static std::string StrCat(Ts &&...ts) {
+static constexpr std::string StrCat(Ts &&...ts) {
   std::string out;
   ( (out.append(std::format("{}", std::forward<Ts>(ts)))), ... );
   return out;
@@ -861,6 +818,8 @@ std::string FixSurrogates(std::string_view text) {
         // decoded.
         out.append(UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
       }
+    } else {
+      out.append(UTF8::Encode(cp));
     }
   }
 
@@ -920,7 +879,7 @@ std::string RestoreByteA0(std::string_view text) {
 
     if (pos == std::string_view::npos) {
       out.append(text);
-      return out;
+      break;
     }
 
     // Output everything up to the match, and remove
@@ -958,20 +917,3 @@ std::string ReplaceLossySequences(std::string_view str) {
   return RE2Util::GlobalReplace(str, *LOSSY_UTF8_RE,
                                 UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
 }
-
-// If text still contains C1 control characters, treat them as their
-// Windows-1252 equivalents. This matches what Web browsers do.
-std::string FixC1Controls(std::string_view str) {
-  // This regex matches C1 control characters, which occupy some of the positions
-  // in the Latin-1 character map that Windows assigns to other characters instead.
-  static LazyRE2 C1_CONTROL_RE = { "[\x80-\x9f]", BINARY_REGEX };
-
-  auto C1Fixer = [](std::span<const std::string_view> match) {
-      std::optional<std::string> lat = Latin1().Encode(match[0]);
-      CHECK(lat.has_value()) << "Latin-1 should always succeed.";
-      return Windows1252().DecodeSloppy(lat.value());
-    };
-
-  return RE2Util::MapReplacement(str, *C1_CONTROL_RE, C1Fixer);
-}
-
