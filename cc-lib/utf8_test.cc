@@ -3,8 +3,10 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
@@ -111,10 +113,50 @@ static void TestCodepoint() {
   CHECK(UTF8::Codepoint("💡") == 0x1F4A1);
 }
 
+static void TestConsumePrefix() {
+  {
+    std::string_view s = "";
+    CHECK(UTF8::ConsumePrefix(&s) == UTF8::INVALID && s.empty());
+  }
+
+  {
+    std::string_view s = "a";
+    CHECK(UTF8::ConsumePrefix(&s) == 'a' && s.empty());
+  }
+
+  {
+    std::string_view s = "♜b";
+    CHECK(UTF8::ConsumePrefix(&s) == UTF8::Codepoint("♜") &&
+          s == "b");
+  }
+
+  {
+    std::string_view s = "♜b";
+    CHECK(UTF8::ConsumePrefix(&s) == UTF8::Codepoint("♜") &&
+          s == "b");
+  }
+
+  {
+    std::string_view incomplete = "\xF0\x9F\x8D";
+    CHECK(UTF8::ConsumePrefix(&incomplete) == UTF8::INVALID &&
+          incomplete == "\x9F\x8D");
+  }
+
+  {
+    std::string_view incomplete = "\xF0\x9F";
+    CHECK(UTF8::ConsumePrefix(&incomplete) == UTF8::INVALID &&
+          incomplete == "\x9F");
+  }
+
+}
+
 int main(int argc, char **argv) {
+  ANSI::Init();
+
   TestUnicode();
   TestDecoder();
   TestCodepoint();
+  TestConsumePrefix();
 
   Print("OK\n");
   return 0;

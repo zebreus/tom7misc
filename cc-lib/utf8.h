@@ -309,7 +309,7 @@ std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
 
 inline uint32_t UTF8::ConsumePrefix(std::string_view *utf8) {
   if (utf8->empty()) return INVALID;
-  const auto &[cp, len] = ParsePrefix(utf8->data(), utf8->size());
+  const auto &[len, cp] = ParsePrefix(utf8->data(), utf8->size());
   utf8->remove_prefix(len);
   return cp;
 }
