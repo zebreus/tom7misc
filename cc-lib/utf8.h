@@ -45,6 +45,13 @@ struct UTF8 {
   static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
   static constexpr uint32_t INVALID = 0xFFFFFFFF;
 
+  // Like the previous, but modifying the view to consume the bytes. Returns
+  // INVALID if the encoding is not valid or there are not enough bytes (including
+  // an empty string).
+  static inline uint32_t ConsumePrefix(std::string_view *utf8);
+
+  // True if the string is valid UTF-8.
+  static inline bool IsValid(std::string_view bytes);
 
   // Iterate over the codepoints in a string without allocating a copy.
   // You can do:
@@ -300,6 +307,13 @@ std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
   return std::make_pair(len, ch);
 }
 
+inline uint32_t UTF8::ConsumePrefix(std::string_view *utf8) {
+  if (utf8->empty()) return INVALID;
+  const auto &[cp, len] = ParsePrefix(utf8->data(), utf8->size());
+  utf8->remove_prefix(len);
+  return cp;
+}
+
 
 constexpr std::optional<uint32_t> UTF8::DecodeOpt(std::string_view sv) {
   if (sv.empty()) {
@@ -411,6 +425,13 @@ uint32_t UTF8::Decoder::const_iterator::operator *() const {
 }
 
 
+bool UTF8::IsValid(std::string_view bytes) {
+  while (!bytes.empty())
+    if (ConsumePrefix(&bytes) == INVALID)
+      return false;
+
+  return true;
+}
 
 
 #endif

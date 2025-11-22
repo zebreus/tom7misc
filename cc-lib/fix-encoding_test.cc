@@ -70,6 +70,41 @@ static void ExpectedBad() {
   CHECK(FixEncoding::IsBad("â‚¬"));
 
   CHECK(FixEncoding::IsBad("Ã§"));
+
+  // Make sure that regex ranges [a-b] between UTF-8-encoded codepoints
+  // work correctly.
+  CHECK(FixEncoding::IsBad("│Õ"));
+  CHECK(FixEncoding::IsBad("xλ¬"));
+}
+
+static void TestVariantDecode() {
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("\xC0\x80"), std::string("\0", 1));
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("null \xC0\x80!"), std::string("null \0!", 6));
+
+  // Surrogate pair.
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8(
+               // U+D83D
+               "\xED\xA0\xBD"
+               // U+DCA9
+               "\xED\xB2\xA9"), "💩");
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("PO" "\xED\xA0\xBD\xED\xB2\xA9" "P"),
+           "PO💩P");
+
+  // Incomplete surrogate pairs
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("\xED\xA0\xBD"), "\xED\xA0\xBD");
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("\xED\xA0\xBDx"), "\xED\xA0\xBDx");
+  CHECK_EQ(FixEncoding::DecodeVariantUTF8("\xED\xA0\xBD\xED\xA0\xBD"),
+           "\xED\xA0\xBD\xED\xA0\xBD");
+
+
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xC0").has_value());
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xC0\x81").has_value());
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xC0\x00").has_value());
+
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xFF").has_value());
+  CHECK(!FixEncoding::DecodeVariantUTF8("\x80").has_value());
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xE0\x80").has_value());
+  CHECK(!FixEncoding::DecodeVariantUTF8("\xED\xA0").has_value());
 }
 
 int main(int argc, char **argv) {
@@ -78,6 +113,7 @@ int main(int argc, char **argv) {
   TestAlreadyGood();
   ExpectedNotBad();
   ExpectedBad();
+  TestVariantDecode();
 
   Print("OK\n");
   return 0;

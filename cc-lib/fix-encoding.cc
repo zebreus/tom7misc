@@ -6,10 +6,12 @@
 #include "fix-encoding.h"
 
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "re2/re2.h"
+#include "utf8.h"
 
 using RE2 = re2::RE2;
 
@@ -462,6 +464,62 @@ static int Badness(std::string_view s) {
   return count;
 }
 
+static inline bool IsASCII(std::string_view text) {
+  for (const uint8_t c : text) {
+    if (c >= 0x80) return false;
+  }
+  return true;
+}
+
+std::optional<std::string> FixEncoding::DecodeVariantUTF8(std::string_view bytes) {
+  std::string out;
+  out.reserve(bytes.size());
+
+  while (!bytes.empty()) {
+
+    // Java null: \xC0\x80 -> \0
+    if ((uint8_t)bytes[0] == 0xc0) {
+      if (bytes.size() >= 2) {
+        if ((uint8_t)bytes[1] == 0x80) {
+          out.push_back('\0');
+          bytes.remove_prefix(2);
+          continue;
+        }
+      }
+      // Otherwise this cannot be valid variant UTF-8.
+      return std::nullopt;
+    }
+
+    uint32_t cp = UTF8::ConsumePrefix(&bytes);
+    if (cp == UTF8::INVALID)
+      return std::nullopt;
+
+    // Handle CESU-8 surrogate pairs.
+    // 0xED is the start byte for the range U+D000..U+DFFF.
+    if (cp >= 0xD800 && cp <= 0xDBFF) {
+
+      // Is it followed by a low surrogate?
+      std::string_view lookahead = bytes;
+      uint32_t next_cp = UTF8::ConsumePrefix(&lookahead);
+      // For emphasis: INVALID would not be in range anyway, but we don't
+      // want to immediately return because it could be the Java null sequence.
+      if (next_cp != UTF8::INVALID &&
+          next_cp >= 0xDC00 && next_cp <= 0xDFFF) {
+        uint32_t full = 0x10000 + (cp - 0xD800) * 0x400 + (next_cp - 0xDC00);
+        out.append(UTF8::Encode(full));
+        bytes = lookahead;
+        continue;
+      }
+    }
+
+    // If we didn't find a matching low surrogate, we just put it back in the
+    // string, following ftfy.
+    out.append(UTF8::Encode(cp));
+  }
+
+  return {out};
+}
+
 // Returns true iff the given text looks like it contains mojibake.
 //
 // This can be faster than `badness`, because it returns when the first match
@@ -475,3 +533,4 @@ bool FixEncoding::IsBad(std::string_view s) {
 std::string FixEncoding::Fix(std::string_view s) {
   return std::string(s);
 }
+
