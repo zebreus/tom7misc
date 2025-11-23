@@ -2121,7 +2121,9 @@ std::string FixEncoding::Fix(std::string_view s, uint64_t fixmask) {
       text = UncurlQuotes(text);
     }
 
-    text = FixLineBreaks(text);
+    if (fixmask & NEWLINES) {
+      text = FixLineBreaks(text);
+    }
 
     text = FixSurrogates(text);
 

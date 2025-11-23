@@ -18,9 +18,11 @@ struct FixEncoding {
     UNCURL_QUOTES = uint64_t{1} << 0,
     // Replace something like "ﬂan" with "flan".
     LATIN_LIGATURES = uint64_t{1} << 1,
+    // Replace newline sequences with \n.
+    NEWLINES = uint64_t{1} << 2,
   };
 
-  static constexpr uint64_t DEFAULT_FIXMASK = LATIN_LIGATURES;
+  static constexpr uint64_t DEFAULT_FIXMASK = LATIN_LIGATURES | NEWLINES;
 
   // str should be a UTF-8 string, but the point of this function
   // is to heuristically fix text that was encoded incorrectly,

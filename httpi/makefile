@@ -70,6 +70,7 @@ httpi.exe : httpi.o $(OBJECTS)
 	@echo -n "!"
 
 install : httpi.exe
+	rm -f /usr/local/sbin/httpi.exe
 	cp httpi.exe /usr/local/sbin/httpi.exe
 
 clean :

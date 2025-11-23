@@ -29,6 +29,7 @@ struct ArcFour {
 
   // Get the next byte.
   uint8 Byte();
+  inline uint64_t Word64();
 
   // Discard n bytes from the stream. It is
   // strongly recommended that new uses of
@@ -41,5 +42,18 @@ struct ArcFour {
   uint8 ii, jj;
   uint8 ss[256];
 };
+
+
+// Implementations follow.
+
+uint64_t ArcFour::Word64() {
+  uint64_t w = 0;
+  for (int i= 0; i < 8; i++) {
+    w <<= 8;
+    w |= Byte();
+  }
+  return w;
+}
+
 
 #endif
