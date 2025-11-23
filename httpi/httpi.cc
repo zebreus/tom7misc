@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <array>
 #include <fcntl.h>
+#include <iostream>
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/epoll.h>
@@ -1546,6 +1547,9 @@ struct Server {
     Print(AGREY("[PARENT {}]") " Server listening...\n",
           server_pid);
 
+    fflush(stdout);
+    fflush(stderr);
+
     for (;;) {
       struct sockaddr_in client_addr;
       memset(&client_addr, 0, sizeof (client_addr));
@@ -1566,6 +1570,13 @@ struct Server {
 
       ArcFour client_rc(std::format("{:x}.{:x}",
                                     rc.Word64(), rc.Word64()));
+
+      // Prevent child from buffering output and making confusing
+      // logs.
+      std::cout.flush();
+      std::cerr.flush();
+      fflush(stdout);
+      fflush(stderr);
 
       // Each connection is handled by its own process for simplicity.
       // forking is kinda slow, but I can do at least 300 a second:
