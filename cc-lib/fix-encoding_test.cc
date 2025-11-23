@@ -8,7 +8,6 @@
 #include "base/logging.h"
 #include "base/print.h"
 
-#include "chardata.h"
 #include "hexdump.h"
 #include "text-codec.h"
 #include "utf8.h"
@@ -344,11 +343,33 @@ static void TestFtfyInTheWild() {
   FIX_TO("La rГ©gion de Dnepropetrovsk se trouve Г lвЂ™ouest de lвЂ™Ukraine",
          "La région de Dnepropetrovsk se trouve à l’ouest de l’Ukraine");
   // 'Ã quele' is the Portuguese word 'àquele', not 'à quele'
-  FIX_TO("eliminado o antÃ­geno e mantidos os nÃ­veis de anticorpos, surgem as condiÃ§Ãµes necessÃ¡rias ao estabelecimento do granuloma, semelhante Ã quele observado nas lesÃµes por imunocomplexo em excesso de anticorpos",
-         "eliminado o antígeno e mantidos os níveis de anticorpos, surgem as condições necessárias ao estabelecimento do granuloma, semelhante àquele observado nas lesões por imunocomplexo em excesso de anticorpos");
+  FIX_TO("eliminado o antÃ\u00adgeno e mantidos os nÃ\u00adveis de anticorpos, surgem "
+         "as condiÃ§Ãµes necessÃ¡rias ao estabelecimento do granuloma, "
+         "semelhante Ã quele observado nas lesÃµes por imunocomplexo em "
+         "excesso de anticorpos",
+         "eliminado o antígeno e mantidos os níveis de anticorpos, surgem "
+         "as condições necessárias ao estabelecimento do granuloma, "
+         "semelhante àquele observado nas lesões por imunocomplexo em "
+         "excesso de anticorpos");
   // A complex, lossy pile-up of mojibake in Portuguese
-  FIX_TO("â € ðŸ“�Â Regulamento: â € âš ï¸� As pessoas que marcarem nos comentÃ¡rios perfis empresariais e/ou de marcas, personalidades ou fake serÃ£o desclassificadas. âš ï¸� Podem participar pessoas residentes em Petrolina/PE ou Juazeiro/BA, desde que se comprometam a retirar o prÃªmio em nosso endereÃ§o. FuncionÃ¡rios estÃ£o vetados. âš ï¸� SerÃ£o vÃ¡lidos os comentÃ¡rios postados atÃ© 16h, do dia 31/03/2018. E o resultado serÃ¡ divulgado atÃ© Ã s 19h do mesmo dia em uma nova publicaÃ§Ã£o em nosso instagram. â € Boa sorte!!!Â ðŸ˜€ðŸ�°",
-         "⠀ �\u00a0Regulamento: ⠀ ⚠� As pessoas que marcarem nos comentários perfis empresariais e/ou de marcas, personalidades ou fake serão desclassificadas. ⚠� Podem participar pessoas residentes em Petrolina/PE ou Juazeiro/BA, desde que se comprometam a retirar o prêmio em nosso endereço. Funcionários estão vetados. ⚠� Serão válidos os comentários postados até 16h, do dia 31/03/2018. E o resultado será divulgado até às 19h do mesmo dia em uma nova publicação em nosso instagram. ⠀ Boa sorte!!!\u00a0😀�");
+  FIX_TO("â € ðŸ“�Â Regulamento: â € âš ï¸� As pessoas que marcarem nos "
+         "comentÃ¡rios perfis empresariais e/ou de marcas, personalidades "
+         "ou fake serÃ£o desclassificadas. âš ï¸� Podem participar pessoas "
+         "residentes em Petrolina/PE ou Juazeiro/BA, desde que se "
+         "comprometam a retirar o prÃªmio em nosso endereÃ§o. FuncionÃ¡rios "
+         "estÃ£o vetados. âš ï¸� SerÃ£o vÃ¡lidos os comentÃ¡rios postados "
+         "atÃ© 16h, do dia 31/03/2018. E o resultado serÃ¡ divulgado "
+         "atÃ© Ã s 19h do mesmo dia em uma nova publicaÃ§Ã£o em nosso "
+         "instagram. â € Boa sorte!!!Â ðŸ˜€ðŸ�°",
+         "⠀ �\u00a0Regulamento: ⠀ ⚠� As pessoas que marcarem nos "
+         "comentários perfis empresariais e/ou de marcas, personalidades "
+         "ou fake serão desclassificadas. ⚠� Podem participar pessoas "
+         "residentes em Petrolina/PE ou Juazeiro/BA, desde que se "
+         "comprometam a retirar o prêmio em nosso endereço. Funcionários "
+         "estão vetados. ⚠� Serão válidos os comentários postados "
+         "até 16h, do dia 31/03/2018. E o resultado será divulgado "
+         "até às 19h do mesmo dia em uma nova publicação em nosso "
+         "instagram. ⠀ Boa sorte!!!\u00a0😀�");
   // UTF-8 / Windows-1252 mixup in Gaelic involving non-breaking spaces
   FIX_TO("CÃ\u00a0nan nan GÃ\u00a0idheal",
          "Cànan nan Gàidheal");
@@ -367,8 +388,10 @@ static void TestFtfyInTheWild() {
   FIX_TO("Merci de t‚Äö√†√∂¬¨¬©l‚Äö√†√∂¬¨¬©charger le plug-in Flash Player 8",
          "Merci de télécharger le plug-in Flash Player 8");
   // UTF-8 / MacRoman mixup in French
-  FIX_TO("Merci de bien vouloir activiter le Javascript dans votre navigateur web afin d'en profiter‚Ä¶",
-         "Merci de bien vouloir activiter le Javascript dans votre navigateur web afin d'en profiter…");
+  FIX_TO("Merci de bien vouloir activiter le Javascript dans votre "
+         "navigateur web afin d'en profiter‚Ä¶",
+         "Merci de bien vouloir activiter le Javascript dans votre "
+         "navigateur web afin d'en profiter…");
   // Italian UTF-8 / MacRoman example with ò
   FIX_TO("Le Vigne di Zam√≤",
          "Le Vigne di Zamò");
@@ -379,8 +402,12 @@ static void TestFtfyInTheWild() {
   FIX_TO("Å veices baÅ†Ä·ieri gaida konkrÄ“tus investÄ«ciju projektus",
          "Šveices baņķieri gaida konkrētus investīciju projektus");
   // Latvian UTF-8 / MacRoman mojibake
-  FIX_TO("SaeimƒÅ ievƒìlƒìtƒÅs partijas \"Progresƒ´vie\" lƒ´dzvadƒ´tƒÅja Anto≈Üina ≈Öena≈°eva atbild uz ≈æurnƒÅlistu jautƒÅjumiem pƒìc partijas tik≈°anƒÅs ar Valsts prezidentu Rƒ´gas pilƒ´,",
-         "Saeimā ievēlētās partijas \"Progresīvie\" līdzvadītāja Antoņina Ņenaševa atbild uz žurnālistu jautājumiem pēc partijas tikšanās ar Valsts prezidentu Rīgas pilī,");
+  FIX_TO("SaeimƒÅ ievƒìlƒìtƒÅs partijas \"Progresƒ´vie\" lƒ´dzvadƒ´tƒÅja "
+         "Anto≈Üina ≈Öena≈°eva atbild uz ≈æurnƒÅlistu jautƒÅjumiem pƒìc "
+         "partijas tik≈°anƒÅs ar Valsts prezidentu Rƒ´gas pilƒ´,",
+         "Saeimā ievēlētās partijas \"Progresīvie\" līdzvadītāja Antoņina "
+         "Ņenaševa atbild uz žurnālistu jautājumiem pēc partijas tikšanās "
+         "ar Valsts prezidentu Rīgas pilī,");
   // Lithuanian UTF-8 / Windows-1257 mojibake
   FIX_TO("Å iaip ÄÆdomu, kaip ÄÆsivaizduoji. VisÅ³ pirma tam reikia laiko.",
          "Šiaip įdomu, kaip įsivaizduoji. Visų pirma tam reikia laiko.");
@@ -575,46 +602,48 @@ static void TestDecodeInconsistentUTF8() {
   // \x82 looks like a Continuation Byte (in the range 0x80-0xBF).
   // Make sure we don't incorrectly interpret this perfectly
   // fine UTF-8 as mojibake.
-  CHECK(DecodeInconsistentUTF8("Ă") == "Ă");
+  CHECK(FixEncoding::DecodeInconsistentUTF8("Ă") == "Ă");
 }
 
 static void TestFixSurrogates() {
-  CHECK_SEQ(FixSurrogates("*"), "*");
-  CHECK_SEQ(FixSurrogates(""), "");
+  CHECK_SEQ(FixEncoding::FixSurrogates("*"), "*");
+  CHECK_SEQ(FixEncoding::FixSurrogates(""), "");
 
   // Valid Surrogate Pair: U+D83D + U+DCA9 -> U+1F4A9 (Pile of Poo)
   std::string input_pair;
   input_pair.append(UTF8::Encode(0xD83D));
   input_pair.append(UTF8::Encode(0xDCA9));
-  CHECK_SEQ(FixSurrogates(input_pair), "💩");
+  CHECK_SEQ(FixEncoding::FixSurrogates(input_pair), "💩");
 
   // Isolated High Surrogate -> Replacement Char
-  CHECK_SEQ(FixSurrogates("\xED\xA0\xBD"), UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
+  CHECK_SEQ(FixEncoding::FixSurrogates("\xED\xA0\xBD"),
+            UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
 
   // Isolated Low Surrogate -> Replacement Char
-  CHECK_SEQ(FixSurrogates("\xED\xB2\xA9"), UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
+  CHECK_SEQ(FixEncoding::FixSurrogates("\xED\xB2\xA9"),
+            UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT));
 
-  CHECK_SEQ(FixSurrogates("a" + input_pair + "z"),"a💩z");
+  CHECK_SEQ(FixEncoding::FixSurrogates("a" + input_pair + "z"),"a💩z");
 
   // Unpaired high surrogate.
-  CHECK_SEQ(FixSurrogates("\xED\xA0\xBD" "a"),
+  CHECK_SEQ(FixEncoding::FixSurrogates("\xED\xA0\xBD" "a"),
             UTF8::Encode(UTF8::REPLACEMENT_CODEPOINT) + "a");
 }
 
 static void TestRestoreByteA0() {
   // Ã normal cases (e.g. "Ã la mode" -> "à la mode").
-  CHECK_SEQ(RestoreByteA0("\xC3 la"), "à la");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("\xC3 la"), "à la");
 
   // Ã exception cases (Portuguese contractions like "àquele").
-  CHECK_SEQ(RestoreByteA0("\xC3 quele"), "àquele");
-  CHECK_SEQ(RestoreByteA0("\xC3 s the"), "às the");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("\xC3 quele"), "àquele");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("\xC3 s the"), "às the");
 
   // Non-breaking space restoration.
-  CHECK_SEQ(RestoreByteA0("100\xC2 km"), "100\u00a0km");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("100\xC2 km"), "100\u00a0km");
 
-  CHECK_SEQ(RestoreByteA0("Hello World"), "Hello World");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("Hello World"), "Hello World");
   // Regression.
-  CHECK_SEQ(RestoreByteA0("\xC5 "), "Š");
+  CHECK_SEQ(FixEncoding::RestoreByteA0("\xC5 "), "Š");
 }
 
 
