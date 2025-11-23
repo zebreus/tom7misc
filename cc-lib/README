@@ -78,9 +78,8 @@ integer-voronoi is a simple C++ wrapper around Nicholas Vining's
 public domain single-file library. You can consider my modifications
 to be public domain as well.
 
-fix-encoding is a rough in-progress port of the python ftfy by Robyn Speer.
+fix-encoding is a rough port of the python ftfy by Robyn Speer.
 APACHE20 license, and you can consider my port to be APACHE20 as well.
-(Note this doesn't work yet and contains some verbatim excerpts.)
 
 UnicodeData.txt is included. This is © 2025 Unicode®, Inc.
 See UNICODE.LICENSE for (just) this file.
@@ -247,7 +246,7 @@ parser-combinators:
   Utilities for writing recursive-descent parsers using combinators,
   like if you were using a functional programming language.
 fix-encoding:
-  An incomplete port of ftfy, which fixes broken text encodings.
+  A rougth port of ftfy, which fixes broken text encodings.
 functional-map:
   A reasonably efficient functional map implementation, like for a
   variable context in a compiler implementation.

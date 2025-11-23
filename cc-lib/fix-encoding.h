@@ -4,6 +4,7 @@
 #ifndef _CC_LIB_FIX_ENCODING_H
 #define _CC_LIB_FIX_ENCODING_H
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -15,9 +16,11 @@ struct FixEncoding {
     // There's nothing wrong with having this in text, so
     // it's not enabled by default.
     UNCURL_QUOTES = uint64_t{1} << 0,
+    // Replace something like "ﬂan" with "flan".
+    LATIN_LIGATURES = uint64_t{1} << 1,
   };
 
-  static constexpr uint64_t DEFAULT_FIXMASK = 0;
+  static constexpr uint64_t DEFAULT_FIXMASK = LATIN_LIGATURES;
 
   // str should be a UTF-8 string, but the point of this function
   // is to heuristically fix text that was encoded incorrectly,
@@ -53,6 +56,30 @@ struct FixEncoding {
   static std::string RemoveTerminalEscapes(std::string_view text);
   static std::string DecodeInconsistentUTF8(std::string_view text);
 
+  // In python, an encoder takes a sequence of codepoints and returns
+  // a sequence of bytes.
+  // In this C++ port, we represent both of these as std::string. A
+  // sequence of codepoints is expected to be UTF-8 encoded. A sequence
+  // of bytes is a string containing anything.
+  struct TextCodec {
+    virtual ~TextCodec() {}
+    virtual std::optional<std::string> Encode(std::string_view str) const = 0;
+    virtual std::optional<std::string> EncodeSloppy(std::string_view str) const = 0;
+    virtual std::optional<std::string> Decode(std::string_view bytes) const = 0;
+    virtual std::string DecodeSloppy(std::string_view bytes) const = 0;
+  };
+
+  // Singletons
+  static const TextCodec &Latin1();
+  static const TextCodec &Windows1252();
+  static const TextCodec &Windows1251();
+  static const TextCodec &Windows1250();
+  static const TextCodec &Windows1253();
+  static const TextCodec &Windows1254();
+  static const TextCodec &Windows1257();
+  static const TextCodec &ISO8859_2();
+  static const TextCodec &MacRoman();
+  static const TextCodec &CP437();
 };
 
 #endif

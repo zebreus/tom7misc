@@ -9,7 +9,6 @@
 #include "base/print.h"
 
 #include "hexdump.h"
-#include "text-codec.h"
 #include "utf8.h"
 
 #define CHECK_SEQ(a, b) do {                          \
@@ -32,6 +31,8 @@
 #define FIX_TO(str, exp) do {                        \
     CHECK_SEQ(FixEncoding::Fix(str), exp);           \
   } while (false)
+
+using TextCodec = FixEncoding::TextCodec;
 
 static void TestAlreadyGood() {
   ALREADY_GOOD("");
@@ -88,7 +89,8 @@ static void TestFtfySynthetic() {
          "C'est vrai que nous n'en avons pas encore beaucoup parlé… "
          "Tu sais, ça fait de nombreuses années");
 
-  // we can recognize Ã at the end of a word when it absorbs a following space
+  // we can recognize Ã at the end of a word when it absorbs a
+  // following space
   FIX_TO("voilÃ le travail",
          "voilà le travail");
   // we can recognize Ã in some cases when it's the only mojibake
@@ -158,12 +160,13 @@ static void TestFtfySynthetic() {
   // It shouldn't end up saying 'a lot of Òs'
   FIX_TO("There are a lot of Ã’s in mojibake text",
          "There are a lot of Ã’s in mojibake text");
-  // Synthetic, negative: Romanian word before a trademark sign
-  // We would change 'DATÃ™' to 'DATÙ' if it passed the badness heuristic
+  // Synthetic, negative: Romanian word before a trademark sign. We
+  // would change 'DATÃ™' to 'DATÙ' if it passed the badness heuristic
   FIX_TO("NICIODATĂ™",
          "NICIODATĂ™");
-  // Synthetic, negative: Lithuanian word before a trademark sign
-  // Similar to the above example. Shouldn't turn into U+0619 ARABIC SMALL DAMMA
+  // Synthetic, negative: Lithuanian word before a trademark sign.
+  // Similar to the above example. Shouldn't turn into U+0619 ARABIC
+  // SMALL DAMMA
   FIX_TO("TRANSFORMATORIŲ™",
          "TRANSFORMATORIŲ™");
   // Synthetic, negative: Norwegian capitalized nonsense
@@ -172,7 +175,7 @@ static void TestFtfySynthetic() {
   // Synthetic, negative: raised eyebrow kaomoji
   FIX_TO("Ō¬o",
          "Ō¬o");
-  // Synthetic, negative: Camel-cased Serbian that looks like a UTF-8 / Windows-1251 mixup
+  // Camel-cased Serbian that looks like a UTF-8 / Windows-1251 mixup
   FIX_TO("ПоздравЂаво",
          "ПоздравЂаво");
   // mojibake with trademark sign at the end of a word
@@ -186,8 +189,10 @@ static void TestFtfyInTheWild() {
   FIX_TO("He's Justinâ\u009d¤",
          "He's Justin❤");
   // UTF-8 / MacRoman mix-up about smurfs
-  FIX_TO("Le Schtroumpf Docteur conseille g√¢teaux et baies schtroumpfantes pour un r√©gime √©quilibr√©.",
-         "Le Schtroumpf Docteur conseille gâteaux et baies schtroumpfantes pour un régime équilibré.");
+  FIX_TO("Le Schtroumpf Docteur conseille g√¢teaux et baies "
+         "schtroumpfantes pour un r√©gime √©quilibr√©.",
+         "Le Schtroumpf Docteur conseille gâteaux et baies "
+         "schtroumpfantes pour un régime équilibré.");
   // Checkmark that almost looks okay as mojibake
   FIX_TO("âœ” No problems",
          "✔ No problems");
@@ -195,11 +200,15 @@ static void TestFtfyInTheWild() {
   FIX_TO("РґРѕСЂРѕРіРµ Р\u0098Р·-РїРѕРґ #С„СѓС‚Р±РѕР»",
          "дороге Из-под #футбол");
   // Latin-1 / Windows-1252 mixup in German
-  FIX_TO("\u0084Handwerk bringt dich überall hin\u0093: Von der YOU bis nach Monaco",
-         "„Handwerk bringt dich überall hin“: Von der YOU bis nach Monaco");
+  FIX_TO("\u0084Handwerk bringt dich überall hin\u0093: "
+         "Von der YOU bis nach Monaco",
+         "„Handwerk bringt dich überall hin“: "
+         "Von der YOU bis nach Monaco");
   // Latin-1 / Windows-1252 mixup of the replacement character
-  FIX_TO("Some comments may be republished on the website or in the newspaper ï¿½ email addresses will not be published.",
-         "Some comments may be republished on the website or in the newspaper � email addresses will not be published.");
+  FIX_TO("Some comments may be republished on the website or "
+         "in the newspaper ï¿½ email addresses will not be published.",
+         "Some comments may be republished on the website or "
+         "in the newspaper � email addresses will not be published.");
   // CESU-8 / Windows-1252 emoji
   FIX_TO("Hi guys í\u00a0½í¸\u008d",
          "Hi guys 😍");
@@ -219,11 +228,15 @@ static void TestFtfyInTheWild() {
   FIX_TO("RÄ«ga",
          "Rīga");
   // UTF-8 / Windows-1251 mixed up twice in Russian
-  FIX_TO("Р\u00a0С—РЎР‚Р\u00a0С‘РЎРЏРЎвЂљР\u00a0Р…Р\u00a0С•РЎРѓРЎвЂљР\u00a0С‘. РІСњВ¤",
+  FIX_TO("Р\u00a0С—РЎР‚Р\u00a0С‘РЎРЏРЎвЂљР\u00a0Р…Р\u00a0"
+         "С•РЎРѓРЎвЂљР\u00a0С‘. РІСњВ¤",
          "приятности. ❤");
   // UTF-8 / Windows-1252 mixed up twice in Malay
-  FIX_TO("Kayanya laptopku error deh, soalnya tiap mau ngetik deket-deket kamu font yg keluar selalu Times New Ã¢â‚¬Å“ RomanceÃ¢â‚¬Â\u009d.",
-         "Kayanya laptopku error deh, soalnya tiap mau ngetik deket-deket kamu font yg keluar selalu Times New “ Romance”.");
+  FIX_TO("Kayanya laptopku error deh, soalnya tiap mau ngetik "
+         "deket-deket kamu font yg keluar selalu Times New "
+         "Ã¢â‚¬Å“ RomanceÃ¢â‚¬Â\u009d.",
+         "Kayanya laptopku error deh, soalnya tiap mau ngetik "
+         "deket-deket kamu font yg keluar selalu Times New “ Romance”.");
   // UTF-8 / Windows-1252 mixed up twice in naming Iggy Pop
   FIX_TO("Iggy Pop (nÃƒÂ© Jim Osterberg)",
          "Iggy Pop (né Jim Osterberg)");
@@ -249,28 +262,47 @@ static void TestFtfyInTheWild() {
   FIX_TO("Táº¡i sao giÃ¡ háº¡t sáº§u riÃªng láº¡i lÃªn giÃ¡?",
          "Tại sao giá hạt sầu riêng lại lên giá?");
   // Science! Mid-word Greek letter gets fixed correctly
-  FIX_TO("Humanized HLA-DR4.RagKO.IL2RÎ³cKO.NOD (DRAG) mice sustain the complex vertebrate life cycle of Plasmodium falciparum malaria.",
-         "Humanized HLA-DR4.RagKO.IL2RγcKO.NOD (DRAG) mice sustain the complex vertebrate life cycle of Plasmodium falciparum malaria.");
+  FIX_TO("Humanized HLA-DR4.RagKO.IL2RÎ³cKO.NOD (DRAG) mice sustain "
+         "the complex vertebrate life cycle of Plasmodium falciparum "
+         "malaria.",
+         "Humanized HLA-DR4.RagKO.IL2RγcKO.NOD (DRAG) mice sustain "
+         "the complex vertebrate life cycle of Plasmodium falciparum "
+         "malaria.");
   // For goodness' sake. We can come close to fixing this, but fail in the last step
-  FIX_TO("ItÃ?Â¢â?¬â?¢s classic. ItÃ?Â¢â?¬â?¢s epic. ItÃ?Â¢â?¬â?¢s ELIZABETH BENNET for goodnessÃ?Â¢â?¬â?¢ sake!",
-         "It�¢��s classic. It�¢��s epic. It�¢��s ELIZABETH BENNET for goodness�¢�� sake!");
+  FIX_TO("ItÃ?Â¢â?¬â?¢s classic. ItÃ?Â¢â?¬â?¢s epic. ItÃ?Â¢â?¬â?¢s "
+         "ELIZABETH BENNET for goodnessÃ?Â¢â?¬â?¢ sake!",
+         "It�¢��s classic. It�¢��s epic. It�¢��s ELIZABETH BENNET "
+         "for goodness�¢�� sake!");
   // lossy UTF-8 / Windows-1250 mixup in Spanish
-  FIX_TO("Europa, Asia, Ă�frica, Norte, AmĂ©rica Central y del Sur, Australia y OceanĂ­a",
-         "Europa, Asia, �frica, Norte, América Central y del Sur, Australia y Oceanía");
+  FIX_TO("Europa, Asia, Ă�frica, Norte, AmĂ©rica Central y del Sur, "
+         "Australia y OceanĂ­a",
+         "Europa, Asia, �frica, Norte, América Central y del Sur, "
+         "Australia y Oceanía");
   // UTF-8 / sloppy Windows-1250 mixup in English
-  FIX_TO("It was namedÂ â€žscarsÂ´ stonesâ€ś after the rock-climbers who got hurt while climbing on it.",
-         "It was named\u00a0„scars´ stones“ after the rock-climbers who got hurt while climbing on it.");
+  FIX_TO("It was namedÂ â€žscarsÂ´ stonesâ€ś after the rock-climbers "
+         "who got hurt while climbing on it.",
+         "It was named\u00a0„scars´ stones“ after the rock-climbers "
+         "who got hurt while climbing on it.");
   // The same text as above, but as a UTF-8 / ISO-8859-2 mixup
-  FIX_TO("It was namedÂ\u00a0â\u0080\u009escarsÂ´ stonesâ\u0080\u009c after the rock-climbers who got hurt while climbing on it.",
-         "It was named\u00a0„scars´ stones“ after the rock-climbers who got hurt while climbing on it.");
+  FIX_TO("It was namedÂ\u00a0â\u0080\u009escarsÂ´ stonesâ\u0080\u009c "
+         "after the rock-climbers who got hurt while climbing on it.",
+         "It was named\u00a0„scars´ stones“ after the rock-climbers "
+         "who got hurt while climbing on it.");
   // UTF-8 / ISO-8859-2 mixup in Czech
-  // This says 'I've had enough of the third millennium', which is great because it involves software decisions made in the second
   FIX_TO("MĂĄm dost tĹ\u0099etĂ\u00adho tisĂ\u00adciletĂ\u00ad",
          "Mám dost třetího tisíciletí");
   // UTF-8 / Windows-1252 mixup in mixed French and Arabic
   // A difficult test case that can depend on the order that steps are applied
-  FIX_TO("Ã€ tous mes frÃ¨res et soeurs dans la syriennetÃ© comme dans l’humanitÃ©, sans discrimination aucune, je vous souhaite bonne fÃªte Ø¹ÙŠØ¯ Ø³Ø¹ÙŠØ¯.Que la paix, la libertÃ©, l’Ã©galitÃ©, la fraternitÃ© et la dignitÃ© soient avec vous.Pardonnez ce ton un peu ecclÃ©siastique.",
-         "À tous mes frères et soeurs dans la syrienneté comme dans l’humanité, sans discrimination aucune, je vous souhaite bonne fête عيد سعيد.Que la paix, la liberté, l’égalité, la fraternité et la dignité soient avec vous.Pardonnez ce ton un peu ecclésiastique.");
+  FIX_TO("Ã€ tous mes frÃ¨res et soeurs dans la syriennetÃ© comme "
+         "dans l’humanitÃ©, sans discrimination aucune, je vous souhaite "
+         "bonne fÃªte Ø¹ÙŠØ¯ Ø³Ø¹ÙŠØ¯.Que la paix, la libertÃ©, "
+         "l’Ã©galitÃ©, la fraternitÃ© et la dignitÃ© soient avec "
+         "vous. Pardonnez ce ton un peu ecclÃ©siastique.",
+         "À tous mes frères et soeurs dans la syrienneté comme dans "
+         "l’humanité, sans discrimination aucune, je vous souhaite "
+         "bonne fête عيد سعيد.Que la paix, la liberté, l’égalité, "
+         "la fraternité et la dignité soient avec vous. Pardonnez "
+         "ce ton un peu ecclésiastique.");
   // UTF-8 / sloppy Windows-1250 mixup in Romanian
   FIX_TO("vedere Ă®nceĹŁoĹźatÄ\u0083",
          "vedere înceţoşată");
@@ -296,15 +328,24 @@ static void TestFtfyInTheWild() {
   FIX_TO("The ICR has been upgraded to â€œbb+â€? from â€œbbâ€?",
          "The ICR has been upgraded to “bb+� from “bb�");
   // CESU-8 / Latin-1 mixup over several emoji
-  FIX_TO("I just figured out how to tweet emojis! â\u009a½í\u00a0½í¸\u0080í\u00a0½í¸\u0081í\u00a0½í¸\u0082í\u00a0½í¸\u0086í\u00a0½í¸\u008eí\u00a0½í¸\u008eí\u00a0½í¸\u008eí\u00a0½í¸\u008e",
+  FIX_TO("I just figured out how to tweet emojis! "
+         "â\u009a½í\u00a0½í¸\u0080í\u00a0½í¸\u0081í\u00a0½í¸"
+         "\u0082í\u00a0½í¸\u0086í\u00a0½í¸\u008eí\u00a0½í¸"
+         "\u008eí\u00a0½í¸\u008eí\u00a0½í¸\u008e",
          "I just figured out how to tweet emojis! ⚽😀😁😂😆😎😎😎😎");
   // Inconsistent UTF-8 / Latin-1 mojibake
-  FIX_TO("Ecuadorâ\u0080\u0099s â\u0080\u0098purely political decision on Assangeâ\u0080\u0099 is likely result of â\u0080\u0098US pressureâ\u0080\u0099\u0085",
-         "Ecuador’s ‘purely political decision on Assange’ is likely result of ‘US pressure’…");
+  FIX_TO("Ecuadorâ\u0080\u0099s â\u0080\u0098purely political decision "
+         "on Assangeâ\u0080\u0099 is likely result of â\u0080\u0098US "
+         "pressureâ\u0080\u0099\u0085",
+         "Ecuador’s ‘purely political decision on Assange’ is likely "
+         "result of ‘US pressure’…");
   // Inconsistent UTF-8 / Latin-1 mojibake with an ellipsis from
   // the Windows-1252 character set
-  FIX_TO("Ecuadorâ\u0080\u0099s â\u0080\u0098purely political decision on Assangeâ\u0080\u0099 is likely result of â\u0080\u0098US pressureâ\u0080\u0099…",
-         "Ecuador’s ‘purely political decision on Assange’ is likely result of ‘US pressure’…");
+  FIX_TO("Ecuadorâ\u0080\u0099s â\u0080\u0098purely political decision "
+         "on Assangeâ\u0080\u0099 is likely result of â\u0080\u0098US "
+         "pressureâ\u0080\u0099…",
+         "Ecuador’s ‘purely political decision on Assange’ is likely "
+         "result of ‘US pressure’…");
   // Inconsistent mojibake in Portuguese
   FIX_TO("Campeonatos > III DivisÃ£o - SÃ©rie F > Jornadas Classificação",
          "Campeonatos > III Divisão - Série F > Jornadas Classificação");
@@ -312,8 +353,10 @@ static void TestFtfyInTheWild() {
   FIX_TO("ŉ Chloroplas is ŉ organel wat in fotosinterende plante voorkom.",
          "ʼn Chloroplas is ʼn organel wat in fotosinterende plante voorkom.");
   // Handle Croatian single-codepoint digraphs
-  FIX_TO("izum „bootstrap load“ koji je korišteǌem polisilicijskog sloja proizveo dovoǉno dobre kondenzatore na čipu",
-         "izum „bootstrap load“ koji je korištenjem polisilicijskog sloja proizveo dovoljno dobre kondenzatore na čipu");
+  FIX_TO("izum „bootstrap load“ koji je korišteǌem polisilicijskog sloja "
+         "proizveo dovoǉno dobre kondenzatore na čipu",
+         "izum „bootstrap load“ koji je korištenjem polisilicijskog sloja "
+         "proizveo dovoljno dobre kondenzatore na čipu");
   // A with an acute accent, in isolation
   FIX_TO("NicolÃ¡s",
          "Nicolás");
@@ -331,24 +374,30 @@ static void TestFtfyInTheWild() {
   FIX_TO("Ã perturber la rÃ©flexion des thÃ©ologiens jusqu'Ã nos jours",
          "à perturber la réflexion des théologiens jusqu'à nos jours");
   // Fix 'à' in inconsistent mojibake
-  FIX_TO("Le barÃ¨me forfaitaire permet l’Ã©valuation des frais de dÃ©placement relatifs Ã l’utilisation",
-         "Le barème forfaitaire permet l’évaluation des frais de déplacement relatifs à l’utilisation");
+  FIX_TO("Le barÃ¨me forfaitaire permet l’Ã©valuation des frais de "
+         "dÃ©placement relatifs Ã l’utilisation",
+         "Le barème forfaitaire permet l’évaluation des frais de "
+         "déplacement relatifs à l’utilisation");
   // The Portuguese word 'às' does not become 'à s' due to the French fix
   FIX_TO("com especial atenÃ§Ã£o Ã s crianÃ§as",
          "com especial atenção às crianças");
   // This is why we require a space after the 's' in 'às'
-  FIX_TO("TroisiÃ¨me Ã©dition pour ce festival qui persiste et signe Ã s'Ã©loigner des grands axes pour prendre les contre-allÃ©es en 16 concerts dans 7 villes de 2 pays voisins.",
-         "Troisième édition pour ce festival qui persiste et signe à s'éloigner des grands axes pour prendre les contre-allées en 16 concerts dans 7 villes de 2 pays voisins.");
+  FIX_TO("TroisiÃ¨me Ã©dition pour ce festival qui persiste et signe "
+         "Ã s'Ã©loigner des grands axes pour prendre les contre-allÃ©es "
+         "en 16 concerts dans 7 villes de 2 pays voisins.",
+         "Troisième édition pour ce festival qui persiste et signe "
+         "à s'éloigner des grands axes pour prendre les contre-allées en "
+         "16 concerts dans 7 villes de 2 pays voisins.");
   // We can fix 'à' in windows-1251 sometimes as well
   FIX_TO("La rГ©gion de Dnepropetrovsk se trouve Г lвЂ™ouest de lвЂ™Ukraine",
          "La région de Dnepropetrovsk se trouve à l’ouest de l’Ukraine");
   // 'Ã quele' is the Portuguese word 'àquele', not 'à quele'
-  FIX_TO("eliminado o antÃ\u00adgeno e mantidos os nÃ\u00adveis de anticorpos, surgem "
-         "as condiÃ§Ãµes necessÃ¡rias ao estabelecimento do granuloma, "
+  FIX_TO("eliminado o antÃ\u00adgeno e mantidos os nÃ\u00adveis de anticorpos, "
+         "surgem as condiÃ§Ãµes necessÃ¡rias ao estabelecimento do granuloma, "
          "semelhante Ã quele observado nas lesÃµes por imunocomplexo em "
          "excesso de anticorpos",
-         "eliminado o antígeno e mantidos os níveis de anticorpos, surgem "
-         "as condições necessárias ao estabelecimento do granuloma, "
+         "eliminado o antígeno e mantidos os níveis de anticorpos, "
+         "surgem as condições necessárias ao estabelecimento do granuloma, "
          "semelhante àquele observado nas lesões por imunocomplexo em "
          "excesso de anticorpos");
   // A complex, lossy pile-up of mojibake in Portuguese
@@ -435,7 +484,8 @@ static void ExpectedNotBad() {
 static void ExpectedBad() {
   // Pattern: Ã[\u00a0¡]
   // This is mojibake for "à" (C3 A0) -> "Ã" + NBSP.
-  // Makes sure that we are using the UTF-8 encoding of U+00A0, not the byte \xa0.
+  // Makes sure that we are using the UTF-8 encoding of U+00A0, not
+  // the byte \xa0.
   CHECK(FixEncoding::IsBad("Ã\u00a0"));
 
   // Common Windows-1252 2-char mojibake
@@ -505,7 +555,7 @@ static void TestVariantDecode() {
 }
 
 void TestTextCodecs() {
-  const TextCodec &w1252 = Windows1252();
+  const TextCodec &w1252 = FixEncoding::Windows1252();
   {
     // U+20AC is Euro Sign = Windows-1252 0x80
     std::string_view euro = "€";
@@ -554,7 +604,7 @@ void TestTextCodecs() {
   }
 
   // Latin-1 has no holes. 0x81 -> U+0081.
-  const TextCodec &latin1 = Latin1();
+  const TextCodec &latin1 = FixEncoding::Latin1();
   {
     std::string_view cp_81 = "\u0081";
     auto encoded = latin1.Encode(cp_81);
@@ -567,7 +617,7 @@ void TestTextCodecs() {
   }
 
   // Ensure strict codecs don't do the 0x1A hack in their strict mode.
-  const TextCodec &macroman = MacRoman();
+  const TextCodec &macroman = FixEncoding::MacRoman();
   {
     // 0x1A in MacRoman is just U+001A (Control)
     std::string_view sub = "\x1A";
