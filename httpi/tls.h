@@ -1,12 +1,14 @@
 #ifndef _HTTPI_TLS_H
 #define _HTTPI_TLS_H
 
-#include <vector>
-#include <string>
-#include <variant>
-#include <cstdint>
 #include <array>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <string>
 #include <string_view>
+#include <variant>
+#include <vector>
 
 #include "packet-parser.h"
 

@@ -2,6 +2,10 @@
 #include "tls.h"
 
 #include <initializer_list>
+#include <span>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"

@@ -2,9 +2,11 @@
 #ifndef _HTTPI_CONFIG_H
 #define _HTTPI_CONFIG_H
 
+#include <memory>
 #include <string_view>
 #include <unordered_map>
 #include <string>
+#include <vector>
 
 #include "multi-rsa.h"
 #include "tls.h"

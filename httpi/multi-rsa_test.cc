@@ -1,8 +1,13 @@
 
 #include "multi-rsa.h"
 
+#include <optional>
+#include <utility>
+#include <vector>
+
 #include "ansi.h"
 #include "base/print.h"
+#include "bignum/big.h"
 
 static void TestRoundTrip() {
 

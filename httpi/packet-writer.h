@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 

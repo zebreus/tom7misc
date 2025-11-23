@@ -1,8 +1,16 @@
 
 #include "tls.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstring>
+#include <format>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 

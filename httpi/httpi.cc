@@ -1,11 +1,13 @@
 
 #include <arpa/inet.h>
+#include <array>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/epoll.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -18,7 +20,6 @@
 #include <string_view>
 #include <cstdint>
 #include <span>
-#include <variant>
 #include <chrono>
 #include <thread>
 
@@ -28,7 +29,6 @@
 #include "base/print.h"
 #include "config.h"
 #include "crypt/cryptrand.h"
-#include "crypt/sha1.h"
 #include "crypt/sha256.h"
 #include "crypt/aes.h"
 #include "hexdump.h"
@@ -625,9 +625,6 @@ struct Session {
           struct sockaddr_in client_addr,
           ArcFour *rc) :
     config(config), rc(rc), client(client_fd, client_addr) {
-
-    // Just let the OS clean up forked children when they exit.
-    signal(SIGCHLD, SIG_IGN);
 
     poll_set.ConnectClient(client_fd);
     SHA256::Init(&handshake_ctx);
@@ -1541,6 +1538,11 @@ struct Server {
   }
 
   void Loop() {
+    // Just let the OS clean up forked children when they exit.
+    if constexpr (SERIALIZE_CONNECTIONS) {
+      signal(SIGCHLD, SIG_IGN);
+    }
+
     Print(AGREY("[PARENT {}]") " Server listening...\n",
           server_pid);
 
@@ -1593,9 +1595,8 @@ struct Server {
           Print(stderr, AGREY("[PARENT {}]") " Child PID {} completed.\n",
                 server_pid, pid);
         } else {
-          // Detach process so that it doesn't become a zombie; we
-          // don't need anything from it.
-          waitpid(-1, NULL, WNOHANG);
+          // We are ignoring SIGCHLD, so the kernel cleans up
+          // the child automatically.
         }
 
         if constexpr (JUST_ONE_CONNECTION) {

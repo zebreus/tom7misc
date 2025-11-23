@@ -1,10 +1,11 @@
 #ifndef _HTTPI_PACKET_PARSER_H
 #define _HTTPI_PACKET_PARSER_H
 
-#include <span>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <span>
+#include <string_view>
 
 #include "base/logging.h"
 

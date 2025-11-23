@@ -3,6 +3,7 @@
 #define _MULTI_RSA_H
 
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 

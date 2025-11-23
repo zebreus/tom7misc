@@ -1,6 +1,7 @@
 
 #include "pem.h"
 
+#include <format>
 #include <string>
 #include <vector>
 #include <cstdint>
