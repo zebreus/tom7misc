@@ -1538,8 +1538,8 @@ struct Server {
   }
 
   void Loop() {
-    // Just let the OS clean up forked children when they exit.
-    if constexpr (SERIALIZE_CONNECTIONS) {
+    if constexpr (!SERIALIZE_CONNECTIONS) {
+      // Just let the OS clean up forked children when they exit.
       signal(SIGCHLD, SIG_IGN);
     }
 
@@ -1555,6 +1555,11 @@ struct Server {
                              &client_addr_len);
 
       if (client_fd == -1) {
+        if (errno == EINTR) {
+          // Interrupted syscall; just loop again.
+          continue;
+        }
+
         perror("accept");
         continue;
       }

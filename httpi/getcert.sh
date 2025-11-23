@@ -2,6 +2,10 @@
 
 DIR=/etc/httpi
 
+# Note that if you tried running the scripts but didn't add the CNAME records,
+# it will not report them again. You can find them in here:
+#    /etc/letsencrypt/acmedns.json
+
 if [ -z "$1" ] || [ -z "$2" ]; then
   echo "./getcert.sh key_name config_name" >&2
   echo "Works entirely in ${DIR}." >&2
