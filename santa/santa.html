@@ -1,5 +1,6 @@
 <!doctype HTML>
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <script>
@@ -201,7 +202,12 @@
      return;
    } else {
      // Note that we use 2*secret since this is "textbook ElGamal."
-     // This ensures that the public key is a square.
+     // This ensures that the public key is a square mod P. If we
+     // had mixed squares and non-squares, it would create an actual
+     // problem for our protocol: After the public keys are revealed,
+     // it would be possible to know that ~half of them cannot
+     // correspond to ~half of the encrypted keys (using quadratic
+     // residues).
      public_key = PowMod(G, 2n * secret_key, P);
    }
 
@@ -333,7 +339,7 @@
    if (plain === null) {
      // error already reported
    } else if (plain == 0n || plain >= P) {
-     // XXX warn if
+     // XXX Warn if the message is all digits.
      error('message empty or too long!');
    } else {
      let y = RandomP();
@@ -372,8 +378,7 @@
    // This will be the same s computed during encryption.
    let s = PowMod(c1, 2n * secret, P);
    let si = ModInverse(s, P);
-   // XXX actually check that it's the inverse, I guess?
-   if (si === null) {
+   if (si === null || ((s * si) % P) != 1n) {
      error('something is wrong: couldn\'t compute s⁻¹ mod P');
      return;
    }
@@ -391,7 +396,7 @@
 
 
  function Tab(n) {
-   const NUM_TABS = 3;
+   const NUM_TABS = 4;
    Tweak();
    for (let i = 0; i < NUM_TABS; i++) {
      let tab = document.getElementById('tab' + i);
@@ -489,40 +494,40 @@
 
  /* Public keys are colored green */
  .public {
-   color: #252;
+   color: #282;
  }
 
  textarea.public {
    border-color: #ACA;
  }
  textarea.public:focus-visible {
-   border-color: #080;
+   border-color: #0A0;
    outline: none;
  }
 
  /* Private keys are colored red */
  .private {
-   color: #722;
+   color: #922;
  }
 
  textarea.private {
    border-color: #CAA;
  }
  textarea.private:focus {
-   border-color: #800;
+   border-color: #A00;
    outline: none;
  }
 
 
  .ciphertext {
-   color: #255;
+   color: #277;
  }
 
  textarea.ciphertext {
    border-color: #9DD;
  }
  textarea.ciphertext:focus {
-   border-color: #077;
+   border-color: #099;
    outline: none;
  }
 
@@ -555,10 +560,16 @@
    animation: flash 1.5s ease-out forwards;
  }
 
+ .tab-link {
+   color: #337;
+   text-decoration: underline;
+   cursor: pointer;
+ }
+
  .tab {
    display: inline-block;
    cursor: pointer;
-   width: 160px;
+   width: 140px;
    border: 2px solid #77A;
    border-radius: 4px 4px 0 0;
    border-width: 2px 2px 0 2px;
@@ -628,6 +639,15 @@
    width: 50px;
  }
 
+ /* math subscripts */
+  sub {
+    vertical-align: baseline;
+    position: relative;
+    top: 0.35em;
+    left: -0.1em;
+    font-size: 0.70em;
+  }
+
 </style>
 </head>
 
@@ -638,6 +658,7 @@
   <div id="tab0" class="tab" onclick="Tab(0)">Keygen</div>
   <div id="tab1" class="tab" onclick="Tab(1)">Encrypt</div>
   <div id="tab2" class="tab" onclick="Tab(2)">Decrypt</div>
+  <div id="tab3" class="tab" onclick="Tab(3)">Help</div>
 
   <div id="pane0" class="pane">
     <div class="caption">
@@ -668,7 +689,9 @@
 
     <div class="sxs">
       <div>
-        <div class="caption twolines" id="message_hint">Message to encode:</div>
+        <div class="caption twolines" id="message_hint">
+          Message to encode:
+        </div>
         <textarea oninput="EncryptSelectMsg(true); EncryptForm()"
                   id="enc_msg">hi :)</textarea>
       </div>
@@ -688,7 +711,9 @@
 
     <div class="down-arrow wide">↓</div>
 
-    <div class="caption wide">The ciphertext is TWO numbers, separated by a comma.</div>
+    <div class="caption wide">
+      The ciphertext is TWO numbers, separated by a comma.
+    </div>
     <div id="enc_cipher" class="ciphertext-out wide ciphertext"></div>
   </div>
 
@@ -726,6 +751,128 @@
       Decoded as base-100:
     </div>
     <div id="dec_msg" class="message-out"></div>
+
+  </div>
+
+  <div id="pane3" class="pane">
+    Secret Santa protocol by Tom 7!
+
+    <h2>Phase 1</h2>
+    Decide on an ordering for the players P<sub>1</sub>, P<sub>2</sub>,
+    ... P<sub>n</sub>. The player P<sub>n</sub> is the distinguished
+    "Chair." They have a special job so it should be someone who knows
+    how to do this right! The Chair starts things off:
+
+    <h3>The Chair</h3>
+
+    The Chair generates a <b>session key pair</b>, consisting of a
+    <b class="private">private key</b> and a
+    <b class="public">public key</b>. Both of these are just numbers.
+    They copy the session private key somewhere safe, and write down
+    that it's the session key so that they don't mix it up with
+    something else. They publish the session <b class="public">public
+      key</b> to the e-mail thread for everyone to see.
+
+    <h3>Everybody</h3>
+    Everybody generates a <b>personal key pair</b>, which they
+    do on the <span class="tab-link" onclick="Tab(0)">keygen</span>
+    tab. They copy their <b class="private">personal private key</b>
+    somewhere safe, noting that it's their own private key (keeping
+    it straight from the session key, for example). They never share
+    this. They get excited to participate in the chain mail, if they
+    want.
+
+    <h3>Chain mail</h3>
+    The goal of the chain mail is to get all of the public keys
+    to the Chair without the Chair knowing who anybody is.
+    All the <b class="public">personal public keys</b> shared at
+    this point are encrypted with the <b class="private">session
+      public key</b>.
+
+    <p>A player can encrypt their key on the
+    <span class="tab-link" onclick="Tab(1)">encrypt</span> tab.
+    The keys are just numbers, so you need to encrypt them as
+    numbers (the box on the right) not as base-100 text (the box
+    on the left). Use the <b class="public">session public key</b>
+    in the box on the top, and paste your <b class="public">personal
+      public key</b> in the box on the right. The
+    <b class="ciphertext">encrypted key</b> is the pair of big numbers
+    separated by a comma in the box on the bottom.</p>
+
+    <p>P<sub>1</sub> sends the first message.
+    A message is sent privately from one person to the next, in the
+    order decided upon at the beginning. The message contains the set
+    of encrypted public keys. For Player P<sub>k</sub>, they see
+    <b class="ciphertext">encrypted keys</b> from
+    P<sub>1</sub>, P<sub>2</sub>, ... P<sub>k-1</sub>. The player
+    adds their own <b class="ciphertext">encrypted key</b>, and
+    shuffles (or sorts) the list. They pass (only) the list to the next
+    player.</p>
+
+    <p>If a player breaks the e-mail chain then the dead girl comes out
+    of the TV, which is really bad news. Don't let that happen!</p>
+
+    <h3>The Chair, Pt. 2</h3>
+    The chair receives the list of the <b class="ciphertext">encrypted
+      keys</b> last. They can add their <b class="ciphertext">encrypted
+      key</b> to the list if they want to feel what it's like to be
+    a regular participant, but there's not much point because their
+    next job is to decrypt each of the <b class="ciphertext">encrypted
+      keys</b> to get the <b class="public">public keys</b> for each
+    player. They do this on the
+    <span class="tab-link" onclick="Tab(2)">decrypt</span>.
+    They decrypt each <b class="ciphertext">message</b> individually,
+    always using the <b class="private">session private key</b>.
+    The decrypted <b class="public">personal public keys</b> are
+    the numeric plaintexts, not the base-100 decoded "message," which
+    should look like gibberish unless hackers are afoot.
+
+    <p>Once the Chair has all the <b class="public">decrypted public keys</b>,
+    they add their <b class="public">personal public key</b> to this
+    list and sort it numerically in ascending order. They publish this
+    list of numbers to the e-mail thread for everyone to see.</p>
+
+    <p>We are done with the session key now, and the Chair no longer has
+    a special role. Everything else happens with the personal keys.</p>
+
+    <h2>Phase 2</h2>
+
+    <h3>Everybody</h3>
+    Next, everybody needs to make sure their <b class="public">public key</b>
+    is part of that list. They shouldn't ever reveal which one is theirs.
+    They should just say something like "Looks good!" or "Mine isn't on
+    the list!" If the Chair is competent and nobody is messing around, then
+    everybody's public key should be on that sorted list, and the number
+    of keys should be correct as well.
+
+    <h3>Informing your Santa</h3>
+    Each player should find their own <b class="public">public key</b>
+    in the list. The entry <i>before</i> them is their Santa. (The
+    first entry wraps around to find their Santa as the last entry.)
+    They don't know who this is, but they can send them a message.
+
+    <p>Using <b class="public">their Santa's public key</b>, the player
+    encrypts a text message. They do this on the
+    <span class="tab-link" onclick="Tab(1)">encrypt</span> tab,
+    this time using the
+    text (base 100) entry form. The message should contain the
+    player's own name and mailing address (or other instructions, like
+    P.O. box, etc.). It can also contain hints about what you like,
+    or holiday cheer. They publish (only) the <b class="ciphertext">encrypted
+      message</b> to the e-mail thread. They don't mention the public
+    key (this would give away their identity).</p>
+
+    <h3>Becoming Santa</h3>
+    Each participant sees all of these <b class="ciphertext">encrypted
+      messages</b> on the thread. They try decrypting each one using
+    their own <b class="private">personal private key</b> on the
+    <span class="tab-link" onclick="Tab(2)">decrypt</span> tab. All
+    but one of these will "decrypt" to gibberish, but one should
+    contain the message from their Santee.
+
+    <p>As a final check: Only after all the messages have been sent,
+    participants should check that there are n of them, and everybody
+    should confirm that they decrypted exactly one message.</p>
 
   </div>
 
