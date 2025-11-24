@@ -2,23 +2,24 @@
 #include <cinttypes>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <span>
 #include <string>
 #include <time.h>
 #include <unordered_set>
 #include <vector>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "base64.h"
 #include "crypt/aes.h"
 #include "crypt/cryptrand.h"
 #include "crypt/sha512.h"
-#include "util.h"
-
 #include "timer.h"
-#include "ansi.h"
+#include "util.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -172,7 +173,7 @@ static void FillDisk(std::string_view filename_base) {
     std::string filename = std::format("{}.{}", filename_base, files);
     FILE *f = fopen(filename.c_str(), "wb");
     CHECK(f != nullptr) << "Unable to fill file " << filename;
-    printf("Filling %s...\n", filename.c_str());
+    Print("Filling {}...\n", filename);
 
     for (int chunks = 0; chunks < CHUNKS_PER_FILE; chunks++) {
       for (int i = 0; i < CHUNK_SIZE; i++) {
@@ -186,15 +187,15 @@ static void FillDisk(std::string_view filename_base) {
 
       bytes_written += CHUNK_SIZE;
       if (chunks % 1024 == 0) {
-        printf("Wrote %d files + %d chunks. %" PRIi64 " total bytes.\n",
-               files, chunks, bytes_written);
+        Print("Wrote {} files + {} chunks. {} total bytes.\n",
+              files, chunks, bytes_written);
       }
     }
     fclose(f);
   }
 
-  printf("Disk looks full now.\n"
-         "Wrote %" PRIi64 " total bytes.\n", bytes_written);
+  Print("Disk looks full now.\n"
+        "Wrote {} total bytes.\n", bytes_written);
 }
 
 // Overwrite the file's data three times (with a fixed pattern and
@@ -222,7 +223,7 @@ static bool WipeFile(std::string_view filename) {
   // assumption that the data will be overwritten in place...
   if (-1 == fseek(f, 0, SEEK_END)) return false;
   int64 sz = ftell(f);
-  // fprintf(stderr, "Wiping %lld...\n", sz);
+  // Print(stderr, "Wiping {}...\n", sz);
 
   if (-1 == fseek(f, 0, SEEK_SET)) return false;
   for (int i = 0; i < sz; i++)
@@ -234,7 +235,7 @@ static bool WipeFile(std::string_view filename) {
   for (int i = 0; i < sz; i++)
     if (EOF == fputc(rc.Byte(), f)) return false;
 
-  // fprintf(stderr, "OK\n");
+  // Print(stderr, "OK\n");
   return true;
 }
 
@@ -532,8 +533,8 @@ static bool Decrypt(const string &passphrase, const string &contents,
 
   Timer timer;
   KeyPair keys = GetKeys(passphrase, salt);
-  fprintf(stderr, "Generating keys took %s\n",
-          ANSI::Time(timer.Seconds()).c_str());
+  Print(stderr, "Generating keys took {}\n",
+        ANSI::Time(timer.Seconds()));
   *header = std::format("salt {}\n", salt_str);
 
   // Decrypting is simpler because every line must have exactly the
@@ -583,8 +584,8 @@ static bool Decrypt(const string &passphrase, const string &contents,
     // attacker too) but admits no "known plaintext."
     if (lineno == 1) {
       if (!IsBase64String(decoded)) {
-        fprintf(stderr, "Preimage not base64.\n");
-        fprintf(stderr, "XXX: %s\n", decoded.c_str());
+        Print(stderr, "Preimage not base64.\n");
+        Print(stderr, "XXX: {}\n", decoded);
         return false;
       }
 
@@ -592,7 +593,7 @@ static bool Decrypt(const string &passphrase, const string &contents,
       CHECK(preimage.size() == PREIMAGE_BYTES);
       std::vector<uint8> image = SHA512::HashSpan(preimage);
       if (image != salt) {
-        fprintf(stderr, "Preimage does not hash to salt.\n");
+        Print(stderr, "Preimage does not hash to salt.\n");
         return false;
       }
     }
@@ -602,14 +603,14 @@ static bool Decrypt(const string &passphrase, const string &contents,
 
 // Read passphrase from console.
 static string ReadPass() {
-  fprintf(stderr, "Password: ");
+  Print(stderr, "Password: ");
   fflush(stderr);
   string pass;
   DisableEchoExcursion([&]() {
       // HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
       getline(cin, pass);
     });
-  fprintf(stderr, "\n");
+  Print(stderr, "\n");
   return pass;
 }
 
@@ -630,7 +631,10 @@ static void OpenWithEditor(const string &pass,
   string plaintext = FlattenDecrypted(header, lines);
   Util::WriteFile(tmpname, plaintext);
 
-  (void)std::system(std::format("{} {}", cmd, tmpname).c_str());
+  int ret = std::system(std::format("{} {}", cmd, tmpname).c_str());
+  if (ret != 0) {
+    Print(stderr, "Editor failed with status {}\n", ret);
+  }
 
   string newplain = Util::ReadFile(tmpname);
   // Note we can use a version that merges IVs from old, and checks
@@ -639,7 +643,7 @@ static void OpenWithEditor(const string &pass,
   string newenc = Encrypt(pass, newplain);
   Util::WriteFile(file, newenc);
   if (!WipeFile(tmpname))
-    fprintf(stderr, "Warning: Couldn't wipe %s\n", tmpname.c_str());
+    Print(stderr, "Warning: Couldn't wipe {}\n", tmpname);
 
   CHECK(Util::RemoveFile(tmpname));
 }
@@ -715,12 +719,12 @@ int main(int argc, char **argv) {
   if (cmd == "gen") {
     // Generate a strong random password.
     const string pass = B64NpEncode(CryptRandom(24));
-    printf("%s\n", pass.c_str());
+    Print("{}\n", pass);
     return 0;
 
   } else if (cmd == "ezgen") {
     const string pass = RandomEZOld();
-    printf("%s\n", pass.c_str());
+    Print("{}\n", pass);
     return 0;
 
   } else if (cmd == "lowgen") {
@@ -730,7 +734,7 @@ int main(int argc, char **argv) {
           "abcdefghijkmnopqrstuvwxyz"
           "23456789",
           ".");
-    printf("%s\n", pass.c_str());
+    Print("{}\n", pass);
     return 0;
   }
 
@@ -742,7 +746,7 @@ int main(int argc, char **argv) {
 
     string plaintext = Util::ReadFile(file);
     string enctext = Encrypt(pass, plaintext);
-    printf("%s", enctext.c_str());
+    Print("{}", enctext);
 
   } else if (cmd == "dec") {
     const string pass = ReadPass();
@@ -754,7 +758,7 @@ int main(int argc, char **argv) {
       "Failed to decrypt: " << file;
     string plaintext = FlattenDecrypted(header, lines);
 
-    printf("%s", plaintext.c_str());
+    Print("{}", plaintext);
 
   } else if (cmd == "cat") {
 
@@ -767,7 +771,7 @@ int main(int argc, char **argv) {
       "Failed to decrypt: " << file;
     string plaintext = HumanOnly(lines);
 
-    printf("%s", plaintext.c_str());
+    Print("{}", plaintext);
 
   } else if (cmd == "emacs") {
     const string pass = ReadPass();
