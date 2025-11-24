@@ -44,7 +44,7 @@ LDLIBS = `sdl-config --libs`
 # for multiuser, add -DMULTIUSER -DDATADIR=\"/tmp/escapedata/\" -DSTARTUP_LEVELS=\"/tmp/escapelevels\"
 # with appropriate paths to the static data (trailing slash for data dir; no trailing for startup)
 CPPFLAGS = `sdl-config --cflags` $(SDLNETINCLUDES) -DNOSOUND=1 -DLINUX=1
-CXXFLAGS = --std=c++17 -g -Wall -O2 -Wno-sign-compare $(CCLIBINCLUDES)
+CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIBINCLUDES)
 
 escape.exe : ${ESCOBJECTS}
 	g++ -o escape.exe ${LDFLAGS} $^ ${LDLIBS}
@@ -184,7 +184,7 @@ RPATH=-rpath @executable_path/../Frameworks
 #  -framework SDL_mixer
 # to the g++ line linking below
 
-CXXFLAGS=-std=c++17
+CXXFLAGS=-std=c++20
 
 # XXX: I added -I. here and made a symlink to the SDL include
 # directory called "SDL", since some frameworks want to include like
@@ -366,7 +366,7 @@ CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB
 DEBUG=-g
 OPT=-O2
 #
-CXXFLAGS= -std=c++17 ${OPT} $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include $(CCLIBINCLUDES) -I.
+CXXFLAGS= -std=c++20 ${OPT} $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include $(CCLIBINCLUDES) -I.
 SDL_CXXFLAGS= ${CXXFLAGS} ${SDLINCLUDES} ${SDLNETINCLUDES}
 
 

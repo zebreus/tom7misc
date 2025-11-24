@@ -1,5 +1,6 @@
 
 #include <string>
+#include <algorithm>
 
 #include "level.h"
 #include "escape-util.h"
@@ -31,7 +32,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
   auto DrawPlayer = [&graphics, &out](int gx, int gy, bool dead) {
       const ImageRGBA *img =
         dead ? &graphics.lasered2 : &graphics.walk_forward_0;
-      
+
       out.BlendImage(gx, gy - GUY_OVERLAPY, *img);
     };
 
@@ -69,7 +70,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
         /* draw nothing, though these are unexpected in levels! */
       case B_BOMB_X: return;
       case B_DELETED: return;
-        
+
       default:
         if (Level::isbomb(type)) {
           overlapy = BOMB_OVERLAPY;
@@ -80,7 +81,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
 
       out.BlendImage(bx, by - overlapy, *img);
     };
-  
+
   for (int y = 0; y < level.h; y++) {
     for (int x = 0; x < level.w; x++) {
       int t = level.tileat(x, y);
@@ -118,7 +119,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
       int dx, dy;
       dir dd;
       bool isdead = level.isdead(dx, dy, dd);
-  
+
       DrawPlayer(ent.x * TILEW, ent.y * TILEH,
                  isdead);
       // XXX draw laser if dead with direction.
@@ -127,7 +128,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
       DrawBot(ent.x * TILEW, ent.y * TILEH, ent.type);
     }
   }
-  
+
   return out;
 }
 
@@ -154,7 +155,7 @@ static ImageRGBA MakeSizedScreenshot(const Graphics &graphics,
     scaledown++;
   }
   if (scaledown > 1) ss = ss.ScaleDownBy(scaledown);
-  
+
   ImageRGBA out(ss.Width() + MARGINW, ss.Height() + MARGINH);
   out.Clear32(0x000000FF);
   out.CopyImage(TOP, LEFT, ss);
@@ -205,9 +206,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Can't open %s\n", inlev.c_str());
     return -1;
   }
-  
+
   ImageRGBA out = MakeSizedScreenshot(*graphics, 300, 300, *level);
   out.Save(outfile);
-  
+
   return 0;
 }

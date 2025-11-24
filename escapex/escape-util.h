@@ -31,7 +31,7 @@ template <class T>
 struct vallist {
   T head;
   vallist<T> *next;
-  vallist<T>(T h, vallist<T> *n) : head(h), next(n) {}
+  vallist(T h, vallist<T> *n) : head(h), next(n) {}
   static void push(vallist<T> *&sl, T h) {
     sl = new vallist<T>(h, sl);
   }

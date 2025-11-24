@@ -3,6 +3,7 @@
 #define _ESCAPE_GRAPHICS_H
 
 #include <string>
+#include <utility>
 
 #include "../cc-lib/image.h"
 
@@ -69,9 +70,9 @@ struct Graphics {
   // in the supplied data dir. Returns nullptr upon failure.
   static Graphics *Create(const std::string &data_dir);
   virtual ~Graphics();
- 
+
   const ImageRGBA tiles, tileutil;
-  
+
   ImageRGBA
 #include "animation_syms.h"
   ;
@@ -79,10 +80,10 @@ struct Graphics {
   // Get the pixel coordinates of tile t in the "tiles" image.
   // It has size TILEWxTILEH.
   static inline std::pair<int, int> TileXY(int t) {
-    return make_pair((t % SRCTILESW) * TILEW,
-                     (t / SRCTILESW) * TILEH);
+    return std::make_pair((t % SRCTILESW) * TILEW,
+                          (t / SRCTILESW) * TILEH);
   }
-  
+
 private:
   // Use Create.
   Graphics(const ImageRGBA &tiles_png,

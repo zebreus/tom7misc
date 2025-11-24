@@ -10,7 +10,7 @@ template<class P>
 struct PtrList {
   P *head = nullptr;
   PtrList<P> *next = nullptr;
-  PtrList<P>(P *h, PtrList<P> *n) : head(h), next(n) {}
+  PtrList(P *h, PtrList<P> *n) : head(h), next(n) {}
 
   static void push(PtrList<P> *&sl, P *h) {
     sl = new PtrList<P>(h, sl);

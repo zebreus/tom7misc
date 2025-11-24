@@ -3,6 +3,7 @@
 #include <cstring>
 #include <cstdint>
 #include <string.h>
+#include <ctime>
 
 #include "escape-util.h"
 
