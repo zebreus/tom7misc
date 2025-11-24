@@ -1,6 +1,6 @@
 
 /* generate text ("homework") using a grammar description file
-   
+
    Tom 7, 1997: licensed under the GPL
 
    Updated by Tom 7 in 2001 (how time flies...) with a %var=family%
@@ -9,16 +9,16 @@
    In 2002, added the sorely needed #!familyname option to
    avoid repetition.
 
-   Check out docs.txt for semi-accurate documentation. 
+   Ported to moderner C++ in 2025 (!).
 
-   $Id: homework.cc,v 1.13 2005/07/14 21:41:45 tom7 Exp $
+   Check out docs.txt for semi-accurate documentation.
 */
 
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
-#include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
-#include <string.h>
 #include <unistd.h>
 
 #define RECURSEMAX 1024
@@ -29,28 +29,28 @@
    #define INCLUDEPATH "/home/httpd/cgi-data/hw/"
 #endif
 
-string includepath = INCLUDEPATH;
-
 /* win32 is crazy ?? */
 #ifdef WIN32
-   #define snprintf _snprintf
-   #define random rand
-   #define srandom srand
+#define snprintf _snprintf
+#define random rand
+#define srandom srand
 #endif
 
 #define PREAMBLE "Content-type: text/html\n\n"
 #define POSTSCRIPT "\n"
 
-/* needed for some versions of g++, msvc++ */
 using namespace std;
 
+static string includepath = INCLUDEPATH;
+
+namespace {
 struct element {
   string value;
   int rep;
   int infinite;
   element * next;
-  element(string val, int r, int i, element * n) : value(val), rep(r), 
-						   infinite(i), next(n) {}
+  element(string val, int r, int i, element * n) : value(val), rep(r),
+               infinite(i), next(n) {}
 };
 
 struct family {
@@ -77,6 +77,7 @@ struct variable {
       next(nn),
       valid(1) {}
 };
+}  // namespace
 
 string typefile(char*);
 
@@ -117,8 +118,8 @@ int main (int argc, char ** argv) {
     if (!strcmp(argv[c], "-n")) cgi = 0;
     else if (!strcmp(argv[c], "-d")) {
       if (c >= (argc-1)) {
-	fprintf (stderr, "-d but no dir");
-	exit(-1);
+        fprintf (stderr, "-d but no dir");
+        exit(-1);
       }
       includepath = argv[++c];
     } else funame = argv[c];
@@ -152,11 +153,11 @@ string parse(string in) {
       string inside ="";
       int n;
       for (n=x+1;n<in.length();n++) {
-	if (in[n]=='%') {
-	  output += percentcode(inside);
-	  x = n;
-	  goto I_use_gotos_with_pride;
-	} else inside += in[n];
+  if (in[n]=='%') {
+    output += percentcode(inside);
+    x = n;
+    goto I_use_gotos_with_pride;
+  } else inside += in[n];
       }
       /* all the way to in.length()... bad. */
       printf("!![syntax error while parsing %%]]!!\n");
@@ -169,11 +170,11 @@ string parse(string in) {
 }
 
 /* eval a conditional */
-int conditional(string c) {
+int Conditional(string c) {
   if (c == "") {
     printf("!![syntax error: empty conditional]");
   }
-  if (c[0] == '!') return !conditional(c.substr(1,c.length()-1));
+  if (c[0] == '!') return !Conditional(c.substr(1,c.length()-1));
   if (c == "rep") {
     return !!(currelement->rep - 1);
   } else {
@@ -219,10 +220,10 @@ string percentcode(string inways) {
 
       char res[512];
       snprintf(res, 510,
-	       "<tr><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%s</td><td>%f</td></tr>\n",
-	       tmp->name.c_str(), truelen,
-	       tmp->used, tmp->length, tmp->unique?"!":"", 
-	       (float)tmp->used / truelen);
+         "<tr><td>%s</td><td>%d</td><td>%d</td><td>%d</td><td>%s</td><td>%f</td></tr>\n",
+         tmp->name.c_str(), truelen,
+         tmp->used, tmp->length, tmp->unique?"!":"",
+         (float)tmp->used / truelen);
       r += res;
     }
 
@@ -256,35 +257,35 @@ string percentcode(string inways) {
   if (inways[0]=='^') {
     if (inways.length() > 1 && inways[1]=='^') {
       if (inways.length() > 2 && inways[2]=='^') {
-	/* every letter */
-	string r = percentcode((char*)(inways.c_str()+3));
+  /* every letter */
+  string r = percentcode((char*)(inways.c_str()+3));
 
-	for(unsigned int i = 0; i < r.length(); i ++) {
-	  if (r[i] >= 'a' && r[i] <= 'z') {
-	    r[i] &= ~32;
-	  }
-	}
+  for(unsigned int i = 0; i < r.length(); i ++) {
+    if (r[i] >= 'a' && r[i] <= 'z') {
+      r[i] &= ~32;
+    }
+  }
 
-	return r;
+  return r;
       } else {
-	/* all words */
-	string r = percentcode((char*)(inways.c_str()+2));
-	int cap = 1;
-	for (unsigned int u=0; u < r.length(); u ++) {
-	  if (cap && r[u] >= 'a' && r[u] <= 'z')
-	    r[u] = r[u] & ~32;
-	  if (r[u] == ' ' || r[u] == '\n' || r[u] == '\r' || r[u] == '\t'
-	      || r[u] == '-' || r[u] == ';' || r[u] == '>') cap = 1;
-	  else cap = 0;
-	}
-	return r;
+  /* all words */
+  string r = percentcode((char*)(inways.c_str()+2));
+  int cap = 1;
+  for (unsigned int u=0; u < r.length(); u ++) {
+    if (cap && r[u] >= 'a' && r[u] <= 'z')
+      r[u] = r[u] & ~32;
+    if (r[u] == ' ' || r[u] == '\n' || r[u] == '\r' || r[u] == '\t'
+        || r[u] == '-' || r[u] == ';' || r[u] == '>') cap = 1;
+    else cap = 0;
+  }
+  return r;
       }
     } else {
       /* just initial letter */
 
       string r = percentcode((char*)(inways.c_str()+1));
       if (r.length() > 0 && r[0] >= 'a' && r[0] <= 'z') {
-	r[0] = r[0] & ~32;
+  r[0] = r[0] & ~32;
       }
       return r;
     }
@@ -304,9 +305,9 @@ string percentcode(string inways) {
     string r = percentcode((char*)(inways.c_str()+1));
     for(int u=0; u < r.length(); u++) {
       if (u == '<') {
-	/* eat until > or eos */
-	while (u < r.length() && r[++u] != '>');
-	continue;
+  /* eat until > or eos */
+  while (u < r.length() && r[++u] != '>');
+  continue;
       }
       if (u == ' ' || u == '\n' || u == '\r' || u == '\t') continue;
       if (isvowel(32|r[u])) return "an " + r;
@@ -320,12 +321,12 @@ string percentcode(string inways) {
     string name = inways.c_str()+1;
     for(variable * ss = sl; ss; ss = ss -> next) {
       if (name == ss->name) {
-	if (ss->valid) {
-	  ss->value = stoi(atoi(ss->value.c_str()) + 1);
-	} else {
-	  ss->value = "1";
-	}
-	return "";
+  if (ss->valid) {
+    ss->value = stoi(atoi(ss->value.c_str()) + 1);
+  } else {
+    ss->value = "1";
+  }
+  return "";
       }
     }
     /* add it */
@@ -338,8 +339,8 @@ string percentcode(string inways) {
     string name = inways.c_str()+1;
     for(variable * ss = sl; ss; ss = ss -> next) {
       if (name == ss->name) {
-	ss->valid = 0;
-	return "";
+  ss->valid = 0;
+  return "";
       }
     }
     /* return "" even if not found */
@@ -352,12 +353,12 @@ string percentcode(string inways) {
     string cond;
     for (int z = 1; z < inways.length(); z++) {
       if (inways[z] == '/') {
-	if (conditional(cond)) {
-	  /* condition true: continue */
-	  return percentcode(inways.c_str() + z + 1);
-	} else {
-	  return "";
-	}
+  if (Conditional(cond)) {
+    /* condition true: continue */
+    return percentcode(inways.c_str() + z + 1);
+  } else {
+    return "";
+  }
       } else cond += inways[z];
     }
     return "[[syntax error -- unfinished conditional]]";
@@ -381,31 +382,31 @@ string percentcode(string inways) {
       int upper=0;
       int lower = atoi((char*)(inways.c_str()+2));
       if (nn != inways.length()) {
-	int zz;
-	for (zz=nn+1;zz<inways.length();zz++) 
-	  if (inways[zz] < '0' || inways[zz] > '9') { inways[zz]='\0';break;}
-	upper = atoi((char*)(inways.c_str()+nn+1));
+  int zz;
+  for (zz=nn+1;zz<inways.length();zz++)
+    if (inways[zz] < '0' || inways[zz] > '9') { inways[zz]='\0';break;}
+  upper = atoi((char*)(inways.c_str()+nn+1));
       }
       if (!upper) {
-	// oy, they want 'lower' digits.
-	char * set;
-	int length;
-	if (method==1) {
-	  set = "0123456789";
-	  length=9;
-	} else {
-	  set = "0123456789ABCDEF";
-	  length=15;
-	}
-	string outward;
-	for (;lower--;) outward += set[(int)((float(random())/RAND_MAX)*length)];
-	return outward;
+  // oy, they want 'lower' digits.
+  char * set;
+  int length;
+  if (method==1) {
+    set = "0123456789";
+    length=9;
+  } else {
+    set = "0123456789ABCDEF";
+    length=15;
+  }
+  string outward;
+  for (;lower--;) outward += set[(int)((float(random())/RAND_MAX)*length)];
+  return outward;
       } else {
-	int num = lower+(int)((float(random())/RAND_MAX)*(upper-lower));
-	char buffer[256];
-	if (!method) sprintf (buffer,"%d",num);
-	else if (method==1) sprintf(buffer,"%x",num);
-	return buffer;
+  int num = lower+(int)((float(random())/RAND_MAX)*(upper-lower));
+  char buffer[256];
+  if (!method) sprintf (buffer,"%d",num);
+  else if (method==1) sprintf(buffer,"%x",num);
+  return buffer;
       }
     } else return "42";
   }
@@ -415,31 +416,31 @@ string percentcode(string inways) {
   int assignflag = 0;
   for (int z=0;z<inways.length();z++) {
     /*    printf("<br>inways='%s' inways[z]='%c' z=%d uu='%s'\n",
-	  inways.c_str(), inways[z], z, uu.c_str()); */
-    if (inways[z] == ':') { 
+    inways.c_str(), inways[z], z, uu.c_str()); */
+    if (inways[z] == ':') {
       assignflag = 1;
     } else if (inways[z] == '=') {
       if (assignflag) {
-	/* :=, so always set and return "" */
-	setvar(uu, percentcode((char*)(inways.c_str() + z + 1)));
-	return "";
+  /* :=, so always set and return "" */
+  setvar(uu, percentcode((char*)(inways.c_str() + z + 1)));
+  return "";
       } else {
-	/* =, so set if unset, otherwise set and return contents */
-	string s;
-	if (lookup(uu, s)) {
-	  return s;
-	} else {
-	  string rr = percentcode((char*)(inways.c_str() + z + 1)); 
-	  setvar (uu,rr);
-	  return rr;
-	}
+  /* =, so set if unset, otherwise set and return contents */
+  string s;
+  if (lookup(uu, s)) {
+    return s;
+  } else {
+    string rr = percentcode((char*)(inways.c_str() + z + 1));
+    setvar (uu,rr);
+    return rr;
+  }
       }
     } else {
       uu += inways[z];
       assignflag = 0;
     }
   }
-  
+
   /* standard %family% notation */
 
   family * tmp = families;
@@ -453,19 +454,19 @@ string percentcode(string inways) {
       element * toop = tmp->contents;
 
       if (tmp->unique) {
-	/*	printf("<br>num: %d\n", num); */
-	/* find the nth unused/non-infinite entry */
-	while (num || !(toop->infinite || !toop->rep)) {
-	  /*
-	    printf("<br>num: %d, toop: %p, toop->infinite: %d, toop->rep: %d, toop: %s\n",
-	    num, toop, toop->infinite, toop->rep,
-	    toop->value.c_str());
-	  */
-	  num -= (toop->infinite || !toop->rep);
-	  toop = toop -> next;
-	}
+  /*  printf("<br>num: %d\n", num); */
+  /* find the nth unused/non-infinite entry */
+  while (num || !(toop->infinite || !toop->rep)) {
+    /*
+      printf("<br>num: %d, toop: %p, toop->infinite: %d, toop->rep: %d, toop: %s\n",
+      num, toop, toop->infinite, toop->rep,
+      toop->value.c_str());
+    */
+    num -= (toop->infinite || !toop->rep);
+    toop = toop -> next;
+  }
       } else {
-	for (int z=0;z<num;z++) toop=toop->next;
+  for (int z=0;z<num;z++) toop=toop->next;
       }
 
       toop->rep ++;
@@ -493,10 +494,10 @@ string percentcode(string inways) {
 void build(string fname, string errmsg) {
   fname = includepath + fname;
   FILE * infile = fopen(fname.c_str(),"r");
-  if (!infile) { 
+  if (!infile) {
     printf("%sUnable to open file '%s'\n",
-	   errmsg.c_str(), fname.c_str());
-    exit(-1); 
+     errmsg.c_str(), fname.c_str());
+    exit(-1);
   }
   // build loop
   int x;
@@ -510,50 +511,50 @@ void build(string fname, string errmsg) {
       const char * arg;
       /* if it is followed by !, then we need to set the unique flag */
       if (thisline[1]=='!') {
-	currunique = 1;
-	arg = thisline.c_str() + 2;
+  currunique = 1;
+  arg = thisline.c_str() + 2;
       } else {
-	currunique = 0;
-	arg = thisline.c_str() + 1;
+  currunique = 0;
+  arg = thisline.c_str() + 1;
       }
-      for (x=1;x<thisline.length();x++) 
-	if (thisline[x]==' ') { thisline[x]='\0'; break; }
+      for (x=1;x<thisline.length();x++)
+  if (thisline[x]==' ') { thisline[x]='\0'; break; }
       string argument = (char*)(thisline.c_str() + x+1);
       if (!strcmp(arg,"needs")) {
-	build(argument,errmsg+argument+": ");
+  build(argument,errmsg+argument+": ");
       } else if (!strcmp(arg,"include")) {
-	printf("%s#include not yet supported (try #needs).\n",
-	       errmsg.c_str());
+  printf("%s#include not yet supported (try #needs).\n",
+         errmsg.c_str());
       } else {
-	/* new familyname. */
-	if ((string)arg == "") { 
-	  printf("%sempty familyname?\n", errmsg.c_str()); 
-	  exit(-1);
-	}
-	currentfam = (string)arg;
-	family * tmp = families;
-	while (tmp) {
-	  if (currentfam == tmp->name) { 
-	    printf("%sduplicated familyname '%s'\n",
-		   errmsg.c_str(),
-		   currentfam.c_str());
-	    exit(-1);
-	  }
-	  else tmp = tmp->next;
-	}
-	addfamily(families, new family(currentfam, 0, 0, 0, currunique));
+  /* new familyname. */
+  if ((string)arg == "") {
+    printf("%sempty familyname?\n", errmsg.c_str());
+    exit(-1);
+  }
+  currentfam = (string)arg;
+  family * tmp = families;
+  while (tmp) {
+    if (currentfam == tmp->name) {
+      printf("%sduplicated familyname '%s'\n",
+       errmsg.c_str(),
+       currentfam.c_str());
+      exit(-1);
+    }
+    else tmp = tmp->next;
+  }
+  addfamily(families, new family(currentfam, 0, 0, 0, currunique));
       }
     } else {
       if (currentfam == "") {
-	printf("%ssyntax error\n", errmsg.c_str());
-	exit(-1);
+  printf("%ssyntax error\n", errmsg.c_str());
+  exit(-1);
       }
       if (currunique && thisline[0] == '!') {
-	addtofamily(families,currentfam,
-		    new element(thisline.c_str()+1, 0, 1, 0));
+  addtofamily(families,currentfam,
+        new element(thisline.c_str()+1, 0, 1, 0));
       } else {
-	addtofamily(families,currentfam,
-		    new element(thisline, 0, 0, 0));
+  addtofamily(families,currentfam,
+        new element(thisline, 0, 0, 0));
       }
     }
   }
@@ -565,7 +566,7 @@ void addfamily(family *& head, family * newnode) {
 
 void addtofamily(family *& head, string name, element * newnode) {
   /* this search should find the family immediately in normal use */
-  
+
   family * tmp = head;
   while (tmp) {
     if (tmp->name == name) {
@@ -597,7 +598,7 @@ int getrealline(string& out, FILE * &file) {
   for(;;) {
     /* this doesn't return the last line if there is no \n on it */
     do if ((c=fgetc(file))==EOF) return 0; while (c == '\r');
-    
+
     if (c == '\n') return 1;
 
     out += (char)c;
@@ -629,7 +630,7 @@ void setvar(string name, string val) {
 
   /* not found, make a new entry */
   sl = new variable(name, val, sl);
-  
+
 }
 
 int lookup(string name, string & res) {
@@ -637,8 +638,8 @@ int lookup(string name, string & res) {
   for(variable * ss = sl; ss; ss = ss -> next) {
     if (name == ss->name) {
       if (ss->valid) {
-	res = ss->value;
-	return 1; 
+  res = ss->value;
+  return 1;
       } else return 0;
     }
   }
