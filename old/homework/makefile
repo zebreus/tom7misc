@@ -1,6 +1,9 @@
-default : hw
+default : hw.exe
 
-hw : homework.cc
-	g++ -O3 homework.cc -o hw
+hw.exe : homework.cc
+	g++ -Wall -O3 homework.cc -o $@
 
 # to build on windows, see docs.txt
+
+clean:
+	rm -f *.o hw.exe
