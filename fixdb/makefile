@@ -1,4 +1,4 @@
-all : fixdb.exe
+all : fixdb.exe despam.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
@@ -35,6 +35,10 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@echo -n "."
 
 fixdb.exe : fixdb.o $(OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+despam.exe : despam.o $(OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

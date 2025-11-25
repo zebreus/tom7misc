@@ -1,4 +1,7 @@
 
+// Note: msql++ doesn't work with clang. Perhaps better to
+// just write your own wrapper.
+
 // Don't sort! Explicit include works around bustage with mysql+clang.
 #include <mystring.h>
 #include <mysql++.h>
@@ -19,7 +22,8 @@
 
 DECLARE_COUNTERS(invalid_utf8);
 
-static constexpr bool DRY_RUN = true;
+static bool dry_run = false;
+static int verbose = 0;
 
 static std::string FixBlob(std::string bytes) {
   if (!UTF8::IsValid(bytes)) {
@@ -27,16 +31,24 @@ static std::string FixBlob(std::string bytes) {
     // Very common codepage. What we choose here doesn't matter
     // that much because ftfy can detect incorrect decoding. It
     // just needs the input to be valid UTF-8.
-    bytes = FixEncoding::Windows1252().DecodeSloppy(bytes);
-    CHECK(UTF8::IsValid(bytes));
+    std::string new_bytes = FixEncoding::Windows1252().DecodeSloppy(bytes);
+    CHECK(UTF8::IsValid(new_bytes));
+
+    if (verbose > 0) {
+      Print("Fixed UTF-8:\n" ARED("{}") "\n" ACYAN("to:") "\n"
+            AGREEN("{}") "\n", bytes, new_bytes);
+    }
+
+    bytes = std::move(new_bytes);
   }
 
-  bytes = FixEncoding::Fix(bytes, 0);
+  // Don't change stylistic stuff like ligatures and quotes.
+  bytes = FixEncoding::Fix(bytes, FixEncoding::NEWLINES);
 
   return bytes;
 }
 
-// Note: mysqlpp does not
+// Note: mysqlpp does not work well with string_view.
 static void FixIt(std::string db,
                   std::string table,
                   std::string column,
@@ -59,8 +71,11 @@ static void FixIt(std::string db,
 
   status.Status("Select");
 
-  mysqlpp::Query query =
-    conn.query(std::format("SELECT id, {} FROM {}", column, table));
+  std::string qs = std::format("SELECT id, {} FROM {}", column, table);
+  if (verbose) {
+    status.Print("{}\n", qs);
+  }
+  mysqlpp::Query query = conn.query(qs);
   mysqlpp::StoreQueryResult res = query.store();
 
   CHECK(query.errnum() == 0) << query.error() << std::endl;
@@ -86,13 +101,16 @@ static void FixIt(std::string db,
     std::string fixed_blob = FixBlob(original_blob);
 
     if (fixed_blob != original_blob) {
-      status.Print("[" ACYAN("{}") "] Fixed " ARED("{}") " to " AGREEN("{}") "\n",
-                   id,
-                   original_blob, fixed_blob);
+      if (verbose > 1) {
+        status.Print("[" ACYAN("{}") "] "
+                     "Fixed " ARED("{}") " to " AGREEN("{}") "\n",
+                     id,
+                     original_blob, fixed_blob);
+      }
 
       updated++;
 
-      if (!DRY_RUN) {
+      if (!dry_run) {
         update_q.reset();
         update_q << "UPDATE " << table << " SET " << column << " = "
                  << mysqlpp::quote << fixed_blob
@@ -106,20 +124,60 @@ static void FixIt(std::string db,
     }
   }
 
+  // Now updating column type.
+  if (!dry_run) {
+    update_q.reset();
+    std::string uqs = std::format("alter table {}.{} modify column {} TEXT "
+                                  "character set utf8mb4 "
+                                  "collate utf8mb4_unicode_ci not null",
+                                  db, table, column);
+    if (verbose > 0) {
+      status.Print("{}\n", uqs);
+    }
+    update_q << uqs;
+    CHECK(update_q.execute()) << "Couldn't fix column type?";
+  }
+
   Print("\n\nDone.\n"
         "Invalid UTF-8: {}.\n"
         "Updated: {},\n"
         "Failed on {}.\n",
         invalid_utf8.Read(),
         updated, failed);
+
+  if (dry_run) {
+    Print("\nThis was a " AYELLOW("dry run") " so we didn't "
+          "actually change anything!\n");
+  }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  CHECK(argc == 4 || argc == 5) << "./fixdb.exe db table column [pass]\n";
+  std::vector<std::string> args;
+  for (int i = 1; i < argc; i++) {
+    std::string_view arg = argv[i];
+    if (!arg.empty() && arg[0] == '-') {
+      if (arg == "-dry-run") {
+        dry_run = true;
+      } else if (arg == "-v") {
+        verbose++;
+      } else {
+        LOG(FATAL) << "Only -dry-run and -v args.";
+      }
+    } else {
+      args.push_back(std::string(arg));
+    }
+  }
 
-  FixIt(argv[1], argv[2], argv[3], argc > 4 ? argv[4] : "");
+  // Empty password by default.
+  if (args.size() == 3)
+    args.push_back("");
+
+  CHECK(args.size() == 4) <<
+    "./fixdb.exe [-v] [-dry-run] db table column [pass]\n";
+
+  FixIt(args[0], args[1], args[2], args[3]);
 
   return 0;
 }
