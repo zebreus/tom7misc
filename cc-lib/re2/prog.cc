@@ -7,22 +7,23 @@
 
 #include "re2/prog.h"
 
-#include <mutex>
-#include <stdint.h>
-#include <string.h>
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "base/logging.h"
+#include "base/macros.h"
+#include "re2/bitmap256.h"
 #include "re2/pod_array.h"
 #include "re2/sparse_array.h"
 #include "re2/sparse_set.h"
-#include "re2/util/util.h"
-#include "base/logging.h"
 #include "re2/util/strutil.h"
-#include "re2/bitmap256.h"
+#include "re2/util/util.h"
 
 namespace re2 {
 
@@ -403,6 +404,9 @@ void ByteMapBuilder::Merge() {
     int c = lo+1;
     while (c < 256) {
       int next = splits_.FindNextSetBit(c);
+      // bit 255 is always set, so this cannot
+      // return -1. Suppress gcc warning.
+      ASSUME(next >= 0);
       colors_[next] = Recolor(colors_[next]);
       if (next == hi)
         break;

@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/macros.h"
 #include "re2/util/mutex.h"
 #include "re2/util/utf.h"
 #include "re2/util/util.h"

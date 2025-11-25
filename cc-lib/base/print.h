@@ -1,6 +1,6 @@
 
-#ifndef _CC_LIB_BASE_PRINTF_H
-#define _CC_LIB_BASE_PRINTF_H
+#ifndef _CC_LIB_BASE_PRINT_H
+#define _CC_LIB_BASE_PRINT_H
 
 #include <cstdio>
 #include <format>

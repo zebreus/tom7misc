@@ -14,9 +14,9 @@
 #include <errno.h>
 #include <format>
 #include <map>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <algorithm>
 #include <iterator>
 #include <mutex>
@@ -24,8 +24,9 @@
 #include <string_view>
 #include <utility>
 
-#include "re2/util/util.h"
 #include "base/logging.h"
+#include "base/macros.h"
+#include "re2/util/util.h"
 #include "re2/util/strutil.h"
 #include "re2/util/utf.h"
 #include "re2/prog.h"
