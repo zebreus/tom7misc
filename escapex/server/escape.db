@@ -136,7 +136,7 @@ database escape =
     val info : bool
 
     (* the comment ... *)
-    val comment : blob
+    val comment : text
   end
 
   table solution =
@@ -153,7 +153,7 @@ database escape =
     val md5 : string
 
     (* as base64 data *)
-    val moves : blob
+    val moves : text
     val len : int
 
     (* if this is set, then this
@@ -168,10 +168,10 @@ database escape =
   table summarypost =
     key id
     (* as HTML *)
-    val title : blob
+    val title : text
     val date : int
     (* as HTML *)
-    val description : blob
+    val description : text
   end
 
 end

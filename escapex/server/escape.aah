@@ -30,7 +30,7 @@ end
 val ADMIN-ID = 1
 
 val ADMINPASS = ESCAPE-ADMINPASS
-val ROOT = "/var/www/escape/"
+val ROOT = "/var/www/escape.spacebar.org/"
 val MD5ROOT = ROOT ^ "md5/"
 val SOLROOT = "/var/www/escape-sols/"
 val PNGROOT = ROOT ^ "png/"
