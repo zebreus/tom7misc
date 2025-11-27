@@ -1,4 +1,5 @@
 <!doctype HTML>
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,12 +18,21 @@
 
  // The generator. 7 for VII.
  // Note we are using "Textbook" ElGamal, with the full
- // multiplicative group ℤ_P*; this is integers mod p
- // but keeping only those elements with inverses (i.e., not
- // zero).
+ // multiplicative group ℤ_P*; ℤ_P is integers mod P
+ // but * means to keep only those elements with inverses
+ // (i.e., not zero). Multiplicative group means the group
+ // operation is multiplication (mod P). For G to be a
+ // generator means that
+ //   1
+ //   G
+ //   G × G
+ //   G × G × G
+ //   G × ... × G
+ // yields all elements of the group. In other words,
+ // any group element is G^n for some n.
  const G = 7n;
 
- // b^exp mod m
+ // Compute b^exp mod m
  function PowMod(b, exp, m) {
    let res = 1n;
    let base = b % m;
@@ -40,6 +50,7 @@
  // Extended Euclidean algorithm:
  // Returns {g, s, t} where g is GCD(a, b) and as + bt = g.
  // ("Bézout coefficients" where |s| <= |b/d| and |y| <= |a/d|).
+ // This is just used to compute the inverse of a number below.
  function ExtendedGCD(a, b) {
    let s = 0n;
    let old_s = 1n;
@@ -65,10 +76,7 @@
      t = next_t;
    }
 
-   // Now we have
-   // g = old_r
-   // s = old_s
-   // t = old_t
+   // Now we have g = old_r, s = old_s, t = old_t.
 
    // The GCD is conventionally non-negative. If old_r is negative
    // (which can happen if inputs are negative), we negate all three
@@ -84,6 +92,9 @@
 
  // returns a⁻¹ mod b
  // or null if the inverse does not exist.
+ //
+ // The inverse is the number such that (a⁻¹ × a) mod b = 1.
+ // Because this is a group, every element has an inverse.
  function ModInverse(a, b) {
    // The modulus b must be positive.
    if (b < 0n) return null;
@@ -153,6 +164,11 @@
    elt.innerHTML = '';
  }
 
+ function KeyStrengthInfo(msg) {
+   let elt = document.getElementById('keystrength');
+   elt.innerHTML = msg;
+ }
+
  function ReadTextArea(id) {
    let e = document.getElementById(id);
    return (e && e.value) || '';
@@ -189,33 +205,48 @@
  function SetNum(id, n) { SetPlain(id, n.toString()); }
 
  function GeneratePublic() {
-   if (!TextAreaIsJustNumber('secret_key')) {
-     error('the secret key should just be digits!');
+   // Make sure we don't have stray content if we exit early.
+   KeyStrengthInfo('');
+   SetPlain('public_key', '');
+
+   if (!TextAreaIsJustNumber('private_key')) {
+     error('the private key should just be digits!');
      return;
    }
-   const secret_key = TextAreaNumber('secret_key');
+   const private_key = TextAreaNumber('private_key');
 
    let public_key = 1n;
-   if (secret_key <= 1n || secret_key >= P) {
-     error('secret key must be in the range 1..(P-1)/2. got: ' +
-           secret_key.toString());
+   if (private_key <= 1n || private_key >= SG) {
+     error('private key must be in the open interval ' +
+           '(1, (P-1)/2). got: ' +
+           private_key.toString());
      return;
    } else {
-     // Note that we use 2*secret since this is "textbook ElGamal."
-     // This ensures that the public key is a square mod P. If we
-     // had mixed squares and non-squares, it would create an actual
-     // problem for our protocol: After the public keys are revealed,
-     // it would be possible to know that ~half of them cannot
-     // correspond to ~half of the encrypted keys (using quadratic
-     // residues).
-     public_key = PowMod(G, 2n * secret_key, P);
+     // Note that we use 2*private since this is "textbook ElGamal."
+     // An even exponent ensures that the public key is a
+     // square mod P. If we had mixed squares and non-squares,
+     // it would create an actual problem for our protocol: After
+     // the public keys are revealed, it would be possible to know
+     // that ~half of them cannot correspond to ~half of the
+     // encrypted keys (using quadratic residues).
+     public_key = PowMod(G, 2n * private_key, P);
    }
 
    SetNum('public_key', public_key);
+   const digits =
+     '(' + private_key.toString().length + '/308 digits)';
+   if (private_key <= 10000000000000000000) {
+     KeyStrengthInfo(
+       'The <b class="private">key</b> should be a large ' +
+       'number (say, 20+ digits). ' +
+       'Otherwise it can just be brute-forced.<p>' + digits);
+   } else {
+     KeyStrengthInfo('');
+   }
    ok();
  }
 
- // Generate a random number in 1...P-1.
+ // Generate a random number in (1, P-1).
  function RandomP() {
    for (;;) {
      const num_bytes = Math.ceil(P.toString(16).length / 2) | 0;
@@ -228,13 +259,14 @@
      // XXX should do rejection sampling here or something smart;
      // modulus adds bias.
      n = n % P;
-     if (n > 0n && n < P - 1n) {
+     if (n > 1n && n < P - 1n) {
        return n;
      }
    }
  }
 
- // Base 100
+ // Interpret some printable ASCII text (character codes in 32..128)
+ // as though it were a Base-100 number, returning the number.
  function ASCIIToNum(s) {
    let n = 0n;
    for (let i = 0; i < s.length; i++) {
@@ -253,6 +285,7 @@
    return n;
  }
 
+ // Convert number into a Base-100 string.
  // This strips leading zeroes; those are invalid
  // in this encoding anyway.
  function NumToASCII(n) {
@@ -281,24 +314,26 @@
 
    SetPlain('message_hint',
             encrypt_msg ? 'The message to encrypt.' :
-            '(Probably gibberish) base-100 text that would encode to the ' +
-            'number on the right.');
+            '(Probably gibberish) base-100 text that would ' +
+            'encode to the number on the right.');
    SetPlain('plain_hint',
-            encrypt_msg ? 'The message encoded as a base-100 number. This ' +
-                          'is what is actually encrypted.' :
+            encrypt_msg ?
+            'The message encoded as a base-100 number. This ' +
+            'is what is actually encrypted.' :
             'The raw number to encrypt.');
  }
 
  function EncryptForm() {
-   let key = TextAreaNumber('enc_key');
+   let public_key = TextAreaNumber('enc_key');
 
    // Clear ciphertext so that it doesn't get persisted if there's an
-   // error (e.g. when adding non-ascii to the message, or making it too long).
+   // error (e.g. when adding non-ascii to the message, or making
+   // it too long).
    SetPlain('enc_cipher', '');
 
    // Encryption can start with a message or a plain number.
    // Get the plaintext number and set the other field.
-   // Do this before checking the key so that you can convert
+   // Do this before checking the key so that the user can convert
    // to/from base-100 any time.
    let plain = null;
    if (encrypt_msg) {
@@ -329,10 +364,10 @@
      }
    }
 
-   if (key <= 1n || key >= (P - 1n)) {
+   if (public_key <= 1n || public_key >= (P - 1n)) {
      error('public key is out of range. ' +
            'are you sure it\'s a public key? Got: ' +
-           key.toString());
+           public_key.toString());
      return;
    }
 
@@ -342,10 +377,29 @@
      // XXX Warn if the message is all digits.
      error('message empty or too long!');
    } else {
+     // The encrypted message is two numbers c1 and c2.
+     // These are based on a random one-time secret, y.
      let y = RandomP();
-     let s = PowMod(key, y, P);
      let c1 = PowMod(G, y, P);
+
+     // s is the "shared secret." Both sender and
+     // recipient compute this same value different ways.
+     // If you have heard of Diffie-Hellman Key Exchange,
+     // it is basically doing this same thing.
+     let s = PowMod(public_key, y, P);
      let c2 = (plain * s) % P;
+
+     // The recipient can compute s using their knowledge
+     // of the private key:
+     // s = c1^(2*private_key)
+     //   = (G^y)^(2*private_key)
+     //   = (G^(y * 2*private_key))
+     //   = (G^(2*private_key))^y
+     //   = public_key^y
+     // which is what the sender computed for s.
+     //
+     // From s they can easily compute its inverse s⁻¹.
+     // Then we have (plain * s) * s⁻¹ = plain.
 
      SetPlain('enc_cipher',
               c1.toString() + ',' + c2.toString());
@@ -354,12 +408,13 @@
  }
 
  function DecryptForm() {
-   // Clear plaintext output so that it doesn't get persisted if there's an
-   // error (e.g. when adding non-ascii to the message, or making it too long).
+   // Clear plaintext output so that it doesn't get persisted if
+   // there's an error (e.g. when adding non-ascii to the message,
+   // or making it too long).
    SetPlain('dec_plain', '');
    SetPlain('dec_msg', '');
 
-   let secret = TextAreaNumber('dec_secret');
+   let private_key = TextAreaNumber('dec_private');
    let [c1s, c2s, ...rest] = ReadTextArea('dec_cipher').split(',');
    let c1 = ParseBigInt(c1s || '');
    let c2 = ParseBigInt(c2s || '');
@@ -369,21 +424,22 @@
      return;
    }
 
-   if (secret <= 1n || secret >= P) {
-     error('secret key must be in the range 1..(P-1)/2. got: ' +
-           secret.toString());
+   if (private_key <= 1n || private_key >= P) {
+     error('private key must be the open interval ' +
+           '(1, (P-1)/2). got: ' +
+           private_key.toString());
      return;
    }
 
    // This will be the same s computed during encryption.
-   let s = PowMod(c1, 2n * secret, P);
+   let s = PowMod(c1, 2n * private_key, P);
    let si = ModInverse(s, P);
    if (si === null || ((s * si) % P) != 1n) {
      error('something is wrong: couldn\'t compute s⁻¹ mod P');
      return;
    }
 
-   // c2 is m*s, so m*s*⁻¹ is just m.
+   // c2 is m*s, so m*s*s⁻¹ is just m.
    let m = (c2 * si) % P;
 
    SetNum('dec_plain', m);
@@ -394,9 +450,46 @@
    ok();
  }
 
+ function SortButton() {
+   let lines = ReadTextArea('sort').split(/[\r\n]/);
+   lines = lines.map(line => line.trim());
+   lines = lines.filter(line => line.length > 0);
+
+   if (!lines.every(line => line === line.replace(/[^-0-9]/g, ''))) {
+     error('Every line must be a decimal number to sort numerically.');
+     return;
+   }
+
+   let nums = [];
+   for (const line of lines)
+     nums.push(BigInt(line));
+
+   nums.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+   // let s = '';
+   // for (const num of nums)
+   // s += num.toString() + '\n';
+   SetTextArea('sort', nums.join('\n') + '\n');
+   ok();
+ }
+
+ function ShuffleButton() {
+   let lines = ReadTextArea('sort').split(/[\r\n]/);
+   lines = lines.map(line => line.trim());
+   lines = lines.filter(line => line.length > 0);
+
+   for (let i = lines.length - 1; i >= 1; i--) {
+     let j = Math.floor(Math.random() * (i + 1));
+     if (i !== j) {
+       [lines[i], lines[j]] = [lines[j], lines[i]];
+     }
+   }
+
+   SetTextArea('sort', lines.join('\n') + '\n');
+   ok();
+ }
 
  function Tab(n) {
-   const NUM_TABS = 4;
+   const NUM_TABS = 5;
    Tweak();
    for (let i = 0; i < NUM_TABS; i++) {
      let tab = document.getElementById('tab' + i);
@@ -427,7 +520,7 @@
 
  let HACKERS = [
    'Gadget Hackwrench',
-   'Lex Murphy from Jurassic Park',
+   'Lex Murphy from Jurassic Park (1993)',
    'Dana Scully',
    'Sailor Mercury',
    'Angela Bennett from The Net (1995)',
@@ -448,6 +541,15 @@
  }
 
  * { box-sizing: border-box; }
+
+ /* math subscripts */
+ sub {
+   vertical-align: baseline;
+   position: relative;
+   top: 0.35em;
+   left: -0.1em;
+   font-size: 0.70em;
+ }
 
  textarea {
    font: 14px monospace;
@@ -471,7 +573,8 @@
  }
 
  .ciphertext-out.wide,
- .number-out.wide {
+ .number-out.wide,
+ textarea.wide {
    width: 100%;
  }
 
@@ -531,6 +634,11 @@
    outline: none;
  }
 
+ textarea.no-wrap {
+   white-space: pre;
+   overflow-x: auto;
+ }
+
  .error {
    border-radius: 5px;
    padding: 10px;
@@ -569,7 +677,7 @@
  .tab {
    display: inline-block;
    cursor: pointer;
-   width: 140px;
+   width: 100px;
    border: 2px solid #77A;
    border-radius: 4px 4px 0 0;
    border-width: 2px 2px 0 2px;
@@ -639,15 +747,6 @@
    width: 50px;
  }
 
- /* math subscripts */
-  sub {
-    vertical-align: baseline;
-    position: relative;
-    top: 0.35em;
-    left: -0.1em;
-    font-size: 0.70em;
-  }
-
 </style>
 </head>
 
@@ -658,31 +757,43 @@
   <div id="tab0" class="tab" onclick="Tab(0)">Keygen</div>
   <div id="tab1" class="tab" onclick="Tab(1)">Encrypt</div>
   <div id="tab2" class="tab" onclick="Tab(2)">Decrypt</div>
-  <div id="tab3" class="tab" onclick="Tab(3)">Help</div>
+  <div id="tab3" class="tab" onclick="Tab(3)">Util</div>
+  <div id="tab4" class="tab" onclick="Tab(4)">Help</div>
 
   <div id="pane0" class="pane">
     <div class="caption">
-      Your <b>secret key</b> is some number in [1, (P-1) / 2].
-      Make sure you copy and paste this and keep it safe. If you lose it,
-      not even <span id="hacker">Alan Turing</span> can get it back!
+      Your <b class="private">private key</b> is your choice of number
+      in (1, (P-1) / 2). Make sure you copy and paste this and keep
+      it safe. If you lose it, not even
+      <span id="hacker">Alan Turing</span> can get it back!
     </div>
-    <textarea id="secret_key" class="private"
-              oninput="GeneratePublic()"></textarea>
+    <div class="sxs">
+      <div>
+        <textarea id="private_key" class="private"
+                  oninput="GeneratePublic()"></textarea>
+      </div>
+      <div class="middle-col">&nbsp;</div>
+      <div id="keystrength">
+
+      </div>
+    </div>
 
     <div class="down-arrow">
       ↓
     </div>
 
     <div class="caption">
-      The <b>public key</b> is derived from the secret key.
+      The <b class="public">public key</b> is derived from the
+      private key.
     </div>
     <div id="public_key" class="number-out public"></div>
   </div>
 
   <div id="pane1" class="pane">
     <div class="caption">
-      Place someone's public key here to encrypt with it. It can
-      only be decrypted with the matching secret key.
+      Place someone's <b class="public">public key</b> here to
+      encrypt with it. It can only be decrypted with the
+      matching private key.
     </div>
     <textarea id="enc_key" class="public"
               oninput="EncryptForm()"></textarea>
@@ -704,15 +815,16 @@
         <div class="caption twolines" id="plain_hint">
           The plaintext message is this number:
         </div>
-        <textarea id="enc_plain"
-                  oninput="EncryptSelectMsg(false); EncryptForm()"></textarea>
+        <textarea oninput="EncryptSelectMsg(false); EncryptForm()"
+                  id="enc_plain"></textarea>
       </div>
     </div>
 
     <div class="down-arrow wide">↓</div>
 
     <div class="caption wide">
-      The ciphertext is TWO numbers, separated by a comma.
+      The <b class="ciphertext">ciphertext</b> is TWO numbers,
+      separated by a comma.
     </div>
     <div id="enc_cipher" class="ciphertext-out wide ciphertext"></div>
   </div>
@@ -721,17 +833,17 @@
     <div class="sxs">
       <div>
         <div class="caption">
-          Your secret key; the same number you used to generate your
-          public key in "Keygen."
+          Your <b class="private">private key</b>; the same number
+          you used to generate your public key in "Keygen."
         </div>
-        <textarea id="dec_secret" class="private"
+        <textarea id="dec_private" class="private"
                   oninput="DecryptForm()"></textarea>
       </div>
       <div class="middle-col">&nbsp;</div>
       <div>
         <div class="caption">
-          The ciphertext to decrypt. This should be two big numbers,
-          separated by a comma.
+          The <b class="ciphertext">ciphertext</b> to decrypt.
+          This should be two big numbers, separated by a comma.
         </div>
         <textarea id="dec_cipher" class="ciphertext"
                   oninput="DecryptForm()"></textarea>
@@ -755,6 +867,17 @@
   </div>
 
   <div id="pane3" class="pane">
+    <div class="caption wide">
+      In here you can sort or shuffle lines.
+      Sorting happens by numeric value (2 &lt; 10).
+      Word wrap is disabled so it's clearer where the lines end.
+    </div>
+    <textarea id="sort" class="wide no-wrap"></textarea>
+    <button onclick="SortButton()">Sort</button>
+    <button onclick="ShuffleButton()">Shuffle</button>
+  </div>
+
+  <div id="pane4" class="pane">
     Secret Santa protocol by Tom 7!
 
     <h2>Phase 1</h2>
@@ -765,7 +888,8 @@
 
     <h3>The Chair</h3>
 
-    The Chair generates a <b>session key pair</b>, consisting of a
+    On the <span class="tab-link" onclick="Tab(0)">keygen</span> tab,
+    the Chair generates a <b>session key pair</b>. This consists of a
     <b class="private">private key</b> and a
     <b class="public">public key</b>. Both of these are just numbers.
     They copy the session private key somewhere safe, and write down
@@ -779,8 +903,10 @@
     tab. They copy their <b class="private">personal private key</b>
     somewhere safe, noting that it's their own private key (keeping
     it straight from the session key, for example). They never share
-    this. They get excited to participate in the chain mail, if they
-    want.
+    this. The public key is a pseudonym, so revealing it outside
+    the protocol would give away your identity and is forbidden!
+    Thrilled to be following such strict rules, the players
+    get excited to participate in the chain mail, if they want.
 
     <h3>Chain mail</h3>
     The goal of the chain mail is to get all of the public keys
@@ -806,7 +932,7 @@
     <b class="ciphertext">encrypted keys</b> from
     P<sub>1</sub>, P<sub>2</sub>, ... P<sub>k-1</sub>. The player
     adds their own <b class="ciphertext">encrypted key</b>, and
-    shuffles (or sorts) the list. They pass (only) the list to the next
+    shuffles the list (perhaps using the <span class="tab-link" onclick="Tab(3)">util</span> tab). They pass (only) the list to the next
     player.</p>
 
     <p>If a player breaks the e-mail chain then the dead girl comes out
@@ -829,8 +955,10 @@
 
     <p>Once the Chair has all the <b class="public">decrypted public keys</b>,
     they add their <b class="public">personal public key</b> to this
-    list and sort it numerically in ascending order. They publish this
-    list of numbers to the e-mail thread for everyone to see.</p>
+    list and sort it numerically in ascending order (perhaps using the
+    <span class="tab-link" onclick="Tab(3)">util</span> tab).
+    They publish this list of numbers to the e-mail thread for
+    everyone to see.</p>
 
     <p>We are done with the session key now, and the Chair no longer has
     a special role. Everything else happens with the personal keys.</p>
@@ -860,7 +988,7 @@
     P.O. box, etc.). It can also contain hints about what you like,
     or holiday cheer. They publish (only) the <b class="ciphertext">encrypted
       message</b> to the e-mail thread. They don't mention the public
-    key (this would give away their identity).</p>
+    key (this would give away their own identity).</p>
 
     <h3>Becoming Santa</h3>
     Each participant sees all of these <b class="ciphertext">encrypted
@@ -871,9 +999,10 @@
     contain the message from their Santee.
 
     <p>As a final check: Only after all the messages have been sent,
-    participants should check that there are n of them, and everybody
+    participants should check that there are n messages, and everybody
     should confirm that they decrypted exactly one message.</p>
 
   </div>
 
 </body>
+</html>
