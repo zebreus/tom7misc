@@ -125,19 +125,19 @@ ColorUtil::LABToRGB(float lab_l, float lab_a, float lab_b) {
                          SRGBCompand(b));
 }
 
-
+// Convert linearized sRGB colors to L*a*b*.
 static std::tuple<float, float, float>
-sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {
+LinearsRGBToLAB(float linear_r, float linear_g, float linear_b) {
   // Now to XYZ color space, whose components are nominally in [0, 1].
   // This is just a matrix multiply using a mysterious matrix. Here
   // using sRGB with D65 reference white.
   // http://www.brucelindbloom.com/Eqn_RGB_XYZ_Matrix.html
   const float x =
-    srgb_r * 0.4124564f + srgb_g * 0.3575761f + srgb_b * 0.1804375f;
+    linear_r * 0.4124564f + linear_g * 0.3575761f + linear_b * 0.1804375f;
   const float y =
-    srgb_r * 0.2126729f + srgb_g * 0.7151522f + srgb_b * 0.0721750f;
+    linear_r * 0.2126729f + linear_g * 0.7151522f + linear_b * 0.0721750f;
   const float z =
-    srgb_r * 0.0193339f + srgb_g * 0.1191920f + srgb_b * 0.9503041f;
+    linear_r * 0.0193339f + linear_g * 0.1191920f + linear_b * 0.9503041f;
 
   // Reference white D65. This is what ColorMine uses and it produces
   // results more like I'd expect (e.g. RGB #FFFFFF gives LAB 100,0,0).
@@ -151,9 +151,8 @@ sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {
     // http://www.brucelindbloom.com/LContinuity.html
     static constexpr float epsilon = 216.0f / 24389.0f;
     static constexpr float kappa_div_116 = (24389.0f / 27.0f) / 116.0f;
-    static constexpr float one_third = 1.0f / 3.0f;
     static constexpr float sixteen_116ths = 16.0f / 116.0f;
-    return ch > epsilon ? powf(ch, one_third) :
+    return ch > epsilon ? std::cbrt(ch) :
       (kappa_div_116 * ch + sixteen_116ths);
   };
 
@@ -179,11 +178,11 @@ ColorUtil::RGBToLAB(float r, float g, float b) {
     static constexpr float inv1292 = 1.0f / 12.92f;
     return ch > 0.04045f ? powf((ch + 0.055f) * inv1055, 2.4f) : ch * inv1292;
   };
-  const float srgb_r = SRGBInvCompand(r);
-  const float srgb_g = SRGBInvCompand(g);
-  const float srgb_b = SRGBInvCompand(b);
+  const float linear_r = SRGBInvCompand(r);
+  const float linear_g = SRGBInvCompand(g);
+  const float linear_b = SRGBInvCompand(b);
 
-  return sRGBToLAB(srgb_r, srgb_g, srgb_b);
+  return LinearsRGBToLAB(linear_r, linear_g, linear_b);
 }
 
 // static

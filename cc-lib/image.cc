@@ -1331,6 +1331,45 @@ ImageA ImageRGBA::Alpha() const {
   return Extract(*this, [](uint8, uint8, uint8, uint8 a) { return a; });
 }
 
+ImageA ImageRGBA::Lightness() const {
+  // TODO: constexpr in C++26 maybe?
+  static const std::array<float, 256> UNCOMPAND_SRGB = []{
+      std::array<float, 256> table;
+      for (int i = 0; i < 256; ++i) {
+        float v = i / 255.0f;
+        if (v <= 0.04045f) {
+          table[i] = v / 12.92f;
+        } else {
+          table[i] = std::powf((v + 0.055f) / 1.055f, 2.4f);
+        }
+      }
+      return table;
+    }();
+
+  return Extract(*this, [](uint8 r, uint8 g, uint8 b, uint8 a) {
+      float linear_r = UNCOMPAND_SRGB[r];
+      float linear_g = UNCOMPAND_SRGB[g];
+      float linear_b = UNCOMPAND_SRGB[b];
+
+      // Luminance (linear).
+      const float y =
+        linear_r * 0.2126729f + linear_g * 0.7151522f + linear_b * 0.0721750f;
+
+      // Apply perceptual transform.
+      auto F = [](float ch) {
+          static constexpr float epsilon = 216.0f / 24389.0f;
+          static constexpr float kappa_div_116 = (24389.0f / 27.0f) / 116.0f;
+          static constexpr float sixteen_116ths = 16.0f / 116.0f;
+          return ch > epsilon ? std::cbrt(ch) :
+            (kappa_div_116 * ch + sixteen_116ths);
+        };
+
+      const float fy = F(y);
+      const float ll = (116.0f * fy) - 16.0f;
+      return (uint8_t)std::clamp(ll * (255.0f / 100.0f), 0.0f, 255.0f);
+    });
+}
+
 ImageRGBA ImageRGBA::FromChannels(const ImageA &red,
                                   const ImageA &green,
                                   const ImageA &blue,

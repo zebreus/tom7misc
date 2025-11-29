@@ -205,6 +205,10 @@ struct ImageRGBA {
   ImageA Blue() const;
   ImageA Alpha() const;
 
+  // Compute the perceptual lightness. Assumes sRGB width D65
+  // reference white. Ignores alpha channel.
+  ImageA Lightness() const;
+
   // Ignore the alpha channel.
   ImageRGB IgnoreAlpha() const;
   // TODO: Remove alpha with matte. Ignores alpha component
