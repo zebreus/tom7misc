@@ -20,7 +20,7 @@ static void Filter(std::string_view cclib) {
 
   std::string input = Util::ReadStdin();
 
-  RE2 re("\\\\N{([-A-Z0-9 ]+)}");
+  RE2 re("\"\\\\N{([-A-Z0-9 ]+)}\"");
 
   std::string output =
     RE2Util::MapReplacement(
@@ -29,11 +29,13 @@ static void Filter(std::string_view cclib) {
           if (std::optional<UnicodeData::CodepointData> co =
               unicode->GetByName(matches[1])) {
             uint32_t cp = co.value().codepoint;
-            if (cp <= 0xFFFF) {
-              return std::format("\\u{:04x}", cp);
-            } else {
-              return std::format("\\U{:08x}", cp);
-            }
+            std::string cs =
+              cp <= 0xFFFF ?
+              std::format("\\u{:04x}", cp) :
+              std::format("\\U{:08x}", cp);
+
+            return std::format("\"{}\"  // {}", cs, matches[1]);
+
           } else {
             Print("Couldn't find '{}'\n", matches[1]);
             return std::string(matches[0]);

@@ -465,9 +465,7 @@
      nums.push(BigInt(line));
 
    nums.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-   // let s = '';
-   // for (const num of nums)
-   // s += num.toString() + '\n';
+
    SetTextArea('sort', nums.join('\n') + '\n');
    ok();
  }
@@ -511,7 +509,6 @@
  }
 
  function Init() {
-   // document.body.innerHTML = P.toString();
    EncryptSelectMsg(encrypt_msg);
 
    // consult hash
@@ -825,6 +822,8 @@
     <div class="caption wide">
       The <b class="ciphertext">ciphertext</b> is TWO numbers,
       separated by a comma.
+      Note that encryption involves randomness, so it will
+      be different each time even with the same inputs.
     </div>
     <div id="enc_cipher" class="ciphertext-out wide ciphertext"></div>
   </div>

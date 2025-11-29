@@ -266,6 +266,10 @@ smallcrush-gen.exe : smallcrush-gen.o testu01.o $(OBJECTS)
 	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
 	@echo -n "!"
 
+run-mnist.exe : run-mnist.o $(CL_OBJECTS) $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o $(OBJECTS) *.exe
 

@@ -1,4 +1,4 @@
-all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe clicks.exe unname-unicode.exe
+all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe clicks.exe unname-unicode.exe lightness.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -109,6 +109,9 @@ randomize.exe : randomize.o $(CC_LIB_OBJECTS) $(CC_LIB)/crypt/cryptrand.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 unname-unicode.exe : unname-unicode.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB_UNICODE) $(RE2_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+lightness.exe : lightness.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :

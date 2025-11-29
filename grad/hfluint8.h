@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "half.h"
+#include "base/logging.h"
 
 // If set, use uint8 to implement it (for debugging)
 #define HFLUINT8_WRAP 0
