@@ -1340,7 +1340,7 @@ ImageA ImageRGBA::Lightness() const {
         if (v <= 0.04045f) {
           table[i] = v / 12.92f;
         } else {
-          table[i] = std::powf((v + 0.055f) / 1.055f, 2.4f);
+          table[i] = std::pow((v + 0.055f) / 1.055f, 2.4f);
         }
       }
       return table;

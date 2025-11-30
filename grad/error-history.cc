@@ -2,21 +2,22 @@
 #include "error-history.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <optional>
+#include <format>
 #include <map>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <string>
-#include <cmath>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "util.h"
-#include "image.h"
+#include "base/print.h"
 #include "bounds.h"
+#include "image.h"
+#include "util.h"
 
 using namespace std;
 using int64 = int64_t;
@@ -47,7 +48,8 @@ void ErrorHistory::Add(int64_t round_number,
                        int model_idx) {
   CHECK(round_number >= 0);
   CHECK(column_idx >= 0) << column_idx;
-  CHECK(model_idx >= 0 && model_idx < num_models) << model_idx << " " << num_models;
+  CHECK(model_idx >= 0 && model_idx < num_models) <<
+    model_idx << " " << num_models;
 
   records.push_back(Record{.round_number = round_number,
                            .error_per_example = error_per_example,
@@ -61,15 +63,14 @@ void ErrorHistory::Save() {
   CHECK(f) << filename;
 
   for (const Record &r : records) {
-    fprintf(f, "%lld\t%d\t%d\t%.12g\n",
-            r.round_number, r.model_index,
-            r.column_index,
-            r.error_per_example);
+    Print(f, "{}\t{}\t{}\t{:.12g}\n",
+          r.round_number, r.model_index,
+          r.column_index,
+          r.error_per_example);
   }
 
   fclose(f);
-  printf("Wrote %lld error records to %s\n", (int64_t)records.size(),
-         filename.c_str());
+  Print("Wrote {} error records to {}\n", records.size(), filename);
 }
 
 void ErrorHistory::Load() {
@@ -88,9 +89,9 @@ void ErrorHistory::Load() {
     records.push_back(r);
   }
 
-  printf("Read %lld error records from %s\n",
-         (int64_t)records.size(),
-         filename.c_str());
+  Print("Read {} error records from {}\n",
+        records.size(),
+        filename);
 }
 
 void ErrorHistory::WriteMergedTSV(const string &outfile,
@@ -167,13 +168,13 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
 
   FILE *f = fopen(outfile.c_str(), "wb");
   for (const auto &[round, vals] : rows) {
-    fprintf(f, "%lld", round);
+    Print(f, "{}", round);
     for (double v : vals)
-      fprintf(f, "\t%.4f", v);
-    fprintf(f, "\n");
+      Print(f, "\t{:.4f}", v);
+    Print(f, "\n");
   }
   fclose(f);
-  printf("Wrote merged to %s\n", outfile.c_str());
+  Print("Wrote merged to {}\n", outfile);
 }
 
 ImageRGBA ErrorHistory::MakeImage(int width, int height,
@@ -311,7 +312,7 @@ ImageRGBA ErrorHistory::MakeImage(int width, int height,
     // XXX something to avoid labels overlapping each other, and series.
     // Like we could give several candidate positions and find the one
     // that would write on top of the fewest existing non-black pixels.
-    string label = StringPrintf("%.4f", v);
+    string label = std::format("{:.4f}", v);
     image.BlendText32(width - 2 - label.size() * 9,
                       y - 9 - 4, color, label);
   }
@@ -344,9 +345,9 @@ ImageRGBA ErrorHistory::MakeImage(int width, int height,
   }
 
   image.BlendText32(1, height - 10, 0xFFAAAAAA,
-                    StringPrintf("round %lld", min_round));
+                    std::format("round {}", min_round));
 
-  string maxr = StringPrintf("%lld", max_round);
+  string maxr = std::format("{}", max_round);
   image.BlendText32(width - maxr.size() * 9 - 1, height - 10,
                     0xFFAAAAAA, maxr);
 

@@ -1,13 +1,13 @@
 
 #include "network.h"
 
-#include <array>
-#include <cstdio>
-#include <cmath>
-#include <cstring>
-
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <format>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 
 #include "threadutil.h"
@@ -517,9 +518,9 @@ void Network::NaNCheck(const std::string &message) const {
     for (int i = 0; i < layer_nans.size(); i++) {
       const auto [wn, bn] = layer_nans[i];
       const auto [wd, bd] = layer_denom[i];
-      err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
-                          i,
-                          wn, wd, bn, bd);
+      err += std::format("(real) layer {}. {}/{} weights, {}/{} biases\n",
+                         i,
+                         wn, wd, bn, bd);
     }
     CHECK(false) << "[" << message << "] The network has NaNs :-(\n" << err;
   }
@@ -709,9 +710,9 @@ Chunk Network::MakeRandomSparseChunk(
         // disjoint, ok
       } else {
         LOG(FATAL) <<
-          StringPrintf("SparseSpan %d (%d->%d) overlaps %d (%d->%d)",
-                       s, ss.span_start, ss_end,
-                       c, os.span_start, os_end);
+          std::format("SparseSpan {} ({}->{}) overlaps {} ({}->{})",
+                      s, ss.span_start, ss_end,
+                      c, os.span_start, os_end);
       }
     }
   }
@@ -1104,14 +1105,14 @@ struct FileReader : public Reader {
     FILE *file = fopen(filename.c_str(), "rb");
     if (file == nullptr) {
       if (verbose) {
-        printf("Failed to open %s. If it's present, there may be a "
-               "permissions problem?\n", filename.c_str());
+        Print("Failed to open {}. If it's present, there may be a "
+              "permissions problem?\n", filename);
         fflush(stdout);
       }
       return nullptr;
     } else {
       if (verbose) {
-        printf("Reading [%s]\n", filename.c_str());
+        Print("Reading [{}]\n", filename);
       }
     }
     return new FileReader(file, filename, verbose);
@@ -1192,7 +1193,7 @@ struct FileWriter : public Writer {
     FILE *file = fopen(filename.c_str(), "wb");
     if (file == nullptr) {
       if (verbose) {
-        printf("Failed to open %s for writing?", filename.c_str());
+        Print("Failed to open {} for writing?", filename);
         fflush(stdout);
       }
       return nullptr;
@@ -1236,12 +1237,12 @@ struct VecWriter : public Writer {
 
 static Network *ReadFromReader(Reader *r) {
   if (r->Read32() != Network::MAGIC) {
-    if (r->verbose) printf("Not a serialized network!\n");
+    if (r->verbose) Print("Not a serialized network!\n");
     return nullptr;
   }
 
   if (r->Read32() != Network::FORMAT_ID) {
-    if (r->verbose) printf("Wrong format id!\n");
+    if (r->verbose) Print("Wrong format id!\n");
     return nullptr;
   }
 
@@ -1251,13 +1252,13 @@ static Network *ReadFromReader(Reader *r) {
   const int file_num_layers = r->Read32();
   CHECK_GE(file_num_layers, 0);
   if (r->verbose) {
-    printf("%s: %lld rounds, %lld examples, %d layers.\n",
-           r->Name().c_str(), round, examples, file_num_layers);
+    Print("{}: {} rounds, {} examples, {} layers.\n",
+          r->Name(), round, examples, file_num_layers);
   }
 
   vector<Layer> layers(file_num_layers);
   for (int i = 0; i < file_num_layers; i++) {
-    if (r->verbose) printf("%s: Layer %d: ", r->Name().c_str(), i);
+    if (r->verbose) Print("{}: Layer {}: ", r->Name(), i);
     Layer &layer = layers[i];
     layer.num_nodes = 0;
     const int num_chunks = r->Read32();
@@ -1377,19 +1378,19 @@ static Network *ReadFromReader(Reader *r) {
       chunk.fixed = r->Read32() != 0;
 
       if (r->verbose) {
-        printf("%d %s %s %s%s ",
-               chunk.indices_per_node,
-               TransferFunctionName(chunk.transfer_function),
-               ChunkTypeName(chunk.type),
-               WeightUpdateName(chunk.weight_update),
-               chunk.fixed ? " [F]" : "");
+        Print("{} {} {} {}{} ",
+              chunk.indices_per_node,
+              TransferFunctionName(chunk.transfer_function),
+              ChunkTypeName(chunk.type),
+              WeightUpdateName(chunk.weight_update),
+              chunk.fixed ? " [F]" : "");
         if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
-          printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
-                 chunk.num_features,
-                 (chunk.num_features == 1) ? "" : "s",
-                 chunk.pattern_width, chunk.pattern_height,
-                 chunk.src_width, chunk.src_height,
-                 chunk.occurrence_x_stride, chunk.occurrence_y_stride);
+          Print("({} feat{}, {}x{} pat from {}x{} rect, +{} +{}) ",
+                chunk.num_features,
+                (chunk.num_features == 1) ? "" : "s",
+                chunk.pattern_width, chunk.pattern_height,
+                chunk.src_width, chunk.src_height,
+                chunk.occurrence_x_stride, chunk.occurrence_y_stride);
         }
       }
 
@@ -1416,17 +1417,17 @@ static Network *ReadFromReader(Reader *r) {
       }
 
       if (r->verbose && (large_weights > 0 || large_biases > 0)) {
-        printf("Warning: %lld large weights and %lld large biases\n",
+        Print("Warning: {} large weights and {} large biases\n",
                large_weights, large_biases);
       }
     }
     if (r->verbose) {
-      printf("\n");
+      Print("\n");
     }
   }
 
   if (r->verbose)
-    printf("Read from %s.\n", r->Name().c_str());
+    Print("Read from {}.\n", r->Name());
 
   // Construct network.
 
@@ -1437,11 +1438,11 @@ static Network *ReadFromReader(Reader *r) {
   net->examples = examples;
 
   if (r->verbose)
-    printf("Check it:\n");
+    Print("Check it:\n");
   net->StructuralCheck();
 
   if (r->verbose)
-    printf("OK!\n");
+    Print("OK!\n");
 
   return net.release();
 }
@@ -1452,7 +1453,7 @@ Network *Network::ReadFromFile(const string &filename,
   std::unique_ptr<Reader> r(FileReader::Create(filename, verbose));
   if (r.get() == nullptr) {
     if (verbose)
-      printf("Couldn't read %s\n", filename.c_str());
+      Print("Couldn't read {}\n", filename);
     return nullptr;
   }
   return ReadFromReader(r.get());
@@ -1527,7 +1528,7 @@ static void WriteToWriter(const Network &net, Writer *w) {
     }
   }
 
-  if (w->verbose) printf("Wrote %s.\n", w->Name().c_str());
+  if (w->verbose) Print("Wrote {}.\n", w->Name());
 }
 
 void Network::SaveToFile(const string &filename) {
@@ -1584,14 +1585,16 @@ int64 Errors::Bytes() const {
 }
 
 string RandomizationParams::ToString() const {
-  return StringPrintf("{.sigmoid_uniform = %s, "
-                      ".sigmoid_mag = %.11g, "
-                      ".zeromean_uniform = %s, "
-                      ".zeromean_numer = %.11g}",
-                      sigmoid_uniform ? "true" : "false",
-                      sigmoid_mag,
-                      zeromean_uniform ? "true" : "false",
-                      zeromean_numer);
+  return std::format("{{"
+                     ".sigmoid_uniform = {}, "
+                     ".sigmoid_mag = {:.11g}, "
+                     ".zeromean_uniform = {}, "
+                     ".zeromean_numer = {:.11g}"
+                     "}}",
+                     sigmoid_uniform ? "true" : "false",
+                     sigmoid_mag,
+                     zeromean_uniform ? "true" : "false",
+                     zeromean_numer);
 }
 
 // .. utils
@@ -1618,8 +1621,8 @@ void RandomizeNetwork(ArcFour *rc, Network *net,
   ParallelComp(
       net->layers.size(),
       [&params, rcs, &net](int layer) {
-        printf("Layer %d: there are %d chunks\n",
-               layer, (int)net->layers[layer].chunks.size());
+        Print("Layer {}: there are {} chunks\n",
+              layer, net->layers[layer].chunks.size());
         for (int chunk_idx = 0;
              chunk_idx < net->layers[layer].chunks.size();
              chunk_idx++) {
@@ -1640,9 +1643,9 @@ void RandomizeNetwork(ArcFour *rc, Network *net,
             [layer, chunk_idx](
                 float mean, float hole, float mag, bool uniform,
                 ArcFour *rc, vector<float> *vec) {
-              printf("Layer %d chunk %d: mean %.5f, hole %.5f, mag %.5f, "
-                     "%s\n", layer, chunk_idx, mean, hole, mag,
-                     uniform ? "unif" : "gauss");
+              Print("Layer {} chunk {}: mean {:.5f}, hole {:.5f}, mag {:.5f}, "
+                    "{}\n", layer, chunk_idx, mean, hole, mag,
+                    uniform ? "unif" : "gauss");
               RandomGaussian gauss(rc);
               CHECK(hole >= 0.0) << hole;
               CHECK(!uniform ||
