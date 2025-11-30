@@ -1,17 +1,17 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
+#include <cstdint>
+#include <format>
 #include <limits>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
-#include <optional>
-#include <cstdint>
 
-#include "base/stringprintf.h"
-#include "image.h"
 #include "ansi.h"
+#include "base/print.h"
+#include "image.h"
 
 #include "grad-util.h"
 
@@ -41,7 +41,7 @@ struct Histo {
   std::tuple<double, double, ImageA> MakeImage(
       int width, int height,
       double tallest_bucket = 1.0) const {
-    printf("MakeImage %d %d\n", width, height);
+    Print("MakeImage {} {}\n", width, height);
     ImageA img(width, height);
 
     double lo = std::numeric_limits<double>::infinity();
@@ -102,7 +102,7 @@ struct Histo {
 
     // Label the mode.
     double center = lo + ((maxi + 0.5f) * bucket_width);
-    string label = StringPrintf("%.4f", center);
+    string label = std::format("{:.4f}", center);
     int lw = label.size() * 9;
     // Align on left or right of the label so as not to run off the screen
     // (we could also try to avoid other buckets?)

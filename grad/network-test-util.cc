@@ -6,19 +6,19 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <functional>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <set>
 
-#include "network.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
-#include "randutil.h"
+#include "base/logging.h"
 #include "lines.h"
+#include "network.h"
 #include "opt/opt.h"
+#include "randutil.h"
 
 static inline constexpr float Leaky(float f) {
   if (f < 0.0f) return 0.01f * f;
@@ -1686,8 +1686,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvConvDense(
 
   return TrainNet{
     .name =
-      StringPrintf("4x1, then 5x1 conv, then small dense%s counts 1-bits",
-                   fix_dense_layer ? " (fixed)" : ""),
+      std::format("4x1, then 5x1 conv, then small dense{} counts 1-bits",
+                  fix_dense_layer ? " (fixed)" : ""),
     .net = net,
     .f = f,
     .boolean_input = true,
@@ -1894,8 +1894,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::TriangleSumsAdam(int depth,
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf("diagonal sum inequalities %dx%d, %d hidden",
-                         dim, dim, depth),
+    .name = std::format("diagonal sum inequalities {}x{}, {} hidden",
+                        dim, dim, depth),
     .net = net,
     .f = f,
     .boolean_input = false,
@@ -1948,8 +1948,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::InCircleAdam(int width,
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf("point in circle, %d hidden, each width %d",
-                         depth, width),
+    .name = std::format("point in circle, {} hidden, each width {}",
+                        depth, width),
     .net = net,
     .f = f,
     .boolean_input = false,
@@ -2007,8 +2007,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::SparseInCircleAdam(
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf(
-        "point in circle, %d sparse hidden, each width %d",
+    .name = std::format(
+        "point in circle, {} sparse hidden, each width {}",
         depth, width),
     .net = net,
     .f = f,
@@ -2020,7 +2020,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::SparseInCircleAdam(
 
 NetworkTestUtil::TrainNet NetworkTestUtil::SparseLineIntersectionAdam(
     int width, int ipn, int depth, int64_t seed) {
-  ArcFour rc(StringPrintf("sparse-line-intersection.%lld", seed));
+  ArcFour rc(std::format("sparse-line-intersection.{}", seed));
   std::vector<Layer> layers;
   constexpr int INPUT_SIZE = 8;
   Chunk input_chunk;
@@ -2079,8 +2079,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::SparseLineIntersectionAdam(
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf(
-        "line intersections, %d sparse hidden, each width %d",
+    .name = std::format(
+        "line intersections, {} sparse hidden, each width {}",
         depth, width),
     .net = net,
     .f = f,
@@ -2141,8 +2141,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::ReflectAdam(
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf(
-        "reflect point about line, %d sparse hidden, each ipn %d width %d",
+    .name = std::format(
+        "reflect point about line, {} sparse hidden, each ipn {} width {}",
         depth, ipn, width),
     .net = net,
     .f = f,
@@ -2197,8 +2197,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::Atan2Adam(
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf(
-        "atan2, %d sparse hidden, each ipn %d width %d",
+    .name = std::format(
+        "atan2, {} sparse hidden, each ipn {} width {}",
         depth, ipn, width),
     .net = net,
     .f = f,
@@ -2209,7 +2209,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::Atan2Adam(
 
 NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
     int width, int ipn, int depth, int64_t seed) {
-  ArcFour rc(StringPrintf("dodgeball.%lld", seed));
+  ArcFour rc(std::format("dodgeball.{}", seed));
   std::vector<Layer> layers;
   constexpr int INPUT_SIZE = 10;
   Chunk input_chunk;
@@ -2302,8 +2302,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
   net.NaNCheck(__func__);
 
   return TrainNet{
-    .name = StringPrintf(
-        "dodgeball, %d sparse hidden, each width %d",
+    .name = std::format(
+        "dodgeball, {} sparse hidden, each width {}",
         depth, width),
     .net = net,
     .f = f,

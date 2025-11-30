@@ -1,9 +1,9 @@
 
-#include <cstdio>
 #include <memory>
 #include <string>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "opencl/clutil.h"
 
@@ -31,11 +31,11 @@ int main(int argc, char **argv) {
 
   EvalMNIST::Result res = evaluator.Evaluate(net.get());
 
-  printf("Predicted %d in %.3fs\n",
-         res.total, res.fwd_time);
-  printf("%d/%d correct = %.3f%%\n",
-         res.correct, res.total,
-         (double)(res.correct * 100.0) / res.total);
+  Print("Predicted {} in {:.3f}s\n",
+        res.total, res.fwd_time);
+  Print("{}/{} correct = {:.3f}%\n",
+        res.correct, res.total,
+        (double)(res.correct * 100.0) / res.total);
   res.wrong.Save(wrong_file);
 
   return 0;

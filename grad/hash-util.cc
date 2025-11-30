@@ -36,9 +36,9 @@ std::array<const Exp *, 8> HashUtil::PermuteFn(
   for (int x : bits) CHECK(x >= 0) << "not a permutation?";
 
   #if 0
-  printf("Source bits for byte " AGREEN("%d") ":", x);
-  for (int x : bits) printf(" %d", x);
-  printf("\n");
+  Print("Source bits for byte " AGREEN("{}") ":", x);
+  for (int x : bits) Print(" {}", x);
+  Print("\n");
   #endif
 
   // Now compute the function for each byte.
@@ -88,9 +88,9 @@ std::array<const Exp *, 8> HashUtil::PermuteFn(
             Exp::GetU16((half)(Choppy::GRID / 2.0)));
 
         #if 0
-        printf("[%d] f %d Bit %d (source %d) outmask %02x "
-               "(inbyte %d mask %02x)\n",
-               x, f, b, bit, out_mask, inbyte_offset, mask);
+        Print("[{}] f {} Bit {} (source {}) outmask {:02x} "
+              "(inbyte {} mask {:02x})\n",
+              x, f, b, bit, out_mask, inbyte_offset, mask);
         #endif
 
         // Then multiply by the power of two.

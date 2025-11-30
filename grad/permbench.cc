@@ -85,9 +85,9 @@ static void Invert() {
   for (int i = 0; i < 64; i++) {
     inv[bit_indices[i]] = i;
   }
-  printf("Inverted:\n{");
-  for (int x : inv) printf(" %d,", x);
-  printf("}\n");
+  Print("Inverted:\n{{");
+  for (int x : inv) Print(" {},", x);
+  Print("}}\n");
 }
 
 static inline uint64_t Method1(uint64_t in) {

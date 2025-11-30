@@ -1,8 +1,10 @@
 
 #include "util.h"
 
-#include "crypt/cryptrand.h"
+#include <cstdint>
+#include <vector>
 
+#include "base/print.h"
 #include "arcfour.h"
 
 // Reference cryptographic random stream, which should
@@ -19,7 +21,7 @@ int main(int argc, char **argv) {
   #if 0
   CryptRand cr;
   for (int i = 0; i < SIZE / 8; i++) {
-    if ((i % 4096) == 0) printf("%d/%d\n", i, SIZE / 8);
+    if ((i % 4096) == 0) Print("{}/{}\n", i, SIZE / 8);
     uint64_t w = cr.Word64();
     for (int b = 0; b < 8; b++) {
       bytes.push_back(w & 0xFF);
@@ -42,6 +44,6 @@ int main(int argc, char **argv) {
 
   Util::WriteFileBytes("okayrand.bin", bytes);
 
-  printf("Wrote okayrand.bin\n");
+  Print("Wrote okayrand.bin\n");
   return 0;
 }

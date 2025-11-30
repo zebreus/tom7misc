@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <cmath>
 #include <memory>
@@ -13,6 +14,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "opencl/clutil.h"
 #include "periodically.h"
@@ -55,15 +57,15 @@ static void AddTestResult(const TestResult &tr) {
 }
 
 static void ForwardTests(TestNet test_net) {
-  printf("\n--------------------------\n"
-         "[Forward] Test net: %s\n", test_net.name.c_str());
+  Print("\n--------------------------\n"
+        "[Forward] Test net: {}\n", test_net.name);
 
   Network &net = test_net.net;
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   net_gpu->SetVerbose(false);
 
   for (const TestExample &example : test_net.examples) {
-    if (test_net.examples.size() > 1) printf("%s\n", example.name.c_str());
+    if (test_net.examples.size() > 1) Print("{}\n", example.name);
     std::unique_ptr<TrainingRoundGPU> training_round =
       std::make_unique<TrainingRoundGPU>(1, cl, net);
 
@@ -159,11 +161,11 @@ static void SameAsCPUTest() {
     CHECK_FEQV(gpu_out, stim.values.back());
 
     if (per.ShouldRun()) {
-      printf("%d/%d; ok so far\n", iter + 1, ITERS);
+      Print("{}/{}; ok so far\n", iter + 1, ITERS);
     }
   }
 
-  printf("Ran %d iters on random networks. GPU=CPU.\n", ITERS);
+  Print("Ran {} iters on random networks. GPU=CPU.\n", ITERS);
 }
 
 static void StructuralTests(TestNet test_net) {
@@ -216,8 +218,8 @@ static void StructuralTests(TestNet test_net) {
 // it finds it. Note that many of these only have a single example, so
 // training would be degenerate there.
 static void TrainOnTestTests(TestNet test_net) {
-  printf("\n--------------------------\n"
-         "[TrainOnTest] Test net: %s\n", test_net.name.c_str());
+  Print("\n--------------------------\n"
+        "[TrainOnTest] Test net: {}\n", test_net.name);
   ArcFour rc(test_net.name);
   RandomGaussian gauss(&rc);
 
@@ -330,12 +332,12 @@ TrainTest(TrainNet train_net,
     const int col = write_error_images_for[idx];
     error_images[idx].col = col;
     error_images[idx].image = std::make_unique<ErrorImage>(
-        2000, examples_per_round, StringPrintf("test-error-%d.png", col),
+        2000, examples_per_round, std::format("test-error-{}.png", col),
         false);
   }
 
-  printf("\n--------------------------\n"
-         "[Train] Train net: %s\n", train_net.name.c_str());
+  Print("\n--------------------------\n"
+        "[Train] Train net: {}\n", train_net.name);
   ArcFour rc(train_net.name + "XXX");
   RandomGaussian gauss(&rc);
 
@@ -425,7 +427,7 @@ TrainTest(TrainNet train_net,
     training->LoadExpecteds(flat_outputs);
 
     if (VERBOSE > 1)
-      printf("Prepped examples.\n");
+      Print("Prepped examples.\n");
 
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
@@ -434,12 +436,12 @@ TrainTest(TrainNet train_net,
     }
 
     if (VERBOSE > 1)
-      printf("Forward done.\n");
+      Print("Forward done.\n");
 
     error_cl->SetOutputError(training.get());
 
     if (VERBOSE > 1)
-      printf("Set error.\n");
+      Print("Set error.\n");
 
     for (int dst_layer = net.layers.size() - 1;
          // Don't propagate to input.
@@ -449,7 +451,7 @@ TrainTest(TrainNet train_net,
     }
 
     if (VERBOSE > 1)
-      printf("Backward pass.\n");
+      Print("Backward pass.\n");
 
     for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
       decay_cl->Decay(layer_idx);
@@ -465,7 +467,7 @@ TrainTest(TrainNet train_net,
                  MAX_PARALLELISM);
 
     if (VERBOSE > 1)
-      printf("Updated errors.\n");
+      Print("Updated errors.\n");
 
     total_examples += examples_per_round;
     const double total_sec = train_timer.MS() / 1000.0;
@@ -529,7 +531,7 @@ TrainTest(TrainNet train_net,
       }
 
       if (VERBOSE > 1)
-        printf("Got losses.\n");
+        Print("Got losses.\n");
 
       float min_loss = 1.0f / 0.0f, max_loss = 0.0f;
       int min_inc = net.layers.back().num_nodes + 1, max_inc = 0;
@@ -548,13 +550,13 @@ TrainTest(TrainNet train_net,
       average_inc /= losses.size();
 
       if (VERBOSE) {
-        printf("%d: %.3f < %.3f < %.3f", iter,
-               min_loss, average_loss, max_loss);
+        Print("{}: {:.3f} < {:.3f} < {:.3f}", iter,
+              min_loss, average_loss, max_loss);
         if (train_net.boolean_output) {
-          printf("  |  %d < %.3f < %d",
-                 min_inc, average_inc, max_inc);
+          Print("  |  {} < {:.3f} < {}",
+                min_inc, average_inc, max_inc);
         }
-        printf(" (%.2f eps)\n", eps);
+        Print(" ({:.2f} eps)\n", eps);
       }
 
       finished =
@@ -572,24 +574,24 @@ TrainTest(TrainNet train_net,
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 10000 == 0)) {
       net_gpu->ReadFromGPU();
-      const string file = StringPrintf("gpu-test-net-%d.val", iter);
+      const string file = std::format("gpu-test-net-{}.val", iter);
       net.SaveToFile(file);
       if (VERBOSE)
-        printf("Wrote %s\n", file.c_str());
+        Print("Wrote {}\n", file);
     }
 
     // Parameter for average_loss termination?
     if (finished) {
       for (ErrorImageRow &row : error_images) row.image->Save();
-      printf("Successfully trained!\n");
+      Print("Successfully trained!\n");
       return std::make_pair(iter, std::nullopt);
     }
   }
 
   return std::make_pair(
       max_iterations,
-      StringPrintf("didn't converge. error still %.6f",
-                   average_loss));
+      std::format("didn't converge. error still {:.6f}",
+                  average_loss));
 }
 
 static void TestChunkSchedule() {
@@ -986,25 +988,25 @@ int main(int argc, char **argv) {
       int min = (int)sec / 60;
       double sr = sec - (60.0 * min);
       if (min > 0) {
-        return StringPrintf("%dm%.1fs", min, sr);
+        return std::format("{}m{:.1f}s", min, sr);
       } else {
-        return StringPrintf("%.3fs", sec);
+        return std::format("{:.3f}s", sec);
       }
     };
   for (const TestResult &tr : *TestResults()) {
-    printf("%s\n"
-           "At %s:%d. Took %lld iters, %s.\n",
-           tr.name.c_str(),
-           tr.func.c_str(), tr.line_number,
-           tr.rounds, MinSec(tr.seconds).c_str());
+    Print("{}\n"
+          "At {}:{}. Took {} iters, {}.\n",
+          tr.name,
+          tr.func, tr.line_number,
+          tr.rounds, MinSec(tr.seconds));
     if (tr.error.has_value()) {
-      printf("** FAIL: %s **\n",
-             tr.error.value().c_str());
+      Print("** FAIL: {} **\n",
+            tr.error.value());
     }
   }
 
-  printf("Finished all tests in %s\n",
-         MinSec(timer.Seconds()).c_str());
+  Print("Finished all tests in {}\n",
+        MinSec(timer.Seconds()));
 
   printf("OK\n");
   return 0;

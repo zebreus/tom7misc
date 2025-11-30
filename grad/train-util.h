@@ -6,18 +6,18 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <utility>
-#include <vector>
+#include <format>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "network.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "image.h"
-#include "threadutil.h"
+#include "base/print.h"
 #include "color-util.h"
+#include "image.h"
+#include "network.h"
+#include "threadutil.h"
 #include "util.h"
 
 using uint32 = uint32_t;
@@ -56,7 +56,7 @@ struct HistoryImage {
         "to continue";
 
       col = nx;
-      printf("Continuing from %s at %d.\n", filename.c_str(), col);
+      Print("Continuing from {} at {}.\n", filename, col);
 
     } else {
       image.reset(new ImageRGBA(width, height));
@@ -176,11 +176,11 @@ struct TrainingImages {
 
           (*himage)->image->BlendText2x32(
               2, 2, 0x9999AAFF,
-              StringPrintf(
-                  "Layer %d.%d (%s) | %s | "
-                  "Start Round %lld | 1 px = %d rounds",
-                  layer_idx, chunk_idx, ct.c_str(),
-                  title.c_str(),
+              std::format(
+                  "Layer {}.{} ({}) | {} | "
+                  "Start Round {} | 1 px = {} rounds",
+                  layer_idx, chunk_idx, ct,
+                  title,
                   net.rounds, image_every));
 
           int xpos = image_width;
@@ -360,14 +360,14 @@ struct TrainingImages {
     }
 
     save_async.Wait();
-    printf("Saved training images.\n");
+    Print("Saved training images.\n");
   }
 
 private:
   std::string FilenameFor(const std::string &basename,
                           int layer, int chunk) const {
-    return StringPrintf("%s-%d.%d.png",
-                        basename.c_str(), layer, chunk);
+    return std::format("{}-{}.{}.png",
+                       basename, layer, chunk);
   }
 
   static constexpr ColorUtil::Gradient RAINBOW{
@@ -469,7 +469,7 @@ struct ErrorImage {
     examples_per_round(examples_per_round),
     filename(filename) {
 
-    printf("Create %s\n", filename.c_str());
+    Print("Create {}\n", filename);
     if (continue_from_disk) {
       image.reset(ImageRGBA::Load(filename));
       if (image.get() != nullptr) {

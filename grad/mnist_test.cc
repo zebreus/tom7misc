@@ -5,11 +5,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <string>
 
-#include "image.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
+#include "base/print.h"
+#include "image.h"
 #include "randutil.h"
 
 static constexpr bool ADD_OFFSET = false;
@@ -60,13 +61,13 @@ int main(int argc, char **argv) {
       out.CopyImage(x * SQUARE, y * SQUARE, img_out.GreyscaleRGBA());
       if (SHOW_LABEL) {
         out.BlendText32(x * SQUARE, y * SQUARE, 0xFF000055,
-                        StringPrintf("%c", mnist.labels[idx] + '0'));
+                        std::format("{:c}", mnist.labels[idx] + '0'));
       }
     }
   }
 
   out.ScaleBy(2).Save("mnist-test.png");
 
-  printf("There are %d labels\n", (int)mnist.labels.size());
+  Print("There are {} labels\n", mnist.labels.size());
   return 0;
 }

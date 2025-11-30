@@ -10,20 +10,19 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <string>
 #include <cmath>
+#include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 
-#include "util.h"
-#include "image.h"
-#include "bounds.h"
 #include "half.h"
-#include "color-util.h"
-#include "arcfour.h"
-#include "randutil.h"
+#include "image.h"
 #include "threadutil.h"
+#include "util.h"
 
 #include "grad-util.h"
 #include "hash-util.h"
@@ -185,15 +184,16 @@ static uint64_t AllBits(HashState hs) {
 }
 
 string StateString(HashState s) {
-  return StringPrintf("[%.5g %.5g %.5g %.5g %.5g %.5g %.5g %.5g]",
-                      (float)s.a,
-                      (float)s.b,
-                      (float)s.c,
-                      (float)s.d,
-                      (float)s.e,
-                      (float)s.f,
-                      (float)s.g,
-                      (float)s.h);
+  return std::format("[{:.5g} {:.5g} {:.5g} {:.5g} "
+                     "{:.5g} {:.5g} {:.5g} {:.5g}]",
+                     (float)s.a,
+                     (float)s.b,
+                     (float)s.c,
+                     (float)s.d,
+                     (float)s.e,
+                     (float)s.f,
+                     (float)s.g,
+                     (float)s.h);
 }
 
 static half PermuteHalf(int out_byte,
@@ -245,23 +245,23 @@ HashState NextState(HashState s) {
   // Only linear functions!
 
   [[maybe_unused]]
-  auto Print = [](half a, half b, half c, half d,
+  auto Dump = [](half a, half b, half c, half d,
                   half e, half f, half g, half h,
                   const string &step) {
-      printf(ARED("%02x") " " ABLUE("%02x") " "
-             AWHITE("%02x") " " AYELLOW("%02x") " "
-             AGREEN("%02x") " " "%02x" " "
-             APURPLE("%02x") " " ACYAN("%02x") " "
-             "[" AWHITE("%s") "]\n",
-             HashUtil::HalfToBits(a),
-             HashUtil::HalfToBits(b),
-             HashUtil::HalfToBits(c),
-             HashUtil::HalfToBits(d),
-             HashUtil::HalfToBits(e),
-             HashUtil::HalfToBits(f),
-             HashUtil::HalfToBits(g),
-             HashUtil::HalfToBits(h),
-             step.c_str());
+      Print(ARED("{:02x}") " " ABLUE("{:02x}") " "
+            AWHITE("{:02x}") " " AYELLOW("{:02x}") " "
+            AGREEN("{:02x}") " " "{:02x}" " "
+            APURPLE("{:02x}") " " ACYAN("{:02x}") " "
+            "[" AWHITE("{}") "]\n",
+            HashUtil::HalfToBits(a),
+            HashUtil::HalfToBits(b),
+            HashUtil::HalfToBits(c),
+            HashUtil::HalfToBits(d),
+            HashUtil::HalfToBits(e),
+            HashUtil::HalfToBits(f),
+            HashUtil::HalfToBits(g),
+            HashUtil::HalfToBits(h),
+            step);
     };
 
 
@@ -384,8 +384,8 @@ static void InitTables(DB *basis) {
         MakePermTable(basis);
         CPrintf("Made " ACYAN("perm") ".\n");
       });
-  printf("Initialized in " ABLUE("%.3f") "s\n",
-         timer.Seconds());
+  Print("Initialized in " ABLUE("{:.3f}") "s\n",
+        timer.Seconds());
 }
 
 static inline uint8_t GetByte(uint64_t data, int i) {
@@ -439,7 +439,7 @@ int main(int argc, char **argv) {
       }
     }
     out.ScaleBy(2).Save("hash.png");
-    printf("Wrote " ACYAN("hash.png") "\n");
+    Print("Wrote " ACYAN("hash.png") "\n");
   }
 
   {
@@ -482,11 +482,11 @@ int main(int argc, char **argv) {
           for (int i = 0; i < 256; i++) {
             if (byte_count[i] < (0.9 * target) ||
                 byte_count[i] > (1.1 * target)) {
-              printf("Exiting because of terrible distribution.\n"
-                     "Byte " ACYAN("0x%02x") " appears "
-                     ARED("%lld") " times (should be like "
-                     ABLUE("%lld") ").\n", i, byte_count[i],
-                     target);
+              Print("Exiting because of terrible distribution.\n"
+                    "Byte " ACYAN("0x{:02x}") " appears "
+                    ARED("{}") " times (should be like "
+                    ABLUE("{}") ").\n", i, byte_count[i],
+                    target);
               return 1;
             }
           }
@@ -497,7 +497,7 @@ int main(int argc, char **argv) {
     double bytes_per_sec = SIZE_BYTES / timer.Seconds();
     CPrintf("Throughput: " ABLUE("%.5f") " bytes/sec\n", bytes_per_sec);
     Util::WriteFileBytes("hash.bin", bb.GetBytes());
-    printf("Wrote hash.bin\n");
+    Print("Wrote hash.bin\n");
   }
 
   return 0;

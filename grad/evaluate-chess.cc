@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include "base/print.h"
 #include "network.h"
 #include "base/logging.h"
 #include "ansi.h"
@@ -19,7 +20,7 @@ using uint8 = uint8_t;
 static void RunEval(const Network &net) {
   EvalChess eval;
   const auto [l1, sign] = eval.Evaluate(net);
-  printf("%.3f, %.3f\n", l1, sign);
+  Print("{:.3f}, {:.3f}\n", l1, sign);
 }
 
 int main(int argc, char **argv) {
@@ -37,6 +38,6 @@ int main(int argc, char **argv) {
 
   RunEval(*net);
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

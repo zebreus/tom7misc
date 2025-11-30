@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -28,7 +29,8 @@ struct RunMNIST {
   static constexpr int DIGIT_WIDTH = 28;
   static constexpr int DIGIT_HEIGHT = 28;
 
-  static constexpr int SCALE = 4;
+  static constexpr int DOWNSCALE = 2;
+  static constexpr int SCALE = 2;
 
   // Inference sizes
   static constexpr int INPUT_SIZE = DIGIT_WIDTH * DIGIT_HEIGHT;
@@ -39,8 +41,9 @@ struct RunMNIST {
   RunMNIST(CL *cl, std::string_view infile) : cl(cl) {
     input_image.reset(ImageRGBA::Load(infile));
     CHECK(input_image.get() != nullptr);
-    // Should probably scale up
-    // output_image.reset
+    if (DOWNSCALE > 1) {
+      *input_image = input_image->ScaleDownBy(DOWNSCALE);
+    }
   }
 
   struct Result {
@@ -120,7 +123,7 @@ struct RunMNIST {
 
         digits.push_back(besti);
         max_score.push_back(bestv);
-        Print(stderr, "{} ({:.4f})\n", besti, bestv);
+        // Print(stderr, "{} ({:.4f})\n", besti, bestv);
       }
 
       // Write into image
@@ -172,10 +175,10 @@ int main(int argc, char **argv) {
   RunMNIST::Result res = run_mnist.Run(net.get());
   if (!output_file.empty()) {
     res.image.Save(output_file);
-    Print("Wrote {}\n", output_file);
+    Print(stderr, "Wrote {}\n", output_file);
   }
   Print("{}\n", res.digits);
 
-  Print("OK\n");
+  Print(stderr, "OK\n");
   return 0;
 }

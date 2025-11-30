@@ -14,6 +14,7 @@
 
 #include "array-util.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
 #include "grad-util.h"
@@ -83,7 +84,7 @@ struct Function1 : public Func<float, 1> {
   }
   string Exp() const override {
     const float scale = args[0];
-    return StringPrintf("(f * %.9g) / %.9g", scale, scale);
+    return std::format("(f * {:.9g}) / {:.9g}", scale, scale);
   }
 };
 
@@ -97,7 +98,7 @@ struct Function2 : public Func<float, 2> {
   }
   string Exp() const override {
     const auto &[scale, off] = args;
-    return StringPrintf("((f * %.9g + %.9g) - %.9g) / %.9g",
+    return std::format("((f * {:.9g} + {:.9g}) - {:.9g}) / {:.9g}",
                         scale, off, off, scale);
   }
 };
@@ -113,8 +114,8 @@ struct Function3 : public Func<float, 2> {
   string Exp() const override {
     const auto &[scale, off] = args;
 
-    return StringPrintf("((f / %.9g) * %.9g) / %.9g) * %.9g",
-                        scale, off, off, scale);
+    return std::format("((f / {:.9g}) * {:.9g}) / {:.9g}) * {:.9g}",
+                       scale, off, off, scale);
   }
 };
 
@@ -168,7 +169,7 @@ struct Function8 : public Func<half, 8> {
   string Exp() const override {
   string ret;
   for (const double z : args) {
-    StringAppendF(&ret, "%.9g, ", z);
+    AppendFormat(&ret, "{:.9g}, ", z);
   }
   return ret;
   }
@@ -203,7 +204,7 @@ struct Function16 : public Func<half, 16> {
   string Exp() const override {
     string ret;
     for (const double z : args) {
-      StringAppendF(&ret, "%.9g, ", z);
+      AppendFormat(&ret, "{:.9g}, ", z);
     }
     return ret;
   }
@@ -360,20 +361,20 @@ static void Stats(Func<fptype, N> *fn) {
     fptype in = XAt(i);
     fptype out = YAt(i);
     if (!std::isfinite((float)out)) {
-      printf("infinite %d", i);
+      Print("infinite {}", i);
     }
     samples.push_back(out);
 
     double diff = (out - in);
     if (!std::isfinite((float)diff)) {
-      printf("infinite2 %d", i);
+      Print("infinite2 {}", i);
     }
     error_samples.push_back(diff);
 
     fptype out_prev = YAt(i - 1);
     double deriv = out - out_prev;
     if (!std::isfinite((float)deriv)) {
-      printf("infinite2 %d", i);
+      Print("infinite2 {}", i);
     }
     deriv_samples.push_back(deriv);
   }
@@ -414,16 +415,16 @@ static void Stats(Func<fptype, N> *fn) {
   d2 /= (deriv_samples.size() - 1);
 
   double score = penalty + d2 - error;
-  printf("f0: %.11g, fend: %.11g\n"
-         "error %.11g, d2 %.11g\n"
-         "penalty %.11g\n"
-         "distinct values: %d\n"
-         "so score %.11g\n",
-         f0, fend,
-         error, d2,
-         penalty,
-         distinct_values,
-         score);
+  Print("f0: {:.11g}, fend: {:.11g}\n"
+        "error {:.11g}, d2 {:.11g}\n"
+        "penalty {:.11g}\n"
+        "distinct values: {}\n"
+        "so score {:.11g}\n",
+        f0, fend,
+        error, d2,
+        penalty,
+        distinct_values,
+        score);
 }
 
 template<class fptype, size_t N>
@@ -455,26 +456,26 @@ static void Graph(const string &filename, Func<fptype, N> *fn) {
     deriv_samples.push_back(deriv);
     deriv_bounds.Bound(i, deriv);
   }
-  printf("Total diff: %.19g\n", total_diff);
+  Print("Total diff: {:.19g}\n", total_diff);
 
   // Compare to a linear interpolation of the first and last
   // endpoints.
   {
     double f0 = samples[0];
-    printf("Linear: %.9g to %.9g\n",
-           (double)f0, (double)samples[SAMPLES - 1]);
+    Print("Linear: {:.9g} to {:.9g}\n",
+          (double)f0, (double)samples[SAMPLES - 1]);
     double rise = (double)samples[SAMPLES - 1] - f0;
     double error = 0.0;
     for (int i = 0; i < SAMPLES; i++) {
       double frac = i / (double)(SAMPLES - 1);
       double linear = frac * rise;
       double diff = samples[i] - linear;
-      // printf("%.9g want %.9g\n", samples[i], linear);
+      // Print("{:.9g} want {:.9g}\n", samples[i], linear);
       error += diff * diff;
       nonlinear_samples.push_back(diff);
       nonlinear_bounds.Bound(i, diff);
     }
-    printf("Squared error vs linear: %.19g\n", error);
+    Print("Squared error vs linear: {:.19g}\n", error);
   }
 
 
@@ -520,8 +521,8 @@ static void Graph(const string &filename, Func<fptype, N> *fn) {
         }
 
         img.BlendText32(1, ypos, rgb | 0x77,
-                        StringPrintf("%s: %.9g to %.9g",
-                                     name.c_str(), low, high));
+                        std::format("{}: {:.9g} to {:.9g}",
+                                    name, low, high));
 
         ypos += 10;
       };
@@ -534,7 +535,7 @@ static void Graph(const string &filename, Func<fptype, N> *fn) {
     img.BlendText32(1, 1, 0x888888AA, fn->Exp());
 
     img.Save(filename);
-    printf("Wrote %s\n", filename.c_str());
+    Print("Wrote {}\n", filename);
   }
 }
 
@@ -553,7 +554,7 @@ void Optimize() {
   for (int i = 0; i < N; i++)
     int_bounds[i] = std::make_pair(LOW, HIGH);
 
-  printf("Search %d to %d\n", LOW, HIGH);
+  Print("Search {} to {}\n", LOW, HIGH);
 
   GradOptimizer optimizer(OptimizeMe<Function16>);
   optimizer.Run(
@@ -583,11 +584,11 @@ void Optimize() {
   std::unique_ptr<Func<half, N>> fn(new F(fargs));
   Stats(fn.get());
 
-  printf("Best score: %.17g\n Params:\n", score);
+  Print("Best score: {:.17g}\n Params:\n", score);
 
   for (const uint16 u : u16) {
-    printf("GradUtil::GetHalf(0x%04x),  // %.17g,\n", u,
-           (double)GradUtil::GetHalf(u));
+    Print("GradUtil::GetHalf(0x{:04x}),  // {:.17g},\n", u,
+          (double)GradUtil::GetHalf(u));
   }
 
   Graph("grad-optimize.png", fn.get());
@@ -600,7 +601,7 @@ int main(int argc, char **argv) {
     half h = GradUtil::GetHalf(uu);
     double v = h;
     const char *isf = std::isfinite(v) ? "" : "NOT";
-    printf("%04x -> %04x = %.11g %s\n", u, uu, v, isf);
+    Print("{:04x} -> {:04x} = {:.11g} {}\n", u, uu, v, isf);
   }
 
   return 0;

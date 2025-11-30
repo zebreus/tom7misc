@@ -3,17 +3,17 @@
 #define _GRAD_EVAL_CIFAR10_H
 
 #include <array>
+#include <format>
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "opencl/clutil.h"
-#include "network.h"
-#include "network-gpu.h"
-#include "image.h"
 #include "cifar10.h"
+#include "image.h"
+#include "network-gpu.h"
+#include "network.h"
+#include "opencl/clutil.h"
 #include "timer.h"
 
 struct EvalCIFAR10 {
@@ -44,10 +44,10 @@ struct EvalCIFAR10 {
     r->wrong.BlendText2x32(
         2, r->wrong.Height() - 19,
         0xCCCCCCFF,
-        StringPrintf("%d total, %d correct (%.3f%%), %.1f ex/sec",
-                     r->total, r->correct,
-                     (r->correct * 100.0) / r->total,
-                     r->total / r->fwd_time));
+        std::format("{} total, {} correct ({:.3f}%), {:.1f} ex/sec",
+                    r->total, r->correct,
+                    (r->correct * 100.0) / r->total,
+                    r->total / r->fwd_time));
   }
 
   // Needs non-const network, but doesn't modify it.
@@ -139,10 +139,10 @@ struct EvalCIFAR10 {
               cifar10_test.images[example_idx]);
           result.wrong.BlendText32(xx * SQUARE, yy * SQUARE,
                                    0x00FF00AA,
-                                   StringPrintf("%c", correct_label + '0'));
+                                   std::format("{:c}", correct_label + '0'));
           result.wrong.BlendText32(xx * SQUARE + (SQUARE - 10), yy * SQUARE,
                                    0xFF0000AA,
-                                   StringPrintf("%c", besti + '0'));
+                                   std::format("{:c}", besti + '0'));
           xx++;
           if (xx > ACROSS) {
             xx = 0;
