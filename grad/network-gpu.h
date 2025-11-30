@@ -7,20 +7,20 @@
 #ifndef _NETWORK_GPU_H
 #define _NETWORK_GPU_H
 
+#include <cstdint>
+#include <format>
 #include <initializer_list>
-#include <string>
+#include <map>
+#include <mutex>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
-#include <mutex>
-#include <cstdint>
-#include <map>
 
 #include <CL/cl.h>
 
 #include "base/logging.h"
 #include "base/macros.h"
-#include "base/stringprintf.h"
 #include "opencl/clutil.h"
 
 #include "network.h"
@@ -163,10 +163,10 @@ struct TrainingRoundGPU {
          }) {
       std::vector<uint16_t> fwd =
         GradUtil::GetFunctionFromFile(
-            StringPrintf("forward-%s.png", name.c_str()));
+            std::format("forward-{}.png", name));
       std::vector<float> der =
         GradUtil::GetDerivativeFromFile(
-            StringPrintf("deriv-%s.png", name.c_str()));
+            std::format("deriv-{}.png", name));
 
       forward_tables[tf] =
         CreateUninitializedGPUMemory<uint16_t>(cl->context, 65536);

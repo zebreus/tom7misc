@@ -504,7 +504,8 @@ struct GradUtil {
       const std::string &filename) {
     std::vector<float> ret(65536, 0.0f);
     std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
-    CHECK(img.get() != nullptr) << filename;
+    CHECK(img.get() != nullptr) << "Couldn't load derivative "
+      "file: " << filename;
     CHECK(img->Width() == 256 && img->Height() == 256) << filename;
     // int nonzero = 0;
     for (int i = 0; i < 65536; i++) {
