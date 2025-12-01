@@ -488,7 +488,8 @@ struct GradUtil {
       const std::string &filename) {
     std::vector<uint16_t> ret(65536, 0);
     std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
-    CHECK(img.get() != nullptr);
+    CHECK(img.get() != nullptr) << "Couldn't load tabled function "
+      "file: " << filename;
     CHECK(img->Width() == 256 && img->Height() == 256);
     for (int i = 0; i < 65536; i++) {
       const int y = i / 256;
