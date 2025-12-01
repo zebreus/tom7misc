@@ -83,7 +83,7 @@ void CryptRand::Bytes(std::span<uint8_t> buffer) {
   while (!buffer.empty()) {
     size_t chunk = std::min(buffer.size(), (size_t)256);
     ssize_t bytes_read = getrandom(buffer.data(), chunk, 0);
-    CHECK(bytes_read == chunk) << "This syscall is never supposed "
+    CHECK((size_t)bytes_read == chunk) << "This syscall is never supposed "
       "to fail for reads of 256 or fewer bytes.";
     buffer = buffer.subspan(bytes_read);
   }

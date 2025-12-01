@@ -124,7 +124,8 @@ struct Util {
 
   /* only read if the file begins with the magic string */
   static bool HasMagic(std::string_view filename, std::string_view magic);
-  static string ReadFileMagic(std::string_view filename, std::string_view magic);
+  static string ReadFileMagic(std::string_view filename,
+                              std::string_view magic);
 
   [[deprecated]] static unsigned int hash(const string &s);
   // give "/home/tom/" of "/home/tom/.bashrc"
@@ -275,6 +276,13 @@ struct Util {
   static string Pad(int n, string s);
   // Same, with the given character instead of ' '.
   static string PadEx(int n, string s, char c);
+
+  // Parses \0, \xAA..., \r, \n, \t, \', \", \\.
+  // Remember that \x takes one or more hexadecimal digit, but
+  // if the byte's value is more than 0xFF, it not valid.
+  // More escapes may be supported in the future.
+  static std::optional<std::vector<uint8_t>>
+  UnescapeC(std::string_view str);
 
   /* try to remove the file. If it
      doesn't exist or is successfully

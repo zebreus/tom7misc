@@ -528,6 +528,70 @@ string Util::PadEx(int n, string s, char c) {
   return PadWith(n, std::move(s), c);
 }
 
+std::optional<std::vector<uint8_t>>
+Util::UnescapeC(std::string_view str) {
+  std::vector<uint8_t> out;
+  out.reserve(str.size());
+  while (!str.empty()) {
+    char c = str[0];
+    str.remove_prefix(1);
+    if (c == '\\') {
+      if (str.empty()) return std::nullopt;
+
+      char d = str[0];
+      str.remove_prefix(1);
+      switch (d) {
+      case '\\':
+      case '\"':
+      case '\'':
+        out.push_back(d);
+        break;
+      case '0':
+        out.push_back(0);
+        break;
+      case 'r':
+        out.push_back('\r');
+        break;
+      case 'n':
+        out.push_back('\n');
+        break;
+      case 't':
+        out.push_back('\t');
+        break;
+      case 'x': {
+        uint32_t val = 0;
+        bool had_char = false;
+        while (!str.empty() &&
+               IsHexDigit(str[0])) {
+          val *= 0x10;
+          val += HexDigitValue(str[0]);
+          str.remove_prefix(1);
+          had_char = true;
+          if (val > 0xFF) {
+            return std::nullopt;
+          }
+        }
+
+        if (!had_char)
+          return std::nullopt;
+
+        out.push_back(val);
+        break;
+      }
+
+      default:
+        return std::nullopt;
+      }
+
+    } else {
+      out.push_back(c);
+    }
+  }
+
+  return {out};
+}
+
+
 vector<uint8> Util::ReadFileBytes(std::string_view filename) {
   if (Util::isdir(filename)) return {};
   if (filename.empty()) return {};

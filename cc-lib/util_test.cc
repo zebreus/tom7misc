@@ -44,6 +44,14 @@ using namespace std;
                       << " but wanted " << #b " << = " << bb; \
   } while (false)
 
+static std::vector<uint8_t> StringVector(std::string_view s) {
+  std::vector<uint8_t> ret(s.size());
+  if (!s.empty()) {
+    memcpy(ret.data(), s.data(), s.size());
+  }
+  return ret;
+}
+
 
 static string SlowReadFile(const string &filename) {
   FILE *f = fopen(filename.c_str(), "rb");
@@ -161,6 +169,39 @@ static void TestPadEx() {
   CHECK_EQ("hello", Util::PadEx(-5, "hello", '\0'));
   CHECK_EQ("hello\0\0"sv, Util::PadEx(7, "hello", '\0'));
   CHECK_EQ("\0\0hello"sv, Util::PadEx(-7, "hello", '\0'));
+}
+
+static void TestUnescapeC() {
+  auto HasValue = [](std::string_view s) -> std::vector<uint8_t> {
+      if (auto v = Util::UnescapeC(s)) {
+        return v.value();
+      } else {
+        LOG(FATAL) << "Expected to successfully unescape: " << s;
+        return {};
+      }
+    };
+  CHECK_EQ(StringVector("hello\x23world"),
+           HasValue("hello\x23world"));
+  CHECK_EQ(StringVector(""), HasValue(""));
+  CHECK(!Util::UnescapeC("\\").has_value());
+  CHECK(!Util::UnescapeC("\\x").has_value());
+  CHECK_EQ(StringVector("\n"), HasValue("\\n"));
+  CHECK_EQ(StringVector("\r"), HasValue("\\r"));
+  CHECK_EQ(StringVector("\t"), HasValue("\\t"));
+  CHECK_EQ(StringVector("\\ok\\"), HasValue("\\\\ok\\\\"));
+  CHECK_EQ(StringVector("can\'t, or won\"t?"),
+           HasValue("can\\'t, or won\\\"t?"));
+  CHECK_EQ(StringVector("\xfa\xf3"),
+           HasValue("\\xfa\\xf3"));
+  CHECK(!Util::UnescapeC("\\x100"));
+  CHECK(!Util::UnescapeC("\\x10000000000000000000"));
+  CHECK_EQ(StringVector("\x002a"), HasValue("\\x002a"));
+
+  {
+    auto v = HasValue("\\0");
+    CHECK(v.size() == 1 && v[0] == 0);
+  }
+
 }
 
 static void TestJoin() {
@@ -791,6 +832,7 @@ int main(int argc, char **argv) {
   TestWhitespace();
   TestPad();
   TestPadEx();
+  TestUnescapeC();
   TestJoin();
   TestSplit();
   TestSplitWith();
