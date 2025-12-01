@@ -1,5 +1,3 @@
-// Fixes text encodings. FIXME: Incomplete and does nothing!
-
 // This file only: A rough port of "ftfy" ("fixes text for you") by
 // Robyn Speer (see APACHE20.txt for license).
 
