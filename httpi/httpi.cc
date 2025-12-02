@@ -630,9 +630,7 @@ struct Session {
     poll_set.ConnectClient(client_fd);
     SHA256::Init(&handshake_ctx);
 
-    // Bogus server_random.
-    for (int i = 0; i < 32; i++)
-      server_random[i] = i + 1;
+    config.FillServerRandom(std::span<uint8_t, 32>(server_random));
   }
 
   PollSet poll_set;
@@ -1428,8 +1426,8 @@ struct Session {
 
   State state = State::START;
 
-  [[maybe_unused]] std::array<uint8_t, 32> client_random = {};
-  [[maybe_unused]] std::array<uint8_t, 32> server_random = {};
+  std::array<uint8_t, 32> client_random = {};
+  std::array<uint8_t, 32> server_random = {};
   std::array<uint8_t, 48> client_pre_master_secret = {};
   std::array<uint8_t, 48> master_secret = {};
 
@@ -1543,6 +1541,9 @@ struct Server {
       // Just let the OS clean up forked children when they exit.
       signal(SIGCHLD, SIG_IGN);
     }
+
+    // Ignore SIGPIPE, in case stdio is closed by systemd or whatever.
+    signal(SIGPIPE, SIG_IGN);
 
     Print(AGREY("[PARENT {}]") " Server listening...\n",
           server_pid);

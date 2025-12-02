@@ -5,6 +5,7 @@
 #include <memory>
 #include <string_view>
 #include <unordered_map>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -38,16 +39,22 @@ struct Config {
   // Pass a lowercase host name.
   const HostConfig *GetHostConfig(const std::string &host) const;
 
+  // Should maybe be configurable per host?
+  void FillServerRandom(std::span<uint8_t, 32> buffer) const;
+
   // ""/0/0 if not set.
   std::string User() const { return user; }
   int UID() const { return uid; }
   int GID() const { return gid; }
 
  private:
+  Config();
+
   // Keyed by all aliases.
   // TODO: Support *. wildcard domains.
   std::unordered_map<std::string, const HostConfig *> hosts;
 
+  std::array<uint8_t, 32> server_random;
   std::vector<std::unique_ptr<HostConfig>> all_hosts;
   std::vector<std::unique_ptr<Key>> all_keys;
   std::string user;

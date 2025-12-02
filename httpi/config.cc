@@ -16,6 +16,12 @@
 #include "pem.h"
 #include "util.h"
 
+Config::Config() {
+  for (int i = 0; i < 32; i++) {
+    server_random[i] = i;
+  }
+}
+
 Config Config::Load() {
   std::string filename = std::format("{}/config.txt", CONFIG_DIR);
   CHECK(Util::ExistsFile(filename)) << "Missing required config: "
@@ -137,6 +143,28 @@ Config Config::Load() {
         "within a host. Otherwise, default-port comes before any host.";
       default_port = p;
 
+    } else if (cmd == "server-random") {
+
+      // TODO: Allow configuring an actual server random; a fixed one
+      // should only be used for jokes!
+      if (std::optional<std::vector<uint8_t>> v = Util::UnescapeC(line)) {
+        static_assert(config.server_random.size() == 32);
+        CHECK(v.value().size() <= 32) << "Expected server-random of "
+          "32 or fewer bytes.";
+        if (v.value().size() != 32) {
+          Print(stderr, "Note: Server random is fewer than 32 bytes; "
+                "will be zero-padded.\n");
+        }
+
+        memset(config.server_random.data(), 0, config.server_random.size());
+        memcpy(config.server_random.data(),
+               v.value().data(), v.value().size());
+
+      } else {
+        LOG(FATAL) << "Unparseable server-random. Only some C escapes are "
+          "supported here.";
+      }
+
     } else {
       LOG(FATAL) << "Unknown config command: " << cmd;
     }
@@ -152,6 +180,11 @@ Config Config::Load() {
   }
 
   return config;
+}
+
+void Config::FillServerRandom(std::span<uint8_t, 32> buffer) const {
+  static_assert(sizeof(server_random) == 32);
+  memcpy(buffer.data(), server_random.data(), server_random.size());
 }
 
 const Config::HostConfig *Config::GetHostConfig(
