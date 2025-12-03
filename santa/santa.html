@@ -32,6 +32,65 @@
  // any group element is G^n for some n.
  const G = 7n;
 
+ // Here are the raw mathematical functions that perform ElGamal
+ // key generation, encryption, and decryption. Later the UI code
+ // checks that the inputs are in range, converts between numbers
+ // and text, and calls these to make the web page do stuff.
+ // Helper functions like PowMod, RandomP, and ModInverse are
+ // defined below.
+ 
+ function DerivePublicKey(private_key) {
+   // Note that we use 2*private since this is "textbook ElGamal."
+   // An even exponent ensures that the public key is a
+   // square mod P. If we had mixed squares and non-squares,
+   // it would create an actual problem for our protocol: After
+   // the public keys are revealed, it would be possible to know
+   // that ~half of them cannot correspond to ~half of the
+   // encrypted keys (using quadratic residues).
+   return PowMod(G, 2n * private_key, P);
+ }
+ 
+ function Encrypt(public_key, plain) {
+   // The encrypted message is two numbers c1 and c2.
+   // These are based on a random one-time secret, y.
+   let y = RandomP();
+   let c1 = PowMod(G, y, P);
+
+   // s is the "shared secret." Both sender and
+   // recipient compute this same value different ways.
+   // If you have heard of Diffie-Hellman Key Exchange,
+   // it is basically doing this same thing.
+   let s = PowMod(public_key, y, P);
+   let c2 = (plain * s) % P;
+
+   // The recipient can compute s using their knowledge
+   // of the private key:
+   // s = c1^(2*private_key)
+   //   = (G^y)^(2*private_key)
+   //   = (G^(y * 2*private_key))
+   //   = (G^(2*private_key))^y
+   //   = public_key^y
+   // which is what the sender computed for s.
+   //
+   // From s they can easily compute its inverse s⁻¹.
+   // Then we have (plain * s) * s⁻¹ = plain.
+   return [c1, c2];
+ }
+
+ function Decrypt(private_key, c1, c2) {
+   // This will be the same s computed during encryption.
+   let s = PowMod(c1, 2n * private_key, P);
+   let si = ModInverse(s, P);
+   if (si === null || ((s * si) % P) != 1n) {
+	 // This should always succeed unless c1 is invalid (zero).
+     return null;
+   }
+
+   // c2 is m*s, so m*s*s⁻¹ is just m.
+   let m = (c2 * si) % P;
+   return m;
+ }
+
  // Compute b^exp mod m
  function PowMod(b, exp, m) {
    let res = 1n;
@@ -113,6 +172,25 @@
    return (s + b) % b;
  }
 
+ // Generate a random number in (1, P-1).
+ function RandomP() {
+   for (;;) {
+     const num_bytes = Math.ceil(P.toString(16).length / 2) | 0;
+     const bytes = new Uint8Array(num_bytes);
+     window.crypto.getRandomValues(bytes);
+     let n = 0n;
+     for (let i = 0; i < num_bytes; i++) {
+       n = n * 256n + BigInt(bytes[i]);
+     }
+     // XXX should do rejection sampling here or something smart;
+     // modulus adds bias.
+     n = n % P;
+     if (n > 1n && n < P - 1n) {
+       return n;
+     }
+   }
+ }
+ 
  // Tests.
  (() => {
    const base = 123456789n;
@@ -137,7 +215,7 @@
 
    if (PowMod(G, 2n, P) == 1n ||
        PowMod(G, SG, P) == 1n) {
-     throw 'g is not a generator in Z_P*';
+     throw 'g is not a generator in ℤ_P*';
    }
 
    console.log('self-check ok');
@@ -215,22 +293,14 @@
    }
    const private_key = TextAreaNumber('private_key');
 
-   let public_key = 1n;
    if (private_key <= 1n || private_key >= SG) {
      error('private key must be in the open interval ' +
            '(1, (P-1)/2). got: ' +
            private_key.toString());
      return;
-   } else {
-     // Note that we use 2*private since this is "textbook ElGamal."
-     // An even exponent ensures that the public key is a
-     // square mod P. If we had mixed squares and non-squares,
-     // it would create an actual problem for our protocol: After
-     // the public keys are revealed, it would be possible to know
-     // that ~half of them cannot correspond to ~half of the
-     // encrypted keys (using quadratic residues).
-     public_key = PowMod(G, 2n * private_key, P);
    }
+
+   let public_key = DerivePublicKey(private_key);
 
    SetNum('public_key', public_key);
    const digits =
@@ -244,25 +314,6 @@
      KeyStrengthInfo('');
    }
    ok();
- }
-
- // Generate a random number in (1, P-1).
- function RandomP() {
-   for (;;) {
-     const num_bytes = Math.ceil(P.toString(16).length / 2) | 0;
-     const bytes = new Uint8Array(num_bytes);
-     window.crypto.getRandomValues(bytes);
-     let n = 0n;
-     for (let i = 0; i < num_bytes; i++) {
-       n = n * 256n + BigInt(bytes[i]);
-     }
-     // XXX should do rejection sampling here or something smart;
-     // modulus adds bias.
-     n = n % P;
-     if (n > 1n && n < P - 1n) {
-       return n;
-     }
-   }
  }
 
  // Interpret some printable ASCII text (character codes in 32..128)
@@ -377,29 +428,8 @@
      // XXX Warn if the message is all digits.
      error('message empty or too long!');
    } else {
-     // The encrypted message is two numbers c1 and c2.
-     // These are based on a random one-time secret, y.
-     let y = RandomP();
-     let c1 = PowMod(G, y, P);
 
-     // s is the "shared secret." Both sender and
-     // recipient compute this same value different ways.
-     // If you have heard of Diffie-Hellman Key Exchange,
-     // it is basically doing this same thing.
-     let s = PowMod(public_key, y, P);
-     let c2 = (plain * s) % P;
-
-     // The recipient can compute s using their knowledge
-     // of the private key:
-     // s = c1^(2*private_key)
-     //   = (G^y)^(2*private_key)
-     //   = (G^(y * 2*private_key))
-     //   = (G^(2*private_key))^y
-     //   = public_key^y
-     // which is what the sender computed for s.
-     //
-     // From s they can easily compute its inverse s⁻¹.
-     // Then we have (plain * s) * s⁻¹ = plain.
+	 let [c1, c2] = Encrypt(public_key, plain);
 
      SetPlain('enc_cipher',
               c1.toString() + ',' + c2.toString());
@@ -431,17 +461,12 @@
      return;
    }
 
-   // This will be the same s computed during encryption.
-   let s = PowMod(c1, 2n * private_key, P);
-   let si = ModInverse(s, P);
-   if (si === null || ((s * si) % P) != 1n) {
-     error('something is wrong: couldn\'t compute s⁻¹ mod P');
-     return;
+   let m = Decrypt(private_key, c1, c2);
+   if (m === null) {
+	 error('unable to decrypt, e.g. couldn\'t compute s⁻¹ mod P?');
+	 return;
    }
-
-   // c2 is m*s, so m*s*s⁻¹ is just m.
-   let m = (c2 * si) % P;
-
+   
    SetNum('dec_plain', m);
 
    // And then decode.
@@ -486,6 +511,33 @@
    ok();
  }
 
+ function QrTest() {
+   let n = TextAreaNumber('qr_test');
+   SetPlain('qr_status', '');
+   if (n <= 0n || n >= P) {
+     error('Quadratic residue testing is for a number in 1..P-1.');
+     return;
+   }
+
+   // Euler's Criterion: n is a residue iff n^((p-1)/2) mod p is 1.
+   // (p-1)/2 is just the Sophie Germain prime SG (this is not a
+   // coincidence!)
+   const res = PowMod(n, SG, P);
+   if (res == 1n) {
+     SetPlain('qr_status', 'The number IS a quadratic residue ' +
+       'mod P.');
+   } else if (res == P - 1n) {
+     SetPlain('qr_status', 'The number is NOT a quadratic residue ' +
+       'mod P.');
+   } else {
+     SetPlain('qr_status', 'Sorry, you found a counterexample to ' +
+       'a theorem proved by Euler in 1748 (or I have a bug). The ' +
+       'result was: ' + res.toString());
+   }
+   
+   ok();
+ }
+ 
  function Tab(n) {
    const NUM_TABS = 5;
    Tweak();
@@ -874,6 +926,22 @@
     <textarea id="sort" class="wide no-wrap"></textarea>
     <button onclick="SortButton()">Sort</button>
     <button onclick="ShuffleButton()">Shuffle</button>
+
+	<br/><br/>
+	<div class="caption">
+	  <b>Math emergencies only:</b>
+	  Check whether a number is a quadratic residue mod P.
+	  This means that it is of the form n<sup>2k</sup> for some k.
+	  Half the numbers in the group are residues.
+	  In this Santa setup, all public keys are quadratic residues,
+	  because we always use an even private key (it is multiplied
+	  by 2 behind the scenes).
+	</div>
+	<div class="sxs">
+	  <textarea id="qr_test" oninput="QrTest()"></textarea>
+      <div class="middle-col">&nbsp;</div>
+	  <div id="qr_status"></div>
+	</div>
   </div>
 
   <div id="pane4" class="pane">
@@ -931,8 +999,9 @@
     <b class="ciphertext">encrypted keys</b> from
     P<sub>1</sub>, P<sub>2</sub>, ... P<sub>k-1</sub>. The player
     adds their own <b class="ciphertext">encrypted key</b>, and
-    shuffles the list (perhaps using the <span class="tab-link" onclick="Tab(3)">util</span> tab). They pass (only) the list to the next
-    player.</p>
+    shuffles the list (perhaps using the
+	<span class="tab-link" onclick="Tab(3)">util</span> tab). They
+	pass (only) the list to the next player.</p>
 
     <p>If a player breaks the e-mail chain then the dead girl comes out
     of the TV, which is really bad news. Don't let that happen!</p>
