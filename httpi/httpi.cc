@@ -1,8 +1,6 @@
 
 #include <arpa/inet.h>
-#include <array>
 #include <fcntl.h>
-#include <iostream>
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/epoll.h>
@@ -12,32 +10,34 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <array>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <queue>
-#include <vector>
+#include <span>
 #include <string>
 #include <string_view>
-#include <cstdint>
-#include <span>
-#include <chrono>
 #include <thread>
+#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "config.h"
+#include "crypt/aes.h"
 #include "crypt/cryptrand.h"
 #include "crypt/sha256.h"
-#include "crypt/aes.h"
 #include "hexdump.h"
+#include "packet-parser.h"
+#include "packet-writer.h"
 #include "randutil.h"
 #include "timer.h"
 #include "tls.h"
-#include "packet-writer.h"
-#include "packet-parser.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
 // (Very) Insecure. Incomplete. Inefficient.
@@ -55,7 +55,7 @@ static constexpr bool SELF_CHECK = true;
 // 2 = minor events
 // 3 = handshake messages
 // 4 = all messages
-static constexpr int VERBOSE = 2;
+static constexpr int VERBOSE = 1;
 
 using enum TLS::ContentType;
 using ContentType = TLS::ContentType;
@@ -64,6 +64,7 @@ using TLSRecord = TLS::Record;
 static constexpr int BUFFER_SIZE = 16384;
 static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
 static constexpr double CLIENT_IDLE_TIMEOUT_SEC = 60.1;
+static constexpr int MAX_RECORD_SIZE = 16384;
 
 struct Connection {
   Connection() {
@@ -631,6 +632,8 @@ struct Session {
     SHA256::Init(&handshake_ctx);
 
     config.FillServerRandom(std::span<uint8_t, 32>(server_random));
+    // XXX get from config
+    max_packet_size = MAX_RECORD_SIZE;
   }
 
   PollSet poll_set;
@@ -686,7 +689,7 @@ struct Session {
 
   // Run the session until termination.
   void Loop() {
-    if (VERBOSE >= 2) {
+    if (VERBOSE >= 1) {
       Print(AWHITE("Session loop begins") " for peer "
             AYELLOW("{}") ":" ACYAN("{}") "\n",
             client.PeerIP(), client.PeerPort());
@@ -841,8 +844,8 @@ struct Session {
           Print("Send {} from backend.\n", backend_data.size());
         }
 
-        // XXX deal with maximum packet size
         SendEncrypted(APPLICATION_DATA, 3, 3, backend_data,
+                      max_packet_size,
                       VERBOSE >= 4);
         backend.ClearRead();
       }
@@ -960,8 +963,14 @@ struct Session {
             return;
           }
 
-          if (host_config->key == nullptr ||
-              host_config->key->server_certificate.chain.empty()) {
+          const Config::Key *key = config.GetKey(host_config->key_idx);
+          const Config::Cert *cert = config.GetCert(host_config->cert_idx);
+
+          // Check that we've actually configured a key and certificate.
+          if (key == nullptr || cert == nullptr ||
+              !key->rsa.has_value() ||
+              !cert->server_certificate.has_value() ||
+              cert->server_certificate.value().chain.empty()) {
             if (VERBOSE >= 1) {
               Print("No key/cert configured for " ARED("{}") ".\n",
                     host_config->canonical);
@@ -969,6 +978,10 @@ struct Session {
             AbortConnection();
             return;
           }
+
+          rsa_key = &key->rsa.value();
+          const TLS::ServerCertificate &server_certificate =
+            cert->server_certificate.value();
 
           TLS::ServerHello shello;
           // TLS 1.2
@@ -999,10 +1012,8 @@ struct Session {
           }
 
           // Also ServerCertificate.
-          CHECK(host_config->key != nullptr);
           if (std::optional<std::vector<uint8_t>> co =
-              TLS::SerializeServerCertificate(
-                  host_config->key->server_certificate)) {
+              TLS::SerializeServerCertificate(server_certificate)) {
             RecordHandshake(co.value());
             client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
 
@@ -1059,10 +1070,10 @@ struct Session {
         if (std::optional<TLS::ClientKeyExchange> ockx =
             TLS::ParseClientKeyExchange(packet)) {
           std::vector<uint8_t> &ckx_pms = ockx.value().encrypted_pms;
-          const int block_size = MultiRSA::BlockSize(host_config->key->rsa);
+          CHECK(rsa_key != nullptr);
+          const int block_size = MultiRSA::BlockSize(*rsa_key);
           if (ckx_pms.size() == block_size) {
-            MultiRSA::RawDecryptInPlace(host_config->key->rsa,
-                                        std::span<uint8_t>(ckx_pms));
+            MultiRSA::RawDecryptInPlace(*rsa_key, std::span<uint8_t>(ckx_pms));
             if (std::optional<std::span<const uint8_t>> omsg =
                 MultiRSA::ExtractPadded(ckx_pms)) {
               if (omsg.value().size() == client_pre_master_secret.size()) {
@@ -1241,7 +1252,8 @@ struct Session {
                      finished.verify_data);
 
             SendEncrypted(HANDSHAKE, 3, 3,
-                          TLS::SerializeHandshakeFinished(finished));
+                          TLS::SerializeHandshakeFinished(finished),
+                          MAX_RECORD_SIZE);
 
             state = State::STEADY_STATE;
 
@@ -1289,7 +1301,8 @@ struct Session {
     SendEncrypted(APPLICATION_DATA, 3, 3,
                   std::span<const uint8_t>((const uint8_t *)
                                            response.data(),
-                                           response.size()));
+                                           response.size()),
+                  max_packet_size);
 
     HangUp();
   }
@@ -1315,15 +1328,18 @@ struct Session {
 
   void HangUp() {
     Print("Hanging up.\n");
-    SendEncrypted(ALERT, 3, 3, TLS::SerializeCloseNotify());
+    SendEncrypted(ALERT, 3, 3, TLS::SerializeCloseNotify(), MAX_RECORD_SIZE);
     client.DoneSending();
     state = State::HANG_UP;
   }
 
-  void SendEncrypted(ContentType ct,
-                     uint8_t version_major, uint8_t version_minor,
-                     std::span<const uint8_t> content,
-                     bool verbose = false) {
+  // Logically sending the packet in the order of calls to this function.
+  // Increments the sequence number.
+  void AppendEncrypted(ContentType ct,
+                       uint8_t version_major, uint8_t version_minor,
+                       std::span<const uint8_t> content,
+                       bool verbose,
+                       std::vector<uint8_t> *out) {
     std::vector<uint8_t> record =
       TLS::MakeEncryptedRecord(
           server_write_mac_key,
@@ -1363,7 +1379,37 @@ struct Session {
       Print("Sending encrypted:\n{}\n",
             HexDump::Color(record));
     }
-    client.SendRaw(record);
+
+    // PERF: Do less copying.
+    out->insert(out->end(), record.begin(), record.end());
+  }
+
+  void SendEncrypted(ContentType ct,
+                     uint8_t version_major, uint8_t version_minor,
+                     std::span<const uint8_t> content,
+                     int max_packet_size,
+                     bool verbose = false) {
+    std::vector<uint8_t> records;
+    // TODO: Predict stream size and reserve.
+
+    // If the content is too big, send max-sized prefixes.
+    while (content.size() > max_packet_size) {
+      AppendEncrypted(ct, version_major, version_minor,
+                      content.subspan(0, max_packet_size),
+                      verbose,
+                      &records);
+      content = content.subspan(max_packet_size);
+    }
+
+    // Then if we have any more, send it all...
+    if (!content.empty()) {
+      AppendEncrypted(ct, version_major, version_minor,
+                      content,
+                      verbose,
+                      &records);
+    }
+
+    client.SendRaw(records);
   }
 
   void AbortConnection(std::string_view log = "") {
@@ -1444,12 +1490,14 @@ struct Session {
 
   uint64_t client_seq_num = 0;
   uint64_t server_seq_num = 0;
+  int max_packet_size = MAX_RECORD_SIZE;
 
   // From the client; only validated inasmuch as it matches
   // some host entry.
   std::string server_name;
   // Not owned.
   const Config::HostConfig *host_config = nullptr;
+  const MultiRSA::Key *rsa_key = nullptr;
   ArcFour *rc = nullptr;
   SHA256::Ctx handshake_ctx = {};
   std::array<uint8_t, 32> client_handshake_validation = {};

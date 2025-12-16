@@ -15,6 +15,7 @@
 #include "base/print.h"
 #include "pem.h"
 #include "util.h"
+#include "hashing.h"
 
 Config::Config() {
   for (int i = 0; i < 32; i++) {
@@ -27,18 +28,22 @@ Config Config::Load() {
   CHECK(Util::ExistsFile(filename)) << "Missing required config: "
                                     << filename;
 
+  // Maps path to index in all_keys.
+  std::unordered_map<std::string, int,
+                     Hashing<std::string>, std::equal_to<>> keyfiles;
+  // Maps path to index in all_certs;
+  std::unordered_map<std::string, int,
+                     Hashing<std::string>, std::equal_to<>> certfiles;
+
   std::unique_ptr<Config::HostConfig> current_host;
-  std::unique_ptr<Config::Key> current_key;
+
+  int current_key = -1;
+  int current_cert = -1;
+
   Config config;
   config.user = "nobody";
 
   int default_port = 81;
-  auto EmitKey = [&config, &current_key]() {
-      if (current_key.get() == nullptr)
-        return;
-      config.all_keys.emplace_back(std::move(current_key));
-      current_key.reset(nullptr);
-    };
 
   auto EmitHost = [&config, &current_host]() {
       if (current_host.get() == nullptr)
@@ -61,81 +66,121 @@ Config Config::Load() {
     std::string_view cmd = Util::Chop(&line);
     Util::RemoveOuterWhitespace(&line);
     if (cmd == "user") {
-      CHECK(current_key.get() == nullptr) << "Set user at the top.";
+      CHECK(current_key == -1) << "Set user at the top.";
       config.user = line;
 
     } else if (cmd == "key") {
       EmitHost();
-      EmitKey();
-      current_key = std::make_unique<Config::Key>();
 
       std::string_view filename = line;
-      std::string contents = Util::ReadFile(filename);
-      CHECK(!contents.empty()) << "Key file missing/empty: " << filename;
+      if (auto it = keyfiles.find(filename); it != keyfiles.end()) {
+        current_key = it->second;
+      } else {
+        // Load new.
 
-      std::vector<std::vector<uint8_t>> keys =
-        PEM::ParsePEMs(contents, "PRIVATE KEY");
-      CHECK(keys.size() == 1) << "Expected exactly one private key in "
-        "the key file: " << filename << " (but got " << keys.size() << ")";
+        std::unique_ptr<Key> key(new Key);
+        key->file = filename;
 
-      std::optional<MultiRSA::Key> okey = MultiRSA::DecodePKCS8(keys[0]);
-      CHECK(okey.has_value()) << "Couldn't parse key from " << filename;
-      std::string error;
-      CHECK(MultiRSA::ValidateKey(okey.value(), &error)) << "Invalid "
-        "key (want multi-rsa key in PKCS8 format): " << filename;
+        std::string contents = Util::ReadFile(filename);
+        if (contents.empty()) {
+          Print(stderr, "Keyfile empty/nonexistent: {}\n", filename);
+        } else {
+          std::vector<std::vector<uint8_t>> keys =
+            PEM::ParsePEMs(contents, "PRIVATE KEY");
+          CHECK(keys.size() == 1) << "Expected exactly one private key in "
+            "the key file: " << filename << " (but got " << keys.size() << ")";
 
-      current_key->rsa = std::move(okey.value());
+          std::optional<MultiRSA::Key> okey = MultiRSA::DecodePKCS8(keys[0]);
+          CHECK(okey.has_value()) << "Couldn't parse key from " << filename;
+          std::string error;
+          CHECK(MultiRSA::ValidateKey(okey.value(), &error)) << "Invalid "
+            "key (want multi-rsa key in PKCS8 format): " << filename;
+
+          key->rsa = std::make_optional(std::move(okey.value()));
+        }
+
+        current_key = config.all_keys.size();
+        config.all_keys.emplace_back(std::move(key));
+        keyfiles[std::string(filename)] = current_key;
+      }
+      CHECK(current_key >= 0);
 
     } else if (cmd == "cert") {
-      CHECK(current_key.get() != nullptr) << "cert must be in a key";
+      // XXX Rethink this?
+      CHECK(current_key != -1) << "cert must be in a key";
+      EmitHost();
 
-      std::vector<std::vector<uint8_t>> chain;
+      std::string_view filename = line;
 
-      std::string dir = Util::PathOf(line);
-      std::string wc = Util::FileOf(line);
-      for (const std::string &filename : Util::ListFiles(dir)) {
-        if (Util::MatchesWildcard(wc, filename)) {
-          std::string path = Util::DirPlus(dir, filename);
+      if (auto it = certfiles.find(filename); it != certfiles.end()) {
+        current_cert = it->second;
+      } else {
+        // Load new.
+        std::string dir = Util::PathOf(line);
+        std::string wc = Util::FileOf(line);
 
-          std::string contents = Util::ReadFile(path);
-          CHECK(!contents.empty()) << "Unable to read certificate: " << path;
+        std::unique_ptr<Cert> cert(new Cert);
+        cert->file = filename;
 
-          for (std::vector<uint8_t> &cert :
-                 PEM::ParsePEMs(contents, "CERTIFICATE")) {
-            chain.emplace_back(std::move(cert));
+        std::vector<std::vector<uint8_t>> chain;
+
+        // TODO: We don't really need to support wildcards, right?
+        for (const std::string &filename : Util::ListFiles(dir)) {
+          if (Util::MatchesWildcard(wc, filename)) {
+            std::string path = Util::DirPlus(dir, filename);
+
+            // Here the file exists but is empty or unreadable; fail.
+            std::string contents = Util::ReadFile(path);
+            CHECK(!contents.empty()) << "Unable to read certificate: " << path;
+
+            for (std::vector<uint8_t> &cert :
+                   PEM::ParsePEMs(contents, "CERTIFICATE")) {
+              chain.emplace_back(std::move(cert));
+            }
           }
         }
-      }
 
-      if (chain.empty()) {
-        Print("No certs found from " ARED("{}") "!\n", line);
-      } else {
-        Print("Got {} certs from " AWHITE("{}") "\n",
-              chain.size(), line);
-      }
+        if (chain.empty()) {
+          Print("No certs found from " ARED("{}") "!\n", line);
+        } else {
+          Print("Got {} certs from " AWHITE("{}") "\n",
+                chain.size(), line);
 
-      CHECK(current_key->server_certificate.chain.empty()) << "More than "
-        "one certificate chain is not handled.";
-      current_key->server_certificate.chain = std::move(chain);
+          cert->server_certificate =
+            std::make_optional(TLS::ServerCertificate{
+                .chain = std::move(chain),
+              });
+        }
+
+        current_cert = config.all_certs.size();
+        config.all_certs.emplace_back(std::move(cert));
+        certfiles[std::string(filename)] = current_cert;
+      }
+      CHECK(current_cert >= 0);
 
     } else if (cmd == "host") {
-      CHECK(current_key.get() != nullptr) << "Need a key before hosts.";
+      CHECK(current_key >= 0) << "Need a key before hosts.";
+      CHECK(current_cert >= 0) << "Need a cert before hosts.";
       EmitHost();
       current_host = std::make_unique<Config::HostConfig>();
       current_host->canonical = std::string(line);
-      current_host->key = current_key.get();
+      current_host->key_idx = current_key;
+      current_host->cert_idx = current_cert;
       current_host->port = default_port;
       CHECK(!current_host->canonical.empty());
       current_host->aliases.push_back(std::string(line));
+
     } else if (cmd == "alias") {
       CHECK(current_host.get() != nullptr) << "Need host first.";
       current_host->aliases.push_back(std::string(line));
+
     } else if (cmd == "port") {
       int p = atoi(std::string(line).c_str());
       CHECK(p > 0) << "Port must be a positive number.";
       CHECK(current_host.get() != nullptr) << "Use default-port to set "
         "the port outside a host.";
       current_host->port = p;
+
     } else if (cmd == "default-port") {
       int p = atoi(std::string(line).c_str());
       CHECK(p > 0) << "Port must be a positive number.";
@@ -170,7 +215,6 @@ Config Config::Load() {
     }
   }
   EmitHost();
-  EmitKey();
 
   if (!config.user.empty()) {
     struct passwd *pw = getpwnam(config.user.c_str());
@@ -192,4 +236,16 @@ const Config::HostConfig *Config::GetHostConfig(
   auto it = hosts.find(host);
   if (it == hosts.end()) return nullptr;
   return it->second;
+}
+
+const Config::Key *Config::GetKey(int key_idx) const {
+  if (key_idx < 0 || (size_t)key_idx >= all_keys.size())
+    return nullptr;
+  return all_keys[key_idx].get();
+}
+
+const Config::Cert *Config::GetCert(int cert_idx) const {
+  if (cert_idx < 0 || (size_t)cert_idx >= all_certs.size())
+    return nullptr;
+  return all_certs[cert_idx].get();
 }

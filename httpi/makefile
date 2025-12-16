@@ -24,7 +24,7 @@ LHARDEN=-z relro -z now
 # OPT=-O -g
 # OPT=-O3 -flto=thin
 # ASAN=-g -fsanitize=address -fsanitize=undefined
-OPT=-O2
+OPT=-O3
 
 CXXFLAGS=$(REMARKS) $(HARDEN) $(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi  -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) --std=c++23
 LFLAGS=$(ASAN) $(LHARDEN) $(GMP_LFLAGS) -flto
