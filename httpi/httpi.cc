@@ -126,8 +126,18 @@ struct Connection {
   }
 
   void Write(std::span<const uint8_t> data) {
-    // PERF: We can often send into the network buffer directly; try that first!
-    send_buf.insert(send_buf.end(), data.begin(), data.end());
+    // We can often send data straight into the kernel buffer without
+    // blocking, so try that first to avoid copying.
+    if (const std::optional<size_t> amount =
+          InternalWritePrefix(data)) {
+      data = data.subspan(amount.value());
+    }
+
+    // If we blocked or didn't write the full buffer, enqueue it
+    // as normal.
+    if (!data.empty()) {
+      send_buf.insert(send_buf.end(), data.begin(), data.end());
+    }
   }
 
   void SendBuffered() {
@@ -210,18 +220,21 @@ struct Connection {
     return amount;
   }
 
-  // Manages the state. returns false if the connection was lost.
-  bool InternalWrite(std::vector<uint8_t> *v) {
+  // Write immediately if we can. Initiates a shutdown on error and
+  // returns nullopt.
+  //
+  // Otherwise, returns the number of bytes written from the prefix.
+  std::optional<size_t> InternalWritePrefix(std::span<const uint8_t> buf) {
     CHECK(state == State::DUPLEX || state == State::ONLY_WRITE);
     CHECK(fd > 0);
-    if (v->empty()) return true;
+    if (buf.empty()) return true;
 
-    int amount = send(fd, v->data(), v->size(),
+    int amount = send(fd, buf.data(), buf.size(),
                       MSG_DONTWAIT | MSG_NOSIGNAL);
     if (amount == -1) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // Connection still ok.
-        return true;
+        // Connection still ok, but we wrote nothing.
+        return {size_t{0}};
       }
 
       // If the connection is broken here, it's just aborted;
@@ -229,13 +242,21 @@ struct Connection {
       // such states because we own graceful shutdown of the
       // write side.)
       Shutdown("closed in write");
-      return false;
+      return std::nullopt;
     } else {
-      v->erase(v->begin(), v->begin() + amount);
-      if (VERBOSE >= 3) {
-        Print("Wrote {} bytes. {} left\n", amount, v->size());
-      }
       idle_timer.Reset();
+      return {amount};
+    }
+  }
+
+  // Manages the state. returns false if the connection was lost.
+  bool InternalWrite(std::vector<uint8_t> *v) {
+    if (std::optional<size_t> prefix = InternalWritePrefix(*v)) {
+
+      v->erase(v->begin(), v->begin() + prefix.value());
+      if (VERBOSE >= 3) {
+        Print("Wrote {} bytes. {} left\n", prefix.value(), v->size());
+      }
 
       // Maybe transition to half-closed, if we've marked EOF.
       if (v->empty() && send_buf_eof) {
@@ -243,6 +264,8 @@ struct Connection {
       }
 
       return true;
+    } else {
+      return false;
     }
   }
 
