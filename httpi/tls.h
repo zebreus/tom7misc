@@ -17,6 +17,11 @@ struct TLS {
   // SHA-256 for handshake negotiation.
   static constexpr int MAC_SIZE = 20;
 
+  // The maximum size of the plaintext in a TLS Record (i.e.
+  // what the application sends and receives).
+  static constexpr int MAX_PLAINTEXT_SIZE = 16384;
+  static constexpr int MAX_CIPHERTEXT_SIZE = 16384 + 2048;
+
   enum ContentType : uint8_t {
     INVALID = 0,
     CHANGE_CIPHER_SPEC = 20,
@@ -140,7 +145,7 @@ struct TLS {
     uint8_t version_major = 0;
     uint8_t version_minor = 0;
     // XXX on the wire, there is a length field here
-    // Maximum of 2^14 for plaintext,
+    // Maximum of 2^14 for plaintext (MAX_PLAINTEXT_SIZE),
     // and 2^14 + 2048 for ciphertext.
     std::vector<uint8_t> fragment;
   };

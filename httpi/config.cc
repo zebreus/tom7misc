@@ -65,7 +65,15 @@ Config Config::Load() {
 
     std::string_view cmd = Util::Chop(&line);
     Util::RemoveOuterWhitespace(&line);
-    if (cmd == "user") {
+    if (cmd == "max-plaintext-size") {
+      // This could be configured host-by-host?
+      int m = atoi(std::string(line).c_str());
+      CHECK(m > 0 && m <= TLS::MAX_PLAINTEXT_SIZE) << "max-plaintext-size "
+        "must be positive and no more than the protocol's maximum of " <<
+        TLS::MAX_PLAINTEXT_SIZE;
+      config.max_plaintext_size = m;
+
+    } else if (cmd == "user") {
       CHECK(current_key == -1) << "Set user at the top.";
       config.user = line;
 

@@ -50,6 +50,8 @@ struct Config {
   // Should maybe be configurable per host?
   void FillServerRandom(std::span<uint8_t, 32> buffer) const;
 
+  int MaxPlaintextSize() const { return max_plaintext_size; }
+
   // ""/0/0 if not set.
   std::string User() const { return user; }
   int UID() const { return uid; }
@@ -66,6 +68,8 @@ struct Config {
   std::vector<std::unique_ptr<HostConfig>> all_hosts;
   std::vector<std::unique_ptr<Cert>> all_certs;
   std::vector<std::unique_ptr<Key>> all_keys;
+  // Default is protocol maximum.
+  int max_plaintext_size = TLS::MAX_PLAINTEXT_SIZE;
   std::string user;
   int uid = 0, gid = 0;
 };

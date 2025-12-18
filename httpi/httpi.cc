@@ -64,7 +64,6 @@ using TLSRecord = TLS::Record;
 static constexpr int BUFFER_SIZE = 16384;
 static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
 static constexpr double CLIENT_IDLE_TIMEOUT_SEC = 60.1;
-static constexpr int MAX_RECORD_SIZE = 16384;
 
 struct Connection {
   Connection() {
@@ -388,7 +387,7 @@ struct ClientConnection : public Connection {
       uint16_t length = incoming_partial[3];
       length <<= 8;
       length |= incoming_partial[4];
-      if (length > (16384 + 2048)) {
+      if (length > TLS::MAX_CIPHERTEXT_SIZE) {
         Shutdown("record exceeds maximum length");
         return;
       }
@@ -655,8 +654,7 @@ struct Session {
     SHA256::Init(&handshake_ctx);
 
     config.FillServerRandom(std::span<uint8_t, 32>(server_random));
-    // XXX get from config
-    max_packet_size = MAX_RECORD_SIZE;
+    max_plaintext_size = config.MaxPlaintextSize();
   }
 
   PollSet poll_set;
@@ -868,7 +866,7 @@ struct Session {
         }
 
         SendEncrypted(APPLICATION_DATA, 3, 3, backend_data,
-                      max_packet_size,
+                      max_plaintext_size,
                       VERBOSE >= 4);
         backend.ClearRead();
       }
@@ -1276,7 +1274,7 @@ struct Session {
 
             SendEncrypted(HANDSHAKE, 3, 3,
                           TLS::SerializeHandshakeFinished(finished),
-                          MAX_RECORD_SIZE);
+                          TLS::MAX_PLAINTEXT_SIZE);
 
             state = State::STEADY_STATE;
 
@@ -1325,7 +1323,7 @@ struct Session {
                   std::span<const uint8_t>((const uint8_t *)
                                            response.data(),
                                            response.size()),
-                  max_packet_size);
+                  max_plaintext_size);
 
     HangUp();
   }
@@ -1351,7 +1349,8 @@ struct Session {
 
   void HangUp() {
     Print("Hanging up.\n");
-    SendEncrypted(ALERT, 3, 3, TLS::SerializeCloseNotify(), MAX_RECORD_SIZE);
+    SendEncrypted(ALERT, 3, 3, TLS::SerializeCloseNotify(),
+                  TLS::MAX_PLAINTEXT_SIZE);
     client.DoneSending();
     state = State::HANG_UP;
   }
@@ -1410,18 +1409,18 @@ struct Session {
   void SendEncrypted(ContentType ct,
                      uint8_t version_major, uint8_t version_minor,
                      std::span<const uint8_t> content,
-                     int max_packet_size,
+                     int max_plaintext_size,
                      bool verbose = false) {
     std::vector<uint8_t> records;
     // TODO: Predict stream size and reserve.
 
     // If the content is too big, send max-sized prefixes.
-    while (content.size() > max_packet_size) {
+    while (content.size() > max_plaintext_size) {
       AppendEncrypted(ct, version_major, version_minor,
-                      content.subspan(0, max_packet_size),
+                      content.subspan(0, max_plaintext_size),
                       verbose,
                       &records);
-      content = content.subspan(max_packet_size);
+      content = content.subspan(max_plaintext_size);
     }
 
     // Then if we have any more, send it all...
@@ -1513,7 +1512,11 @@ struct Session {
 
   uint64_t client_seq_num = 0;
   uint64_t server_seq_num = 0;
-  int max_packet_size = MAX_RECORD_SIZE;
+  // Maximum size of encrypted payload for application traffic
+  // (steady state). Note there is significant overhead from
+  // headers and encryption metadata, so it is more efficient
+  // to use the protocol maximum.
+  int max_plaintext_size = TLS::MAX_PLAINTEXT_SIZE;
 
   // From the client; only validated inasmuch as it matches
   // some host entry.
