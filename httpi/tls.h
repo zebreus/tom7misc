@@ -30,8 +30,44 @@ struct TLS {
     APPLICATION_DATA = 23,
   };
 
+  enum AlertLevel : uint8_t {
+    ALERT_WARNING = 1,
+    ALERT_FATAL = 2,
+  };
+
+  enum AlertDescription : uint8_t {
+    CLOSE_NOTIFY = 0,
+    UNEXPECTED_MESSAGE = 10,
+    BAD_RECORD_MAC = 20,
+    DECRYPTION_FAILED_RESERVED = 21,
+    RECORD_OVERFLOW = 22,
+    DECOMPRESSION_FAILURE = 30,
+    HANDSHAKE_FAILURE = 40,
+    NO_CERTIFICATE_RESERVED = 41,
+    BAD_CERTIFICATE = 42,
+    UNSUPPORTED_CERTIFICATE = 43,
+    CERTIFICATE_REVOKED = 44,
+    CERTIFICATE_EXPIRED = 45,
+    CERTIFICATE_UNKNOWN = 46,
+    ILLEGAL_PARAMETER = 47,
+    UNKNOWN_CA = 48,
+    ACCESS_DENIED = 49,
+    DECODE_ERROR = 50,
+    DECRYPT_ERROR = 51,
+    EXPORT_RESTRICTION_RESERVED = 60,
+    PROTOCOL_VERSION = 70,
+    INSUFFICIENT_SECURITY = 71,
+    INTERNAL_ERROR = 80,
+    USER_CANCELED = 90,
+    NO_RENEGOTIATION = 100,
+    UNSUPPORTED_EXTENSION = 110,
+  };
+
   static bool IsValidContentType(uint8_t c);
   static std::string_view ContentTypeString(ContentType ct);
+
+  static bool IsValidAlertDescription(uint8_t ad);
+  static std::string_view AlertDescriptionString(AlertDescription ad);
 
   struct ServerNameIndication {
     std::vector<std::string> hosts;
@@ -40,6 +76,11 @@ struct TLS {
   struct UnknownExt {
     uint16_t type = 0;
     std::vector<uint8_t> bytes;
+  };
+
+  struct Alert {
+    AlertLevel level = ALERT_FATAL;
+    AlertDescription desc = INTERNAL_ERROR;
   };
 
   struct ClientHello {
@@ -88,6 +129,9 @@ struct TLS {
     }
     return false;
   }
+
+  static std::optional<Alert>
+  ParseAlert(PacketParser packet);
 
   static std::optional<ServerNameIndication>
   ParseServerNameIndication(PacketParser packet);

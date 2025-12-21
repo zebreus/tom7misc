@@ -226,12 +226,13 @@ struct Connection {
   std::optional<size_t> InternalWritePrefix(std::span<const uint8_t> buf) {
     CHECK(state == State::DUPLEX || state == State::ONLY_WRITE);
     CHECK(fd > 0);
-    if (buf.empty()) return true;
+    if (buf.empty()) return {size_t{0}};
 
     int amount = send(fd, buf.data(), buf.size(),
                       MSG_DONTWAIT | MSG_NOSIGNAL);
     if (amount == -1) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (errno == ENOBUFS || errno == EINTR ||
+          errno == EAGAIN || errno == EWOULDBLOCK) {
         // Connection still ok, but we wrote nothing.
         return {size_t{0}};
       }
@@ -240,6 +241,9 @@ struct Connection {
       // there is no transition to a read-only state. (We initiate
       // such states because we own graceful shutdown of the
       // write side.)
+      if (VERBOSE > 1) {
+        perror("send");
+      }
       Shutdown("closed in write");
       return std::nullopt;
     } else {
@@ -876,29 +880,63 @@ struct Session {
       while (auto ro = client.GetNextRecord()) {
         TLSRecord &r = ro.value();
 
-        if (r.type != APPLICATION_DATA) {
-          // TODO: Should handle alert, etc. here.
-          // An alert to hang up is normal.
-          AbortConnection("Not APPLICATION_DATA in steady state.");
+        // Always decrypt.
+        auto hopt = TLS::DecryptRecord(
+            client_write_mac_key,
+            client_write_key,
+            client_seq_num,
+            r, VERBOSE >= 2, VERBOSE >= 4);
+        client_seq_num++;
+
+        if (!hopt.has_value()) {
+          AbortConnection("Failed to decrypt steady-state message.");
           return;
         }
 
-        if (auto hopt = TLS::DecryptRecord(
-                client_write_mac_key,
-                client_write_key,
-                client_seq_num,
-                r, VERBOSE >= 2, VERBOSE >= 4)) {
+        if (VERBOSE >= 2) {
+          Print("Got {} plaintext bytes from client; type {}.\n",
+                hopt.value().size(), TLS::ContentTypeString(r.type));
+        }
 
-          client_seq_num++;
-
-          if (VERBOSE >= 2) {
-            Print("Send {} from client.\n", hopt.value().size());
-          }
+        if (r.type == APPLICATION_DATA) {
 
           backend.Write(hopt.value());
 
+        } else if (r.type == ALERT) {
+
+          std::optional<TLS::Alert> ao = TLS::ParseAlert(hopt.value());
+          if (!ao.has_value()) {
+            AbortConnection("Invalid Alert packet in steady state.");
+            return;
+          }
+
+          const TLS::Alert &alert = ao.value();
+          if (alert.level == TLS::ALERT_WARNING) {
+            if (VERBOSE >= 1) {
+              Print("Warning " AORANGE("ALERT") " from client: {}\n",
+                    TLS::AlertDescriptionString(alert.desc));
+              // but continue.
+              // We might want a setting to abort here?
+            }
+          } else {
+            AbortConnection(
+                std::format("Fatal ALERT from client: {}",
+                            TLS::AlertDescriptionString(alert.desc)));
+            return;
+          }
+
+          return;
+
         } else {
-          AbortConnection("Failed to decrypt steady-state message.");
+
+          // Protocol error.
+          if (VERBOSE > 2) {
+            Print("(Undecrypted) Payload for error:\n{}\n",
+                  HexDump::Color(r.fragment));
+          }
+          AbortConnection(
+              std::format("Unexpected packet type in steady state. Type: {}",
+                          TLS::ContentTypeString(r.type)));
           return;
         }
 
@@ -1425,6 +1463,7 @@ struct Session {
 
     // Then if we have any more, send it all...
     if (!content.empty()) {
+      CHECK(content.size() <= max_plaintext_size);
       AppendEncrypted(ct, version_major, version_minor,
                       content,
                       verbose,

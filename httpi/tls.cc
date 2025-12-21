@@ -60,6 +60,70 @@ std::string_view TLS::ContentTypeString(ContentType ct) {
   }
 }
 
+bool TLS::IsValidAlertDescription(uint8_t ad) {
+  switch (ad) {
+  case CLOSE_NOTIFY:
+  case UNEXPECTED_MESSAGE:
+  case BAD_RECORD_MAC:
+  case DECRYPTION_FAILED_RESERVED:
+  case RECORD_OVERFLOW:
+  case DECOMPRESSION_FAILURE:
+  case HANDSHAKE_FAILURE:
+  case NO_CERTIFICATE_RESERVED:
+  case BAD_CERTIFICATE:
+  case UNSUPPORTED_CERTIFICATE:
+  case CERTIFICATE_REVOKED:
+  case CERTIFICATE_EXPIRED:
+  case CERTIFICATE_UNKNOWN:
+  case ILLEGAL_PARAMETER:
+  case UNKNOWN_CA:
+  case ACCESS_DENIED:
+  case DECODE_ERROR:
+  case DECRYPT_ERROR:
+  case EXPORT_RESTRICTION_RESERVED:
+  case PROTOCOL_VERSION:
+  case INSUFFICIENT_SECURITY:
+  case INTERNAL_ERROR:
+  case USER_CANCELED:
+  case NO_RENEGOTIATION:
+  case UNSUPPORTED_EXTENSION:
+    return true;
+  default:
+    return false;
+  }
+}
+
+std::string_view TLS::AlertDescriptionString(AlertDescription ad) {
+  switch (ad) {
+  case CLOSE_NOTIFY: return "CLOSE_NOTIFY";
+  case UNEXPECTED_MESSAGE: return "UNEXPECTED_MESSAGE";
+  case BAD_RECORD_MAC: return "BAD_RECORD_MAC";
+  case DECRYPTION_FAILED_RESERVED: return "DECRYPTION_FAILED_RESERVED";
+  case RECORD_OVERFLOW: return "RECORD_OVERFLOW";
+  case DECOMPRESSION_FAILURE: return "DECOMPRESSION_FAILURE";
+  case HANDSHAKE_FAILURE: return "HANDSHAKE_FAILURE";
+  case NO_CERTIFICATE_RESERVED: return "NO_CERTIFICATE_RESERVED";
+  case BAD_CERTIFICATE: return "BAD_CERTIFICATE";
+  case UNSUPPORTED_CERTIFICATE: return "UNSUPPORTED_CERTIFICATE";
+  case CERTIFICATE_REVOKED: return "CERTIFICATE_REVOKED";
+  case CERTIFICATE_EXPIRED: return "CERTIFICATE_EXPIRED";
+  case CERTIFICATE_UNKNOWN: return "CERTIFICATE_UNKNOWN";
+  case ILLEGAL_PARAMETER: return "ILLEGAL_PARAMETER";
+  case UNKNOWN_CA: return "UNKNOWN_CA";
+  case ACCESS_DENIED: return "ACCESS_DENIED";
+  case DECODE_ERROR: return "DECODE_ERROR";
+  case DECRYPT_ERROR: return "DECRYPT_ERROR";
+  case EXPORT_RESTRICTION_RESERVED: return "EXPORT_RESTRICTION_RESERVED";
+  case PROTOCOL_VERSION: return "PROTOCOL_VERSION";
+  case INSUFFICIENT_SECURITY: return "INSUFFICIENT_SECURITY";
+  case INTERNAL_ERROR: return "INTERNAL_ERROR";
+  case USER_CANCELED: return "USER_CANCELED";
+  case NO_RENEGOTIATION: return "NO_RENEGOTIATION";
+  case UNSUPPORTED_EXTENSION: return "UNSUPPORTED_EXTENSION";
+  default: return "???";
+  }
+}
+
 void TLS::PrintClientHello(const ClientHello &hello) {
   Print(AWHITE("ClientHello") " {}.{}\n",
         hello.version_major, hello.version_minor);
@@ -91,6 +155,21 @@ void TLS::PrintClientHello(const ClientHello &hello) {
             HexDump::Color(unk->bytes));
     }
   }
+}
+
+std::optional<TLS::Alert>
+TLS::ParseAlert(PacketParser packet) {
+  if (packet.size() != 2) return std::nullopt;
+  uint8_t level = packet.Byte();
+  if (level != ALERT_WARNING &&
+      level != ALERT_FATAL) return std::nullopt;
+  uint8_t desc = packet.Byte();
+  if (!IsValidAlertDescription(desc))
+    return std::nullopt;
+  return std::make_optional(Alert{
+      .level = (AlertLevel)level,
+      .desc = (AlertDescription)desc,
+    });
 }
 
 std::optional<TLS::ServerNameIndication>
@@ -202,7 +281,7 @@ TLS::ParseClientHello(PacketParser packet) {
   }
 
   CHECK(packet.empty());
-  return {hello};
+  return {std::move(hello)};
 }
 
 std::optional<TLS::ClientKeyExchange>
@@ -598,6 +677,8 @@ std::vector<uint8_t> TLS::MakeEncryptedRecord(
   const int pad_len =
     AES256::BLOCKLEN - (unpadded_length % AES256::BLOCKLEN);
   CHECK(pad_len > 0);
+
+  CHECK(content.size() <= MAX_PLAINTEXT_SIZE);
 
   // For HMAC calculation.
   PacketWriter hash_buffer;
