@@ -31,9 +31,12 @@ static inline uint64_t bswap_64(uint64_t val) {
 #if defined(__GNUC__) || defined(__clang__)
   return __builtin_bswap64(val);
 #else
-  val = (val & 0x00000000FFFFFFFF) << 32 | (val & 0xFFFFFFFF00000000) >> 32;
-  val = (val & 0x0000FFFF0000FFFF) << 16 | (val & 0xFFFF0000FFFF0000) >> 16;
-  val = (val & 0x00FF00FF00FF00FF) << 8  | (val & 0xFF00FF00FF00FF00) >> 8;
+  val = (val & uint64_t{0x00000000FFFFFFFF}) << 32 |
+        (val & uint64_t{0xFFFFFFFF00000000}) >> 32;
+  val = (val & uint64_t{0x0000FFFF0000FFFF}) << 16 |
+        (val & uint64_t{0xFFFF0000FFFF0000}) >> 16;
+  val = (val & uint64_t{0x00FF00FF00FF00FF}) << 8  |
+        (val & uint64_t{0xFF00FF00FF00FF00}) >> 8;
   return val;
 #endif
 }
@@ -120,14 +123,19 @@ void SHA1::Init(SHA1::Ctx *context) {
 }
 
 void SHA1::Update(Ctx *context, const uint8_t *data, size_t len) {
+  // Avoid memcpy from nullptr if e.g. empty span.
+  if (len == 0) return;
+
   size_t j = (context->count[0] >> 3) & 63;
-  if ((context->count[0] += len << 3) < (len << 3))
+
+  if ((context->count[0] += len << 3) < (uint32_t)(len << 3))
     context->count[1]++;
   context->count[1] += (len >> 29);
 
   size_t i = 0;
   if ((j + len) > 63) {
-    memcpy(&context->buffer[j], data, (i = 64-j));
+    i = 64 - j;
+    memcpy(&context->buffer[j], data, i);
     SHA1Transform(context->state, context->buffer);
     for ( ; i + 63 < len; i += 64) {
       SHA1Transform(context->state, data + i);
@@ -194,6 +202,7 @@ std::array<uint8_t, SHA1::DIGEST_LENGTH> SHA1::FinalArray(SHA1::Ctx *ctx) {
 std::array<uint8_t, 20>
 SHA1::HMAC(std::span<const uint8_t> key,
            std::span<const uint8_t> message) {
+
   static constexpr size_t BLOCK_SIZE = 64;
   std::array<uint8_t, BLOCK_SIZE> processed_key{};
 
