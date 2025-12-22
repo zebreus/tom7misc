@@ -1,6 +1,8 @@
 // Operator overloads for big.h. These can be very nice if doing
 // a lot of math, but they also can obscure what's really going
 // on (or pollute the namespace), so they are kept separate.
+//
+// Also includes template specializations for hashing and std::format.
 
 #ifndef _CCLIB_BIGNUM_BIG_OVERLOADS_H
 #define _CCLIB_BIGNUM_BIG_OVERLOADS_H
@@ -8,8 +10,9 @@
 #include "bignum/big.h"
 
 #include <compare>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <format>
 #include <functional>
 #include <utility>
 
@@ -222,12 +225,20 @@ inline bool operator <(const BigInt &a, const BigInt &b) {
   return BigInt::Less(a, b);
 }
 
+inline bool operator <(int64_t a, const BigInt &b) {
+  return BigInt::Greater(b, a);
+}
+
 inline bool operator <(const BigInt &a, int64_t b) {
   return BigInt::Less(a, b);
 }
 
 inline bool operator <=(const BigInt &a, const BigInt &b) {
   return BigInt::LessEq(a, b);
+}
+
+inline bool operator <=(int64_t a, const BigInt &b) {
+  return BigInt::GreaterEq(b, a);
 }
 
 inline bool operator <=(const BigInt &a, int64_t b) {
@@ -238,12 +249,20 @@ inline bool operator >(const BigInt &a, const BigInt &b) {
   return BigInt::Greater(a, b);
 }
 
+inline bool operator >(int64_t a, const BigInt &b) {
+  return BigInt::Less(b, a);
+}
+
 inline bool operator >(const BigInt &a, int64_t b) {
   return BigInt::Greater(a, b);
 }
 
 inline bool operator >=(const BigInt &a, const BigInt &b) {
   return BigInt::GreaterEq(a, b);
+}
+
+inline bool operator >=(int64_t a, const BigInt &b) {
+  return BigInt::LessEq(b, a);
 }
 
 inline bool operator >=(const BigInt &a, int64_t b) {
@@ -367,6 +386,39 @@ struct std::hash<BigRat> {
   std::size_t operator()(const BigRat &k) const {
     // As above.
     return (size_t)BigRat::HashCode(k);
+  }
+};
+
+// For std::format. Only supports {}.
+template<>
+struct std::formatter<BigInt> {
+  constexpr auto parse(std::format_parse_context &ctx) {
+    auto it = ctx.begin();
+    if (it != ctx.end() && *it != '}') {
+      throw std::format_error("no format options are supported");
+    }
+    return it;
+  }
+
+  template<class FC>
+  auto format(const BigInt &b, FC &ctx) const {
+    return std::format_to(ctx.out(), "{}", b.ToString());
+  }
+};
+
+template<>
+struct std::formatter<BigRat> {
+  constexpr auto parse(std::format_parse_context &ctx) {
+    auto it = ctx.begin();
+    if (it != ctx.end() && *it != '}') {
+      throw std::format_error("no format options are supported");
+    }
+    return it;
+  }
+
+  template<class FC>
+  auto format(const BigRat &b, FC &ctx) const {
+    return std::format_to(ctx.out(), "{}", b.ToString());
   }
 };
 

@@ -3,6 +3,8 @@
 #include "bignum/big-overloads.h"
 
 #include <cstdio>
+#include <initializer_list>
+#include <limits>
 #include <utility>
 
 #include "timer.h"
@@ -93,6 +95,62 @@ static void TestBinaryOps() {
   }
 }
 
+static void TestCompareInt() {
+  for (int64_t a : std::initializer_list<int64_t>{
+      0, 1, -1, 2, -2,
+      std::numeric_limits<int64_t>::min(),
+      std::numeric_limits<int64_t>::max()}) {
+
+    for (int64_t b : std::initializer_list<int64_t>{
+        0, 1, -1, 2, -2,
+        std::numeric_limits<int64_t>::min(),
+        std::numeric_limits<int64_t>::max()}) {
+
+      BigInt aa(a), bb(b);
+
+      if (a < b) {
+        CHECK(aa < bb);
+        CHECK(aa < b);
+        CHECK(a < bb);
+      }
+
+      if (a <= b) {
+        CHECK(aa <= bb);
+        CHECK(aa <= b);
+        CHECK(a <= bb);
+      }
+
+      if (a > b) {
+        CHECK(aa > bb);
+        CHECK(aa > b);
+        CHECK(a > bb);
+      }
+
+      if (a >= b) {
+        CHECK(aa >= bb);
+        CHECK(aa >= b);
+        CHECK(a >= bb);
+      }
+
+      if (a == b) {
+        CHECK(aa == bb);
+        CHECK(a == bb);
+        CHECK(aa == b);
+      }
+
+      if (a != b) {
+        CHECK(aa != bb);
+        CHECK(a != bb);
+        CHECK(aa != b);
+      }
+
+      // TODO: Also test non-small cases, e.g. by
+      // also trying a * 10 vs b * 10.
+    }
+  }
+
+}
+
 static void TestCompareSmallRat() {
   BigRat a(1, 5);
   BigRat b(10, 3);
@@ -180,6 +238,8 @@ int main(int argc, char **argv) {
 
   TestAssigningOps();
   TestBinaryOps();
+
+  TestCompareInt();
 
   TestCompareSmallRat();
   TestCompareLargeRat();
