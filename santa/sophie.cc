@@ -137,7 +137,8 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   // Gen(2048);
-  Gen(1024);
+  // Gen(1024);
+  Gen(16);
 
   return 0;
 }
