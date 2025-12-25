@@ -463,6 +463,9 @@ struct Image1 {
   // Clipped.
   inline void SetPixel(int x, int y, bool v);
   inline bool GetPixel(int x, int y) const;
+  void CopyImage(int x, int y, const Image1 &other);
+  void CopyImageRect(int destx, int desty, const Image1 &other,
+                     int srcx, int srcy, int srcw, int srch);
 
   void SetRect(int x, int y, int w, int h, bool value = true);
 

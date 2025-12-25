@@ -10,14 +10,13 @@
 #include "ansi.h"
 
 static void Test() {
-  ImageA qr = QRCode::AddBorder(QRCode::Text("the test was successful"), 2);
+  Image1 qr = QRCode::AddBorder(QRCode::Text("the test was successful"), 2);
 
   for (int y = 0; y < qr.Height(); y++) {
     printf("  ");
     for (int x = 0; x < qr.Width(); x++) {
       uint8_t a = qr.GetPixel(x, y);
-      CHECK(a == 0x00 || a == 0xFF);
-      if (a == 0xFF) {
+      if (a) {
         printf(AFGCOLOR(255, 255, 255, "██"));
       } else {
         printf(AFGCOLOR(0, 0, 0, "██"));

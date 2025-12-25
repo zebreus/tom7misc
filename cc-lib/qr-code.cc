@@ -35,6 +35,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <algorithm>
 #include <cassert>
@@ -1390,7 +1391,8 @@ void BitBuffer::appendBits(std::uint32_t val, int len) {
 
 // TODO: Tom stuff
 
-ImageA QRCode::Text(const std::string &text) {
+Image1 QRCode::Text(std::string_view text_in) {
+  std::string text(text_in);
   (void)&qrcodegen::QrCode::getVersion;
   (void)&qrcodegen::QrCode::getMask;
   (void)&qrcodegen::QrCode::getErrorCorrectionLevel;
@@ -1403,21 +1405,25 @@ ImageA QRCode::Text(const std::string &text) {
                                   qrcodegen::QrCode::Ecc::LOW);
 
   int size = qr.getSize();
-  ImageA img(size, size);
+  Image1 img(size, size);
   // img.Clear(0xFF);
   for (int y = 0; y < size; y++) {
     for (int x = 0; x < size; x++) {
-      img.SetPixel(x, y, qr.getModule(x, y) ? 0x00 : 0xFF);
+      img.SetPixel(x, y, !qr.getModule(x, y));
     }
   }
 
   return img;
 }
 
-ImageA QRCode::AddBorder(const ImageA &qr, int pixels) {
+Image1 QRCode::AddBorder(const Image1 &qr, int pixels) {
   CHECK(pixels >= 0);
-  ImageA out(qr.Width() + pixels * 2, qr.Height() + pixels * 2);
+  Image1 out(qr.Width() + pixels * 2, qr.Height() + pixels * 2);
   out.Clear(0xFF);
   out.CopyImage(pixels, pixels, qr);
   return out;
+}
+
+ImageRGBA QRCode::ToRGBA(const Image1 &qr, int scale) {
+  return qr.MonoRGBA().ScaleBy(scale);
 }

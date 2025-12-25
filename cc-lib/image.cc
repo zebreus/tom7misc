@@ -2135,6 +2135,36 @@ ImageA Image1::MonoA(uint8_t one, uint8_t zero) const {
   return out;
 }
 
+void Image1::CopyImageRect(int dstx, int dsty, const Image1 &other,
+                           int srcx, int srcy, int srcw, int srch) {
+  for (int yy = 0; yy < srch; yy++) {
+    const int syy = srcy + yy;
+    const int dyy = dsty + yy;
+    // Exit early if outside destination.
+    if (dyy >= height) break;
+    // Exit early if outside source.
+    if (syy >= other.height) break;
+
+    if (syy >= 0 && dyy >= 0) {
+      for (int xx = 0; xx < srcw; xx++) {
+        const int sxx = srcx + xx;
+        const int dxx = dstx + xx;
+        if (dxx >= width) break;
+        if (sxx >= other.width) break;
+
+        if (sxx >= 0 && dxx >= 0) {
+          SetPixel(dxx, dyy, other.GetPixel(sxx, syy));
+        }
+      }
+    }
+  }
+}
+
+void Image1::CopyImage(int x, int y, const Image1 &other) {
+  CopyImageRect(x, y, other, 0, 0, other.Width(), other.Height());
+}
+
+
 void Image1::SetRect(int x, int y, int w, int h, bool value) {
 
   if (y < 0) { w += y; y = 0; }

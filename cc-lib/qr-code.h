@@ -2,18 +2,21 @@
 #ifndef _CC_LIB_QR_CODE_H
 #define _CC_LIB_QR_CODE_H
 
+#include <string_view>
+
 #include "image.h"
-#include <string>
 
 struct QRCode {
-  // TODO: ECC settings, border, etc.
-  // The returned image uses 0xFF for white (background) and
-  // 0x00 for black (foreground).
-  static ImageA Text(const std::string &str);
+  // TODO: ECC settings, etc.
+  // Using 'true' for white and 'false' for black.
+  static Image1 Text(std::string_view str);
 
   // Adds a white border. This can be useful if displaying on a dark
   // background.
-  static ImageA AddBorder(const ImageA &qr, int pixels);
+  static Image1 AddBorder(const Image1 &qr, int pixels);
+
+  // Since you almost always want to do this.
+  static ImageRGBA ToRGBA(const Image1 &qr, int scale = 1);
 
  private:
   // All static.

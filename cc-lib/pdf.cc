@@ -2280,13 +2280,14 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
 bool PDF::AddQRCode(float x, float y, float size,
                     const std::string &str, uint32_t color,
                     Page *page) {
-  ImageA img = QRCode::Text(str);
+  Image1 img = QRCode::Text(str);
 
   float pixel = size / img.Width();
 
   for (int qy = 0; qy < img.Height(); qy++) {
     for (int qx = 0; qx < img.Width(); qx++) {
-      if (img.GetPixel(qx, qy) == 0x00) {
+      // false = 0 = black
+      if (img.GetPixel(qx, qy) == false) {
         AddFilledRectangle(x + qx * pixel,
                            // Image is flipped relative to PDF
                            // coordinate system

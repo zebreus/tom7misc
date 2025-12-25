@@ -114,6 +114,9 @@ unname-unicode.exe : unname-unicode.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB_U
 lightness.exe : lightness.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+qrimage.exe : qrimage.o $(CC_LIB)/qr-code.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB_ZIP) $(CC_LIB_UNICODE) $(RE2_OBJECTS)
 
