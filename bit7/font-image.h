@@ -21,6 +21,9 @@ enum class Page {
 };
 
 struct Config {
+  // Should be a path that we can open from the pwd. The
+  // config loading function will interpret the filename
+  // as a path relative to the config file.
   std::string pngfile;
 
   std::string name;

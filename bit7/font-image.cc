@@ -2134,10 +2134,12 @@ REUSE_FOR = {
 };
 
 Config Config::ParseConfig(std::string_view cfgfile) {
+  std::string path = Util::PathOf(cfgfile);
+
   Config config;
   std::map<string, string> m = Util::ReadFileToMap(cfgfile);
   CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
-  config.pngfile = m["pngfile"];
+  config.pngfile = Util::DirPlus(path, m["pngfile"]);
   config.name = m["name"];
   config.copyright = m["copyright"];
   config.charbox_width = atoi(m["charbox-width"].c_str());
@@ -2617,8 +2619,6 @@ void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
 }
 
 std::unique_ptr<BitmapFont> BitmapFont::Load(std::string_view configfile) {
-  // XXX interpret png in config relative to config path so that
-  // this can load from other directories.
   Config cfg = Config::ParseConfig(configfile);
   FontImage font_image(cfg);
   return std::make_unique<BitmapFont>(std::move(font_image));

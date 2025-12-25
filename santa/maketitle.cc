@@ -7,6 +7,8 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "font-image.h"
 #include "image.h"
 #include "randutil.h"
@@ -24,21 +26,29 @@ static void MakeTitle() {
                 santa->Height() * CH);
   img.Clear32(0x000000FF);
 
-  ArcFour rc("digits");
+  BigInt fact(1);
+  for (int i = 2; i <= 2025; i++) {
+    fact *= i;
+  }
 
-  Print("Need {} digits.\n", santa->Height() * santa->Width() * 2);
+  std::string digits = fact.ToString();
+  Print("Need {} digits; have {}.\n",
+        santa->Height() * santa->Width() * 2,
+        digits.size());
 
+  int d = 0;
   for (int y = 0; y < santa->Height(); y++) {
     const int ypos = CH * y;
     for (int x = 0; x < santa->Width(); x++) {
       const int xpos = x * font->Width() * 2;
       uint32_t c = santa->GetPixel32(x, y);
 
+      char d1 = digits[d++];
+      char d2 = digits[d++];
+
       font->DrawText(&img, xpos, ypos,
                      c,
-                     std::format("{:c}{:c}",
-                                 '0' + RandTo(&rc, 10),
-                                 '0' + RandTo(&rc, 10)));
+                     std::format("{:c}{:c}", d1, d2));
     }
   }
 
