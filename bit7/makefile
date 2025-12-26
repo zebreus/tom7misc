@@ -3,6 +3,12 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe
 
+# These need FontForge installed (see tottf.sh).
+# It's hard-coded for a windows installation. You can
+# just load the .sfd files and generate ttfs from the
+# FontForge UI.
+ttf : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf
+
 # ASAN=true
 
 ifdef ASAN
@@ -76,6 +82,15 @@ fixedersys2x.sfd : fixedersys2x.png fixedersys2x.cfg makesfd.exe
 
 fixedersyslight2x.sfd : fixedersyslight2x.png fixedersyslight2x.cfg makesfd.exe
 	./makesfd.exe fixedersyslight2x.cfg $@
+
+FixederSys1x.ttf : fixedersys1x.sfd
+	./tottf.sh $^ $@
+
+FixederSys2x.ttf : fixedersys2x.sfd
+	./tottf.sh $^ $@
+
+FixederSysLight2x.ttf : fixedersyslight2x.sfd
+	./tottf.sh $^ $@
 
 normalize : normalize.exe fixedersys1x.png fixedersys2x.png
 	./normalize.exe fixedersys1x.cfg
