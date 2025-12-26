@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -21,7 +22,7 @@
 #include <format>
 #include <map>
 #include <optional>
-#include <stdio.h>
+#include <span>
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
@@ -435,7 +436,7 @@ vector<string> Util::ReadFileToLines(std::string_view filename) {
   return SplitToLines(ReadFile(filename));
 }
 
-vector<string> Util::NormalizeLines(const std::vector<string> &lines) {
+vector<string> Util::NormalizeLines(std::span<const string> lines) {
   std::vector<string> out;
   out.reserve(lines.size());
   for (const string &line : lines) {
@@ -446,7 +447,7 @@ vector<string> Util::NormalizeLines(const std::vector<string> &lines) {
 }
 
 bool Util::WriteLinesToFile(std::string_view sv,
-                            const std::vector<string> &lines) {
+                            std::span<const string> lines) {
   std::string filename{sv};
   FILE *f = fopen(filename.c_str(), "wb");
   if (f == nullptr) return false;
@@ -666,7 +667,7 @@ bool Util::WriteFile(std::string_view fn, std::string_view s) {
 }
 
 bool Util::WriteFileBytes(std::string_view filename,
-                          const vector<uint8> &bytes) {
+                          std::span<const uint8> bytes) {
   std::string fn{filename};
   FILE *f = fopen(fn.c_str(), "wb");
   if (!f) return false;
@@ -679,7 +680,7 @@ bool Util::WriteFileBytes(std::string_view filename,
   return len == wrote_len;
 }
 
-vector<uint64> Util::ReadUint64File(const string &filename) {
+vector<uint64> Util::ReadUint64File(std::string_view filename) {
   vector<uint8> bytes = ReadFileBytes(filename);
   if (bytes.size() & 7) return {};
   vector<uint64> ret;
@@ -696,8 +697,8 @@ vector<uint64> Util::ReadUint64File(const string &filename) {
   return ret;
 }
 
-bool Util::WriteUint64File(const string &filename,
-                           const std::vector<uint64> &contents) {
+bool Util::WriteUint64File(std::string_view filename,
+                           std::span<const uint64_t> contents) {
   vector<uint8> bytes;
   bytes.reserve(contents.size() * 8);
   for (uint64 w : contents) {
@@ -1496,7 +1497,7 @@ FILE *Util::fopenp(const string &f, const string &m) {
   return fopen(f.c_str(), m.c_str());
 }
 
-string Util::Join(const vector<string> &parts,
+string Util::Join(std::span<const string> parts,
                   std::string_view sep) {
   if (parts.empty()) return "";
   if (parts.size() == 1) return parts[0];

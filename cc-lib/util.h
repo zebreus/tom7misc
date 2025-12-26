@@ -2,16 +2,17 @@
 #ifndef _CC_LIB_UTIL_H
 #define _CC_LIB_UTIL_H
 
+#include <cstdint>
 #include <cstdlib>
 #include <map>
-#include <stdio.h>
-#include <stdlib.h>
+#include <optional>
+#include <span>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
-#include <cstdint>
-#include <string_view>
-#include <optional>
 
 #ifdef WIN32
 #   define DIRSEP  "\\"
@@ -48,12 +49,12 @@ struct Util {
   // (Nothing special is done for newlines already in the input.)
   // Returns true upon success.
   static bool WriteLinesToFile(std::string_view filename,
-                               const std::vector<string> &lines);
+                               std::span<const string> lines);
 
   // Frequently useful when reading a file as a vector of lines:
   // NormalizeWhitespace. Remove blank lines.
   static std::vector<string> NormalizeLines(
-      const std::vector<string> &lines);
+      std::span<const string> lines);
 
   // Split the string to lines. Blank lines are preserved.
   // If the file doesn't end with a newline, and the last line is
@@ -75,12 +76,12 @@ struct Util {
 
   static std::vector<uint8_t> ReadFileBytes(std::string_view filename);
   static bool WriteFileBytes(std::string_view filename,
-                             const std::vector<uint8_t> &b);
+                             std::span<const uint8_t> b);
 
   // Read/write a vector of uint64s in big-endian byte order.
-  static std::vector<uint64_t> ReadUint64File(const string &filename);
-  static bool WriteUint64File(const string &filename,
-                              const std::vector<uint64_t> &contents);
+  static std::vector<uint64_t> ReadUint64File(std::string_view filename);
+  static bool WriteUint64File(std::string_view filename,
+                              std::span<const uint64_t> contents);
 
   // Return a vector of all the files and directories in the target
   // dir. Skips ".", ".." but is not built to handle any funny business.
@@ -90,7 +91,7 @@ struct Util {
   // Join({"a", "b", "c"}, ".") = "a.b.c"
   // Join({"z"}, ".") = "z"
   // Join({}, ".") = ""
-  static string Join(const std::vector<std::string> &pieces,
+  static string Join(std::span<const std::string> pieces,
                      std::string_view sep);
 
   // Split the string on the given character. Consecutive separators
@@ -180,13 +181,13 @@ struct Util {
      rather than
      Tutorial 1, Tutorial 10, Tutorial 11, ..., Tutorial 2, Tutorial 20, ...
   */
-  static int natural_compare(const string & l, const string & r);
+  static int natural_compare(const string &l, const string &r);
 
   /* Same as above, but ignore 'the' at the beginning */
-  static int library_compare(const string & l, const string & r);
+  static int library_compare(const string &l, const string &r);
 
   /* Is string s alphabetized under char k? */
-  static bool library_matches(char k, const string & s);
+  static bool library_matches(char k, const string &s);
 
   // Print a number exactly using commas to separate triples,
   // like 1,000,000.
@@ -198,9 +199,9 @@ struct Util {
   static int getpid();
   /* anything ending with \n. ignores \r.
      modifies str. */
-  static string getline(string & str);
+  static string getline(string &str);
   /* same, for open file. */
-  static string fgetline(FILE * f);
+  static string fgetline(FILE *f);
 
   /* chop the first token (ignoring whitespace) off
      of line, modifying line. eventually returns ""

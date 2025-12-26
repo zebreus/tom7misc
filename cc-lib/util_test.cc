@@ -206,8 +206,10 @@ static void TestUnescapeC() {
 
 static void TestJoin() {
   CHECK_EQ("", Util::Join({}, "X"));
-  CHECK_EQ("aYYbYYcde", Util::Join({"a", "b", "cde"}, "YY"));
-  CHECK_EQ("abcde", Util::Join({"a", "b", "cde"}, ""));
+  CHECK_EQ("aYYbYYcde", Util::Join(
+               std::vector<std::string>{"a", "b", "cde"}, "YY"));
+  CHECK_EQ("abcde", Util::Join(
+               std::vector<std::string>{"a", "b", "cde"}, ""));
 }
 
 static void TestSplit() {
