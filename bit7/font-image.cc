@@ -232,16 +232,15 @@ static PageInfo PageBit7Classic() {
     // mathematical phi symbol (closed)
     0x03D5,
 
-    // This was once some basic math symbols, but I moved them
-    // to the proper unicode page.
-    // Black circle, black square
-    0x25CF,
-    0x25A0,
-    // geometric shapes and bullets, unclaimed
-    -1,
-    0x203B, // reference mark
+    // TODO: More greeks
+    -1, -1, -1, -1,
     // cont'd
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // reference mark,
+    0x203B,
+    // Black circle, black square
+    0x25CF, 0x25A0,
     // <?> replacement char
     0xFFFD,
 
@@ -675,6 +674,7 @@ static PageInfo PageBit7Extended() {
 
   info.sections = {
     {0, 16 * 3},
+    {16 * 16, 2 * 16 - 6},
     {18 * 16, 6 * 16},
   };
 
@@ -793,8 +793,45 @@ static PageInfo PageBit7Extended() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // Two rows for Greek Extended (custom mapping)
+    0x0385,  // (΅) GREEK DIALYTIKA TONOS
+    0x0386,  // (Ά) GREEK CAPITAL LETTER ALPHA WITH TONOS
+    0x0388,  // (Έ) GREEK CAPITAL LETTER EPSILON WITH TONOS
+    0x0389,  // (Ή) GREEK CAPITAL LETTER ETA WITH TONOS
+    0x038A,  // (Ί) GREEK CAPITAL LETTER IOTA WITH TONOS
+    0x038C,  // (Ό) GREEK CAPITAL LETTER OMICRON WITH TONOS
+    0x038E,  // (Ύ) GREEK CAPITAL LETTER UPSILON WITH TONOS
+    0x038F,  // (Ώ) GREEK CAPITAL LETTER OMEGA WITH TONOS
+    0x0390,  // (ΐ) GREEK SMALL LETTER IOTA WITH DIALYTIKA AND TONOS
+    0x03CA,  // (ϊ) GREEK SMALL LETTER IOTA WITH DIALYTIKA
+    0x03CB,  // (ϋ) GREEK SMALL LETTER UPSILON WITH DIALYTIKA
+    0x03CD,  // (ύ) GREEK SMALL LETTER UPSILON WITH TONOS
+    0x03CE,  // (ώ) GREEK SMALL LETTER OMEGA WITH TONOS
+    0x03AC,  // (ά) GREEK SMALL LETTER ALPHA WITH TONOS
+    0x03AD,  // (έ) GREEK SMALL LETTER EPSILON WITH TONOS
+    0x03AE,  // (ή) GREEK SMALL LETTER ETA WITH TONOS
+
+    0x03AF,  // (ί) GREEK SMALL LETTER IOTA WITH TONOS
+    0x03B0,  // (ΰ) GREEK SMALL LETTER UPSILON WITH DIALYTIKA AND TONOS
+    0x03DA,  // (Ϛ) GREEK LETTER STIGMA
+    0x03DB,  // (ϛ) GREEK SMALL LETTER STIGMA
+    0x03DC,  // (Ϝ) GREEK LETTER DIGAMMA
+    0x03DD,  // (ϝ) GREEK SMALL LETTER DIGAMMA
+    // Note that because the lowercase koppa was introduced
+    // later, lots of text uses 03DE as the numeral.
+    // Modern practice is to make the glyphs look different
+    // but for the first to still make sense in a numeral
+    // context (since that is the main way it actually
+    // appears).
+    0x03DE,  // (Ϟ) GREEK LETTER KOPPA
+    0x03DF,  // (ϟ) GREEK SMALL LETTER KOPPA
+    // Similar...
+    0x03E0,  // (Ϡ) GREEK LETTER SAMPI
+    0x03E1,  // (ϡ) GREEK SMALL LETTER SAMPI
+
+    // Space for more Greek Extended
+    -1, -1, -1, -1, -1, -1,
 
     // Unicode Katakana
     // 96 characters in unicode order, U+30A0 to U+30FF.
@@ -2036,12 +2073,23 @@ REUSE_FOR = {
   {'o', 0x03BF},
   {'u', 0x03C5},
   {'x', 0x03C7},
+  {'j', 0x03F3},
 
   // Coptic homoglyphs
   {'C', 0x2CA4},
   {'c', 0x2CA5},
   {'O', 0x2C9E},
   {'o', 0x2C9F},
+
+  // Greek numeral sign is "based on" modifier letter prime.
+  {0x02B9, 0x0374},
+  // Similarly, Greek tonos is an accute accent.
+  {0x02CA, 0x0384},
+  {0x00B7, 0x0387},  // middle dot -> ano teleia
+
+  // Modifier Letters remapped to standalone accents
+  {0x02CA, 0x00B4},  // acute accent
+  {0x02CB, 0x0060},  // grave
 
   // Full-width comma
   {',', 0xFF0C},
@@ -2058,16 +2106,23 @@ REUSE_FOR = {
   {0x03A0, 0x220F},  // Pi -> Product
   {0x03A3, 0x2211},  // Sigma -> Sum
 
+  // Greek -> Latin
+  {0x03D5, 0x0278},  // closed phi
+  {0x03B2, 0xA7B5},  // beta
+  {0x03C9, 0xA7B7},  // small omega
+  {0x03A9, 0xA7B6},  // capital omega
+  {0x03B3, 0x0263},  // gamma
+  {0x03B9, 0x0269},  // iota
+  {0x03BB, 0xA7DB},  // lambda
+
+  // Latin Ext A -> Greek
+  {0x0178, 0x03AB},  // Ÿ
+  {0x00CF, 0x03AA},  // Ï
+  {0x00F3, 0x03CC},  // ó
+
   // "Prohibited sign" is identical to "No entry sign" but
   // black instead of red.
   {0x1F6AB, 0x1F6C7},
-
-  // Kelvin symbol
-  {'K', 0x212A},
-  // Ohm symbol from greek Omega
-  {0x03A9, 0x2126},
-  // "micro" symbol from greek mu
-  {0x03BC, 0x00B5},
 
   // ISO Latin-1 Macron to overline
   {0x00AF, 0x203E},
@@ -2101,12 +2156,14 @@ REUSE_FOR = {
   {0x22c6, 0x2605},
 
   // Letter-like symbols that are REALLY letter-like.
-  // Kelvin
+  // Kelvin symbol
   {'K', 0x212A},
+  // Ohm symbol from greek Omega
+  {0x03A9, 0x2126},
+  // "micro" symbol from greek mu
+  {0x03BC, 0x00B5},
   // A with circle -> Angstrom
   {0x00C5, 0x212B},
-  // Omega -> Ohm sign
-  {0x03A9, 0x2126},
   // Hebrew letters
   {0x05D0, 0x2135},  // Alef
   {0x05D1, 0x2136},  // Bet

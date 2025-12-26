@@ -2,6 +2,17 @@
 common from wikipedia: ../acronymine/unicode.cc
 Transform the input images to make them wider, and make more space for greek etc.
 
+Probably greek lowercase "upsilon" should have its own
+glyph. For the accented versions I removed the bottom
+right stem compared to latin u.
+
+☺
+(っ◔◡◔)っ
+
+   ├─269318 /usr/local/sbin/httpi.exe
+   └─269319 /usr/local/sbin/httpi.exe
+
+
 Glyphs todo:
  - unicode stars
  - other bullet points
@@ -15,6 +26,19 @@ Glyphs todo:
      https://www.compart.com/en/unicode/block/U+2E00
  - I want to use ↻ and friends!!
 
+Should finish Greek: ά appears in "Ελλάδα", the name of Greece!
+
+ - From mojibake: ‚ which is U+201A
+    ord("ŉ"): "ʼn",
+    ord("ﬀ"): "ff",  # Latin typographical ligatures
+    ord("ﬁ"): "fi",
+    ord("ﬂ"): "fl",
+    ord("ﬃ"): "ffi",
+    ord("ﬄ"): "ffl",
+    ord("ﬅ"): "ſt",
+    ord("ﬆ"): "st",
+
+
 For math like lean:
  - Superscripts and Subscripts
 
@@ -25,7 +49,7 @@ U+02d0 (ː): 84841
 U+03ac (ά): 67724
 U+03cc (ό): 56472
 U+03ad (έ): 45479
-U+026a (ɪ): 41570
+U+026a (ɪ): 41570  (IPA small caps?)
 U+300c (「): 30788
 U+300d (」): 30753
 U+0283 (ʃ): 29294
