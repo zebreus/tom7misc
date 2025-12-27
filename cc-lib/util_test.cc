@@ -302,6 +302,46 @@ static void TestNextToken() {
 
 }
 
+static void TestNextField() {
+  {
+    std::string s = "|this||is|test|";
+    std::string_view view(s);
+    CHECK_SEQ(Util::NextField(&view, '|'), "");
+    CHECK_SEQ(view, "this||is|test|");
+    CHECK_SEQ(Util::NextField(&view, '|'), "this");
+    CHECK_SEQ(view, "|is|test|");
+    CHECK_SEQ(Util::NextField(&view, '|'), "");
+    CHECK_SEQ(view, "is|test|");
+    CHECK_SEQ(Util::NextField(&view, '|'), "is");
+    CHECK_SEQ(view, "test|");
+    CHECK_SEQ(Util::NextField(&view, '|'), "test");
+    CHECK_SEQ(view, "");
+    CHECK_SEQ(Util::NextField(&view, '|'), "");
+    CHECK_SEQ(view, "");
+    // Degenerate
+    CHECK_SEQ(Util::NextField(&view, '|'), "");
+    CHECK_SEQ(view, "");
+  }
+
+  {
+    std::string s = "";
+    std::string_view view(s);
+    CHECK(view.empty());
+    CHECK(Util::NextField(&view, ' ').empty());
+    CHECK(view.empty());
+  }
+
+  {
+    std::string s = "x";
+    std::string_view view(s);
+    CHECK_EQ(Util::NextField(&view, ' '), "x");
+    CHECK(view.empty());
+    CHECK(Util::NextToken(&view, ' ').empty());
+    CHECK(view.empty());
+  }
+}
+
+
 static void TestTokenize() {
   CHECK_EQ((vector<string>{"hello", "world"}),
            Util::Tokenize("....hello.world...", '.'));
@@ -842,6 +882,7 @@ int main(int argc, char **argv) {
   TestTokens();
   TestTokenize();
   TestNextToken();
+  TestNextField();
   TestCdup();
   TestPrefixSuffix();
   TestParseInt64();

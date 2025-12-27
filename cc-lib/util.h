@@ -112,6 +112,16 @@ struct Util {
   // will be empty if there are no such tokens. The argument is modified
   // to skip the token and separators.
   static std::string_view NextToken(std::string_view *str, char sep);
+  // If the separator does not occur, return the entire string and
+  // set the view to the empty string. Otherwise, returns the string
+  // up to the separator (not including it) and sets the input view
+  // to the remainder of the string after that separator.
+  //
+  // Note that with this interface there is not really any way to
+  // distinguish the number of fields in inputs like "one|two|"
+  // and "one|two", but both will result in an endless stream of
+  // empty fields at the end.
+  static std::string_view NextField(std::string_view *str, char sep);
 
   // Like Split, but with an arbitrary function (char -> bool) determining
   // the separator.

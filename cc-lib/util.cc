@@ -1545,6 +1545,22 @@ std::string_view Util::NextToken(std::string_view *str, char sep) {
   return ret;
 }
 
+std::string_view Util::NextField(std::string_view *str, char sep) {
+  if (str->empty()) return *str;
+
+  size_t pos = str->find(sep);
+  if (pos == std::string_view::npos) {
+    std::string_view ret = *str;
+    *str = "";
+    return ret;
+  }
+
+  std::string_view ret = str->substr(0, pos);
+  str->remove_prefix(pos + 1);
+  return ret;
+}
+
+
 vector<string> Util::SplitWith(std::string_view str,
                                std::string_view sep) {
   assert(!sep.empty());
