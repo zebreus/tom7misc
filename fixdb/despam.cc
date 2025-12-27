@@ -95,8 +95,10 @@ static void DeSpam(const Col &col,
     if (Util::StrContains(content, spam)) {
       if (verbose > 0) {
         status.Print("[" ACYAN("{}") "] "
-                     ARED("Deleted") " {}\n",
-                     id, content);
+                     "{} {}\n",
+                     id,
+                     dry_run ? AYELLOW("Would delete") : ARED("Deleted"),
+                     content);
       }
 
       deleted++;
