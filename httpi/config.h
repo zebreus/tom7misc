@@ -30,7 +30,10 @@ struct Config {
   };
 
   struct HostConfig {
+    // Always a proper hostname.
     std::string canonical;
+    // This includes proper hostnames and wildcard
+    // strings like *.tom7.org.
     std::vector<std::string> aliases;
     int cert_idx = -1, key_idx = -1;
     // Assume localhost, etc.
@@ -57,12 +60,16 @@ struct Config {
   int UID() const { return uid; }
   int GID() const { return gid; }
 
+  int NumHosts() const { return all_hosts.size(); }
+  const HostConfig *GetHost(int host_idx) const;
+
  private:
   Config();
 
-  // Keyed by all aliases.
-  // TODO: Support *. wildcard domains.
+  // Keyed by all exact aliases.
   std::unordered_map<std::string, const HostConfig *> hosts;
+  // For a wildcard like *.tom7.org, the key is "tom7.org".
+  std::unordered_map<std::string, const HostConfig *> wild_hosts;
 
   std::array<uint8_t, 32> server_random;
   std::vector<std::unique_ptr<HostConfig>> all_hosts;

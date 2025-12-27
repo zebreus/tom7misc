@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "packet-parser.h"
@@ -98,11 +99,69 @@ static void TestPRF() {
   CHECK(expected_output == actual_output);
 }
 
+static void TestRoundTrip() {
+  ArcFour rc("roundtrip");
+  auto Randomize = [&rc](std::vector<uint8_t> *v) {
+      for (int i = 0; i < v->size(); i++) {
+        (*v)[i] = rc.Byte();
+      }
+    };
+
+  static constexpr int MAC_KEY_SIZE = 20;
+  static constexpr int ENC_KEY_SIZE = 32;
+  std::vector<uint8_t> mac_key(MAC_KEY_SIZE, 0);
+  std::vector<uint8_t> enc_key(ENC_KEY_SIZE, 0);
+
+  // static constexpr int MAX_CONTENT_TEST = 1025;
+  static constexpr int MAX_CONTENT_TEST = TLS::MAX_PLAINTEXT_SIZE;
+  static_assert(MAX_CONTENT_TEST <= TLS::MAX_PLAINTEXT_SIZE);
+  Print("Test round trip for {} sizes...\n", MAX_CONTENT_TEST);
+  for (int content_len = 0;
+       content_len < MAX_CONTENT_TEST;
+       content_len++) {
+    std::vector<uint8_t> content(content_len);
+    Randomize(&content);
+    Randomize(&mac_key);
+    Randomize(&enc_key);
+
+    const uint64_t seq = rc.Word64();
+    constexpr TLS::ContentType type = TLS::APPLICATION_DATA;
+
+    std::vector<uint8_t> wire_data = TLS::MakeEncryptedRecord(
+        mac_key, enc_key, seq, type, 3, 3, content);
+
+    // Simulate parsing record header.
+    PacketParser pp(wire_data);
+    CHECK(pp.size() >= 5);
+
+    TLS::Record rec;
+    rec.type = (TLS::ContentType)pp.Byte();
+    rec.version_major = pp.Byte();
+    rec.version_minor = pp.Byte();
+    uint16_t length = pp.W16();
+
+    CHECK(pp.size() == length);
+    rec.fragment.resize(length);
+    pp.BytesTo(length, rec.fragment.data());
+
+    auto result = TLS::DecryptRecord(mac_key, enc_key, seq, rec, true);
+
+    CHECK(result.has_value()) << "Decryption failed for len " << content_len;
+
+    std::span<const uint8_t> decrypted = result.value();
+
+    CHECK(decrypted.size() == content_len);
+    CHECK(0 == memcmp(decrypted.data(), content.data(), content_len));
+  }
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestParseClientHello();
   TestPRF();
+  TestRoundTrip();
 
   Print("OK\n");
   return 0;

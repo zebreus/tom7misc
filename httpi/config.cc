@@ -49,9 +49,18 @@ Config Config::Load() {
       if (current_host.get() == nullptr)
         return;
 
-      for (const std::string &h : current_host->aliases) {
-        CHECK(!config.hosts.contains(h)) << h;
-        config.hosts[h] = current_host.get();
+      for (std::string_view h : current_host->aliases) {
+        if (Util::TryStripPrefix("*.", &h)) {
+          std::string host(h);
+          CHECK(!config.wild_hosts.contains(host)) << "The same wildcard "
+            "host alias appears more than once: *." << host;
+          config.wild_hosts[host] = current_host.get();
+        } else {
+          std::string host(h);
+          CHECK(!config.hosts.contains(host)) << "The same host or host "
+            "alias appears more than once: " << host;
+          config.hosts[host] = current_host.get();
+        }
       }
       config.all_hosts.emplace_back(std::move(current_host));
       current_host.reset(nullptr);
@@ -171,6 +180,8 @@ Config Config::Load() {
       CHECK(current_cert >= 0) << "Need a cert before hosts.";
       EmitHost();
       current_host = std::make_unique<Config::HostConfig>();
+      CHECK(!Util::StrContains(line, "*")) << "Host cannot contain "
+        "wildcards. Use alias. Saw: " << line;
       current_host->canonical = std::string(line);
       current_host->key_idx = current_key;
       current_host->cert_idx = current_cert;
@@ -180,7 +191,22 @@ Config Config::Load() {
 
     } else if (cmd == "alias") {
       CHECK(current_host.get() != nullptr) << "Need host first.";
-      current_host->aliases.push_back(std::string(line));
+      std::string alias = std::string(line);
+      {
+        // Wildcards are allowed, but only if "*.hostname.etc"
+        std::string_view a(alias);
+        if (Util::TryStripPrefix("*.", &a)) {
+          // Cannot be e.g. "*.com".
+          CHECK(Util::StrContains(a, ".")) << "For wildcards, there "
+            "must be be at least domain.tld left. Saw: " << line;
+        }
+        // After stripping (whether successful or not) there can
+        // be no more wildcards chars.
+        CHECK(!Util::StrContains(a, "*")) << "Wildcards can only "
+          "appear at the beginning of an alias. Saw: " << line;
+      }
+
+      current_host->aliases.push_back(std::move(alias));
 
     } else if (cmd == "port") {
       int p = atoi(std::string(line).c_str());
@@ -241,9 +267,27 @@ void Config::FillServerRandom(std::span<uint8_t, 32> buffer) const {
 
 const Config::HostConfig *Config::GetHostConfig(
     const std::string &host) const {
-  auto it = hosts.find(host);
-  if (it == hosts.end()) return nullptr;
-  return it->second;
+
+  // First check for an exact match.
+  {
+    auto it = hosts.find(host);
+    if (it != hosts.end()) return it->second;
+  }
+
+  // Then check wildcards. Only a single level of subdomain is
+  // allowed, like for subjectAltName in certificates, although we
+  // could consider relaxing that here?
+  std::string_view h(host);
+  std::string_view subdomain = Util::NextField(&h, '.');
+  // Must be of the form "x.y"; get "y".
+  if (subdomain.empty() || h.empty()) return nullptr;
+
+  {
+    auto it = wild_hosts.find(std::string(h));
+    if (it != wild_hosts.end()) return it->second;
+  }
+
+  return nullptr;
 }
 
 const Config::Key *Config::GetKey(int key_idx) const {
@@ -256,4 +300,10 @@ const Config::Cert *Config::GetCert(int cert_idx) const {
   if (cert_idx < 0 || (size_t)cert_idx >= all_certs.size())
     return nullptr;
   return all_certs[cert_idx].get();
+}
+
+const Config::HostConfig *Config::GetHost(int host_idx) const {
+  if (host_idx < 0 || (size_t)host_idx > all_hosts.size())
+    return nullptr;
+  return all_hosts[host_idx].get();
 }
