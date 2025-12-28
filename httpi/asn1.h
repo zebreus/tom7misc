@@ -12,7 +12,13 @@ struct ASN1 {
   static std::vector<uint8_t> EncodeLength(size_t length);
   static std::vector<uint8_t> EncodeInt(const BigInt &n);
   static std::vector<uint8_t> EncodeSequence(std::span<const uint8_t> v);
+  // Contents must be sorted.
+  static std::vector<uint8_t> EncodeSet(std::span<const uint8_t> s);
   static std::vector<uint8_t> EncodeOctetString(std::span<const uint8_t> s);
+  static std::vector<uint8_t> EncodeUTF8String(std::string_view s);
+  // i.e. ASCII string
+  static std::vector<uint8_t> EncodeIA5String(std::string_view s);
+
   // trailing_unused_bits must be in [0, 7]. The number of bits
   // used is s.size() * 8 - trailing_unused_bits. (The remainder are zeroed.)
   static std::vector<uint8_t> EncodeBitString(std::span<const uint8_t> s,
@@ -20,7 +26,12 @@ struct ASN1 {
   static std::vector<uint8_t> EncodeNull();
   static std::vector<uint8_t> EncodeOID(
       const std::vector<uint64_t> &components);
-  static std::vector<uint8_t> EncodeContextSpecific(
+  // "Constructed" tags 0xA0...
+  static std::vector<uint8_t> EncodeContextSpecificConstructed(
+      uint8_t tag_num, std::span<const uint8_t> content);
+
+  // "Primitive" tags 0x80...
+  static std::vector<uint8_t> EncodeContextSpecificPrimitive(
       uint8_t tag_num, std::span<const uint8_t> content);
 
   enum Tag : uint8_t {
@@ -30,12 +41,17 @@ struct ASN1 {
     TAG_NULL = 0x05,
     TAG_OID = 0x06,
     TAG_SEQUENCE = 0x30,
+    TAG_SET = 0x31,
+
+    TAG_UTF8_STRING = 0x0C,
+    TAG_IA5_STRING = 0x16,
 
     // Context specific tags are like submessages. They consume
     // the tag on the submessage, but they have their own tag_num
     // bits to indicate which field they are describing (which
     // then implies the type of the encoded message).
-    TAG_SPECIFIC_0 = 0xA0,
+    TAG_CONSTRUCTED_0 = 0xA0,
+    TAG_PRIMITIVE_0 = 0x80,
   };
 
   template<typename... T>

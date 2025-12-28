@@ -20,6 +20,16 @@ inline static void AppendWithLength(std::vector<uint8_t> *out,
   AppendVec(out, in);
 }
 
+inline static std::vector<uint8_t> EncodeTLV(
+    uint8_t tag,
+    std::span<const uint8_t> content) {
+  std::vector<uint8_t> result;
+  result.reserve(1 + 4 + content.size());
+  result.push_back(tag);
+  AppendWithLength(&result, content);
+  return result;
+}
+
 // Encodes a length value in DER format.
 std::vector<uint8_t> ASN1::EncodeLength(size_t length) {
   if (length < 128) {
@@ -64,30 +74,34 @@ std::vector<uint8_t> ASN1::EncodeInt(const BigInt &n) {
     LOG(FATAL) << "Unimplemented: Negative integers";
   }
 
-  std::vector<uint8_t> result;
-  // Heuristic length.
-  result.reserve(1 + 4 + bytes.size());
-  result.push_back(TAG_INTEGER);
-  AppendWithLength(&result, bytes);
-  return result;
+  return EncodeTLV(TAG_INTEGER, bytes);
 }
 
 std::vector<uint8_t> ASN1::EncodeSequence(
     std::span<const uint8_t> content) {
-  std::vector<uint8_t> result;
-  result.reserve(1 + 4 + content.size());
-  result.push_back(TAG_SEQUENCE);
-  AppendWithLength(&result, content);
-  return result;
+  return EncodeTLV(TAG_SEQUENCE, content);
+}
+
+std::vector<uint8_t> ASN1::EncodeSet(
+    std::span<const uint8_t> content) {
+  return EncodeTLV(TAG_SET, content);
 }
 
 std::vector<uint8_t> ASN1::EncodeOctetString(
     std::span<const uint8_t> content) {
-  std::vector<uint8_t> result;
-  result.reserve(1 + 4 + content.size());
-  result.push_back(TAG_OCTET_STRING);
-  AppendWithLength(&result, content);
-  return result;
+  return EncodeTLV(TAG_OCTET_STRING, content);
+}
+
+static std::span<const uint8_t> AsBytes(std::string_view s) {
+  return std::span<const uint8_t>((const uint8_t*)s.data(), s.size());
+}
+
+std::vector<uint8_t> ASN1::EncodeUTF8String(std::string_view s) {
+  return EncodeTLV(TAG_UTF8_STRING, AsBytes(s));
+}
+
+std::vector<uint8_t> ASN1::EncodeIA5String(std::string_view s) {
+  return EncodeTLV(TAG_IA5_STRING, AsBytes(s));
 }
 
 std::vector<uint8_t> ASN1::EncodeBitString(
@@ -151,20 +165,21 @@ std::vector<uint8_t> ASN1::EncodeOID(const std::vector<uint64_t> &components) {
     AppendVec(&content, component_bytes);
   }
 
-  std::vector<uint8_t> result;
-  result.reserve(1 + 4 + content.size());
-  result.push_back(TAG_OID);
-  AppendWithLength(&result, content);
-  return result;
+  return EncodeTLV(TAG_OID, content);
 }
 
-std::vector<uint8_t> ASN1::EncodeContextSpecific(
+std::vector<uint8_t> ASN1::EncodeContextSpecificConstructed(
     uint8_t tag_num, std::span<const uint8_t> content) {
   CHECK(tag_num < 0x1F) << "Context specific tags can only use 5 "
     "bits with this encoding, and cannot be all 1 bits.";
-  std::vector<uint8_t> result;
-  result.reserve(1 + 4 + content.size());
-  result.push_back(0xA0 | tag_num);
-  AppendWithLength(&result, content);
-  return result;
+  const uint8_t tag_byte = 0xA0 | tag_num;
+  return EncodeTLV(tag_byte, content);
+}
+
+std::vector<uint8_t> ASN1::EncodeContextSpecificPrimitive(
+    uint8_t tag_num, std::span<const uint8_t> content) {
+  CHECK(tag_num < 0x1F) << "Context specific tags can only use 5 "
+    "bits with this encoding, and cannot be all 1 bits.";
+  const uint8_t tag_byte = 0x80 | tag_num;
+  return EncodeTLV(tag_byte, content);
 }

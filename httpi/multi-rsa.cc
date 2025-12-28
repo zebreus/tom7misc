@@ -226,7 +226,8 @@ std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
     }
     // A sequence of sequences.
     other_primes = ASN1::EncodeSequence(std::move(other_primes));
-    // other_primes = ASN1::EncodeContextSpecific(0, std::move(other_primes));
+    // other_primes = ASN1::EncodeContextSpecificConstructed(
+    //     0, std::move(other_primes));
   }
 
   return ASN1::EncodeSequence(ASN1::Concat(
