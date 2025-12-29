@@ -84,11 +84,24 @@ static void TestRotateRight() {
   CHECK(v[0] == "hello" && v[3] == "no");
 }
 
+static void TestConcat() {
+  std::vector<std::string> a = { "i", "can" };
+  std::vector<std::string> b = { "eat", "glass" };
+  std::vector<std::string> c = { "but it does hurt me" };
+
+  std::vector<std::string> o = VectorConcat(a, b, c);
+  CHECK(o.size() == 5);
+  CHECK(o.back() == "but it does hurt me");
+  CHECK(o[2] == "eat");
+  CHECK(o[0] == "i");
+}
+
 int main(int argc, char **argv) {
   TestApp();
   TestFilter();
   TestReverse();
   TestRotateRight();
+  TestConcat();
   printf("OK\n");
   return 0;
 }

@@ -1,4 +1,4 @@
-// Some native utilities on the std::vector type.
+// Some native utilities on the std::vector type (or sometimes, std::span).
 // Everything in here is single-threaded to improve portability; for
 // multithreaded stuff, see threadutil.h.
 //
@@ -7,7 +7,9 @@
 #ifndef _CC_LIB_VECTOR_UTIL_H
 #define _CC_LIB_VECTOR_UTIL_H
 
+#include <cstdint>
 #include <vector>
+#include <span>
 
 template<class A, class F>
 static auto VectorMap(const std::vector<A> &vec, const F &f) ->
@@ -76,10 +78,31 @@ static void VectorRotateRight(std::vector<A> *vec,
   std::vector<A> rot;
   rot.resize(size);
   for (int i = 0; i < size; i++) {
-    rot[(i + offset) % size] = (*vec)[i];
+    rot[(i + d) % size] = (*vec)[i];
   }
 
   *vec = std::move(rot);
+}
+
+// Concatenate one or more containers into a vector<T>,
+// e.g. as VectorConcat(vec1, span2, vec3)
+template<class First, class... Rest>
+auto VectorConcat(const First &first, const Rest &...rest) {
+  using T = std::remove_const_t<typename First::value_type>;
+
+  size_t total_size = first.size() + (rest.size() + ...);
+
+  std::vector<T> out;
+  out.reserve(total_size);
+
+  auto Append = [&](const auto& container) {
+      out.insert(out.end(), container.begin(), container.end());
+    };
+
+  Append(first);
+  (Append(rest), ...);
+
+  return out;
 }
 
 #endif
