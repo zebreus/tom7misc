@@ -24,7 +24,7 @@ static void TestCSR() {
   };
   std::vector<uint8_t> csr = CSR::Encode("tom7.org", aliases, okey.value());
 
-  // openssl req -inform DER -in signed.csr -text -noout -verify
+  // openssl req -inform DER -in test.csr -text -noout -verify
   Util::WriteFileBytes("test.csr", csr);
   Print("Wrote test.csr\n");
 }

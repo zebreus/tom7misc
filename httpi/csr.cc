@@ -21,18 +21,16 @@ std::vector<uint8_t> CSR::SubjectPublicKeyInfo(const BigInt &modulus,
                                                const BigInt &exponent) {
   // Algorithm is RSA (1.2.840.113549.1.1.1) with no params.
   const std::vector<uint8_t> algo_id =
-    ASN1::EncodeSequence(VectorConcat(
-                             ASN1::EncodeOID({1, 2, 840, 113549, 1, 1, 1}),
-                             ASN1::EncodeNull()));
+    ASN1::EncodeSeq(ASN1::EncodeOID({1, 2, 840, 113549, 1, 1, 1}),
+                    ASN1::EncodeNull());
 
   const std::vector<uint8_t> key =
     ASN1::EncodeBitString(
-        ASN1::EncodeSequence(VectorConcat(
-                                 ASN1::EncodeInt(modulus),
-                                 ASN1::EncodeInt(exponent))),
+        ASN1::EncodeSeq(ASN1::EncodeInt(modulus),
+                        ASN1::EncodeInt(exponent)),
         0);
 
-  return ASN1::EncodeSequence(VectorConcat(algo_id, key));
+  return ASN1::EncodeSeq(algo_id, key);
 }
 
 std::vector<uint8_t> CSR::CertificationRequestInfo(
@@ -46,9 +44,8 @@ std::vector<uint8_t> CSR::CertificationRequestInfo(
 
   std::vector<uint8_t> subject = ASN1::EncodeSequence(
       ASN1::EncodeSet(
-          ASN1::EncodeSequence(
-              VectorConcat(ASN1::EncodeOID({2, 5, 4, 3}),
-                           ASN1::EncodeUTF8String(host)))));
+          ASN1::EncodeSeq(ASN1::EncodeOID({2, 5, 4, 3}),
+                          ASN1::EncodeUTF8String(host))));
 
   // The SubjectAlternativeName extension is required for Let's Encrypt.
 
@@ -64,35 +61,21 @@ std::vector<uint8_t> CSR::CertificationRequestInfo(
   // An extensions sequence containing one extension: subjectAltName (2.5.29.17)
   std::vector<uint8_t> ext =
     ASN1::EncodeSequence(
-        ASN1::EncodeSequence(VectorConcat(ASN1::EncodeOID({2, 5, 29, 17}),
-                                          ASN1::EncodeOctetString(sans))));
+        ASN1::EncodeSeq(ASN1::EncodeOID({2, 5, 29, 17}),
+                        ASN1::EncodeOctetString(sans)));
 
   // More boilerplate to make the extensions list into an attribute.
   // Note that the set of extensions needs to be sorted, but there is just one.
   std::vector<uint8_t> attr =
-    ASN1::EncodeSequence(VectorConcat(ASN1::EncodeOID({1, 2, 840, 113549, 1, 9, 14}),
-                                      ASN1::EncodeSet(ext)));
-
-  // 5. Context Specific Tag for the Attributes field in the CSR
-  // attributes [0] IMPLICIT Attributes
-  // The 'Attributes' type is a SET OF Attribute.
-  // However, older PKCS#10 definitions sometimes treated this loosely.
-  // Technically, we need to encode a SET of Attributes, then apply Context Tag [0].
-  // But because it is IMPLICIT, the SET tag is replaced by [0] (Constructed).
-  // So we take our Attribute Sequence(s), put them in a buffer, and wrap that buffer
-  // with Tag [0].
+    ASN1::EncodeSeq(ASN1::EncodeOID({1, 2, 840, 113549, 1, 9, 14}),
+                    ASN1::EncodeSet(ext));
 
   // Then wrapped into a set of attributes. More attributes could be added here,
   // sorting by their DER bytes. The set tag is implicit (context-specific).
   std::vector<uint8_t> attr_set = ASN1::EncodeContextSpecificConstructed(0, attr);
 
   // CertificationRequestInfo
-  return ASN1::EncodeSequence(
-      VectorConcat(
-        version,
-        subject,
-        spki,
-        attr_set));
+  return ASN1::EncodeSeq(version, subject, spki, attr_set);
 }
 
 std::vector<uint8_t> CSR::Encode(

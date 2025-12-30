@@ -14,7 +14,7 @@
 #include "rsa.h"
 
 std::vector<uint8_t> EncodePKCS1(const RSA::Key &key) {
-  return ASN1::EncodeSequence(ASN1::Concat(
+  return ASN1::EncodeSeq(
         // Version 0 = RSA.
         ASN1::EncodeInt(BigInt{0}),
         ASN1::EncodeInt(key.n),
@@ -24,7 +24,7 @@ std::vector<uint8_t> EncodePKCS1(const RSA::Key &key) {
         ASN1::EncodeInt(key.q),
         ASN1::EncodeInt(key.exp1),
         ASN1::EncodeInt(key.exp2),
-        ASN1::EncodeInt(key.qinv)));
+        ASN1::EncodeInt(key.qinv));
 }
 
 std::vector<uint8_t> EncodePKCS8(const RSA::Key &key) {
@@ -38,12 +38,11 @@ std::vector<uint8_t> EncodePKCS8(const RSA::Key &key) {
       ASN1::EncodeLength(rsa_oid.size()), rsa_oid,
       ASN1::EncodeNull());
 
-  return ASN1::EncodeSequence(
-      ASN1::Concat(
-          // Version = 0.
-          ASN1::EncodeInt(BigInt{0}),
-          ASN1::EncodeSequence(oid_sequence),
-          ASN1::EncodeOctetString(EncodePKCS1(key))));
+  return ASN1::EncodeSeq(
+      // Version = 0.
+      ASN1::EncodeInt(BigInt{0}),
+      ASN1::EncodeSequence(oid_sequence),
+      ASN1::EncodeOctetString(EncodePKCS1(key)));
 }
 
 static RSA::Key GenerateBad(int bits, CryptRand *cr) {

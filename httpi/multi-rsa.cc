@@ -217,10 +217,9 @@ std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
     for (int i = 2; i < key.factors.size(); i++) {
       const MultiRSA::PrimeFactor &factor = key.factors[i];
       std::vector<uint8_t> encoded =
-        ASN1::EncodeSequence(ASN1::Concat(
-                                 ASN1::EncodeInt(factor.p),
-                                 ASN1::EncodeInt(factor.exp),
-                                 ASN1::EncodeInt(factor.inv)));
+        ASN1::EncodeSeq(ASN1::EncodeInt(factor.p),
+                        ASN1::EncodeInt(factor.exp),
+                        ASN1::EncodeInt(factor.inv));
       other_primes.insert(other_primes.end(),
                           encoded.begin(), encoded.end());
     }
@@ -230,7 +229,7 @@ std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
     //     0, std::move(other_primes));
   }
 
-  return ASN1::EncodeSequence(ASN1::Concat(
+  return ASN1::EncodeSeq(
         // Version 1 = MultiRSA.
         // If there are only 2 factors, you must use 0 = RSA.
         ASN1::EncodeInt(BigInt{is_multi ? 1 : 0}),
@@ -248,25 +247,23 @@ std::vector<uint8_t> MultiRSA::EncodePKCS1(const MultiRSA::Key &key) {
         ASN1::EncodeInt(key.factors[0].exp),
         // factors[0] inv is always 1; not stored
         ASN1::EncodeInt(key.factors[1].inv),
-        other_primes));
+        other_primes);
 }
 
 std::vector<uint8_t> MultiRSA::EncodePKCS8(const MultiRSA::Key &key) {
   [[maybe_unused]] const bool is_multi = key.factors.size() > 2;
 
   std::vector<uint8_t> algorithm_identifier =
-    ASN1::EncodeSequence(
-        ASN1::Concat(
-            // OID for rsaEncryption is 1.2.840.113549.1.1.1
-            ASN1::EncodeOID({1, 2, 840, 113549, 1, 1, 1}),
-            ASN1::EncodeNull()));
+    ASN1::EncodeSeq(
+        // OID for rsaEncryption is 1.2.840.113549.1.1.1
+        ASN1::EncodeOID({1, 2, 840, 113549, 1, 1, 1}),
+        ASN1::EncodeNull());
 
-  return ASN1::EncodeSequence(
-      ASN1::Concat(
-          // Version = 0, even with multi-key RSA.
-          ASN1::EncodeInt(BigInt{0}),
-          algorithm_identifier,
-          ASN1::EncodeOctetString(EncodePKCS1(key))));
+  return ASN1::EncodeSeq(
+      // Version = 0, even with multi-key RSA.
+      ASN1::EncodeInt(BigInt{0}),
+      algorithm_identifier,
+      ASN1::EncodeOctetString(EncodePKCS1(key)));
 }
 
 // Parses a DER length field.
