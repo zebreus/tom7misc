@@ -60,6 +60,11 @@ struct MultiRSA {
   static std::optional<Key> DecodePKCS1(std::span<const uint8_t> contents);
   static std::optional<Key> DecodePKCS8(std::span<const uint8_t> contents);
 
+  // Generates a PKCS#1 v1.5 signature for the given 32-byte SHA-256 hash.
+  // Requires that the key is at least 62 bytes.
+  static std::vector<uint8_t> SignSHA256(
+      const Key &key, std::span<const uint8_t> hash);
+
   static bool KeyEq(const Key &a, const Key &b);
 };
 

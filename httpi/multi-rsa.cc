@@ -382,3 +382,45 @@ MultiRSA::DecodePKCS8(std::span<const uint8_t> contents) {
 
   return DecodePKCS1(key_bytes.View());
 }
+
+
+std::vector<uint8_t> MultiRSA::SignSHA256(
+    const Key &key, std::span<const uint8_t> hash) {
+  CHECK(hash.size() == 32) << "Hash must be exactly 32 bytes for SHA-256";
+
+  const std::vector<uint8_t> digest_info =
+    ASN1::EncodeSeq(
+        ASN1::EncodeSeq(
+            // SHA-256
+            ASN1::EncodeOID({2, 16, 840, 1, 101, 3, 4, 2, 1}),
+            ASN1::EncodeNull()),
+        ASN1::EncodeOctetString(hash));
+
+  const int blocksize = BlockSize(key);
+
+  CHECK(blocksize >= digest_info.size() + 11) << "Key is too short to sign "
+      "SHA-256 hash.";
+
+  const int ps_len = blocksize - digest_info.size() - 3;
+
+  // Padded message to sign.
+  std::vector<uint8_t> em;
+  em.reserve(blocksize);
+  em.push_back(0x00);
+  em.push_back(0x01);
+  for (int i = 0; i < ps_len; i++) em.push_back(0xFF);
+  em.push_back(0x00);
+  em.insert(em.end(), digest_info.begin(), digest_info.end());
+
+  CHECK(em.size() == blocksize);
+
+  BigInt m = BigInt::FromBigEndianBytes(em);
+  CHECK(m > 0 && m < key.n) << "Bug: The message should always be "
+    "in range by construction.";
+  BigInt s = BigInt::PowMod(m, key.d, key.n);
+
+  std::vector<uint8_t> signature(blocksize);
+  // This zero-pads, like we want.
+  CHECK(BigInt::ToBigEndianBytes(s, signature)) << "Bad key?";
+  return signature;
+}

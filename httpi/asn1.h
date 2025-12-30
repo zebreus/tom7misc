@@ -11,7 +11,7 @@ struct ASN1 {
 
   static std::vector<uint8_t> EncodeLength(size_t length);
   static std::vector<uint8_t> EncodeInt(const BigInt &n);
-  static std::vector<uint8_t> EncodeSequence(std::span<const uint8_t> v);
+  static std::vector<uint8_t> EncodeSequence(std::span<const uint8_t> s);
   // Contents must be sorted.
   static std::vector<uint8_t> EncodeSet(std::span<const uint8_t> s);
   static std::vector<uint8_t> EncodeOctetString(std::span<const uint8_t> s);
@@ -54,6 +54,12 @@ struct ASN1 {
     TAG_PRIMITIVE_0 = 0x80,
   };
 
+  // Like EncodeSequence, but multiple vectors of bytes as arguments;
+  // they are just concatenated for convenience (their internal
+  // structure is not used/checked).
+  template<class ...T>
+  static std::vector<uint8_t> EncodeSeq(T &&...vecs);
+
   template<typename... T>
   static std::vector<uint8_t> Concat(T &&...vecs);
 
@@ -71,6 +77,11 @@ std::vector<uint8_t> ASN1::Concat(T &&...vecs) {
   result.reserve(total_size);
   (result.insert(result.end(), vecs.begin(), vecs.end()), ...);
   return result;
+}
+
+template<typename... T>
+std::vector<uint8_t> ASN1::EncodeSeq(T &&...vecs) {
+  return EncodeSequence(Concat(vecs...));
 }
 
 

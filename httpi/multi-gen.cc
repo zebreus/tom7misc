@@ -71,7 +71,7 @@ static MultiRSA::Key GenerateBad(int num_factors, int bits, CryptRand *cr) {
 
 static void Generate() {
   CryptRand cr;
-  MultiRSA::Key key = Generate(3, 128, &cr);
+  MultiRSA::Key key = Generate(3, 64 * 8, &cr);
 
   Print(stderr,
         "--------\n"

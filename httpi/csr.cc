@@ -7,6 +7,7 @@
 #include "asn1.h"
 #include "bignum/big.h"
 #include "vector-util.h"
+#include "crypt/sha256.h"
 
 static std::vector<uint8_t> ConcatV(const std::vector<std::vector<uint8_t>> &parts) {
   std::vector<uint8_t> out;
@@ -34,7 +35,7 @@ std::vector<uint8_t> CSR::SubjectPublicKeyInfo(const BigInt &modulus,
   return ASN1::EncodeSequence(VectorConcat(algo_id, key));
 }
 
-std::vector<uint8_t> CSR::Encode(
+std::vector<uint8_t> CSR::CertificationRequestInfo(
     std::string_view host,
     std::span<const std::string> aliases,
     const BigInt &modulus, const BigInt &exponent) {
@@ -92,4 +93,27 @@ std::vector<uint8_t> CSR::Encode(
         subject,
         spki,
         attr_set));
+}
+
+std::vector<uint8_t> CSR::Encode(
+    // e.g. "tom7.org"
+    std::string_view host,
+    // e.g. "*.tom7.org", "virus.exe.tom7.org"
+    std::span<const std::string> aliases,
+    // Need the private key to sign the request.
+    const MultiRSA::Key &key) {
+
+  std::vector<uint8_t> info =
+    CertificationRequestInfo(host, aliases, key.n, key.e);
+  std::vector<uint8_t> hash = SHA256::HashVector(info);
+  std::vector<uint8_t> sig = MultiRSA::SignSHA256(key, hash);
+
+  return ASN1::EncodeSeq(
+    info,
+    // sha256WithRSAEncryption
+    ASN1::EncodeSeq(
+        ASN1::EncodeOID({1, 2, 840, 113549, 1, 1, 11}),
+        ASN1::EncodeNull()),
+    ASN1::EncodeBitString(sig, 0));
+
 }
