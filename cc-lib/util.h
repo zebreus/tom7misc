@@ -384,6 +384,15 @@ struct Util {
   static std::string FormatTime(std::string_view fmt,
                                 int64_t unix_timestamp);
 
+  // Return a unix timestamp for the moment in time, which
+  // must be after 1970. The time is interpreted as UTC.
+  // Month and day are 1-based, like humans use.
+  // h is 24-hour time.
+  // No validation is performed; the day might not be in the
+  // month, for example.
+  static int64_t UnixTime(
+      int year, int month, int day, int h, int m, int s);
+
   // this is memmem, which is in glibc but not std C or C++.
   static const uint8_t *MemMem(const uint8_t *haystack, size_t n,
                                const uint8_t *needle, size_t m);

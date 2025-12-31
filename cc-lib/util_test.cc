@@ -26,6 +26,13 @@ using namespace std;
                   << "\nValues:\n" << aa << "\n" << bb << "\n";      \
   } while (false)
 
+#define CHECK_IEQ(a, b) do { \
+  auto aa = (a); \
+  auto bb = (b); \
+  CHECK(aa == bb) << "Expected equal ints:\n" << #a << "\n" << #b    \
+                  << "\nValues:\n" << aa << "\n" << bb << "\n";      \
+  } while (false)
+
 #define CHECK_SVEQ(a, b) do { \
   auto aa = (a); \
   auto bb = (b); \
@@ -51,7 +58,6 @@ static std::vector<uint8_t> StringVector(std::string_view s) {
   }
   return ret;
 }
-
 
 static string SlowReadFile(const string &filename) {
   FILE *f = fopen(filename.c_str(), "rb");
@@ -866,6 +872,11 @@ static void TestForEachLineInString() {
   CHECK_SEQ("no trailing newline", lines[3]);
 }
 
+static void TestUnixTime() {
+  CHECK_IEQ(1767223842, Util::UnixTime(2025, 12, 31, 23, 30, 42));
+  CHECK_IEQ(952065042, Util::UnixTime(2000, 3, 3, 6, 30, 42));
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -909,6 +920,7 @@ int main(int argc, char **argv) {
   TestPathOf();
   TestFileOf();
   TestForEachLineInString();
+  TestUnixTime();
 
   Print("OK\n");
   return 0;

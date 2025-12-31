@@ -1671,6 +1671,41 @@ std::string Util::FormatTime(std::string_view fmt,
   }
 }
 
+// Possible to use chrono for this in c++20, but this is
+// invincible.
+int64_t Util::UnixTime(int year, int month, int day, int h, int m, int s) {
+  static constexpr int DAYS_IN_MONTH[12] = {
+    31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+  };
+
+  auto IsLeap = [](int y) -> bool {
+      return y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    };
+
+  // Days from 1970 to target year.
+  // PERF could do this without a loop...
+  int days = 0;
+  for (int y = 1970; y < year; y++) {
+    days += 365 + (IsLeap(y) ? 1 : 0);
+  }
+
+  for (int mon = 0; mon < month - 1; mon++) {
+    days += DAYS_IN_MONTH[mon % 12];
+    if (mon == 1 && IsLeap(year)) {
+      days++;
+    }
+  }
+
+  days += (day - 1);
+
+  int64_t total_seconds = days * int64_t{86400};
+  total_seconds += (h * int64_t{3600});
+  total_seconds += (m * int64_t{60});
+  total_seconds += s;
+
+  return total_seconds;
+}
+
 const uint8_t *Util::MemMem(const uint8_t *haystack, size_t n,
                             const uint8_t *needle, size_t m) {
   /*
