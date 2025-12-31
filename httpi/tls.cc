@@ -192,10 +192,10 @@ TLS::ParseServerNameIndication(PacketParser packet) {
     } else {
       // We don't know how to parse the rest of the packet, even.
       // But we can keep the hosts we've seen so far.
-      return sni;
+      return {sni};
     }
   }
-  return sni;
+  return {sni};
 }
 
 std::optional<TLS::ClientHello>

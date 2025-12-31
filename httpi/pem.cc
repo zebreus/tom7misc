@@ -51,3 +51,11 @@ std::vector<std::vector<uint8_t>> PEM::ParsePEMs(
 
   return bytes;
 }
+
+std::vector<uint8_t> PEM::ParsePEM(std::string_view contents,
+                                   std::string_view header) {
+  std::vector<std::vector<uint8_t>> pems =
+    ParsePEMs(contents, header);
+  CHECK(pems.size() == 1) << "Expected just one PEM payload.";
+  return std::move(pems[0]);
+}

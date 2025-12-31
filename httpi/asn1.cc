@@ -183,3 +183,33 @@ std::vector<uint8_t> ASN1::EncodeContextSpecificPrimitive(
   const uint8_t tag_byte = 0x80 | tag_num;
   return EncodeTLV(tag_byte, content);
 }
+
+
+size_t ASN1::ParseLength(PacketParser *p) {
+  uint8_t len_byte = p->Byte();
+  if ((len_byte & 0x80) == 0) {
+    return len_byte;
+  } else {
+    const int num_bytes = len_byte & 0x7F;
+    if (num_bytes < 0 || num_bytes > 4) {
+      p->Error();
+      return 0;
+    }
+    size_t length = 0;
+    for (int i = 0; i < num_bytes; i++) {
+      length = (length << 8) | p->Byte();
+    }
+    return length;
+  }
+}
+
+PacketParser ASN1::ParseTLV(PacketParser *p, uint8_t expected_tag) {
+  const uint8_t tag = p->Byte();
+  if (tag != expected_tag) p->Error();
+  const size_t len = ParseLength(p);
+  return p->Subpacket(len);
+}
+
+BigInt ASN1::ParseInteger(PacketParser *p) {
+  return BigInt::FromBigEndianBytes(ParseTLV(p, ASN1::TAG_INTEGER).View());
+}

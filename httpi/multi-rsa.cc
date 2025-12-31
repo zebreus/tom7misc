@@ -266,30 +266,14 @@ std::vector<uint8_t> MultiRSA::EncodePKCS8(const MultiRSA::Key &key) {
       ASN1::EncodeOctetString(EncodePKCS1(key)));
 }
 
-// Parses a DER length field.
-static size_t ParseLength(PacketParser *p) {
-  uint8_t len_byte = p->Byte();
-  if ((len_byte & 0x80) == 0) {
-    return len_byte;
-  } else {
-    const int num_bytes = len_byte & 0x7F;
-    CHECK(num_bytes > 0 && num_bytes <= 4) << "Length field too long: "
-      << num_bytes;
-    size_t length = 0;
-    for (int i = 0; i < num_bytes; i++) {
-      length = (length << 8) | p->Byte();
-    }
-    return length;
-  }
-}
-
 // Consume a tag-length-value from the packet. Aborts if invalid.
 // Advances p past it, but returns a subpacket to the value portion.
 static PacketParser ParseTLV(PacketParser *p, uint8_t expected_tag) {
   const uint8_t tag = p->Byte();
   CHECK(tag == expected_tag) << "Expected tag " << (int)expected_tag
                              << ", got " << (int)tag;
-  const size_t len = ParseLength(p);
+  const size_t len = ASN1::ParseLength(p);
+  CHECK(p->OK());
   return p->Subpacket(len);
 }
 

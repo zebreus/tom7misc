@@ -9,6 +9,9 @@
 
 #include "base/logging.h"
 
+// If you read past the end of a packet, the packet is in an error
+// state. Reads will continue to work without undefined behavior. You
+// should check OK() before declaring success.
 struct PacketParser {
   PacketParser(std::span<const uint8_t> payload) :
     original(payload), rest(payload) {
@@ -20,11 +23,19 @@ struct PacketParser {
                      payload.size()}) {
   }
 
+  bool OK() const { return !error; }
   bool empty() const { return rest.empty(); }
   size_t size() const { return rest.size(); }
+  // Force error state.
+  void Error() { error = true; }
 
   // These consume from the head of the packet.
   uint8_t Byte() {
+    if (error || rest.empty()) {
+      error = true;
+      return 0;
+    }
+
     CHECK(!rest.empty());
     const uint8_t b = rest[0];
     rest = rest.last(rest.size() - 1);
@@ -32,6 +43,11 @@ struct PacketParser {
   }
 
   uint16_t W16() {
+    if (error || rest.size() < 2) {
+      error = true;
+      return 0;
+    }
+
     CHECK(rest.size() >= 2);
     const uint16_t b1 = rest[0];
     const uint16_t b2 = rest[1];
@@ -40,6 +56,11 @@ struct PacketParser {
   }
 
   uint32_t W24() {
+    if (error || rest.size() < 3) {
+      error = true;
+      return 0;
+    }
+
     CHECK(rest.size() >= 3);
     const uint32_t b1 = rest[0];
     const uint32_t b2 = rest[1];
@@ -49,6 +70,11 @@ struct PacketParser {
   }
 
   uint32_t W32() {
+    if (error || rest.size() < 4) {
+      error = true;
+      return 0;
+    }
+
     CHECK(rest.size() >= 4);
     const uint32_t b1 = rest[0];
     const uint32_t b2 = rest[1];
@@ -63,6 +89,12 @@ struct PacketParser {
     // (e.g. unallocated vector::data).
     if (num == 0) return;
 
+    if (error || rest.size() < num) {
+      error = true;
+      memset(out, 0, num);
+      return;
+    }
+
     CHECK(out != nullptr) << num;
     CHECK(rest.size() >= num);
     memcpy(out, rest.data(), num);
@@ -70,20 +102,55 @@ struct PacketParser {
   }
 
   // From the remaining payload.
+  uint8_t operator [](size_t idx) {
+    if (error || idx >= rest.size()) {
+      error = true;
+      return 0;
+    }
+
+    CHECK(idx < rest.size());
+    return rest[idx];
+  }
+
+  // However, the const version just has to abort if
+  // out of bounds.
   uint8_t operator [](size_t idx) const {
+    if (error) {
+      return 0;
+    }
+
     CHECK(idx < rest.size());
     return rest[idx];
   }
 
   // Extract and consume the next len bytes.
+  // A packet in an error state extracts an error packet.
   PacketParser Subpacket(int len) {
+    if (error || rest.size() < len) {
+      error = true;
+      return *this;
+    }
+
     CHECK(len <= rest.size());
     PacketParser p(rest.first(len));
     rest = rest.last(rest.size() - len);
     return p;
   }
 
+  std::string String(size_t len) {
+    std::string ret(len, 0);
+    BytesTo(len, (uint8_t*)ret.data());
+    return ret;
+  }
+
+  // Entire remainder.
+  std::string String() {
+    return String(size());
+  }
+
   std::span<const uint8_t> View() const {
+    // Rest is always valid, so we can return it even
+    // in an error state.
     return rest;
   }
 
@@ -94,6 +161,7 @@ struct PacketParser {
   // used.
   std::span<const uint8_t> original;
   std::span<const uint8_t> rest;
+  bool error = false;
 };
 
 #endif

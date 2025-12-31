@@ -4,8 +4,13 @@
 
 #include <span>
 #include <vector>
+#include <cstdint>
+#include <string_view>
+#include <cstdlib>
 
-struct BigInt;
+#include "packet-parser.h"
+#include "bignum/big.h"
+
 struct ASN1 {
   // Using DER (deterministic) format.
 
@@ -43,6 +48,9 @@ struct ASN1 {
     TAG_SEQUENCE = 0x30,
     TAG_SET = 0x31,
 
+    TAG_UTC_TIME = 0x17,
+    TAG_GENERALIZED_TIME = 0x18,
+
     TAG_UTF8_STRING = 0x0C,
     TAG_IA5_STRING = 0x16,
 
@@ -62,6 +70,20 @@ struct ASN1 {
 
   template<typename... T>
   static std::vector<uint8_t> Concat(T &&...vecs);
+
+  // Parsing. Parsers put the packet in an error state if they
+  // encounter invalid data; so check p->OK().
+
+  // Parses a DER length field.
+  static size_t ParseLength(PacketParser *p);
+
+  // Consume a tag-length-value from the packet. Puts the packet in
+  // an error state if not the expected tag.
+  // Advances p past it, but returns a subpacket to the value portion.
+  static PacketParser ParseTLV(PacketParser *p, uint8_t expected_tag);
+
+  // Parse a non-negative integer.
+  static BigInt ParseInteger(PacketParser *p);
 
  private:
   ASN1() = delete;

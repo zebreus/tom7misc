@@ -16,6 +16,11 @@ struct PEM {
   static std::vector<std::vector<uint8_t>> ParsePEMs(
       std::string_view contents,
       std::string_view header);
+
+  // Parse just one. Aborts if malformed, or if multiple ones.
+  static std::vector<uint8_t> ParsePEM(
+      std::string_view contents,
+      std::string_view header);
 };
 
 #endif

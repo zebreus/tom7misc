@@ -8,6 +8,7 @@
 #include "bignum/big.h"
 #include "vector-util.h"
 #include "crypt/sha256.h"
+#include "util.h"
 
 static std::vector<uint8_t> ConcatV(const std::vector<std::vector<uint8_t>> &parts) {
   std::vector<uint8_t> out;
@@ -99,4 +100,82 @@ std::vector<uint8_t> CSR::Encode(
         ASN1::EncodeNull()),
     ASN1::EncodeBitString(sig, 0));
 
+}
+
+std::string CSR::GetExpirationTimeString(std::span<const uint8_t> cert_der) {
+  PacketParser p(cert_der);
+
+  PacketParser cert = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  PacketParser tbs = ASN1::ParseTLV(&cert, ASN1::TAG_SEQUENCE);
+
+  // Skip Version if it's there.
+  // Version is context-specific [0]. If present, skip it.
+  // Note: We peek at the byte. 0xA0 is [0] Constructed.
+  if (!tbs.empty() && (tbs[0] & 0xF0) == 0xA0) {
+    (void)ASN1::ParseTLV(&tbs, 0xA0);
+  }
+
+  // Serial.
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
+  // Signature algorithm.
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  // Issuer.
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  PacketParser validity = ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  // Skip notBefore, which is one of two time types.
+  uint8_t tag_nb = validity[0];
+  if (tag_nb != ASN1::TAG_UTC_TIME &&
+      tag_nb != ASN1::TAG_GENERALIZED_TIME) p.Error();
+  (void)ASN1::ParseTLV(&validity, tag_nb);
+
+  // notAfter is the expiration time we're looking for.
+  uint8_t tag_na = validity[0];
+  if (tag_na != ASN1::TAG_UTC_TIME &&
+      tag_na != ASN1::TAG_GENERALIZED_TIME) p.Error();
+
+  PacketParser not_after = ASN1::ParseTLV(&validity, tag_na);
+  std::string ret = not_after.String();
+  // Make sure everything was OK. The subpacket inherits the error
+  // state from its parent(s).
+  if (!not_after.OK())
+    return "";
+
+  return ret;
+}
+
+// Only two formats are allowed by X.509.
+// We are permissive about the YYYY format being used for dates before 2050.
+std::optional<time_t> CSR::ParseExpirationTime(std::string_view t) {
+  //   260221173112Z
+  // 20500221173112Z
+  PacketParser p(t);
+  int year = 0;
+  if (p.size() == 15) {
+    year = atoi(p.String(4).c_str());
+  } else if (p.size() == 13) {
+    int yy = atoi(p.String(2).c_str());
+    year = (yy >= 50) ? 1900 + yy : 2000 + yy;
+  } else {
+    return std::nullopt;
+  }
+
+  int month = atoi(p.String(2).c_str());
+  int day = atoi(p.String(2).c_str());
+  int hh = atoi(p.String(2).c_str());
+  int mm = atoi(p.String(2).c_str());
+  int ss = atoi(p.String(2).c_str());
+  uint8_t z = p.Byte();
+  if (z != 'Z' || !p.OK())
+    return std::nullopt;
+
+  return std::make_optional(
+      (time_t)Util::UnixTime(year, month, day, hh, mm, ss));
+}
+
+time_t CSR::GetExpirationTime(std::span<const uint8_t> cert_der) {
+  return ParseExpirationTime(
+      GetExpirationTimeString(cert_der)).value_or(0);
 }
