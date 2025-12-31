@@ -11,6 +11,13 @@ In /etc/httpi there should also be config.txt, which configures httpi itself.
 
 use "make install" to build the executable and put it in /usr/local/sbin/httpi.exe
 
+You can generate a key with multi-gen.exe. You'd need to modify the
+parameters in the source code.
+
+renew.exe uses config.txt to determine what certificates need to exist,
+and then checks them or fetches them from Let's Encrypt. You shouldn't
+need openssl, but you need certbot and some way to answer the ACME
+challenges (I'm using the acme-dns thing).
 
 To run this as a service, create
 /etc/systemd/system/httpi.service
@@ -59,3 +66,18 @@ Then:
 systemctl daemon-reload
 systemctl restart httpi
 systemctl status httpi
+
+
+I also renew certificates automatically from cron. I just added
+a "renew-certs" script in /etc/cron.daily:
+
+#!/bin/bash
+
+# Make sure compilers etc. are in path.
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+set -e
+cd /usr/src/tom7misc/httpi
+make renew.exe
+./renew.exe
+

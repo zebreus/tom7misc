@@ -22,7 +22,8 @@ static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {
     int bits_left = bits;
     int factors_left = num_factors;
     while (factors_left > 0) {
-      const int prime_bits = bits_left / factors_left;
+      const int extra = num_factors > 4 ? 1 : 0;
+      const int prime_bits = (bits_left / factors_left) + extra;
       BigInt p = RSA::GeneratePrime(prime_bits, cr);
       bits_left -= BigInt::NumBits(p);
       factors_left--;
@@ -31,11 +32,12 @@ static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {
 
     auto ko = MultiRSA::KeyFromPrimes(std::move(factors));
     if (ko.has_value()) {
-      if (BigInt::NumBits(ko.value().n) == bits) {
+      int got = BigInt::NumBits(ko.value().n);
+      if (got == bits) {
         CHECK(MultiRSA::ValidateKey(ko.value()));
         return std::move(ko.value());
       } else {
-        Print("Not enough bits.\n");
+        Print("Not enough bits ({}/{}).\n", got, bits);
       }
     }
   }
@@ -57,11 +59,12 @@ static MultiRSA::Key GenerateBad(int num_factors, int bits, CryptRand *cr) {
 
     auto ko = MultiRSA::KeyFromPrimes(std::move(factors));
     if (ko.has_value()) {
-      if (BigInt::NumBits(ko.value().n) == bits) {
+      int got = BigInt::NumBits(ko.value().n);
+      if (got == bits) {
         CHECK(MultiRSA::ValidateKey(ko.value()));
         return std::move(ko.value());
       } else {
-        Print("Not enough bits.\n");
+        Print("Not enough bits ({}/{}).\n", got, bits);
       }
     }
   }
@@ -71,7 +74,7 @@ static MultiRSA::Key GenerateBad(int num_factors, int bits, CryptRand *cr) {
 
 static void Generate() {
   CryptRand cr;
-  MultiRSA::Key key = Generate(3, 64 * 8, &cr);
+  MultiRSA::Key key = Generate(16, 4096, &cr);
 
   Print(stderr,
         "--------\n"

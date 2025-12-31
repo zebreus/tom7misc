@@ -15,9 +15,11 @@
 #include "ansi.h"
 #include "util.h"
 
-// FIXME: Incomplete. Doesn't do anything yet.
-
+// Old certificates archived here.
 #define OLD_CERTIFICATES "/etc/httpi/old-certs/"
+
+// ~45 days in seconds.
+static constexpr int64_t EXPIRES_SOON = 45 * 24 * 3600;
 
 static std::vector<uint8_t> MakeCSR(const Config::HostConfig &host,
                                     const MultiRSA::Key &key) {
@@ -83,8 +85,9 @@ static std::vector<uint8_t> MakeCSR(const Config::HostConfig &host,
   return CSR::Encode(host.canonical, aliases, key);
 }
 
-static void Renew(std::string_view domain) {
+static void Renew(bool dry_run, std::string_view domain) {
   Config config = Config::Load();
+  const int64_t now = time(nullptr);
 
   std::string tmpdir = "/tmp/httpi_renew_XXXXXX";
   CHECK(mkdtemp(tmpdir.data()) != nullptr) << "Can't create temporary "
@@ -111,6 +114,31 @@ static void Renew(std::string_view domain) {
     CHECK(cert != nullptr) << "We don't need a certificate, but we "
       "do need to know where to put it. Add a certificate filename "
       "for " << host->canonical << " in the config file.";
+
+    bool needs_renewal = true;
+    {
+      std::vector<std::vector<uint8_t>> cert_ders =
+        PEM::ParsePEMs(Util::ReadFile(cert->file), "CERTIFICATE");
+      // We need to at least have certificates.
+      if (!cert_ders.empty()) needs_renewal = false;
+
+      for (const std::vector<uint8_t> &der : cert_ders) {
+        int64_t expt = CSR::GetExpirationTime(der);
+        bool soon = expt < now + EXPIRES_SOON;
+        Print("  Cert expires {} (in {}){}\n",
+              Util::FormatTime("%Y-%m-%d", expt),
+              ANSI::Time(expt - now),
+              soon ? "  " ARED("SOON") : "");
+
+        needs_renewal = needs_renewal || soon;
+      }
+    }
+
+    if (!needs_renewal) {
+      Print(AGREY("Certificate for ") "{}" AGREY(" is up to date.") "\n",
+            host->canonical);
+      continue;
+    }
 
     if (key == nullptr || !key->rsa.has_value()) {
       Print("  " ARED("(no key)") "\n");
@@ -142,12 +170,21 @@ static void Renew(std::string_view domain) {
           trash2,
           tmpchain);
 
+    if (dry_run) {
+      Print(AWHITE("[dry run]") " Would run:\n"
+            AGREY("{}") "\n", cmd);
+      continue;
+    }
+
     int status = std::system(cmd.c_str());
 
     CHECK(status == 0) << "Call to certbot failed.";
-    CHECK(Util::ExistsFile(tmpchain)) << "certbot didn't write a certificate chain?";
+    CHECK(Util::ExistsFile(tmpchain)) << "certbot didn't write a "
+      "certificate chain?";
     if (Util::ExistsFile(cert->file)) {
-      std::string bkup = std::format("{}{}.{}", OLD_CERTIFICATES, host->canonical,
+      std::string bkup = std::format("{}{}.{}",
+                                     OLD_CERTIFICATES,
+                                     host->canonical,
                                      time(nullptr));
       // Move the old certificate file out of the way.
       CHECK(0 == std::system(std::format("mv \"{}\" \"{}\"",
@@ -166,11 +203,19 @@ static void Renew(std::string_view domain) {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  if (argc == 2) {
-    Renew(argv[1]);
-  } else {
-    Renew("");
+  bool dry_run = false;
+  std::string domain;
+  for (int i = 1; i < argc; i++) {
+    std::string_view arg = argv[i];
+    if (arg == "-dry-run") {
+      dry_run = true;
+    } else {
+      CHECK(domain.empty()) << "Just one domain on the command line.";
+      domain = arg;
+    }
   }
+
+  Renew(dry_run, domain);
 
   return 0;
 }
