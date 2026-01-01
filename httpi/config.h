@@ -55,6 +55,15 @@ struct Config {
 
   int MaxPlaintextSize() const { return max_plaintext_size; }
 
+  enum IVStrategy {
+    IV_RANDOM = 0,
+    IV_ZERO = 1,
+    IV_FIXED = 2,
+    IV_DATA = 3,
+  };
+
+  IVStrategy GetIVStrategy() const { return iv_strategy; }
+
   // ""/0/0 if not set.
   std::string User() const { return user; }
   int UID() const { return uid; }
@@ -79,6 +88,7 @@ struct Config {
   int max_plaintext_size = TLS::MAX_PLAINTEXT_SIZE;
   std::string user;
   int uid = 0, gid = 0;
+  IVStrategy iv_strategy = IV_RANDOM;
 };
 
 #endif

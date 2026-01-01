@@ -1405,10 +1405,26 @@ struct Session {
                        std::vector<uint8_t> *out) {
     std::array<uint8_t, TLS::IV_SIZE> iv = {};
 
-    (void)config;
-    // TODO: Support different IV methods.
-    for (int i = 0; i < iv.size() && i < content.size(); i++)
-      iv[i] = content[i];
+    // Different IV methods. Only RANDOM is secure.
+    switch (config.GetIVStrategy()) {
+    case Config::IV_RANDOM:
+      for (int i = 0; i < iv.size(); i++)
+        iv[i] = rc->Byte();
+      break;
+
+    case Config::IV_ZERO:
+      break;
+
+    case Config::IV_FIXED:
+      // TODO: Allow configuring a message.
+      memcpy(iv.data(), "     hi :)      ", 16);
+      break;
+
+    case Config::IV_DATA:
+      for (int i = 0; i < iv.size() && i < content.size(); i++)
+        iv[i] = content[i];
+      break;
+    }
 
     std::vector<uint8_t> record =
       TLS::MakeEncryptedRecord(

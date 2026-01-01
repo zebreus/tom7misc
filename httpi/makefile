@@ -1,4 +1,8 @@
 
+default : httpi.exe renew.exe multi-gen.exe
+
+all : httpi.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe multi-rsa_test.exe tls_test.exe packet-writer_test.exe packet-parser_test.exe asn1_test.exe
+
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
 CC=clang

@@ -82,6 +82,19 @@ Config Config::Load() {
         TLS::MAX_PLAINTEXT_SIZE;
       config.max_plaintext_size = m;
 
+    } else if (cmd == "iv-strategy") {
+      if (line == "random") {
+        config.iv_strategy = IV_RANDOM;
+      } else if (line == "zero") {
+        config.iv_strategy = IV_ZERO;
+      } else if (line == "fixed") {
+        config.iv_strategy = IV_FIXED;
+      } else if (line == "data") {
+        config.iv_strategy = IV_DATA;
+      } else {
+        LOG(FATAL) << "Unknown iv-strategy: " << line;
+      }
+
     } else if (cmd == "user") {
       CHECK(current_key == -1) << "Set user at the top.";
       config.user = line;
