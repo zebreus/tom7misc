@@ -1403,12 +1403,20 @@ struct Session {
                        std::span<const uint8_t> content,
                        bool verbose,
                        std::vector<uint8_t> *out) {
+    std::array<uint8_t, TLS::IV_SIZE> iv = {};
+
+    (void)config;
+    // TODO: Support different IV methods.
+    for (int i = 0; i < iv.size() && i < content.size(); i++)
+      iv[i] = content[i];
+
     std::vector<uint8_t> record =
       TLS::MakeEncryptedRecord(
           server_write_mac_key,
           server_write_key,
           server_seq_num,
           ct, version_major, version_minor,
+          iv,
           content);
 
     if (SELF_CHECK) {

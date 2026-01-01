@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "crypt/aes.h"
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
@@ -109,6 +110,7 @@ static void TestRoundTrip() {
 
   static constexpr int MAC_KEY_SIZE = 20;
   static constexpr int ENC_KEY_SIZE = 32;
+  static_assert(TLS::IV_SIZE == AES256::BLOCKLEN);
   std::vector<uint8_t> mac_key(MAC_KEY_SIZE, 0);
   std::vector<uint8_t> enc_key(ENC_KEY_SIZE, 0);
 
@@ -127,8 +129,11 @@ static void TestRoundTrip() {
     const uint64_t seq = rc.Word64();
     constexpr TLS::ContentType type = TLS::APPLICATION_DATA;
 
+    std::vector<uint8_t> iv(TLS::IV_SIZE);
+    Randomize(&iv);
+
     std::vector<uint8_t> wire_data = TLS::MakeEncryptedRecord(
-        mac_key, enc_key, seq, type, 3, 3, content);
+        mac_key, enc_key, seq, type, 3, 3, iv, content);
 
     // Simulate parsing record header.
     PacketParser pp(wire_data);
@@ -143,6 +148,7 @@ static void TestRoundTrip() {
     CHECK(pp.size() == length);
     rec.fragment.resize(length);
     pp.BytesTo(length, rec.fragment.data());
+    CHECK(pp.OK());
 
     auto result = TLS::DecryptRecord(mac_key, enc_key, seq, rec, true);
 

@@ -698,13 +698,14 @@ std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
 
 // PERF unnecessary copying here. Perhaps we could have
 // some kind of staging area for the preparation of packets,
-// which has e.g. space for the sequence num, but we also need
+// which has e.g. space for the sequence num. But we also need
 // space after for the hmac and padding.
 std::vector<uint8_t> TLS::MakeEncryptedRecord(
     std::span<const uint8_t> mac_key,
     std::span<const uint8_t> enc_key,
     uint64_t seq_num,
     ContentType ct, uint8_t version_major, uint8_t version_minor,
+    std::span<const uint8_t> iv,
     std::span<const uint8_t> content) {
 
   const int unpadded_length = content.size() + MAC_SIZE;
@@ -728,11 +729,7 @@ std::vector<uint8_t> TLS::MakeEncryptedRecord(
   std::array<uint8_t, SHA1::DIGEST_LENGTH> hmac =
     SHA1::HMAC(mac_key, hash_buffer.View());
 
-  std::array<uint8_t, AES256::BLOCKLEN> iv = {};
-  // Server chooses the IV. Bogus!
-  for (int i = 0; i < iv.size(); i++) {
-    iv[i] = (i << 4) | i;
-  }
+  CHECK(iv.size() >= AES256::BLOCKLEN);
 
   // Now prep the encrypted packet.
   const int enc_len = unpadded_length + pad_len;

@@ -17,6 +17,9 @@ struct TLS {
   // SHA-256 for handshake negotiation.
   static constexpr int MAC_SIZE = 20;
 
+  // AES-256 block size.
+  static constexpr int IV_SIZE = 16;
+
   // The maximum size of the plaintext in a TLS Record (i.e.
   // what the application sends and receives).
   static constexpr int MAX_PLAINTEXT_SIZE = 16384;
@@ -226,6 +229,8 @@ struct TLS {
       std::span<const uint8_t> enc_key,
       uint64_t seq_num,
       ContentType ct, uint8_t version_major, uint8_t version_minor,
+      // one AES block
+      std::span<const uint8_t> iv,
       std::span<const uint8_t> content);
 
   static std::optional<std::span<const uint8_t>> DecryptRecord(
