@@ -368,9 +368,7 @@ struct ClientConnection : public Connection {
     // Skip trying to parse packets if we got no data.
     if (amount == 0) return;
 
-    for (int i = 0; i < amount; i++) {
-      incoming_partial.push_back(buf[i]);
-    }
+    incoming_partial.insert(incoming_partial.end(), buf, buf + amount);
 
     ParsePackets();
   }
