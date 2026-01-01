@@ -125,11 +125,14 @@ struct Connection {
   }
 
   void Write(std::span<const uint8_t> data) {
-    // We can often send data straight into the kernel buffer without
-    // blocking, so try that first to avoid copying.
-    if (const std::optional<size_t> amount =
+    if (send_buf.empty()) {
+      // We can often send data straight into the kernel buffer without
+      // blocking, so when the queue is empty, try that first to avoid
+      // copying.
+      if (const std::optional<size_t> amount =
           InternalWritePrefix(data)) {
-      data = data.subspan(amount.value());
+        data = data.subspan(amount.value());
+      }
     }
 
     // If we blocked or didn't write the full buffer, enqueue it
@@ -1350,10 +1353,10 @@ struct Session {
   void SendHTTPError(std::string_view msg, int status_code = 500) {
     std::string response =
       std::format(
-          "HTTP/1.1 {} Error\n"
-          "Content-Type: text/plain\n"
-          "Content-Length: {}\n"
-          "\n\n"
+          "HTTP/1.1 {} Error\r\n"
+          "Content-Type: text/plain\r\n"
+          "Content-Length: {}\r\n"
+          "\r\n\r\n"
           "{}",
           status_code, msg.size(), msg);
 

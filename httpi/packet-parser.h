@@ -148,6 +148,16 @@ struct PacketParser {
     return String(size());
   }
 
+  std::vector<uint8_t> Bytes(size_t len) {
+    std::vector<uint8_t> ret(len, 0);
+    BytesTo(len, ret.data());
+    return ret;
+  }
+
+  std::vector<uint8_t> Bytes() {
+    return Bytes(size());
+  }
+
   std::span<const uint8_t> View() const {
     // Rest is always valid, so we can return it even
     // in an error state.

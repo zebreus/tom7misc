@@ -148,6 +148,14 @@ void TLS::PrintClientHello(const ClientHello &hello) {
         Print(" {}", h);
       }
       Print("\n");
+    } else if (const SessionTicket *st =
+               std::get_if<SessionTicket>(&ext)) {
+      if (st->ticket.empty()) {
+        Print("SessionTicket (empty)\n");
+      } else {
+        Print("SessionTicket:\n{}", HexDump::Color(st->ticket));
+      }
+
     } else if (const UnknownExt *unk = std::get_if<UnknownExt>(&ext)) {
       Print("Unknown extension ({:d}):\n"
             "{}\n",
@@ -257,7 +265,7 @@ TLS::ParseClientHello(PacketParser packet) {
 
     if (packet.size() < len) return std::nullopt;
     switch (type) {
-    case 0: {
+    case SERVER_NAME_INDICATION: {
       PacketParser ext_packet = packet.Subpacket(len);
       if (std::optional<ServerNameIndication> osni =
           ParseServerNameIndication(ext_packet)) {
@@ -269,6 +277,14 @@ TLS::ParseClientHello(PacketParser packet) {
       }
       break;
     }
+
+    case SESSION_TICKET: {
+      // Any 16-bit size is valid here.
+      hello.extensions.emplace_back(SessionTicket{
+          .ticket = packet.Bytes(len),
+        });
+    }
+
     default: {
       UnknownExt unk;
       unk.type = type;
@@ -444,6 +460,24 @@ std::vector<uint8_t> TLS::SerializeHandshakeFinished(
   packet.W24(h.verify_data.size());
   packet.Bytes(h.verify_data);
   return {std::move(packet).Release()};
+}
+
+std::vector<uint8_t> TLS::SerializeNewSessionTicket(
+    const NewSessionTicket &msg) {
+  PacketWriter packet;
+  packet.reserve(1 + 3 + 2 + msg.ticket.size());
+  // NEW_SESSION_TICKET handshake type
+  packet.Byte(4);
+  auto len = packet.Length24();
+
+  packet.W32(msg.ticket_lifetime_hint);
+  CHECK(msg.ticket.size() <= 0xFFFF);
+  packet.W16(msg.ticket.size());
+  packet.Bytes(msg.ticket);
+
+  len.Fill();
+
+  return std::move(packet).Release();
 }
 
 std::vector<uint8_t> TLS::SerializeCloseNotify() {

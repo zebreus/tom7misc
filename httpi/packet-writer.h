@@ -113,6 +113,9 @@ struct PacketWriter {
       }
     }
 
+    // XXX Consider aborting in destructor if never
+    // Filled? Or filling automatically?
+
    private:
     PacketWriter *packet = nullptr;
     size_t length_pos = 0;

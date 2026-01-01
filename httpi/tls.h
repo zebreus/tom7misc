@@ -69,8 +69,21 @@ struct TLS {
   static bool IsValidAlertDescription(uint8_t ad);
   static std::string_view AlertDescriptionString(AlertDescription ad);
 
+  // Only supported extensions.
+  enum ExtensionTag : uint8_t {
+    SERVER_NAME_INDICATION = 0,
+    SESSION_TICKET = 35,
+  };
+
   struct ServerNameIndication {
     std::vector<std::string> hosts;
+  };
+
+  // RFC 5077
+  struct SessionTicket {
+    // The ticket will be empty to indicate support for tickets
+    // prior to having one.
+    std::vector<uint8_t> ticket;
   };
 
   struct UnknownExt {
@@ -90,7 +103,9 @@ struct TLS {
     std::vector<uint16_t> cipher_suites;
     std::vector<uint8_t> compression_methods;
 
-    using Extension = std::variant<ServerNameIndication, UnknownExt>;
+    using Extension = std::variant<ServerNameIndication,
+                                   SessionTicket,
+                                   UnknownExt>;
     std::vector<Extension> extensions;
   };
 
@@ -119,6 +134,12 @@ struct TLS {
   struct HandshakeFinished {
     // For TLS 1.2, this is 12 bytes.
     std::array<uint8_t, 12> verify_data;
+  };
+
+  // For session ticket extension.
+  struct NewSessionTicket {
+    uint32_t ticket_lifetime_hint = 7200;
+    std::vector<uint8_t> ticket;
   };
 
   static void PrintClientHello(const ClientHello &hello);
@@ -163,6 +184,9 @@ struct TLS {
 
   static std::vector<uint8_t> SerializeHandshakeFinished(
       const HandshakeFinished &h);
+
+  static std::vector<uint8_t> SerializeNewSessionTicket(
+      const NewSessionTicket &ticket);
 
   static std::vector<uint8_t> SerializeCloseNotify();
 
