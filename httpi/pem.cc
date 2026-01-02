@@ -1,17 +1,19 @@
 
 #include "pem.h"
 
-#include <format>
-#include <string>
-#include <vector>
 #include <cstdint>
+#include <format>
+#include <span>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base64.h"
 #include "util.h"
 
-std::string PEM::ToPEM(const std::vector<uint8_t> &der_bytes,
+std::string PEM::ToPEM(std::span<const uint8_t> der_bytes,
                        std::string_view header) {
   std::string b64 = Base64::EncodeV(der_bytes);
   std::string pem = std::format("-----BEGIN {}-----\n", header);

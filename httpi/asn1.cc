@@ -3,11 +3,13 @@
 
 #include <algorithm>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "base/logging.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
+#include "packet-parser.h"
 
 inline static void AppendVec(std::vector<uint8_t> *out,
                              std::span<const uint8_t> in) {

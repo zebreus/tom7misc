@@ -45,6 +45,7 @@ std::vector<uint8_t> EncodePKCS8(const RSA::Key &key) {
       ASN1::EncodeOctetString(EncodePKCS1(key)));
 }
 
+[[maybe_unused]]
 static RSA::Key GenerateBad(int bits, CryptRand *cr) {
   BigInt q(31337);
   const int prime_bits = bits - BigInt::NumBits(q);

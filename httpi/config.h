@@ -2,11 +2,13 @@
 #ifndef _HTTPI_CONFIG_H
 #define _HTTPI_CONFIG_H
 
+#include <array>
 #include <memory>
-#include <string_view>
-#include <unordered_map>
+#include <optional>
 #include <span>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "multi-rsa.h"

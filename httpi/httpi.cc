@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <optional>
 #include <signal.h>
 #include <sys/epoll.h>
 #include <sys/resource.h>
@@ -33,6 +34,7 @@
 #include "crypt/cryptrand.h"
 #include "crypt/sha256.h"
 #include "hexdump.h"
+#include "multi-rsa.h"
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "randutil.h"

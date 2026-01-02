@@ -1,13 +1,19 @@
 #include "csr.h"
 
 #include <cstdint>
-#include <vector>
+#include <cstdlib>
+#include <ctime>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "asn1.h"
 #include "bignum/big.h"
-#include "vector-util.h"
 #include "crypt/sha256.h"
+#include "multi-rsa.h"
+#include "packet-parser.h"
 #include "util.h"
 
 static std::vector<uint8_t> ConcatV(const std::vector<std::vector<uint8_t>> &parts) {

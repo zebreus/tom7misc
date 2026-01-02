@@ -1,8 +1,13 @@
 #ifndef _HTTPI_CSR_H
 #define _HTTPI_CSR_H
 
-#include <vector>
 #include <cstdint>
+#include <ctime>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "bignum/big.h"
 #include "multi-rsa.h"

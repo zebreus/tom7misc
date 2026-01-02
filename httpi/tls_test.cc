@@ -1,6 +1,7 @@
 
 #include "tls.h"
 
+#include <cstring>
 #include <initializer_list>
 #include <span>
 #include <string>

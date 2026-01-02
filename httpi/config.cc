@@ -4,8 +4,11 @@
 #include <pwd.h>
 #include <sys/types.h>
 
+#include <cstdio>
 #include <format>
+#include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>

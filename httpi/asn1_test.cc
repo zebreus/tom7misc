@@ -2,15 +2,13 @@
 
 #include <cassert>
 #include <vector>
-#include <string>
 #include <cstdint>
 #include <initializer_list>
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "base/print.h"
-#include "hexdump.h"
 #include "ansi.h"
+#include "base/print.h"
+#include "bignum/big.h"
+#include "hexdump.h"
 
 static std::vector<uint8_t> V(const std::initializer_list<uint8_t> &v) {
   return std::vector<uint8_t>(v);

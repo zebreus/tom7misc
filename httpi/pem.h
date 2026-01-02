@@ -3,12 +3,13 @@
 #define _HTTPI_PEM_H
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 struct PEM {
-  static std::string ToPEM(const std::vector<uint8_t> &der_bytes,
+  static std::string ToPEM(std::span<const uint8_t> der_bytes,
                            std::string_view header);
 
   // Get the decoded bytes, possibly multiple in the same file.

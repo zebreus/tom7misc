@@ -10,7 +10,6 @@
 #include "bignum/big.h"
 #include "crypt/cryptrand.h"
 
-#include "asn1.h"
 #include "multi-rsa.h"
 #include "pem.h"
 #include "rsa.h"
@@ -43,6 +42,7 @@ static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {
   }
 }
 
+[[maybe_unused]]
 static MultiRSA::Key GenerateBad(int num_factors, int bits, CryptRand *cr) {
 
   for (;;) {
