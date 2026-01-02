@@ -176,6 +176,37 @@ void MultiRSA::RawDecryptInPlace(const Key &key,
   CHECK(BigInt::ToBigEndianBytes(m, buffer));
 }
 
+void MultiRSA::RawDecryptInPlaceCRT(const Key &key,
+                                    std::span<uint8_t> buffer) {
+  int byte_len = BlockSize(key);
+  CHECK(buffer.size() == byte_len) << "Wrong buffer size.";
+
+  BigInt c = BigInt::FromBigEndianBytes(buffer);
+
+  BigInt m(0);
+  // Product of primes processed so far.
+  BigInt product(1);
+
+  for (const PrimeFactor &factor : key.factors) {
+    BigInt cp = c % factor.p;
+    BigInt m_i = BigInt::PowMod(cp, factor.exp, factor.p);
+    BigInt m_mod_p = m % factor.p;
+    BigInt diff = m_i - m_mod_p;
+    if (diff < 0) {
+      diff += factor.p;
+    }
+
+    BigInt h = (diff * factor.inv) % factor.p;
+
+    m += h * product;
+
+    product *= factor.p;
+  }
+
+  CHECK(m >= 0 && m < key.n);
+  CHECK(BigInt::ToBigEndianBytes(m, buffer));
+}
+
 std::optional<std::span<const uint8_t>> MultiRSA::ExtractPadded(
     std::span<const uint8_t> buffer) {
   PacketParser packet(buffer);

@@ -1129,7 +1129,7 @@ struct Session {
           CHECK(rsa_key != nullptr);
           const int block_size = MultiRSA::BlockSize(*rsa_key);
           if (ckx_pms.size() == block_size) {
-            MultiRSA::RawDecryptInPlace(*rsa_key, std::span<uint8_t>(ckx_pms));
+            MultiRSA::RawDecryptInPlaceCRT(*rsa_key, std::span<uint8_t>(ckx_pms));
             if (std::optional<std::span<const uint8_t>> omsg =
                 MultiRSA::ExtractPadded(ckx_pms)) {
               if (omsg.value().size() == client_pre_master_secret.size()) {

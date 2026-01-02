@@ -44,6 +44,7 @@ struct MultiRSA {
   // the key is very invalid (e.g. zero modulus), but otherwise this
   // does not perform validation.
   static void RawDecryptInPlace(const Key &key, std::span<uint8_t> buffer);
+  static void RawDecryptInPlaceCRT(const Key &key, std::span<uint8_t> buffer);
 
   // Extract a valid padded PCKS#1 message from a decrypted buffer.
   // Returns nullopt if the message is invalid. (Note: Never expose
