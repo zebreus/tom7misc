@@ -36,6 +36,7 @@
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "randutil.h"
+#include "send-buffer.h"
 #include "timer.h"
 #include "tls.h"
 
@@ -66,8 +67,7 @@ static constexpr double BACKEND_IDLE_TIMEOUT_SEC = 59.9;
 static constexpr double CLIENT_IDLE_TIMEOUT_SEC = 60.1;
 
 struct Connection {
-  Connection() {
-    send_buf.reserve(BUFFER_SIZE);
+  Connection() : send_buf(BUFFER_SIZE) {
   }
 
   ~Connection() {
@@ -137,14 +137,27 @@ struct Connection {
 
     // If we blocked or didn't write the full buffer, enqueue it
     // as normal.
-    if (!data.empty()) {
-      send_buf.insert(send_buf.end(), data.begin(), data.end());
-    }
+    send_buf.Append(data);
   }
 
-  void SendBuffered() {
-    if (!InternalWrite(&send_buf)) {
-      return;
+
+  // Send buffered data if any.
+  // Manages the state. Returns false if the connection was lost.
+  bool SendBuffered() {
+    if (std::optional<size_t> prefix = InternalWritePrefix(send_buf.Span())) {
+      send_buf.RemovePrefix(prefix.value());
+      if (VERBOSE >= 3) {
+        Print("Wrote {} bytes. {} left\n", prefix.value(), send_buf.size());
+      }
+
+      // Maybe transition to half-closed, if we've marked EOF.
+      if (send_buf.empty() && send_buf_eof) {
+        InternalEndWrite();
+      }
+
+      return true;
+    } else {
+      return false;
     }
   }
 
@@ -255,26 +268,6 @@ struct Connection {
     }
   }
 
-  // Manages the state. returns false if the connection was lost.
-  bool InternalWrite(std::vector<uint8_t> *v) {
-    if (std::optional<size_t> prefix = InternalWritePrefix(*v)) {
-
-      v->erase(v->begin(), v->begin() + prefix.value());
-      if (VERBOSE >= 3) {
-        Print("Wrote {} bytes. {} left\n", prefix.value(), v->size());
-      }
-
-      // Maybe transition to half-closed, if we've marked EOF.
-      if (v->empty() && send_buf_eof) {
-        InternalEndWrite();
-      }
-
-      return true;
-    } else {
-      return false;
-    }
-  }
-
   // Explicitly signal that we will not send any more data.
   // Should only do this after the explicit buffer has been
   // drained (or cleared).
@@ -314,7 +307,6 @@ struct Connection {
     ONLY_READ,
     ONLY_WRITE,
   };
-  State state = State::CLOSED;
 
   static std::string_view StateString(State state) {
     switch (state) {
@@ -326,10 +318,12 @@ struct Connection {
     }
   }
 
+ protected:
+  State state = State::CLOSED;
   // If zero, then the connection was closed (or hasn't been
   // set yet).
   int fd = 0;
-  std::vector<uint8_t> send_buf;
+  SendBuffer send_buf;
   // Once this is true, we have finalized the send_buf and
   // no more shall be added.
   bool send_buf_eof = false;
