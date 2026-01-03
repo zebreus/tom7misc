@@ -55,6 +55,8 @@ struct Config {
   // Should maybe be configurable per host?
   void FillServerRandom(std::span<uint8_t, 32> buffer) const;
 
+  bool SupportSessionTickets() const { return support_session_tickets; }
+
   int MaxPlaintextSize() const { return max_plaintext_size; }
 
   enum IVStrategy {
@@ -91,6 +93,7 @@ struct Config {
   std::string user;
   int uid = 0, gid = 0;
   IVStrategy iv_strategy = IV_RANDOM;
+  bool support_session_tickets = false;
 };
 
 #endif

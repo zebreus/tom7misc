@@ -119,7 +119,7 @@ struct TLS {
     uint16_t cipher_suite = 0;
     uint8_t compression_method = 0;
 
-    using Extension = std::variant<UnknownExt>;
+    using Extension = std::variant<SessionTicket, UnknownExt>;
     std::vector<Extension> extensions;
   };
 

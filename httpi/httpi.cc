@@ -411,7 +411,7 @@ struct ClientConnection : public Connection {
       rec.fragment.resize(length);
       memcpy(rec.fragment.data(), incoming_partial.data() + 5, length);
       incoming.push(std::move(rec));
-      // PERF could use ring buffer here
+      // PERF could use ring buffer here, or SendBuffer
       incoming_partial.erase(
           incoming_partial.begin(), incoming_partial.begin() + length + 5);
       // Loop again; we could have more packets.
@@ -853,6 +853,181 @@ struct Session {
     }
   }
 
+  void ProcessStateStart(TLSRecord &r) {
+    PacketParser packet(r.fragment);
+
+    if (r.type != ContentType::HANDSHAKE) {
+      AbortConnection("Only handshake messages now!");
+      return;
+    }
+
+    // Parse ClientHello.
+    if (std::optional<TLS::ClientHello> och =
+        TLS::ParseClientHello(packet)) {
+      RecordHandshake(packet.View());
+      if (VERBOSE >= 3) {
+        TLS::PrintClientHello(och.value());
+      }
+
+      memcpy(client_random.data(), och.value().client_random.data(), 32);
+
+      if (!TLS::HasCipherSuite(och.value(),
+                               TLS::RSA_WITH_AES_256_CBC_SHA)) {
+        if (VERBOSE >= 1) {
+          Print(ARED("Can't handshake") ": "
+                "Client doesn't support our basic 1.2 cipher suite.\n");
+        }
+
+        // This is an orderly shutdown, though.
+        client.SendTLSRecord(ALERT, 3, 3,
+                             TLS::SerializeHandshakeFailure());
+        HangUp();
+        return;
+      }
+
+      // Parse extensions that we support.
+      for (const auto &ext : och.value().extensions) {
+        if (const TLS::ServerNameIndication *sni =
+            std::get_if<TLS::ServerNameIndication>(&ext)) {
+          if (sni->hosts.size() != 1) {
+            AbortConnection("Want exactly one host in SNI.");
+            return;
+          }
+          server_name = sni->hosts[0];
+
+        } else if (const TLS::SessionTicket *st =
+                   std::get_if<TLS::SessionTicket>(&ext)) {
+          if (client_supports_tickets) {
+            AbortConnection("Multiple session tickets");
+            return;
+          }
+          client_supports_tickets = true;
+          if (!st->ticket.empty()) {
+            // PERF should we be moving?
+            received_ticket = {st->ticket};
+          }
+
+        } else {
+          // Ignore it.
+        }
+      }
+
+      if (server_name.empty()) {
+        // Could use some default config, but how is the
+        // client going to check the certificate?
+        Print("Bad handshake:\n{}\nwhich is:\n",
+              HexDump::Color(r.fragment));
+        TLS::PrintClientHello(och.value());
+        AbortConnection("No SNI extension.");
+        return;
+      }
+
+      host_config = config.GetHostConfig(server_name);
+      if (host_config == nullptr) {
+        AbortConnection("Unknown host");
+        return;
+      }
+
+      const Config::Key *key = config.GetKey(host_config->key_idx);
+      const Config::Cert *cert = config.GetCert(host_config->cert_idx);
+
+      // Check that we've actually configured a key and certificate.
+      if (key == nullptr || cert == nullptr ||
+          !key->rsa.has_value() ||
+          !cert->server_certificate.has_value() ||
+          cert->server_certificate.value().chain.empty()) {
+        if (VERBOSE >= 1) {
+          Print("No key/cert configured for " ARED("{}") ".\n",
+                host_config->canonical);
+        }
+        AbortConnection();
+        return;
+      }
+
+      rsa_key = &key->rsa.value();
+      const TLS::ServerCertificate &server_certificate =
+        cert->server_certificate.value();
+
+      TLS::ServerHello shello;
+      // TLS 1.2
+      shello.version_major = 3;
+      shello.version_minor = 3;
+
+      // Insecure! Bogus server random:
+      for (int i = 0; i < 32; i++)
+        shello.server_random[i] = server_random[i];
+
+      // session ids not supported
+      shello.session_id.clear();
+      shello.cipher_suite = TLS::RSA_WITH_AES_256_CBC_SHA;
+      shello.compression_method = 0;
+
+      // enable tickets if client supports them. This is always
+      // an empty ticket; we send the actual ticket once the
+      // handshake is further along.
+      if (client_supports_tickets && config.SupportSessionTickets()) {
+        shello.extensions.emplace_back(TLS::SessionTicket{.ticket = {}});
+      }
+
+      if (std::optional<std::vector<uint8_t>> po =
+          TLS::SerializeServerHello(shello)) {
+        RecordHandshake(po.value());
+        client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
+
+        if (VERBOSE >= 3) {
+          Print("Sent ServerHello:\n"
+                "{}\n", HexDump::Color(po.value()));
+        }
+
+      } else {
+        LOG(FATAL) << "My ServerHello was invalid";
+      }
+
+      // Also ServerCertificate.
+      if (std::optional<std::vector<uint8_t>> co =
+          TLS::SerializeServerCertificate(server_certificate)) {
+        RecordHandshake(co.value());
+        client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
+
+        if (VERBOSE >= 3) {
+          Print("Sent ServerCertificate:\n"
+                "{}\n", HexDump::Color(co.value()));
+        }
+
+      } else {
+        LOG(FATAL) << "My ServerCertificate was invalid";
+      }
+
+      // This is RSA, so no ServerKeyExchange message.
+
+      std::vector<uint8_t> shd =
+        TLS::SerializeServerHelloDone();
+      RecordHandshake(shd);
+      client.SendTLSRecord(HANDSHAKE, 3, 3, shd);
+      if (VERBOSE >= 3) {
+        Print("Sent ServerHelloDone:\n"
+              "{}\n", HexDump::Color(shd));
+      }
+
+      if (VERBOSE >= 1) {
+        Print(ACYAN("Server sent Hello/Cert/HelloDone") "\n");
+      }
+
+      // PERF: Could try doing this earlier or later, with
+      // different implications for latency. Since we're
+      // single-threaded, it seems best to do it while we're
+      // waiting for an expensive message from the client.
+      ConnectBackend(client.PeerIP(), client.PeerPort());
+
+      state = State::WAIT_KEY;
+
+    } else {
+      AbortConnection("Invalid ClientHello.");
+      return;
+    }
+  }
+
+
   // Process any packets that we've read from the client or
   // backend.
   void ProcessPackets() {
@@ -949,7 +1124,6 @@ struct Session {
       // but as a simplification and safety measure, we require
       // handshake messages to be in their own packets.
       TLSRecord &r = ro.value();
-      PacketParser packet(r.fragment);
 
       if (VERBOSE >= 3) {
         Print(stderr, "client record: {}.{}.{} len={}\n"
@@ -961,154 +1135,10 @@ struct Session {
               HexDump::Color(r.fragment));
       }
 
+      PacketParser packet(r.fragment);
+
       if (state == State::START) {
-        if (r.type != ContentType::HANDSHAKE) {
-          AbortConnection("Only handshake messages now!");
-          return;
-        }
-
-        // Parse ClientHello.
-        if (std::optional<TLS::ClientHello> och =
-            TLS::ParseClientHello(packet)) {
-          RecordHandshake(packet.View());
-          if (VERBOSE >= 3) {
-            TLS::PrintClientHello(och.value());
-          }
-
-          memcpy(client_random.data(), och.value().client_random.data(), 32);
-
-          if (!TLS::HasCipherSuite(och.value(),
-                                   TLS::RSA_WITH_AES_256_CBC_SHA)) {
-            if (VERBOSE >= 1) {
-              Print(ARED("Can't handshake") ": "
-                    "Client doesn't support our basic 1.2 cipher suite.\n");
-            }
-
-            // This is an orderly shutdown, though.
-            client.SendTLSRecord(ALERT, 3, 3,
-                                 TLS::SerializeHandshakeFailure());
-            HangUp();
-            return;
-          }
-
-          // Need to know what virtual host we're talking to.
-          for (const auto &ext : och.value().extensions) {
-            if (const TLS::ServerNameIndication *sni =
-                std::get_if<TLS::ServerNameIndication>(&ext)) {
-              if (sni->hosts.size() != 1) {
-                AbortConnection("Want exactly one host in SNI.");
-                return;
-              }
-              server_name = sni->hosts[0];
-            }
-          }
-
-          if (server_name.empty()) {
-            // Could use some default config, but how is the
-            // client going to check the certificate?
-            Print("Bad handshake:\n{}\nwhich is:\n",
-                  HexDump::Color(r.fragment));
-            TLS::PrintClientHello(och.value());
-            AbortConnection("No SNI extension.");
-            return;
-          }
-
-          host_config = config.GetHostConfig(server_name);
-          if (host_config == nullptr) {
-            AbortConnection("Unknown host");
-            return;
-          }
-
-          const Config::Key *key = config.GetKey(host_config->key_idx);
-          const Config::Cert *cert = config.GetCert(host_config->cert_idx);
-
-          // Check that we've actually configured a key and certificate.
-          if (key == nullptr || cert == nullptr ||
-              !key->rsa.has_value() ||
-              !cert->server_certificate.has_value() ||
-              cert->server_certificate.value().chain.empty()) {
-            if (VERBOSE >= 1) {
-              Print("No key/cert configured for " ARED("{}") ".\n",
-                    host_config->canonical);
-            }
-            AbortConnection();
-            return;
-          }
-
-          rsa_key = &key->rsa.value();
-          const TLS::ServerCertificate &server_certificate =
-            cert->server_certificate.value();
-
-          TLS::ServerHello shello;
-          // TLS 1.2
-          shello.version_major = 3;
-          shello.version_minor = 3;
-
-          // Insecure! Bogus server random:
-          for (int i = 0; i < 32; i++)
-            shello.server_random[i] = server_random[i];
-
-          // session ids not supported
-          shello.session_id.clear();
-          shello.cipher_suite = TLS::RSA_WITH_AES_256_CBC_SHA;
-          shello.compression_method = 0;
-
-          if (std::optional<std::vector<uint8_t>> po =
-              TLS::SerializeServerHello(shello)) {
-            RecordHandshake(po.value());
-            client.SendTLSRecord(HANDSHAKE, 3, 3, po.value());
-
-            if (VERBOSE >= 3) {
-              Print("Sent ServerHello:\n"
-                    "{}\n", HexDump::Color(po.value()));
-            }
-
-          } else {
-            LOG(FATAL) << "My ServerHello was invalid";
-          }
-
-          // Also ServerCertificate.
-          if (std::optional<std::vector<uint8_t>> co =
-              TLS::SerializeServerCertificate(server_certificate)) {
-            RecordHandshake(co.value());
-            client.SendTLSRecord(HANDSHAKE, 3, 3, co.value());
-
-            if (VERBOSE >= 3) {
-              Print("Sent ServerCertificate:\n"
-                    "{}\n", HexDump::Color(co.value()));
-            }
-
-          } else {
-            LOG(FATAL) << "My ServerCertificate was invalid";
-          }
-
-          // This is RSA, so no ServerKeyExchange message.
-
-          std::vector<uint8_t> shd =
-            TLS::SerializeServerHelloDone();
-          RecordHandshake(shd);
-          client.SendTLSRecord(HANDSHAKE, 3, 3, shd);
-          if (VERBOSE >= 3) {
-            Print("Sent ServerHelloDone:\n"
-                  "{}\n", HexDump::Color(shd));
-          }
-
-          if (VERBOSE >= 1) {
-            Print(ACYAN("Server sent Hello/Cert/HelloDone") "\n");
-          }
-
-          // PERF: Could try doing this earlier or later, with
-          // different implications for latency. Since we're
-          // single-threaded, it seems best to do it while we're
-          // waiting for an expensive message from the client.
-          ConnectBackend(client.PeerIP(), client.PeerPort());
-
-          state = State::WAIT_KEY;
-
-        } else {
-          AbortConnection("Invalid ClientHello.");
-          return;
-        }
+        ProcessStateStart(r);
 
       } else if (state == State::WAIT_KEY) {
         if (r.type != ContentType::HANDSHAKE) {
@@ -1588,6 +1618,14 @@ struct Session {
   SHA256::Ctx handshake_ctx = {};
   std::array<uint8_t, 32> client_handshake_validation = {};
   std::array<uint8_t, 32> server_handshake_validation = {};
+
+  // True if we got the extension indicating that the client
+  // supports session tickets.
+  bool client_supports_tickets = false;
+  // The session ticket that we got from the client in their
+  // ClientHello, which indicates an intention to resume the
+  // connection.
+  std::optional<TLS::SessionTicket> received_ticket = std::nullopt;
 
   // The user making the request.
   ClientConnection client;

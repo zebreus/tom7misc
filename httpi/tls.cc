@@ -401,6 +401,11 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
         if (!unk->bytes.empty()) {
           packet.Bytes(unk->bytes);
         }
+      } else if (const SessionTicket *st = std::get_if<SessionTicket>(&ext)) {
+        packet.W16(ExtensionTag::SESSION_TICKET);
+        CHECK(st->ticket.size() <= 0xFFFF);
+        packet.W16(st->ticket.size());
+        packet.Bytes(st->ticket);
       } else {
         LOG(FATAL) << "Unimplemented extension type";
       }

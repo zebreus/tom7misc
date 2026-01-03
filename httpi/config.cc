@@ -98,6 +98,14 @@ Config Config::Load() {
         LOG(FATAL) << "Unknown iv-strategy: " << line;
       }
 
+    } else if (cmd == "session-tickets") {
+      if (line == "true") {
+        config.support_session_tickets = true;
+      } else {
+        CHECK(line == "false");
+        config.support_session_tickets = false;
+      }
+
     } else if (cmd == "user") {
       CHECK(current_key == -1) << "Set user at the top.";
       config.user = line;
