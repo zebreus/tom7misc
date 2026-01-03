@@ -854,6 +854,7 @@ struct Session {
   }
 
   void ProcessStateStart(TLSRecord &r) {
+    CHECK(state == State::START);
     PacketParser packet(r.fragment);
 
     if (r.type != ContentType::HANDSHAKE) {
@@ -1027,6 +1028,233 @@ struct Session {
     }
   }
 
+  void ProcessStateWaitKey(TLSRecord &r) {
+    CHECK(state == State::WAIT_KEY);
+    PacketParser packet(r.fragment);
+
+    if (r.type != ContentType::HANDSHAKE) {
+      AbortConnection("Only handshake messages now!");
+      return;
+    }
+
+    // We always proceed to avoid "padding oracle" attacks.
+    // But the client key will be deliberately random garbage.
+    for (int i = 0; i < client_pre_master_secret.size(); i++) {
+      client_pre_master_secret[i] = rc->Byte();
+    }
+
+    RecordHandshake(packet.View());
+    if (std::optional<TLS::ClientKeyExchange> ockx =
+        TLS::ParseClientKeyExchange(packet)) {
+      std::vector<uint8_t> &ckx_pms = ockx.value().encrypted_pms;
+      CHECK(rsa_key != nullptr);
+      const int block_size = MultiRSA::BlockSize(*rsa_key);
+      if (ckx_pms.size() == block_size) {
+        MultiRSA::RawDecryptInPlaceCRT(*rsa_key, std::span<uint8_t>(ckx_pms));
+        if (std::optional<std::span<const uint8_t>> omsg =
+            MultiRSA::ExtractPadded(ckx_pms)) {
+          if (omsg.value().size() == client_pre_master_secret.size()) {
+            memcpy(client_pre_master_secret.data(),
+                   omsg.value().data(),
+                   client_pre_master_secret.size());
+            if (VERBOSE >= 2) {
+              Print(AGREEN("Got pre-master secret from client") ".\n");
+            }
+          } else {
+            if (VERBOSE >= 2) {
+              Print(ARED("Wrong pre-master secret size") " (got {})\n",
+                    omsg.value().size());
+            }
+          }
+        } else {
+          if (VERBOSE >= 2) {
+            Print(ARED("Couldn't decrypt") "\n");
+          }
+        }
+
+      } else {
+        if (VERBOSE >= 2) {
+          Print(ARED("Wrong block size") " (got {})\n",
+                ckx_pms.size());
+        }
+      }
+    }
+
+    // Regardless, continue with the handshake.
+    {
+      SHA256::Ctx client_handshake_ctx = handshake_ctx;
+      client_handshake_validation =
+        SHA256::FinalArray(&client_handshake_ctx);
+      if (VERBOSE >= 3) {
+        Print("Handshake hash (SHA-256) for client:\n"
+              "{}\n", HexDump::Color(client_handshake_validation));
+      }
+    }
+
+
+    // Derive master secret from the pre-master secret.
+    std::array<uint8_t, 64> random_seed;
+    memcpy(random_seed.data(), client_random.data(), 32);
+    memcpy(random_seed.data() + 32, server_random.data(), 32);
+    TLS::PRF(client_pre_master_secret, "master secret",
+             random_seed, master_secret);
+    if (VERBOSE >= 3) {
+      Print("Master secret:\n"
+            "{}\n", HexDump::Color(master_secret));
+    }
+
+    memcpy(random_seed.data(), server_random.data(), 32);
+    memcpy(random_seed.data() + 32, client_random.data(), 32);
+
+    // The key data all come from one PRF stream.
+    std::array<uint8_t, 2 * (20 + 32 + 16)> key_bytes;
+    TLS::PRF(master_secret, "key expansion", random_seed, key_bytes);
+    std::span<const uint8_t> remaining = key_bytes;
+    auto Consume = [&remaining](auto &out) {
+        CHECK(remaining.size() >= out.size());
+        memcpy(out.data(), remaining.data(), out.size());
+        remaining = remaining.subspan(out.size());
+      };
+
+    Consume(client_write_mac_key);
+    Consume(server_write_mac_key);
+    Consume(client_write_key);
+    Consume(server_write_key);
+    // PERF: These are actually unused.
+    Consume(client_write_iv);
+    Consume(server_write_iv);
+    CHECK(remaining.empty());
+
+    if (VERBOSE >= 3) {
+      Print("client_write_mac_key:\n"
+            "{}\n", HexDump::Color(client_write_mac_key));
+      Print("server_write_mac_key:\n"
+            "{}\n", HexDump::Color(server_write_mac_key));
+      Print("client_write_key:\n"
+            "{}\n", HexDump::Color(client_write_key));
+      Print("server_write_key:\n"
+            "{}\n", HexDump::Color(server_write_key));
+      Print("client_write_iv:\n"
+            "{}\n", HexDump::Color(client_write_iv));
+      Print("server_write_iv:\n"
+            "{}\n", HexDump::Color(server_write_iv));
+    }
+
+    state = State::WAIT_CLIENT_CHANGE;
+
+  }
+
+  void ProcessStateWaitClientChange(TLSRecord &r) {
+    CHECK(state == State::WAIT_CLIENT_CHANGE);
+
+    PacketParser packet(r.fragment);
+
+    if (r.type != ContentType::CHANGE_CIPHER_SPEC) {
+      AbortConnection("Expected only cipher spec change!");
+      return;
+    }
+
+    if (TLS::ParseChangeCipherSpec(packet)) {
+      if (VERBOSE >= 2) {
+        Print(AGREEN("Cipher change spec OK") "\n");
+      }
+
+      state = State::WAIT_HANDSHAKE_FINISH;
+
+    } else {
+      AbortConnection("Incorrect cipher change message.");
+      return;
+    }
+  }
+
+  void ProcessStateWaitHandshakeFinish(TLSRecord &r) {
+    CHECK(state == State::WAIT_HANDSHAKE_FINISH);
+    PacketParser packet(r.fragment);
+
+    if (r.type != ContentType::HANDSHAKE) {
+      AbortConnection("Expected encrypted handshake message.");
+      return;
+    }
+
+    if (auto hopt = TLS::DecryptRecord(
+            client_write_mac_key,
+            client_write_key,
+            client_seq_num,
+            r,
+            VERBOSE >= 2,
+            VERBOSE >= 3)) {
+
+      client_seq_num++;
+
+      // We saved the hash of the client's handshake sequence,
+      // so we update it for the server's calculation next.
+      RecordHandshake(hopt.value());
+
+      if (std::optional<TLS::HandshakeFinished> ohf =
+          TLS::ParseHandshakeFinished(hopt.value())) {
+
+        const std::array<uint8_t, 12> &client_verify_data =
+          ohf.value().verify_data;
+
+        std::array<uint8_t, 12> expected;
+        TLS::PRF(master_secret, "client finished",
+                 client_handshake_validation, expected);
+
+        if (VERBOSE >= 3) {
+          Print("Client verify data. Actual:\n"
+                "{}\n"
+                "Expected:\n"
+                "{}\n",
+                HexDump::Color(client_verify_data),
+                HexDump::Color(expected));
+        }
+
+        if (client_verify_data != expected) {
+          AbortConnection("Wrong verify_data.");
+          return;
+        }
+
+        if (VERBOSE >= 2) {
+          Print("Successful HandshakeFinished.\n");
+        }
+
+        // Now send the server messages.
+        client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
+                             TLS::SerializeChangeCipherSpec());
+
+        {
+          SHA256::Ctx server_handshake_ctx = handshake_ctx;
+          server_handshake_validation =
+            SHA256::FinalArray(&server_handshake_ctx);
+          if (VERBOSE >= 3) {
+            Print("Handshake hash (SHA-256) for server:\n"
+                  "{}\n", HexDump::Color(server_handshake_validation));
+          }
+        }
+
+        TLS::HandshakeFinished finished;
+        TLS::PRF(master_secret, "server finished",
+                 server_handshake_validation,
+                 finished.verify_data);
+
+        SendEncrypted(HANDSHAKE, 3, 3,
+                      TLS::SerializeHandshakeFinished(finished),
+                      TLS::MAX_PLAINTEXT_SIZE);
+
+        state = State::STEADY_STATE;
+
+      } else {
+        AbortConnection("Couldn't parse HandshakeFinished.");
+        return;
+      }
+
+    } else {
+      AbortConnection("Couldn't decrypt client "
+                      "handshake finished message.");
+      return;
+    }
+
+  }
 
   // Process any packets that we've read from the client or
   // backend.
@@ -1141,218 +1369,13 @@ struct Session {
         ProcessStateStart(r);
 
       } else if (state == State::WAIT_KEY) {
-        if (r.type != ContentType::HANDSHAKE) {
-          AbortConnection("Only handshake messages now!");
-          return;
-        }
-
-        // We always proceed to avoid "padding oracle" attacks.
-        // But the client key will be deliberately random garbage.
-        for (int i = 0; i < client_pre_master_secret.size(); i++) {
-          client_pre_master_secret[i] = rc->Byte();
-        }
-
-        RecordHandshake(packet.View());
-        if (std::optional<TLS::ClientKeyExchange> ockx =
-            TLS::ParseClientKeyExchange(packet)) {
-          std::vector<uint8_t> &ckx_pms = ockx.value().encrypted_pms;
-          CHECK(rsa_key != nullptr);
-          const int block_size = MultiRSA::BlockSize(*rsa_key);
-          if (ckx_pms.size() == block_size) {
-            MultiRSA::RawDecryptInPlaceCRT(*rsa_key, std::span<uint8_t>(ckx_pms));
-            if (std::optional<std::span<const uint8_t>> omsg =
-                MultiRSA::ExtractPadded(ckx_pms)) {
-              if (omsg.value().size() == client_pre_master_secret.size()) {
-                memcpy(client_pre_master_secret.data(),
-                       omsg.value().data(),
-                       client_pre_master_secret.size());
-                if (VERBOSE >= 2) {
-                  Print(AGREEN("Got pre-master secret from client") ".\n");
-                }
-              } else {
-                if (VERBOSE >= 2) {
-                  Print(ARED("Wrong pre-master secret size") " (got {})\n",
-                        omsg.value().size());
-                }
-              }
-            } else {
-              if (VERBOSE >= 2) {
-                Print(ARED("Couldn't decrypt") "\n");
-              }
-            }
-
-          } else {
-            if (VERBOSE >= 2) {
-              Print(ARED("Wrong block size") " (got {})\n",
-                    ckx_pms.size());
-            }
-          }
-        }
-
-        // Regardless, continue with the handshake.
-        {
-          SHA256::Ctx client_handshake_ctx = handshake_ctx;
-          client_handshake_validation =
-            SHA256::FinalArray(&client_handshake_ctx);
-          if (VERBOSE >= 3) {
-            Print("Handshake hash (SHA-256) for client:\n"
-                  "{}\n", HexDump::Color(client_handshake_validation));
-          }
-        }
-
-
-        // Derive master secret from the pre-master secret.
-        std::array<uint8_t, 64> random_seed;
-        memcpy(random_seed.data(), client_random.data(), 32);
-        memcpy(random_seed.data() + 32, server_random.data(), 32);
-        TLS::PRF(client_pre_master_secret, "master secret",
-                 random_seed, master_secret);
-        if (VERBOSE >= 3) {
-          Print("Master secret:\n"
-                "{}\n", HexDump::Color(master_secret));
-        }
-
-        memcpy(random_seed.data(), server_random.data(), 32);
-        memcpy(random_seed.data() + 32, client_random.data(), 32);
-
-        // The key data all come from one PRF stream.
-        std::array<uint8_t, 2 * (20 + 32 + 16)> key_bytes;
-        TLS::PRF(master_secret, "key expansion", random_seed, key_bytes);
-        std::span<const uint8_t> remaining = key_bytes;
-        auto Consume = [&remaining](auto &out) {
-            CHECK(remaining.size() >= out.size());
-            memcpy(out.data(), remaining.data(), out.size());
-            remaining = remaining.subspan(out.size());
-          };
-
-        Consume(client_write_mac_key);
-        Consume(server_write_mac_key);
-        Consume(client_write_key);
-        Consume(server_write_key);
-        // PERF: These are actually unused.
-        Consume(client_write_iv);
-        Consume(server_write_iv);
-        CHECK(remaining.empty());
-
-        if (VERBOSE >= 3) {
-          Print("client_write_mac_key:\n"
-                "{}\n", HexDump::Color(client_write_mac_key));
-          Print("server_write_mac_key:\n"
-                "{}\n", HexDump::Color(server_write_mac_key));
-          Print("client_write_key:\n"
-                "{}\n", HexDump::Color(client_write_key));
-          Print("server_write_key:\n"
-                "{}\n", HexDump::Color(server_write_key));
-          Print("client_write_iv:\n"
-                "{}\n", HexDump::Color(client_write_iv));
-          Print("server_write_iv:\n"
-                "{}\n", HexDump::Color(server_write_iv));
-        }
-
-        state = State::WAIT_CLIENT_CHANGE;
+        ProcessStateWaitKey(r);
 
       } else if (state == State::WAIT_CLIENT_CHANGE) {
-        if (r.type != ContentType::CHANGE_CIPHER_SPEC) {
-          AbortConnection("Expected only cipher spec change!");
-          return;
-        }
-
-        if (TLS::ParseChangeCipherSpec(packet)) {
-          if (VERBOSE >= 2) {
-            Print(AGREEN("Cipher change spec OK") "\n");
-          }
-
-          state = State::WAIT_HANDSHAKE_FINISH;
-
-        } else {
-          AbortConnection("Incorrect cipher change message.");
-          return;
-        }
+        ProcessStateWaitClientChange(r);
 
       } else if (state == State::WAIT_HANDSHAKE_FINISH) {
-
-        if (r.type != ContentType::HANDSHAKE) {
-          AbortConnection("Expected encrypted handshake message.");
-          return;
-        }
-
-        if (auto hopt = TLS::DecryptRecord(
-                client_write_mac_key,
-                client_write_key,
-                client_seq_num,
-                r,
-                VERBOSE >= 2,
-                VERBOSE >= 3)) {
-
-          client_seq_num++;
-
-          // We saved the hash of the client's handshake sequence,
-          // so we update it for the server's calculation next.
-          RecordHandshake(hopt.value());
-
-          if (std::optional<TLS::HandshakeFinished> ohf =
-              TLS::ParseHandshakeFinished(hopt.value())) {
-
-            const std::array<uint8_t, 12> &client_verify_data =
-              ohf.value().verify_data;
-
-            std::array<uint8_t, 12> expected;
-            TLS::PRF(master_secret, "client finished",
-                     client_handshake_validation, expected);
-
-            if (VERBOSE >= 3) {
-              Print("Client verify data. Actual:\n"
-                    "{}\n"
-                    "Expected:\n"
-                    "{}\n",
-                    HexDump::Color(client_verify_data),
-                    HexDump::Color(expected));
-            }
-
-            if (client_verify_data != expected) {
-              AbortConnection("Wrong verify_data.");
-              return;
-            }
-
-            if (VERBOSE >= 2) {
-              Print("Successful HandshakeFinished.\n");
-            }
-
-            // Now send the server messages.
-            client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
-                                 TLS::SerializeChangeCipherSpec());
-
-            {
-              SHA256::Ctx server_handshake_ctx = handshake_ctx;
-              server_handshake_validation =
-                SHA256::FinalArray(&server_handshake_ctx);
-              if (VERBOSE >= 3) {
-                Print("Handshake hash (SHA-256) for server:\n"
-                      "{}\n", HexDump::Color(server_handshake_validation));
-              }
-            }
-
-            TLS::HandshakeFinished finished;
-            TLS::PRF(master_secret, "server finished",
-                     server_handshake_validation,
-                     finished.verify_data);
-
-            SendEncrypted(HANDSHAKE, 3, 3,
-                          TLS::SerializeHandshakeFinished(finished),
-                          TLS::MAX_PLAINTEXT_SIZE);
-
-            state = State::STEADY_STATE;
-
-          } else {
-            AbortConnection("Couldn't parse HandshakeFinished.");
-            return;
-          }
-
-        } else {
-          AbortConnection("Couldn't decrypt client "
-                          "handshake finished message.");
-          return;
-        }
+        ProcessStateWaitHandshakeFinish(r);
 
       } else if (state == State::HANG_UP) {
 
