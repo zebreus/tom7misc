@@ -1,11 +1,14 @@
-
-#include <sys/stat.h>
-#include <cstring>
-#include <cstdint>
-#include <string.h>
-#include <ctime>
-
 #include "escape-util.h"
+
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <stdio.h>
+#include <string>
+#include <sys/stat.h>
 
 #ifdef WIN32
    /* chdir */

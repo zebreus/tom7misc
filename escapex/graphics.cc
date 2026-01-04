@@ -2,9 +2,10 @@
 #include "graphics.h"
 
 #include <memory>
+#include <string>
 
-#include "../cc-lib/image.h"
-#include "../cc-lib/util.h"
+#include "image.h"
+#include "util.h"
 
 static constexpr char TILES_PNG[] = "tiles.png";
 static constexpr char TILEUTIL_PNG[] = "tileutil.png";

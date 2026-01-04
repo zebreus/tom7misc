@@ -3,18 +3,30 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-#include "../cc-lib/util.h"
-
-#include "escape-util.h"
-#include "textscroll.h"
-#include "prompt.h"
-#include "message.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "chars.h"
-#include "upper.h"
-#include "handhold.h"
-#include "menu.h"
 #include "client.h"
+#include "dirindex.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "handhold.h"
+#include "http.h"
+#include "menu.h"
+#include "message.h"
+#include "player.h"
+#include "sdl/sdlutil.h"
+#include "textscroll.h"
+#include "upper.h"
+#include "util.h"
 
 #define UNSUBMARKER "unsubscribed"
 #define SHOWRATE 500
@@ -33,7 +45,7 @@ enum class SelResult {
 struct Updater_ : public Updater {
   static Updater_ *Create(Player *p);
 
-  UpdateResult Update(string &msg) override;
+  UpdateResult Update(std::string_view msg) override;
 
   void Draw() override {
     sdlutil::clearsurface(screen, BGCOLOR);
@@ -51,11 +63,11 @@ struct Updater_ : public Updater {
     SDL_Flip(screen);
   }
 
-  void say(const string &s) {
+  void say(string_view s) {
     if (tx.get() != nullptr) tx->Say(s);
   }
 
-  void sayover(const string &s) {
+  void sayover(string_view s) {
     if (tx.get() != nullptr) {
       tx->Unsay();
       tx->Say(s);
@@ -177,7 +189,7 @@ CCResult Updater_::CheckCollections(
   /* first, grab COLLECTIONS. */
 
   string s;
-  HTTPResult hr = hh->get(COLLECTIONSURL, s);
+  HTTPResult hr = hh->Get(COLLECTIONSURL, s);
 
   if (hr == HTTPResult::OK) {
     /* parse result. see protocol.txt */
@@ -281,7 +293,7 @@ SelResult Updater_::SelectCollections(
       delete st;
     }
     toggles.clear();
-    
+
     return SelResult::OK;
   } else {
     return SelResult::FAIL;
@@ -299,7 +311,7 @@ void Updater_::UpdateCollection(
   say("");
 
   string s;
-  HTTPResult hr = hh->get((string)"/" + fname + (string) ".txt", s);
+  HTTPResult hr = hh->Get((string)"/" + fname + (string) ".txt", s);
 
   if (hr == HTTPResult::OK) {
     /* parse result. see protocol.txt */
@@ -436,7 +448,7 @@ void Updater_::UpdateCollection(
 }
 
 /* very similar to upgrade... maybe abstract it? */
-UpdateResult Updater_::Update(string &msg) {
+UpdateResult Updater_::Update(std::string_view msg) {
   /* always cancel the hint */
   HandHold::did_update();
 

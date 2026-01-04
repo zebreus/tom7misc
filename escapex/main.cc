@@ -1,36 +1,39 @@
 
+#include <cstdlib>
+#include <cstring>
+#include <memory>
 #include <string>
 
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/crypt/md5.h"
-
-#include "level.h"
-#include "escapex.h"
-#include "loadlevel.h"
-#include "player.h"
-#include "prompt.h"
-#include "draw.h"
-#include "playerdb.h"
-#include "message.h"
-
-#include "edit.h"
-#include "play.h"
-#include "upgrade.h"
-#include "update.h"
-#include "mainmenu.h"
-#include "registration.h"
-#include "cleanup.h"
-#include "prefs.h"
-#include "dircache.h"
-
-#include "handhold.h"
+#include "SDL.h"
+#include "SDL_error.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_net.h"
+#include "SDL_video.h"
 #include "animation.h"
+#include "base/print.h"
+#include "browse.h"
+#include "cleanup.h"
+#include "draw.h"
+#include "drawable.h"
+#include "edit.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "handhold.h"
+#include "leveldb.h"
+#include "loadlevel.h"
+#include "mainmenu.h"
+#include "message.h"
+#include "play.h"
+#include "player.h"
+#include "playerdb.h"
+#include "progress.h"
+#include "registration.h"
+#include "sdl/sdlutil.h"
 #include "sound.h"
 #include "startup.h"
-#include "leveldb.h"
-#include "progress.h"
-#include "browse.h"
+#include "update.h"
+#include "upgrade.h"
 
 #define DEFAULT_DIR "."
 #define SPLASH_FILE DATADIR "splash.png"
@@ -66,20 +69,20 @@ int main(int argc, char **argv) {
     if (SDL_Init(SDL_INIT_VIDEO |
                  SDL_INIT_TIMER | DEBUG_PARACHUTE) < 0) {
 
-      printf("Unable to initialize SDL. (%s)\n", SDL_GetError());
-
+      Print("Unable to initialize SDL. ({})\n", SDL_GetError());
       return 1;
 
     } else {
       audio = 0;
     }
+
   } else {
     audio = 1;
   }
 
   if (SDLNet_Init() == -1) {
     network = 0;
-    printf("(debug) SDLNet_Init: %s\n", SDLNet_GetError());
+    Print("(debug) SDLNet_Init: {}\n", SDLNet_GetError());
   } else {
     network = 1;
   }
@@ -93,7 +96,7 @@ int main(int argc, char **argv) {
 
   /* set caption and icon */
   {
-    printf("Welcome to escape " VERSION ".\n");
+    Print("Welcome to escape " VERSION ".\n");
     SDL_WM_SetCaption("escape " VERSION, "");
     SDL_Surface *icon = sdlutil::LoadImageFile(ICON_FILE);
     if (icon) SDL_WM_SetIcon(icon, 0);
@@ -104,14 +107,14 @@ int main(int argc, char **argv) {
   std::unique_ptr<Graphics> graphics(Graphics::Create("."));
   if (graphics.get() == nullptr) {
     if (fon) Message::Bug(0, "Error loading graphics!");
-    printf("Failed to load graphics.\n");
+    Print("Failed to load graphics.\n");
     goto no_drawings;
   }
-  
+
   screen = sdlutil::makescreen(STARTW, STARTH);
-  
+
   if (!screen) {
-    printf("Failed to create screen.\n");
+    Print("Failed to create screen.\n");
     goto no_drawings;
   }
 
@@ -127,11 +130,11 @@ int main(int argc, char **argv) {
 
     SDL_FreeSurface(splash);
   }
-  
+
   /* XXX callback progress for ainit */
   if (!Drawing::LoadImages(*graphics) || !Animation::ainit(*graphics)) {
     if (fon) Message::Bug(0, "Error loading graphics!");
-    printf("Failed to load graphics.\n");
+    Print("Failed to load graphics.\n");
     goto no_drawings;
   }
 

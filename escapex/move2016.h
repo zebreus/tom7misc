@@ -195,14 +195,14 @@ using AList = PtrList<AEvent>;
     }                                                   \
   } while (0)
 
-# define PUSHED2016(d, w, x, y, u, z, h) do {		\
-    if (ANIMATING) {					\
+# define PUSHED2016(d, w, x, y, u, z, h) do {   \
+    if (ANIMATING) {          \
       const dir pushed_d = (d);                         \
       const int pushed_w = (w);                         \
       const int pushed_x = (x), pushed_y = (y);         \
       const int pushed_u = (u);                         \
-      const bool pushed_z = (z), pushed_h = (h);	\
-      PUSHMOVE2016(push, ([&](push_t *e) {		\
+      const bool pushed_z = (z), pushed_h = (h);  \
+      PUSHMOVE2016(push, ([&](push_t *e) {    \
         e->srcx = pushed_x;                             \
         e->srcy = pushed_y;                             \
         e->d = pushed_d;                                \
@@ -561,6 +561,10 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
       for (int ix = firstx, iy = firsty;
            (firstx != newx && firsty != newy);
            travel(ix, iy, d, ix, iy)) {
+        (void)firstx;
+        (void)newx;
+        (void)firsty;
+        (void)newy;
         AFFECT2016(ix, iy);
       }
 
@@ -1794,7 +1798,7 @@ void Level::PostAnimate(DAB *ctx, AList *&events, AList **&etail) {
   ctx->serialup(this, etail);
 
   int lx, ly; dir from;
-  if (isdead(lx, ly, from)) {
+  if (IsDead(lx, ly, from)) {
     /* XXX or affect? */
 
     /* lite up laser tile (lx, ly), too  ... if laser death */

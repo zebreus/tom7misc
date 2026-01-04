@@ -1,19 +1,15 @@
 #include "handhold.h"
 
+#include <cstring>
 #include <string>
-
-#include "level.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/util.h"
-
-#include "escape-util.h"
-#include "escapex.h"
-
-#include "time.h"
-#include "message.h"
+#include <string_view>
 
 #include "bytes.h"
+#include "message.h"
+#include "time.h"
+#include "util.h"
+
+using namespace std;
 
 /* try to avoid being annoying if something is wrong */
 static bool hh_ok = false;
@@ -21,14 +17,12 @@ static bool hh_ok = false;
 static int hh_lastupdate = 0;
 static int hh_lastupgrade = 0;
 
-/* XXX ??? */
-/* static int hh_lasttutorial = 0; */
+static constexpr std::string_view HANDHOLD_MAGIC = "ESXH";
+static constexpr std::string_view HANDHOLD_FILE = "history.esd";
 
-#define HANDHOLD_MAGIC "ESXH"
-#define HANDHOLD_FILE "history.esd"
-
-#define UPDATE_INTERVAL ((24 * (60 * (60 /* minutes */) /* hours */) /* days */) * 14)
-#define UPGRADE_INTERVAL (UPDATE_INTERVAL * 2)
+static constexpr int UPDATE_INTERVAL =
+  ((24 * (60 * (60 /* minutes */) /* hours */) /* days */) * 14);
+static constexpr int UPGRADE_INTERVAL = UPDATE_INTERVAL * 2;
 
 static bool hh_write() {
   return Util::WriteFile(HANDHOLD_FILE,
@@ -38,9 +32,9 @@ static bool hh_write() {
 }
 
 void HandHold::init() {
-  string hh = EscapeUtil::readfilemagic(HANDHOLD_FILE, HANDHOLD_MAGIC);
+  string hh = Util::ReadFileMagic(HANDHOLD_FILE, HANDHOLD_MAGIC);
 
-  unsigned int idx = strlen(HANDHOLD_MAGIC);
+  unsigned int idx = HANDHOLD_MAGIC.size();
   if (hh.length() == (idx + (2 * 4))) {
     hh_lastupdate = ReadBigEndian32(hh, idx);
     hh_lastupgrade = ReadBigEndian32(hh, idx);
@@ -55,27 +49,28 @@ void HandHold::init() {
 }
 
 void HandHold::firsttime() {
-  Message::Quick(0,
-                 GREEN "Welcome to Escape!\n"
-                 "\n"
-                 "You should start by creating a new player.\n"
-                 "    " GREY "(on the next screen)" POP "\n"
-                 "\n"
-                 "Escape has a number of internet features. If\n"
-                 "you're connected, it is recommended that you do\n"
-                 "this stuff before playing:\n"
-                 "\n"
-                 "  " PICS ARROWR POP
-                 " Register your player with the server.\n"
+  Message::Quick(
+      0,
+      GREEN "Welcome to Escape!\n"
+      "\n"
+      "You should start by creating a new player.\n"
+      "    " GREY "(on the next screen)" POP "\n"
+      "\n"
+      "Escape has a number of internet features. If\n"
+      "you're connected, it is recommended that you do\n"
+      "this stuff before playing:\n"
+      "\n"
+      "  " PICS ARROWR POP
+      " Register your player with the server.\n"
 # ifndef MULTIUSER
-                 "  " PICS ARROWR POP " Upgrade Escape (if available).\n"
+      "  " PICS ARROWR POP " Upgrade Escape (if available).\n"
 # endif
-                 "  " PICS ARROWR POP " Get any new levels (if available).\n"
-                 "\n"
-                 "You can do each of these from the main menu."
-                 "\n ",
-                 "Play the game!",
-                 "", PICS EXCICON POP);
+      "  " PICS ARROWR POP " Get any new levels (if available).\n"
+      "\n"
+      "You can do each of these from the main menu."
+      "\n ",
+      "Play the game!",
+      "", PICS EXCICON POP);
 
   /* XXX could use build date here */
   hh_lastupdate = 0;
@@ -96,13 +91,13 @@ void HandHold::did_upgrade() {
 
 
 bool HandHold::recommend_update() {
-  return hh_ok && (hh_lastupdate < (time(0) - UPDATE_INTERVAL));
+  return hh_ok && hh_lastupdate < (time(0) - UPDATE_INTERVAL);
 }
 
 bool HandHold::recommend_upgrade() {
 # ifdef MULTIUSER
   return false;
 # else
-  return hh_ok && (hh_lastupgrade < (time(0) - UPGRADE_INTERVAL));
+  return hh_ok && hh_lastupgrade < (time(0) - UPGRADE_INTERVAL);
 # endif
 }

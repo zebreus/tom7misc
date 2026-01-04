@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-#include "../cc-lib/image.h"
+#include "image.h"
 
 /* Size of zoom 0 tiles.
    We assume that these are

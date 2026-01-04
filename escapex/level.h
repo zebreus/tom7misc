@@ -290,7 +290,7 @@ struct Level {
 
   /* shot by laser at (tilex, tiley) in direction (dir),
      or standing on a non-deleted bot. */
-  bool isdead(int &tilex, int &tiley, dir &d) const;
+  bool IsDead(int &tilex, int &tiley, dir &d) const;
 
   /* returns true if move had effect. */
   bool Move(dir d);

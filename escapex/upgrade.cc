@@ -1,24 +1,35 @@
 
 #include "upgrade.h"
 
-#include <vector>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <format>
+#include <memory>
+#include <stdio.h>
+#include <string.h>
 #include <string>
+#include <string_view>
 #include <utility>
-#include <time.h>
+#include <vector>
 
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
-
-#include "escape-util.h"
-#include "textscroll.h"
-#include "prompt.h"
-#include "message.h"
-#include "chars.h"
-#include "handhold.h"
-#include "startup.h"
+#include "SDL_video.h"
 #include "base.h"
+#include "chars.h"
 #include "client.h"
+#include "crypt/md5.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "handhold.h"
+#include "http.h"
+#include "message.h"
+#include "player.h"
+#include "sdl/sdlutil.h"
+#include "startup.h"
+#include "textscroll.h"
+#include "util.h"
 
 #ifdef WIN32
 /* this will only exist on windows */
@@ -81,7 +92,7 @@ typedef vallist<upitem> ulist;
 struct Upgrader_ : public Upgrader {
   static Upgrader_ *Create(Player *p);
 
-  UpgradeResult Upgrade(string &msg) override;
+  UpgradeResult Upgrade(string_view msg) override;
 
   void Draw() override {
     sdlutil::clearsurface(screen, BGCOLOR);
@@ -134,14 +145,10 @@ Upgrader_ *Upgrader_::Create(Player *p) {
 /* false if file doesn't exist.
    otherwise, md5 is set to the md5
    hash of its contents */
-bool md5file(string f, string &md5) {
-  FILE *ff = fopen(f.c_str(), "rb");
-  if (!ff) return false;
-  else {
-    md5 = MD5::Hashf(ff);
-    fclose(ff);
-    return true;
-  }
+static bool md5file(std::string_view f, string &md5) {
+  if (!Util::ExistsFile(f)) return false;
+  md5 = MD5::Hashv(Util::ReadFileBytes(f));
+  return true;
 }
 
 /* download anything in 'upthese', replacing the current
@@ -164,7 +171,7 @@ UpResult Upgrader_::doupgrade(HTTP *hh, string &msg,
       say("Connecting...");
       Redraw();
 
-      switch (hh->gettempfile(dl, hd->head.tempfile)) {
+      switch (hh->GetTempFile(dl, hd->head.tempfile)) {
       case HTTPResult::OK:
         unsay();
         say((string)"    ..." GREEN "OK: " + hd->head.tempfile + POP);
@@ -340,9 +347,9 @@ UpResult Upgrader_::doupgrade(HTTP *hh, string &msg,
     // Maybe I'm just confused.
     char **spawnargs =
       (char **) malloc(sizeof (char *) *
-                             ((nmoves * 2) + 1 /* argv[0] */
-                              + 1 /* execafter */
-                              + 1 /* terminating 0 */));
+                       ((nmoves * 2) + 1 /* argv[0] */
+                        + 1 /* execafter */
+                        + 1 /* terminating 0 */));
 
     spawnargs[0] = strdup(REPLACE_EXE);
     spawnargs[1] = strdup(StartUp::self.c_str());
@@ -402,7 +409,7 @@ CUResult Upgrader_::checkupgrade(HTTP *hh,
   /* start by checking for new versions of escape itself. */
   string s;
   say("Connecting...");
-  HTTPResult hr = hh->get(UPGRADEURL, s);
+  HTTPResult hr = hh->Get(UPGRADEURL, s);
   if (hr == HTTPResult::OK) {
     /* parse result. see protocol.txt */
     int nfiles  = EscapeUtil::stoi(EscapeUtil::getline(s));
@@ -535,7 +542,7 @@ CUResult Upgrader_::checkupgrade(HTTP *hh,
   }
 }
 
-UpgradeResult Upgrader_::Upgrade(string &msg) {
+UpgradeResult Upgrader_::Upgrade(string_view msg) {
   /* no matter what, cancel the hint to upgrade */
   HandHold::did_upgrade();
 
@@ -550,20 +557,19 @@ UpgradeResult Upgrader_::Upgrade(string &msg) {
   int last = -1000;
   int64 ltime = time(nullptr);
   hh->SetCallback([this, &last, &ltime]
-		  (int recvd, int total) {
-		    if (recvd > (last + 16384) ||
-			ltime < time(0)) {
-		      if (tx != nullptr) {
-			tx->Unsay();
-			tx->Say(
-                            StringPrintf(GREEN "%d" GREY "/" POP "%d" POP,
-                                         recvd, total));
-			Redraw();
-		      }
-		      last = recvd;
-		      ltime = time(0);
-		    }
-		  });
+      (int recvd, int total) {
+        if (recvd > (last + 16384) ||
+            ltime < time(0)) {
+          if (tx != nullptr) {
+            tx->Unsay();
+            tx->Say(std::format(GREEN "{}" GREY "/" POP "{}" POP,
+                                recvd, total));
+            Redraw();
+          }
+          last = recvd;
+          ltime = time(0);
+        }
+      });
   ulist *download = nullptr;
 
   /* XXX what is the point of the 'ok' list? */
@@ -590,8 +596,8 @@ UpgradeResult Upgrader_::Upgrade(string &msg) {
 
     say("Upgrade: " BLUE "The following files are not up-to-date:" POP);
     for (ulist *tmp = download;
-	 tmp;
-	 tmp = tmp->next) {
+   tmp;
+   tmp = tmp->next) {
       /* XXX print delete, symlink, etc */
       say((string)"  " YELLOW + tmp->head.filename + POP);
     }

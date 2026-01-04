@@ -15,6 +15,7 @@
 
 
 #include "escapex.h"
+#include "httputil.h"
 #include "level.h"
 #include "directories.h"
 
@@ -129,8 +130,8 @@ struct LLEntry {
 
   /* default: directories are first */
   static bool default_dirs(int &ret,
-			   const LLEntry &l,
-			   const LLEntry &r) {
+         const LLEntry &l,
+         const LLEntry &r) {
 
     /* make this appear first */
     if (l.fname == ".." && r.fname != "..") {
@@ -717,11 +718,11 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
         } else {
           int ttt, sss;
 
-	  // Note 2016: I may have changed the behavior here
-	  // on directories with .escignore.
+    // Note 2016: I may have changed the behavior here
+    // on directories with .escignore.
           int dcp = SDL_GetTicks() + (PROGRESS_TICKS * 2);
           if (DirIndex *iii =
-	      cache->Get(ldn, ttt, sss, Progress::drawbar,
+        cache->Get(ldn, ttt, sss, Progress::drawbar,
                          (void *)&dcp)) {
 
             /* only show if it has levels,
@@ -796,7 +797,7 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
         nsel->items[i].date = 0;
         nsel->items[i].owned = false;
         nsel->items[i].managed = thisindex.get() != nullptr &&
-	  thisindex->WebCollection();
+    thisindex->WebCollection();
 
         /* failure result is ignored, because the
            votes are initialized to 0 anyway */
@@ -1083,34 +1084,34 @@ string LoadLevel_::Loop() {
                 items.push_back(&pass);
               items.push_back(&spacer);
               items.push_back(&ok);
-              items.push_back(&can);              
+              items.push_back(&can);
 
               /* display menu */
-	      std::unique_ptr<Menu> mm =
-		Menu::Create(0, "Really delete?",
-                             items, 
+        std::unique_ptr<Menu> mm =
+    Menu::Create(0, "Really delete?",
+                             items,
                              false);
               InputResultKind res = mm->menuize();
-	      mm.reset();
+        mm.reset();
 
               if (res == InputResultKind::OK) {
                 /* ask server */
                 string res;
                 if (Client::QuickRPC(
                         plr, DELETE_RPC,
-                        StringPrintf(
-                            "pass=%s"
-                            "&id=%d"
-                            "&seql=%d"
-                            "&seqh=%d"
-                            "&md=%s"
-                            "&text=%s",
-                            HTTPUtil::URLEncode(pass.input).c_str(),
+                        std::format(
+                            "pass={}"
+                            "&id={}"
+                            "&seql={}"
+                            "&seqh={}"
+                            "&md={}"
+                            "&text={}",
+                            HTTPUtil::URLEncode(pass.input),
                             plr->webid,
                             plr->webseql,
                             plr->webseqh,
-                            MD5::Ascii(md5).c_str(),
-                            HTTPUtil::URLEncode(desc.get_text()).c_str()),
+                            MD5::Ascii(md5),
+                            HTTPUtil::URLEncode(desc.GetText())),
                         res)) {
 
                   Message::Quick(this, "Success!", "OK", "",
@@ -1257,7 +1258,7 @@ string LoadLevel_::Loop() {
 
                 /* This does its own error reporting */
                 CommentScreen::Comment(
-		    plr, sel->items[sel->selected].lev.get(), md);
+        plr, sel->items[sel->selected].lev.get(), md);
 
               }
             } else {
@@ -1296,9 +1297,9 @@ string LoadLevel_::Loop() {
                 fclose(f);
 
                 std::unique_ptr<RateScreen> rs{
-		  RateScreen::Create(plr,
-				     sel->items[sel->selected].lev.get(),
-				     md)};
+      RateScreen::Create(plr,
+             sel->items[sel->selected].lev.get(),
+             md)};
                 if (rs.get() != nullptr) {
                   rs->Rate();
                 } else {
@@ -1359,8 +1360,8 @@ string LoadLevel_::Loop() {
             Cancel can;
 
             /* display menu */
-	    std::unique_ptr<Menu> mm =
-	      Menu::Create(this, "Solve from bookmarks?",
+      std::unique_ptr<Menu> mm =
+        Menu::Create(this, "Solve from bookmarks?",
                            {
                              &message1,
                              &message2,
@@ -1380,7 +1381,7 @@ string LoadLevel_::Loop() {
               solvefrombookmarks(filename.input, everything.checked);
             }
 
-	    mm.reset();
+      mm.reset();
 
             fix_show();
             sel->Redraw();
@@ -1437,8 +1438,8 @@ string LoadLevel_::Loop() {
                 Cancel can;
 
                 /* display menu */
-		std::unique_ptr<Menu> mm =
-		  Menu::Create(0, "Really upload?",
+    std::unique_ptr<Menu> mm =
+      Menu::Create(0, "Really upload?",
                                {
                                  &message,
                                  &message2,
@@ -1456,7 +1457,7 @@ string LoadLevel_::Loop() {
                                },
                                false);
                 InputResultKind res = mm->menuize();
-		mm.reset();
+    mm.reset();
 
                 if (res != InputResultKind::OK) {
                   sel->Redraw();
@@ -1482,7 +1483,7 @@ string LoadLevel_::Loop() {
                   sel->items[sel->selected].ActualFile(path);
 
                 /* don't bother with message; upload does it */
-                switch (uu->Up(plr, file, desc.get_text())) {
+                switch (uu->Up(plr, file, desc.GetText())) {
                 case UploadResult::OK:
                   break;
                 default:

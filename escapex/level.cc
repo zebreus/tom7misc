@@ -1,12 +1,20 @@
 
 #include "level.h"
 
-#include <string>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
 
-#include "ptrlist.h"
-#include "rle.h"
+#include "aevent.h"
 #include "bytes.h"
+#include "disamb.h"
+#include "level-base.h"
+#include "rle.h"
+#include "solution.h"
 
 /* This code is non-SDL, so it should be portable! */
 
@@ -37,7 +45,7 @@ bool Level::allowbeam(int tt) {
    fires in. */
 /* also now checks for cohabitation with bots, which
    is deadly */
-bool Level::isdead(int &tilex, int &tiley, dir &d) const {
+bool Level::IsDead(int &tilex, int &tiley, dir &d) const {
   /* are we in the same square as a bot? Then we die. */
   if (botat(guyx, guyy)) {
     tilex = guyx;
@@ -759,7 +767,7 @@ bool Level::VerifyPrefix(const Level *lev, const Solution &s,
       out.Append(d);
       /* potentially fail *after* each move */
       int dummy; dir dumb;
-      if (l->isdead(dummy, dummy, dumb)) return false;
+      if (l->IsDead(dummy, dummy, dumb)) return false;
       if (l->iswon()) {
         *out_ref = std::move(out);
         return true;
@@ -776,7 +784,7 @@ bool Level::Verify(const Level *lev, const Solution &s) {
 
   int moves;
   const bool won = l->Play(s, moves);
-  
+
   return won && moves == s.Length();
 }
 
@@ -789,7 +797,7 @@ bool Level::PlayPrefix(const Solution &s, int &moves, int start, int len) {
     if (Move(d)) {
       /* potentially fail *after* each move */
       int dummy; dir dumb;
-      if (isdead(dummy, dummy, dumb)) return false;
+      if (IsDead(dummy, dummy, dumb)) return false;
       if (iswon()) return true;
     }
 

@@ -1,6 +1,7 @@
 
 #include "solutionuploading.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -8,11 +9,16 @@
 #include "../cc-lib/util.h"
 #include "../cc-lib/base64.h"
 
+#include "draw.h"
+#include "drawable.h"
+#include "httputil.h"
 #include "message.h"
+#include "player.h"
 #include "prompt.h"
 #include "client.h"
 #include "http.h"
 #include "menu.h"
+#include "solution.h"
 #include "textbox.h"
 #include "optimize.h"
 #include "play.h"
@@ -79,7 +85,7 @@ void SolutionUploading::PromptUpload(Drawable *below,
     &ok,
     &can,
   };
-    
+
   /* display menu */
   std::unique_ptr<Menu> mm =
     Menu::Create(below, "Upload solution?", items, false);
@@ -119,7 +125,7 @@ void SolutionUploading::PromptUpload(Drawable *below,
         FormEntry::Arg("md", MD5::Ascii(lmd5)),
         FormEntry::Arg("name", name.input),
         FormEntry::Arg("speedonly", speed.checked ? "1" : "0"),
-        FormEntry::Arg("desc", desc.get_text()),
+        FormEntry::Arg("desc", desc.GetText()),
         FormEntry::File("sol", "sol.esx", solcont),
       };
 
@@ -128,12 +134,13 @@ void SolutionUploading::PromptUpload(Drawable *below,
 
       string out;
       if (Client::RPCPut(hh.get(), UPLOADSOL_RPC, fl, out)) {
-        if (speedrec)
+        if (speedrec) {
           Message::Quick(&td, GREEN "Success! the record is yours!" POP,
                          "OK", "", PICS THUMBICON POP);
-        else
+        } else {
           Message::Quick(&td, GREEN "Success!" POP,
                          "OK", "", PICS THUMBICON POP);
+        }
       } else {
         Message::No(&td, RED "Upload failed: " +
                     out + POP);

@@ -4,9 +4,11 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "SDL_video.h"
+#include "base/print.h"
 #include "drawable.h"
 #include "escape-util.h"
 #include "escapex.h"
@@ -17,6 +19,8 @@
 #include "prefs.h"
 #include "textscroll.h"
 #include "util.h"
+
+using namespace std;
 
 HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
   std::unique_ptr<HTTP> hh{HTTP::Create()};
@@ -37,7 +41,7 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
   string ua = "Escape (" VERSION "; " PLATFORM ")";
   if (tx) tx->Say((string)"This is: " + ua);
 
-  hh->setua(ua);
+  hh->SetUA(ua);
 
   if (tx) tx->Say((string)
                   "Connecting to " YELLOW + serveraddress +
@@ -48,7 +52,7 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
     SDL_Flip(screen);
   }
 
-  if (!hh->connect(serveraddress, serverport)) {
+  if (!hh->Connect(serveraddress, serverport)) {
     if (tx) tx->Say((string)RED "Couldn't connect to "
                     YELLOW + serveraddress + POP ".");
     Message::Quick(that, "Can't connect!", "Cancel", "");
@@ -61,7 +65,7 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
 bool Client::RPC(HTTP *hh, const string &path, const string &query,
                  string &ret) {
   string m;
-  HTTPResult hr = hh->get(path + (string)"?" + query, m);
+  HTTPResult hr = hh->Get(path + (string)"?" + query, m);
 
   if (hr == HTTPResult::OK) {
 
@@ -135,11 +139,11 @@ bool Client::RPCPut(HTTP *hh, const string &path,
   }
 }
 
-void Client::DebugLogMessage(const string &s) {
+void Client::DebugLogMessage(string_view s) {
   FILE *f = fopen(HTTP_DEBUGFILE, "a");
 
   if (f) {
-    fprintf(f, "%s", s.c_str());
+    Print(f, "{}", s);
     fclose(f);
   }
 }

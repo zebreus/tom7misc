@@ -1,19 +1,14 @@
 
-// XXX: Merge this with cc-lib's Util class,
-// probably by renaming this to like escape_util, and then
-// calling the Util methods where possible, until this is
-// only stuff of local interest.
+// XXX: Merge this with cc-lib's Util class, by calling
+// the Util methods where possible until we only have
+// stuff of local interest in here.
 
 #ifndef _ESCAPE_UTIL_H
 #define _ESCAPE_UTIL_H
 
 #include <cstdlib>
-#include <map>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
 #include <string>
-
-using namespace std;
 
 #define ATTIC_DIR "attic"
 
@@ -24,8 +19,6 @@ using namespace std;
 #   define DIRSEP  "/"
 #   define DIRSEPC '/'
 #endif
-
-#define UTIL_PI 3.141592653589f
 
 template <class T>
 struct vallist {
@@ -48,7 +41,7 @@ struct vallist {
 
   /* ie, destroy */
   static void diminish(vallist<T> *&sl) {
-    T dummy;
+    T dummy = {};
     while (sl != nullptr) pop(sl, dummy);
   }
 
@@ -75,6 +68,7 @@ struct vallist {
 };
 
 struct EscapeUtil {
+  using string = std::string;
   /* only read if the file begins with the magic string */
   static bool hasmagic(string, const string &magic);
   static string readfilemagic(string, const string &magic);

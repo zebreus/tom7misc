@@ -390,7 +390,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
 
   int dx, dy;
   dir dd;
-  bool isdead = lev->isdead(dx, dy, dd);
+  bool isdead = lev->IsDead(dx, dy, dd);
 
   /* if dead by laser, draw laser */
   if (isdead && dd != DIR_NONE) {

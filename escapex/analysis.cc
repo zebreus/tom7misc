@@ -52,7 +52,7 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
 
         /* mustn't be dead already! */
         int dummy; dir unused;
-        if (cl->isdead(dummy, dummy, unused)) continue;
+        if (cl->IsDead(dummy, dummy, unused)) continue;
 
         for (dir d = FIRST_DIR; d <= LAST_DIR; d++) {
           std::unique_ptr<Level> cc = cl->Clone();
@@ -64,14 +64,14 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
           /* PERF could save some work by checking if they're
              already unioned */
           if (IsEmpty(lev->tileat(destx, desty)) &&
-              cc->Move(d) && !cc->isdead(dummy, dummy, unused)) {
+              cc->Move(d) && !cc->IsDead(dummy, dummy, unused)) {
             /* good. now just check the opposite... */
             std::unique_ptr<Level> co = cl->Clone();
 
             co->warp(cl->guyx, cl->guyy, destx, desty);
 
             if (co->Move(dir_reverse(d)) &&
-                !co->isdead(dummy, dummy, unused)) {
+                !co->IsDead(dummy, dummy, unused)) {
 
               /* these two spots are mutually accessible,
                  so union them */

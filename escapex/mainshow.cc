@@ -3,18 +3,23 @@
 
 #include <memory>
 
+#include "SDL_video.h"
+#include "aevent.h"
 #include "draw.h"
-#include "version.h"
 #include "escape-util.h"
-#include "loadlevel.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level-base.h"
+#include "level.h"
 #include "message.h"
-#include "play.h"
-#include "generator.h"
 #include "textscroll.h"
+#include "version.h"
 
-#define EXIT_FREQ 10
-#define GUY_FREQ 40
-#define LEVEL_FREQ 300
+static constexpr int EXIT_FREQ = 10;
+static constexpr int GUY_FREQ = 40;
+static constexpr int LEVEL_FREQ = 300;
+
+using namespace std;
 
 namespace {
 
@@ -86,7 +91,7 @@ void MainShow_::draw(int x, int y, SDL_Surface *surf) {
 void MainShow_::step() {
   int dumb, dumby;
   dir dummy;
-  if (level->isdead(dumb, dumby, dummy)) {
+  if (level->IsDead(dumb, dumby, dummy)) {
     tx->Say(RED "Drat!");
     newguy();
   }

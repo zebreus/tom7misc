@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <numbers>
 #include <string>
 
 #include "SDL_timer.h"
@@ -1858,7 +1859,7 @@ bool Animation::ainit_flips() {
     /* flip_out is normal */
     for (int f = 0; f < NUM_FLIPFRAMES; f++) {
 
-      float dist = ((float)f / NUM_FLIPFRAMES) * (UTIL_PI * 0.5f);
+      float dist = ((float)f / NUM_FLIPFRAMES) * (std::numbers::pi * 0.5f);
 
       int overlap = (int) (sin(dist) * FLIP_PIXELS_OVERLAP);
 

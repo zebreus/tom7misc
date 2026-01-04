@@ -2,10 +2,9 @@
 #ifndef _ESCAPE_TEXTSCROLL_H
 #define _ESCAPE_TEXTSCROLL_H
 
-#include <string>
+#include <string_view>
 
 #include "SDL_video.h"
-
 #include "drawable.h"
 
 struct Font;
@@ -22,7 +21,7 @@ struct TextScroll : public Drawable {
 
   /* at default size = entire screen */
   static TextScroll *Create(Font *);
-  virtual void Say(std::string s) = 0;
+  virtual void Say(std::string_view s) = 0;
   virtual void Unsay() = 0;
 
   /* for Drawable interface */

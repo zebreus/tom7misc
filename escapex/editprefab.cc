@@ -1,23 +1,17 @@
 #include "edit.h"
 
-#include "SDL.h"
-#include <math.h>
+#include <memory>
+#include <stdlib.h>
+#include <string>
 
-#include "level.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/util.h"
 #include "draw.h"
-
-#include "escapex.h"
-#include "play.h"
-#include "prompt.h"
-
 #include "escape-util.h"
-
+#include "level-base.h"
+#include "level.h"
 #include "loadlevel.h"
-
-#include "message.h"
 #include "menu.h"
+#include "message.h"
+#include "util.h"
 
 enum { PF_NONE = 0, PF_TIMER, PF_FILE, };
 
@@ -27,7 +21,7 @@ bool Editor::moveplayersafe() {
       level->guyy >= selection.y &&
       level->guyx < (selection.x + selection.w) &&
       level->guyy < (selection.y + selection.h)) {
-    for (int y = 0; y < level->h; y++)
+    for (int y = 0; y < level->h; y++) {
       for (int x = 0; x < level->w; x++) {
         if (x >= selection.x &&
             y >= selection.y &&
@@ -41,6 +35,7 @@ bool Editor::moveplayersafe() {
 
         return true;
       }
+    }
     return false;
   } else return true;
 }
@@ -346,9 +341,11 @@ void Editor::pftimer() {
     int M[LEVEL_MAX_WIDTH];
     int A[LEVEL_MAX_WIDTH];
 
-    for (int i = 1; (i < LEVEL_MAX_ROBOTS - level->nbots) &&
-                    i < (selection.w - 2) &&
-                    i < (selection.h - 2); i++) {
+    for (int i = 1;
+         i < (LEVEL_MAX_ROBOTS - level->nbots) &&
+           i < (selection.w - 2) &&
+           i < (selection.h - 2);
+         i++) {
       if (timer_try(M, A, 0, i, n, reverse.checked)) return;
     }
 
@@ -394,7 +391,7 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
     printf("okay: i=%d\n", i);
     for (int z = 0; z < i; z++) {
       printf("  M[%d] = %d, A[%d] = %d\n",
-	     z, M[z], z, A[z]);
+       z, M[z], z, A[z]);
     }
     #endif
     /* write it... */
@@ -402,8 +399,8 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
     /* black out selection */
     for (int x = selection.x; x < selection.x + selection.w; x++) {
       for (int y = selection.y; y < selection.y + selection.h; y++) {
-	level->settile(x, y, T_BLACK);
-	clearbot(x, y);
+        level->settile(x, y, T_BLACK);
+        clearbot(x, y);
       }
     }
 
@@ -426,7 +423,7 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
       level->settile(trigx + dx * (i + 1), trigy, T_RPANEL);
       /* target self, I guess? */
       level->setdest(trigx + dx * (i + 1), trigy,
-		     trigx + dx * (i + 1), trigy);
+                     trigx + dx * (i + 1), trigy);
 
       for (int z = 0; z < i; z++) {
         int home = (rootx + dx * (selection.w - 1)) - (dx * M[z]);
@@ -446,8 +443,7 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
 
         /* teleporter at far right. */
         level->settile(rootx + dx * (selection.w - 1), y, T_TRANSPORT);
-        level->setdest(rootx + dx * (selection.w - 1), y,
-		       home, y);
+        level->setdest(rootx + dx * (selection.w - 1), y, home, y);
 
         /* make panel */
         level->settile(home, y, T_PANEL);
@@ -458,7 +454,7 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
         /* do a pre-emptive swap if bot starts home, since he'll be
            on the panel */
         if (A[z] == 0)
-	  level->swapo(level->index(trigx + dx * (1 + z), trigy));
+          level->swapo(level->index(trigx + dx * (1 + z), trigy));
 
         if (level->nbots >= LEVEL_MAX_ROBOTS) {
           Message::Bug(this, "oops, exceeded bots! bug!");

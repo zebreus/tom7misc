@@ -2,10 +2,11 @@
 #include "textscroll.h"
 
 #include <string>
+#include <string_view>
 
 #include "SDL_video.h"
 #include "escapex.h"
-#include "draw.h"
+#include "sdl/font.h"
 
 #define BACKLOG 256
 
@@ -14,7 +15,7 @@ using namespace std;
 namespace {
 struct TextScroll_ : public TextScroll {
   static TextScroll_ *Create(Font *f);
-  void Say(string s) override;
+  void Say(string_view s) override;
   void Unsay() override;
 
   /* Drawable */
@@ -47,7 +48,7 @@ TextScroll_ *TextScroll_::Create(Font *f) {
   return ts;
 }
 
-void TextScroll_::Say(string s) {
+void TextScroll_::Say(string_view s) {
   /* write new entry */
   log[pwrite] = s;
   pwrite++;
@@ -74,7 +75,7 @@ void TextScroll_::DrawTo(SDL_Surface *surf) {
   if (!surf) surf = screen;
 
   int y = (posy + height) - (ft->height + vskip);
-  int l = pwrite?(pwrite-1):(BACKLOG-1);
+  int l = pwrite ? (pwrite-1) : (BACKLOG-1);
 
   while (y > posy) {
     ft->drawto(surf, posx, y, log[l]);

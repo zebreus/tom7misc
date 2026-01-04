@@ -2,10 +2,15 @@
 #define _ESCAPE_TEXTBOX_H
 
 #include <string>
+#include <string_view>
+
+#include "SDL_events.h"
 #include "menu.h"
 #include "escape-util.h"
 
 struct TextBox : public MenuItem {
+  using string = std::string;
+
   string helptext() override {
     return "Use like a normal simple editor. " BLUE "Tab" POP " exits.";
   }
@@ -13,10 +18,10 @@ struct TextBox : public MenuItem {
   void size(int &w, int &h) override;
   ~TextBox() override { Clear(); }
 
-  string get_text();
+  string GetText();
   /* puts cursor at the beginning, 0 scroll.
      might want to call goto_end after setting. */
-  void set_text(string);
+  void SetText(std::string_view);
 
   InputResult key(SDL_Event e) override;
 
@@ -27,7 +32,7 @@ struct TextBox : public MenuItem {
   void goto_beginning();
   void goto_end();
 
-  private:
+ private:
   /* we use a "red sea" implementation, where the cursor
      is the cleaving, and we insert new chars onto the head
      of before (which appears in reverse order) */
@@ -49,7 +54,7 @@ struct TextBox : public MenuItem {
   void up();
   void down();
   void right(bool erasing);
-  int  countprevline(vallist<char> *&bb);
+  int countprevline(vallist<char> *&bb);
 };
 
 #endif

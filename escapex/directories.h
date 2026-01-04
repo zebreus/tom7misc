@@ -24,6 +24,8 @@
 
 #else
 
+#error MSC_VER build is gone!
+
 typedef struct DIR DIR;
 
 struct dirent {

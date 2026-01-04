@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "SDL_events.h"
@@ -33,7 +34,7 @@ using namespace std;
 
 /* XXX moves cursor home. this is OK for current use,
    but should be documented */
-string TextBox::get_text() {
+string TextBox::GetText() {
   /* go home (to avoid virtual line breaks) */
   while (before) left(false);
   int len = after->length();
@@ -63,7 +64,7 @@ void TextBox::Clear() {
   vallist<char>::diminish(after);
 }
 
-void TextBox::set_text(string s) {
+void TextBox::SetText(string_view s) {
   /* remove what's there */
   Clear();
   before = 0;

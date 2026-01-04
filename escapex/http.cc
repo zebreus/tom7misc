@@ -2,13 +2,19 @@
 #include "http.h"
 #include "httputil.h"
 
-#include <vector>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <format>
+#include <functional>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
-
+#include "SDL_net.h"
 #include "escape-util.h"
+#include "util.h"
 
 using namespace std;
 
@@ -18,11 +24,11 @@ namespace {
 struct HTTP_ : public HTTP {
   HTTP_();
   ~HTTP_() override;
-  void setua(string) override;
-  bool connect(string host, int port = 80) override;
-  HTTPResult get(string path, string &out) override;
-  HTTPResult gettempfile(string path, string &file) override;
-  HTTPResult Put(const string &path,
+  void SetUA(string_view ua) override;
+  bool Connect(string_view host, int port = 80) override;
+  HTTPResult Get(string_view path, string &out) override;
+  HTTPResult GetTempFile(string_view path, string &file) override;
+  HTTPResult Put(string_view path,
                  const vector<FormEntry> &items,
                  string &out) override;
 
@@ -60,14 +66,14 @@ struct HTTP_ : public HTTP {
   string host;
 };
 
-HTTPResult HTTP_::get(string path, string &out_) {
-  DMSG(EscapeUtil::ptos(this) + " get(" + path + ")\n");
-  return get_general(path, out_, false);
+HTTPResult HTTP_::Get(string_view path, string &out_) {
+  DMSG(std::format("{:p} get({})\n", (void *)this, path));
+  return get_general(std::string(path), out_, false);
 }
 
-HTTPResult HTTP_::gettempfile(string path, string &out_) {
-  DMSG(EscapeUtil::ptos(this) + " gettempfile(" + path + ")\n");
-  return get_general(path, out_, true);
+HTTPResult HTTP_::GetTempFile(string_view path, string &out_) {
+  DMSG(std::format("{:p} gettempfile({})\n", (void *)this, path));
+  return get_general(std::string(path), out_, true);
 }
 
 HTTP_::HTTP_() {
@@ -84,15 +90,15 @@ HTTP_::~HTTP_() {
   }
 }
 
-void HTTP_::setua(string s) {
-  ua = std::move(s);
+void HTTP_::SetUA(string_view ua_view) {
+  ua = std::string(ua_view);
 }
 
-bool HTTP_::connect(string chost, int port) {
-  DMSG(StringPrintf("%p connect '%s':%d\n", this, chost.c_str(), port));
+bool HTTP_::Connect(string_view chost, int port) {
+  DMSG(std::format("{:p} connect '{}':{}\n", (void*)this, chost, port));
 
   /* should work for "snoot.org" or "128.2.194.11" */
-  if (SDLNet_ResolveHost(&remote, (char *)chost.c_str(), port)) {
+  if (SDLNet_ResolveHost(&remote, (char *)std::string(chost).c_str(), port)) {
     DMSG(EscapeUtil::ptos(this) + " can't resolve: " +
          (string)(SDLNet_GetError()) + "\n");
     return false;
@@ -126,7 +132,7 @@ bool sendall(TCPsocket socket, string d) {
   else return true;
 }
 
-HTTPResult HTTP_::Put(const string &path,
+HTTPResult HTTP_::Put(string_view path,
                       const vector<FormEntry> &items,
                       string &out) {
 
@@ -165,14 +171,20 @@ HTTPResult HTTP_::Put(const string &path,
   /* XXX if I use http/1.1 here, result has some extra
      crap at the beginning */
   string hdr =
-    "POST " + path + " HTTP/1.0\r\n"
-    "User-Agent: " + ua + "\r\n"
-    "Host: " + host + "\r\n"
+    std::format(
+    "POST {} HTTP/1.0\r\n"
+    "User-Agent: {}\r\n"
+    "Host: {}\r\n"
     "Accept: */*\r\n"
     //    "Connection: close\r\n"
-    "Content-Type: multipart/form-data; boundary=" + boundary + "\r\n"
-    "Content-Length: " + Util::itos(clen) + "\r\n"
-    "\r\n";
+    "Content-Type: multipart/form-data; boundary={}\r\n"
+    "Content-Length: {}\r\n"
+    "\r\n",
+    path,
+    ua,
+    host,
+    boundary,
+    clen);
 
   return req_general(hdr + body, out, false);
 }
@@ -381,9 +393,9 @@ FILE *HTTP_::TempFile(string &f) {
   int tries = 256;
   call++;
   while (tries--) {
-    char fname[256];
-    sprintf(fname, "dl%d%04X%04X.deleteme", call, pid,
-            (int)(0xFFFF & EscapeUtil::random()));
+    std::string fname =
+      std::format("dl{}{:04X}{:04X}.deleteme", call, pid,
+                  (int)(0xFFFF & EscapeUtil::random()));
 
     FILE *ret = EscapeUtil::open_new(fname);
     if (ret) {

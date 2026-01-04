@@ -3,15 +3,19 @@
 #define _ESCAPE_CLIENT_H
 
 #include "drawable.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "httputil.h"
 #include "textscroll.h"
 #include "http.h"
 #include "chars.h"
-#include "message.h"
-#include "escape-util.h"
 #include "player.h"
-#include "prefs.h"
 #include "draw.h"
-#include "../cc-lib/sdl/sdlutil.h"
+#include "sdl/sdlutil.h"
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #define SUPERUSER (1)
 
@@ -26,11 +30,13 @@
 #define HTTP_DEBUGFILE "netdebug.txt"
 
 struct Client {
+  using string = std::string;
+
   static HTTP *Connect(Player *plr, TextScroll *tx, Drawable *that);
 
   /* XX add bool quiet=true; when false show progress */
   static bool QuickRPC(Player *, const string &path,
-		       const string &query, string &ret);
+                       const string &query, string &ret);
 
   /* true on success */
   static bool RPC(HTTP *hh, const string &path, const string &query,
@@ -39,9 +45,9 @@ struct Client {
   static bool RPCPut(HTTP *hh, const string &path,
                      const std::vector<FormEntry> &fl,
                      string &ret);
-  
-  static void DebugLogMessage(const string &s);
-  
+
+  static void DebugLogMessage(std::string_view s);
+
   /* need the drawable to draw background, too */
   /* static */
   struct QuickTxDraw : public Drawable {

@@ -1,39 +1,49 @@
 
 #include "play.h"
 
-#include <math.h>
+#include <algorithm>
+#include <cstdio>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "SDL.h"
-
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base64.h"
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/util.h"
-
-#include "time.h"
-#include "level.h"
-#include "draw.h"
-
-#include "escapex.h"
-
-#include "message.h"
-#include "chars.h"
-#include "escape-util.h"
-#include "dirindex.h"
-#include "prefs.h"
-#include "prompt.h"
-
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_stdinc.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "aevent.h"
 #include "animation.h"
-#include "dirt.h"
-#include "optimize.h"
-
-#include "menu.h"
-#include "solutionuploading.h"
+#include "base/stringprintf.h"
+#include "base64.h"
+#include "chars.h"
 #include "client.h"
+#include "crypt/md5.h"
+#include "dirindex.h"
+#include "dirt.h"
+#include "disamb.h"
+#include "draw.h"
+#include "drawable.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "http.h"
+#include "level-base.h"
+#include "level.h"
+#include "menu.h"
+#include "message.h"
+#include "optimize.h"
+#include "player.h"
+#include "prefs.h"
+#include "prompt.h"
+#include "rating.h"
+#include "sdl/sdlutil.h"
+#include "solution.h"
+#include "solutionuploading.h"
+#include "time.h"
+#include "util.h"
 
 #define POSTDRAW ;
 
@@ -253,7 +263,7 @@ struct BookmarkItem : public MenuItem {
        but then the minimum of the thumbnail height and the
        actual level's height at this zoom */
     h = std::max(8 + fonsmall->height + fon->height * 4,
-		 std::min(THUMBH, 4 + lev->h * (TILEH >> bmi_zoomf)));
+     std::min(THUMBH, 4 + lev->h * (TILEH >> bmi_zoomf)));
 
   }
 
@@ -477,7 +487,7 @@ void Play_::Draw() {
 PlayState Play_::CurState() {
   int unused;
   dir unusedd;
-  if (solpos != 0 && lev->isdead(unused, unused, unusedd))
+  if (solpos != 0 && lev->IsDead(unused, unused, unusedd))
     return PlayState::DEAD;
   else if (solpos != 0 && lev->iswon())
     return PlayState::WON;
@@ -579,7 +589,7 @@ void Play_::Bookmarks(const Level *start,
     }
 
     vector<MenuItem *> items;
-    
+
     Label nettitle;
     nettitle.text = PICS BARLEFT BAR BAR BARRIGHT POP " Server bookmarks "
       PICS BARLEFT BAR BAR BARRIGHT POP;
@@ -737,7 +747,7 @@ void Play_::Bookmarks(const Level *start,
         case BMA_SELECT: {
           /* restore the bookmark */
 
-	  lev = start->Clone();
+          lev = start->Clone();
           dr.lev = lev.get();
 
           *sol = books[i]->ns.sol;
@@ -758,7 +768,7 @@ void Play_::Bookmarks(const Level *start,
         }
 
       }  // loop over books
-        
+
       /* didn't click on a bookmark. Could be one of the
          other buttons... */
 
@@ -807,7 +817,7 @@ void Play_::Bookmarks(const Level *start,
     /* now erase the bookmark menuitems */
     for (BookmarkItem *item : books) delete item;
     books.clear();
-    
+
   } while (show_menu_again);
   Redraw();
 }
@@ -826,7 +836,7 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
 
   /* XXX register callback.. */
 
-  HTTPResult hr = hh->get(ALLSOLS_URL + MD5::Ascii(lmd5), s);
+  HTTPResult hr = hh->Get(ALLSOLS_URL + MD5::Ascii(lmd5), s);
 
   if (hr == HTTPResult::OK) {
     /* parse result. see protocol.txt */
@@ -835,7 +845,7 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
     td.say("OK. Solutions on server: " GREEN + Util::itos(nsols) + POP);
 
     bool added_any = false;
-    
+
     /* get them! */
     for (int i = 0; i < nsols; i++) {
       string line1 = EscapeUtil::getline(s);
@@ -869,7 +879,7 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
     }
 
     if (added_any) plr->WriteFile();
-    
+
     return;
 
   } else {
@@ -1236,8 +1246,8 @@ PlayResult Play_::DoPlaySave(Player *plr,
               /* put us at end of solution */
               solpos = ss.Length();
 
-	      lev = start->Clone();
-	      dr.lev = lev.get();
+              lev = start->Clone();
+              dr.lev = lev.get();
               int moves;
               lev->Play(sol, moves);
 
@@ -1577,8 +1587,8 @@ void Play::PlayRecord(const string &filename, Player *plr, bool allowrate) {
 
         /* now filter just the ones that verify */
         for (const NamedSolution &ns : oldsols) {
-	  std::unique_ptr<Level> check = Level::FromString(ss);
-	  if (check.get() != nullptr) {
+          std::unique_ptr<Level> check = Level::FromString(ss);
+          if (check.get() != nullptr) {
             /* keep bookmarks too, since they basically never verify */
             if (ns.bookmark || Level::Verify(check.get(), ns.sol)) {
               /* already solved it. */
@@ -1594,7 +1604,7 @@ void Play::PlayRecord(const string &filename, Player *plr, bool allowrate) {
       // Initialize opt, the solution we'll actually store.
       Solution opt;
       if (Prefs::GetBool(plr, PREF_OPTIMIZE_SOLUTIONS)) {
-	std::unique_ptr<Level> check = Level::FromString(ss);
+        std::unique_ptr<Level> check = Level::FromString(ss);
         if (check.get() != nullptr) {
           opt = Optimize::Opt(check.get(), sol);
         } else {
@@ -1619,7 +1629,7 @@ void Play::PlayRecord(const string &filename, Player *plr, bool allowrate) {
           Prefs::GetBool(plr, PREF_ASKRATE)) {
 
         std::unique_ptr<RateScreen> rs{
-	  RateScreen::Create(plr, level.get(), md5)};
+          RateScreen::Create(plr, level.get(), md5)};
         if (rs.get() != nullptr) {
           rs->SetMessage(YELLOW
                          "Please rate this level." POP

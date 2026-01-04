@@ -1,9 +1,25 @@
 #include "registration.h"
+
+#include <cstdlib>
+#include <memory>
+#include <string>
+
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "client.h"
-#include "http.h"
 #include "draw.h"
 #include "escape-util.h"
-#include "../cc-lib/util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "http.h"
+#include "httputil.h"
+#include "message.h"
+#include "player.h"
+#include "sdl/sdlutil.h"
+#include "textscroll.h"
+#include "util.h"
+
+using namespace std;
 
 namespace {
 struct Registration_ : public Registration {

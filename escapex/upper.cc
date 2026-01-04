@@ -1,15 +1,25 @@
 #include "upper.h"
 
-#include <unordered_map>
-#include <vector>
+#include <cstdio>
+#include <dirent.h>
+#include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "escape-util.h"
-#include "directories.h"
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
+#include "SDL_video.h"
 #include "chars.h"
+#include "crypt/md5.h"
 #include "dirindex.h"
+#include "drawable.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "http.h"
+#include "textscroll.h"
+#include "util.h"
+
+using namespace std;
 
 namespace {
 
@@ -193,7 +203,7 @@ bool Upper_::SetFile(const string &ff, const string &md, RateStatus votes,
     string last  = md.substr(2, md.length() - 2);
 
     HTTPResult hr =
-      hh->get((string)"/" + dirname +
+      hh->Get((string)"/" + dirname +
               (string)"/" + first +
               (string)"/" + last, mm);
 
@@ -296,24 +306,24 @@ bool Upper_::Commit() {
     {
       auto it = contents.find(newlist_md5);
       if (it == contents.end()) {
-	say((string)RED "bug: md5 " BLUE "[" + newlist_md5 +
-	    (string)"]" POP " isn't in table now??");
+        say((string)RED "bug: md5 " BLUE "[" + newlist_md5 +
+            (string)"]" POP " isn't in table now??");
 
-	fclose(a);
-	return false;
+        fclose(a);
+        return false;
       } else {
-	const ContentEntry &ce = it->second;
-	if (1 != fwrite(ce.content.data(), ce.content.length(), 1, a)) {
-	  say((string)RED "couldn't write to " BLUE + nlf +
-	      (string)POP " (disk full?)");
+        const ContentEntry &ce = it->second;
+        if (1 != fwrite(ce.content.data(), ce.content.length(), 1, a)) {
+          say((string)RED "couldn't write to " BLUE + nlf +
+              (string)POP " (disk full?)");
 
-	  fclose(a);
-	  return false;
-	} else {
-	  /*
-	    say((string)GREEN "wrote " BLUE + nlf +
-	    (string)POP " <- " GREY + newlist_md5 + (string)POP" ok"); */
-	}
+          fclose(a);
+          return false;
+        } else {
+          /*
+            say((string)GREEN "wrote " BLUE + nlf +
+            (string)POP " <- " GREY + newlist_md5 + (string)POP" ok"); */
+        }
       }
     }
 
@@ -345,6 +355,6 @@ bool Upper_::Commit() {
 }  // namespace
 
 Upper *Upper::Create(HTTP *h, TextScroll *t,
-		     Drawable *d, const string &f) {
+                     Drawable *d, const string &f) {
   return Upper_::Create(h, t, d, f);
 }

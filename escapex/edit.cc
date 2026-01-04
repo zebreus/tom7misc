@@ -1,24 +1,37 @@
 #include "edit.h"
 
+#include <algorithm>
+#include <cstdlib>
+#include <format>
 #include <math.h>
+#include <memory>
+#include <string>
 #include <time.h>
+#include <utility>
 
-#include "SDL.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/base/stringprintf.h"
-
-#include "draw.h"
-#include "escapex.h"
-#include "play.h"
-#include "prompt.h"
-#include "escape-util.h"
-#include "loadlevel.h"
-#include "message.h"
-#include "menu.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "chars.h"
+#include "crypt/md5.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level-base.h"
+#include "level.h"
+#include "lines.h"
+#include "loadlevel.h"
+#include "menu.h"
+#include "message.h"
+#include "play.h"
+#include "player.h"
+#include "prompt.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
 
 #define EDITORBGCOLOR 0x11, 0x11, 0x22, 0xFF
 #define SELRECTCOLOR 0x76, 0x12, 0xAA
@@ -140,7 +153,7 @@ void Editor::Clear(Tile bg, Tile fg) {
 }
 
 /* for debugging, since it pauses everything */
-void Editor::blinktile(int destx, int desty, Uint32 color) {
+void Editor::blinktile(int destx, int desty, uint32_t color) {
   int xx, yy;
   if (dr.OnScreen(destx, desty, xx, yy)) {
     SDL_Rect dst;
@@ -319,7 +332,7 @@ void Editor::Draw() {
 
     fonsmall->draw(dr.posx + dr.margin + 1,
                    dr.posy + dr.margin - fonsmall->height,
-                   StringPrintf("%d, %d", dr.scrollx, dr.scrolly));
+                   std::format("{}, {}", dr.scrollx, dr.scrolly));
   }
 
 }
@@ -360,8 +373,8 @@ void Editor::settitle() {
 void Editor::setauthor() {
 
   string s = Prompt::ask(this,
-			 "Author of level: ",
-			 level->author);
+       "Author of level: ",
+       level->author);
   if (!s.empty()) level->author = s;
 
   changed = 1;
@@ -867,11 +880,11 @@ void Editor::Edit(const Level *origlev) {
           if (otx != ntx ||
               oty != nty) {
             /* draw line. */
-	    for (const std::pair<int, int> point :
-		   Line<int>{otx, oty, ntx, nty}) {
-	      int cx = point.first, cy = point.second;
-	      setlayer(cx, cy, current);
-	    }
+      for (const std::pair<int, int> point :
+       Line<int>{otx, oty, ntx, nty}) {
+        int cx = point.first, cy = point.second;
+        setlayer(cx, cy, current);
+      }
 
             changed = 1;
             /* always draw */
@@ -880,7 +893,7 @@ void Editor::Edit(const Level *origlev) {
             /* draw pixel */
 
             if ((layer ? level->otileat(ntx, nty) :
-		 level->tileat(ntx, nty)) != current) {
+     level->tileat(ntx, nty)) != current) {
               setlayer(ntx, nty, current);
               yesdraw = 1;
               changed = 1;
@@ -1347,14 +1360,13 @@ void Editor::Edit(const Level *origlev) {
                     #endif
 
                     /* must be equal in bg and fg */
-                    if (
-                        ! ((level->tileat(startx + offx,
-					  starty + offy) ==
+                    if (! ((level->tileat(startx + offx,
+                                          starty + offy) ==
                             level->tileat(checkx + offx,
-					  checky + offy)) &&
+                                          checky + offy)) &&
 
                            (level->otileat(startx + offx,
-					   starty + offy) ==
+                                           starty + offy) ==
                             level->otileat(checkx + offx,
                                            checky + offy)))) {
                       /* printf("NOT EQUAL.\n"); */
@@ -1384,17 +1396,17 @@ void Editor::Edit(const Level *origlev) {
 
                 int p =
                   level->tileat(startx + (col * drightx) + offx,
-				starty + (col * drighty) + offy);
+                                starty + (col * drighty) + offy);
 
                 level->settile(destx + offx,
-			       desty + offy, p);
+                               desty + offy, p);
 
                 int op =
                   level->otileat(startx + (col * drightx) + offx,
-				 starty + (col * drighty) + offy);
+                                 starty + (col * drighty) + offy);
 
                 level->osettile(destx + offx,
-				desty + offy, op);
+                                desty + offy, op);
 
                 if (Level::needsdest(p) || Level::needsdest(op)) {
                   int delta = 0;
@@ -1404,15 +1416,15 @@ void Editor::Edit(const Level *origlev) {
 
                   int origdest =
                     level->destat(startx + (col * drightx) + offx,
-				  starty + (col * drighty) + offy);
+                                  starty + (col * drighty) + offy);
 
                   if (width < (plen * 2)) delta = 0;
                   else {
                     int seconddest =
                       level->destat(startx + ((col + plen) * drightx) +
-				    offx,
-				    starty + ((col + plen) * drighty) +
-				    offy);
+                                    offx,
+                                    starty + ((col + plen) * drighty) +
+                                    offy);
 
                     delta = seconddest - origdest;
                   }
@@ -1459,60 +1471,60 @@ void Editor::Edit(const Level *origlev) {
             /* but first check that the far corner will
                also be on the screen */
             if (!level->travel(selection.x + selection.w - 1,
-			       selection.y + selection.h - 1,
-			       d, tx, ty)) break;
+             selection.y + selection.h - 1,
+             d, tx, ty)) break;
 
 
             if (level->travel(selection.x, selection.y, d,
-			      tx, ty)) {
+                              tx, ty)) {
               /* easier if we clone. */
-	      std::unique_ptr<Level> cl = level->Clone();
+              std::unique_ptr<Level> cl = level->Clone();
 
               /* then blank out the region */
-	      for (int y = selection.y; y < selection.y + selection.h; y++) {
-		for (int x = selection.x; x < selection.x + selection.w; x++) {
-		  level->settile(x, y, T_FLOOR);
-		  level->osettile(x, y, T_FLOOR);
-		  level->setdest(x, y, 0, 0);
-		  level->setflag(x, y, 0);
-		}
-	      }
+              for (int y = selection.y; y < selection.y + selection.h; y++) {
+                for (int x = selection.x; x < selection.x + selection.w; x++) {
+                  level->settile(x, y, T_FLOOR);
+                  level->osettile(x, y, T_FLOOR);
+                  level->setdest(x, y, 0, 0);
+                  level->setflag(x, y, 0);
+                }
+              }
 
               for (int y = selection.y; y < selection.y + selection.h; y++) {
                 for (int x = selection.x; x < selection.x + selection.w; x++) {
 
                   /* copy all the parts */
                   level->settile(x + dx, y + dy,
-				 cl->tileat(x, y));
+                                 cl->tileat(x, y));
 
                   level->osettile(x + dx, y + dy,
-				  cl->otileat(x, y));
+                                  cl->otileat(x, y));
 
                   {
-		    int ddx, ddy;
-		    cl->where(cl->destat(x, y), ddx, ddy);
+                    int ddx, ddy;
+                    cl->where(cl->destat(x, y), ddx, ddy);
 
-		    /* if the destination is inside the
-		       thing we're moving, then preserve it */
-		    if ((Level::needsdest(cl->tileat(x, y)) ||
-			 Level::needsdest(cl->otileat(x, y))) &&
-			ddx >= selection.x &&
-			ddx < (selection.x + selection.w) &&
-			ddy >= selection.y &&
-			ddy < (selection.y + selection.h)) {
-		      ddx += dx;
-		      ddy += dy;
-		    }
+                    /* if the destination is inside the
+                       thing we're moving, then preserve it */
+                    if ((Level::needsdest(cl->tileat(x, y)) ||
+                         Level::needsdest(cl->otileat(x, y))) &&
+                        ddx >= selection.x &&
+                        ddx < (selection.x + selection.w) &&
+                        ddy >= selection.y &&
+                        ddy < (selection.y + selection.h)) {
+                      ddx += dx;
+                      ddy += dy;
+                    }
 
-		    /* anyway copy dest */
-		    level->setdest(x + dx, y + dy, ddx, ddy);
+                    /* anyway copy dest */
+                    level->setdest(x + dx, y + dy, ddx, ddy);
                   }
 
                   /* finally, flags */
                   level->setflag(x + dx, y + dy,
-				 cl->flagat(x, y));
+                                 cl->flagat(x, y));
                 }
-	      }
+              }
 
               /* move player, bots */
               if (level->guyx >= selection.x &&
@@ -1535,39 +1547,39 @@ void Editor::Edit(const Level *origlev) {
               }
 
 
-	      for (int i = 0; i < level->nbots; i++) {
-		int bx, by;
-		level->where(level->boti[i], bx, by);
-		if (bx >= selection.x &&
-		    by >= selection.y &&
-		    bx < (selection.x + selection.w) &&
-		    by < (selection.y + selection.h)) {
-		  bx += dx;
-		  by += dy;
+              for (int i = 0; i < level->nbots; i++) {
+                int bx, by;
+                level->where(level->boti[i], bx, by);
+                if (bx >= selection.x &&
+                    by >= selection.y &&
+                    bx < (selection.x + selection.w) &&
+                    by < (selection.y + selection.h)) {
+                  bx += dx;
+                  by += dy;
 
-		  /* destroy any bot we're overwriting
-		     (but not if it's in the selection, because
-		     then it will move, too) */
-		  int bi;
-		  if (bx < selection.x ||
-		      by < selection.y ||
-		      bx >= (selection.x + selection.w) ||
-		      by >= (selection.y + selection.h)) {
+                  /* destroy any bot we're overwriting
+                     (but not if it's in the selection, because
+                     then it will move, too) */
+                  int bi;
+                  if (bx < selection.x ||
+                      by < selection.y ||
+                      bx >= (selection.x + selection.w) ||
+                      by >= (selection.y + selection.h)) {
 
-		    if (level->botat(bx, by, bi)) {
-		      /* overwrite bot */
-		      level->bott[bi] = B_DELETED;
-		    } else if (level->playerat(bx, by)) {
-		      /* Delete self if trying to
-			 overwrite player! */
-		      level->bott[i] = B_DELETED;
-		    }
-		  }
-		}
+                    if (level->botat(bx, by, bi)) {
+                      /* overwrite bot */
+                      level->bott[bi] = B_DELETED;
+                    } else if (level->playerat(bx, by)) {
+                      /* Delete self if trying to
+                         overwrite player! */
+                      level->bott[i] = B_DELETED;
+                    }
+                  }
+                }
 
-		/* move bot (even if deleted) */
-		level->boti[i] = level->index(bx, by);
-	      }
+                /* move bot (even if deleted) */
+                level->boti[i] = level->index(bx, by);
+              }
 
               /* move selection with it, but don't change size */
               selection.x = tx;
@@ -1606,7 +1618,9 @@ void Editor::Edit(const Level *origlev) {
             } else {
               Redraw();
             }
-          } else goto edit_quit;
+          } else {
+            goto edit_quit;
+          }
 
         case SDLK_RETURN:
           /* XXX center scroll on mouse */
@@ -1718,7 +1732,8 @@ void Editor::Edit(const Level *origlev) {
           /* zoom */
         case SDLK_LEFTBRACKET:
         case SDLK_RIGHTBRACKET:
-          dr.zoomfactor += (event.key.keysym.unicode == SDLK_LEFTBRACKET)? +1 : -1;
+          dr.zoomfactor +=
+            (event.key.keysym.unicode == SDLK_LEFTBRACKET)? +1 : -1;
           if (dr.zoomfactor < 0) dr.zoomfactor = 0;
           if (dr.zoomfactor >= DRAW_NSIZES) dr.zoomfactor = DRAW_NSIZES - 1;
 
@@ -1781,7 +1796,7 @@ bool Editor::getdest(int &x, int &y, string msg) {
             x = tx;
             y = ty;
 
-            dr.message = StringPrintf("%d, %d", tx, ty);
+            dr.message = std::format("{}, {}", tx, ty);
             return 1;
           }
           /* other clicks cancel */

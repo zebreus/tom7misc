@@ -3,15 +3,16 @@
 #define _ESCAPE_HTTPUTIL_H
 
 #include <string>
+#include <string_view>
 
 struct HTTPUtil {
-  static std::string URLEncode(const std::string &);
+  static std::string URLEncode(std::string_view s);
 };
 
 enum class EntryType { ARG, FILE, };
 
 // key/value in a form submission.
-// Can be a simple 
+// Can be a simple
 struct FormEntry {
   EntryType ty;
   std::string name;

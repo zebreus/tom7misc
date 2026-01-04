@@ -2,11 +2,20 @@
 #ifndef _ESCAPE_EDIT_H
 #define _ESCAPE_EDIT_H
 
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "SDL_events.h"
+#include "SDL_stdinc.h"
+#include "SDL_video.h"
+#include "draw.h"
+#include "drawable.h"
 #include "escapex.h"
-#include "play.h"
+#include "level-base.h"
 #include "level.h"
 #include "player.h"
-#include "draw.h"
+#include "solution.h"
 
 #define EDIT_DIR "mylevels"
 

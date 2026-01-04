@@ -1,16 +1,19 @@
 
 #include "httputil.h"
 
+#include <string>
+#include <string_view>
+
 using namespace std;
 
-string HTTPUtil::URLEncode(const string &s) {
+string HTTPUtil::URLEncode(std::string_view s) {
   string out;
   for (unsigned int x = 0; x < s.length(); x++) {
     if (s[x] == ' ')
       out += '+';
-    else if ((s[x] >= 'a' && s[x] <= 'z')
-         ||  (s[x] >= 'A' && s[x] <= 'Z') || s[x] == '.'
-         ||  (s[x] >= '0' && s[x] <= '9')) {
+    else if ((s[x] >= 'a' && s[x] <= 'z') ||
+             (s[x] >= 'A' && s[x] <= 'Z') || s[x] == '.' ||
+             (s[x] >= '0' && s[x] <= '9')) {
       out += s[x];
     } else {
       out += '%';

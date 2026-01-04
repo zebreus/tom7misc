@@ -1,13 +1,17 @@
 
-#include "escapex.h"
 #include "startup.h"
-#include "directories.h"
+
+#include <dirent.h>
+#include <string>
+
 #include "escape-util.h"
 
 #ifndef WIN32
 /* for symlink */
 # include <unistd.h>
 #endif
+
+using namespace std;
 
 #define DOTESCAPE ".escape"
 
@@ -25,7 +29,7 @@
    based on that system's conventions.
 */
 #ifndef MULTIUSER
- string StartUp::self;
+string StartUp::self;
 #endif
 
 /* copy (or symlink) all levels (recursively) into the current directory. */

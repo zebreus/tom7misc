@@ -139,7 +139,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
              "you believe the author intended.":
              "Leave your comment on this level.\n";
   if (cookmode) {
-    body.set_text("Cook: ");
+    body.SetText("Cook: ");
     body.goto_end();
     /* XXX put cursor at end */
   }
@@ -169,7 +169,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
 
   /* XXX look for InputResultKind::QUIT too */
   if (InputResultKind::OK == mm->menuize()) {
-    string com = body.get_text();
+    string com = body.GetText();
 
     string res;
     bool success =
