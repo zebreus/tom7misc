@@ -11,7 +11,7 @@
 
 #include "../cc-lib/sdl/font.h"
 
-class SDL_Surface;
+struct SDL_Surface;
 class Rating;
 class RateStatus;
 

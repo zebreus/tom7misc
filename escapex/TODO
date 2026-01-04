@@ -1,4 +1,4 @@
-			-*- outline -*-
+      -*- outline -*-
 
 * Current Projects
 
@@ -559,6 +559,10 @@ http://tucows.com/preview/383408
      a single tile that creates blocks on itself)
     (could be triggered by a button?)
     (could copy whatever is to its right, etc.?)
+*** tile duplicator, which copies or pushes a tile (from behind it,
+    or bizarro world) when it gets a pulse. Would be good if this
+    could make lines of steel?
+
 *** max's "spring" block (player springs out like gold block)
 *** "heart framers" and friends:
 **** lolo "treasure" (kills all bots)
@@ -572,7 +576,7 @@ http://tucows.com/preview/383408
 *** "bomb squad" robot that is controlled by push buttons
 *** more stuff controlled by wires and buttons (ie panels)
 **** panel-like flipper that is activated by pulse; pretty easy.
-**** robot that can be controlled by pushbuttonss
+**** robot that can be controlled by pushbuttons
       probably bad for these to be controlled by wires, because
       then we could do two in the same push, which would lead to
       ambiguity because there are no diagonal motions. We could

@@ -11,11 +11,13 @@
    failure, in order to avoid race conditions.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdlib.h>
-#include <time.h>
+#ifndef WIN32
+# error "replace.cc is only for win32 builds!"
+#endif
+
+#include <cstdlib>
+#include <format>
+#include <string>
 
 #include <windows.h>
 #include <malloc.h>
@@ -24,21 +26,9 @@
 
 #include "escape-util.h"
 
-#ifndef WIN32
-# error "replace.cc is only for win32 builds!"
-#endif
-
+using namespace std;
 
 int main(int argc, char **argv) {
-
-# if 0
-  printf("this is replace.exe\n\n");
-  fflush(stdout);
-
-  for (int aa = 0; aa < argc; aa++) {
-    printf("argv[%d] = '%s'\n", aa, argv[aa]);
-  }
-# endif
 
   if (argc >= 2) {
 
@@ -56,10 +46,10 @@ int main(int argc, char **argv) {
       }
 
       {
-        char msg[512];
-        _snprintf(msg, 500, "failed to remove %s or move %s to %s",
-                  argv[i + 1], argv[i], argv[i + 1]);
-        MessageBox(0, msg, "upgrade problem?", 0);
+        std::string msg =
+          std::format("failed to remove {} or move {} to {}",
+                      argv[i + 1], argv[i], argv[i + 1]);
+        MessageBox(0, msg.c_str(), "upgrade problem?", 0);
       }
 
     success:

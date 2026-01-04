@@ -1,0 +1,18 @@
+Diagnostics:
+  ClangTidy:
+    # Only availabile in clang 18+
+    FastCheckFilter: Strict
+  MissingIncludes: Strict
+  Includes:
+    IgnoreHeader: [base/logging.h, cstdint, cstddef, __chrono/duration.h]
+
+# I'm not showing these, so disable them in the hopes of saving
+# time.
+InlayHints:
+  Enabled: No
+
+# This is set up for development on windows with SDL in the place I
+# keep it; you might need to modify this if you want to use clangd
+# yourself.
+CompileFlags:
+  Add: [-xc++, -DWIN32, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include]

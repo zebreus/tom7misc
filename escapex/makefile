@@ -3,6 +3,7 @@
 #   export LINUX=true
 #   export OSX=true
 #   export WIN32=true
+#   export WIN64=true  (new, 2025)
 # before you run make, or nothing will happen. See HACKING for
 # more information on compiling escape.
 
@@ -561,6 +562,261 @@ wc :
 
 clean :
 	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(SDLNETOBJECTS)
+
+# end mingw makefile
+endif
+
+
+# msys2 / clang64 on windows. This is the new way I'm trying
+# in 2026.
+ifdef WIN64
+
+default : escape.exe
+
+CXX=g++
+CC=gcc
+WINDRES=windres
+
+CFLAGS=--std=c11 -O2 -I .
+
+# point this at the SDL (1.2 series) installation. You need to compile
+# SDL in there too; we just link in the object files.
+SDL=/c/code/SDL
+# Included with escape with some superficial local fixes, but feel
+# free to try a pristine copy instead.
+SDL_NET=SDL_net
+
+# cc-lib is my personal collection of C++ libraries. It should be in a
+# directory next to "escapex."
+CC_LIB=../cc-lib
+
+SDLINCLUDES=-I$(SDL)/include
+
+DEBUG=-g
+OPT=-O2
+
+#  -Wno-format
+CXXFLAGS= --std=c++23 $(OPT) $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -I. -I$(CC_LIB)
+# Additional requirements when compiling something that depends on
+# the full SDL.
+SDL_CXXFLAGS= -I$(SDL)/include -I$(SDL_NET)
+
+# assume SDL build for .o files in the current directory
+%.o : %.cc
+	@$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
+	@bash -c "echo -n '.'"
+
+# .. and sdl_net
+$(SDL_NET)/%.o : $(SDL_NET)/%.c
+	@$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
+	@bash -c "echo -n '.'"
+
+SDLARCH=x64
+SDLOPATH=$(SDL)/build
+SDLOBJECTS=$(SDLOPATH)/SDL.o $(SDLOPATH)/SDL_error.o $(SDLOPATH)/SDL_fatal.o $(SDLOPATH)/SDL_audio.o $(SDLOPATH)/SDL_audiocvt.o $(SDLOPATH)/SDL_audiodev.o $(SDLOPATH)/SDL_mixer.o $(SDLOPATH)/SDL_mixer_MMX.o $(SDLOPATH)/SDL_mixer_MMX_VC.o $(SDLOPATH)/SDL_mixer_m68k.o $(SDLOPATH)/SDL_wave.o $(SDLOPATH)/SDL_cdrom.o $(SDLOPATH)/SDL_cpuinfo.o $(SDLOPATH)/SDL_active.o $(SDLOPATH)/SDL_events.o $(SDLOPATH)/SDL_expose.o $(SDLOPATH)/SDL_keyboard.o $(SDLOPATH)/SDL_mouse.o $(SDLOPATH)/SDL_quit.o $(SDLOPATH)/SDL_resize.o $(SDLOPATH)/SDL_rwops.o $(SDLOPATH)/SDL_getenv.o $(SDLOPATH)/SDL_iconv.o $(SDLOPATH)/SDL_malloc.o $(SDLOPATH)/SDL_qsort.o $(SDLOPATH)/SDL_stdlib.o $(SDLOPATH)/SDL_string.o $(SDLOPATH)/SDL_thread.o $(SDLOPATH)/SDL_timer.o $(SDLOPATH)/SDL_RLEaccel.o $(SDLOPATH)/SDL_blit.o $(SDLOPATH)/SDL_blit_0.o $(SDLOPATH)/SDL_blit_1.o $(SDLOPATH)/SDL_blit_A.o $(SDLOPATH)/SDL_blit_N.o $(SDLOPATH)/SDL_bmp.o $(SDLOPATH)/SDL_cursor.o $(SDLOPATH)/SDL_gamma.o $(SDLOPATH)/SDL_pixels.o $(SDLOPATH)/SDL_stretch.o $(SDLOPATH)/SDL_surface.o $(SDLOPATH)/SDL_video.o $(SDLOPATH)/SDL_yuv.o $(SDLOPATH)/SDL_yuv_mmx.o $(SDLOPATH)/SDL_yuv_sw.o $(SDLOPATH)/SDL_joystick.o $(SDLOPATH)/SDL_nullevents.o $(SDLOPATH)/SDL_nullmouse.o $(SDLOPATH)/SDL_nullvideo.o $(SDLOPATH)/SDL_diskaudio.o $(SDLOPATH)/SDL_dummyaudio.o $(SDLOPATH)/SDL_sysevents.o $(SDLOPATH)/SDL_sysmouse.o $(SDLOPATH)/SDL_syswm.o $(SDLOPATH)/SDL_wingl.o $(SDLOPATH)/SDL_dibevents.o $(SDLOPATH)/SDL_dibvideo.o $(SDLOPATH)/SDL_dx5events.o $(SDLOPATH)/SDL_dx5video.o $(SDLOPATH)/SDL_dx5yuv.o $(SDLOPATH)/SDL_dibaudio.o $(SDLOPATH)/SDL_dx5audio.o $(SDLOPATH)/SDL_mmjoystick.o $(SDLOPATH)/SDL_syscdrom.o $(SDLOPATH)/SDL_sysmutex.o $(SDLOPATH)/SDL_syssem.o $(SDLOPATH)/SDL_systhread.o $(SDLOPATH)/SDL_syscond.o $(SDLOPATH)/SDL_systimer.o $(SDLOPATH)/SDL_sysloadso.o sdl-win32-main.o
+
+SDLUTILOBJECTS= $(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
+CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
+
+SDLNETOBJECTS=$(SDL_NET)/SDLnet.o $(SDL_NET)/SDLnetselect.o $(SDL_NET)/SDLnetTCP.o $(SDL_NET)/SDLnetUDP.o
+
+LINKSDL= -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
+LINKSDLNET= -lws2_32 -liphlpapi
+
+# objects that do not need SDL; can be linked into tools like screenshot.exe; server
+ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
+
+ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
+
+
+# -Wl,-rpath=.
+
+# It works fine to pick either one of
+#    -Wl,--subsystem,console
+#    -Wl,--subsystem,windows
+# and the former opens the console for useful/annoying debugging info.
+# SUBSYSTEM=windows
+SUBSYSTEM=console
+# You can remove this GNU-ism if you need to; it just prevents me from
+# accidentally releasing the console build.
+release_check = \
+	$(if $(filter windows,$(SUBSYSTEM)),,\
+	$(error SUBSYSTEM is $(SUBSYSTEM) -- do not release in console mode!))
+
+LDFLAGS =  -L. $(LINKSDL) $(LINKSDLNET) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
+
+# -lSDL_mixer
+# at end  -lvorbisfile -lvorbis -logg
+# LDLIBS = -lSDL_net  `sdl-config --libs` -lz
+#  LDLIBS = -lefence
+
+icon.o : escape.ico escape.rc
+	$(WINDRES) -i escape.rc -o $@
+
+escape.exe : $(ESCLIBOBJECTS) $(ESCOBJECTS) $(CCLIBOBJECTS) $(SDLUTILOBJECTS) $(SDLOBJECTS) $(SDLNETOBJECTS)
+	$(CXX) -g -o $@ $^ $(LDFLAGS)
+
+replace.exe : replace.o escape-util.o
+	$(CXX) -g -o $@ $^ $(LDFLAGS)
+
+packsound.o : packsound.cc
+	$(CXX) $(CXXFLAGS) -c -o $@ $^
+
+packsound.exe : packsound.o $(CCLIBOBJECTS)
+	$(CXX) -o $@ $^ $(LDFLAGS) -static
+	strip packsound.exe
+
+rle_test.exe : lib/rle.o lib/rle_test.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ -static
+	strip rle_test.exe
+
+sound.o : sound.cc sound_load.h
+	$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
+
+graphics.o : graphics.cc graphics.h animation_syms.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+animation.o : animation.cc animation.h animation_copy.h
+	$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
+
+leveldb.o : leveldb.cc leveldb.h leveldb-query.h
+	$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
+
+sound_load.h : sound.pack packsound.cc packsound.exe
+	./packsound.exe sound.pack sound
+
+# if you don't want to deal with zopflipng to optimize images,
+# you could probably just replace this with like ZOPFLI=cp
+ZOPFLI=./zopflipng.exe --splitting=3 --filters=01234mepb --lossy_8bit --lossy_transparent
+
+# generate animation_syms.h, animation.png, etc. % is just used as a
+# trick so that gnu make lets this generate multiple targets (it
+# requires a common substring to match in all positions. here % =
+# animation. $* yields the matched string in the commands.)
+%_copy.h %.png %_defs.h %_syms.h : packpng.exe %.pack
+	./packpng.exe $*.pack $*
+	rm -f $*-zop.png
+	$(ZOPFLI) $*.png $*-zop.png
+	rm -f $*.png
+	mv $*-zop.png $*.png
+
+optimize-png : animation.png .dummy
+	rm -f zop-*.png
+	$(ZOPFLI) --prefix=zop- font.png fontsmall.png icon.png splash.png tiles.png tileutil.png title.png animation.png
+	cp zop-font.png font.png
+	cp zop-fontsmall.png fontsmall.png
+	cp zop-icon.png icon.png
+	cp zop-splash.png splash.png
+	cp zop-tiles.png tiles.png
+	cp zop-tileutil.png tileutil.png
+	cp zop-title.png title.png
+	cp zop-animation.png animation.png
+	rm -f zop-*.png
+
+# XXX better way to do this?
+%-console.o : %.cc
+	$(CXX) $(CXXFLAGS) -DUSE_DISPLAY_FORMAT=0 $^ -c -o $@
+
+packpng.o : packpng.cc
+	$(CXX) $(CXXFLAGS) -c -o $@ $^
+
+packpng.exe : packpng.o $(CCLIBOBJECTS)
+	$(CXX) -o $@ $^ -static
+
+screenshot.exe : $(ESCLIBOBJECTS) $(CCLIBOBJECTS) screenshot.o
+	$(CXX) $(CXXFLAGS) -o $@ $^ -static
+
+.dummy :
+
+version : .dummy
+	@:$(call release_check)
+	$(CXX) $(CXXFLAGS) version.cc -o version.exe
+	./version.exe
+	make clean
+	make -j 8 escape.exe
+
+# SDL.dll SDL_net.dll zlib1.dll SDL_mixer.dll
+RELEASEFILES=escape.exe replace.exe font.png fontsmall.png tiles.png tileutil.png title.png icon.png escape.txt COPYING changelog animation.png splash.png
+
+releasefiles.win32 : $(RELEASEFILES)
+	echo $(RELEASEFILES) > releasefiles.win32
+
+mkupgrade.exe : mkupgrade.cc ../cc-lib/crypt/md5.cc
+	$(CXX) $(CXXFLAGS) -DWIN32 mkupgrade.cc ../cc-lib/crypt/md5.cc -o mkupgrade.exe
+
+CURRENT : .dummy escape.exe releasefiles.win32 symlinks.win32 deletefiles.win32 mkupgrade.exe
+	@:$(call release_check)
+	strip escape.exe
+	strip replace.exe
+	./mkupgrade.exe releasefiles.win32 symlinks.win32 deletefiles.win32 > UPGRADE
+	./mkupgrade.exe -v > CURRENT
+
+UPGRADE: CURRENT
+
+release : UPGRADE
+	pscp -C $(RELEASEFILES) UPGRADE CURRENT root@spacebar.org:/var/www/escape/win32/
+	rm -f UPGRADE CURRENT mkupgrade.exe
+
+zip : escape-beta.zip
+
+escape-beta.zip : $(RELEASEFILES) makefile
+	@:$(call release_check)
+	strip escape.exe
+	strip replace.exe
+	rm -f $@
+	rm -rf tmp_escapezip
+	mkdir tmp_escapezip
+	cp $(RELEASEFILES) tmp_escapezip
+#	Note: This does mercifully ignore .svn dirs.
+	cp -r triage tmp_escapezip/
+	cp -r official tmp_escapezip/
+	mkdir tmp_escapezip/mylevels
+	cp mylevels/index.esi tmp_escapezip/mylevels
+	cd tmp_escapezip && zip -r -9 -y $@ *
+	mv tmp_escapezip/$@ .
+# 	optional, improves size using zopfli. advancemame.it
+	./advzip.exe -4 -z $@
+	rm -rf tmp_escapezip
+
+zipup : escape-beta.zip
+	pscp escape-beta.zip root@spacebar.org:/var/www/escape/
+
+# default location
+MAKENSIS='c:\program files (x86)\nsis\makensis.exe'
+
+escapesetup.exe : .dummy $(RELEASEFILES) escape.nsi
+	@:$(call release_check)
+	strip escape.exe
+	strip replace.exe
+	$(MAKENSIS) escape.nsi
+
+installer : escapesetup.exe
+
+installerup : escapesetup.exe
+	pscp escapesetup.exe root@spacebar.org:/var/www/escape/
+
+source : escape-src.tar.bz2
+
+# XXX wrong, bad
+escape-src.tar.bz2 :
+	cd /usr0/src/escape-src && cvs up -dP
+	rm -rf /usr0/src/escape-src/web /usr0/src/escape-src/*.es{p,d}
+	cd /usr0/src/escape-src && chmod a-x `find . -name "*.h"` `find . -name "*.cc"` `find . -name "*.pack"` `find . -name "*.esx"` `find . -name "*.m"`
+	cd /usr0/src && tar -c escape-src --exclude "*CVS*" --exclude "*.svn*" --exclude "*.cvsignore" > /tmp/escape-src.tar
+	cd /tmp && bzip2 escape-src.tar
+	mv /tmp/escape-src.tar.bz2 .
+
+# XXX two copies.. better if we could make src.tar be a symlink to the versioned tar.
+sourceup : source CURRENT
+	pscp escape-src.tar.bz2 root@spacebar.org:/var/www/escape/source/
+	pscp escape-src.tar.bz2 root@spacebar.org:/var/www/escape/source/escape-src-`cat CURRENT`.tar.bz2
+
+
+wc :
+	wc -l *.cc *.h
+
+clean :
+	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(SDLNETOBJECTS) $(CCLIBOBJECTS)
 
 # end mingw makefile
 endif
