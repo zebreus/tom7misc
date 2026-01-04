@@ -2,13 +2,17 @@
 #ifndef _ESCAPE_MENU_H
 #define _ESCAPE_MENU_H
 
-#include <vector>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <SDL.h>
 
-#include "escapex.h"
+#include "SDL_events.h"
+#include "SDL_video.h"
 #include "chars.h"
+#include "drawable.h"
 
 /* menus are essentially what are often called
    "forms" in GUI lingo */
@@ -40,7 +44,7 @@ struct InputResult {
 struct MenuItem {
   /* perhaps multi-line explanation of what this
      control sets. */
-  string explanation;
+  std::string explanation;
 
   /* how many pixels to indent by.
      this amount is interpreted as being automatically
@@ -71,7 +75,7 @@ struct MenuItem {
 
   /* displayed at the bottom of the screen to
      explain how to use the control */
-  virtual string helptext() = 0;
+  virtual std::string helptext() = 0;
 
   /* some default behavior here */
   /* process a keypress.
@@ -84,9 +88,9 @@ struct MenuItem {
 
 /* unselectable labels */
 struct Label : public MenuItem {
-  string text;
+  std::string text;
   virtual bool focusable() { return false; }
-  virtual string helptext() { return ""; }
+  virtual std::string helptext() { return ""; }
   virtual void draw(int x, int y, int f);
   virtual void size(int &w, int &h);
   virtual ~Label() {}
@@ -97,7 +101,7 @@ struct VSpace : public MenuItem {
   int height = 0;
   explicit VSpace(int n) : height(n) {}
   virtual bool focusable() { return false; }
-  virtual string helptext() { return ""; }
+  virtual std::string helptext() { return ""; }
   virtual void draw(int x, int y, int f) { }
   virtual void size(int &w, int &h) {
     w = 1;
@@ -107,12 +111,12 @@ struct VSpace : public MenuItem {
 };
 
 struct TextInput : public MenuItem {
-  string question;
-  string input;
+  std::string question;
+  std::string input;
   /* immediately accept when pressing 'enter'? */
   bool accept_on_enter = false;
 
-  string helptext() override {
+  std::string helptext() override {
     return "Enter a single line of text.";
   }
   void draw(int x, int y, int) override;
@@ -122,7 +126,8 @@ struct TextInput : public MenuItem {
   TextInput() {}
 
  protected:
-   virtual void draw_ch(int x, int y, int, char passwordchar = 0);
+  virtual void draw_ch(int x, int y, int, char passwordchar = 0);
+
  private:
   /* cursor before nth character in input */
   /* XXX probably want to check that the cursor is
@@ -132,7 +137,7 @@ struct TextInput : public MenuItem {
 };
 
 struct TextPassword : public TextInput {
-  string helptext() override {
+  std::string helptext() override {
     return "Enter a password.";
   }
   void draw(int x, int y, int i) override {
@@ -141,10 +146,10 @@ struct TextPassword : public TextInput {
 };
 
 struct Toggle : public MenuItem {
-  string question;
+  std::string question;
   bool checked = false;
 
-  string helptext() override {
+  std::string helptext() override {
     return "Press " BLUE "enter" POP " or "
       BLUE "space" POP " to toggle.";
   }
@@ -155,11 +160,11 @@ struct Toggle : public MenuItem {
 };
 
 struct Slider : public MenuItem {
-  string question;
+  std::string question;
   /* labels over lowest and highest points in slider */
-  string low;
-  string high;
-  
+  std::string low;
+  std::string high;
+
   /* inclusive */
   int lowest = 0;
   int highest = 0;
@@ -170,7 +175,7 @@ struct Slider : public MenuItem {
      least length(low) + length(hi) + 1 */
   int nsegs = 0;
 
-  string helptext() override {
+  std::string helptext() override {
     return "Press " BLUE "left" POP " or " BLUE "right" POP
            " to change the setting.";
   }
@@ -187,22 +192,22 @@ struct Slider : public MenuItem {
 
  private:
   /* scrollbar graphic as string. has nseg segments */
-  string scrollbar;
+  std::string scrollbar;
 };
 
 struct Okay : public MenuItem {
-  string text;
+  std::string text;
   int *ptr = nullptr;
   int myval = 0;
 
-  string helptext() override {
+  std::string helptext() override {
     return "Press " BLUE "enter" POP " to confirm.";
   }
 
   Okay() {}
 
-  Okay(string text, int *ptr = nullptr, int myval = 0)
-    : text(text), ptr(ptr), myval(myval) {}
+  Okay(std::string text, int *ptr = nullptr, int myval = 0)
+    : text(std::move(text)), ptr(ptr), myval(myval) {}
 
   void draw(int x, int y, int f) override;
   void size(int &w, int &h) override;
@@ -222,9 +227,9 @@ struct Okay : public MenuItem {
 };
 
 struct Cancel : public MenuItem {
-  string text = "Cancel";
+  std::string text = "Cancel";
 
-  string helptext() override {
+  std::string helptext() override {
     return "Press " BLUE "enter" POP " to cancel. "
            GREY "(" BLUE "esc" POP " also cancels at any time.)";
   }
@@ -250,9 +255,9 @@ struct Menu : public Drawable {
   /* does not take ownership of the item pointers
      or the list cells */
   static std::unique_ptr<Menu> Create(Drawable *below,
-				      string title,
+                                      std::string title,
                                       std::vector<MenuItem *> items,
-				      bool fullscreen);
+                                      bool fullscreen);
 
   void Draw() override;
   void ScreenResize() override;
@@ -278,7 +283,7 @@ struct Menu : public Drawable {
   InputResult clickselect(int x, int y);
 
   Drawable *below = nullptr;
-  string title;
+  std::string title;
   std::vector<MenuItem *> items;
   bool fullscreen = false;
   int selected = 0;

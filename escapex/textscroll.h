@@ -2,11 +2,13 @@
 #ifndef _ESCAPE_TEXTSCROLL_H
 #define _ESCAPE_TEXTSCROLL_H
 
-#include "escapex.h"
+#include <string>
+
+#include "SDL_video.h"
+
 #include "drawable.h"
 
-class Font;
-class SDL_Surface;
+struct Font;
 
 struct TextScroll : public Drawable {
   int posx = 0;
@@ -20,7 +22,7 @@ struct TextScroll : public Drawable {
 
   /* at default size = entire screen */
   static TextScroll *Create(Font *);
-  virtual void Say(string s) = 0;
+  virtual void Say(std::string s) = 0;
   virtual void Unsay() = 0;
 
   /* for Drawable interface */

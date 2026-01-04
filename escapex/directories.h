@@ -1,17 +1,16 @@
 /*
-    Derived from source copyright Kevlin Henney, 1997, 2003.
+  Derived from source copyright Kevlin Henney, 1997, 2003.
 
-    THIS FILE ONLY:
+  THIS FILE ONLY:
 
-    Permission to use, copy, modify, and distribute this software and its
-    documentation for any purpose is hereby granted without fee, provided
-    that this copyright and permissions notice appear in all copies and
-    derivatives.
+  Permission to use, copy, modify, and distribute this software and its
+  documentation for any purpose is hereby granted without fee, provided
+  that this copyright and permissions notice appear in all copies and
+  derivatives.
 
-    This software is supplied "as is" without express or implied warranty.
+  This software is supplied "as is" without express or implied warranty.
 
-    But that said, if there are any problems please get in touch.
-
+  But that said, if there are any problems please get in touch.
 */
 
 #ifndef _ESCAPE_DIRENT_H

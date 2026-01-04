@@ -1,12 +1,9 @@
 #ifndef _ESCAPE_BACKGROUNDS_H
 #define _ESCAPE_BACKGROUNDS_H
 
-#include "escapex.h"
-#include "draw.h"
-#include "drawable.h"
+#include "SDL_video.h"
 
 struct Backgrounds {
-
   /* Creates a checkerboard pattern of blocks with
      a random vertical gradient atop it. Modifies
      surf so that it points to an surface with the

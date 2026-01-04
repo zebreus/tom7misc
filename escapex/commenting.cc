@@ -1,24 +1,27 @@
 
 #include "commenting.h"
 
+#include <memory>
 #include <string>
 
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-
-#include "escapex.h"
-#include "rating.h"
-
-#include "player.h"
-#include "draw.h"
+#include "SDL_video.h"
+#include "base/stringprintf.h"
 #include "chars.h"
-#include "message.h"
-#include "menu.h"
-#include "textbox.h"
-
 #include "client.h"
+#include "crypt/md5.h"
+#include "draw.h"
+#include "drawable.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "http.h"
 #include "httputil.h"
+#include "menu.h"
+#include "message.h"
+#include "player.h"
+#include "rating.h"
+#include "sdl/sdlutil.h"
+#include "textbox.h"
+#include "textscroll.h"
 
 namespace {
 struct CScreen : public Drawable {
@@ -30,7 +33,7 @@ struct CScreen : public Drawable {
 
     /* draw level thumbnail... */
 
-    Uint32 color =
+    uint32_t color =
       SDL_MapRGBA(screen->format, 0x22, 0x22, 0x44, 0xFF);
     int margin = Drawing::SmallHeight() + 16;
     int y = (screen->h - margin) + 4;
@@ -159,7 +162,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
   std::unique_ptr<Menu> mm =
     Menu::Create(&cs, cookmode ? "Explain your cook" : "Leave a comment",
                  {&body, &spoiler, &ok, &can},
-		 false);
+     false);
 
   mm->yoffset = fon->height + 4;
   mm->alpha = 230;

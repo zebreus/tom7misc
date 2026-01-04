@@ -1,17 +1,22 @@
 
 #include "client.h"
 
-#include <string>
+#include <cstdio>
 #include <memory>
+#include <string>
+#include <vector>
 
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/util.h"
-
-#include "escapex.h"
-#include "draw.h"
-#include "http.h"
-#include "player.h"
+#include "SDL_video.h"
 #include "drawable.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "http.h"
+#include "httputil.h"
+#include "message.h"
+#include "player.h"
+#include "prefs.h"
+#include "textscroll.h"
+#include "util.h"
 
 HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
   std::unique_ptr<HTTP> hh{HTTP::Create()};
@@ -65,7 +70,7 @@ bool Client::RPC(HTTP *hh, const string &path, const string &query,
         m[1] == 'k') {
 
       /* drop first token */
-      (void) EscapeUtil::chop(m);
+      (void)EscapeUtil::chop(m);
       ret = EscapeUtil::losewhitel(m);
       return true;
     } else {
@@ -79,7 +84,7 @@ bool Client::RPC(HTTP *hh, const string &path, const string &query,
 }
 
 bool Client::QuickRPC(Player *plr, const string &path, const string &query,
-		      string &ret) {
+          string &ret) {
   QuickTxDraw td;
 
   std::unique_ptr<HTTP> hh{Client::Connect(plr, td.tx.get(), &td)};
@@ -132,7 +137,7 @@ bool Client::RPCPut(HTTP *hh, const string &path,
 
 void Client::DebugLogMessage(const string &s) {
   FILE *f = fopen(HTTP_DEBUGFILE, "a");
-  
+
   if (f) {
     fprintf(f, "%s", s.c_str());
     fclose(f);

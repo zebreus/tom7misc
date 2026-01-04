@@ -1,14 +1,28 @@
 #include "animation.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <string>
 
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "aevent.h"
 #include "chars.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/util.h"
 #include "dirt.h"
-#include "ptrlist.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level-base.h"
+#include "level.h"
 #include "progress.h"
+#include "ptrlist.h"
+#include "sound.h"
+
+#include "sdl/sdlutil.h"
+#include "sdl/font.h"
+#include "util.h"
 
 // #define AN_SLOW 100
 #define AN_SLOW 0
@@ -126,7 +140,7 @@ bool Animation::ainit_frames(const Graphics &graphics) {
 
   for (int i = 0; i <= LEVEL_BOMB_MAX_TIMER; i++) {
     pic_bomb_lit[i] = (SDL_Surface**)malloc(DRAW_NSIZES *
-					    sizeof(SDL_Surface *));
+              sizeof(SDL_Surface *));
 
     /* going to draw on these, so duplicate */
     switch (i) {
@@ -140,8 +154,8 @@ bool Animation::ainit_frames(const Graphics &graphics) {
     {
       string ss = RED + Util::itos(i);
       fon->drawto(pic_bomb_lit[i][0], (TILEW - fon->sizex(ss))>>1,
-		  ((TILEH + BOMB_OVERLAPY) - fon->height)>>1,
-		  ss);
+      ((TILEH + BOMB_OVERLAPY) - fon->height)>>1,
+      ss);
     }
 
     if (!sdlutil::make_mipmaps(pic_bomb_lit[i], DRAW_NSIZES)) return 0;
@@ -1729,10 +1743,10 @@ bool AnFlying::Init(unsigned int now) {
 }
 
 AnFlyingTile::AnFlyingTile(int ti_,
-                           int sx, int sy,
+                           int sx_, int sy_,
                            dir dd, int sdist,
                            int sp, int w)
-  : AnFlying(0, sx, sy, dd, sdist, sp, w) {
+  : AnFlying(0, sx_, sy_, dd, sdist, sp, w) {
   ti = ti_;
 }
 
@@ -1957,7 +1971,7 @@ SDL_Surface *Animation::pitched_rect(int w, int h, int ph,
 
       int y = (int)(((float)i / n) * src->h);
 
-      Uint32 sc = sdlutil::getpixel(src, x, y);
+      uint32_t sc = sdlutil::getpixel(src, x, y);
 
       sdlutil::setpixel(dst, col, start + i, sc);
 

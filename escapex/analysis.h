@@ -1,10 +1,9 @@
 #ifndef _ESCAPE_ANALYSIS_H
 #define _ESCAPE_ANALYSIS_H
 
-#include <memory.h>
+#include <memory>
 
-#include "base.h"
-#include "../cc-lib/union-find.h"
+#include "union-find.h"
 #include "level.h"
 
 /* analysis of levels. used for editai,

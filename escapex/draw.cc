@@ -4,21 +4,30 @@
 #include "draw.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <format>
+#include <string>
+#include <utility>
 #include <vector>
-#include <time.h>
+#include <ctime>
 
-#include "SDL.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "chars.h"
-#include "escape-util.h"
+#include "SDL_video.h"
+#include "aevent.h"
 #include "animation.h"
+#include "base/stringprintf.h"
+#include "chars.h"
+#include "dirindex.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level-base.h"
+#include "level.h"
+#include "lines.h"
 #include "message.h"
 #include "rating.h"
-#include "dirindex.h"
-#include "graphics.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
 
 // TODO: Get these from graphics too?
 #define FONT_FILE DATADIR "font.png"
@@ -45,7 +54,7 @@ bool Drawing::LoadImages(const Graphics &graphics) {
 
   SDL_Surface *uu = sdlutil::FromRGBA(graphics.tileutil);
   if (!uu) return false;
-  
+
   /* XXX make dim levels for font too (pass in argument) */
   fon = Font::Create(screen,
                      FONT_FILE,
@@ -459,7 +468,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
       BB(int i, bot e, int d, int a) :
         i(i), e(e), d(d), a(a) {}
     };
-    
+
     vector<BB> bots;
     bots.reserve(lev->nbots + 1);
     // BB *bots = (BB*) malloc((lev->nbots + 1) * sizeof (BB));
@@ -537,7 +546,7 @@ void Drawing::DrawBotNums(SDL_Surface *surf) {
 void Drawing::DrawDests(SDL_Surface *surf, bool shuffle) {
   if (surf == nullptr) surf = screen;
 
-  const Uint32 black = SDL_MapRGBA(surf->format, 0, 0, 0, 0xFF);
+  const uint32_t black = SDL_MapRGBA(surf->format, 0, 0, 0, 0xFF);
   sdlutil::slock(surf);
   for (int wx = 0; wx < lev->w; wx++) {
     for (int wy = 0; wy < lev->h; wy++) {
@@ -548,7 +557,7 @@ void Drawing::DrawDests(SDL_Surface *surf, bool shuffle) {
         sy += TILEH >> (1 + zoomfactor);
 
         if (Level::needsdest(lev->tileat(wx, wy)) ||
-	    Level::needsdest(lev->otileat(wx, wy))) {
+            Level::needsdest(lev->otileat(wx, wy))) {
           int d = lev->destat(wx, wy);
           int dx, dy, px, py;
           lev->where(d, dx, dy);
@@ -570,28 +579,27 @@ void Drawing::DrawDests(SDL_Surface *surf, bool shuffle) {
             }
 
             /* draw line: dark bg first */
-	    auto Dark = [surf, black](int xxx, int yyy) {
-	      sdlutil::setpixel(
-		  surf, xxx, yyy,
-		  sdlutil::mix2(sdlutil::getpixel(surf, xxx, yyy),
-				black));
-	    };
-	    for (const pair<int, int> point : Line<int>{sx, sy, px, py}) {
-	      const int xx = point.first, yy = point.second;
-	      Dark(xx - 1, yy);
-	      Dark(xx + 1, yy);
-	      Dark(xx, yy - 1);
-	      Dark(xx, yy + 1);
-	    }
+            auto Dark = [surf, black](int xxx, int yyy) {
+              sdlutil::setpixel(
+                  surf, xxx, yyy,
+                  sdlutil::mix2(sdlutil::getpixel(surf, xxx, yyy), black));
+            };
+            for (const pair<int, int> point : Line<int>{sx, sy, px, py}) {
+              const int xx = point.first, yy = point.second;
+              Dark(xx - 1, yy);
+              Dark(xx + 1, yy);
+              Dark(xx, yy - 1);
+              Dark(xx, yy + 1);
+            }
 
             /* then inside */
-	    for (const pair<int, int> point : Line<int>{sx, sy, px, py}) {
-	      const int xx = point.first, yy = point.second;
-	      int r = 255 & ((wx * wy) ^ dx);
-	      int g = 255 & ((wx * 13 + dy) ^ ~wy);
-	      int b = 255 & ((dx * 99 + wy) ^ (101 * dy));
+            for (const pair<int, int> point : Line<int>{sx, sy, px, py}) {
+              const int xx = point.first, yy = point.second;
+              int r = 255 & ((wx * wy) ^ dx);
+              int g = 255 & ((wx * 13 + dy) ^ ~wy);
+              int b = 255 & ((dx * 99 + wy) ^ (101 * dy));
 
-	      sdlutil::drawpixel(surf, xx, yy, r, g, b);
+              sdlutil::drawpixel(surf, xx, yy, r, g, b);
             }
           }
         }
@@ -801,12 +809,12 @@ void Drawing::DrawSmall(int y,
     ratey += 2;
 
     fonsmall->draw(ratex, ratey += fonsmall->height,
-                   StringPrintf("       "
-                                YELLOW "%d%% " POP GREY "solved  " POP
-                                YELLOW "%d%% " POP GREY "cooked  " POP
-                                GREY "of " POP YELLOW "%d" POP,
-                                gsol, gcook, votes->nvotes));
-    
+                   std::format("       "
+                               YELLOW "{}% " POP GREY "solved  " POP
+                               YELLOW "{}% " POP GREY "cooked  " POP
+                               GREY "of " POP YELLOW "{}" POP,
+                               gsol, gcook, votes->nvotes));
+
   } else {
     /* nothing */
   }

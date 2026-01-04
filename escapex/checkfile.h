@@ -1,7 +1,11 @@
 #ifndef _ESCAPE_CHECKFILE_H
 #define _ESCAPE_CHECKFILE_H
 
-#include "escapex.h"
+#include <cstdio>
+#include <memory>
+#include <string>
+
+#include "base.h"
 #include "escape-util.h"
 
 /* nicer interface to files. automatically closes
@@ -10,6 +14,8 @@
 /* XXX also check eof when these functions are called */
 
 struct CheckFile {
+  using string = std::string;
+
   FILE *ff = nullptr;
   bool Read(unsigned int bytes, string &s) {
     /* fread stupidly *fails* if the size is 0 */

@@ -1,14 +1,26 @@
 
 #include "menu.h"
 
+#include <algorithm>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "draw.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_video.h"
+#include "base/print.h"
 #include "chars.h"
-#include "message.h"
+#include "draw.h"
+#include "drawable.h"
 #include "escape-util.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "message.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 /* PERF: can optimize many of these width calculations.
    PERF: no need to append strings so often */
@@ -438,7 +450,7 @@ void Menu::Draw() {
 
         /* highlight the entire area if it is focused */
         if (n == selected) {
-          Uint32 color = SDL_MapRGBA(alpharect->format, 145, 120, 120, 255);
+          uint32_t color = SDL_MapRGBA(alpharect->format, 145, 120, 120, 255);
 
           SDL_Rect dst;
           dst.x = posx + 4;
@@ -453,8 +465,8 @@ void Menu::Draw() {
 
       } else {
         /* out of room for bg */
-        printf("The selected control is off-screen! urgh (skip=%d, sel=%d)\n",
-               skip, selected);
+        Print("The selected control is off-screen! urgh (skip={}, sel={})\n",
+              skip, selected);
         break;
       }
 
@@ -671,8 +683,8 @@ void Menu::ScreenResize() {
 
   /* draw title bar */
   {
-    Uint32 color = SDL_MapRGBA(alpharect->format,
-                               120, 120, 145, alpha /* 200 */);
+    uint32_t color = SDL_MapRGBA(alpharect->format,
+                                 120, 120, 145, alpha /* 200 */);
 
     SDL_Rect dst;
     dst.x = 0;
@@ -683,8 +695,8 @@ void Menu::ScreenResize() {
   }
   /* draw line separating title bar from rest */
   {
-    Uint32 color = SDL_MapRGBA(alpharect->format,
-                               50, 50, 80, alpha /* 200 */);
+    uint32_t color = SDL_MapRGBA(alpharect->format,
+                                 50, 50, 80, alpha /* 200 */);
 
     SDL_Rect dst;
     dst.x = 0;
@@ -695,8 +707,8 @@ void Menu::ScreenResize() {
   }
   /* draw the status (help) bar area */
   {
-    Uint32 color = SDL_MapRGBA(alpharect->format,
-                               32, 32, 32, alpha /* 200 */);
+    uint32_t color = SDL_MapRGBA(alpharect->format,
+                                 32, 32, 32, alpha /* 200 */);
 
     SDL_Rect dst;
     dst.x = 0;
@@ -706,8 +718,8 @@ void Menu::ScreenResize() {
     SDL_FillRect(alpharect, &dst, color);
   }
   {
-    Uint32 color = SDL_MapRGBA(alpharect->format,
-                               36, 36, 36, alpha /* 200 */);
+    uint32_t color = SDL_MapRGBA(alpharect->format,
+                                 36, 36, 36, alpha /* 200 */);
 
     SDL_Rect dst;
     dst.x = 0;
@@ -719,8 +731,8 @@ void Menu::ScreenResize() {
 
   /* finally, make the entire help area darker */
   {
-    Uint32 color = SDL_MapRGBA(alpharect->format,
-                               65, 65, 65, alpha /* 180 */);
+    uint32_t color = SDL_MapRGBA(alpharect->format,
+                                 65, 65, 65, alpha /* 180 */);
 
     int fonthalf = fon->height >> 1;
     SDL_Rect dst;

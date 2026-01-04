@@ -1,18 +1,24 @@
 #include "dircache.h"
 
+#include <dirent.h>
 #include <memory>
-#include <unordered_map>
-#include <sys/stat.h>
 #include <string>
+#include <sys/stat.h>
+#include <unordered_map>
+#include <utility>
 
-#include "escapex.h"
-#include "level.h"
-#include "loadlevel.h"
-#include "../cc-lib/crypt/md5.h"
-#include "directories.h"
-#include "escape-util.h"
+#include "crypt/md5.h"
 #include "dircache.h"
+#include "directories.h"
+#include "dirindex.h"
+#include "escape-util.h"
+#include "level-base.h"
+#include "level.h"
+#include "player.h"
 #include "progress.h"
+#include "solution.h"
+
+using namespace std;
 
 namespace {
 

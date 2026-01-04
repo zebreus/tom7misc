@@ -45,6 +45,7 @@ struct Disamb {
 
   // For debugging
   unsigned int SerialAt(int x, int y) const { return serials[y * w + x]; }
+
  private:
   /* array of serial numbers. */
   int w, h;

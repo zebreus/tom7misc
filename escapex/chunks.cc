@@ -2,6 +2,7 @@
 #include "chunks.h"
 
 #include <cstdint>
+#include <stdlib.h>
 #include <string>
 #include <optional>
 #include <memory>
@@ -9,7 +10,7 @@
 #include <map>
 
 #include "base.h"
-#include "escape-util.h"
+#include "base/print.h"
 #include "bytes.h"
 
 using int32 = int32_t;
@@ -92,7 +93,7 @@ std::unique_ptr<Chunks> Chunks::FromString(const string &s) {
     int len = ReadBigEndian32(s, idx);
 
     if (idx + len > s.length()) {
-      printf("bad length\n");
+      Print("bad length\n");
       return nullptr;
     }
     string ch = s.substr(idx, len); idx += len;

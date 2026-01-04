@@ -1,13 +1,16 @@
 #ifndef _ESCAPE_MESSAGE_H
 #define _ESCAPE_MESSAGE_H
 
+#include <memory>
 #include <string>
 
-#include "escapex.h"
 #include "drawable.h"
 #include "chars.h"
 
+#include "base/print.h"
+
 struct Message : public Drawable {
+  using string = std::string;
   string title;
   string ok;
   string cancel;
@@ -69,7 +72,7 @@ struct Message : public Drawable {
 
   static bool Bug(Drawable *bbelow, string ttitle, char *actualchar = 0,
                   string charspec = "") {
-    printf("Bug: %s\n", ttitle.c_str());
+    Print("Bug: {}\n", ttitle);
     std::unique_ptr<Message> m{Message::Create()};
     m->below = bbelow;
     m->posy = -1;

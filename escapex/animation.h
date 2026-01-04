@@ -2,12 +2,15 @@
 #ifndef _ESCAPE_ANIMATION_H
 #define _ESCAPE_ANIMATION_H
 
-#include <SDL.h>
+#include <algorithm>
+
+#include "SDL_video.h"
+
 #include "escapex.h"
+#include "level-base.h"
 #include "level.h"
 #include "draw.h"
 #include "aevent.h"
-#include "escape-util.h"
 #include "dirt.h"
 #include "sound.h"
 #include "graphics.h"

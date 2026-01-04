@@ -14,7 +14,7 @@
    Note: This is being replaced by leveldb for the 4.0 series.
 */
 
-#include "escape-util.h"
+#include <string>
 
 #define DIRINDEXNAME "index.esi"
 #define WEBINDEXNAME "webindex.esi"
@@ -32,6 +32,8 @@ struct RateStatus {
 };
 
 struct DirIndex {
+  using string = std::string;
+
   /* make an empty index, suitable for later writing to disk */
   static DirIndex *Create();
 

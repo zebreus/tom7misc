@@ -1,9 +1,20 @@
 #include "textbox.h"
 
+#include <algorithm>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_video.h"
+#include "escapex.h"
 #include "menu.h"
 #include "draw.h"
 #include "chars.h"
 #include "escape-util.h"
+
+using namespace std;
 
 /* n.b.: for fixing all these crazy corner cases, it seems that a good
    technique is to simply 'retype' any area that needs to be reflown. */
@@ -81,7 +92,7 @@ void TextBox::draw(int posx, int posy, int f) {
   int ww = fon->width * (charsw + 3);
   int hh = fon->height * (charsh + 2);
 
-  Uint32 color;
+  uint32_t color;
 
   if (f) color = SDL_MapRGBA(screen->format, 220, 220, 180, 255);
   else color   = SDL_MapRGBA(screen->format, 120, 120, 145, 255);
@@ -142,7 +153,7 @@ void TextBox::draw(int posx, int posy, int f) {
      at least drawlines lines? */
 
   vallist<char> *tmp = before;
-  vector<string> blines;
+  std::vector<string> blines;
 
   while (tmp != nullptr && blines.size() < drawlines) {
     blines.push_back(prevline(tmp));

@@ -3,7 +3,7 @@
 #   export LINUX=true
 #   export OSX=true
 #   export WIN32=true
-#   export WIN64=true  (new, 2025)
+#   export WIN64=true  (new, 2026)
 # before you run make, or nothing will happen. See HACKING for
 # more information on compiling escape.
 

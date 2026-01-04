@@ -2,17 +2,10 @@
 #ifndef _ESCAPE_ESCAPEX_H
 #define _ESCAPE_ESCAPEX_H
 
-#include "SDL.h"
-#include "SDL_net.h"
-#include "SDL_thread.h"
-#include <math.h>
+#include "SDL_events.h"
+#include "SDL_video.h"
 
-#include <string>
-#include <memory>
-
-#include "base.h"
 #include "drawable.h"
-
 #include "version.h"
 
 /* some build environments might want to find static data
@@ -29,16 +22,12 @@
 #define STARTW 800
 #define STARTH 600
 
-/* build this many zoomed versions of
-   the graphics, each at 1/2 the size
-   of the previous (including the 1:1
-   originals)
+/* build this many zoomed versions of the graphics, each at 1/2 the
+   size of the previous (including the 1:1 originals)
 
-   careful setting this too high, or
-   else shrink50 will eventually fail
-   because the images are too small
-   (could fix this and have it return
-   an empty or near-empty surface) */
+   careful setting this too high, or else shrink50 will eventually
+   fail because the images are too small (could fix this and have it
+   return an empty or near-empty surface) */
 #define DRAW_NSIZES 4
 
 /* Handle a video event: Exposure or resize. Returns true if
@@ -52,6 +41,7 @@ extern int network;
 /* is the audio subsystem started? */
 extern int audio;
 
+// Single global screen buffer, used everywhere.
 extern SDL_Surface *screen;
 
 #ifndef PLATFORM

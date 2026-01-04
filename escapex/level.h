@@ -1,10 +1,9 @@
 #ifndef _ESCAPE_LEVEL_H
 #define _ESCAPE_LEVEL_H
 
-#include <string>
 #include <cstring>
-#include <string.h>
 #include <memory>
+#include <string>
 
 // n.b. Don't let this module depend on SDL. The server needs to be
 // able to link it in.
@@ -17,7 +16,7 @@
 
 using namespace std;
 
-template<class T> class PtrList;
+template<class T> struct PtrList;
 
 inline dir turnleft(dir d) {
   switch (d) {
@@ -331,7 +330,7 @@ struct Level {
      somewhere along the way. If the return is false, then out is in
      an unspecified state. */
   static bool VerifyPrefix(const Level *lev, const Solution &s,
-			   Solution *out);
+         Solution *out);
 
   /* execute solution. returns early (# moves set in moves)
      if we die (return false) or win (return true). false upon

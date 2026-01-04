@@ -1,21 +1,20 @@
 #include "edit.h"
 
-#include <math.h>
+#include <cmath>
+#include <memory>
+#include <string>
 
-#include "SDL.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/union-find.h"
-#include "../cc-lib/util.h"
-
-#include "level.h"
-#include "draw.h"
-#include "escapex.h"
-#include "play.h"
-#include "escape-util.h"
-#include "message.h"
 #include "analysis.h"
+#include "draw.h"
+#include "escape-util.h"
 #include "generator.h"
+#include "level.h"
+#include "message.h"
 #include "pattern.h"
+#include "union-find.h"
+#include "util.h"
+
+using namespace std;
 
 /* matches anything */
 static bool pred_any(Level *, void *_, int x, int y) {
@@ -433,8 +432,8 @@ void Editor::DoRandom() {
     /* XXX testing */
     std::unique_ptr<Pattern<void>> pat_test =
       Pattern<void>::Create("...\n"
-			    "B\\0BB\n"
-			    "...\n");
+          "B\\0BB\n"
+          "...\n");
     if (pat_test.get() != nullptr) {
       pat_test->settile('G', T_GREY);
       pat_test->settile('B', T_BLUE);

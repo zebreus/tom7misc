@@ -2,11 +2,13 @@
 #ifndef _ESCAPE_STARTUP_H
 #define _ESCAPE_STARTUP_H
 
+#include <string>
+
 struct StartUp {
   /* the name of the executable. used only for upgrade,
      so disabled for multiuser builds. */
 # ifndef MULTIUSER
-  static string self;
+  static std::string self;
 # endif
 
   /* change to the appropriate directory at startup.
@@ -16,7 +18,7 @@ struct StartUp {
 
  private:
 
-  static int install_levels(string);
+  static int install_levels(std::string);
 };
 
 #endif

@@ -2,18 +2,18 @@
 #ifndef _ESCAPE_DRAW_H
 #define _ESCAPE_DRAW_H
 
-#include <math.h>
 #include <string>
 #include <cstdint>
 
-#include "level.h"
+#include "aevent.h"
 #include "graphics.h"
-
-#include "../cc-lib/sdl/font.h"
+#include "level-base.h"
+#include "level.h"
+#include "sdl/font.h"
 
 struct SDL_Surface;
-class Rating;
-class RateStatus;
+struct Rating;
+struct RateStatus;
 
 extern Font *fon;
 extern Font *fonsmall;

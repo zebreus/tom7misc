@@ -6,7 +6,6 @@
 
 #include "player.h"
 #include "level.h"
-#include "escapex.h"
 
 struct CommentScreen {
   static void Comment(Player *plr, const Level *l, const std::string &md5,

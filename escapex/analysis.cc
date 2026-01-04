@@ -1,9 +1,13 @@
 
 #include "analysis.h"
-#include "../cc-lib/union-find.h"
-#include "level.h"
 
 #include <memory>
+
+#include "aevent.h"
+#include "level-base.h"
+#include "union-find.h"
+#include "level.h"
+
 
 /* could include traps. preference? */
 bool Analysis::IsEmpty(int t) {
@@ -42,7 +46,7 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
     for (int x = 0; x < lev->w; x++) {
 
       if (IsEmpty(lev->tileat(x, y))) {
-	std::unique_ptr<Level> cl = lev->Clone();
+        std::unique_ptr<Level> cl = lev->Clone();
 
         cl->warp(cl->guyx, cl->guyy, x, y);
 
@@ -51,7 +55,7 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
         if (cl->isdead(dummy, dummy, unused)) continue;
 
         for (dir d = FIRST_DIR; d <= LAST_DIR; d++) {
-	  std::unique_ptr<Level> cc = cl->Clone();
+          std::unique_ptr<Level> cc = cl->Clone();
 
           /* we can't be walking off the map! */
           int destx, desty;
@@ -62,7 +66,7 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
           if (IsEmpty(lev->tileat(destx, desty)) &&
               cc->Move(d) && !cc->isdead(dummy, dummy, unused)) {
             /* good. now just check the opposite... */
-	    std::unique_ptr<Level> co = cl->Clone();
+            std::unique_ptr<Level> co = cl->Clone();
 
             co->warp(cl->guyx, cl->guyy, destx, desty);
 

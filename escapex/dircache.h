@@ -12,6 +12,7 @@
 */
 
 #include <memory>
+#include <string>
 
 #include "player.h"
 #include "dirindex.h"
@@ -32,7 +33,7 @@ struct DirCache {
   virtual DirIndex *Get(
       const std::string &dir, int &tot, int &sol,
       void (*prog)(void *data, int n, int total,
-		   const std::string &subdir, int tks) = nullptr,
+                   const std::string &subdir, int tks) = nullptr,
       void *prog_data = nullptr) = 0;
 };
 

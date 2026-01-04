@@ -106,6 +106,13 @@ If all is well, you should be able to just "export WIN32=true" and
 "make". I do this from cygwin's bash, but it should work from other
 shells too, I think.
 
+In 2026, I'm using msys2, which is kept up to date with new compiler
+releases (clang) and easier to manage. Basically I install and use
+the clang64 environment for development, and then just running "g++"
+gets you the newest clang targeting x86_64-w64-windows-gnu, including
+various libraries. I will probably switch to this and simplify away
+the mingw build. use "export WIN64=true" for this.
+
  ** Understanding the code **
 
 There is no design document, sorry, and the code is not very clean!
@@ -177,6 +184,11 @@ standalone tools like screenshot.exe. This required some violence to
 the makefile and source which probably messed up the OSX build. This
 needs to be updated anyway for the new Apple chips. Why they always
 gotta change it?
+
+On 4 Jan 2026 (r6867) I got this compiling on Windows 11 using msys2's
+clang64 environment. Not too bad. I'm now on fairly modern C++ (C++23)
+so that I can use libraries in cc-lib.
+
 
  ** Things to know **
 

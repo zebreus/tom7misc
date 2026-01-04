@@ -15,4 +15,4 @@ InlayHints:
 # keep it; you might need to modify this if you want to use clangd
 # yourself.
 CompileFlags:
-  Add: [-xc++, -DWIN32, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include]
+  Add: [-xc++, -DWIN32, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -ISDL_net]

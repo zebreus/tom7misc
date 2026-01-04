@@ -1,15 +1,17 @@
 
 #include "cleanup.h"
 
+#include <dirent.h>
+#include <string>
 #include <sys/stat.h>
 
-#include "escapex.h"
-#include "escape-util.h"
-#include "directories.h"
-#include "edit.h"
 #include "dircache.h"
+#include "edit.h"
+#include "escape-util.h"
 
-#include "../cc-lib/util.h"
+#include "util.h"
+
+using namespace std;
 
 void Cleanup::Clean() {
   DIR *d = opendir(".");

@@ -1,17 +1,19 @@
 #include "progress.h"
 
 #include <string>
+#include <cstdint>
 
-#include "escapex.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "draw.h"
-#include "../cc-lib/sdl/font.h"
-
+#include "escapex.h"
+#include "sdl/font.h"
 
 void Progress::drawbar(void *vepoch, int n, int tot,
                        const string &msg, int ticks) {
-  Uint32 * epoch = (Uint32*) vepoch;
+  uint32_t * epoch = (uint32_t*) vepoch;
   if (tot > 50 && !(n % 5)) {
-    Uint32 ti = SDL_GetTicks();
+    uint32_t ti = SDL_GetTicks();
     if (*epoch < ti) {
 
       int w = screen->w - 4;

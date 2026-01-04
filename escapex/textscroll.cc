@@ -1,9 +1,15 @@
 
 #include "textscroll.h"
+
+#include <string>
+
+#include "SDL_video.h"
 #include "escapex.h"
 #include "draw.h"
 
 #define BACKLOG 256
+
+using namespace std;
 
 namespace {
 struct TextScroll_ : public TextScroll {

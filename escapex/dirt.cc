@@ -4,8 +4,11 @@
 #include <vector>
 #include <tuple>
 
+#include "SDL_video.h"
 #include "escapex.h"
-#include "../cc-lib/sdl/sdlutil.h"
+#include "sdl/sdlutil.h"
+
+using namespace std;
 
 namespace {
 struct Dirt_ : public Dirt {

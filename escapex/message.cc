@@ -1,13 +1,23 @@
 
 #include "message.h"
 
+#include <algorithm>
+#include <memory>
 #include <string>
 
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "draw.h"
-#include "escape-util.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_video.h"
 #include "chars.h"
+#include "draw.h"
+#include "drawable.h"
+#include "escape-util.h"
+#include "escapex.h"
+
+#include "graphics.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 namespace {
 
@@ -65,9 +75,9 @@ void Message_::init() {
   int w =
     (2 * fon->width) +
     std::max(ll,
-	     fon->sizex("ESCAPE: ") +
-	     std::max(fon->sizex(ok),
-		      fon->sizex(cancel)));
+       fon->sizex("ESCAPE: ") +
+       std::max(fon->sizex(ok),
+          fon->sizex(cancel)));
 
   nlines = Font::lines(title);
 

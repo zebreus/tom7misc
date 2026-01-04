@@ -1,5 +1,9 @@
 #include "dirindex.h"
 
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "escape-util.h"
@@ -10,6 +14,8 @@
 #define INDEXMAGIC "ESXI"
 #define INDEX2MAGIC "ESXi" /* now obsolete. but don't reuse */
 #define INDEX3MAGIC "ESX!"
+
+using namespace std;
 
 namespace {
 struct RAEntry {
@@ -33,10 +39,10 @@ struct DirIndex_ : public DirIndex {
   ~DirIndex_() override {}
 
   void AddEntry(const string &filename, RateStatus v,
-		int date, int speedrecord, int owner) override;
+    int date, int speedrecord, int owner) override;
 
   bool GetEntry(const string &filename,
-		RateStatus &v, int &date, int &speed, int &o) override;
+    RateStatus &v, int &date, int &speed, int &o) override;
 
   bool WebCollection() const override { return isweb; }
 
@@ -48,7 +54,7 @@ struct DirIndex_ : public DirIndex {
 
 
 bool DirIndex_::GetEntry(const string &filename,
-			 RateStatus &v, int &d, int &sr, int &o) {
+       RateStatus &v, int &d, int &sr, int &o) {
   auto it = tab.find(filename);
   if (it == tab.end()) return false;
 
@@ -88,23 +94,23 @@ void DirIndex_::WriteFile(const string &fname) {
   for (const auto &p : tab) {
     const RAEntry &ent = p.second;
     fprintf(f, "%s %d %d %d %d %d %d %d %d %d\n",
-	    ent.filename.c_str(),
-	    ent.v.nvotes,
-	    ent.v.difficulty,
-	    ent.v.style,
-	    ent.v.rigidity,
-	    ent.v.cooked,
-	    ent.v.solved,
-	    ent.date,
-	    ent.speedrecord,
-	    ent.owner);
+      ent.filename.c_str(),
+      ent.v.nvotes,
+      ent.v.difficulty,
+      ent.v.style,
+      ent.v.rigidity,
+      ent.v.cooked,
+      ent.v.solved,
+      ent.date,
+      ent.speedrecord,
+      ent.owner);
   }
 
   fclose(f);
 }
 
 void DirIndex_::AddEntry(const string &f, RateStatus v,
-			 int date, int speedrecord, int owner) {
+       int date, int speedrecord, int owner) {
   tab[f] = RAEntry(f, v, date, speedrecord, owner);
 }
 
@@ -121,9 +127,9 @@ DirIndex *DirIndex::FromFile(const string &f) {
   /* chop off magic, then erase leading whitespace */
   if (iii != "") {
     dr->title = EscapeUtil::losewhitel(iii.substr
-                                 (strlen(INDEXMAGIC),
-                                  iii.length() -
-                                  strlen(INDEXMAGIC)));
+                                       (strlen(INDEXMAGIC),
+                                        iii.length() -
+                                        strlen(INDEXMAGIC)));
 
     /* hashtable remains empty */
     return dr.release();

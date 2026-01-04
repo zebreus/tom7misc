@@ -1,15 +1,22 @@
 
 #include "backgrounds.h"
 
+#include <cstdint>
+
+#include "SDL_video.h"
+
 #include "draw.h"
 #include "escape-util.h"
 #include "chars.h"
-#include "../cc-lib/sdl/sdlutil.h"
+#include "escapex.h"
+
+#include "graphics.h"
+#include "sdl/sdlutil.h"
 
 const float Backgrounds::blueish = 178.0f;
 const float Backgrounds::purpleish = 260.0f; // 247.0f;
 
-static Uint32 hueish(SDL_Surface *surf, float base_hue) {
+static uint32_t hueish(SDL_Surface *surf, float base_hue) {
   float h = base_hue + (EscapeUtil::randfrac() * (233.0f - 178.0f));
   float s = .29f + (EscapeUtil::randfrac() * (.84f - .29f));
   float v = .12f + (EscapeUtil::randfrac() * (.50f - .12f));
@@ -59,8 +66,8 @@ void Backgrounds::GradientBlocks(SDL_Surface *&surf,
   sdlutil::ClearSurface(gradient, 0xFF, 0xFF, 0xFF, 0xFF);
 
   int x = 0;
-  Uint32 last = hueish(gradient, gradient_hue);
-  Uint32 next = hueish(gradient, gradient_hue);
+  uint32_t last = hueish(gradient, gradient_hue);
+  uint32_t next = hueish(gradient, gradient_hue);
   int count = 1;
   int num = 0;
   while (x < w) {
@@ -70,7 +77,7 @@ void Backgrounds::GradientBlocks(SDL_Surface *&surf,
     rect.w = 1;
     rect.x = x;
 
-    Uint32 clr;
+    uint32_t clr;
 
     if (num >= count) {
       /* pick a new nextination color */
