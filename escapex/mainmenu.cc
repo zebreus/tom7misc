@@ -4,20 +4,29 @@
 #include <string>
 #include <memory>
 
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_stdinc.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "draw.h"
+#include "drawable.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level.h"
+#include "mainshow.h"
+#include "player.h"
+#include "sdl/sdlutil.h"
+#include "selector.h"
 #include "version.h"
 #include "prefs.h"
 #include "chars.h"
-#include "client.h"
 #include "loadlevel.h"
 #include "message.h"
 #include "play.h"
 #include "handhold.h"
 #include "backgrounds.h"
-#include "../cc-lib/util.h"
-
-/* testing */
-#include "animation.h"
+#include "util.h"
 
 #define TUTORIAL_DIR "official" DIRSEP "tutorial"
 #define TITLE_FILE DATADIR "title.png"
@@ -341,15 +350,15 @@ MainMenu::Result MainMenu_::Show() {
         case MMEType::EDIT: return EDIT;
         case MMEType::QUIT: return QUIT;
         case MMEType::UPGRADE:
-	  if (network) return UPGRADE;
-	  else continue;
+    if (network) return UPGRADE;
+    else continue;
         case MMEType::UPDATE:
-	  if (network) return UPDATE;
-	  else continue;
+    if (network) return UPDATE;
+    else continue;
         case MMEType::PREFS:
-	  Prefs::Show(pp);
-	  Redraw();
-	  continue;
+    Prefs::Show(pp);
+    Redraw();
+    continue;
         default: break;
         }
         /* ??? */
@@ -360,7 +369,7 @@ MainMenu::Result MainMenu_::Show() {
         return QUIT;
       default:
       case MSel::PEType::NONE:
-	break;
+  break;
       }
     }
   }

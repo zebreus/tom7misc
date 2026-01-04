@@ -9,7 +9,6 @@
 
 #include "crypt/md5.h"
 #include "dircache.h"
-#include "directories.h"
 #include "dirindex.h"
 #include "escape-util.h"
 #include "level-base.h"
@@ -105,7 +104,7 @@ DirIndex *DirCache_::Get(const string &dir_in,
 
     /* calculate size (for callback) */
     int total = 0;
-    if (prog) total = dirsize(dir.c_str());
+    if (prog) total = EscapeUtil::DirSize(dir);
     /* printf("  DIRCACHE: %d total\n", total); */
 
     std::unique_ptr<DirIndex> didx = GetIdx(dir);

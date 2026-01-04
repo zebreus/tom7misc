@@ -1,12 +1,11 @@
 // TODO: Make headless with e.g. dr_wav.
 // Or give up on sound and retire it...
 
-#include "../cc-lib/util.h"
-
 #include <cstdio>
-#include <iostream>
 #include <fstream>
 #include <string>
+
+#include "util.h"
 
 using namespace std;
 

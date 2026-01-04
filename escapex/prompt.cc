@@ -1,13 +1,15 @@
 
 #include "prompt.h"
 
+#include <memory>
 #include <string>
+#include <string_view>
 
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "draw.h"
 #include "chars.h"
+#include "draw.h"
+#include "drawable.h"
 #include "menu.h"
+#include "sdl/font.h"
 
 /* XXX implement in terms of menu class?
    textinput is meant to be the same */
@@ -20,7 +22,7 @@ Prompt *Prompt::Create() {
 
 Prompt::~Prompt() {}
 
-string Prompt::ask(Drawable *b, string t, string d) {
+string Prompt::Ask(Drawable *b, string_view t, string_view d) {
   std::unique_ptr<Prompt> pp{Prompt::Create()};
   pp->title = t;
   pp->below = b;

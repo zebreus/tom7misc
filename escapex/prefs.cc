@@ -1,16 +1,21 @@
 #include "prefs.h"
 
-#include "escapex.h"
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "base.h"
+#include "chunks.h"
 #include "player.h"
 #include "menu.h"
 #include "draw.h"
 #include "message.h"
 #include "chars.h"
-#include "../cc-lib/util.h"
-
-#define IND (fon->width)
+#include "util.h"
 
 void Prefs::Show(Player *plr) {
+  const int IND = fon->width;
 
   /* ------- user info -------- */
   /* XXX allow changing of name,

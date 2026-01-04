@@ -5,16 +5,24 @@
 #include <memory>
 #include <vector>
 
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-
+#include "SDL_video.h"
 #include "client.h"
+#include "crypt/md5.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
 #include "http.h"
 #include "httputil.h"
+#include "level-base.h"
+#include "level.h"
 #include "message.h"
-#include "draw.h"
 #include "optimize.h"
-#include "escape-util.h"
+#include "player.h"
+#include "sdl/sdlutil.h"
+#include "solution.h"
+#include "textscroll.h"
+#include "util.h"
 
 namespace {
 
@@ -102,7 +110,7 @@ UploadResult Upload_::Up(Player *p, const string &f, const string &text) {
     FormEntry::File("lev", "lev.esx", levcont),
     FormEntry::File("sol", "sol.esx", solcont),
   };
-    
+
   Redraw();
 
   string out;

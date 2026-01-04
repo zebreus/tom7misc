@@ -326,7 +326,7 @@ struct BookmarkItem : public MenuItem {
 
     case SDLK_r:
     case SDLK_F2: {
-      action.s = Prompt::ask(container,
+      action.s = Prompt::Ask(container,
                              "New name: ", ns.name);
       if (action.s != "") {
         action.a = BMA_RENAME;
@@ -1203,7 +1203,7 @@ PlayResult Play_::DoPlaySave(Player *plr,
                MD5 string here. Better would be to use loader, or
                at least require only a unique prefix of the md5. */
             watching = false;
-            string answer = Prompt::ask(this,
+            string answer = Prompt::Ask(this,
                                         PICS QICON POP
                                         " What solution? (give md5 of level)");
 

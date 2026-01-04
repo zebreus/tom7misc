@@ -2,8 +2,8 @@
 #define _PROMPT_H
 
 #include <string>
+#include <string_view>
 
-#include "escapex.h"
 #include "drawable.h"
 
 struct Prompt {
@@ -15,8 +15,9 @@ struct Prompt {
 
   /* XXX should probably be just this static method,
      and perhaps in util */
-  static std::string ask(Drawable *b,
-                         std::string title, std::string def = "");
+  static std::string Ask(Drawable *b,
+                         std::string_view title,
+                         std::string_view def = "");
 
   static Prompt *Create();
 

@@ -1,5 +1,9 @@
 #include "rle.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
 #include <vector>
 #include <string>
 #include <cstdint>

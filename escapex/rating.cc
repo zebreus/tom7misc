@@ -1,25 +1,31 @@
 
 #include "rating.h"
 
+#include <format>
 #include <vector>
 #include <string>
 #include <memory>
 
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-
-#include "escapex.h"
-#include "player.h"
-#include "draw.h"
+#include "SDL_stdinc.h"
+#include "SDL_video.h"
 #include "chars.h"
-#include "message.h"
-#include "escape-util.h"
-#include "menu.h"
-
 #include "client.h"
 #include "commenting.h"
+#include "crypt/md5.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "http.h"
+#include "menu.h"
+#include "message.h"
+#include "player.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "solution.h"
 #include "solutionuploading.h"
+#include "textscroll.h"
+#include "util.h"
 
 Rating *Rating::Create() {
   return new Rating();
@@ -225,7 +231,7 @@ void RateScreen_::Rate() {
     &ok,
     &can,
   };
-  
+
   std::unique_ptr<Menu> mm =
     Menu::Create(this, "Change Your Rating", items, false);
 
@@ -257,20 +263,20 @@ void RateScreen_::Rate() {
     bool success =
       (hh.get() != nullptr) &&
       Client::RPC(hh.get(), RATE_RPC,
-                  StringPrintf(
-                      "id=%d"
-                      "&seql=%d"
-                      "&seqh=%d"
-                      "&md=%s"
-                      "&diff=%d"
-                      "&style=%d"
-                      "&rigid=%d"
-                      "&cooked=%d"
-                      "&solved=%d",
+                  std::format(
+                      "id={}"
+                      "&seql={}"
+                      "&seqh={}"
+                      "&md={}"
+                      "&diff={}"
+                      "&style={}"
+                      "&rigid={}"
+                      "&cooked={}"
+                      "&solved={}",
                       plr->webid,
                       plr->webseql,
                       plr->webseqh,
-                      MD5::Ascii(levmd5).c_str(),
+                      MD5::Ascii(levmd5),
                       nr->difficulty,
                       nr->style,
                       nr->rigidity,

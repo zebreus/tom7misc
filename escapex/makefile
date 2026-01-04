@@ -571,7 +571,7 @@ endif
 # in 2026.
 ifdef WIN64
 
-default : escape.exe
+default : escape.exe screenshot.exe
 
 CXX=g++
 CC=gcc

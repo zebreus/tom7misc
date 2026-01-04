@@ -1,27 +1,34 @@
 
 #include "playerdb.h"
 
+#include <dirent.h>
+#include <format>
+#include <memory>
 #include <string>
+#include <string_view>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
-
-#include "escape-util.h"
-#include "prompt.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
 #include "chars.h"
-#include "message.h"
-#include "prefs.h"
-#include "directories.h"
 #include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "level-base.h"
+#include "message.h"
+#include "player.h"
+#include "prefs.h"
+#include "prompt.h"
+#include "selector.h"
+#include "util.h"
 
-#define PLAYERDB_MAGIC "ESXD"
+static constexpr std::string_view PDBTITLE =
+  YELLOW "Welcome to Escape!" POP
+  " Select a player with the "
+  BLUE "arrow keys" POP " and " BLUE "enter" POP ".\n"
+  "To delete a player, press " BLUE "ctrl-d" POP ".\n \n";
 
-#define PDBTITLE YELLOW "Welcome to Escape!" POP \
-                 " Select a player with the " \
-                 BLUE "arrow keys" POP " and " BLUE "enter" POP ".\n" \
-                 "To delete a player, press " BLUE "ctrl-d" POP ".\n \n"
-
-#define MENUITEMS 3
+static constexpr int MENUITEMS = 3;
 enum pdbkind { K_PLAYER, K_NEW, K_IMPORT, K_QUIT, };
 
 namespace {
@@ -366,12 +373,12 @@ Player *PlayerDB_::chooseplayer() {
             && sel->items[sel->selected].kind == K_PLAYER) {
 
           string answer =
-            Prompt::ask(0,
-                        StringPrintf(PICS QICON POP " Really delete " BLUE
-                                     "%s " POP
-                                     "(" YELLOW "%d" POP " solved)? (y/N) ",
-                                     sel->items[sel->selected].name.c_str(),
-                                     sel->items[sel->selected].solved));
+            Prompt::Ask(0,
+                        std::format(PICS QICON POP " Really delete " BLUE
+                                    "{} " POP
+                                    "(" YELLOW "{}" POP " solved)? (y/N) ",
+                                    sel->items[sel->selected].name,
+                                    sel->items[sel->selected].solved));
 
           if (answer.length() > 0 && (answer[0]|32) == 'y') {
             DeletePlayer(sel->selected);
@@ -430,7 +437,7 @@ Player *PlayerDB_::chooseplayer() {
 void PlayerDB_::PromptNew() {
   /* XXX could default to getenv(LOGNAME) on linux */
   string ssss = Safeify(
-      Prompt::ask(0, "Enter name for new player: "));
+      Prompt::Ask(0, "Enter name for new player: "));
 
   if (ssss != "") {
     AddPlayer(ssss);

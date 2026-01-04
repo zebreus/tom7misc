@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <string>
+#include <string_view>
 
 #define ATTIC_DIR "attic"
 
@@ -128,7 +129,7 @@ struct EscapeUtil {
   static string chop(string &line);
 
   /* number of entries (not . or ..) in dir d */
-  static int dirsize(string d);
+  static int DirSize(std::string_view d);
 
   /* mylevels/good_tricky   to
      mylevels               to

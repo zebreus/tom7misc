@@ -358,7 +358,7 @@ void Editor::tmenurotate(int n) {
 }
 
 void Editor::settitle() {
-  string nt = Prompt::ask(this, "Title for level: ",
+  string nt = Prompt::Ask(this, "Title for level: ",
                           level->title);
 
   level->title = nt;
@@ -372,9 +372,9 @@ void Editor::settitle() {
 
 void Editor::setauthor() {
 
-  string s = Prompt::ask(this,
-       "Author of level: ",
-       level->author);
+  string s = Prompt::Ask(this,
+                         "Author of level: ",
+                         level->author);
   if (!s.empty()) level->author = s;
 
   changed = 1;
@@ -388,7 +388,7 @@ void Editor::saveas() {
   if (filename == "") fn = (string)EDIT_DIR + (string) DIRSEP;
   else                fn = filename;
 
-  string nfn = Prompt::ask(this, "Filename: ", fn);
+  string nfn = Prompt::Ask(this, "Filename: ", fn);
 
   /* if cancelled, don't do anything */
   if (nfn == "") {

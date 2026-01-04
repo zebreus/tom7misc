@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <dirent.h>
 #include <stdio.h>
 #include <string>
 #include <sys/stat.h>
@@ -726,6 +727,19 @@ bool EscapeUtil::setclipboard(string as) {
 # endif
 }
 
+int EscapeUtil::DirSize(std::string_view dir_view) {
+  std::string dir(dir_view);
+  DIR *d = opendir(dir.c_str());
+  if (!d) return 0;
+  int i = 0;
+  dirent *de;
+  for (;;i++) {
+    de = readdir(d);
+    if (!de) break;
+  }
+  closedir(d);
+  return i;
+}
 
 /* XXX, could use better source of randomness (kernel)
    on systems that support it. But we don't have any
@@ -757,4 +771,3 @@ struct randomseed {
 };
 
 randomseed randomseed__unused;
-

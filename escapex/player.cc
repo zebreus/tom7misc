@@ -1,38 +1,41 @@
 #include "player.h"
 
-#include <unordered_map>
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <dirent.h>
+#include <format>
 #include <map>
-#include <vector>
-#include <string>
 #include <memory>
-#include <assert.h>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "chunks.h"
-#include "checkfile.h"
-#include "prefs.h"
-#include "directories.h"
-#include "escape-util.h"
-
-#include "../cc-lib/base64.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/crypt/md5.h"
-
+#include "base/print.h"
+#include "base64.h"
 #include "bytes.h"
+#include "checkfile.h"
+#include "chunks.h"
+#include "crypt/md5.h"
+#include "escape-util.h"
+#include "prefs.h"
+#include "rating.h"
+#include "solution.h"
+#include "util.h"
 
 #ifdef WIN32
 # include <time.h>
 #endif
 
-#define PLAYER_MAGIC "ESXP"
-#define PLAYERTEXT_MAGIC "ESPt"
-#define PLAYER_MAGICS_LENGTH 4
-#define SOLMARKER "-- solutions"
-#define RATMARKER "-- ratings"
-#define PREFMARKER "-- prefs"
+static constexpr std::string_view PLAYERTEXT_MAGIC = "ESPt";
+static constexpr std::string_view SOLMARKER = "-- solutions";
+static constexpr std::string_view RATMARKER = "-- ratings";
+static constexpr std::string_view PREFMARKER = "-- prefs";
 
 /* give some leeway for future expansion */
-#define IGNORED_FIELDS 8
+static constexpr int IGNORED_FIELDS = 8;
 
 NamedSolution::NamedSolution() {}
 
@@ -183,7 +186,7 @@ struct Player_ : public Player {
  private:
 
   void DeleteOldBackups();
-  static string backupfile(string fname, int epoch);
+  static string BackupFile(string_view fname, int epoch);
   bool writef_text(const string &f);
 
   // Keys are (raw) MD5 strings. The order of the solutions
@@ -298,11 +301,12 @@ void Player_::PutRating(const string &md5, Rating *rat) {
 }
 
 /* in seconds */
-#define BACKUP_FREQ ((24 * (60 * (60 /* minutes */) /* hours */) /* days */) * 5)
-#define N_BACKUPS 4
+static constexpr int BACKUP_FREQ =
+  ((24 * (60 * (60 /* minutes */) /* hours */) /* days */) * 5);
+static constexpr int N_BACKUPS = 4;
 
-string Player_::backupfile(string fname, int epoch) {
-  return StringPrintf("%s.~%d", fname.c_str(), epoch);
+string Player_::BackupFile(std::string_view base, int epoch) {
+  return std::format("{}.~{}", base, epoch);
 }
 
 /* get rid of old backups, if any */
@@ -311,46 +315,40 @@ void Player_::DeleteOldBackups() {
   if (!dir) return;
 
   /* XX must agree with backupfile */
-  string basename =
-#   ifdef WIN32
-        EscapeUtil::lcase(
-#   else
-        (
-#   endif
-          fname + ".~");
+  string basename = fname + ".~";
+  #ifdef WIN32
+  basename = Util::lcase(basename);
+  #endif
 
   dirent *de;
   int n = 0;
   int oldest = (time(0) / BACKUP_FREQ) + 1;
   while ((de = readdir(dir))) {
-    string f =
-#     ifdef WIN32
-        EscapeUtil::lcase(
-#     else
-        (
-#     endif
-      de->d_name);
+    string f = de->d_name;
+    #ifdef WIN32
+    f = Util::lcase(f);
+    #endif
 
-        if (f.substr(0, basename.length()) ==
-            basename) {
-          string sage = f.substr(basename.length(),
-                                 f.length() - basename.length());
-          int age = atoi(sage.c_str());
+    if (f.substr(0, basename.length()) ==
+        basename) {
+      string sage = f.substr(basename.length(),
+                             f.length() - basename.length());
+      int age = atoi(sage.c_str());
 
-          /* check that it's a valid number ... */
-          if (age && sage == Util::itos(age)) {
-            /* printf("saw '%s' with age %d\n", f.c_str(), age); */
-            n++;
-            if (age < oldest) oldest = age;
-          }
-        }
-  } /* while */
+      /* check that it's a valid number ... */
+      if (age && sage == Util::itos(age)) {
+        /* printf("saw '%s' with age %d\n", f.c_str(), age); */
+        n++;
+        if (age < oldest) oldest = age;
+      }
+    }
+  }
 
   closedir(dir);
 
   if (n > N_BACKUPS) {
 
-    string delme = StringPrintf("%s.%d", basename.c_str(), oldest);
+    string delme = std::format("{}.{}", basename, oldest);
     if (EscapeUtil::existsfile(delme) && EscapeUtil::remove(delme)) {
       /* try deleting again */
       /* printf("deleted backup #%d\n", oldest); */
@@ -365,7 +363,7 @@ bool Player_::WriteFile() {
     int epoch = time(0) / BACKUP_FREQ;
 
     /* did we already back up in this epoch? */
-    string tf = backupfile(fname, epoch);
+    string tf = BackupFile(fname, epoch);
     if (!EscapeUtil::existsfile(tf)) {
       writef_text(tf);
     }
@@ -382,79 +380,80 @@ bool Player_::writef_text(const string &file) {
 
   if (!f) return 0;
 
-  fprintf(f, "%s\n", PLAYERTEXT_MAGIC);
-  fprintf(f,
-          "%d\n"
-          "%d\n"
-          "%d\n", webid, webseqh, webseql);
+  Print(f, "{}\n", PLAYERTEXT_MAGIC);
+  Print(f,
+        "{}\n"
+        "{}\n"
+        "{}\n", webid, webseqh, webseql);
 
   /* write ignored fields; for later expansion... */
-  for (int u = 0; u < IGNORED_FIELDS; u++) fprintf(f, "0\n");
+  for (int u = 0; u < IGNORED_FIELDS; u++) Print(f, "0\n");
 
-  fprintf(f, "%s\n", name.c_str());
+  Print(f, "{}\n", name);
 
-  fprintf(f, SOLMARKER "\n");
-  /* fprintf(f, "%d\n", sotable->items); */
+  Print(f, "{}\n", SOLMARKER);
+  /* Print(f, "{}\n", sotable->items); */
 
   {
     // Sort so that text formats diff better (e.g. in version control)
-    map<string, const vector<NamedSolution> *> sorted_sols;
+    std::map<string, const vector<NamedSolution> *> sorted_sols;
     for (const auto &p : soltable) {
       if (!p.second.empty()) {
-	sorted_sols[p.first] = &p.second;
+        sorted_sols[p.first] = &p.second;
       }
     }
 
     for (const auto &p : sorted_sols) {
       // We checked above that we have at least one solution.
-      fprintf(f, "%s * %s\n", MD5::Ascii(p.first).c_str(),
-	      Base64::Encode(p.second->at(0).ToString()).c_str());
-      /* followed by perhaps more solutions marked with @ */
+      Print(f, "{} * {}\n", MD5::Ascii(p.first),
+            Base64::Encode(p.second->at(0).ToString()));
+      /* followed by perhaps more solutions */
 
       for (int i = 1; i < p.second->size(); i++) {
-	const NamedSolution &ns = p.second->at(i);
-	fprintf(f, "  %s\n", Base64::Encode(ns.ToString()).c_str());
+        const NamedSolution &ns = p.second->at(i);
+        Print(f, "  {}\n", Base64::Encode(ns.ToString()));
       }
 
       /* end it (makes parsing easier) */
-      fprintf(f, "!\n");
+      Print(f, "!\n");
     }
   }
 
-  fprintf(f, RATMARKER "\n");
+  Print(f, "{}\n", RATMARKER);
 
   {
     // Also sort ratings to keep text diffs small.
     // Rating pointers are aliases.
-    map<string, Rating *> sorted_ratings;
+    std::map<string, Rating *> sorted_ratings;
     for (const auto &p : ratable) sorted_ratings.insert(p);
 
     for (const auto &p : sorted_ratings) {
-      const string md5ascii = MD5::Ascii(p.first).c_str();
-      fprintf(f, "%s %s\n",
-	      md5ascii.c_str(),
-	      Base64::Encode(p.second->ToString()).c_str());
+      const string md5ascii = MD5::Ascii(p.first);
+      Print(f, "{} {}\n",
+            md5ascii,
+            Base64::Encode(p.second->ToString()));
     }
   }
 
-  fprintf(f, PREFMARKER "\n");
+  Print(f, "{}\n", PREFMARKER);
 
   /* write chunks */
-  fprintf(f, "%s\n", Base64::Encode(ch->ToString()).c_str());
+  Print(f, "{}\n", Base64::Encode(ch->ToString()));
 
   fclose(f);
   return 1;
 }
 
-#define FF_FAIL(s) do { printf("Bad player: %s: %s\n", \
-                               fname.c_str(), s);      \
-                        return 0; } while (0)
+#define FF_FAIL(s) do {                        \
+  Print("Bad player: {}: {}\n", filename, s);  \
+  return 0;                                    \
+} while (0)
 // #define FF_FAIL(s) return 0;
 
-Player_ *Player_::fromfile_text(string fname, CheckFile *cf) {
+Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
   std::unique_ptr<Player_> p {Player_::Create("")};
   if (!p.get()) FF_FAIL("out of memory?");
-  p->fname = fname;
+  p->fname = filename;
 
   string s;
 
@@ -568,7 +567,7 @@ Player_ *Player_::FromFile(const string &file) {
   if (cf.get() == nullptr) return nullptr;
 
   string s;
-  if (!cf->Read(PLAYER_MAGICS_LENGTH, s)) return nullptr;
+  if (!cf->Read(PLAYERTEXT_MAGIC.size(), s)) return nullptr;
 
   /* binary or text format? */
   if (s == PLAYERTEXT_MAGIC) return fromfile_text(file, cf.get());

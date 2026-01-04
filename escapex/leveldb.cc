@@ -4,19 +4,27 @@
 */
 #include "leveldb.h"
 
-#include <vector>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <dirent.h>
 #include <map>
+#include <memory>
+#include <stdlib.h>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "SDL.h"
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-
-#include "escapex.h"
-#include "directories.h"
-#include "player.h"
+#include "SDL_timer.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "crypt/md5.h"
 #include "escape-util.h"
-#include "message.h"
+#include "level-base.h"
+#include "level.h"
+#include "player.h"
+#include "solution.h"
+#include "util.h"
 
 /* levels loaded from disk and waiting to be added to the database */
 struct LevelWait {
@@ -66,7 +74,7 @@ void LevelDB::setplayer(Player *p) {
 /* XXX should be recursive too, I guess. */
 /* XXX if .escignore is present, stop */
 void LevelDB::addsourcedir(string s) {
-  if (!theplayer) abort();
+  CHECK(theplayer);
   int count = 0;
   DIR *d = opendir(s.c_str());
   dirent *de;
@@ -78,11 +86,11 @@ void LevelDB::addsourcedir(string s) {
     }
   }
 
-  fprintf(stderr, "added %d files from %s\n", count, s.c_str());
+  Print(stderr, "added {} files from {}\n", count, s);
 }
 
 void LevelDB::addsourcefile(string s) {
-  if (!theplayer) abort();
+  CHECK(theplayer);
   filequeue.push_back(std::move(s));
 }
 
@@ -106,7 +114,7 @@ bool LevelDB::uptodate(float *pct_disk, float *pct_verify) {
   }
 
   fprintf(stderr, "lq %d fq %d\n", (int)levelqueue.size(),
-	  (int)filequeue.size());
+    (int)filequeue.size());
   return levelqueue.empty() && filequeue.empty();
 }
 
@@ -176,7 +184,7 @@ void LevelDB::donate(int max_files, int max_verifies, int max_ticks) {
          support those. */
       if (EscapeUtil::hasmagic(s, LEVELMAGIC)) {
         string c = Util::ReadFile(s);
-	std::unique_ptr<Level> l = Level::FromString(c, true);
+        std::unique_ptr<Level> l = Level::FromString(c, true);
         if (l.get() != nullptr) {
           const string m = MD5::Hash(c);
           /* put on the level queue now */

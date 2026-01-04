@@ -5,16 +5,14 @@
 // separate files.
 #include "escapex.h"
 #include "level.h"
-#include "../cc-lib/sdl/sdlutil.h"
+#include "sdl/sdlutil.h"
 #include "browse.h"
-#include "../cc-lib/crypt/md5.h"
+#include "crypt/md5.h"
 #include "backgrounds.h"
 
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-
-#include "directories.h"
 
 #include "dircache.h"
 #include "chars.h"

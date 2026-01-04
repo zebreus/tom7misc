@@ -5,23 +5,20 @@
 #include <string>
 #include <vector>
 
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base64.h"
-
+#include "client.h"
+#include "crypt/md5.h"
 #include "draw.h"
 #include "drawable.h"
+#include "http.h"
 #include "httputil.h"
+#include "menu.h"
 #include "message.h"
 #include "player.h"
-#include "prompt.h"
-#include "client.h"
-#include "http.h"
-#include "menu.h"
 #include "solution.h"
 #include "textbox.h"
-#include "optimize.h"
-#include "play.h"
+#include "util.h"
+
+using namespace std;
 
 void SolutionUploading::PromptUpload(Drawable *below,
                                      Player *plr, const string &lmd5,

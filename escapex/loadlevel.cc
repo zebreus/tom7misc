@@ -1,42 +1,48 @@
 
 #include "loadlevel.h"
 
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <dirent.h>
+#include <format>
 #include <sys/stat.h>
 #include <time.h>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <string>
 
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/crypt/md5.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-
-
-#include "escapex.h"
-#include "httputil.h"
-#include "level.h"
-#include "directories.h"
-
-#include "dircache.h"
-#include "escape-util.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_stdinc.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "aevent.h"
 #include "chars.h"
-
-#include "message.h"
-#include "upload.h"
-#include "prompt.h"
-
-#include "commenting.h"
-
-#include "dirindex.h"
-#include "optimize.h"
 #include "client.h"
-
+#include "commenting.h"
+#include "crypt/md5.h"
+#include "dircache.h"
+#include "dirindex.h"
+#include "draw.h"
+#include "escape-util.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "httputil.h"
+#include "level-base.h"
+#include "level.h"
 #include "menu.h"
-#include "textbox.h"
-
+#include "message.h"
+#include "player.h"
 #include "progress.h"
+#include "rating.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "selector.h"
+#include "solution.h"
+#include "textbox.h"
+#include "upload.h"
+#include "util.h"
 
 #ifdef LINUX
 /* just used for debugging */
@@ -119,7 +125,6 @@ struct LLEntry {
     SWAP(myrating);
     SWAP(votes);
 #   undef SWAP
-
   }
 
   string ActualFile(const std::vector<string> &p) {
@@ -461,7 +466,7 @@ string LLEntry::display(bool selected) {
 
       string so = "";
       if (total > 0) {
-        so = StringPrintf("%d/%d", solved, total);
+        so = std::format("{}/{}", solved, total);
       } else {
         if (!selected) color = GREY;
         so = "(no levels)";
@@ -500,7 +505,7 @@ string LLEntry::display(bool selected) {
     string line =
       pre + color + Font::pad(name, ns) + (string)" " POP +
       (string)(corrupted ? RED : GREEN) +
-      Font::pad(StringPrintf("%d" GREY "x" POP "%d", sizex, sizey), ss) +
+      Font::pad(std::format("{}" GREY "x" POP "{}", sizex, sizey), ss) +
       POP +
       (string)" " BLUE + Font::pad(author, as) + POP + myr +
       (string)" " + ratings;
@@ -651,7 +656,7 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
 
   DBTIME("cd got where");
 
-  int n = dirsize(where.c_str());
+  int n = EscapeUtil::DirSize(where);
   // printf("AFTER DIRSIZE\n");
 
   DBTIME("cd counted");
@@ -1258,7 +1263,7 @@ string LoadLevel_::Loop() {
 
                 /* This does its own error reporting */
                 CommentScreen::Comment(
-        plr, sel->items[sel->selected].lev.get(), md);
+                    plr, sel->items[sel->selected].lev.get(), md);
 
               }
             } else {
@@ -1297,9 +1302,9 @@ string LoadLevel_::Loop() {
                 fclose(f);
 
                 std::unique_ptr<RateScreen> rs{
-      RateScreen::Create(plr,
-             sel->items[sel->selected].lev.get(),
-             md)};
+                  RateScreen::Create(plr,
+                                     sel->items[sel->selected].lev.get(),
+                                     md)};
                 if (rs.get() != nullptr) {
                   rs->Rate();
                 } else {
@@ -1360,8 +1365,8 @@ string LoadLevel_::Loop() {
             Cancel can;
 
             /* display menu */
-      std::unique_ptr<Menu> mm =
-        Menu::Create(this, "Solve from bookmarks?",
+            std::unique_ptr<Menu> mm =
+              Menu::Create(this, "Solve from bookmarks?",
                            {
                              &message1,
                              &message2,
@@ -1381,7 +1386,7 @@ string LoadLevel_::Loop() {
               solvefrombookmarks(filename.input, everything.checked);
             }
 
-      mm.reset();
+            mm.reset();
 
             fix_show();
             sel->Redraw();
@@ -1438,8 +1443,8 @@ string LoadLevel_::Loop() {
                 Cancel can;
 
                 /* display menu */
-    std::unique_ptr<Menu> mm =
-      Menu::Create(0, "Really upload?",
+                std::unique_ptr<Menu> mm =
+                  Menu::Create(0, "Really upload?",
                                {
                                  &message,
                                  &message2,
@@ -1457,7 +1462,7 @@ string LoadLevel_::Loop() {
                                },
                                false);
                 InputResultKind res = mm->menuize();
-    mm.reset();
+                mm.reset();
 
                 if (res != InputResultKind::OK) {
                   sel->Redraw();
@@ -1502,7 +1507,9 @@ string LoadLevel_::Loop() {
             sel->Redraw();
             continue;
 
-          } else break;
+          } else {
+            break;
+          }
         default:
           break;
         }

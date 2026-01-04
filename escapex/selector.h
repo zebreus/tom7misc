@@ -2,14 +2,21 @@
 #ifndef _ESCAPE_SELECTOR_H
 #define _ESCAPE_SELECTOR_H
 
+#include <cstdio>
+#include <memory>
 #include <string>
 
-#include <SDL.h>
-#include "escapex.h"
-#include "level.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
 #include "draw.h"
+#include "drawable.h"
+#include "escapex.h"
+#include "graphics.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 #define SELCOLOR 0x22, 0x44, 0x22, 0xFF
 

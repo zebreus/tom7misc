@@ -1,15 +1,18 @@
 
-#include <string>
 #include <algorithm>
+#include <cstdio>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "level.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "escape-util.h"
 #include "graphics.h"
-
-#include "../cc-lib/image.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
+#include "image.h"
+#include "level-base.h"
+#include "level.h"
+#include "util.h"
 
 static string self;
 
@@ -118,7 +121,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
       // Draw player, maybe dead.
       int dx, dy;
       dir dd;
-      bool isdead = level.isdead(dx, dy, dd);
+      bool isdead = level.IsDead(dx, dy, dd);
 
       DrawPlayer(ent.x * TILEW, ent.y * TILEH,
                  isdead);
@@ -187,11 +190,11 @@ int main(int argc, char **argv) {
   }
 
   if (argc != 3) {
-    fprintf(stderr,
-            "Usage: screenshot /path/to/level.esx /path/to/output.png\n");
-    fprintf(stderr,
-            "(relative paths will be interpreted from the location of the\n"
-            " screenshot binary.)\n");
+    Print(stderr,
+          "Usage: screenshot /path/to/level.esx /path/to/output.png\n");
+    Print(stderr,
+          "(relative paths will be interpreted from the location of the\n"
+          " screenshot binary.)\n");
     return 1;
   }
 
