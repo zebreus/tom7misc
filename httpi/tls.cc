@@ -283,6 +283,7 @@ TLS::ParseClientHello(PacketParser packet) {
       hello.extensions.emplace_back(SessionTicket{
           .ticket = packet.Bytes(len),
         });
+      break;
     }
 
     default: {

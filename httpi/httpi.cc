@@ -958,8 +958,14 @@ struct Session {
       for (int i = 0; i < 32; i++)
         shello.server_random[i] = server_random[i];
 
-      // session ids not supported
+      // session ids not supported, but we need to use the client's
+      // session id if we are using a session ticket.
       shello.session_id.clear();
+      if (config.SupportSessionTickets() &&
+          received_ticket.has_value()) {
+        shello.session_id = och.value().session_id;
+      }
+
       shello.cipher_suite = TLS::RSA_WITH_AES_256_CBC_SHA;
       shello.compression_method = 0;
 
@@ -982,6 +988,43 @@ struct Session {
 
       } else {
         LOG(FATAL) << "My ServerHello was invalid";
+      }
+
+      // Connect to the backend, since we'll do this for
+      // either the full or abbreviated handshake.
+      // PERF: Could try doing this earlier or later, with
+      // different implications for latency. Since we're
+      // single-threaded, it seems best to do it while we're
+      // waiting for an expensive message from the client.
+      ConnectBackend(client.PeerIP(), client.PeerPort());
+
+      // Now, if we have a session ticket, use that to start
+      // the abbreviated handshake.
+      if (config.SupportSessionTickets() &&
+          received_ticket.has_value()) {
+        if (received_ticket.value().ticket.size() == 48) {
+          if (VERBOSE >= 1)
+            Print(AGREEN("Resuming session") " from ticket.\n");
+          memcpy(master_secret.data(),
+                 received_ticket.value().ticket.data(), 48);
+
+          DeriveKeys();
+          SendNewSessionTicket();
+          ChangeCipherAndFinish();
+
+          // We sent all our messages, so compute the client's
+          // handshake validation hash.
+          ComputeClientHandshakeValidation();
+
+          state = State::WAIT_CLIENT_CHANGE;
+          return;
+
+        } else {
+          // Allow continuing with normal handshake if the
+          // format is invalid (maybe it's from a different
+          // version).
+          received_ticket = std::nullopt;
+        }
       }
 
       // Also ServerCertificate.
@@ -1013,12 +1056,6 @@ struct Session {
       if (VERBOSE >= 1) {
         Print(ACYAN("Server sent Hello/Cert/HelloDone") "\n");
       }
-
-      // PERF: Could try doing this earlier or later, with
-      // different implications for latency. Since we're
-      // single-threaded, it seems best to do it while we're
-      // waiting for an expensive message from the client.
-      ConnectBackend(client.PeerIP(), client.PeerPort());
 
       state = State::WAIT_KEY;
 
@@ -1081,18 +1118,9 @@ struct Session {
     }
 
     // Regardless, continue with the handshake.
-    {
-      SHA256::Ctx client_handshake_ctx = handshake_ctx;
-      client_handshake_validation =
-        SHA256::FinalArray(&client_handshake_ctx);
-      if (VERBOSE >= 3) {
-        Print("Handshake hash (SHA-256) for client:\n"
-              "{}\n", HexDump::Color(client_handshake_validation));
-      }
-    }
+    ComputeClientHandshakeValidation();
 
-
-    // Derive master secret from the pre-master secret.
+    // Compute master secret from the pre-master secret.
     std::array<uint8_t, 64> random_seed;
     memcpy(random_seed.data(), client_random.data(), 32);
     memcpy(random_seed.data() + 32, server_random.data(), 32);
@@ -1103,6 +1131,29 @@ struct Session {
             "{}\n", HexDump::Color(master_secret));
     }
 
+    DeriveKeys();
+
+    state = State::WAIT_CLIENT_CHANGE;
+  }
+
+  // Compute the SHA-256 hash of handshake messages that we expect
+  // to see from the client.
+  void ComputeClientHandshakeValidation() {
+    SHA256::Ctx client_handshake_ctx = handshake_ctx;
+    client_handshake_validation =
+      SHA256::FinalArray(&client_handshake_ctx);
+    if (VERBOSE >= 3) {
+      Print("Handshake hash (SHA-256) for client:\n"
+            "{}\n", HexDump::Color(client_handshake_validation));
+    }
+  }
+
+
+  // Derive keys from the master secret (and client/server random).
+  // This is used in both the full handshake and the abbreviated
+  // handshake when using a session ticket).
+  void DeriveKeys() {
+    std::array<uint8_t, 64> random_seed;
     memcpy(random_seed.data(), server_random.data(), 32);
     memcpy(random_seed.data() + 32, client_random.data(), 32);
 
@@ -1116,11 +1167,16 @@ struct Session {
         remaining = remaining.subspan(out.size());
       };
 
+    // IV: AES block size (16 bytes)
+    // These are actually unused in modern TLS, but
+    // I read them out for uniformity.
+    std::array<uint8_t, 16> client_write_iv = {};
+    std::array<uint8_t, 16> server_write_iv = {};
+
     Consume(client_write_mac_key);
     Consume(server_write_mac_key);
     Consume(client_write_key);
     Consume(server_write_key);
-    // PERF: These are actually unused.
     Consume(client_write_iv);
     Consume(server_write_iv);
     CHECK(remaining.empty());
@@ -1139,9 +1195,40 @@ struct Session {
       Print("server_write_iv:\n"
             "{}\n", HexDump::Color(server_write_iv));
     }
+  }
 
-    state = State::WAIT_CLIENT_CHANGE;
+  // Send the Change Cipher Spec and Finished messages.
+  // This is used in the full handshake (server does it last)
+  // and abbreviated handshake (server does it before client).
+  void ChangeCipherAndFinish() {
+    client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
+                         TLS::SerializeChangeCipherSpec());
 
+    {
+      SHA256::Ctx server_handshake_ctx = handshake_ctx;
+      server_handshake_validation =
+        SHA256::FinalArray(&server_handshake_ctx);
+      if (VERBOSE >= 3) {
+        Print("Handshake hash (SHA-256) for server:\n"
+              "{}\n", HexDump::Color(server_handshake_validation));
+      }
+    }
+
+    TLS::HandshakeFinished finished;
+    TLS::PRF(master_secret, "server finished",
+             server_handshake_validation,
+             finished.verify_data);
+
+    std::vector<uint8_t> fin =
+      TLS::SerializeHandshakeFinished(finished);
+    // In a resumed session, we send this before the client sends
+    // their finish message. So it needs to be included in the
+    // handshake hash. Harmless in a full handshake since we've
+    // already checked it.
+    RecordHandshake(fin);
+    SendEncrypted(HANDSHAKE, 3, 3,
+                  fin,
+                  TLS::MAX_PLAINTEXT_SIZE);
   }
 
   void ProcessStateWaitClientChange(TLSRecord &r) {
@@ -1165,6 +1252,20 @@ struct Session {
       AbortConnection("Incorrect cipher change message.");
       return;
     }
+  }
+
+  void SendNewSessionTicket() {
+    // We use an obviously-insecure session ticket, which is
+    // the master secret itself!
+    TLS::NewSessionTicket nst;
+    // Valid indefinitely.
+    nst.ticket_lifetime_hint = 0x77777777;
+    nst.ticket.resize(master_secret.size());
+    memcpy(nst.ticket.data(), master_secret.data(), master_secret.size());
+
+    std::vector<uint8_t> p = TLS::SerializeNewSessionTicket(nst);
+    RecordHandshake(p);
+    client.SendTLSRecord(HANDSHAKE, 3, 3, p);
   }
 
   void ProcessStateWaitHandshakeFinish(TLSRecord &r) {
@@ -1214,33 +1315,32 @@ struct Session {
           return;
         }
 
-        if (VERBOSE >= 2) {
-          Print("Successful HandshakeFinished.\n");
-        }
-
-        // Now send the server messages.
-        client.SendTLSRecord(CHANGE_CIPHER_SPEC, 3, 3,
-                             TLS::SerializeChangeCipherSpec());
-
-        {
-          SHA256::Ctx server_handshake_ctx = handshake_ctx;
-          server_handshake_validation =
-            SHA256::FinalArray(&server_handshake_ctx);
-          if (VERBOSE >= 3) {
-            Print("Handshake hash (SHA-256) for server:\n"
-                  "{}\n", HexDump::Color(server_handshake_validation));
+        // If abbreviated, then we already sent our finished
+        // message (and session ticket) and so we're done with
+        // the handshake.
+        if (config.SupportSessionTickets() && received_ticket.has_value()) {
+          if (VERBOSE >= 2) {
+            Print("Successful HandshakeFinished (" AYELLOW("abbrev") ").\n");
           }
+
+          state = State::STEADY_STATE;
+          return;
         }
 
-        TLS::HandshakeFinished finished;
-        TLS::PRF(master_secret, "server finished",
-                 server_handshake_validation,
-                 finished.verify_data);
+        if (VERBOSE >= 2) {
+          Print("Successful HandshakeFinished (" AYELLOW("full") ").\n");
+        }
 
-        SendEncrypted(HANDSHAKE, 3, 3,
-                      TLS::SerializeHandshakeFinished(finished),
-                      TLS::MAX_PLAINTEXT_SIZE);
+        // If session tickets are enabled and the client has
+        // requested one, send it. This path is only reached
+        // for a full handshake, though.
+        if (client_supports_tickets &&
+            !received_ticket.has_value() &&
+            config.SupportSessionTickets()) {
+          SendNewSessionTicket();
+        }
 
+        ChangeCipherAndFinish();
         state = State::STEADY_STATE;
 
       } else {
@@ -1253,7 +1353,6 @@ struct Session {
                       "handshake finished message.");
       return;
     }
-
   }
 
   // Process any packets that we've read from the client or
@@ -1615,13 +1714,10 @@ struct Session {
   // For RSA_WITH_AES_256_CBC_SHA:
   // MAC: SHA1 (20 bytes)
   // Enc: AES-256 (32 bytes)
-  // IV: AES block size (16 bytes)
   std::array<uint8_t, 20> client_write_mac_key = {};
   std::array<uint8_t, 20> server_write_mac_key = {};
   std::array<uint8_t, 32> client_write_key = {};
   std::array<uint8_t, 32> server_write_key = {};
-  std::array<uint8_t, 16> client_write_iv = {};
-  std::array<uint8_t, 16> server_write_iv = {};
 
   uint64_t client_seq_num = 0;
   uint64_t server_seq_num = 0;
@@ -1647,7 +1743,9 @@ struct Session {
   bool client_supports_tickets = false;
   // The session ticket that we got from the client in their
   // ClientHello, which indicates an intention to resume the
-  // connection.
+  // connection. When this is present, we perform an "abbreviated"
+  // handshake, where messages come in a different order and
+  // some are omitted.
   std::optional<TLS::SessionTicket> received_ticket = std::nullopt;
 
   // The user making the request.
