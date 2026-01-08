@@ -1355,12 +1355,70 @@ struct Session {
     }
   }
 
+  void ProcessStateSteady(TLSRecord &r) {
+    // Steady state means all traffic is encrypted.
+    auto hopt = TLS::DecryptRecord(
+        client_write_mac_key,
+        client_write_key,
+        client_seq_num,
+        r, VERBOSE >= 2, VERBOSE >= 4);
+    client_seq_num++;
+
+    if (!hopt.has_value()) {
+      AbortConnection("Failed to decrypt steady-state message.");
+      return;
+    }
+
+    if (VERBOSE >= 2) {
+      Print("Got {} plaintext bytes from client; type {}.\n",
+            hopt.value().size(), TLS::ContentTypeString(r.type));
+    }
+
+    if (r.type == APPLICATION_DATA) {
+
+      backend.Write(hopt.value());
+
+    } else if (r.type == ALERT) {
+
+      std::optional<TLS::Alert> ao = TLS::ParseAlert(hopt.value());
+      if (!ao.has_value()) {
+        AbortConnection("Invalid Alert packet in steady state.");
+        return;
+      }
+
+      const TLS::Alert &alert = ao.value();
+      if (alert.level == TLS::ALERT_WARNING) {
+        if (VERBOSE >= 1) {
+          Print("Warning " AORANGE("ALERT") " from client: {}\n",
+                TLS::AlertDescriptionString(alert.desc));
+          // but continue.
+          // We might want a setting to abort here?
+        }
+      } else {
+        AbortConnection(
+            std::format("Fatal ALERT from client: {}",
+                        TLS::AlertDescriptionString(alert.desc)));
+      }
+
+    } else {
+
+      // Protocol error.
+      if (VERBOSE > 2) {
+        Print("(Undecrypted) Payload for error:\n{}\n",
+              HexDump::Color(r.fragment));
+      }
+      AbortConnection(
+          std::format("Unexpected packet type in steady state. Type: {}",
+                      TLS::ContentTypeString(r.type)));
+    }
+  }
+
   // Process any packets that we've read from the client or
   // backend.
   void ProcessPackets() {
     if (state == State::STEADY_STATE) {
-      // Then we are proxying traffic. Forward reads from
-      // the backend.
+      // In the steady state we are proxying traffic. Forward reads
+      // from the backend.
       std::span<const uint8_t> backend_data =
         backend.CurrentRead();
       if (!backend_data.empty()) {
@@ -1373,79 +1431,11 @@ struct Session {
                       VERBOSE >= 4);
         backend.ClearRead();
       }
-
-      // And any client records.
-
-      while (auto ro = client.GetNextRecord()) {
-        TLSRecord &r = ro.value();
-
-        // Always decrypt.
-        auto hopt = TLS::DecryptRecord(
-            client_write_mac_key,
-            client_write_key,
-            client_seq_num,
-            r, VERBOSE >= 2, VERBOSE >= 4);
-        client_seq_num++;
-
-        if (!hopt.has_value()) {
-          AbortConnection("Failed to decrypt steady-state message.");
-          return;
-        }
-
-        if (VERBOSE >= 2) {
-          Print("Got {} plaintext bytes from client; type {}.\n",
-                hopt.value().size(), TLS::ContentTypeString(r.type));
-        }
-
-        if (r.type == APPLICATION_DATA) {
-
-          backend.Write(hopt.value());
-
-        } else if (r.type == ALERT) {
-
-          std::optional<TLS::Alert> ao = TLS::ParseAlert(hopt.value());
-          if (!ao.has_value()) {
-            AbortConnection("Invalid Alert packet in steady state.");
-            return;
-          }
-
-          const TLS::Alert &alert = ao.value();
-          if (alert.level == TLS::ALERT_WARNING) {
-            if (VERBOSE >= 1) {
-              Print("Warning " AORANGE("ALERT") " from client: {}\n",
-                    TLS::AlertDescriptionString(alert.desc));
-              // but continue.
-              // We might want a setting to abort here?
-            }
-          } else {
-            AbortConnection(
-                std::format("Fatal ALERT from client: {}",
-                            TLS::AlertDescriptionString(alert.desc)));
-            return;
-          }
-
-          return;
-
-        } else {
-
-          // Protocol error.
-          if (VERBOSE > 2) {
-            Print("(Undecrypted) Payload for error:\n{}\n",
-                  HexDump::Color(r.fragment));
-          }
-          AbortConnection(
-              std::format("Unexpected packet type in steady state. Type: {}",
-                          TLS::ContentTypeString(r.type)));
-          return;
-        }
-
-      }
-
-      return;
     }
 
-    // Otherwise, still in the handshake.
-
+    // Process all the client reads. There has to be a single loop
+    // over the client records, since processing them may change the
+    // state.
     while (auto ro = client.GetNextRecord()) {
       // TODO: We should perhaps assemble fragmented packets,
       // but as a simplification and safety measure, we require
@@ -1464,7 +1454,10 @@ struct Session {
 
       PacketParser packet(r.fragment);
 
-      if (state == State::START) {
+      if (state == State::STEADY_STATE) {
+        ProcessStateSteady(r);
+
+      } else if (state == State::START) {
         ProcessStateStart(r);
 
       } else if (state == State::WAIT_KEY) {
@@ -1482,10 +1475,6 @@ struct Session {
           Print("Discarding {} packet after hang-up.\n",
                 TLS::ContentTypeString(r.type));
         }
-
-      } else if (state == State::STEADY_STATE) {
-        LOG(FATAL) << "Bug: Should have been handled above.\n";
-
 
       } else {
         LOG(FATAL) << "Bug: Unexpected/unhandled state: " <<

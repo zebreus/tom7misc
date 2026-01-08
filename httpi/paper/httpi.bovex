@@ -1,0 +1,86 @@
+(*   -*- electric-indent-local-mode: -1 -*- *)
+let
+  import "stdlib.bovex"
+  import "pdf-document.bovex"
+  import "layout.bovex"
+  import "palatino.bovex"
+  import "cite.bovex"
+  import "httpi.bib"
+
+  val doc-title = "No one can force me to have a secure website"
+  val doc-subtitle = ""
+
+  do set-doc-info {(PDFInfo)
+                   width = inch 8.5,
+                   height = inch 11.0,
+                   creator = "BoVeX",
+                   producer = "Huh?",
+                   title = doc-title,
+                   author = "Tom 7",
+                   subject = "Documents do not need a 'subject'"
+                   (* leaving out date, so it is the creation time. *) }
+
+  do SECTION-FONT-SIZE := point 15.0
+  do SUBSECTION-FONT-SIZE := point 14.0
+  do SUBSUBSECTION-FONT-SIZE := point 13.0
+
+  fun monospace-block lay =
+    monospace-block-ext { left-indent = 0.0,
+                          width = inch 3.4,
+                          line-spacing = point 0.05,
+                          font-size = point 10.0,
+                          attrs = {(Object) } } lay
+
+  val tt = fixedersys
+
+  fun body-font lay = span
+    {(Span)
+     font-face = font-family PALATINO,
+     font-size = point 12.0,
+     line-spacing = point 1.5 } lay
+
+  val layout-sup = sup
+
+  fun sup lay =
+    span {(Span) font-size = 8.0,
+          (* Don't rephrase the text in these. *)
+          no-rephrase = true } lay
+
+  fun sub lay =
+    span {(Box) font-size = 8.0, dy = 8.0 } lay
+
+  fun footnote s = span {(Span) font-color = 0x999999FF, font-size = 9.0 }
+                   [ ([b[footnote]]: [s])]
+
+  fun centered-image width filename =
+    let
+      val FULL-WIDTH = inch 3.65
+      val padding = (FULL-WIDTH -. width) *. 0.5
+
+      val img = image-load filename
+      val { width = pixel-width, height = pixel-height } = image-size img
+      val ratio : float = pixel-width / pixel-height
+      val height = width /. ratio
+    in
+      box {(Box) width = FULL-WIDTH, height = height }
+      (image-sticker { img = img, x = padding, y = 0.0, width = width })
+    end
+
+in
+
+(main-text (body-font
+[[title (layout doc-title)][vspace (point 5.0)][
+sub-title (layout doc-subtitle)]
+
+ [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2025]]
+
+Here is where the paper goes.
+
+[section [Bibliography]]
+
+[bibliography()]
+
+]))
+
+
+end
