@@ -18,8 +18,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <span>
 #include <string>
-#include <vector>
+#include <string_view>
+#include <utility>
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -251,14 +253,14 @@ static string MakeResultString(struct MD5Context *ctx) {
   return ret;
 }
 
-string MD5::Hash(const string &in) {
+string MD5::Hash(string_view in) {
   MD5Context ctx;
   md5_starts(&ctx);
-  md5_update(&ctx, (const uint8 *)in.data(), in.length());
+  md5_update(&ctx, (const uint8 *)in.data(), in.size());
   return MakeResultString(&ctx);
 }
 
-string MD5::Hashv(const vector<uint8> &v) {
+string MD5::Hashv(std::span<const uint8_t> v) {
   MD5Context ctx;
   md5_starts(&ctx);
   md5_update(&ctx, (const uint8*)v.data(), v.size());
@@ -282,7 +284,7 @@ string MD5::Hashf(FILE *f) {
   return MakeResultString(&ctx);
 }
 
-string MD5::Ascii(const string &s) {
+string MD5::Ascii(string_view s) {
   static constexpr char hd[] = "0123456789abcdef";
   /* XX require specific length? */
   size_t sz = s.length();
@@ -304,27 +306,20 @@ static inline bool IsHexChar(unsigned char c) {
   return false;
 }
 
-bool MD5::UnAscii(const string &s, string &out) {
-  if (&s == &out) {
-    // Doesn't work if s and out are the same object, so
-    // make a copy and recurse.
-    string cpy = s;
-    return UnAscii(cpy, out);
-  } else {
-    size_t sz = s.length();
+bool MD5::UnAscii(string_view s, string &out) {
 
-    if (sz != 32) return false;
+  size_t sz = s.size();
+  if (sz != 32) return false;
+  std::string ret(16, '\0');
 
-    out.resize(16);
-
-    for (size_t i = 0; i < 16; i++) {
-      unsigned char hi = s[i * 2];
-      unsigned char lo = s[i * 2 + 1];
-      if (!IsHexChar(hi) || !IsHexChar(lo)) return false;
-      out[i] = ((((hi | 4400) % 55) << 4) |
-                ((lo | 4400) % 55));
-    }
-
-    return true;
+  for (size_t i = 0; i < 16; i++) {
+    unsigned char hi = s[i * 2];
+    unsigned char lo = s[i * 2 + 1];
+    if (!IsHexChar(hi) || !IsHexChar(lo)) return false;
+    ret[i] = ((((hi | 4400) % 55) << 4) |
+              ((lo | 4400) % 55));
   }
+
+  out = std::move(ret);
+  return true;
 }

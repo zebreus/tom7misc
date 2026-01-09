@@ -7,27 +7,28 @@
 #ifndef _CC_LIB_CRYPT_MD5_H
 #define _CC_LIB_CRYPT_MD5_H
 
-#include <cstdio>
-#include <string>
-#include <vector>
 #include <cstdint>
+#include <cstdio>
+#include <span>
+#include <string>
+#include <string_view>
 
 // Hashes are returned as 16-byte binary data strings.
 struct MD5 {
   // (There used to be Init() here, but it is no longer
   // necessary. You can just delete the call.)
 
-  static std::string Hash(const std::string &s);
-  static std::string Hashv(const std::vector<uint8_t> &v);
+  static std::string Hash(std::string_view s);
+  static std::string Hashv(std::span<const uint8_t> v);
   // Hashes the remainder of the file. Doesn't close it.
   [[deprecated]]
   static std::string Hashf(FILE *f);
   // Converts the input string into lowercase hex ascii.
-  static std::string Ascii(const std::string &s);
+  static std::string Ascii(std::string_view s);
 
   // Convert from mixed-case ascii to a 16-byte binary string
   // (inverse of Ascii). Returns true on success.
-  static bool UnAscii(const std::string &s, std::string &out);
+  static bool UnAscii(std::string_view s, std::string &out);
 };
 
 #endif
