@@ -34,6 +34,10 @@ struct SourceMap {
   IntervalCover<int> linecover;
 
   // Source files may not exceed 100 terabytes.
+  // (Note: Sometimes we use BOGUS_POS + __LINE__ to give the developer
+  // a hint about where an error is coming from in the source code
+  // (because we aren't actually tracking the real BoVeX source
+  // position)).
   static constexpr size_t BOGUS_POS = 100'000'000'000'000;
 };
 

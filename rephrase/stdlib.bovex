@@ -743,6 +743,26 @@ fun map-to-list (Map { cmp = _, tree }) =
     rec tree
   end
 
+(* Suspended computation, run the first time it is used (once). *)
+datatype (a) susp = Susp of (unit -> a) ref
+fun susp-get (Susp f) = (!f)()
+fun susp-of x = Susp (ref (fn () => x))
+fun susp f =
+  let
+    (* f here is just used because it has the right type to initialize. *)
+    val r = ref f
+    fun once () =
+      let val x = f ()
+      in
+        (* Now we just return the value if called. *)
+        r := (fn () => x);
+        x
+      end
+  in
+    r := once;
+    Susp r
+  end
+
 (* colors *)
 
 fun rgba (r, g, b, a) : int =

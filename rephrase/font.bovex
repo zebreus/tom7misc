@@ -1,0 +1,139 @@
+(* General purpose font stuff.
+   This is a standard wrapper around the font functionality
+   in BoVeX, which just uses strings to name fonts.
+
+   This also declares some standard fonts.
+*)
+do REQUIRE-STDLIB
+
+datatype provide-font = REQUIRE-FONT
+
+(* At a low level, fonts are communicated to the layout engine with
+   text attributes. But you should use this wrapper:
+     - It tells BoVeX about variants to use for "bold," etc.
+     - It delays actually loading the font files until it's used.
+     - We get some additional type checking. *)
+datatype font-family =
+  FontFamily of {
+                 (* This is what's typically used, so that BoVeX
+                    handles the selection of bold/italic variants. *)
+                 family : string,
+                 (* But in some cases we want to request a specific
+                    font name. *)
+                 regular : string option,
+                 bold : string option,
+                 italic : string option,
+                 bold-italic : string option } susp
+
+
+(* Lazily load a font family from .TTF files. Each style is optional,
+   but at least one of them must be supplied! *)
+fun font-load-family { name : string,
+                       regular = NONE, bold = NONE, italic = NONE,
+                       bold-italic = NONE } : font-family =
+  fail ("Must give a font file for least one of the four font styles: " ^
+        name)
+  | font-load-family { name = family-name : string,
+                       regular, bold, italic, bold-italic } =
+  (* lazy *)
+  FontFamily
+  (susp (fn () =>
+   let
+     (* Must agree with internals. *)
+     val BOLD = 1
+     val ITALIC = 2
+
+     fun load (NONE, _) = NONE
+       | load (SOME ttf, props) =
+       case font-load-file ttf of
+         "" => fail ("Unable to load font " ^
+                     family-name ^ " from file " ^ ttf)
+       | font =>
+           let in
+             font-register (font, family-name, props);
+             SOME font
+           end
+
+     val reg = load (regular, 0)
+     val b = load (bold, BOLD)
+     val i = load (italic, ITALIC)
+     val bi = load (bold-italic, BOLD + ITALIC)
+   in
+     (* TODO: We could be computing the name? *)
+     { family = family-name,
+       regular = reg,
+       bold = b,
+       italic = i,
+       bold-italic = bi }
+   end))
+
+fun get-font (FontFamily susp) = susp-get susp
+
+fun font-family (ff : font-family) =
+  let val { family, regular, bold, italic, bold-italic } = get-font ff
+  in family
+  end
+
+fun font-regular (ff : font-family) =
+  case get-font ff of
+    { family, regular = SOME f, bold, italic, bold-italic } => f
+  | _ => fail ("no regular style for " ^ font-family ff)
+
+fun font-bold (ff : font-family) =
+  case get-font ff of
+    { family, regular, bold = SOME f, italic, bold-italic } => f
+  | _ => fail ("no bold style for " ^ font-family ff)
+
+fun font-italic (ff : font-family) =
+  case get-font ff of
+    { family, regular, bold, italic = SOME f, bold-italic } => f
+  | _ => fail ("no italic style for " ^ font-family ff)
+
+
+(* some built-in fonts *)
+(* Note: These do have built-in names for the styles in PDF.
+   We could use them here. *)
+fun font-builtin family = FontFamily (susp-of { family = family,
+                                                regular = NONE,
+                                                bold = NONE,
+                                                italic = NONE,
+                                                bold-italic = NONE })
+
+val HELVETICA : font-family = font-builtin "helvetica"
+val TIMES : font-family = font-builtin "times"
+val COURIER : font-family = font-builtin "courier"
+val ZAPF-DINGBATS : font-family = font-builtin "zapf-dingbats"
+
+val FIXEDERSYS : font-family =
+  font-load-family { name = "fixedersys",
+                     regular = SOME "fixedersyslight2x.ttf",
+                     bold = SOME "fixedersys2x.ttf",
+                     italic = NONE,
+                     bold-italic = NONE }
+
+(* Some common non-free fonts. You need to find the font files
+   yourself! *)
+val GEORGIA : font-family = font-load-family
+  { name = "Georgia",
+    regular = SOME "Georgia.ttf",
+    bold = SOME "GeorgiaBold.ttf",
+    italic = SOME "GeorgiaItalic.ttf",
+    bold-italic = SOME "GeorgiaBoldItalic.ttf" }
+
+val PALATINO : font-family = font-load-family
+  { name = "palatino",
+    regular = SOME "pala.ttf",
+    bold = SOME "palab.ttf",
+    italic = SOME "palai.ttf",
+    bold-italic = SOME "palabi.ttf" }
+
+(*
+  Should move apply-font here, but it depends on Span...
+
+fun helvetica layout = apply-font HELVETICA layout
+fun times layout = apply-font TIMES layout
+fun courier layout = apply-font COURIER layout
+fun zapf-dingbats layout = apply-font ZAPF-DINGBATS layout
+fun georgia layout = apply-font GEORGIA layout
+fun palatino layout = apply-font PALATINO layout
+*)

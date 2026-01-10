@@ -800,7 +800,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     } while (0)
 
 #   define SET_FLOAT_FIELD(cpp, bovex) do {                             \
-      if (const double *d = GetObjDoubleField("auto-draw", bovex, *arg)) { \
+      if (const double *d =                                             \
+              GetObjDoubleField("auto-draw", bovex, *arg)) {            \
         options. cpp = *d;                                              \
       }                                                                 \
     } while (0)

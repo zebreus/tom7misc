@@ -119,6 +119,7 @@ const char *PrimopString(Primop po) {
   return "?? UNKNOWN PRIMOP ??";
 }
 
+// Number of type args, number of value args.
 std::tuple<int, int> PrimopArity(Primop po) {
   switch (po) {
   case Primop::REF: return std::make_tuple(1, 1);

@@ -18,6 +18,9 @@ do REQUIRE-STDLIB
 
 datatype provide-layout = REQUIRE-LAYOUT
 
+(* XXX Temporary? *)
+import "font.bovex"
+
 val LAYOUT-VERBOSE = false
 
 (* For debugging, emit glyphs in some otherwise invisible places. *)
@@ -26,6 +29,7 @@ val SHOW-CODES = false
 (* For expand-contract, in places where we don't want to do any
    expansion or contraction (e.g. kerning points). *)
 val EPSILON-COEFFICIENT = 0.0000000005
+
 
 fun inch (d : float) = d *. 72.0
 fun point (d : float) = d
@@ -59,105 +63,6 @@ fun set-output-section (page, section) =
   internal-set-page-info ({(OutputDest) page = page, frame = 0 },
                           {(PageInfo) section = section})
 
-(* Fonts are represented with text attributes. But we wrap them
-   so that some utilities get a little extra type checking. *)
-datatype font-family =
-  Font of {
-           (* This is what's typically used, so that BoVeX
-              handles the selection of bold/italic variants. *)
-           family : string,
-           (* But in some cases we want to request a specific
-              font name. *)
-           regular : string option,
-           bold : string option,
-           italic : string option,
-           bold-italic : string option }
-
-(* Load a font family from .TTF files. Each style is optional, but at
-   least one of them must be supplied! *)
-fun font-load-family { name = family-name : string,
-                       regular, bold, italic, bold-italic }
-  : font-family =
-  let
-    (* Must agree with internals. *)
-    val BOLD = 1
-    val ITALIC = 2
-
-    fun load (NONE, _) = NONE
-      | load (SOME ttf, props) =
-      case font-load-file ttf of
-        "" => fail ("Unable to load font from file " ^ ttf)
-      | font =>
-          let in
-            font-register (font, family-name, props);
-            SOME font
-          end
-
-    val reg = load (regular, 0)
-    val b = load (bold, BOLD)
-    val i = load (italic, ITALIC)
-    val bi = load (bold-italic, BOLD + ITALIC)
-  in
-    (* TODO: We could be computing the name? *)
-    Font { family = family-name,
-           regular = reg,
-           bold = b,
-           italic = i,
-           bold-italic = bi }
-  end
-
-fun font-family (Font { family, regular, bold, italic, bold-italic }) =
-  family
-fun font-regular (Font { family, regular, bold, italic, bold-italic }) =
-  case regular of
-    NONE => fail ("no regular style for " ^ family)
-  | SOME f => f
-fun font-bold (Font { family, regular, bold, italic, bold-italic }) =
-  case bold of
-    NONE => fail ("no bold style for " ^ family)
-  | SOME f => f
-
-(* some built-in fonts *)
-(* Note: These do have built-in names for the styles in PDF.
-   We could use them here. *)
-val HELVETICA : font-family = Font { family = "helvetica",
-                                     regular = NONE,
-                                     bold = NONE,
-                                     italic = NONE,
-                                     bold-italic = NONE }
-val TIMES : font-family = Font { family = "times",
-                                 regular = NONE,
-                                 bold = NONE,
-                                 italic = NONE,
-                                 bold-italic = NONE }
-
-val COURIER : font-family = Font { family = "courier",
-                                   regular = NONE,
-                                   bold = NONE,
-                                   italic = NONE,
-                                   bold-italic = NONE }
-
-val ZAPF-DINGBATS : font-family = Font { family = "zapf-dingbats",
-                                         regular = NONE,
-                                         bold = NONE,
-                                         italic = NONE,
-                                         bold-italic = NONE }
-
-(*
-  val GEORGIA : font-family =
-    font-load-family { name = "Georgia",
-                       regular = SOME "Georgia.ttf",
-                       bold = SOME "GeorgiaBold.ttf",
-                       italic = SOME "GeorgiaItalic.ttf",
-                       bold-italic = SOME "GeorgiaBoldItalic.ttf" }
-*)
-
-val FIXEDERSYS : font-family =
-  font-load-family { name = "fixedersys",
-                     regular = SOME "fixedersyslight2x.ttf",
-                     bold = SOME "fixedersys2x.ttf",
-                     italic = NONE,
-                     bold-italic = NONE }
 
 datatype image-handle = Image of string
 fun image-load filename : image-handle =
@@ -406,6 +311,7 @@ fun line { x0, y0, x1, y1, stroke-color, line-width } : layout =
 fun helvetica layout = apply-font HELVETICA layout
 fun times-roman layout = apply-font TIMES layout
 fun courier layout = apply-font COURIER layout
+fun zapf-dingbats layout = apply-font ZAPF-DINGBATS layout
 fun fixedersys layout = apply-font FIXEDERSYS layout
 
 fun b layout =
