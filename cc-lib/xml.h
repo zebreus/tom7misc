@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -32,7 +33,7 @@ struct XML {
   // parse error. In the latter case, error is populated with a vague
   // error message if it is non-null.
   static std::optional<Node>
-  Parse(const std::string &xml_bytes, std::string *error = nullptr);
+  Parse(std::string_view xml_bytes, std::string *error = nullptr);
 
 };
 

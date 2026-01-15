@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1233,7 +1234,7 @@ yxml_ret_t yxml_eof(yxml_t *x) {
 
 using namespace std;
 
-optional<XML::Node> XML::Parse(const string &xml_bytes,
+optional<XML::Node> XML::Parse(std::string_view xml_bytes,
                                string *error) {
 
   // PERF: yxml internally uses a buffer to keep track of the nesting;

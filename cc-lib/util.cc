@@ -1,6 +1,4 @@
 
-#include <array>
-#include <charconv>
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
 #define _DARWIN_USE_64_BIT_INODE 1
@@ -12,8 +10,8 @@
 #include <bit>
 #include <cassert>
 #include <cctype>
+#include <charconv>
 #include <cstdint>
-#include <cstdio>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

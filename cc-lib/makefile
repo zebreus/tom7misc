@@ -322,5 +322,9 @@ fix-encoding_test.exe : fix-encoding_test.o fix-encoding.o html-entities.o re2-u
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
+svg_test.exe : svg_test.o svg.o xml.o $(BASE) $(TEST_UTIL)
+	@$(CXX) $(CXXFLAGS) $^ -o $@
+	@echo -n "!"
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(TEST_UTIL) $(BASE) $(RE2_OBJECTS)
