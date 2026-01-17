@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -26,6 +27,34 @@
     #b << "  which is  " << bb;                                   \
   } while (0)
 
+static void PrintRec(int depth, const SVG::Node &node) {
+  if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
+    Print("{}<" ABLUE("g"), std::string(depth, ' '));
+    if (SVG::IsDefault(g->style)) {
+      Print(">\n");
+    } else {
+      Print(" style=\"...\">\n");
+    }
+    for (const auto &c : g->children) {
+      PrintRec(depth + 2, c);
+    }
+    Print("{}<" ABLUE("/g") ">\n", std::string(depth, ' '));
+  } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
+    Print("{}<" APURPLE("path") " />\n", std::string(depth, ' '));
+  } else {
+    LOG(FATAL) << "Bad variant?";
+ }
+}
+
+static void PrintDoc(const SVG::Doc &doc) {
+  Print(AYELLOW("doc") ":\n");
+  if (doc.view_box.has_value()) {
+    Print(AWHITE("view_box") "...\n");
+  }
+
+  PrintRec(0, doc.root);
+}
+
 static constexpr std::string_view CHECK_SVG = R"(
 <?xml version="1.0" encoding="UTF-8"?>
 <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 432 432">
@@ -42,6 +71,8 @@ static void TestParseCheck() {
   SVG::Doc doc = SVG::ParseOrDie(CHECK_SVG);
   CHECK(std::holds_alternative<SVG::G>(doc.root.v)) << "This document "
     "has styles applied, so its root must be a group.";
+  CHECK(doc.view_box.has_value());
+  PrintDoc(doc);
 }
 
 static void TestParseNumbers() {
@@ -82,10 +113,140 @@ static void TestParseNumbers() {
   NO_PARSE(",");
 }
 
+static void TestPathInterpreter() {
+  auto GetMove = [](const SVG::PathCommand &cmd) -> SVG::MoveTo {
+    CHECK(std::holds_alternative<SVG::MoveTo>(cmd));
+    return std::get<SVG::MoveTo>(cmd);
+  };
+
+  auto GetLine = [](const SVG::PathCommand &cmd) -> SVG::LineTo {
+    CHECK(std::holds_alternative<SVG::LineTo>(cmd));
+    return std::get<SVG::LineTo>(cmd);
+  };
+
+  auto GetClose = [](const SVG::PathCommand& cmd) {
+    CHECK(std::holds_alternative<SVG::ClosePath>(cmd));
+    return std::get<SVG::ClosePath>(cmd);
+  };
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("M 100 200", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 1);
+    SVG::MoveTo m = GetMove((*res)[0]);
+    CHECK(m.x == 100.0);
+    CHECK(m.y == 200.0);
+  }
+
+  {
+    std::string err;
+    // A second move becomes a lineto.
+    auto res = SVG::InterpretPathData("M 10 10 20 20", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 2);
+
+    SVG::MoveTo m = GetMove(res.value()[0]);
+    CHECK(m.x == 10.0);
+
+    SVG::LineTo l = GetLine(res.value()[1]);
+    CHECK(l.x == 20.0);
+    CHECK(l.y == 20.0);
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("m 10 10 10 10", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 2);
+
+    SVG::MoveTo m = GetMove(res.value()[0]);
+    CHECK(m.x == 10.0);
+
+    SVG::LineTo l = GetLine(res.value()[1]);
+    CHECK_FEQ(l.x, 20.0);
+    CHECK_FEQ(l.y, 20.0);
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("M10-20.5.5", &err);
+    CHECK(!res.has_value()) << "This is three numbers: 10, -20.5, 0.5";
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("M10-20.0.5+.5e+0", &err);
+    CHECK(res.has_value()) << err;
+    CHECK(res->size() == 2);
+
+    SVG::MoveTo m = GetMove(res.value()[0]);
+    CHECK_FEQ(m.x, 10.0);
+    CHECK_FEQ(m.y, -20.0);
+
+    SVG::LineTo l = GetLine(res.value()[1]);
+    CHECK_FEQ(l.x, 0.5);
+    CHECK_FEQ(l.y, 0.5);
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("   ", &err);
+    CHECK(res.has_value());
+    CHECK(res->empty());
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("M 10 10 20", &err);
+    CHECK(!res.has_value()) << "Shouldn't parse, since there should "
+      "be an even number of arguments to Moveto.";
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData("M 10 10 L 50 10 L 50 50 Z", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 4);
+    (void)GetClose((*res)[3]);
+  }
+
+  {
+    // Tricky: The ClosePath needs to restore the cursor position for
+    // a relative LineTo. But we must use the first MoveTo coordinates,
+    // since the second pair is actually an implicit LineTo.
+    std::string err;
+    auto res = SVG::InterpretPathData("M 10 11 100 100 Z l 5 6", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 4);
+
+    (void)GetClose((*res)[2]);
+
+    SVG::LineTo l = GetLine((*res)[3]);
+    CHECK_FEQ(l.x, 15.0);
+    CHECK_FEQ(l.y, 17.0);
+  }
+
+  {
+    std::string err;
+    auto res = SVG::InterpretPathData(
+        "M 0,0 Z" "M 50+50 L60 60Z" "l 10 10", &err);
+    CHECK(res.has_value());
+    CHECK(res->size() == 6);
+
+    // The LineTo needs to be relative to the most recent MoveTo.
+    SVG::LineTo l = GetLine((*res)[5]);
+    CHECK_FEQ(l.x, 60.0);
+    CHECK_FEQ(l.y, 60.0);
+  }
+
+}
+
 int main() {
   ANSI::Init();
 
   TestParseNumbers();
+  TestPathInterpreter();
   TestParseCheck();
 
   Print("OK\n");

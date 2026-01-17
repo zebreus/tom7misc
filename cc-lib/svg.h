@@ -57,11 +57,23 @@ struct SVG {
     ROUND,
   };
 
+  static constexpr uint32_t COLOR_NONE = 0x00000000;
+
   struct Style {
     std::optional<std::array<double, 6>> transform;
 
+    // When the color is exactly COLOR_NONE, it should
+    // be treated as fill="none" or stroke="none", etc.
+    // (If this color is specified explicitly, it will
+    // be silently changed to a nearby nonzero color.)
     std::optional<uint32_t> fill_color;
+    // Because this is specified separately in SVG, we
+    // need to preserve it for correctly composing
+    // sparse styles.
+    std::optional<double> fill_opacity;
+
     std::optional<uint32_t> stroke_color;
+    std::optional<double> stroke_opacity;
     std::optional<double> stroke_width;
 
     std::optional<LineCap> line_cap;
@@ -96,6 +108,10 @@ struct SVG {
     // TODO: Symbol table (for e.g. clipPath).
   };
 
+  // Optimizing version of the G{} constructor, which drops empty
+  // children and collapses singleton groups without style.
+  static SVG::Node MakeGroup(Style style, std::vector<Node> children);
+
   // Permissive parser.
   // This transforms various SVG elements (<polygon>, <circle>, etc.)
   // into equivalent paths. Style is applied only to <g> elements.
@@ -122,8 +138,10 @@ struct SVG {
     std::array<double, 6> transform =
       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
 
-    uint32_t fill_color = 0xFF0000FF;
-    uint32_t stroke_color = 0x00000000;
+    uint32_t fill_color = 0x000000FF;
+    double fill_opacity = 1.0;
+    uint32_t stroke_color = COLOR_NONE;
+    double stroke_opacity = 1.0;
     double stroke_width = 1.0;
 
     LineCap line_cap = LineCap::BUTT;
@@ -134,6 +152,10 @@ struct SVG {
 
     double opacity = 1.0;
   };
+
+  // True if nothing is set. If explicitly set to a default value,
+  // this returns false.
+  static bool IsDefault(const Style &style);
 
   static GraphicsState UpdateState(const GraphicsState &state,
                                    const Style &style);
