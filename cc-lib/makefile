@@ -326,5 +326,9 @@ svg_test.exe : svg_test.o svg.o xml.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
+svg-normalize.exe : svg-normalize.o svg.o xml.o $(BASE) $(TEST_UTIL)
+	@$(CXX) $(CXXFLAGS) $^ -o $@
+	@echo -n "!"
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(TEST_UTIL) $(BASE) $(RE2_OBJECTS)

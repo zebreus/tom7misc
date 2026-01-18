@@ -1,5 +1,10 @@
 
-// In progress (not working!): Parser for a simple subset of SVG.
+// Parser for a simple subset of SVG. Incomplete!
+//
+// Tips for Illustrator export (CC 2026): Use "presentation
+// attributes" or "style attributes". Both "Save as..." and "Export
+// as..." seem to work fine. Note that Illustrator will usually
+// flatten objects that have both fill and stroke into two fills.
 
 #ifndef _CC_LIB_SVG_H
 #define _CC_LIB_SVG_H
@@ -163,6 +168,11 @@ struct SVG {
 
   static GraphicsState UpdateState(const GraphicsState &state,
                                    const Style &style);
+
+  // Write the document back as SVG (XML text). The main use is
+  // to verify that the parsed and normalized SVG has the correct
+  // appearance by doing a round trip.
+  static std::string ToSVG(const Doc &doc);
 
   // Consume an SVG number from the beginning of the string,
   // returning NAN if unsuccessful. This handles the permissive

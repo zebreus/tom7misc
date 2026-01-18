@@ -90,6 +90,17 @@ static void TestParseTransform() {
   TESTCASE("matrix(0 1 -1 0 0 0) matrix(1 0 0 1 10 20) matrix(1 0 1 1 0 0)",
            M(0, 1, -1, 1, -20, 10));
 
+  // TODO:
+  #if 0
+  TESTCASE("translate(10 20)", M(1,0,0,1,10,20));
+  // x-only translation
+  TESTCASE("translate(10)", M(1,0,0,1,10,0));
+
+  TESTCASE("scale(2 3)", M(2, 0, 0, 3, 0, 0));
+  // Uniform scale.
+  TESTCASE("scale(2)", M(2, 0, 0, 2, 0, 0));
+  #endif
+
   CHECK(!SVG::ParseTransformList("matrix(1 0 0 1 0)").has_value());
   CHECK(!SVG::ParseTransformList("not transforms").has_value());
 }

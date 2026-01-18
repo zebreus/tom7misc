@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,6 +18,7 @@
 
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "util.h"
 #include "xml.h"
 
@@ -242,7 +244,8 @@ static std::optional<uint32_t> ParseColor(std::string_view s_in) {
     // Alpha is optional, though.
     if (a.has_value()) {
       uint8_t aa = std::clamp((int)(a.value() * 255.0), 0, 255);
-      return Pack32(rr, gg, bb, aa);
+      uint32_t c = Pack32(rr, gg, bb, aa);
+      return (c == SVG::COLOR_NONE) ? TRANSPARENT : c;
     } else {
       return Pack32(rr, gg, bb, 0xFF);
     }
@@ -405,6 +408,77 @@ SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
     }};
 }
 
+// A Cubic Beziér approximating a 90-degree elliptical arc.
+// The start position for the arc is implied by the quadrant.
+// For e.g. the bottom right (x and y both positive), the starting
+// point is (cx + rx, cy).
+//
+// If you draw all four quadrants, you get (approximately) the ellipse
+// centered at cx,cy with radii rx and ry.
+static SVG::CubicBezier ApproxArc90(
+    double cx, double cy,
+    double rx, double ry,
+    bool pos_x_quadrant,
+    bool pos_y_quadrant) {
+
+  // Standard way of approximating the curve. It is not exactly
+  // an arc (this is impossible with cubic Beziér). This is the
+  // location of the control point.
+  static constexpr double KAPPA = 4.0 / 3.0 * (std::numbers::sqrt2 - 1.0);
+
+  double kx = KAPPA * rx;
+  double ky = KAPPA * ry;
+
+  if (pos_x_quadrant && pos_y_quadrant) {
+    // Bottom-Right.
+    // Current point is implied at (cx + rx, cy)
+    return SVG::CubicBezier{
+      .cx1 = cx + rx,
+      .cy1 = cy + ky,
+      .cx2 = cx + kx,
+      .cy2 = cy + ry,
+      .x = cx,
+      .y = cy + ry,
+    };
+
+  } else if (!pos_x_quadrant && pos_y_quadrant) {
+    // Bottom-Left.
+    // Current point implied at (cx, cy + ry)
+    return SVG::CubicBezier{
+      .cx1 = cx - kx,
+      .cy1 = cy + ry,
+      .cx2 = cx - rx,
+      .cy2 = cy + ky,
+      .x = cx - rx,
+      .y = cy,
+    };
+
+  } else if (!pos_x_quadrant && !pos_y_quadrant) {
+    // Top-Left.
+    // Current point implied at (cx - rx, cy)
+    return SVG::CubicBezier{
+      .cx1 = cx - rx,
+      .cy1 = cy - ky,
+      .cx2 = cx - kx,
+      .cy2 = cy - ry,
+      .x = cx,
+      .y = cy - ry,
+    };
+
+  } else {
+    CHECK(pos_x_quadrant && !pos_y_quadrant);
+    // Top-Right.
+    // Current point implied at (cx, cy - ry)
+    return SVG::CubicBezier{
+      .cx1 = cx + kx,
+      .cy1 = cy - ry,
+      .cx2 = cx + rx,
+      .cy2 = cy - ky,
+      .x = cx + rx,
+      .y = cy,
+    };
+  }
+}
 
 struct Converter {
   SVG::Doc doc;
@@ -616,15 +690,58 @@ struct Converter {
         node->attrs["d"] = std::move(d);
         return ConvertRec(node);
 
+      } else if (tag == "rect") {
+
+        Print("TODO: Rect\n");
+        return SVG::Node(SVG::G());
+
+      } else if (tag == "ellipse" || tag == "circle") {
+
+        double cx = Util::ParseDouble(node->attrs["cx"], 0.0);
+        double cy = Util::ParseDouble(node->attrs["cy"], 0.0);
+        double rx = 0.0, ry = 0.0;
+        if (tag == "circle") {
+          double r = Util::ParseDouble(node->attrs["r"], 0.0);
+          rx = ry = r;
+        } else {
+          rx = Util::ParseDouble(node->attrs["rx"], 0.0);
+          ry = Util::ParseDouble(node->attrs["ry"], 0.0);
+        }
+
+        if (rx == 0.0 || ry == 0.0) {
+          // Explicitly empty geometry (not even stroke).
+          return SVG::Node(SVG::G());
+        }
+
+        if (rx <= 0.0 || ry <= 0.0 ||
+            !NumbersOK(std::array{cx, cy, rx, ry})) {
+          error = "Invalid circle or ellipse";
+          return {};
+        }
+
+        SVG::Path path;
+        path.data.emplace_back(SVG::MoveTo{
+            .x = cx + rx,
+            .y = cy,
+          });
+        path.data.emplace_back(ApproxArc90(cx, cy, rx, ry,
+                                           true, true));
+        path.data.emplace_back(ApproxArc90(cx, cy, rx, ry,
+                                           false, true));
+        path.data.emplace_back(ApproxArc90(cx, cy, rx, ry,
+                                           false, false));
+        path.data.emplace_back(ApproxArc90(cx, cy, rx, ry,
+                                           true, false));
+
+        // We land back at the start with the last arc, but
+        // close the path for hygeine.
+        path.data.emplace_back(SVG::ClosePath());
+
+        return {SVG::Node(std::move(path))};
       } else {
 
         LOG(FATAL) << "Unimplemented tag: " << tag;
       }
-
-      // Elements
-      // std::string tag;
-      // std::unordered_map<std::string, std::string> attrs;
-      // std::vector<Node> children;
 
     }
 
@@ -975,4 +1092,164 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
   }
 
   return {cmds};
+}
+
+static std::string Rtos(double d) {
+  return std::format("{:.4f}", d);
+}
+
+static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
+#if 0
+  // Path commands.
+  struct MoveTo {
+    double x, y;
+  };
+
+  struct LineTo {
+    double x, y;
+  };
+
+  struct CubicBezier {
+    double cx1, cy1;
+    double cx2, cy2;
+    double x, y;
+  };
+
+  struct QuadBezier {
+    // Control point.
+    double cx, cy;
+    // Destination.
+    double x, y;
+  };
+
+  struct ClosePath {
+  };
+
+  using PathCommand = std::variant<MoveTo, LineTo, CubicBezier, QuadBezier,
+                                   ClosePath>;
+#endif
+
+  std::string out;
+  for (const SVG::PathCommand &cmd : cmds) {
+    if (const SVG::MoveTo *m = std::get_if<SVG::MoveTo>(&cmd)) {
+      AppendFormat(&out, "M {} {}", Rtos(m->x), Rtos(m->y));
+    } else if (const SVG::LineTo *l = std::get_if<SVG::LineTo>(&cmd)) {
+      AppendFormat(&out, "L {} {}", Rtos(l->x), Rtos(l->y));
+    } else if (const SVG::CubicBezier *c =
+                 std::get_if<SVG::CubicBezier>(&cmd)) {
+      AppendFormat(&out, "C {} {} {} {} {} {}",
+                   Rtos(c->cx1), Rtos(c->cy1),
+                   Rtos(c->cx2), Rtos(c->cy2),
+                   Rtos(c->x), Rtos(c->y));
+    } else if (const SVG::QuadBezier *q =
+                 std::get_if<SVG::QuadBezier>(&cmd)) {
+      AppendFormat(&out, "Q {} {} {} {}",
+                   Rtos(q->cx), Rtos(q->cy),
+                   Rtos(q->x), Rtos(q->y));
+    } else if (const SVG::ClosePath *z =
+                 std::get_if<SVG::ClosePath>(&cmd)) {
+      out.append("Z");
+    }
+  }
+
+  return out;
+}
+
+static void AppendSVG(int depth, const SVG::Node &node, std::string *out) {
+  if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
+    const SVG::Style &style = g->style;
+    AppendFormat(out, "{}<g", std::string(depth, ' '));
+
+    if (style.transform.has_value()) {
+      const auto &[a, b, c, d, e, f] = style.transform.value();
+      AppendFormat(out, " transform=\"matrix({:.11g} {:.11g} {:.11g} "
+                   "{:.11g} {:.11g} {:.11g})\"", a, b, c, d, e, f);
+    }
+
+    // Note: Illustrator does not seem to support rgba colors for fill
+    // or stroke! rgb(255 255 0 / 0.5) might be a good compromise since
+    // illustrator will treat that as opaque yellow, but compliant
+    // parsers will treat it as 50% transparent yellow.
+    //
+    // try svgviewer.dev instead.
+    if (style.fill_color.has_value()) {
+      if (style.fill_color.value() == SVG::COLOR_NONE) {
+        out->append(" fill=\"none\"");
+      } else {
+        AppendFormat(out, " fill=\"#{:08X}\"", style.fill_color.value());
+      }
+    }
+
+    if (style.fill_opacity.has_value()) {
+      AppendFormat(out, " fill-opacity=\"{}\"",
+                   Rtos(style.fill_opacity.value()));
+    }
+
+    if (style.stroke_color.has_value()) {
+      if (style.stroke_color.value() == SVG::COLOR_NONE) {
+        out->append(" stroke=\"none\"");
+      } else {
+        AppendFormat(out, " stroke=\"#{:08X}\"", style.stroke_color.value());
+      }
+    }
+
+    if (style.stroke_opacity.has_value()) {
+      AppendFormat(out, " stroke-opacity=\"{}\"",
+                   Rtos(style.stroke_opacity.value()));
+    }
+
+    if (style.stroke_opacity.has_value()) {
+      AppendFormat(out, " stroke-width=\"{}px\"",
+                   Rtos(style.stroke_width.value()));
+    }
+
+    if (style.line_cap.has_value()) {
+      LOG(FATAL) << "Unimplemented line_cap";
+    }
+    if (style.line_join.has_value()) {
+      LOG(FATAL) << "Unimplemented line_join";
+    }
+    if (style.miter_limit.has_value()) {
+      LOG(FATAL) << "Unimplemented miter_limit";
+    }
+
+    if (style.use_even_odd_rule.has_value()) {
+      out->append(style.use_even_odd_rule.value() ?
+                  " fill-rule=\"evenodd\"" :
+                  " fill-rule=\"nonzero\"");
+    }
+
+    if (style.opacity.has_value()) {
+      AppendFormat(out, " opacity=\"{}\"",
+                   Rtos(style.opacity.value()));
+    }
+
+    out->append(">\n");
+
+    for (const auto &c : g->children) {
+      AppendSVG(depth + 2, c, out);
+    }
+    AppendFormat(out, "{}</g>\n", std::string(depth, ' '));
+  } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
+    std::string d = PathDataString(path->data);
+    AppendFormat(out, "{}<path d=\"{}\" />\n", std::string(depth, ' '), d);
+  } else {
+    LOG(FATAL) << "Bad variant?";
+ }
+}
+
+std::string SVG::ToSVG(const SVG::Doc &doc) {
+  std::string out = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\"";
+
+  if (doc.view_box.has_value()) {
+    const auto &[x, y, w, h] = doc.view_box.value();
+    AppendFormat(&out, " viewBox=\"{} {} {} {}\"",
+                 Rtos(x), Rtos(y), Rtos(w), Rtos(h));
+  }
+
+  out.append(">\n");
+  AppendSVG(2, doc.root, &out);
+  out.append("</svg>\n");
+  return out;
 }
