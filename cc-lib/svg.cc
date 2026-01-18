@@ -691,9 +691,102 @@ struct Converter {
         return ConvertRec(node);
 
       } else if (tag == "rect") {
+        double x = Util::ParseDouble(node->attrs["x"], 0.0);
+        double y = Util::ParseDouble(node->attrs["y"], 0.0);
+        double w = Util::ParseDouble(node->attrs["width"], 0.0);
+        double h = Util::ParseDouble(node->attrs["height"], 0.0);
 
-        Print("TODO: Rect\n");
-        return SVG::Node(SVG::G());
+        // Well-defined no-op if zero area.
+        if (w == 0.0 || h == 0.0) {
+          return SVG::Node(SVG::G());
+        }
+
+        double rx = 0.0;
+        double ry = 0.0;
+        bool has_rx = node->attrs.contains("rx");
+        bool has_ry = node->attrs.contains("ry");
+
+        if (has_rx) rx = Util::ParseDouble(node->attrs["rx"], 0.0);
+        if (has_ry) ry = Util::ParseDouble(node->attrs["ry"], 0.0);
+
+        if (has_rx && !has_ry) ry = rx;
+        if (has_ry && !has_rx) rx = ry;
+
+        // If negative, then this is invalid.
+        if (w < 0.0 || h < 0.0 || rx < 0.0 || ry < 0.0) {
+          error = "Invalid <rect>";
+          return {};
+        }
+
+        // Clamp radii to half dimensions.
+        bool has_horiz = true;
+        if (rx >= w * 0.5) {
+          rx = w * 0.5;
+          has_horiz = false;
+        }
+
+        bool has_vert = true;
+        if (ry >= h * 0.5) {
+          ry = h * 0.5;
+          has_vert = false;
+        }
+
+        SVG::Path path;
+
+        // Top left (after the arc).
+        path.data.emplace_back(SVG::MoveTo{ .x = x + rx, .y = y });
+
+        // Only draw the horizontal edge if it has positive length.
+        if (has_horiz) {
+          path.data.emplace_back(SVG::LineTo{ .x = x + w - rx, .y = y });
+        }
+
+        // Only draw the top-right corner as an arc if it has a radius.
+        if (rx > 0.0 || ry > 0.0) {
+          path.data.emplace_back(
+              ApproxArc90(x + w - rx, y + ry,
+                          rx, ry,
+                          true, false));
+        }
+
+        // Right edge.
+        if (has_vert) {
+          path.data.emplace_back(SVG::LineTo{ .x = x + w, .y = y + h - ry });
+        }
+
+        if (rx > 0.0 || ry > 0.0) {
+          path.data.emplace_back(
+              ApproxArc90(x + w - rx, y + h - ry,
+                          rx, ry,
+                          true, true));
+        }
+
+        // Bottom edge.
+        if (has_horiz) {
+          path.data.emplace_back(SVG::LineTo{ .x = x + rx, .y = y + h });
+        }
+
+        if (rx > 0.0 || ry > 0.0) {
+          path.data.emplace_back(
+              ApproxArc90(x + rx, y + h - ry,
+                          rx, ry,
+                          false, true));
+        }
+
+        // Left edge.
+        if (has_vert) {
+          path.data.emplace_back(SVG::LineTo{ .x = x, .y = y + ry });
+        }
+
+        if (rx > 0.0 || ry > 0.0) {
+            path.data.emplace_back(
+                ApproxArc90(x + rx, y + ry,
+                            rx, ry,
+                            false, false));
+        }
+
+        path.data.emplace_back(SVG::ClosePath());
+        return {SVG::Node(std::move(path))};
 
       } else if (tag == "ellipse" || tag == "circle") {
 
@@ -1077,7 +1170,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
       // TODO: More commands here.
 
     default:
-      Print("Unimplemented command {:c}\n", cmd);
+      Print("Unimplemented path command {:c}\n", cmd);
       WriteErr("unimplemented command");
       return std::nullopt;
       break;
@@ -1099,36 +1192,6 @@ static std::string Rtos(double d) {
 }
 
 static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
-#if 0
-  // Path commands.
-  struct MoveTo {
-    double x, y;
-  };
-
-  struct LineTo {
-    double x, y;
-  };
-
-  struct CubicBezier {
-    double cx1, cy1;
-    double cx2, cy2;
-    double x, y;
-  };
-
-  struct QuadBezier {
-    // Control point.
-    double cx, cy;
-    // Destination.
-    double x, y;
-  };
-
-  struct ClosePath {
-  };
-
-  using PathCommand = std::variant<MoveTo, LineTo, CubicBezier, QuadBezier,
-                                   ClosePath>;
-#endif
-
   std::string out;
   for (const SVG::PathCommand &cmd : cmds) {
     if (const SVG::MoveTo *m = std::get_if<SVG::MoveTo>(&cmd)) {
