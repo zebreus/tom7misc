@@ -400,6 +400,26 @@ static void TestPrefixSuffix() {
   }
 }
 
+static void TestConsumePrefixMatching() {
+  #define CHECK_TCPM(input, prefix, spec) do {                \
+      std::string orig = (input);                             \
+      std::string_view s(orig);                               \
+      std::string_view ret = Util::ConsumePrefixMatching(     \
+        ([](char c) { return Util::MatchSpec( spec , c); }),  \
+        &s);                                                  \
+      CHECK_SEQ(ret, prefix);                                 \
+      std::string whole = std::string(ret) + std::string(s);  \
+      CHECK_SEQ(whole, orig);                                 \
+  } while(0)
+
+  CHECK_TCPM("haystack", "hay", "hya");
+  CHECK_TCPM("haystack", "hay", "^s");
+  CHECK_TCPM("haystack", "haystack", "a-z");
+  CHECK_TCPM("12345", "", "a-z");
+  CHECK_TCPM("", "", "a-z");
+  CHECK_TCPM("", "", "");
+}
+
 static void TestContains() {
   CHECK(Util::StrContains("haystack", "hay"));
   CHECK(Util::StrContains("haystack", ""));
@@ -532,6 +552,15 @@ static void TestMatchSpec() {
   CHECK(Util::MatchSpec("a-z", "abraz"));
   CHECK(Util::MatchSpec("A-Za-z0-9", "Alphanumeric007"));
   CHECK(!Util::MatchSpec("A-Za-z0-9", "Alpha numeric 007!"));
+
+
+  // Tabled
+  {
+    auto f = Util::CharSpec("A-Z");
+    CHECK(f('A'));
+    CHECK(f('Z'));
+    CHECK(!f('a'));
+  }
 }
 
 static void TestMatchesWildcard() {
@@ -896,6 +925,7 @@ int main(int argc, char **argv) {
   TestNextField();
   TestCdup();
   TestPrefixSuffix();
+  TestConsumePrefixMatching();
   TestParseInt64();
   TestParseDouble();
   TestMatchSpec();

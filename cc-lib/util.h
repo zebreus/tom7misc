@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <optional>
 #include <span>
@@ -181,6 +182,11 @@ struct Util {
   static bool MatchSpec(string_view spec, char c);
   static bool MatchSpec(string_view spec, string_view s);
 
+  // Same, but returning a function object. The function tables
+  // the function from char->bool and doesn't keep a reference
+  // to the spec.
+  static std::function<bool(char)> CharSpec(string_view spec);
+
   /* Returns true if s matches the wildcard; the character *
      means any sequence of bytes (or none) and the character
      ? means any single byte. */
@@ -252,6 +258,12 @@ struct Util {
   // Same, for prefix.
   static bool TryStripPrefix(string_view prefix, string_view *s);
   static bool TryStripPrefix(string_view prefix, string *s);
+
+  // Match chars where f(c) is true. Removes the longest match and
+  // returns it (as a view into the same underlying data).
+  template<class F>
+  static std::string_view ConsumePrefixMatching(
+      const F &f, std::string_view *s);
 
   static bool StrContains(string_view haystack, string_view needle);
 
@@ -475,6 +487,28 @@ std::vector<std::string> Util::Fields(std::string_view s, F f) {
   }
   out.emplace_back(s, start, string::npos);
   return out;
+}
+
+template<class F>
+std::string_view Util::ConsumePrefixMatching(
+    const F &f, std::string_view *s) {
+  std::string_view orig = *s;
+  size_t prefix_len = 0;
+  for (;;) {
+    if (s->empty()) {
+      return orig;
+    }
+
+    const char c = (*s)[0];
+    if (f(c)) {
+      s->remove_prefix(1);
+      prefix_len++;
+    } else {
+      return orig.substr(0, prefix_len);
+    }
+  }
+  // whole string consumed.
+  return orig;
 }
 
 template<class F>

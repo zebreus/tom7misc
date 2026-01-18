@@ -60,6 +60,10 @@ struct SVG {
   static constexpr uint32_t COLOR_NONE = 0x00000000;
 
   struct Style {
+    // Transformation matrix:
+    // | a c e |
+    // | b d f |
+    // | 0 0 1 |
     std::optional<std::array<double, 6>> transform;
 
     // When the color is exactly COLOR_NONE, it should
@@ -165,6 +169,13 @@ struct SVG {
   // stuff used in SVG path data like "10.5.5". Exposed mainly
   // for testing.
   static double ParseLeadingNumber(std::string_view *d);
+
+  // Parse the transform-list SVG attribute, composing the
+  // transforms into a single matrix. Might not support every
+  // function, but you could fix it. This is exposed mainly
+  // for testing.
+  static std::optional<std::array<double, 6>> ParseTransformList(
+      std::string_view s);
 };
 
 #endif

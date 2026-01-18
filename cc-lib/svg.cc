@@ -1,6 +1,7 @@
 
 #include "svg.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -113,86 +114,6 @@ double SVG::ParseLeadingNumber(std::string_view *d) {
   return Util::ParseDouble(s, NAN);
 }
 
-
-// Parse a color like "#fff" or "#123456".
-static std::optional<uint32_t> ParseColor(std::string_view s) {
-  // Nonzero, but fully transparent color.
-  static constexpr uint32_t TRANSPARENT = 0x01010100;
-
-  Util::RemoveOuterWhitespace(&s);
-  if (s.empty()) return {};
-
-  std::string lows = Util::lcase(s);
-
-  // TODO: Could support the whole silly color name map here.
-  if (lows == "none") {
-    return {SVG::COLOR_NONE};
-  } else if (lows == "transparent") {
-    return {TRANSPARENT};
-  } else if (lows == "black") {
-    return {0x000000FF};
-  } else if (lows == "white") {
-    return {0xFFFFFFFF};
-  }
-
-  // TODO: Support rgb() and rgba().
-
-  if (s[0] == '#') {
-    s.remove_prefix(1);
-    for (char c : s)
-      if (!Util::IsHexDigit(c))
-        return {};
-
-    if (s.size() == 3) {
-      // #RGB
-      uint8_t r = Util::HexDigitValue(s[0]);
-      uint8_t g = Util::HexDigitValue(s[1]);
-      uint8_t b = Util::HexDigitValue(s[2]);
-
-      r |= (r << 4);
-      g |= (g << 4);
-      b |= (b << 4);
-      return {Pack32(r, g, b, 0xFF)};
-
-    } else if (s.size() == 4) {
-      // #RGBA
-      uint8_t r = Util::HexDigitValue(s[0]);
-      uint8_t g = Util::HexDigitValue(s[1]);
-      uint8_t b = Util::HexDigitValue(s[2]);
-      uint8_t a = Util::HexDigitValue(s[3]);
-      r |= (r << 4);
-      g |= (g << 4);
-      b |= (b << 4);
-      a |= (a << 4);
-
-      uint32_t c = Pack32(r, g, b, a);
-      return {c == 0x00000000 ? TRANSPARENT : c};
-
-    } else if (s.size() == 6) {
-      // #RRGGBB
-      uint8_t r = (Util::HexDigitValue(s[0]) << 4) | Util::HexDigitValue(s[1]);
-      uint8_t g = (Util::HexDigitValue(s[2]) << 4) | Util::HexDigitValue(s[3]);
-      uint8_t b = (Util::HexDigitValue(s[4]) << 4) | Util::HexDigitValue(s[5]);
-      return {Pack32(r, g, b, 0xFF)};
-
-    } else if (s.size() == 8) {
-      // #RRGGBBAA
-      uint8_t r = (Util::HexDigitValue(s[0]) << 4) | Util::HexDigitValue(s[1]);
-      uint8_t g = (Util::HexDigitValue(s[2]) << 4) | Util::HexDigitValue(s[3]);
-      uint8_t b = (Util::HexDigitValue(s[4]) << 4) | Util::HexDigitValue(s[5]);
-      uint8_t a = (Util::HexDigitValue(s[6]) << 4) | Util::HexDigitValue(s[7]);
-      uint32_t c = Pack32(r, g, b, a);
-      return {c == 0x00000000 ? TRANSPARENT : c};
-
-    } else {
-      // Fall through...
-    }
-  }
-
-  Print(stderr, "Unimplemented/invalid color attr: {}", s);
-  return {};
-}
-
 static std::optional<double> ParseLength(std::string_view s) {
   Util::RemoveOuterWhitespace(&s);
   double d = SVG::ParseLeadingNumber(&s);
@@ -206,14 +127,16 @@ static std::optional<double> ParseLength(std::string_view s) {
   }
 }
 
-// A percentage is just divided by 100.
-static std::optional<double> ParseNumberOrPercentage(std::string_view s) {
+// A percentage is multiplied by the unit length. Use 1.0 to convert
+// 25% into 0.25, for example.
+static std::optional<double> ParseNumberOrPercentage(std::string_view s,
+                                                     double unit_length) {
   Util::RemoveOuterWhitespace(&s);
   double d = SVG::ParseLeadingNumber(&s);
   if (!std::isfinite(d)) return std::nullopt;
 
   if (s == "%") {
-    return {d / 100.0};
+    return {(d / 100.0) * unit_length};
   } else if (s.empty()) {
     return {d};
   } else {
@@ -258,6 +181,196 @@ static bool NumbersOK(const std::array<double, N> &a) {
     if (!std::isfinite(d)) return false;
   }
   return true;
+}
+
+// Parse a color like "#fff" or "#123456".
+static std::optional<uint32_t> ParseColor(std::string_view s_in) {
+  // Nonzero, but fully transparent color.
+  static constexpr uint32_t TRANSPARENT = 0x01010100;
+  std::string lows = Util::lcase(s_in);
+  std::string_view s(lows);
+
+  Util::RemoveOuterWhitespace(&s);
+  if (s.empty()) return {};
+
+  // TODO: Could support the whole silly color name map here.
+  if (s == "none") {
+    return {SVG::COLOR_NONE};
+  } else if (s == "transparent") {
+    return {TRANSPARENT};
+  } else if (s == "black") {
+    return {0x000000FF};
+  } else if (s == "white") {
+    return {0xFFFFFFFF};
+  }
+
+  // In SVG, rgb() and rgba() are (surprisingly) equivalent.
+  // We allow commas (legacy) and the modern '/'
+  // separator for alpha, including mixing these
+  // (nonstandard).
+  if (Util::TryStripPrefix("rgba(", &s) ||
+      Util::TryStripPrefix("rgb(", &s)) {
+    auto Sep = Util::CharSpec(", /");
+    auto Num = Util::CharSpec("-+0-9%");
+
+    auto GetChannel = [&](bool color) {
+        (void)Util::ConsumePrefixMatching(Sep, &s);
+        std::string_view num = Util::ConsumePrefixMatching(Num, &s);
+        return ParseNumberOrPercentage(num, color ? 255.0 : 1.0);
+      };
+
+    auto r = GetChannel(true);
+    auto g = GetChannel(true);
+    auto b = GetChannel(true);
+    auto a = GetChannel(false);
+
+    // Now expect a closing paren, or something is wrong?
+    RemoveLeadingWhitespace(&s);
+    if (s != ")")
+      return {};
+
+    if (!r.has_value() ||
+        !g.has_value() ||
+        !b.has_value())
+      return {};
+
+
+    uint8_t rr = std::clamp((int)r.value(), 0, 255);
+    uint8_t gg = std::clamp((int)g.value(), 0, 255);
+    uint8_t bb = std::clamp((int)b.value(), 0, 255);
+
+    // Alpha is optional, though.
+    if (a.has_value()) {
+      uint8_t aa = std::clamp((int)(a.value() * 255.0), 0, 255);
+      return Pack32(rr, gg, bb, aa);
+    } else {
+      return Pack32(rr, gg, bb, 0xFF);
+    }
+
+    return {};
+  }
+
+  if (s[0] == '#') {
+    s.remove_prefix(1);
+    for (char c : s)
+      if (!Util::IsHexDigit(c))
+        return {};
+
+    if (s.size() == 3) {
+      // #RGB
+      uint8_t r = Util::HexDigitValue(s[0]);
+      uint8_t g = Util::HexDigitValue(s[1]);
+      uint8_t b = Util::HexDigitValue(s[2]);
+
+      r |= (r << 4);
+      g |= (g << 4);
+      b |= (b << 4);
+      return {Pack32(r, g, b, 0xFF)};
+
+    } else if (s.size() == 4) {
+      // #RGBA
+      uint8_t r = Util::HexDigitValue(s[0]);
+      uint8_t g = Util::HexDigitValue(s[1]);
+      uint8_t b = Util::HexDigitValue(s[2]);
+      uint8_t a = Util::HexDigitValue(s[3]);
+
+      r |= (r << 4);
+      g |= (g << 4);
+      b |= (b << 4);
+      a |= (a << 4);
+      uint32_t c = Pack32(r, g, b, a);
+      return {c == 0x00000000 ? TRANSPARENT : c};
+
+    } else if (s.size() == 6) {
+      // #RRGGBB
+      uint8_t r = (Util::HexDigitValue(s[0]) << 4) | Util::HexDigitValue(s[1]);
+      uint8_t g = (Util::HexDigitValue(s[2]) << 4) | Util::HexDigitValue(s[3]);
+      uint8_t b = (Util::HexDigitValue(s[4]) << 4) | Util::HexDigitValue(s[5]);
+      return {Pack32(r, g, b, 0xFF)};
+
+    } else if (s.size() == 8) {
+      // #RRGGBBAA
+      uint8_t r = (Util::HexDigitValue(s[0]) << 4) | Util::HexDigitValue(s[1]);
+      uint8_t g = (Util::HexDigitValue(s[2]) << 4) | Util::HexDigitValue(s[3]);
+      uint8_t b = (Util::HexDigitValue(s[4]) << 4) | Util::HexDigitValue(s[5]);
+      uint8_t a = (Util::HexDigitValue(s[6]) << 4) | Util::HexDigitValue(s[7]);
+      uint32_t c = Pack32(r, g, b, a);
+      return {c == 0x00000000 ? TRANSPARENT : c};
+
+    } else {
+      // Fall through...
+    }
+  }
+
+  Print(stderr, "Unimplemented/invalid color attr: {}", s);
+  return {};
+}
+
+using Transform = std::array<double, 6>;
+static constexpr Transform IDENTITY_TRANSFORM =
+  SVG::GraphicsState{}.transform;
+
+// Gets M such that M*pt is Second * (First * pt), i.e. M = Second * First.
+static Transform ComposeTransforms(
+    const Transform &second,
+    const Transform &first) {
+  // Transformation matrix:
+  // | a c e |   | g i k |
+  // | b d f | * | h j l |
+  // | 0 0 1 |   | 0 0 1 |
+  const auto &[a, b, c, d, e, f] = second;
+  const auto &[g, h, i, j, k, l] = first;
+  return Transform{
+    a * g + c * h,
+    b * g + d * h,
+    a * i + c * j,
+    b * i + d * j,
+    a * k + c * l + e,
+    b * k + d * l + f,
+  };
+}
+
+// Returns nullopt if there is no valid transform leading the string.
+static std::optional<Transform> ParseLeadingTransform(
+    std::string_view *s) {
+  Util::RemoveOuterWhitespace(s);
+  if (s->empty()) return {};
+
+  if (Util::TryStripPrefix("matrix(", s)) {
+    const auto &a = Numbers<6>(s);
+    if (!NumbersOK(a.value())) {
+      return std::nullopt;
+    }
+
+    RemoveLeadingWhitespace(s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    return std::make_optional(std::move(a.value()));
+  }
+
+  // TODO: Support other common transforms here.
+
+  return std::nullopt;
+}
+
+std::optional<std::array<double, 6>> SVG::ParseTransformList(
+    std::string_view s) {
+  Transform transform = IDENTITY_TRANSFORM;
+
+  for (;;) {
+    Util::RemoveOuterWhitespace(&s);
+    if (s.empty()) {
+      // Success consuming the entire string.
+      return std::make_optional(transform);
+    }
+
+    if (auto to = ParseLeadingTransform(&s)) {
+      transform = ComposeTransforms(transform, to.value());
+    } else {
+      return std::nullopt;
+    }
+  }
 }
 
 SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
@@ -319,9 +432,9 @@ struct Converter {
     // attributes in this element, so we can just modify the
     // current attributes in place.
     if (auto so = GetStripAttribute("style")) {
-      // XXX: Technically ';' can appear inside some css values,
-      // like a quoted string. We could do like "split respecting
-      // strings and parens."
+      // XXX: Technically ';' can appear inside some css values, like
+      // a quoted string (although we don't support any of these). We
+      // could do like "split respecting strings and parens."
       std::vector<std::string> parts = Util::Tokenize(so.value(), ';');
 
       for (std::string_view part : parts) {
@@ -358,7 +471,7 @@ struct Converter {
 
     if (auto so = GetStripAttribute("fill-opacity")) {
       had_style = true;
-      if (auto co = ParseNumberOrPercentage(so.value())) {
+      if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
         style.fill_opacity = co;
       } else {
         error = "Invalid number in fill-opacity";
@@ -378,7 +491,7 @@ struct Converter {
 
     if (auto so = GetStripAttribute("stroke-opacity")) {
       had_style = true;
-      if (auto co = ParseNumberOrPercentage(so.value())) {
+      if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
         style.stroke_opacity = co;
       } else {
         error = "Invalid number in stroke-opacity";
@@ -398,11 +511,21 @@ struct Converter {
 
     if (auto so = GetStripAttribute("opacity")) {
       had_style = true;
-      if (auto co = ParseNumberOrPercentage(so.value())) {
+      if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
         style.opacity = co;
       } else {
         error = "Invalid length in opacity";
         return {};
+      }
+    }
+
+    if (auto fo = GetStripAttribute("fill-rule")) {
+      if (fo.value() == "evenodd") {
+        style.use_even_odd_rule = {true};
+      } else if (fo.value() == "nonzero") {
+        style.use_even_odd_rule = {false};
+      } else {
+        // e.g. "inherit" or incomprehensible.
       }
     }
 
@@ -568,7 +691,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
   // Last pen position for relative commands.
   double px = 0.0, py = 0.0;
-  // Also last control point for relative curves.
+  // Also last control point for curve shorthands.
+  // (Or the last point when not a curve command.)
   [[maybe_unused]] double last_cx = 0.0, last_cy = 0.0;
   // Each time we MoveTo, we save the start of the
   // path for the sake of closing it.
@@ -611,8 +735,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           cmds.emplace_back(LineTo{.x = nx, .y = ny});
         }
 
-        px = nx;
-        py = ny;
+        last_cx = px = nx;
+        last_cy = py = ny;
       }
       break;
     }
@@ -633,8 +757,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         }
 
         cmds.emplace_back(LineTo{.x = nx, .y = ny});
-        px = nx;
-        py = ny;
+        last_cx = px = nx;
+        last_cy = py = ny;
       }
       break;
     }
@@ -654,7 +778,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
         cmds.emplace_back(LineTo{.x = n, .y = py});
 
-        px = n;
+        last_cx = px = n;
+        last_cy = py;
       }
       break;
     }
@@ -674,7 +799,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
         cmds.emplace_back(LineTo{.x = px, .y = n});
 
-        py = n;
+        last_cx = px;
+        last_cy = py = n;
       }
       break;
     }
@@ -715,12 +841,120 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
       break;
     }
 
+    case 'S':
+    case 's': {
+      while (const auto &a = Numbers<4>(&d)) {
+        if (!NumbersOK(a.value())) {
+          WriteErr("Expected 4 numbers after Smooth CubicBezier.");
+          return std::nullopt;
+        }
+        double x2, y2, x, y;
+        std::tie(x2, y2, x, y) = a.value();
+
+        if (cmd == 's') {
+          x2 += px;
+          y2 += py;
+          x += px;
+          y += py;
+        }
+
+        // First control point is implicit (reflected version of previous).
+        double x1 = (2.0 * px) - last_cx;
+        double y1 = (2.0 * py) - last_cy;
+
+        cmds.emplace_back(CubicBezier{
+            .cx1 = x1,
+            .cy1 = y1,
+            .cx2 = x2,
+            .cy2 = y2,
+            .x = x,
+            .y = y,
+        });
+
+        px = x;
+        py = y;
+        last_cx = x2;
+        last_cy = y2;
+      }
+      break;
+    }
+
+    case 'Q':
+    case 'q': {
+      while (const auto &a = Numbers<4>(&d)) {
+        if (!NumbersOK(a.value())) {
+          WriteErr("Expected 4 numbers after Quadratic Bezier.");
+          return std::nullopt;
+        }
+        double x1, y1, x, y;
+        std::tie(x1, y1, x, y) = a.value();
+
+        if (cmd == 'q') {
+          x1 += px;
+          y1 += py;
+          x += px;
+          y += py;
+        }
+
+        cmds.emplace_back(QuadBezier{
+            .cx = x1,
+            .cy = y1,
+            .x = x,
+            .y = y,
+        });
+
+        px = x;
+        py = y;
+
+        last_cx = x1;
+        last_cy = y1;
+      }
+      break;
+    }
+
+    case 'T':
+    case 't': {
+      while (const auto &a = Numbers<2>(&d)) {
+        if (!NumbersOK(a.value())) {
+          WriteErr("Expected 2 numbers after Smooth Quadratic.");
+          return std::nullopt;
+        }
+        double x, y;
+        std::tie(x, y) = a.value();
+
+        if (cmd == 't') {
+          x += px;
+          y += py;
+        }
+
+        // Calculate reflection of previous control point.
+        // e.g. we have v = (c - p)
+        // and the reflected point is then p - v,
+        // So p - (c - p) = 2p - c.
+        double cx = (2.0 * px) - last_cx;
+        double cy = (2.0 * py) - last_cy;
+
+        cmds.emplace_back(QuadBezier{
+            .cx = cx,
+            .cy = cy,
+            .x = x,
+            .y = y,
+        });
+
+        px = x;
+        py = y;
+        last_cx = cx;
+        last_cy = cy;
+      }
+      break;
+    }
+
     case 'Z':
     case 'z':
       cmds.emplace_back(ClosePath{});
       // Move current position in case there are more commands.
-      px = startx;
-      py = starty;
+      last_cx = px = startx;
+      last_cy = py = starty;
       break;
 
       // TODO: More commands here.

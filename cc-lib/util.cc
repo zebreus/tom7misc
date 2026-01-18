@@ -1,4 +1,5 @@
 
+#include <functional>
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
 #define _DARWIN_USE_64_BIT_INODE 1
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <bitset>
 #include <cassert>
 #include <cctype>
 #include <charconv>
@@ -1269,6 +1271,18 @@ bool Util::MatchSpec(std::string_view spec, std::string_view s) {
   }
 
   return true;
+}
+
+std::function<bool(char)> Util::CharSpec(std::string_view spec) {
+  std::bitset<256> contained;
+  for (int i = 0; i < 256; i++) {
+    contained[i] = MatchSpec(spec, (char)i);
+  }
+
+  return std::function<bool(char)>{
+    [table = std::move(contained)](char c) {
+      return !!table[(unsigned char)c];
+    }};
 }
 
 bool Util::MatchesWildcard(string_view wildcard_, string_view s) {

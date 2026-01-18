@@ -1,10 +1,12 @@
 
 #include "svg.h"
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 #include "ansi.h"
@@ -25,6 +27,15 @@
   CHECK(std::abs(aa - bb) < 1.0e-6) << "Expected equal values:\n" \
     #a << "  which is  " << aa << "\nand\n" <<                    \
     #b << "  which is  " << bb;                                   \
+  } while (0)
+
+#define CHECK_MEQ(actual_, expected_) do {        \
+    auto actual = (actual_);                      \
+    auto expected = (expected_);                  \
+    CHECK(actual.size() == expected.size());      \
+    for (size_t i = 0; i < actual.size(); i++) {  \
+      CHECK_FEQ(actual[i], expected[i]);          \
+    }                                             \
   } while (0)
 
 static void PrintRec(int depth, const SVG::Node &node) {
@@ -53,6 +64,34 @@ static void PrintDoc(const SVG::Doc &doc) {
   }
 
   PrintRec(0, doc.root);
+}
+
+static void TestParseTransform() {
+  const std::array<double, 6> ID = {1, 0, 0, 1, 0, 0};
+  auto M = [](double a, double b, double c,
+              double d, double e, double f) {
+      return std::array<double, 6>{a, b, c, d, e, f};
+    };
+
+  #define TESTCASE(str, expected) \
+    CHECK_MEQ(OPT_OR_DIE(SVG::ParseTransformList(str)), expected)
+
+  TESTCASE("", ID);
+  TESTCASE("   ", ID);
+
+  TESTCASE("matrix(1 2 3 4 5 6)", M(1, 2, 3, 4, 5, 6));
+  TESTCASE("  matrix( 1, 0 , 0,1, 10.5, -20 ) ",
+           M(1, 0, 0, 1, 10.5, -20));
+
+  TESTCASE("matrix(1 0 0 1 10 0) matrix(1 0 0 1 20 0)",
+           M(1, 0, 0, 1, 30, 0));
+  TESTCASE("matrix(2 0 0 2 0 0) matrix(1 0 0 1 10 10)",
+           M(2, 0, 0, 2, 20, 20));
+  TESTCASE("matrix(0 1 -1 0 0 0) matrix(1 0 0 1 10 20) matrix(1 0 1 1 0 0)",
+           M(0, 1, -1, 1, -20, 10));
+
+  CHECK(!SVG::ParseTransformList("matrix(1 0 0 1 0)").has_value());
+  CHECK(!SVG::ParseTransformList("not transforms").has_value());
 }
 
 static constexpr std::string_view CHECK_SVG = R"(
@@ -247,6 +286,7 @@ int main() {
 
   TestParseNumbers();
   TestPathInterpreter();
+  TestParseTransform();
   TestParseCheck();
 
   Print("OK\n");
