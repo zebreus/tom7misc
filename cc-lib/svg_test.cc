@@ -62,6 +62,7 @@ static void PrintDoc(const SVG::Doc &doc) {
   if (doc.view_box.has_value()) {
     Print(AWHITE("view_box") "...\n");
   }
+  Print(AGREEN("{}") " defs\n", doc.defs.size());
 
   PrintRec(0, doc.root);
 }

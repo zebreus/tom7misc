@@ -128,7 +128,7 @@ struct SVG {
     // we don't currently support <use href="">.
     // Dubious stuff like nested clipPaths is not supported.
     // Note that <clipPath> just becomes a G or Path here.
-    std::unordered_map<std::string, Node> defs;
+    std::unordered_map<std::string, SVG::G> defs;
   };
 
   // Optimizing version of the G{} constructor, which drops empty
@@ -157,6 +157,9 @@ struct SVG {
   InterpretPathData(std::string_view d, std::string *err);
 
   using Transform = std::array<double, 6>;
+
+  static SVG::PathCommand TransformCommand(const Transform &tf,
+                                           const SVG::PathCommand &cmd);
 
   // Concrete graphics state, which results from applying style.
   struct GraphicsState {
