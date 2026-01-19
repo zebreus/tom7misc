@@ -7,11 +7,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
+#include <map>
 #include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -204,6 +206,12 @@ static std::optional<uint32_t> ParseColor(std::string_view s_in) {
     return {0x000000FF};
   } else if (s == "white") {
     return {0xFFFFFFFF};
+  } else if (s == "red") {
+    return {0xFF0000FF};
+  } else if (s == "blue") {
+    return {0x0000FFFF};
+  } else if (s == "green") {
+    return {0x00FF00FF};
   }
 
   // In SVG, rgb() and rgba() are (surprisingly) equivalent.
@@ -484,6 +492,11 @@ struct Converter {
   SVG::Doc doc;
   std::string error;
 
+  // This will be moved into the doc at the end. But we use it
+  // to check whether ids are known. When converting the defs
+  // themselves, this will be nullopt.
+  std::optional<std::unordered_map<std::string, SVG::Node>> doc_defs;
+
   std::optional<SVG::Style> RemoveStyleAttributes(XML::Node *node) {
     if (node->attrs.empty()) return std::nullopt;
 
@@ -603,11 +616,41 @@ struct Converter {
       }
     }
 
+    if (auto po = GetStripAttribute("clip-path")) {
+      Print("CLIP PATH!\n");
+      had_style = true;
+      std::string_view s(po.value());
+      Util::RemoveOuterWhitespace(&s);
+      if (Util::TryStripPrefix("url(#", &s) &&
+          Util::TryStripSuffix(")", &s)) {
+        Print("   ...  yes URL {}\n", s);
+        if (doc_defs.has_value()) {
+          Print("  ... Yes have doc defs\n");
+          if (doc_defs.value().contains(std::string(s))) {
+            Print("  ... {}\n", s);
+            style.clip_path = {std::string(s)};
+          } else {
+            Print(" .. but it was not found?");
+            error = "Unknown reference in clip-path.";
+            return {};
+          }
+        } else {
+          error = "Not supported to use url references here. Clip path "
+            "inside <defs>?";
+          return {};
+        }
+
+      } else {
+        error = "In clip-path, only url(#A) references are supported.";
+        return {};
+      }
+    }
+
     // Only if we actually saw style attributes.
     return had_style ? std::make_optional(style) : std::nullopt;
   }
 
-  // Consumes the XML tree.
+  // Modifies the XML tree in place.
   SVG::Node ConvertRec(XML::Node *node) {
 
     if (node->type == XML::NodeType::Text) {
@@ -626,6 +669,9 @@ struct Converter {
 
       std::optional<SVG::Style> maybe_style =
         RemoveStyleAttributes(node);
+      if (!error.empty())
+        return {};
+
       if (tag == "g") {
         SVG::G g;
 
@@ -831,6 +877,16 @@ struct Converter {
         path.data.emplace_back(SVG::ClosePath());
 
         return {SVG::Node(std::move(path))};
+
+      } else if (tag == "defs") {
+        // Handled in the first phase, and unrendered
+        // by definition (hehe).
+        return SVG::Node(SVG::G{});
+
+      } else if (IsUnrendered(tag)) {
+        // Skip unrendered nodes.
+        return SVG::Node(SVG::G{});
+
       } else {
 
         LOG(FATAL) << "Unimplemented tag: " << tag;
@@ -840,6 +896,110 @@ struct Converter {
 
     LOG(FATAL) << "Unimplemented";
     return {};
+  }
+
+  // tags that are not rendered and only useful as defs.
+  // We skip these in the second phase, and put them in the defs
+  // map in the first phase (if they have ids).
+  static bool IsUnrendered(std::string_view tag) {
+    return tag == "clipPath" ||
+      tag == "symbol" ||
+      tag == "marker" ||
+      tag == "mask" ||
+      tag == "linearGradient" ||
+      tag == "radialGradient" ||
+      tag == "pattern" ||
+      tag == "filter";
+  }
+
+  // In addition to Unrendered nodes, anything in <defs> is unrendered
+  // and only useful if it has an id. We collect these for the sake
+  // of future support for <use>.
+  //
+  // Process the subtree of a <defs>. Finds all nodes with id="" and
+  // translates them, placing them in the defs map. Returns false
+  // and sets the error member on an invalid SVG.
+  bool CollectDefs(XML::Node *node,
+                   std::unordered_map<std::string, SVG::Node> *defs) {
+    Print("CollectDefs:\n");
+    if (node->type == XML::NodeType::Element) {
+
+      if (auto iit = node->attrs.find("id"); iit != node->attrs.end()) {
+        const std::string id = iit->second;
+        Print("CollectDefs {}\n", id);
+        if (id.empty() || defs->contains(id)) {
+          error = "Node id invalid or not unique";
+          return false;
+        }
+
+        (*defs)[id] = ConvertUnrendered(node);
+        Print("Now there are {} defs\n", defs->size());
+        return error.empty();
+
+      } else {
+        Print("CollectDefs {} no id\n", node->tag);
+        for (XML::Node &child : node->children) {
+          if (!CollectDefs(&child, defs)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
+  SVG::Node ConvertUnrendered(XML::Node *node) {
+    // In the future, this could use the tag type (e.g. clipPath)
+    // to do more checking, etc.. But we just treat all of these
+    // as transparent groups today.
+    node->tag = "g";
+    return ConvertRec(node);
+  }
+
+  // Recursively find unrendered nodes that have ids, like <clipPath>
+  // and anything within <defs>. Puts them in defs and deletes their
+  // contents. Returns false and sets the error member if the SVG is
+  // invalid.
+  bool FindUnrenderedNodes(XML::Node *node,
+                           std::unordered_map<std::string, SVG::Node> *defs) {
+    if (node->type == XML::NodeType::Element) {
+      if (node->tag == "defs") {
+        for (XML::Node &child : node->children) {
+          if (!CollectDefs(&child, defs)) {
+            return false;
+          }
+        }
+        // Clean it up.
+        node->children.clear();
+
+      } else if (node->attrs.contains("id") &&
+                 IsUnrendered(node->tag)) {
+
+        const std::string id = node->attrs["id"];
+        Print("Found {} with id={}\n", node->tag, id);
+        if (id.empty() || defs->contains(id)) {
+          error = "Node id invalid or not unique";
+          return false;
+        }
+
+        (*defs)[id] = ConvertUnrendered(node);
+        // Clean it up; the second phase should ignore it
+        // because it is an Unrendered tag.
+        node->children.clear();
+        node->attrs.clear();
+        return error.empty();
+
+      } else {
+        for (XML::Node &child : node->children) {
+          if (!FindUnrenderedNodes(&child, defs)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
   }
 
   // Consumes root, leaving it in an unspecified state.
@@ -859,8 +1019,28 @@ struct Converter {
       // Ignore other attributes.
       root->attrs.clear();
 
+      // We need to find nodes we might refer to by id.
+      // We don't just do this for anything with an id, though,
+      // because it is not unusual to find an SVG where every
+      // node has a unique generated id. We collect the nodes
+      // that would not be rendered in the next pass.
+      std::unordered_map<std::string, SVG::Node> defs;
+      if (!FindUnrenderedNodes(root, &defs)) {
+        if (error.empty()) error = "Error parsing defs?";
+        return;
+      }
+
+      // Now the defs are available for use.
+      doc_defs = std::make_optional(std::move(defs));
+      for (const auto &[id, node] : doc_defs.value()) {
+        Print("DEF {} = ...\n", id);
+      }
       root->tag = "g";
       doc.root = ConvertRec(root);
+
+      CHECK(doc_defs.has_value());
+      doc.defs = std::move(doc_defs.value());
+
     } else {
       error = "Root of SVG must be an <svg> tag.";
     }
@@ -876,7 +1056,12 @@ SVG::Parse(std::string_view xml_bytes, std::string *error) {
 
   Converter converter;
   converter.Convert(&oroot.value());
-  return converter.doc;
+  if (!converter.error.empty()) {
+    if (error != nullptr) *error = std::move(converter.error);
+    return std::nullopt;
+  } else {
+    return {converter.doc};
+  }
 }
 
 SVG::Doc SVG::ParseOrDie(std::string_view xml_bytes) {
@@ -1209,7 +1394,7 @@ static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
       AppendFormat(&out, "Q {} {} {} {}",
                    Rtos(q->cx), Rtos(q->cy),
                    Rtos(q->x), Rtos(q->y));
-    } else if (const SVG::ClosePath *z =
+    } else if ([[maybe_unused]] const SVG::ClosePath *z =
                  std::get_if<SVG::ClosePath>(&cmd)) {
       out.append("Z");
     }
@@ -1218,101 +1403,146 @@ static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
   return out;
 }
 
-static void AppendSVG(int depth, const SVG::Node &node, std::string *out) {
-  if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
-    const SVG::Style &style = g->style;
-    AppendFormat(out, "{}<g", std::string(depth, ' '));
+struct Unconverter {
+  explicit Unconverter(const SVG::Doc &doc) : doc(doc) {}
 
-    if (style.transform.has_value()) {
-      const auto &[a, b, c, d, e, f] = style.transform.value();
-      AppendFormat(out, " transform=\"matrix({:.11g} {:.11g} {:.11g} "
-                   "{:.11g} {:.11g} {:.11g})\"", a, b, c, d, e, f);
-    }
+  const SVG::Doc &doc;
+  // Assumes that the definitions are used in a consistent way,
+  // e.g. a given id always as clip-path.
+  std::map<std::string, std::string> used_defs;
 
-    // Note: Illustrator does not seem to support rgba colors for fill
-    // or stroke! rgb(255 255 0 / 0.5) might be a good compromise since
-    // illustrator will treat that as opaque yellow, but compliant
-    // parsers will treat it as 50% transparent yellow.
-    //
-    // try svgviewer.dev instead.
-    if (style.fill_color.has_value()) {
-      if (style.fill_color.value() == SVG::COLOR_NONE) {
-        out->append(" fill=\"none\"");
-      } else {
-        AppendFormat(out, " fill=\"#{:08X}\"", style.fill_color.value());
+  void AppendSVG(int depth, const SVG::Node &node, std::string *out) {
+    if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
+      const SVG::Style &style = g->style;
+      AppendFormat(out, "{}<g", std::string(depth, ' '));
+
+      if (style.transform.has_value()) {
+        const auto &[a, b, c, d, e, f] = style.transform.value();
+        AppendFormat(out, " transform=\"matrix({:.11g} {:.11g} {:.11g} "
+                     "{:.11g} {:.11g} {:.11g})\"", a, b, c, d, e, f);
       }
-    }
 
-    if (style.fill_opacity.has_value()) {
-      AppendFormat(out, " fill-opacity=\"{}\"",
-                   Rtos(style.fill_opacity.value()));
-    }
-
-    if (style.stroke_color.has_value()) {
-      if (style.stroke_color.value() == SVG::COLOR_NONE) {
-        out->append(" stroke=\"none\"");
-      } else {
-        AppendFormat(out, " stroke=\"#{:08X}\"", style.stroke_color.value());
+      // Note: Illustrator does not seem to support rgba colors for fill
+      // or stroke! rgb(255 255 0 / 0.5) might be a good compromise since
+      // illustrator will treat that as opaque yellow, but compliant
+      // parsers will treat it as 50% transparent yellow.
+      //
+      // try svgviewer.dev instead.
+      if (style.fill_color.has_value()) {
+        if (style.fill_color.value() == SVG::COLOR_NONE) {
+          out->append(" fill=\"none\"");
+        } else {
+          AppendFormat(out, " fill=\"#{:08X}\"", style.fill_color.value());
+        }
       }
-    }
 
-    if (style.stroke_opacity.has_value()) {
-      AppendFormat(out, " stroke-opacity=\"{}\"",
-                   Rtos(style.stroke_opacity.value()));
-    }
+      if (style.fill_opacity.has_value()) {
+        AppendFormat(out, " fill-opacity=\"{}\"",
+                     Rtos(style.fill_opacity.value()));
+      }
 
-    if (style.stroke_opacity.has_value()) {
-      AppendFormat(out, " stroke-width=\"{}px\"",
-                   Rtos(style.stroke_width.value()));
-    }
+      if (style.stroke_color.has_value()) {
+        if (style.stroke_color.value() == SVG::COLOR_NONE) {
+          out->append(" stroke=\"none\"");
+        } else {
+          AppendFormat(out, " stroke=\"#{:08X}\"", style.stroke_color.value());
+        }
+      }
 
-    if (style.line_cap.has_value()) {
-      LOG(FATAL) << "Unimplemented line_cap";
-    }
-    if (style.line_join.has_value()) {
-      LOG(FATAL) << "Unimplemented line_join";
-    }
-    if (style.miter_limit.has_value()) {
-      LOG(FATAL) << "Unimplemented miter_limit";
-    }
+      if (style.stroke_opacity.has_value()) {
+        AppendFormat(out, " stroke-opacity=\"{}\"",
+                     Rtos(style.stroke_opacity.value()));
+      }
 
-    if (style.use_even_odd_rule.has_value()) {
-      out->append(style.use_even_odd_rule.value() ?
-                  " fill-rule=\"evenodd\"" :
-                  " fill-rule=\"nonzero\"");
-    }
+      if (style.stroke_opacity.has_value()) {
+        AppendFormat(out, " stroke-width=\"{}px\"",
+                     Rtos(style.stroke_width.value()));
+      }
 
-    if (style.opacity.has_value()) {
-      AppendFormat(out, " opacity=\"{}\"",
-                   Rtos(style.opacity.value()));
-    }
+      if (style.line_cap.has_value()) {
+        LOG(FATAL) << "Unimplemented line_cap";
+      }
+      if (style.line_join.has_value()) {
+        LOG(FATAL) << "Unimplemented line_join";
+      }
+      if (style.miter_limit.has_value()) {
+        LOG(FATAL) << "Unimplemented miter_limit";
+      }
 
-    out->append(">\n");
+      if (style.use_even_odd_rule.has_value()) {
+        out->append(style.use_even_odd_rule.value() ?
+                    " fill-rule=\"evenodd\"" :
+                    " fill-rule=\"nonzero\"");
+      }
 
-    for (const auto &c : g->children) {
-      AppendSVG(depth + 2, c, out);
+      if (style.opacity.has_value()) {
+        AppendFormat(out, " opacity=\"{}\"",
+                     Rtos(style.opacity.value()));
+      }
+
+      if (style.clip_path.has_value()) {
+        UseAs("clipPath", style.clip_path.value());
+        AppendFormat(out, " clip-path=\"url(#{})\"",
+                     style.clip_path.value());
+      }
+
+      out->append(">\n");
+
+      for (const auto &c : g->children) {
+        AppendSVG(depth + 2, c, out);
+      }
+      AppendFormat(out, "{}</g>\n", std::string(depth, ' '));
+    } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
+      std::string d = PathDataString(path->data);
+      AppendFormat(out, "{}<path d=\"{}\" />\n", std::string(depth, ' '), d);
+    } else {
+      LOG(FATAL) << "Bad variant?";
+   }
+  }
+
+  void UseAs(std::string_view tag_type, std::string_view idv) {
+    Print("--------- Use {} {}\n", tag_type, idv);
+    std::string id(idv);
+    auto it = doc.defs.find(id);
+    CHECK(it != doc.defs.end()) << "Unresolved id: " << id;
+    // Could check consistent use here.
+    if (used_defs.contains(id)) return;
+    std::string rendered = std::format("  <{} id=\"{}\">\n", tag_type, id);
+    AppendSVG(4, it->second, &rendered);
+    AppendFormat(&rendered, "  </{}>\n", tag_type);
+    used_defs[id] = std::move(rendered);
+  }
+
+  void AppendDefs(std::string *out) {
+    if (used_defs.empty()) return;
+
+    out->append("  <defs>\n");
+    for (const auto &[id_, elt] : used_defs) {
+      out->append(elt);
     }
-    AppendFormat(out, "{}</g>\n", std::string(depth, ' '));
-  } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
-    std::string d = PathDataString(path->data);
-    AppendFormat(out, "{}<path d=\"{}\" />\n", std::string(depth, ' '), d);
-  } else {
-    LOG(FATAL) << "Bad variant?";
- }
-}
+    out->append("  </defs>\n");
+  }
+};
+
 
 std::string SVG::ToSVG(const SVG::Doc &doc) {
   std::string out = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
     "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\"";
 
+  Unconverter unc(doc);
   if (doc.view_box.has_value()) {
     const auto &[x, y, w, h] = doc.view_box.value();
     AppendFormat(&out, " viewBox=\"{} {} {} {}\"",
                  Rtos(x), Rtos(y), Rtos(w), Rtos(h));
   }
-
   out.append(">\n");
-  AppendSVG(2, doc.root, &out);
+
+  std::string body;
+  unc.AppendSVG(2, doc.root, &body);
+
+  unc.AppendDefs(&out);
+  out.append(body);
+
   out.append("</svg>\n");
   return out;
 }

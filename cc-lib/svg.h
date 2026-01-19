@@ -13,6 +13,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -92,6 +94,10 @@ struct SVG {
     std::optional<bool> use_even_odd_rule;
 
     std::optional<double> opacity;
+
+    // An id in the symbol table. The transform from
+    // this style object is also applied.
+    std::optional<std::string> clip_path;
   };
 
   struct Node;
@@ -114,7 +120,15 @@ struct SVG {
   struct Doc {
     Node root;
     std::optional<std::array<double, 4>> view_box;
-    // TODO: Symbol table (for e.g. clipPath).
+
+    // Elements with ids that are not rendered, because
+    // they appear in <defs> or are <clipPath>. We could
+    // extend this to other things like <mask> in the
+    // future. The main use today is clip-path="";
+    // we don't currently support <use href="">.
+    // Dubious stuff like nested clipPaths is not supported.
+    // Note that <clipPath> just becomes a G or Path here.
+    std::unordered_map<std::string, Node> defs;
   };
 
   // Optimizing version of the G{} constructor, which drops empty
@@ -142,9 +156,11 @@ struct SVG {
   static std::optional<std::vector<PathCommand>>
   InterpretPathData(std::string_view d, std::string *err);
 
+  using Transform = std::array<double, 6>;
+
   // Concrete graphics state, which results from applying style.
   struct GraphicsState {
-    std::array<double, 6> transform =
+    Transform transform =
       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
 
     uint32_t fill_color = 0x000000FF;
@@ -160,6 +176,10 @@ struct SVG {
     bool use_even_odd_rule = false;
 
     double opacity = 1.0;
+
+    // ids from doc.defs, with the transform active at the time it is
+    // used. Usually at most one of these.
+    std::vector<std::pair<Transform, std::string>> clip_stack;
   };
 
   // True if nothing is set. If explicitly set to a default value,
