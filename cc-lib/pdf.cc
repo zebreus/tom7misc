@@ -60,12 +60,14 @@ Done.
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "hashing.h"
 #include "image.h"
 #include "map-util.h"
 #include "qr-code.h"
 #include "stb_truetype.h"
+#include "svg.h"
 #include "utf8.h"
 #include "util.h"
 #include "zip.h"
@@ -253,6 +255,7 @@ const char *PDF::ObjTypeName(ObjType t) {
   case OBJ_image: return "image";
   case OBJ_link: return "link";
   case OBJ_widths: return "widths";
+  case OBJ_form_xobject: return "form_xobject";
   default: break;
   }
   return "???";
@@ -772,9 +775,9 @@ int PDF::SaveObject(FILE *fp, int index) {
     return -ENOENT;
 
   if (VERBOSE) {
-    printf("Save object %p %d type %d=%s\n",
-           fp, index, object->type,
-           ObjTypeName(object->type));
+    Print("Save object {} {} type {}={}\n",
+          (const void*)fp, index, (int)object->type,
+          ObjTypeName(object->type));
   }
 
   // This is a special placeholder object in slot 0.
@@ -784,7 +787,7 @@ int PDF::SaveObject(FILE *fp, int index) {
 
   object->offset = ftell(fp);
 
-  fprintf(fp, "%d 0 obj\n", index);
+  Print(fp, "{} 0 obj\n", index);
 
   switch (object->type) {
   case OBJ_stream: {
@@ -803,35 +806,56 @@ int PDF::SaveObject(FILE *fp, int index) {
     break;
   }
 
+  case OBJ_form_xobject: {
+    const FormXObject *fobj = (const FormXObject*)object;
+
+    Print(fp,
+          "<<\n"
+          "  /Type /XObject\n"
+          "  /Subtype /Form\n"
+          "  /FormType 1\n"
+          "  /BBox [0 0 {} {}]\n"
+          "  /Matrix [1 0 0 1 0 0]\n"
+          "  /Length {}\n"
+          ">>stream\n",
+          Float(fobj->width), Float(fobj->height),
+          fobj->stream.size());
+
+    // Write the stream data
+    fwrite(fobj->stream.data(), fobj->stream.size(), 1, fp);
+    Print(fp, "\nendstream\n");
+    break;
+  }
+
   case OBJ_info: {
     const InfoObj *iobj = (const InfoObj*)object;
     const PDF::Info *info = &iobj->info;
 
-    fprintf(fp, "<<\n");
+    Print(fp, "<<\n");
     if (!info->creator.empty())
-      fprintf(fp, "  /Creator %s\n",
-              PDFDocEncodeString(info->creator).c_str());
+      Print(fp, "  /Creator %s\n",
+            PDFDocEncodeString(info->creator));
     if (!info->producer.empty())
-      fprintf(fp, "  /Producer %s\n",
-              PDFDocEncodeString(info->producer).c_str());
+      Print(fp, "  /Producer {}\n",
+            PDFDocEncodeString(info->producer));
     if (!info->title.empty())
-      fprintf(fp, "  /Title %s\n",
-              PDFDocEncodeString(info->title).c_str());
+      Print(fp, "  /Title {}\n",
+            PDFDocEncodeString(info->title));
     if (!info->author.empty())
-      fprintf(fp, "  /Author %s\n",
-              PDFDocEncodeString(info->author).c_str());
+      Print(fp, "  /Author {}\n",
+            PDFDocEncodeString(info->author));
     if (!info->subject.empty())
-      fprintf(fp, "  /Subject %s\n",
-              PDFDocEncodeString(info->subject).c_str());
+      Print(fp, "  /Subject {}\n",
+            PDFDocEncodeString(info->subject));
     if (!info->keywords.empty())
-      fprintf(fp, "  /Keywords %s\n",
-              PDFDocEncodeString(info->keywords).c_str());
+      Print(fp, "  /Keywords {}\n",
+            PDFDocEncodeString(info->keywords));
 
     if (info->date[0])
-      fprintf(fp, "  /CreationDate %s\n",
-              PDFDocEncodeString(
-                  std::string("D:") + info->date).c_str());
-    fprintf(fp, ">>\n");
+      Print(fp, "  /CreationDate {}\n",
+            PDFDocEncodeString(
+                std::string("D:") + info->date));
+    Print(fp, ">>\n");
     break;
   }
 
@@ -845,16 +869,16 @@ int PDF::SaveObject(FILE *fp, int index) {
     // a new child.
     FlushDrawCommands(pobj);
 
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Page\n"
-            "  /Parent %d 0 R\n",
-            pages->index);
-    fprintf(fp, "  /MediaBox [0 0 %s %s]\n",
-            Float(pobj->width).c_str(),
-            Float(pobj->height).c_str());
-    fprintf(fp, "  /Resources <<\n");
-    fprintf(fp, "    /Font <<\n");
+    Print(fp,
+          "<<\n"
+          "  /Type /Page\n"
+          "  /Parent {} 0 R\n",
+          pages->index);
+    Print(fp, "  /MediaBox [0 0 {} {}]\n",
+          Float(pobj->width),
+          Float(pobj->height));
+    Print(fp, "  /Resources <<\n");
+    Print(fp, "    /Font <<\n");
 
     // Annoyingly we have to name all of the fonts again. This
     // is pretty short, but best would be if we only made names
@@ -862,7 +886,7 @@ int PDF::SaveObject(FILE *fp, int index) {
     // is that there are three different objects that we might
     // be using as fonts.
     auto RegisterFont = [fp](int font_index, int obj_ref) {
-        fprintf(fp, "      /F%d %d 0 R\n", font_index, obj_ref);
+        Print(fp, "      /F{} {} 0 R\n", font_index, obj_ref);
       };
     for (const Object *obj = FindFirstObject(OBJ_builtin_font);
          obj; obj = obj->next) {
@@ -883,7 +907,7 @@ int PDF::SaveObject(FILE *fp, int index) {
     // refer to those directly (they exist only as "descendant"
     // fonts of the type 0 containers).
 
-    fprintf(fp, "    >>\n");
+    Print(fp, "    >>\n");
     // TODO: The way alpha is implemented is to always generate 16
     // different graphics states on each page, for 4-bit transparency.
     // (/GS0 ... /GS15). Better would be to register the actual
@@ -891,42 +915,58 @@ int PDF::SaveObject(FILE *fp, int index) {
     // levels.
     //
     // We trim transparency to just 4 bits.
-    fprintf(fp, "    /ExtGState <<\n");
+    Print(fp, "    /ExtGState <<\n");
     for (int i = 0; i < 16; i++) {
-      fprintf(fp, "      /GS%d <</ca %f>>\n", i,
-              (float)(15 - i) / 15);
+      Print(fp, "      /GS{} <</ca {}>>\n", i,
+            (float)(15 - i) / 15);
     }
     fprintf(fp, "    >>\n");
+
+    auto StartXObjects = [&printed_xobjects, fp]() {
+        if (printed_xobjects) return;
+        Print(fp, "    /XObject <<");
+        printed_xobjects = true;
+      };
+
+    auto EndXObjects = [&printed_xobjects, fp]() {
+        if (printed_xobjects)
+          Print(fp, "    >>\n");
+      };
 
     for (const Object *image = FindFirstObject(OBJ_image);
          image; image = image->next) {
       const ImageObj *iobj = (const ImageObj *)image;
       if (iobj->page == object) {
-        if (!printed_xobjects) {
-          fprintf(fp, "    /XObject <<");
-          printed_xobjects = true;
-        }
-        fprintf(fp, "      /Image%d %d 0 R ",
-                image->index,
-                image->index);
+        StartXObjects();
+        Print(fp, "      /Image{} {} 0 R ",
+              image->index,
+              image->index);
       }
     }
-    if (printed_xobjects)
-      fprintf(fp, "    >>\n");
-    fprintf(fp, "  >>\n");
 
-    fprintf(fp, "  /Contents [\n");
-    for (const Object *child : pobj->children) {
-      fprintf(fp, "%d 0 R\n", child->index);
+    // Embedded symbols (SVGs).
+    for (const Object *obj = FindFirstObject(OBJ_form_xobject);
+         obj; obj = obj->next) {
+      const FormXObject *fobj = (const FormXObject *)obj;
+      StartXObjects();
+      Print(fp, "      /{} {} 0 R\n", fobj->name, fobj->index);
     }
-    fprintf(fp, "]\n");
+
+    EndXObjects();
+    Print(fp, "  >>\n");
+
+    Print(fp, "  /Contents [\n");
+    for (const Object *child : pobj->children) {
+      Print(fp, "{} 0 R\n", child->index);
+    }
+    Print(fp, "]\n");
 
     if (!pobj->annotations.empty()) {
-      fprintf(fp, "  /Annots [\n");
+      Print(fp, "  /Annots [\n");
       for (const Object *child : pobj->annotations) {
-        fprintf(fp, "%d 0 R\n", child->index);
+        Print(fp, "{} 0 R\n", child->index);
       }
-      fprintf(fp, "]\n");
+      Print(fp, "]\n");
     }
 
     fprintf(fp, ">>\n");
@@ -4608,6 +4648,73 @@ void PDF::SetDimensions(float ww, float hh) {
 
   document_width = ww;
   document_height = hh;
+}
+
+std::string PDF::AddSVGFile(std::string_view filename) {
+  std::string contents = Util::ReadFile(filename);
+  CHECK(!contents.empty()) << "Could not read file: " << filename;
+
+  SVG::Doc doc = SVG::ParseOrDie(contents);
+  return AddSVG(doc);
+}
+
+std::string PDF::AddSVG(const SVG::Doc &doc) {
+  FormXObject *fobj = AddObject(new FormXObject);
+
+  fobj->name = std::format("Sym{}", next_symbol_index++);
+
+  // Determine dimensions from ViewBox.
+  // If missing, we default to 100x100 (arbitrary) or error out.
+  CHECK(doc.view_box.has_value()) << "SVG does not have a viewBox, "
+    "making it impossible to embed?";
+  const auto &[x, y, w, h] = doc.view_box.value();
+  fobj->width = w;
+  fobj->height = h;
+
+  // TODO: Actually convert the SVG here. This placeholder is just a
+  // box of the same size as the viewbox.
+  fobj->stream = std::format(
+      "q "
+      "1 0 0 1 0 0 cm "
+      // red line
+      "0.5 w "
+      "1 0 0 RG "
+      "0 0 {} {} re S "
+      "Q",
+      Float(fobj->width), Float(fobj->height));
+
+  CHECK(!named_xobjects.contains(fobj->name));
+  named_xobjects[fobj->name] = fobj;
+
+  return fobj->name;
+}
+
+void PDF::DrawSVG(std::string_view name,
+                  float x, float y, float width, float height,
+                  Page *page) {
+
+  auto it = named_xobjects.find(name);
+  CHECK(it != named_xobjects.end()) << "Unknown symbol handle (it should "
+    "have been previously added with AddSVG: " << name;
+
+  const FormXObject *target = it->second;
+  CHECK(target != nullptr);
+
+  // Non-uniform scaling to requested size.
+  float sx = width / target->width;
+  float sy = height / target->height;
+
+  std::string cmd = std::format(
+      "q "
+      // Transformation matrix.
+      "{} 0 0 {} {} {} cm "
+      // Run the object's code.
+      "/{} Do "
+      "Q ",
+      Float(sx), Float(sy), Float(x), Float(y),
+      name);
+
+  AppendDrawCommand(page, std::move(cmd));
 }
 
 /**

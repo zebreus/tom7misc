@@ -616,6 +616,17 @@ struct Converter {
       }
     }
 
+    // Within <clipPath> the attribute is called clip-rule.
+    // We just treat it the same way, which is a little sloppy,
+    // but should be unambiguous for any reasonable SVG.
+    if (auto fo = GetStripAttribute("clip-rule")) {
+      if (fo.value() == "evenodd") {
+        style.use_even_odd_rule = {true};
+      } else if (fo.value() == "nonzero") {
+        style.use_even_odd_rule = {false};
+      }
+    }
+
     if (auto po = GetStripAttribute("clip-path")) {
       had_style = true;
       std::string_view s(po.value());

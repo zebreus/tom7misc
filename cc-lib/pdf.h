@@ -15,9 +15,9 @@
 #include <utility>
 #include <vector>
 
-#include "image.h"
 #include "hashing.h"
-
+#include "image.h"
+#include "svg.h"
 
 // Note: All coordinates/sizes are in points (1/72 of an inch).
 // All coordinates are based on 0,0 being the bottom left of the page.
@@ -74,6 +74,7 @@ private:
     OBJ_image,
     OBJ_link,
     OBJ_widths,
+    OBJ_form_xobject,
 
     OBJ_count,
   };
@@ -595,6 +596,29 @@ private:
                      // XXX use UNICODE when working
                      FontEncoding encoding = FontEncoding::UNICODE);
 
+  // Embed an SVG (using its filename or the parsed document; see svg.h).
+  // Aborts if something is wrong. Returns a unique handle for the symbol,
+  // so that it can be drawn with DrawSVG.
+  //
+  // Only some of SVG is supported (flat colors); see svg.h for export
+  // tips.
+  //
+  // XXX NOTE: This always just draws a red box, because conversion
+  // to PDF vectors is not yet implemented!!
+  std::string AddSVGFile(std::string_view filename);
+  std::string AddSVG(const SVG::Doc &doc);
+  // TODO: Calculate metrics for an SVG using its viewBox, so that
+  // we can preserve aspect ratio below (like AddImage).
+
+  // Draw a previously embedded SVG symbol.
+  //
+  // The SVG will be non-uniformly scaled to fit exactly into this box.
+  // (If you want aspect ratio preservation, calculate width/height yourself
+  // based on the SVG's viewBox).
+  void DrawSVG(std::string_view name,
+               float x, float y, float width, float height,
+               Page *page = nullptr);
+
   static const char *ObjTypeName(ObjType t);
 
  private:
@@ -703,6 +727,15 @@ private:
 
   struct PagesObj : public Object {
     PagesObj() : Object(OBJ_pages) {}
+  };
+
+  // Like ImageObj, but holding vector data.
+  struct FormXObject : public Object {
+    FormXObject() : Object(OBJ_form_xobject) {}
+    std::string name;
+    std::string stream;
+    float width = 0.0f;
+    float height = 0.0f;
   };
 
   // Supported barcode guard patterns.
@@ -815,6 +848,12 @@ private:
   std::unordered_map<std::string, Font *,
                      Hashing<std::string>, std::equal_to<>> embedded_fonts;
   std::unordered_map<BuiltInFont, Font *> builtin_fonts;
+
+  // For embedded SVGs.
+  // Indexed by user-provided symbol name.
+  int next_symbol_index = 1;
+  std::unordered_map<std::string, FormXObject *,
+                     Hashing<std::string>, std::equal_to<>> named_xobjects;
 
   Object *last_objects[OBJ_count] = {};
   Object *first_objects[OBJ_count] = {};
