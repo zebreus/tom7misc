@@ -4300,6 +4300,8 @@ std::string PDF::AddTTF(std::string_view filename,
   int space_width = 0;
   stbtt_GetCodepointHMetrics(&ttf, ' ', &space_width, nullptr);
 
+  // XXX: Widths are actually in "1000ths of a text unit", and we
+  // end up with 72*14 = 1008 here. Should we just scale to 1000.0f?
   const float scale = stbtt_ScaleForMappingEmToPixels(&ttf, 72.0f);
 
   // width tables use 14 points.

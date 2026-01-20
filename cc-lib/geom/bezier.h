@@ -11,7 +11,7 @@ DistanceFromPointToQuadBezier(
     float px, float py,
     // Bezier start point
     float sx, float sy,
-    // Bezier ontrol point
+    // Bezier control point
     float cx, float cy,
     // Bezier end point
     float ex, float ey);

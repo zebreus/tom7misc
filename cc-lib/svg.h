@@ -31,24 +31,18 @@ struct SVG {
     double x, y;
   };
 
+  // Note: Quadratic Bézier (one control point) curves are
+  // converted into the equivalent Cubic.
   struct CubicBezier {
     double cx1, cy1;
     double cx2, cy2;
     double x, y;
   };
 
-  struct QuadBezier {
-    // Control point.
-    double cx, cy;
-    // Destination.
-    double x, y;
-  };
-
   struct ClosePath {
   };
 
-  using PathCommand = std::variant<MoveTo, LineTo, CubicBezier, QuadBezier,
-                                   ClosePath>;
+  using PathCommand = std::variant<MoveTo, LineTo, CubicBezier, ClosePath>;
 
   enum class LineCap : uint8_t {
     BUTT,

@@ -48,6 +48,20 @@ static void RemoveLeadingWhitespace(std::string_view *d) {
     d->remove_prefix(1);
 }
 
+inline static SVG::CubicBezier QuadraticBezier(
+    double start_x, double start_y,
+    double cx, double cy,
+    double x, double y) {
+  return SVG::CubicBezier{
+    .cx1 = start_x + (2.0 / 3.0) * (cx - start_x),
+    .cy1 = start_y + (2.0 / 3.0) * (cy - start_y),
+    .cx2 = x + (2.0 / 3.0) * (cx - x),
+    .cy2 = y + (2.0 / 3.0) * (cy - y),
+    .x = x,
+    .y = y,
+  };
+}
+
 bool SVG::IsDefault(const Style &style) {
   return !(style.transform.has_value() ||
            style.fill_color.has_value() ||
@@ -57,7 +71,8 @@ bool SVG::IsDefault(const Style &style) {
            style.line_join.has_value() ||
            style.miter_limit.has_value() ||
            style.use_even_odd_rule.has_value() ||
-           style.opacity.has_value());
+           style.opacity.has_value() ||
+           style.clip_path.has_value());
 }
 
 double SVG::ParseLeadingNumber(std::string_view *d) {
@@ -499,9 +514,16 @@ SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
       // An empty node can always be removed, even if it has style.
       if (g->children.empty()) continue;
 
-      // TODO: Remove nesting if g is unstyled.
-
-      progeny.emplace_back(std::move(node));
+      if (IsDefault(g->style)) {
+        // Flatten children, since the group does nothing but group.
+        for (Node &cc : g->children) {
+          progeny.emplace_back(std::move(cc));
+        }
+        g->children.clear();
+      } else {
+        // Whole node.
+        progeny.emplace_back(std::move(node));
+      }
 
     } else {
       progeny.emplace_back(std::move(node));
@@ -510,12 +532,10 @@ SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
   children.clear();
 
   // No need for unstyled singleton nodes.
+  // PERF: Even better would be to merge the parent and child style.
   if (progeny.size() == 1 && IsDefault(style)) {
     return std::move(progeny[0]);
   }
-
-  // TODO: We can also collapse if the child is a group with no style,
-  // but this may be subsumed by the flattening TODO above?
 
   return SVG::Node{SVG::G{
       .style = std::move(style),
@@ -523,7 +543,7 @@ SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
     }};
 }
 
-// A Cubic Beziér approximating a 90-degree elliptical arc.
+// A Cubic Bézier approximating a 90-degree elliptical arc.
 // The start position for the arc is implied by the quadrant.
 // For e.g. the bottom right (x and y both positive), the starting
 // point is (cx + rx, cy).
@@ -537,7 +557,7 @@ static SVG::CubicBezier ApproxArc90(
     bool pos_y_quadrant) {
 
   // Standard way of approximating the curve. It is not exactly
-  // an arc (this is impossible with cubic Beziér). This is the
+  // an arc (this is impossible with cubic Bézier). This is the
   // location of the control point.
   static constexpr double KAPPA = 4.0 / 3.0 * (std::numbers::sqrt2 - 1.0);
 
@@ -1493,28 +1513,23 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           WriteErr("Expected 4 numbers after Quadratic Bezier.");
           return std::nullopt;
         }
-        double x1, y1, x, y;
-        std::tie(x1, y1, x, y) = a.value();
+        double cx, cy, x, y;
+        std::tie(cx, cy, x, y) = a.value();
 
         if (cmd == 'q') {
-          x1 += px;
-          y1 += py;
+          cx += px;
+          cy += py;
           x += px;
           y += py;
         }
 
-        cmds.emplace_back(QuadBezier{
-            .cx = x1,
-            .cy = y1,
-            .x = x,
-            .y = y,
-        });
+        cmds.push_back(QuadraticBezier(px, py, cx, cy, x, y));
 
         px = x;
         py = y;
 
-        last_cx = x1;
-        last_cy = y1;
+        last_cx = cx;
+        last_cy = cy;
         last_cmd = cmd | 32;
       }
       break;
@@ -1548,12 +1563,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         double cx = (2.0 * px) - last_cx;
         double cy = (2.0 * py) - last_cy;
 
-        cmds.emplace_back(QuadBezier{
-            .cx = cx,
-            .cy = cy,
-            .x = x,
-            .y = y,
-        });
+        cmds.push_back(QuadraticBezier(px, py, cx, cy, x, y));
 
         px = x;
         py = y;
@@ -1574,6 +1584,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
       break;
 
       // TODO: More commands here.
+      // Arc is missing, but it is tricky and rare.
 
     default:
       Print(stderr, "Unimplemented path command {:c}\n", cmd);
@@ -1621,16 +1632,6 @@ SVG::PathCommand SVG::TransformCommand(const Transform &tf,
         .x = xx, .y = yy,
       }};
 
-  } else if (const SVG::QuadBezier *q =
-               std::get_if<SVG::QuadBezier>(&cmd)) {
-    const auto &[cxx, cyy] = Pt(q->cx, q->cy);
-    const auto &[xx, yy] = Pt(q->x, q->y);
-
-    return {SVG::QuadBezier{
-        .cx = cxx, .cy = cyy,
-        .x = xx, .y = yy,
-      }};
-
   } else if ([[maybe_unused]] const SVG::ClosePath *z =
                std::get_if<SVG::ClosePath>(&cmd)) {
 
@@ -1659,11 +1660,6 @@ static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
                    Rtos(c->cx1), Rtos(c->cy1),
                    Rtos(c->cx2), Rtos(c->cy2),
                    Rtos(c->x), Rtos(c->y));
-    } else if (const SVG::QuadBezier *q =
-                 std::get_if<SVG::QuadBezier>(&cmd)) {
-      AppendFormat(&out, "Q {} {} {} {}",
-                   Rtos(q->cx), Rtos(q->cy),
-                   Rtos(q->x), Rtos(q->y));
     } else if ([[maybe_unused]] const SVG::ClosePath *z =
                  std::get_if<SVG::ClosePath>(&cmd)) {
       out.append("Z");
@@ -1732,7 +1728,7 @@ struct Unconverter {
                    Rtos(style.stroke_opacity.value()));
     }
 
-    if (style.stroke_opacity.has_value()) {
+    if (style.stroke_width.has_value()) {
       AppendFormat(out, " stroke-width=\"{}px\"",
                    Rtos(style.stroke_width.value()));
     }
