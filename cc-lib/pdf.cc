@@ -308,7 +308,8 @@ void PDF::DestroyObject(Object *object) {
 
 PDF::Object *PDF::AddObjectInternal(Object *obj) {
   if (VERBOSE) {
-    printf("Add object internal (%p, type %s)\n", obj, ObjTypeName(obj->type));
+    Print("Add object internal ({}, type {})\n",
+          (void*)obj, ObjTypeName(obj->type));
   }
   CHECK(obj != nullptr);
   AppendObject(obj);
@@ -920,7 +921,7 @@ int PDF::SaveObject(FILE *fp, int index) {
       Print(fp, "      /GS{} <</ca {}>>\n", i,
             (float)(15 - i) / 15);
     }
-    fprintf(fp, "    >>\n");
+    Print(fp, "    >>\n");
 
     auto StartXObjects = [&printed_xobjects, fp]() {
         if (printed_xobjects) return;
@@ -969,7 +970,7 @@ int PDF::SaveObject(FILE *fp, int index) {
       Print(fp, "]\n");
     }
 
-    fprintf(fp, ">>\n");
+    Print(fp, ">>\n");
     break;
   }
 
@@ -981,22 +982,22 @@ int PDF::SaveObject(FILE *fp, int index) {
       parent = FindFirstObject(OBJ_outline);
     if (!bobj->page)
       break;
-    fprintf(fp,
-            "<<\n"
-            "  /Dest [%d 0 R /XYZ 0 %s null]\n"
-            "  /Parent %d 0 R\n"
-            "  /Title (%s)\n",
-            bobj->page->index,
-            Float(this->document_height).c_str(),
-            parent->index,
-            bobj->name.c_str());
+    Print(fp,
+          "<<\n"
+          "  /Dest [{} 0 R /XYZ 0 {} null]\n"
+          "  /Parent {} 0 R\n"
+          "  /Title ({})\n",
+          bobj->page->index,
+          Float(this->document_height),
+          parent->index,
+          bobj->name);
     int nchildren = (int)bobj->children.size();
     if (nchildren > 0) {
       const Object *f = (const Object *)bobj->children[0];
       const Object *l = (const Object *)bobj->children[nchildren - 1];
-      fprintf(fp, "  /First %d 0 R\n", f->index);
-      fprintf(fp, "  /Last %d 0 R\n", l->index);
-      fprintf(fp, "  /Count %d\n", pdf_get_bookmark_count(object));
+      Print(fp, "  /First {} 0 R\n", f->index);
+      Print(fp, "  /Last {} 0 R\n", l->index);
+      Print(fp, "  /Count {}\n", pdf_get_bookmark_count(object));
     }
 
     {
@@ -1007,7 +1008,7 @@ int PDF::SaveObject(FILE *fp, int index) {
       }
 
       if (other != nullptr) {
-        fprintf(fp, "  /Prev %d 0 R\n", other->index);
+        Print(fp, "  /Prev {} 0 R\n", other->index);
       }
     }
 
@@ -1019,11 +1020,11 @@ int PDF::SaveObject(FILE *fp, int index) {
       }
 
       if (other != nullptr) {
-        fprintf(fp, "  /Next %d 0 R\n", other->index);
+        Print(fp, "  /Next {} 0 R\n", other->index);
       }
     }
 
-    fprintf(fp, ">>\n");
+    Print(fp, ">>\n");
     break;
   }
 
@@ -1042,14 +1043,14 @@ int PDF::SaveObject(FILE *fp, int index) {
       }
 
       /* Bookmark outline */
-      fprintf(fp,
-              "<<\n"
-              "  /Count %d\n"
-              "  /Type /Outlines\n"
-              "  /First %d 0 R\n"
-              "  /Last %d 0 R\n"
-              ">>\n",
-              count, first->index, last->index);
+      Print(fp,
+            "<<\n"
+            "  /Count {}\n"
+            "  /Type /Outlines\n"
+            "  /First {} 0 R\n"
+            "  /Last {} 0 R\n"
+            ">>\n",
+            count, first->index, last->index);
     }
     break;
   }
@@ -1071,25 +1072,25 @@ int PDF::SaveObject(FILE *fp, int index) {
     // truetype) font. We always just have the single descendant
     // font, and this is where we put the CMap.
 
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Font\n"
-            "  /Subtype /Type0\n"
-            // This is the name we can use elsewhere to draw text.
-            "  /BaseFont /Font%d\n"
-            // Identity means we just use 16-bit glyph codes (two
-            // bytes each) from the font. The PDF understands what
-            // codepoints these are because of the /ToUnicode
-            // CMap.
-            "  /Encoding /Identity-H\n"
-            // The single wrapped CID font.
-            "  /DescendantFonts [%d 0 R]\n"
-            "  /ToUnicode %d 0 R\n"
-            ">>\n",
-            // Basefont: Just needs a unique name.
-            fobj->index,
-            fobj->fcobj->index,
-            fobj->cmap_obj->index);
+    Print(fp,
+          "<<\n"
+          "  /Type /Font\n"
+          "  /Subtype /Type0\n"
+          // This is the name we can use elsewhere to draw text.
+          "  /BaseFont /Font{}\n"
+          // Identity means we just use 16-bit glyph codes (two
+          // bytes each) from the font. The PDF understands what
+          // codepoints these are because of the /ToUnicode
+          // CMap.
+          "  /Encoding /Identity-H\n"
+          // The single wrapped CID font.
+          "  /DescendantFonts [{} 0 R]\n"
+          "  /ToUnicode {} 0 R\n"
+          ">>\n",
+          // Basefont: Just needs a unique name.
+          fobj->index,
+          fobj->fcobj->index,
+          fobj->cmap_obj->index);
 
     break;
   }
@@ -1115,29 +1116,29 @@ int PDF::SaveObject(FILE *fp, int index) {
     // where we embed the font data and metrics, but the cmap is in
     // the parent.
 
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Font\n"
-            "  /Subtype /CIDFontType2\n"
-            "  /BaseFont /Font%d\n"
-            "  /FontDescriptor %d 0 R\n"
-            // This is boilerplate saying that we want CID = glyph id.
-            "  /CIDSystemInfo <<\n"
-            "    /Registry (Adobe)\n"
-            "    /Ordering (Identity)\n"
-            "    /Supplement 0\n"
-            "  >>\n"
-            "  /CIDToGIDMap /Identity\n"
-            // The default width (not really supported at the moment)
-            "  /DW %d\n"
-            // The array of widths for this font.
-            "  /W %d 0 R\n"
-            ">>\n",
-            // Basefont: Just needs a unique name.
-            fobj->index,
-            fobj->ttf->index,
-            fobj->widths_obj->default_width,
-            fobj->widths_obj->index);
+    Print(fp,
+          "<<\n"
+          "  /Type /Font\n"
+          "  /Subtype /CIDFontType2\n"
+          "  /BaseFont /Font{}\n"
+          "  /FontDescriptor {} 0 R\n"
+          // This is boilerplate saying that we want CID = glyph id.
+          "  /CIDSystemInfo <<\n"
+          "    /Registry (Adobe)\n"
+          "    /Ordering (Identity)\n"
+          "    /Supplement 0\n"
+          "  >>\n"
+          "  /CIDToGIDMap /Identity\n"
+          // The default width (not really supported at the moment)
+          "  /DW {}\n"
+          // The array of widths for this font.
+          "  /W {} 0 R\n"
+          ">>\n",
+          // Basefont: Just needs a unique name.
+          fobj->index,
+          fobj->ttf->index,
+          fobj->widths_obj->default_width,
+          fobj->widths_obj->index);
 
     break;
   }
@@ -1155,25 +1156,25 @@ int PDF::SaveObject(FILE *fp, int index) {
     CHECK(encoding == FontEncoding::WIN_ANSI);
     CHECK(fobj->ttf != nullptr) << "Missing embedded TTF?";
 
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Font\n"
-            "  /Subtype /TrueType\n"
-            "  /BaseFont /Font%d\n"
-            "  /Encoding /WinAnsiEncoding\n"
-            "  /FontDescriptor %d\n"
-            "  /FirstChar %d\n"
-            "  /LastChar %d\n"
-            "  /Widths %d 0 R\n"
-            ">>\n",
-            // Basefont: Just needs a unique name.
-            fobj->index,
-            fobj->ttf->index,
-            // Widths
-            fobj->widths_obj->firstchar,
-            fobj->widths_obj->lastchar,
-            // Array of widths in its own object.
-            fobj->widths_obj->index);
+    Print(fp,
+          "<<\n"
+          "  /Type /Font\n"
+          "  /Subtype /TrueType\n"
+          "  /BaseFont /Font{}\n"
+          "  /Encoding /WinAnsiEncoding\n"
+          "  /FontDescriptor {}\n"
+          "  /FirstChar {}\n"
+          "  /LastChar {}\n"
+          "  /Widths {} 0 R\n"
+          ">>\n",
+          // Basefont: Just needs a unique name.
+          fobj->index,
+          fobj->ttf->index,
+          // Widths
+          fobj->widths_obj->firstchar,
+          fobj->widths_obj->lastchar,
+          // Array of widths in its own object.
+          fobj->widths_obj->index);
 
     break;
   }
@@ -1191,21 +1192,21 @@ int PDF::SaveObject(FILE *fp, int index) {
       "fonts are WIN_ANSI by definition.";
 
     // A built-in font (BaseFont).
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Font\n"
-            "  /Subtype /Type1\n"
-            "  /BaseFont /%s\n"
-            "  /Encoding /WinAnsiEncoding\n"
-            "  /FirstChar %d\n"
-            "  /LastChar %d\n"
-            "  /Widths %d 0 R\n"
-            ">>\n",
-            BuiltInFontName(fobj->font->builtin_font.value()),
-            fobj->widths_obj->firstchar,
-            fobj->widths_obj->lastchar,
-            // Array of widths in its own object.
-            fobj->widths_obj->index);
+    Print(fp,
+          "<<\n"
+          "  /Type /Font\n"
+          "  /Subtype /Type1\n"
+          "  /BaseFont /{}\n"
+          "  /Encoding /WinAnsiEncoding\n"
+          "  /FirstChar {}\n"
+          "  /LastChar {}\n"
+          "  /Widths {} 0 R\n"
+          ">>\n",
+          BuiltInFontName(fobj->font->builtin_font.value()),
+          fobj->widths_obj->firstchar,
+          fobj->widths_obj->lastchar,
+          // Array of widths in its own object.
+          fobj->widths_obj->index);
 
     break;
   }
@@ -1213,17 +1214,17 @@ int PDF::SaveObject(FILE *fp, int index) {
   case OBJ_pages: {
     int npages = 0;
 
-    fprintf(fp, "<<\n"
-            "  /Type /Pages\n"
-            "  /Kids [ ");
+    Print(fp, "<<\n"
+          "  /Type /Pages\n"
+          "  /Kids [ ");
     for (const Object *page = FindFirstObject(OBJ_page);
          page; page = page->next) {
       npages++;
-      fprintf(fp, "%d 0 R ", page->index);
+      Print(fp, "{} 0 R ", page->index);
     }
-    fprintf(fp, "]\n");
-    fprintf(fp, "  /Count %d\n", npages);
-    fprintf(fp, ">>\n");
+    Print(fp, "]\n");
+    Print(fp, "  /Count {}\n", npages);
+    Print(fp, ">>\n");
     break;
   }
 
@@ -1231,38 +1232,38 @@ int PDF::SaveObject(FILE *fp, int index) {
     const Object *outline = FindFirstObject(OBJ_outline);
     const Object *pages = FindFirstObject(OBJ_pages);
 
-    fprintf(fp, "<<\n"
-            "  /Type /Catalog\n");
+    Print(fp, "<<\n"
+          "  /Type /Catalog\n");
     if (outline != nullptr) {
-      fprintf(fp,
-              "  /Outlines %d 0 R\n"
-              "  /PageMode /UseOutlines\n",
-              outline->index);
+      Print(fp,
+            "  /Outlines {} 0 R\n"
+            "  /PageMode /UseOutlines\n",
+            outline->index);
     }
-    fprintf(fp,
-            "  /Pages %d 0 R\n"
-            ">>\n",
-            pages->index);
+    Print(fp,
+          "  /Pages {} 0 R\n"
+          ">>\n",
+          pages->index);
     break;
   }
 
   case OBJ_link: {
     const LinkObj *lobj = (LinkObj *)object;
-    fprintf(fp,
-            "<<\n"
-            "  /Type /Annot\n"
-            "  /Subtype /Link\n"
-            "  /Rect [%s %s %s %s]\n"
-            "  /Dest [%u 0 R /XYZ %s %s null]\n"
-            "  /Border [0 0 0]\n"
-            ">>\n",
-            Float(lobj->llx).c_str(),
-            Float(lobj->lly).c_str(),
-            Float(lobj->urx).c_str(),
-            Float(lobj->ury).c_str(),
-            lobj->target_page->index,
-            Float(lobj->target_x).c_str(),
-            Float(lobj->target_y).c_str());
+    Print(fp,
+          "<<\n"
+          "  /Type /Annot\n"
+          "  /Subtype /Link\n"
+          "  /Rect [{} {} {} {}]\n"
+          "  /Dest [{} 0 R /XYZ {} {} null]\n"
+          "  /Border [0 0 0]\n"
+          ">>\n",
+          Float(lobj->llx),
+          Float(lobj->lly),
+          Float(lobj->urx),
+          Float(lobj->ury),
+          lobj->target_page->index,
+          Float(lobj->target_x),
+          Float(lobj->target_y));
     break;
   }
 
@@ -1274,11 +1275,11 @@ int PDF::SaveObject(FILE *fp, int index) {
     // Probably it would be cleaner to have different object
     // types, or to just do this in the font obj code.
     if (wobj->encoding == FontEncoding::WIN_ANSI) {
-      fprintf(fp, "[");
+      Print(fp, "[");
       for (int w : wobj->widths8) {
-        fprintf(fp, " %d", w);
+        Print(fp, " {}", w);
       }
-      fprintf(fp, " ]\n");
+      Print(fp, " ]\n");
     } else {
       CHECK(wobj->encoding == FontEncoding::UNICODE);
 
@@ -1286,17 +1287,17 @@ int PDF::SaveObject(FILE *fp, int index) {
         MapToSortedVec(wobj->widths16);
 
       // Two entry types:
-      // first last width      (which meanas first = width ... last = width)
+      // first last width      (which means first = width ... last = width)
       // base [w0 w1 w2 w3]    (which means base+0 = w0, base+1 = w1, ...)
       //
       // This is the dumbest encoding to get it working. We should
       // generate something more compact:
-      fprintf(fp, "[\n");
+      Print(fp, "[\n");
       for (int i = 0; i < (int)sorted.size(); i++) {
         const auto &[cid, width] = sorted[i];
-        fprintf(fp, "%d %d %d\n", cid, cid, width);
+        Print(fp, "{} {} {}\n", cid, cid, width);
       }
-      fprintf(fp, "]\n");
+      Print(fp, "]\n");
 
       #if 0
       // WRONG!
@@ -1330,7 +1331,7 @@ int PDF::SaveObject(FILE *fp, int index) {
                               (int)object->type));
   }
 
-  fprintf(fp, "endobj\n");
+  Print(fp, "endobj\n");
 
   return 0;
 }
@@ -1359,9 +1360,9 @@ int PDF::SaveFile(FILE *fp) {
   // point must be . in the PDF format. std::format will
   // do the right thing (always c locale unless specified).
 
-  fprintf(fp, "%%PDF-1.3\n");
+  Print(fp, "%PDF-1.3\n");
   /* Hibit bytes */
-  fprintf(fp, "%c%c%c%c%c\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
+  Print(fp, "{:c}{:c}{:c}{:c}{:c}\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
 
   /* Dump all the objects & get their file offsets */
   for (int i = 0; i < (int)objects.size(); i++) {
@@ -1377,35 +1378,36 @@ int PDF::SaveFile(FILE *fp) {
 
   /* xref */
   xref_offset = ftell(fp);
-  fprintf(fp, "xref\n");
-  fprintf(fp, "0 %d\n", xref_count + 1);
-  fprintf(fp, "0000000000 65535 f\n");
+  Print(fp, "xref\n");
+  Print(fp, "0 {}\n", xref_count + 1);
+  Print(fp, "0000000000 65535 f\n");
   for (Object *obj : objects) {
     if (obj->type != OBJ_none) {
-      fprintf(fp, "%10.10d 00000 n\n", obj->offset);
+      Print(fp, "{:010d} 00000 n\n", obj->offset);
     }
   }
 
-  fprintf(fp,
-          "trailer\n"
-          "<<\n"
-          "/Size %d\n",
-          xref_count + 1);
+  Print(fp,
+        "trailer\n"
+        "<<\n"
+        "/Size {}\n",
+        xref_count + 1);
   Object *obj = FindFirstObject(OBJ_catalog);
   CHECK(obj != nullptr);
-  fprintf(fp, "/Root %d 0 R\n", obj->index);
+  Print(fp, "/Root {} 0 R\n", obj->index);
 
   const InfoObj *iobj = (InfoObj*)FindFirstObject(OBJ_info);
-  fprintf(fp, "/Info %d 0 R\n", iobj->index);
+  Print(fp, "/Info {} 0 R\n", iobj->index);
   /* Generate document unique IDs */
   id1 = hash(5381, &iobj->info, sizeof (PDF::Info));
   id1 = hash(id1, &xref_count, sizeof (xref_count));
   id2 = hash(5381, &now, sizeof(now));
-  fprintf(fp, "/ID [<%16.16" PRIx64 "> <%16.16" PRIx64 ">]\n", id1, id2);
-  fprintf(fp, ">>\n"
-          "startxref\n");
-  fprintf(fp, "%d\n", xref_offset);
-  fprintf(fp, "%%%%EOF\n");
+  Print(fp, "/ID [<{:016x}> <{:016x}>]\n",
+        (uint64_t)id1, (uint64_t)id2);
+  Print(fp, ">>\n"
+        "startxref\n");
+  Print(fp, "{}\n", xref_offset);
+  Print(fp, "%%EOF\n");
 
   return 0;
 }

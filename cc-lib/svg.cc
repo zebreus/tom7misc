@@ -341,9 +341,31 @@ static Transform ComposeTransforms(
   };
 }
 
+// Parse the entire string s as an arbitrarily long sequence of numbers,
+// or return nullopt if it cannot.
+static std::optional<std::vector<double>> AllNumbers(std::string_view s) {
+  std::vector<double> ret;
+  for (;;) {
+    RemoveLeadingWhitespace(&s);
+    if (s.empty()) break;
+
+    auto od = Numbers<1>(&s);
+    if (!od.has_value() || !std::isfinite(od.value()[0]))
+      return std::nullopt;
+
+    ret.push_back(od.value()[0]);
+  }
+
+  return {ret};
+}
+
 // Returns nullopt if there is no valid transform leading the string.
 static std::optional<Transform> ParseLeadingTransform(
     std::string_view *s) {
+
+  auto DegToRad = [](double deg) { return deg * (std::numbers::pi / 180.0); };
+  auto NotClose = [](char c) { return c != ')'; };
+
   Util::RemoveOuterWhitespace(s);
   if (s->empty()) return {};
 
@@ -358,9 +380,94 @@ static std::optional<Transform> ParseLeadingTransform(
       return std::nullopt;
 
     return std::make_optional(std::move(a.value()));
-  }
+  } else if (Util::TryStripPrefix("translate(", s)) {
 
-  // TODO: Support other common transforms here.
+    std::string_view nums = Util::ConsumePrefixMatching(NotClose, s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    if (auto args = AllNumbers(nums)) {
+      if (args.value().size() == 1) {
+        return std::make_optional(
+            Transform{1.0, 0.0, 0.0, 1.0, args.value()[0], 0.0});
+      } else if (args.value().size() == 2) {
+        return std::make_optional(
+            Transform{1.0, 0.0, 0.0, 1.0, args.value()[0], args.value()[1]});
+      }
+    }
+
+    // Failed.
+    return std::nullopt;
+  } else if (Util::TryStripPrefix("scale(", s)) {
+
+    std::string_view nums = Util::ConsumePrefixMatching(NotClose, s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    if (auto args = AllNumbers(nums)) {
+      if (args.value().size() == 1) {
+        return std::make_optional(
+            Transform{args.value()[0], 0.0, 0.0, args.value()[0], 0.0, 0.0});
+      } else if (args.value().size() == 2) {
+        return std::make_optional(
+            Transform{args.value()[0], 0.0, 0.0, args.value()[1], 0.0, 0.0});
+      }
+    }
+
+    return std::nullopt;
+  } else if (Util::TryStripPrefix("rotate(", s)) {
+
+    std::string_view nums = Util::ConsumePrefixMatching(NotClose, s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    auto args = AllNumbers(nums);
+    if (!args.has_value())
+      return std::nullopt;
+
+    if (!(args.value().size() == 1 ||
+          args.value().size() == 3))
+      return std::nullopt;
+
+    double a = DegToRad(args.value()[0]);
+    double cosa = std::cos(a);
+    double sina = std::sin(a);
+
+    // Center of rotation (zero if one-arg).
+    double cx = 0.0, cy = 0.0;
+    if (args.value().size() == 3) {
+      cx = args.value()[1];
+      cy = args.value()[2];
+    }
+
+    double e = cx - (cx * cosa - cy * sina);
+    double f = cy - (cx * sina + cy * cosa);
+    return Transform{cosa, sina, -sina, cosa, e, f};
+
+  } else if (Util::TryStripPrefix("skewX(", s)) {
+    std::string_view nums = Util::ConsumePrefixMatching(NotClose, s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    auto args = AllNumbers(nums);
+    if (!args.has_value() || args.value().size() != 1)
+      return std::nullopt;
+
+    double a = DegToRad(args.value()[0]);
+    return Transform{1.0, 0.0, std::tan(a), 1.0, 0.0, 0.0};
+
+  } else if (Util::TryStripPrefix("skewY(", s)) {
+    std::string_view nums = Util::ConsumePrefixMatching(NotClose, s);
+    if (!Util::TryStripPrefix(")", s))
+      return std::nullopt;
+
+    auto args = AllNumbers(nums);
+    if (!args.has_value() || args.value().size() != 1)
+      return std::nullopt;
+
+    double a = DegToRad(args.value()[0]);
+    return Transform{1.0, std::tan(a), 0.0, 1.0, 0.0, 0.0};
+  }
 
   return std::nullopt;
 }
@@ -648,6 +755,16 @@ struct Converter {
 
       } else {
         error = "In clip-path, only url(#A) references are supported.";
+        return {};
+      }
+    }
+
+    if (auto to = GetStripAttribute("transform")) {
+      had_style = true;
+      if (auto tfo = SVG::ParseTransformList(to.value())) {
+        style.transform = tfo;
+      } else {
+        error = "Invalid transform list in transform attribute.";
         return {};
       }
     }
@@ -1166,7 +1283,12 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
   double px = 0.0, py = 0.0;
   // Also last control point for curve shorthands.
   // (Or the last point when not a curve command.)
-  [[maybe_unused]] double last_cx = 0.0, last_cy = 0.0;
+  double last_cx = 0.0, last_cy = 0.0;
+  // Lowercase version of last command. This is needed
+  // because the rules about the last control point
+  // only apply when the last command was of the same
+  // type (c/s or q/t).
+  char last_cmd = '_';
   // Each time we MoveTo, we save the start of the
   // path for the sake of closing it.
   double startx = 0.0, starty = 0.0;
@@ -1208,8 +1330,9 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           cmds.emplace_back(LineTo{.x = nx, .y = ny});
         }
 
-        last_cx = px = nx;
-        last_cy = py = ny;
+        px = nx;
+        py = ny;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1230,8 +1353,9 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         }
 
         cmds.emplace_back(LineTo{.x = nx, .y = ny});
-        last_cx = px = nx;
-        last_cy = py = ny;
+        px = nx;
+        py = ny;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1251,8 +1375,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
         cmds.emplace_back(LineTo{.x = n, .y = py});
 
-        last_cx = px = n;
-        last_cy = py;
+        px = n;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1272,8 +1396,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
         cmds.emplace_back(LineTo{.x = px, .y = n});
 
-        last_cx = px;
-        last_cy = py = n;
+        py = n;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1310,6 +1434,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         py = y;
         last_cx = x2;
         last_cy = y2;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1331,6 +1456,14 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           y += py;
         }
 
+        // Only retain the last control point if the last
+        // command was the same curve type.
+        if (!(last_cmd == 's' ||
+              last_cmd == 'c')) {
+          last_cx = px;
+          last_cy = py;
+        }
+
         // First control point is implicit (reflected version of previous).
         double x1 = (2.0 * px) - last_cx;
         double y1 = (2.0 * py) - last_cy;
@@ -1348,6 +1481,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         py = y;
         last_cx = x2;
         last_cy = y2;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1381,6 +1515,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
 
         last_cx = x1;
         last_cy = y1;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1398,6 +1533,12 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         if (cmd == 't') {
           x += px;
           y += py;
+        }
+
+        if (!(last_cmd == 'q' ||
+              last_cmd == 't')) {
+          last_cx = px;
+          last_cy = py;
         }
 
         // Calculate reflection of previous control point.
@@ -1418,6 +1559,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
         py = y;
         last_cx = cx;
         last_cy = cy;
+        last_cmd = cmd | 32;
       }
       break;
     }
@@ -1428,6 +1570,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
       // Move current position in case there are more commands.
       last_cx = px = startx;
       last_cy = py = starty;
+      last_cmd = cmd | 32;
       break;
 
       // TODO: More commands here.
@@ -1438,8 +1581,9 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
       return std::nullopt;
       break;
     }
-
   }
+
+
 
   CHECK(!cmds.empty());
   if (!std::holds_alternative<MoveTo>(cmds[0])) {

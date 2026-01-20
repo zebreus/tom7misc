@@ -50,7 +50,8 @@ static void PrintRec(int depth, const SVG::Node &node) {
       PrintRec(depth + 2, c);
     }
     Print("{}<" ABLUE("/g") ">\n", std::string(depth, ' '));
-  } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
+  } else if ([[maybe_unused]] const SVG::Path *path =
+             std::get_if<SVG::Path>(&node.v)) {
     Print("{}<" APURPLE("path") " />\n", std::string(depth, ' '));
   } else {
     LOG(FATAL) << "Bad variant?";
@@ -91,16 +92,27 @@ static void TestParseTransform() {
   TESTCASE("matrix(0 1 -1 0 0 0) matrix(1 0 0 1 10 20) matrix(1 0 1 1 0 0)",
            M(0, 1, -1, 1, -20, 10));
 
-  // TODO:
-  #if 0
   TESTCASE("translate(10 20)", M(1,0,0,1,10,20));
   // x-only translation
   TESTCASE("translate(10)", M(1,0,0,1,10,0));
+  TESTCASE("translate(5, 6)", M(1, 0, 0, 1, 5, 6));
 
   TESTCASE("scale(2 3)", M(2, 0, 0, 3, 0, 0));
   // Uniform scale.
   TESTCASE("scale(2)", M(2, 0, 0, 2, 0, 0));
-  #endif
+  TESTCASE("scale(0.5, 2)", M(0.5, 0, 0, 2, 0, 0));
+
+  TESTCASE("rotate(90)", M(0, 1, -1, 0, 0, 0));
+  TESTCASE("rotate(-90)", M(0, -1, 1, 0, 0, 0));
+
+  TESTCASE("rotate(180 10 10)", M(-1, 0, 0, -1, 20, 20));
+
+  TESTCASE("skewX(45)", M(1, 0, 1, 1, 0, 0));
+  TESTCASE("skewY(45)", M(1, 1, 0, 1, 0, 0));
+
+  TESTCASE("translate(10, 0) scale(2)", M(2, 0, 0, 2, 10, 0));
+  TESTCASE("scale(2) translate(10, 0)", M(2, 0, 0, 2, 20, 0));
+
 
   CHECK(!SVG::ParseTransformList("matrix(1 0 0 1 0)").has_value());
   CHECK(!SVG::ParseTransformList("not transforms").has_value());
