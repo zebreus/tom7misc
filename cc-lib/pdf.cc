@@ -35,7 +35,6 @@ Done.
 
 #include <algorithm>
 #include <array>
-#include <cinttypes>
 #include <cmath>
 #include <cstdbool>
 #include <cstddef>
@@ -57,6 +56,7 @@ Done.
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "base/logging.h"
@@ -78,11 +78,13 @@ Done.
 #define PDF_RGB_R(c) (((c) >> 16) & 0xff)
 #define PDF_RGB_G(c) (((c) >> 8) & 0xff)
 #define PDF_RGB_B(c) (((c) >> 0) & 0xff)
+#define PDF_RGB_A(c) (((c) >> 24) & 0xff)
 
 
 #define PDF_RGB_R_FLOAT(c) (float)(PDF_RGB_R(c) / 255.0f)
 #define PDF_RGB_G_FLOAT(c) (float)(PDF_RGB_G(c) / 255.0f)
 #define PDF_RGB_B_FLOAT(c) (float)(PDF_RGB_B(c) / 255.0f)
+#define PDF_RGB_A_FLOAT(c) (float)(PDF_RGB_A(c) / 255.0f)
 #define PDF_COLOR_FLOAT(a) (float)( (a) / 255.0f )
 #define PDF_IS_TRANSPARENT(c) (((c) >> 24) == 0xff)
 
@@ -911,15 +913,17 @@ int PDF::SaveObject(FILE *fp, int index) {
     Print(fp, "    >>\n");
     // TODO: The way alpha is implemented is to always generate 16
     // different graphics states on each page, for 4-bit transparency.
-    // (/GS0 ... /GS15). Better would be to register the actual
-    // transparency levels used as we draw stuff, and allow arbitrary
-    // levels.
     //
-    // We trim transparency to just 4 bits.
+    // /GSF0 ... /GSF15 for (G)raphics (S)tate (F)ill
+    // /GSS0 ... /GSS15 for (G)raphics (S)tate (S)troke
+    //
+    // Better would be to register the actual transparency levels used
+    // as we draw stuff, and allow arbitrary levels.
     Print(fp, "    /ExtGState <<\n");
     for (int i = 0; i < 16; i++) {
-      Print(fp, "      /GS{} <</ca {}>>\n", i,
-            (float)(15 - i) / 15);
+      float alpha = (float)(15 - i) / 15.0;
+      Print(fp, "      /GSF{} <</ca {}>>\n", i, alpha);
+      Print(fp, "      /GSS{} <</CA {}>>\n", i, alpha);
     }
     Print(fp, "    >>\n");
 
@@ -1362,7 +1366,7 @@ int PDF::SaveFile(FILE *fp) {
 
   Print(fp, "%PDF-1.3\n");
   /* Hibit bytes */
-  Print(fp, "{:c}{:c}{:c}{:c}{:c}\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
+  Print(fp, "\x25\xc7\xec\x8f\xa2\n");
 
   /* Dump all the objects & get their file offsets */
   for (int i = 0; i < (int)objects.size(); i++) {
@@ -2577,21 +2581,20 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
 
   std::string str;
 
-  // TODO: Use Float() in here.
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     AppendFormat(&str, "/DeviceRGB CS\n");
     AppendFormat(&str, "{} {} {} rg\n",
-                  PDF_RGB_R_FLOAT(fill_color),
-                  PDF_RGB_G_FLOAT(fill_color),
-                  PDF_RGB_B_FLOAT(fill_color));
+                 Float(PDF_RGB_R_FLOAT(fill_color)),
+                 Float(PDF_RGB_G_FLOAT(fill_color)),
+                 Float(PDF_RGB_B_FLOAT(fill_color)));
   }
 
   AppendFormat(&str, "{} w\n", stroke_width);
   AppendFormat(&str, "/DeviceRGB CS\n");
   AppendFormat(&str, "{} {} {} RG\n",
-               PDF_RGB_R_FLOAT(stroke_color),
-               PDF_RGB_G_FLOAT(stroke_color),
-               PDF_RGB_B_FLOAT(stroke_color));
+               Float(PDF_RGB_R_FLOAT(stroke_color)),
+               Float(PDF_RGB_G_FLOAT(stroke_color)),
+               Float(PDF_RGB_B_FLOAT(stroke_color)));
 
   for (PathOp operation : ops) {
     switch (operation.op) {
@@ -2641,11 +2644,10 @@ bool PDF::AddPolygon(
 
   std::string str;
 
-  // TODO: Use Float() in here.
   AppendFormat(&str, "{} {} {} RG ",
-               PDF_RGB_R_FLOAT(color),
-               PDF_RGB_G_FLOAT(color),
-               PDF_RGB_B_FLOAT(color));
+               Float(PDF_RGB_R_FLOAT(color)),
+               Float(PDF_RGB_G_FLOAT(color)),
+               Float(PDF_RGB_B_FLOAT(color)));
   AppendFormat(&str, "{} w ", border_width);
   AppendFormat(&str, "{} {} m ", points[0].first, points[0].second);
   for (int i = 1; i < (int)points.size(); i++) {
@@ -2667,17 +2669,16 @@ bool PDF::AddFilledPolygon(
 
   std::string str;
 
-  // TODO: Use Float() in here.
   if (stroke_width > 0.0f) {
     AppendFormat(&str, "{} {} {} RG ",
-                 PDF_RGB_R_FLOAT(stroke_color),
-                 PDF_RGB_G_FLOAT(stroke_color),
-                 PDF_RGB_B_FLOAT(stroke_color));
+                 Float(PDF_RGB_R_FLOAT(stroke_color)),
+                 Float(PDF_RGB_G_FLOAT(stroke_color)),
+                 Float(PDF_RGB_B_FLOAT(stroke_color)));
   }
   AppendFormat(&str, "{} {} {} rg ",
-               PDF_RGB_R_FLOAT(fill_color),
-               PDF_RGB_G_FLOAT(fill_color),
-               PDF_RGB_B_FLOAT(fill_color));
+               Float(PDF_RGB_R_FLOAT(fill_color)),
+               Float(PDF_RGB_G_FLOAT(fill_color)),
+               Float(PDF_RGB_B_FLOAT(fill_color)));
   if (stroke_width > 0.0f) {
     AppendFormat(&str, "{} w ", stroke_width);
   }
@@ -2843,7 +2844,7 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
 
   std::string str = "BT ";
 
-  AppendFormat(&str, "/GS{} gs ", alpha);
+  AppendFormat(&str, "/GSF{} gs ", alpha);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
   AppendFormat(&str, "/F{} {} Tf ", current_font->font_index,
@@ -2911,7 +2912,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 
   std::string str = "BT ";
 
-  AppendFormat(&str, "/GS{} gs ", alpha);
+  AppendFormat(&str, "/GSF{} gs ", alpha);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
   AppendFormat(&str, "/F{} {} Tf ", current_font->font_index,
@@ -4654,6 +4655,222 @@ void PDF::SetDimensions(float ww, float hh) {
   document_height = hh;
 }
 
+namespace {
+struct SVGEmitter {
+  const SVG::Doc &doc;
+  explicit SVGEmitter(const SVG::Doc &doc) : doc(doc) {}
+
+  static std::string PathString(const std::vector<SVG::PathCommand> &cmds) {
+    std::string out;
+    for (const SVG::PathCommand &cmd : cmds) {
+      if (const SVG::MoveTo *m = std::get_if<SVG::MoveTo>(&cmd)) {
+        AppendFormat(&out, "{} {} m\n", Float(m->x), Float(m->y));
+      } else if (const auto *l = std::get_if<SVG::LineTo>(&cmd)) {
+        AppendFormat(&out, "{} {} l\n", Float(l->x), Float(l->y));
+      } else if (const auto *c = std::get_if<SVG::CubicBezier>(&cmd)) {
+        AppendFormat(&out, "{} {} {} {} {} {} c\n",
+                     Float(c->cx1), Float(c->cy1),
+                     Float(c->cx2), Float(c->cy2),
+                     Float(c->x), Float(c->y));
+      } else if (std::get_if<SVG::ClosePath>(&cmd)) {
+        out += "h\n";
+      }
+    }
+    return out;
+  }
+
+  // We need to recursively track whether fill and stroke are
+  // active, since this affects what command we use to draw
+  // a path.
+  struct State {
+    // Alpha is very complicated: Three different attributes can
+    // affect the alpha, and they can be individually overridden
+    // because style is sparse. PDF doesn't let us multiply the
+    // current alpha in the graphics state; we need to track the value
+    // and emit an absolute alpha before drawing. We also need
+    // to use external graphics state objects to set the alpha
+    // levels, so we quantize to 4 bits and generate the 16 alpha
+    // levels up front.
+    float group_opacity = 1.0;
+
+    // Alpha channel from the fill color.
+    float fill_alpha = 1.0;
+    // fill-opacity presentation attribute.
+    float fill_opacity = 1.0;
+
+    float stroke_alpha = 1.0;
+    float stroke_opacity = 1.0;
+
+    bool has_fill = true;
+    bool has_stroke = false;
+    bool fill_even_odd = false;
+  };
+
+  // Return a string with the PDF commands to render the SVG
+  // into the bounding box [0 0 w h].
+  std::string Emit() {
+    CHECK(doc.view_box.has_value()) << "SVG does not have dimensions?";
+    // SVG uses computer graphics coordinates (Y down) but PDF
+    // wants math coordinates. We implement this with a transformation
+    // matrix.
+    const float h = std::get<3>(doc.view_box.value());
+
+    std::string body;
+    RenderNode(State{}, doc.root, &body);
+
+    return std::format(
+        // Flip
+        "q 1 0 0 -1 0 {} cm\n"
+        // Render upside-down
+        "{}"
+        // Restore
+        "Q",
+        Float(h), body);
+  }
+
+  State ApplyStyle(State state, const SVG::Style &style, std::string *out) {
+    bool fill_alpha_changed = false;
+    bool stroke_alpha_changed = false;
+
+    if (style.transform.has_value()) {
+      const auto &[a, b, c, d, e, f] = style.transform.value();
+      AppendFormat(out, "{} {} {} {} {} {} cm\n",
+                   Float(a), Float(b), Float(c),
+                   Float(d), Float(e), Float(f));
+    }
+
+    if (style.fill_color.has_value()) {
+      uint32_t fc = style.fill_color.value();
+      if (fc == SVG::COLOR_NONE) {
+        // This is the fill=none case.
+        state.has_fill = false;
+      } else {
+        state.has_fill = true;
+        state.fill_alpha = PDF_RGB_A_FLOAT(fc);
+        AppendFormat(out, "{} {} {} rg\n",
+                     Float(PDF_RGB_R_FLOAT(fc)),
+                     Float(PDF_RGB_G_FLOAT(fc)),
+                     Float(PDF_RGB_B_FLOAT(fc)));
+        fill_alpha_changed = true;
+      }
+    }
+
+    if (style.fill_opacity.has_value()) {
+      state.fill_opacity = style.fill_opacity.value();
+      fill_alpha_changed = true;
+    }
+
+    if (style.stroke_color.has_value()) {
+      uint32_t sc = style.stroke_color.value();
+      if (sc == SVG::COLOR_NONE) {
+        // This is the stroke=none case.
+        state.has_stroke = false;
+      } else {
+        state.has_stroke = true;
+        state.stroke_alpha = PDF_RGB_A_FLOAT(sc);
+        AppendFormat(out, "{} {} {} RG\n",
+                     Float(PDF_RGB_R_FLOAT(sc)),
+                     Float(PDF_RGB_G_FLOAT(sc)),
+                     Float(PDF_RGB_B_FLOAT(sc)));
+        stroke_alpha_changed = true;
+      }
+    }
+
+    if (style.stroke_opacity.has_value()) {
+      state.stroke_opacity = style.stroke_opacity.value();
+      stroke_alpha_changed = true;
+    }
+
+    if (style.stroke_width.has_value()) {
+      AppendFormat(out, "{} w\n", Float(style.stroke_width.value()));
+    }
+
+    /*
+      TODO
+    std::optional<LineCap> line_cap;
+    std::optional<LineJoin> line_join;
+    std::optional<double> miter_limit;
+    */
+
+    if (style.use_even_odd_rule.has_value()) {
+      state.fill_even_odd = style.use_even_odd_rule.value();
+    }
+
+    if (style.opacity.has_value()) {
+      state.group_opacity = style.opacity.value();
+      fill_alpha_changed = true;
+      stroke_alpha_changed = true;
+    }
+
+    /*
+      TODO
+    // An id in the symbol table. The transform from
+    // this style object is also applied.
+    // std::optional<std::string> clip_path;
+
+    if (style.clip_path) {
+      out += RenderClipPath(*g.style.clip_path);
+    }
+    */
+
+    // PERF: Only if changed from previous alpha!
+    // (We could also store all the distinct alpha values
+    // in the SVG object here, and then only output those
+    // when doing the ExtGState stuff.)
+    if (fill_alpha_changed && state.has_fill) {
+      int alpha = std::round(255.0f *
+                             state.group_opacity *
+                             state.fill_opacity *
+                             state.fill_alpha);
+      AppendFormat(out, "/GSF{} gs\n", alpha >> 4);
+    }
+
+    if (stroke_alpha_changed && state.has_stroke) {
+      int alpha = std::round(255.0f *
+                             state.group_opacity *
+                             state.stroke_opacity *
+                             state.stroke_alpha);
+      AppendFormat(out, "/GSS{} gs\n", alpha >> 4);
+    }
+
+    return state;
+  }
+
+  void RenderNode(State state, const SVG::Node &node, std::string *out) {
+    if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
+      out->append("q\n");
+      state = ApplyStyle(state, g->style, out);
+
+      for (const SVG::Node &child : g->children) {
+        RenderNode(state, child, out);
+      }
+
+      out->append("Q\n");
+
+    } else if (const SVG::Path *p = std::get_if<SVG::Path>(&node.v)) {
+      out->append(PathString(p->data));
+      out->append(PaintOperator(state));
+      out->push_back('\n');
+
+    } else {
+      LOG(FATAL) << "Bad variant?";
+    }
+  }
+
+  static inline const char *PaintOperator(const State &state) {
+    if (state.has_fill && state.has_stroke)
+      return state.fill_even_odd ? "B*" : "B";
+    if (state.has_fill)
+      return state.fill_even_odd ? "f*" : "f";
+
+    // With no fill, fill_even_odd has no effect.
+    if (state.has_stroke) return "S";
+    CHECK(!state.has_fill && !state.has_stroke);
+    return "n";
+  }
+};
+}
+
 std::string PDF::AddSVGFile(std::string_view filename) {
   std::string contents = Util::ReadFile(filename);
   CHECK(!contents.empty()) << "Could not read file: " << filename;
@@ -4677,6 +4894,7 @@ std::string PDF::AddSVG(const SVG::Doc &doc) {
 
   // TODO: Actually convert the SVG here. This placeholder is just a
   // box of the same size as the viewbox.
+#if 0
   fobj->stream = std::format(
       "q "
       "1 0 0 1 0 0 cm "
@@ -4686,6 +4904,9 @@ std::string PDF::AddSVG(const SVG::Doc &doc) {
       "0 0 {} {} re S "
       "Q",
       Float(fobj->width), Float(fobj->height));
+#endif
+  SVGEmitter emitter(doc);
+  fobj->stream = emitter.Emit();
 
   CHECK(!named_xobjects.contains(fobj->name));
   named_xobjects[fobj->name] = fobj;

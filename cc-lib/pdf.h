@@ -250,6 +250,8 @@ private:
 
   // A drawing operation within a path.
   //  See PDF reference for detailed usage.
+  // TODO: Could consider using SVG::PathCommand here, which is
+  // isomorphic?
   struct PathOp {
     char op;  /*!< Operation command. Possible operators are: m = move to, l =
                  line to, c = cubic bezier curve with two control points, v =
