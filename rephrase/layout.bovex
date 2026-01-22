@@ -1,18 +1,19 @@
-(* Layout stuff. *)
+(* Layout stuff.
 
-(* Scores are given as penalties (positive is bad). *)
-(* Dimensions are in points, nominally 1/72 of an inch. *)
-(* Coordinates start at 0.0 at the top left, with y positive meaning
-   down, and x positive meaning right. (Note this is vertically
-   flipped from what pdf.h and the internal PDF format do!) *)
+   This is a core BoVeX library, which wraps the low-level
+   primitives (the 'layout' type, boxes-and-glue algorithm,
+   dimensions, etc.) to offer a higher-level layout interface.
+   It's used by multiple document types and styles.
 
-(* TODO! This needs major cleanup. One thing I should do is separate
-   it into the declarations and utilities for manipulating layout
-   (used by basically everything) and the columnar layout code
-   (used just by two-column PDF docs). *)
+   Conventions:
 
-(* TODO: This should not install any fonts, especially ones that
-   I can't freely include with bovex itself. *)
+   - Scores are given as penalties (positive is bad).
+   - Dimensions are in points, nominally 1/72 of an inch.
+   - Coordinates start at 0.0 at the top left, with y positive meaning
+     down, and x positive meaning right. (Note this is vertically
+     flipped from what pdf.h and the internal PDF format do!)
+
+*)
 
 do REQUIRE-STDLIB
 
@@ -20,6 +21,7 @@ datatype provide-layout = REQUIRE-LAYOUT
 
 (* XXX Temporary? *)
 import "font.bovex"
+import "image.bovex"
 
 val LAYOUT-VERBOSE = false
 
@@ -29,7 +31,6 @@ val SHOW-CODES = false
 (* For expand-contract, in places where we don't want to do any
    expansion or contraction (e.g. kerning points). *)
 val EPSILON-COEFFICIENT = 0.0000000005
-
 
 fun inch (d : float) = d *. 72.0
 fun point (d : float) = d
@@ -62,23 +63,6 @@ fun set-target-seconds (page, target) =
 fun set-output-section (page, section) =
   internal-set-page-info ({(OutputDest) page = page, frame = 0 },
                           {(PageInfo) section = section})
-
-
-datatype image-handle = Image of string
-fun image-load filename : image-handle =
-  case image-load-file filename of
-    "" => fail ("Unable to load image from file " ^ filename)
-  | img => Image img
-
-object InternalImageProps of { width : int, height : int }
-fun image-size (Image img) : { width : int, height : int } =
-  case image-props img of
-    {(InternalImageProps) width, height} => { width = width, height = height }
-  | _ => fail "bad image props?"
-
-(* scale by 2x, 3x, etc. Creates a new image handle. *)
-fun image-exact-scale (Image img, scale-by : int) : image-handle =
-  Image (image-integer-scale (img, scale-by))
 
 fun layout-concat nil = []
   | layout-concat (l :: t) = [[l][layout-concat t]]
@@ -914,22 +898,6 @@ fun blockquote lay =
      box {(Box) width = WIDTH} (layout-concat lines))
   end
 
-fun title lay =
-  span {(Span)
-        justification = "left",
-        font-bold = true,
-        font-size = point 30.0 } [[lay][hfill()][break()]]
-
-fun sub-title lay =
-  span {(Span)
-        justification = "left",
-        font-bold = true,
-        font-size = point 22.0 } [[lay][hfill()][break()]]
-
-fun author lay = span {(Span) justification = "left" }
-                       [[lay][hfill()][break()]]
-fun date lay = [[lay][hfill()][vspace 16.0]]
-
 (* Justify even the final line of the paragraph. *)
 fun justify-all lay = span {(Span) justification = "all" } lay
 (* Justify all but the final line. *)
@@ -1031,31 +999,27 @@ fun ul laylist =
              lay ^^ [\\])
    laylist)
 
-fun no-rephrase lay = span {(Span) no-rephrase = true } lay
+
+(* Rephrasing is enabled deep in the paragraph layout code, since
+   it needs to understand how variants affect badness. Documents
+   can globally disable/enable these *)
+
+(* If SOME, the number of rephrasing attempts to use for every
+   eligible paragraph by default. *)
+val REPHRASE-ALL : int option ref = ref NONE
+val NO-REPHRASE : bool ref = ref false
 
 object Rephrase of { rephrase-times : int }
+
+(* Explicitly disable rephrasing for the paragraph. *)
+fun no-rephrase lay = span {(Span) no-rephrase = true } lay
+(* Explicitly ask for N attempts at rephrasing the paragraph. *)
 fun rephrase-paragraph (times : int) (p : layout) : layout =
-(* map-attrs (fn attrs => attrs with (Rephrase) times = times) p *)
   let val r = span {(Rephrase) rephrase-times = times} p
   in
     (* debug-print-doc r; *)
     r
   end
-
-fun rephrasings (times, para) : (float * layout) list =
-  let
-    object InternalRephrasings of { loss : float }
-    fun get-metadata one =
-      case get-attrs-opt one of
-        SOME {(InternalRephrasings) loss } => (loss, one)
-      | _ => fail ("internal-rephrasings should annotate the returned " ^
-                   "layout with the (semantic) loss")
-  in
-    list-map get-metadata (unjoin (internal-rephrasings (times, para)))
-  end
-
-val REPHRASE-ALL : int option ref = ref NONE
-val NO-REPHRASE : bool ref = ref false
 
 (* Pack a paragraph. This is basically pack-boxes o get-boxes, but
    we also look for rephrase contexts. If there are any, we
@@ -1063,6 +1027,18 @@ val NO-REPHRASE : bool ref = ref false
 fun pack-one-paragraph (column-width : float) (para : layout) =
   let
     val VERBOSE = false
+
+    fun rephrasings (times, para) : (float * layout) list =
+      let
+        object InternalRephrasings of { loss : float }
+        fun get-metadata one =
+          case get-attrs-opt one of
+            SOME {(InternalRephrasings) loss } => (loss, one)
+          | _ => fail ("internal-rephrasings should annotate the returned " ^
+                       "layout with the (semantic) loss")
+      in
+        list-map get-metadata (unjoin (internal-rephrasings (times, para)))
+      end
 
     (* XXX I should fix whatever's creating singleton groups, but
        it prevents us from recognizing the top-level rephrase
@@ -1200,7 +1176,12 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
    they are vertical boxes. *)
 datatype paragraph = Paragraph of { lines : layout list }
 (* Given all the paragraphs in the document, pack them and
-   turn them into stickers and emit write them. *)
+   turn them into stickers and emit them.
+
+   TODO: It would be better if this placed them within
+   rigid column-shaped boxes with stickers, rather than
+   emitting them.
+*)
 (* XXX pass a "metrics" object or something *)
 fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,
@@ -1352,6 +1333,24 @@ fun process-paragraph (COLUMN-WIDTH : float,
   in
     (Paragraph { lines = lines }) :: nil
   end
+
+(* Below here should move to twocolumn or article or whatever. *)
+
+fun title lay =
+  span {(Span)
+        justification = "left",
+        font-bold = true,
+        font-size = point 30.0 } [[lay][hfill()][break()]]
+
+fun sub-title lay =
+  span {(Span)
+        justification = "left",
+        font-bold = true,
+        font-size = point 22.0 } [[lay][hfill()][break()]]
+
+fun author lay = span {(Span) justification = "left" }
+                       [[lay][hfill()][break()]]
+fun date lay = [[lay][hfill()][vspace 16.0]]
 
 (* TODO: Some kind of page config object that specifies the
    various constant dimensions, with defaults. *)

@@ -3,6 +3,7 @@
 //
 // I made a large number of local edits. Some notable ones:
 //   - "fixed" some printf format parameter warnings
+//     (or using std::format family)
 //   - Ported to C++.
 //   - Fix bug with text justification: Denominator should be
 //      len - 1, not len - 2.
@@ -10,6 +11,9 @@
 //   - Added compression
 //   - Added QR codes
 //   - Added support for embedded TrueType fonts
+//   - Added support for some of SVG
+//   - Switched to RGBA color format and use "alpha" polarity
+//       instead of "transparency"
 
 // PERF: Output will have a lot of 200.00000000 stuff; use smarter
 // float to text routine.
@@ -53,6 +57,7 @@ Done.
 #include <string_view>
 #include <sys/stat.h>
 #include <time.h>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -75,10 +80,10 @@ Done.
 // XXX just for debugging output
 #include "ansi.h"
 
-#define PDF_RGB_R(c) (((c) >> 16) & 0xff)
-#define PDF_RGB_G(c) (((c) >> 8) & 0xff)
-#define PDF_RGB_B(c) (((c) >> 0) & 0xff)
-#define PDF_RGB_A(c) (((c) >> 24) & 0xff)
+#define PDF_RGB_R(c) (((c) >> 24) & 0xff)
+#define PDF_RGB_G(c) (((c) >> 16) & 0xff)
+#define PDF_RGB_B(c) (((c) >> 8) & 0xff)
+#define PDF_RGB_A(c) (((c) >> 0) & 0xff)
 
 
 #define PDF_RGB_R_FLOAT(c) (float)(PDF_RGB_R(c) / 255.0f)
@@ -86,7 +91,6 @@ Done.
 #define PDF_RGB_B_FLOAT(c) (float)(PDF_RGB_B(c) / 255.0f)
 #define PDF_RGB_A_FLOAT(c) (float)(PDF_RGB_A(c) / 255.0f)
 #define PDF_COLOR_FLOAT(a) (float)( (a) / 255.0f )
-#define PDF_IS_TRANSPARENT(c) (((c) >> 24) == 0xff)
 
 #if defined(_MSC_VER)
 #define inline __inline
@@ -917,19 +921,25 @@ int PDF::SaveObject(FILE *fp, int index) {
     // /GSF0 ... /GSF15 for (G)raphics (S)tate (F)ill
     // /GSS0 ... /GSS15 for (G)raphics (S)tate (S)troke
     //
+    // GSF0 is alpha 0.0 (fully transparent).
+    //
     // Better would be to register the actual transparency levels used
     // as we draw stuff, and allow arbitrary levels.
     Print(fp, "    /ExtGState <<\n");
     for (int i = 0; i < 16; i++) {
-      float alpha = (float)(15 - i) / 15.0;
+      const float alpha = i / 15.0;
       Print(fp, "      /GSF{} <</ca {}>>\n", i, alpha);
       Print(fp, "      /GSS{} <</CA {}>>\n", i, alpha);
     }
     Print(fp, "    >>\n");
 
+    // And supposedly we need to say the color space for transparency
+    // composition.
+    Print(fp, "  /Group << /Type /Group /S /Transparency /CS /DeviceRGB >>\n");
+
     auto StartXObjects = [&printed_xobjects, fp]() {
         if (printed_xobjects) return;
-        Print(fp, "    /XObject <<");
+        Print(fp, "    /XObject <<\n");
         printed_xobjects = true;
       };
 
@@ -1364,7 +1374,8 @@ int PDF::SaveFile(FILE *fp) {
   // point must be . in the PDF format. std::format will
   // do the right thing (always c locale unless specified).
 
-  Print(fp, "%PDF-1.3\n");
+  // Need PDF 1.4 for transparency.
+  Print(fp, "%PDF-1.4\n");
   /* Hibit bytes */
   Print(fp, "\x25\xc7\xec\x8f\xa2\n");
 
@@ -1592,7 +1603,7 @@ float PDF::pdf_barcode_128a_ch(float x, float y, float width, float height,
 
     if (!(i % 2))
       AddFilledRectangle(x, y, line_width * mask,
-                         height, 0, color, PDF_NO_FILL, page);
+                         height, 0, color, PDF::COLOR_NONE, page);
     x += line_width * mask;
   }
 
@@ -1692,13 +1703,13 @@ bool PDF::pdf_barcode_39_ch(float x, float y, float char_width, float height,
     case 0:
       // wide
       AddFilledRectangle(x, y, ww - 1, height, 0,
-                         color, PDF_NO_FILL, page);
+                         color, PDF::COLOR_NONE, page);
       x += ww;
       break;
     case 1:
       // narrow
       AddFilledRectangle(x, y, nw - 1, height, 0,
-                         color, PDF_NO_FILL, page);
+                         color, PDF::COLOR_NONE, page);
       x += nw;
       break;
     case 2:
@@ -1883,7 +1894,7 @@ bool PDF::pdf_barcode_eanupc_ch(float x, float y, float x_width,
     width *= x_width;
     if (bar) {
       AddFilledRectangle(x, y, width, height, 0,
-                         color, PDF_NO_FILL, page);
+                         color, PDF::COLOR_NONE, page);
     }
     x += width;
   }
@@ -1906,7 +1917,7 @@ void PDF::pdf_barcode_eanupc_aux(float x, float y,
       if ((i & 0x1) == 0) {
         AddFilledRectangle(x, y, x_width * value,
                            height, 0, color,
-                           PDF_NO_FILL, page);
+                           PDF::COLOR_NONE, page);
       }
       x += x_width * value;
     }
@@ -2340,7 +2351,7 @@ bool PDF::AddQRCode(float x, float y, float size,
                            size + y - (qy + 1) * pixel,
                            pixel, pixel,
                            0, color,
-                           PDF_NO_FILL, page);
+                           PDF::COLOR_NONE, page);
       }
     }
   }
@@ -2477,7 +2488,7 @@ void PDF::AddEllipse(float x, float y,
   const float ly =
     (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
 
-  if (!PDF_IS_TRANSPARENT(fill_color)) {
+  if (fill_color != PDF::COLOR_NONE) {
     AppendFormat(&str, "/DeviceRGB CS\n");
     AppendFormat(&str, "{} {} {} rg\n",
                  Float(PDF_RGB_R_FLOAT(fill_color)),
@@ -2509,7 +2520,7 @@ void PDF::AddEllipse(float x, float y,
                "{:.2f} {:.2f} {:.2f} {:.2f} {:.2f} {:.2f} c ", (x + lx),
                (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
 
-  if (PDF_IS_TRANSPARENT(fill_color))
+  if (fill_color == PDF::COLOR_NONE)
     AppendFormat(&str, "{}", "S ");
   else
     AppendFormat(&str, "{}", "B ");
@@ -2581,7 +2592,7 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
 
   std::string str;
 
-  if (!PDF_IS_TRANSPARENT(fill_color)) {
+  if (fill_color != COLOR_NONE) {
     AppendFormat(&str, "/DeviceRGB CS\n");
     AppendFormat(&str, "{} {} {} rg\n",
                  Float(PDF_RGB_R_FLOAT(fill_color)),
@@ -2626,7 +2637,7 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
     }
   }
 
-  if (PDF_IS_TRANSPARENT(fill_color))
+  if (fill_color == COLOR_NONE)
     AppendFormat(&str, "{}", "S ");
   else
     AppendFormat(&str, "{}", "B ");
@@ -2837,14 +2848,14 @@ static void SetTextPositionAndAngle(std::string *str,
 bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
                                float yoff, uint32_t color, float spacing,
                                float angle, Page *page) {
-  const int alpha = (color >> 24) >> 4;
+  const int alpha_bucket = PDF_RGB_A(color) >> 4;
 
   if (text.empty())
     return true;
 
   std::string str = "BT ";
 
-  AppendFormat(&str, "/GSF{} gs ", alpha);
+  AppendFormat(&str, "/GSF{} gs ", alpha_bucket);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
   AppendFormat(&str, "/F{} {} Tf ", current_font->font_index,
@@ -2905,14 +2916,14 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
                         uint32_t color,
                         float angle,
                         Page *page) {
-  const int alpha = (color >> 24) >> 4;
+  const int alpha_bucket = PDF_RGB_A(color) >> 4;
 
   if (line.empty())
     return true;
 
   std::string str = "BT ";
 
-  AppendFormat(&str, "/GSF{} gs ", alpha);
+  AppendFormat(&str, "/GSF{} gs ", alpha_bucket);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
   AppendFormat(&str, "/F{} {} Tf ", current_font->font_index,
@@ -4728,6 +4739,21 @@ struct SVGEmitter {
         Float(h), body);
   }
 
+  // [r, g, b, a]
+  static inline constexpr std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
+  Unpack32(uint32_t color) {
+    return {(uint8_t)((color >> 24) & 255),
+      (uint8_t)((color >> 16) & 255),
+      (uint8_t)((color >> 8) & 255),
+      (uint8_t)(color & 255)};
+  }
+
+  static inline constexpr std::tuple<float, float, float, float>
+  Unpack32F(uint32_t color) {
+    const auto &[r, g, b, a] = Unpack32(color);
+    return std::make_tuple(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
+  }
+
   State ApplyStyle(State state, const SVG::Style &style, std::string *out) {
     bool fill_alpha_changed = false;
     bool stroke_alpha_changed = false;
@@ -4746,11 +4772,10 @@ struct SVGEmitter {
         state.has_fill = false;
       } else {
         state.has_fill = true;
-        state.fill_alpha = PDF_RGB_A_FLOAT(fc);
+        const auto &[r, g, b, a] = Unpack32F(fc);
+        state.fill_alpha = a;
         AppendFormat(out, "{} {} {} rg\n",
-                     Float(PDF_RGB_R_FLOAT(fc)),
-                     Float(PDF_RGB_G_FLOAT(fc)),
-                     Float(PDF_RGB_B_FLOAT(fc)));
+                     Float(r), Float(g), Float(b));
         fill_alpha_changed = true;
       }
     }
@@ -4767,11 +4792,10 @@ struct SVGEmitter {
         state.has_stroke = false;
       } else {
         state.has_stroke = true;
-        state.stroke_alpha = PDF_RGB_A_FLOAT(sc);
-        AppendFormat(out, "{} {} {} RG\n",
-                     Float(PDF_RGB_R_FLOAT(sc)),
-                     Float(PDF_RGB_G_FLOAT(sc)),
-                     Float(PDF_RGB_B_FLOAT(sc)));
+        const auto &[r, g, b, a] = Unpack32F(sc);
+        state.stroke_alpha = a;
+        AppendFormat(out, "{} {} {} rg\n",
+                     Float(r), Float(g), Float(b));
         stroke_alpha_changed = true;
       }
     }

@@ -18,11 +18,8 @@ Features:
 
 Fixes and missing stuff:
 
- - PDF output is broken with some viewers (pdf.js). Might be because
-   I skip some required font width tables (see radar.spacebar.org).
-
- - find fonts using include dirs (especially fonts loaded by the standard
-   library!)
+ - load simple SVGs as paths for embedding custom symbols. (Or perhaps
+   custom fonts is a better approach?)
 
  - optimization loop exists but it is not integrated
 

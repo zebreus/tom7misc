@@ -3,7 +3,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <format>
 #include <map>
@@ -18,7 +17,6 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "color-util.h"
 #include "image.h"
 #include "pdf.h"
 #include "utf8.h"
@@ -247,12 +245,6 @@ double PDFPage::FlipPageCoordinate(double y) const {
   return height - y;
 }
 
-// The PDF lib uses (1-A)RGB colors, but we always use RGBA here.
-static uint32_t PDFColor(uint32_t rgba) {
-  const auto &[r, g, b, a] = ColorUtil::Unpack32(rgba);
-  return ColorUtil::Pack32(255 - a, r, g, b);
-}
-
 void PDFPage::DrawText(const Font *font_in,
                        const std::string &text, double size,
                        double x, double y,
@@ -270,7 +262,7 @@ void PDFPage::DrawText(const Font *font_in,
                // We flip the y coordinate, but also then need to
                // measure from the top of the text, not its baseline.
                x, FlipPageCoordinate(y + size),
-               PDFColor(color),
+               color,
                pdf_page);
 }
 
@@ -305,13 +297,13 @@ void PDFPage::DrawRect(double x, double y, double width, double height,
   if (color_fill & 0xFF) {
     pdf->AddFilledRectangle(x, FlipPageCoordinate(y),
                             x + width, FlipPageCoordinate(y + height),
-                            border_width, PDFColor(color_fill),
-                            PDFColor(color_border), pdf_page);
+                            border_width, color_fill,
+                            color_border, pdf_page);
   } else {
     pdf->AddRectangle(x, FlipPageCoordinate(y),
                       x + width, FlipPageCoordinate(y + height),
                       border_width,
-                      PDFColor(color_border), pdf_page);
+                      color_border, pdf_page);
   }
 }
 
@@ -324,7 +316,7 @@ void PDFPage::DrawLine(double x0, double y0,
   CHECK(pdf_page != nullptr);
   pdf->AddLine(x0, FlipPageCoordinate(y0),
                x1, FlipPageCoordinate(y1),
-               line_width, PDFColor(stroke_color),
+               line_width, stroke_color,
                pdf_page);
 }
 

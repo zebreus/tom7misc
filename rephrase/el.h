@@ -1,5 +1,5 @@
-#ifndef _REPHRASE_AST_H
-#define _REPHRASE_AST_H
+#ifndef _REPHRASE_EL_H
+#define _REPHRASE_EL_H
 
 #include <cstddef>
 #include <string>

@@ -21,7 +21,10 @@
 
 // Note: All coordinates/sizes are in points (1/72 of an inch).
 // All coordinates are based on 0,0 being the bottom left of the page.
-// All colors are specified as a packed 32-bit value - see @ref PDF_RGB.
+// All colors are specified as packed 32-bit RGBA, though the alpha
+// channel is often ignored.
+// (Port note: The original version of this library used TRGB, where
+// T is (1 - a). Very confusing!)
 //
 // All text strings should be UTF-8. If you are not using embedded fonts
 // in Unicode mode (i.e., if you use a built-in font) then only a subset
@@ -276,40 +279,27 @@ private:
   static constexpr float PDF_A3_WIDTH = PDF_MM_TO_POINT(297.0f);
   static constexpr float PDF_A3_HEIGHT = PDF_MM_TO_POINT(420.0f);
 
-  // XXX to functions/constants. Maybe should switch to RGBA.
+  // Pack R, G, B bytes into a 32-bit value with full alpha.
+  #define PDF_RGB(r, g, b) PDF_RGBA(r, g, b, 0xFF)
 
-  // Pack R, G, B bytes into a 32-bit value.
-  #define PDF_RGB(r, g, b)                                              \
-    (uint32_t)((((r)&0xff) << 16) | (((g)&0xff) << 8) | (((b)&0xff)))
+  // Pack into 32-bit RGBA.
+  #define PDF_RGBA(r, g, b, a)        \
+    (((uint32_t(r) & 0xff) << 24) |   \
+    ((uint32_t(g) & 0xff) << 16) |    \
+    ((uint32_t(b) & 0xff) << 8) |     \
+    ((uint32_t(a) & 0xff) << 0))
 
-  // Pack A, R, G, B bytes into a 32-bit value in the order ARGB.
-  #define PDF_ARGB(a, r, g, b)                                            \
-    (uint32_t)(((uint32_t)((a)&0xff) << 24) | (((r)&0xff) << 16) |        \
-               (((g)&0xff) << 8) | (((b)&0xff)))
+  #define PDF_RED 0xFF0000FF
+  #define PDF_GREEN 0x00FF00FF
+  #define PDF_BLUE 0x0000FFFF
+  #define PDF_BLACK 0x000000FF
+  #define PDF_WHITE 0xFFFFFFFF
 
-  /*! Utility macro to provide bright red */
-  #define PDF_RED PDF_RGB(0xff, 0, 0)
-
-  /*! Utility macro to provide bright green */
-  #define PDF_GREEN PDF_RGB(0, 0xff, 0)
-
-  /*! Utility macro to provide bright blue */
-  #define PDF_BLUE PDF_RGB(0, 0, 0xff)
-
-  /*! Utility macro to provide black */
-  #define PDF_BLACK PDF_RGB(0, 0, 0)
-
-  /*! Utility macro to provide white */
-  #define PDF_WHITE PDF_RGB(0xff, 0xff, 0xff)
-
-  /*!
-   * Utility macro to specify "no fill"
-   * This is used in some places for 'fill' colors, where no fill is required.
-   * TODO: Note that this uses an "alpha" channel of FF, which is weird.
-   * We should just use RGBA and can special case alpha=0 for fills if we
-   * want.
-   */
-  #define PDF_NO_FILL (uint32_t)(0xffu << 24)
+  // This is used as a color (fill/stroke) to mean "none".
+  // Note that there is a technical difference between "fill with completely
+  // transparent paint" and "don't fill;" if you want a transparent fill,
+  // use anything nonzero (but with zero alpha) e.g. 0x01010100.
+  static constexpr uint32_t COLOR_NONE = uint32_t{0x00000000};
 
   using Options = internal::PDFOptions;
 
@@ -365,7 +355,7 @@ private:
   // Add a line to the document. If page is null, then use the most
   // recently added page.
   void AddLine(float x1, float y1, float x2, float y2,
-               float width, uint32_t color_rgb,
+               float width, uint32_t color_rgba,
                Page *page = nullptr);
 
   void AddQuadraticBezier(
@@ -374,7 +364,7 @@ private:
       // Control point.
       float xq1, float yq1,
       float width,
-      uint32_t color_rgb, Page *page = nullptr);
+      uint32_t color_rgba, Page *page = nullptr);
 
   void AddCubicBezier(
       // Start and end points.
@@ -382,7 +372,7 @@ private:
       // Control points.
       float xq1, float yq1, float xq2, float yq2,
       float width,
-      uint32_t color_rgb, Page *page = nullptr);
+      uint32_t color_rgba, Page *page = nullptr);
 
   void AddEllipse(
       // Center of the ellipse.

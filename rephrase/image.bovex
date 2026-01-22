@@ -1,0 +1,42 @@
+
+(* General purpose image stuff.
+
+   Low-level BoVeX just uses strings to name images; these
+   wrappers keep track of the image's dimensions and provide
+   a bit more type safety.
+
+   TODO: This assumes pixels = points, which is true, but
+   it would be better if it used a core declaration to convert.
+*)
+
+datatype provide-image = REQUIRE-IMAGE
+
+datatype image-handle = Image of string
+(* TODO: Perhaps cache per talk-shared? Or optional? There is
+   advantage to having this be centralized, but less so than
+   with fonts. *)
+fun image-load filename : image-handle =
+  case image-load-file filename of
+    "" => fail ("Unable to load image from file " ^ filename)
+  | img => Image img
+
+object InternalImageProps of { width : int, height : int }
+fun image-size (Image img) : { width : int, height : int } =
+  case image-props img of
+    {(InternalImageProps) width, height} => { width = width, height = height }
+  | _ => fail "bad image props?"
+
+fun image-width img =
+  let val { width, height } = image-size img
+  in width
+  end
+
+fun image-height img =
+  let val { width, height } = image-size img
+  in height
+  end
+
+(* scale by 2x, 3x, etc. Creates a new image handle. *)
+fun image-exact-scale (Image img, scale-by : int) : image-handle =
+  Image (image-integer-scale (img, scale-by))
+
