@@ -40,7 +40,6 @@ Done.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdbool>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>

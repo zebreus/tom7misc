@@ -10,6 +10,7 @@
 #define _CC_LIB_SVG_H
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
