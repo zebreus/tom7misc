@@ -180,7 +180,7 @@ static void MakeSimplePDF() {
   info.title = "It is a test";
   info.author = "None";
   info.subject = "No subject";
-  info.date = "6 Apr 2025";
+  info.date = "20260122000000Z";
   pdf.SetInfo(info);
 
   std::string warning = pdf.AddSVG(SVG::ParseOrDie(WARNING_SVG));
@@ -508,6 +508,38 @@ static void MakeSimplePDF() {
   printf("Wrote " AGREEN("test.pdf") "\n");
 }
 
+static void MakeMinimalEmbeddedFontPDF() {
+  printf("Create PDF object.\n");
+  PDF::Options opt;
+  opt.use_compression = false;
+  PDF pdf(PDF::PDF_LETTER_WIDTH,
+          PDF::PDF_LETTER_HEIGHT,
+          opt);
+
+  [[maybe_unused]]
+  PDF::Page *page = pdf.AppendNewPage();
+  PDF::Info info;
+  info.creator = "pdf_test.cc";
+  info.producer = "Tom 7";
+  info.title = "Minimal Embedded-Font PDF";
+  info.author = "None";
+  info.subject = "No subject";
+  info.date = "6 Apr 2025";
+  pdf.SetInfo(info);
+
+  std::string pasement_name = pdf.AddTTF("fonts/DFXPasement9px.ttf",
+                                         PDF::FontEncoding::UNICODE);
+
+  pdf.SetFont(pasement_name);
+  CHECK(pdf.AddText("Title of PDF",
+                    72,
+                    30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                    PDF_RGB(0, 0, 0)));
+
+  pdf.Save("minimal-embed.pdf");
+  printf("Wrote " AGREEN("minimal-embed.pdf") "\n");
+}
+
 static void MakeMinimalPDF() {
   printf("Create PDF object.\n");
   PDF::Options opt;
@@ -524,14 +556,12 @@ static void MakeMinimalPDF() {
   info.title = "Minimal PDF";
   info.author = "None";
   info.subject = "No subject";
-  info.date = "6 Apr 2025";
+  info.date = "20260122000000Z";
   pdf.SetInfo(info);
 
-  std::string pasement_name = pdf.AddTTF("fonts/DFXPasement9px.ttf",
-                                         PDF::FontEncoding::UNICODE);
 
-  pdf.SetFont(pasement_name);
-  CHECK(pdf.AddText("Title of PDF",
+  pdf.SetFont(PDF::BuiltInFont::HELVETICA_BOLD);
+  CHECK(pdf.AddText("As small as it gets",
                     72,
                     30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
                     PDF_RGB(0, 0, 0)));
@@ -603,6 +633,7 @@ int main(int argc, char **argv) {
   SpaceLine();
 
   MakeMinimalPDF();
+  MakeMinimalEmbeddedFontPDF();
   SimpleUnicode();
   MakeSimplePDF();
 

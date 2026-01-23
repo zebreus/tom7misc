@@ -840,7 +840,7 @@ int PDF::SaveObject(FILE *fp, int index) {
 
     Print(fp, "<<\n");
     if (!info->creator.empty())
-      Print(fp, "  /Creator %s\n",
+      Print(fp, "  /Creator {}\n",
             PDFDocEncodeString(info->creator));
     if (!info->producer.empty())
       Print(fp, "  /Producer {}\n",
@@ -928,14 +928,10 @@ int PDF::SaveObject(FILE *fp, int index) {
     Print(fp, "    /ExtGState <<\n");
     for (int i = 0; i < 16; i++) {
       const float alpha = i / 15.0;
-      Print(fp, "      /GSF{} <</ca {}>>\n", i, alpha);
-      Print(fp, "      /GSS{} <</CA {}>>\n", i, alpha);
+      Print(fp, "      /GSF{} << /Type /ExtGState /ca {} >>\n", i, alpha);
+      Print(fp, "      /GSS{} << /Type /ExtGState /CA {} >>\n", i, alpha);
     }
     Print(fp, "    >>\n");
-
-    // And supposedly we need to say the color space for transparency
-    // composition.
-    Print(fp, "  /Group << /Type /Group /S /Transparency /CS /DeviceRGB >>\n");
 
     auto StartXObjects = [&printed_xobjects, fp]() {
         if (printed_xobjects) return;
@@ -969,6 +965,10 @@ int PDF::SaveObject(FILE *fp, int index) {
 
     EndXObjects();
     Print(fp, "  >>\n");
+
+    // And supposedly we need to say the color space for transparency
+    // composition.
+    Print(fp, "  /Group << /Type /Group /S /Transparency /CS /DeviceRGB >>\n");
 
     Print(fp, "  /Contents [\n");
     for (const Object *child : pobj->children) {
@@ -1398,7 +1398,9 @@ int PDF::SaveFile(FILE *fp) {
   Print(fp, "0000000000 65535 f\n");
   for (Object *obj : objects) {
     if (obj->type != OBJ_none) {
-      Print(fp, "{:010d} 00000 n\n", obj->offset);
+      // Note: Space here after the n is to ensure the line
+      // is exactly 20 bytes (for PDF/A).
+      Print(fp, "{:010d} 00000 n \n", obj->offset);
     }
   }
 
@@ -2824,7 +2826,7 @@ static std::optional<std::string> EncodePDFText(
     }
     ret.push_back('>');
     if (VERBOSE) {
-      printf("Encoded: %s\n", ret.c_str());
+      Print("Encoded: {}\n", ret);
     }
     return ret;
   }
@@ -2991,7 +2993,7 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
            "[", line_width, space_width);
     double total = 0.0;
     for (int i = 0; i < (int)words.size(); i++) {
-      printf(AWHITE("%s") " " APURPLE("%.4f") " ",
+      Print(AWHITE("{}") " " APURPLE("{:.4f}") " ",
              words[i].c_str(), sizes[i]);
       total += sizes[i];
     }
@@ -3045,9 +3047,9 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
           "Duplicate entries?";
         if (LOCAL_VERBOSE) {
           if (w < (int)words.size()) {
-            printf(
-                "  Penalty ..%d.. [" AWHITE("%s") "] = " ARED("%.4f") " %s\n",
-                b, words[w].c_str(), p, brk ? AYELLOW("break") : "no");
+            Print(
+                "  Penalty ..{}.. [" AWHITE("{}") "] = " ARED("{:.4f}") " {}\n",
+                b, words[w], p, brk ? AYELLOW("break") : "no");
           }
         }
         memo_table[std::make_pair(w, b)] =
@@ -3065,9 +3067,9 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         for (int b = 0; b < words_before; b++) {
           // Add the word's length and the space after it.
           CHECK(before_start + b < (int)words.size());
-          printf(" " AGREY("%s"), words[before_start + b].c_str());
+          Print(" " AGREY("{}"), words[before_start + b]);
         }
-        printf(" " AWHITE("%s") "\n", words[word_idx].c_str());
+        Print(" " AWHITE("{}") "\n", words[word_idx]);
       }
 
       // PERF: Can compute this incrementally in the loop.
