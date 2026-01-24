@@ -1394,11 +1394,12 @@ int PDF::SaveFile(FILE *fp) {
   xref_offset = ftell(fp);
   Print(fp, "xref\n");
   Print(fp, "0 {}\n", xref_count + 1);
-  Print(fp, "0000000000 65535 f\n");
+  // Note: Space here after the n is to ensure the line
+  // is exactly 20 bytes (for PDF/A).
+  Print(fp, "0000000000 65535 f \n");
   for (Object *obj : objects) {
     if (obj->type != OBJ_none) {
-      // Note: Space here after the n is to ensure the line
-      // is exactly 20 bytes (for PDF/A).
+      // ... and here.
       Print(fp, "{:010d} 00000 n \n", obj->offset);
     }
   }
