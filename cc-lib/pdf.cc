@@ -1491,7 +1491,7 @@ void PDF::pdf_add_stream(Page *page, std::string str) {
 PDF::StreamObj *PDF::AddStreamObject(
     // Like {{"/Type", "/CMap"}}
     const std::vector<std::pair<std::string, std::string>> &keys,
-    const std::string &contents) {
+    std::string_view contents) {
   StreamObj *sobj = AddObject(new StreamObj);
   CHECK(sobj != nullptr);
 
@@ -1613,7 +1613,7 @@ float PDF::pdf_barcode_128a_ch(float x, float y, float width, float height,
 }
 
 bool PDF::AddBarcode128a(float x, float y, float width, float height,
-                         const std::string &str, uint32_t color, Page *page) {
+                         std::string_view str, uint32_t color, Page *page) {
   const size_t len = str.size() + 3;
   const float char_width = width / len;
 
@@ -1729,7 +1729,7 @@ bool PDF::pdf_barcode_39_ch(float x, float y, float char_width, float height,
 }
 
 bool PDF::AddBarcode39(float x, float y, float width, float height,
-                       const std::string &str, uint32_t color, Page *page) {
+                       std::string_view str, uint32_t color, Page *page) {
   const size_t len = (int)str.size();
   const float char_width = width / (len + 2);
 
@@ -1946,7 +1946,7 @@ struct ScopedRestoreFont {
 }  // namespace
 
 bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
-                          const std::string &str, uint32_t color, Page *page) {
+                          std::string_view str, uint32_t color, Page *page) {
   if (str.empty()) {
     SetErr(-EINVAL, "Empty EAN13 barcode");
     return false;
@@ -2049,7 +2049,7 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
 }
 
 bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
-                         const std::string &str, uint32_t color, Page *page) {
+                         std::string_view str, uint32_t color, Page *page) {
   const size_t len = str.size();
   if (len != 12) {
     SetErr(-EINVAL, std::format("Invalid UPC-A string length {}", len));
@@ -2141,7 +2141,7 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
 }
 
 bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
-                         const std::string &str, uint32_t color,
+                         std::string_view str, uint32_t color,
                          Page *page) {
 
   const size_t len = str.size();
@@ -2229,7 +2229,7 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
 
 
 bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
-                         const std::string &str, uint32_t color, Page *page) {
+                         std::string_view str, uint32_t color, Page *page) {
 
   const size_t len = str.size();
   if (len != 12) {
@@ -2337,7 +2337,7 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
 }
 
 bool PDF::AddQRCode(float x, float y, float size,
-                    const std::string &str, uint32_t color,
+                    std::string_view str, uint32_t color,
                     Page *page) {
   Image1 img = QRCode::Text(str);
 
@@ -2362,7 +2362,7 @@ bool PDF::AddQRCode(float x, float y, float size,
 }
 
 
-int PDF::AddBookmark(const std::string &name, int parent, Page *page) {
+int PDF::AddBookmark(std::string_view name, int parent, Page *page) {
   if (!page)
     page = (Page *)FindLastObject(OBJ_page);
 
@@ -2819,7 +2819,7 @@ static std::optional<std::string> EncodePDFText(
         AppendFormat(&ret, "{:04x}", it->second);
       } else {
         if (true || VERBOSE) {
-          printf("Missing glyph for U+%04x\n", codepoint);
+          Print("Missing glyph for U+{:04x}\n", codepoint);
         }
         AppendFormat(&ret, "0000");
       }
@@ -2847,9 +2847,9 @@ static void SetTextPositionAndAngle(std::string *str,
   }
 }
 
-bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
-                               float yoff, uint32_t color, float spacing,
-                               float angle, Page *page) {
+bool PDF::AddTextSpacing(std::string_view text, float size, float xoff,
+                         float yoff, uint32_t color, float spacing,
+                         float angle, Page *page) {
   const int alpha_bucket = PDF_RGB_A(color) >> 4;
 
   if (text.empty())
@@ -2900,16 +2900,16 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
   return true;
 }
 
-bool PDF::AddText(const std::string &text, float size,
+bool PDF::AddText(std::string_view text, float size,
                   float xoff, float yoff,
                   uint32_t color, Page *page) {
-  return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, 0, page);
+  return AddTextSpacing(text, size, xoff, yoff, color, 0, 0, page);
 }
 
-bool PDF::AddTextRotate(const std::string &text,
+bool PDF::AddTextRotate(std::string_view text,
                         float size, float xoff, float yoff,
                         float angle, uint32_t color, Page *page) {
-  return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, angle, page);
+  return AddTextSpacing(text, size, xoff, yoff, color, 0, angle, page);
 }
 
 bool PDF::AddSpacedLine(const SpacedLine &line,
@@ -2967,7 +2967,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 }
 
 // TODO: Use BoxesAndGlue library for this.
-std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
+std::vector<PDF::SpacedLine> PDF::SpaceLines(std::string_view text,
                                              double line_width,
                                              const Font *font) const {
   static constexpr bool LOCAL_VERBOSE = false;
@@ -2986,21 +2986,21 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
   }
 
   if (LOCAL_VERBOSE) {
-    printf("\n"
-           ABGCOLOR(60, 60, 180,
-                    AFGCOLOR(255, 255, 255, "=== SpaceLines ===")) "\n"
-           "Space into " ABLUE("%.6f") ":  (' ' is " AYELLOW("%.6f") ")\n"
-           "[", line_width, space_width);
+    Print("\n"
+          ABGCOLOR(60, 60, 180,
+                   AFGCOLOR(255, 255, 255, "=== SpaceLines ===")) "\n"
+          "Space into " ABLUE("{:.6f}") ":  (' ' is " AYELLOW("{:.6f}") ")\n"
+          "[", line_width, space_width);
     double total = 0.0;
     for (int i = 0; i < (int)words.size(); i++) {
       Print(AWHITE("{}") " " APURPLE("{:.4f}") " ",
-             words[i].c_str(), sizes[i]);
+            words[i], sizes[i]);
       total += sizes[i];
     }
-    printf("]\n"
-           "Total word width: " ACYAN("%.6f")
-           " w/ space: " AYELLOW("%.6f") "\n",
-           total, total + ((int)words.size() - 1) * space_width);
+    Print("]\n"
+          "Total word width: " ACYAN("{:.6f}")
+          " w/ space: " AYELLOW("{:.6f}") "\n",
+          total, total + ((int)words.size() - 1) * space_width);
   }
 
   // Value is a pair: The penalty, and a bool indicating that it is
@@ -3061,7 +3061,7 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
     for (int words_before = 0; words_before <= word_idx; words_before++) {
 
       if (LOCAL_VERBOSE) {
-        printf("[%d,%d] Check", word_idx, words_before);
+        Print("[{},{}] Check", word_idx, words_before);
         const int before_start = word_idx - words_before;
         CHECK(before_start >= 0);
         for (int b = 0; b < words_before; b++) {
@@ -3087,12 +3087,12 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
       // or not.
       const double total_width = width_before + width_word;
       if (LOCAL_VERBOSE) {
-        printf("  %.4f > %.4f? ",
-               total_width, line_width);
+        Print("  {:.4f} > {:.4f}? ",
+              total_width, line_width);
       }
       if (total_width > line_width) {
         if (LOCAL_VERBOSE) {
-          printf(ABGCOLOR(255,0,0, "OVER"));
+          Print(ABGCOLOR(255,0,0, "OVER"));
         }
         if (width_before > line_width) {
           // We were already over. So just add the word's size.
@@ -3100,12 +3100,12 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
           // in this case these details just amount to tweaks to the
           // multiplier.
           penalty_word += width_word;
-          if (LOCAL_VERBOSE) printf(" full penalty %.3f", width_word);
+          if (LOCAL_VERBOSE) Print(" full penalty {:.3f}", width_word);
         } else {
           // Since this is the word that puts us over, only count
           // the amount that it's over.
           penalty_word += (total_width - line_width);
-          if (LOCAL_VERBOSE) printf(" part penalty %.3f", penalty_word);
+          if (LOCAL_VERBOSE) Print(" part penalty {:.3f}", penalty_word);
         }
       }
       // But the overage penalty is scaled.
@@ -3186,8 +3186,8 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
     // Now, do we break or not?
     const auto &[p, brk] = mit->second;
     if (LOCAL_VERBOSE) {
-      printf("After [" AWHITE("%s") "]? Penalty " ARED("%.4f") " %s\n",
-             words[w].c_str(), p, brk ? AYELLOW("break") : AGREY("no"));
+      Print("After [" AWHITE("{}") "]? Penalty " ARED("{:.4f}") " {}\n",
+            words[w], p, brk ? AYELLOW("break") : AGREY("no"));
     }
     if (brk) {
       // current_line.push_back(std::make_pair("\\n", 0.0f));
@@ -3477,21 +3477,16 @@ static const uint16_t *find_font_widths(PDF::BuiltInFont font) {
   }
 }
 
-bool PDF::PointWidthOfText(const char *text,
-                           ptrdiff_t text_len, float size,
+bool PDF::PointWidthOfText(std::string_view utf8_text,
+                           float size,
                            const Font *font,
                            float *point_width) {
   // Width at 1 point.
   double norm_width = 0;
-  if (text_len < 0)
-    text_len = strlen(text);
   *point_width = 0.0f;
 
-  // XXX just pass string_view
-  std::string_view utf8_text(text, text_len);
-
   if (VERBOSE) {
-    printf("PointWidthOfText [%s]\n", std::string(utf8_text).c_str());
+    Print("PointWidthOfText [{}]\n", utf8_text);
   }
 
   std::optional<std::vector<uint16_t>> ocids =
@@ -3542,13 +3537,13 @@ double PDF::Font::CIDWidth(uint16_t cid) const {
   return w * (1.0 / (14.0 * 72.0));
 }
 
-bool PDF::GetTextWidth(const std::string &text,
+bool PDF::GetTextWidth(std::string_view text,
                        float size, float *text_width,
                        const Font *font) {
   if (font == nullptr) font = current_font;
   CHECK(font != nullptr);
 
-  return PointWidthOfText(text.c_str(), -1, size, font, text_width);
+  return PointWidthOfText(text, size, font, text_width);
 }
 
 static const char *find_word_break(const char *str) {
@@ -3562,7 +3557,7 @@ static const char *find_word_break(const char *str) {
   return str;
 }
 
-bool PDF::AddTextWrap(const std::string &text,
+bool PDF::AddTextWrap(std::string_view text,
                       float size, float xoff, float yoff,
                       float angle, uint32_t color, float wrap_width,
                       Alignment align, float *height, Page *page) {
@@ -3583,7 +3578,7 @@ bool PDF::AddTextWrap(const std::string &text,
 
     end = new_end;
 
-    if (!PointWidthOfText(start, end - start, size,
+    if (!PointWidthOfText(std::string_view(start, end - start), size,
                           current_font, &line_width)) {
       return false;
     }
@@ -3601,7 +3596,7 @@ bool PDF::AddTextWrap(const std::string &text,
               ((start[i - 1] & 0xc0) == 0x80 &&
                (start[i] & 0xc0) == 0x80))
             continue;
-          if (!PointWidthOfText(start, i, size,
+          if (!PointWidthOfText(std::string_view(start, i), size,
                                 current_font, &this_width)) {
             return false;
           }
@@ -3635,7 +3630,7 @@ bool PDF::AddTextWrap(const std::string &text,
       strncpy(line, start, len);
       line[len] = '\0';
 
-      if (!PointWidthOfText(start, len, size,
+      if (!PointWidthOfText(std::string_view(start, len), size,
                             current_font, &line_width)) {
         return false;
       }
@@ -3665,7 +3660,7 @@ bool PDF::AddTextWrap(const std::string &text,
       }
 
       if (align != PDF_ALIGN_NO_WRITE) {
-        pdf_add_text_spacing(line, size, xoff_align, yoff,
+        AddTextSpacing(line, size, xoff_align, yoff,
                              color, char_spacing, angle, page);
       }
 
@@ -4250,7 +4245,7 @@ double PDF::Font::GetKernedWidth(std::string_view text) const {
     auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
     if (kit != kerning.end()) {
       if (VERBOSE) {
-        printf("kern %c+%c with %.6f\n", prev_cp, cp, kit->second);
+        Print("kern {:c}+{:c} with {:.6f}\n", prev_cp, cp, kit->second);
       }
       width += kit->second;
     }
@@ -4322,11 +4317,11 @@ std::string PDF::AddTTF(std::string_view filename,
   const float scale_14pt = scale * 14.0f;
 
   if (VERBOSE) {
-    printf("Scale 14pt: %.6f\n", scale_14pt);
+    Print("Scale 14pt: {:.6f}\n", scale_14pt);
   }
 
   if (VERBOSE) {
-    printf("[%s] font tables:\n", std::string(filename).c_str());
+    Print("[{}] font tables:\n", filename);
     stbtt__print_tables(&ttf);
   }
 
@@ -4368,8 +4363,8 @@ std::string PDF::AddTTF(std::string_view filename,
           float width = ScaleWidth(width_unscaled);
           font->widths[cid] = (uint16_t)std::round(width);
           if (VERBOSE && isalnum(codepoint)) {
-            printf("'%c' (%d): %d -> %.5f\n",
-                   codepoint, codepoint, width_unscaled, width);
+            Print("'{:c}' ({}): {} -> {:.5f}\n",
+                  codepoint, codepoint, width_unscaled, width);
           }
         }
       };
@@ -4389,11 +4384,11 @@ std::string PDF::AddTTF(std::string_view filename,
 
   if (VERBOSE) {
     // XXX
-    printf("%s Widths:\n", std::string(filename).c_str());
+    Print("{} Widths:\n", filename);
     for (const auto &[cid, w] : font->widths) {
-      printf("%04x=%d ", cid, w);
+      Print("{:04x}={} ", cid, w);
     }
-    printf("\n");
+    Print("\n");
   }
 
   // Load the Kerning table. The same glyph can be used for multiple
@@ -4409,7 +4404,7 @@ std::string PDF::AddTTF(std::string_view filename,
     // TODO: This is only the first kerning table.
     const int table_size = stbtt_GetKerningTableLength(&ttf);
     if (VERBOSE) {
-      printf("TTF kerning table: %d.\n", table_size);
+      Print("TTF kerning table: {}.\n", table_size);
     }
     std::vector<stbtt_kerningentry> table;
     table.resize(table_size);
@@ -4427,8 +4422,8 @@ std::string PDF::AddTTF(std::string_view filename,
           for (uint32_t c2 : cit2->second) {
             kerning[std::make_pair(c1, c2)] = advance;
             if (VERBOSE) {
-              printf("'%c' '%c': %d (= %.5f)\n",
-                     c1, c2, kern.advance, advance);
+              Print("'{:c}' '{:c}': {} (= {:.5f})\n",
+                    c1, c2, kern.advance, advance);
             }
           }
         }
@@ -4459,11 +4454,11 @@ std::string PDF::AddTTF(std::string_view filename,
               for (uint32_t c2 : cit2->second) {
                 kerning[std::make_pair(c1, c2)] = advance;
                 if (VERBOSE) {
-                  printf("U+%04x U+%04x = '%s' '%s': %d (= %.5f)\n",
-                         c1, c2,
-                         UTF8::Encode(c1).c_str(),
-                         UTF8::Encode(c2).c_str(),
-                         kern, advance);
+                  Print("U+{:04x} U+{:04x} = '{}' '{}': {} (= {:.5f})\n",
+                        c1, c2,
+                        UTF8::Encode(c1),
+                        UTF8::Encode(c2),
+                        kern, advance);
                 }
               }
             }
@@ -4473,9 +4468,11 @@ std::string PDF::AddTTF(std::string_view filename,
     }
   }
 
-  printf("[%s] There are %d (codepoint) kerning pairs.\n",
-         std::string(filename).c_str(),
-         (int)kerning.size());
+  if (VERBOSE) {
+    Print("[{}] There are {} (codepoint) kerning pairs.\n",
+          std::string(filename),
+          (int)kerning.size());
+  }
 
   // Create the stream for the embedded data.
   // We also put common metadata in here (e.g. bbox) that the
@@ -4593,7 +4590,7 @@ std::string PDF::AddTTF(std::string_view filename,
       std::vector<std::pair<uint32_t, uint16_t>> sorted =
         MapToSortedVec(font->glyph_from_codepoint);
       for (const auto &[codepoint, glyph] : sorted) {
-        printf("Codepoint U+%04x -> %d\n", codepoint, glyph);
+        Print("Codepoint U+{:04x} -> {}\n", codepoint, glyph);
       }
     }
   }
@@ -4918,19 +4915,6 @@ std::string PDF::AddSVG(const SVG::Doc &doc) {
   fobj->width = w;
   fobj->height = h;
 
-  // TODO: Actually convert the SVG here. This placeholder is just a
-  // box of the same size as the viewbox.
-#if 0
-  fobj->stream = std::format(
-      "q "
-      "1 0 0 1 0 0 cm "
-      // red line
-      "0.5 w "
-      "1 0 0 RG "
-      "0 0 {} {} re S "
-      "Q",
-      Float(fobj->width), Float(fobj->height));
-#endif
   SVGEmitter emitter(doc);
   fobj->stream = emitter.Emit();
 
@@ -4938,6 +4922,16 @@ std::string PDF::AddSVG(const SVG::Doc &doc) {
   named_xobjects[fobj->name] = fobj;
 
   return fobj->name;
+}
+
+std::pair<double, double> PDF::SVGDimensions(std::string_view name) {
+  auto it = named_xobjects.find(name);
+  CHECK(it != named_xobjects.end()) << "Unknown symbol handle (it should "
+    "have been previously added with AddSVG: " << name;
+
+  const FormXObject *target = it->second;
+  CHECK(target != nullptr);
+  return std::make_pair(target->width, target->height);
 }
 
 void PDF::DrawSVG(std::string_view name,

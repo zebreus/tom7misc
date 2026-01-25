@@ -422,49 +422,49 @@ private:
   // Barcodes.
   // https://en.wikipedia.org/wiki/Code_128
   bool AddBarcode128a(float x, float y, float width, float height,
-                      const std::string &str, uint32_t color,
+                      std::string_view str, uint32_t color,
                       Page *page = nullptr);
 
   // https://en.wikipedia.org/wiki/Code_39
   bool AddBarcode39(float x, float y, float width, float height,
-                    const std::string &str, uint32_t color,
+                    std::string_view str, uint32_t color,
                     Page *page = nullptr);
 
   // https://en.wikipedia.org/wiki/International_Article_Number
   bool AddBarcodeEAN13(float x, float y, float width, float height,
-                       const std::string &str, uint32_t color,
+                       std::string_view str, uint32_t color,
                        Page *page = nullptr);
 
   // Encodes 12 digits.
   // https://en.wikipedia.org/wiki/Universal_Product_Code
   bool AddBarcodeUPCA(float x, float y, float width, float height,
-                      const std::string &str, uint32_t color,
+                      std::string_view str, uint32_t color,
                       Page *page = nullptr);
 
   // Encodes 8 digits.
   // https://en.wikipedia.org/wiki/EAN-8
   bool AddBarcodeEAN8(float x, float y, float width, float height,
-                      const std::string &str, uint32_t color,
+                      std::string_view str, uint32_t color,
                       Page *page = nullptr);
 
   // Encodes 12 digits with leading zeroes expected in certain
   // positions.
   // https://en.wikipedia.org/wiki/Universal_Product_Code
   bool AddBarcodeUPCE(float x, float y, float width, float height,
-                      const std::string &str, uint32_t color,
+                      std::string_view str, uint32_t color,
                       Page *page = nullptr);
 
   bool AddQRCode(float x, float y, float size,
-                 const std::string &str, uint32_t color = PDF_RGB(0, 0, 0),
+                 std::string_view str, uint32_t color = PDF_RGB(0, 0, 0),
                  Page *page = nullptr);
 
-  bool AddText(const std::string &text,
+  bool AddText(std::string_view text,
                float size,
                // This is the location of the baseline.
                float xoff, float yoff,
                uint32_t color, Page *page = nullptr);
 
-  bool AddTextRotate(const std::string &text,
+  bool AddTextRotate(std::string_view text,
                      float size, float xoff, float yoff,
                      // In radians.
                      float angle,
@@ -487,7 +487,7 @@ private:
     PDF_ALIGN_NO_WRITE,
   };
 
-  bool AddTextWrap(const std::string &text,
+  bool AddTextWrap(std::string_view text,
                    float size,
                    // XXX baseline?
                    float xoff, float yoff,
@@ -508,7 +508,7 @@ private:
   //
   // The width here is for a 1pt font. You can just divide
   // the actual width by the font size.
-  std::vector<SpacedLine> SpaceLines(const std::string &text,
+  std::vector<SpacedLine> SpaceLines(std::string_view text,
                                      double width_at_1pt,
                                      const Font *font = nullptr) const;
 
@@ -528,7 +528,7 @@ private:
 
   // Returns true upon success.
   // Note that this does not account for kerning.
-  bool GetTextWidth(const std::string &text,
+  bool GetTextWidth(std::string_view text,
                     float size,
                     // Out parameter.
                     float *text_width,
@@ -539,7 +539,7 @@ private:
   // The page is the page to jump to (or nullptr for the most recent one).
   // The parent bookmark id, or -1 if this is a top-level bookmark.
   // Returns the non-negative bookmark id.
-  int AddBookmark(const std::string &name, int parent, Page *page);
+  int AddBookmark(std::string_view name, int parent, Page *page);
 
   bool AddLink(
       // The clickable rectangle.
@@ -594,13 +594,10 @@ private:
   //
   // Only some of SVG is supported (flat colors); see svg.h for export
   // tips.
-  //
-  // XXX NOTE: This always just draws a red box, because conversion
-  // to PDF vectors is not yet implemented!!
   std::string AddSVGFile(std::string_view filename);
   std::string AddSVG(const SVG::Doc &doc);
-  // TODO: Calculate metrics for an SVG using its viewBox, so that
-  // we can preserve aspect ratio below (like AddImage).
+
+  std::pair<double, double> SVGDimensions(std::string_view handle);
 
   // Draw a previously embedded SVG symbol.
   //
@@ -761,7 +758,7 @@ private:
   }
   StreamObj *AddStreamObject(
           const std::vector<std::pair<std::string, std::string>> &keys,
-          const std::string &s);
+          std::string_view s);
 
   Object *FindFirstObject(int type);
   Object *FindLastObject(int type);
@@ -775,14 +772,14 @@ private:
   int SaveObject(FILE *fp, int index);
 
   // Note that this does not account for kerning.
-  bool PointWidthOfText(const char *text,
-                        ptrdiff_t text_len, float size,
+  bool PointWidthOfText(std::string_view text,
+                        float size,
                         const Font *font,
                         float *point_width);
 
-  bool pdf_add_text_spacing(const std::string &text, float size, float xoff,
-                            float yoff, uint32_t color, float spacing,
-                            float angle, Page *page);
+  bool AddTextSpacing(std::string_view text, float size, float xoff,
+                      float yoff, uint32_t color, float spacing,
+                      float angle, Page *page);
 
   float pdf_barcode_128a_ch(float x, float y, float width, float height,
                             uint32_t color, int index, int code_len,
