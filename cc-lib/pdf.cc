@@ -1350,12 +1350,13 @@ int PDF::SaveObject(FILE *fp, int index) {
 }
 
 // Slightly modified djb2 hash algorithm to get pseudo-random ID
-static uint64_t hash(uint64_t hash, const void *data, size_t len) {
+static uint64_t Hash(uint64_t seed, const void *data, size_t len) {
+  uint64_t hash = seed;
   const uint8_t *d8 = (const uint8_t *)data;
-  for (; len; len--) {
-    hash = (((hash & 0x03ffffffffffffff) << 5) +
-            (hash & 0x7fffffffffffffff)) +
-      *d8++;
+  for (size_t idx = 0; idx < len; idx++) {
+    hash = (((hash & uint64_t{0x03ffffffffffffff}) << 5) +
+            (hash & uint64_t{0x7fffffffffffffff})) +
+      d8[idx];
   }
   return hash;
 }
@@ -1363,7 +1364,6 @@ static uint64_t hash(uint64_t hash, const void *data, size_t len) {
 int PDF::SaveFile(FILE *fp) {
   int xref_offset;
   int xref_count = 0;
-  uint64_t id1, id2;
   time_t now = time(nullptr);
 
   // TODO: The original code did some shenanigans to change the locale
@@ -1415,12 +1415,16 @@ int PDF::SaveFile(FILE *fp) {
 
   const InfoObj *iobj = (InfoObj*)FindFirstObject(OBJ_info);
   Print(fp, "/Info {} 0 R\n", iobj->index);
-  /* Generate document unique IDs */
-  id1 = hash(5381, &iobj->info, sizeof (PDF::Info));
-  id1 = hash(id1, &xref_count, sizeof (xref_count));
-  id2 = hash(5381, &now, sizeof(now));
-  Print(fp, "/ID [<{:016x}> <{:016x}>]\n",
-        (uint64_t)id1, (uint64_t)id2);
+
+  // Generate document ids. These are two 16-byte (as 32 hex character)
+  // strings; the first is the "permanent" document id and the second
+  // is the version id. We always use the same for each.
+
+  uint64_t id1 = Hash(5381, &iobj->info, sizeof (PDF::Info));
+  id1 = Hash(id1, &xref_count, sizeof (xref_count));
+  uint64_t id2 = Hash(uint64_t{0x31337CAFED00D}, &now, sizeof(now));
+  std::string id32 = std::format("{:016x}{:016x}", id1, id2);
+  Print(fp, "/ID [<{}> <{}>]\n", id32, id32);
   Print(fp, ">>\n"
         "startxref\n");
   Print(fp, "{}\n", xref_offset);
