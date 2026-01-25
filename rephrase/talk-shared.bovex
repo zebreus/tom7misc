@@ -44,8 +44,8 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
   in
     sticker {(Sticker) x = int-to-float x, y = int-to-float y,
              img = img-handle,
-             img-width = int-to-float pixel-width,
-             img-height = int-to-float pixel-height } []
+             img-width = pixel-width,
+             img-height = pixel-height } []
   end
 
 
@@ -455,6 +455,7 @@ fun quote-slide slide title lay =
       let
         val p = (layout-map-text normalize-whitespace p)
       in
+        (* FIXME I broke this when I redid paragraph layout. *)
         process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
       end
 

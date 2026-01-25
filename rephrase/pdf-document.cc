@@ -12,6 +12,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
@@ -19,6 +20,7 @@
 #include "base/print.h"
 #include "image.h"
 #include "pdf.h"
+#include "svg.h"
 #include "utf8.h"
 
 #include "document.h"
@@ -37,7 +39,7 @@ const Font *PDFDocument::GetDefaultFont() {
       pdf->GetBuiltInFont(PDF::TIMES_ROMAN)->BaseFont());
 }
 
-std::string PDFDocument::LoadFontFile(const std::string &filename) {
+std::string PDFDocument::LoadFontFile(std::string_view filename) {
   // We'll always use unicode encoding in BoVeX.
   std::string name = pdf->AddTTF(filename, PDF::FontEncoding::UNICODE);
   const PDF::Font *fobj = pdf->GetFontByName(name);
@@ -246,9 +248,10 @@ double PDFPage::FlipPageCoordinate(double y) const {
 }
 
 void PDFPage::DrawText(const Font *font_in,
-                       const std::string &text, double size,
+                       std::string_view text, double size,
                        double x, double y,
                        uint32_t color) {
+  // XXX check tag
   const PDFFont *font = (const PDFFont*)font_in;
 
   CHECK(pdf_page != nullptr);
@@ -266,27 +269,89 @@ void PDFPage::DrawText(const Font *font_in,
                pdf_page);
 }
 
-void PDFPage::DrawImage(double x, double y,
-                        double width, double height,
-                        const ImageRGBA &image) {
+PDFImage::PDFImage(std::string_view name, std::unique_ptr<ImageRGBA> rgba) :
+  name(name) {
+  width = rgba->Width();
+  height = rgba->Height();
+  img = {std::move(*rgba)};
+}
+PDFImage::PDFImage(std::string_view name, double w, double h,
+                   std::string svg_handle) :
+  name(name), img{std::move(svg_handle)} {
+  width = w;
+  height = h;
+}
+
+std::string PDFImage::Name() const {
+  return name;
+}
+
+double PDFImage::Width() const { return width; }
+double PDFImage::Height() const { return height; }
+bool PDFImage::IsRaster() const {
+  if ([[maybe_unused]] const ImageRGBA *rgba = std::get_if<ImageRGBA>(&img)) {
+    return true;
+
+  } else if ([[maybe_unused]] const std::string *svg_handle =
+                 std::get_if<std::string>(&img)) {
+    return false;
+
+  } else {
+    LOG(FATAL) << "Bad variant?";
+    return false;
+  }
+}
+
+ImageRGBA PDFImage::GetRaster() const {
+  if (const ImageRGBA *rgba = std::get_if<ImageRGBA>(&img)) {
+    return *rgba;
+
+  } else if (const std::string *svg_handle = std::get_if<std::string>(&img)) {
+    LOG(FATAL) << "Not possible to get a raster version of an SVG yet. "
+      "The SVG handle was: " << *svg_handle;
+  } else {
+    LOG(FATAL) << "Bad variant?";
+  }
+}
+
+void PDFPage::DrawImage(const Image *doc_image,
+                        double x, double y,
+                        double width, double height) {
+  // XXX check tag
+  const PDFImage *image = (const PDFImage *)doc_image;
   CHECK(pdf_page != nullptr);
 
-  // TODO: Support actual alpha channel.
-  // Since we are compositing onto a white page in PDF, we explicitly
-  // blend against white when converting to RGB, at least.
-  ImageRGB rgb(image.Width(), image.Height());
-  rgb.Clear32(0xFFFFFFFF);
-  rgb.BlendImage(0, 0, image);
+  const double pdf_y = FlipPageCoordinate(y + height);
 
-  Print("Add image at {:.11g} {:.11g} dims {:.11g}x{:.11g}\n",
-        x, y, width, height);
-  CHECK(pdf->AddImageRGB(
-            // Images are also measured from their baselines.
-            x, FlipPageCoordinate(y + height),
-            width, height,
-            rgb,
-            PDF::CompressionType::PNG,
-            pdf_page));
+  if (const ImageRGBA *rgba = std::get_if<ImageRGBA>(&image->img)) {
+    // TODO: Support actual alpha channel.
+    // Since we are compositing onto a white page in PDF, we explicitly
+    // blend against white when converting to RGB, at least.
+    ImageRGB rgb(rgba->Width(), rgba->Height());
+    rgb.Clear32(0xFFFFFFFF);
+    rgb.BlendImage(0, 0, *rgba);
+
+    Print("Add image at {:.11g} {:.11g} dims {:.11g}x{:.11g}\n",
+          x, y, width, height);
+    CHECK(pdf->AddImageRGB(
+              // Images are also measured from their baselines.
+              x, pdf_y,
+              width, height,
+              rgb,
+              PDF::CompressionType::PNG,
+              pdf_page));
+
+  } else if (const std::string *svg_handle =
+                 std::get_if<std::string>(&image->img)) {
+
+    pdf->DrawSVG(*svg_handle,
+                 x, pdf_y,
+                 width, height,
+                 pdf_page);
+
+  } else {
+    LOG(FATAL) << "Bad variant?";
+  }
 }
 
 void PDFPage::DrawRect(double x, double y, double width, double height,
@@ -323,10 +388,33 @@ void PDFPage::DrawLine(double x0, double y0,
 
 void PDFPage::DrawVideo(double x, double y,
                         double width, double height,
-                        const std::string &src,
+                        std::string_view src,
                         bool loop) {
   LOG(FATAL) << "Incredibly, PDF does support embedding videos, but "
     "I did not implement it!";
+}
+
+std::string PDFDocument::AddImage(std::unique_ptr<ImageRGBA> img) {
+  CHECK(img.get() != nullptr) << "Cannot add null image.";
+
+  std::string handle = NextImageHandle();
+  AddImageWithHandle(handle,
+                     std::make_unique<PDFImage>(handle, std::move(img)));
+  return handle;
+}
+
+std::string PDFDocument::AddImage(std::unique_ptr<SVG::Doc> svg) {
+  CHECK(svg.get() != nullptr) << "Cannot add null image.";
+
+  // These are converted and stored by the PDF object.
+  std::string pdf_handle = pdf->AddSVG(*svg);
+  const auto &[w, h] = pdf->SVGDimensions(pdf_handle);
+
+  std::string handle = NextImageHandle();
+  AddImageWithHandle(handle,
+                     std::make_unique<PDFImage>(handle, w, h,
+                                                std::move(pdf_handle)));
+  return handle;
 }
 
 void PDFDocument::GenerateOutput(

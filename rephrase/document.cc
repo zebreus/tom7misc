@@ -29,6 +29,7 @@
 #include "functional-set.h"
 #include "hyphenation.h"
 #include "image.h"
+#include "svg.h"
 #include "utf8.h"
 #include "util.h"
 
@@ -718,7 +719,7 @@ Document::BoxifyText(const TextProps &props,
   return out;
 }
 
-std::string Document::LoadFontFile(const std::string &filename) {
+std::string Document::LoadFontFile(std::string_view filename) {
   LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
     "not understand fonts on its own!";
   return "";
@@ -742,11 +743,13 @@ void Document::SetDocumentInfo(
   for (const auto &[k, v] : info) {
     if (k == "width") {
       const double *w = std::get_if<double>(&v.v);
-      CHECK(w != nullptr) << "Document info 'width' must be a double (in points).";
+      CHECK(w != nullptr) << "Document info 'width' must be a double "
+        "(in points).";
       width = *w;
     } else if (k == "height") {
       const double *h = std::get_if<double>(&v.v);
-      CHECK(h != nullptr) << "Document info 'height' must be a double (in points).";
+      CHECK(h != nullptr) << "Document info 'height' must be a double "
+        "(in points).";
       height = *h;
     } else if (const std::string *s = std::get_if<std::string>(&v.v)) {
       m[k] = *s;
@@ -755,14 +758,34 @@ void Document::SetDocumentInfo(
   SetDocumentInfoStrings(m);
 }
 
+std::string Document::AddImage(std::unique_ptr<ImageRGBA> img) {
+  LOG(FATAL) << "AddImage in base document is not available.";
+}
+
+std::string Document::AddImage(std::unique_ptr<SVG::Doc> img) {
+  LOG(FATAL) << "AddImage in base document is not available.";
+}
+
 void Document::SetPageInfo(
     int page_idx, int frame_idx,
     const std::unordered_map<std::string, AttrVal> &attrs) {
   // Base document ignores it.
 }
 
+std::string Document::LoadImageFile(std::string_view filename) {
+  if (Util::EndsWith(filename, ".svg")) {
+    std::string error;
+    std::optional<SVG::Doc> odoc = SVG::Parse(
+        Util::ReadFile(filename), &error);
+    if (!odoc.has_value()) {
+      Print(stderr, "Error loading {}: {}\n", filename, error);
+      return "";
+    }
 
-std::string Document::LoadImageFile(const std::string &filename) {
+    return AddImage(std::make_unique<SVG::Doc>(std::move(odoc.value())));
+  }
+
+  // Otherwise, any raster format supported by ImageRGBA.
   std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
   if (img.get() == nullptr)
     return "";
@@ -770,18 +793,26 @@ std::string Document::LoadImageFile(const std::string &filename) {
   return AddImage(std::move(img));
 }
 
-std::string Document::AddImage(std::unique_ptr<ImageRGBA> img) {
-  CHECK(img.get() != nullptr) << "Cannot add null image.";
-
-  std::string key = std::format("img{}", image_counter);
-  image_counter++;
-  CHECK(!images.contains(key));
-  images[key] = std::move(img);
-  return key;
+std::string Document::NextImageHandle() {
+  return std::format("img{}", image_counter++);
 }
 
-const Font *Document::GetFontByName(const std::string &font_name) {
-  const auto it = fonts.find(font_name);
+void Document::AddImageWithHandle(std::string name,
+                                  std::unique_ptr<Image> img) {
+  CHECK(!images.contains(name)) << "Duplicate image handle: " << name;
+  images[std::move(name)] = std::move(img);
+}
+
+
+const Image *Document::GetImageByName(std::string_view name) {
+  const auto it = images.find(std::string(name));
+  CHECK(it != images.end() && it->second.get() != nullptr) << "Unknown "
+    "image handle " << name;
+  return it->second.get();
+}
+
+const Font *Document::GetFontByName(std::string_view font_name) {
+  const auto it = fonts.find(std::string(font_name));
   if (it == fonts.end()) {
     Print("Registered fonts:\n");
     for (const auto &[font_name, _] : fonts) {
@@ -790,13 +821,6 @@ const Font *Document::GetFontByName(const std::string &font_name) {
     LOG(FATAL) << "Unknown font name " << font_name;
   }
   CHECK(it->second.get() != nullptr) << "Null font pointer??";
-  return it->second.get();
-}
-
-const ImageRGBA *Document::GetImageByName(const std::string &name) {
-  const auto it = images.find(name);
-  CHECK(it != images.end() && it->second.get() != nullptr) << "Unknown "
-    "image handle " << name;
   return it->second.get();
 }
 
@@ -1435,6 +1459,8 @@ void Document::PlaceStickersRec(Context context,
     page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
   }
 
+  // XXX This is incomplete, and maybe we should just recommend
+  // SVG for anything but the most trivial vector stuff?
   if (const double *x1 = doc.GetDoubleAttr("polygon")) {
     const double *t = doc.GetDoubleAttr("line-width");
     const BigInt *stroke = doc.GetIntAttr("stroke-color");
@@ -1456,12 +1482,12 @@ void Document::PlaceStickersRec(Context context,
     const double *height = doc.GetDoubleAttr("img-height");
     CHECK(width != nullptr && height != nullptr) << "An img=\"\" on a "
       "sticker also requires img-width=\"\" and img-height\"\" (doubles).";
-    const ImageRGBA *image = GetImageByName(*img);
+    const Image *image = GetImageByName(*img);
     Transform ct = Translate(transform, *x, *y);
     if (image == nullptr) {
       Print(ARED("Missing image: ") "{}\n", *img);
     } else {
-      page->DrawImage(ct.dx, ct.dy, *width, *height, *image);
+      page->DrawImage(image, ct.dx, ct.dy, *width, *height);
     }
   }
 
@@ -1518,19 +1544,19 @@ double Font::CharWidth(int codepoint) const {
 }
 
 void Page::DrawText(const Font *font,
-                    const std::string &text, double size,
+                    std::string_view text, double size,
                     double x, double y,
                     uint32_t color) {
 }
 
-void Page::DrawImage(double x, double y,
-                     double width, double height,
-                     const ImageRGBA &image) {
+void Page::DrawImage(const Image *image,
+                     double x, double y,
+                     double width, double height) {
 }
 
 void Page::DrawVideo(double x, double y,
                      double width, double height,
-                     const std::string &src,
+                     std::string_view src,
                      bool loop) {
 }
 
@@ -1551,9 +1577,12 @@ void Page::DrawLine(double x0, double y0,
 
 Page::Page() {}
 Font::Font() {}
+Image::Image() {}
 Document::Document(std::string_view program_dir) : program_dir(program_dir),
                                                    hyphenation(program_dir) {}
 
 Page::~Page() {}
 Font::~Font() {}
+Image::~Image() {}
 Document::~Document() {}
+

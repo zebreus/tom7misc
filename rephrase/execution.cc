@@ -831,8 +831,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
 
     Document *doc = DocumentHook();
-    const ImageRGBA *image = doc->GetImageByName(*imghandle);
-    std::unique_ptr<Animation> anim(Animation::Create(*image, options));
+    const Image *image = doc->GetImageByName(*imghandle);
+    std::unique_ptr<Animation> anim(
+        Animation::Create(image->GetRaster(), options));
     std::vector<ImageRGBA> frames = anim->Animate();
 
     // Construct the vector of image handles to return.
@@ -858,14 +859,18 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     int64_t scale = GetInt64("image-integer-scale", *bb);
     CHECK(scale > 0) << "image-integer-scale scale must be positive.";
 
+    // TODO: This requires a raster image, but of course it could
+    // easily work with vector images by just changing the
+    // scale.
     Document *doc = DocumentHook();
-    const ImageRGBA *image = doc->GetImageByName(*imghandle);
+    const Image *image = doc->GetImageByName(*imghandle);
+    ImageRGBA rgba = image->GetRaster();
     if (image == nullptr) {
       InternalFail("unknown image handle " + *imghandle, state);
       return NonceValue();
     }
 
-    auto scaled = std::make_unique<ImageRGBA>(image->ScaleBy(scale));
+    auto scaled = std::make_unique<ImageRGBA>(rgba.ScaleBy(scale));
 
     return NewValue(&state->heap, doc->AddImage(std::move(scaled)));
   }
@@ -1258,17 +1263,26 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::IMAGE_PROPS: {
-    const std::string img = GetString("image-props");
-    const ImageRGBA *image = DocumentHook()->GetImageByName(img);
+    const std::string img = GetString("internal-image-props");
+    const Image *image = DocumentHook()->GetImageByName(img);
     std::string width_field =
       std::format("{:c}width",
-                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::FLOAT));
     std::string height_field =
       std::format("{:c}height",
-                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::FLOAT));
+    std::string raster_field =
+      std::format("{:c}raster",
+                  bc::ObjectFieldTypeTag(bc::ObjectFieldType::BOOL));
+
+    double w = image->Width();
+    double h = image->Height();
+    bool r = image->IsRaster();
+
     map_type obj = {
-      {width_field, Big(BigInt(image->Width()), state)},
-      {height_field, Big(BigInt(image->Height()), state)}
+      {width_field, Float(w, state)},
+      {height_field, Float(h, state)},
+      {raster_field, Bool(r, state)},
     };
     return Obj(std::move(obj), state);
   }

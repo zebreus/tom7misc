@@ -43,12 +43,12 @@ let
     let
       val sizes = list-map image-size images
       val total-width =
-        list-foldl (fn ({width, height}, w) => w + width) 0 sizes
+        list-foldl (fn ({width, height}, w) => w +. width) 0.0 sizes
       val max-height =
-        int-to-float
-        (list-foldl (fn ({width, height}, h) => int-max(h, height)) 0 sizes)
+        list-foldl (fn ({width, height}, h) =>
+                    float-max(h, height)) 0.0 sizes
 
-      val scale-factor = full-width /. int-to-float total-width
+      val scale-factor = full-width /. total-width
 
       (*
       do print ("Total width: " ^ int-to-string total-width ^
@@ -62,7 +62,7 @@ let
          let
            val x = !xpos
            val {width, height} = image-size img
-           val w = scale-factor *. int-to-float width
+           val w = scale-factor *. width
          in
            (*
            print ("xpos: " ^ float-to-string x ^ " w/width " ^
@@ -657,7 +657,7 @@ let
 
       val img = image-load filename
       val { width = pixel-width, height = pixel-height } = image-size img
-      val ratio : float = pixel-width / pixel-height
+      val ratio : float = pixel-width /. pixel-height
       val height = width /. ratio
     in
       box {(Box) width = FULL-WIDTH, height = height }

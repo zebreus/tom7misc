@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <map>
 #include <memory>
@@ -12,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 
 #include "ansi.h"
@@ -23,6 +23,7 @@
 #include "image-resize.h"
 #include "image.h"
 #include "stb_truetype.h"
+#include "svg.h"
 #include "util.h"
 
 static constexpr bool VERBOSE = false;
@@ -32,8 +33,8 @@ static constexpr const char *DEFAULT_FONT_FILE = "fixedersys2x.ttf";
 
 using Transform = Document::Transform;
 
-ImageFont::ImageFont(const std::string &name,
-                     const std::string &filename) : name(name) {
+ImageFont::ImageFont(std::string_view name,
+                     std::string_view filename) : name(name) {
   Print("Trying to load " AWHITE("{}") "\n", filename);
   ttf.reset(new TTF(filename));
   if (VERBOSE) {
@@ -50,7 +51,7 @@ const Font *ImageDocument::GetDefaultFont() {
   return GetDescribedFont(desc);
 }
 
-std::string ImageDocument::LoadFontFile(const std::string &filename) {
+std::string ImageDocument::LoadFontFile(std::string_view filename) {
   std::string name = std::format("font{}", next_font_id);
   next_font_id++;
   fonts[name] = std::make_unique<ImageFont>(name, filename);
@@ -92,7 +93,45 @@ double ImageFont::CharWidth(int codepoint) const {
   return advance_width * scale;
 }
 
+ImageImage::ImageImage(std::string_view name,
+                       std::unique_ptr<ImageRGBA> img) :
+  name(name), img(std::move(img)) {}
 
+std::string ImageImage::Name() const {
+  return name;
+}
+
+double ImageImage::Width() const {
+  CHECK(img.get() != nullptr);
+  return img->Width();
+}
+double ImageImage::Height() const {
+  CHECK(img.get() != nullptr);
+  return img->Height();
+}
+
+bool ImageImage::IsRaster() const {
+  CHECK(img.get() != nullptr);
+  return true;
+}
+
+ImageRGBA ImageImage::GetRaster() const {
+  return *img;
+}
+
+std::string ImageDocument::AddImage(std::unique_ptr<ImageRGBA> img) {
+  CHECK(img.get() != nullptr) << "Cannot add null image.";
+
+  std::string handle = NextImageHandle();
+  AddImageWithHandle(handle,
+                     std::make_unique<ImageImage>(handle, std::move(img)));
+  return handle;
+}
+
+std::string ImageDocument::AddImage(std::unique_ptr<SVG::Doc> img) {
+  LOG(FATAL) << "Sorry, SVG files are not (yet?) supported by the "
+    "image family of output document types.";
+}
 
 ImagePage::ImagePage(int pixel_width, int pixel_height,
                      ImageDocument *doc) :
@@ -114,14 +153,14 @@ void ImagePage::SetTargetSec(int s) {
   target_sec = s;
 }
 
-void ImagePage::SetSection(const std::string &s) {
+void ImagePage::SetSection(std::string_view s) {
   section = s;
 }
 
 void ImagePage::DrawText(const Font *font_in,
-                        const std::string &text, double size,
-                        double x, double y,
-                        uint32_t color) {
+                         std::string_view text, double size,
+                         double x, double y,
+                         uint32_t color) {
   const ImageFont *font = (const ImageFont*)font_in;
 
   CHECK(image.get() != nullptr);
@@ -143,25 +182,29 @@ void ImagePage::DrawText(const Font *font_in,
       false);
 }
 
-void ImagePage::DrawImage(double x, double y,
-                         double width, double height,
-                         const ImageRGBA &sticker) {
-  CHECK(image.get() != nullptr);
+void ImagePage::DrawImage(const Image *doc_image,
+                          double x, double y,
+                          double width, double height) {
+  // XXX should check type id or something?
+  const ImageImage *image_image = (const ImageImage *)doc_image;
+  CHECK(image_image->img.get() != nullptr);
+  const ImageRGBA &img = *image_image->img;
+
   if (VERBOSE > 1) {
     Print("Add {}x{} image at {:.11g} {:.11g}.\n",
-          sticker.Width(), sticker.Height(),
+          img.Width(), img.Height(),
           x, y);
   }
 
   const int ww = std::round(width);
   const int hh = std::round(height);
 
-  if (ww != sticker.Width() || hh != sticker.Height()) {
+  if (ww != img.Width() || hh != img.Height()) {
     // TODO: Sub-pixel resize and positioning.
-    ImageRGBA resized = ImageResize::Resize(sticker, ww, hh);
+    ImageRGBA resized = ImageResize::Resize(img, ww, hh);
     image->BlendImage((int)std::round(x), (int)std::round(y), resized);
   } else {
-    image->BlendImage((int)std::round(x), (int)std::round(y), sticker);
+    image->BlendImage((int)std::round(x), (int)std::round(y), img);
   }
 }
 
@@ -199,15 +242,15 @@ void ImagePage::DrawLine(double x0, double y0, double x1, double y1,
 }
 
 void ImagePage::DrawVideo(double x, double y,
-                         double width, double height,
-                         const std::string &src,
-                         bool loop) {
+                          double width, double height,
+                          std::string_view src,
+                          bool loop) {
   CHECK(!video.has_value()) << "Just one video per slide is supported "
     "in the talk format. It would not be that bad to support more; you "
     "just gotta make it work in talk.html. Had: " << video.value().src <<
     " and tried to add " << src;
   video.emplace(Video{.x = x, .y = y, .width = width, .height = height,
-      .src = src, .loop = loop});
+      .src = std::string(src), .loop = loop});
 }
 
 void ImageDocument::GenerateOutput(

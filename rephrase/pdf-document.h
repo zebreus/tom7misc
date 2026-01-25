@@ -8,10 +8,12 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 
 #include "image.h"
 #include "document.h"
 #include "pdf.h"
+#include "svg.h"
 
 struct PDFFont : public Font {
   // Invalid state.
@@ -35,19 +37,48 @@ struct PDFFont : public Font {
   const PDF::Font *pdf_font = nullptr;
 };
 
+struct PDFImage : public Image {
+  // Invalid state.
+  PDFImage() = default;
+
+  PDFImage(std::string_view name, std::unique_ptr<ImageRGBA> img);
+  PDFImage(std::string_view name, double w, double h,
+           std::string svg_handle);
+  std::string Name() const override;
+
+  double Width() const override;
+  double Height() const override;
+
+  bool IsRaster() const override;
+  ImageRGBA GetRaster() const override;
+
+ private:
+  PDFImage(const PDFImage &other) = delete;
+  PDFImage &operator =(const PDFImage &other) = delete;
+
+  friend struct PDFDocument;
+  friend struct PDFPage;
+  std::string name;
+
+  // If string, then it's a svg handle in the PDF object.
+  std::variant<std::string, ImageRGBA> img;
+  double width = 0.0, height = 0.0;
+};
+
+
 struct PDFPage : public Page {
   PDFPage(double width, double height,
           PDF *pdf, PDF::Page *pdf_page) : Page(width, height),
                                            pdf(pdf), pdf_page(pdf_page) {}
 
   void DrawText(const Font *font,
-                const std::string &text, double size,
+                std::string_view text, double size,
                 double x, double y,
                 uint32_t color) override;
 
-  void DrawImage(double x, double y,
-                 double width, double height,
-                 const ImageRGBA &image) override;
+  void DrawImage(const Image *image,
+                 double x, double y,
+                 double width, double height) override;
 
   void DrawRect(double x, double y, double width, double height,
                 double border_width, uint32_t color_fill,
@@ -60,7 +91,7 @@ struct PDFPage : public Page {
 
   void DrawVideo(double x, double y,
                  double width, double height,
-                 const std::string &src,
+                 std::string_view src,
                  bool loop) override;
 
  private:
@@ -76,7 +107,10 @@ struct PDFPage : public Page {
 struct PDFDocument : public Document {
   PDFDocument(std::string_view program_dir);
 
-  std::string LoadFontFile(const std::string &filename) override;
+  std::string LoadFontFile(std::string_view filename) override;
+
+  std::string AddImage(std::unique_ptr<ImageRGBA> img) override;
+  std::string AddImage(std::unique_ptr<SVG::Doc> img) override;
 
   void SetDocumentInfoStrings(
       const std::unordered_map<std::string, std::string> &info) override;

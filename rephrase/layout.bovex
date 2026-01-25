@@ -269,7 +269,7 @@ fun image-sticker { img = img as (Image img-handle),
   let
     (* Compute height from image native dimensions. *)
     val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width / pixel-height
+    val ratio : float = pixel-width /. pixel-height
     val height = width /. ratio
 in
   sticker {(Sticker) x = x, y = y,
@@ -846,7 +846,7 @@ fun image { img = img as (Image img-handle), width } =
     (* Compute height from image native dimensions. *)
 
     val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width / pixel-height
+    val ratio : float = pixel-width /. pixel-height
     val height = width /. ratio
 
   in
@@ -863,7 +863,7 @@ fun image-inline { img = img as (Image img-handle), height, dy } = let
     (* Compute width from image native dimensions. *)
 
     val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width / pixel-height
+    val ratio : float = pixel-width /. pixel-height
     val width = height *. ratio
 
     (* Would it be cleaner to put the image sticker inside the box? *)

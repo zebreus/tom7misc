@@ -18,6 +18,7 @@
 #include "boxes-and-glue.h"
 #include "hyphenation.h"
 #include "image.h"
+#include "svg.h"
 
 struct DocTree;
 
@@ -111,6 +112,27 @@ struct Font {
   virtual double CharWidth(int codepoint) const;
 };
 
+// A raster or vector image.
+// This may just be a wrapper around the image content, but for
+// some document types (like PDF), we embed the image in the document
+// once and then reference it multiple times.
+struct Image {
+  Image();
+  virtual ~Image();
+  virtual std::string Name() const = 0;
+
+  // In pixels.
+  virtual double Width() const = 0;
+  virtual double Height() const = 0;
+
+  virtual bool IsRaster() const = 0;
+
+  // Get a rasterized version of the image. Currently this can only
+  // be done for images that are raster to begin with. (XXX do this
+  // a better way?)
+  virtual ImageRGBA GetRaster() const = 0;
+};
+
 struct Page {
   Page();
   virtual ~Page();
@@ -120,13 +142,13 @@ struct Page {
   double Width() const { return page_width; }
 
   virtual void DrawText(const Font *font,
-                        const std::string &text, double size,
+                        std::string_view text, double size,
                         double x, double y,
                         uint32_t color);
 
-  virtual void DrawImage(double x, double y,
-                         double width, double height,
-                         const ImageRGBA &image);
+  virtual void DrawImage(const Image *img,
+                         double x, double y,
+                         double width, double height);
 
   virtual void DrawRect(double x, double y,
                         double width, double height,
@@ -140,7 +162,7 @@ struct Page {
 
   virtual void DrawVideo(double x, double y,
                          double width, double height,
-                         const std::string &src,
+                         std::string_view src,
                          bool loop);
 
   // TODO: Other graphics drawing commands
@@ -185,7 +207,7 @@ struct Document {
   // Load a font from a file and insert it in the fonts map.
   // Returns a font identifier if successful, or else the empty
   // string. This just just a single face, not a font family.
-  virtual std::string LoadFontFile(const std::string &filename);
+  virtual std::string LoadFontFile(std::string_view filename);
 
   // Set document metadata (title, creation time, etc.).
   // The fields accepted depend on the format.
@@ -201,20 +223,23 @@ struct Document {
       int page_idx, int frame_idx,
       const std::unordered_map<std::string, AttrVal> &attrs);
 
-  // Loads an image in a format that's supported by ImageRGBA
-  // (PNG, JPEG are best). Inserts it in the map and returns a
-  // unique handle to it. If the file can't be loaded, returns
-  // the empty string.
-  std::string LoadImageFile(const std::string &filename);
+  // Loads an image in a supported format. If the extension is ".svg",
+  // this uses the built-in SVG parser, although output is only
+  // currently supported for PDF. Otherwise, it uses ImageRGBA, which
+  // supports PNG, JPEG, and other raster formats. Inserts it in the
+  // map and returns a unique handle to it. If the file can't be
+  // loaded, returns the empty string.
+  std::string LoadImageFile(std::string_view filename);
   // Same, but for an image in memory, taking ownership.
-  std::string AddImage(std::unique_ptr<ImageRGBA> img);
+  virtual std::string AddImage(std::unique_ptr<ImageRGBA> img);
+  virtual std::string AddImage(std::unique_ptr<SVG::Doc> img);
 
   // Look up a font by its name (Font::Name; not family name).
-  const Font *GetFontByName(const std::string &font_name);
+  const Font *GetFontByName(std::string_view font_name);
   virtual const Font *GetDefaultFont();
 
   // Look up an image by its handle.
-  const ImageRGBA *GetImageByName(const std::string &name);
+  const Image *GetImageByName(std::string_view name);
 
   // These are independent of font size.
   void RegisterFont(const FontDescription &desc, const Font *f);
@@ -272,12 +297,15 @@ struct Document {
   // 0 means unset, in which case you can use a document-type-specific default.
   double width = 0.0, height = 0.0;
 
+  std::string NextImageHandle();
+  void AddImageWithHandle(std::string name, std::unique_ptr<Image> img);
+
  private:
+  DocTree PackBoxesOld(double width, const DocTree &doc);
+
   // All loaded images.
   int image_counter = 0;
-  std::unordered_map<std::string, std::unique_ptr<ImageRGBA>> images;
-
-  DocTree PackBoxesOld(double width, const DocTree &doc);
+  std::unordered_map<std::string, std::unique_ptr<Image>> images;
 };
 
 #endif

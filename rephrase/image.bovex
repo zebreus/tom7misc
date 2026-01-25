@@ -12,7 +12,7 @@
 datatype provide-image = REQUIRE-IMAGE
 
 datatype image-handle = Image of string
-(* TODO: Perhaps cache per talk-shared? Or optional? There is
+(* TODO: Perhaps cache as in talk-shared? Or optional? There is
    advantage to having this be centralized, but less so than
    with fonts. *)
 fun image-load filename : image-handle =
@@ -20,11 +20,18 @@ fun image-load filename : image-handle =
     "" => fail ("Unable to load image from file " ^ filename)
   | img => Image img
 
-object InternalImageProps of { width : int, height : int }
-fun image-size (Image img) : { width : int, height : int } =
-  case image-props img of
-    {(InternalImageProps) width, height} => { width = width, height = height }
+(* For raster images, the dimensions will be integral. *)
+object InternalImageProps of { width : float, height : float, raster : bool }
+fun image-props (Image img) =
+  case internal-image-props img of
+    {(InternalImageProps) width, height, raster} =>
+      { width = width, height = height, raster = raster }
   | _ => fail "bad image props?"
+
+fun image-size img : { width : float, height : float } =
+  let val { width, height, raster } = image-props img
+  in { width = width, height = height }
+  end
 
 fun image-width img =
   let val { width, height } = image-size img
@@ -36,7 +43,15 @@ fun image-height img =
   in height
   end
 
-(* scale by 2x, 3x, etc. Creates a new image handle. *)
+fun image-is-raster img =
+  let val { width, height, raster } = image-props img
+  in raster
+  end
+
+(* scale by 2x, 3x, etc. Creates a new image handle.
+   Currently this only works for raster images, but there
+   is not really any reason to do ahead-of-time scaling of
+   vector images. *)
 fun image-exact-scale (Image img, scale-by : int) : image-handle =
   Image (image-integer-scale (img, scale-by))
 

@@ -137,7 +137,7 @@ Initial::Initial(AstPool *pool) {
     {"font-register", Primop::FONT_REGISTER},
 
     {"image-load-file", Primop::IMAGE_LOAD_FILE},
-    {"image-props", Primop::IMAGE_PROPS},
+    {"internal-image-props", Primop::IMAGE_PROPS},
     {"image-integer-scale", Primop::IMAGE_INTEGER_SCALE},
     {"internal-auto-draw", Primop::AUTO_DRAW},
 

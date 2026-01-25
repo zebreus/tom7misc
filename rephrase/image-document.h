@@ -7,15 +7,15 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <string>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
-#include "image.h"
 #include "document.h"
 #include "fonts/ttf.h"
+#include "image.h"
+#include "svg.h"
 
 struct ImagePage;
 struct ImageDocument;
@@ -25,8 +25,8 @@ struct ImageFont : public Font {
   // Invalid state.
   ImageFont() = default;
 
-  explicit ImageFont(const std::string &name,
-                    const std::string &filename);
+  explicit ImageFont(std::string_view name,
+                     std::string_view filename);
   std::string Name() const override;
 
   std::optional<double>
@@ -44,6 +44,30 @@ struct ImageFont : public Font {
   std::unique_ptr<TTF> ttf;
 };
 
+struct ImageImage : public Image {
+  // Invalid state.
+  ImageImage() = default;
+
+  ImageImage(std::string_view name, std::unique_ptr<ImageRGBA> img);
+  std::string Name() const override;
+
+  double Width() const override;
+  double Height() const override;
+
+  bool IsRaster() const override;
+  ImageRGBA GetRaster() const override;
+
+ private:
+  ImageImage(const ImageImage &other) = delete;
+  ImageImage &operator =(const ImageImage &other) = delete;
+
+  friend struct ImageDocument;
+  friend struct ImagePage;
+  std::string name;
+  // SVG not supported (yet?)
+  std::unique_ptr<ImageRGBA> img;
+};
+
 // TODO: This should probably be ImageFrame and we should have
 // a notion of Slide separately. There are many places where
 // we want to store something with the frame.
@@ -53,14 +77,13 @@ struct ImagePage : public Page {
   ~ImagePage() override;
 
   void DrawText(const Font *font,
-                const std::string &text, double size,
+                std::string_view text, double size,
                 double x, double y,
                 uint32_t color) override;
 
-  void DrawImage(double x, double y,
-                 double width, double height,
-                 const ImageRGBA &img) override;
-
+  void DrawImage(const Image * img,
+                 double x, double y,
+                 double width, double height) override;
 
   void DrawRect(double x, double y, double width, double height,
                 double border_width, uint32_t color_fill,
@@ -68,7 +91,7 @@ struct ImagePage : public Page {
 
   void DrawVideo(double x, double y,
                  double width, double height,
-                 const std::string &src,
+                 std::string_view src,
                  bool loop) override;
 
   void DrawLine(double x0, double y0, double x1, double y1,
@@ -76,7 +99,7 @@ struct ImagePage : public Page {
 
   void SetDuration(int dur);
   void SetTargetSec(int sec);
-  void SetSection(const std::string &s);
+  void SetSection(std::string_view s);
 
  private:
   friend struct ImageDocument;
@@ -104,7 +127,10 @@ struct ImagePage : public Page {
 struct ImageDocument : public Document {
   ImageDocument(std::string_view program_dir);
 
-  std::string LoadFontFile(const std::string &filename) override;
+  std::string LoadFontFile(std::string_view filename) override;
+
+  std::string AddImage(std::unique_ptr<ImageRGBA> img) override;
+  std::string AddImage(std::unique_ptr<SVG::Doc> img) override;
 
   void SetDocumentInfoStrings(
       const std::unordered_map<std::string, std::string> &info) override;
