@@ -47,15 +47,18 @@ val OCTOBER = 10
 val NOVEMBER = 11
 val DECEMBER = 12
 
-object Website of { url : string, title: string,
+object Website of { url : string, title : string,
                     author : string,
                     year : int, month : int, day : int }
 object Article of { author : string, title : string,
+                    subtitle : string,
                     year : int, month : int, day : int,
                     page-start : int, page-end : int,
                     pages : int,
                     journal : string, publisher : string,
                     volume: int, number : int,
+                    (* e.g. 23-03-A if a structured identifier *)
+                    identifier : string,
                     url : string,
                     editor : string,
                     (* If in proceedings, the ISBN of that book. *)
@@ -65,6 +68,7 @@ object Article of { author : string, title : string,
                     }
 
 object Book of { author : string, title : string,
+                 subtitle : string,
                  year : int, month : int, day : int,
                  page-start : int, page-end : int,
                  isbn : string, pages : int,
@@ -96,6 +100,15 @@ object News of { author : string, title : string,
                  year : int, month : int, day : int,
                  work : string, publisher : string,
                  url : string }
+
+object TechReport of { author : string, title : string,
+                       subtitle : string,
+                       year : int, month : int, day : int,
+                       institution : string,
+                       (* Often a structured number like CMU-CS-08-126 *)
+                       number : string,
+                       url : string,
+                       pages : int }
 
 fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Website, _) = LESS
@@ -254,6 +267,30 @@ fun bib-news (obj as {(News) author}) =
   bib-article (convert-news obj)
   | bib-news _ = fail "bib-news needs at least an author"
 
+fun convert-tech-report obj =
+  let
+    (* Optionally remap these fields, in case we get more permissive
+       later. *)
+    val obj =
+      case obj of {(TechReport) institution} =>
+        obj without (TechReport)institution
+        with (Article)publisher = institution
+      | _ => obj
+
+    val obj =
+      case obj of {(TechReport) number} =>
+        obj without (TechReport)number
+        with (Article)identifier = number
+      | _ => obj
+  in
+    obj
+  end
+
+fun bib-tech-report (obj as {(TechReport) title, institution}) =
+  bib-article (convert-tech-report obj)
+  | bib-tech-report _ = fail ("bib-tech-report needs at least a " ^
+                              "title and institution.")
+
 val citation-next-num = ref 1
 val citations-used : (bibsource, int) map ref =
   ref (map-empty bibsource-compare)
@@ -360,6 +397,11 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
     val num = span {(Span) no-rephrase = true}
       (layout ("[" ^ int-to-string n ^ "] "))
 
+    (* TODO: Better way of rendering a subtitle? *)
+    fun make-subtitled title {(Book) subtitle} =
+      [[layout title] – [layout subtitle]]
+      | make-subtitled title _ = layout title
+
     fun joindots l =
       span {(Span) justification = "left" }
       (span {(Span)
@@ -373,6 +415,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
         list-map (fn lay => if layout-empty lay
                             then lay
                             else [[lay]. [break-ok()]]) l)))
+
 
     (* collections of fields supported by many citation types. *)
     val pp = pages fields
@@ -394,27 +437,49 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
 
     | (Article, {(Article) title }) =>
         let
-          val jour =
-            case fields of
-              {(Article) journal} =>
-                (case fields of
-                   {(Article) volume, number } =>
-                     it (layout journal) ^^ [, ] ^^
-                     layout (int-to-string volume) ^^
-                     [([layout (int-to-string number)])]
-                 | {(Article) volume } =>
-                     [[it (layout journal)], [layout (int-to-string volume)]]
-                 | _ => it (layout journal))
-            | _ => []
+          (* With a structured edition number. If there is no
+             journal name, then we treat the publisher as the
+             journal name (e.g. "W3C"). If there's neither,
+             then it's blank and the number is also unused. *)
+          fun numbered-journal (number : layout option) =
+            let
+              val commanum =
+                case number of
+                  NONE => []
+                | SOME n => [, [n]]
+            in
+              case fields of
+                {(Article) journal, publisher} =>
+                  [[it (layout journal)][commanum], [layout publisher]]
+              | {(Article) journal} =>
+                  [[it (layout journal)][commanum]]
+              | {(Article) publisher} =>
+                  [[it (layout publisher)][commanum]]
+              | _ => []
+            end
+
+          val venue =
+            (case fields of
+               {(Article) identifier } =>
+                 numbered-journal (SOME (layout identifier))
+             | {(Article) volume, number } =>
+                 numbered-journal
+                 (SOME (layout (int-to-string volume) ^^
+                        [([layout (int-to-string number)])]))
+             | {(Article) volume } =>
+                 numbered-journal (SOME (layout (int-to-string volume)))
+             | _ => numbered-journal NONE)
 
           val e =
             case fields of
               {(Article) editor} => [[layout editor], ed]
             | _ => []
 
+          val t = make-subtitled title fields
+
           val r =
-            joindots (layout authors :: [“[layout title]”] ::
-                      e :: jour :: location-date fields ::
+            joindots (layout authors :: [“[t]”] ::
+                      e :: venue :: location-date fields ::
                       pp :: nil)
 
         in
@@ -429,8 +494,13 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
             case fields of
               {(Article) publisher} => it(layout publisher)
             | _ => []
+
+          (* TODO: Better way to render a subtitle? *)
+          (* TODO: Can also treat 'chapter' as subtitle? *)
+          val t = make-subtitled title fields
+
           val r =
-            joindots (layout authors :: [“[layout title]”] ::
+            joindots (layout authors :: [“[t]”] ::
                       j :: location-date fields ::
                       pp :: nil)
 

@@ -268,8 +268,7 @@ fun image-sticker { img = img as (Image img-handle),
                     x : float, y : float, width : float } =
   let
     (* Compute height from image native dimensions. *)
-    val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width /. pixel-height
+    val ratio : float = image-aspect-ratio img
     val height = width /. ratio
 in
   sticker {(Sticker) x = x, y = y,
@@ -844,9 +843,7 @@ fun box-stick-at {x : float, y : float} lay =
 fun image { img = img as (Image img-handle), width } =
   let
     (* Compute height from image native dimensions. *)
-
-    val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width /. pixel-height
+    val ratio : float = image-aspect-ratio img
     val height = width /. ratio
 
   in
@@ -861,9 +858,7 @@ fun image { img = img as (Image img-handle), width } =
    with some text. Allows breaks. *)
 fun image-inline { img = img as (Image img-handle), height, dy } = let
     (* Compute width from image native dimensions. *)
-
-    val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width /. pixel-height
+    val ratio : float = image-aspect-ratio img
     val width = height *. ratio
 
     (* Would it be cleaner to put the image sticker inside the box? *)

@@ -59,12 +59,15 @@ let
 
       val img = image-load filename
       val { width = pixel-width, height = pixel-height } = image-size img
-      val ratio : float = pixel-width / pixel-height
+      val ratio : float = pixel-width /. pixel-height
       val height = width /. ratio
     in
       box {(Box) width = FULL-WIDTH, height = height }
       (image-sticker { img = img, x = padding, y = 0.0, width = width })
     end
+
+  val checked-box-icon =
+    image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
 in
 
@@ -72,9 +75,60 @@ in
 [[title (layout doc-title)][vspace (point 5.0)][
 sub-title (layout doc-subtitle)]
 
- [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2025]]
+ [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
 
-Here is where the paper goes.
+I have one of the oldest websites on the internet,[footnote[Find it at
+http://tom7.org/]] dating back to at least AD 1996. It has so far
+outlived its original host (aol.com) by 18 years. Now that 99.9999999%
+of the internet is deepfake pornography, AI-generated crypto scams,
+and Italian Brainrot, being in Lycos’s “Top 5% Of The Web” is a
+triviality achieved at the first human keystroke. But in the late
+1990s, it used to [it[mean]] something.
+
+Here's the thing: I just want my public website to be on the internet
+and accessible in a web browser!
+
+I don't want you to have to log in, or give me permission for cookies,
+or enable notifications, or it's better in our app, or sign up for the
+e-mail list, or figure out which one is the search box and which one
+is a trick to get me to enter my search terms in the e-mail sign up
+box, nor do I want you to consent to data collection per EU General
+Data Protection Regulations, click to enable Flash Player, or 15
+second interstial video advertisement, or [checked-box-icon] W3C XHTML
+compliant.
+
+
+[section [BoVeX improvements]]
+
+You may be happy to know that I have continued building my own
+alternate universe of software tools for writing SIGBOVIK papers the
+hard way, with the centerpiece being BoVeX. I wrote it as what is
+seeming decreasingly like a joke for SIGBOVIK 2024.[cite
+murphy2024badness]
+
+[paragraph[Compliance]] Being in a mood for rules, whether the
+compliance with them malicious or not, I fixed a number of picky
+technical issues with BoVeX's PDF backend. These did not affect
+display (that I know of) but did cause some validators to barf with
+helpful diagnostics like [tt[The document structure is corrupt]] (Adobe
+Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I believe
+the generated documents are formally correct per the ISO standard.[cite iso32000-1-2008] This document only contains violations of clauses
+6.7.3–6, 6.2.4–3, 6.7.3–4, 6.7.3–3, 6.7.3–7, 6.7.3–2, 6.4–3, 6.7.2–1, 6.4–6, 6.3.4–1, 6.2.3.3–3, 6.3.6–1, and 6.2.3.3–1 in ISO 19005 (PDF/A),[cite iso19005-1-2005] which is likely a world record achievement in PDF/A compliance.
+
+[paragraph[SVG]] In order that I could make the little
+[checked-box-icon] in the opening paragraph without resorting to
+bitmap images (which only allow you to print the document on
+finite-resolution devices), BoVeX now supports a vector images via a
+significant subset of the SVG format.[cite dahlstrom2011scalable] This
+is a horrific task that I of course did entirely by hand. Like PDF,
+SVG is impossibly complex and has probably never been completely
+implemented, but I made sure to support the features that I see
+in Adobe Illustrator exports so that I can at least personally get
+it to look like I want forevermore. This includes all the path types
+except arcs,
+rounded rectangles,
+the three different ways that strokes and fills can be transparent,
+clip paths, transforms, and fill rules.
 
 [section [Bibliography]]
 
