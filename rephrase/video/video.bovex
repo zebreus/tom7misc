@@ -434,8 +434,8 @@ in
           | SPEAK => 1.1
 
         val (edx, edy) =
-          ((escale -. 1.0) *. int-to-float ewidth *. -0.5,
-           (escale -. 1.0) *. int-to-float eheight *. -0.5)
+          ((escale -. 1.0) *. ewidth *. -0.5,
+           (escale -. 1.0) *. eheight *. -0.5)
 
         val kscale =
           case kpos of
@@ -444,8 +444,8 @@ in
           | SPEAK => 1.1
 
         val (kdx, kdy) =
-          ((kscale -. 1.0) *. int-to-float kwidth *. -0.5,
-           (kscale -. 1.0) *. int-to-float kheight *. -0.5)
+          ((kscale -. 1.0) *. kwidth *. -0.5,
+           (kscale -. 1.0) *. kheight *. -0.5)
 
       in
         combo-slide (slide with TITLE-FONT-SIZE = 180.0)
@@ -909,7 +909,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
         combo-slide (slide with BULLET-FONT-SIZE = 96.0
                      with BULLET-LINE-GAP = 48.0)
         (reveal (seconds (t - BASE-T))
-        ((0, Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+        ((0, Image { x = SLIDE-WIDTH -. 2.0 *. width,
                      y = 0.0,
                      scale = INTSCALE 2,
                      img = tom }) ::
@@ -1244,13 +1244,13 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
     fun concslide last =
       combo-slide (slide with BULLET-FONT-SIZE = 96.0
                    with BULLET-LINE-GAP = 48.0)
-      (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+      (Image { x = SLIDE-WIDTH -. 2.0 *. width,
                y = 0.0,
                scale = INTSCALE 2,
                img = tom } ::
        TextBox { x = inch 4.0,
                  y = inch 3.0,
-                 width = SLIDE-WIDTH -. int-to-float width -.
+                 width = SLIDE-WIDTH -. width -.
                  (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
                  text =
                  justify-full
@@ -1264,7 +1264,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
            TextBox { x = inch 4.0,
                      (* XXX hax *)
                      y = inch 22.0,
-                     width = SLIDE-WIDTH -. int-to-float width -.
+                     width = SLIDE-WIDTH -. width -.
                      (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
                      text =
                      justify-full
@@ -1277,14 +1277,14 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
     fun cursed () =
       combo-slide (slide with BULLET-FONT-SIZE = 96.0
                    with BULLET-LINE-GAP = 48.0)
-      (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+      (Image { x = SLIDE-WIDTH -. 2.0 *. width,
                y = 0.0,
                scale = INTSCALE 2,
                img = tom } ::
        TextBox { x = inch 4.0,
                  (* XXX hax *)
                  y = inch 22.0,
-                 width = SLIDE-WIDTH -. int-to-float width -.
+                 width = SLIDE-WIDTH -. width -.
                  (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
                  text =
                  justify-full

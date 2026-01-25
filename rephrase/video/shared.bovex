@@ -62,8 +62,8 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
   in
     sticker {(Sticker) x = int-to-float x, y = int-to-float y,
              img = img-handle,
-             img-width = int-to-float pixel-width,
-             img-height = int-to-float pixel-height } []
+             img-width = pixel-width,
+             img-height = pixel-height } []
   end
 
 (* PERF: could cache the scaled image *)
@@ -298,12 +298,11 @@ fun scaled-image { img, x, y, scale } =
    | SCALE s =>
        let val { width, height } = image-size img
        in image-sticker { img = img, x = x, y = y,
-                          width = int-to-float width *. s }
+                          width = width *. s }
        end
    | INTSCALE s =>
        let
          val img : image-handle = image-exact-scale (img, s)
-         val { width, height } = image-size img
        in exact-image-at { img = img, x = round x, y = round y }
        end)
 
@@ -589,9 +588,9 @@ fun diagram-slide slide title img =
     val { width, height } = image-size img
     val content-height = SLIDE-HEIGHT -. CONTENT-START-Y
     val IMG-PAD-TOP = CONTENT-START-Y +.
-      (content-height -. int-to-float height) *. 0.5
+      (content-height -. height) *. 0.5
     val IMG-PAD-LEFT =
-      (SLIDE-WIDTH -. int-to-float width) *. 0.5
+      (SLIDE-WIDTH -. width) *. 0.5
   in
     add-background-image BACKGROUND-IMAGE;
     add-title props title;
