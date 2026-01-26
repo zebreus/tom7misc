@@ -112,7 +112,7 @@ static const char png_chunk_palette[] = "PLTE";
 static const char png_chunk_data[] = "IDAT";
 static const char png_chunk_end[] = "IEND";
 
-static const uint16_t *find_font_widths(PDF::BuiltInFont font);
+static const uint16_t *BuiltinFontWidths(PDF::BuiltInFont font);
 
 using FontEncoding = PDF::FontEncoding;
 
@@ -414,7 +414,7 @@ const PDF::Font *PDF::GetBuiltInFont(BuiltInFont f) {
 
   builtin_fonts[f] = font;
 
-  const uint16_t *widths_table = find_font_widths(f);
+  const uint16_t *widths_table = BuiltinFontWidths(f);
   CHECK(widths_table != nullptr) << "Missing widths table "
     "for built-in font?";
 
@@ -553,6 +553,17 @@ PDF::Object *PDF::TrueTypeFontDescriptor(
 
   // Now the desriptor itself.
   StreamObj *desc = AddObject(new StreamObj);
+
+  // These values are "required," though it's not clear how much
+  // it matters.
+  /*
+  /Flags (Integer)
+     /Ascent (Number)
+     /Descent (Number)
+     /CapHeight (Number)
+     /StemV (Number)
+     /ItalicAngle (Number)
+  */
 
   // More in PDF 1.3 spec on p330, 5.7 Font Descriptors
   AppendFormat(&desc->stream,
@@ -2042,6 +2053,7 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
                          &x, page);
 
   // TODO: Cleaner to use the tables here than hard-code a width like 604.
+  // (And this inherits the inconsistency about 1000 vs 1008.)
   text[0] = '>';
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font / (14.0f * 72.0f);
@@ -2135,6 +2147,8 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
 
   text[0] = *--string;
 
+  // TODO: Cleaner to use the tables here than hard-code a width like 604.
+  // (And this inherits the inconsistency about 1000 vs 1008.)
   x += eanupc_dimensions[1].quiet_right * x_width -
     604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color)) {
@@ -2221,6 +2235,8 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
                          &x, page);
 
   text[0] = '>';
+  // TODO: Cleaner to use the tables here than hard-code a width like 604.
+  // (And this inherits the inconsistency about 1000 vs 1008.)
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font / (14.0f * 72.0f);
   if (!AddText(text, font, x, y, color, page)) {
@@ -2331,6 +2347,8 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
                          color, GUARD_SPECIAL, &x, page);
 
   text[0] = string[11];
+  // TODO: Cleaner to use the tables here than hard-code a width like 604.
+  // (And this inherits the inconsistency about 1000 vs 1008.)
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
@@ -2945,7 +2963,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   // PDF uses 1/1000ths of a unit here, and defaults to negative space
   // (this is typically used for kerning). This is independent of the
   // font size.
-  const double gap_scale = -1000.0;
+  static constexpr double GAP_SCALE = -1000.0;
 
   for (int i = 0; i < (int)line.size(); i++) {
     const auto &[text, gap] = line[i];
@@ -2960,7 +2978,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 
     // The last spacing is ignored (and the syntax does not allow it).
     if (i != (int)line.size() - 1) {
-      AppendFormat(&str, "{} ", Float(gap * gap_scale));
+      AppendFormat(&str, "{} ", Float(gap * GAP_SCALE));
     }
   }
   AppendFormat(&str,
@@ -3211,6 +3229,8 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(std::string_view text,
 
 
 // The width of each character, in points, at size 14.
+// (To be clear: Unlike embedded TTFs, these use a divisor of
+// 14 * 72 = 1008.)
 static constexpr const uint16_t helvetica_widths[256] = {
   280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
   280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
@@ -3458,7 +3478,7 @@ static constexpr const uint16_t courier_widths[256] = {
 // PERF for fixed-width fonts, no need for table.
 // We only use this to fill in the widths obj, so it could take a
 // std::array<uint16_t, 256> to fill in, or something like that.
-static const uint16_t *find_font_widths(PDF::BuiltInFont font) {
+static const uint16_t *BuiltinFontWidths(PDF::BuiltInFont font) {
   switch (font) {
   case PDF::HELVETICA: return helvetica_widths;
   case PDF::HELVETICA_BOLD: return helvetica_bold_widths;
@@ -3538,7 +3558,16 @@ double PDF::Font::CIDWidth(uint16_t cid) const {
   }
 
   const int w = it->second;
-  return w * (1.0 / (14.0 * 72.0));
+
+  // For historic reasons, the built-in fonts have
+  // their widths stored as 1/1008 units/em (72ppi * 14pt),
+  // but embedded TTFs have the correct 1/1000 units/em
+  // that PDF wants.
+  if (builtin_font.has_value()) {
+    return w * (1.0 / (14.0 * 72.0));
+  } else {
+    return w * (1.0 / 1000.0);
+  }
 }
 
 bool PDF::GetTextWidth(std::string_view text,
@@ -3550,7 +3579,7 @@ bool PDF::GetTextWidth(std::string_view text,
   return PointWidthOfText(text, size, font, text_width);
 }
 
-static const char *find_word_break(const char *str) {
+static const char *FindWordBreak(const char *str) {
   if (!str)
     return nullptr;
 
@@ -3575,7 +3604,7 @@ bool PDF::AddTextWrap(std::string_view text,
   float orig_yoff = yoff;
 
   while (start && *start) {
-    const char *new_end = find_word_break(end + 1);
+    const char *new_end = FindWordBreak(end + 1);
     float line_width;
     int output = 0;
     float xoff_align = xoff;
@@ -3778,85 +3807,6 @@ bool PDF::pdf_add_image(ImageObj *image, float x, float y,
   pdf_add_stream(page, std::move(str));
   return true;
 }
-
-#if 0
-
-static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
-                                 const uint8_t *data,
-                                 uint32_t width, uint32_t height) {
-  Object *obj;
-  size_t len;
-  const char *endstream = ">\nendstream\n";
-  dstr str = INIT_DSTR;
-  size_t data_len = (size_t)width * (size_t)height * 3;
-
-  AppendFormat(&str,
-               "<<\n"
-               "  /Type /XObject\n"
-               "  /Name /Image{}\n"
-               "  /Subtype /Image\n"
-               "  /ColorSpace /DeviceRGB\n"
-               "  /Height {}\n"
-               "  /Width {}\n"
-               "  /BitsPerComponent 8\n"
-               "  /Length {}\n"
-               ">>stream\n",
-               flexarray_size(&pdf->objects), height, width,
-               (unsigned long)(data_len + 1));
-
-  len = dstr_len(&str) + data_len + strlen(endstream) + 1;
-  if (dstr_ensure(&str, len) < 0) {
-      dstr_free(&str);
-      SetErr(-ENOMEM,
-                  "Unable to allocate %lu bytes memory for image",
-                  (unsigned long)len);
-      return nullptr;
-  }
-  dstr_append_data(&str, data, data_len);
-  dstr_append(&str, endstream);
-
-  obj = pdf_add_object(pdf, OBJ_image);
-  if (!obj) {
-      dstr_free(&str);
-      return nullptr;
-  }
-  obj->stream.stream = str;
-
-  return obj;
-}
-
-// Probably unnecessary--we would always use PNG?
-int pdf_add_rgb24(pdf_doc *pdf, Object *page, float x,
-                  float y, float display_width, float display_height,
-                  const uint8_t *data, uint32_t width, uint32_t height) {
-  Object *obj;
-
-  obj = pdf_add_raw_rgb24(pdf, data, width, height);
-  if (!obj)
-      return pdf->errval;
-
-  get_img_display_dimensions(width, height, &display_width,
-                             &display_height));
-  return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
-}
-
-// Probably unnecessary--we would always use PNG?
-int pdf_add_grayscale8(pdf_doc *pdf, Object *page, float x,
-                       float y, float display_width, float display_height,
-                       const uint8_t *data, uint32_t width, uint32_t height) {
-  Object *obj;
-
-  obj = pdf_add_raw_grayscale8(pdf, data, width, height);
-  if (!obj)
-      return pdf->errval;
-
-  get_img_display_dimensions(width, height, &display_width,
-                             &display_height);
-
-  return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
-}
-
-#endif
 
 static std::optional<JPGHeader> parse_jpeg_header(
     const uint8_t *data, size_t length, std::string *error) {
@@ -4313,15 +4263,14 @@ std::string PDF::AddTTF(std::string_view filename,
   int space_width = 0;
   stbtt_GetCodepointHMetrics(&ttf, ' ', &space_width, nullptr);
 
-  // XXX: Widths are actually in "1000ths of a text unit", and we
-  // end up with 72*14 = 1008 here. Should we just scale to 1000.0f?
-  const float scale = stbtt_ScaleForMappingEmToPixels(&ttf, 72.0f);
-
-  // width tables use 14 points.
-  const float scale_14pt = scale * 14.0f;
+  // In PDF, widths are in "1000ths of a text unit."
+  // Port note: This library used to describe the width tables
+  // as "14pt," since 14 * 72 (ppi) = 1008. I think this was
+  // just a bug.
+  const float scale_pdf = stbtt_ScaleForMappingEmToPixels(&ttf, 1000.0f);
 
   if (VERBOSE) {
-    Print("Scale 14pt: {:.6f}\n", scale_14pt);
+    Print("Scale 14pt: {:.6f}\n", scale_pdf);
   }
 
   if (VERBOSE) {
@@ -4342,9 +4291,9 @@ std::string PDF::AddTTF(std::string_view filename,
   }
 
   // Get widths for mapped codepoints.
-  // fobj->widths.resize(256, (uint16_t)std::round(space_width * scale_14pt));
-  auto ScaleWidth = [scale_14pt](int width_unscaled) {
-      return scale_14pt * width_unscaled;
+  // fobj->widths.resize(256, (uint16_t)std::round(space_width * scale_pdf));
+  auto ScaleWidth = [scale_pdf](int width_unscaled) {
+      return scale_pdf * width_unscaled;
     };
 
   if (encoding == FontEncoding::WIN_ANSI) {
@@ -4401,7 +4350,8 @@ std::string PDF::AddTTF(std::string_view filename,
   std::unordered_map<std::pair<int, int>, double,
     Hashing<std::pair<int, int>>> kerning;
 
-  double kerning_scale = scale / 72.0;
+  // The interal kerning map uses normalized units.
+  double kerning_scale = scale_pdf / 1000.0;
 
   static constexpr bool KERNING_TABLE_ONLY = false;
   if constexpr (KERNING_TABLE_ONLY) {
