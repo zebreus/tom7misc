@@ -91,11 +91,17 @@ static void Renew(bool dry_run, std::string_view domain) {
   Config config = Config::Load();
   const int64_t now = time(nullptr);
 
-  std::string tmpdir = "/tmp/httpi_renew_XXXXXX";
-  CHECK(mkdtemp(tmpdir.data()) != nullptr) << "Can't create temporary "
-    "directory?";
   int next_idx = 0;
-  auto TmpFile = [&tmpdir, &next_idx](std::string_view s) {
+  auto TmpFile = [&next_idx](std::string_view s) {
+      // Create this lazily since we often don't need to do any renewing
+      // at all.
+      static std::string tmpdir = []{
+          std::string d = "/tmp/httpi_renew_XXXXXX";
+          CHECK(mkdtemp(d.data()) != nullptr) << "Can't create temporary "
+            "directory?";
+          return d;
+        }();
+
       next_idx++;
       return Util::DirPlus(tmpdir, std::format("{}.{}", s, next_idx));
     };
