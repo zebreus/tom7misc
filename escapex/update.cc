@@ -99,59 +99,58 @@ struct subtoggle : public Toggle {
   virtual InputResult key(SDL_Event e);
   virtual InputResult click(int x, int y);
 
-  void docheck();
-
+  void DoCheck();
 };
 
-void subtoggle::docheck() {
-    if (!checked) {
+void subtoggle::DoCheck() {
+  if (!checked) {
 
-      /* try to subscribe */
-      if (EscapeUtil::existsdir(fname)) {
-        /* delete unsub file from dir */
-        if (EscapeUtil::remove(fname + (string)DIRSEP + UNSUBMARKER)) {
+    /* try to subscribe */
+    if (EscapeUtil::existsdir(fname)) {
+      /* delete unsub file from dir */
+      if (EscapeUtil::remove(fname + (string)DIRSEP + UNSUBMARKER)) {
 
-          checked = true;
+        checked = true;
 
-        } else {
-
-          Message::Quick(0, (string)"Can't subscribe to "
-                         BLUE + fname + (string)POP " (remove unsub file)",
-                         "Cancel", "", PICS XICON POP);
-
-        }
       } else {
-        /* create subscription (directory) */
-        if (EscapeUtil::makedir(fname)) {
-          checked = true;
 
-        } else {
-          Message::Quick(0, (string)"Can't subscribe to "
-                         BLUE + fname + (string)POP " (can't make dir!!)",
-                         "Cancel", "", PICS XICON POP);
-        }
+        Message::Quick(0, (string)"Can't subscribe to "
+                       BLUE + fname + (string)POP " (remove unsub file)",
+                       "Cancel", "", PICS XICON POP);
+
       }
     } else {
-      /* try to unsubscribe */
-
-      if (Util::WriteFile(
-              fname + (string)DIRSEP + UNSUBMARKER,
-              (string)"delete this file to resubscribe to " + fname +
-              (string)"\n")) {
-
-        checked = false;
+      /* create subscription (directory) */
+      if (EscapeUtil::makedir(fname)) {
+        checked = true;
 
       } else {
-        Message::Quick(0, (string)"Can't unsubscribe to "
-                       BLUE + fname +
-                       (string)POP " (can't make unsub file!)",
+        Message::Quick(0, (string)"Can't subscribe to "
+                       BLUE + fname + (string)POP " (can't make dir!!)",
                        "Cancel", "", PICS XICON POP);
       }
     }
+  } else {
+    /* try to unsubscribe */
+
+    if (Util::WriteFile(
+            fname + (string)DIRSEP + UNSUBMARKER,
+            (string)"delete this file to resubscribe to " + fname +
+            (string)"\n")) {
+
+      checked = false;
+
+    } else {
+      Message::Quick(0, (string)"Can't unsubscribe to "
+                     BLUE + fname +
+                     (string)POP " (can't make unsub file!)",
+                     "Cancel", "", PICS XICON POP);
+    }
+  }
 }
 
 InputResult subtoggle::click(int, int) {
-  docheck();
+  DoCheck();
   return InputResult(InputResultKind::UPDATED);
 }
 
@@ -161,7 +160,7 @@ InputResult subtoggle::key(SDL_Event e) {
   switch (kk) {
   case SDLK_RETURN:
   case SDLK_SPACE:
-    docheck();
+    DoCheck();
     return InputResult(InputResultKind::UPDATED);
   default: return MenuItem::key(e);
   }

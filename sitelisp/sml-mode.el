@@ -31,7 +31,7 @@
 
 ;; ====================================================================
 
-;;; HISTORY 
+;;; HISTORY
 
 ;; Tom 7 hacked this up good to fix the things that annoy him.
 ;; Except in a few minor ways it's not objectively better, but
@@ -49,13 +49,13 @@
 ;; font-lock patterns, some of Steven Gilmore's (reduced) easy-menus,
 ;; and numerous bugs and bug-fixes.
 
-;;; DESCRIPTION 
+;;; DESCRIPTION
 
 ;; See accompanying info file: sml-mode.info
 
 ;;; FOR YOUR .EMACS FILE
 
-;; If sml-mode.el lives in some non-standard directory, you must tell 
+;; If sml-mode.el lives in some non-standard directory, you must tell
 ;; emacs where to get it. This may or may not be necessary:
 
 ;; (setq load-path (cons (expand-file-name "~jones/lib/emacs") load-path))
@@ -96,7 +96,7 @@
 ;;           hilit-quietly           t))
 
 ;; Alternatively, you can (require 'sml-font) which uses the font-lock
-;; package instead. 
+;; package instead.
 
 ;; Finally, there are inferior-sml-{mode,load}-hooks -- see comments
 ;; in sml-proc.el. For much more information consult the mode's *info*
@@ -163,9 +163,9 @@ most uses. (A value of nil, means do not look at all)")
 The default assumes the info file \"sml-mode.info\" is on Emacs' info
 directory path. If it is not, either put the file on the standard path
 or set the variable sml-mode-info to the exact location of this file
-which is part of the sml-mode 3.2 (and later) distribution. E.g:  
+which is part of the sml-mode 3.2 (and later) distribution. E.g:
 
-  (setq sml-mode-info \"/usr/me/lib/info/sml-mode\") 
+  (setq sml-mode-info \"/usr/me/lib/info/sml-mode\")
 
 in your .emacs file. You can always set it interactively with the
 set-variable command.")
@@ -182,7 +182,7 @@ This is a good place to put your preferred key bindings.")
 (defvar sml-error-overlay t
   "*Non-nil means use an overlay to highlight errorful code in the buffer.
 
-This gets set when `sml-mode' is invoked\; if you don't like/want SML 
+This gets set when `sml-mode' is invoked\; if you don't like/want SML
 source errors to be highlighted in this way, do something like
 
   \(setq-default sml-error-overlay nil\)
@@ -191,7 +191,7 @@ in your `sml-load-hook', say.")
 
 (make-variable-buffer-local 'sml-error-overlay)
 
-;;; CODE FOR SML-MODE 
+;;; CODE FOR SML-MODE
 
 (defun sml-mode-info ()
   "Command to access the TeXinfo documentation for sml-mode.
@@ -205,7 +205,7 @@ See doc for the variable sml-mode-info."
              (message "Can't find it... set this variable first!")))))
 
 (defun sml-indent-level (&optional indent)
-   "Allow the user to change the block indentation level. Numeric prefix 
+   "Allow the user to change the block indentation level. Numeric prefix
 accepted in lieu of prompting."
    (interactive "NIndentation level: ")
    (setq sml-indent-level indent))
@@ -238,7 +238,7 @@ accepted in lieu of prompting."
   "Toggle sml-electric-semi-mode. Prefix means set it to nil."
   (interactive "P")
   (setq sml-electric-semi-mode (and (not of) (not sml-electric-semi-mode)))
-  (message "%s" (concat "Electric semi mode is " 
+  (message "%s" (concat "Electric semi mode is "
                    (if sml-electric-semi-mode "on" "off"))))
 
 ;;; BINDINGS: these should be common to the source and process modes...
@@ -413,7 +413,7 @@ sml-electric-semi-mode (default nil)
     If t, a `\;' will reindent line, and perform a newline.
 
 sml-paren-lookback (default 1000)
-    Determines how far back (in chars) the indentation algorithm should 
+    Determines how far back (in chars) the indentation algorithm should
     look to match parenthesis. A value of nil, means do not look at all.
 
 Mode map
@@ -443,7 +443,7 @@ Mode map
   (make-local-variable 'comment-end)
   (setq comment-end " *)")
   (make-local-variable 'comment-column)
-  (setq comment-column 40)              
+  (setq comment-column 40)
   (make-local-variable 'comment-start-skip)
   (setq comment-start-skip "(\\*+[ \t]?")
   (make-local-variable 'comment-indent-function)
@@ -451,7 +451,7 @@ Mode map
   (setq sml-error-overlay (and sml-error-overlay (sml-make-overlay))))
 
   ;; Adding these will fool the matching of parens -- because of a
-  ;; bug in Emacs (in scan_lists, i think)... it would be nice to 
+  ;; bug in Emacs (in scan_lists, i think)... it would be nice to
   ;; have comments treated as white-space.
   ;;(make-local-variable 'parse-sexp-ignore-comments)
   ;;(setq parse-sexp-ignore-comments t)
@@ -484,7 +484,7 @@ the overlay should simply be removed: \\[universal-argument] \
   "The keywords a `|' can follow.")
 
 (defun sml-electric-pipe ()
-  "Insert a \"|\". 
+  "Insert a \"|\".
 Depending on the context insert the name of function, a \"=>\" etc."
   (interactive)
   (let ((case-fold-search nil)          ; Case sensitive
@@ -539,7 +539,7 @@ Depending on the context insert the name of function, a \"=>\" etc."
 
 (defun sml-electric-semi ()
   "Inserts a \;.
-If variable sml-electric-semi-mode is t, indent the current line, insert 
+If variable sml-electric-semi-mode is t, indent the current line, insert
 a newline, and indent."
   (interactive)
   (insert "\;")
@@ -639,14 +639,14 @@ then comment out the highlighted region instead. "
   (interactive "*")
   (if (and transient-mark-mode mark-active)
       (save-excursion
-	(let* ((rbeg (region-beginning))
-	       (rend (region-end)))
-	  (goto-char rbeg)
-	  (insert "(* ")
-	  (goto-char (+ 3 rend))
-	  (insert " *)")
-	  ;; maybe only if font-lock mode is on? I dunno.
-	  (font-lock-fontify-region rbeg rend)))
+    (let* ((rbeg (region-beginning))
+           (rend (region-end)))
+      (goto-char rbeg)
+      (insert "(* ")
+      (goto-char (+ 3 rend))
+      (insert " *)")
+      ;; maybe only if font-lock mode is on? I dunno.
+      (font-lock-fontify-region rbeg rend)))
     (progn
       (insert "(*  *)")
       (forward-char -3))))
@@ -670,9 +670,9 @@ then comment out the highlighted region instead. "
           ;; If we are at eob, just indent 0
           (if (eobp) 0 (sml-calculate-indentation)))
 
-	 ;; In a block comment? -tom7
-	 ((sml-inside-comment-or-string-p)
-	  (sml-indent-same))
+     ;; In a block comment? -tom7
+     ((sml-inside-comment-or-string-p)
+      (sml-indent-same))
 
          ;; Continued string ? (Added 890113 lbn)
          ((looking-at "\\\\")
@@ -684,15 +684,15 @@ then comment out the highlighted region instead. "
             (if (re-search-backward "[^\\\\]\"" nil t)
                 (1+ (current-indentation))
               0))))
-	 ;; XXX tom7: this is dumb when there is no expression following =>.
-	 ;; Can I fix it?
+     ;; XXX tom7: this is dumb when there is no expression following =>.
+     ;; Can I fix it?
          ;; Are we looking at a case expression ?
          ((looking-at "|.*=>")
 
-	  ;; XXX this is the culprit, it seems.
-	  ;; what I really want to do is skip over any parenthesized expressions
-	  ;; (possibly zero) until I get to a =>. Only parenthesized expressions
-	  ;; can have => within them .. uh, maybe let..in..end can too, hmm.
+      ;; XXX this is the culprit, it seems.
+      ;; what I really want to do is skip over any parenthesized expressions
+      ;; (possibly zero) until I get to a =>. Only parenthesized expressions
+      ;; can have => within them .. uh, maybe let..in..end can too, hmm.
 
           (sml-skip-block)
           (sml-re-search-backward "=>")
@@ -717,8 +717,8 @@ then comment out the highlighted region instead. "
 
          ((looking-at "and\\b")
           (if (or (sml-find-matching-starter sml-starters-reg)
-		  ;; (sml-inside-comment-or-string-p)
-		  )
+          ;; (sml-inside-comment-or-string-p)
+          )
               (current-column)
             0))
 
@@ -736,7 +736,7 @@ then comment out the highlighted region instead. "
           (sml-find-match-indent "else" "\\belse\\b" "\\bif\\b" t))
 
          ((looking-at "then\\b")        ; Match the if + extra indentation
-	                                ; tom7 removed the extra indentation!
+                                    ; tom7 removed the extra indentation!
           (sml-find-match-indent "then" "\\bthen\\b" "\\bif\\b" t))
 
          ((and sml-case-indent (looking-at "of\\b"))
@@ -795,17 +795,17 @@ then comment out the highlighted region instead. "
       (beginning-of-line)
       (skip-chars-backward "\t\n ")
       (while (/= (current-column) (current-indentation))
-	(sml-backward-sexp))
+    (sml-backward-sexp))
       (skip-chars-forward "\t |")
       (let ((indent (current-column)))
-	(skip-chars-forward "\t (")
-	(cond
-	 ;; tom7 added this, for his personal comment indentation pref.
-	 ;; (on 011207)
-	 ((looking-at "\\* ")
-	  (+ (current-column) 2))
-	 ;; else keep the same indentation as previous line
-	 (t indent))))))
+    (skip-chars-forward "\t (")
+    (cond
+     ;; tom7 added this, for his personal comment indentation pref.
+     ;; (on 011207)
+     ((looking-at "\\* ")
+      (+ (current-column) 2))
+     ;; else keep the same indentation as previous line
+     (t indent))))))
 
 ;; Note: This is buggy for a case like
 ;; if cond then true else false;
@@ -813,7 +813,7 @@ then comment out the highlighted region instead. "
 ;;
 ;; When indenting the "another statement" line, we move the
 ;; cursor to the ";" after the if, then sml-backward-sexp to the
-;; opening paren. But then I guess we skip the open paren 
+;; opening paren. But then I guess we skip the open paren
 (defun sml-get-indent ()
   (save-excursion
     (let ((case-fold-search nil))
@@ -830,7 +830,7 @@ then comment out the highlighted region instead. "
       ;; (also applies to some expressions like "let in 3 end"), which
       ;; was terminated by the semicolon.
       (let ((passed-semicolon (looking-at ";")))
-	(if passed-semicolon (sml-backward-sexp))
+    (if passed-semicolon (sml-backward-sexp))
       (cond
        ((save-excursion (sml-backward-sexp) (looking-at "end\\b"))
         (- (current-indentation) sml-indent-level))
@@ -841,20 +841,20 @@ then comment out the highlighted region instead. "
         (let ((indent (current-column)))
           (skip-chars-forward "\t (")
           (cond
-	   ;; if we passed a semicolon, always indent to the same
-	   ;; spot as the previous line (see discussion above).
-	   (passed-semicolon indent)
-	   
-	   ;; tom7 added this, for his personal comment indentation pref.
-	   ;; (on 011207)
-	   ;; XXX - this is probably dead code now because of sml-indent-same
-	   ((looking-at "\\* ")
-	    (+ (current-column) 2))
+       ;; if we passed a semicolon, always indent to the same
+       ;; spot as the previous line (see discussion above).
+       (passed-semicolon indent)
+
+       ;; tom7 added this, for his personal comment indentation pref.
+       ;; (on 011207)
+       ;; XXX - this is probably dead code now because of sml-indent-same
+       ((looking-at "\\* ")
+        (+ (current-column) 2))
            ;; Started val/fun/structure...
-	   
-	   ;; tom 7 added this; if indent is skewed otherwise (29 Apr 2003)
-	   ((looking-at "if\\b")
-	    (+ (current-column) 3))
+
+       ;; tom 7 added this; if indent is skewed otherwise (29 Apr 2003)
+       ((looking-at "if\\b")
+        (+ (current-column) 3))
 
            ((looking-at sml-indent-starters-reg)
             (+ (current-column) sml-indent-level))
@@ -878,7 +878,7 @@ then comment out the highlighted region instead. "
     (let ((levelpar 0)                  ; Level of "()"
           (levelcurl 0)                 ; Level of "{}"
           (levelsqr 0)                  ; Level of "[]"
-	  (ilevel 0)                    ; 1 or 2? -- tom7
+      (ilevel 0)                    ; 1 or 2? -- tom7
           (backpoint (max (- (point) sml-paren-lookback) (point-min))))
       (catch 'loop
         (while (and (/= levelpar 1) (/= levelsqr 1) (/= levelcurl 1))
@@ -889,11 +889,11 @@ then comment out the highlighted region instead. "
                    ((looking-at ")") (setq levelpar (1- levelpar)))
                    ((looking-at "\\[") (progn (setq levelsqr (1+ levelsqr)) (setq ilevel 1)))
                    ((looking-at "\\]") (setq levelsqr (1- levelsqr)))
-                   ((looking-at "{") (progn 
-				       (setq levelcurl (1+ levelcurl)) 
-				       (setq ilevel (save-excursion
-						     (forward-char 1)
-						     (if (looking-at " ") 2 1)))))
+                   ((looking-at "{") (progn
+                       (setq levelcurl (1+ levelcurl))
+                       (setq ilevel (save-excursion
+                             (forward-char 1)
+                             (if (looking-at " ") 2 1)))))
                    ((looking-at "}") (setq levelcurl (1- levelcurl)))))
             (throw 'loop 0)))           ; Exit with value 0
         (if (save-excursion
@@ -931,16 +931,16 @@ then comment out the highlighted region instead. "
   "Fill a paragraph comment like fill-paragraph."
   (interactive)
   (cond ((sml-inside-comment-or-string-p)
-	 (save-excursion
-	   (save-restriction
-	     (let* ((pp  (point))
-		    (beg (search-backward "(*"))
-		    (end (search-forward "*)")))
-	       (narrow-to-region beg end)
-	       (goto-char pp)
-	       (fill-paragraph nil)))))
+     (save-excursion
+       (save-restriction
+         (let* ((pp  (point))
+            (beg (search-backward "(*"))
+            (end (search-forward "*)")))
+           (narrow-to-region beg end)
+           (goto-char pp)
+           (fill-paragraph nil)))))
 
-	(t (error "Can only fill inside a comment block."))))
+    (t (error "Can only fill inside a comment block."))))
 
 (defun sml-skip-block ()
   (let ((case-fold-search nil))
@@ -1053,7 +1053,7 @@ then comment out the highlighted region instead. "
       (max (1+ (current-column))        ; Else indent at comment column
            comment-column))))           ; except leave at least one space.
 
-;;; INSERTING PROFORMAS (COMMON SML-FORMS) 
+;;; INSERTING PROFORMAS (COMMON SML-FORMS)
 
 (defvar sml-forms-alist
   '(("let") ("local") ("case") ("abstype") ("datatype")
@@ -1078,7 +1078,7 @@ signature, structure, and functor by default.")
 (defun sml-addto-forms-alist (name)
   "Assign a name to the last keyboard macro defined.
 Argument NAME is transmogrified to sml-form-NAME which is the symbol
-actually defined. 
+actually defined.
 
 The symbol's function definition becomes the keyboard macro string.
 
@@ -1111,7 +1111,7 @@ just move to the proper indentation if the line is blank\; otherwise
 insert at point (which forces indentation to current column).
 
 The default form to insert is 'whatever you inserted last time'
-\(just hit return when prompted\)\; otherwise the command reads with 
+\(just hit return when prompted\)\; otherwise the command reads with
 completion from `sml-forms-alist'."
   (interactive "P")
   (let ((name (completing-read
@@ -1142,7 +1142,7 @@ completion from `sml-forms-alist'."
                (error
                 (format "Undefined format function: %s" template))))))))
 
-(defun sml-form-let () 
+(defun sml-form-let ()
   "Insert a `let in end' template."
   (interactive)
   (sml-let-local "let"))
@@ -1276,7 +1276,7 @@ should specify \":\" or \":>\" and the constraining signature."
 (font-lock-add-keywords 'sml-mode '(
 (
 ;; regexp for all ML keywords:
-"\\<\\(if\\|then\\|else\\|while\\|do\\|rec\\|eqtype\\|withtype\\|fun\\|andalso\\|orelse\\|val\\|fn\\|let\\|in\\|end\\|case\\|of\\|open\\|structure\\|signature\\|struct\\|sig\\|functor\\|raise\\|type\\|datatype\\|where\\|with\\|exception\\|nonfix\\|local\\|nonfix\\|and\\|handle\\|as\\|op\\|infix\\|infixr\\|abstype\\|sharing\\|include\\)\\>" 
+"\\<\\(if\\|then\\|else\\|while\\|do\\|rec\\|eqtype\\|withtype\\|fun\\|andalso\\|orelse\\|val\\|fn\\|let\\|in\\|end\\|case\\|of\\|open\\|structure\\|signature\\|struct\\|sig\\|functor\\|raise\\|type\\|datatype\\|where\\|with\\|exception\\|nonfix\\|local\\|nonfix\\|and\\|handle\\|as\\|op\\|infix\\|infixr\\|abstype\\|sharing\\|include\\)\\>"
 . font-lock-keyword-face)
 (
 ;; regexp for ML constants:
@@ -1284,10 +1284,10 @@ should specify \":\" or \":>\" and the constraining signature."
 . font-lock-constant-face
 )
 ;; for the type part of a data/with/eq type decl.
-("\\<\\(data\\|with\\|eq\\)?type *\\( \\|'[A-Za-z'_]*\\|( *\\('[A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][A-Za-z0-9_']*\\)"
+("\\<\\(data\\|with\\|eq\\)?type *\\( \\|'[A-Za-z'_]* \\|( *\\('[A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][A-Za-z0-9_']*\\)"
 4 font-lock-type-face)
 
-;; punctuation should be subtle 
+;; punctuation should be subtle
 ("\\(\\]\\|\\[\\|[();=`<>|{}^#.,:]\\)" . tom7-subtle-text-face)
 
 ;; semicolon before end or closeparen
@@ -1346,7 +1346,7 @@ should specify \":\" or \":>\" and the constraining signature."
 ;  (run-hooks 'inferior-sml-mode-hook)
   )
 
-;; ;;;###autoload 
+;; ;;;###autoload
 
 (defun comment-sml-run (cmd arg)
   "Run the ML program CMD with given arguments ARGS.
@@ -1356,8 +1356,8 @@ This usually updates `sml-buffer' to a buffer named *CMD*."
          (args (if (equal arg "") () (sml-args-to-list arg))))
     (if (comint-check-proc bname)
         (sml-pop-to-buffer t)           ;do nothing but switch buffer
-      (setq sml-buffer 
-            (if (null args) 
+      (setq sml-buffer
+            (if (null args)
                 ;; there is a good reason for this; to ensure
                 ;; *no* argument is sent, not even a "".
                 (set-buffer (apply 'make-comint pname cmd nil))

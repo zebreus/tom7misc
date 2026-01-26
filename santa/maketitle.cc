@@ -4,14 +4,12 @@
 #include <memory>
 
 #include "ansi.h"
-#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "font-image.h"
 #include "image.h"
-#include "randutil.h"
 
 static void MakeTitle() {
   std::unique_ptr<BitmapFont> font =

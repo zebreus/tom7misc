@@ -1,3 +1,14 @@
+26 Jan 2026 (r6905)
+
+ * Add basic SVG support. Only supports the PDF backend. Image
+   dimensions become floats.
+
+ * Fixed a problem where font metrics were about 0.8% off. Improved
+   compliance of output PDFs.
+
+ * Began splitting up the messy layout.bovex into individual
+   libraries in order to try to get that code tractable again.
+
 26 Oct 2025
 
  * Fixed a problem with the pdf generation code that would drop

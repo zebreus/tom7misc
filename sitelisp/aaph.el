@@ -980,8 +980,8 @@ then comment out the highlighted region instead. "
 "\\<\\(nil\\|true\\|false\\|0[wWxX]+[0-9A-Fa-f]+\\|~?[0-9]+\\.[0-9]+\\|~?[0-9]+\\)\\>"
 . font-lock-constant-face
 )
-;; for the type part of a datat/with/eq type decl.
-("\\<\\(data\\)?type *\\( \\|[A-Za-z'_]*\\|( *\\([A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][-A-Za-z0-9_']*\\)"
+;; for the type part of a data/with/eq type decl.
+("\\<\\(data\\)?type *\\( \\|[A-Za-z'_]* \\|( *\\([A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][-A-Za-z0-9_']*\\)"
 4 font-lock-type-face)
 
 ;; punctuation should be subtle

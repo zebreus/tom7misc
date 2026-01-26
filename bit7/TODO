@@ -12,6 +12,16 @@ right stem compared to latin u.
    ├─269318 /usr/local/sbin/httpi.exe
    └─269319 /usr/local/sbin/httpi.exe
 
+╔══════════════════════════════════════════════════════════════════════════════╗
+║ Upgrade Embedded Controller from 0x02004203 to 0x02004b03?                   ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║ This update improves the performance and stability of the Embedded           ║
+║ Controller in DGX Spark                                                      ║
+║                                                                              ║
+║ NVIDIA_DGX_Spark must remain plugged into a power source for the duration    ║
+║ of the update to avoid damage.                                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
 
 Glyphs todo:
  - unicode stars
@@ -26,10 +36,9 @@ Glyphs todo:
      https://www.compart.com/en/unicode/block/U+2E00
  - I want to use ↻ and friends!!
 
-Should finish Greek: ά appears in "Ελλάδα", the name of Greece!
+Emoji TODO: 🎉 ✅ ⚠️
 
  - From mojibake: ‚ which is U+201A
-    ord("ŉ"): "ʼn",
     ord("ﬀ"): "ff",  # Latin typographical ligatures
     ord("ﬁ"): "fi",
     ord("ﬂ"): "fl",
@@ -38,17 +47,7 @@ Should finish Greek: ά appears in "Ελλάδα", the name of Greece!
     ord("ﬅ"): "ſt",
     ord("ﬆ"): "st",
 
-
-For math like lean:
- - Superscripts and Subscripts
-
 // Common in Wikipedia:
-U+02c8 (ˈ): 130261
-U+03af (ί): 93181
-U+02d0 (ː): 84841
-U+03ac (ά): 67724
-U+03cc (ό): 56472
-U+03ad (έ): 45479
 U+026a (ɪ): 41570  (IPA small caps?)
 U+300c (「): 30788
 U+300d (」): 30753
@@ -89,8 +88,6 @@ TODO:
  - improve 2x versions of some new emoji
  - light greek in fixedersyslight2x
  - I guess switch to two-wide characters where that's what unicode wants?
-
-// U+2024 ( ) narrow no-break space? Just space?
 
 maybe .notdef?
 

@@ -2,15 +2,16 @@
 #ifndef _ESCAPE_UPPER_H
 #define _ESCAPE_UPPER_H
 
-#include "escapex.h"
-#include "level.h"
-#include "player.h"
+#include <string>
+
 #include "http.h"
 #include "textscroll.h"
 #include "drawable.h"
 #include "dirindex.h"
 
 struct Upper {
+  using string = std::string;
+
   virtual ~Upper() {};
 
   /* create an upper, using the http connection hh,
@@ -51,8 +52,8 @@ struct Upper {
 
    When created, it loads each of the files in the directory into
    memory, generating their MD5 hashes. This applies to subdirectories
-   as well. So, there is a hashtable mapping md5s to file contents.
-   ("content") There is also a hashtable mapping file names to
+   as well. So, there is a hashtable ("content") mapping md5s to file
+   contents. There is also a hashtable mapping file names to
    oldentries.
 
    First, makedir is called on all of the subdirectories (and their

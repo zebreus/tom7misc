@@ -75,28 +75,27 @@ in
 [[title (layout doc-title)][vspace (point 5.0)][
 sub-title (layout doc-subtitle)]
 
- [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
+[author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
 
 I have one of the oldest websites on the internet,[footnote[Find it at
 http://tom7.org/]] dating back to at least AD 1996. It has so far
 outlived its original host (aol.com) by 18 years. Now that 99.9999999%
 of the internet is deepfake pornography, AI-generated crypto scams,
-and Italian Brainrot, being in Lycos’s “Top 5% Of The Web” is a
+and Italian Brainrot, a website being in Lycos’s “Top 5% Of The Web” is a
 triviality achieved at the first human keystroke. But in the late
 1990s, it used to [it[mean]] something.
 
-Here's the thing: I just want my public website to be on the internet
+Here’s the thing: I just want my public website to be on the internet
 and accessible in a web browser!
 
-I don't want you to have to log in, or give me permission for cookies,
-or enable notifications, or it's better in our app, or sign up for the
+I don’t want you to have to log in, or give me permission for cookies,
+or enable notifications, or it’s better in our app, or sign up for the
 e-mail list, or figure out which one is the search box and which one
 is a trick to get me to enter my search terms in the e-mail sign up
 box, nor do I want you to consent to data collection per EU General
 Data Protection Regulations, click to enable Flash Player, or 15
 second interstial video advertisement, or [checked-box-icon] W3C XHTML
 compliant.
-
 
 [section [BoVeX improvements]]
 
@@ -108,7 +107,7 @@ murphy2024badness]
 
 [paragraph[Compliance]] Being in a mood for rules, whether the
 compliance with them malicious or not, I fixed a number of picky
-technical issues with BoVeX's PDF backend. These did not affect
+technical issues with BoVeX’s PDF backend. These did not affect
 display (that I know of) but did cause some validators to barf with
 helpful diagnostics like [tt[The document structure is corrupt]] (Adobe
 Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I believe
