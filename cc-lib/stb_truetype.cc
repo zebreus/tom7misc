@@ -4237,6 +4237,90 @@ STBTT_DEF int stbtt_CompareUTF8toUTF16_bigendian(const char *s1, int len1, const
 #pragma GCC diagnostic pop
 #endif
 
+STBTT_DEF stbtt_PDFMetrics
+stbtt_GetAdditionalPDFMetrics(const stbtt_fontinfo *info) {
+  stbtt_PDFMetrics metrics;
+
+  metrics.italic_angle = 0.0f;
+  metrics.stem_v = 0.0f;
+  metrics.flags = 0;
+
+  stbtt_uint16 mac_style = ttUSHORT(info->data + info->head + 44);
+  const int units_per_em = ttUSHORT(info->data + info->head + 18);
+
+  const bool is_bold = (mac_style & 1);
+  const bool is_italic = (mac_style & 2);
+
+  if (is_italic) metrics.flags |= stbtt_PDFMetrics::FLAG_IS_ITALIC;
+  if (is_bold) metrics.flags |= stbtt_PDFMetrics::FLAG_FORCE_BOLD;
+
+  // We assume that if there's a unicode map, this is a regular
+  // text font (not dingbats).
+  metrics.flags |=
+    (info->index_map == 0) ? stbtt_PDFMetrics::FLAG_SYMBOLIC :
+    stbtt_PDFMetrics::FLAG_NON_SYMBOLIC;
+
+  metrics.flags |= stbtt_PDFMetrics::FLAG_SERIF;
+
+  // Guess italic angle if marked italic, but this should get
+  // overwritten below for a good font.
+  if (is_italic) {
+    metrics.italic_angle = -11.0f;
+  }
+
+  // If we have a "post" table, we can get an accurate italic
+  // angle.
+  if (stbtt_uint32 post =
+      stbtt__find_table(info->data, info->fontstart, "post")) {
+    // Fixed-point 16.16
+    stbtt_int32 angle = ttLONG(info->data + post + 4);
+    bool is_fixed = 0 != ttULONG(info->data + post + 12);
+
+    // Convert 16.16 fixed point to float
+    metrics.italic_angle = (double)angle / 65536.0;
+
+    if (is_fixed) metrics.flags |= stbtt_PDFMetrics::FLAG_FIXED_PITCH;
+  }
+
+  // StemV is heuristic, based on font weight.
+  metrics.stem_v = units_per_em * (is_bold ? 0.12f : 0.08f);
+
+
+  // If we have an OS/2 table (which we usually do) then we can
+  // get a better stemv
+  if (stbtt_uint32 os2 =
+      stbtt__find_table(info->data, info->fontstart, "OS/2")) {
+
+    const stbtt_uint16 weight_class = ttUSHORT(info->data + os2 + 4);
+    if (weight_class < 400) {
+      // Light
+      metrics.stem_v = units_per_em * 0.05f;
+    } else if (weight_class > 650) {
+      // Bold
+      metrics.stem_v = units_per_em * 0.12f;
+    } else {
+      // Normal
+      metrics.stem_v = units_per_em * 0.08f;
+    }
+
+    // We can also get a better guess at "serif" using
+    // the PANOSE fields.
+
+    const stbtt_uint8 serif_style = info->data[os2 + 32 + 1];
+
+    // Only serif styles 11..13 are explicitly sans-serif, so
+    // these are the only cases where we clear the bit. Otherwise,
+    // serif is the conventional default.
+    if (serif_style >= 11 && serif_style <= 13) {
+      metrics.flags &= ~stbtt_PDFMetrics::FLAG_SERIF;
+    } else {
+      metrics.flags |= stbtt_PDFMetrics::FLAG_SERIF;
+    }
+  }
+
+  return metrics;
+}
+
 #endif // STB_TRUETYPE_IMPLEMENTATION
 
 

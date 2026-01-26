@@ -883,6 +883,33 @@ enum { // languageID for STBTT_PLATFORM_ID_MAC
 };
 
 // Additional stuff by tom7.
+
+// For embedding TTFs in PDF, there are some required fields.
+// The bounding box, ascent and descent are available using the
+// standard interface above. These are approximated and/or based on
+// header fields that are frequently wrong/default for internet
+// fonts, so your mileage may vary.
+struct stbtt_PDFMetrics {
+  static constexpr uint32_t FLAG_IS_ITALIC = 1 << 6;
+  static constexpr uint32_t FLAG_FORCE_BOLD = 1 << 18;
+  static constexpr uint32_t FLAG_NON_SYMBOLIC = 1 << 5;
+  static constexpr uint32_t FLAG_SYMBOLIC = 1 << 2;
+  static constexpr uint32_t FLAG_SERIF = 1 << 1;
+  static constexpr uint32_t FLAG_FIXED_PITCH = 1 << 0;
+
+  // The angle of vertical stems (like 'l') in degrees. 0° is vertical.
+  // Typically the angle for italic fonts is negative (leaning forward).
+  float italic_angle = 0.0f;
+  // Thickness of vertical strokes, in glyph space units. We guess
+  // this from the font weight.
+  float stem_v = 0.0f;
+  // Bitmask of the above flags. Matches PDF /Flags key.
+  uint32_t flags = 0;
+};
+
+stbtt_PDFMetrics stbtt_GetAdditionalPDFMetrics(const stbtt_fontinfo *info);
+
+
 // Dumps the font's tables to stdout.
 void stbtt__print_tables(const stbtt_fontinfo *info);
 

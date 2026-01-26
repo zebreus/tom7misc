@@ -11,6 +11,8 @@
 //   - Added compression
 //   - Added QR codes
 //   - Added support for embedded TrueType fonts
+//   - Scale to 1000.0 units/em, not 1008.0.
+//   - Fix some compliance issues (e.g. xrefs should be exactly 20 bytes)
 //   - Added support for some of SVG
 //   - Switched to RGBA color format and use "alpha" polarity
 //       instead of "transparency"
@@ -18,22 +20,7 @@
 // PERF: Output will have a lot of 200.00000000 stuff; use smarter
 // float to text routine.
 
-/* TODO
-Validating file "minimal.pdf" for conformance level pdf1.3
-The key Flags is required but missing.
-The key FontBBox is required but missing.
-The key ItalicAngle is required but missing.
-The key Ascent is required but missing.
-The key Descent is required but missing.
-The key CapHeight is required but missing.
-The key StemV is required but missing.
-The value of the key Flags is 0 but must be either symbolic or non-symbolic.
-The document does not conform to the requested standard.
-The document doesn't conform to the PDF reference (missing required entries, wrong value types, etc.).
-The document contains fonts without embedded font programs or encoding information (CMAPs).
-The document does not conform to the PDF 1.3 standard.
-Done.
-*/
+// TODO: There are still PDF/A (etc.) compliance issues.
 
 #include "pdf.h"
 
@@ -537,8 +524,36 @@ PDF::Object *PDF::TrueTypeFontDescriptor(
     int font_index) {
   CHECK(ttf != nullptr);
 
+  // Various keys here are "required," though it's not clear how much
+  // it matters (they are mostly used for font substitution, which
+  // doesn't matter when we embed the font). We don't use these for
+  // our own calculations, so we just compute and output them here.
+
+  const double pdf_scale =
+    stbtt_ScaleForMappingEmToPixels(ttf, 1000.0f);
+
   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
   stbtt_GetFontBoundingBox(ttf, &x0, &y0, &x1, &y1);
+
+  int ascent = 0, descent = 0, line_gap = 0;
+  stbtt_GetFontVMetrics(ttf, &ascent, &descent, &line_gap);
+
+  // Estimate capital height using the glyph for capital H.
+  // This is apparently the standard approach since many fonts
+  // lack correct values in the OS/2 table.
+  // (Maybe this belongs in stbtt_PDFMetrics?)
+  const int cap_height = [&]{
+      int ix0, iy0, ix1, iy1;
+      if (int glyphIndex = stbtt_FindGlyphIndex(ttf, 'H')) {
+        stbtt_GetGlyphBox(ttf, glyphIndex, &ix0, &iy0, &ix1, &iy1);
+        return iy1;
+      }
+
+      // Fallback guess...?
+      return ascent;
+    }();
+
+  stbtt_PDFMetrics pdf_metrics = stbtt_GetAdditionalPDFMetrics(ttf);
 
   // PERF: Make it possible to just pass a byte vector
   std::string bytes_string;
@@ -554,17 +569,6 @@ PDF::Object *PDF::TrueTypeFontDescriptor(
   // Now the desriptor itself.
   StreamObj *desc = AddObject(new StreamObj);
 
-  // These values are "required," though it's not clear how much
-  // it matters.
-  /*
-  /Flags (Integer)
-     /Ascent (Number)
-     /Descent (Number)
-     /CapHeight (Number)
-     /StemV (Number)
-     /ItalicAngle (Number)
-  */
-
   // More in PDF 1.3 spec on p330, 5.7 Font Descriptors
   AppendFormat(&desc->stream,
                "<<\n"
@@ -577,8 +581,27 @@ PDF::Object *PDF::TrueTypeFontDescriptor(
                filestream->index);
 
   AppendFormat(&desc->stream,
+               "  /Ascent {}\n"
+               "  /Descent {}\n",
+               Float(ascent * pdf_scale),
+               Float(descent * pdf_scale));
+
+  AppendFormat(&desc->stream,
+               "  /CapHeight {}\n",
+               Float(cap_height * pdf_scale));
+
+  AppendFormat(&desc->stream,
+               "  /Flags {}\n"
+               "  /StemV {}\n"
+               "  /ItalicAngle {}\n",
+               pdf_metrics.flags,
+               Float(pdf_metrics.stem_v * pdf_scale),
+               Float(pdf_metrics.italic_angle));
+
+  AppendFormat(&desc->stream,
                "  /FontBBox [{} {} {} {}]\n",
-               x0, y0, x1, y1);
+               Float(x0 * pdf_scale), Float(y0 * pdf_scale),
+               Float(x1 * pdf_scale), Float(y1 * pdf_scale));
 
   AppendFormat(&desc->stream,
                ">>\n");
