@@ -48,8 +48,7 @@ static void TestCRI() {
   Print("Wrote test.cri\n");
 }
 
-static void TestExpiration() {
-  constexpr std::string_view CERT = R"(
+static constexpr std::string_view CERT = R"(
 -----BEGIN CERTIFICATE-----
 MIIFMzCCBBugAwIBAgISBvoWn7+3czOWvLkGJd6YcJygMA0GCSqGSIb3DQEBCwUA
 MDMxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1MZXQncyBFbmNyeXB0MQwwCgYDVQQD
@@ -82,6 +81,7 @@ QhrbdEZr4Uq6yKfW0k4baZQPEoHkOOnL5MYMsjcu66UOjyFu/C1o
 -----END CERTIFICATE-----
 )";
 
+static void TestExpiration() {
   std::vector<uint8_t> cert =
     PEM::ParsePEM(CERT, "CERTIFICATE");
 
@@ -89,6 +89,17 @@ QhrbdEZr4Uq6yKfW0k4baZQPEoHkOOnL5MYMsjcu66UOjyFu/C1o
   CHECK(exp == "260221173112Z") << exp;
   time_t expt = CSR::GetExpirationTime(cert);
   CHECK(expt == int64_t{1771695072}) << expt;
+}
+
+static void TestSerial() {
+  std::vector<uint8_t> cert =
+    PEM::ParsePEM(CERT, "CERTIFICATE");
+  std::vector<uint8_t> expected = {
+    0x06, 0xfa, 0x16, 0x9f, 0xbf, 0xb7, 0x73, 0x33,
+    0x96, 0xbc, 0xb9, 0x06, 0x25, 0xde, 0x98, 0x70,
+    0x9c, 0xa0,
+  };
+  CHECK(CSR::GetSerialNumber(cert) == expected);
 }
 
 int main(int argc, char **argv) {
@@ -99,6 +110,7 @@ int main(int argc, char **argv) {
   TestCRI();
   TestCSR();
   TestExpiration();
+  TestSerial();
 
   Print("OK\n");
   return 0;

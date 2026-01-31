@@ -69,6 +69,9 @@ let
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
+  val http = tt[httpi]
+  val openssl = [OpenSSL]
+
 in
 
 (main-text (body-font
@@ -92,10 +95,199 @@ I don’t want you to have to log in, or give me permission for cookies,
 or enable notifications, or it’s better in our app, or sign up for the
 e-mail list, or figure out which one is the search box and which one
 is a trick to get me to enter my search terms in the e-mail sign up
-box, nor do I want you to consent to data collection per EU General
-Data Protection Regulations, click to enable Flash Player, or 15
-second interstial video advertisement, or [checked-box-icon] W3C XHTML
-compliant.
+box, nor dismiss 15% off coupon / privacy policy pop-up / how may I
+help you? AI chat assistant, nor do I want you to consent to data
+collection per EU General Data Protection Regulations, click to enable
+Flash Player, or 15 second interstial video advertisement, or
+[checked-box-icon] W3C XHTML compliant.
+
+[helvetica[U N F O R T U N A T E L Y]], the Internet is not that place
+any more! One possibly controversial opinion of mine is that one
+contributor to this enshittification of the web is the phenomenon I
+shall call "toxic max-security." This is where security defaults are
+turned up to a silly degree, scaring users, creating pointless toil and
+chores for good guys, and arguably [it[reducing]] the usefulness of
+security due to alarm fatigue. The specific toxicity that has set
+me off in this here SIGBOVIK paper is this [color 0x770000[RED ALERT]]:
+
+XXX screenshot
+
+This is a real-life warning screen shown to me when I tried to use
+the Chrome "web browser" to visit my own website at [tt[http://tom7.org/]].
+My website has never had HTTPS, does not give any indication that it
+wants or expects HTTPS. I did not ask for the [tt[https://]] protocol
+in the URL. The website is completely public, available on the Internet
+Archive, and does process or contain any private information or anything
+sensitive in any way. Its privacy policy is: LOL. I can tell you for
+certain that when I was connecting to my own website, there was no
+attacker trying to "steal my credit card." There is simply no place to
+even put my credit card number on my website short of posting it as
+a comment on my blog.
+
+Having seen this screen, I officially declare that I have 0xBEEF5 with
+someone on the Chrome product team who is preventing users from getting
+to my website for the sake of toxic max-security. But before that final
+straw, there were many other irritations.
+
+(* copy-paste URL
+   can't go to http site in icognito
+*)
+
+Now I do want to be clear: I am glad that we have [tt[https]], and I
+think it should be supported widely, and certainly for my bank account
+and e-mail and moderately popular YouTube channel. I think it should
+be clear to a user who is capable of paying attention when they might
+not be on the site they think they're on. I truly think cryptography
+is fascinating and I liked when there was a little green lock in my
+URL bar. But in this paper I hope to convince you that [tt[https]] has
+lost the plot somewhat, and will point out some of its own shortcomings
+and hypocrisies,
+
+I think this person probably thinks they are one of the good guys, but
+I posit that they are more like the following chumps:
+
+[ul
+
+[The person that added signing requirements for programs on Mac OS,
+so that users get a scary warning if they download a program that a
+hobbyist made. By the way, to sign a piece of software, you need
+to pay an extortive $100/year fee to Apple.] ::
+
+[The tool that added an RFID scanner to my General Electric
+refrigerator (presumably increasing its cost) that scans an RFID
+tag in the $60 water filter cartridges (presumably increasing
+their cost) and prevents you from using one that does not have
+the proper Drinking Rights Management credentials. By the way this
+scanner is pretty janky and sometimes just doesn't work.] ::
+
+[The turd that requires my video game to install kernel-mode
+anti-cheat provisions that accuse me of cheating after installing an
+official Windows update, and that requires me to be online to play the
+[it[single-player mode]] of a video game, and which will eventually be
+completely unplayable when they turn down the server] ::
+
+[The absolute shits that have locked down corporate computers with the
+assumption that the user can't have a legitimate reason to change
+settings on it, put in a USB stick, use the command line, run an
+"untrusted" application like [tt[emacs]] or something that I just
+wrote and compiled myself, or basically any application other than a
+web browser, even if that user has been programming for 40 years and
+has a Ph.D. in computer science and was hired for that very
+experience.] ::
+
+nil]
+
+This slander applies not just to the product managers who instigate
+such user-hostile ideas, but to the engineers who implement them
+without questioning the impact on the user. Or [it[especially]] if the
+engineer disagrees with the idea but does it anyway because they have
+abdicated their responsibility to follow the direction their moral
+compass points. Grow some guts! The system is actually not set up
+very well to force you to do things like this.
+
+But don't worry: This paper is not only an extended, petty rant about
+a time that I was annoyed by a warning message. It is also an
+extended, petty project to attempt to get some kind of symbolic
+revenge for the time that I was annoyed by a warning message.
+
+[section [TLS]]
+
+"TLS" is the new name for SSL, which is the new name for HTTPS.[cite XXX]
+There's something a little strange about that sentence: A name for a name
+for a name. Anyway!
+
+[section [The many dirty secrets of TLS]]
+
+(* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
+
+OCSP is now deprecated (at least by Let's Encrypt)
+https://letsencrypt.org/2024/12/05/ending-ocsp
+
+
+*)
+
+TODO: Getting certificates
+
+(*
+We have a pretty good handle on the computational resources needed
+to break an RSA key of a certain level. Is it plausible that someone
+would spend nation-state level resources to intercept my credit
+card number?
+
+openssl, the source of most security vulnerabilities
+
+even openssl is XXX lines of code
+*)
+
+[section [Let'sn't Encrypt]]
+
+[section [Niceities]]
+
+Most of the software I make is quite hostile to users of it. This is
+for a few reasons: I generally make the software for my own use, and
+that use is typically self-flagellative, and so if you are using the
+software then you are clearly asking for the flagellum (example: file
+system that stores your data in live emulated Tetris games). But also,
+there's a selective pressure here that is---if not intentionally so,
+then certainly by welcome byproduct---a sort of autonomous tech
+support talisman. This is sort of like those robot phone trees that,
+when you call the bank’s technical support to tell them that their TLS
+certificate has expired, the bots ask if you if you want to do a menu
+of somethings that can be trivially accomplished on the bank’s
+website, with the idea that they can ward off the majority of their
+tech support calls without a word spoken to human ears. If the first
+paragraph of the documentation is “You will need a modern C++
+compiler,” it increases the quality of the e-mail inquiries to
+a manageable level.[footnote[It is also, not coincidentally, akin to
+regularly having a few minor math lectures as digressions in one's
+YouTube videos.]]
+
+But! This time, you know, the art project is best realized if
+the [httpi] server is used by people other than me; maybe even
+[it[multiple]] people. So, this time, I tried to make the software
+easy to use (at least as far as makes sense for a linux daemon).
+It is documented in the file [tt[INSTALL]], which does begin by
+saying that you will need a modern C++ compiler.
+
+[httpi] is manually compiled and installed; the way I like it.
+There are simply no mysterious files. [httpi] stores all its
+configuration in [tt[/etc/httpi/]]. A single text file, [tt[config.txt]],
+tells it what websites you have, how dumb you want the TLS
+malicious compliance to be, and what your credit card number is.
+
+You can use the [tt[multi-gen.exe]] program to make yourself RSA keys.
+These can be 4096 bits so that it is “military-grade encryption” but
+also have as many factors as you want[footnote[The theoretical limit
+is 4096 factors, if every factor is 2. The practical limit is more
+like (XXX 131 or whatever the largest prime that Let's Encrypt
+checks), since Let's Encrypt will automatically reject your
+certificate if it has a factor smaller than XXX.]] so that it is
+almost arbitrarily insecure. You can also just use [openssl] to
+generate keys, as long as they are RSA.
+
+The accompanying program called [tt[renew.exe]] will update your
+certificates from Let’s Encrypt if they need to be updated. You can
+run that in your crontab every day (or ever 10 seconds, if you want)
+or manually whenever someone successfully navigates your phone chatbot
+filters to tell you that your certificate has expired. Alas, in order
+to get a certificate from Let’s Encrypt, you need to endure the Trials
+of ACME. You could probably just use [tt[certbot]] to update your
+certificates. I wish I could offer you a way to skip certificate
+renewal, but this step is [it[the]] essential inconvenience of TLS.
+
+The [httpi] server itself can be run manually the way you like to do
+it, but I recommend [tt[systemd]] and supply an example config file.
+
+The server itself is not super efficient (it forks on every
+connection, for example) but honestly just writing this in a compiled
+language and being thoughtful about dependencies goes a very long way
+compared to peers. Once the server is running it drops root privileges,
+accesses no files, and allocates only a few tiny buffers.
+
+Even configured with the dumbest settings, it
+uses only about 1/3 of the CPU time of Apache in the limit. Having
+looked at the source code of software in this category, I would
+also claim that the source code is much less ...
 
 [section [BoVeX improvements]]
 
@@ -124,7 +316,7 @@ SVG is impossibly complex and has probably never been completely
 implemented, but I made sure to support the features that I see
 in Adobe Illustrator exports so that I can at least personally get
 it to look like I want forevermore. This includes all the path types
-except arcs,
+(except arcs),
 rounded rectangles,
 the three different ways that strokes and fills can be transparent,
 clip paths, transforms, and fill rules.

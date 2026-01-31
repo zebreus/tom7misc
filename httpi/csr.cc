@@ -185,3 +185,33 @@ time_t CSR::GetExpirationTime(std::span<const uint8_t> cert_der) {
   return ParseExpirationTime(
       GetExpirationTimeString(cert_der)).value_or(0);
 }
+
+
+std::vector<uint8_t> CSR::GetSerialNumber(std::span<const uint8_t> cert_der) {
+  PacketParser p(cert_der);
+
+  PacketParser cert = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  PacketParser tbs = ASN1::ParseTLV(&cert, ASN1::TAG_SEQUENCE);
+
+  if (!tbs.empty() && (tbs[0] & 0xF0) == 0xA0) {
+    (void)ASN1::ParseTLV(&tbs, 0xA0);
+  }
+
+  // The serial number.
+  PacketParser ss = ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
+  if (!ss.OK()) {
+    return {};
+  }
+
+  // Extract the raw bytes of the integer.
+  // Note: Since this is a DER INTEGER, if the MSB is 1, it will include
+  // a leading 0x00 byte to indicate it is positive. This copies the exact
+  // payload of the TLV.
+  std::vector<uint8_t> serial;
+  serial.reserve(ss.size());
+  for (size_t i = 0; i < ss.size(); i++) {
+    serial.push_back(ss[i]);
+  }
+
+  return serial;
+}

@@ -46,6 +46,11 @@ struct CSR {
   // Parse UTC Time (260221173112Z) or Generalized Time (20500221173112Z)
   // as used in X.509.
   static std::optional<time_t> ParseExpirationTime(std::string_view t);
+
+  // Get the certificate's serial number. This is technically an integer, but
+  // it is conventional and easiest to just treat it as a byte string. Returns
+  // the empty vector if the serial can't be found.
+  static std::vector<uint8_t> GetSerialNumber(std::span<const uint8_t> cert_der);
 };
 
 #endif
