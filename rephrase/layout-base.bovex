@@ -1,0 +1,308 @@
+(* Core declarations for BoVeX relating to layout.
+   This doesn't include the layout algorithms;
+   it just describes things like the Span and Box
+   objects that are used by the internal GetBoxes,
+   and has standardized wrappers for the internal
+   algorithms. *)
+
+fun inch (d : float) = d *. 72.0
+fun point (d : float) = d
+fun mm (d : float) = d *. 2.8346456664
+(* We say that a pixel is the same as a point. *)
+fun pixel (d : float) = d
+
+object OutputDest of { page : int, frame : int }
+(* internal-output : obj * layout -> unit *)
+
+fun output (page, lay) =
+  internal-output ({(OutputDest) page = page, frame = 0}, lay)
+fun output-frame (page, frame, lay) =
+  internal-output ({(OutputDest) page = page, frame = frame}, lay)
+
+object PageInfo of { duration : int, target : int, section : string }
+(* For slide output, add the duration (as a number of animation frames
+   to hold for) of the page's frame. *)
+fun set-frame-duration (page, frame, dur) =
+  internal-set-page-info ({(OutputDest) page = page, frame = frame },
+                          {(PageInfo) duration = dur})
+
+(* For slide output, add metadata about the target number of seconds
+   for reaching this page. *)
+fun set-target-seconds (page, target) =
+  internal-set-page-info ({(OutputDest) page = page, frame = 0 },
+                          {(PageInfo) target = target})
+(* set the output "section", which changes the filenames for
+   slide output. *)
+fun set-output-section (page, section) =
+  internal-set-page-info ({(OutputDest) page = page, frame = 0 },
+                          {(PageInfo) section = section})
+
+fun layout-concat nil = []
+  | layout-concat (l :: t) = [[l][layout-concat t]]
+
+fun layout-list-join _ nil = []
+  | layout-list-join _ (x :: nil) = x
+  | layout-list-join sep (x :: t) = [[x][sep][layout-list-join sep t]]
+
+(* Low-level node info.
+   Programmers should probably not be looking at or setting the
+   display property. But... I'M a programmer! *)
+val NODE_BOX = "box"
+val NODE_SPAN = "span"
+val NODE_STICKER = "sticker"
+object Node of { display : string }
+
+datatype display = BOX | SPAN | STICKER | GROUP
+fun display-type (attrs : obj) =
+  case attrs of
+    {(Node) display = "box"} => BOX
+  | {(Node) display = "span"} => SPAN
+  | {(Node) display = "sticker"} => STICKER
+  | _ => GROUP
+
+fun map-attrs (f : obj -> obj) (lay : layout) : layout =
+  if is-text lay
+  then node (f {(Object) }) lay
+  else set-attrs (f (get-attrs lay), lay)
+
+fun get-attrs-opt (lay : layout) : obj option =
+  if is-text lay then NONE
+  else SOME (get-attrs lay)
+
+
+(* A box is a fixed-size element that can be moved around within a
+   span during the line-breaking algorithm. Its layout contents are
+   the contents of the node.
+
+   Glue follows each box. It describes the space between that box and
+   the next one, including in the case that the break spans lines. *)
+object Box of { width : float, height : float,
+                (* Transformation for contents.
+                   We could support arbitrary matrices
+                   here? *)
+                dx : float, dy : float, scale : float,
+
+                (* background image (as image handle) *)
+                img : string,
+                img-width : float, img-height : float,
+
+                (* Actual font names, not families. Usually you set
+                   the font on spans and then it is normalized onto
+                   boxes with get-boxes; the box is already fixed
+                   size. This is for cases where
+                   you generate boxes directly (or want to read the
+                   output of get-boxes). *)
+                font-name : string,
+                font-size : float,
+
+                (* RGBA format. 0xFF00FF *)
+                font-color : int,
+
+                (* TODO: a way to indicate ascenders and descenders. *)
+                (* TODO: a way to indicate spaces for channel detection. *)
+
+                (* The ideal width; badness 0. *)
+                glue-ideal : float,
+
+                (* See boxes-and-glue. *)
+                glue-expand : float,
+                glue-contract : float,
+
+                (* Can be positive, negative, zero... *)
+                glue-break-penalty : float,
+                (* When breaking at this point, inserts additional layout.
+                   This is typically a hyphen. *)
+                glue-break-insert : layout,
+                (* When breaking at this point, the width of the box
+                   including the glue-break-insert. *)
+                glue-break-extra-width : float }
+
+fun box (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_BOX) l
+
+(* Get the position attributes (dx, dy) of the Box, or 0 if not set. *)
+fun attrs-pos (attrs : obj) : float * float =
+  let
+    val dx = case attrs of {(Box) dx } => dx | _ => 0.0
+    val dy = case attrs of {(Box) dy } => dy | _ => 0.0
+  in
+    (dx, dy)
+  end
+
+(* A span lays out boxes one after another. Nested spans can be used
+   to set text properties with in the subtree (like the font). *)
+object Span of { line-spacing: float,
+                 (* base font. *)
+                 font-face: string,
+                 font-size: float,
+                 (* Selects a font variant *)
+                 font-bold: bool,
+                 font-italic: bool,
+
+                 (* Inhibit rephrasing of the contents,
+                    even if inside a call to rephrase *)
+                 no-rephrase: bool,
+
+                 (* left, full, center, all *)
+                 justification: string,
+
+                 (* RGBA format. 0xFF00FF *)
+                 font-color : int }
+
+fun span (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_SPAN) l
+
+(* The rendered document is presented to the harness as bunch of
+   stickers, which are positioned (and scaled) relative to their parent.
+   Here the layout contents do not "flow" and can be freely reordered
+   (except that this affects the drawing order).
+
+   It's rare to generate stickers directly.
+
+   TODO: Add path drawing stuff. This is straightforward for PDF, but
+   we would need some kind of rasterization support for the PNG backend!
+*)
+object Sticker of { x: float, y: float, scale: float,
+                    font-name: string,
+                    font-size: float,
+                    font-color: int,
+
+                    img: string,
+                    img-height: float,
+                    img-width: float,
+
+                    (* path/fill properties, used by
+                       rect and line *)
+                    fill-color: int,
+                    stroke-color: int,
+                    line-width: float,
+
+                    (* Rectangle *)
+                    rect-width: float,
+                    rect-height: float,
+
+                    (* Line. x,y give the starting point.
+                       stroke-color and line-width are also
+                       used. *)
+                    line-x1: float,
+                    line-y1: float,
+
+                    (* A closed polygon (using stroke-color,
+                       fill-color, line-width). Since we can
+                       only use base types here, this is a
+                       space-separated sequence of pairs of
+                       floats (decimal) as a string (!)
+                       XXX experimental; not working
+                       *)
+                    polygon: string,
+
+                    video: string,
+                    video-width: float,
+                    video-height: float,
+                    video-loop: bool
+                    }
+
+fun sticker (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_STICKER) l
+
+fun layout-empty (lay : layout) : bool =
+  is-text lay andalso
+  string-empty (get-text lay)
+
+datatype layoutcase =
+  (* Includes empty nodes. *)
+    Text of string
+  | Node of display * obj * layout list
+
+fun layoutcase (l : layout) =
+  if is-text l
+  then Text (get-text l)
+  else
+    let
+      val z = layout-vec-size l
+      fun r n =
+        if n == z then nil
+        else (layout-vec-sub (l, n) :: r (n + 1))
+      val attrs = get-attrs l
+    in
+      Node (display-type attrs, attrs, r 0)
+    end
+
+fun layout-map-text (f : string -> string) (lay : layout) : layout =
+  let
+    fun rec (l : layout) =
+      case layoutcase l of
+        Text s => layout (f s)
+      | Node (_, attrs, ch : layout list) =>
+          node attrs (layout-concat (list-map rec ch))
+  in
+    rec lay
+  end
+
+(* Converts the layout recursively to a string, ignoring any
+   attributes and concatenating all the text nodes. *)
+fun layout-to-string l =
+  if is-text l
+  then get-text l
+  else
+    let val z = layout-vec-size l
+        fun r n = if n == z then ""
+                  else layout-to-string (layout-vec-sub (l, n)) ^
+                       r (n + 1)
+    in r 0
+    end
+
+(* Generates boxes and glue from text, making this into "AllBox" format. *)
+fun get-boxes (content : layout) =
+  internal-get-boxes content
+
+(* Interpret the layout as a list of layouts. *)
+fun unjoin (lay : layout) : layout list =
+  case layoutcase lay of
+    Text s => if string-empty s then nil
+              else lay :: nil
+  | Node (GROUP, attrs, children) =>
+      if obj-empty attrs
+      then children
+      else fail "group may not have attrs"
+  | Node _ => lay :: nil
+
+(* Pack boxes along a dimension. The boxes must be marked with their
+   "width" as the dimension. Usually you want to just use pack-boxes-horiz
+   or pack-boxes-vert below. *)
+datatype packing-algorithm = BEST | FIRST
+datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | ALL-JUSTIFIED | CENTERED
+fun pack-boxes (algo : packing-algorithm,
+                justification : justification,
+                dimension : float, content : layout) :
+  (float * layout list) =
+  let
+    object InternalPackBoxesArg of { algorithm: string,
+                                     justification: string,
+                                     doc: layout }
+    object InternalPackBoxesRet of { badness: float, layout: layout }
+
+    (* This is communicated with a string attribute; an implementation
+       detail. *)
+    val algo-string =
+      case algo of
+        BEST => "best"
+      | FIRST => "first"
+
+    val just-string =
+      case justification of
+        FULLY-JUSTIFIED => "full"
+      | LEFT-JUSTIFIED => "left"
+      | ALL-JUSTIFIED => "all"
+      | CENTERED => "center"
+
+    val arg = {(InternalPackBoxesArg)
+               algorithm = algo-string,
+               justification = just-string,
+               doc = content }
+    val packed = internal-pack-boxes (dimension, arg)
+  in
+    case packed of
+      {(InternalPackBoxesRet) badness, layout} => (badness, unjoin layout)
+    | _ => fail "Bug: Expected badness and layout from pack-boxes"
+  end
