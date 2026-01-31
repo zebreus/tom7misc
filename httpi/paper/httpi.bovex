@@ -69,7 +69,7 @@ let
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
-  val http = tt[httpi]
+  val httpi = tt[httpi]
   val openssl = [OpenSSL]
 
 in
@@ -103,26 +103,30 @@ Flash Player, or 15 second interstial video advertisement, or
 
 [helvetica[U N F O R T U N A T E L Y]], the Internet is not that place
 any more! One possibly controversial opinion of mine is that one
-contributor to this enshittification of the web is the phenomenon I
-shall call "toxic max-security." This is where security defaults are
-turned up to a silly degree, scaring users, creating pointless toil and
+contributor to this enshittification[cite
+doctorow2025enshittification] of the web is the phenomenon I shall
+call “toxic max-security.” This is where security defaults are turned
+up to a silly degree, scaring users, creating pointless toil and
 chores for good guys, and arguably [it[reducing]] the usefulness of
-security due to alarm fatigue. The specific toxicity that has set
-me off in this here SIGBOVIK paper is this [color 0x770000[RED ALERT]]:
+security due to alarm fatigue.[cite akhawe2013alice] The specific
+toxicity that has set me off in this here SIGBOVIK paper is this
+[color 0x770000[RED ALERT]]:
 
 XXX screenshot
 
 This is a real-life warning screen shown to me when I tried to use
-the Chrome "web browser" to visit my own website at [tt[http://tom7.org/]].
+the Chrome “web browser” to visit my own website at [tt[http://tom7.org/]].
 My website has never had HTTPS, does not give any indication that it
 wants or expects HTTPS. I did not ask for the [tt[https://]] protocol
 in the URL. The website is completely public, available on the Internet
 Archive, and does process or contain any private information or anything
 sensitive in any way. Its privacy policy is: LOL. I can tell you for
 certain that when I was connecting to my own website, there was no
-attacker trying to "steal my credit card." There is simply no place to
+attacker trying to “steal my credit card.” First of all, we need not
+discuss the obvious distinction between stealing a credit card and
+stealing a credit card [it[number]]. Second, there is simply no place to
 even put my credit card number on my website short of posting it as
-a comment on my blog.
+a comment on my blog, which, be my guest...!
 
 Having seen this screen, I officially declare that I have 0xBEEF5 with
 someone on the Chrome product team who is preventing users from getting
@@ -137,7 +141,7 @@ Now I do want to be clear: I am glad that we have [tt[https]], and I
 think it should be supported widely, and certainly for my bank account
 and e-mail and moderately popular YouTube channel. I think it should
 be clear to a user who is capable of paying attention when they might
-not be on the site they think they're on. I truly think cryptography
+not be on the site they think they’re on. I truly think cryptography
 is fascinating and I liked when there was a little green lock in my
 URL bar. But in this paper I hope to convince you that [tt[https]] has
 lost the plot somewhat, and will point out some of its own shortcomings
@@ -148,17 +152,17 @@ I posit that they are more like the following chumps:
 
 [ul
 
-[The person that added signing requirements for programs on Mac OS,
+([The person that added signing requirements for programs on Mac OS,
 so that users get a scary warning if they download a program that a
 hobbyist made. By the way, to sign a piece of software, you need
-to pay an extortive $100/year fee to Apple.] ::
+to pay an extortive $100/year fee to Apple.[cite apple2023developer]] ::
 
 [The tool that added an RFID scanner to my General Electric
 refrigerator (presumably increasing its cost) that scans an RFID
 tag in the $60 water filter cartridges (presumably increasing
 their cost) and prevents you from using one that does not have
 the proper Drinking Rights Management credentials. By the way this
-scanner is pretty janky and sometimes just doesn't work.] ::
+scanner is pretty janky and sometimes just doesn’t work.] ::
 
 [The turd that requires my video game to install kernel-mode
 anti-cheat provisions that accuse me of cheating after installing an
@@ -167,15 +171,15 @@ official Windows update, and that requires me to be online to play the
 completely unplayable when they turn down the server] ::
 
 [The absolute shits that have locked down corporate computers with the
-assumption that the user can't have a legitimate reason to change
+assumption that the user can’t have a legitimate reason to change
 settings on it, put in a USB stick, use the command line, run an
-"untrusted" application like [tt[emacs]] or something that I just
+“untrusted” application like [tt[emacs]] or something that I just
 wrote and compiled myself, or basically any application other than a
 web browser, even if that user has been programming for 40 years and
 has a Ph.D. in computer science and was hired for that very
 experience.] ::
 
-nil]
+nil)]
 
 This slander applies not just to the product managers who instigate
 such user-hostile ideas, but to the engineers who implement them
@@ -185,22 +189,22 @@ abdicated their responsibility to follow the direction their moral
 compass points. Grow some guts! The system is actually not set up
 very well to force you to do things like this.
 
-But don't worry: This paper is not only an extended, petty rant about
+But don’t worry: This paper is not only an extended, petty rant about
 a time that I was annoyed by a warning message. It is also an
 extended, petty project to attempt to get some kind of symbolic
 revenge for the time that I was annoyed by a warning message.
 
 [section [TLS]]
 
-"TLS" is the new name for SSL, which is the new name for HTTPS.[cite XXX]
-There's something a little strange about that sentence: A name for a name
+“TLS” is the new name for SSL, which is the new name for HTTPS.[* cite XXX *]
+There’s something a little strange about that sentence: A name for a name
 for a name. Anyway!
 
 [section [The many dirty secrets of TLS]]
 
 (* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
 
-OCSP is now deprecated (at least by Let's Encrypt)
+OCSP is now deprecated (at least by Let’s Encrypt)
 https://letsencrypt.org/2024/12/05/ending-ocsp
 
 
@@ -214,12 +218,45 @@ to break an RSA key of a certain level. Is it plausible that someone
 would spend nation-state level resources to intercept my credit
 card number?
 
-openssl, the source of most security vulnerabilities
+openssl, the source of most security vulnerabilities I mean, I just
+looked to see if OpenSSL was still a fount of security
+vulnerabilities---like, maybe I am being too hard on it?--- and I saw
+that merely [it[three days ago]] there were two different buffer
+overflow vulnerability (CVE-2025-11187, CVE-2025-15467) which "may
+also potentially enable code execution depending on platform
+mitigations" and ten additional "low severity" problems like
+incomplete validation, excessive memory allocation, and null pointer
+dereferences.
 
 even openssl is XXX lines of code
+
+using the credit card to encrypt the data
 *)
 
-[section [Let'sn't Encrypt]]
+[section [Let’sn’t Encrypt]]
+
+In the first decade of the 2000s, if you wanted to have a green
+padlock icon on your site, you needed to find some security
+professionals who would pretend to do some Military Grade secrecy to
+keep their numbers secret, and vouch that you had paid them the
+extortion fee. Despite the eye-popping invoices, all their data center
+laser grid security systems and tactical sunglasses still allowed many
+improper certificates being issued. Trusted Certificate Authorities
+such as Thawte, StartCom, Comodo, DigiNotar, TurkTrust, NICCA, CNNIC,
+WoSign, Symantec, and Certinomis all shit the bed, with the malfeasance
+warranting different levels of spit-take.[cite sslmate2026failures]
+But in my mind, if the whole premise is some kind of absolute trust,
+this should never happen.
+
+In 2014, a non-profit organization known as [it[Let’s Encrypt]] formed,
+with the idea that at least you shouldn’t have to pay an extortion
+fee to have a TLS certificate. Their code is all open source and
+they generally seem to do a good job (although they are not without
+their own incidents) and they are good guys in this story (unless
+they ban me for my hijinks).
+
+
+...
 
 [section [Niceities]]
 
@@ -227,20 +264,20 @@ Most of the software I make is quite hostile to users of it. This is
 for a few reasons: I generally make the software for my own use, and
 that use is typically self-flagellative, and so if you are using the
 software then you are clearly asking for the flagellum (example: file
-system that stores your data in live emulated Tetris games). But also,
-there's a selective pressure here that is---if not intentionally so,
-then certainly by welcome byproduct---a sort of autonomous tech
-support talisman. This is sort of like those robot phone trees that,
-when you call the bank’s technical support to tell them that their TLS
-certificate has expired, the bots ask if you if you want to do a menu
-of somethings that can be trivially accomplished on the bank’s
-website, with the idea that they can ward off the majority of their
-tech support calls without a word spoken to human ears. If the first
-paragraph of the documentation is “You will need a modern C++
-compiler,” it increases the quality of the e-mail inquiries to
-a manageable level.[footnote[It is also, not coincidentally, akin to
-regularly having a few minor math lectures as digressions in one's
-YouTube videos.]]
+system that stores your data in hundreds of thousands of live emulated
+Tetris games). But also, there’s a selective pressure here that
+is—if not intentionally so, then certainly by welcome byproduct—a
+sort of autonomous tech support talisman. This is sort of like those
+robot phone trees that, when you call the bank’s technical support to
+tell them that their TLS certificate has expired, the bots ask if you
+if you want to do a menu of somethings that can be trivially
+accomplished on the bank’s website, with the idea that they can ward
+off the majority of their tech support calls without a word spoken to
+human ears. If the first paragraph of the documentation is “You will
+need a modern C++ compiler,” it increases the quality of the e-mail
+inquiries to a manageable level.[footnote[It is also, not
+coincidentally, akin to regularly having a few minor math lectures as
+digressions in one’s YouTube videos.]]
 
 But! This time, you know, the art project is best realized if
 the [httpi] server is used by people other than me; maybe even
@@ -259,11 +296,11 @@ You can use the [tt[multi-gen.exe]] program to make yourself RSA keys.
 These can be 4096 bits so that it is “military-grade encryption” but
 also have as many factors as you want[footnote[The theoretical limit
 is 4096 factors, if every factor is 2. The practical limit is more
-like (XXX 131 or whatever the largest prime that Let's Encrypt
-checks), since Let's Encrypt will automatically reject your
-certificate if it has a factor smaller than XXX.]] so that it is
-almost arbitrarily insecure. You can also just use [openssl] to
-generate keys, as long as they are RSA.
+like 428 factors, since Let’s Encrypt will automatically reject your
+key if it has a factor smaller than 757[cite lets2026goodkey] (and
+757[sup[428]] < 2[sup[4096]] < 757[sup[429]]).]] so that it is almost
+arbitrarily insecure. You can also just use [openssl] to generate
+keys, as long as they are RSA.
 
 The accompanying program called [tt[renew.exe]] will update your
 certificates from Let’s Encrypt if they need to be updated. You can
@@ -284,10 +321,19 @@ language and being thoughtful about dependencies goes a very long way
 compared to peers. Once the server is running it drops root privileges,
 accesses no files, and allocates only a few tiny buffers.
 
-Even configured with the dumbest settings, it
-uses only about 1/3 of the CPU time of Apache in the limit. Having
-looked at the source code of software in this category, I would
-also claim that the source code is much less ...
+Even configured with the dumbest settings, it uses only about 1/3 of
+the CPU time of Apache in the steady state. Having looked at the
+source code of software in this category, I would also claim that the
+source code is much less difficult to understand and “audit” than its
+peers. For example, Google has fork of [openssl] (I guess it was
+getting out of hand), which is called “BoringSSL.”[cite boringssl] The
+source distribution is 572 megabytes, and contains 445,000 lines of
+C/C++ code as of 2026! Of course, BoringSSL has all sorts of support
+for hardware encryption, assembly-optimized routines, and robustness
+against timing and power attacks. But I also don’t care about that! I
+just want people to be able to access my website and not to be able to
+“hack in” to my server (through buffer overflows, etc.). [httpi] is
+under 10,000 lines including tests and everything.
 
 [section [BoVeX improvements]]
 
