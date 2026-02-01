@@ -27,7 +27,9 @@ struct PacketParser {
 
   bool OK() const { return !error; }
   bool empty() const { return rest.empty(); }
+  bool Empty() const { return empty(); }
   size_t size() const { return rest.size(); }
+  size_t Size() const { return size(); }
   // Force error state.
   void Error() { error = true; }
 
@@ -160,6 +162,55 @@ struct PacketParser {
     return Bytes(size());
   }
 
+  bool HasPrefixByte(uint8_t b) const {
+    return !error && !rest.empty() && rest[0] == b;
+  }
+
+  bool HasPrefix(std::span<const uint8_t> prefix) const {
+    if (error || rest.size() < prefix.size())
+      return false;
+
+    return SpanEq(prefix, rest.subspan(0, prefix.size()));
+  }
+
+  bool HasPrefix(std::string_view prefix) const {
+    return HasPrefix(std::span<const uint8_t>((const uint8_t *)prefix.data(),
+                                              prefix.size()));
+  }
+
+  bool Equals(std::span<const uint8_t> val) const {
+    return val.size() == Size() && HasPrefix(val);
+  }
+
+  bool Equals(std::string_view str) const {
+    return Equals(std::span<const uint8_t>((const uint8_t *)str.data(),
+                                           str.size()));
+  }
+
+  bool TryStripPrefix(std::span<const uint8_t> prefix) {
+    if (HasPrefix(prefix)) {
+      Skip(prefix.size());
+      return true;
+    }
+
+    return false;
+  }
+
+  bool TryStripPrefix(std::string_view prefix) {
+    return TryStripPrefix(
+        std::span<const uint8_t>((const uint8_t *)prefix.data(),
+                                 prefix.size()));
+  }
+
+  void Skip(size_t num) {
+    if (error || rest.size() < num) {
+      error = true;
+      return;
+    }
+
+    rest = rest.last(rest.size() - num);
+  }
+
   std::span<const uint8_t> View() const {
     // Rest is always valid, so we can return it even
     // in an error state.
@@ -169,6 +220,15 @@ struct PacketParser {
   const uint8_t *data() const { return rest.data(); }
 
  private:
+  static inline bool SpanEq(std::span<const uint8_t> a,
+                            std::span<const uint8_t> b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); i++)
+      if (a[i] != b[i])
+        return false;
+    return true;
+  }
+
   // We keep the original payload but it is not currently
   // used.
   std::span<const uint8_t> original;

@@ -10,13 +10,17 @@
 #include <vector>
 
 #include "asn1.h"
+#include "base/print.h"
 #include "bignum/big.h"
 #include "crypt/sha256.h"
 #include "multi-rsa.h"
 #include "packet-parser.h"
 #include "util.h"
 
-static std::vector<uint8_t> ConcatV(const std::vector<std::vector<uint8_t>> &parts) {
+static constexpr bool VERBOSE = false;
+
+static std::vector<uint8_t> ConcatV(
+    const std::vector<std::vector<uint8_t>> &parts) {
   std::vector<uint8_t> out;
   for (const std::vector<uint8_t> &v : parts) {
     out.insert(out.end(), v.begin(), v.end());
@@ -65,24 +69,39 @@ std::vector<uint8_t> CSR::CertificationRequestInfo(
   std::vector<uint8_t> sans = ASN1::EncodeSequence(ConcatV(names));
 
 
-  // An extensions sequence containing one extension: subjectAltName (2.5.29.17)
+  // An extensions sequence containing one extension:
+  // subjectAltName (2.5.29.17)
   std::vector<uint8_t> ext =
     ASN1::EncodeSequence(
         ASN1::EncodeSeq(ASN1::EncodeOID({2, 5, 29, 17}),
                         ASN1::EncodeOctetString(sans)));
 
   // More boilerplate to make the extensions list into an attribute.
-  // Note that the set of extensions needs to be sorted, but there is just one.
+  // Note that the set of extensions needs to be sorted, but there is
+  // just one.
   std::vector<uint8_t> attr =
     ASN1::EncodeSeq(ASN1::EncodeOID({1, 2, 840, 113549, 1, 9, 14}),
                     ASN1::EncodeSet(ext));
 
-  // Then wrapped into a set of attributes. More attributes could be added here,
-  // sorting by their DER bytes. The set tag is implicit (context-specific).
-  std::vector<uint8_t> attr_set = ASN1::EncodeContextSpecificConstructed(0, attr);
+  // Then wrapped into a set of attributes. More attributes could be
+  // added here, sorting by their DER bytes. The set tag is implicit
+  // (context-specific).
+  std::vector<uint8_t> attr_set =
+    ASN1::EncodeContextSpecificConstructed(0, attr);
 
   // CertificationRequestInfo
   return ASN1::EncodeSeq(version, subject, spki, attr_set);
+}
+
+// Consume one of the two time types next in the stream.
+static PacketParser ConsumeTime(PacketParser *p) {
+  uint8_t tag = (*p)[0];
+  if (tag != ASN1::TAG_UTC_TIME &&
+      tag != ASN1::TAG_GENERALIZED_TIME) {
+    p->Error();
+    return *p;
+  }
+  return ASN1::ParseTLV(p, tag);
 }
 
 std::vector<uint8_t> CSR::Encode(
@@ -131,18 +150,12 @@ std::string CSR::GetExpirationTimeString(std::span<const uint8_t> cert_der) {
 
   PacketParser validity = ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
 
-  // Skip notBefore, which is one of two time types.
-  uint8_t tag_nb = validity[0];
-  if (tag_nb != ASN1::TAG_UTC_TIME &&
-      tag_nb != ASN1::TAG_GENERALIZED_TIME) p.Error();
-  (void)ASN1::ParseTLV(&validity, tag_nb);
+  // Skip notBefore.
+  [[maybe_unused]] PacketParser not_before = ConsumeTime(&validity);
 
   // notAfter is the expiration time we're looking for.
-  uint8_t tag_na = validity[0];
-  if (tag_na != ASN1::TAG_UTC_TIME &&
-      tag_na != ASN1::TAG_GENERALIZED_TIME) p.Error();
+  PacketParser not_after = ConsumeTime(&validity);
 
-  PacketParser not_after = ASN1::ParseTLV(&validity, tag_na);
   std::string ret = not_after.String();
   // Make sure everything was OK. The subpacket inherits the error
   // state from its parent(s).
@@ -214,4 +227,163 @@ std::vector<uint8_t> CSR::GetSerialNumber(std::span<const uint8_t> cert_der) {
   }
 
   return serial;
+}
+
+
+std::vector<std::string> CSR::GetCRLUrls(std::span<const uint8_t> cert_der) {
+  PacketParser p(cert_der);
+
+  PacketParser cert = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  PacketParser tbs = ASN1::ParseTLV(&cert, ASN1::TAG_SEQUENCE);
+
+  // Skip version.
+  if (!tbs.empty() && (tbs[0] & 0xF0) == 0xA0) {
+    (void)ASN1::ParseTLV(&tbs, 0xA0);
+  }
+
+  // Skip serial, signature algorithm, issuer, validity, subject,
+  // SPKI
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  // Skip Optional Issuer / Subject unique ids.
+  if (!tbs.empty() && (tbs[0] & 0x1F) == 1) (void)ASN1::ParseTLV(&tbs, tbs[0]);
+  if (!tbs.empty() && (tbs[0] & 0x1F) == 2) (void)ASN1::ParseTLV(&tbs, tbs[0]);
+
+  // Are there extensions?
+  if (!tbs.HasPrefixByte(0xA3)) {
+    return {};
+  }
+
+  PacketParser extensions_wrapper = ASN1::ParseTLV(&tbs, 0xA3);
+  PacketParser extensions =
+    ASN1::ParseTLV(&extensions_wrapper, ASN1::TAG_SEQUENCE);
+
+  // The CRL Distribution Points extension is a sequence
+  // starting with OID 2.5.29.31, which is encoded in DER as follows:
+  static constexpr uint8_t CRL_OID[] =
+    { 0x06, 0x03, 0x55, 0x1D, 0x1F };
+
+  std::vector<std::string> urls;
+
+  while (!extensions.empty()) {
+    if (!extensions.OK()) {
+      if (VERBOSE) Print("extensions not ok\n");
+      return {};
+    }
+    PacketParser ext = ASN1::ParseTLV(&extensions, ASN1::TAG_SEQUENCE);
+
+    // Find only the CRL extension.
+    if (!ext.TryStripPrefix(CRL_OID)) {
+      continue;
+    }
+
+    // Optional "critical" tag we don't care about
+    if (ext.HasPrefixByte(ASN1::TAG_BOOLEAN)) {
+      (void)ASN1::ParseTLV(&ext, ASN1::TAG_BOOLEAN);
+    }
+
+    // Embedded message with a sequence of distribution points.
+    PacketParser message = ASN1::ParseTLV(&ext, ASN1::TAG_OCTET_STRING);
+    PacketParser dp_seq = ASN1::ParseTLV(&message, ASN1::TAG_SEQUENCE);
+
+    while (!dp_seq.empty() && dp_seq.OK()) {
+      if (!dp_seq.OK()) {
+        if (VERBOSE) Print("dp seq not ok\n");
+        return {};
+      }
+      PacketParser dp = ASN1::ParseTLV(&dp_seq, ASN1::TAG_SEQUENCE);
+
+      // This is again structured message: A sequence
+      // with distributionPoint, reasons, cRLIssuer. We want the
+      // distribution point (tag 0).
+      if (dp.HasPrefixByte(ASN1::TAG_CONSTRUCTED_0 | 0x00)) {
+        PacketParser name_seq =
+          ASN1::ParseTLV(&dp, ASN1::TAG_CONSTRUCTED_0 | 0x00);
+
+        // ... and the fullName within that (tag 0).
+        if (name_seq.HasPrefixByte(ASN1::TAG_CONSTRUCTED_0 | 0x00)) {
+           PacketParser general_names =
+             ASN1::ParseTLV(&name_seq, ASN1::TAG_CONSTRUCTED_0 | 0x00);
+
+           while (!general_names.empty()) {
+             if (!general_names.OK()) {
+               if (VERBOSE) Print("general_names not ok\n");
+               return {};
+             }
+             uint8_t tag = general_names[0];
+             PacketParser name = ASN1::ParseTLV(&general_names, tag);
+
+             if (tag == (ASN1::TAG_PRIMITIVE_0 | 0x06)) {
+               urls.push_back(name.String());
+             }
+           }
+        }
+      }
+    }
+
+    // We're done once we've found the CRL extension.
+    break;
+  }
+
+  return urls;
+}
+
+bool CSR::IsRevoked(std::span<const uint8_t> crl_der,
+                    std::span<const uint8_t> serial) {
+
+  PacketParser p(crl_der);
+  PacketParser cert_list = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  PacketParser tbs = ASN1::ParseTLV(&cert_list, ASN1::TAG_SEQUENCE);
+
+  // Skip optional version.
+  if (tbs.HasPrefixByte(ASN1::TAG_INTEGER)) {
+    (void)ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
+  }
+
+  // Skip Signature, Issuer, thisUpdate, nextUpdate.
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  [[maybe_unused]] PacketParser this_update = ConsumeTime(&tbs);
+
+  if (tbs.HasPrefixByte(ASN1::TAG_UTC_TIME) ||
+      tbs.HasPrefixByte(ASN1::TAG_GENERALIZED_TIME)) {
+    [[maybe_unused]] PacketParser next_update = ConsumeTime(&tbs);
+  }
+
+  // revokedCertificates is an optional sequence of sequences.
+  if (!tbs.HasPrefixByte(ASN1::TAG_SEQUENCE)) {
+    // Nothing is revoked.
+    return false;
+  }
+
+  PacketParser revoked_list = ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  while (!revoked_list.empty()) {
+    if (!revoked_list.OK()) {
+      return false;
+    }
+
+    PacketParser entry = ASN1::ParseTLV(&revoked_list, ASN1::TAG_SEQUENCE);
+    PacketParser revoked_serial = ASN1::ParseTLV(&entry, ASN1::TAG_INTEGER);
+
+    std::span<const uint8_t> v = revoked_serial.View();
+    if (VERBOSE) {
+      Print("Revoked:");
+      for (uint8_t x : v) {
+        Print(" {:02x}", x);
+      }
+      Print("\n");
+    }
+
+    if (revoked_serial.Equals(serial)) {
+      return true;
+    }
+  }
+
+  return false;
 }

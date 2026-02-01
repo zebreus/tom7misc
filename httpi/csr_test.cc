@@ -81,6 +81,16 @@ QhrbdEZr4Uq6yKfW0k4baZQPEoHkOOnL5MYMsjcu66UOjyFu/C1o
 -----END CERTIFICATE-----
 )";
 
+// CRL revoking a key with the serial number 0xDEADBEEF.
+static constexpr std::string_view CRL = R"(
+-----BEGIN X509 CRL-----
+MIGwMFwwDQYJKoZIhvcNAQELBQAwEzERMA8GA1UEAwwIdG9tNy5vcmcXDTI2MDIw
+MTAzMzIzOVoXDTI2MDMwMzAzMzIzOVowGDAWAgUA3q2+7xcNMjMwMTAxMDAwMDAw
+WjANBgkqhkiG9w0BAQsFAANBAED9JCuUd6FL/gsGH8EZJYq3vw9ijjwYEjJW0ren
+RRt0ncsXuIy/EDl8XDjhAUq4Q2zRKSK/OGX1s2SiVytj/cE=
+-----END X509 CRL-----
+)";
+
 static void TestExpiration() {
   std::vector<uint8_t> cert =
     PEM::ParsePEM(CERT, "CERTIFICATE");
@@ -102,6 +112,33 @@ static void TestSerial() {
   CHECK(CSR::GetSerialNumber(cert) == expected);
 }
 
+static void TestGetCRL() {
+  std::vector<uint8_t> cert =
+    PEM::ParsePEM(CERT, "CERTIFICATE");
+
+  std::vector<std::string> urls = CSR::GetCRLUrls(cert);
+  CHECK(urls.size() == 1);
+  CHECK(urls[0] == "http://r13.c.lencr.org/33.crl") << urls[0];
+}
+
+static void TestRevoked() {
+  std::vector<uint8_t> cert =
+    PEM::ParsePEM(CERT, "CERTIFICATE");
+  std::vector<uint8_t> serial = CSR::GetSerialNumber(cert);
+
+  std::vector<uint8_t> crl_der = PEM::ParsePEM(CRL, "X509 CRL");
+
+  CHECK(!CSR::IsRevoked(crl_der, serial));
+
+  const std::vector<uint8_t> beefs = {
+    // Since the MSB of 0xDE is 1, a positive DER integer actually
+    // has a leading zero.
+    0x00, 0xDE, 0xAD, 0xBE, 0xEF,
+  };
+
+  CHECK(CSR::IsRevoked(crl_der, beefs));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -111,6 +148,8 @@ int main(int argc, char **argv) {
   TestCSR();
   TestExpiration();
   TestSerial();
+  TestGetCRL();
+  TestRevoked();
 
   Print("OK\n");
   return 0;

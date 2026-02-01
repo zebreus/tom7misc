@@ -1,3 +1,7 @@
+// Utilities for Certificate Signing Requests, including
+// code to determine whether a certificate is expired or
+// revoked.
+
 #ifndef _HTTPI_CSR_H
 #define _HTTPI_CSR_H
 
@@ -50,7 +54,17 @@ struct CSR {
   // Get the certificate's serial number. This is technically an integer, but
   // it is conventional and easiest to just treat it as a byte string. Returns
   // the empty vector if the serial can't be found.
-  static std::vector<uint8_t> GetSerialNumber(std::span<const uint8_t> cert_der);
+  static std::vector<uint8_t> GetSerialNumber(
+      std::span<const uint8_t> cert_der);
+
+  // Extract Certificate Revocation List distribution URLs for this
+  // certificate, if any are found.
+  static std::vector<std::string> GetCRLUrls(
+      std::span<const uint8_t> cert_der);
+
+  static bool IsRevoked(std::span<const uint8_t> crl_der,
+                        std::span<const uint8_t> serial);
+
 };
 
 #endif

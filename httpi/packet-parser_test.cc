@@ -101,6 +101,58 @@ static void TestString() {
 
 }
 
+static void TestPrefix() {
+  PacketParser p("ABCDEFG");
+  CHECK(p.HasPrefix(""));
+  CHECK(p.HasPrefix("A"));
+  CHECK(p.HasPrefix("ABCDEFG"));
+  CHECK(p.OK());
+  CHECK(!p.HasPrefix("ABCDEFGH"));
+  CHECK(!p.HasPrefix("ABCX"));
+  CHECK(!p.HasPrefix("X"));
+
+  CHECK(!p.TryStripPrefix("X"));
+  CHECK(p.TryStripPrefix("") && p.size() == 7);
+  CHECK(p.OK());
+  CHECK(!p.TryStripPrefix("ABCDEFGH") && p.OK());
+  CHECK(p.HasPrefix("AB"));
+  CHECK(p.TryStripPrefix("AB"));
+  CHECK(p.HasPrefix("CD"));
+  CHECK(p.String(2) == "CD");
+  CHECK(p.size() == 3 && p.OK());
+  CHECK(p.String(3) == "EFG");
+  CHECK(!p.HasPrefix("X"));
+  CHECK(p.HasPrefix(""));
+  CHECK(p.TryStripPrefix(""));
+  CHECK(p.TryStripPrefix(""));
+  CHECK(p.OK());
+}
+
+static void TestEquals() {
+  PacketParser p("ABCDEFG");
+  CHECK(p.Equals("ABCDEFG"));
+  CHECK(!p.Equals("ABCDEFGH"));
+  CHECK(!p.Equals("ABCDEF"));
+  p.Skip(2);
+  CHECK(p.Equals("CDEFG"));
+}
+
+static void TestSkip() {
+  {
+    PacketParser p("ABCDEFG");
+    p.Skip(4);
+    CHECK(p.String(3) == "EFG");
+    CHECK(p.empty());
+    CHECK(p.OK());
+  }
+
+  {
+    PacketParser p("ABCDEFG");
+    p.Skip(8);
+    CHECK(!p.OK());
+  }
+}
+
 static void TestError() {
   {
     PacketParser p("AB");
@@ -165,6 +217,9 @@ int main(int argc, char **argv) {
   TestSubpacket();
   TestStringViewCtor();
   TestString();
+  TestPrefix();
+  TestEquals();
+  TestSkip();
 
   TestError();
 
