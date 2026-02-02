@@ -117,6 +117,10 @@ static void Renew(bool dry_run, std::string_view domain) {
           i, host->canonical, host->cert_idx, host->key_idx);
 
     const Config::Key *key = config.GetKey(host->key_idx);
+    if (key == nullptr || !key->rsa.has_value()) {
+      Print("  " ARED("(no key)") "\n");
+      continue;
+    }
 
     const Config::Cert *cert = config.GetCert(host->cert_idx);
     CHECK(cert != nullptr) << "We don't need a certificate, but we "
@@ -128,28 +132,39 @@ static void Renew(bool dry_run, std::string_view domain) {
       std::vector<std::vector<uint8_t>> cert_ders =
         PEM::ParsePEMs(Util::ReadFile(cert->file), "CERTIFICATE");
       // We need to at least have certificates.
-      if (!cert_ders.empty()) needs_renewal = false;
+      if (!cert_ders.empty()) {
+        needs_renewal = false;
 
-      for (const std::vector<uint8_t> &der : cert_ders) {
-        int64_t expt = CSR::GetExpirationTime(der);
-        bool soon = expt < now + EXPIRES_SOON;
-        Print("  Cert expires {} (in {}){}\n",
-              Util::FormatTime("%Y-%m-%d", expt),
-              ANSI::Time(expt - now),
-              soon ? "  " ARED("SOON") : "");
+        for (const std::vector<uint8_t> &der : cert_ders) {
+          int64_t expt = CSR::GetExpirationTime(der);
+          bool soon = expt < now + EXPIRES_SOON;
+          Print("  Cert expires {} (in {}){}\n",
+                Util::FormatTime("%Y-%m-%d", expt),
+                ANSI::Time(expt - now),
+                soon ? "  " ARED("SOON") : "");
 
-        needs_renewal = needs_renewal || soon;
+          needs_renewal = needs_renewal || soon;
+        }
+
+        CHECK(!cert_ders.empty());
+        // First key is the domain itself.
+        const auto ko = CSR::GetPublicKey(cert_ders[0]);
+        if (!ko.has_value()) {
+          Print("  " ARED("(cert is malformed -- no key?)") "\n");
+          continue;
+        }
+        const auto &[n, e] = ko.value();
+        if (!BigInt::Eq(key->rsa.value().n, n) ||
+            !BigInt::Eq(key->rsa.value().e, e)) {
+          Print("  " ARED("Cert is for the wrong key") ".\n");
+          needs_renewal = true;
+        }
       }
     }
 
     if (!needs_renewal) {
       Print(AGREY("Certificate for ") "{}" AGREY(" is up to date.") "\n",
             host->canonical);
-      continue;
-    }
-
-    if (key == nullptr || !key->rsa.has_value()) {
-      Print("  " ARED("(no key)") "\n");
       continue;
     }
 
@@ -190,6 +205,8 @@ static void Renew(bool dry_run, std::string_view domain) {
     CHECK(Util::ExistsFile(tmpchain)) << "certbot didn't write a "
       "certificate chain?";
     if (Util::ExistsFile(cert->file)) {
+      // Make sure the directory exists.
+      (void)Util::MakeDir(OLD_CERTIFICATES);
       std::string bkup = std::format("{}{}.{}",
                                      OLD_CERTIFICATES,
                                      host->canonical,

@@ -8,6 +8,7 @@
 
 #include "ansi.h"
 #include "base/print.h"
+#include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "csr.h"
 #include "multi-rsa.h"
@@ -112,6 +113,28 @@ static void TestSerial() {
   CHECK(CSR::GetSerialNumber(cert) == expected);
 }
 
+static void TestGetPublicKey() {
+  std::vector<uint8_t> cert =
+    PEM::ParsePEM(CERT, "CERTIFICATE");
+  auto ko = CSR::GetPublicKey(cert);
+  CHECK(ko.has_value()) << "No key?";
+  const auto &[n, e] = ko.value();
+  CHECK(e == 65537);
+  CHECK(n == BigInt(
+            "198210349366740939315661953511474248065016728351753186991384537"
+            "834656249529598473717567022563294487565957654119694279672827819"
+            "064016000973391144176528622721075235412537224303778938467480858"
+            "132126922091818618863261264477226419209491592208444747865552401"
+            "177896515284525643462892600688991783563797475749162471853696389"
+            "677392091081185145828177250313765350162208091888810429981946738"
+            "363712253543130688860777105964233737320109761985000686006103716"
+            "543586656791660537747794977541558648124803676420490732098880713"
+            "459835875862425426467131935908883418967554643193872337619205783"
+            "30059852503471298822086072756360906690575153558909")) <<
+    n.ToString();
+}
+
+
 static void TestGetCRL() {
   std::vector<uint8_t> cert =
     PEM::ParsePEM(CERT, "CERTIFICATE");
@@ -148,6 +171,7 @@ int main(int argc, char **argv) {
   TestCSR();
   TestExpiration();
   TestSerial();
+  TestGetPublicKey();
   TestGetCRL();
   TestRevoked();
 

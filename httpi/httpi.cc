@@ -51,7 +51,7 @@
 #define SERIALIZE_CONNECTIONS false
 #define JUST_ONE_CONNECTION false
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 
 // 0 = quiet
 // 1 = major events

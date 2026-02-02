@@ -38,6 +38,11 @@ struct CSR {
   static std::vector<uint8_t>
   SubjectPublicKeyInfo(const BigInt &modulus, const BigInt &exponent);
 
+  // Get the public key that is certified from the certificate.
+  // Pass the ASN.1 DER bytes of the certificate.
+  static std::optional<std::pair<BigInt, BigInt>>
+  GetPublicKey(std::span<const uint8_t> cert_der);
+
   // For certificate renewal you often need to check the
   // expiration time of a certificate. Pass the ASN.1 DER bytes.
   // Returns 0 if the expiration cannot be parsed (so the certificate

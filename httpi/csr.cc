@@ -200,6 +200,53 @@ time_t CSR::GetExpirationTime(std::span<const uint8_t> cert_der) {
 }
 
 
+std::optional<std::pair<BigInt, BigInt>>
+CSR::GetPublicKey(std::span<const uint8_t> cert_der) {
+  PacketParser p(cert_der);
+  PacketParser cert = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  PacketParser tbs = ASN1::ParseTLV(&cert, ASN1::TAG_SEQUENCE);
+
+  if (!tbs.OK()) return std::nullopt;
+
+  // Skip optional version.
+  if (!tbs.empty() && (tbs[0] & 0xF0) == 0xA0) {
+    (void)ASN1::ParseTLV(&tbs, 0xA0);
+  }
+
+  // serialNumber, signature, issuer, validity, subject
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+
+  // subjectPublicKeyInfo is where the key resides.
+  PacketParser spki = ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
+  if (!spki.OK()) return std::nullopt;
+
+  // Only RSA keys are supported (1.2.840.113549.1.1.1).
+  static constexpr uint8_t RSA_OID[] =
+    { 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01 };
+  PacketParser algo = ASN1::ParseTLV(&spki, ASN1::TAG_SEQUENCE);
+
+  if (!algo.TryStripPrefix(RSA_OID)) {
+    return std::nullopt;
+  }
+
+  PacketParser bits = ASN1::ParseTLV(&spki, ASN1::TAG_BIT_STRING);
+  // Should be no padding for keys.
+  if (bits.Byte() != 0) return std::nullopt;
+
+  PacketParser rsa_key = ASN1::ParseTLV(&bits, ASN1::TAG_SEQUENCE);
+  BigInt n = ASN1::ParseInteger(&rsa_key);
+  BigInt e = ASN1::ParseInteger(&rsa_key);
+
+  if (!rsa_key.OK() || BigInt::Sign(n) != 1 || BigInt::Sign(e) != 1)
+    return std::nullopt;
+
+  return std::make_optional(std::make_pair(std::move(n), std::move(e)));
+}
+
 std::vector<uint8_t> CSR::GetSerialNumber(std::span<const uint8_t> cert_der) {
   PacketParser p(cert_der);
 
