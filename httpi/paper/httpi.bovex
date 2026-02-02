@@ -110,7 +110,7 @@ up to a silly degree, scaring users, creating pointless toil and
 chores for good guys, and arguably [it[reducing]] the usefulness of
 security due to alarm fatigue.[cite akhawe2013alice] The specific
 toxicity that has set me off in this here SIGBOVIK paper is this
-[color 0x770000[RED ALERT]]:
+[color 0x990000FF [RED ALERT]]:
 
 XXX screenshot
 
@@ -133,9 +133,9 @@ someone on the Chrome product team who is preventing users from getting
 to my website for the sake of toxic max-security. But before that final
 straw, there were many other irritations.
 
-(* copy-paste URL
+[* copy-paste URL
    can't go to http site in icognito
-*)
+*]
 
 Now I do want to be clear: I am glad that we have [tt[https]], and I
 think it should be supported widely, and certainly for my bank account
@@ -202,17 +202,16 @@ for a name. Anyway!
 
 [section [The many dirty secrets of TLS]]
 
-(* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
+[* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
 
 OCSP is now deprecated (at least by Let’s Encrypt)
 https://letsencrypt.org/2024/12/05/ending-ocsp
 
-
-*)
+*]
 
 TODO: Getting certificates
 
-(*
+[*
 We have a pretty good handle on the computational resources needed
 to break an RSA key of a certain level. Is it plausible that someone
 would spend nation-state level resources to intercept my credit
@@ -231,7 +230,7 @@ dereferences.
 even openssl is XXX lines of code
 
 using the credit card to encrypt the data
-*)
+*]
 
 [section [Let’sn’t Encrypt]]
 
@@ -366,6 +365,13 @@ it to look like I want forevermore. This includes all the path types
 rounded rectangles,
 the three different ways that strokes and fills can be transparent,
 clip paths, transforms, and fill rules.
+
+[section [Future work]]
+
+[*
+Chrome-I-Am browser
+T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
+*]
 
 [section [Bibliography]]
 
