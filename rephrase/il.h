@@ -2,16 +2,16 @@
 #define _REPHRASE_IL_H
 
 #include <algorithm>
-#include <string>
 #include <cstdint>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "ast-arena.h"
 #include "bignum/big.h"
-#include "unification.h"
 #include "primop.h"
+#include "unification.h"
 
 namespace il {
 

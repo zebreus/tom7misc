@@ -244,7 +244,7 @@ std::string TypeString(const Type *t) {
     return std::format("({} ref)", TypeString(t->Ref()));
 
   case TypeType::VEC:
-    return std::format("(%s vec)", TypeString(t->Vec()));
+    return std::format("({} vec)", TypeString(t->Vec()));
 
   case TypeType::STRING:
     return "string";

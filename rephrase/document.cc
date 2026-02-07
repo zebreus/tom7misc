@@ -983,7 +983,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
   TextProps props;
   props.desc.font_family = "times";
   Rec(props, doc);
-  return JoinDocs(out);
+  return JoinDocs(std::move(out));
 }
 
 // Lower penalties are better.
@@ -1355,7 +1355,7 @@ Document::PackBoxes(Algorithm algo,
     lines_out.push_back(std::move(line));
   }
 
-  return {JoinDocs(lines_out), total_badness};
+  return {JoinDocs(std::move(lines_out)), total_badness};
 }
 
 using Transform = Document::Transform;

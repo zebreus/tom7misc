@@ -171,7 +171,8 @@ fun vspace vdim =
      then [v] else [ ])]]
 
 (* Generates a series of lines (boxes) with the glue turned into definite
-   padding. Still in "AllBox" format. *)
+   padding. Still in "AllBox" format. Returns the badness and the list of
+   lines. *)
 fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
                       width : float, content : layout) : (float * layout list) =
   let
@@ -758,10 +759,15 @@ fun rephrase-paragraph (times : int) (p : layout) : layout =
     r
   end
 
-(* Pack a paragraph. This is basically pack-boxes o get-boxes, but
-   we also look for rephrase contexts. If there are any, we
-   try multiple rephrasings and pick the one with the best badness. *)
-fun pack-one-paragraph (column-width : float) (para : layout) =
+(* Pack a paragraph into lines. This is basically pack-boxes o get-boxes,
+   but we also look for rephrase contexts. If there are any, we
+   try multiple rephrasings and pick the one with the best badness.
+
+   Emits the badness from the best packing as a side effect.
+
+   TODO: Specify the "column" width with a function, allowing for
+   non-rectangular packing (e.g. lettrines). *)
+fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
   let
     val VERBOSE = false
 
@@ -863,7 +869,8 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
     (* TODO: Right now we just take the lowest overall badness (per line),
        ignoring the semantic loss (Epsom's version). We could
        blend them somehow. *)
-    fun compute-penalty { badness : float, loss : float, lines : int,
+    fun compute-penalty { badness : float, semantic-loss : float,
+                          lines : int,
                           text } =
       let in
         (*
@@ -884,10 +891,11 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
       | get-best (best, (loss, para) :: t) =
       let
         val boxes = get-boxes para
-        val (badness, lines) =
+        val (badness : float, lines : layout list) =
           pack-boxes-horiz (BEST, just, column-width, boxes)
 
-        val score = compute-penalty { badness = badness, loss = loss,
+        val score = compute-penalty { badness = badness,
+                                      semantic-loss = loss,
                                       lines = list-length lines,
                                       text = para }
 
@@ -908,10 +916,6 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
   the document is evaluated.
 *)
 
-
-(* XXX should probably just use pack-boxes for this, but
-   they are vertical boxes. *)
-datatype paragraph = Paragraph of { lines : layout list }
 (* Given all the paragraphs in the document, pack them and
    turn them into stickers and emit them.
 
@@ -919,7 +923,11 @@ datatype paragraph = Paragraph of { lines : layout list }
    rigid column-shaped boxes with stickers, rather than
    emitting them.
 *)
+(* XXX should probably just use pack-boxes for this, but
+   they are vertical boxes. *)
 (* XXX pass a "metrics" object or something *)
+datatype paragraph = Paragraph of { (* boxes with stickers inside *)
+                                    lines : layout list }
 fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,
                      COLUMN-WIDTH, COLUMNS,
@@ -1130,6 +1138,149 @@ fun main-text lay =
        It also accumulates "floats," which are not yet rendered.
        XXX: Render floats! *)
     val para-items : paragraph-item list = get-paragraphs (lay :: nil)
+
+    (* Blank space that can hold text, like a "column." Used as part of
+       the layout process here, as we allocate new pages and place floats.
+
+       TODO: A better thing here would be a polygon that we rasterize
+       when we turn it into line lengths. But rectangles are already
+       pretty expressive because we can just link them. I think if this
+       is a full polygon, it's probably better to have a general purpose
+       trapezoid-packing boxes-and-glue algorithm, so I'm saving that for
+       future work! *)
+    datatype space =
+      SpaceRect of { page: int, x: float, y: float, w: float, h: float }
+
+    (* I think the way this should work now is:
+
+       para-items is the full document content that we process.
+
+       Two work (source) queues: the text queue and the float queue.
+
+       One sink queue: the "space," which is the blank space allocated
+       in the document. This is a list of rectangles (position,
+       dimensions) that are implicitly linked (by the order in the
+       queue) as the document's reading order.
+
+       The loop looks like this:
+
+       - If the text queue is empty, get a paragraph item and convert it
+       to text, using the current space to tell us the line widths
+       that are available.
+          - if the space is insufficient, allocate an additional page
+            and do this again. (Note that this could result in bad
+            performance if there are very long paragraphs; a future
+            version could do binary search or just emit partial
+            paragraphs!)
+          - if there are no pages but there are still floats, allocate
+            pages until the floats are all satisfied (and then we are done).
+
+       - Now the text queue has packed lines in it. (Why didn't we just
+         place them in the previous stage?). I guess we want to be
+         somewhat lazy about the vertical packing so that we aren't
+         just placing lines greedily into the space.
+
+       allocate-page:
+          - We call this when we have insufficient space. Use the
+            document configuration to add a page and produce the
+            rectangles on it. If the float queue has anything in
+            it, deposit those on the page, which results in
+            different page rectangles.
+
+       There's a circular dependency here that we need to break.
+       Finding optimal line breaks for a paragraph requires knowing
+       the space's width (and we then commit to that length for the
+       paragraph's broken lines). But placing paragraphs optimally
+       into the space also requires changing where we vertically
+       place lines. This could affect the width of the space
+       because of non-rectangular columns, or when text spans columns
+       of different width.
+
+       A full solution would optimize both line breaking and vertical
+       layout simultaneously, although this adds complexity and comes
+       with other downsides (e.g. increasing the dimensionality of
+       the boxes-and-glue memo table). So the compromise here is:
+
+        - We work a paragraph at a time (as described above), perhaps
+          with some limit on paragraph length.
+        - We first commit to the "space" (when creating a new blank
+          page, depositing floats)
+        - We break lines assuming that the paragraph will go in the
+          next available space.
+        - We then deposit paragraphs into the space, but pack using
+          boxes-and-glue vertically (at the line level). We assign
+          badness when a line does not fit in the actual space. We
+          know that there is at least one good fit (the first fit)
+          since we optimized breaks assuming that one. But in the
+          extremely common case that the columns are rectangular
+          (or indeed that the entire document has a single width)
+          then we will have significant freedom to break to reduce
+          paragraph-level badness (e.g. orphans). In the case that
+          the space has an exotic shape, we will mostly be
+          constrained to the first placement because the broken
+          lines will already be the wrong length to fit elsewhere.
+
+          *)
+
+      (* XXX IN PROGRESS *)
+    fun place-paragraphs (para-items : paragraph-item list) =
+      let
+
+        (* Get a vector of line widths using the currently
+           available space, or return NONE if there does not
+           seem to be enough space. This is heuristic, using
+           a greedy fit. The goal is to see how much space
+           we probably need in order to do the proper layout. *)
+        fun get-widths (body, nil) = NONE
+          | get-widths (body,
+                        SpaceRect { page = _, x = _, y = _, w, h } :: rest) =
+          fail "unimplemented"
+
+
+        (* Break the body paragraph into lines (rigid boxes), given
+           the space. If there is insufficient space, allocate a
+           new page, possibly placing floats, and try again.
+           PERF: For very long paragraphs, we may have to take many
+           passes; consider breaking them up.
+
+           Returns the new { lines, floats, space }. Imperatively
+           allocates pages and permanently places floats on them. *)
+        fun break-for-space (body : layout, space-after : float,
+                             floats, space) =
+          let
+            (* This logic should be improved to pass non-uniform
+               widths to pack-boxes. Right now it insists that all
+               space is the same width. *)
+          in
+            fail "unimplemented"
+          end
+
+        fun step { lines = nil, paras = nil, floats = nil, space = _ } =
+          (* All queues are exhausted, so we have no more content
+             to place. Done. *)
+          nil
+          | step { lines = nil,
+                   paras = ParagraphItem { body, space-after,
+                                           floats = new-floats } :: prest,
+                   floats, space } =
+          let
+          (* No more lines in the queue, but there're still more
+             paragraphs to place. *)
+
+            val { lines, floats, space } =
+              break-for-space (body, space-after, floats, space)
+
+          in
+            step { lines = lines,
+                   paras = prest,
+                   floats = floats @ new-floats,
+                   space = space }
+          end
+
+      in
+
+        fail "unimplemented"
+      end
 
     (* Do rephrasing if needed.
        Optimize line breaks for each paragraph.

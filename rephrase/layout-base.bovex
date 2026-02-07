@@ -277,6 +277,9 @@ fun pack-boxes (algo : packing-algorithm,
                 dimension : float, content : layout) :
   (float * layout list) =
   let
+    (* XXX assumes that the "width" dimension is constant. *)
+    val dims = vec(1, dimension)
+
     object InternalPackBoxesArg of { algorithm: string,
                                      justification: string,
                                      doc: layout }
@@ -300,7 +303,7 @@ fun pack-boxes (algo : packing-algorithm,
                algorithm = algo-string,
                justification = just-string,
                doc = content }
-    val packed = internal-pack-boxes (dimension, arg)
+    val packed = internal-pack-boxes (dims, arg)
   in
     case packed of
       {(InternalPackBoxesRet) badness, layout} => (badness, unjoin layout)

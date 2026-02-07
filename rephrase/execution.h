@@ -67,8 +67,8 @@ struct Execution {
   }
 
   // Certain hooks are useful for testing.
-  virtual void FailHook(const std::string &msg);
-  virtual void ConsoleHook(const std::string &msg);
+  virtual void FailHook(std::string_view msg);
+  virtual void ConsoleHook(std::string_view msg);
 
   // Execution implements many primops, some of which need additional
   // resources (like the document itself). TODO: It might be better to
@@ -121,7 +121,7 @@ struct Execution {
   std::tuple<const Execution::map_type &, const Execution::vec_type &>
   GetNode(const char *what, Value *a);
 
-  void InternalFail(const std::string &msg, State *state);
+  void InternalFail(std::string_view msg, State *state);
   static Value *NonceValue();
   Value *DoTriop(Primop primop, Value *a, Value *b, Value *c, State *state);
   Value *DoBinop(Primop primop, Value *a, Value *b, State *state);

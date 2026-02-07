@@ -78,7 +78,7 @@ Execution::State Execution::Start() const {
   return state;
 }
 
-void Execution::InternalFail(const std::string &msg, State *state) {
+void Execution::InternalFail(std::string_view msg, State *state) {
   FailHook(msg);
   // Normally, failing just immediately aborts. But if the fail hook
   // is overridden, then we want to mark the program as stuck so
@@ -87,13 +87,13 @@ void Execution::InternalFail(const std::string &msg, State *state) {
 }
 
 // Certain hooks are useful for testing.
-void Execution::FailHook(const std::string &msg) {
+void Execution::FailHook(std::string_view msg) {
   Print(stderr, AWHITE("[") ARED("FAIL") AWHITE("]")
         ": {}\n", msg);
   LOG(FATAL) << "Program aborted with " << AWHITE("fail") << ".";
 }
 
-void Execution::ConsoleHook(const std::string &msg) {
+void Execution::ConsoleHook(std::string_view msg) {
   Print("{}", msg);
 }
 
@@ -679,12 +679,28 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::PACK_BOXES: {
-    const double *ad = std::get_if<double>(&a->v);
-    CHECK(ad != nullptr) << Err() <<
-      "Expected double argument (lhs) to pack-boxes";
+    // This width of each line available. The vector is interpreted
+    // as being infinite, with the last value repeated.
+    std::vector<Value *> *vdims = std::get_if<vec_type>(&a->v);
+    CHECK(vdims != nullptr) << Err() <<
+      "Expected vector argument (lhs) to pack-boxes";
+
     const map_type *arg = std::get_if<map_type>(&b->v);
     CHECK(arg != nullptr) << Err() <<
       "Expected obj argument (rhs) to pack-boxes";
+
+    std::vector<double> dims;
+    dims.reserve(vdims->size());
+    CHECK(!vdims->empty()) << "In pack-boxes lhs, there must be at least "
+      "one line width.";
+    for (const Value *val : *vdims) {
+      const double *d = std::get_if<double>(&val->v);
+      CHECK(d != nullptr) << Err() << "Expected a vector of doubles "
+        "to pack-boxes lhs.";
+      CHECK(std::isfinite(*d) && *d >= 0.0) << "In pack-boxes, invalid "
+        "dimension value " << *d;
+      dims.push_back(*d);
+    }
 
     Document::Algorithm algorithm = Document::Algorithm::BEST;
     if (const std::string *algo =
@@ -717,7 +733,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       }
     }
 
-    const double line_width = *ad;
+    // TODO: To fix this, we need to send the
+    CHECK(dims.size() == 1) << "Sorry, I have not yet implemented "
+      "pack-boxes for cases with non-constant width!";
+
+    const double line_width = dims[0];
     // TODO: Make configurable.
     const double orphan_threshold = line_width / 3.0;
 

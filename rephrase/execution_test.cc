@@ -4,6 +4,7 @@
 #include <format>
 #include <string>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,12 +33,12 @@ static constexpr int BYTECODE_VERBOSE = DEBUG_CODEGEN ? 2 : 0;
 struct TestExecution : public Execution {
   using Execution::Execution;
 
-  void FailHook(const std::string &msg) override {
+  void FailHook(std::string_view msg) override {
     CHECK(!Failed());
-    fail_message = {msg};
+    fail_message = {std::string(msg)};
   }
 
-  void ConsoleHook(const std::string &out) override {
+  void ConsoleHook(std::string_view out) override {
     console_output += out;
   }
 

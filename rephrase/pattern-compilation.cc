@@ -109,6 +109,7 @@ struct PatternCompilation::Matrix {
     // There will be one fewer column.
     Matrix quot(pool);
     quot.def = def;
+    quot.pos = pos;
     for (int x = 0; x < Width(); x++) {
       if (x != target_x) {
         quot.objs.push_back(objs[x]);
