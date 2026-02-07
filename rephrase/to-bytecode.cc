@@ -633,7 +633,7 @@ struct Converter {
           // itself.
           trivial_block->insts.emplace_back(
               inst::Unop{
-                .primop = Primop::LAYOUT_VEC_SIZE,
+                .primop = Primop::GET_NUM_CHILDREN,
                 .out = num_subchildren,
                 .arg = local,
               });

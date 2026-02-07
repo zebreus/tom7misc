@@ -105,8 +105,8 @@ const char *PrimopString(Primop po) {
   case Primop::GET_TEXT: return "GET_TEXT";
   case Primop::GET_ATTRS: return "GET_ATTRS";
   case Primop::SET_ATTRS: return "SET_ATTRS";
-  case Primop::LAYOUT_VEC_SIZE: return "LAYOUT_VEC_SIZE";
-  case Primop::LAYOUT_VEC_SUB: return "LAYOUT_VEC_SUB";
+  case Primop::GET_NUM_CHILDREN: return "GET_NUM_CHILDREN";
+  case Primop::GET_NTH_CHILD: return "GET_NTH_CHILD";
 
   case Primop::DEBUG_PRINT_DOC: return "DEBUG_PRINT_DOC";
 
@@ -214,8 +214,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::GET_TEXT: return std::make_tuple(0, 1);
   case Primop::GET_ATTRS: return std::make_tuple(0, 1);
   case Primop::SET_ATTRS: return std::make_tuple(0, 2);
-  case Primop::LAYOUT_VEC_SIZE: return std::make_tuple(0, 1);
-  case Primop::LAYOUT_VEC_SUB: return std::make_tuple(0, 2);
+  case Primop::GET_NUM_CHILDREN: return std::make_tuple(0, 1);
+  case Primop::GET_NTH_CHILD: return std::make_tuple(0, 2);
 
   case Primop::DEBUG_PRINT_DOC: return std::make_tuple(0, 1);
 
@@ -363,8 +363,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::GET_TEXT:
   case Primop::GET_ATTRS:
   case Primop::SET_ATTRS:
-  case Primop::LAYOUT_VEC_SIZE:
-  case Primop::LAYOUT_VEC_SUB:
+  case Primop::GET_NUM_CHILDREN:
+  case Primop::GET_NTH_CHILD:
   case Primop::DEBUG_PRINT_DOC:
     // minimally, internal layout stuff errors out on invalid layout
     return false;
@@ -552,8 +552,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::GET_TEXT: return {{}, pool->Arrow(Layout, String)};
   case Primop::GET_ATTRS: return {{}, pool->Arrow(Layout, Obj)};
   case Primop::SET_ATTRS: return {{}, BinOp(Obj, Layout, Layout)};
-  case Primop::LAYOUT_VEC_SIZE: return {{}, pool->Arrow(Layout, Int)};
-  case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
+  case Primop::GET_NUM_CHILDREN: return {{}, pool->Arrow(Layout, Int)};
+  case Primop::GET_NTH_CHILD: return {{}, BinOp(Layout, Int, Layout)};
 
   case Primop::ACHIEVEMENT: return {{}, BinOp(String, String, Unit())};
 

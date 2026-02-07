@@ -219,10 +219,10 @@ fun layoutcase (l : layout) =
   then Text (get-text l)
   else
     let
-      val z = layout-vec-size l
+      val z = get-num-children l
       fun r n =
         if n == z then nil
-        else (layout-vec-sub (l, n) :: r (n + 1))
+        else (get-nth-child (l, n) :: r (n + 1))
       val attrs = get-attrs l
     in
       Node (display-type attrs, attrs, r 0)
@@ -245,9 +245,9 @@ fun layout-to-string l =
   if is-text l
   then get-text l
   else
-    let val z = layout-vec-size l
+    let val z = get-num-children l
         fun r n = if n == z then ""
-                  else layout-to-string (layout-vec-sub (l, n)) ^
+                  else layout-to-string (get-nth-child (l, n)) ^
                        r (n + 1)
     in r 0
     end

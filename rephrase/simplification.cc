@@ -741,11 +741,11 @@ struct PeepholePass : public il::Pass<> {
         // TODO
         break;
 
-      case Primop::LAYOUT_VEC_SUB:
+      case Primop::GET_NTH_CHILD:
         // TODO
         break;
 
-      case Primop::LAYOUT_VEC_SIZE:
+      case Primop::GET_NUM_CHILDREN:
         // TODO
         break;
 

@@ -130,8 +130,8 @@ Initial::Initial(AstPool *pool) {
     {"get-text", Primop::GET_TEXT},
     {"get-attrs", Primop::GET_ATTRS},
     {"set-attrs", Primop::SET_ATTRS},
-    {"layout-vec-size", Primop::LAYOUT_VEC_SIZE},
-    {"layout-vec-sub", Primop::LAYOUT_VEC_SUB},
+    {"get-num-children", Primop::GET_NUM_CHILDREN},
+    {"get-nth-child", Primop::GET_NTH_CHILD},
 
     {"font-load-file", Primop::FONT_LOAD_FILE},
     {"font-register", Primop::FONT_REGISTER},

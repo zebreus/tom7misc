@@ -388,9 +388,9 @@ static void ObjTests() {
            then get-text l
            else
              let
-                 val z = layout-vec-size l
+                 val z = get-num-children l
                  fun r n = if n == z then "." ^ int-to-string n
-                           else layout-to-string (layout-vec-sub (l, n)) ^
+                           else layout-to-string (get-nth-child (l, n)) ^
                                 r (n + 1)
              in r 0
              end
@@ -411,10 +411,10 @@ static void ObjTests() {
            then print (get-text l)
            else
              let
-                 val z = layout-vec-size l
+                 val z = get-num-children l
                  fun r n = if n == z then print ("." ^ int-to-string n)
                            else
-                             let do print-layout (layout-vec-sub (l, n))
+                             let do print-layout (get-nth-child (l, n))
                              in r (n + 1)
                              end
              in r 0
@@ -445,11 +445,11 @@ static void ObjTests() {
          then Text (get-text l)
          else
            let
-             val z = layout-vec-size l
+             val z = get-num-children l
              fun r n =
                let in
                  if n == z then nil
-                 else (layout-vec-sub (l, n) :: r (n + 1))
+                 else (get-nth-child (l, n) :: r (n + 1))
                end
            in
              Node (get-attrs l, r 0)
@@ -482,7 +482,7 @@ static void ObjTests() {
   CHECK_EQ(
       RunToString(R"(
          let fun mt _ = []
-         in print (int-to-string (layout-vec-size [[mt ()][mt ()]]))
+         in print (int-to-string (get-num-children [[mt ()][mt ()]]))
          end
       )"),
       "0");

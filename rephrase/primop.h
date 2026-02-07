@@ -113,8 +113,12 @@ enum class Primop {
   GET_ATTRS,
   SET_ATTRS,
   // TODO: Consider making these regular vectors?
-  LAYOUT_VEC_SIZE,
-  LAYOUT_VEC_SUB,
+  // The only reason we do this is so that we can
+  // expose a function that gets the nth-child of
+  // a node without also allowing VEC_UPDATE (or
+  // copying).
+  GET_NUM_CHILDREN,
+  GET_NTH_CHILD,
 
   FONT_LOAD_FILE,
   FONT_REGISTER,

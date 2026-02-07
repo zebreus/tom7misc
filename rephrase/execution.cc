@@ -765,15 +765,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return NewValue(&state->heap, std::move(obj));
   }
 
-  case Primop::LAYOUT_VEC_SUB: {
+  case Primop::GET_NTH_CHILD: {
     // PERF: Could compile this away to GetVec.
     const BigInt *bb = std::get_if<BigInt>(&b->v);
     CHECK(bb != nullptr) << Err()
-                         << "Expected int argument (rhs) to layout-vec-sub";
-    const auto &[attrs, children] = GetNode("layout-vec-sub", a);
-    const int64_t idx = GetInt64("layout-vec-sub", *bb);
+                         << "Expected int argument (rhs) to get-nth-child";
+    const auto &[attrs, children] = GetNode("get-nth-child", a);
+    const int64_t idx = GetInt64("get-nth-child", *bb);
     CHECK(idx >= 0 && idx < (int64_t)children.size()) << Err() <<
-      "Index out of bounds in layout-vec-sub.\nIndex: " <<
+      "Index out of bounds in get-nth-child.\nIndex: " <<
       idx << "\nVector size: " << children.size();
     return children[idx];
   }
@@ -793,8 +793,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const map_type *arg = std::get_if<map_type>(&b->v);
     CHECK(arg != nullptr) << Err() <<
       "Expected obj second argument to internal-auto-draw.";
-
-
 
     // Repeating defaults here for increased stability of BoVeX
     // documents in case I change the library's defaults.
@@ -1254,8 +1252,8 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return attrs;
   }
 
-  case Primop::LAYOUT_VEC_SIZE: {
-    const auto &[attrs, children] = GetNode("layout-vec-size", a);
+  case Primop::GET_NUM_CHILDREN: {
+    const auto &[attrs, children] = GetNode("get-num-children", a);
     return Big(BigInt((int)children.size()), state);
   }
 
