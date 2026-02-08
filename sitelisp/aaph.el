@@ -421,6 +421,14 @@ the overlay should simply be removed: \\[universal-argument] \
 \\|\\bdatatype\\b\\|\\babstype\\b\\|\\band\\b"
   "The keywords a `|' can follow.")
 
+;; We want forward-word to act like it does in English mode, stopping
+;; at hyphens, since this is more intuitive for stuff like ctrl-right.
+;; But when programmatically extracting an identifier, it's better
+;; to use the language's actual syntax.
+(defun aaph-forward-ident ()
+  "Like forward-word, but supporting all identifier characters."
+  (skip-chars-forward "-A-Za-z0-9_'"))
+
 (defun aaph-electric-pipe ()
   "Insert a \"|\".
 Depending on the context insert the name of function, a \"=>\" etc."
@@ -444,7 +452,7 @@ Depending on the context insert the name of function, a \"=>\" etc."
         (setq tmp (concat " " (buffer-substring
                                (progn (forward-char 3)
                                       (skip-chars-forward "\t\n ") (point))
-                               (progn (forward-word 1) (point))) " "))
+                               (progn (aaph-forward-ident) (point))) " "))
         (setq case-or-handle-exp nil))
        ;; It was a datatype, insert nothing
        ((looking-at "datatype\\b\\|abstype\\b")
@@ -464,7 +472,7 @@ Depending on the context insert the name of function, a \"=>\" etc."
                       (concat " " (buffer-substring
                                    (progn (forward-char 3)
                                           (skip-chars-forward "\t\n ") (point))
-                                   (progn (forward-word 1) (point))) " "))
+                                   (progn (aaph-forward-ident) (point))) " "))
                 (setq case-or-handle-exp nil))
             (setq tmp " ") (setq case-or-handle-exp nil))))))
     (insert tmp)
