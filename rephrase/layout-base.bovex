@@ -283,7 +283,6 @@ fun pack-boxes (algo : packing-algorithm,
     object InternalPackBoxesArg of { algorithm: string,
                                      justification: string,
                                      doc: layout }
-    object InternalPackBoxesRet of { badness: float, layout: layout }
 
     (* This is communicated with a string attribute; an implementation
        detail. *)
@@ -299,13 +298,17 @@ fun pack-boxes (algo : packing-algorithm,
       | ALL-JUSTIFIED => "all"
       | CENTERED => "center"
 
+    val badness = ref 0.0
+
     val arg = {(InternalPackBoxesArg)
                algorithm = algo-string,
                justification = just-string,
                doc = content }
-    val packed = internal-pack-boxes (dims, arg)
+
+    val lines : layout vec = internal-pack-boxes (dims, badness, arg)
+
+    val bb = !badness
   in
-    case packed of
-      {(InternalPackBoxesRet) badness, layout} => (badness, unjoin layout)
-    | _ => fail "Bug: Expected badness and layout from pack-boxes"
+    print ("pack-boxes badness: " ^ float-to-string bb ^ "\n");
+    (!badness, vec-to-list lines)
   end

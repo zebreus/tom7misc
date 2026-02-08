@@ -3,17 +3,17 @@
 
 #include <bit>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
-#include <cstdint>
-#include <unordered_map>
 #include <vector>
-#include <string>
 
-#include "primop.h"
-#include "bignum/big.h"
 #include "base/logging.h"
+#include "bignum/big.h"
+#include "primop.h"
 
 // Untyped bytecode.
 
@@ -237,6 +237,9 @@ std::pair<int64_t, int64_t> ProgramSize(const Program &pgm);
 // the harness code.
 inline constexpr const char *NODE_ATTRS_LABEL = "a";
 inline constexpr const char *NODE_CHILDREN_LABEL = "c";
+// References are also exposed as records with this one field.
+// This is used for output arguments for some primops.
+inline constexpr const char *REF_LABEL = "r";
 
 // Similarly the tagging used in field names. These go at the
 // beginning of the map key. This is basically the same as the IL

@@ -1001,7 +1001,7 @@ static constexpr ColorUtil::Gradient BEST_WORST{
 };
 
 
-std::pair<DocTree, double>
+std::pair<std::vector<DocTree>, double>
 Document::PackBoxes(Algorithm algo,
                     BoxesAndGlue::Justification just,
                     double orphan_threshold,
@@ -1011,7 +1011,7 @@ Document::PackBoxes(Algorithm algo,
   using BoxIn = BoxesAndGlue::BoxIn;
   using BoxOut = BoxesAndGlue::BoxOut;
 
-  if (doc.IsEmpty()) return {doc, 0.0};
+  if (doc.IsEmpty()) return {{}, 0.0};
   CHECK(!doc.IsText()) <<
     "pack-boxes wants a node that has only box children. Got text: " <<
     doc.text;
@@ -1355,7 +1355,7 @@ Document::PackBoxes(Algorithm algo,
     lines_out.push_back(std::move(line));
   }
 
-  return {JoinDocs(std::move(lines_out)), total_badness};
+  return {std::move(lines_out), total_badness};
 }
 
 using Transform = Document::Transform;

@@ -3,18 +3,18 @@
 
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <string>
 #include <tuple>
-#include <unordered_set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <cstdint>
 
-#include "bignum/big.h"
 #include "base/logging.h"
 #include "bc.h"
+#include "bignum/big.h"
 #include "functional-map.h"
 #include "il.h"
 #include "primop.h"
@@ -39,8 +39,6 @@ struct Converter {
 
   static constexpr const char *INJ_LABEL = "#";
   static constexpr const char *INJ_VALUE = "$";
-
-  static constexpr const char *REF_LABEL = "r";
 
   // Object fields are distinguished by their types. We just encode this in
   // the field name. We could use anything here, but we use something that's

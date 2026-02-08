@@ -504,6 +504,9 @@ fun vec-tabulate (0, _) = vec-empty()
     v
   end
 
+fun vec-to-list v =
+  list-tabulate (vec-size v, fn i => vec-sub(v, i))
+
 fun string-ends-with small big =
   let
     val ss = string-size small

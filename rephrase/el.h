@@ -90,7 +90,7 @@ struct Type {
   const Type *b = nullptr;
   std::vector<const Type *> children;
   std::vector<std::pair<std::string, const Type *>> str_children;
-  size_t pos = SourceMap::BOGUS_POS;
+  size_t pos = SourceMap::BOGUS_POS + 3'000'000'000;
   Type(TypeType t) : type(t) {}
 };
 
@@ -119,7 +119,7 @@ struct Exp {
   std::vector<std::pair<std::string, const Exp *>> str_children;
   // Approximate position (byte offset in the concatenated source) of
   // this expression in the input stream. For error reporting.
-  size_t pos = SourceMap::BOGUS_POS;
+  size_t pos = SourceMap::BOGUS_POS + 2'000'000'000;
   bool boolean = false;
   Exp(ExpType t) : type(t) {}
 };
@@ -133,7 +133,7 @@ struct Pat {
   BigInt integer;
   std::vector<const Pat *> children;
   std::vector<std::pair<std::string, const Pat *>> str_children;
-  size_t pos = SourceMap::BOGUS_POS;
+  size_t pos = SourceMap::BOGUS_POS + 4'000'000'000;
   bool boolean = false;
   Pat(PatType t) : type(t) {}
 };

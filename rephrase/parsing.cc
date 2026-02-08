@@ -349,30 +349,31 @@ const Exp *Parsing::Parse(AstPool *pool,
         // or int
         // but not (int, string)
         auto AppType =
-          (AppArg && *IdType) /=[&](const auto &pair) ->
+          Mark(AppArg && *IdType) /=[&](const auto &pair_pos) ->
           std::optional<const Type *>{
-              const auto &[varg, vapps] = pair;
-              if (vapps.empty()) {
-                // then this may just be a single type with
-                // no applications
-                if (varg.size() == 1) {
-                  return {varg[0]};
-                } else {
-                  // Otherwise we have something like (int, string)
-                  // on its own, which is not allowed.
-                  return std::nullopt;
-                }
+            const auto &[pair, token_start, token_len] = pair_pos;
+            const auto &[varg, vapps] = pair;
+            if (vapps.empty()) {
+              // then this may just be a single type with
+              // no applications
+              if (varg.size() == 1) {
+                return {varg[0]};
               } else {
-                // Postfix applications.
-                const Type *t = pool->VarType(vapps[0], varg,
-                                              SourceMap::BOGUS_POS);
-                for (int i = 1; i < (int)vapps.size(); i++) {
-                  t = pool->VarType(vapps[i], std::vector<const Type *>{t},
-                                    SourceMap::BOGUS_POS);
-                }
-                return {t};
+                // Otherwise we have something like (int, string)
+                // on its own, which is not allowed.
+                return std::nullopt;
               }
-            };
+            } else {
+              // Postfix applications.
+              const Type *t = pool->VarType(vapps[0], varg,
+                                            BytePos(token_start));
+              for (int i = 1; i < (int)vapps.size(); i++) {
+                t = pool->VarType(vapps[i], std::vector<const Type *>{t},
+                                  BytePos(token_start));
+              }
+              return {t};
+            }
+          };
 
         // Could do this as part of the fixity parse if we had support
         // for n-ary operators.

@@ -249,16 +249,18 @@ struct Document {
 
   DocTree GetBoxes(const DocTree &doc);
 
-  // Pack boxes to lines. Returns the document and the total badness.
+  // Pack boxes to lines. Returns the vector of lines and the total
+  // badness.
   enum class Algorithm {
     BEST,
     FIRST,
   };
-  std::pair<DocTree, double> PackBoxes(Algorithm algo,
-                                       BoxesAndGlue::Justification just,
-                                       double orphan_threshold,
-                                       double width,
-                                       const DocTree &doc);
+  std::pair<std::vector<DocTree>, double>
+  PackBoxes(Algorithm algo,
+            BoxesAndGlue::Justification just,
+            double orphan_threshold,
+            double width,
+            const DocTree &doc);
 
   std::vector<DocTree>
   BoxifyText(const TextProps &props, std::string_view text);

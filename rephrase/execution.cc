@@ -263,6 +263,97 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     return Unit(state);
   }
 
+  case Primop::PACK_BOXES: {
+    // This width of each line available. The vector is interpreted
+    // as being infinite, with the last value repeated.
+    std::vector<Value *> *vdims = std::get_if<vec_type>(&a->v);
+    CHECK(vdims != nullptr) << Err() <<
+      "Expected vector argument #1 to pack-boxes";
+
+    const map_type *arg = std::get_if<map_type>(&c->v);
+    CHECK(arg != nullptr) << Err() <<
+      "Expected obj argument #3 to pack-boxes";
+
+    std::vector<double> dims;
+    dims.reserve(vdims->size());
+    CHECK(!vdims->empty()) << "In pack-boxes lhs, there must be at least "
+      "one line width.";
+    for (const Value *val : *vdims) {
+      const double *d = std::get_if<double>(&val->v);
+      CHECK(d != nullptr) << Err() << "Expected a vector of doubles "
+        "to pack-boxes lhs.";
+      CHECK(std::isfinite(*d) && *d >= 0.0) << "In pack-boxes, invalid "
+        "dimension value " << *d;
+      dims.push_back(*d);
+    }
+
+    Document::Algorithm algorithm = Document::Algorithm::BEST;
+    if (const std::string *algo =
+        GetObjStringField("pack-boxes", "algorithm", *arg)) {
+      if (*algo == "best") {
+        algorithm = Document::Algorithm::BEST;
+      } else if (*algo == "first") {
+        algorithm = Document::Algorithm::FIRST;
+      } else {
+        // XXX Should be InternalFail?
+        LOG(FATAL) << "pack-boxes algorithm field unknown: " << *algo;
+      }
+    }
+
+    using Justification = BoxesAndGlue::Justification;
+    Justification just = Justification::FULL;
+    if (const std::string *j =
+        GetObjStringField("pack-boxes", "justification", *arg)) {
+      if (*j == "full") {
+        just = Justification::FULL;
+      } else if (*j == "left") {
+        just = Justification::LEFT;
+      } else if (*j == "center") {
+        just = Justification::CENTER;
+      } else if (*j == "all") {
+        just = Justification::ALL;
+      } else {
+        // XXX Should be InternalFail?
+        LOG(FATAL) << "pack-boxes justification field unknown: " << *j;
+      }
+    }
+
+    // TODO: To fix this, we need to send the dimensions to the
+    // underlying boxes-and-glue algorithm and use it. The algorithm
+    // will need to be modified, since it packs "from the end" and
+    // assumes the width is constant. Might be better to go straight
+    // to some trapezoid-packing rewrite.
+    CHECK(dims.size() == 1) << "Sorry, I have not yet implemented "
+      "pack-boxes for cases with non-constant width!";
+
+    const double line_width = dims[0];
+    // TODO: Make configurable.
+    const double orphan_threshold = line_width / 3.0;
+
+    const Value *doc_value = GetRequiredObjField("pack-boxes", "doc",
+                                                 bc::ObjectFieldType::LAYOUT,
+                                                 *arg);
+    DocTree doc = ValueToDocTree(doc_value);
+
+    const auto &[packed_lines, badness] = DocumentHook()->PackBoxes(
+        algorithm, just, orphan_threshold, line_width, doc);
+
+    vec_type line_values;
+    line_values.reserve(packed_lines.size());
+    for (const DocTree &dt : packed_lines) {
+      line_values.push_back(DocTreeToValue(&state->heap.used, dt));
+    }
+
+    // The ref is an output argument.
+    std::unordered_map<std::string, Value *> *ref =
+      std::get_if<map_type>(&b->v);
+    auto it = ref->find(REF_LABEL);
+    CHECK(it != ref->end()) << Err() << "Bad ref!";
+    it->second = Float(badness, state);
+
+    return NewValue(&state->heap, std::move(line_values));
+  }
+
   default:
     LOG(FATAL) << Err() << "Unimplemented or non-triop primop: "
                << PrimopString(primop);
@@ -676,93 +767,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const auto &[page_idx, frame_idx] = GetPageAndFrame("out-layout", am);
     OutputLayoutHook((int)page_idx, (int)frame_idx, b);
     return Unit(state);
-  }
-
-  case Primop::PACK_BOXES: {
-    // This width of each line available. The vector is interpreted
-    // as being infinite, with the last value repeated.
-    std::vector<Value *> *vdims = std::get_if<vec_type>(&a->v);
-    CHECK(vdims != nullptr) << Err() <<
-      "Expected vector argument (lhs) to pack-boxes";
-
-    const map_type *arg = std::get_if<map_type>(&b->v);
-    CHECK(arg != nullptr) << Err() <<
-      "Expected obj argument (rhs) to pack-boxes";
-
-    std::vector<double> dims;
-    dims.reserve(vdims->size());
-    CHECK(!vdims->empty()) << "In pack-boxes lhs, there must be at least "
-      "one line width.";
-    for (const Value *val : *vdims) {
-      const double *d = std::get_if<double>(&val->v);
-      CHECK(d != nullptr) << Err() << "Expected a vector of doubles "
-        "to pack-boxes lhs.";
-      CHECK(std::isfinite(*d) && *d >= 0.0) << "In pack-boxes, invalid "
-        "dimension value " << *d;
-      dims.push_back(*d);
-    }
-
-    Document::Algorithm algorithm = Document::Algorithm::BEST;
-    if (const std::string *algo =
-        GetObjStringField("pack-boxes", "algorithm", *arg)) {
-      if (*algo == "best") {
-        algorithm = Document::Algorithm::BEST;
-      } else if (*algo == "first") {
-        algorithm = Document::Algorithm::FIRST;
-      } else {
-        // XXX Should be InternalFail?
-        LOG(FATAL) << "pack-boxes algorithm field unknown: " << *algo;
-      }
-    }
-
-    using Justification = BoxesAndGlue::Justification;
-    Justification just = Justification::FULL;
-    if (const std::string *j =
-        GetObjStringField("pack-boxes", "justification", *arg)) {
-      if (*j == "full") {
-        just = Justification::FULL;
-      } else if (*j == "left") {
-        just = Justification::LEFT;
-      } else if (*j == "center") {
-        just = Justification::CENTER;
-      } else if (*j == "all") {
-        just = Justification::ALL;
-      } else {
-        // XXX Should be InternalFail?
-        LOG(FATAL) << "pack-boxes justification field unknown: " << *j;
-      }
-    }
-
-    // TODO: To fix this, we need to send the
-    CHECK(dims.size() == 1) << "Sorry, I have not yet implemented "
-      "pack-boxes for cases with non-constant width!";
-
-    const double line_width = dims[0];
-    // TODO: Make configurable.
-    const double orphan_threshold = line_width / 3.0;
-
-    const Value *doc_value = GetRequiredObjField("pack-boxes", "doc",
-                                                 bc::ObjectFieldType::LAYOUT,
-                                                 *arg);
-    DocTree doc = ValueToDocTree(doc_value);
-
-    const auto &[packdoc, badness] = DocumentHook()->PackBoxes(
-        algorithm, just, orphan_threshold, line_width, doc);
-
-    auto MakeField = [](const bc::ObjectFieldType oft,
-                        const std::string &field) {
-        return std::format("{:c}{}",
-                           ObjectFieldTypeTag(oft), field);
-      };
-
-    map_type obj{
-        {MakeField(bc::ObjectFieldType::FLOAT, "badness"),
-         Float(badness, state)},
-        {MakeField(bc::ObjectFieldType::LAYOUT, "layout"),
-         DocTreeToValue(&state->heap.used, packdoc)},
-      };
-
-    return NewValue(&state->heap, std::move(obj));
   }
 
   case Primop::GET_NTH_CHILD: {
