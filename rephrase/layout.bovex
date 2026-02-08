@@ -171,13 +171,16 @@ fun vspace vdim =
      then [v] else [ ])]]
 
 (* Generates a series of lines (boxes) with the glue turned into definite
-   padding. Still in "AllBox" format. Returns the badness and the list of
-   lines. *)
+   padding. Still in "AllBox" format. The glue attributes are removed and
+   replaced with a specific width for each box. Returns the badness and the
+   list of lines. *)
 fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
                       width : float, content : layout) : (float * layout list) =
   let
     val (badness, lines) = pack-boxes (algo, just, width, content)
+    val lines = vec-to-list lines
 
+    (* Set the line height to the maximum box height within it. *)
     fun set-height (line : layout) =
       case layoutcase line of
         Node (BOX, attrs, boxes) =>
@@ -191,7 +194,7 @@ fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
 
             val height = max-height (0.0, boxes)
           in
-            (* Could also strip height from words here! *)
+            (* Could also strip height from words here. *)
             box (attrs with (Box)height = height) (layout-concat boxes)
           end
       | _ => fail "Bug: Expected pack-boxes to return a series of lines (boxes)"
@@ -200,14 +203,68 @@ fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
     (badness, list-map set-height lines)
   end
 
-(* Pack boxes (e.g. paragraphs) vertically into columns. *)
+
+(* Pack boxes (e.g. paragraphs) vertically into columns.
+   NOT YET USED
+*)
 fun pack-boxes-vert (height : float, content : layout) : (float * layout list) =
   let
+    (* XXX this seems wrong. don't we need to convert the input box heights
+       into "widths" for the underlying algorithm? *)
     (* XXX we probably want left-justified here. *)
     val (badness, columns) = pack-boxes (BEST, FULLY-JUSTIFIED, height, content)
   in
-    (badness, columns)
+    (badness, vec-to-list columns)
   end
+
+(* Approximately how many lines of text would fit into the rectangle?
+   Return that and the text that would *not* fit. Converts glue parameters
+   into concrete widths like packing would, so this text should not
+   be used for rendering. (The intention is that you then use that
+   layout for another call with the next space's width.)
+   Used to approximate sizes for early steps in some layout algorithms. *)
+fun approx-lines-prefix (width, height, content) : { badness: float,
+                                                     lines: int,
+                                                     suffix: layout } =
+  let
+    val (badness, lines) = pack-boxes (FIRST, LEFT-JUSTIFIED, width, content)
+    val lines = vec-to-list lines
+
+    (* Break a line back into the words. *)
+    fun unline line =
+      case layoutcase line of
+        Node (BOX, attrs, boxes) => boxes
+      | _ => fail "Bug: Expected pack-boxes to return a series of lines (boxes)"
+
+    fun place-lines (prefix, height-left, nil) = (prefix, [])
+      | place-lines (prefix, height-left, line :: rest) =
+      let
+        val words = unline line
+
+        fun max-height (h, nil) = h
+          | max-height (h, box :: rest) =
+          case layoutcase box of
+            Node (BOX, {(Box) height}, _) =>
+              max-height (float-max(height, h), rest)
+          | _ => max-height (h, rest)
+
+        val height = max-height (0.0, words)
+
+        val height-left = height-left -. height
+      in
+        if height-left >=. 0.0
+        then place-lines (prefix + 1, height-left, rest)
+        else
+          (* unline all the unconsumed lines, though we already have
+             that for the current line so don't redo it. *)
+          (prefix, layout-concat (words @ list-concat (list-map unline rest)))
+      end
+
+    val (prefix, suffix) = place-lines (0, height, lines)
+  in
+    { badness = badness, lines = prefix, suffix = suffix }
+  end
+
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).
@@ -759,9 +816,10 @@ fun rephrase-paragraph (times : int) (p : layout) : layout =
     r
   end
 
-(* Pack a paragraph into lines. This is basically pack-boxes o get-boxes,
-   but we also look for rephrase contexts. If there are any, we
-   try multiple rephrasings and pick the one with the best badness.
+(* Pack a paragraph into lines. This is basically
+   pack-boxes-horiz o get-boxes, but we also look for rephrase contexts.
+   If there are any, we try multiple rephrasings and pick the one with
+   the best badness.
 
    Emits the badness from the best packing as a side effect.
 
@@ -770,6 +828,17 @@ fun rephrase-paragraph (times : int) (p : layout) : layout =
 fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
   let
     val VERBOSE = false
+
+    (* Interpret the layout as a list of layouts. *)
+    fun unjoin (lay : layout) : layout list =
+      case layoutcase lay of
+        Text s => if string-empty s then nil
+                  else lay :: nil
+      | Node (GROUP, attrs, children) =>
+          if obj-empty attrs
+          then children
+          else fail "group may not have attrs"
+      | Node _ => lay :: nil
 
     fun rephrasings (times, para) : (float * layout) list =
       let
@@ -922,9 +991,10 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
    TODO: It would be better if this placed them within
    rigid column-shaped boxes with stickers, rather than
    emitting them.
+
+   TODO: This should be obsoleted by the new layout algorithm.
 *)
-(* XXX should probably just use pack-boxes for this, but
-   they are vertical boxes. *)
+(* XXX should probably fix and use pack-boxes-vert *)
 (* XXX pass a "metrics" object or something *)
 datatype paragraph = Paragraph of { (* boxes with stickers inside *)
                                     lines : layout list }
@@ -1094,7 +1164,7 @@ fun date lay = [[lay][hfill()][vspace 16.0]]
    This breaks the layout into paragraphs, and then inserts
    them one by one into columns.
 
-   TODO: First process make a pass over the document's layout looking
+   TODO: First, make a pass over the document's layout looking
    for sequentially-numbered stuff like sections and bib-sources.
    Assign them numbers imperatively in some global map. A second pass
    can replace them with their actual numbers (or whatever).
@@ -1119,6 +1189,9 @@ fun main-text lay =
     val COLUMN-WIDTH =
       (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
       /. (int-to-float COLUMNS)
+
+    (* The next page index we'll allocate space on. See allocate-page. *)
+    val current-page = ref 0
 
     (* XXX don't discard floats! *)
     fun process (ParagraphItem { body, space-after, floats }) =
@@ -1233,9 +1306,70 @@ fun main-text lay =
            we probably need in order to do the proper layout. *)
         fun get-widths (body, nil) = NONE
           | get-widths (body,
-                        SpaceRect { page = _, x = _, y = _, w, h } :: rest) =
-          fail "unimplemented"
+                        space as
+                        (SpaceRect { page = _, x = _, y = _,
+                                     w = first-width, h = _ } :: _)) =
+          let
+            (* We need some width to use for the initial approximate
+               placement, because this affects how we split at hyphens
+               or deal with boxes that are too long to fit. Currently
+               we just use the first space's width.
 
+               Since height is zero, any lines that we consume here
+               have zero height (and thus are irrelevant) *)
+            val { badness = _, lines = _, suffix } =
+              approx-lines-prefix (first-width, 0.0, body)
+
+            fun rec (suffix, space, widths-rev) =
+              if layout-empty suffix
+              then SOME (list-rev widths-rev)
+              else
+                case space of
+                  nil => NONE
+                | SpaceRect { page = _, x = _, y = _, w, h } :: rest =>
+                    let
+                      val { badness = _, lines, suffix } =
+                        approx-lines-prefix (w, h, suffix)
+
+                      val widths-rev =
+                        (* n lines of the same width ("reversed") *)
+                        list-tabulate (lines, fn _ => w) @ widths-rev
+                    in
+                      rec (suffix, rest, widths-rev)
+                    end
+          in
+            rec (suffix, space, nil)
+          end
+
+
+        (* Imperatively create the next page in the document and
+           place floats on that page. Return the updated floats
+           list and newly allocated space.
+           When there are floats, it always places at least one
+           float so that we make progress, even if that means there
+           is no space for anything else. *)
+        fun allocate-page floats =
+          (* Note: Here is where we could support full-page figures
+             and column-spanning figures like figure*. We just need
+             to put them as stickers and allocate shorter columns.
+             (Columns must currently be uniform width, though.) *)
+          let
+            val page-num = !current-page
+            do current-page := !current-page + 1
+
+            fun column-xpos n =
+              LEFT-MARGIN +. (int-to-float n) *. (COLUMN-WIDTH +. GUTTER)
+            val cols = list-tabulate
+              (COLUMNS,
+               fn i => SpaceRect { page = page-num,
+                                   x = column-xpos i,
+                                   y = TOP-MARGIN,
+                                   w = COLUMN-WIDTH,
+                                   h = BODY-HEIGHT })
+          in
+            (* FIXME place floats here! *)
+            (nil, cols)
+          end
 
         (* Break the body paragraph into lines (rigid boxes), given
            the space. If there is insufficient space, allocate a
@@ -1247,18 +1381,68 @@ fun main-text lay =
            allocates pages and permanently places floats on them. *)
         fun break-for-space (body : layout, space-after : float,
                              floats, space) =
+          case get-widths (body, space) of
+            NONE =>
+              (* Then allocate space and try again. *)
+              let
+                val (floats, new-page-space) = allocate-page floats
+              in
+                break-for-space (body, space-after, floats, space @ new-page-space)
+              end
+          | SOME widths =>
+              let
+                (* This logic should be improved to pass non-uniform
+                   widths to pack-boxes. Right now it insists that all
+                   space is the same width. *)
+                val width =
+                  case widths of
+                    (* nil may be possible if the body has lines with
+                       zero height, but we still want to emit them. *)
+                    nil => 0.0
+                  | w :: _ => w
+
+                do list-app (fn w => w ==. width otherwise
+                             fail ("Sorry, non-uniform column widths are not " ^
+                                   "yet supported."))
+
+                val lines = pack-one-paragraph width body
+
+                (* TODO: Use actual glue. I think maybe we want to also
+                   include a negative glue-break-extra-width (and low or
+                   negative penalty for breaking) so that we encourage
+                   breaking columns after (spaced) paragraphs.
+
+                   It's a bit weird now because glue is normally a
+                   width concept. Might just be fine, but we should be
+                   clear. Best is perhaps to use a record here instead
+                   of obj hacks, since these intermediate things should
+                   never intermingle with regular layout? *)
+                fun add-trailing-space (h :: t) = h :: add-trailing-space t
+                  | add-trailing-space nil = vspace space-after :: nil
+              in
+                { lines = add-trailing-space lines, floats = floats,
+                  space = space }
+              end
+
+        fun flush-floats (nil, _) = nil
+          | flush-floats (fs, space) =
           let
-            (* This logic should be improved to pass non-uniform
-               widths to pack-boxes. Right now it insists that all
-               space is the same width. *)
+            do print ("Flush " ^ int-to-string (list-length fs) ^ " float(s) " ^
+                      "at end of document...\n")
+            (* TODO: In this situation we should probably provide hints so
+               that it uses as much space as possible (e.g. full-column
+               footnotes), since we certainly have no text to put in
+               any remaining space. *)
+            val (fs, new-space) = allocate-page fs
           in
-            fail "unimplemented"
+            (* Note: We don't actually use the space for anything. *)
+            flush-floats (fs, space @ new-space)
           end
 
-        fun step { lines = nil, paras = nil, floats = nil, space = _ } =
-          (* All queues are exhausted, so we have no more content
-             to place. Done. *)
-          nil
+        fun step { lines = nil, paras = nil, floats, space } =
+          (* No more body text, but flush any remaining floats. *)
+          flush-floats (floats, space)
+
           | step { lines = nil,
                    paras = ParagraphItem { body, space-after,
                                            floats = new-floats } :: prest,
@@ -1276,7 +1460,8 @@ fun main-text lay =
                    floats = floats @ new-floats,
                    space = space }
           end
-
+          | step { lines, paras, floats, space } =
+          fail "unimplemented"
       in
 
         fail "unimplemented"
@@ -1286,6 +1471,7 @@ fun main-text lay =
        Optimize line breaks for each paragraph.
        Turn each paragraph into a series of vertical boxes (lines, which
        are stickers). *)
+    (* XXX call the new approach ^^^ when ready *)
     val paras : paragraph list = list-concat (list-map process para-items)
   in
     pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,

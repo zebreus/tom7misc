@@ -256,26 +256,16 @@ fun layout-to-string l =
 fun get-boxes (content : layout) =
   internal-get-boxes content
 
-(* Interpret the layout as a list of layouts. *)
-fun unjoin (lay : layout) : layout list =
-  case layoutcase lay of
-    Text s => if string-empty s then nil
-              else lay :: nil
-  | Node (GROUP, attrs, children) =>
-      if obj-empty attrs
-      then children
-      else fail "group may not have attrs"
-  | Node _ => lay :: nil
-
-(* Pack boxes along a dimension. The boxes must be marked with their
-   "width" as the dimension. Usually you want to just use pack-boxes-horiz
-   or pack-boxes-vert below. *)
+(* Pack boxes along a dimension. The layout must be a sequence of boxes, each
+   of which must be marked with their "width" as the dimension. Interprets
+   and consumes the glue attributes, converting them into a specific width.
+   Usually you want to just use pack-boxes-horiz or pack-boxes-vert below. *)
 datatype packing-algorithm = BEST | FIRST
 datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | ALL-JUSTIFIED | CENTERED
 fun pack-boxes (algo : packing-algorithm,
                 justification : justification,
                 dimension : float, content : layout) :
-  (float * layout list) =
+  (float * layout vec) =
   let
     (* XXX assumes that the "width" dimension is constant. *)
     val dims = vec(1, dimension)
@@ -298,6 +288,7 @@ fun pack-boxes (algo : packing-algorithm,
       | ALL-JUSTIFIED => "all"
       | CENTERED => "center"
 
+    (* Output argument. *)
     val badness = ref 0.0
 
     val arg = {(InternalPackBoxesArg)
@@ -306,9 +297,6 @@ fun pack-boxes (algo : packing-algorithm,
                doc = content }
 
     val lines : layout vec = internal-pack-boxes (dims, badness, arg)
-
-    val bb = !badness
   in
-    print ("pack-boxes badness: " ^ float-to-string bb ^ "\n");
-    (!badness, vec-to-list lines)
+    (!badness, lines)
   end
