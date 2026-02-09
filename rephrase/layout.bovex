@@ -108,6 +108,11 @@ fun fixedersys layout = apply-font FIXEDERSYS layout
 fun b layout =
   span {(Span) font-bold = true} layout
 
+
+val BODY-FONT = ref (font-family TIMES)
+val BODY-FONT-SIZE = ref (point 12.0)
+val BODY-LINE-SPACING = ref (point 1.5)
+
 fun it layout =
   span {(Span) font-italic = true} layout
 
@@ -274,15 +279,21 @@ fun approx-lines-prefix (width, height, content) : { badness: float,
 (* Default footnote.
    Picks the next footnote mark, and places it here in
    the text. Emits the footnote body as a floating element. *)
-val FOOTNOTE-FONT-SIZE = ref (point 10.0)
+val FOOTNOTE-MARK-SCALE = ref (9.0 /. 12.0)
+val FOOTNOTE-FONT-SCALE = ref (10.0 /. 12.0)
 val next-footnote = ref 1
 fun footnote lay : layout =
   let
     val mark = layout (int-to-string (!next-footnote))
   in
     next-footnote := !next-footnote + 1;
-    sup (!FOOTNOTE-FONT-SIZE) mark ^^
-    span {(Span) footnote = true} [[mark]. [lay]]
+    (* XXX sup should use the percentage to also compute the y offset *)
+    sup (!FOOTNOTE-MARK-SCALE *. !BODY-FONT-SIZE) mark ^^
+    span {(Span)
+          font-size = !FOOTNOTE-FONT-SCALE *. !BODY-FONT-SIZE,
+          font-face = !BODY-FONT,
+          line-spacing = !FOOTNOTE-FONT-SCALE *. !BODY-LINE-SPACING,
+          footnote = true} [[mark]. [lay]]
   end
 
 
@@ -450,29 +461,32 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
         (* Plain text. *)
         Text s => do-one-text (false, s)
 
-      (* Floating elements *)
+      (* Floating elements. *)
 
       | Node (BOX, attrs as {(Box)floating }, ch) =>
           (case attrs of
              {(Box) width, height} =>
-               let in
+               let
+                 val ch = layout-map-text normalize-whitespace (layout-concat ch)
+               in
                  append-float
                  (FloatBox { pos = parse-float-pos floating,
                              width = width,
                              height = height,
                              box =
-                             box (attrs without (Box)floating)
-                             (layout-concat ch) });
+                             box (attrs without (Box)floating) ch });
                  (* But completely skip it for the paragraph output. *)
                  ()
                end
            | _ => fail "A box with floating= attribute must have width/height")
 
       | Node (SPAN, attrs as {(Span)footnote = true }, ch) =>
-          let in
+          let
+            (* TODO: We should parse paragraphs in here, too. *)
+            val ch = layout-map-text normalize-whitespace (layout-concat ch)
+          in
             append-float (FloatFoot { span =
-                                      span (attrs without(Span)footnote)
-                                      (layout-concat ch) });
+                                      span (attrs without(Span)footnote) ch });
             (* But completely skip it for the paragraph output. *)
             ()
           end
@@ -1109,6 +1123,13 @@ fun main-text lay =
     val COLUMN-WIDTH =
       (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
       /. (int-to-float COLUMNS)
+
+    val lay =
+      span
+      {(Span)
+       font-face = !BODY-FONT,
+       font-size = !BODY-FONT-SIZE,
+       line-spacing = !BODY-LINE-SPACING } lay
 
     (* The next page index we'll allocate space on. See allocate-page. *)
     val current-page = ref 0

@@ -36,11 +36,9 @@ let
 
   val tt = fixedersys
 
-  fun body-font lay = span
-    {(Span)
-     font-face = font-family PALATINO,
-     font-size = point 12.0,
-     line-spacing = point 1.5 } lay
+  do BODY-FONT := font-family PALATINO
+  do BODY-FONT-SIZE := point 12.0
+  do BODY-LINE-SPACING := point 1.5
 
   val layout-sup = sup
 
@@ -51,11 +49,6 @@ let
 
   fun sub lay =
     span {(Box) font-size = 8.0, dy = 8.0 } lay
-
-(*
-  fun footnote s = span {(Span) font-color = 0x999999FF, font-size = 9.0 }
-                   [ ([b[footnote]]: [s])]
-*)
 
   fun centered-image width filename =
     let
@@ -80,7 +73,7 @@ let
 in
 
 (* XXX: If I leave off the vspace 8 here, it ignores the font size? *)
-(main-text (body-font
+(main-text
 [[title (layout doc-title)][vspace 8.0]
 
 [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
@@ -390,7 +383,6 @@ T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
 
 [bibliography()]
 
-]))
-
+])
 
 end
