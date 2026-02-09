@@ -26,6 +26,8 @@ import "layout-base.bovex"
 
 val LAYOUT-VERBOSE = false
 
+val SELF-CHECK = true
+
 (* For debugging, emit glyphs in some otherwise invisible places. *)
 val SHOW-CODES = false
 
@@ -227,7 +229,8 @@ fun approx-lines-prefix (width, height, content) : { badness: float,
                                                      lines: int,
                                                      suffix: layout } =
   let
-    val (badness, lines) = pack-boxes (FIRST, LEFT-JUSTIFIED, width, content)
+    val boxes = get-boxes content
+    val (badness, lines) = pack-boxes (FIRST, LEFT-JUSTIFIED, width, boxes)
     val lines = vec-to-list lines
 
     (* Break a line back into the words. *)
@@ -616,8 +619,8 @@ fun centered-text-sticker { x, y, width } lay =
         Node (BOX, attrs, children) =>
           sticker (attrs without (Box)width
                    without (Box)height
-                   with x = 0.0
-                   with y = 0.0) (layout-concat children)
+                   with (Sticker)x = 0.0
+                   with (Sticker)y = 0.0) (layout-concat children)
       | _ => fail "expected box containing the line's stickers"
 
   in
@@ -1003,6 +1006,8 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      COLUMN-WIDTH, COLUMNS,
                      paras : paragraph list) =
   let
+    do fail "disabled"
+
     val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
     val LEFT-COLUMN-X = LEFT-MARGIN
 
@@ -1083,6 +1088,8 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
       case layoutcase line of
         Node (BOX, {(Box) height } as attrs, children) =>
           let in
+            print "ADD LINE:\n";
+            debug-print-doc line;
             get-placement height;
             add-column-sticker
             (sticker (attrs without (Box)width
@@ -1092,7 +1099,12 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                       with y = !current-ypos) (layout-concat children));
             current-ypos := !current-ypos +. height
           end
-      | _ => fail "only expecting boxes with known height in addline"
+      | _ =>
+          let in
+            print "DOC:\n";
+            debug-print-doc line;
+            fail "only expecting boxes with known height in addline"
+          end
 
     fun addpara (Paragraph { lines }) =
       list-app addline lines
@@ -1108,6 +1120,8 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
 fun process-paragraph (COLUMN-WIDTH : float,
                        p : layout) : paragraph list =
   let
+    do fail "disabled"
+
     val VERBOSE = false
     val lines = pack-one-paragraph COLUMN-WIDTH p
 
@@ -1299,6 +1313,8 @@ fun main-text lay =
     fun place-paragraphs (para-items : paragraph-item list) =
       let
 
+        val VERBOSE = false
+
         (* Get a vector of line widths using the currently
            available space, or return NONE if there does not
            seem to be enough space. This is heuristic, using
@@ -1355,6 +1371,9 @@ fun main-text lay =
              (Columns must currently be uniform width, though.) *)
           let
             val page-num = !current-page
+            do VERBOSE andthen
+              print ("Create page " ^ int-to-string page-num ^ "\n")
+
             do current-page := !current-page + 1
 
             fun column-xpos n =
@@ -1406,6 +1425,9 @@ fun main-text lay =
                                    "yet supported."))
 
                 val lines = pack-one-paragraph width body
+                (* Make the contents of each line into stickers; we'll
+                   only translate around the line itself at this point. *)
+                val lines = list-map stick-horizontally lines
 
                 (* TODO: Use actual glue. I think maybe we want to also
                    include a negative glue-break-extra-width (and low or
@@ -1418,7 +1440,8 @@ fun main-text lay =
                    of obj hacks, since these intermediate things should
                    never intermingle with regular layout? *)
                 fun add-trailing-space (h :: t) = h :: add-trailing-space t
-                  | add-trailing-space nil = vspace space-after :: nil
+                  | add-trailing-space nil =
+                  box {(Box) height = space-after} [] :: nil
               in
                 { lines = add-trailing-space lines, floats = floats,
                   space = space }
@@ -1439,6 +1462,7 @@ fun main-text lay =
             flush-floats (fs, space @ new-space)
           end
 
+
         fun step { lines = nil, paras = nil, floats, space } =
           (* No more body text, but flush any remaining floats. *)
           flush-floats (floats, space)
@@ -1447,10 +1471,9 @@ fun main-text lay =
                    paras = ParagraphItem { body, space-after,
                                            floats = new-floats } :: prest,
                    floats, space } =
-          let
           (* No more lines in the queue, but there're still more
              paragraphs to place. *)
-
+          let
             val { lines, floats, space } =
               break-for-space (body, space-after, floats, space)
 
@@ -1460,11 +1483,122 @@ fun main-text lay =
                    floats = floats @ new-floats,
                    space = space }
           end
-          | step { lines, paras, floats, space } =
-          fail "unimplemented"
+
+          | step { lines, paras, floats, space = nil } =
+          (* This shouldn't really happen since when we break for space,
+             we first make sure we have enough space. But that process is
+             approximate and it is obvious what we should do if we have
+             none, so just do it. *)
+          let
+            do print ("No space in step??\n")
+            val (fs, space) = allocate-page floats
+          in
+            step { lines = lines, paras = paras, floats = fs, space = space }
+          end
+
+          | step { lines, paras, floats, space = space :: srest } =
+          (* We have some lines to place. In this case, we also
+             expect that we have space in which to place it. *)
+          let
+            (* TODO: With support for ragged dimensions in pack-boxes, we can
+               treat each remaining space as a column with a different
+               height and pack lines using pack-boxes. But it probably
+               makes sense to wait until we have full support for
+               linked rectangles (or like arbitrary polygons). For
+               now, we use a greedy approach. *)
+
+            val (page, sx, sy, width, height) =
+              case space of
+                SpaceRect { page, x, y, w, h } => (page, x, y, w, h)
+
+            (* This should have already been established. *)
+            do SELF-CHECK andthen
+              list-app (fn SpaceRect { page, x, y, w, h } =>
+                        w ==. width otherwise
+                        fail "should have uniform widths?") srest
+
+            (* Just greedily place lines in the next space. *)
+
+            fun stick (line, yoffset) =
+              case layoutcase line of
+                Node (BOX, attrs, children) =>
+                  let val attrs = attrs
+                    without (Box)height
+                    with comment = "line"
+                    with (Sticker)x = sx
+                    with (Sticker)y = sy +. yoffset
+                  in
+                    output (page,
+                            sticker attrs (layout-concat children))
+                  end
+              | _ => fail "can only stick boxes..."
+
+            do VERBOSE andthen
+              print ("Place " ^ int-to-string (list-length lines) ^
+                     " lines in " ^ float-to-string width ^ "x" ^
+                     float-to-string height ^ "\n")
+
+            (* Place lines into the one space rectangle greedily.
+               used is the amount of space at the beginning that we've
+
+               *)
+            fun place (nil, floats, used) =
+              (* No more lines to place. Return the height as
+                 space. *)
+              let in
+                used <=. height otherwise fail "used too much space??";
+                step { lines = nil, paras = paras, floats = floats,
+                       space = SpaceRect { page = page, x = sx,
+                                           y = sy +. used, w = width,
+                                           h = height -. used } :: srest }
+              end
+
+              | place (line :: lrest, floats, used) =
+
+              let
+                val line-height =
+                  let in
+                    (* print "---------------------\n";
+                    debug-print-doc line; *)
+                    (case layoutcase line of
+                       Node (BOX, {(Box) height } as attrs, children) =>
+                         height
+                     | _ =>
+                         let in
+                           (* debug-print-doc line; *)
+                           fail "only expecting boxes with known height in place"
+                         end)
+                  end
+
+
+                val new-used = used +. line-height
+                do VERBOSE andthen
+                  print ("One line at " ^ float-to-string line-height ^
+                         " so used=" ^ float-to-string new-used ^ "\n")
+              in
+                if new-used <=. height
+                then
+                  let in
+                    stick (line, used);
+                    place (lrest, floats, new-used)
+                  end
+                else
+                  (* This space is now exhausted; step with the
+                     remaining space. *)
+                  step { lines = line :: lrest,
+                         paras = paras,
+                         floats = floats,
+                         space = srest }
+              end
+
+          in
+            place (lines, floats, 0.0)
+          end
+
+
       in
 
-        fail "unimplemented"
+        step { lines = nil, paras = para-items, floats = nil, space = nil }
       end
 
     (* Do rephrasing if needed.
@@ -1472,9 +1606,16 @@ fun main-text lay =
        Turn each paragraph into a series of vertical boxes (lines, which
        are stickers). *)
     (* XXX call the new approach ^^^ when ready *)
+  (*
     val paras : paragraph list = list-concat (list-map process para-items)
-  in
-    pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
+    do pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,
                      COLUMN-WIDTH, COLUMNS, paras)
+    *)
+
+    do place-paragraphs para-items
+
+  in
+    print "OK\n";
+    ()
   end

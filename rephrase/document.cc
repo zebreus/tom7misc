@@ -1372,6 +1372,12 @@ void Document::PlaceStickersRec(Context context,
                                 Page *page) {
   static constexpr bool DEBUG_STICKERS = false;
 
+  if (DEBUG_STICKERS) {
+    Print(AWHITE("PlaceStickersRec") ":\n");
+    DebugPrintDocTree(doc);
+    Print("\n");
+  }
+
   if (doc.IsText()) {
     // Place the text with the current transform.
     page->DrawText(context.font,
@@ -1409,8 +1415,8 @@ void Document::PlaceStickersRec(Context context,
 
   const double *x = doc.GetDoubleAttr("x");
   const double *y = doc.GetDoubleAttr("y");
-  CHECK(x != nullptr && y != nullptr) << Error() << "Every sticker "
-    "should have its final x= and y= coordinates.";
+  CHECK(x != nullptr && y != nullptr) << Error() << "In PlaceStickersRec: "
+    "every sticker should have its final x= and y= coordinates.";
 
   if (DEBUG_STICKERS) {
     const double *w = doc.GetDoubleAttr("width");
