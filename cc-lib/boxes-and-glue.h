@@ -10,7 +10,7 @@
 // Abstract version of a boxes-and-glue algorithm.
 //
 // This is presented as the classic problem of placing words into
-// lines with optinal line breaks. But it can be used for other stuff,
+// lines with optional line breaks. But it can be used for other stuff,
 // like placing paragraphs into columns. Note that even when placing
 // words on a line, we often have more than one box per word, to
 // represent potential hyphenation points or kerning pairs.

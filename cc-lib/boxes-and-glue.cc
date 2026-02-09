@@ -9,11 +9,11 @@
 #include <vector>
 #include <utility>
 #include <unordered_map>
-#include <cstdio>
 #include <unordered_set>
 
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "hashing.h"
 
 static constexpr bool VERBOSE = false;
@@ -49,8 +49,7 @@ static LineJustification FinalLineJustification(Justification just) {
   return LineJustification::LEFT;
 }
 
-// Old, greedy version. Maybe useful for comparison in the paper?
-// Probably can move to BoxesAndGlue
+// Old, greedy version. Used for comparison in the paper, for example.
 std::vector<std::vector<BoxesAndGlue::BoxOut>>
 BoxesAndGlue::PackBoxesFirst(
     double line_width,
@@ -137,9 +136,9 @@ BoxesAndGlue::PackBoxesFirst(
     if (cannot_break || fits) {
       // Take the box.
       if (VERBOSE) {
-        printf(AGREEN("take") "%s%s\n\n",
-               cannot_break ? " (cannot-break)" : "",
-               fits ? " (fits)" : "");
+        Print(AGREEN("take") "{}{}\n\n",
+              cannot_break ? " (cannot-break)" : "",
+              fits ? " (fits)" : "");
       }
 
       // This means the previous box gets its glue turned into padding.
@@ -160,7 +159,7 @@ BoxesAndGlue::PackBoxesFirst(
     } else {
       // Break.
       if (VERBOSE) {
-        printf(AORANGE("break") "\n\n");
+        Print(AORANGE("break") "\n\n");
       }
 
       if (current_line.empty()) {
@@ -297,8 +296,8 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       const double weighted_glue = space_remaining / total_weight;
 
       if (VERBOSE) {
-        printf("Total weight: %.11g.\n"
-               "Weighted glue: %.11g\n", total_weight, weighted_glue);
+        Print("Total weight: {:.11g}.\n"
+              "Weighted glue: {:.11g}\n", total_weight, weighted_glue);
       }
 
       for (int i = 0; i < (int)current_line->size() - 1; i++) {
@@ -311,7 +310,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         if (justify == LineJustification::JUSTIFY) {
           const double additional_glue = weighted_glue * weight;
           if (VERBOSE) {
-            printf("  Additional glue: %.11g\n", additional_glue);
+            Print("  Additional glue: {:.11g}\n", additional_glue);
           }
           box.actual_glue += additional_glue;
         }
@@ -321,7 +320,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         // Not using weighted glue.
         double center_space = space_remaining * 0.5;
         (*current_line)[0].left_padding = center_space;
-        // printf("Added center space of %.3f\n", center_space);
+        // Print("Added center space of {:.3f}\n", center_space);
         current_line->back().actual_glue += center_space;
       }
 
@@ -396,9 +395,9 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           "Duplicate entries?";
         if (VERBOSE) {
           if (w < (int)boxes.size()) {
-            printf(
-                "  Penalty ..%d.. ["
-                AWHITE("box #%d") "] = " ARED("%.4f") " -> #%d %s\n",
+            Print(
+                "  Penalty ..{}.. ["
+                AWHITE("box #{}") "] = " ARED("{:.4f}") " -> #{} {}\n",
                 b, w, mr.penalty, mr.successor,
                 mr.break_after ? AYELLOW("break") : "no");
           }
@@ -415,19 +414,17 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
          words_before <= depth[word_idx];
          words_before++) {
 
-      #if 0
-      if (VERBOSE) {
-        printf("[%d,%d] Check", word_idx, words_before);
+      if (false && VERBOSE) {
+        Print("[{},{}] Check", word_idx, words_before);
         const int before_start = word_idx - words_before;
         CHECK(before_start >= 0);
         for (int b = 0; b < words_before; b++) {
           // Add the word's length and the space after it.
           CHECK(before_start + b < (int)boxes.size());
-          printf(" " AGREY("box #%d"), before_start + b);
+          Print(" " AGREY("box #{}"), before_start + b);
         }
-        printf(" " AWHITE("box #%d") "\n", word_idx);
+        Print(" " AWHITE("box #{}") "\n", word_idx);
       }
-      #endif
 
       // PERF: Can compute this incrementally in the loop.
       CHECK(word_idx >= 0 && word_idx < (int)boxes.size()) << word_idx;
@@ -448,12 +445,12 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       const double total_width_break = width_before + width_word_break;
 
       if (VERBOSE) {
-        printf("  %.4f > %.4f? ",
-               total_width_nobreak, line_width);
+        Print("  {:.4f} > {:.4f}? ",
+              total_width_nobreak, line_width);
       }
       if (total_width_nobreak > line_width) {
         if (VERBOSE) {
-          printf(ABGCOLOR(255,0,0, "OVER"));
+          Print(ABGCOLOR(255,0,0, "OVER"));
         }
         if (width_before > line_width) {
           // We were already over. So just add the word's size.
@@ -461,12 +458,12 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           // in this case these details just amount to tweaks to the
           // multiplier.
           penalty_word_nobreak += width_word_nobreak;
-          if (VERBOSE) printf(" full penalty %.3f", width_word_nobreak);
+          if (VERBOSE) Print(" full penalty {:.3f}", width_word_nobreak);
         } else {
           // Since this is the word that puts us over, only count
           // the amount that it's over.
           penalty_word_nobreak += (total_width_nobreak - line_width);
-          if (VERBOSE) printf(" part penalty %.3f", penalty_word_nobreak);
+          if (VERBOSE) Print(" part penalty {:.3f}", penalty_word_nobreak);
         }
       }
       // But the overage penalty is scaled.
@@ -476,7 +473,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           penalty_word_nobreak * penalty_word_nobreak;
       }
       if (VERBOSE) {
-        printf("\n");
+        Print("\n");
       }
 
       // Also the same thing for a break, since we may have a different
@@ -536,15 +533,15 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
             penalty_word_break + penalty_break_slack + p_rest;
 
           if (VERBOSE) {
-            printf("for successor %d:\n"
-                   "  width used " ABLUE("%.4f") "."
-                   "Word penalty " APURPLE("%.4f") ".\n"
-                   "    w/break " AORANGE("%.4f")
-                   " " AGREY("(slack)") " + " AYELLOW("%.4f")
-                   " " AGREY("(rest)") " = " ARED("%.4f") "\n",
-                   next_node,
-                   total_width_break, penalty_word_break,
-                   penalty_break_slack, p_rest, penalty_break);
+            Print("for successor {}:\n"
+                  "  width used " ABLUE("{:.4f}") "."
+                  "Word penalty " APURPLE("{:.4f}") ".\n"
+                  "    w/break " AORANGE("{:.4f}")
+                  " " AGREY("(slack)") " + " AYELLOW("{:.4f}")
+                  " " AGREY("(rest)") " = " ARED("{:.4f}") "\n",
+                  next_node,
+                  total_width_break, penalty_word_break,
+                  penalty_break_slack, p_rest, penalty_break);
           }
 
           // And the case where we do not break.
@@ -555,9 +552,9 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
             edge_penalty +
             penalty_word_nobreak + p_rest_nobreak;
           if (VERBOSE) {
-            printf("    or without break: "
-                   AGREEN("%.4f") " = " ARED("%.4f") "\n",
-                   p_rest_nobreak, penalty_nobreak);
+            Print("    or without break: "
+                  AGREEN("{:.4f}") " = " ARED("{:.4f}") "\n",
+                  p_rest_nobreak, penalty_nobreak);
           }
 
           // Consider both options.
@@ -618,10 +615,10 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     // Now, do we break or not?
     MemoResult memo_result = mit->second;
     if (VERBOSE) {
-      printf("After [" AWHITE("box #%d") "]? -> #%d, "
-             "Penalty " ARED("%.4f") " %s\n",
-             w, memo_result.successor, memo_result.penalty,
-             memo_result.break_after ? AYELLOW("break") : AGREY("no"));
+      Print("After [" AWHITE("box #{}") "]? -> #{}, "
+            "Penalty " ARED("{:.4f}") " {}\n",
+            w, memo_result.successor, memo_result.penalty,
+            memo_result.break_after ? AYELLOW("break") : AGREY("no"));
     }
 
     BoxOut box_out;

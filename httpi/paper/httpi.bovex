@@ -7,7 +7,7 @@ let
   import "cite.bovex"
   import "httpi.bib"
 
-  val doc-title = "No one can force me to have a secure website"
+  val doc-title = "No one can force me to have a secure website!!!"
   val doc-subtitle = ""
 
   do set-doc-info {(PDFInfo)
@@ -23,6 +23,9 @@ let
   do SECTION-FONT-SIZE := point 15.0
   do SUBSECTION-FONT-SIZE := point 14.0
   do SUBSUBSECTION-FONT-SIZE := point 13.0
+
+  do TITLE-FONT-SIZE := point 36.0
+  do SUBTITLE-FONT-SIZE := point 20.0
 
   fun monospace-block lay =
     monospace-block-ext { left-indent = 0.0,
@@ -49,8 +52,10 @@ let
   fun sub lay =
     span {(Box) font-size = 8.0, dy = 8.0 } lay
 
+(*
   fun footnote s = span {(Span) font-color = 0x999999FF, font-size = 9.0 }
                    [ ([b[footnote]]: [s])]
+*)
 
   fun centered-image width filename =
     let
@@ -74,16 +79,16 @@ let
 
 in
 
+(* XXX: If I leave off the vspace 8 here, it ignores the font size? *)
 (main-text (body-font
-[[title (layout doc-title)][vspace (point 5.0)][
-sub-title (layout doc-subtitle)]
+[[title (layout doc-title)][vspace 8.0]
 
 [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
 
 I have one of the oldest websites on the internet,[footnote[Find it at
 http://tom7.org/]] dating back to at least AD 1996. It has so far
 outlived its original host (aol.com) by 18 years. Now that 99.9999999%
-of the internet is deepfake pornography, AI-generated crypto scams,
+of the internet is deepfake pornography, AI-generated cryptocurrency scams,
 and Italian Brainrot, a website being in Lycos’s “Top 5% Of The Web” is a
 triviality achieved at the first human keystroke. But in the late
 1990s, it used to [it[mean]] something.
@@ -96,10 +101,11 @@ or enable notifications, or it’s better in our app, or sign up for the
 e-mail list, or figure out which one is the search box and which one
 is a trick to get me to enter my search terms in the e-mail sign up
 box, nor dismiss 15% off coupon / privacy policy pop-up / how may I
-help you? AI chat assistant, nor do I want you to consent to data
-collection per EU General Data Protection Regulations, click to enable
-Flash Player, or 15 second interstial video advertisement, or
-[checked-box-icon] W3C XHTML compliant.
+help you? AI chat assistant, nor do I want you to consent to or refuse
+consent to or leave open in silent protest data collection per
+EU General Data Protection Regulations,
+click to enable Flash Player, or 15 second interstial video
+advertisement, or [checked-box-icon] W3C XHTML compliant.
 
 [helvetica[U N F O R T U N A T E L Y]], the Internet is not that place
 any more! One possibly controversial opinion of mine is that one
@@ -157,18 +163,19 @@ so that users get a scary warning if they download a program that a
 hobbyist made. By the way, to sign a piece of software, you need
 to pay an extortive $100/year fee to Apple.[cite apple2023developer]] ::
 
-[The tool that added an RFID scanner to my General Electric
-refrigerator (presumably increasing its cost) that scans an RFID
-tag in the $60 water filter cartridges (presumably increasing
-their cost) and prevents you from using one that does not have
-the proper Drinking Rights Management credentials. By the way this
-scanner is pretty janky and sometimes just doesn’t work.] ::
+[The tool that added an RFID scanner to my expensive General Electric
+brand (do not recommend) refrigerator (presumably increasing its
+cost). It only scans an RFID tag in the $60 water filter cartridges
+(presumably increasing their cost) and prevents you from using one
+that does not have the proper Drinking Rights Management credentials.
+By the way this scanner is pretty janky and sometimes just doesn’t
+work.] ::
 
 [The turd that requires my video game to install kernel-mode
 anti-cheat provisions that accuse me of cheating after installing an
 official Windows update, and that requires me to be online to play the
 [it[single-player mode]] of a video game, and which will eventually be
-completely unplayable when they turn down the server] ::
+completely unplayable when they turn down the server.] ::
 
 [The absolute shits that have locked down corporate computers with the
 assumption that the user can’t have a legitimate reason to change
@@ -206,6 +213,8 @@ for a name. Anyway!
 
 OCSP is now deprecated (at least by Let’s Encrypt)
 https://letsencrypt.org/2024/12/05/ending-ocsp
+
+the green padlock icon: This is not how you use padlocks
 
 *]
 
@@ -245,7 +254,8 @@ such as Thawte, StartCom, Comodo, DigiNotar, TurkTrust, NICCA, CNNIC,
 WoSign, Symantec, and Certinomis all shit the bed, with the malfeasance
 warranting different levels of spit-take.[cite sslmate2026failures]
 But in my mind, if the whole premise is some kind of absolute trust,
-this should never happen.
+this should never happen. And if this is regularly happening, it may
+be that the underlying premise is incorrect!
 
 In 2014, a non-profit organization known as [it[Let’s Encrypt]] formed,
 with the idea that at least you shouldn’t have to pay an extortion
@@ -303,7 +313,7 @@ keys, as long as they are RSA.
 
 The accompanying program called [tt[renew.exe]] will update your
 certificates from Let’s Encrypt if they need to be updated. You can
-run that in your crontab every day (or ever 10 seconds, if you want)
+run that in your crontab every day (or every 10 seconds, if you want)
 or manually whenever someone successfully navigates your phone chatbot
 filters to tell you that your certificate has expired. Alas, in order
 to get a certificate from Let’s Encrypt, you need to endure the Trials
@@ -317,7 +327,8 @@ it, but I recommend [tt[systemd]] and supply an example config file.
 The server itself is not super efficient (it forks on every
 connection, for example) but honestly just writing this in a compiled
 language and being thoughtful about dependencies goes a very long way
-compared to peers. Once the server is running it drops root privileges,
+compared to peers. The process uses 3Mb of RAM, 2.6Mb of which is
+shared. Once the server is running it drops root privileges,
 accesses no files, and allocates only a few tiny buffers.
 
 Even configured with the dumbest settings, it uses only about 1/3 of
@@ -327,10 +338,11 @@ source code is much less difficult to understand and “audit” than its
 peers. For example, Google has fork of [openssl] (I guess it was
 getting out of hand), which is called “BoringSSL.”[cite boringssl] The
 source distribution is 572 megabytes, and contains 445,000 lines of
-C/C++ code as of 2026! Of course, BoringSSL has all sorts of support
+C/C++ code as of 2026! And this is [it[just]] the cryptography library!
+Of course, BoringSSL has all sorts of support
 for hardware encryption, assembly-optimized routines, and robustness
 against timing and power attacks. But I also don’t care about that! I
-just want people to be able to access my website and not to be able to
+merely want people to be able to access my website and not to be able to
 “hack in” to my server (through buffer overflows, etc.). [httpi] is
 under 10,000 lines including tests and everything.
 
@@ -348,12 +360,13 @@ technical issues with BoVeX’s PDF backend. These did not affect
 display (that I know of) but did cause some validators to barf with
 helpful diagnostics like [tt[The document structure is corrupt]] (Adobe
 Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I believe
-the generated documents are formally correct per the ISO standard.[cite iso32000-1-2008] This document only contains violations of clauses
+the generated documents are formally correct per the ISO standard.[cite iso32000-1-2008] They nearly comply with stricter archive standards too:
+This document only contains violations of clauses
 6.7.3–6, 6.2.4–3, 6.7.3–4, 6.7.3–3, 6.7.3–7, 6.7.3–2, 6.4–3, 6.7.2–1, 6.4–6, 6.3.4–1, 6.2.3.3–3, 6.3.6–1, and 6.2.3.3–1 in ISO 19005 (PDF/A),[cite iso19005-1-2005] which is likely a world record achievement in PDF/A compliance.
 
 [paragraph[SVG]] In order that I could make the little
 [checked-box-icon] in the opening paragraph without resorting to
-bitmap images (which only allow you to print the document on
+bitmap images (which would only allow you to print the document on
 finite-resolution devices), BoVeX now supports a vector images via a
 significant subset of the SVG format.[cite dahlstrom2011scalable] This
 is a horrific task that I of course did entirely by hand. Like PDF,

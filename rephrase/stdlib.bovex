@@ -44,6 +44,9 @@ fun int-max (a, b) = if a < b then b else a
 fun int-min (a, b) = if a < b then a else b
 fun int-abs a = if a < 0 then 0 - a else a
 
+fun ++ (r : int ref) : unit = r := (!r) + 1
+fun -- (r : int ref) : unit = r := (!r) - 1
+
 fun float-compare (a, b) =
   if a <. b
   then LESS

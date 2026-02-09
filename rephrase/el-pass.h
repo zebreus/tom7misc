@@ -265,7 +265,8 @@ struct Pass {
                           Args... args) {
     return pool->If(DoExp(cond, args...),
                     DoExp(t, args...),
-                    DoExp(f, args...));
+                    DoExp(f, args...),
+                    pos);
   }
 
   virtual const Exp *DoApp(const Exp *f, const Exp *arg,

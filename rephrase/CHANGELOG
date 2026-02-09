@@ -1,3 +1,9 @@
+9 Feb 2026 (r6920)
+
+ * Rewrite of the core layout routines to support floating elements
+   and (in the future) irregular, non-rectangular columns. Still
+   needs a lot of work to make it look nice, though.
+
 26 Jan 2026 (r6905)
 
  * Add basic SVG support. Only supports the PDF backend. Image

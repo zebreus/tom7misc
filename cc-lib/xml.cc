@@ -17,6 +17,11 @@
 //
 //   Portions Copyright (c) 2021 Tom Murphy VII
 
+// This code was not written with these warnings in mind!
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#endif
 
 namespace {
 // ------------------- yxml.h ----------------------------------
@@ -1230,6 +1235,10 @@ yxml_ret_t yxml_eof(yxml_t *x) {
 // ---------------------- end yxml.c ----------------------------
 
 }  // namespace
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 
 using namespace std;

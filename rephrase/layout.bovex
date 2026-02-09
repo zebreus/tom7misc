@@ -268,6 +268,23 @@ fun approx-lines-prefix (width, height, content) : { badness: float,
     { badness = badness, lines = prefix, suffix = suffix }
   end
 
+(* TODO: float-box and footnote *)
+(* fun float-box  *)
+
+(* Default footnote.
+   Picks the next footnote mark, and places it here in
+   the text. Emits the footnote body as a floating element. *)
+val FOOTNOTE-FONT-SIZE = ref (point 10.0)
+val next-footnote = ref 1
+fun footnote lay : layout =
+  let
+    val mark = layout (int-to-string (!next-footnote))
+  in
+    next-footnote := !next-footnote + 1;
+    sup (!FOOTNOTE-FONT-SIZE) mark ^^
+    span {(Span) footnote = true} [[mark]. [lay]]
+  end
+
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).
@@ -285,7 +302,22 @@ fun approx-lines-prefix (width, height, content) : { badness: float,
    but (at least nominally) "after" the point it appears in
    the text. *)
 datatype float-pos = FloatBottom | FloatTop | FloatInline
-datatype parafloat = ParaFloat of { pos : float-pos list, box : layout }
+datatype parafloat =
+  (* A box float has defined dimensions, like a figure. Its position
+     can depend on columnization of the page, but not its shape. *)
+  FloatBox of { pos : float-pos list, width : float, height : float, box : layout }
+  (* A footnote float lays out inside a column, and thus does not
+     know its dimensions; only its content. *)
+| FloatFoot of { span : layout }
+
+fun parse-float-pos str =
+  list-map (fn c =>
+            case c of
+              0'h' => FloatInline
+            | 0't' => FloatTop
+            | 0'b' => FloatBottom
+            | _ => fail ("Only positions h, t, b are supported in floating: " ^
+                          str)) (string-explode str)
 
 (* Each item is some body text, then the accumulated space after that
    paragraph, and any floats that shall be placed (eventually) after it. *)
@@ -318,9 +350,15 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
     val acc-floats : parafloat list ref = ref nil
     fun append-floats (fs : parafloat list) =
       acc-floats := (!acc-floats @ fs)
+    fun append-float (f : parafloat) = append-floats (f :: nil)
 
     fun next-paragraph () =
       let in
+        LAYOUT-VERBOSE andthen
+        (list-empty (!acc-floats) otherwise
+         print ("Make paragraph with " ^ int-to-string (list-length (!acc-floats))
+                ^ " floats\n"));
+
         (if layout-empty (!acc)
          then ()
          else rev-paragraphs := ParagraphItem { body = !acc,
@@ -409,7 +447,38 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
     (* Process one of the layouts in the input list. *)
     fun do-one lay =
       case layoutcase lay of
+        (* Plain text. *)
         Text s => do-one-text (false, s)
+
+      (* Floating elements *)
+
+      | Node (BOX, attrs as {(Box)floating }, ch) =>
+          (case attrs of
+             {(Box) width, height} =>
+               let in
+                 append-float
+                 (FloatBox { pos = parse-float-pos floating,
+                             width = width,
+                             height = height,
+                             box =
+                             box (attrs without (Box)floating)
+                             (layout-concat ch) });
+                 (* But completely skip it for the paragraph output. *)
+                 ()
+               end
+           | _ => fail "A box with floating= attribute must have width/height")
+
+      | Node (SPAN, attrs as {(Span)footnote = true }, ch) =>
+          let in
+            append-float (FloatFoot { span =
+                                      span (attrs without(Span)footnote)
+                                      (layout-concat ch) });
+            (* But completely skip it for the paragraph output. *)
+            ()
+          end
+
+      (* Normal paragraph elements *)
+
       | Node (BOX, _, _) => append lay
       | Node (SPAN, attrs, children) =>
           let
@@ -450,6 +519,7 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
                       next-paragraph ();
                       add-break space;
                       append body;
+                      append-floats floats;
                       rec (space-after, ps)
                     end
                     | rec (space : float, nil) =
@@ -988,184 +1058,20 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
   the document is evaluated.
 *)
 
-(* Given all the paragraphs in the document, pack them and
-   turn them into stickers and emit them.
-
-   TODO: It would be better if this placed them within
-   rigid column-shaped boxes with stickers, rather than
-   emitting them.
-
-   TODO: This should be obsoleted by the new layout algorithm.
-*)
-(* XXX should probably fix and use pack-boxes-vert *)
-(* XXX pass a "metrics" object or something *)
-datatype paragraph = Paragraph of { (* boxes with stickers inside *)
-                                    lines : layout list }
-fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
-                     BODY-HEIGHT,
-                     COLUMN-WIDTH, COLUMNS,
-                     paras : paragraph list) =
-  let
-    do fail "disabled"
-
-    val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
-    val LEFT-COLUMN-X = LEFT-MARGIN
-
-    val current-page = ref 0
-
-    (* Layout state. *)
-    val current-column = ref 0
-    (* y position within column. *)
-    val current-ypos = ref 0.0
-    val column-empty = ref true
-
-    val column-stickers-rev : layout list ref = ref nil
-    fun add-column-sticker s =
-      let in
-        column-empty := false;
-        column-stickers-rev := s :: !column-stickers-rev
-      end
-
-
-    (* Emits the current column (if non-empty); clears it. *)
-    fun emit-column () =
-      let
-        val colx =
-          LEFT-COLUMN-X +.
-          ((int-to-float (!current-column)) *. COLUMN-STRIDE)
-      in
-        !column-empty otherwise
-        output (!current-page,
-                sticker ({(Sticker)
-                          x = colx ,
-                          y = TOP-MARGIN }
-                         with column-num = !current-column
-                         with comment = "column"
-                         with column-stride = COLUMN-STRIDE
-                         with left-margin = LEFT-MARGIN)
-                (layout-concat (list-rev (!column-stickers-rev))));
-        column-stickers-rev := nil;
-        column-empty := true
-      end
-
-    (* Maybe advance to the next column (or page) to place
-       something. *)
-    fun get-placement height =
-      if !current-ypos +. height <=. BODY-HEIGHT
-      then
-        (* Place here at no cost. *)
-        ()
-      else
-        if !column-empty
-        then
-        (* If we're already at the top of the column, then
-           we don't have any choice but to place it. *)
-          let
-            val overrun-height = BODY-HEIGHT -. (!current-ypos +. height)
-          in
-            (* TODO: We assume it's the full column width. But really
-               we should be measuring the actual width of the line
-               that's overflowing. *)
-            emit-badness (COLUMN-WIDTH *. overrun-height)
-          end
-        else
-          (* New column. *)
-          let in
-            emit-column ();
-            current-column := !current-column + 1;
-            current-ypos := 0.0;
-            !current-column >= COLUMNS
-            andthen
-            let in
-              current-column := 0;
-              current-page := !current-page + 1;
-            end;
-            (* badness from unfilled column? *)
-            ()
-          end
-
-    fun addline (line : layout) : unit =
-      case layoutcase line of
-        Node (BOX, {(Box) height } as attrs, children) =>
-          let in
-            print "ADD LINE:\n";
-            debug-print-doc line;
-            get-placement height;
-            add-column-sticker
-            (sticker (attrs without (Box)width
-                      without (Box)height
-                      with comment = "line"
-                      with x = 0.0
-                      with y = !current-ypos) (layout-concat children));
-            current-ypos := !current-ypos +. height
-          end
-      | _ =>
-          let in
-            print "DOC:\n";
-            debug-print-doc line;
-            fail "only expecting boxes with known height in addline"
-          end
-
-    fun addpara (Paragraph { lines }) =
-      list-app addline lines
-
-  in
-    list-app addpara paras;
-    emit-column ()
-  end
-
-
-(* This returns multiple paragraphs because processing a paragraph
-   may emit floaters. *)
-fun process-paragraph (COLUMN-WIDTH : float,
-                       p : layout) : paragraph list =
-  let
-    do fail "disabled"
-
-    val VERBOSE = false
-    val lines = pack-one-paragraph COLUMN-WIDTH p
-
-    do VERBOSE andthen
-      let in
-        print "----packed lines---\n";
-        list-app (fn (lay : layout) =>
-                  let in
-                    print "==\n";
-                    debug-print-doc lay;
-                  end) lines;
-        print "-------------------\n"
-      end
-
-    (* Now can treat the contents of lines as stickers.
-       The line itself remains a box. *)
-    val lines : layout list = list-map stick-horizontally lines
-
-    do VERBOSE andthen
-      let in
-        print "----now as lines---\n";
-        list-app (fn (lay : layout) =>
-                  let in
-                    print "==\n";
-                    debug-print-doc lay;
-                  end) lines;
-        print "-------------------\n"
-      end
-  in
-    (Paragraph { lines = lines }) :: nil
-  end
-
+val TITLE-FONT-SIZE = ref (point 30.0)
 (* Below here should move to twocolumn or article or whatever. *)
 fun title lay =
   span {(Span)
         justification = "left",
         font-bold = true,
-        font-size = point 30.0 } [[lay][hfill()][break()]]
+        font-size = !TITLE-FONT-SIZE } [[lay][hfill()][break()]]
 
+val SUBTITLE-FONT-SIZE = ref (point 22.0)
 fun sub-title lay =
   span {(Span)
         justification = "left",
         font-bold = true,
-        font-size = point 22.0 } [[lay][hfill()][break()]]
+        font-size = !SUBTITLE-FONT-SIZE } [[lay][hfill()][break()]]
 
 fun author lay = span {(Span) justification = "left" }
                        [[lay][hfill()][break()]]
@@ -1207,17 +1113,6 @@ fun main-text lay =
     (* The next page index we'll allocate space on. See allocate-page. *)
     val current-page = ref 0
 
-    (* XXX don't discard floats! *)
-    fun process (ParagraphItem { body, space-after, floats }) =
-      let in
-        process-paragraph (COLUMN-WIDTH, body) @
-        (if space-after !=. 0.0
-         then Paragraph { lines =
-                          (box {(Box) height = space-after,
-                                width = COLUMN-WIDTH} []) :: nil } :: nil
-         else nil)
-      end
-
     (* Parse layout to find paragraph breaks. This handles whitespace
        and figures out how much space comes after each paragraph.
        Normalize spans that contain paragraphs onto the constituent
@@ -1229,14 +1124,61 @@ fun main-text lay =
     (* Blank space that can hold text, like a "column." Used as part of
        the layout process here, as we allocate new pages and place floats.
 
-       TODO: A better thing here would be a polygon that we rasterize
-       when we turn it into line lengths. But rectangles are already
-       pretty expressive because we can just link them. I think if this
-       is a full polygon, it's probably better to have a general purpose
-       trapezoid-packing boxes-and-glue algorithm, so I'm saving that for
-       future work! *)
+       A column space is a rectangle on a single page. Its x/y/w/h
+       describe a nominally blank space for stuff to go. The footnotes
+       are not inside the space; they consume space from the bottom.
+       They are also not yet placed on the page, since they may move
+       up if we insert another one. A footnote is a box with a
+       definite height.
+
+       TODO: A more general thing here would be a polygon that we
+       rasterize when we turn it into line lengths. But rectangles are
+       already pretty expressive because we can just link them. (Also,
+       it is harder to support footnotes with non-rectangular space
+       because we slide them up). I think if this is a full polygon,
+       it's probably better to have a general purpose
+       trapezoid-packing boxes-and-glue algorithm, so I'm saving that
+       for future work! *)
     datatype space =
-      SpaceRect of { page: int, x: float, y: float, w: float, h: float }
+      SpaceCol of { page: int, x: float, y: float, w: float, h: float,
+                    footnotes: layout list }
+
+    (* Forces placement of the footnote. XXX We need some kind of fallback
+       if the footnote is too tall. *)
+    fun put-footnote-in-col span (SpaceCol { page, x, y, w, h,
+                                             footnotes }) : space =
+      let
+        val lines = pack-one-paragraph w span
+        val lines = list-map stick-horizontally lines
+
+        val ypos = ref 0.0
+        val chrev = ref nil
+
+        do list-app
+          (fn line =>
+           let val line-height = box-height line
+           in
+             (* footnotes are attached to the bottom of the column (and
+                any footnotes above them). So we place starting at (0, 0). *)
+             chrev := box-stick-at { x = 0.0, y = !ypos } line :: !chrev;
+             ypos := !ypos +. line-height
+           end) lines
+
+        val foot-height = !ypos
+
+        val body : layout = layout-concat (list-rev (!chrev))
+        val foot =
+          box {(Box) width = w, height = foot-height } body
+
+
+        (* TODO if too many lines, can chop and put it back in the
+           float queue *)
+        do foot-height >. h andthen fail "footnote too tall!"
+      in
+        SpaceCol { page = page, x = x, y = y,
+                   w = w, h = h -. foot-height,
+                   footnotes = footnotes @ (foot :: nil) }
+      end
 
     (* I think the way this should work now is:
 
@@ -1308,12 +1250,11 @@ fun main-text lay =
           lines will already be the wrong length to fit elsewhere.
 
           *)
-
-      (* XXX IN PROGRESS *)
     fun place-paragraphs (para-items : paragraph-item list) =
       let
 
         val VERBOSE = false
+        val DEBUG-FOOTNOTES = false
 
         (* Get a vector of line widths using the currently
            available space, or return NONE if there does not
@@ -1323,8 +1264,9 @@ fun main-text lay =
         fun get-widths (body, nil) = NONE
           | get-widths (body,
                         space as
-                        (SpaceRect { page = _, x = _, y = _,
-                                     w = first-width, h = _ } :: _)) =
+                        (SpaceCol { page = _, x = _, y = _,
+                                    w = first-width, h = _,
+                                    footnotes = _ } :: _)) =
           let
             (* We need some width to use for the initial approximate
                placement, because this affects how we split at hyphens
@@ -1342,7 +1284,8 @@ fun main-text lay =
               else
                 case space of
                   nil => NONE
-                | SpaceRect { page = _, x = _, y = _, w, h } :: rest =>
+                | SpaceCol { page = _, x = _, y = _,
+                             w, h, footnotes = _ } :: rest =>
                     let
                       val { badness = _, lines, suffix } =
                         approx-lines-prefix (w, h, suffix)
@@ -1357,6 +1300,23 @@ fun main-text lay =
             rec (suffix, space, nil)
           end
 
+        fun finalize-space (SpaceCol { page, x, y, w, h, footnotes }) =
+          (* By definition, footnotes are placed immediately under
+             the space. *)
+          let
+            val ypos = ref (y +. h)
+
+            fun place-one foot =
+              let
+              in
+                DEBUG-FOOTNOTES andthen
+                print ("Place one footnote: " ^ layout-to-string foot ^ "\n");
+                output (page, box-stick-at { x = x, y = !ypos } foot);
+                ypos := !ypos +. box-height foot
+              end
+          in
+            list-app place-one footnotes
+          end
 
         (* Imperatively create the next page in the document and
            place floats on that page. Return the updated floats
@@ -1378,16 +1338,49 @@ fun main-text lay =
 
             fun column-xpos n =
               LEFT-MARGIN +. (int-to-float n) *. (COLUMN-WIDTH +. GUTTER)
+
+            (* TODO: If the first float is wider than a column,
+               do something special (e.g. whole page of floats, or
+               top layout cutting into columns. *)
+
             val cols = list-tabulate
               (COLUMNS,
-               fn i => SpaceRect { page = page-num,
-                                   x = column-xpos i,
-                                   y = TOP-MARGIN,
-                                   w = COLUMN-WIDTH,
-                                   h = BODY-HEIGHT })
+               fn i => SpaceCol { page = page-num,
+                                  x = column-xpos i,
+                                  y = TOP-MARGIN,
+                                  w = COLUMN-WIDTH,
+                                  h = BODY-HEIGHT,
+                                  footnotes = nil })
+
+            (* Comfortable is one top or bottom (or footnote) float
+               per column. *)
+            fun place-floats (nil, cols) = (nil, cols)
+              | place-floats (floats, nil) = (floats, nil)
+              | place-floats (f :: fs,
+                              (col as
+                               SpaceCol { page, x, y, w, h, footnotes }) :: cs) =
+              case f of
+                FloatBox _ => fail "unimplemented: float box"
+              | FloatFoot { span } =>
+                  let
+                    do DEBUG-FOOTNOTES andthen
+                      print ("allocate-page: Place footnote on page " ^
+                             int-to-string page ^ "\n")
+                    val col = put-footnote-in-col span col
+
+                    (* TODO: Pass the new version of the column recursively,
+                       so that we can place multiple footnotes/floats etc.
+                       within it. But then we need better rules about
+                       when it can fit. *)
+                    val (rfs, rcs) = place-floats (fs, cs)
+                  in
+                    (rfs, col :: rcs)
+                  end
           in
-            (* FIXME place floats here! *)
-            (nil, cols)
+            DEBUG-FOOTNOTES andthen
+            print ("Creating page; there are " ^
+                   int-to-string (list-length floats) ^ " floats...\n");
+            place-floats (floats, cols)
           end
 
         (* Break the body paragraph into lines (rigid boxes), given
@@ -1464,8 +1457,16 @@ fun main-text lay =
 
 
         fun step { lines = nil, paras = nil, floats, space } =
-          (* No more body text, but flush any remaining floats. *)
-          flush-floats (floats, space)
+          (* No more body text. Finish up the document. *)
+          let in
+            (* Partially-used space might have footnotes pending. *)
+            list-app finalize-space space;
+            (* And then we might need to create more pages to fit the
+               remaining floats. *)
+            print ("Finished with body text. Floats remaining: " ^
+                   int-to-string (list-length floats) ^ "\n");
+            flush-floats (floats, space)
+          end
 
           | step { lines = nil,
                    paras = ParagraphItem { body, space-after,
@@ -1474,10 +1475,15 @@ fun main-text lay =
           (* No more lines in the queue, but there're still more
              paragraphs to place. *)
           let
+            (* Don't pass the new floats here, since we don't want them
+               until the paragraph is complete. *)
             val { lines, floats, space } =
               break-for-space (body, space-after, floats, space)
 
           in
+            DEBUG-FOOTNOTES andthen
+            print ("After paragraph, there are " ^
+                   int-to-string (list-length new-floats) ^ " new floats.\n");
             step { lines = lines,
                    paras = prest,
                    floats = floats @ new-floats,
@@ -1507,13 +1513,14 @@ fun main-text lay =
                linked rectangles (or like arbitrary polygons). For
                now, we use a greedy approach. *)
 
-            val (page, sx, sy, width, height) =
+            val (page, sx, sy, width, height, footnotes) =
               case space of
-                SpaceRect { page, x, y, w, h } => (page, x, y, w, h)
+                SpaceCol { page, x, y, w, h, footnotes } =>
+                  (page, x, y, w, h, footnotes)
 
             (* This should have already been established. *)
             do SELF-CHECK andthen
-              list-app (fn SpaceRect { page, x, y, w, h } =>
+              list-app (fn SpaceCol { page, x, y, w, h, footnotes } =>
                         w ==. width otherwise
                         fail "should have uniform widths?") srest
 
@@ -1538,20 +1545,23 @@ fun main-text lay =
                      " lines in " ^ float-to-string width ^ "x" ^
                      float-to-string height ^ "\n")
 
-            (* Place lines into the one space rectangle greedily.
-               used is the amount of space at the beginning that we've
-
-               *)
-            fun place (nil, floats, used) =
-              (* No more lines to place. Return the height as
-                 space. *)
+            (* Recompute the column with 'used' height taken off the top. *)
+            fun use-space-top used =
               let in
                 used <=. height otherwise fail "used too much space??";
-                step { lines = nil, paras = paras, floats = floats,
-                       space = SpaceRect { page = page, x = sx,
-                                           y = sy +. used, w = width,
-                                           h = height -. used } :: srest }
+                SpaceCol { page = page, x = sx,
+                           y = sy +. used, w = width,
+                           h = height -. used,
+                           footnotes = footnotes }
               end
+
+            (* Place lines into the one space rectangle greedily.
+               used is the amount of vertical space we've consumed. *)
+            fun place (nil, floats, used) =
+              (* No more lines to place. Return the current space
+                 with the used height removed. *)
+              step { lines = nil, paras = paras, floats = floats,
+                     space = use-space-top used :: srest }
 
               | place (line :: lrest, floats, used) =
 
@@ -1570,7 +1580,6 @@ fun main-text lay =
                          end)
                   end
 
-
                 val new-used = used +. line-height
                 do VERBOSE andthen
                   print ("One line at " ^ float-to-string line-height ^
@@ -1583,35 +1592,26 @@ fun main-text lay =
                     place (lrest, floats, new-used)
                   end
                 else
-                  (* This space is now exhausted; step with the
-                     remaining space. *)
-                  step { lines = line :: lrest,
-                         paras = paras,
-                         floats = floats,
-                         space = srest }
+                  let
+                    (* No space for another line. *)
+                    val space = use-space-top used
+                  in
+                    finalize-space space;
+                    step { lines = line :: lrest,
+                           paras = paras,
+                           floats = floats,
+                           space = srest }
+                  end
               end
 
           in
             place (lines, floats, 0.0)
           end
 
-
       in
 
         step { lines = nil, paras = para-items, floats = nil, space = nil }
       end
-
-    (* Do rephrasing if needed.
-       Optimize line breaks for each paragraph.
-       Turn each paragraph into a series of vertical boxes (lines, which
-       are stickers). *)
-    (* XXX call the new approach ^^^ when ready *)
-  (*
-    val paras : paragraph list = list-concat (list-map process para-items)
-    do pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
-                     BODY-HEIGHT,
-                     COLUMN-WIDTH, COLUMNS, paras)
-    *)
 
     do place-paragraphs para-items
 

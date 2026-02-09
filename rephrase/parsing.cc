@@ -773,13 +773,14 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto IfExpr = [&](const auto &Expr) {
       return
-        (((IsToken<IF>() >> Expr) &&
-         (IsToken<THEN>() >> Expr) &&
-         (IsToken<ELSE>() >> Expr))
-        >[&](const auto &p) {
+        (Mark((IsToken<IF>() >> Expr) &&
+              (IsToken<THEN>() >> Expr) &&
+              (IsToken<ELSE>() >> Expr))
+        >[&](const auto &p_start_len) {
+            const auto &[p, token_start, token_len] = p_start_len;
             const auto &[pp, f] = p;
             const auto &[cond, t] = pp;
-            return pool->If(cond, t, f);
+            return pool->If(cond, t, f, BytePos(token_start));
           }) ||
 
         (Mark(IsToken<IF>()) >[&](const auto &err) -> const Exp * {
@@ -1200,7 +1201,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                   } else {
                     // This is treated as syntactic sugar, which isn't
                     // ideal.
-                    return pool->If(e, rhs, pool->Tuple({}, byte_pos));
+                    return pool->If(e, rhs, pool->Tuple({}, byte_pos), byte_pos);
                   }
                 } else {
                   return e;
@@ -1220,7 +1221,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                   if (kw.type == ORELSE) {
                     return pool->Orelse(e, rhs, byte_pos);
                   } else {
-                    return pool->If(e, pool->Tuple({}, byte_pos), rhs);
+                    return pool->If(e, pool->Tuple({}, byte_pos), rhs, byte_pos);
                   }
                 } else {
                   return e;

@@ -359,12 +359,12 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *If(const Exp *cond, const Exp *t, const Exp *f) {
+  const Exp *If(const Exp *cond, const Exp *t, const Exp *f, size_t pos) {
     Exp *ret = NewExp(ExpType::IF);
     ret->a = cond;
     ret->b = t;
     ret->c = f;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

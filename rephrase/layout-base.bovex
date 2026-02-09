@@ -82,6 +82,10 @@ object Box of { width : float, height : float,
                    here? *)
                 dx : float, dy : float, scale : float,
 
+                (* Contains characters from "htb" to indicate placement
+                   preference. *)
+                floating : string,
+
                 (* background image (as image handle) *)
                 img : string,
                 img-width : float, img-height : float,
@@ -138,6 +142,11 @@ object Span of { line-spacing: float,
                  (* Selects a font variant *)
                  font-bold: bool,
                  font-italic: bool,
+
+                 (* Indicates that the span should be placed as a
+                    column footnote somewhere after this paragraph,
+                    rather than inline right here. *)
+                 footnote: bool,
 
                  (* Inhibit rephrasing of the contents,
                     even if inside a call to rephrase *)
@@ -239,18 +248,25 @@ fun layout-map-text (f : string -> string) (lay : layout) : layout =
     rec lay
   end
 
-(* Converts the layout recursively to a string, ignoring any
-   attributes and concatenating all the text nodes. *)
-fun layout-to-string l =
-  if is-text l
-  then get-text l
+(* Converts the layout recursively to a string. Generally you should
+   only be using this for something like debugging or testing. Ignores
+   attributes, which also means that spaces are ignored for boxes
+   or stickers. *)
+fun layout-to-string lay : string =
+  if is-text lay
+  then get-text lay
   else
-    let val z = get-num-children l
+    let val z = get-num-children lay
         fun r n = if n == z then ""
-                  else layout-to-string (get-nth-child (l, n)) ^
+                  else layout-to-string (get-nth-child (lay, n)) ^
                        r (n + 1)
     in r 0
     end
+
+fun box-height box =
+  case layoutcase box of
+    Node (BOX, {(Box) height }, _) => height
+  | _ => fail "box-height expected a box with height!"
 
 (* Generates boxes and glue from text, making this into "AllBox" format. *)
 fun get-boxes (content : layout) =
