@@ -64,6 +64,11 @@ let
       (image-sticker { img = img, x = padding, y = 0.0, width = width })
     end
 
+  fun bovex-2025-footnote s =
+    span {(Span) font-color = 0x999999FF, font-size = 9.0 }
+    [ ([b[footnote]]: [s])]
+
+
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
@@ -356,6 +361,47 @@ Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I believe
 the generated documents are formally correct per the ISO standard.[cite iso32000-1-2008] They nearly comply with stricter archive standards too:
 This document only contains violations of clauses
 6.7.3–6, 6.2.4–3, 6.7.3–4, 6.7.3–3, 6.7.3–7, 6.7.3–2, 6.4–3, 6.7.2–1, 6.4–6, 6.3.4–1, 6.2.3.3–3, 6.3.6–1, and 6.2.3.3–1 in ISO 19005 (PDF/A),[cite iso19005-1-2005] which is likely a world record achievement in PDF/A compliance.
+
+[paragraph[Footnotes]] I can’t believe I wrote two whole papers
+in BoVeX without any real support for Footnotes![bovex-2025-footnote [In the
+previous paper[cite murphy2025upsetting] they looked like some
+printer’s devil misunderstood what the word footnote means, perhaps
+that “foot” meant “at the foot of the line” but then using PDF’s
+upside-down coordinate system, and that “not” “e” meant [b[n]]ot
+[b[e]]nough ink. The result was horrible, like this.]] Now basic
+footnotes are here, via a rewrite of the page layout algorithm (which
+is in BoVeX code; [tt[layout-base.bovex]] and [tt[layout.bovex]]). You
+know, one of the reasons I longed to write my own typesetting system
+in the first place (since the 1900s, even) is that LaTeX frequently
+disappoints with its irregularity. Stuff like: You can’t use
+[tt[\verb]] in a footnote unless you discover the package
+[tt[fancyvrb]] (really) or if you try to put a footnote in a footnote
+you need to do some bizarre workaround things, or that you discover
+[tt[minipage]] thinking that this will solve your problems—but now you
+have two problems. Implementing footnotes has given me new
+appreciation for why it doesn’t just do what you want (i.e. allow a
+recursive structure where footnotes or minipages allow the exact same
+things you can do elsewhere). The process of laying out the page
+involves multiple cyclic dependencies[footnote[In order to place the
+lines of a paragraph nicely to avoid orphans, you need to know how the
+paragraph breaks into lines, which requires knowing how much space
+each line can use. To know that, you need to know how much space you
+have coming up in the document, and to do that, you need to know how
+many pages there are going to be, and how much space in each column
+will contain figures or footnotes. To do [it[that]], you need to know how
+long and wide each footnote will be, which requires knowing how much
+space you have for footnotes and where they are allowed to start. But
+to know where footnotes are allowed to start and how much space will
+be in each column, you need to know where the paragraphs are placed.]]
+and so I make a series of provisional approximations that do
+understand footnotes as a special kind of thing, and enjoy shortcut
+assumptions like “a footnote cannot be longer than an entire page.” Of
+course as I wrote the code I’m thinking about how to make it more
+regular, and prepping for necessary future features like non-uniform
+columns. But it was hard enough to get it working at all that I can
+easily identify with Leslie Lamport running out of time on whatever
+paper deadline he was [it[actually]] supposed to be working on, and
+figuring that he’ll just get around to those TODOs for [it[next year’s]].
 
 [paragraph[SVG]] In order that I could make the little
 [checked-box-icon] in the opening paragraph without resorting to

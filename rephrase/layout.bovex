@@ -1165,7 +1165,10 @@ fun main-text lay =
                     footnotes: layout list }
 
     (* Forces placement of the footnote. XXX We need some kind of fallback
-       if the footnote is too tall. *)
+       if the footnote is too tall.
+
+       TODO: The first time we put a footnote in a column, add some
+       separating space (and maybe an hrule). *)
     fun put-footnote-in-col span (SpaceCol { page, x, y, w, h,
                                              footnotes }) : space =
       let
@@ -1476,10 +1479,58 @@ fun main-text lay =
             flush-floats (fs, space @ new-space)
           end
 
+        (* Only attempt to add footnotes in the current column if we have
+           at least this fraction of the column's height left. *)
+        val SAME-COLUMN-FOOTNOTE-FRAC = 1.0 /. 3.0
+
+        (* Maybe place floats in the space, if there's enough. *)
+        fun try-place-floats (nil, space) = (nil, space)
+          | try-place-floats (floats, nil) = (floats, nil)
+          | try-place-floats (floats as (FloatFoot { span } :: fs),
+                              space as ((col as
+                                         SpaceCol { page, x, y, w, h,
+                                                    footnotes }) :: ss)) =
+          (* Once we commit to placing the footnote we'll fail if it's too
+             tall. So we only do this if we have plenty of space. *)
+          if h <. BODY-HEIGHT *. SAME-COLUMN-FOOTNOTE-FRAC
+          then (floats, space)
+          else case get-widths (span, space) of
+            NONE => (floats, space)
+          | SOME ws =>
+          let
+            (* PERF: get-widths is somewhat expensive, but we'll
+               keep doing it after every paragraph. We could avoid
+               recomputing it if the width is the same as last time
+               we checked. *)
+            (* XXX I think it would be better if this were made
+               into a routine responsible for approximating the
+               height. *)
+            val approx-height =
+              !FOOTNOTE-FONT-SCALE *. (!BODY-FONT-SIZE +. !BODY-LINE-SPACING) *.
+              int-to-float (list-length ws)
+
+          in
+            (* Very safe margin of 2x the footnote's apparent size. *)
+            if approx-height <=. 0.5 *. h
+            then
+              let val space = put-footnote-in-col span col :: ss
+              in
+                (* We can often place several short footnotes. *)
+                try-place-floats (fs, space)
+              end
+            else (floats, space)
+          end
 
         fun step { lines = nil, paras = nil, floats, space } =
           (* No more body text. Finish up the document. *)
-          let in
+          let
+            (* First attempt standard in-column placement.
+               XXX: We probably don't want to use conservative settings
+               here, though; there's not going to be any more text
+               so we should just try to use as much space as we
+               can. *)
+            val (floats, space) = try-place-floats (floats, space)
+          in
             (* Partially-used space might have footnotes pending. *)
             list-app finalize-space space;
             (* And then we might need to create more pages to fit the
@@ -1496,6 +1547,10 @@ fun main-text lay =
           (* No more lines in the queue, but there're still more
              paragraphs to place. *)
           let
+            (* After every paragraph, attempt to place floats in this
+               column (e.g. a footnote from the paragraph we just finished). *)
+            val (floats, space) = try-place-floats (floats, space)
+
             (* Don't pass the new floats here, since we don't want them
                until the paragraph is complete. *)
             val { lines, floats, space } =
