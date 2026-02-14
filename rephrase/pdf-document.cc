@@ -27,6 +27,8 @@
 
 using Transform = Document::Transform;
 
+static constexpr bool VERBOSE = false;
+
 static constexpr float DEFAULT_WIDTH  = PDF::PDF_LETTER_WIDTH;
 static constexpr float DEFAULT_HEIGHT = PDF::PDF_LETTER_HEIGHT;
 
@@ -376,7 +378,8 @@ void PDFPage::DrawLine(double x0, double y0,
                        double x1, double y1,
                        double line_width,
                        uint32_t stroke_color) {
-  Print("Line {:.2f},{:.2f} {:.2f},{:.2f}\n", x0, y0, x1, y1);
+  if (VERBOSE)
+    Print("Line {:.2f},{:.2f} {:.2f},{:.2f}\n", x0, y0, x1, y1);
 
   CHECK(pdf_page != nullptr);
   pdf->AddLine(x0, FlipPageCoordinate(y0),

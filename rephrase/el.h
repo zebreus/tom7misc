@@ -280,22 +280,23 @@ struct AstPool {
   }
 
   const Exp *With(const Exp *a, std::string objname, std::string fieldname,
-                  const Exp *b) {
+                  const Exp *b, size_t pos) {
     Exp *ret = NewExp(ExpType::WITH);
     ret->a = a;
     ret->str = std::move(objname);
     ret->str2 = std::move(fieldname);
     ret->b = b;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
-  const Exp *Without(const Exp *a, std::string objname, std::string fieldname) {
+  const Exp *Without(const Exp *a, std::string objname, std::string fieldname,
+                     size_t pos) {
     Exp *ret = NewExp(ExpType::WITHOUT);
     ret->a = a;
     ret->str = std::move(objname);
     ret->str2 = std::move(fieldname);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

@@ -277,7 +277,8 @@ fun get-boxes (content : layout) =
    and consumes the glue attributes, converting them into a specific width.
    Usually you want to just use pack-boxes-horiz or pack-boxes-vert below. *)
 datatype packing-algorithm = BEST | FIRST
-datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | ALL-JUSTIFIED | CENTERED
+datatype justification =
+  FULLY-JUSTIFIED | LEFT-JUSTIFIED | ALL-JUSTIFIED | CENTERED
 fun pack-boxes (algo : packing-algorithm,
                 justification : justification,
                 dimension : float, content : layout) :

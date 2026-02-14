@@ -113,6 +113,23 @@ val BODY-FONT = ref (font-family TIMES)
 val BODY-FONT-SIZE = ref (point 12.0)
 val BODY-LINE-SPACING = ref (point 1.5)
 
+(* TODO: Make configurable, obviously *)
+val PAGE-WIDTH = inch 8.5
+val PAGE-HEIGHT = inch 11.0
+val LEFT-MARGIN = inch 0.4
+val TOP-MARGIN = inch 0.5
+val GUTTER = inch 0.3
+val COLUMNS = 2
+do COLUMNS >= 1 otherwise fail "There must be at least one column!"
+val RIGHT-MARGIN = inch 0.4
+val BOTTOM-MARGIN = inch 0.5
+
+val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
+val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
+fun COLUMN-WIDTH() =
+  (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
+  /. (int-to-float COLUMNS)
+
 fun it layout =
   span {(Span) font-italic = true} layout
 
@@ -313,10 +330,16 @@ fun footnote lay : layout =
    but (at least nominally) "after" the point it appears in
    the text. *)
 datatype float-pos = FloatBottom | FloatTop | FloatInline
+fun float-pos-eq (FloatBottom, FloatBottom) = true
+  | float-pos-eq (FloatTop, FloatTop) = true
+  | float-pos-eq (FloatInline, FloatInline) = true
+  | float-pos-eq _ = false
+
 datatype parafloat =
   (* A box float has defined dimensions, like a figure. Its position
      can depend on columnization of the page, but not its shape. *)
-  FloatBox of { pos : float-pos list, width : float, height : float, box : layout }
+  FloatBox of { pos : float-pos list, width : float, height : float,
+                box : layout }
   (* A footnote float lays out inside a column, and thus does not
      know its dimensions; only its content. *)
 | FloatFoot of { span : layout }
@@ -467,7 +490,8 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
           (case attrs of
              {(Box) width, height} =>
                let
-                 val ch = layout-map-text normalize-whitespace (layout-concat ch)
+                 val ch = layout-map-text normalize-whitespace
+                   (layout-concat ch)
                in
                  append-float
                  (FloatBox { pos = parse-float-pos floating,
@@ -508,7 +532,8 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
 
             (* The head of the nested paragraph is really part of the parent
                paragraph. Append its contents to the current one. *)
-            fun append-to-current (ParagraphItem { body, space-after, floats }) =
+            fun append-to-current (ParagraphItem { body, space-after,
+                                                   floats }) =
               let in
                 append body;
                 append-floats floats;
@@ -1067,6 +1092,29 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
     get-best (NONE, paras)
   end
 
+(* Like pack-one-paragraph, but outputting a box with fixed size. *)
+fun paragraph-to-box (width : float) (para : layout) : layout =
+  let
+    val lines = pack-one-paragraph width para
+    val lines = list-map stick-horizontally lines
+
+    (* Children, starting at 0,0 in the box. *)
+    val ypos = ref 0.0
+    val chrev = ref nil
+
+    do list-app
+      (fn line =>
+       let val line-height = box-height line
+       in
+         chrev := box-stick-at { x = 0.0, y = !ypos } line :: !chrev;
+         ypos := !ypos +. line-height
+       end) lines
+
+    val body : layout = layout-concat (list-rev (!chrev))
+  in
+    box {(Box) width = width, height = !ypos } body
+  end
+
 (*
   TODO: xrefs allow us to refer to a string that is not known at the time
   the document is evaluated.
@@ -1091,6 +1139,37 @@ fun author lay = span {(Span) justification = "left" }
                        [[lay][hfill()][break()]]
 fun date lay = [[lay][hfill()][vspace 16.0]]
 
+(* Breaks after, but not before. For hrule on its own
+   line, use break() ^^ hrule (inch 1.0) *)
+fun hrule width =
+  let
+    val h = !BODY-FONT-SIZE +. !BODY-LINE-SPACING
+    val y = h *. 0.5
+  in
+    box {(Box) height = h,
+         width = width,
+         (* Expand to fill the line *)
+         glue-expand = 1000000.0,
+         glue-contract = EPSILON-COEFFICIENT,
+         glue-break-penalty = -9999999.0}
+    (sticker {(Sticker) x = 0.0, y = y,
+              line-x1 = width, line-y1 = y,
+              stroke-color = 0x000000FF,
+              line-width = point 1.0} [])
+  end
+
+(* Returns layout to insert before a series of footnotes
+   when allocating them into a column. The default inserts
+   a small hrule with some vertical space, but it could
+   also just be empty. *)
+val FOOTNOTES-HEADER : (float -> layout) ref = ref
+  (fn width =>
+   vspace (point 1.0) ^^
+   hrule (width *. 0.33))
+
+val FOOTNOTE-SEPARATOR : (float -> layout) ref =
+  ref (fn width => vspace (point 2.0))
+
 (* TODO: Some kind of page config object that specifies the
    various constant dimensions, with defaults. *)
 
@@ -1106,23 +1185,6 @@ fun date lay = [[lay][hfill()][vspace 16.0]]
 fun main-text lay =
   let
     val VERBOSE = LAYOUT-VERBOSE orelse false
-
-    (* TODO: Make configurable, obviously *)
-    val PAGE-WIDTH = inch 8.5
-    val PAGE-HEIGHT = inch 11.0
-    val LEFT-MARGIN = inch 0.4
-    val TOP-MARGIN = inch 0.5
-    val GUTTER = inch 0.3
-    val COLUMNS = 2
-    do COLUMNS >= 1 otherwise fail "There must be at least one column!"
-    val RIGHT-MARGIN = inch 0.4
-    val BOTTOM-MARGIN = inch 0.5
-
-    val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
-    val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
-    val COLUMN-WIDTH =
-      (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
-      /. (int-to-float COLUMNS)
 
     val lay =
       span
@@ -1172,28 +1234,16 @@ fun main-text lay =
     fun put-footnote-in-col span (SpaceCol { page, x, y, w, h,
                                              footnotes }) : space =
       let
-        val lines = pack-one-paragraph w span
-        val lines = list-map stick-horizontally lines
+        (* If this is the first footnote we're adding, also add
+           the footnotes header. We need to do this before flowing
+           it so that we account for its height too. *)
+        val body =
+          case footnotes of
+            nil => !FOOTNOTES-HEADER w ^^ span
+          | _ => !FOOTNOTE-SEPARATOR w ^^ span
 
-        val ypos = ref 0.0
-        val chrev = ref nil
-
-        do list-app
-          (fn line =>
-           let val line-height = box-height line
-           in
-             (* footnotes are attached to the bottom of the column (and
-                any footnotes above them). So we place starting at (0, 0). *)
-             chrev := box-stick-at { x = 0.0, y = !ypos } line :: !chrev;
-             ypos := !ypos +. line-height
-           end) lines
-
-        val foot-height = !ypos
-
-        val body : layout = layout-concat (list-rev (!chrev))
-        val foot =
-          box {(Box) width = w, height = foot-height } body
-
+        val foot = paragraph-to-box w body
+        val foot-height = box-height foot
 
         (* TODO if too many lines, can chop and put it back in the
            float queue *)
@@ -1347,8 +1397,11 @@ fun main-text lay =
            list and newly allocated space.
            When there are floats, it always places at least one
            float so that we make progress, even if that means there
-           is no space for anything else. *)
-        fun allocate-page floats =
+           is no space for anything else.
+           When flushing is true, we assume that no text will be
+           placed on the page, and so we may be more aggressive about
+           filling columns with floats. *)
+        fun allocate-page { flushing : bool, floats : parafloat list } =
           (* Note: Here is where we could support full-page figures
              and column-spanning figures like figure*. We just need
              to put them as stickers and allocate shorter columns.
@@ -1361,7 +1414,7 @@ fun main-text lay =
             do current-page := !current-page + 1
 
             fun column-xpos n =
-              LEFT-MARGIN +. (int-to-float n) *. (COLUMN-WIDTH +. GUTTER)
+              LEFT-MARGIN +. (int-to-float n) *. (COLUMN-WIDTH() +. GUTTER)
 
             (* TODO: If the first float is wider than a column,
                do something special (e.g. whole page of floats, or
@@ -1372,7 +1425,7 @@ fun main-text lay =
                fn i => SpaceCol { page = page-num,
                                   x = column-xpos i,
                                   y = TOP-MARGIN,
-                                  w = COLUMN-WIDTH,
+                                  w = COLUMN-WIDTH(),
                                   h = BODY-HEIGHT,
                                   footnotes = nil })
 
@@ -1382,9 +1435,28 @@ fun main-text lay =
               | place-floats (floats, nil) = (floats, nil)
               | place-floats (f :: fs,
                               (col as
-                               SpaceCol { page, x, y, w, h, footnotes }) :: cs) =
+                               SpaceCol { page, x, y, w, h,
+                                          footnotes }) :: cs) =
               case f of
-                FloatBox _ => fail "unimplemented: float box"
+                FloatBox { pos, width, height, box } =>
+                  let
+                    (* Since the column is empty, we can place
+                       at the top if it is top, or if it's inline. *)
+                    val at-top = list-any
+                      (fn FloatTop => true
+                    | FloatInline => true
+                    | _ => false) pos
+
+                    val at-bottom = list-any
+                      (fn FloatBottom => true | _ => false) pos
+
+                    do height >. h
+                      andthen print ("FloatBox is too tall for even " ^
+                                     "a blank column!")
+                  in
+                    fail "unimplemented"
+                  end
+
               | FloatFoot { span } =>
                   let
                     do DEBUG-FOOTNOTES andthen
@@ -1421,9 +1493,11 @@ fun main-text lay =
             NONE =>
               (* Then allocate space and try again. *)
               let
-                val (floats, new-page-space) = allocate-page floats
+                val (floats, new-page-space) =
+                  allocate-page { flushing = false, floats = floats }
               in
-                break-for-space (body, space-after, floats, space @ new-page-space)
+                break-for-space (body, space-after, floats,
+                                 space @ new-page-space)
               end
           | SOME widths =>
               let
@@ -1469,11 +1543,8 @@ fun main-text lay =
           let
             do print ("Flush " ^ int-to-string (list-length fs) ^ " float(s) " ^
                       "at end of document...\n")
-            (* TODO: In this situation we should probably provide hints so
-               that it uses as much space as possible (e.g. full-column
-               footnotes), since we certainly have no text to put in
-               any remaining space. *)
-            val (fs, new-space) = allocate-page fs
+            val (fs, new-space) =
+              allocate-page { flushing = true, floats = fs }
           in
             (* Note: We don't actually use the space for anything. *)
             flush-floats (fs, space @ new-space)
@@ -1482,6 +1553,7 @@ fun main-text lay =
         (* Only attempt to add footnotes in the current column if we have
            at least this fraction of the column's height left. *)
         val SAME-COLUMN-FOOTNOTE-FRAC = 1.0 /. 3.0
+
 
         (* Maybe place floats in the space, if there's enough. *)
         fun try-place-floats (nil, space) = (nil, space)
@@ -1504,7 +1576,11 @@ fun main-text lay =
                we checked. *)
             (* XXX I think it would be better if this were made
                into a routine responsible for approximating the
-               height. *)
+               height of some text at a given width. *)
+            (* XXX better to explicitly measure the header if
+               this is the first footnote of the column. Right now
+               we are just assuming that the margin of safety gives
+               us plenty of space for that. *)
             val approx-height =
               !FOOTNOTE-FONT-SCALE *. (!BODY-FONT-SIZE +. !BODY-LINE-SPACING) *.
               int-to-float (list-length ws)
@@ -1573,7 +1649,8 @@ fun main-text lay =
              none, so just do it. *)
           let
             do print ("No space in step??\n")
-            val (fs, space) = allocate-page floats
+            val (fs, space) = allocate-page { flushing = false,
+                                              floats = floats }
           in
             step { lines = lines, paras = paras, floats = fs, space = space }
           end

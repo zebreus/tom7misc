@@ -207,7 +207,8 @@ struct Pass {
       const Exp *rhs,
       size_t pos,
       Args... args) {
-    return pool->With(DoExp(obj, args...), objtype, field, DoExp(rhs, args...));
+    return pool->With(DoExp(obj, args...), objtype, field,
+                      DoExp(rhs, args...), pos);
   }
 
   virtual const Exp *DoWithout(
@@ -216,7 +217,7 @@ struct Pass {
       const std::string &field,
       size_t pos,
       Args... args) {
-    return pool->Without(DoExp(obj, args...), objtype, field);
+    return pool->Without(DoExp(obj, args...), objtype, field, pos);
   }
 
   virtual const Exp *DoCase(

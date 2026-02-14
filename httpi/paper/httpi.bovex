@@ -68,6 +68,28 @@ let
     span {(Span) font-color = 0x999999FF, font-size = 9.0 }
     [ ([b[footnote]]: [s])]
 
+  (* Add a floating figure, and emit the text ("Figure N") here.
+     pos is a string with characters h, t, p, b to indicate the
+     allowed positions for the figure, like LaTeX.
+     The function f supplies the figure content, which is
+     packed into the current column width (in the future, we should
+     probably delay this until placement!). It is supplied with
+     the same text ("Figure N"), which you'd typically use at the
+     start of the caption, like [fig]. *)
+  val next-figure = ref 1
+  fun figure pos (f : layout -> layout) : layout =
+    let
+      val num = !next-figure
+      do next-figure := !next-figure + 1
+
+      val name = [Figure [layout (int-to-string num)]]
+      val body = f name
+
+      val fig = paragraph-to-box (COLUMN-WIDTH()) body
+    in
+      print ("FIXME Unimplemented: Actually add the floating figure.");
+      name
+    end
 
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
@@ -218,6 +240,8 @@ the green padlock icon: This is not how you use padlocks
 
 TODO: Getting certificates
 
+OpenSSL[cite viega2002openssl]
+
 [*
 We have a pretty good handle on the computational resources needed
 to break an RSA key of a certain level. Is it plausible that someone
@@ -264,6 +288,41 @@ they ban me for my hijinks).
 
 
 ...
+
+[section [Heartbleed support]]
+
+[httpi] includes full support for the [it[Heartbleed]] vulnerability.
+This vulnerability exists by default in two year’s worth of OpenSSL
+releases, from version 1.0.1 to 1.0.1g (2014). It allows a client to
+read 64kb of uninitialized server memory, which could contain anything:
+Public web pages, zeroes, or even OpenSSL itself! Forbes called it
+“a billion times worse than you thought,”[cite egan2014billion]
+and it was generally a very
+exciting time for security professionals, so much so that Heartbleed
+has its own logo ([figure "t"
+(fn num => [image { img = image-load "heartbleed.svg",
+                    width = 0.9 *. COLUMN-WIDTH() }
+Figure [num]. The Heartbleed logo. This is mainly present to
+demonstrate BoVeX’s new support for SVGs and floating figures.])]).
+According to Wikipedia, high profile hacks included the exposure of
+900 social insurance numbers from the Canada Revenue Agency and
+impersonation of the CEO of the UK Parenting forum
+[it[Mumsnet]]—serious business!
+
+The TLS Heartbeat feature (RFC 6520) is basically ICMP ECHO for the
+TLS transport stream. One side can send a [tt[HEARTBEAT]] message to
+the other with some payload, and that side echos it back. This can be
+used, for example, to store files.[cite murphy2022harder] Heartbleed
+happens because the [tt[HEARTBEAT]] message contains a length field,
+which does not necessarily concur with the length field of the
+containing TLS Record.[footnote[TLS is rife with redundant length
+fields in nested structures. It is a strange design to me: Since the
+outer record structure tells you exactly how long the payload is (this
+is necessary to compute the hash used for message authentication), it
+would have been easy to architect the protocol so that the parser
+always worked with a buffer of known size. This would reduce protocol
+overhead and the work to keep validating length fields whose values
+you should know. It also would have made heartbleed impossible.]]
 
 [section [Niceities]]
 

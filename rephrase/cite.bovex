@@ -275,6 +275,15 @@ fun bib-news (obj as {(News) author}) =
 
 fun convert-tech-report obj =
   let
+    (* If no author, use the institution as the "author." *)
+    val obj =
+      case obj of
+      {(TechReport) author} => obj
+    | {(TechReport) institution} =>
+        obj without (TechReport)institution
+        with (Article)author = institution
+    | _ => fail "bug: convert-tech-report requries institution"
+
     (* Optionally remap these fields, in case we get more permissive
        later. *)
     val obj =

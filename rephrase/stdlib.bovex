@@ -107,6 +107,12 @@ fun list-foldl f b nil = b
 fun list-foldr f b nil = b
   | list-foldr f b (h :: t) = f (h, list-foldr f b t)
 
+fun list-all f nil = true
+  | list-all f (h :: t) = f h andalso list-all f t
+
+fun list-any f nil = false
+  | list-any f (h :: t) = f h orelse list-any f t
+
 fun list-rev l =
   let
     fun go (nil, acc) = acc

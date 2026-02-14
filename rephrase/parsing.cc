@@ -1229,25 +1229,29 @@ const Exp *Parsing::Parse(AstPool *pool,
               };
 
           auto WithoutExpr =
-            (OrelseExpr && *(IsToken<WITHOUT>() >>
-                             (IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
-                             Id))
-            >[&](const auto &pair) -> const Exp * {
+            (Mark(OrelseExpr &&
+                  *(IsToken<WITHOUT>() >>
+                    (IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+                    Id)))
+            >[&](const auto &pair_pos) -> const Exp * {
+                const auto &[pair, token_start, token_len] = pair_pos;
                 const auto &[e, withouts] = pair;
                 const Exp *ret = e;
                 for (const auto &[objname, field] : withouts) {
-                  ret = pool->Without(ret, objname, field);
+                  ret = pool->Without(ret, objname, field,
+                                      BytePos(token_start));
                 }
                 return ret;
               };
 
           auto WithExpr =
-            (WithoutExpr &&
-             *(IsToken<WITH>() >>
-               Opt(IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
-               Id &&
-               (IsToken<EQUALS>() >> WithoutExpr)))
-            >[&](const auto &pair) -> const Exp * {
+            (Mark(WithoutExpr &&
+                  *(IsToken<WITH>() >>
+                    Opt(IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+                    Id &&
+                    (IsToken<EQUALS>() >> WithoutExpr))))
+            >[&](const auto &pair_pos) -> const Exp * {
+                const auto &[pair, token_start, token_len] = pair_pos;
                 const auto &[e, withs] = pair;
                 const Exp *ret = e;
                 for (const auto &[p1, e2] : withs) {
@@ -1255,7 +1259,8 @@ const Exp *Parsing::Parse(AstPool *pool,
                   ret = pool->With(ret,
                                    oobjname.has_value() ? oobjname.value() : "",
                                    field,
-                                   e2);
+                                   e2,
+                                   BytePos(token_start));
                 }
                 return ret;
               };
