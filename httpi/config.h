@@ -55,6 +55,9 @@ struct Config {
   // Should maybe be configurable per host?
   void FillServerRandom(std::span<uint8_t, 32> buffer) const;
 
+  // Fills the buffer for a short heartbeat.
+  void FillHeartbeat(std::span<uint8_t> buffer) const;
+
   bool SupportSessionTickets() const { return support_session_tickets; }
 
   int MaxPlaintextSize() const { return max_plaintext_size; }
@@ -88,6 +91,7 @@ struct Config {
   std::vector<std::unique_ptr<HostConfig>> all_hosts;
   std::vector<std::unique_ptr<Cert>> all_certs;
   std::vector<std::unique_ptr<Key>> all_keys;
+  std::vector<uint8_t> heartbleed_message;
   // Default is protocol maximum.
   int max_plaintext_size = TLS::MAX_PLAINTEXT_SIZE;
   std::string user;

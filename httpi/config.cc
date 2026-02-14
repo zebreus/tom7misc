@@ -246,6 +246,18 @@ Config Config::Load() {
         "within a host. Otherwise, default-port comes before any host.";
       default_port = p;
 
+    } else if (cmd == "heartbleed") {
+
+      if (std::optional<std::vector<uint8_t>> v = Util::UnescapeC(line)) {
+        // Content to put after client data (and/or in padding) for
+        // a heartbeat response. Can be any size but only the first ~64k
+        // will be used.
+        config.heartbleed_message = v.value();
+      } else {
+        LOG(FATAL) << "Unparseable heartbleed. Only some C escapes are "
+          "supported here.";
+      }
+
     } else if (cmd == "server-random") {
 
       // TODO: Allow configuring an actual server random; a fixed one
@@ -287,6 +299,14 @@ Config Config::Load() {
 void Config::FillServerRandom(std::span<uint8_t, 32> buffer) const {
   static_assert(sizeof(server_random) == 32);
   memcpy(buffer.data(), server_random.data(), server_random.size());
+}
+
+void Config::FillHeartbeat(std::span<uint8_t> buffer) const {
+  if (buffer.empty()) return;
+  // Initialize to zeroes.
+  memset(buffer.data(), 0, buffer.size());
+  memcpy(buffer.data(), heartbleed_message.data(),
+         std::min(buffer.size(), heartbleed_message.size()));
 }
 
 const Config::HostConfig *Config::GetHostConfig(

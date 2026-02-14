@@ -43,6 +43,7 @@ bool TLS::IsValidContentType(uint8_t c) {
   case ALERT:
   case HANDSHAKE:
   case APPLICATION_DATA:
+  case HEARTBEAT:
     return true;
   default:
     return false;
@@ -265,7 +266,7 @@ TLS::ParseClientHello(PacketParser packet) {
 
     if (packet.size() < len) return std::nullopt;
     switch (type) {
-    case SERVER_NAME_INDICATION: {
+    case SERVER_NAME_INDICATION_EXT: {
       PacketParser ext_packet = packet.Subpacket(len);
       if (std::optional<ServerNameIndication> osni =
           ParseServerNameIndication(ext_packet)) {
@@ -278,10 +279,17 @@ TLS::ParseClientHello(PacketParser packet) {
       break;
     }
 
-    case SESSION_TICKET: {
+    case SESSION_TICKET_EXT: {
       // Any 16-bit size is valid here.
       hello.extensions.emplace_back(SessionTicket{
           .ticket = packet.Bytes(len),
+        });
+      break;
+    }
+
+    case HEARTBEAT_EXT: {
+      hello.extensions.emplace_back(HeartbeatExt{
+          .mode = packet.W8(),
         });
       break;
     }
@@ -296,6 +304,8 @@ TLS::ParseClientHello(PacketParser packet) {
     }
     }
   }
+
+  if (!packet.OK()) return std::nullopt;
 
   CHECK(packet.empty());
   return {std::move(hello)};
@@ -403,10 +413,16 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
           packet.Bytes(unk->bytes);
         }
       } else if (const SessionTicket *st = std::get_if<SessionTicket>(&ext)) {
-        packet.W16(ExtensionTag::SESSION_TICKET);
+        packet.W16(ExtensionTag::SESSION_TICKET_EXT);
         CHECK(st->ticket.size() <= 0xFFFF);
         packet.W16(st->ticket.size());
         packet.Bytes(st->ticket);
+      } else if (const HeartbeatExt *h = std::get_if<HeartbeatExt>(&ext)) {
+        packet.W16(ExtensionTag::HEARTBEAT_EXT);
+        packet.W16(1);
+        CHECK(h->mode == 1 || h->mode == 2);
+        packet.W8(h->mode);
+
       } else {
         LOG(FATAL) << "Unimplemented extension type";
       }

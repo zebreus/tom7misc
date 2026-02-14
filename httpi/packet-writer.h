@@ -49,6 +49,8 @@ struct PacketWriter {
     payload.push_back(b);
   }
 
+  void W8(uint8_t b) { Byte(b); }
+
   void W16(uint16_t w) {
     payload.push_back((w >> 8) & 0xFF);
     payload.push_back(w & 0xFF);
@@ -84,9 +86,17 @@ struct PacketWriter {
       Bytes(copy);
       return;
     }
-    size_t start = payload.size();
-    payload.resize(payload.size() + bs.size());
-    memcpy(payload.data() + start, bs.data(), bs.size());
+    std::span buf = Buf(bs.size());
+    memcpy(buf.data(), bs.data(), bs.size());
+  }
+
+  // Append uninitialized space of the given size and return a view of
+  // it so that the caller can fill it in. You should fill it
+  // immediately; other operations invalidate the view.
+  std::span<uint8_t> Buf(size_t size) {
+    size_t old_size = payload.size();
+    payload.resize(payload.size() + size);
+    return std::span<uint8_t>(payload.data() + old_size, size);
   }
 
   template<size_t B>

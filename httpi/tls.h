@@ -31,6 +31,7 @@ struct TLS {
     ALERT = 21,
     HANDSHAKE = 22,
     APPLICATION_DATA = 23,
+    HEARTBEAT = 24,
   };
 
   enum AlertLevel : uint8_t {
@@ -74,8 +75,9 @@ struct TLS {
 
   // Only supported extensions.
   enum ExtensionTag : uint8_t {
-    SERVER_NAME_INDICATION = 0,
-    SESSION_TICKET = 35,
+    SERVER_NAME_INDICATION_EXT = 0,
+    SESSION_TICKET_EXT = 35,
+    HEARTBEAT_EXT = 15,
   };
 
   struct ServerNameIndication {
@@ -87,6 +89,12 @@ struct TLS {
     // The ticket will be empty to indicate support for tickets
     // prior to having one.
     std::vector<uint8_t> ticket;
+  };
+
+  struct HeartbeatExt {
+    // 1 = supports receiving heartbeats too
+    // 2 = only wants to initiate heartbeats
+    uint8_t mode = 0;
   };
 
   struct UnknownExt {
@@ -108,6 +116,7 @@ struct TLS {
 
     using Extension = std::variant<ServerNameIndication,
                                    SessionTicket,
+                                   HeartbeatExt,
                                    UnknownExt>;
     std::vector<Extension> extensions;
   };
@@ -119,7 +128,7 @@ struct TLS {
     uint16_t cipher_suite = 0;
     uint8_t compression_method = 0;
 
-    using Extension = std::variant<SessionTicket, UnknownExt>;
+    using Extension = std::variant<SessionTicket, HeartbeatExt, UnknownExt>;
     std::vector<Extension> extensions;
   };
 
@@ -215,7 +224,7 @@ struct TLS {
     ContentType type = INVALID;
     uint8_t version_major = 0;
     uint8_t version_minor = 0;
-    // XXX on the wire, there is a length field here
+    // Note: on the wire, there is a length field here
     // Maximum of 2^14 for plaintext (MAX_PLAINTEXT_SIZE),
     // and 2^14 + 2048 for ciphertext.
     std::vector<uint8_t> fragment;

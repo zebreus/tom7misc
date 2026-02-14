@@ -87,6 +87,8 @@ static std::vector<uint8_t> MakeCSR(const Config::HostConfig &host,
   return CSR::Encode(host.canonical, aliases, key);
 }
 
+// Renew the domain if necessary. If domain is the empty string,
+// then do this for all domains in the config file.
 static void Renew(bool dry_run, std::string_view domain) {
   Config config = Config::Load();
   const int64_t now = time(nullptr);

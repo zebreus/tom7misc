@@ -46,6 +46,8 @@ struct PacketParser {
     return b;
   }
 
+  uint8_t W8() { return Byte(); }
+
   uint16_t W16() {
     if (error || rest.size() < 2) {
       error = true;

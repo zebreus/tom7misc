@@ -858,7 +858,9 @@ struct Session {
     PacketParser packet(r.fragment);
 
     if (r.type != ContentType::HANDSHAKE) {
-      AbortConnection("Only handshake messages now!");
+      AbortConnection(
+          std::format("Start: Only handshake messages now! r.type={}",
+                      (uint8_t)r.type));
       return;
     }
 
@@ -907,6 +909,11 @@ struct Session {
             // PERF should we be moving?
             received_ticket = {st->ticket};
           }
+
+        } else if (const TLS::HeartbeatExt *h =
+                   std::get_if<TLS::HeartbeatExt>(&ext)) {
+          (void)h;
+          client_supports_heartbeat = true;
 
         } else {
           // Ignore it.
@@ -974,6 +981,12 @@ struct Session {
       // handshake is further along.
       if (client_supports_tickets && config.SupportSessionTickets()) {
         shello.extensions.emplace_back(TLS::SessionTicket{.ticket = {}});
+      }
+
+      if (client_supports_heartbeat) {
+        // We won't ever initiate a heartbeat, but here we are saying
+        // that we're willing to receive them.
+        shello.extensions.emplace_back(TLS::HeartbeatExt{.mode = 1});
       }
 
       if (std::optional<std::vector<uint8_t>> po =
@@ -1070,7 +1083,9 @@ struct Session {
     PacketParser packet(r.fragment);
 
     if (r.type != ContentType::HANDSHAKE) {
-      AbortConnection("Only handshake messages now!");
+      AbortConnection(
+          std::format("WaitKey: Only handshake messages now! r.type={}",
+                      (uint8_t)r.type));
       return;
     }
 
@@ -1355,6 +1370,52 @@ struct Session {
     }
   }
 
+  void ProcessHeartbeat(std::span<const uint8_t> plaintext) {
+    static constexpr uint8_t HEARTBEAT_REQ = 0x01;
+    static constexpr uint8_t HEARTBEAT_RES = 0x02;
+    PacketParser packet(plaintext);
+
+    uint8_t hb_type = packet.Byte();
+    size_t payload_len = packet.W16();
+
+    if (!packet.OK()) {
+      AbortConnection("Bad heartbeat message.");
+      return;
+    }
+
+    if (hb_type != HEARTBEAT_REQ) {
+      AbortConnection("Heartbeat response? We never send requests.");
+      return;
+    }
+
+    const size_t target_length = 3 + payload_len + 16;
+    PacketWriter response;
+    response.reserve(target_length);
+    response.W8(HEARTBEAT_RES);
+    response.W16(payload_len);
+
+    if (VERBOSE >= 2) {
+      Print("Heartbeat (len={} actual={}).\n",
+            payload_len, (int64_t)packet.size() - 16);
+    }
+
+    // Ignore overlong payloads.
+    if (packet.size() > payload_len)
+      packet = packet.Subpacket(payload_len);
+    response.Bytes(packet.View());
+
+    // This also produces the "random" padding.
+    if (response.size() < target_length) {
+      size_t slack = target_length - response.size();
+      config.FillHeartbeat(response.Buf(slack));
+    }
+
+    SendEncrypted(HEARTBEAT, 3, 3, response.View(),
+                  // Just send in a single packet.
+                  TLS::MAX_PLAINTEXT_SIZE,
+                  VERBOSE >= 4);
+  }
+
   void ProcessStateSteady(TLSRecord &r) {
     // Steady state means all traffic is encrypted.
     auto hopt = TLS::DecryptRecord(
@@ -1377,6 +1438,14 @@ struct Session {
     if (r.type == APPLICATION_DATA) {
 
       backend.Write(hopt.value());
+
+    } else if (r.type == HEARTBEAT) {
+      if (!client_supports_heartbeat) {
+        AbortConnection(
+            "Client sent heartbeat without negotiating extension.");
+        return;
+      }
+      ProcessHeartbeat(hopt.value());
 
     } else if (r.type == ALERT) {
 
@@ -1538,6 +1607,12 @@ struct Session {
                        std::span<const uint8_t> content,
                        bool verbose,
                        std::vector<uint8_t> *out) {
+
+    if (verbose) {
+      Print("Sending encrypted (plaintext):\n{}\n",
+            HexDump::Color(content));
+    }
+
     std::array<uint8_t, TLS::IV_SIZE> iv = {};
 
     // Different IV methods. Only RANDOM is secure.
@@ -1598,7 +1673,7 @@ struct Session {
     server_seq_num++;
 
     if (verbose) {
-      Print("Sending encrypted:\n{}\n",
+      Print("Sending encrypted (ciphered record):\n{}\n",
             HexDump::Color(record));
     }
 
@@ -1726,6 +1801,9 @@ struct Session {
   SHA256::Ctx handshake_ctx = {};
   std::array<uint8_t, 32> client_handshake_validation = {};
   std::array<uint8_t, 32> server_handshake_validation = {};
+
+  // True if we negotiated the heartbeat extension.
+  bool client_supports_heartbeat = false;
 
   // True if we got the extension indicating that the client
   // supports session tickets.
