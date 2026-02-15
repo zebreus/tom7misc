@@ -1178,10 +1178,12 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       rows.emplace_back(p, e);
 
     // XXX Get proper location info here.
-    // Also, can include this in the error string.
     rows.emplace_back(
         el_pool->WildPat(),
-        el_pool->Fail(el_pool->String("unhandled match", el_exp->pos)));
+        el_pool->Fail(el_pool->String(
+                          std::format("unhandled match at {}",
+                                      SimplePos(el_exp->pos)),
+                          el_exp->pos)));
 
     // Now translate the pattern.
     const auto [body, body_type] =

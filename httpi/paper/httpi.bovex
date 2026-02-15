@@ -83,11 +83,20 @@ let
       do next-figure := !next-figure + 1
 
       val name = [Figure [layout (int-to-string num)]]
-      val body = f name
+      (* XXX hack: space should be added when it's placed, since it depends
+         on whether it's top/bottom/inline! *)
+      val body = (f name) ^^ hfill() ^^ break() ^^
+        vspace (point 12.0)
 
       val fig = paragraph-to-box (COLUMN-WIDTH()) body
+
+      (* Mark the box as floating; we extract it from the doc during
+         layout.  *)
+      val fig = map-attrs (fn attrs => attrs with (Box)floating = pos) fig
     in
-      print ("FIXME Unimplemented: Actually add the floating figure.");
+      (* The floating figure itself. *)
+      fig ^^
+      (* And the reference here in the text. *)
       name
     end
 
@@ -263,21 +272,39 @@ even openssl is XXX lines of code
 using the credit card to encrypt the data
 *]
 
+Fundamentally, a Certificate Authority’s job is simply to vouch
+that a specific public key belongs to a specific domain name. Their
+voucher is a time-limited certificate that is presented by the
+server when you connect to it. So any server that wants to use
+[tt[https]] needs to regularly get a certificate from a CA for
+each of their key–domain pairs. They’re supposed to check that
+the key actually belongs to the domain name; originally this
+happened through some kind of verification process, like when
+you try to go to the deepfake pornography web site but it
+demands a credit card number to check that you're really 18
+years old.
+
 [section [Let’sn’t Encrypt]]
 
-In the first decade of the 2000s, if you wanted to have a green
+So in the first decade of the 2000s, if you wanted to have a green
 padlock icon on your site, you needed to find some security
 professionals who would pretend to do some Military Grade secrecy to
 keep their numbers secret, and vouch that you had paid them the
 extortion fee. Despite the eye-popping invoices, all their data center
-laser grid security systems and tactical sunglasses still allowed many
-improper certificates being issued. Trusted Certificate Authorities
+laser grid security systems and tactical sunglasses, many CAs still
+issued many improper certificates. Trusted Certificate Authorities
 such as Thawte, StartCom, Comodo, DigiNotar, TurkTrust, NICCA, CNNIC,
-WoSign, Symantec, and Certinomis all shit the bed, with the malfeasance
-warranting different levels of spit-take.[cite sslmate2026failures]
-But in my mind, if the whole premise is some kind of absolute trust,
-this should never happen. And if this is regularly happening, it may
-be that the underlying premise is incorrect!
+WoSign, Symantec, and Certinomis all shit the bed, with the
+malfeasance warranting different levels of spit-take.[cite
+sslmate2026failures] The typical mistake is failing their one job:
+Checking that the key belongs to the domain before issuing the
+certificate. In my mind, if the whole premise is some kind of absolute
+trust, this should never happen.[footnote[To be honest, I should note
+the possibility that I am just jealous that they probably have those
+keyboards that slide out of the server rack’s [it[blinkenlights]] and
+pop up a small amber display with a direct console connection to a
+root shell.]] And if this is regularly happening, it may be that the
+underlying premise is incorrect!
 
 In 2014, a non-profit organization known as [it[Let’s Encrypt]] formed,
 with the idea that at least you shouldn’t have to pay an extortion
@@ -286,6 +313,20 @@ they generally seem to do a good job (although they are not without
 their own incidents) and they are good guys in this story (unless
 they ban me for my hijinks).
 
+One of the ways that Let’s Encrypt avoids charging you extortion fees
+is that it’s totally automated. Instead of verifying your identity and
+that you own the domain, it checks via a protocol called Automatic
+Certificate Management Environment (ACME)[cite rfc8555] that you, uh,
+0wn the domain. In order to get a certificate, you use a
+challenge-response protocol, where Let’s Encrypt’s ACME endpoint asks
+you to prove that you’ve already hacked the server by placing a file
+with specific contents of its choice on it. If you want to get
+a certificate with wildcards in it, like [tt[*.tom7.org]],[footnote[And
+you do, because when inspiration strikes you late at night to create
+a new stupid subdomain for a new stupid project, you don’t want to
+have to endure any creativity-killing Trials.]] then you have to
+make specific DNS records to prove that you already pwn3d the
+domain itself.
 
 ...
 
@@ -300,9 +341,9 @@ Public web pages, zeroes, or even OpenSSL itself! Forbes called it
 and it was generally a very
 exciting time for security professionals, so much so that Heartbleed
 has its own logo ([figure "t"
-(fn num => [image { img = image-load "heartbleed.svg",
-                    width = 0.9 *. COLUMN-WIDTH() }
-Figure [num]. The Heartbleed logo. This is mainly present to
+(fn fig => [[image { img = image-load "heartbleed.svg",
+                    width = 0.9 *. COLUMN-WIDTH() }]
+[b fig]. The Heartbleed logo. This is mainly present in the paper to
 demonstrate BoVeX’s new support for SVGs and floating figures.])]).
 According to Wikipedia, high profile hacks included the exposure of
 900 social insurance numbers from the Canada Revenue Agency and
@@ -322,7 +363,15 @@ is necessary to compute the hash used for message authentication), it
 would have been easy to architect the protocol so that the parser
 always worked with a buffer of known size. This would reduce protocol
 overhead and the work to keep validating length fields whose values
-you should know. It also would have made heartbleed impossible.]]
+you should know. It also would have made heartbleed impossible.]] In
+the case that the heartbeat claimed it was long but it was not,
+OpenSSL’s cowboy C code would read past the end of the client's packet
+and echo back whatever happened to be after it in RAM (or, I guess,
+segfault). You had to get pretty lucky for that RAM to contain
+something important. [it[My]] cowboy C++ code reads from a
+configurable buffer where you can reveal anything you choose, so
+you can guarantee that it is passwords or your private files or
+whatever you like.
 
 [section [Niceities]]
 

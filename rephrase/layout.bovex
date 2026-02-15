@@ -351,7 +351,7 @@ fun parse-float-pos str =
             | 0't' => FloatTop
             | 0'b' => FloatBottom
             | _ => fail ("Only positions h, t, b are supported in floating: " ^
-                          str)) (string-explode str)
+                         str)) (string-explode str)
 
 (* Each item is some body text, then the accumulated space after that
    paragraph, and any floats that shall be placed (eventually) after it. *)
@@ -390,7 +390,8 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
       let in
         LAYOUT-VERBOSE andthen
         (list-empty (!acc-floats) otherwise
-         print ("Make paragraph with " ^ int-to-string (list-length (!acc-floats))
+         print ("Make paragraph with " ^
+                int-to-string (list-length (!acc-floats))
                 ^ " floats\n"));
 
         (if layout-empty (!acc)
@@ -1221,10 +1222,16 @@ fun main-text lay =
        because we slide them up). I think if this is a full polygon,
        it's probably better to have a general purpose
        trapezoid-packing boxes-and-glue algorithm, so I'm saving that
-       for future work! *)
+       for future work!  *)
+
     datatype space =
       SpaceCol of { page: int, x: float, y: float, w: float, h: float,
                     footnotes: layout list }
+
+    (* TODO: Add a "pristine" bool that tells us when the column is
+       totally empty. We try to detect this in several places. *)
+    fun pristine-column (SpaceCol { page, x, y, w, h, footnotes }) =
+      h ==. BODY-HEIGHT
 
     (* Forces placement of the footnote. XXX We need some kind of fallback
        if the footnote is too tall.
@@ -1252,6 +1259,34 @@ fun main-text lay =
         SpaceCol { page = page, x = x, y = y,
                    w = w, h = h -. foot-height,
                    footnotes = footnotes @ (foot :: nil) }
+      end
+
+    (* Forces placement of the float, even if it overflows.
+       Returns the updated col. This imperatively writes to the
+       page. *)
+    fun put-float-atop-col (width, height, box)
+      (SpaceCol { page, x, y, w, h, footnotes }) : space =
+      let
+        do output (page, box-stick-at { x = x, y = y } box)
+
+        (* Clamped to 0.0 *)
+        val (new-height, new-y) =
+          let val rh = h -. height
+          in if rh <. 0.0
+             then
+               let
+                 val overflow = 0.0 -. rh
+               in
+                 print ("Float box overflows column by " ^
+                        float-to-string overflow);
+                 emit-badness (overflow *. width);
+                 (0.0, y +. h)
+               end
+             else (rh, y +. height)
+          end
+      in
+        SpaceCol { page = page, x = x, y = new-y,
+                   w = w, h = new-height, footnotes = footnotes }
       end
 
     (* I think the way this should work now is:
@@ -1440,21 +1475,63 @@ fun main-text lay =
               case f of
                 FloatBox { pos, width, height, box } =>
                   let
-                    (* Since the column is empty, we can place
-                       at the top if it is top, or if it's inline. *)
-                    val at-top = list-any
-                      (fn FloatTop => true
-                    | FloatInline => true
-                    | _ => false) pos
-
-                    val at-bottom = list-any
-                      (fn FloatBottom => true | _ => false) pos
-
-                    do height >. h
+                    (* If it overflows, place it anyway, but complain. *)
+                    do height >. BODY-HEIGHT
                       andthen print ("FloatBox is too tall for even " ^
                                      "a blank column!")
+
+                    val was-pristine = pristine-column col
+
+                    (* Now the order we attempt to place depends on the
+                       position preference. We make sure to place it
+                       if the column is pristine, though. *)
+                    val pos =
+                      case pos of
+                        nil => FloatTop :: nil
+                      | _ => pos
+
+                    fun place-rec nil = (false, col)
+                      | place-rec (FloatTop :: rest) =
+                        if was-pristine
+                        then (true,
+                              put-float-atop-col (width, height, box) col)
+                        else place-rec rest
+                      | place-rec (FloatInline :: rest) =
+                        (* Force placement if pristine. *)
+                        if was-pristine orelse height <. h
+                        then (true, put-float-atop-col (width, height, box) col)
+                        else place-rec rest
+                      | place-rec (FloatBottom :: rest) =
+                    (* Need to deal with the interaction with footnotes.
+                       If footnotes are above bottom floats, then I think
+                       we can just place it on the page and shrink the
+                       column, so maybe that's the right thing to do? *)
+                          fail "Sorry, bottom floats are not implemented"
+
+                    val (placed, col) = place-rec pos
+                    (* We guarantee placement in a pristine column so
+                       that we make progress. But if we are flushing, it
+                       is normal for it to not fit in an already-used
+                       column. *)
+                    do was-pristine andthen
+                      (placed otherwise
+                       fail ("Bug: We didn't place the float in a pristine " ^
+                             "column."))
+
+                    (* Remaining floats still include this one if not
+                       placed. *)
+                    val fs =
+                      if placed then fs
+                      else f :: fs
                   in
-                    fail "unimplemented"
+                    (* If flushing, allow another placement in
+                       this column. *)
+                    if flushing
+                    then place-floats (fs, col :: cs)
+                    else
+                      let val (rfs, rcs) = place-floats (fs, cs)
+                      in (rfs, col :: rcs)
+                      end
                   end
 
               | FloatFoot { span } =>
@@ -1553,49 +1630,91 @@ fun main-text lay =
         (* Only attempt to add footnotes in the current column if we have
            at least this fraction of the column's height left. *)
         val SAME-COLUMN-FOOTNOTE-FRAC = 1.0 /. 3.0
+        (* It looks less weird for a figure to take up lots of space in
+           a column, and we have a better handle on how tall a figure is. *)
+        val SAME-COLUMN-FLOATBOX-FRAC = 1.0 /. 4.0
 
+        (* Maybe place floats in the space, if there's enough.
 
-        (* Maybe place floats in the space, if there's enough. *)
+           TODO: We stop as soon as we find a float that can't be placed,
+           but we probably don't care about the relative order of
+           footnotes and figures. We could keep two streams, or look
+           at explicit dependencies? *)
         fun try-place-floats (nil, space) = (nil, space)
           | try-place-floats (floats, nil) = (floats, nil)
-          | try-place-floats (floats as (FloatFoot { span } :: fs),
+          | try-place-floats (floats as (flt :: fs),
                               space as ((col as
                                          SpaceCol { page, x, y, w, h,
                                                     footnotes }) :: ss)) =
-          (* Once we commit to placing the footnote we'll fail if it's too
-             tall. So we only do this if we have plenty of space. *)
-          if h <. BODY-HEIGHT *. SAME-COLUMN-FOOTNOTE-FRAC
-          then (floats, space)
-          else case get-widths (span, space) of
-            NONE => (floats, space)
-          | SOME ws =>
-          let
-            (* PERF: get-widths is somewhat expensive, but we'll
-               keep doing it after every paragraph. We could avoid
-               recomputing it if the width is the same as last time
-               we checked. *)
-            (* XXX I think it would be better if this were made
-               into a routine responsible for approximating the
-               height of some text at a given width. *)
-            (* XXX better to explicitly measure the header if
-               this is the first footnote of the column. Right now
-               we are just assuming that the margin of safety gives
-               us plenty of space for that. *)
-            val approx-height =
-              !FOOTNOTE-FONT-SCALE *. (!BODY-FONT-SIZE +. !BODY-LINE-SPACING) *.
-              int-to-float (list-length ws)
+          (case flt of
+             FloatFoot { span } =>
+              (* Once we commit to placing the footnote we'll fail if
+                 it's too tall. So we only do this if we have plenty
+                 of space. *)
+              if h <. BODY-HEIGHT *. SAME-COLUMN-FOOTNOTE-FRAC
+              then (floats, space)
+              else
+                (case get-widths (span, space) of
+                   NONE => (floats, space)
+                 | SOME ws =>
+                     let
+                       (* PERF: get-widths is somewhat expensive, but we'll
+                          keep doing it after every paragraph. We could avoid
+                          recomputing it if the width is the same as last time
+                          we checked. *)
+                       (* XXX I think it would be better if this were made
+                          into a routine responsible for approximating the
+                          height of some text at a given width. *)
+                       (* XXX better to explicitly measure the header if
+                          this is the first footnote of the column. Right now
+                          we are just assuming that the margin of safety gives
+                          us plenty of space for that. *)
+                       val approx-height =
+                         !FOOTNOTE-FONT-SCALE *.
+                         (!BODY-FONT-SIZE +. !BODY-LINE-SPACING) *.
+                         int-to-float (list-length ws)
 
-          in
-            (* Very safe margin of 2x the footnote's apparent size. *)
-            if approx-height <=. 0.5 *. h
-            then
-              let val space = put-footnote-in-col span col :: ss
-              in
-                (* We can often place several short footnotes. *)
-                try-place-floats (fs, space)
-              end
-            else (floats, space)
-          end
+                     in
+                       (* Very safe margin of 2x the footnote's apparent
+                          size. *)
+                       if approx-height <=. 0.5 *. h
+                       then
+                         let val space = put-footnote-in-col span col :: ss
+                         in
+                           (* We can often place several short footnotes. *)
+                           try-place-floats (fs, space)
+                         end
+                       else (floats, space)
+                     end)
+
+           | FloatBox { pos, width, height, box } =>
+              (* Column must still be tall enough to allow placing
+                 floats. *)
+              if h >=. BODY-HEIGHT *. SAME-COLUMN-FLOATBOX-FRAC
+                 (* and have enough space for this particular float *)
+                 andalso height <=. h
+              then
+                let
+                  fun try-place-at nil = (floats, space)
+
+                    | try-place-at (FloatTop :: pos) =
+                    if pristine-column col
+                    then (fs, put-float-atop-col (width, height, box) col :: ss)
+                    else try-place-at pos
+
+                    | try-place-at (FloatInline :: pos) =
+                      (fs, put-float-atop-col (width, height, box) col :: ss)
+
+                    | try-place-at (FloatBottom :: pos) =
+                      let in
+                        print "Unimplemented: Bottom floats\n";
+                        try-place-at pos
+                      end
+                in
+                  print "Try placing float.\n";
+                  try-place-at pos
+                end
+              else (floats, space))
 
         fun step { lines = nil, paras = nil, floats, space } =
           (* No more body text. Finish up the document. *)
