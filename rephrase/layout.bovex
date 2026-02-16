@@ -204,6 +204,16 @@ fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
     val (badness, lines) = pack-boxes (algo, just, width, content)
     val lines = vec-to-list lines
 
+      (*
+    do print ("--- (badness " ^ float-to-string badness ^ ") packed:\n")
+    do list-app (fn line =>
+                 let in
+                   print "#LINE#\n";
+                   debug-print-doc line
+                 end) lines
+    do print "------\n"
+    *)
+
     (* Set the line height to the maximum box height within it. *)
     fun set-height (line : layout) =
       case layoutcase line of
@@ -1076,6 +1086,13 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
         val (badness : float, lines : layout list) =
           pack-boxes-horiz (BEST, just, column-width, boxes)
 
+        do VERBOSE andthen
+          let in
+            print ("--- packed-lines:\n");
+            list-app (fn line => debug-print-doc line) lines;
+            print ("----\n");
+          end
+
         val score = compute-penalty { badness = badness,
                                       semantic-loss = loss,
                                       lines = list-length lines,
@@ -1148,15 +1165,11 @@ fun hrule width =
     val y = h *. 0.5
   in
     box {(Box) height = h,
-         width = width,
-         (* Expand to fill the line *)
-         glue-expand = 1000000.0,
-         glue-contract = EPSILON-COEFFICIENT,
-         glue-break-penalty = -9999999.0}
+         width = width }
     (sticker {(Sticker) x = 0.0, y = y,
               line-x1 = width, line-y1 = y,
               stroke-color = 0x000000FF,
-              line-width = point 1.0} [])
+              line-width = point 1.0} []) ^^ hfill() ^^ break()
   end
 
 (* Returns layout to insert before a series of footnotes

@@ -1130,18 +1130,24 @@ Document::PackBoxes(Algorithm algo,
         line_width, boxes, MAX_BREAK_PENALTY, just);
     break;
   }
-  case Algorithm::BEST: {
 
+  case Algorithm::BEST: {
     std::unique_ptr<BoxesAndGlue::Table> table;
     lines = BoxesAndGlue::PackBoxes(line_width, boxes, just, &table);
     static constexpr bool SAVE_TABLE = false;
+    static constexpr bool SAVE_ALL_TABLES = false;
     static int image_num = 0;
-    if (SAVE_TABLE && image_num == 0) {
+    if (SAVE_TABLE && (SAVE_ALL_TABLES || image_num == 0)) {
       int wordlen = 0;
+      constexpr int MAX_WORD_LEN = 32;
       std::vector<std::string> words;
       for (const BoxesAndGlue::BoxIn &box : boxes) {
         const DocTree *doc = (const DocTree*)box.data;
         std::string w = DocText(*doc);
+        if (w.size() > MAX_WORD_LEN) {
+          w.resize(MAX_WORD_LEN - 3);
+          w.append("...");
+        }
         wordlen = std::max((int)w.size(), wordlen);
         words.push_back(w);
       }
@@ -1155,6 +1161,7 @@ Document::PackBoxes(Algorithm algo,
       constexpr int MARGIN_SIZE = 2;
       int WORD_COL = wordlen * FONT_SIZE + 4;
       ImageRGBA img(WORD_COL + num_before * CELL_SIZE, num_words * CELL_SIZE);
+      img.Clear32(0x000000FF);
       Print("Table size {} x {}\n", num_before, num_words);
 
       // Get all values so we can compute rank.
@@ -1196,6 +1203,7 @@ Document::PackBoxes(Algorithm algo,
         };
 
       for (int y = 0; y < num_words; y++) {
+        std::string w = words[y];
         img.BlendText2x32(0, y * CELL_SIZE + (CELL_SIZE - FONT_SIZE) / 2,
                           0xFFFFFFFF,
                           words[y]);
@@ -1230,6 +1238,21 @@ Document::PackBoxes(Algorithm algo,
               */
             }
           }
+        }
+      }
+
+      // Show line info
+      for (const std::vector<BoxesAndGlue::BoxOut> &line : lines) {
+        for (const BoxOut &out : line) {
+          const int idx = out.box_idx;
+          CHECK(idx >= 0 && idx < boxes.size());
+          // const BoxIn &in = boxes[idx];
+          double glue = out.actual_glue;
+
+          img.BlendText32(ImageRGBA::TEXT2X_WIDTH * words[idx].size() + 4,
+                          idx * CELL_SIZE + (CELL_SIZE - FONT_SIZE) / 2,
+                          0xFFFFFF99,
+                          std::format("{:.3f}", glue));
         }
       }
 

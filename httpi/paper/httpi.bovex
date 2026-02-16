@@ -29,16 +29,27 @@ let
 
   fun monospace-block lay =
     monospace-block-ext { left-indent = 0.0,
-                          width = inch 3.4,
+                          width = COLUMN-WIDTH(),
                           line-spacing = point 0.05,
                           font-size = point 10.0,
                           attrs = {(Object) } } lay
+
+  fun monospace-block-tiny lay =
+    monospace-block-ext { left-indent = 0.0,
+                          width = COLUMN-WIDTH(),
+                          line-spacing = point 0.05,
+                          font-size = point 6.0,
+                          attrs = {(Object) } } lay
+
 
   val tt = fixedersys
 
   do BODY-FONT := font-family PALATINO
   do BODY-FONT-SIZE := point 12.0
   do BODY-LINE-SPACING := point 1.5
+
+  (* This could be built in, I think? *)
+  fun BODY-LINE-HEIGHT() = !BODY-FONT-SIZE +. !BODY-LINE-SPACING
 
   val layout-sup = sup
 
@@ -103,20 +114,44 @@ let
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
+  (* TODO *)
+  fun underline lay = lay
+
   val httpi = tt[httpi]
   val openssl = [OpenSSL]
 
 in
+(*
+  (main-text
+[Foot.[footnote[
+Similar problem. Absent certificates (which is typical) it just gives you a message like
+[hfill() ^^ break() ^^
+monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 7.0,
+                      attrs = {(Object) } } [
+The authenticity of host 'github.com (140.82.113.4)' can't be established.
+ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[layout"["]fingerprint[layout"]"])?] ^^ break() ^^ vspace (point 1.0)]
+... which is a perfectly reasonable compromise (hehe) at the command line.
+Once you connect this way it just remembers that key, which is sometimes
+called “TOFU” (Trust on First Use).]]
+]);
+
+false andthen
+*)
 
 (* XXX: If I leave off the vspace 8 here, it ignores the font size? *)
 (main-text
-[[title (layout doc-title)][vspace 8.0]
+[[title (layout doc-title)][hfill()][break()]
 
 [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2026]]
 
 I have one of the oldest websites on the internet,[footnote[Find it at
 http://tom7.org/]] dating back to at least AD 1996. It has so far
-outlived its original host (aol.com) by 18 years. Now that 99.9999999%
+outlived its original host (AOL Hometown) by 18 years. Now that 99.9999999%
 of the internet is deepfake pornography, AI-generated cryptocurrency scams,
 and Italian Brainrot, a website being in Lycos’s “Top 5% Of The Web” is a
 triviality achieved at the first human keystroke. But in the late
@@ -131,10 +166,11 @@ e-mail list, or figure out which one is the search box and which one
 is a trick to get me to enter my search terms in the e-mail sign up
 box, nor dismiss 15% off coupon / privacy policy pop-up / how may I
 help you? AI chat assistant, nor do I want you to consent to or refuse
-consent to or leave open in silent protest data collection per
-EU General Data Protection Regulations,
-click to enable Flash Player, or 15 second interstial video
-advertisement, or [checked-box-icon] W3C XHTML compliant.
+consent to or leave open in silent protest data collection per the EU
+General Data Protection Regulation, click to enable Flash Player, or
+Flash Player no longer supported, or 15 second interstitial video
+advertisement, or [checked-box-icon] W3C XHTML compliant.[cite
+pemberton2002xhtml]
 
 [helvetica[U N F O R T U N A T E L Y]], the Internet is not that place
 any more! One possibly controversial opinion of mine is that one
@@ -147,29 +183,53 @@ security due to alarm fatigue.[cite akhawe2013alice] The specific
 toxicity that has set me off in this here SIGBOVIK paper is this
 [color 0x990000FF [RED ALERT]]:
 
-XXX screenshot
+[* SVG would be nice here, but we'd need gradients. It's actually
+   a PNG in the warning page, anyway *]
+[image { img = image-load "red-triangle.png",
+        width = 0.125 *. COLUMN-WIDTH() }]
+
+[size (1.5 *. BODY-LINE-HEIGHT()) [Your connection is not private]]
+
+[color 0x777777FF [Attackers might be trying to steal your information
+from [b[tom7.org]] (for example, passwords, messages, or credit cards).
+[underline[Learn more about this warning]]]]
+
+[size (0.80 *. BODY-LINE-HEIGHT()) (color 0x999999FF [NET::ERR_CONNECTION_REFUSED])]
+
+[image-inline { img = image-load "advanced.svg",
+                height = 2.0 *. BODY-LINE-HEIGHT(), dy = 0.0 }]
+[(* ugh! hfill should work here?? *) rigid-hspace (point 130.0)]
+[image-inline { img = image-load "back-to-safety.svg",
+                height = 2.0 *. BODY-LINE-HEIGHT(), dy = 0.0 }]
+
 
 This is a real-life warning screen shown to me when I tried to use
 the Chrome “web browser” to visit my own website at [tt[http://tom7.org/]].
 My website has never had HTTPS, does not give any indication that it
 wants or expects HTTPS. I did not ask for the [tt[https://]] protocol
 in the URL. The website is completely public, available on the Internet
-Archive, and does process or contain any private information or anything
+Archive, and does not process or contain any private information or anything
 sensitive in any way. Its privacy policy is: LOL. I can tell you for
 certain that when I was connecting to my own website, there was no
-attacker trying to “steal my credit card.” First of all, we need not
+attacker trying to “steal my credit card.” First of all, need we really
 discuss the obvious distinction between stealing a credit card and
-stealing a credit card [it[number]]. Second, there is simply no place to
+stealing a credit card [it[number]]? Second, there is simply no place to
 even put my credit card number on my website short of posting it as
 a comment on my blog, which, be my guest...!
+
+In order to get to my website, the user must click on “Advanced” and
+endure a further mansplaination and then click the tiny text that says
+“Proceed to tom7.org (unsafe)”.
 
 Having seen this screen, I officially declare that I have 0xBEEF5 with
 someone on the Chrome product team who is preventing users from getting
 to my website for the sake of toxic max-security. But before that final
 straw, there were many other irritations.
 
+Earlier straws:
+
 [* copy-paste URL
-   can't go to http site in icognito
+   can't go to http site in incognito
 *]
 
 Now I do want to be clear: I am glad that we have [tt[https]], and I
@@ -180,7 +240,7 @@ not be on the site they think they’re on. I truly think cryptography
 is fascinating and I liked when there was a little green lock in my
 URL bar. But in this paper I hope to convince you that [tt[https]] has
 lost the plot somewhat, and will point out some of its own shortcomings
-and hypocrisies,
+and hypocrisies, XXX
 
 I think this person probably thinks they are one of the good guys, but
 I posit that they are more like the following chumps:
@@ -232,57 +292,81 @@ revenge for the time that I was annoyed by a warning message.
 
 [section [TLS]]
 
-“TLS” is the new name for SSL, which is the new name for HTTPS.[* cite XXX *]
-There’s something a little strange about that sentence: A name for a name
-for a name. Anyway!
+“TLS” is the new name for SSL, which is the thing that makes the letter
+S in HTTPS. It uses cryptography for two purposees here: To ensure
+that you are talking directly to the site you think you are, and to
+encrypt the communication so that observers can’t read it.
 
-[section [The many dirty secrets of TLS]]
+Encryption is pretty easy. There are loads of algorithms that are fast
+and that provide adequate security.[footnote[Take even a last-century
+classic like 3DES, which OpenSSL declares a “weak cipher.” This one is
+weak mainly in the sense that if you capture about 785 Gigabytes of
+traffic encrypted with the same key, [it[and]] you are able to know
+what a lot of that traffic already is, then you can probably decrypt
+some blocks simply because you’ve likely induced a collision between
+64-bit blocks due to the birthday paradox.[cite
+bhargavan2016practical] [it[All]] 64-bit ciphers in CBC mode have this
+issue, like all ciphers with 40-bit keys are weak to brute force
+attacks.]] In this paper we will use AES-256.[cite daemen2001rijndael]
+To send encrypted data back and forth, you need to agree on
+what encryption keys to use. There are
+various approaches, but the one relevant to this paper is to just use
+public-key cryptography. It works like this: When you connect to the
+server (before anything is encrypted), it offers up its public key.
+The public key can be used to send encrypted messages that only the
+owner of that key can decrypt (using the private key). The client can
+just decide on an AES key, encrypt it with the server’s public key,
+and send it to the server.
 
-[* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
+[b[Oops—HACKED!!]] This doesn’t work, though. While a passive observer
+can’t uncover the key, an attacker can insinuate themselves into the
+connection. To the client, they pretend to be the server, passing
+their [it[own]] public key to the client and receiving the client’s
+chosen AES key. To the server, they pretend to be the client,
+negotiating a secure connection and forwarding data between the real
+client and the server. This “man-in-the-middle” (often a computer and
+not a biological man) is invisible to the client and server, but
+can read (and often modify) any data encrypted data sent between
+them.
 
-OCSP is now deprecated (at least by Let’s Encrypt)
-https://letsencrypt.org/2024/12/05/ending-ocsp
+The way that TLS prevents against man-in-the-middle attacks is for
+the client to check that the public key actually belongs to the server.
+This is accomplished by having someone [it[else]] that the user
+absolutely trusts vouch for the key that the server presents. They
+do this by “signing” the key–domain pair (using their own public key,
+which just comes with your browser), creating a [it[certificate]].[footnote[
+SSH isn’t quite TLS but it needs to solve a similar problem.
+Absent certificates (which is typical) it just gives you a message like
+[hfill() ^^ break() ^^
+monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 7.0,
+                      attrs = {(Object) } } [
+The authenticity of host 'github.com (140.82.113.4)' can't be established.
+ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[layout"["]fingerprint[layout"]"])?] ^^ break() ^^ vspace (point 1.0)]
+... which is a perfectly reasonable compromise (hehe) at the command line.
+Once you connect this way it just remembers that key, which is sometimes
+called “TOFU” (Trust on First Use).]]
 
-the green padlock icon: This is not how you use padlocks
+TLS technically supports self-signed certificates, where the certificate
+is signed with the key itself (“I am me!” —[it[Hacker]]). No browsers
+allow self-signed certificates because the man-in-the-middle can just make
+them too. So in order to have a website on the internet that users can
+access, you must submit to a Certificate Authority.
 
-*]
-
-TODO: Getting certificates
-
-OpenSSL[cite viega2002openssl]
-
-[*
-We have a pretty good handle on the computational resources needed
-to break an RSA key of a certain level. Is it plausible that someone
-would spend nation-state level resources to intercept my credit
-card number?
-
-openssl, the source of most security vulnerabilities I mean, I just
-looked to see if OpenSSL was still a fount of security
-vulnerabilities---like, maybe I am being too hard on it?--- and I saw
-that merely [it[three days ago]] there were two different buffer
-overflow vulnerability (CVE-2025-11187, CVE-2025-15467) which "may
-also potentially enable code execution depending on platform
-mitigations" and ten additional "low severity" problems like
-incomplete validation, excessive memory allocation, and null pointer
-dereferences.
-
-even openssl is XXX lines of code
-
-using the credit card to encrypt the data
-*]
-
-Fundamentally, a Certificate Authority’s job is simply to vouch
-that a specific public key belongs to a specific domain name. Their
-voucher is a time-limited certificate that is presented by the
+Fundamentally, a Certificate Authority’s job is simply to vouch that a
+specific public key belongs to a specific domain name. Their voucher
+is a time-limited certificate[cite rfc5280] that is presented by the
 server when you connect to it. So any server that wants to use
-[tt[https]] needs to regularly get a certificate from a CA for
-each of their key–domain pairs. They’re supposed to check that
-the key actually belongs to the domain name; originally this
-happened through some kind of verification process, like when
-you try to go to the deepfake pornography web site but it
-demands a credit card number to check that you're really 18
-years old.
+[tt[https]] needs to regularly get a certificate from a CA for each of
+their key–domain pairs. They’re supposed to check that the key
+actually belongs to the domain name; originally this happened through
+some kind of verification process, like when you try to go to the
+deepfake pornography web site but it demands a credit card number to
+check that you're really 18 years old.
 
 [section [Let’sn’t Encrypt]]
 
@@ -320,20 +404,62 @@ Certificate Management Environment (ACME)[cite rfc8555] that you, uh,
 0wn the domain. In order to get a certificate, you use a
 challenge-response protocol, where Let’s Encrypt’s ACME endpoint asks
 you to prove that you’ve already hacked the server by placing a file
-with specific contents of its choice on it. If you want to get
-a certificate with wildcards in it, like [tt[*.tom7.org]],[footnote[And
-you do, because when inspiration strikes you late at night to create
-a new stupid subdomain for a new stupid project, you don’t want to
-have to endure any creativity-killing Trials.]] then you have to
-make specific DNS records to prove that you already pwn3d the
-domain itself.
+with specific contents of its choice on it. If you want to get a
+certificate with wildcards in it,[footnote[And you do, because when
+inspiration strikes you late at night to create a new stupid subdomain
+for a new stupid project, you don’t want to have to endure any
+creativity-killing Trials.]] like [tt[*.tom7.org]], then you have to
+make specific DNS records to prove that you already pwn3d the domain
+itself.
+
+TODO: Getting certificates
+
+[section [The many dirty secrets of TLS]]
+
+[* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
+
+OCSP is now deprecated (at least by Let’s Encrypt)
+https://letsencrypt.org/2024/12/05/ending-ocsp
+
+the green padlock icon: This is not how you use padlocks
+
+Too Many Secrets
+
+*]
+
+[section [Let’sn’t Encrypt]]
+
+OpenSSL[cite viega2002openssl]
+
+RSA[cite rivest1978rsa]
+
+[*
+We have a pretty good handle on the computational resources needed
+to break an RSA key of a certain level. Is it plausible that someone
+would spend nation-state level resources to intercept my credit
+card number?
+
+openssl, the source of most security vulnerabilities I mean, I just
+looked to see if OpenSSL was still a fount of security
+vulnerabilities---like, maybe I am being too hard on it?--- and I saw
+that merely [it[three days ago]] there were two different buffer
+overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which "may
+also potentially enable code execution depending on platform
+mitigations" and ten additional "low severity" problems like
+incomplete validation, excessive memory allocation, and null pointer
+dereferences.
+
+even openssl is XXX lines of code
+
+using the credit card to encrypt the data
+*]
 
 ...
 
 [section [Heartbleed support]]
 
 [httpi] includes full support for the [it[Heartbleed]] vulnerability.
-This vulnerability exists by default in two year’s worth of OpenSSL
+This vulnerability exists by default in two years’ worth of OpenSSL
 releases, from version 1.0.1 to 1.0.1g (2014). It allows a client to
 read 64kb of uninitialized server memory, which could contain anything:
 Public web pages, zeroes, or even OpenSSL itself! Forbes called it
@@ -351,29 +477,29 @@ impersonation of the CEO of the UK Parenting forum
 [it[Mumsnet]]—serious business!
 
 The TLS Heartbeat feature (RFC 6520) is basically ICMP ECHO for the
-TLS transport stream. One side can send a [tt[HEARTBEAT]] message to
-the other with some payload, and that side echos it back. This can be
-used, for example, to store files.[cite murphy2022harder] Heartbleed
-happens because the [tt[HEARTBEAT]] message contains a length field,
-which does not necessarily concur with the length field of the
-containing TLS Record.[footnote[TLS is rife with redundant length
-fields in nested structures. It is a strange design to me: Since the
-outer record structure tells you exactly how long the payload is (this
-is necessary to compute the hash used for message authentication), it
-would have been easy to architect the protocol so that the parser
-always worked with a buffer of known size. This would reduce protocol
-overhead and the work to keep validating length fields whose values
-you should know. It also would have made heartbleed impossible.]] In
-the case that the heartbeat claimed it was long but it was not,
-OpenSSL’s cowboy C code would read past the end of the client's packet
-and echo back whatever happened to be after it in RAM (or, I guess,
-segfault). You had to get pretty lucky for that RAM to contain
-something important. [it[My]] cowboy C++ code reads from a
-configurable buffer where you can reveal anything you choose, so
-you can guarantee that it is passwords or your private files or
-whatever you like.
+TLS transport stream[cite rfc6520]. One side can send a
+[tt[HEARTBEAT]] message to the other with some payload, and that side
+echos it back. This can be used, for example, to store files.[cite
+murphy2022harder] Heartbleed happens because the [tt[HEARTBEAT]]
+message contains a length field, which does not necessarily concur
+with the length field of the containing TLS Record.[footnote[TLS is
+rife with redundant length fields in nested structures. It is a
+strange design to me: Since the outer record structure tells you
+exactly how long the payload is (this is necessary to compute the hash
+used for message authentication), it would have been easy to architect
+the protocol so that the parser always worked with a buffer of known
+size. This would reduce protocol overhead and the work to keep
+validating length fields whose values you should know. It also would
+have made heartbleed impossible.]] In the case that the heartbeat
+claimed it was long but it was not, OpenSSL’s cowboy C code would read
+past the end of the client's packet and echo back whatever happened to
+be after it in RAM (or, I guess, segfault). You had to get pretty
+lucky for that RAM to contain something important. [it[My]] cowboy C++
+code reads from a configurable buffer where you can reveal anything
+you choose, so you can guarantee that it is passwords or your private
+files or whatever you like.
 
-[section [Niceities]]
+[section [Niceties]]
 
 Most of the software I make is quite hostile to users of it. This is
 for a few reasons: I generally make the software for my own use, and
@@ -433,7 +559,7 @@ it, but I recommend [tt[systemd]] and supply an example config file.
 The server itself is not super efficient (it forks on every
 connection, for example) but honestly just writing this in a compiled
 language and being thoughtful about dependencies goes a very long way
-compared to peers. The process uses 3Mb of RAM, 2.6Mb of which is
+compared to peers. The process uses 3MB of RAM, 2.6MB of which is
 shared. Once the server is running it drops root privileges,
 accesses no files, and allocates only a few tiny buffers.
 
@@ -441,16 +567,16 @@ Even configured with the dumbest settings, it uses only about 1/3 of
 the CPU time of Apache in the steady state. Having looked at the
 source code of software in this category, I would also claim that the
 source code is much less difficult to understand and “audit” than its
-peers. For example, Google has fork of [openssl] (I guess it was
+peers. For example, Google has a fork of [openssl] (I guess it was
 getting out of hand), which is called “BoringSSL.”[cite boringssl] The
-source distribution is 572 megabytes, and contains 445,000 lines of
-C/C++ code as of 2026! And this is [it[just]] the cryptography library!
-Of course, BoringSSL has all sorts of support
-for hardware encryption, assembly-optimized routines, and robustness
-against timing and power attacks. But I also don’t care about that! I
-merely want people to be able to access my website and not to be able to
-“hack in” to my server (through buffer overflows, etc.). [httpi] is
-under 10,000 lines including tests and everything.
+git repository is 572 megabytes, and contains 445,000 lines of
+C/C++ code as of 2026! And this is [it[just]] the cryptography
+library! Of course, BoringSSL has all sorts of support for hardware
+encryption, assembly-optimized routines, and robustness against timing
+and power attacks[cite kocher1996timing]. But I also don’t care about
+that! I merely want people to be able to access my website and not to
+be able to “hack in” to my server (through buffer overflows, etc.).
+[httpi] is under 10,000 lines including tests and everything.
 
 [section [BoVeX improvements]]
 
@@ -464,11 +590,27 @@ murphy2024badness]
 compliance with them malicious or not, I fixed a number of picky
 technical issues with BoVeX’s PDF backend. These did not affect
 display (that I know of) but did cause some validators to barf with
-helpful diagnostics like [tt[The document structure is corrupt]] (Adobe
-Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I believe
-the generated documents are formally correct per the ISO standard.[cite iso32000-1-2008] They nearly comply with stricter archive standards too:
-This document only contains violations of clauses
-6.7.3–6, 6.2.4–3, 6.7.3–4, 6.7.3–3, 6.7.3–7, 6.7.3–2, 6.4–3, 6.7.2–1, 6.4–6, 6.3.4–1, 6.2.3.3–3, 6.3.6–1, and 6.2.3.3–1 in ISO 19005 (PDF/A),[cite iso19005-1-2005] which is likely a world record achievement in PDF/A compliance.
+helpful diagnostics like [tt[The document structure is corrupt]]
+(Adobe Preflight) or [tt[FAIL minimal.pdf 1b]] (VeraPDF). Now I
+believe the generated documents are formally correct per the ISO
+standard.[cite iso32000-1-2008] They nearly comply with stricter
+archive standards too: This document only contains violations of
+clauses 6.7.3–6, 6.2.4–3, 6.7.3–4, 6.7.3–3, 6.7.3–7, 6.7.3–2, 6.4–3,
+6.7.2–1, 6.4–6, 6.3.4–1, 6.2.3.3–3, 6.3.6–1, and 6.2.3.3–1 in ISO
+19005 (PDF/A),[cite iso19005-1-2005] which is likely a world record
+achievement in PDF/A compliance.
+
+[paragraph[Layout improvements]] I made many minor improvements to
+correctness and typography. For example, fonts were 0.5% too small in
+the previous versions, thanks to an inherited misunderstanding about
+1000 versus 72×14. I fixed a bug in the core boxes-and-glue algorithm
+where the optimization procedure was ignorant of the penalties for
+expanding and contracting glue, which was why the [tt[hfill()]]
+utility wasn’t doing what you expected. You never saw the consequences
+of this one because I would always work around it with hacks in
+the run-up to a SIGBOVIK deadline, but it was probably the single
+most embarrassing bug. That’ll teach me to just roll my own instead
+of copying Knuth’s actual algorithm![cite knuth1981breaking]
 
 [paragraph[Footnotes]] I can’t believe I wrote two whole papers
 in BoVeX without any real support for Footnotes![bovex-2025-footnote [In the
@@ -514,7 +656,7 @@ figuring that he’ll just get around to those TODOs for [it[next year’s]].
 [paragraph[SVG]] In order that I could make the little
 [checked-box-icon] in the opening paragraph without resorting to
 bitmap images (which would only allow you to print the document on
-finite-resolution devices), BoVeX now supports a vector images via a
+finite-resolution devices), BoVeX now supports vector images via a
 significant subset of the SVG format.[cite dahlstrom2011scalable] This
 is a horrific task that I of course did entirely by hand. Like PDF,
 SVG is impossibly complex and has probably never been completely

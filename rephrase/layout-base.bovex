@@ -108,7 +108,9 @@ object Box of { width : float, height : float,
                 (* The ideal width; badness 0. *)
                 glue-ideal : float,
 
-                (* See boxes-and-glue. *)
+                (* See boxes-and-glue. Not a penalty: Higher coefficients
+                   mean *more* space is allocated to this element. Must
+                   be positive. Use EPSILON-COEFFICIENT instead of zero. *)
                 glue-expand : float,
                 glue-contract : float,
 

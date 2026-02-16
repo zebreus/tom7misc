@@ -47,6 +47,9 @@ val OCTOBER = 10
 val NOVEMBER = 11
 val DECEMBER = 12
 
+(* TODO: We aren't rendering DOIs yet, but we should strip
+   "https://doi.org/" etc. from the beginning. *)
+
 object Website of { url : string,
                     title : string,
                     subtitle : string,
@@ -114,7 +117,8 @@ object TechReport of { author : string, title : string,
                        (* Often a structured number like CMU-CS-08-126 *)
                        number : string,
                        url : string,
-                       pages : int }
+                       pages : int,
+                       doi : string }
 
 fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Website, _) = LESS

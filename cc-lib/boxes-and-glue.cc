@@ -342,27 +342,37 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
 
   // Same arguments as the memo table. Gets the width of the text up
   // to word_idx on this line. This assumes that each word has ideal
-  // glue applied; that is clear with respect to glue_break_extra_width
-  // (since there are no breaks). For expanding/contracting glue, we
-  // do this proportionally using the leftover space once we know
-  // where the line ends.
+  // glue applied; that is clear with respect to
+  // glue_break_extra_width (since there are no breaks). We sum up the
+  // expanding/contracting glue coefficients so that we can penalize
+  // the break relative to the cost of stretching or squishing. We
+  // actually apportion the space once we know where the line ends,
+  // though.
   //
   // words_before cannot be more than the depth.
-  auto GetWidthBefore = [&](int word_idx, int words_before) -> double {
+  struct LineTotals {
+    double width = 0.0;
+    double expand = 0.0;
+    double contract = 0.0;
+  };
+  auto GetLineTotalsBefore = [&](int word_idx, int words_before) ->
+    LineTotals {
       CHECK(words_before <= depth[word_idx]);
 
-      double width_used = 0.0;
+      LineTotals totals;
       for (int b = 0; b < words_before; b++) {
         // get previous word
         CHECK(word_idx >= 0);
         word_idx = boxes[word_idx].parent_idx;
 
-        const BoxIn &box = boxes[word_idx];
         CHECK(word_idx >= 0);
-        width_used += box.width + box.glue_ideal;
+        const BoxIn &box = boxes[word_idx];
+        totals.width += box.width + box.glue_ideal;
+        totals.expand += box.glue_expand;
+        totals.contract += box.glue_contract;
       }
 
-      return width_used;
+      return totals;
     };
 
   // Since the recursion depth can get kinda high here, we need to solve
@@ -429,7 +439,9 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       // PERF: Can compute this incrementally in the loop.
       CHECK(word_idx >= 0 && word_idx < (int)boxes.size()) << word_idx;
       // This includes trailing spaces.
-      const double width_before = GetWidthBefore(word_idx, words_before);
+      const LineTotals line_totals =
+        GetLineTotalsBefore(word_idx, words_before);
+      const double width_before = line_totals.width;
       // And always add the word.
       CHECK(word_idx < (int)boxes.size()) << word_idx
                                           << " vs " << boxes.size();
@@ -510,6 +522,36 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         for (const auto &[next_node, edge_penalty] : successors[word_idx]) {
           // For each of these, we can either break here, or continue.
 
+          // Compute the penalty if we break here, based on the
+          // leftover slack, attenuated by the glue's ability to
+          // stretch or contract.
+          const double penalty_break_slack = [&]{
+              const double slack = line_width - total_width_break;
+
+              if (slack > 0.0) {
+                if (line_totals.expand > 1.0e-6) {
+                  double ratio = slack / line_totals.expand;
+                  return 100.0 * std::pow(ratio, 1.8);
+                } else {
+                  // As the coefficient nears zero, we just cap out
+                  // the penalty.
+                  return 100'000'000.0;
+                }
+
+              } else if (slack < 0.0) {
+                if (line_totals.contract > 1.0e-6) {
+                  double ratio = -slack / line_totals.contract;
+                  return 100.0 * std::pow(ratio, 1.8);
+                } else {
+                  return 100'000'000.0;
+                }
+
+              } else {
+                return 0.0;
+              }
+            }();
+
+          #if 0
           // If we break, then the penalty is the amount of space left.
           const double penalty_break_slack_base =
             std::max(line_width - total_width_break, 0.0);
@@ -519,6 +561,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           // putting it all on the same line (which clearly looks worse).
           const double penalty_break_slack =
             std::pow(penalty_break_slack_base, 1.8);
+          #endif
 
           // ... plus the penalty for the remainder, starting on a new line.
           const double p_rest = Get(next_node, 0).penalty;
