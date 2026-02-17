@@ -531,6 +531,10 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
               if (slack > 0.0) {
                 if (line_totals.expand > 1.0e-6) {
                   double ratio = slack / line_totals.expand;
+                  // We want to use a nonlinear scale for slack.
+                  // Otherwise it wouldn't matter where we put it, and
+                  // this can result in putting it all on the same
+                  // line (which clearly looks worse).
                   return 100.0 * std::pow(ratio, 1.8);
                 } else {
                   // As the coefficient nears zero, we just cap out
@@ -541,6 +545,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
               } else if (slack < 0.0) {
                 if (line_totals.contract > 1.0e-6) {
                   double ratio = -slack / line_totals.contract;
+                  // Same nonlinear scale.
                   return 100.0 * std::pow(ratio, 1.8);
                 } else {
                   return 100'000'000.0;
@@ -550,18 +555,6 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
                 return 0.0;
               }
             }();
-
-          #if 0
-          // If we break, then the penalty is the amount of space left.
-          const double penalty_break_slack_base =
-            std::max(line_width - total_width_break, 0.0);
-
-          // We want to use a nonlinear scale for slack. Otherwise it
-          // wouldn't matter where we put it, and this can result in
-          // putting it all on the same line (which clearly looks worse).
-          const double penalty_break_slack =
-            std::pow(penalty_break_slack_base, 1.8);
-          #endif
 
           // ... plus the penalty for the remainder, starting on a new line.
           const double p_rest = Get(next_node, 0).penalty;

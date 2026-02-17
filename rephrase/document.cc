@@ -40,6 +40,7 @@ static constexpr double INFINITE_PENALTY = 9999999.0;
 
 // This should be tunable.
 static constexpr double HYPHEN_PENALTY = 4.0;
+static constexpr double NATURAL_HYPHEN_PENALTY = 2.0;
 
 // For expand-contract, in places where we don't want to do any
 // expansion or contraction (e.g. kerning points).
@@ -544,16 +545,53 @@ Document::BoxifyText(const TextProps &props,
     const auto &[prefix, word, suffix] =
       Hyphenation::SplitPunctuation(word_in);
 
-    // TODO: Detect actual hyphens in the word, which would
-    // allow breaks after them too!
-    std::vector<std::string> hyphen_parts;
+    struct HyphenPart {
+      std::string part;
+      // Present if there was a hyphen (or dash, etc.) in the word
+      // itself. We always preserve it in the output, but allow
+      // breaking after it.
+      std::optional<std::string> natural_hyphen;
+    };
+
+    std::vector<HyphenPart> hyphen_parts;
+
+    auto AllAlpha = [](std::string_view s) {
+        for (int i = 0; i < (int)s.size(); i++)
+          if (!std::isalpha(s[i]))
+            return false;
+        return true;
+      };
+
     if (!word.empty()) {
-      hyphen_parts = [&]() -> std::vector<std::string> {
-        for (int i = 0; i < (int)word.size(); i++) {
-          if (!std::isalpha(word[i])) return {std::string(word)};
+      // TODO: Also split on en dash, and perhaps others.
+      std::vector<std::string> words = Util::Split(word, '-');
+
+      for (size_t widx = 0; widx < words.size(); widx++) {
+        bool last = widx == words.size() - 1;
+        const std::string &w = words[widx];
+        if (AllAlpha(w)) {
+          const std::vector<std::string> hyp =
+            hyphenation.Hyphenate(w);
+          for (size_t hidx = 0; hidx < hyp.size(); hidx++) {
+            HyphenPart hp;
+            hp.part = hyp[hidx];
+            // Only the last hyphenated part has a natural
+            // hyphen, and only if it was *not* the last split
+            // part.
+            if (hidx == hyp.size() - 1 && !last) {
+              hp.natural_hyphen = {"-"};
+            }
+            hyphen_parts.push_back(hp);
+          }
+        } else {
+          HyphenPart whole;
+          whole.part = w;
+          // The last element in the split does not have a hyphen
+          // after it.
+          if (!last) whole.natural_hyphen = {"-"};
+          hyphen_parts.push_back(whole);
         }
-        return hyphenation.Hyphenate(word);
-      }();
+      }
     }
 
     // Now we put the prefix and suffix back on the parts, including
@@ -561,45 +599,49 @@ Document::BoxifyText(const TextProps &props,
     // no parts, (even rarer!) but then we'll create one.
     if (hyphen_parts.empty() &&
         (space_before || !prefix.empty() || !suffix.empty())) {
-      hyphen_parts.push_back("");
+      hyphen_parts.push_back(HyphenPart{.part = ""});
     }
 
     if (!prefix.empty()) {
-      hyphen_parts[0] = std::string(prefix) + hyphen_parts[0];
+      hyphen_parts[0].part = std::string(prefix) + hyphen_parts[0].part;
     }
     if (!suffix.empty()) {
-      hyphen_parts.back() = hyphen_parts.back() + std::string(suffix);
+      // In this case, join the natural hyphen back into the
+      // text. This probably shouldn't happen, though, because a
+      // hyphen would be considered part of the suffix.
+      hyphen_parts.back().part += std::string(suffix);
+      hyphen_parts.back().natural_hyphen = std::nullopt;
     }
     if (space_before) {
-      hyphen_parts[0] = " " + hyphen_parts[0];
+      hyphen_parts[0].part = " " + hyphen_parts[0].part;
     }
 
     // Now turn the word into boxes. We read successive codepoints
-    // from each hyphenated piece.
-
-    // Then to turn the word into boxes, read successive codepoints
-    // from it.
+    // from each hyphenated piece. We need to keep track of the
+    // previous codepoint (even across a break) so that we can
+    // kern properly.
     uint32_t prev = ' ';
     std::string chunk;
     double chunk_width = 0.0;
     for (int hyidx = 0; hyidx < (int)hyphen_parts.size(); hyidx++) {
-      const std::string &hypart = hyphen_parts[hyidx];
+      const HyphenPart &hypart = hyphen_parts[hyidx];
       if (VERBOSE) {
-        Print(AGREY("[{}]") "\n", hypart);
+        Print(AGREY("[{}"), hypart.part);
+        if (hypart.natural_hyphen.has_value()) {
+          Print(AWHITE("{}"), hypart.natural_hyphen.value());
+        }
+        Print(AGREY("]") "\n");
       }
-      auto codepoints = UTF8::Decoder(hypart);
-      for (auto it = codepoints.begin(); it != codepoints.end(); ++it) {
-        const uint32_t codepoint = *it;
+
+      // Process one codepoint
+      auto DoCodepoint = [&](bool first, uint32_t codepoint) {
         double char_width = font->CharWidth(codepoint);
         std::optional<double> kern = font->GetKerning(prev, codepoint);
 
         // Do we break before this character?
         const bool break_for_kern = kern.has_value();
         // First character of a hyphen part, except the first one.
-        const bool break_for_hyphen = [&]() {
-            if (hyidx == 0) return false;
-            return it == codepoints.begin();
-          }();
+        const bool break_for_hyphen = first && hyidx != 0;
 
         if (VERBOSE) {
           Print("[{}] -> [{}] {:.3f} width{}{}\n",
@@ -622,13 +664,28 @@ Document::BoxifyText(const TextProps &props,
           ApplyTextProps(&d);
 
           if (break_for_hyphen) {
-            // If breaking for hyphen, then we have a penalty,
-            d.SetDoubleAttr("glue-break-penalty", HYPHEN_PENALTY);
-            // XXX this should get text props too?
-            d.SetLayoutAttr("glue-break-insert", TextDoc("-"));
-            // Not including the kerning, since we are breaking between
-            // the two characters.
-            d.SetDoubleAttr("glue-break-extra-width", hyphen_width);
+            CHECK(hyidx != 0) << "Precondition.";
+            const bool natural =
+              hyphen_parts[hyidx - 1].natural_hyphen.has_value();
+
+            if (natural) {
+              // Breaking after a natural hyphen.
+              d.SetDoubleAttr("glue-break-penalty", NATURAL_HYPHEN_PENALTY);
+              // XXX Should probably mimic how the inserted hyphen
+              // flows outside the column?
+
+            } else {
+              // Breaking with an inserted hyphen.
+
+              // If breaking for hyphen, then we have a penalty,
+              d.SetDoubleAttr("glue-break-penalty", HYPHEN_PENALTY);
+
+              // XXX this should get text props too?
+              d.SetLayoutAttr("glue-break-insert", TextDoc("-"));
+              // Not including the kerning, since we are breaking between
+              // the two characters.
+              d.SetDoubleAttr("glue-break-extra-width", hyphen_width);
+            }
           } else {
             // Since this is inside a word, we disable breaks here by setting
             // the break penalty "infinite".
@@ -669,6 +726,18 @@ Document::BoxifyText(const TextProps &props,
           }
         }
         prev = codepoint;
+      };
+
+      auto codepoints = UTF8::Decoder(hypart.part);
+      for (auto it = codepoints.begin(); it != codepoints.end(); ++it) {
+        DoCodepoint(it == codepoints.begin(), *it);
+      }
+
+      if (hypart.natural_hyphen.has_value()) {
+        for (uint32_t codepoint :
+               UTF8::Decoder(hypart.natural_hyphen.value())) {
+          DoCodepoint(false, codepoint);
+        }
       }
     }
 
@@ -1024,9 +1093,9 @@ Document::PackBoxes(Algorithm algo,
         Print("\n\nErroneous doc:\n");
         DebugPrintDocTree(doc);
         LOG(FATAL) << "In pack-boxes, encountered a top-level box "
-          "that has no width. This probably means that you didn't do get-boxes "
-          "or you messed up the boxes after that, or there's a bug in "
-          "get-boxes (could have been anyone?)";
+          "that has no width. This probably means that you didn't do "
+          "get-boxes or you messed up the boxes after that, or there's "
+          "a bug in get-boxes (could have been anyone?)";
       }
 
       BoxIn b;
