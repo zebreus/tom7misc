@@ -20,8 +20,11 @@
 #include "base/stringprintf.h"
 #include "bc.h"
 #include "hashing.h"
+#include "map-util.h"
 #include "primop.h"
 #include "progress.h"
+#include "string-table.h"
+#include "timer.h"
 
 static constexpr int VERBOSE = 0;
 
@@ -703,6 +706,10 @@ static std::string StringSet(const C &ss) {
   return out;
 }
 
+StringTable AllLocals(const SymbolicFn *fn) {
+
+}
+
 // Computes dataflow: What locals are used?
 //
 // What we do here is compute, for every instruction in a function,
@@ -720,11 +727,12 @@ struct DataflowPass {
     // follow it (usually one), and produces the new set to propagate
     // upwards.
 
+    using Set = std::unordered_set<std::string>;
     auto Transfer = [](
         const Inst *inst,
-        const std::unordered_set<std::string> &after)
-        -> std::unordered_set<std::string> {
-      std::unordered_set<std::string> before = after;
+        const Set &after)
+        -> Set {
+      Set before = after;
 
       if (const inst::Triop *triop = std::get_if<inst::Triop>(inst)) {
         before.erase(triop->out);
@@ -816,13 +824,12 @@ struct DataflowPass {
     };
 
 
-    using T = std::unordered_set<std::string>;
-    Dataflow<T> dataflow =
+    Dataflow<Set> dataflow =
       SaturateDataflow(fname, fn, Transfer);
 
     if (VERBOSE > 2) {
       for (auto &[block_name, block] : fn->blocks) {
-        const std::vector<T> &read_before_write = dataflow.state[block_name];
+        const std::vector<Set> &read_before_write = dataflow.state[block_name];
         for (int idx = 0; idx < (int)block.insts.size(); idx++) {
           const Inst &inst = block.insts[idx];
           Print("  {}", ColorInstString(inst));
@@ -841,21 +848,26 @@ struct DataflowPass {
     // writing a no-op over them and letting later passes clean up.
 
     for (auto &[block_name, block] : fn->blocks) {
-      const std::vector<T> &read_before_write = dataflow.state[block_name];
+      const std::vector<Set> &read_before_write = dataflow.state[block_name];
       CHECK(read_before_write.size() == block.insts.size());
 
       for (int idx = 0; idx < (int)block.insts.size(); idx++) {
         const Inst &inst = block.insts[idx];
 
-        auto Unused = [&dataflow, &read_before_write, &block_name, &block, idx](
-            const std::string &v) {
+        auto Unused = [&dataflow, &read_before_write,
+                       &block_name, &block, idx](const std::string &v) {
             // Find all successors.
 
             // Union together the sets from all the successors.
-            std::unordered_set<std::string> after;
+            // PERF: Since we only look up one variable here,
+            // after accumulating into this set, we could just
+            // look up as we go?
+            Set after;
 
             // The next instruction.
             if (idx + 1 < (int)block.insts.size()) {
+              // XXX PERF use union-in-place; this has to rehash
+              // the strings.
               after.insert(read_before_write[idx + 1].begin(),
                            read_before_write[idx + 1].end());
             }
@@ -869,7 +881,8 @@ struct DataflowPass {
               CHECK(sit != dataflow.state.end()) << "Bug: Missing block "
                                                  << sblock;
               // The first instruction of that block.
-              const T &ts = sit->second[0];
+              const Set &ts = sit->second[0];
+              // PERF use union-in-place.
               after.insert(ts.begin(), ts.end());
             }
 
@@ -1043,7 +1056,7 @@ struct DataflowPass {
 
 SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
                                        uint64_t opts) {
-
+  Timer timer;
   static constexpr uint64_t DISABLED_OPTIMIZATIONS = 0;
   opts &= ~DISABLED_OPTIMIZATIONS;
 
@@ -1055,6 +1068,8 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   CoalescePass coalesce(opts, &progress);
   DataflowPass dataflow(opts, &progress);
 
+  std::unordered_map<std::string, double> times;
+
   int passes = 0;
   do {
     if (VERBOSE > 0) {
@@ -1063,12 +1078,17 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
     }
     progress.Reset();
 
+    Timer dead_timer;
     if (VERBOSE > 0) Print(AWHITE("Dead") ".\n");
     dead.DoProgram(&program);
+    times["dead"] += dead_timer.Seconds();
 
+    Timer peep_timer;
     if (VERBOSE > 0) Print(AWHITE("Peephole") ".\n");
     peep.DoProgram(&program);
+    times["peep"] += peep_timer.Seconds();
 
+    Timer inl_timer;
     if (VERBOSE > 0) {
       Print(AWHITE("Inline") ".\n");
       if (VERBOSE > 2) {
@@ -1076,6 +1096,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
       }
     }
     inline_pass.DoProgram(&program);
+    times["inl"] += inl_timer.Seconds();
 
     if (VERBOSE > 0) {
       Print(AWHITE("Coalesce") ".\n");
@@ -1083,7 +1104,9 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
         PrintSymbolicProgram(program);
       }
     }
+    Timer coal_timer;
     coalesce.DoProgram(&program);
+    times["coal"] += coal_timer.Seconds();
 
     if (VERBOSE > 0) {
       Print(AWHITE("Dataflow") ".\n");
@@ -1091,7 +1114,9 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
         PrintSymbolicProgram(program);
       }
     }
+    Timer data_timer;
     dataflow.DoProgram(&program);
+    times["data"] += data_timer.Seconds();
     // LOG(FATAL) << "Stop early.";
 
     if (VERBOSE > 1) {
@@ -1101,6 +1126,15 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
 
     passes++;
   } while (progress.MadeProgress());
+
+  if (verbose > 0) {
+    double time = timer.Seconds();
+    Print("Opt: Ran {} passes in {}\n",
+          passes, ANSI::Time(time));
+    for (const auto &[name, sec] : CountMapToDescendingVector(times)) {
+      Print("  " ACYAN("{}") ": {}\n", name, ANSI::Time(sec));
+    }
+  }
 
   return program;
 }

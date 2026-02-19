@@ -58,7 +58,7 @@ struct Binop {
   std::string out, arg1, arg2;
 };
 
-struct Unop {
+ struct Unop {
   Primop primop = Primop::INVALID;
   std::string out, arg;
 };

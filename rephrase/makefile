@@ -1,12 +1,12 @@
 
-default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe
+default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe optimization_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe
 
 all : default monospace.exe monofile.exe test-rephrase.exe
 
 # for these ENABLE=true kinds of flags, you should *comment them out*
 # if you don't want them. ENABLE_LLM=false does the same thing as true.
 
-ENABLE_LLM=true
+# ENABLE_LLM=true
 
 # TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
 # Especially since some of these targets cannot even compile without LLM.
@@ -51,6 +51,7 @@ else ifeq ($(UNAME),Darwin)
 
   ifdef ASAN
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+	LLAMA_DEBUG=true
     # PLATFORM_LDFLAGS += -Wl,--stack,167772160
   else
     OPTFLAGS=-O3 -march=native -mtune=native
@@ -74,6 +75,7 @@ else
 
   ifdef ASAN
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+	LLAMA_DEBUG=true
   else
     OPTFLAGS=-O3 -march=native -mtune=native
   endif
@@ -390,6 +392,9 @@ compiler_test.exe : compiler_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 bc_test.exe : bc_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+optimization_test.exe : optimization_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 execution_test.exe : execution_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
@@ -441,7 +446,7 @@ animate.exe : animation.o animate.o $(CC_LIB_OBJECTS)
 checkfonts.exe : checkfonts.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe bc_test.exe
+test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe optimization_test.exe execution_test.exe hyphenation_test.exe bc_test.exe
 	./html_test.exe
 	./hyphenation_test.exe
 	./lexing_test.exe
@@ -456,6 +461,7 @@ test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsi
 	./closure-conversion_test.exe
 	./compiler_test.exe
 	./bc_test.exe
+	./optimization_test.exe
 	./execution_test.exe
 
 

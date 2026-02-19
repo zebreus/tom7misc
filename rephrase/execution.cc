@@ -48,6 +48,11 @@ Execution::Execution(const Program &pgm) :
 
 Execution::~Execution() {}
 
+// A value pointer that cannot be accessed by a valid program. For
+// example, this can represent unit, or the argument to main (which
+// has no name). TODO: I think it's probably cleaner to have all
+// values be valid pointers, at least, so that we don't need to check
+// everywhere. We can just have one shared value in the heap.
 Value *Execution::NonceValue() {
   return nullptr; // Value{.v = {uint64_t(0xCAFEBABE)}};
 }
@@ -1572,7 +1577,8 @@ void Execution::Step(State *state) {
     const int64_t idx = GetInt64("getvec", bidx);
     CHECK(idx >= 0) << "GetVec Index cannot be less than zero: " << idx;
     while ((int64_t)vec->size() <= idx) vec->push_back(nullptr);
-    frame.locals[getvec->out] = (*vec)[idx];
+    Value *v = (*vec)[idx];
+    frame.locals[getvec->out] = v;
 
   } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
     std::unordered_map<std::string, Value *> *rec = LoadRec(copy->obj);
@@ -1669,8 +1675,9 @@ void Execution::GC(State *state) {
   // Manually managed queue, since we don't care what order we
   // mark in.
   std::vector<Value *> todo;
-  for (auto &[s, v] : state->globals)
+  for (auto &[s, v] : state->globals) {
     todo.push_back(v);
+  }
 
   for (StackFrame &frame : state->stack) {
     for (auto &[s, v] : frame.locals) {
@@ -1681,6 +1688,11 @@ void Execution::GC(State *state) {
   while (!todo.empty()) {
     Value *v = todo.back();
     todo.pop_back();
+    // null value pointers can exist (see NonceValue); they
+    // cannot contain references so we just skip.
+    if (v == nullptr)
+      continue;
+
     // No cycles.
     if (!reachable.contains(v)) {
       reachable.insert(v);
@@ -1691,6 +1703,8 @@ void Execution::GC(State *state) {
         }
       } else if (vec_type *vec = std::get_if<vec_type>(&v->v)) {
         for (Value *vv : *vec) {
+          // Note: Out-of-bounds reads fill with nullptr, and this
+          // is correct state during initialization.
           todo.push_back(vv);
         }
       }

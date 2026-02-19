@@ -180,10 +180,18 @@ fun hfill () =
 
 (* Unbreakable horizontal space *)
 fun rigid-hspace dim =
+  box {(Box) height = 0.0, width = dim,
+       glue-ideal = 0.0,
+       glue-contract = EPSILON-COEFFICIENT,
+       glue-expand = EPSILON-COEFFICIENT,
+       glue-break-penalty = 9999999.0 } []
+
+(* Easily shrinks. Give the max width. *)
+fun shrinking-hspace dim =
   box {(Box) height = 0.0, width = 0.0,
        glue-ideal = dim,
+       glue-expand = EPSILON-COEFFICIENT,
        glue-contract = 1000000.0,
-       glue-expand = 1000000.0,
        glue-break-penalty = 9999999.0 } []
 
 fun vspace vdim =

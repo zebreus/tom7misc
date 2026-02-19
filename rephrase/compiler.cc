@@ -93,6 +93,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
 
   Timer optimize_timer;
   bc::Optimization optimization;
+  optimization.SetVerbose(verbose);
   bc_symbolic_pgm = optimization.Optimize(bc_symbolic_pgm);
   const double optimize_sec = optimize_timer.Seconds();
 
