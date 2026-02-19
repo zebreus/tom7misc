@@ -56,27 +56,36 @@ struct StringSet {
   StringSet &operator=(const StringSet &other) = default;
   StringSet &operator=(StringSet &&other) = default;
 
-  void Remove(const std::string &s) {
+  // Lowercase names for compatibility with std::set etc.
+
+  void erase(const std::string &s) {
     ds.Remove(table->Index(s));
   }
 
-  void Add(const std::string &s) {
+  void insert(const std::string &s) {
     ds.Add(table->Index(s));
   }
 
-  bool Contains(const std::string &s) const {
+  bool contains(const std::string &s) const {
     return ds.Contains(table->Index(s));
   }
 
-  void Clear() {
+  void clear() {
     ds.Clear();
   }
 
-  // Compatibility with std::set etc.
-  void insert(const std::string &s) { Add(s); }
-  void erase(const std::string &s) { return Remove(s); }
-  bool contains(const std::string &s) const { return Contains(s); }
-  void clear() { Clear(); }
+  bool empty() const {
+    return ds.Empty();
+  }
+
+  size_t size() const {
+    return ds.Size();
+  }
+
+  bool operator==(const StringSet &other) const {
+    DCHECK(table == other.table);
+    return ds == other.ds;
+  }
 
   template<class Iter>
   void insert(Iter start, Iter limit) {

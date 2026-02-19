@@ -579,21 +579,23 @@ struct Dataflow {
     return std::nullopt;
   }
 
-  Dataflow(const SymbolicFn &fn) {
+  Dataflow(const SymbolicFn &fn, const T &init) {
     for (const auto &[name, block] : fn.blocks) {
-      state[name].resize(block.insts.size());
+      state[name].resize(block.insts.size(), init);
     }
   }
 };
 
 template<class TF>
-static Dataflow<std::unordered_set<std::string>>
-SaturateDataflow(const std::string &fname,
+static Dataflow<StringSet>
+SaturateDataflow(const StringTable *string_table,
+                 const std::string &fname,
                  SymbolicFn *fn,
                  const TF &tf) {
-  using T = std::unordered_set<std::string>;
+  // using T = std::unordered_set<std::string>;
+  using T = StringSet;
   // PERF We know the full gamut ahead of time. Use a bit vector!
-  Dataflow<T> dataflow(*fn);
+  Dataflow<T> dataflow(*fn, T(string_table));
 
   // At the beginning, every instruction is on the work queue.
   for (const auto &[name, block] : fn->blocks) {
@@ -640,7 +642,7 @@ SaturateDataflow(const std::string &fname,
     const Inst &inst = block.insts[idx];
 
     // Union together the sets from all the successors.
-    std::unordered_set<std::string> after;
+    T after(string_table);
 
     // The next instruction.
     if (idx + 1 < (int)block.insts.size()) {
@@ -648,7 +650,10 @@ SaturateDataflow(const std::string &fname,
       CHECK(sit != dataflow.state.end());
       CHECK(sit->second.size() == block.insts.size());
       const T &ts = sit->second[idx + 1];
-      after.insert(ts.begin(), ts.end());
+      // PERF Use UnionWith
+      for (const std::string &v : ts) {
+        after.insert(v);
+      }
     }
 
     // Jumps to other blocks.
@@ -661,7 +666,10 @@ SaturateDataflow(const std::string &fname,
                                          << sblock;
       // The first instruction of that block...
       const T &ts = sit->second[0];
-      after.insert(ts.begin(), ts.end());
+      // PERF Use UnionWith
+      for (const std::string &v : ts) {
+        after.insert(v);
+      }
     }
 
     // Now we have the new 'after' set for the instruction.
@@ -693,10 +701,11 @@ SaturateDataflow(const std::string &fname,
 }
 
 template<class C>
-static std::string StringSet(const C &ss) {
+static std::string SetString(const C &ss) {
   if (ss.empty()) return "";
-  std::vector<std::string> v(ss.begin(), ss.end());
+  std::vector<std::string> v;
   v.reserve(ss.size());
+  for (const std::string &s : ss) v.push_back(s);
   std::sort(v.begin(), v.end());
   if (v.size() == 1) return v[0];
   std::string out = v[0];
@@ -706,8 +715,104 @@ static std::string StringSet(const C &ss) {
   return out;
 }
 
-StringTable AllLocals(const SymbolicFn *fn) {
+// Get the universe of local strings so that we can use dense
+// indices for them during dataflow. In the future we might do
+// this at the program level, or include labels here, or other
+// variations.
+static StringTable AllLocals(const SymbolicFn *fn) {
+  std::unordered_set<std::string> all;
 
+  all.insert(fn->arg);
+
+  for (const auto &[lab, block] : fn->blocks) {
+    for (const Inst &inst : block.insts) {
+      if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
+        all.insert(triop->out);
+        all.insert(triop->arg1);
+        all.insert(triop->arg2);
+        all.insert(triop->arg3);
+      } else if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
+        all.insert(binop->out);
+        all.insert(binop->arg1);
+        all.insert(binop->arg2);
+      } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
+        all.insert(unop->out);
+        all.insert(unop->arg);
+      } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
+        all.insert(call->out);
+        all.insert(call->f);
+        all.insert(call->arg);
+      } else if (const inst::TailCall *tail_call =
+                     std::get_if<inst::TailCall>(&inst)) {
+        all.insert(tail_call->f);
+        all.insert(tail_call->arg);
+      } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
+        all.insert(ret->arg);
+      } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+        all.insert(iff->cond);
+      } else if (const inst::AllocVec *allocvec =
+                     std::get_if<inst::AllocVec>(&inst)) {
+        all.insert(allocvec->out);
+      } else if (const inst::SetVec *setvec =
+                     std::get_if<inst::SetVec>(&inst)) {
+        all.insert(setvec->vec);
+        all.insert(setvec->idx);
+        all.insert(setvec->arg);
+      } else if (const inst::GetVec *getvec =
+                     std::get_if<inst::GetVec>(&inst)) {
+        all.insert(getvec->out);
+        all.insert(getvec->vec);
+        all.insert(getvec->idx);
+      } else if (const inst::Alloc *alloc =
+                     std::get_if<inst::Alloc>(&inst)) {
+        all.insert(alloc->out);
+      } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
+        all.insert(copy->out);
+        all.insert(copy->obj);
+      } else if (const inst::SetLabel *setlabel =
+                     std::get_if<inst::SetLabel>(&inst)) {
+        all.insert(setlabel->obj);
+        all.insert(setlabel->arg);
+      } else if (const inst::GetLabel *getlabel =
+                     std::get_if<inst::GetLabel>(&inst)) {
+        all.insert(getlabel->out);
+        all.insert(getlabel->obj);
+      } else if (const inst::DeleteLabel *deletelabel =
+                     std::get_if<inst::DeleteLabel>(&inst)) {
+        all.insert(deletelabel->obj);
+      } else if (const inst::HasLabel *haslabel =
+                     std::get_if<inst::HasLabel>(&inst)) {
+        all.insert(haslabel->out);
+        all.insert(haslabel->obj);
+      } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
+        all.insert(bind->out);
+        all.insert(bind->arg);
+      } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
+        all.insert(load->out);
+      } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+        all.insert(save->arg);
+      } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+        (void)jump;
+        // Nothing
+      } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
+        all.insert(fail->arg);
+      } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+        (void)note;
+        // Nothing
+      } else if (const inst::SymbolicIf *iff =
+                     std::get_if<inst::SymbolicIf>(&inst)) {
+        all.insert(iff->cond);
+      } else if (const inst::SymbolicJump *jmp =
+                     std::get_if<inst::SymbolicJump>(&inst)) {
+        (void)jmp;
+        // Nothing
+      } else {
+        LOG(FATAL) << "Unhandled instruction in AllLocals.";
+      }
+    }
+  }
+
+  return StringTable(std::move(all));
 }
 
 // Computes dataflow: What locals are used?
@@ -722,12 +827,15 @@ struct DataflowPass {
 
   void DoFn(const std::string &fname, SymbolicFn *fn) {
 
+    StringTable string_table = AllLocals(fn);
+
     // The transfer function for one instruction takes the set of
     // read-before-write locals in the instructions that immediately
     // follow it (usually one), and produces the new set to propagate
     // upwards.
 
-    using Set = std::unordered_set<std::string>;
+    // using Set = std::unordered_set<std::string>;
+    using Set = StringSet;
     auto Transfer = [](
         const Inst *inst,
         const Set &after)
@@ -825,7 +933,7 @@ struct DataflowPass {
 
 
     Dataflow<Set> dataflow =
-      SaturateDataflow(fname, fn, Transfer);
+      SaturateDataflow(&string_table, fname, fn, Transfer);
 
     if (VERBOSE > 2) {
       for (auto &[block_name, block] : fn->blocks) {
@@ -835,7 +943,7 @@ struct DataflowPass {
           Print("  {}", ColorInstString(inst));
           if (!read_before_write[idx].empty()) {
             Print("  // " ACYAN("{}"),
-                  StringSet(read_before_write[idx]));
+                  SetString(read_before_write[idx]));
           }
           Print("\n");
         }
@@ -854,7 +962,7 @@ struct DataflowPass {
       for (int idx = 0; idx < (int)block.insts.size(); idx++) {
         const Inst &inst = block.insts[idx];
 
-        auto Unused = [&dataflow, &read_before_write,
+        auto Unused = [&string_table, &dataflow, &read_before_write,
                        &block_name, &block, idx](const std::string &v) {
             // Find all successors.
 
@@ -862,14 +970,15 @@ struct DataflowPass {
             // PERF: Since we only look up one variable here,
             // after accumulating into this set, we could just
             // look up as we go?
-            Set after;
+            Set after(&string_table);
 
             // The next instruction.
             if (idx + 1 < (int)block.insts.size()) {
               // XXX PERF use union-in-place; this has to rehash
               // the strings.
-              after.insert(read_before_write[idx + 1].begin(),
-                           read_before_write[idx + 1].end());
+              for (const std::string &v : read_before_write[idx + 1]) {
+                after.insert(v);
+              }
             }
 
             // Jumps to other blocks.
@@ -883,7 +992,9 @@ struct DataflowPass {
               // The first instruction of that block.
               const Set &ts = sit->second[0];
               // PERF use union-in-place.
-              after.insert(ts.begin(), ts.end());
+              for (const std::string &v : ts) {
+                after.insert(v);
+              }
             }
 
             return !after.contains(v);
