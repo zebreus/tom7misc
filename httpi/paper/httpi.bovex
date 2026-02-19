@@ -198,7 +198,7 @@ credit cards). [underline[Learn more about this warning]]])]
 
 [image-inline { img = image-load "advanced.svg",
                 height = 2.0 *. BODY-LINE-HEIGHT(), dy = 0.0 }]
-[(* ugh! hfill should work here?? *) rigid-hspace (point 130.0)]
+[(* ugh! shrinking-hspace?? *) rigid-hspace (point 130.0)]
 [image-inline { img = image-load "back-to-safety.svg",
                 height = 2.0 *. BODY-LINE-HEIGHT(), dy = 0.0 }]
 

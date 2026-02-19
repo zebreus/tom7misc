@@ -162,6 +162,26 @@ struct DenseIntSet {
     return ret;
   }
 
+  // This requires the radix to be the same. You can use Union
+  // to create a new set if they may be different.
+  void UnionWith(const DenseIntSet &other) {
+    DCHECK(radix == other.radix);
+    const size_t limit = NumWords(radix);
+    for (size_t i = 0; i < limit; i++) {
+      vec[i] |= other.vec[i];
+    }
+  }
+
+  // This requires the radix to be the same. You can use Intersection
+  // to create a new set if they may be different.
+  void IntersectWith(const DenseIntSet &other) {
+    DCHECK(radix == other.radix);
+    const size_t limit = NumWords(radix);
+    for (size_t i = 0; i < limit; i++) {
+      vec[i] &= other.vec[i];
+    }
+  }
+
   // Two sets must have the same radix to be considered equal.
   bool operator ==(const DenseIntSet &other) const {
     if (radix != other.radix) return false;
@@ -209,7 +229,7 @@ struct DenseIntSet {
       ASSUME(idx < is->radix);
       return idx;
     }
-    const_iterator& operator++() {
+    const_iterator &operator++() {
       // Invalid to increment past the end.
       DCHECK(idx < is->radix);
       ASSUME(idx < is->radix);

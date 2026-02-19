@@ -95,6 +95,14 @@ struct StringSet {
     }
   }
 
+  void UnionWith(const StringSet &other) {
+    ds.UnionWith(other.ds);
+  }
+
+  void IntersectWith(const StringSet &other) {
+    ds.IntersectWith(other.ds);
+  }
+
   struct const_iterator {
     using value_type = std::string;
     using difference_type = std::ptrdiff_t;

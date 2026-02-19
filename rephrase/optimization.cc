@@ -592,10 +592,7 @@ SaturateDataflow(const StringTable *string_table,
                  const std::string &fname,
                  SymbolicFn *fn,
                  const TF &tf) {
-  // using T = std::unordered_set<std::string>;
-  using T = StringSet;
-  // PERF We know the full gamut ahead of time. Use a bit vector!
-  Dataflow<T> dataflow(*fn, T(string_table));
+  Dataflow<StringSet> dataflow(*fn, StringSet(string_table));
 
   // At the beginning, every instruction is on the work queue.
   for (const auto &[name, block] : fn->blocks) {
@@ -620,8 +617,8 @@ SaturateDataflow(const StringTable *string_table,
       } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
         (void)iff;
         LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
-      } else if ([[maybe_unused]]
-          const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+      } else if ([[maybe_unused]] const inst::Jump *jump =
+                     std::get_if<inst::Jump>(&inst)) {
         LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
       }
 
@@ -642,18 +639,14 @@ SaturateDataflow(const StringTable *string_table,
     const Inst &inst = block.insts[idx];
 
     // Union together the sets from all the successors.
-    T after(string_table);
+    StringSet after(string_table);
 
     // The next instruction.
     if (idx + 1 < (int)block.insts.size()) {
       const auto &sit = dataflow.state.find(block_name);
       CHECK(sit != dataflow.state.end());
       CHECK(sit->second.size() == block.insts.size());
-      const T &ts = sit->second[idx + 1];
-      // PERF Use UnionWith
-      for (const std::string &v : ts) {
-        after.insert(v);
-      }
+      after.UnionWith(sit->second[idx + 1]);
     }
 
     // Jumps to other blocks.
@@ -664,19 +657,15 @@ SaturateDataflow(const StringTable *string_table,
       const auto &sit = dataflow.state.find(oit->second);
       CHECK(sit != dataflow.state.end()) << "Bug: Missing block "
                                          << sblock;
-      // The first instruction of that block...
-      const T &ts = sit->second[0];
-      // PERF Use UnionWith
-      for (const std::string &v : ts) {
-        after.insert(v);
-      }
+      // The first instruction of that block.
+      after.UnionWith(sit->second[0]);
     }
 
     // Now we have the new 'after' set for the instruction.
     // Compute the before set.
-    T before = tf(&inst, after);
+    StringSet before = tf(&inst, after);
 
-    const T &old = dataflow.state[block_name][idx];
+    const StringSet &old = dataflow.state[block_name][idx];
     if (before != old) {
       dataflow.state[block_name][idx] = std::move(before);
 
@@ -967,18 +956,14 @@ struct DataflowPass {
             // Find all successors.
 
             // Union together the sets from all the successors.
-            // PERF: Since we only look up one variable here,
+            // PERF: Since we only look up one variable here
             // after accumulating into this set, we could just
             // look up as we go?
             Set after(&string_table);
 
             // The next instruction.
             if (idx + 1 < (int)block.insts.size()) {
-              // XXX PERF use union-in-place; this has to rehash
-              // the strings.
-              for (const std::string &v : read_before_write[idx + 1]) {
-                after.insert(v);
-              }
+              after.UnionWith(read_before_write[idx + 1]);
             }
 
             // Jumps to other blocks.
@@ -990,11 +975,7 @@ struct DataflowPass {
               CHECK(sit != dataflow.state.end()) << "Bug: Missing block "
                                                  << sblock;
               // The first instruction of that block.
-              const Set &ts = sit->second[0];
-              // PERF use union-in-place.
-              for (const std::string &v : ts) {
-                after.insert(v);
-              }
+              after.UnionWith(sit->second[0]);
             }
 
             return !after.contains(v);
