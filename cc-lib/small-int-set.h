@@ -133,7 +133,7 @@ struct SmallIntSet {
     // Find the next iterator position at idx or later:
     // While idx is not end, and idx is not in the set,
     // increment it.
-    int NextFrom(int idx) {
+    int NextFrom(int idx) const {
       ASSUME(idx >= 0 && idx <= RADIX);
       while (idx != RADIX) {
         // Mask zeroes for bits we've already passed; we can use

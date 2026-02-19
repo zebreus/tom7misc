@@ -293,6 +293,9 @@ byte-set_bench.exe : byte-set_bench.o byte-set.o $(BASE) $(TEST_UTIL)
 small-int-set_test.exe : small-int-set_test.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+dense-int-set_test.exe : dense-int-set_test.o $(BASE) $(TEST_UTIL)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 png_test.exe : png.o png_test.o zip.o miniz.o image.o stb_image.o stb_image_write.o color-util.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 

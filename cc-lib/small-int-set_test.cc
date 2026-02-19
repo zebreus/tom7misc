@@ -99,7 +99,6 @@ static void Simple() {
   ITERATE_LIST(63, 2, 2, 0, 63, 31);
 }
 
-
 int main(int argc, char **argv) {
   ANSI::Init();
 
