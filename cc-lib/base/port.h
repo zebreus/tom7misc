@@ -284,42 +284,6 @@
 
 #endif  // cygwin
 
-// Non-standard but widely-supported attributes.
-#if (defined(__clang__) || defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX))
-
-// Tell the compiler to do printf format string checking if the
-// compiler supports it; see the 'format' attribute in
-// <http://gcc.gnu.org/onlinedocs/gcc-4.3.0/gcc/Function-Attributes.html>.
-//
-// e.g. printf would be marked PRINTF_ATTRIBUTE(1, 2) since the 1st arg
-// is the format string and the 2nd onward are the arguments. sprintf
-// would be marked PRINTF_ATTRIBUTE(2, 3). For functions that are
-// (non-static) members of objects with an implicit 'this' parameter,
-// use PRINTF_ATTRIBUTE_MEMBER.
-#define PRINTF_ATTRIBUTE(string_index, first_to_check) \
-    __attribute__((__format__ (__printf__, string_index, first_to_check)))
-#define SCANF_ATTRIBUTE(string_index, first_to_check) \
-    __attribute__((__format__ (__scanf__, string_index, first_to_check)))
-
-// N.B.: As the GCC manual states, "[s]ince non-static C++ methods
-// have an implicit 'this' argument, the arguments of such methods
-// should be counted from two, not one."
-#define PRINTF_ATTRIBUTE_MEMBER(string_index, first_to_check) \
-  PRINTF_ATTRIBUTE(string_index + 1, first_to_check + 1)
-#define SCANF_ATTRIBUTE_MEMBER(string_index, first_to_check) \
-  SCANF_ATTRIBUTE(string_index + 1, first_to_check + 1)
-
-#else
-// Not known to be supported.
-
-#define PRINTF_ATTRIBUTE(string_index, first_to_check)
-#define SCANF_ATTRIBUTE(string_index, first_to_check)
-#define PRINTF_ATTRIBUTE_MEMBER(string_index, first_to_check)
-#define SCANF_ATTRIBUTE_MEMBER(string_index, first_to_check)
-
-#endif  // widely supported attributes
-
-
 // GCC-specific features
 #if (defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX))
 
@@ -741,11 +705,6 @@ extern inline void prefetch(const char *) {}
 
 #endif  // COMPILER_MSVC
 
-#ifdef STL_MSVC  // not always the same as COMPILER_MSVC_TEMP
-  #include "base/port_hash.h"
-#else
-  struct PortableHashBase { };
-#endif
 
 #if defined(OS_WINDOWS) || defined(OS_MACOSX)
   // gethostbyname() *is* thread-safe for Windows native threads. It is also
@@ -758,21 +717,6 @@ extern inline void prefetch(const char *) {}
   #define gethostbyname gethostbyname_is_not_thread_safe_DO_NOT_USE
 #endif
 
-// create macros in which the programmer should enclose all specializations
-// for hash_maps and hash_sets. This is necessary since these classes are not
-// STL standardized. Depending on the STL implementation they are in different
-// namespaces. Right now the right namespace is passed by the Makefile
-// Examples: gcc3: -DHASH_NAMESPACE=__gnu_cxx
-//           icc:  -DHASH_NAMESPACE=std
-//           gcc2: empty
-
-#ifndef HASH_NAMESPACE
-#  define HASH_NAMESPACE_DECLARATION_START
-#  define HASH_NAMESPACE_DECLARATION_END
-#else
-#  define HASH_NAMESPACE_DECLARATION_START  namespace HASH_NAMESPACE {
-#  define HASH_NAMESPACE_DECLARATION_END    }
-#endif
 
 // Our STL-like classes use __STD.
 #if defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX) || defined(COMPILER_MSVC)
@@ -882,14 +826,5 @@ extern inline void prefetch(const char *) {}
   (reinterpret_cast<char*>(           \
      &reinterpret_cast<t*>(16)->f) -  \
    reinterpret_cast<char*>(16))
-
-#ifdef PTHREADS_REDHAT_WIN32
-  #include <iosfwd>
-  using std::ostream;
-
-  #include <pthread.h>
-  // pthread_t is not a simple integer or pointer on Win32
-  std::ostream& operator << (std::ostream& out, const pthread_t& thread_id);
-#endif
 
 #endif  // BASE_PORT_H_

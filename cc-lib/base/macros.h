@@ -54,10 +54,6 @@
 #define NO_LOOP_CARRIED_DEPENDENCIES(loop_kw) loop_kw
 #endif
 
-// Legacy macro for compile-time assertions, from before this was
-// standardized. TODO: Just inline static_assert where this is used.
-#define COMPILE_ASSERT(expr, msg) static_assert(expr, msg)
-
 // A macro to disallow the copy constructor and operator= functions
 // This is typically used in the private: declarations for a class.
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
@@ -221,5 +217,42 @@ template <> struct ERROR_TYPE_MUST_BE_POD<true> { };
   enum { dummy_##TypeName                                                 \
            = sizeof(ERROR_TYPE_MUST_BE_POD<                               \
                       base::is_pod<TypeName>::value>) }
+
+// Annotations that tell the compiler an argument is a printf-style
+// format string.
+#if (defined(__clang__) || defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX))
+
+// Tell the compiler to do printf format string checking if the
+// compiler supports it; see the 'format' attribute in
+// <http://gcc.gnu.org/onlinedocs/gcc-4.3.0/gcc/Function-Attributes.html>.
+//
+// e.g. printf would be marked PRINTF_ATTRIBUTE(1, 2) since the 1st arg
+// is the format string and the 2nd onward are the arguments. sprintf
+// would be marked PRINTF_ATTRIBUTE(2, 3). For functions that are
+// (non-static) members of objects with an implicit 'this' parameter,
+// use PRINTF_ATTRIBUTE_MEMBER.
+#define PRINTF_ATTRIBUTE(string_index, first_to_check) \
+    __attribute__((__format__ (__printf__, string_index, first_to_check)))
+#define SCANF_ATTRIBUTE(string_index, first_to_check) \
+    __attribute__((__format__ (__scanf__, string_index, first_to_check)))
+
+// N.B.: As the GCC manual states, "[s]ince non-static C++ methods
+// have an implicit 'this' argument, the arguments of such methods
+// should be counted from two, not one."
+#define PRINTF_ATTRIBUTE_MEMBER(string_index, first_to_check) \
+  PRINTF_ATTRIBUTE(string_index + 1, first_to_check + 1)
+#define SCANF_ATTRIBUTE_MEMBER(string_index, first_to_check) \
+  SCANF_ATTRIBUTE(string_index + 1, first_to_check + 1)
+
+#else
+// Not known to be supported.
+
+#define PRINTF_ATTRIBUTE(string_index, first_to_check)
+#define SCANF_ATTRIBUTE(string_index, first_to_check)
+#define PRINTF_ATTRIBUTE_MEMBER(string_index, first_to_check)
+#define SCANF_ATTRIBUTE_MEMBER(string_index, first_to_check)
+
+#endif
+
 
 #endif  // BASE_MACROS_H_

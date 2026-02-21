@@ -57,6 +57,7 @@ std::string_view TLS::ContentTypeString(ContentType ct) {
   case ALERT: return "ALERT";
   case HANDSHAKE: return "HANDSHAKE";
   case APPLICATION_DATA: return "APPLICATION_DATA";
+  case HEARTBEAT: return "HEARTBEAT";
   default: return "???";
   }
 }

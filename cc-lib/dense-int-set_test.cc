@@ -201,14 +201,14 @@ static void SetOperations() {
 
   DenseIntSet s64_copy = s64;
   CHECK(s64 == s64_copy);
-  CHECK(!(s64 == s128)); // Differing radixes are not equal
+  CHECK(!(s64 == s128)); << "Different radix.";
 
   // We don't really say how these are ordered, but they must
   // be consistent.
-  CHECK(empty64 < s64 ^ s64 < empty64);
-  CHECK(empty64 < empty128 ^ empty128 < empty64);
-  CHECK(s64 < s128 ^ s128 < s64);
-  CHECK(s128 > s64 ^ s64 > s128);
+  CHECK((empty64 < s64) != (s64 < empty64));
+  CHECK((empty64 < empty128) != (empty128 < empty64));
+  CHECK((s64 < s128) != (s128 < s64));
+  CHECK((s128 > s64) != (s64 > s128));
 }
 
 static void With() {

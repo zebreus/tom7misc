@@ -242,7 +242,8 @@ struct Connection {
   //
   // Otherwise, returns the number of bytes written from the prefix.
   std::optional<size_t> InternalWritePrefix(std::span<const uint8_t> buf) {
-    CHECK(state == State::DUPLEX || state == State::ONLY_WRITE);
+    CHECK(state == State::DUPLEX || state == State::ONLY_WRITE) <<
+      "Was " << StateString(state);
     CHECK(fd > 0);
     if (buf.empty()) return {size_t{0}};
 

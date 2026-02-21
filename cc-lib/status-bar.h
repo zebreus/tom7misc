@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "base/port.h"
+#include "base/macros.h"
 #include "timer.h"
 
 // Thread safe.
