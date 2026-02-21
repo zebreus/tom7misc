@@ -16,6 +16,7 @@
 #include <stdarg.h>
 #include <string>
 #if __cplusplus >= 202002L
+#include <iterator>
 #include <format>
 #endif
 

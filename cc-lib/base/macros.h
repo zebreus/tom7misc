@@ -33,10 +33,29 @@
 #define PURE_FN
 #endif
 
-// Legacy macro for compile-time assertions, before this was
-// standardized. TODO: Just inline static_assert where this
-// is used.
+// Assert that a loop does not have memory dependencies across
+// iterations; no memory location written in one iteration may
+// be accessed (read or written) in a different iteration. The
+// typical application is for a loop where you know the regions
+// of memory do not overlap and you want to allow for full
+// vectorization. You can still have effects in the loop like
+// accumulating to local variables.
+//
+// This must be applied exactly to a for, while, or do loop. To
+// prevent accidental misuse, use it like this:
+// NO_LOOP_CARRIED_DEPENDENCIES(for) (int x = 0; x < size; x++) ...
+#if defined(__clang__)
+#define NO_LOOP_CARRIED_DEPENDENCIES(loop_kw) _Pragma("clang loop vectorize(assume_safety)") loop_kw
+#elif defined(__GNUC__)
+#define NO_LOOP_CARRIED_DEPENDENCIES(loop_kw) _Pragma("GCC ivdep") loop_kw
+#elif defined(_MSC_VER)
+#define NO_LOOP_CARRIED_DEPENDENCIES(loop_kw) __pragma(loop(ivdep)) loop_kw
+#else
+#define NO_LOOP_CARRIED_DEPENDENCIES(loop_kw) loop_kw
+#endif
 
+// Legacy macro for compile-time assertions, from before this was
+// standardized. TODO: Just inline static_assert where this is used.
 #define COMPILE_ASSERT(expr, msg) static_assert(expr, msg)
 
 // A macro to disallow the copy constructor and operator= functions

@@ -211,6 +211,51 @@ static void SetOperations() {
   CHECK(s128 > s64 ^ s64 > s128);
 }
 
+static void With() {
+  // These have some subtle vectorization, so check on a
+  // moderately large radix.
+  DenseIntSet s1(1027);
+  s1.Add(1);
+  s1.Add(10);
+  s1.Add(63);
+  s1.Add(500);
+
+  DenseIntSet s2(1027);
+  s2.Add(10);
+  s2.Add(100);
+  s2.Add(127);
+  s2.Add(500);
+  s2.Add(501);
+
+  {
+    DenseIntSet s = s1;
+    s.UnionWith(s2);
+    CHECK(s.Contains(1));
+    CHECK(s.Contains(10));
+    CHECK(s.Contains(63));
+    CHECK(s.Contains(500));
+    CHECK(s.Contains(100));
+    CHECK(s.Contains(127));
+    CHECK(s.Contains(501));
+
+    CHECK(DenseIntSet::Subset(s1, s));
+    CHECK(DenseIntSet::Subset(s2, s));
+  }
+
+  {
+    DenseIntSet s = s1;
+    s.IntersectWith(s2);
+    CHECK(s.Contains(10));
+    CHECK(s.Contains(500));
+    CHECK(!s.Contains(1));
+    CHECK(!s.Contains(501));
+    CHECK(!s.Contains(127));
+
+    CHECK(DenseIntSet::Subset(s, s1));
+    CHECK(DenseIntSet::Subset(s, s2));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -229,6 +274,7 @@ int main(int argc, char **argv) {
 
   Assignments();
   SetOperations();
+  With();
 
   Print("OK\n");
   return 0;

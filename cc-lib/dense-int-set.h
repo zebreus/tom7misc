@@ -165,9 +165,10 @@ struct DenseIntSet {
   // This requires the radix to be the same. You can use Union
   // to create a new set if they may be different.
   void UnionWith(const DenseIntSet &other) {
+    if (this == &other) return;
     DCHECK(radix == other.radix);
     const size_t limit = NumWords(radix);
-    for (size_t i = 0; i < limit; i++) {
+    NO_LOOP_CARRIED_DEPENDENCIES(for) (size_t i = 0; i < limit; i++) {
       vec[i] |= other.vec[i];
     }
   }
@@ -175,9 +176,10 @@ struct DenseIntSet {
   // This requires the radix to be the same. You can use Intersection
   // to create a new set if they may be different.
   void IntersectWith(const DenseIntSet &other) {
+    if (this == &other) return;
     DCHECK(radix == other.radix);
     const size_t limit = NumWords(radix);
-    for (size_t i = 0; i < limit; i++) {
+    NO_LOOP_CARRIED_DEPENDENCIES(for) (size_t i = 0; i < limit; i++) {
       vec[i] &= other.vec[i];
     }
   }
@@ -309,7 +311,7 @@ struct DenseIntSet {
 
  private:
   static constexpr int NumWords(size_t radix) {
-    return (radix / 64) + ((radix % 64 > 0) ? 1 : 0);
+    return (radix + 63) >> 6;
   }
 
   size_t NumBytes() const {
