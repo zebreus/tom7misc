@@ -1314,7 +1314,7 @@ Document::PackBoxes(Algorithm algo,
       for (const std::vector<BoxesAndGlue::BoxOut> &line : lines) {
         for (const BoxOut &out : line) {
           const int idx = out.box_idx;
-          CHECK(idx >= 0 && idx < boxes.size());
+          CHECK(idx >= 0 && idx < (int)boxes.size());
           // const BoxIn &in = boxes[idx];
           double glue = out.actual_glue;
 

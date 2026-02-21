@@ -264,8 +264,8 @@ struct DenseIntSet {
     // While idx is not end, and idx is not in the set,
     // increment it.
     size_t NextFrom(size_t idx) const {
-      DCHECK(idx >= 0 && idx <= is->radix);
-      ASSUME(idx >= 0 && idx <= is->radix);
+      DCHECK(idx <= is->radix);
+      ASSUME(idx <= is->radix);
       if (idx != is->radix) {
         size_t widx = is->WordFor(idx);
         uint64_t word = is->vec[widx];

@@ -1332,8 +1332,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           return std::nullopt;
         }
 
-        double nx, ny;
-        std::tie(nx, ny) = a.value();
+        auto [nx, ny] = a.value();
         if (cmd == 'm') {
           nx += px;
           ny += py;
@@ -1365,8 +1364,7 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           return std::nullopt;
         }
 
-        double nx, ny;
-        std::tie(nx, ny) = a.value();
+        auto [nx, ny] = a.value();
         if (cmd == 'l') {
           nx += px;
           ny += py;
@@ -1429,8 +1427,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           WriteErr("Expected 6 numbers after CubicBezier.");
           return std::nullopt;
         }
-        double x1, y1, x2, y2, x, y;
-        std::tie(x1, y1, x2, y2, x, y) = a.value();
+
+        auto [x1, y1, x2, y2, x, y] = a.value();
 
         if (cmd == 'c') {
           x1 += px;
@@ -1466,8 +1464,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           WriteErr("Expected 4 numbers after Smooth CubicBezier.");
           return std::nullopt;
         }
-        double x2, y2, x, y;
-        std::tie(x2, y2, x, y) = a.value();
+
+        auto [x2, y2, x, y] = a.value();
 
         if (cmd == 's') {
           x2 += px;
@@ -1513,8 +1511,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           WriteErr("Expected 4 numbers after Quadratic Bezier.");
           return std::nullopt;
         }
-        double cx, cy, x, y;
-        std::tie(cx, cy, x, y) = a.value();
+
+        auto [cx, cy, x, y] = a.value();
 
         if (cmd == 'q') {
           cx += px;
@@ -1542,8 +1540,8 @@ SVG::InterpretPathData(std::string_view d, std::string *error) {
           WriteErr("Expected 2 numbers after Smooth Quadratic.");
           return std::nullopt;
         }
-        double x, y;
-        std::tie(x, y) = a.value();
+
+        auto [x, y] = a.value();
 
         if (cmd == 't') {
           x += px;
