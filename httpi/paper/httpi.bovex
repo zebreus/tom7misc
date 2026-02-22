@@ -368,13 +368,13 @@ some kind of verification process, like when you try to go to the
 deepfake pornography web site but it demands a credit card number to
 check that you're really 18 years old.
 
-[section [Let’sn’t Encrypt]]
+[section [Let’s Encrypt]]
 
 So in the first decade of the 2000s, if you wanted to have a green
 padlock icon on your site, you needed to find some security
 professionals who would pretend to do some Military Grade secrecy to
 keep their numbers secret, and vouch that you had paid them the
-extortion fee. Despite the eye-popping invoices, all their data center
+extortion fee. Despite the protopsis-inducing invoices, all their data center
 laser grid security systems and tactical sunglasses, many CAs still
 issued many improper certificates. Trusted Certificate Authorities
 such as Thawte, StartCom, Comodo, DigiNotar, TurkTrust, NICCA, CNNIC,
@@ -475,7 +475,7 @@ Unable to establish SSL connection.
 
 Even [tt[curl]] hangs up, which is somewhat surprising given that
 curling originates in Canada where people are much more
-polite.[footnote[This is actually an OpenSSL issue; nothing to do with
+polite.[footnote[Of course this is actually an OpenSSL issue; nothing to do with
 the nice people of Canada.]] It's hard to believe that someone would
 use [tt[wget]] with the expectation that their request is subject to
 RED ALERT-level maximum security; this program just downloads the
@@ -483,12 +483,13 @@ contents of the URL.[footnote[If I managed to bait any OpenSSL
 maintainers into reading this footnote, please also enjoy the top
 StackOverflow troubleshooting tips, like the user who writes "I
 resolved it by replacing https with http, and the issue was resolved.
-This solution might be helpful for some people."
-Or check in on the poor public servants at nasa.gov's Crustal Dynamics Data Information System who just want to help scientists
-download geodesy data so that they can know how much their GPS
-trails have drifted over time, but whose FAQ describes this
-(deliberate) "error" as a "known issue" whose only workaround is to reconfigure
-your system's OpenSSL.[cite nasa2025cddisfaq] [it This] is your enemy?] It is technically
+This solution might be helpful for some people." Or check in on the
+poor public servants at nasa.gov's Crustal Dynamics Data Information
+System who just want to help scientists download geodesy data so that
+they can know how much their GPS trails have drifted over time, but
+whose FAQ describes this (deliberate) "error" as a "known issue" whose
+only workaround is to reconfigure your system's OpenSSL.[cite
+nasa2025cddisfaq] [it[This]] is your enemy?]] It is technically
 possible, though annoying, to configure cookies or ask wget to pass
 private information in the request, if you really want. But I'm pretty
 sure almost everybody is just using it to scrape public websites and
@@ -508,13 +509,13 @@ shit right into their shell without even looking at it.[footnote[The
 16-kilobyte shell script installs installs a program that installs
 Node.js® so that you can install [tt[npm]] and YOLO tens of millions
 of lines more code onto your computer. You can tell the whole ordeal
-is expected to do with eyes closed and was also written by an asshole,
+is expected to be done with eyes closed and was also written by an asshole,
 because early on the script will chide you [tt[Error: the install
 instructions explicitly say to pipe the install script to `bash`;
-please follow them]].]] The mysterious arcument [tt[-o-]] is actually
+please follow them]].]] The mysterious argument [tt[-o-]] is actually
 an ASCII emoticon for a someone with their face down on their desk and
 their arms splayed out horizontally, in a pose of complete submission.
-If you are doing this but you are afraid that
+If you freebasing shell scripts but you are afraid that
 someone is going to spend 512 billion years with a massive quantum computer
 brute-forcing the domain's RSA key, well, you have a strange threat
 model to me.
@@ -525,7 +526,7 @@ attack (CVE-2009-3555). A scoundrel connects to the server first, sends some
 encrypted data, and then uses the real client's initial handshake for
 a valid-looking "renegotiation," which then results in the client connecting to the
 server unaware that some data has already been sent on their behalf.
-It's (TODO RFC 
+It's (TODO RFC 5746...)
 Presumably the reason that OpenSSL takes this stance
 (which is stronger than the defaults in all regular-people browsers)
 is to try to induce [it[social shame]] in system administrators who
@@ -572,7 +573,7 @@ impersonation of the CEO of the UK Parenting forum
 [it[Mumsnet]]—serious business!
 
 The TLS Heartbeat feature (RFC 6520) is basically ICMP ECHO for the
-TLS transport stream[cite rfc6520]. One side can send a
+TLS transport stream.[cite rfc6520] One side can send a
 [tt[HEARTBEAT]] message to the other with some payload, and that side
 echos it back. This can be used, for example, to store files.[cite
 murphy2022harder] Heartbleed happens because the [tt[HEARTBEAT]]

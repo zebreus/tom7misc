@@ -983,7 +983,7 @@ static void TestParsePat() {
 
 static void TestParseDec() {
   AstPool pool;
-  auto ParseDec = [&](const std::string &sdec) -> const Dec * {
+  auto ParseDec = [&](std::string_view sdec) -> const Dec * {
       std::string s = std::format("let {} in 7 end", sdec);
       SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
@@ -1167,8 +1167,47 @@ static void TestParsePos() {
   }
 
   // TODO: Test more with positions!
-
 }
+
+// Larger examples that did something weird in the past.
+static void TestRegressions() {
+  AstPool pool;
+  auto ParseDec = [&](std::string_view sdec) -> const Dec * {
+      std::string s = std::format("let {} in 7 end", sdec);
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      if (VERBOSE) {
+        Print("Parse [" AWHITE("{}") "]:\n", s);
+      }
+      const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
+      CHECK(e != nullptr) << sdec;
+      CHECK(e->type == ExpType::LET) << sdec;
+      CHECK(e->decs.size() == 1) << sdec;
+      return e->decs[0];
+    };
+
+  // XXX the issue was a missing = on the second clause. We should
+  // give better error messages than "expected decs..." !
+  static constexpr std::string_view syntax = R"(
+fun bib-website (obj as {(Website) author}) =
+  let
+    val authors = bib-parse-authors author
+    val key-rest = case obj of {(Website) url} => url | _ => ""
+  in
+    Source { t = Website, authors = authors,
+             sort-key = author-sort-key authors key-rest, fields = obj }
+  end
+  | bib-website (obj as {(Website) url, organization}) =
+  Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = organization :: nil }
+)";
+
+  const Dec *dec = ParseDec(syntax);
+  CHECK(dec != nullptr);
+}
+
 
 }  // namespace el
 
@@ -1181,6 +1220,7 @@ int main(int argc, char **argv) {
   el::TestParseDec();
   el::TestParseLayout();
   el::TestParsePos();
+  el::TestRegressions();
 
   Print("OK\n");
   return 0;

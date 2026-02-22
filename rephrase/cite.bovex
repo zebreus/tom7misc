@@ -22,7 +22,7 @@ val CITE-VERBOSE = false
 
 (* Basic source types. Some bibliography types are converted
    into one of these (e.g. PhD thesis). *)
-datatype bibsourcetype = Website | Article | Book | Video | Misc
+datatype bibsourcetype = Website | Article | Book | Presentation | Misc
 datatype author-name =
   AuthorCommon of { first: string, middle: string option, last: string,
                     suffix: string option }
@@ -58,6 +58,7 @@ object Website of { url : string,
                     (* e.g. Cupertino, CA. *)
                     location : string,
                     year : int, month : int, day : int }
+
 object Article of { author : string, title : string,
                     subtitle : string,
                     year : int, month : int, day : int,
@@ -89,6 +90,19 @@ object Book of { author : string, title : string,
 object Misc of { note : string,
                  url : string }
 
+(* Video, talk, etc. Has a time duration instead of
+   a number of pages. *)
+object Presentation of { title : string,
+                         presenter : string,
+                         year : int, month : int, day : int,
+                         duration-hour : int,
+                         duration-min : int,
+                         duration-sec : int,
+                         url : string,
+                         (* e.g. Vimeo or TEDx or CMU Commencement *)
+                         work : string }
+
+(* Derived forms. *)
 object Video of { title : string,
                   author : string,
                   year : int, month : int, day : int,
@@ -103,11 +117,13 @@ object Video of { title : string,
 object Talk of { title : string,
                  speaker : string,
                  year : int, month : int, day : int,
+                 duration-hour : int,
+                 duration-min : int,
+                 duration-sec : int,
                  url : string,
                  venue : string,
                  location : string }
 
-(* Derived forms. *)
 object PhdThesis of { author : string, title : string,
                       year : int, month : int, day : int,
                       university : string,
@@ -138,9 +154,9 @@ fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Book, Book) = EQUAL
   | bibsourcetype-compare (Book, _) = LESS
   | bibsourcetype-compare (_, Book) = GREATER
-  | bibsourcetype-compare (Video, Video) = EQUAL
-  | bibsourcetype-compare (Video, _) = LESS
-  | bibsourcetype-compare (_, Video) = GREATER
+  | bibsourcetype-compare (Presentation, Presentation) = EQUAL
+  | bibsourcetype-compare (Presentation, _) = LESS
+  | bibsourcetype-compare (_, Presentation) = GREATER
   | bibsourcetype-compare (Misc, Misc) = EQUAL
   | bibsourcetype-compare _ = fail "impossible"
 
@@ -213,8 +229,8 @@ fun bib-website (obj as {(Website) author}) =
     Source { t = Website, authors = authors,
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
-  | bib-website (obj as {(Website) url, organization})
-  Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = organization :: nil }
+  | bib-website (obj as {(Website) url, organization}) =
+  Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = AuthorOther organization :: nil }
   | bib-website (obj as {(Website) url}) =
   Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = nil }
   | bib-website _ = fail "bib-website needs at least a url"
@@ -232,23 +248,6 @@ fun bib-article (obj as {(Article) author}) =
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-article _ = fail "bib-article needs at least an author"
-
-fun bib-video (obj as {(Video) author}) =
-  let
-    val authors = bib-parse-authors author
-    val key-rest =
-      case obj of
-        {(Article) title} => title
-      | {(Article) year} => int-to-string year
-      | _ => ""
-  in
-    Source { t = Video, authors = authors,
-             sort-key = author-sort-key authors key-rest, fields = obj }
-  end
-  | bib-video _ = fail "bib-video needs at least an author"
-
-fun bib-talk (obj as {(Talk) }) =
-  bib-video {(Video) author = "FIXME bib-talk"}
 
 fun bib-book (obj as {(Article) author}) =
   let
@@ -269,29 +268,83 @@ fun bib-misc (obj as {(Misc) note}) =
   | bib-misc _ = fail "bib-misc needs at least a note"
 
 
-fun convert-phd-thesis (obj as {(PhdThesis) publisher, university}) =
+fun bib-presentation (obj as {(Presentation) presenter}) =
+  let
+    val presenters = bib-parse-authors presenter
+    val key-rest =
+      case obj of
+        {(Presentation) title} => title
+      | {(Presentation) year} => int-to-string year
+      | _ => ""
+
+  in
+    Source { t = Presentation, authors = presenters,
+             sort-key = author-sort-key presenters key-rest, fields = obj }
+  end
+  | bib-presentation _ = fail "bib-presentation needs at least a presenter"
+
+fun bib-convert-video (obj as {(Video) author}) =
+  let
+    val work =
+      case obj of
+        {(Video) site} => site
+      | {(Video) youtube-id} => "YouTube"
+      | _ => ""
+
+    val url =
+      case obj of
+        {(Video) url} => url
+      | {(Video) youtube-id} => "http://youtu.be/" ^ youtube-id
+      | _ => ""
+  in
+    obj without (Video)author
+    with (Presentation)presenter = author
+    with (Presentation)work = work
+  end
+  | bib-convert-video _ = fail "bib-video needs at least an author"
+
+fun bib-video obj = bib-presentation (bib-convert-video obj)
+
+fun bib-convert-talk (obj as {(Talk) speaker}) =
+  let
+    val work =
+      case obj of
+        {(Talk) venue, location} => venue ^ ", " ^ location
+      | {(Talk) venue} => venue
+      | {(Talk) location} => location
+      | _ => fail "bib-talk needs a venue or location or both."
+  in
+    obj without (Talk)speaker
+    with (Presentation)presenter = speaker
+    with (Presentation)work = work
+  end
+  | bib-convert-talk _ = fail "bib-talk needs at least a speaker"
+
+fun bib-talk obj = bib-presentation (bib-convert-talk obj)
+
+fun bib-convert-phd-thesis (obj as {(PhdThesis) publisher, university}) =
   obj
   without (PhdThesis)university
   with (Book)publisher = publisher ^ ", " ^ university
-  | convert-phd-thesis (obj as {(PhdThesis) university}) =
+  | bib-convert-phd-thesis (obj as {(PhdThesis) university}) =
   obj with (Book)publisher = university
-  | convert-phd-thesis obj = obj
+  | bib-convert-phd-thesis obj = obj
 
 fun bib-phd-thesis (obj as {(Article) author}) =
-  bib-article (convert-phd-thesis obj)
+  bib-article (bib-convert-phd-thesis obj)
   | bib-phd-thesis _ = fail "bib-phd-thesis needs at least an author"
 
-fun convert-news (obj as {(News) work }) =
+fun bib-convert-news (obj as {(News) work }) =
   obj
   without (News)work
   with (Article)journal = work
-  | convert-news obj = obj
+  | bib-convert-news obj = obj
 
 fun bib-news (obj as {(News) author}) =
-  bib-article (convert-news obj)
+  bib-article (bib-convert-news obj)
   | bib-news _ = fail "bib-news needs at least an author"
 
-fun convert-tech-report obj =
+fun bib-convert-tech-report obj =
   let
     (* If no author, use the institution as the "author." *)
     val obj =
@@ -300,7 +353,7 @@ fun convert-tech-report obj =
     | {(TechReport) institution} =>
         obj without (TechReport)institution
         with (Article)author = institution
-    | _ => fail "bug: convert-tech-report requries institution"
+    | _ => fail "bug: bib-convert-tech-report requries institution"
 
     (* Optionally remap these fields, in case we get more permissive
        later. *)
@@ -320,7 +373,7 @@ fun convert-tech-report obj =
   end
 
 fun bib-tech-report (obj as {(TechReport) title, institution}) =
-  bib-article (convert-tech-report obj)
+  bib-article (bib-convert-tech-report obj)
   | bib-tech-report _ = fail ("bib-tech-report needs at least a " ^
                               "title and institution.")
 
@@ -409,8 +462,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
       | pages {(Pages) pages } = [[layout (int-to-string pages)] pages]
       | pages _ = []
 
-    (* XXX fields for videos. At least H:M:S.
-       if youtube-id, construct URL that way (and set site) *)
+    (* XXX fields for videos. At least H:M:S. *)
 
     (* Format as "Pittsburgh, 1942." *)
     (* Ignoring day for now. *)
@@ -543,29 +595,24 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
           r
         end
 
-    | (Video, {(Video) title}) =>
+(*
+    | (Presentation, {(Presentation) title}) =>
         let
-          val j =
-            case fields of
-              {(Video) site} => it (layout site)
-            | {(Video) youtube-id} => it [YouTube]
-            | _ => []
-
           val h =
             case fields of
-              {(Video) duration-hour } =>
+              {(Presentation) duration-hour } =>
                 SOME (int-to-string duration-hour ^ "h")
             | _ => NONE
 
           val m =
             case fields of
-              {(Video) duration-min } =>
+              {(Presentation) duration-min } =>
                 SOME (int-to-string duration-min ^ "m")
             | _ => NONE
 
           val s =
             case fields of
-              {(Video) duration-sec } =>
+              {(Presentation) duration-sec } =>
                 SOME (int-to-string duration-sec ^ "s")
             | _ => NONE
 
@@ -582,9 +629,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
 
           val url =
             (case fields of
-               {(Video) url} => bib-url url
-             | {(Video) youtube-id} =>
-                 bib-url ("http://youtu.be/" ^ youtube-id)
+               {(Presentation) url} => bib-url url
              | _ => [])
         in
           joindots (layout authors :: [“[layout title]”] ::
@@ -592,6 +637,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
                       hms :: url :: nil)
 
         end
+*)
 
     | (Misc, {(Misc) note }) =>
         let
