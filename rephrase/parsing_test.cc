@@ -642,6 +642,13 @@ static void TestParse() {
     CHECK(e->a->integer == 3);
   }
 
+  {
+    const Exp *e = Parse("{() }");
+    CHECK(e->type == ExpType::OBJECT);
+    CHECK(e->str_children.empty());
+    CHECK(e->str.empty());
+  }
+
   // XXX DEATH_TEST?
   if (false) {
     (void)Parse("let val x = 3\n"
@@ -978,6 +985,13 @@ static void TestParsePat() {
     CHECK(pat->str_children.size() == 2);
   }
 
+  {
+    const Pat *pat = ParsePat("{() }");
+    CHECK(pat->type == PatType::OBJECT);
+    CHECK(pat->str.empty());
+    CHECK(pat->str_children.empty());
+  }
+
   Print("Pattern parsing " AGREEN("OK") "\n");
 }
 
@@ -1165,6 +1179,7 @@ static void TestParsePos() {
     const Exp *e = Parse("  identifier");
     CHECK(e->pos == 2) << e->pos;
   }
+
 
   // TODO: Test more with positions!
 }

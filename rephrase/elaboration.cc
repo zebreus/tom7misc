@@ -767,7 +767,7 @@ Elaboration::ElabDec(
   case el::DecType::OBJECT: {
     const el::ObjectDec &object = dec->object;
 
-    // All we need to for an object declaration is record the name
+    // All we need to do for an object declaration is record the name
     // in the context.
     il::ObjVarInfo ovi;
     for (const auto &[lab, el_type] : object.fields) {

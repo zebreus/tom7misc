@@ -477,11 +477,12 @@ const Exp *Parsing::Parse(AstPool *pool,
          >MaybeLabelPun;
 
       return
-        ((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+        ((IsToken<LPAREN>() >> Opt(Id) << IsToken<RPAREN>()) &&
         Separate0(OneField, IsToken<COMMA>()))
         >[&](const auto &p) -> const Pat * {
             const auto &[objtype, lps] = p;
-            return pool->ObjectPat(objtype, lps);
+            std::string ot = objtype.value_or("");
+            return pool->ObjectPat(ot, lps);
           };
     };
 
@@ -657,7 +658,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   // other contents inside { ... }
   const auto ObjectContents = [&](const auto &Expr) {
       return
-        Mark((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+        Mark((IsToken<LPAREN>() >> Opt(Id) << IsToken<RPAREN>()) &&
              // Not using Label here, since we may have some ambiguity
              // in like "obj.3".
              Separate0(Id && (IsToken<EQUALS>() >> Expr),
@@ -665,7 +666,8 @@ const Exp *Parsing::Parse(AstPool *pool,
         >[&](const auto &p_pos) {
             const auto &[p, token_start, token_end] = p_pos;
             const auto &[objtype, fields] = p;
-            return pool->Object(objtype, fields, BytePos(token_start));
+            std::string ot = objtype.value_or("");
+            return pool->Object(ot, fields, BytePos(token_start));
           };
     };
 

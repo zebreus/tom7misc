@@ -1,3 +1,10 @@
+22 Feb 2026 (r6933)
+
+ * Can write object and object patterns with no object type,
+   like {() }, as god intended.
+
+ * Approximatley 6x speedup to the optimization phase.
+
 16 Feb 2026 (r6926)
 
  * Footnotes and floating figures are working well enough that

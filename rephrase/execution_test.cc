@@ -527,6 +527,16 @@ static void ObjTests() {
           "    {(O) x } => print (int-to-string x)\n"
           "end\n"),
       "0");
+
+  CHECK_EQ(
+      RunToString(
+          "let val r = ref {() }\n"
+          "in\n"
+          "  case !r of\n"
+          "    {() } => print \"yes\"\n"
+          "  | _ => fail \"no\"\n"
+          "end\n"),
+      "yes");
 }
 
 static void StringTests()  {
