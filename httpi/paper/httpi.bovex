@@ -454,6 +454,101 @@ even openssl is XXX lines of code
 using the credit card to encrypt the data
 *]
 
+Some applications with a high level of toxic max-security will refuse
+to connect to [httpi] servers because they are not able to negotiate
+a pretentious enough cipher suite. One example is [tt[wget]], which
+will print this on a fresh install of Ubuntu in February 2026:
+
+[monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 7.0,
+                      attrs = {(Object) } } [
+[* TODO: Make this bold; needs support in monospace-lines *]
+# wget https://tom7.org/papers/httpi.pdf
+--2026-02-21 21:37:50--  https://tom7.org/papers/httpi.pdf
+Resolving tom7.org (tom7.org)... 129.212.144.56
+Connecting to tom7.org (tom7.org)|129.212.144.56|:443... connected.
+OpenSSL: error:0A000152:SSL routines::unsafe legacy renegotiation disabled
+Unable to establish SSL connection.
+]]
+
+Even [tt[curl]] hangs up, which is somewhat surprising given that
+curling originates in Canada where people are much more
+polite.[footnote[This is actually an OpenSSL issue; nothing to do with
+the nice people of Canada.]] It's hard to believe that someone would
+use [tt[wget]] with the expectation that their request is subject to
+RED ALERT-level maximum security; this program just downloads the
+contents of the URL.[footnote[If I managed to bait any OpenSSL
+maintainers into reading this footnote, please also enjoy the top
+StackOverflow troubleshooting tips, like the user who writes "I
+resolved it by replacing https with http, and the issue was resolved.
+This solution might be helpful for some people."
+Or check in on the poor public servants at nasa.gov's Crustal Dynamics Data Information System who just want to help scientists
+download geodesy data so that they can know how much their GPS
+trails have drifted over time, but whose FAQ describes this
+(deliberate) "error" as a "known issue" whose only workaround is to reconfigure
+your system's OpenSSL.[cite nasa2025cddisfaq] [it This] is your enemy?] It is technically
+possible, though annoying, to configure cookies or ask wget to pass
+private information in the request, if you really want. But I'm pretty
+sure almost everybody is just using it to scrape public websites and
+to run commands like this:
+
+[
+monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 7.0,
+                      attrs = {(Object) } } [
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+]]
+
+This is literally what people do with curl these days: They pipe that
+shit right into their shell without even looking at it.[footnote[The
+16-kilobyte shell script installs installs a program that installs
+Node.js® so that you can install [tt[npm]] and YOLO tens of millions
+of lines more code onto your computer. You can tell the whole ordeal
+is expected to do with eyes closed and was also written by an asshole,
+because early on the script will chide you [tt[Error: the install
+instructions explicitly say to pipe the install script to `bash`;
+please follow them]].]] The mysterious arcument [tt[-o-]] is actually
+an ASCII emoticon for a someone with their face down on their desk and
+their arms splayed out horizontally, in a pose of complete submission.
+If you are doing this but you are afraid that
+someone is going to spend 512 billion years with a massive quantum computer
+brute-forcing the domain's RSA key, well, you have a strange threat
+model to me.
+
+The "issue" is actually easy to fix. Old TLS servers that support the
+esoteric "renegotiation" feature are vulnerable to a man-in-the-middle
+attack (CVE-2009-3555). A scoundrel connects to the server first, sends some
+encrypted data, and then uses the real client's initial handshake for
+a valid-looking "renegotiation," which then results in the client connecting to the
+server unaware that some data has already been sent on their behalf.
+It's (TODO RFC 
+Presumably the reason that OpenSSL takes this stance
+(which is stronger than the defaults in all regular-people browsers)
+is to try to induce [it[social shame]] in system administrators who
+don't see the point in updating their already-working websites
+(perhaps because they have evaluated the technical merits of "perfect"
+forward secrecy and post-quantum key-exchange algorithms and decided
+that they weren't worth the costs and risks). They may not have
+anticipated someone like me, who is willing to deliberately expose
+himself to costs and risks for the sake of social vulnerability. Brené
+Brown describes the effect in her blockbuster TEDx talk [it[The
+Power of Vulnerability]]:[cite brown2012power]
+
+[blockquote-ext {(Blockquote) attribution = [Brené Brown]}
+[And shame is really easily understood as the fear of
+disconnection: Is there something about me that, if other people know
+it or see it, that I won't be worthy of connection?]]
+
+OR THIS???
+[blockquote[asdf!!!!!]]
+
+Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my server,
+it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING OUT!!
+
 ...
 
 [section [Heartbleed support]]

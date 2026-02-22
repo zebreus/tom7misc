@@ -808,11 +808,29 @@ fun image-inline { img = img as (Image img-handle), height, dy } = let
    can flow across columns and pages.
    But I want to test layout of rigid stuff like this.
    *)
-fun blockquote lay =
+object Blockquote of { attribution : layout, left-indent : float,
+                       total-width : float, right-indent : float }
+fun blockquote-ext attrs lay =
   let
-    val LEFT-INDENT = inch 0.25
-    val WIDTH = inch 3.25
-    val lay = it (layout-map-text normalize-whitespace lay)
+    val LEFT-INDENT =
+      (case attrs of
+         {(Blockquote) left-indent} => left-indent
+       | _ => inch 0.25)
+    val TOTAL-WIDTH =
+         (case attrs of
+            {(Blockquote) total-width} => total-width
+          | _ => COLUMN-WIDTH())
+    val RIGHT-INDENT =
+      (case attrs of
+         {(Blockquote) right-indent} => right-indent
+         | _ => inch 0.125)
+    val WIDTH = TOTAL-WIDTH -. LEFT-INDENT -. RIGHT-INDENT
+    do WIDTH <=. 0.0 andthen fail "blockquote has no width for the quote"
+    val lay = it (layout-map-text normalize-whitespace lay) ^^ hfill() ^^
+         (case attrs of
+            {(Blockquote) attribution} => break() ^^ shrinking-hspace WIDTH ^^
+              [— [attribution]]
+         | _ => [])
     val boxes = get-boxes lay
     val (badness, lines : layout list) =
       pack-boxes-horiz (BEST, FULLY-JUSTIFIED, WIDTH, boxes)
@@ -823,6 +841,10 @@ fun blockquote lay =
     (LEFT-INDENT,
      box {(Box) width = WIDTH} (layout-concat lines))
   end
+
+
+fun blockquote lay = blockquote-ext {(Blockquote) } lay
+
 
 (* Justify even the final line of the paragraph. *)
 fun justify-all lay = span {(Span) justification = "all" } lay

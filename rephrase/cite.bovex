@@ -54,6 +54,7 @@ object Website of { url : string,
                     title : string,
                     subtitle : string,
                     author : string,
+                    organization : string,
                     (* e.g. Cupertino, CA. *)
                     location : string,
                     year : int, month : int, day : int }
@@ -97,6 +98,14 @@ object Video of { title : string,
                   youtube-id : string,
                   url : string,
                   site : string }
+
+(* XXX include more video fields here? *)
+object Talk of { title : string,
+                 speaker : string,
+                 year : int, month : int, day : int,
+                 url : string,
+                 venue : string,
+                 location : string }
 
 (* Derived forms. *)
 object PhdThesis of { author : string, title : string,
@@ -204,6 +213,8 @@ fun bib-website (obj as {(Website) author}) =
     Source { t = Website, authors = authors,
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
+  | bib-website (obj as {(Website) url, organization})
+  Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = organization :: nil }
   | bib-website (obj as {(Website) url}) =
   Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = nil }
   | bib-website _ = fail "bib-website needs at least a url"
@@ -235,6 +246,9 @@ fun bib-video (obj as {(Video) author}) =
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-video _ = fail "bib-video needs at least an author"
+
+fun bib-talk (obj as {(Talk) }) =
+  bib-video {(Video) author = "FIXME bib-talk"}
 
 fun bib-book (obj as {(Article) author}) =
   let
