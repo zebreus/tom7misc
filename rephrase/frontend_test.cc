@@ -340,7 +340,7 @@ static void TestSimplify() {
                             "end\n");
     // Should be able to inline 'fact', and remove the unnecessary tuple
     // despite having an effectful element.
-    CHECK(pgm.body->type == ExpType::SEQ);
+    CHECK(pgm.body->type == ExpType::SEQ) << ProgramString(pgm);
     const auto &[es, body] = pgm.body->Seq();
     CHECK(es.size() == 1);
     CHECK(es[0]->type == ExpType::APP);

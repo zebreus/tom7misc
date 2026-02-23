@@ -1071,11 +1071,15 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::FLOAT_ROUND: {
     const double d = GetFloat("float-round");
+    // XXX llround is wrong here; it won't let us round outside the
+    // range of 64-bit integers.
     return Big(BigInt(std::llround(d)), state);
   }
 
   case Primop::FLOAT_TRUNC: {
     const double d = GetFloat("float-trunc");
+    // XXX llround is wrong here; it won't let us round outside the
+    // range of 64-bit integers.
     return Big(BigInt(std::llround(std::trunc(d))), state);
   }
 

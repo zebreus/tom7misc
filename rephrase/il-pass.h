@@ -103,6 +103,7 @@ struct Pass {
     }
     case ExpType::LAYOUT: {
       LOG(FATAL) << "Unimplemented";
+      break;
     }
     case ExpType::LET: {
       const auto &[tyvars, x, rhs, body] = e->Let();

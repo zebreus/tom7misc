@@ -119,6 +119,7 @@ struct TypedPass {
     }
     case ExpType::LAYOUT: {
       LOG(FATAL) << "Unimplemented";
+      break;
     }
     case ExpType::LET: {
       const auto &[tyvars, x, rhs, body] = e->Let();
@@ -214,8 +215,10 @@ struct TypedPass {
     }
 
     default:
-      LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
+      break;
     }
+    LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
+    return {nullptr, nullptr};
   }
 
 
@@ -530,8 +533,9 @@ struct TypedPass {
         };
       }
     }
-    CHECK(false) << "Type error: Label " << s << " not found in " <<
+    LOG(FATAL) << "Type error: Label " << s << " not found in " <<
       TypeString(tt);
+    return {nullptr, nullptr};
   }
 
   virtual std::pair<const Exp *, const Type *>

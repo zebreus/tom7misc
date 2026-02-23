@@ -139,14 +139,39 @@ static bool IsEffectless(const Exp *exp) {
   }
 }
 
-static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
+namespace {
+// We use PushSeqs to flatten the Sequence construct, but also to check
+// whether an expression is discardable. In the latter case, we don't
+// actually need to allocate the result (and can stop early).
+struct SeqVecCollector {
+  SeqVecCollector(std::vector<const Exp *> *vin) : v(vin) {}
+  // Not owned.
+  std::vector<const Exp *> *v = nullptr;
+  void push_back(const Exp *e) {
+    v->push_back(e);
+  }
+  bool keep_going() const { return true; }
+};
+
+// PERF: We could also stop early once it's non-empty.
+struct DiscardableCollector {
+  bool empty = true;
+  void push_back(const Exp *) {
+    empty = false;
+  }
+  bool keep_going() const { return empty; }
+};
+}
+
+template<class Collector>
+static void PushSeqsTpl(const Exp *exp, Collector *flat) {
   switch (exp->type) {
   case ExpType::FAIL:
-    vflat->push_back(exp);
+    flat->push_back(exp);
     return;
   case ExpType::APP:
     // TODO: Maybe constructor applications?
-    vflat->push_back(exp);
+    flat->push_back(exp);
     return;
 
   case ExpType::FLOAT: return;
@@ -159,31 +184,33 @@ static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
 
   case ExpType::RECORD: {
     for (const auto &[lab, child] : exp->Record()) {
-      PushSeqs(child, vflat);
+      PushSeqsTpl(child, flat);
+      if (!flat->keep_going()) return;
     }
     return;
   }
 
   case ExpType::PROJECT: {
     const auto &[l, t, e] = exp->Project();
-    return PushSeqs(e, vflat);
+    return PushSeqsTpl(e, flat);
   }
   case ExpType::INJECT:
-    return PushSeqs(std::get<2>(exp->Inject()), vflat);
+    return PushSeqsTpl(std::get<2>(exp->Inject()), flat);
 
   case ExpType::ROLL:
-    return PushSeqs(std::get<1>(exp->Roll()), vflat);
+    return PushSeqsTpl(std::get<1>(exp->Roll()), flat);
   case ExpType::UNROLL:
-    return PushSeqs(std::get<0>(exp->Unroll()), vflat);
+    return PushSeqsTpl(std::get<0>(exp->Unroll()), flat);
 
   case ExpType::PRIMAPP: {
     const auto &[po, ts, es] = exp->Primapp();
     if (IsPrimopDiscardable(po)) {
       for (const Exp *child : es) {
-        PushSeqs(child, vflat);
+        PushSeqsTpl(child, flat);
+        if (!flat->keep_going()) return;
       }
     } else {
-      vflat->push_back(exp);
+      flat->push_back(exp);
     }
     return;
   }
@@ -198,9 +225,14 @@ static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
   }
 
   default:
-    vflat->push_back(exp);
+    flat->push_back(exp);
     break;
   }
+}
+
+static inline void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
+  SeqVecCollector svc(vflat);
+  PushSeqsTpl(e, &svc);
 }
 
 // This is almost the same as effectless except that some primops can
@@ -208,14 +240,10 @@ static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
 // do the whole thing instead of appealing to IsEffectless for other
 // cases, since we want something like (GET, GET) to be considered
 // discardable.
-//
-// TODO: This is probably inferior to PushSeqs, which lets us drop
-// parts of the expression that are not effectful. We defer to that
-// function now anyway.
-static bool IsDiscardable(const Exp *e) {
-  std::vector<const Exp *> tmp;
-  PushSeqs(e, &tmp);
-  return tmp.empty();
+static inline bool IsDiscardable(const Exp *e) {
+  DiscardableCollector dc;
+  PushSeqsTpl(e, &dc);
+  return dc.empty;
 }
 
 namespace {
@@ -353,11 +381,10 @@ struct PeepholePass : public il::Pass<> {
           const std::string &b = ees[1]->String();
           const std::string &c = ees[2]->String();
 
-          // Only if the resulting string will not
-          // grow. We could say that we are
-          // reducing the number of operations and
-          // get a partial order that way, but it
-          // could easily be counterproductive.
+          // Only if the resulting string will not grow. We could say
+          // that we are reducing the number of operations and get a
+          // partial order that way, but it could easily be
+          // counterproductive.
           if (c.size() <= b.size() ||
               a.find(b) == std::string::npos) {
             Simplified("string-replace primop");
@@ -468,10 +495,38 @@ struct PeepholePass : public il::Pass<> {
       case Primop::INT_MOD:
         if (ees[0]->type == ExpType::INT &&
             ees[1]->type == ExpType::INT) {
-          Simplified("int arithmetic primop");
 
           const BigInt &lhs = ees[0]->Int();
           const BigInt &rhs = ees[1]->Int();
+
+          // For some primops, we avoid simplifying them because
+          // they could result in values that are too big. They
+          // might exist in the program but in branches that
+          // can't be reached dynamically.
+          if (po == Primop::INT_SHL) {
+            const auto io = rhs.ToInt();
+            if (io.has_value() && io.value() > (1 << 23)) {
+              // Don't optimize if it would create a number
+              // that's more than a megabyte.
+              break;
+            }
+            Simplified("int left shift");
+            if (!io.has_value()) {
+              return pool->Fail(
+                  pool->String("Left shift too big (static)"),
+                  pool->IntType());
+            }
+            if (*io < 0) {
+              return pool->Fail(
+                  pool->String("Left shift by negative amount (static)"),
+                  pool->IntType());
+            }
+            return pool->Int(BigInt::LeftShift(lhs, *io));
+          }
+
+          // Otherwise we definitely reduce.
+          Simplified("int arithmetic primop");
+
           switch (po) {
           case Primop::INT_TIMES:
             return pool->Int(BigInt::Times(lhs, rhs));
@@ -486,20 +541,6 @@ struct PeepholePass : public il::Pass<> {
           case Primop::INT_ORB:
             return pool->Int(BigInt::BitwiseOr(lhs, rhs));
 
-          case Primop::INT_SHL: {
-            const auto io = rhs.ToInt();
-            if (!io.has_value()) {
-              return pool->Fail(
-                  pool->String("Left shift too big (static)"),
-                  pool->IntType());
-            }
-            if (*io < 0) {
-              return pool->Fail(
-                  pool->String("Left shift by negative amount (static)"),
-                  pool->IntType());
-            }
-            return pool->Int(BigInt::LeftShift(lhs, *io));
-          }
           case Primop::INT_SHR: {
             const auto io = rhs.ToInt();
             if (!io.has_value()) {
@@ -569,7 +610,7 @@ struct PeepholePass : public il::Pass<> {
               // let's not cut it too close
               io.value() <= int64_t{1} << 52 &&
               io.value() >= -(int64_t{1} << 52)) {
-            Simplified("int-neg primop");
+            Simplified("int-to-float primop");
             return pool->Float((double)io.value());
           }
         }
@@ -621,10 +662,13 @@ struct PeepholePass : public il::Pass<> {
       case Primop::FLOAT_ROUND:
         if (ees[0]->type == ExpType::FLOAT) {
           const double d = ees[0]->Float();
-          // We can also support values outside this range, by
-          // just making sure we have the same behavior as execution.
-          // But currently we are a bit sloppy in execution, too.
-          if (d > -1e52 && d < 1e52) {
+          // TODO: llround isn't right here (limited to 64-bit ints),
+          // since we can support any integer with BigInt. We should
+          // add a rounding double constructor for BigInt and use
+          // that, both here an in execution (which is currently
+          // sloppy).
+          if (d > std::numeric_limits<int64_t>::min() &&
+              d < std::numeric_limits<int64_t>::max()) {
             Simplified("float-round primop");
             return pool->Int(std::llround(d));
           }
@@ -634,10 +678,9 @@ struct PeepholePass : public il::Pass<> {
       case Primop::FLOAT_TRUNC:
         if (ees[0]->type == ExpType::FLOAT) {
           const double d = ees[0]->Float();
-          // We can also support values outside this range, by
-          // just making sure we have the same behavior as execution.
-          // But currently we are a bit sloppy in execution, too.
-          if (d > -1e52 && d < 1e52) {
+          // (Same comment as FLOAT_ROUND.)
+          if (d > std::numeric_limits<int64_t>::min() &&
+              d < std::numeric_limits<int64_t>::max()) {
             Simplified("float-trunc primop");
             return pool->Int(std::llround(std::trunc(d)));
           }
