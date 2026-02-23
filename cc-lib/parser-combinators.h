@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 static constexpr bool PARSE_VERBOSE = false;
 
@@ -139,7 +140,7 @@ concept Parser = requires(P p, TokenSpan<typename P::token_type> toks) {
 struct Nothing {
   Nothing();
   Nothing(const char *msg) {
-    if (PARSE_VERBOSE) printf("%s\n", msg);
+    if (PARSE_VERBOSE) Print("{}\n", msg);
   }
 };
 
@@ -398,8 +399,9 @@ inline auto Mark(const A &a) {
 
 
 // Zero or more times.
-// If A accepts the empty sequence, this will
-// loop forever.
+// If A accepts the empty sequence, this would loop
+// forever, so we abort. (And if you are making stateful
+// parsers, you're asking for even more trouble than that!)
 template<Parser A>
 inline auto operator *(const A &a) {
   using in = A::token_type;
@@ -414,6 +416,9 @@ inline auto operator *(const A &a) {
           if (!o.HasValue())
             return Parsed<out>(ret, total_len);
           const size_t one_len = o.Length();
+          CHECK(one_len > 0) << "Grammar bug: operator* may not "
+            "match an empty sequence, since that would lead to "
+            "nontermination.";
           total_len += one_len;
           ret.push_back(o.Value());
           toks = toks.SubSpan(one_len);
@@ -536,131 +541,33 @@ struct MemoizedParser {
   A parser;
 };
 
-
-// Declaring this as a separate struct:
-//  - Allows us to write a requires clause below
-//    (here it would need to reference the class being defined)
-//  - Simpler to capture the state as "this"
-//  - Helps with deducing the F template arg (I don't understand
-//    this part).
-// TODO: I had to fiddle with this to get it to compile with g++
-// and clang. This version is simple but it might not be the
-// most robust?
+// Make a recursive parser. Use like this:
+//  auto parser = Fix<char, char>([](const auto &Self) {
+//      return (Is('(') >> Self << Is(')')) || Is('x');
+//    });
 template<class Token, class Out, class F>
-struct RecursiveParser {
-  using token_type = Token;
-  using out_type = Out;
-
-  RecursiveParser(RecursiveParser &&other) = default;
-  RecursiveParser(const RecursiveParser &other) = default;
-  RecursiveParser &operator=(const RecursiveParser &other) = default;
-
-  /*
-  template<class F_>
-  RecursiveParser(F_ &&f_) : f(std::forward<F_>(f_)) {}
-  */
-  RecursiveParser(const F &f) : f(f) {}
-
-  Parsed<Out> operator()(TokenSpan<Token> toks) const {
-    return f(*this)(toks);
-  }
- private:
-  F f;
-};
-
-template<class Token, class Out, class F>
-requires std::invocable<F, RecursiveParser<Token, Out, F>>
+// requires std::invocable<F, RecursiveParser<Token, Out, F>>
 inline auto Fix(const F &f) {
-  return RecursiveParser<Token, Out, F>(f);
+  struct State {
+    std::function<Parsed<Out>(TokenSpan<Token>)> p_impl;
+  };
+  auto state = std::make_shared<State>();
+  std::weak_ptr<State> weak_state = state;
+
+  // Recursive reference is weak to break cycles.
+  ParserWrapper<Token, Out> p_weak(
+      [weak_state](TokenSpan<Token> toks) -> Parsed<Out> {
+        auto locked = weak_state.lock();
+        CHECK(locked) << "Bug";
+        return locked->p_impl(toks);
+      }, "fix.weak");
+
+  state->p_impl = f(p_weak);
+
+  return ParserWrapper<Token, Out>(
+      [state](TokenSpan<Token> toks) { return state->p_impl(toks); },
+      "fix");
 };
-
-// XXX Note that this object may create cycles of shared_ptr,
-// and thus may leak memory.
-template<bool MEMOIZE,
-         class Token, class Out1, class Out2, class F1, class F2>
-struct RecursiveParsers2 {
-
-  Nothing nothing;
-
-  // template<class F1_, class F2_>
-  // RecursiveParsers2(F1_ &&f1_in, F2_ &&f2_in) :
-  RecursiveParsers2(F1 &&f1_in, F2 &&f2_in) :
-    nothing("RP2 ctor\n"),
-    // f1(new F1(std::forward<F1_>(f1_in))),
-    // f2(new F2(std::forward<F2_>(f2_in))),
-    f1(new F1(f1_in)),
-    f2(new F2(f2_in)),
-    p1(MEMOIZE ?
-       new ParserWrapper<Token, Out1>(
-           MemoizedParser(
-               ParserWrapper<Token, Out1>(
-                   [this](TokenSpan<Token> toks) mutable {
-                     return (*this->f1)(*p1, *p2)(toks);
-                   }, "fix2.1")), "fix2.1.m") :
-       new ParserWrapper<Token, Out1>(
-           [this](TokenSpan<Token> toks) mutable {
-             return (*this->f1)(*p1, *p2)(toks);
-           }, "fix2.1")),
-    p2(MEMOIZE ?
-       new ParserWrapper<Token, Out2>(
-           MemoizedParser(
-               ParserWrapper<Token, Out2>(
-                   [this](TokenSpan<Token> toks) mutable {
-                     return (*this->f2)(*p1, *p2)(toks);
-                   }, "fix2.2")), "fix2.2.m") :
-       new ParserWrapper<Token, Out2>(
-           [this](TokenSpan<Token> toks) mutable {
-             return (*this->f2)(*p1, *p2)(toks);
-           }, "fix2.2")) {
-    if (PARSE_VERBOSE) {
-      printf("in rec2 ctor, %s\n", MEMOIZE ? "memoize" : "no");
-    }
-  }
-
-  static constexpr size_t tuple_size = 2;
-
-  const ParserWrapper<Token, Out1> &Get1() const { return *p1; }
-  const ParserWrapper<Token, Out2> &Get2() const { return *p2; }
-
-  template <std::size_t Idx>
-  auto get() const {
-    if constexpr (Idx == 0) return Get1();
-    else if constexpr (Idx == 1) return Get2();
-    else throw std::out_of_range("Invalid index");
-  }
-
- private:
-  int padding1, padding2, padding3;
-  std::shared_ptr<F1> f1;
-  std::shared_ptr<F2> f2;
-  std::shared_ptr<ParserWrapper<Token, Out1>> p1;
-  std::shared_ptr<ParserWrapper<Token, Out2>> p2;
-};
-
-namespace std {
-template<bool M, class Token, class Out1, class Out2, class F1, class F2>
-struct tuple_size<RecursiveParsers2<M, Token, Out1, Out2, F1, F2>> :
-    integral_constant<size_t, 2> {};
-
-template<bool M, class Token, class Out1, class Out2, class F1, class F2>
-struct tuple_element<0, RecursiveParsers2<M, Token, Out1, Out2, F1, F2>> {
-  using type = ParserWrapper<Token, Out1>;
-};
-
-template<bool M, class Token, class Out1, class Out2, class F1, class F2>
-struct tuple_element<1, RecursiveParsers2<M, Token, Out1, Out2, F1, F2>> {
-  using type = ParserWrapper<Token, Out2>;
-};
-}
-
-template <std::size_t Idx,
-          bool M, class Token, class Out1, class Out2, class F1, class F2>
-inline auto get(const RecursiveParsers2<M, Token, Out1, Out2, F1, F2> &r) {
-  if constexpr (Idx == 0) return r.Get1();
-  else if constexpr (Idx == 1) return r.Get2();
-  else throw std::out_of_range("Invalid index");
-}
-
 
 // Here, f takes two parsers and returns a tuple-like object.
 // const auto &[Expr, Decr] =
@@ -679,17 +586,86 @@ inline auto get(const RecursiveParsers2<M, Token, Out1, Out2, F1, F2> &r) {
 template<class Token, class Out1, class Out2, class F1, class F2>
 // requires ...
 inline auto Fix2(F1 &&f1, F2 &&f2) {
-  return RecursiveParsers2<false, Token, Out1, Out2, F1, F2>(
-      std::forward<F1>(f1),
-      std::forward<F2>(f2));
-};
+  struct State {
+    std::function<Parsed<Out1>(TokenSpan<Token>)> p1_impl;
+    std::function<Parsed<Out2>(TokenSpan<Token>)> p2_impl;
+  };
+  auto state = std::make_shared<State>();
 
+  std::weak_ptr<State> weak_state(state);
+
+  // Make type-erased *weak* references for the recursive calls.
+  ParserWrapper<Token, Out1> p1_weak(
+      [weak_state](TokenSpan<Token> toks) -> Parsed<Out1> {
+        auto locked = weak_state.lock();
+        CHECK(locked) << "Bug: The weak reference was deleted from under us!";
+        return locked->p1_impl(toks);
+      }, "fwd1.weak"
+  );
+
+  ParserWrapper<Token, Out2> p2_weak(
+      [weak_state](TokenSpan<Token> toks) -> Parsed<Out2> {
+        auto locked = weak_state.lock();
+        CHECK(locked) << "Bug: The weak reference was deleted from under us!";
+        return locked->p2_impl(toks);
+      }, "fwd2.weak"
+  );
+
+  // Create the parsers just once, using weak references for
+  // self-reference.
+  state->p1_impl = f1(p1_weak, p2_weak);
+  state->p2_impl = f2(p1_weak, p2_weak);
+
+  // Same idea as above, but these are the real references we return;
+  // these control the actual lifetime. Note the state is captured
+  // by value (shared_ptr).
+  return std::make_tuple(
+      ParserWrapper<Token, Out1>([state](TokenSpan<Token> toks) {
+          return state->p1_impl(toks); },
+      "fwd1"),
+      ParserWrapper<Token, Out2>([state](TokenSpan<Token> toks) {
+          return state->p2_impl(toks); },
+      "fwd2"));
+}
+
+// Just like the previous, but recursive calls are memoized.
 template<class Token, class Out1, class Out2, class F1, class F2>
 // requires ...
 inline auto MemoizedFix2(F1 &&f1, F2 &&f2) {
-  return RecursiveParsers2<true, Token, Out1, Out2, F1, F2>(
-      std::forward<F1>(f1),
-      std::forward<F2>(f2));
+  struct State {
+    std::function<Parsed<Out1>(TokenSpan<Token>)> p1_impl;
+    std::function<Parsed<Out2>(TokenSpan<Token>)> p2_impl;
+  };
+  auto state = std::make_shared<State>();
+
+  std::weak_ptr<State> weak_state(state);
+
+  ParserWrapper<Token, Out1> p1_weak(
+      [weak_state](TokenSpan<Token> toks) -> Parsed<Out1> {
+        auto locked = weak_state.lock();
+        CHECK(locked) << "Bug: The weak reference was deleted from under us!";
+        return locked->p1_impl(toks);
+      }, "fwd1.weak"
+  );
+
+  ParserWrapper<Token, Out2> p2_weak(
+      [weak_state](TokenSpan<Token> toks) -> Parsed<Out2> {
+        auto locked = weak_state.lock();
+        CHECK(locked) << "Bug: The weak reference was deleted from under us!";
+        return locked->p2_impl(toks);
+      }, "fwd2.weak"
+  );
+
+  state->p1_impl = MemoizedParser(f1(p1_weak, p2_weak));
+  state->p2_impl = MemoizedParser(f2(p1_weak, p2_weak));
+
+  return std::make_tuple(
+      ParserWrapper<Token, Out1>([state](TokenSpan<Token> toks) {
+          return state->p1_impl(toks); },
+      "fwd1"),
+      ParserWrapper<Token, Out2>([state](TokenSpan<Token> toks) {
+          return state->p2_impl(toks); },
+      "fwd2"));
 };
 
 // Parses a b a b .... b a.
