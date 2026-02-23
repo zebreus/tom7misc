@@ -40,6 +40,22 @@ struct IsToken {
   }
 };
 
+// Like Separate, but fail with the message if there is another
+// separator (B) at the end (which typically means that the A parser
+// didn't succeed). Can only use safely use this when the grammar of
+// what follows cannot permit a B.
+template<class ParserA, class ParserB>
+auto SeparateGuarded(const ParserA &a, const ParserB &b,
+                   const char *failure_message) {
+  // .. we just try parsing B again at the end. Reparsing B
+  // is not ideal, but it's usually just a single token.
+  return (Separate(a, b) && Opt(b))
+    >[&, failure_message](const auto &p) {
+        CHECK(!p.second.has_value()) << failure_message;
+        return p.first;
+      };
+}
+
 // For built-in identifiers, get their fixity, associativity, and precedence.
 // TODO: Make it possible to declare new fixity.
 [[maybe_unused]]
@@ -557,7 +573,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                   item.item = pool->VarPat(v, pos);
                 } else {
                   CHECK(fixity == Fixity::Infix);
-                  item.binop = [&, v](const Pat *a, const Pat *b) {
+                  item.binop = [&, v, pos](const Pat *a, const Pat *b) {
                       return pool->AppPat(v,
                                           pool->TuplePat({a, b}, pos));
                     };
@@ -938,12 +954,15 @@ const Exp *Parsing::Parse(AstPool *pool,
   //   | g q2 = ee2
   //   | ...
   const auto FunDecl = [&](const auto &Expr) {
+      auto clause =
+        Id && +CurryPattern &&
+        // optional type annotation
+        Opt(IsToken<COLON>() >> TypeExpr) &&
+        (IsToken<EQUALS>() >> Expr);
+
       auto row =
-        (Separate(Id && +CurryPattern &&
-                  // optional type annotation
-                  Opt(IsToken<COLON>() >> TypeExpr) &&
-                  (IsToken<EQUALS>() >> Expr),
-                  IsToken<BAR>()))
+        (SeparateGuarded(clause, IsToken<BAR>(),
+                         "Expected function rows separated by BAR."))
         >OneFunDec;
 
       return
@@ -1002,11 +1021,14 @@ const Exp *Parsing::Parse(AstPool *pool,
     ((IsToken<DATATYPE>() >>
      // Type variables appear in the type language, so don't allow
      // non-type identifiers.
-     (Opt(IsToken<LPAREN>() >> Separate(IdType, IsToken<COMMA>()) <<
+     (Opt(IsToken<LPAREN>() >>
+          SeparateGuarded(IdType, IsToken<COMMA>(),
+                          "In datatype decl, expected tyvar after comma") <<
           IsToken<RPAREN>()) &&
       Separate(
           IdType && (IsToken<EQUALS>() >>
-                     Separate(DatatypeArm, IsToken<BAR>())),
+                     SeparateGuarded(DatatypeArm, IsToken<BAR>(),
+                                     "Expected datatype arm after BAR")),
           IsToken<AND>())))
     >[&](const auto &p) {
         const auto &[otyvars, dts] = p;

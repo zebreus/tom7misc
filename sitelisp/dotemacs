@@ -121,6 +121,10 @@
 
                 (global-set-key [M-down] 'flymake-goto-next-error)
                 (global-set-key [M-up] 'flymake-goto-prev-error)
+                ;; also accept an explicit ESC then arrow key.
+                (global-set-key [?\e down] 'flymake-goto-next-error)
+                (global-set-key [?\e up] 'flymake-goto-prev-error)
+
                 ;; rebind alt-/ to take the quickfix at cursor
                 (global-set-key [?\M-/] 'tom7-eglot-quickfix)
                 (global-set-key [?\M-'] 'code-format-paragraph)

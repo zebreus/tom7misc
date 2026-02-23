@@ -1204,9 +1204,11 @@ static void TestRegressions() {
       return e->decs[0];
     };
 
-  // XXX the issue was a missing = on the second clause. We should
-  // give better error messages than "expected decs..." !
-  static constexpr std::string_view syntax = R"(
+  if (false) {
+    // This should not parse because of the missing =, and
+    // it should give a helpful error message.
+    // We would need EXPECT_DEATH to test it, though.
+    static constexpr std::string_view syntax = R"(
 fun bib-website (obj as {(Website) author}) =
   let
     val authors = bib-parse-authors author
@@ -1215,12 +1217,13 @@ fun bib-website (obj as {(Website) author}) =
     Source { t = Website, authors = authors,
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
-  | bib-website (obj as {(Website) url, organization}) =
+  | bib-website (obj as {(Website) url, organization}) (* = *)
   Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = organization :: nil }
 )";
 
-  const Dec *dec = ParseDec(syntax);
-  CHECK(dec != nullptr);
+    const Dec *dec = ParseDec(syntax);
+    CHECK(dec == nullptr);
+  }
 }
 
 
