@@ -245,8 +245,48 @@ static void TestBasic() {
           return Is('y');
         });
   }
+}
 
+// This is mostly a compilation tests, since the implementation
+// is just C+++++++++y.
+static void TestFixN() {
+  const auto &[I, S, D] =
+    FixN<char, int64_t, std::string, double>(
+        [](const auto &II, const auto &SS, const auto &DD) {
+          return *DD >[&](const std::vector<double> &v) {
+              int64_t i = 0;
+              for (double d : v) {
+                i *= 100;
+                i += d;
+              }
+              return i;
+            };
+        },
+        [](const auto &II, const auto &SS, const auto &DD) {
+          return (Is('i') >> II) >[&](int64_t i) {
+              return std::format("{:03d}", i);
+            };
+        },
+        [](const auto &II, const auto &SS, const auto &DD) {
+          return (Is('s') >> SS) >[&](const std::string &s) {
+              return s.size() * 0.25;
+            };
+        });
 
+  {
+    Parsed<int64_t> po = I(CharSpan(""));
+    CHECK(po.HasValue() && po.Value() == 0) << po.Value();
+  }
+
+  {
+    Parsed<std::string> po = S(CharSpan("i"));
+    CHECK(po.HasValue() && po.Value() == "000") << po.Value();
+  }
+
+  {
+    Parsed<double> po = D(CharSpan("si"));
+    CHECK(po.HasValue() && po.Value() == 0.75) << po.Value();
+  }
 }
 
 static void TestCrashy() {
@@ -579,6 +619,7 @@ int main(int argc, char **argv) {
   TestFixity();
   TestMark();
   TestMemo();
+  TestFixN();
 
   TestStructuredBindings();
 

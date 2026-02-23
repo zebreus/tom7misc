@@ -137,6 +137,7 @@ concept Parser = requires(P p, TokenSpan<typename P::token_type> toks) {
   { p(toks) } -> std::convertible_to<Parsed<typename P::out_type>>;
 };
 
+// Used in debugging to print things in the midst of initializer lists.
 struct Nothing {
   Nothing();
   Nothing(const char *msg) {
@@ -152,7 +153,6 @@ struct ParserWrapper {
     func(other.func) {
     printf("PW ctor const ret\n");
   }
-
   #endif
 
   ParserWrapper(const ParserWrapper&) = default;
@@ -667,6 +667,63 @@ inline auto MemoizedFix2(F1 &&f1, F2 &&f2) {
           return state->p2_impl(toks); },
       "fwd2"));
 };
+
+// Like Fix2, but with an arbitrary number of functions.
+// Each function takes N args, which are the parsers in order.
+// Must explicitly pass the token type and parsed types, but
+// the Fs can typically be deduced.
+//
+// Warning: If you are using this you may be in hell. You
+// may receive millions of miles of error messages for a simple
+// typo! See if you can do it a simpler way?
+template<class Token, class... Outs, class... Fs>
+inline auto FixN(Fs&&... fs) {
+  static_assert(sizeof...(Outs) == sizeof...(Fs),
+      "Must specify an output type for each parser function.");
+
+  // Shared state is N functions.
+  struct State {
+    std::tuple<std::function<Parsed<Outs>(TokenSpan<Token>)>...> impls;
+  };
+  auto state = std::make_shared<State>();
+  std::weak_ptr<State> weak_state = state;
+
+  // 0, 1, 2... N-1
+  constexpr auto indices = std::index_sequence_for<Outs...>{};
+
+  // Just like Fix2, but a tuple of arbitrary size. These
+  // are the parsers that we pass recursively.
+  auto weak_parsers = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+    return std::make_tuple(
+      ParserWrapper<Token, Outs>(
+        [weak_state](TokenSpan<Token> toks) {
+          auto locked = weak_state.lock();
+          CHECK(locked) << "Bug: The weak reference was deleted from under us!";
+          return std::get<Is>(locked->impls)(toks);
+        }, "fixN.weak"
+      )...
+    );
+  }(indices);
+
+  // Tie the knot by creating the tuple of N parsers and assigning them
+  // to the state's tuple. The ... is what repeats this for each function
+  // in the fs pack.
+  // std::apply will pass the weak_parsers unpacked as individual arguments
+  // for each f.
+  state->impls = std::make_tuple( std::apply(fs, weak_parsers)... );
+
+  // Then construct the tuple of parsers for the result, which capture
+  // the state by value (regular shared_ptr).
+  return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+    return std::make_tuple(
+      ParserWrapper<Token, Outs>(
+        [state](TokenSpan<Token> toks) {
+          return std::get<Is>(state->impls)(toks);
+        }, "fixN"
+      )...
+    );
+  }(indices);
+}
 
 // Parses a b a b .... b a.
 // Returns the vector of a's results.
