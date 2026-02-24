@@ -30,10 +30,8 @@ struct InlineRep {
 template<class T, size_t BYTES, size_t N = 1>
 consteval size_t MaxCapacity() {
   if constexpr (sizeof(InlineRep<T, N + 1>) > BYTES) {
-    // If adding one MORE element pushes us over the limit, the current N is the max!
     return std::max(N, size_t(1));
   } else {
-    // Otherwise, check the next size up.
     return MaxCapacity<T, BYTES, N + 1>();
   }
 }
@@ -44,82 +42,16 @@ struct InlineVector {
   static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
   static_assert(std::is_trivially_destructible_v<T>, "T must be trivially destructible");
 
-  static constexpr bool VERBOSE = true;
+  static constexpr bool VERBOSE = false;
 
-  // When externally allocated, we have a bog-standard vector.
-  // size is the number of elements actually stored, and reserved
-  // is the total space available in the alloc.
-  struct AllocRep {
-    // First element of the two representations is shared.
-    // When size < ALLOC_SIZE we always use InlineRep.
-    size_t skip_size;
-    size_t reserved;
-    T *alloc;
-  };
-
-  // Our target is to use up to one cache line.
-  static constexpr size_t BYTES = 64;
-  static_assert(sizeof (AllocRep) <= BYTES, "The allocated representation "
-                "should be smaller than the target size, or else we're "
-                "missing an opportunity to store more inline");
-
-  static constexpr size_t MAX_INLINE =
-    internal::MaxCapacity<T, BYTES>();
-  static_assert(MAX_INLINE > 0);
-
-  inline bool HasAlloc() const {
-    return GetAllocated(u.size_field);
-  }
-
-  InlineVector() {
-    #ifndef NDEBUG
-    memset(&u, 0, sizeof (u));
-    #endif
-    u.size_field = MakeSizeField(0, false);
-  }
-  InlineVector(size_t n, T init = T()) : InlineVector() {
-    EnsureAlloc(n);
-    SetSize(n);
-    T *d = data();
-    for (int i = 0; i < n; i++) {
-      d[i] = init;
-    }
-  }
-
-  InlineVector(const InlineVector &other) : InlineVector() {
-    const size_t n = other.size();
-    EnsureAlloc(n);
-    SetSize(n);
-    memcpy(data(), other.data(), sizeof (T) * n);
-  }
-
-  InlineVector &operator=(const InlineVector &other) {
-    if (this == &other) return *this;
-    const size_t n = other.size();
-    EnsureAlloc(n);
-    SetSize(n);
-    memcpy(data(), other.data(), sizeof (T) * n);
-    return *this;
-  }
-
-  InlineVector(InlineVector &&other) : InlineVector() {
-    // Take over the alloc (if any).
-    memcpy(u, other.u, sizeof (u));
-    #ifndef NDEBUG
-    memset(&other.u, 0, sizeof (u));
-    #endif
-    other.u.size_field = MakeSizeField(0, false);
-  }
-
-  InlineVector &operator=(InlineVector &&other) {
-    if (this == &other) return *this;
-    memcpy(u, other.u, sizeof (u));
-    #ifndef NDEBUG
-    memset(&other.u, 0, sizeof (u));
-    #endif
-    other.u.size_field = MakeSizeField(0, false);
-    return *this;
-  }
+  // Value semantics.
+  inline InlineVector();
+  inline InlineVector(size_t n, T init = T());
+  inline InlineVector(const InlineVector &other);
+  inline InlineVector &operator=(const InlineVector &other);
+  inline InlineVector(InlineVector &&other);
+  inline InlineVector &operator=(InlineVector &&other);
+  inline ~InlineVector();
 
   void reserve(size_t n) {
     if (n > capacity()) {
@@ -162,49 +94,12 @@ struct InlineVector {
     }
   }
 
-  void push_back(T t) {
-    const size_t cur = size();
-    size_t cap = capacity();
-
-    if (cur == cap) {
-      // When reaching capacity, grow by a factor of 1.5.
-      size_t new_cap = cap + (cap >> 1);
-      if constexpr (MAX_INLINE == 1) {
-        // Capacity cannot be less than MAX_INLINE, but if
-        // the capacity is exactly 1, then we need to make
-        // sure that we don't round down to zero growth.
-        if (new_cap == cap) new_cap++;
-      }
-      EnsureAlloc(new_cap);
-      cap = new_cap;
-    }
-
-    DCHECK(cur < cap);
-    Print("Write {} to idx {}\n", t, cur);
-    data()[cur] = t;
-    // As a small optimization, we don't unpack and repack
-    // the size field, assuming that we can never increment
-    // our way to overflowing into the high bit.
-    u.size_field++;
-  }
+  inline void push_back(T t);
 
   // TODO: Insert
 
-  T *data() {
-    if (HasAlloc()) {
-      return u.ar.alloc;
-    } else {
-      return u.ir.buf.data();
-    }
-  }
-
-  const T *data() const {
-    if (HasAlloc()) {
-      return u.ar.alloc;
-    } else {
-      return u.ir.buf.data();
-    }
-  }
+  inline T *data();
+  inline const T *data() const;
 
   const T &operator [](size_t idx) const {
     return data()[idx];
@@ -212,14 +107,6 @@ struct InlineVector {
 
   T &operator [](size_t idx) {
     return data()[idx];
-  }
-
-  ~InlineVector() {
-    if (HasAlloc()) {
-      free(u.ar.alloc);
-      u.ar.alloc = nullptr;
-    }
-    u.size_field = MakeSizeField(0, false);
   }
 
   bool operator==(const InlineVector &other) const {
@@ -234,12 +121,39 @@ struct InlineVector {
   using const_iterator = const T*;
   using iterator = T*;
 
-  const_iterator *begin() const { return data(); }
-  const_iterator *end() const { return data() + size(); }
-  iterator *begin() { return data(); }
-  iterator *end() { return data() + size(); }
+  const_iterator begin() const { return data(); }
+  const_iterator end() const { return data() + size(); }
+  iterator begin() { return data(); }
+  iterator end() { return data() + size(); }
+
+  static constexpr size_t MaxInline() { return MAX_INLINE; }
 
  private:
+  // When externally allocated, we have a bog-standard vector.
+  // size is the number of elements actually stored, and reserved
+  // is the total space available in the alloc.
+  struct AllocRep {
+    // First element of the two representations is shared.
+    // When size < ALLOC_SIZE we always use InlineRep.
+    size_t skip_size;
+    size_t reserved;
+    T *alloc;
+  };
+
+  // Our target is to use up to one cache line.
+  static constexpr size_t BYTES = 64;
+  static_assert(sizeof (AllocRep) <= BYTES, "The allocated representation "
+                "should be smaller than the target size, or else we're "
+                "missing an opportunity to store more inline");
+
+  static constexpr size_t MAX_INLINE =
+    internal::MaxCapacity<T, BYTES>();
+  static_assert(MAX_INLINE > 0);
+
+  inline bool HasAlloc() const {
+    return GetAllocated(u.size_field);
+  }
+
   static constexpr int ALLOCATED_BIT = sizeof (size_t) * 8 - 1;
   static constexpr size_t SIZE_MASK = ~(size_t{1u} << ALLOCATED_BIT);
 
@@ -312,6 +226,129 @@ struct InlineVector {
     InlineRep ir;
   } u;
 };
+
+
+// Template implementations follow.
+
+template<class T>
+InlineVector<T>::InlineVector() {
+  #ifndef NDEBUG
+  memset(&u, 0, sizeof (u));
+  #endif
+  u.size_field = MakeSizeField(0, false);
+}
+
+template<class T>
+InlineVector<T>::InlineVector(size_t n, T init) :
+  InlineVector() {
+  EnsureAlloc(n);
+  SetSize(n);
+  T *d = data();
+  for (size_t i = 0; i < n; i++) {
+    d[i] = init;
+  }
+}
+
+template<class T>
+InlineVector<T>::InlineVector(const InlineVector &other) : InlineVector() {
+  const size_t n = other.size();
+  EnsureAlloc(n);
+  SetSize(n);
+  memcpy(data(), other.data(), sizeof (T) * n);
+}
+
+template<class T>
+auto InlineVector<T>::operator=(const InlineVector &other) -> InlineVector & {
+  if (this == &other) return *this;
+  const size_t n = other.size();
+  EnsureAlloc(n);
+  SetSize(n);
+  memcpy(data(), other.data(), sizeof (T) * n);
+  return *this;
+}
+
+template<class T>
+InlineVector<T>::InlineVector(InlineVector &&other) : InlineVector() {
+  // Take over the alloc (if any).
+  memcpy(&u, &other.u, sizeof (u));
+  #ifndef NDEBUG
+  memset(&other.u, 0, sizeof (u));
+  #endif
+  other.u.size_field = MakeSizeField(0, false);
+}
+
+template<class T>
+auto InlineVector<T>::operator=(InlineVector &&other) -> InlineVector & {
+  if (this == &other) return *this;
+
+  if (HasAlloc()) {
+    free(u.ar.alloc);
+    u.ar.alloc = nullptr;
+  }
+
+  memcpy(&u, &other.u, sizeof (u));
+  #ifndef NDEBUG
+  memset(&other.u, 0, sizeof (u));
+  #endif
+  other.u.size_field = MakeSizeField(0, false);
+  return *this;
+}
+
+template<class T>
+InlineVector<T>::~InlineVector() {
+  if (HasAlloc()) {
+    free(u.ar.alloc);
+    u.ar.alloc = nullptr;
+  }
+  u.size_field = MakeSizeField(0, false);
+}
+
+
+template<class T>
+void InlineVector<T>::push_back(T t) {
+  const size_t cur = size();
+  size_t cap = capacity();
+
+  if (cur == cap) {
+    // When reaching capacity, grow by a factor of 1.5.
+    size_t new_cap = cap + (cap >> 1);
+    if constexpr (MAX_INLINE == 1) {
+      // Capacity cannot be less than MAX_INLINE, but if
+      // the capacity is exactly 1, then we need to make
+      // sure that we don't round down to zero growth.
+      if (new_cap == cap) new_cap++;
+    }
+    EnsureAlloc(new_cap);
+    cap = new_cap;
+  }
+
+  DCHECK(cur < cap);
+  if (VERBOSE)
+    Print("Write {} to idx {}\n", t, cur);
+  data()[cur] = t;
+  // As a small optimization, we don't unpack and repack
+  // the size field, assuming that we can never increment
+  // our way to overflowing into the high bit.
+  u.size_field++;
+}
+
+template<class T>
+T *InlineVector<T>::data() {
+  if (HasAlloc()) {
+    return u.ar.alloc;
+  } else {
+    return u.ir.buf.data();
+  }
+}
+
+template<class T>
+const T *InlineVector<T>::data() const {
+  if (HasAlloc()) {
+    return u.ar.alloc;
+  } else {
+    return u.ir.buf.data();
+  }
+}
 
 
 #endif
