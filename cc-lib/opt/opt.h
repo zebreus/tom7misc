@@ -121,15 +121,17 @@ Opt::Minimize(
     int random_seed) {
   static_assert(N > 0);
 
+  using Func = std::function<double(const std::array<double, N> &)>;
+
   auto wrap_f = [](int n_, const double *args, void* data) -> double {
-      auto *f = (std::function<double(const std::array<double, N> &)> *)data;
+      auto *f = (const Func *)data;
       std::array<double, N> in;
       for (int i = 0; i < N; i++) in[i] = args[i];
       return (*f)(in);
     };
   std::array<double, N> out;
   double out_v = 0.0;
-  Opt::internal_minimize(N, +wrap_f, (void*)&f,
+  Opt::internal_minimize(N, +wrap_f, const_cast<Func*>(&f),
                          lower_bound.data(), upper_bound.data(),
                          out.data(), &out_v, iters, depth, attempts,
                          random_seed);

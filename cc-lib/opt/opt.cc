@@ -3913,13 +3913,15 @@ Opt::Minimize(int n,
               int depth,
               int attempts,
               int random_seed) {
+  using Func = std::function<double(std::span<const double>)>;
+
   auto wrap_f = [](int n, const double *args, void* data) -> double {
-      auto *f = (std::function<double(std::span<const double>)> *)data;
+      const auto *f = (const Func *)data;
       return (*f)(std::span(args, n));
     };
   std::vector<double> out(n);
   double out_v = 0.0;
-  Opt::internal_minimize(n, +wrap_f, (void*)&f,
+  Opt::internal_minimize(n, +wrap_f, const_cast<Func*>(&f),
                          lower_bound.data(), upper_bound.data(),
                          out.data(), &out_v, iters, depth, attempts,
                          random_seed);
