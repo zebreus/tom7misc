@@ -18,7 +18,7 @@ httpi.pdf : httpi.bovex httpi.bib $(BOVEX_LIB) $(ALL_IMAGES) makefile
 profile: bovex.prof
 	go run github.com/google/pprof@latest -http=0.0.0.0:8080 $(BOVEX)/bovex.exe bovex.prof
 
-bovex.prof :
+bovex.prof : httpi.bovex $(BOVEX)/bovex.exe
 	CPUPROFILE=bovex.prof LD_PRELOAD=libprofiler.so.0 $(BOVEX)/bovex.exe -I . -v httpi.bovex -o httpi.pdf
 
 clean :

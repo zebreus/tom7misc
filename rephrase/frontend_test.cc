@@ -266,18 +266,21 @@ static void TestSimplify() {
 
   {
     const Program pgm = Run("case 7 of x => x | y => 8 | z => 9");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7) << "Should be able to simplify this "
       "to just an integer.";
   }
 
   {
     const Program pgm = Run("case (7, 7) of (x, y) => x");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7);
   }
 
   {
     const Program pgm = Run("case {d = (2, 7), a = 3, c = \"hi\"} of\n"
                             "  {d = (_, x), a = a, c = _} => x\n");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7);
   }
 
@@ -287,6 +290,7 @@ static void TestSimplify() {
                             " | 2 => 222\n"
                             " | 3 => 333\n"
                             " | _ => 666");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 222);
   }
 
@@ -295,6 +299,7 @@ static void TestSimplify() {
                             "   (1, 2, 3) => 7\n"
                             " | _ => 666\n");
     // This exercises known value optimizations.
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7);
   }
 
@@ -303,6 +308,7 @@ static void TestSimplify() {
                             "   \"world\" => 1234\n"
                             " | \"hello\" => 7\n"
                             " | _ => 9\n");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7);
   }
 
@@ -314,6 +320,7 @@ static void TestSimplify() {
                             "    AAA x => x\n"
                             "  | BBB s => 666\n"
                             "end\n");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7);
   }
 
@@ -324,6 +331,7 @@ static void TestSimplify() {
                             "in\n"
                             "  7\n"
                             "end\n");
+    CHECK(pgm.body->type == ExpType::INT);
     CHECK(pgm.body->Int() == 7) << "Tests whether we can drop an "
       "unused polymorphic value (val binding).";
   }

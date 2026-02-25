@@ -541,6 +541,9 @@ struct AstPool {
       return guess;
     }
 
+    if (v.empty())
+      return &void_type;
+
     Type *ret = NewType(TypeType::SUM);
     ret->str_children = std::move(v);
     SortLabeled(&ret->str_children);
@@ -1287,6 +1290,7 @@ struct AstPool {
   const Type obj_type = Type(TypeType::OBJ);
   const Type layout_type = Type(TypeType::LAYOUT);
   const Type unit_type = Type(TypeType::RECORD);
+  const Type void_type = Type(TypeType::SUM);
 
   const Exp unit_exp = Exp(ExpType::RECORD);
 

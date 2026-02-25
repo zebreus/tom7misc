@@ -1,3 +1,8 @@
+25 Feb 2026 (r6946)
+
+ * Performance improvements in simplification phase (smarter
+   management of free variable counts). About a 6x speedup!
+
 23 Feb 2026 (r6940)
 
  * Performance and correctness improvements in parser, mostly
@@ -9,7 +14,7 @@
  * Can write object and object patterns with no object type,
    like {() }, as god intended.
 
- * Approximatley 6x speedup to the optimization phase.
+ * Approximately 6x speedup to the optimization phase.
 
 16 Feb 2026 (r6926)
 

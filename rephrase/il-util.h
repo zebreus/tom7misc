@@ -26,6 +26,18 @@ struct ILUtil {
   static bool IsExpVarFree(const Exp *e, const std::string &x);
   static int ExpVarCount(const Exp *e, const std::string &x);
 
+  // Get the set of all distinct expression variables (and/or type
+  // variables, etc.) in the program. This includes binding sites and
+  // use. This is is for creating string tables for e.g. bit-set
+  // representations. Of course, if you alpha-vary anything
+  // (which happens during substitution) then the set will no longer
+  // be accurate.
+  static void GetUniverse(
+      const Program &program,
+      // If null, ignored (and more efficient).
+      std::unordered_set<std::string> *exp_vars,
+      std::unordered_set<std::string> *typ_vars);
+
   // [e1/x]e2. Avoids capture.
   static const Exp *SubstExp(AstPool *pool,
                              const Exp *e1, const std::string &x,

@@ -27,11 +27,12 @@
 #include "il-typed-pass.h"
 #include "il-util.h"
 #include "il.h"
+#include "inline-vector.h"
 #include "primop.h"
 #include "progress.h"
+#include "string-table.h"
 #include "utf8.h"
 #include "util.h"
-#include "inline-vector.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -2069,7 +2070,6 @@ struct CaseOfCasePass : public il::TypedPass<> {
     return TypedPass::DoSumCase(G, obj, arms, def, guess);
   }
 
-
  private:
   const uint64_t opts = 0;
   ProgressRecorder *progress = nullptr;
@@ -2078,22 +2078,136 @@ struct CaseOfCasePass : public il::TypedPass<> {
 // This pass maintains the variable use count map, whose
 // main purpose is to allow us to remove dead bindings or
 // inline expressions that are used just once.
-struct VarUsesPass : public il::Pass<> {
+//
+// The uses map should accumulate additional uses and
+// be treated as an output (return value) for the caller.
+// Functions that bind variables may mutate and restore it
+// to account for shadowing.
+//
+// We use a bit set to represent the variable counts:
+// One for "is used once" and one for "is used at least twice".
+struct Uses {
+  Uses(const StringTable *table) : used(table), multi(table) {}
+
+  void AddUse(const std::string &x) {
+    if (used.contains(x)) {
+      multi.insert(x);
+    } else {
+      // PERF: Test-and-set
+      used.insert(x);
+    }
+  }
+
+  // e.g. when exiting the binding
+  void ClearUses(const std::string &x) {
+    used.erase(x);
+    multi.erase(x);
+  }
+
+  bool IsUsed(const std::string &x) const {
+    return used.contains(x);
+  }
+
+  bool IsMultiUse(const std::string &x) const {
+    return multi.contains(x);
+  }
+
+  struct Restorer;
+
+  // Because some bindings are optional but it's
+  // awkward to make an optional Restorer binding,
+  // x can be empty or null (which then does nothing).
+  Restorer Shadow(const std::string *x) {
+    if (x != nullptr && x->empty()) x = nullptr;
+    Restorer rest(this, x);
+    if (x != nullptr)
+      ClearUses(*x);
+    return rest;
+  }
+
+  // Restores the previous state of the variable in
+  // its destructor.
+  struct Restorer {
+    Restorer(Uses *parent, const std::string *x) :
+      parent(parent), x(x) {
+      if (parent != nullptr && x != nullptr) {
+        old_multi = parent->IsMultiUse(*x);
+        old_used = old_multi || parent->IsUsed(*x);
+      }
+    }
+
+    ~Restorer() {
+      if (parent != nullptr && x != nullptr) {
+        if (old_used) parent->used.insert(*x);
+        if (old_multi) parent->multi.insert(*x);
+      }
+    }
+
+    // Move-only, to prevent double restores.
+    Restorer(Restorer &&other) {
+      parent = other.parent;
+      x = other.x;
+      old_used = other.old_used;
+      old_multi = other.old_multi;
+      other.parent = nullptr;
+    }
+
+    Restorer &operator =(Restorer &&other) {
+      if (this == &other) return *this;
+      parent = other.parent;
+      x = other.x;
+      old_used = other.old_used;
+      old_multi = other.old_multi;
+      other.parent = nullptr;
+    }
+
+   private:
+    Restorer(const Restorer &) = delete;
+    void operator =(const Restorer &) = delete;
+
+    Uses *parent = nullptr;
+    const std::string *x = nullptr;
+    bool old_used = false, old_multi = false;
+  };
+
+ private:
+  // PERF: We have to do multiple lookups in several of these. Would be
+  // better if we had lower-level access.
+  StringSet used;
+  StringSet multi;
+};
+
+struct VarUsesPass : public il::Pass<Uses *> {
   VarUsesPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {}
 
+  const Type *DoType(const Type *t, Uses *uses) override {
+    // Types are not changed.
+    return t;
+  }
+
   const Exp *DoLet(const std::vector<std::string> &tyvars,
                    const std::string &x,
-                   const Exp *rhs,
-                   const Exp *body,
-                   const Exp *guess) override {
+                   const Exp *rhs_in,
+                   const Exp *body_in,
+                   const Exp *guess,
+                   Uses *uses) override {
 
-    // PERF: Don't compute this for every LET!
-    int count = ILUtil::ExpVarCount(body, x);
+    // RHS is not under binding.
+    const Exp *rhs = DoExp(rhs_in, uses);
 
-    if ((opts & Simplification::O_DEAD_VARS) && count == 0) {
+    Uses::Restorer re = uses->Shadow(&x);
+    DCHECK(uses->IsUsed(x));
+
+    const Exp *body = DoExp(body_in, uses);
+    // Now we have up-to-date use counts in the body.
+
+    bool x_multi = uses->IsMultiUse(x);
+    bool x_used = x_multi || uses->IsUsed(x);
+
+    if ((opts & Simplification::O_DEAD_VARS) && !x_used) {
       Simplified("remove unused binding");
       if (VERBOSE) {
         Print("  Unused var is " APURPLE("{}") "\n", x);
@@ -2109,38 +2223,46 @@ struct VarUsesPass : public il::Pass<> {
         }
       }
 
-      return pool->Seq({DoExp(rhs)}, DoExp(body));
+      // Note: Substitution may have performed alpha-renaming in these
+      // (making them incompatible with our string tables), but
+      // we are done with them at this point.
+      return pool->Seq({rhs}, body);
     }
 
     const bool small_value = IsSmallValue(rhs);
-    const bool effectless = small_value || IsEffectless(rhs);
 
-    if ((opts & Simplification::O_INLINE_EXP) && count <= 1 && effectless) {
-      // Inline any effectless expression that occurs just once,
-      // regardless of its size.
-      Simplified("inlined single-use binding");
-      if (VERBOSE) {
-        std::string ts = tyvars.empty() ? "" :
-          std::format(", tyvars (" ABLUE("{}") ")",
-                      Util::Join(tyvars, ","));
-        Print("  Inlined var is " APURPLE("{}") "{}\n", x, ts);
+    if (opts & Simplification::O_INLINE_EXP) {
+      // We can inline an expression of any size if it's just used
+      // once, as long as we can move it safely wrt effects.
+      if (!x_multi) {
+        const bool effectless = small_value || IsEffectless(rhs);
+
+        if (effectless) {
+          // Inline any effectless expression that occurs just once,
+          // regardless of its size.
+          Simplified("inlined single-use binding");
+          if (VERBOSE) {
+            std::string ts = tyvars.empty() ? "" :
+              std::format(", tyvars (" ABLUE("{}") ")",
+                          Util::Join(tyvars, ","));
+            Print("  Inlined var is " APURPLE("{}") "{}\n", x, ts);
+          }
+          return ILUtil::SubstPolyExp(pool, tyvars, rhs, x, body);
+        }
       }
-      return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
+
+      // TODO: support inlining of polymorphic values.
+      if (small_value && tyvars.empty()) {
+        Simplified("inlined small value");
+        if (VERBOSE) {
+          Print("  Inlined var is " APURPLE("{}") " = {}\n",
+                x, ExpStringShort(rhs));
+        }
+        return ILUtil::SubstExp(pool, rhs, x, body);
+      }
     }
 
-    // TODO: support inlining of polymorphic values.
-    if ((opts & Simplification::O_INLINE_EXP) &&
-        small_value && tyvars.empty()) {
-      Simplified("inlined small value");
-      const Exp *value = DoExp(rhs);
-      if (VERBOSE) {
-        Print("  Inlined var is " APURPLE("{}") " = {}\n",
-              x, ExpStringShort(value));
-      }
-      return ILUtil::SubstExp(pool, value, x, DoExp(body));
-    }
-
-    return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
+    return pool->Let(tyvars, x, rhs, body, guess);
   }
 
   // For fn expressions, if the function's self variable is not used,
@@ -2148,25 +2270,84 @@ struct VarUsesPass : public il::Pass<> {
   const Exp *DoFn(const std::string &self,
                   const std::string &x,
                   const Type *arrow_type,
-                  const Exp *body,
-                  const Exp *guess) override {
+                  const Exp *body_in,
+                  const Exp *guess,
+                  Uses *uses) override {
+
+    Uses::Restorer r1 = uses->Shadow(&self);
+    Uses::Restorer r2 = uses->Shadow(&x);
+
+    const Exp *body = DoExp(body_in, uses);
+
     if ((opts & Simplification::O_MAKE_NONRECURSIVE) &&
-        !self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+        !self.empty() && !uses->IsUsed(self)) {
       Simplified("remove recursive fn var");
       if (VERBOSE) {
         Print("Removed var is " APURPLE("{}") "\n", self);
       }
-      return pool->Fn("", x, DoType(arrow_type), DoExp(body), guess);
+      return pool->Fn("", x, DoType(arrow_type, uses), body, guess);
     }
 
-    return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
+    return pool->Fn(self, x, DoType(arrow_type, uses), body, guess);
   }
 
+  const Exp *DoVar(const std::vector<const Type *> &ts,
+                   const std::string &v,
+                   const Exp *guess,
+                   Uses *uses) override {
+    // Note: This assumes DoType does nothing.
+    uses->AddUse(v);
+    return guess;
+  }
+
+  const Exp *DoSumCase(
+      const Exp *obj_in,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms_in,
+      const Exp *def_in,
+      const Exp *guess,
+      Uses *uses) override {
+    const Exp *obj = DoExp(obj_in, uses);
+
+    std::vector<std::tuple<std::string, std::string, const Exp *>> arms;
+    arms.reserve(arms_in.size());
+    for (const auto &[s, x, arm_in] : arms_in) {
+      Uses::Restorer r = uses->Shadow(&x);
+      arms.emplace_back(s, x, DoExp(arm_in, uses));
+    }
+    const Exp *def = DoExp(def_in, uses);
+    return pool->SumCase(obj, arms, def, guess);
+  }
+
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs_in,
+      const Exp *body_in, const Exp *guess, Uses *uses) override {
+    const Exp *rhs = DoExp(rhs_in, uses);
+    Uses::Restorer r = uses->Shadow(&x);
+    const Exp *body = DoExp(body_in, uses);
+    return pool->Unpack(alpha, x, rhs, body, guess);
+  }
+
+
+  Program WholeProgram(const Program &program) {
+    // All exp vars mentioned.
+    // Once we do this we have to be careful about
+    // alpha-variation (and thus substitution), since that
+    // changes the name of bound variables.
+    std::unordered_set<std::string> exp_universe;
+    ILUtil::GetUniverse(program, &exp_universe, nullptr);
+
+    StringTable exp_table(exp_universe);
+    Uses uses(&exp_table);
+
+    return Pass::DoProgram(program, &uses);
+  }
+
+ private:
   void Simplified(const char *msg) {
     progress->Record(msg);
   }
 
- private:
   const uint64_t opts = 0;
   ProgressRecorder *progress = nullptr;
 };
@@ -2212,8 +2393,17 @@ Program Simplification::Simplify(const Program &program_in,
       O_DEAD_VARS | O_INLINE_EXP | O_MAKE_NONRECURSIVE;
 
     if (opts & ANY_VAR_USE) {
+      constexpr bool DEBUG_VAR_USE = false;
       if (VERBOSE) Print(AWHITE("Var uses") ".\n");
-      program = var_uses.DoProgram(program);
+      if (VERBOSE && DEBUG_VAR_USE) {
+        Print(ACYAN("Before var uses:") "\n"
+              "{}\n", ProgramString(program));
+      }
+      program = var_uses.WholeProgram(program);
+      if (VERBOSE && DEBUG_VAR_USE) {
+        Print(ACYAN("After var uses:") "\n"
+              "{}\n", ProgramString(program));
+      }
     }
 
     constexpr uint64_t ANY_KNOWN =

@@ -720,6 +720,138 @@ std::unordered_set<std::string> ILUtil::FreeTypeVarsInExp(const Exp *e) {
   return vars;
 }
 
+namespace {
+struct UniversePass : public Pass<> {
+  using Pass::Pass;
+
+  // Here we are modifying the member sets (if non-null). We want to
+  // find binding sites but we aren't managing scope.
+  // Since we know that this pass does nothing, we can just always return
+  // the guess instead of calling constructors.
+
+  // Not owned, and may be null.
+  std::unordered_set<std::string> *exp_vars;
+  std::unordered_set<std::string> *typ_vars;
+
+  UniversePass(
+      AstPool *pool,
+      std::unordered_set<std::string> *exp_vars,
+      std::unordered_set<std::string> *typ_vars) :
+    Pass(pool),
+    exp_vars(exp_vars),
+    typ_vars(typ_vars) {}
+
+  void AddExpVar(const std::string &s) {
+    if (exp_vars != nullptr) exp_vars->insert(s);
+  }
+
+  void AddTypVar(const std::string &s) {
+    if (typ_vars != nullptr) typ_vars->insert(s);
+  }
+
+  const Type *DoType(const Type *guess) override {
+    // If we aren't looking for type vars, we don't need to
+    // recurse, since exp vars can't appear in types.
+    CHECK(typ_vars == nullptr) << "Unimplemented, but this "
+      "is easy!";
+    if (typ_vars == nullptr) return guess;
+    return Pass::DoType(guess);
+  }
+
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
+                   const std::string &x,
+                   const Exp *rhs,
+                   const Exp *body,
+                   const Exp *guess) override {
+    if (typ_vars != nullptr)
+      for (const std::string &a : tyvars)
+        AddTypVar(a);
+    AddExpVar(x);
+    DoExp(rhs);
+    DoExp(body);
+    return guess;
+  }
+
+  const Exp *DoFn(const std::string &self,
+                  const std::string &x,
+                  const Type *arrow_type,
+                  const Exp *body,
+                  const Exp *guess) override {
+    if (!self.empty()) {
+      AddExpVar(self);
+    }
+    AddExpVar(x);
+    DoType(arrow_type);
+    DoExp(body);
+    return guess;
+  }
+
+  const Exp *DoVar(const std::vector<const Type *> &ts,
+                   const std::string &v,
+                   const Exp *guess) override {
+    for (const Type *t : ts) {
+      DoType(t);
+    }
+    AddExpVar(v);
+    return guess;
+  }
+
+  const Exp *DoSumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    DoExp(obj);
+    for (const auto &[s, x, arm] : arms) {
+      AddExpVar(x);
+      DoExp(arm);
+    }
+    DoExp(def);
+    return guess;
+  }
+
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess) override {
+    AddTypVar(alpha);
+    AddExpVar(x);
+    DoExp(rhs);
+    DoExp(body);
+    return guess;
+  }
+
+  Program DoProgram(const Program &program) override {
+    if (typ_vars != nullptr) {
+      for (const Global &g : program.globals) {
+        for (const std::string &a : g.tyvars) {
+          AddTypVar(a);
+        }
+      }
+    }
+
+    return Pass::DoProgram(program);
+  }
+
+};
+}
+
+
+void ILUtil::GetUniverse(
+    const Program &program,
+    // If null, ignored (and more efficient).
+    std::unordered_set<std::string> *exp_vars,
+    std::unordered_set<std::string> *typ_vars) {
+  if (exp_vars == nullptr && typ_vars == nullptr)
+    return;
+
+  // Nothing actually allocated, but we need one for Pass.
+  AstPool temp;
+  UniversePass pass(&temp, exp_vars, typ_vars);
+  (void)pass.DoProgram(program);
+}
+
+
 std::string ILUtil::VarSetString(const std::unordered_set<std::string> &s) {
   std::vector<std::string> v(s.begin(), s.end());
   std::sort(v.begin(), v.end());
