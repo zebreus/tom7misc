@@ -8,6 +8,7 @@
 #include "context.h"
 #include "primop.h"
 #include "il.h"
+#include "span-util.h"
 
 namespace il {
 
@@ -171,13 +172,16 @@ Initial::Initial(AstPool *pool) {
     {"node", pool->Fn("", "a", node_type1,
                       pool->Fn("", "l", node_type2,
                                pool->Node(pool->Var({}, "a"),
-                                          {pool->Var({}, "l")}))), node_type1},
+                                          Span{pool->Var({}, "l")}))),
+     node_type1},
     {"^^",
      pool->Fn("", "r", layout_cat_arrow,
               pool->Node(
                   pool->Object({}),
-                  {pool->Project("1", lcat_record_type, pool->Var({}, "r")),
-                   pool->Project("2", lcat_record_type, pool->Var({}, "r"))})),
+                  Span{
+                    pool->Project("1", lcat_record_type, pool->Var({}, "r")),
+                    pool->Project("2", lcat_record_type, pool->Var({}, "r"))
+                  })),
      layout_cat_arrow},
   };
 

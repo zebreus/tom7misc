@@ -1,6 +1,7 @@
 
 #include "simplification.h"
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -30,6 +31,7 @@
 #include "progress.h"
 #include "utf8.h"
 #include "util.h"
+#include "inline-vector.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -305,11 +307,11 @@ struct PeepholePass : public il::Pass<> {
                        const std::vector<const Type *> &ts,
                        const std::vector<const Exp *> &es,
                        const Exp *guess) override {
-    std::vector<const Type *> tts;
+    InlineVector<const Type *> tts;
     tts.reserve(ts.size());
     for (const Type *t : ts) tts.push_back(DoType(t));
 
-    std::vector<const Exp *> ees;
+    InlineVector<const Exp *> ees;
     ees.reserve(es.size());
     for (const Exp *e : es) ees.push_back(DoExp(e));
 
@@ -473,13 +475,17 @@ struct PeepholePass : public il::Pass<> {
         if (ees[0]->type == ExpType::STRING &&
             ees[0]->String().empty()) {
           Simplified("string compare against empty");
-          return pool->Primapp(Primop::STRING_EMPTY, {}, {ees[1]});
+          return pool->Primapp(Primop::STRING_EMPTY,
+                               {},
+                               Span{ees[1]});
         }
 
         if (ees[1]->type == ExpType::STRING &&
             ees[1]->String().empty()) {
           Simplified("string compare against empty");
-          return pool->Primapp(Primop::STRING_EMPTY, {}, {ees[0]});
+          return pool->Primapp(Primop::STRING_EMPTY,
+                               {},
+                               Span{ees[0]});
         }
         break;
 
@@ -839,25 +845,6 @@ struct PeepholePass : public il::Pass<> {
     return pool->Primapp(po, tts, ees, guess);
   }
 
-  // For fn expressions, if the function's self variable is not used,
-  // it is not actually recursive.
-  const Exp *DoFn(const std::string &self,
-                  const std::string &x,
-                  const Type *arrow_type,
-                  const Exp *body,
-                  const Exp *guess) override {
-    if ((opts & Simplification::O_MAKE_NONRECURSIVE) &&
-        !self.empty() && !ILUtil::IsExpVarFree(body, self)) {
-      Simplified("remove recursive fn var");
-      if (VERBOSE) {
-        Print("Removed var is " APURPLE("{}") "\n", self);
-      }
-      return pool->Fn("", x, DoType(arrow_type), DoExp(body), guess);
-    }
-
-    return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
-  }
-
   const Exp *DoNode(const Exp *attrs,
                     const std::vector<const Exp *> &v,
                     const Exp *guess) override {
@@ -874,7 +861,7 @@ struct PeepholePass : public il::Pass<> {
           return &es[0]->String();
         };
 
-      std::vector<const Exp *> vv;
+      InlineVector<const Exp *> vv;
       std::function<void(const Exp *)> Rec =
         [this, &GetLayoutString, &vv, &Rec](const Exp *ee) {
           const Exp *e = DoExp(ee);
@@ -889,7 +876,7 @@ struct PeepholePass : public il::Pass<> {
               vv.push_back(
                   pool->Primapp(Primop::STRING_TO_LAYOUT,
                                 {},
-                                {pool->String(*prevs + *s)}));
+                                Span{pool->String(*prevs + *s)}));
             }
           } else if (e->type == ExpType::NODE) {
             const auto &[ca, cc] = e->Node();
@@ -930,9 +917,13 @@ struct PeepholePass : public il::Pass<> {
 
   const Exp *DoLet(const std::vector<std::string> &tyvars,
                    const std::string &x,
-                   const Exp *rhs,
-                   const Exp *body,
+                   const Exp *rhs_in,
+                   const Exp *body_in,
                    const Exp *guess) override {
+
+    const Exp *rhs = DoExp(rhs_in);
+    const Exp *body = DoExp(body_in);
+
     if ((opts & Simplification::O_ETA_CONTRACT) &&
         body->type == ExpType::VAR) {
       const auto &[vtv, xx] = body->Var();
@@ -952,62 +943,14 @@ struct PeepholePass : public il::Pass<> {
         }
 
         Simplified("eta-contracted let x = e in x");
-        return DoExp(rhs);
+        return rhs;
       } else {
-        // This is handled by the below since x is not free in xx.
+        // This is handled in the VarUses pass because x is
+        // not free in the body (which is just some other variable).
       }
     }
 
-    int count = ILUtil::ExpVarCount(body, x);
-
-    if ((opts & Simplification::O_DEAD_VARS) && count == 0) {
-      Simplified("remove unused binding");
-      if (VERBOSE) {
-        Print("  Unused var is " APURPLE("{}") "\n", x);
-      }
-
-      // Substitute away any tyvars, since they will no longer be
-      // bound. We can use anything since the generalized symbol
-      // was never used.
-      if (!tyvars.empty()) {
-        const Type *ovoid = pool->SumType({});
-        for (const std::string &alpha : tyvars) {
-          rhs = ILUtil::SubstTypeInExp(pool, ovoid, alpha, rhs);
-        }
-      }
-
-      return pool->Seq({DoExp(rhs)}, DoExp(body));
-    }
-
-    const bool small_value = IsSmallValue(rhs);
-    const bool effectless = small_value || IsEffectless(rhs);
-
-    if ((opts & Simplification::O_INLINE_EXP) && count <= 1 && effectless) {
-      // Inline any effectless expression that occurs just once,
-      // regardless of its size.
-      Simplified("inlined single-use binding");
-      if (VERBOSE) {
-        std::string ts = tyvars.empty() ? "" :
-          std::format(", tyvars (" ABLUE("{}") ")",
-                      Util::Join(tyvars, ","));
-        Print("  Inlined var is " APURPLE("{}") "{}\n", x, ts);
-      }
-      return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
-    }
-
-    // TODO: support inlining of polymorphic values.
-    if ((opts & Simplification::O_INLINE_EXP) &&
-        small_value && tyvars.empty()) {
-      Simplified("inlined small value");
-      const Exp *value = DoExp(rhs);
-      if (VERBOSE) {
-        Print("  Inlined var is " APURPLE("{}") " = {}\n",
-              x, ExpStringShort(value));
-      }
-      return ILUtil::SubstExp(pool, value, x, DoExp(body));
-    }
-
-    return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
+    return pool->Let(tyvars, x, rhs, body, guess);
   }
 
   const Exp *DoIf(
@@ -1187,7 +1130,7 @@ struct PeepholePass : public il::Pass<> {
     progress->Record(msg);
   }
 
-private:
+ private:
   const uint64_t opts = 0;
   ProgressRecorder *progress = nullptr;
 };
@@ -1852,7 +1795,8 @@ struct DecomposePass : public il::Pass<> {
     // binary search.
     for (const auto &[bi, e] : arms) {
       body = pool->If(pool->Primapp(Primop::INT_EQ,
-                                    {}, {pool->Int(bi), objvarexp}),
+                                    {},
+                                    Span{pool->Int(bi), objvarexp}),
                       DoExp(e),
                       body);
     }
@@ -1880,7 +1824,8 @@ struct DecomposePass : public il::Pass<> {
     // we should probably just persist the wordcase construct!
     for (const auto &[w, e] : arms) {
       body = pool->If(pool->Primapp(Primop::WORD_EQ,
-                                    {}, {pool->Word(w), objvarexp}),
+                                    {},
+                                    Span{pool->Word(w), objvarexp}),
                       DoExp(e),
                       body);
     }
@@ -1909,7 +1854,8 @@ struct DecomposePass : public il::Pass<> {
     // strings.
     for (const auto &[str, e] : arms) {
       body = pool->If(pool->Primapp(Primop::STRING_EQ,
-                                    {}, {pool->String(str), objvarexp}),
+                                    {},
+                                    Span{pool->String(str), objvarexp}),
                       DoExp(e),
                       body);
     }
@@ -2129,6 +2075,103 @@ struct CaseOfCasePass : public il::TypedPass<> {
   ProgressRecorder *progress = nullptr;
 };
 
+// This pass maintains the variable use count map, whose
+// main purpose is to allow us to remove dead bindings or
+// inline expressions that are used just once.
+struct VarUsesPass : public il::Pass<> {
+  VarUsesPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
+    Pass(p),
+    opts(opts),
+    progress(progress) {}
+
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
+                   const std::string &x,
+                   const Exp *rhs,
+                   const Exp *body,
+                   const Exp *guess) override {
+
+    // PERF: Don't compute this for every LET!
+    int count = ILUtil::ExpVarCount(body, x);
+
+    if ((opts & Simplification::O_DEAD_VARS) && count == 0) {
+      Simplified("remove unused binding");
+      if (VERBOSE) {
+        Print("  Unused var is " APURPLE("{}") "\n", x);
+      }
+
+      // Substitute away any tyvars, since they will no longer be
+      // bound. We can use anything since the generalized symbol
+      // was never used.
+      if (!tyvars.empty()) {
+        const Type *ovoid = pool->SumType({});
+        for (const std::string &alpha : tyvars) {
+          rhs = ILUtil::SubstTypeInExp(pool, ovoid, alpha, rhs);
+        }
+      }
+
+      return pool->Seq({DoExp(rhs)}, DoExp(body));
+    }
+
+    const bool small_value = IsSmallValue(rhs);
+    const bool effectless = small_value || IsEffectless(rhs);
+
+    if ((opts & Simplification::O_INLINE_EXP) && count <= 1 && effectless) {
+      // Inline any effectless expression that occurs just once,
+      // regardless of its size.
+      Simplified("inlined single-use binding");
+      if (VERBOSE) {
+        std::string ts = tyvars.empty() ? "" :
+          std::format(", tyvars (" ABLUE("{}") ")",
+                      Util::Join(tyvars, ","));
+        Print("  Inlined var is " APURPLE("{}") "{}\n", x, ts);
+      }
+      return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
+    }
+
+    // TODO: support inlining of polymorphic values.
+    if ((opts & Simplification::O_INLINE_EXP) &&
+        small_value && tyvars.empty()) {
+      Simplified("inlined small value");
+      const Exp *value = DoExp(rhs);
+      if (VERBOSE) {
+        Print("  Inlined var is " APURPLE("{}") " = {}\n",
+              x, ExpStringShort(value));
+      }
+      return ILUtil::SubstExp(pool, value, x, DoExp(body));
+    }
+
+    return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
+  }
+
+  // For fn expressions, if the function's self variable is not used,
+  // it is not actually recursive.
+  const Exp *DoFn(const std::string &self,
+                  const std::string &x,
+                  const Type *arrow_type,
+                  const Exp *body,
+                  const Exp *guess) override {
+    if ((opts & Simplification::O_MAKE_NONRECURSIVE) &&
+        !self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+      Simplified("remove recursive fn var");
+      if (VERBOSE) {
+        Print("Removed var is " APURPLE("{}") "\n", self);
+      }
+      return pool->Fn("", x, DoType(arrow_type), DoExp(body), guess);
+    }
+
+    return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
+  }
+
+  void Simplified(const char *msg) {
+    progress->Record(msg);
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
+
 }  // namespace
 
 Program Simplification::Simplify(const Program &program_in,
@@ -2137,6 +2180,7 @@ Program Simplification::Simplify(const Program &program_in,
   Program program = program_in;
   DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
+  VarUsesPass var_uses(opts, pool, &progress);
   KnownPass known(opts, pool, &progress);
   FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
@@ -2163,6 +2207,14 @@ Program Simplification::Simplify(const Program &program_in,
     progress.Reset();
     if (VERBOSE) Print(AWHITE("Peephole") ".\n");
     program = peephole.DoProgram(program);
+
+    constexpr uint64_t ANY_VAR_USE =
+      O_DEAD_VARS | O_INLINE_EXP | O_MAKE_NONRECURSIVE;
+
+    if (opts & ANY_VAR_USE) {
+      if (VERBOSE) Print(AWHITE("Var uses") ".\n");
+      program = var_uses.DoProgram(program);
+    }
 
     constexpr uint64_t ANY_KNOWN =
       O_EXPLODE_RECORDS;

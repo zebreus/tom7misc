@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <array>
 #include <cstring>
+#include <span>
 
 #include "base/logging.h"
 
@@ -17,26 +18,6 @@
 // Like std::vector<T> but with the possibility of storing a
 // small number of elements inline. Only works for POD-type
 // T, like a pointer or integer.
-
-namespace internal {
-template<class T, size_t N>
-struct InlineRep {
-  size_t skip_size;
-  std::array<T, N> buf;
-};
-
-// Compute the maximum number of T that we can fit in the target size.
-// Always returns at least 1, even if that would exceed the size.
-template<class T, size_t BYTES, size_t N = 1>
-consteval size_t MaxCapacity() {
-  if constexpr (sizeof(InlineRep<T, N + 1>) > BYTES) {
-    return std::max(N, size_t(1));
-  } else {
-    return MaxCapacity<T, BYTES, N + 1>();
-  }
-}
-}  // internal
-
 template<class T>
 struct InlineVector {
   static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
@@ -129,26 +110,39 @@ struct InlineVector {
   static constexpr size_t MaxInline() { return MAX_INLINE; }
 
  private:
+  // Our target is to use up to one cache line.
+  // Multiples of 64 should work great here, but if this
+  // is not a multiple of standard alignments, you might need
+  // to fiddle with the MAX_INLINE calculation.
+  static constexpr size_t BYTES = 64;
+
+  // Compute the number of T elements (properly aligned, after the
+  // size field) that we can fit within the target size. We require
+  // at least one.
+  static constexpr size_t ALIGNED_OFFSET = (sizeof(size_t) + alignof(T) - 1) & ~(alignof(T) - 1);
+  static constexpr size_t MAX_INLINE =
+    std::max<size_t>(1, (BYTES - ALIGNED_OFFSET) / sizeof(T));
+  static_assert(MAX_INLINE > 0);
+
   // When externally allocated, we have a bog-standard vector.
   // size is the number of elements actually stored, and reserved
   // is the total space available in the alloc.
   struct AllocRep {
     // First element of the two representations is shared.
     // When size < ALLOC_SIZE we always use InlineRep.
-    size_t skip_size;
+    size_t size;
     size_t reserved;
     T *alloc;
   };
 
-  // Our target is to use up to one cache line.
-  static constexpr size_t BYTES = 64;
+  struct InlineRep {
+    size_t size;
+    std::array<T, MAX_INLINE> buf;
+  };
+
   static_assert(sizeof (AllocRep) <= BYTES, "The allocated representation "
                 "should be smaller than the target size, or else we're "
                 "missing an opportunity to store more inline");
-
-  static constexpr size_t MAX_INLINE =
-    internal::MaxCapacity<T, BYTES>();
-  static_assert(MAX_INLINE > 0);
 
   inline bool HasAlloc() const {
     return GetAllocated(u.size_field);
@@ -189,11 +183,12 @@ struct InlineVector {
       // We always have at least this amount reserved, since
       // the small representation reserves it in place.
       DCHECK(n > MAX_INLINE);
+      // PERF: Consider realloc if we already have an alloc.
       T *new_alloc = (T*)malloc(n * sizeof (T));
       if (current_size > 0) {
-        if (VERBOSE)
-        Print("Copy cur {} elts to {} from {}\n",
-              current_size, (void*)new_alloc, (void*)data());
+        if constexpr (VERBOSE)
+          Print("Copy cur {} elts to {} from {}\n",
+                current_size, (void*)new_alloc, (void*)data());
         memcpy(new_alloc, data(), current_size * sizeof (T));
       }
 
@@ -206,17 +201,17 @@ struct InlineVector {
       u.size_field = MakeSizeField(current_size, true);
       u.ar.reserved = n;
       u.ar.alloc = new_alloc;
-      if (VERBOSE)
-      Print("Alloc reserved {} with contents:\n{}\n",
-            u.ar.reserved,
-            HexDump::Color(std::span<const uint8_t>((const uint8_t*)new_alloc,
-                                                    sizeof (T) * current_size)));
+      if constexpr (VERBOSE)
+        Print("Alloc reserved {} with contents:\n{}\n",
+              u.ar.reserved,
+              HexDump::Color(std::span<const uint8_t>((const uint8_t*)new_alloc,
+                                                      sizeof (T) * current_size)));
 
       DCHECK(HasAlloc());
     }
   }
 
-  using InlineRep = internal::InlineRep<T, MAX_INLINE>;
+  // using InlineRep = internal::InlineRep<T, MAX_INLINE>;
 
   // The size field must be the same for each member.
   // Its high bit is 1 if we have an allocation.
@@ -323,7 +318,7 @@ void InlineVector<T>::push_back(T t) {
   }
 
   DCHECK(cur < cap);
-  if (VERBOSE)
+  if constexpr (VERBOSE)
     Print("Write {} to idx {}\n", t, cur);
   data()[cur] = t;
   // As a small optimization, we don't unpack and repack

@@ -6,6 +6,13 @@
 #include "base/print.h"
 #include "base/logging.h"
 
+namespace {
+struct WithPadding {
+  uint64_t a;
+  uint8_t b;
+};
+}
+
 static void TestSizes() {
   InlineVector<uint8_t> iv1;
   CHECK(iv1.MaxInline() >= 48) << "This depends on compiler alignment so it isn't "
@@ -16,6 +23,33 @@ static void TestSizes() {
   CHECK(iv2.MaxInline() >= 4) << "This depends on compiler alignment so it isn't "
     "really guaranteed. But we should tweak something if we can't even inline "
     "a few pointers.";
+
+  InlineVector<WithPadding> iv3;
+  CHECK(iv3.MaxInline() < iv1.MaxInline()) << "Object is bigger";
+
+  InlineVector<std::array<uint8_t, 1023>> iv4;
+  CHECK(iv4.MaxInline() == 1) << "Expected a very large object to have the "
+    "minimum inlining.";
+}
+
+static void TestWithPadding() {
+  InlineVector<WithPadding> iv4;
+  CHECK(iv4.empty());
+  iv4.push_back(WithPadding{.a = uint64_t{0x0123456789ABCDEF}, .b = 0x2a});
+  iv4.push_back(WithPadding{.a = uint64_t{0x4567890ABCDEF123}, .b = 0x5f});
+  CHECK(iv4[0].a == 0x0123456789ABCDEF);
+  CHECK(iv4[0].b == 0x2a);
+  iv4.push_back(WithPadding{.a = uint64_t{0x890ABCDEF1234567}, .b = 0xf3});
+  iv4.push_back(WithPadding{.a = uint64_t{0xBCDEF1234567890A}, .b = 0x19});
+  CHECK(iv4[2].a == 0x890ABCDEF1234567);
+  CHECK(iv4.back().b == 0x19);
+  iv4.push_back(WithPadding{.a = uint64_t{0xCDEF1234567890AB}, .b = 0x27});
+  iv4.push_back(WithPadding{.a = uint64_t{0x234567890ABCDEF1}, .b = 0x87});
+  CHECK(iv4[4].a == 0xCDEF1234567890AB);
+  CHECK(iv4[4].b == 0x27);
+  CHECK(iv4.back().b == 0x87);
+  CHECK(iv4.capacity() > iv4.MaxInline()) << "Expand the test so that it "
+    "exercises external allocation.";
 }
 
 static void TestSimple() {
@@ -222,17 +256,51 @@ static void TestReserve() {
   CHECK(v.size() == 50);
 }
 
+static void TakesSpanIncBack(std::span<int> s) {
+  CHECK(s[0] == 27);
+  CHECK(s.back() == 42);
+  s.back()++;
+}
+
+static void TakesConstSpan(std::span<int> s) {
+  CHECK(s[0] == 27);
+  CHECK(s.back() == 42);
+}
+
+static void TestSpans() {
+  InlineVector<int> iv;
+  iv.push_back(27);
+  iv.push_back(33);
+  iv.push_back(42);
+  TakesConstSpan(iv);
+  TakesSpanIncBack(iv);
+  CHECK(iv.size() == 3);
+  CHECK(iv[2] == 43) << iv[2];
+  CHECK(iv.back() == 43);
+
+  iv.pop_back();
+  for (int i = 0; i < 100; i++) {
+    iv.push_back(i ^ 0x5A);
+  }
+  iv.push_back(42);
+  TakesConstSpan(iv);
+  TakesSpanIncBack(iv);
+  CHECK(iv.back() == 43);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestSizes();
   TestSimple();
   TestSimple2();
+  TestWithPadding();
   TestReserve();
   TestIterators();
   TestAlloc();
   TestCopySemantics();
   TestMoveSemantics();
+  TestSpans();
 
   Print("OK\n");
   return 0;

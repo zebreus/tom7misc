@@ -15,5 +15,11 @@ httpi.pdf : httpi.bovex httpi.bib $(BOVEX_LIB) $(ALL_IMAGES) makefile
 	cp httpi.pdf /var/www/html/`date +%s`.pdf
 	chmod -R a+rX /var/www/html
 
+profile: bovex.prof
+	go run github.com/google/pprof@latest -http=0.0.0.0:8080 $(BOVEX)/bovex.exe bovex.prof
+
+bovex.prof :
+	CPUPROFILE=bovex.prof LD_PRELOAD=libprofiler.so.0 $(BOVEX)/bovex.exe -I . -v httpi.bovex -o httpi.pdf
+
 clean :
 	rm -f *.o $(OBJECTS) httpi.pdf $(RESIDUE_SVG) $(SOLID_SVG)

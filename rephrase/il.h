@@ -7,11 +7,13 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <span>
 
 #include "ast-arena.h"
 #include "bignum/big.h"
 #include "primop.h"
 #include "unification.h"
+#include "span-util.h"
 
 namespace il {
 
@@ -944,18 +946,18 @@ struct AstPool {
   }
 
   const Exp *Node(const Exp *attrs,
-                  const std::vector<const Exp *> &v,
+                  std::span<const Exp * const> v,
                   const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::NODE &&
         guess->a == attrs &&
-        guess->children == v) {
+        SpanEq(guess->children, v)) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::NODE);
     ret->a = attrs;
-    ret->children = v;
+    ret->children.assign(v.begin(), v.end());
     return ret;
   }
 
@@ -1014,21 +1016,21 @@ struct AstPool {
   }
 
   const Exp *Primapp(Primop po,
-                     const std::vector<const Type *> &ts,
-                     const std::vector<const Exp *> &es,
+                     std::span<const Type * const> ts,
+                     std::span<const Exp * const> es,
                      const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::PRIMAPP &&
         guess->primop == po &&
-        guess->types == ts &&
-        guess->children == es) {
+        SpanEq(guess->types, ts) &&
+        SpanEq(guess->children, es)) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::PRIMAPP);
     ret->primop = po;
-    ret->types = ts;
-    ret->children = es;
+    ret->types.assign(ts.begin(), ts.end());
+    ret->children.assign(es.begin(), es.end());
     return ret;
   }
 
