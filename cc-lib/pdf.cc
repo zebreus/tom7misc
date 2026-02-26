@@ -4699,20 +4699,20 @@ struct SVGEmitter {
     CHECK(doc.view_box.has_value()) << "SVG does not have dimensions?";
     // SVG uses computer graphics coordinates (Y down) but PDF
     // wants math coordinates. We implement this with a transformation
-    // matrix.
-    const float h = std::get<3>(doc.view_box.value());
+    // matrix. We also translate (x, y) to (0, 0).
+    const auto &[x, y, w_, h] = doc.view_box.value();
 
     std::string body;
     RenderNode(State{}, doc.root, &body);
 
     return std::format(
         // Flip
-        "q 1 0 0 -1 0 {} cm\n"
+        "q 1 0 0 -1 {} {} cm\n"
         // Render upside-down
         "{}"
         // Restore
         "Q",
-        Float(h), body);
+        Float(-x), Float(h + y), body);
   }
 
   // [r, g, b, a]
@@ -4917,7 +4917,7 @@ void PDF::DrawSVG(std::string_view name,
 
   auto it = named_xobjects.find(name);
   CHECK(it != named_xobjects.end()) << "Unknown symbol handle (it should "
-    "have been previously added with AddSVG: " << name;
+    "have been previously added with AddSVG): " << name;
 
   const FormXObject *target = it->second;
   CHECK(target != nullptr);
