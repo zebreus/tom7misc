@@ -2138,8 +2138,16 @@ struct Uses {
 
     ~Restorer() {
       if (parent != nullptr && x != nullptr) {
-        if (old_used) parent->used.insert(*x);
-        if (old_multi) parent->multi.insert(*x);
+        if (old_used) {
+          parent->used.insert(*x);
+        } else {
+          parent->used.erase(*x);
+        }
+        if (old_multi) {
+          parent->multi.insert(*x);
+        } else {
+          parent->multi.erase(*x);
+        }
       }
     }
 
@@ -2199,7 +2207,7 @@ struct VarUsesPass : public il::Pass<Uses *> {
     const Exp *rhs = DoExp(rhs_in, uses);
 
     Uses::Restorer re = uses->Shadow(&x);
-    DCHECK(uses->IsUsed(x));
+    DCHECK(!uses->IsUsed(x));
 
     const Exp *body = DoExp(body_in, uses);
     // Now we have up-to-date use counts in the body.
@@ -2258,6 +2266,17 @@ struct VarUsesPass : public il::Pass<Uses *> {
           Print("  Inlined var is " APURPLE("{}") " = {}\n",
                 x, ExpStringShort(rhs));
         }
+
+        // We allow duplicating small values, but if the
+        // value has free variables, we need to mark them
+        // as multi-use so that we don't cause exponential
+        // blow-up later in this same pass.
+        if (x_multi && rhs->type == ExpType::VAR) {
+          const auto &[vtv, y] = rhs->Var();
+          uses->AddUse(y);
+          uses->AddUse(y);
+        }
+
         return ILUtil::SubstExp(pool, rhs, x, body);
       }
     }

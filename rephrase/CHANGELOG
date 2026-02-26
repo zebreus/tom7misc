@@ -1,4 +1,4 @@
-25 Feb 2026 (r6946)
+25 Feb 2026 (r6947)
 
  * Performance improvements in simplification phase (smarter
    management of free variable counts). About a 6x speedup!

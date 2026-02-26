@@ -849,6 +849,55 @@ static void TestLayout() {
 
 }
 
+static void TestSimplifySeq() {
+  Frontend front;
+  front.SetVerbose(VERBOSE);
+
+  {
+    const Program pgm = Run(
+        "let\n"
+        "  val _ = (1, 2, 3)\n"
+        "  val _ = print \"hello\"\n"
+        "  val _ = 4 + 5\n"
+        "in\n"
+        "  7\n"
+        "end\n");
+
+    CHECK(pgm.body->type == ExpType::SEQ) << ExpString(pgm.body);
+
+    const auto &[seqs, body] = pgm.body->Seq();
+    CHECK(seqs.size() == 1);
+    CHECK(seqs[0]->type == ExpType::PRIMAPP);
+    CHECK(body->type == ExpType::INT);
+    CHECK(body->Int() == 7);
+  }
+}
+
+static void TestSimplifyFlattenLet() {
+  Frontend front;
+  front.SetVerbose(VERBOSE);
+
+  {
+    const Program pgm = Run(
+        "let\n"
+        "  val x = let val y = (111, 222) in y end\n"
+        "in\n"
+        "  (x, x)\n"
+        "end\n");
+
+    CHECK(pgm.body->type == ExpType::LET);
+
+    const auto &[tyvars, name, rhs, body] = pgm.body->Let();
+    CHECK(rhs->type == ExpType::RECORD);
+    CHECK(body->type == ExpType::RECORD);
+
+    const auto &body_rec = body->Record();
+    CHECK(body_rec[0].second->type == ExpType::VAR);
+    CHECK(body_rec[1].second->type == ExpType::VAR);
+  }
+
+}
+
 // Former bugs.
 static void Regression() {
   static constexpr int VERBOSE = 0;
@@ -904,8 +953,49 @@ static void Regression() {
         end
       end
     )");
-
   }
+
+  {
+    // r6945. When restoring the state of a shadowed variable,
+    // we would never clear the state; only set it.
+    const Program pgm = Run(
+        "let\n"
+        "  val x = (666, 666)\n"
+        "  val y =\n"
+        "    let val x = 777 in x + x end\n"
+        "in\n"
+        "  y\n"
+        "end\n");
+
+    CHECK(pgm.body->type == ExpType::INT) << ExpString(pgm.body);
+    CHECK(pgm.body->Int() == 777 * 2);
+  }
+
+  {
+    // r6945. Same issue, when x is unused internally but
+    // used externally.
+    const Program pgm = Run(
+        "let\n"
+        "  val x = (111, 222)\n"
+        "  val y = let val x = (333, 444) in 555 end\n"
+        "in\n"
+        "  (x, x)\n"
+        "end\n");
+
+    CHECK(pgm.body->type == ExpType::LET)
+      << "Outer x was eliminated! AST: " << ExpString(pgm.body);
+
+    // Should keep the binding of x, since it is duplicated
+    // and non-small.
+    const auto &[tyvars, name, rhs, body] = pgm.body->Let();
+    CHECK(rhs->type == ExpType::RECORD);
+    const auto &rhs_rec = rhs->Record();
+    CHECK(rhs_rec[0].second->Int() == 111);
+    CHECK(body->type == ExpType::RECORD);
+    const auto &body_rec = body->Record();
+    CHECK(body_rec[0].second->type == ExpType::VAR);
+  }
+
 }
 
 static void TestEnums() {
@@ -952,7 +1042,6 @@ static void TestEnums() {
 
 }
 
-
 static void NewTests() {
   static constexpr int VERBOSE = 2;
   Frontend front;
@@ -974,6 +1063,8 @@ int main(int argc, char **argv) {
   il::TestObjects();
   il::TestLayout();
   il::TestEnums();
+  il::TestSimplifySeq();
+  il::TestSimplifyFlattenLet();
   il::Regression();
 
   il::NewTests();
