@@ -27,8 +27,7 @@ GMP_CFLAGS=-DBIG_USE_GMP
 # the wrong loop counter!
 
 # ASAN=true
-
-PROFILE=true
+# PROFILE=true
 
 # Pro-tip for understanding compilation time:
 #  -ftime-trace
@@ -87,9 +86,8 @@ else
 
   ifdef PROFILE
     OPTFLAGS += -g -fno-omit-frame-pointer
-    # PLATFORM_LDFLAGS += -lprofiler
   else
-	error HUH??
+	OPTFLAGS += -fomit-frame-pointer
   endif
 
 endif

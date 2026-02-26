@@ -114,6 +114,9 @@ let
   val checked-box-icon =
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
+  val green-lock-icon =
+    image-inline { img = image-load "lock_24px.svg", height = 12.0, dy = 3.0 }
+
   (* TODO *)
   fun underline lay = lay
 
@@ -230,6 +233,11 @@ Earlier straws:
 
 [* copy-paste URL
    can't go to http site in incognito
+   just want to start a web server to look at profile data
+   but profile.mozilla.org is served over HTTPS so it cannot
+   fetch data from another site (mixed-content) and
+   I cannot deploy https on my development machine because
+   it does not have a domain name.
 *]
 
 Now I do want to be clear: I am glad that we have [tt[https]], and I
@@ -243,7 +251,7 @@ lost the plot somewhat, and will point out some of its own shortcomings
 and hypocrisies, XXX
 
 I think this person probably thinks they are one of the good guys, but
-I posit that they are more like the following chumps:
+I propose that they are more like the following chumps:
 
 [ul
 
@@ -310,12 +318,12 @@ issue, like all ciphers with 40-bit keys are weak to brute force
 attacks.]] In this paper we will use AES-256.[cite daemen2001rijndael]
 To send encrypted data back and forth, you need to agree on
 what encryption keys to use. There are
-various approaches, but the one relevant to this paper is to just use
+various approaches, but the one relevant to this paper is just to use
 public-key cryptography. It works like this: When you connect to the
 server (before anything is encrypted), it offers up its public key.
 The public key can be used to send encrypted messages that only the
 owner of that key can decrypt (using the private key). The client can
-just decide on an AES key, encrypt it with the server’s public key,
+then decide on an AES key, encrypt it with the server’s public key,
 and send it to the server.
 
 [b[Oops—HACKED!!]] This doesn’t work, though. While a passive observer
@@ -327,7 +335,8 @@ negotiating a secure connection and forwarding data between the real
 client and the server. This “man-in-the-middle” (often a computer and
 not a biological man) is invisible to the client and server, but
 can read (and often modify) any data encrypted data sent between
-them.
+them. The possibility of such a rude intermezzo is aguably the core
+difficulty of designing protocols like TLS.
 
 The way that TLS prevents against man-in-the-middle attacks is for
 the client to check that the public key actually belongs to the server.
@@ -337,16 +346,21 @@ do this by “signing” the key–domain pair (using their own public key,
 which just comes with your browser), creating a [it[certificate]].[footnote[
 SSH isn’t quite TLS but it needs to solve a similar problem.
 Absent certificates (which is typical) it just gives you a message like
-[hfill() ^^ break() ^^
+[
+
+hfill() ^^ break() ^^
 monospace-block-ext { left-indent = 0.0,
                       width = COLUMN-WIDTH(),
                       line-spacing = point 0.05,
-                      font-size = point 7.0,
+                      font-size = point 6.9,
                       attrs = {(Object) } } [
 The authenticity of host 'github.com (140.82.113.4)' can't be established.
 ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
 This key is not known by any other names.
-Are you sure you want to continue connecting (yes/no/[layout"["]fingerprint[layout"]"])?] ^^ break() ^^ vspace (point 1.0)]
+Are you sure you want to continue connecting (yes/no/[layout"["]fingerprint[layout"]"])?] ^^
+break() ^^ vspace (point 1.0)
+
+]
 ... which is a perfectly reasonable compromise (hehe) at the command line.
 Once you connect this way it just remembers that key, which is sometimes
 called “TOFU” (Trust on First Use).]]
@@ -412,16 +426,98 @@ creativity-killing Trials.]] like [tt[*.tom7.org]], then you have to
 make specific DNS records to prove that you already pwn3d the domain
 itself.
 
-TODO: Getting certificates
-
 [section [The many dirty secrets of TLS]]
 
-[* Cloudflare, CRLs not checked, OCSP HTTP, OCSP 7 days
+I'm alluding to a bit of hypocrisy here: The way you get a certificate
+is itself vulnerable to the same attacks it's meant to protect
+against. For example, if you can successfully act as a
+man-in-the-middle, intercepting and modifying traffic to my website
+using HTTP,[footnote[As I understand, you do need to have a pretty
+robust hack in place, since Let's Encrypt will try requesting the HTTP
+challenge from multiple sources. So this is a bit harder than doing a
+man-in-the-middle on the coffee shop wifi.]] then you can ask Let's
+Encrypt to issue you a certificate, succeed the challenge-reponse
+protocol, and then turn your HTTP man-in-the-middle into a Green
+Padlock 4096-bit man-in-the-middle. For a very conscientious site
+owner there are some potential protections but if someone can
+man-in-the-middle your site, you are already in trouble.[footnote[As I
+understand, you can turn off certain challenge-response protocols
+using your DNS records, and use DNSSEC to make sure those records
+can't be spoofed. (By the way, if this was all handled by the domain
+registrar, whom I already need to trust and pay a fee to, I would be a
+lot less irritated!) You can also actively and continuously monitor
+the Certificate Transparency logs and cryptographically verify the
+100+ entries added per second, looking for someone issuing an
+unauthorized certificate for your domain.]] If someone gets a rogue
+certificate issued for your domain and you notice, you can maybe do
+the challenge-response yourself to convince the CA to revoke the rogue
+certificate. Or perhaps the attacker will be doing the same to revoke
+[it[your]] certificate.
 
-OCSP is now deprecated (at least by Let’s Encrypt)
-https://letsencrypt.org/2024/12/05/ending-ocsp
+[b[Oops—HACKED!!]] Even if you revoke a certificate, it might not
+matter! Browsers have kinda stopped checking for certificate
+revocation. The issues are:
+[ul(
 
-the green padlock icon: This is not how you use padlocks
+[Certificate Revocation Lists are enormous. For one Let's Encrypt
+certificate, the corresponding CRL is 50–100 MB as of 2026. Why
+are there so many revoked certificates? Who knows? Anyway, downloading
+100 MB before visiting a site is considered rude; browser vendors
+know that you need to save that bandwidth to download 84 embedded
+copies of jQuery and the full-screen video advertisement.] ::
+
+[An alternative protocol called OCSP lets you check the certificate
+for a specific domain.[cite rfc8954] But oh yeah, like CRLs, OCSP
+queries happen over bare, unencrypted http connections. So an attacker
+who wants to see what sites you're visiting could just see what
+certificates you're checking on.] ::
+
+[Also, because some people on the browser teams (and good for them)
+know that you mostly want to browse the web and not see error messages,
+revocation support is typically "fail-open;" if you can't check
+for revocation because the CA is having trouble or because an
+attacker interfered with your connection to it, then the browser
+will just trust the certificate anyway.] ::
+
+[So we invented OCSP stapling (the web server gets the OCSP
+certificate itself and sends it when you connect), and a way to tell
+everybody that a user should not trust your site unless you staple
+OCSP. But since a typical OCSP response is valid for 7 days, an
+attacker can just keep reusing one for a week, even if the CA would
+have stopped validating the rogue certificate. Also, we deprecated
+OCSP so it doesn't really do anything any
+more.[cite letsencrypt2024ending]] ::
+
+[So Chrome mostly checks for revocations using CRLSet, which
+is a compressed, "curated" subset of revocations. By "curated,"
+they mean that it includes important sites like [tt[google.com]],
+[tt[mail.google.com]], [tt[ad.doubleclick.net]], [tt[wave.google.com]],
+[tt[youtube.com]], and [tt[FUNNY_SITE_HERE]]. CRLSets contain
+about 0.35% of all revocations,[cite larisch2017crlite] so as long
+as your website is in Lycos’s “Top 5% Of The Web,” you have almost
+a 10% chance of being included. If you are an old academic site
+forced to get a certificate due to RED ALERT, your users probably
+won't see if the certificate is revoked.] ::
+
+[Firefox, to its credit, attempts to cover all revocations using
+Bloom filters (CRLite). There's a good chance that if a certificate
+is revoked, Firefox will notice within a few hours. Hours is still
+a pretty long time, especially since it takes only a few seconds
+to get a new certificate.] ::
+
+nil)]
+
+So, all that is to say: If you are accessing your bank's website or
+a major tech company's, the fact that it says "secure" probably does
+mean something. But if you don't know whether the site's own network
+is compromised, it does not mean much, other than that somebody did
+some chores recently (maybe a hacker on their behalf).
+
+Other dirtty secrets: Let us study the [green-lock-icon] green padlock as an
+illustration of "secure." This is not how you use padlocks. You must
+pass them through two other loops to secure them. Come on.
+
+[* Cloudflare,
 
 Too Many Secrets
 
@@ -439,6 +535,7 @@ to break an RSA key of a certain level. Is it plausible that someone
 would spend nation-state level resources to intercept my credit
 card number?
 
+openssl, the solution to, and source of, most security vulnerabilities
 openssl, the source of most security vulnerabilities I mean, I just
 looked to see if OpenSSL was still a fount of security
 vulnerabilities---like, maybe I am being too hard on it?--- and I saw
@@ -544,9 +641,6 @@ Power of Vulnerability]]:[cite brown2012power]
 disconnection: Is there something about me that, if other people know
 it or see it, that I won't be worthy of connection?]]
 
-OR THIS???
-[blockquote[asdf!!!!!]]
-
 Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my server,
 it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING OUT!!
 
@@ -564,8 +658,8 @@ and it was generally a very
 exciting time for security professionals, so much so that Heartbleed
 has its own logo ([figure "t"
 (fn fig => [[image { img = image-load "heartbleed.svg",
-                    width = 0.9 *. COLUMN-WIDTH() }]
-[b fig]. The Heartbleed logo. This is mainly present in the paper to
+                    width = 0.9 *. COLUMN-WIDTH() }][*
+*][b fig]. The Heartbleed logo. This is mainly present in the paper to
 demonstrate BoVeX’s new support for SVGs and floating figures.])]).
 According to Wikipedia, high profile hacks included the exposure of
 900 social insurance numbers from the Canada Revenue Agency and
@@ -708,6 +802,36 @@ with hacks in the run-up to a SIGBOVIK deadline, but it was probably
 the single most embarrassing bug. That’ll teach me to just roll my own
 instead of copying Knuth’s actual algorithm![cite knuth1981breaking]
 
+[paragraph[Performance]] When I am writing a paper, I'm constantly
+compiling it to admire its many typographic problems, and to
+procrastinate. Papers that are longer than a few pages took
+irritatingly long to compile; something like 10–20 seconds on a modest
+cloud server. As an efficient means of procrastination, I improved the
+performance of every expensive phase of BoVeX's compiler, from the
+parser (the combinator library was rebuilding the parser objects upon
+each whenever it recursed) to the frontend's simplifier (inlining was
+doing an [it [O(n)]] free variable calculation at each AST node) to
+its dataflow-based optimization phase (the dataflow state was using
+[tt[std::unordered_set]]; a bitset approach is 10× faster). Compiling
+a paper is two to three times faster now, and most of the time is now
+spent executing the expensive layout algorithms in BoVeX code itself,
+as it should be.
+
+[paragraph[SVG]] In order that I could make the little
+[checked-box-icon] in the opening paragraph without resorting to
+bitmap images (which would only allow you to print the document on
+finite-resolution devices), BoVeX now supports vector images via a
+significant subset of the SVG format.[cite dahlstrom2011scalable] This
+is a horrific task that I of course did entirely by hand. Like PDF,
+SVG is impossibly complex and has probably never been completely
+implemented, but I made sure to support the features that I see
+in Adobe Illustrator exports so that I can at least personally get
+it to look like I want forevermore. This includes all the path types
+(except arcs),
+rounded rectangles,
+the three different ways that strokes and fills can be transparent,
+clip paths, transforms, and fill rules.
+
 [paragraph[Footnotes]] I can’t believe I wrote two whole papers
 in BoVeX without any real support for Footnotes![bovex-2025-footnote [In the
 previous paper[cite murphy2025upsetting] they looked like some
@@ -748,21 +872,6 @@ columns. But it was hard enough to get it working at all that I can
 easily identify with Leslie Lamport running out of time on whatever
 paper deadline he was [it[actually]] supposed to be working on, and
 figuring that he’ll just get around to those TODOs for [it[next year’s]].
-
-[paragraph[SVG]] In order that I could make the little
-[checked-box-icon] in the opening paragraph without resorting to
-bitmap images (which would only allow you to print the document on
-finite-resolution devices), BoVeX now supports vector images via a
-significant subset of the SVG format.[cite dahlstrom2011scalable] This
-is a horrific task that I of course did entirely by hand. Like PDF,
-SVG is impossibly complex and has probably never been completely
-implemented, but I made sure to support the features that I see
-in Adobe Illustrator exports so that I can at least personally get
-it to look like I want forevermore. This includes all the path types
-(except arcs),
-rounded rectangles,
-the three different ways that strokes and fills can be transparent,
-clip paths, transforms, and fill rules.
 
 [section [Future work]]
 
