@@ -32,6 +32,34 @@ static void TestSizes() {
     "minimum inlining.";
 }
 
+static void TestPair() {
+  std::string a = "hello", b = "world", c = "goodbye", d = "chores";
+  InlineVector<std::pair<const std::string *, int64_t>> v;
+  v.reserve(2);
+  v.emplace_back(&a, 31337);
+  CHECK(v[0].first == &a);
+  CHECK(v[0].second == 31337);
+  v.emplace_back(&b, 27);
+  v.emplace_back(&c, 1234);
+  v.emplace_back(&d, 42);
+  for (int i = 0; i < 32; i++) {
+    v.emplace_back(&a, i);
+    CHECK(v[0].first == &a);
+    CHECK(v[0].second == 31337);
+  }
+  v[1].second = 131072;
+
+  for (int i = 0; i < 32; i++) {
+    CHECK(v.back().first == &a);
+    CHECK(v[0].first == &a);
+    CHECK(v[0].second == 31337);
+    v.pop_back();
+  }
+  CHECK(v.back().second == 42);
+  CHECK(v[1].second == 131072);
+  CHECK(v[1].first == &b);
+}
+
 static void TestWithPadding() {
   InlineVector<WithPadding> iv4;
   CHECK(iv4.empty());
@@ -300,6 +328,7 @@ int main(int argc, char **argv) {
   TestAlloc();
   TestCopySemantics();
   TestMoveSemantics();
+  TestPair();
   TestSpans();
 
   Print("OK\n");

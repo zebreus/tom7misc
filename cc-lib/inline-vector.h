@@ -4,10 +4,13 @@
 #ifndef _CC_LIB_INLINE_VECTOR_H
 #define _CC_LIB_INLINE_VECTOR_H
 
+#include <memory>
 #include <cstdlib>
 #include <array>
 #include <cstring>
 #include <span>
+#include <utility>
+#include <type_traits>
 
 #include "base/logging.h"
 
@@ -15,12 +18,31 @@
 #include "base/print.h"
 #include "hexdump.h"
 
+#include <utility>
+#include <type_traits>
+
+// Types that InlineVector can work on.
+namespace internal {
+template <typename T>
+struct is_memcpy_safe : std::is_trivially_copyable<T> {};
+// We explicitly allow pair, even though this is not "trivially copyable"
+// in many implementations due to custom constructors. The implementation
+// works around this by explicitly moving.
+template <typename A, typename B>
+struct is_memcpy_safe<std::pair<A, B>>
+    : std::bool_constant<is_memcpy_safe<A>::value && is_memcpy_safe<B>::value> {};
+template <typename T>
+inline constexpr bool is_memcpy_safe_v = is_memcpy_safe<T>::value;
+}  // internal
+
 // Like std::vector<T> but with the possibility of storing a
 // small number of elements inline. Only works for POD-type
 // T, like a pointer or integer.
 template<class T>
 struct InlineVector {
-  static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+  static_assert(internal::is_memcpy_safe_v<T>,
+                "T must be blessed as memcpy-able (e.g. by being "
+                "trivially copyable)");
   static_assert(std::is_trivially_destructible_v<T>, "T must be trivially destructible");
 
   static constexpr bool VERBOSE = false;
@@ -41,7 +63,7 @@ struct InlineVector {
   }
 
   size_t size() const {
-    return GetSize(u.size_field);
+    return GetSize(SizeField());
   }
 
   bool empty() const {
@@ -76,6 +98,12 @@ struct InlineVector {
   }
 
   inline void push_back(T t);
+
+  template <typename... Args>
+  T& emplace_back(Args&&... args) {
+    push_back(T(std::forward<Args>(args)...));
+    return back();
+  }
 
   // TODO: Insert
 
@@ -145,16 +173,20 @@ struct InlineVector {
                 "missing an opportunity to store more inline");
 
   inline bool HasAlloc() const {
-    return GetAllocated(u.size_field);
+    return GetAllocated(SizeField());
   }
 
   static constexpr int ALLOCATED_BIT = sizeof (size_t) * 8 - 1;
   static constexpr size_t SIZE_MASK = ~(size_t{1u} << ALLOCATED_BIT);
 
+  // Read the shared size field (in either representation).
+  size_t &SizeField() { return u.ar.size; }
+  size_t SizeField() const { return u.ar.size; }
+
   // Assumes we already have capacity (e.g. with EnsureAlloc).
   void SetSize(size_t new_size) {
     DCHECK(new_size <= capacity());
-    u.size_field = MakeSizeField(new_size, HasAlloc());
+    SizeField() = MakeSizeField(new_size, HasAlloc());
   }
 
   static constexpr size_t GetSize(size_t size_field) {
@@ -189,7 +221,8 @@ struct InlineVector {
         if constexpr (VERBOSE)
           Print("Copy cur {} elts to {} from {}\n",
                 current_size, (void*)new_alloc, (void*)data());
-        memcpy(new_alloc, data(), current_size * sizeof (T));
+        // Like memcpy, but avoids strict UB on e.g. pair<int, int>.
+        std::uninitialized_move_n(data(), current_size, new_alloc);
       }
 
       if (HasAlloc()) {
@@ -198,7 +231,7 @@ struct InlineVector {
       }
 
       // Now we definitely have an allocation.
-      u.size_field = MakeSizeField(current_size, true);
+      u.ar.size = MakeSizeField(current_size, true);
       u.ar.reserved = n;
       u.ar.alloc = new_alloc;
       if constexpr (VERBOSE)
@@ -216,7 +249,6 @@ struct InlineVector {
   // The size field must be the same for each member.
   // Its high bit is 1 if we have an allocation.
   union {
-    size_t size_field;
     AllocRep ar;
     InlineRep ir;
   } u;
@@ -226,11 +258,11 @@ struct InlineVector {
 // Template implementations follow.
 
 template<class T>
-InlineVector<T>::InlineVector() {
+InlineVector<T>::InlineVector() : u{.ar = {0, 0, nullptr}} {
   #ifndef NDEBUG
-  memset(&u, 0, sizeof (u));
+  memset((void*)&u, 0, sizeof (u));
   #endif
-  u.size_field = MakeSizeField(0, false);
+  SizeField() = MakeSizeField(0, false);
 }
 
 template<class T>
@@ -249,7 +281,8 @@ InlineVector<T>::InlineVector(const InlineVector &other) : InlineVector() {
   const size_t n = other.size();
   EnsureAlloc(n);
   SetSize(n);
-  memcpy(data(), other.data(), sizeof (T) * n);
+  std::uninitialized_copy_n(other.data(), n, data());
+  // memcpy(data(), other.data(), sizeof (T) * n);
 }
 
 template<class T>
@@ -258,18 +291,32 @@ auto InlineVector<T>::operator=(const InlineVector &other) -> InlineVector & {
   const size_t n = other.size();
   EnsureAlloc(n);
   SetSize(n);
-  memcpy(data(), other.data(), sizeof (T) * n);
+  std::uninitialized_copy_n(other.data(), n, data());
+  // memcpy(data(), other.data(), sizeof (T) * n);
   return *this;
 }
 
 template<class T>
 InlineVector<T>::InlineVector(InlineVector &&other) : InlineVector() {
-  // Take over the alloc (if any).
-  memcpy(&u, &other.u, sizeof (u));
+  if constexpr (std::is_trivially_copyable_v<T>) {
+    // Take over the alloc, if any; either way the representation
+    // is the same.
+    memcpy((void*)&u, &other.u, sizeof (u));
+  } else {
+    // Otherwise, be explicit to avoid strict UB. This is a little
+    // worse because of the branch and the fact that the copy of
+    // the size field maybe can't be folded into the memcpy.
+    if (other.HasAlloc()) {
+      u.ar = other.u.ar;
+    } else {
+      SizeField() = other.SizeField();
+      std::uninitialized_move_n(other.data(), other.size(), data());
+    }
+  }
   #ifndef NDEBUG
-  memset(&other.u, 0, sizeof (u));
+  memset((void*)&other.u, 0, sizeof (u));
   #endif
-  other.u.size_field = MakeSizeField(0, false);
+  other.SizeField() = MakeSizeField(0, false);
 }
 
 template<class T>
@@ -281,11 +328,21 @@ auto InlineVector<T>::operator=(InlineVector &&other) -> InlineVector & {
     u.ar.alloc = nullptr;
   }
 
-  memcpy(&u, &other.u, sizeof (u));
+  // As above.
+  if constexpr (std::is_trivially_copyable_v<T>) {
+    memcpy((void*)&u, &other.u, sizeof (u));
+  } else {
+    if (other.HasAlloc()) {
+      u.ar = other.u.ar;
+    } else {
+      SizeField() = other.SizeField();
+      std::uninitialized_move_n(other.data(), other.size(), data());
+    }
+  }
   #ifndef NDEBUG
-  memset(&other.u, 0, sizeof (u));
+  memset((void*)&other.u, 0, sizeof (u));
   #endif
-  other.u.size_field = MakeSizeField(0, false);
+  other.SizeField() = MakeSizeField(0, false);
   return *this;
 }
 
@@ -295,7 +352,7 @@ InlineVector<T>::~InlineVector() {
     free(u.ar.alloc);
     u.ar.alloc = nullptr;
   }
-  u.size_field = MakeSizeField(0, false);
+  SizeField() = MakeSizeField(0, false);
 }
 
 
@@ -324,7 +381,7 @@ void InlineVector<T>::push_back(T t) {
   // As a small optimization, we don't unpack and repack
   // the size field, assuming that we can never increment
   // our way to overflowing into the high bit.
-  u.size_field++;
+  SizeField()++;
 }
 
 template<class T>
