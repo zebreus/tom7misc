@@ -536,7 +536,65 @@ Too Many Secrets
 
 [section [Let’sn’t Encrypt]]
 
-OpenSSL[cite viega2002openssl]
+
+And so! It is time for my petty "revenge." Every good project starts
+with some criteria. Here are the parameters:
+
+I want my website to be accessible to users without them having to do anything special,
+like in the old days. I wasn't able to figure out a way to do this
+without a valid certificate (such a thing would be a major security
+incident), so I'll do the chores to get a certificate.
+
+But: I resent being "forced" to make my site secure. So I'm going to
+do the worst job implementing TLS that I can manage. I want it
+to be painfully bad to security professionals, in the hopes that it
+causes psychological harm to some of the same people who
+are locking people out of my website and scaring them about
+their credit card numbers.
+
+One of the things that the toxic max-security people love to tell
+you is that you aren't a good enough programmer to implement
+cryptography algorithms yourself. But these are the same dudes
+who wrote [openssl][cite viega2002openssl], the main source
+of security holes on the internet, and what you to use
+[it[that]]?[footnote[I just looked to see if indeed [openssl] is still
+an endless fount of security
+vulnerabilities—like, maybe I am being too hard on it?—and I saw
+that merely [it[three days ago]] there were two different buffer
+overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which "may
+also potentially enable code execution depending on platform
+mitigations" and ten additional "low severity" problems like
+incomplete validation, excessive memory allocation, and null pointer
+dereferences.]] No OpenSSL in this project. It doesn't even need
+to be installed.
+
+On the other hand, I don't people to be able to "hack" my server
+in the sense of gaining unauthorized access (buffer overflows, etc.).
+Anyone has authorization to access the public websites on there, and to observe the traffic
+if they want to be creepy. The site does not promise to be robust
+to impostors or interlopers. My goal is to provide "HTTP but worse";
+roughly no security guarantees, slower, more complicated, and
+with a [green-lock-icon] green padlock.
+
+The result is [httpi], a TLS 1.2 reverse proxy that all major browsers
+will connect to, and which has been serving all of my websites for
+the last four months. You can try it,
+
+[tt[https://tom7.org]]
+
+Now I'll walk through some of its innovations. In order to explain how
+bad a job I did, I'll need to explain how TLS works, so this will also
+be a decent way to learn about the protocol.
+
+[subsection[Secret handshake]]
+The initial phase of a TLS connection—the "handshake"—happens in plaintext
+for anyone to see. Its job is to negotiate what cryptographic algorithms will
+be used to encrypt the data later, and what keys to use. The server and
+client also decide on what extensions can be used. During the handshake
+the server presents its certificate to the client, so that the client can check
+that they are talking to someone who 0wned the domain.
+
+The classic way to establish the server's identity and
 
 [subsection[Too many secrets]]
 RSA[cite rivest1978rsa]

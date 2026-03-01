@@ -41,6 +41,10 @@ using ProgressRecorder = Progress<VERBOSE>;
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
 //   - flatten records
+//   - transform a non-recursive monomorphic datatype with
+//     a single constructor into whatever it carried
+//   - track presence and values of fields in objects
+//     so that has/get can be reduced
 
 namespace il {
 
@@ -1124,6 +1128,77 @@ struct PeepholePass : public il::Pass<> {
       } else {
         return pool->Seq(vflat, bbody, guess);
       }
+    }
+  }
+
+  virtual const Exp *DoWith(const Exp *obj_in, const std::string &field,
+                            ObjFieldType oft, const Exp *rhs_in,
+                            const Exp *guess) {
+    const Exp *obj = DoExp(obj_in);
+    const Exp *rhs = DoExp(rhs_in);
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::OBJECT) {
+      std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> fields =
+        obj->Object();
+
+      // If we're overwriting, just sequence the discarded expression.
+      const Exp *discard = nullptr;
+      {
+        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> new_fields;
+        for (const auto &[ff, oo, ee] : fields) {
+          if (oo == oft && field == ff) {
+            CHECK(discard == nullptr) << "Duplicate field in object? " << field;
+            discard = ee;
+          } else {
+            new_fields.emplace_back(ff, oo, ee);
+          }
+        }
+        new_fields.emplace_back(field, oft, rhs);
+        fields = std::move(new_fields);
+      }
+
+      const Exp *ret = pool->Object(fields);
+      if (discard != nullptr)
+        ret = pool->Seq({discard}, ret);
+      return ret;
+
+    } else {
+      return pool->With(obj, field, oft, rhs, guess);
+    }
+  }
+
+  virtual const Exp *DoWithout(const Exp *obj_in, const std::string &field,
+                               ObjFieldType oft,
+                               const Exp *guess) {
+    const Exp *obj = DoExp(obj_in);
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::OBJECT) {
+      std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> fields =
+        obj->Object();
+
+      // Like above, we need to sequence the discarded expression if it has
+      // effects.
+      const Exp *discard = nullptr;
+      {
+        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> new_fields;
+        for (const auto &[ff, oo, ee] : fields) {
+          if (oo == oft && field == ff) {
+            CHECK(discard == nullptr) << "Duplicate field in object? " << field;
+            discard = ee;
+          } else {
+            new_fields.emplace_back(ff, oo, ee);
+          }
+        }
+        fields = std::move(new_fields);
+      }
+
+      const Exp *ret = pool->Object(fields);
+      if (discard != nullptr)
+        ret = pool->Seq({discard}, ret);
+      return ret;
+
+    } else {
+      return pool->Without(obj, field, oft, guess);
     }
   }
 

@@ -817,7 +817,19 @@ static void TestObjects() {
         in
           {(Article) } with title = "hi"
         end)");
-    CHECK(pgm.body->type == ExpType::WITH);
+    CHECK(pgm.body->type == ExpType::OBJECT);
+  }
+
+  {
+    const Program pgm = Run(R"(
+        let object Article of { title : string, year : int }
+        in
+          {(Article) title = let in print "hi"; "yes" end  } with (Article)title = "bye"
+        end)");
+    CHECK(pgm.body->type == ExpType::SEQ);
+    const auto &[v, bod] = pgm.body->Seq();
+    CHECK(v.size() == 1);
+    CHECK(bod->type == ExpType::OBJECT);
   }
 
   {
@@ -826,7 +838,37 @@ static void TestObjects() {
         "in\n"
         "  {(Article) } without (Article) title\n"
         "end\n");
-    CHECK(pgm.body->type == ExpType::WITHOUT);
+    CHECK(pgm.body->type == ExpType::OBJECT);
+    CHECK(pgm.body->Object().empty());
+  }
+
+  {
+    const Program pgm = Run(
+        "let object Article of { title : string, year : int }\n"
+        "in\n"
+        "  {(Article) year = 1979 } without (Article) title\n"
+        "end\n");
+    CHECK(pgm.body->type == ExpType::OBJECT);
+    auto v = pgm.body->Object();
+    CHECK(v.size() == 1);
+    CHECK(std::get<0>(v[0]) == "year");
+  }
+
+  {
+    const Program pgm = Run(R"(
+        let object Article of { title : string, year : int }
+        in
+          {(Article)
+           year = 1979,
+           title = let in print "hi"; "yes" end  } without (Article)title
+        end)");
+    CHECK(pgm.body->type == ExpType::SEQ);
+    const auto &[v, bod] = pgm.body->Seq();
+    CHECK(v.size() == 1);
+    CHECK(bod->type == ExpType::OBJECT);
+    auto vv = bod->Object();
+    CHECK(vv.size() == 1);
+    CHECK(std::get<0>(vv[0]) == "year");
   }
 }
 
