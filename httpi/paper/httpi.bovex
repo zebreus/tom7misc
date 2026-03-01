@@ -115,38 +115,28 @@ let
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
   val green-lock-icon =
-    image-inline { img = image-load "lock_24px.svg", height = 12.0, dy = 3.0 }
+    image-inline { img = image-load "green-padlock.svg", height = 12.0, dy = 3.0 }
 
   (* TODO *)
   fun underline lay = lay
 
   val httpi = tt[httpi]
   val openssl = [OpenSSL]
+  val red-alert = color 0x990000FF [RED ALERT]
 
+  val DEBUG-BAD-LAYOUT = false
 in
-(*
-  (main-text
-[Foot.[footnote[
-Similar problem. Absent certificates (which is typical) it just gives you a message like
-[hfill() ^^ break() ^^
-monospace-block-ext { left-indent = 0.0,
-                      width = COLUMN-WIDTH(),
-                      line-spacing = point 0.05,
-                      font-size = point 7.0,
-                      attrs = {(Object) } } [
-The authenticity of host 'github.com (140.82.113.4)' can't be established.
-ED25519 key fingerprint is SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
-This key is not known by any other names.
-Are you sure you want to continue connecting (yes/no/[layout"["]fingerprint[layout"]"])?] ^^ break() ^^ vspace (point 1.0)]
-... which is a perfectly reasonable compromise (hehe) at the command line.
-Once you connect this way it just remembers that key, which is sometimes
-called “TOFU” (Trust on First Use).]]
-]);
+if DEBUG-BAD-LAYOUT
+then
+(main-text
+[
+important sites like [tt[google.com]],
+[tt[mail.google.com]], [tt[ad.doubleclick.net]], [tt[wave.google.com]],
+[tt[youtube.com]], and [tt[FUNNY_SITE_HERE]]. CRLSets contain
+about 0.35% of all revocations.])
 
-false andthen
-*)
+else
 
-(* XXX: If I leave off the vspace 8 here, it ignores the font size? *)
 (main-text
 [[title (layout doc-title)][hfill()][break()]
 
@@ -184,7 +174,7 @@ up to a silly degree, scaring users, creating pointless toil and
 chores for good guys, and arguably [it[reducing]] the usefulness of
 security due to alarm fatigue.[cite akhawe2013alice] The specific
 toxicity that has set me off in this here SIGBOVIK paper is this
-[color 0x990000FF [RED ALERT]]:
+[red-alert]:
 
 [* SVG would be nice here, but we'd need gradients. It's actually
    a PNG in the warning page, anyway *]
@@ -301,7 +291,7 @@ revenge for the time that I was annoyed by a warning message.
 [section [TLS]]
 
 “TLS” is the new name for SSL, which is the thing that makes the letter
-S in HTTPS. It uses cryptography for two purposees here: To ensure
+S in HTTPS. It uses cryptography for two purposes here: To ensure
 that you are talking directly to the site you think you are, and to
 encrypt the communication so that observers can’t read it.
 
@@ -335,7 +325,7 @@ negotiating a secure connection and forwarding data between the real
 client and the server. This “man-in-the-middle” (often a computer and
 not a biological man) is invisible to the client and server, but
 can read (and often modify) any data encrypted data sent between
-them. The possibility of such a rude intermezzo is aguably the core
+them. The possibility of such a rude intermezzo is arguably the core
 difficulty of designing protocols like TLS.
 
 The way that TLS prevents against man-in-the-middle attacks is for
@@ -388,7 +378,7 @@ So in the first decade of the 2000s, if you wanted to have a green
 padlock icon on your site, you needed to find some security
 professionals who would pretend to do some Military Grade secrecy to
 keep their numbers secret, and vouch that you had paid them the
-extortion fee. Despite the protopsis-inducing invoices, all their data center
+extortion fee. Despite the proptosis-inducing invoices, all their data center
 laser grid security systems and tactical sunglasses, many CAs still
 issued many improper certificates. Trusted Certificate Authorities
 such as Thawte, StartCom, Comodo, DigiNotar, TurkTrust, NICCA, CNNIC,
@@ -496,7 +486,7 @@ they mean that it includes important sites like [tt[google.com]],
 about 0.35% of all revocations,[cite larisch2017crlite] so as long
 as your website is in Lycos’s “Top 5% Of The Web,” you have almost
 a 10% chance of being included. If you are an old academic site
-forced to get a certificate due to RED ALERT, your users probably
+forced to get a certificate due to [red-alert], your users probably
 won't see if the certificate is revoked.] ::
 
 [Firefox, to its credit, attempts to cover all revocations using
@@ -513,9 +503,14 @@ mean something. But if you don't know whether the site's own network
 is compromised, it does not mean much, other than that somebody did
 some chores recently (maybe a hacker on their behalf).
 
-Other dirtty secrets: Let us study the [green-lock-icon] green padlock as an
+Other dirty secrets: Let us study the [green-lock-icon] green padlock as an
 illustration of "secure." This is not how you use padlocks. You must
 pass them through two other loops to secure them. Come on.
+
+TODO: Plaintext SNI!
+TODO: List of Root CAs that I "trust"
+TODO: Certificate Transparency leaks your website
+
 
 [* Cloudflare,
 
@@ -527,6 +522,7 @@ Too Many Secrets
 
 OpenSSL[cite viega2002openssl]
 
+[subsection[Too many secrets]]
 RSA[cite rivest1978rsa]
 
 [*
@@ -612,7 +608,7 @@ instructions explicitly say to pipe the install script to `bash`;
 please follow them]].]] The mysterious argument [tt[-o-]] is actually
 an ASCII emoticon for a someone with their face down on their desk and
 their arms splayed out horizontally, in a pose of complete submission.
-If you freebasing shell scripts but you are afraid that
+If you are freebasing shell scripts but you are afraid that
 someone is going to spend 512 billion years with a massive quantum computer
 brute-forcing the domain's RSA key, well, you have a strange threat
 model to me.
@@ -752,6 +748,7 @@ language and being thoughtful about dependencies goes a very long way
 compared to peers. The process uses 3MB of RAM, 2.6MB of which is
 shared. Once the server is running it drops root privileges,
 accesses no files, and allocates only a few tiny buffers.
+[* Compare resource usage to Chrome's RED ALERT page *]
 
 Even configured with the dumbest settings, it uses only about 1/3 of
 the CPU time of Apache in the steady state. Having looked at the
@@ -793,13 +790,14 @@ achievement in PDF/A compliance.
 [paragraph[Layout improvements]] I made many minor improvements to
 correctness and typography. For example, font spacing was 0.8% too
 generous in the previous versions, thanks to an inherited
-misunderstanding about 1000 versus 72×14. I fixed a bug in the core
+misunderstanding about 1000 versus 72×14. I support an "infinite"
+penalty for overlapping text now. I fixed a bug in the core
 boxes-and-glue algorithm where the optimization procedure was ignorant
 of the penalties for expanding and contracting glue, which was why the
 [tt[hfill()]] utility wasn’t doing what you expected. You never saw
-the consequences of this one because I would always work around it
-with hacks in the run-up to a SIGBOVIK deadline, but it was probably
-the single most embarrassing bug. That’ll teach me to just roll my own
+the consequences of these because I would always work around them with
+hacks in the run-up to a SIGBOVIK deadline, but it was probably the
+single most embarrassing bug. That’ll teach me to just roll my own
 instead of copying Knuth’s actual algorithm![cite knuth1981breaking]
 
 [paragraph[Performance]] When I am writing a paper, I'm constantly
@@ -814,8 +812,8 @@ doing an [it [O(n)]] free variable calculation at each AST node) to
 its dataflow-based optimization phase (the dataflow state was using
 [tt[std::unordered_set]]; a bitset approach is 10× faster). Compiling
 a paper is two to three times faster now, and most of the time is now
-spent executing the expensive layout algorithms in BoVeX code itself,
-as it should be.
+spent executing BoVeX code itself to run your document's expensive
+custom layout algorithms, as it should be.
 
 [paragraph[SVG]] In order that I could make the little
 [checked-box-icon] in the opening paragraph without resorting to

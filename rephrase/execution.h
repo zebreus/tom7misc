@@ -23,9 +23,6 @@ struct Execution {
   explicit Execution(const Program &pgm);
   virtual ~Execution();
 
-  using map_type = std::unordered_map<std::string, Value *>;
-  using vec_type = std::vector<bc::Value *>;
-
   struct StackFrame {
     // Pointer to the code block in the program.
     const std::vector<Inst> *insts = nullptr;
@@ -40,19 +37,34 @@ struct Execution {
     std::vector<Value *> used;
   };
 
+  // TODO PERF: Revisit freelists. They didn't help with
+  // these settings, but it wasn't a disaster, either.
+  static constexpr bool USE_FREE_LIST = false;
+  static constexpr size_t MAX_FREELIST_ENTRIES = 1 << 22;
+  struct FreeList {
+    // Owned, already-allocated pointers.
+    // The values are in unspecified but valid states.
+    std::vector<Value *> reuse;
+  };
+
   struct State {
     Heap heap;
+    FreeList free_list;
     std::vector<StackFrame> stack;
     std::unordered_map<std::string, Value *> globals;
     // For diagnostic purposes.
-    int64_t collected = 0;
+    int64_t collected = 0, freelisted = 0;
   };
 
   static void GC(State *state);
 
   // Calls "new Value" with the args; stores in heap.
   template<typename... Args>
-  static Value *NewValue(Heap *heap, Args&&... args);
+  static Value *NewValue(Heap *heap, FreeList *free_list,
+                         Args&&... args);
+
+  template<typename... Args>
+  static Value *NewValue(State *state, Args&&... args);
 
   // Start the program with a fresh state.
   State Start() const;
@@ -118,7 +130,7 @@ struct Execution {
                                    const map_type &obj);
 
   // Get the underlying representations (const).
-  std::tuple<const Execution::map_type &, const Execution::vec_type &>
+  std::tuple<const map_type &, const vec_type &>
   GetNode(const char *what, Value *a);
 
   void InternalFail(std::string_view msg, State *state);
@@ -147,16 +159,34 @@ struct Execution {
 
 // Template implementations follow.
 
+// PERF: Consider freelists with specific variants?
+// e.g. a BigInt has its own allocation which can probably
+// often be reused.
+
 // Calls "new Value" with the args; stores in heap.
+// May take an allocation from the free_list instead of allocating, if
+// the free list is non-null.
 template<typename... Args>
-Value *Execution::NewValue(Heap *heap, Args&&... args) {
+Value *Execution::NewValue(Heap *heap, FreeList *free_list, Args&&... args) {
   // PERF could use placement new, since we have a heap and will
   // perform garbage collection. But that's far from the worst
   // performance issue in here!
   auto t{std::forward<Args>(args)...};
-  Value *v = new Value{.v = std::move(t)};
+  Value *v = nullptr;
+  if (USE_FREE_LIST && free_list != nullptr && free_list->reuse.size() > 1) {
+    v = free_list->reuse.back();
+    free_list->reuse.pop_back();
+    v->v = std::move(t);
+  } else {
+    v = new Value{.v = std::move(t)};
+  }
   heap->used.push_back(v);
   return v;
+}
+
+template<typename... Args>
+Value *Execution::NewValue(State *state, Args&&... args) {
+  return NewValue(&state->heap, &state->free_list, std::forward<Args>(args)...);
 }
 
 }  // namespace bc

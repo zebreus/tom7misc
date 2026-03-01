@@ -42,8 +42,7 @@ std::string ColorValueString(const Value &value) {
     return std::format("{}LLU", *u);
   } else if (const double *d = std::get_if<double>(&value.v)) {
     return std::format("{:.17g}", *d);
-  } else if (const std::unordered_map<std::string, Value *> *m =
-             std::get_if<std::unordered_map<std::string, Value *>>(&value.v)) {
+  } else if (const map_type *m = std::get_if<map_type>(&value.v)) {
     std::string ret = AWHITE("{");
     std::vector<std::string> labs;
     for (const auto &[lab, v_] : *m) {
@@ -55,8 +54,7 @@ std::string ColorValueString(const Value &value) {
       AppendFormat(&ret, AMAP_LAB("{}"), labs[i]);
     }
     return ret + AWHITE("}");
-  } else if (const std::vector<Value *> *v =
-             std::get_if<std::vector<Value *>>(&value.v)) {
+  } else if (const vec_type *v = std::get_if<vec_type>(&value.v)) {
     return std::format("vector, size {}", v->size());
   } else {
     return "!!invalid!!";

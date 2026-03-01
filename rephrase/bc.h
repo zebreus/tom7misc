@@ -19,6 +19,10 @@
 
 namespace bc {
 
+struct Value;
+using vec_type = std::vector<Value *>;
+using map_type = std::unordered_map<std::string, Value *>;
+
 struct Value {
   using t = std::variant<
     std::monostate,
@@ -26,8 +30,8 @@ struct Value {
     std::string,
     uint64_t,
     double,
-    std::unordered_map<std::string, Value *>,
-    std::vector<Value *>
+    map_type,
+    vec_type
     >;
   t v;
 };
@@ -272,8 +276,7 @@ inline std::size_t ValueHash::operator ()(const Value& obj) const {
     return 0x123456789;
   } else if (const double *d = std::get_if<double>(&obj.v)) {
     return 0xEE0000000 + std::hash<double>()(*d);
-  } else if (const std::unordered_map<std::string, Value *> *m =
-             std::get_if<std::unordered_map<std::string, Value *>>(&obj.v)) {
+  } else if (const map_type *m = std::get_if<map_type>(&obj.v)) {
     uint64_t ret = 0x56789123;
     // (Note we are deliberately insensitive to iteration order here,
     // since for one thing std::unordered_map does not guarantee
@@ -281,16 +284,16 @@ inline std::size_t ValueHash::operator ()(const Value& obj) const {
     for (const auto &[k, v] : *m) {
       uint64_t a = std::hash<std::string>()(k);
       a = std::rotr<uint64_t>(a, 17);
-      uint64_t b = this->operator ()(*v);
+      uint64_t b = (v == nullptr) ? 0xFACADE : this->operator ()(*v);
       ret += a * b;
     }
     return ret;
-  } else if (const std::vector<Value *> *v =
-             std::get_if<std::vector<Value *>>(&obj.v)) {
+  } else if (const vec_type *v =
+             std::get_if<vec_type>(&obj.v)) {
     uint64_t ret = 0x31415926535;
     for (const Value *elt : *v) {
       ret = std::rotr<uint64_t>(ret, 55);
-      ret ^= this->operator()(*elt);
+      ret ^= (elt == nullptr) ? 0xDECADE : this->operator()(*elt);
       ret *= uint64_t{10481402436096723497u};
     }
     return ret;
@@ -352,10 +355,8 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
   }
 
   {
-    const std::unordered_map<std::string, Value *> *aa =
-      std::get_if<std::unordered_map<std::string, Value *>>(&a.v);
-    const std::unordered_map<std::string, Value *> *bb =
-      std::get_if<std::unordered_map<std::string, Value *>>(&b.v);
+    const map_type *aa = std::get_if<map_type>(&a.v);
+    const map_type *bb = std::get_if<map_type>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -363,6 +364,10 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
       for (const auto &[ka, va] : *aa) {
         const auto bit = bb->find(ka);
         if (bit == bb->end()) return false;
+        // Short-circuit if the same object, but this is mainly
+        // to handle the possibility of nullptr.
+        if (va == bit->second) return true;
+        if (va == nullptr || bit->second == nullptr) return false;
         if (!this->operator()(*va, *bit->second)) return false;
       }
       return true;
@@ -370,16 +375,18 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
   }
 
   {
-    const std::vector<Value *> *aa =
-      std::get_if<std::vector<Value *>>(&a.v);
-    const std::vector<Value *> *bb =
-      std::get_if<std::vector<Value *>>(&b.v);
+    const vec_type *aa = std::get_if<vec_type>(&a.v);
+    const vec_type *bb = std::get_if<vec_type>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
       if (aa->size() != bb->size()) return false;
       for (int i = 0; i < (int)aa->size(); i++) {
-        if (!this->operator()(*(*aa)[i], *(*bb)[i])) return false;
+        Value *pa = (*aa)[i];
+        Value *pb = (*bb)[i];
+        if (pa == pb) return true;
+        if (pa == nullptr || pb == nullptr) return false;
+        if (!this->operator()(*pa, *pb)) return false;
       }
       return true;
     }

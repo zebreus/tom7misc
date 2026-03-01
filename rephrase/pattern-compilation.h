@@ -10,6 +10,7 @@
 #include <utility>
 #include <functional>
 #include <vector>
+#include <span>
 
 #include "context.h"
 #include "elaboration.h"
@@ -30,7 +31,7 @@ struct PatternCompilation {
       // Pattern rows, mapping EL pattern to EL expression.
       // To explicitly insert a default, use the wildcard pattern
       // at the end.
-      const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows,
+      std::span<const std::pair<const el::Pat *, const el::Exp *>> rows,
       // The source position that should be reported in errors.
       size_t pos);
 

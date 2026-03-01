@@ -8,7 +8,7 @@ BOVEX_LIB=$(BOVEX)/stdlib.bovex $(BOVEX)/cite.bovex $(BOVEX)/layout.bovex $(BOVE
 
 default : httpi.pdf
 
-ALL_IMAGES=advanced.svg back-to-safety.svg check.svg red-triangle.png lock_24px.svg
+ALL_IMAGES=advanced.svg back-to-safety.svg check.svg red-triangle.png green-padlock.svg
 
 httpi.pdf : httpi.bovex httpi.bib $(BOVEX_LIB) $(ALL_IMAGES) makefile
 	$(BOVEX)/bovex.exe -I . -v httpi.bovex -o $@

@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "inline-vector.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
@@ -313,7 +314,9 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
   // is fresh (so it will not equal any bound variable).
   std::string xnew = pool->NewVar(x);
   std::vector<std::string> tyvars;
-  std::vector<const Type *> types;
+  InlineVector<const Type *> types;
+  tyvars.reserve(num_tyvars);
+  types.reserve(num_tyvars);
   // n distinct type variables (often zero).
   for (int i = 0; i < num_tyvars; i++) {
     std::string a = pool->NewVar("a");

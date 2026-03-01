@@ -107,6 +107,9 @@ object Box of { width : float, height : float,
 
                 (* The ideal width; badness 0. *)
                 glue-ideal : float,
+                (* The minimum allowed glue; can be negative. Typically
+                   a small positive number to avoid overlapping text. *)
+                glue-min : float,
 
                 (* See boxes-and-glue. Not a penalty: Higher coefficients
                    mean *more* space is allocated to this element. Must
@@ -197,15 +200,6 @@ object Sticker of { x: float, y: float, scale: float,
                        used. *)
                     line-x1: float,
                     line-y1: float,
-
-                    (* A closed polygon (using stroke-color,
-                       fill-color, line-width). Since we can
-                       only use base types here, this is a
-                       space-separated sequence of pairs of
-                       floats (decimal) as a string (!)
-                       XXX experimental; not working
-                       *)
-                    polygon: string,
 
                     video: string,
                     video-width: float,

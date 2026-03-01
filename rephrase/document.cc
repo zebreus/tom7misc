@@ -236,8 +236,8 @@ DocTree ValueToDocTree(const bc::Value *v) {
       }
       seen = seen.Insert(v);
 
-      using map_type = std::unordered_map<std::string, bc::Value *>;
-      using vec_type = std::vector<bc::Value *>;
+      using map_type = bc::map_type;
+      using vec_type = bc::vec_type;
 
       DocTree doc;
       if (const std::string *s = std::get_if<std::string>(&v->v)) {
@@ -695,8 +695,11 @@ Document::BoxifyText(const TextProps &props,
           // Either way, since this is inside a word, we set the
           // glue coefficients infinitesimally small so that we
           // don't apportion glue here unless forced.
+          // Kerning is done by setting the width, so glue should
+          // be zero here.
           d.SetDoubleAttr("glue-expand", EPSILON_COEFFICIENT);
           d.SetDoubleAttr("glue-contract", EPSILON_COEFFICIENT);
+          d.SetDoubleAttr("glue-min", 0.0);
 
           d.AddChild(TextDoc(chunk));
           out.push_back(std::move(d));
@@ -760,6 +763,7 @@ Document::BoxifyText(const TextProps &props,
       d.SetDoubleAttr("glue-ideal", space_width * props.font_size);
       // Relative penalty for contracting.
       d.SetDoubleAttr("glue-contract", 4.0);
+      d.SetDoubleAttr("glue-min", space_width * props.font_size * 0.1);
     } else {
       d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
       d.SetDoubleAttr("glue-ideal", 0.0);
@@ -767,6 +771,7 @@ Document::BoxifyText(const TextProps &props,
       // the purposes of glue allocation.
       d.SetDoubleAttr("glue-expand", EPSILON_COEFFICIENT);
       d.SetDoubleAttr("glue-contract", EPSILON_COEFFICIENT);
+      d.SetDoubleAttr("glue-min", 0.0);
     }
 
     d.AddChild(TextDoc(chunk));
@@ -1121,6 +1126,10 @@ Document::PackBoxes(Algorithm algo,
         b.glue_contract = *c;
       }
 
+      if (const double *m = doc.GetDoubleAttr("glue-min")) {
+        b.glue_min = *m;
+      }
+
       return b;
     };
 
@@ -1392,6 +1401,7 @@ Document::PackBoxes(Algorithm algo,
       doc->RemoveAttr("glue-break-penalty");
       doc->RemoveAttr("glue-break-insert");
       doc->RemoveAttr("glue-ideal");
+      doc->RemoveAttr("glue-min");
     };
 
   std::vector<DocTree> lines_out;
@@ -1555,24 +1565,6 @@ void Document::PlaceStickersRec(Context context,
     Transform ct0 = Translate(transform, *x, *y);
     Transform ct1 = Translate(transform, *x1, *y1);
     page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
-  }
-
-  // XXX This is incomplete, and maybe we should just recommend
-  // SVG for anything but the most trivial vector stuff?
-  if (const double *x1 = doc.GetDoubleAttr("polygon")) {
-    const double *t = doc.GetDoubleAttr("line-width");
-    const BigInt *stroke = doc.GetIntAttr("stroke-color");
-    const BigInt *fill = doc.GetIntAttr("fill-color");
-
-    // line-width and stroke-color should be optional,
-    // fill-color too (but you should have at least one?)
-    uint32_t stroke_color = IntToColor("stroke-color", *stroke);
-    uint32_t fill_color = IntToColor("fill-color", *fill);
-
-    Transform ct0 = Translate(transform, *x, *y);
-    LOG(FATAL) << "Need to parse the polygon, transform its "
-      "vertices, and then render.";
-    // page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
   }
 
   if (const std::string *img = doc.GetStringAttr("img")) {

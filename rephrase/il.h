@@ -500,18 +500,18 @@ struct AstPool {
   // Types
 
   const Type *VarType(const std::string &s,
-                      std::vector<const Type *> v = {},
+                      std::span<const Type *const> v = {},
                       const Type *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == TypeType::VAR &&
         guess->var == s &&
-        guess->children == v) {
+        SpanEq(guess->children, v)) {
       return guess;
     }
 
     Type *ret = NewType(TypeType::VAR);
     ret->var = s;
-    ret->children = std::move(v);
+    ret->children.assign(v.begin(), v.end());
     return ret;
   }
 
@@ -712,35 +712,35 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Var(const std::vector<const Type *> &ts,
+  const Exp *Var(std::span<const Type *const> ts,
                  const std::string &v,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::VAR &&
         guess->str1 == v &&
-        guess->types == ts) {
+        SpanEq(guess->types, ts)) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::VAR);
     ret->str1 = v;
-    ret->types = std::move(ts);
+    ret->types.assign(ts.begin(), ts.end());
     return ret;
   }
 
-  const Exp *GlobalSym(const std::vector<const Type *> &ts,
+  const Exp *GlobalSym(std::span<const Type *const> ts,
                        const std::string &sym,
                        const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::GLOBAL_SYM &&
         guess->str1 == sym &&
-        guess->types == ts) {
+        SpanEq(guess->types, ts)) {
       return guess;
     }
     CHECK(!sym.empty());
     Exp *ret = NewExp(ExpType::GLOBAL_SYM);
     ret->str1 = sym;
-    ret->types = std::move(ts);
+    ret->types.assign(ts.begin(), ts.end());
     return ret;
   }
 

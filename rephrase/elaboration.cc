@@ -27,7 +27,7 @@
 #include "primop.h"
 #include "unification.h"
 #include "util.h"
-
+#include "inline-vector.h"
 #include "ansi.h"
 
 // This code has to mention both el and il stuff with the same
@@ -257,7 +257,7 @@ Elaboration::ElabDec(
           });
       }
 
-      std::vector<std::pair<const il::Exp *, const il::Type *>> fns;
+      InlineVector<std::pair<const il::Exp *, const il::Type *>> fns;
       fns.reserve(dec->funs.size());
       for (int i = 0; i < (int)dec->funs.size(); i++) {
         const el::FunDec &fun = dec->funs[i];
@@ -282,7 +282,8 @@ Elaboration::ElabDec(
       // support uniform recursion, so we get the same set of type
       // variables for all of them. Get that set.
       std::vector<EVar> free_evars = [&]() {
-          std::vector<const il::Type *> all_types;
+          InlineVector<const il::Type *> all_types;
+          all_types.reserve(dom_cods.size() * 2);
           for (const auto &[dom, cod] : dom_cods) {
             all_types.push_back(dom);
             all_types.push_back(cod);
@@ -525,7 +526,7 @@ Elaboration::ElabDec(
         for (const auto &[lab_var, tvs, t_] : fvts) {
           // Label and variable are the same. But we abstract over
           // any bound type variables for polymorphic bindings.
-          std::vector<const il::Type *> tv_args;
+          InlineVector<const il::Type *> tv_args;
           tv_args.reserve(tvs.size());
           for (const std::string &alpha : tvs)
             tv_args.push_back(pool->VarType(alpha, {}));
@@ -1173,7 +1174,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     GG = GG.Insert(arg, VarInfo{.tyvars = {}, .type = dom, .var = iarg});
 
 
-    std::vector<std::pair<const el::Pat *, const el::Exp *>> rows;
+    InlineVector<std::pair<const el::Pat *, const el::Exp *>> rows;
     for (const auto &[p, e] : el_exp->clauses)
       rows.emplace_back(p, e);
 

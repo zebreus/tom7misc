@@ -411,7 +411,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     const ElabContext &G,
     const std::string &obj,
     const Type *obj_type,
-    const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in,
+    std::span<const std::pair<const el::Pat *, const el::Exp *>> rows_in,
     size_t pos) {
 
   CHECK(!rows_in.empty()) << "There must be rows.";

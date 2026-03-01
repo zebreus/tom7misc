@@ -10,10 +10,12 @@
 #include <mutex>
 #include <cstdint>
 #include <functional>
+#include <span>
 
 #include "base/logging.h"
 #include "il.h"
 #include "ansi.h"
+#include "span-util.h"
 
 namespace il {
 
@@ -163,11 +165,11 @@ struct LessEVar {
 using EVarSet = std::set<EVar, LessEVar>;
 
 std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
-  return FreeEVarsInTypes({t});
+  return FreeEVarsInTypes(Span{t});
 }
 
 std::vector<EVar> EVar::FreeEVarsInTypes(
-    const std::vector<const Type *> &tv) {
+    std::span<const Type *const> tv) {
   EVarSet s;
 
   std::function<void(const Type *)> Rec =

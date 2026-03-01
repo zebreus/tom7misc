@@ -24,7 +24,7 @@ import "font.bovex"
 import "image.bovex"
 import "layout-base.bovex"
 
-val LAYOUT-VERBOSE = false
+val LAYOUT-VERBOSE = true
 
 val SELF-CHECK = true
 
@@ -478,7 +478,7 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
 
     fun do-one-text (after-p, s) =
       let
-        do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]")
+        do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]\n")
       in
       case chop-to-break s of
         (* Tail of input. *)

@@ -75,9 +75,9 @@ Execution::State Execution::Start() const {
     });
 
   // Copy everything from the constant data into globals, allocating
-  // it in the heap.
+  // it in the heap. No freelist yet, since we haven't GC'd anything.
   for (const auto &[lab, value] : program.data) {
-    state.globals[lab] = NewValue(&state.heap, Value::t(value.v));
+    state.globals[lab] = NewValue(&state.heap, nullptr, Value::t(value.v));
   }
 
   return state;
@@ -192,27 +192,27 @@ static int64_t GetInt64(const char *what, const BigInt &x) {
 }
 
 Value *Execution::Bool(bool x, State *state) {
-  return NewValue(&state->heap, uint64_t(x ? 1 : 0));
+  return NewValue(state, uint64_t(x ? 1 : 0));
 }
 
 Value *Execution::Word(uint64_t w, State *state) {
-  return NewValue(&state->heap, w);
+  return NewValue(state, w);
 }
 
 Value *Execution::String(std::string s, State *state) {
-  return NewValue(&state->heap, std::move(s));
+  return NewValue(state, std::move(s));
 }
 
 Value *Execution::Float(double d, State *state) {
-  return NewValue(&state->heap, d);
+  return NewValue(state, d);
 }
 
 Value *Execution::Obj(map_type m, State *state) {
-  return NewValue(&state->heap, std::move(m));
+  return NewValue(state, std::move(m));
 }
 
 Value *Execution::Big(BigInt b, State *state) {
-  return NewValue(&state->heap, std::move(b));
+  return NewValue(state, std::move(b));
 };
 
 
@@ -271,7 +271,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
   case Primop::PACK_BOXES: {
     // This width of each line available. The vector is interpreted
     // as being infinite, with the last value repeated.
-    std::vector<Value *> *vdims = std::get_if<vec_type>(&a->v);
+    vec_type *vdims = std::get_if<vec_type>(&a->v);
     CHECK(vdims != nullptr) << Err() <<
       "Expected vector argument #1 to pack-boxes";
 
@@ -356,7 +356,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     CHECK(it != ref->end()) << Err() << "Bad ref!";
     it->second = Float(badness, state);
 
-    return NewValue(&state->heap, std::move(line_values));
+    return NewValue(state, std::move(line_values));
   }
 
   default:
@@ -446,7 +446,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   };
 
   auto Big = [state](BigInt b) -> Value * {
-      return NewValue(&state->heap, std::move(b));
+      return NewValue(state, std::move(b));
     };
 
   switch (primop) {
@@ -511,7 +511,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::INT_SHL: {
-    const auto &[aa, bb] = TwoInts("int_orb");
+    const auto &[aa, bb] = TwoInts("int_shl");
     const int64_t amount = GetInt64("left shift", bb);
     if (amount < 0) {
       InternalFail("left shift by negative amount", state);
@@ -521,7 +521,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::INT_SHR: {
-    const auto &[aa, bb] = TwoInts("int_orb");
+    const auto &[aa, bb] = TwoInts("int_shr");
     const int64_t amount = GetInt64("right shift", bb);
     if (amount < 0) {
       InternalFail("right shift by negative amount", state);
@@ -550,7 +550,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::INT_DIV_TO_FLOAT: {
-    const auto &[aa, bb] = TwoInts("int_mod");
+    const auto &[aa, bb] = TwoInts("int_div_to_float");
 
     // We allow division by zero, returning -inf, nan, or +inf.
 
@@ -632,7 +632,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::STRING_FIND: {
-    const auto &[aa, bb] = TwoStrings("string_concat");
+    const auto &[aa, bb] = TwoStrings("string_find");
     const auto pos = aa.find(bb);
     if (pos == std::string::npos) {
       return Big(BigInt(-1));
@@ -675,7 +675,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const auto &[as, bs] = TwoObjs("obj-merge");
     map_type merged = as;
     for (const auto &[k, v] : bs) merged[k] = v;
-    return NewValue(&state->heap, std::move(merged));
+    return NewValue(state, std::move(merged));
   }
 
   case Primop::REPHRASINGS: {
@@ -869,11 +869,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     for (ImageRGBA &frame : frames) {
       ret.push_back(
           NewValue(
-              &state->heap,
+              state,
               doc->AddImage(
                   std::make_unique<ImageRGBA>(std::move(frame)))));
     }
-    return NewValue(&state->heap, std::move(ret));
+    return NewValue(state, std::move(ret));
   }
 
   case Primop::IMAGE_INTEGER_SCALE: {
@@ -899,7 +899,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
     auto scaled = std::make_unique<ImageRGBA>(rgba.ScaleBy(scale));
 
-    return NewValue(&state->heap, doc->AddImage(std::move(scaled)));
+    return NewValue(state, doc->AddImage(std::move(scaled)));
   }
 
   case Primop::REF_SET:
@@ -1002,7 +1002,7 @@ Execution::GetNodeParts(const char *what, Value *a) {
 }
 
 // Returns the attrs (as a Value *) and the children (as a vector
-std::tuple<const Execution::map_type &, const Execution::vec_type &>
+std::tuple<const map_type &, const vec_type &>
 Execution::GetNode(const char *what, Value *a) {
   const auto &[attrs, children] = GetNodeParts(what, a);
 
@@ -1023,12 +1023,12 @@ Value *Execution::Node(Value *attrs, Value *children, State *state) {
     {bc::NODE_CHILDREN_LABEL, children}
   };
 
-  return NewValue(&state->heap, std::move(layout));
+  return NewValue(state, std::move(layout));
 }
 
 Value *Execution::Unit(State *state) {
   // PERF: Don't represent unit with an allocated record :(
-  return NewValue(&state->heap,
+  return NewValue(state,
                   std::unordered_map<std::string, Value *>());
 }
 
@@ -1343,6 +1343,12 @@ void Execution::RunToCompletion(State *state) {
       GC(state);
     }
   }
+
+  // Tidy up any delayed deletions.
+  for (Value *v : state->free_list.reuse) {
+    delete v;
+  }
+  state->free_list.reuse.clear();
 }
 
 // Take one step in the program.
@@ -1518,10 +1524,10 @@ void Execution::Step(State *state) {
       {{farg, Load(tail_call->arg)}};
 
     CHECK(!state->stack.empty());
-    StackFrame *frame = &state->stack.back();
-    frame->insts = &finsts;
-    frame->ip = 0;
-    frame->locals = std::move(new_locals);
+    StackFrame *cur_frame = &state->stack.back();
+    cur_frame->insts = &finsts;
+    cur_frame->ip = 0;
+    cur_frame->locals = std::move(new_locals);
 
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
     // When we make a call, the instruction pointer is already advanced
@@ -1556,12 +1562,12 @@ void Execution::Step(State *state) {
 
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     frame.locals[alloc->out] =
-      NewValue(&state->heap, std::unordered_map<std::string, Value *>());
+      NewValue(state, std::unordered_map<std::string, Value *>());
 
   } else if (const inst::AllocVec *allocvec =
              std::get_if<inst::AllocVec>(&inst)) {
     frame.locals[allocvec->out] =
-      NewValue(&state->heap, std::vector<Value *>());
+      NewValue(state, std::vector<Value *>());
 
   } else if (const inst::SetVec *setvec =
              std::get_if<inst::SetVec>(&inst)) {
@@ -1586,7 +1592,7 @@ void Execution::Step(State *state) {
 
   } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
     std::unordered_map<std::string, Value *> *rec = LoadRec(copy->obj);
-    frame.locals[copy->out] = NewValue(&state->heap, *rec);
+    frame.locals[copy->out] = NewValue(state, *rec);
 
   } else if (const inst::DeleteLabel *deletelabel =
              std::get_if<inst::DeleteLabel>(&inst)) {
@@ -1615,7 +1621,7 @@ void Execution::Step(State *state) {
       LoadRec(haslabel->obj);
     const bool has = rec->contains(haslabel->lab);
     const uint64_t u = has ? 1 : 0;
-    frame.locals[haslabel->out] = NewValue(&state->heap, Value::t(u));
+    frame.locals[haslabel->out] = NewValue(state, Value::t(u));
 
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     frame.locals[bind->out] = Load(bind->arg);
@@ -1725,25 +1731,38 @@ void Execution::GC(State *state) {
 
   // Sweep.
   std::vector<Value *> new_used;
-  int64_t collected = 0;
+  new_used.reserve(reachable.size());
+  int64_t collected = 0, freelisted = 0;
   for (Value *v : state->heap.used) {
     if (reachable.contains(v)) {
       new_used.push_back(v);
     } else {
-      collected++;
-      delete v;
+      if (USE_FREE_LIST && state->free_list.reuse.size() <
+          MAX_FREELIST_ENTRIES) {
+        freelisted++;
+        v->v = std::monostate{};
+        state->free_list.reuse.push_back(v);
+      } else {
+        collected++;
+        delete v;
+      }
     }
   }
   state->heap.used = std::move(new_used);
   new_used.clear();
   state->collected += collected;
+  if constexpr (USE_FREE_LIST) {
+    state->freelisted += freelisted;
+  }
 
   double total_sec = gc_timer.Seconds();
   if (VERBOSE_GC) {
-    Print(stderr, "  Finished in {} total.\n",
+    Print(stderr,
+          "  Collected {} and freelisted {}.\n"
+          "  Finished in {} total.\n",
+          collected, freelisted,
           ANSI::Time(total_sec));
   }
-
 }
 
 }  // namespace bc

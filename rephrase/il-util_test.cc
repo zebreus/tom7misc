@@ -120,7 +120,7 @@ static void TestFreeTypeVars() {
 static void TestSubstType() {
   AstPool pool;
   const Exp *e = pool.Var(
-      {
+      Span{
         pool.IntType(),
         pool.VarType("x", {}),
       },
