@@ -18,9 +18,6 @@
 #include "base/print.h"
 #include "hexdump.h"
 
-#include <utility>
-#include <type_traits>
-
 // Types that InlineVector can work on.
 namespace internal {
 template <typename T>
@@ -272,7 +269,8 @@ InlineVector<T>::InlineVector(size_t n, T init) :
   SetSize(n);
   T *d = data();
   for (size_t i = 0; i < n; i++) {
-    d[i] = init;
+    // d[i] = init;
+    std::construct_at(d + i, init);
   }
 }
 
@@ -377,7 +375,12 @@ void InlineVector<T>::push_back(T t) {
   DCHECK(cur < cap);
   if constexpr (VERBOSE)
     Print("Write {} to idx {}\n", t, cur);
-  data()[cur] = t;
+
+  // data()[cur] = t, but avoid using the assignment
+  // operator in the case that T is not technically
+  // trivially-assignable.
+  std::construct_at(data() + cur, t);
+
   // As a small optimization, we don't unpack and repack
   // the size field, assuming that we can never increment
   // our way to overflowing into the high bit.
