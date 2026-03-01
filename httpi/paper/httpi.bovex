@@ -120,6 +120,21 @@ let
   (* TODO *)
   fun underline lay = lay
 
+  (* TODO: I think it would be cleaner to insert a soft-hyphen
+     character (U+00AD) and let the built-in hyphenation code
+     handle it. *)
+  val shy = box {(Box)
+                 width = 0.0, height = BODY-LINE-HEIGHT(),
+                 glue-ideal = 0.0, glue-min = 0.0,
+                 glue-expand = EPSILON-COEFFICIENT,
+                 glue-contract = EPSILON-COEFFICIENT,
+                 (* Lower penalty than automatic hyphen. *)
+                 glue-break-penalty = 3.0,
+                 glue-break-insert = [-],
+                 (* XXX should be able to measure this using get-boxes *)
+                 glue-break-extra-width = !BODY-FONT-SIZE *. 0.3 } []
+
+
   val httpi = tt[httpi]
   val openssl = [OpenSSL]
   val red-alert = color 0x990000FF [RED ALERT]
@@ -131,8 +146,8 @@ then
 (main-text
 [
 important sites like [tt[google.com]],
-[tt[mail.google.com]], [tt[ad.doubleclick.net]], [tt[wave.google.com]],
-[tt[youtube.com]], and [tt[FUNNY_SITE_HERE]]. CRLSets contain
+[tt[mail.goo[shy]gle.com]], [tt[ad.double[shy]click.net]], [tt[wave.goo[shy]gle.com]],
+[tt[you[shy]tube.com]], and [tt[FUNNY_[shy]SITE_[shy]HERE]]. CRLSets contain
 about 0.35% of all revocations.])
 
 else
@@ -374,7 +389,7 @@ check that you're really 18 years old.
 
 [section [Let’s Encrypt]]
 
-So in the first decade of the 2000s, if you wanted to have a green
+So in the first decade of the 2000s, if you wanted to have a [green-lock-icon] green
 padlock icon on your site, you needed to find some security
 professionals who would pretend to do some Military Grade secrecy to
 keep their numbers secret, and vouch that you had paid them the
@@ -427,7 +442,7 @@ robust hack in place, since Let's Encrypt will try requesting the HTTP
 challenge from multiple sources. So this is a bit harder than doing a
 man-in-the-middle on the coffee shop wifi.]] then you can ask Let's
 Encrypt to issue you a certificate, succeed the challenge-reponse
-protocol, and then turn your HTTP man-in-the-middle into a Green
+protocol, and then turn your HTTP man-in-the-middle into a [green-lock-icon] Green
 Padlock 4096-bit man-in-the-middle. For a very conscientious site
 owner there are some potential protections but if someone can
 man-in-the-middle your site, you are already in trouble.[footnote[As I
@@ -446,7 +461,7 @@ certificate. Or perhaps the attacker will be doing the same to revoke
 
 [b[Oops—HACKED!!]] Even if you revoke a certificate, it might not
 matter! Browsers have kinda stopped checking for certificate
-revocation. The issues are:
+revocation. The issues include:
 [ul(
 
 [Certificate Revocation Lists are enormous. For one Let's Encrypt
@@ -480,9 +495,10 @@ more.[cite letsencrypt2024ending]] ::
 
 [So Chrome mostly checks for revocations using CRLSet, which
 is a compressed, "curated" subset of revocations. By "curated,"
-they mean that it includes important sites like [tt[google.com]],
-[tt[mail.google.com]], [tt[ad.doubleclick.net]], [tt[wave.google.com]],
-[tt[youtube.com]], and [tt[FUNNY_SITE_HERE]]. CRLSets contain
+they mean that it includes important sites like
+[tt[google.com]],
+[tt[mail.goo[shy]gle.com]], [tt[ad.double[shy]click.net]], [tt[wave.goo[shy]gle.com]],
+[tt[you[shy]tube.com]], and [tt[FUNNY_[shy]SITE_[shy]HERE]]. CRLSets contain
 about 0.35% of all revocations,[cite larisch2017crlite] so as long
 as your website is in Lycos’s “Top 5% Of The Web,” you have almost
 a 10% chance of being included. If you are an old academic site
@@ -571,7 +587,7 @@ curling originates in Canada where people are much more
 polite.[footnote[Of course this is actually an OpenSSL issue; nothing to do with
 the nice people of Canada.]] It's hard to believe that someone would
 use [tt[wget]] with the expectation that their request is subject to
-RED ALERT-level maximum security; this program just downloads the
+[red-alert]-level maximum security; this program just downloads the
 contents of the URL.[footnote[If I managed to bait any OpenSSL
 maintainers into reading this footnote, please also enjoy the top
 StackOverflow troubleshooting tips, like the user who writes "I

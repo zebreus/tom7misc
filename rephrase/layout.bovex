@@ -24,7 +24,7 @@ import "font.bovex"
 import "image.bovex"
 import "layout-base.bovex"
 
-val LAYOUT-VERBOSE = true
+val LAYOUT-VERBOSE = false
 
 val SELF-CHECK = true
 
@@ -826,16 +826,24 @@ fun blockquote-ext attrs lay =
          | _ => inch 0.125)
     val WIDTH = TOTAL-WIDTH -. LEFT-INDENT -. RIGHT-INDENT
     do WIDTH <=. 0.0 andthen fail "blockquote has no width for the quote"
-    val lay = it (layout-map-text normalize-whitespace lay) ^^ hfill() ^^
-         (case attrs of
-            {(Blockquote) attribution} => break() ^^ shrinking-hspace WIDTH ^^
-              [— [attribution]]
-         | _ => [])
+    val lay = it (layout-map-text normalize-whitespace lay)
     val boxes = get-boxes lay
     val (badness, lines : layout list) =
       pack-boxes-horiz (BEST, FULLY-JUSTIFIED, WIDTH, boxes)
     do emit-badness badness
-    val lines : layout list = list-map stick-horizontally lines
+
+    (* Attribution on its own line, if present *)
+    val (a-badness, a-lines) =
+      (case attrs of
+         {(Blockquote) attribution} =>
+           let val boxes = get-boxes ([[hfill()]— [attribution]])
+           in pack-boxes-horiz (BEST, ALL-JUSTIFIED, WIDTH, boxes)
+           end
+       | _ => (0.0, nil))
+    do emit-badness a-badness
+
+    val lines : layout list =
+      list-map stick-horizontally (lines @ a-lines)
   in
     stick-vertically
     (LEFT-INDENT,
