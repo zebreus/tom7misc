@@ -89,8 +89,10 @@ int main(int argc, char **argv) {
 
   printf("----------- first ---------\n");
   TestASCII(false, Justification::FULL);
-  printf("----------- best ----------\n");
+  printf("----------- best (full) ----------\n");
   TestASCII(true, Justification::FULL);
+  printf("----------- best (all) ----------\n");
+  TestASCII(true, Justification::ALL);
   printf("----------- left ----------\n");
   TestASCII(true, Justification::LEFT);
   printf("----------- center --------\n");

@@ -105,7 +105,8 @@ BoxesAndGlue::PackBoxesFirst(
           total_weight += weight;
         }
 
-        double weighted_glue = leftover / total_weight;
+        double weighted_glue = total_weight == 0.0 ? 0.0 :
+          leftover / total_weight;
 
         for (int i = 0; i < (int)current_line.size() - 1; i++) {
           double weight =
@@ -127,7 +128,6 @@ BoxesAndGlue::PackBoxesFirst(
   double current_postwidth = 0.0;
   bool cannot_break = false;
   for (const BoxIn &box : boxes_in) {
-
     BoxOut boxo;
     boxo.box = &box;
 
@@ -288,7 +288,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
 
       double total_weight = 0.0;
       for (int i = 0; i < (int)current_line->size() - 1; i++) {
-        BoxOut &box = (*current_line)[i];
+        const BoxOut &box = (*current_line)[i];
         total_weight += expanding ? box.box->glue_expand :
           box.box->glue_contract;
       }
@@ -314,6 +314,13 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           }
           box.actual_glue += additional_glue;
         }
+
+        // Don't exceed the hard glue limit. This can cause the
+        // line to overflow, but we have "infinite" penalties
+        // preventing us from configuring breaks this way; if we
+        // get here then we are choosing between overlapping
+        // text and overflowing lines.
+        box.actual_glue = std::max(box.actual_glue, box.box->glue_min);
       }
 
       if (justify == LineJustification::CENTER && !current_line->empty()) {
@@ -354,6 +361,13 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     double width = 0.0;
     double expand = 0.0;
     double contract = 0.0;
+
+    // When contracting a line, we apportion the (negative) glue
+    // according to each box's glue_contract weight. In order
+    // to set a limit on contraction (for glue_min), we compute
+    // the smallest ratio that we could tolerate before
+    // exceeding glue_min for any box.
+    double shrink_ratio_limit = 1.0/0.0;
   };
   auto GetLineTotalsBefore = [&](int word_idx, int words_before) ->
     LineTotals {
@@ -370,6 +384,16 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         totals.width += box.width + box.glue_ideal;
         totals.expand += box.glue_expand;
         totals.contract += box.glue_contract;
+
+        // Maximum shrink ratio before this box would be squished smaller
+        // than its glue_min.
+        if (box.glue_contract > 1.0e-6) {
+          const double max_shrink = box.glue_ideal - box.glue_min;
+          const double max_ratio = max_shrink / box.glue_contract;
+
+          totals.shrink_ratio_limit =
+            std::min(totals.shrink_ratio_limit, max_ratio);
+        }
       }
 
       return totals;
@@ -507,9 +531,58 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       // Now compute the best option, checking each possible
       // continuation.
 
+      // Compute the penalty if we break (or end) here, based on the
+      // leftover slack, attenuated by the glue's ability to stretch
+      // or contract.
+      const double penalty_break_or_end_slack = [&]{
+          const double slack = line_width - total_width_break;
+
+          if (slack > 0.0) {
+            if (line_totals.expand > 1.0e-6) {
+              double ratio = slack / line_totals.expand;
+              // We want to use a nonlinear scale for slack.
+              // Otherwise it wouldn't matter where we put it, and
+              // this can result in putting it all on the same
+              // line (which clearly looks worse).
+              return 100.0 * std::pow(ratio, 1.8);
+            } else {
+              // As the coefficient nears zero, we just cap out
+              // the penalty.
+              return 100'000'000.0;
+            }
+
+          } else if (slack < 0.0) {
+            if (line_totals.contract > 1.0e-6) {
+              const double ratio = -slack / line_totals.contract;
+
+              if (ratio > line_totals.shrink_ratio_limit) {
+                // Then this amount of (negative) slack would cause us
+                // to exceed glue_min for one of the boxes on the line.
+                // "infinite" penalty to disallow this unless forced.
+                return 100'000'000.0;
+              }
+
+              // Same nonlinear scale for squishing.
+              return 100.0 * std::pow(ratio, 1.8);
+            } else {
+              return 100'000'000.0;
+            }
+
+          } else {
+            return 0.0;
+          }
+        }();
+
+
       if (successors[word_idx].empty()) {
+        // If fully justified, then we pay for slack on the
+        // final line as well.
+        const double end_penalty =
+          FinalLineJustification(just) == LineJustification::JUSTIFY ?
+          penalty_break_or_end_slack : 0.0;
+
         MemoResult only;
-        only.penalty = penalty_word_nobreak;
+        only.penalty = penalty_word_nobreak + end_penalty;
         only.successor = -1;
         only.break_after = false;
         Set(word_idx, words_before, only);
@@ -520,43 +593,10 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         best.break_after = false;
 
         for (const auto &[next_node, edge_penalty] : successors[word_idx]) {
-          // For each of these, we can either break here, or continue.
+          // For each successor, we can either break here, or continue.
 
-          // Compute the penalty if we break here, based on the
-          // leftover slack, attenuated by the glue's ability to
-          // stretch or contract.
-          const double penalty_break_slack = [&]{
-              const double slack = line_width - total_width_break;
-
-              if (slack > 0.0) {
-                if (line_totals.expand > 1.0e-6) {
-                  double ratio = slack / line_totals.expand;
-                  // We want to use a nonlinear scale for slack.
-                  // Otherwise it wouldn't matter where we put it, and
-                  // this can result in putting it all on the same
-                  // line (which clearly looks worse).
-                  return 100.0 * std::pow(ratio, 1.8);
-                } else {
-                  // As the coefficient nears zero, we just cap out
-                  // the penalty.
-                  return 100'000'000.0;
-                }
-
-              } else if (slack < 0.0) {
-                if (line_totals.contract > 1.0e-6) {
-                  double ratio = -slack / line_totals.contract;
-                  // Same nonlinear scale.
-                  return 100.0 * std::pow(ratio, 1.8);
-                } else {
-                  return 100'000'000.0;
-                }
-
-              } else {
-                return 0.0;
-              }
-            }();
-
-          // ... plus the penalty for the remainder, starting on a new line.
+          // If we break, we will have to pay for the current slack,
+          // plus the penalty for the remainder, starting on a new line.
           const double p_rest = Get(next_node, 0).penalty;
 
           const double penalty_break =
@@ -566,7 +606,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
             box.glue_break_penalty +
             // Just following the edge costs this amount.
             edge_penalty +
-            penalty_word_break + penalty_break_slack + p_rest;
+            penalty_word_break + penalty_break_or_end_slack + p_rest;
 
           if (VERBOSE) {
             Print("for successor {}:\n"
@@ -577,7 +617,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
                   " " AGREY("(rest)") " = " ARED("{:.4f}") "\n",
                   next_node,
                   total_width_break, penalty_word_break,
-                  penalty_break_slack, p_rest, penalty_break);
+                  penalty_break_or_end_slack, p_rest, penalty_break);
           }
 
           // And the case where we do not break.

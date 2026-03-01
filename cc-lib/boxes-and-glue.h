@@ -38,6 +38,12 @@ struct BoxesAndGlue {
     // Ideal amount of glue after the box, e.g. the width
     // of a space glyph in the font (or a kerning pair).
     double glue_ideal = 0.0;
+    // The minimum allowed glue. Can be negative (like -inf to
+    // disable the cap) if you want to allow the possibility
+    // of boxes overlapping. Usually you don't even want the
+    // boxes to abut, so this is often set to a small positive
+    // value.
+    double glue_min = 0.0;
 
     // Coefficients that describe how willing we are to expand or
     // contract glue. When a coefficient is higher, larger magnitude
