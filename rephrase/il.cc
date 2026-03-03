@@ -274,7 +274,13 @@ std::string TypeString(const Type *t) {
 }
 
 // TODO: Some kind of pretty-printing
-std::string ExpString(const Exp *e) {
+std::string ExpStringEx(const Exp *e, int depth) {
+  if (depth <= 0) {
+    return "...too deep...";
+  }
+  // For any recursive call.
+  depth--;
+
   switch (e->type) {
   case ExpType::STRING:
     // XXX escaping
@@ -316,7 +322,7 @@ std::string ExpString(const Exp *e) {
     return std::format("(fn{} {} : ({}) => {})",
                         as, x,
                         TypeString(t),
-                        ExpString(body));
+                        ExpStringEx(body, depth));
   }
 
   case ExpType::INT:
@@ -337,7 +343,7 @@ std::string ExpString(const Exp *e) {
     for (int i = 0; i < (int)fields.size(); i++) {
       if (i != 0) ret.append(", ");
       const auto &[l, v] = fields[i];
-      AppendFormat(&ret, "{} = {}", l, ExpString(v));
+      AppendFormat(&ret, "{} = {}", l, ExpStringEx(v, depth));
     }
     ret += "}";
     return ret;
@@ -351,7 +357,7 @@ std::string ExpString(const Exp *e) {
       const auto &[l, oft, v] = fields[i];
       AppendFormat(&ret, "{}[{}] = {}", l,
                    ObjFieldTypeString(oft),
-                   ExpString(v));
+                   ExpStringEx(v, depth));
     }
     ret += "}";
     return ret;
@@ -360,16 +366,16 @@ std::string ExpString(const Exp *e) {
   case ExpType::WITH: {
     const auto &[obj, field, oft, rhs] = e->With();
     return std::format("({} with {}:{} = {})",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        field,
                        ObjFieldTypeString(oft),
-                       ExpString(rhs));
+                       ExpStringEx(rhs, depth));
   }
 
   case ExpType::WITHOUT: {
     const auto &[obj, field, oft] = e->Without();
     return std::format("({} without {}:{})",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        field,
                        ObjFieldTypeString(oft));
   }
@@ -377,13 +383,13 @@ std::string ExpString(const Exp *e) {
   case ExpType::PROJECT: {
     const auto &[lab, t, r] = e->Project();
     return std::format("#{}/{}({})",
-                       lab, TypeString(t), ExpString(r));
+                       lab, TypeString(t), ExpStringEx(r, depth));
   }
 
   case ExpType::INJECT: {
     const auto &[lab, t, r] = e->Inject();
     return std::format("([{} = {}] : {})",
-                        lab, ExpString(r),
+                        lab, ExpStringEx(r, depth),
                         TypeString(t));
   }
 
@@ -391,22 +397,23 @@ std::string ExpString(const Exp *e) {
     const auto &[t, child] = e->Roll();
     return std::format("roll<{}>({})",
                        TypeString(t),
-                       ExpString(child));
+                       ExpStringEx(child, depth));
   }
 
   case ExpType::UNROLL: {
     const auto &[child, t] = e->Unroll();
     return std::format("unroll<{}>({})",
                        TypeString(t),
-                       ExpString(child));
+                       ExpStringEx(child, depth));
   }
 
   case ExpType::NODE: {
     const auto &[attrs, children] = e->Node();
-    std::string ret = std::format("[{}| ", ExpString(attrs));
+    std::string ret = std::format("[{}| ",
+                                  ExpStringEx(attrs, depth));
     for (int i = 0; i < (int)children.size(); i++) {
       if (i != 0) ret.append(", ");
-      ret.append(ExpString(children[i]));
+      ret.append(ExpStringEx(children[i], depth));
     }
     ret += "]";
     return ret;
@@ -423,23 +430,23 @@ std::string ExpString(const Exp *e) {
                        "end",
                        tyvars,
                        x,
-                       ExpString(rhs),
-                       ExpString(body));
+                       ExpStringEx(rhs, depth),
+                       ExpStringEx(body, depth));
   }
 
   case ExpType::IF: {
     const auto &[cond, t, f] = e->If();
     return std::format("(if {} then {} else {})",
-                       ExpString(cond),
-                       ExpString(t),
-                       ExpString(f));
+                       ExpStringEx(cond, depth),
+                       ExpStringEx(t, depth),
+                       ExpStringEx(f, depth));
   }
 
   case ExpType::APP: {
     const auto &[f, x] = e->App();
     return std::format("({} {})",
-                       ExpString(f),
-                       ExpString(x));
+                       ExpStringEx(f, depth),
+                       ExpStringEx(x, depth));
   }
 
   case ExpType::PRIMAPP: {
@@ -455,7 +462,7 @@ std::string ExpString(const Exp *e) {
     std::string args;
     for (int i = 0; i < (int)children.size(); i++) {
       if (i != 0) args.append(", ");
-      args.append(ExpString(children[i]));
+      args.append(ExpStringEx(children[i], depth));
     }
     return std::format("{}{}({})", PrimopString(po), targs, args);
   }
@@ -464,7 +471,7 @@ std::string ExpString(const Exp *e) {
     const auto &[msg, t] = e->Fail();
     return std::format("fail<{}> {}",
                        TypeString(t),
-                       ExpString(msg));
+                       ExpStringEx(msg, depth));
   }
 
   case ExpType::SEQ: {
@@ -473,8 +480,8 @@ std::string ExpString(const Exp *e) {
 
     std::string ret = "seq(\n";
     for (const Exp *c : es)
-      AppendFormat(&ret, "  {};\n", ExpString(c));
-    AppendFormat(&ret, "  {})", ExpString(body));
+      AppendFormat(&ret, "  {};\n", ExpStringEx(c, depth));
+    AppendFormat(&ret, "  {})", ExpStringEx(body, depth));
     return ret;
   }
 
@@ -484,13 +491,13 @@ std::string ExpString(const Exp *e) {
     for (const auto &[bi, arm] : arms)
       sarms.push_back(std::format("{} => {}",
                                   bi.ToString(),
-                                  ExpString(arm)));
+                                  ExpStringEx(arm, depth)));
     return std::format("intcase {} of\n"
                        "   {}\n"
                        " | _ => {}",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        Util::Join(sarms, "\n | "),
-                       ExpString(def));
+                       ExpStringEx(def, depth));
   }
 
   case ExpType::WORDCASE: {
@@ -499,13 +506,13 @@ std::string ExpString(const Exp *e) {
     for (const auto &[w, arm] : arms)
       sarms.push_back(std::format("{} => {}",
                                   w,
-                                  ExpString(arm)));
+                                  ExpStringEx(arm, depth)));
     return std::format("wordcase {} of\n"
                        "   {}\n"
                        " | _ => {}",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        Util::Join(sarms, "\n | "),
-                       ExpString(def));
+                       ExpStringEx(def, depth));
   }
 
   case ExpType::STRINGCASE: {
@@ -514,13 +521,13 @@ std::string ExpString(const Exp *e) {
     for (const auto &[s, arm] : arms)
       sarms.push_back(std::format("\"{}\" => {}",
                                    EscapeString(s),
-                                   ExpString(arm)));
+                                   ExpStringEx(arm, depth)));
     return std::format("stringcase {} of\n"
                        "   {}\n"
                        " | _ => {}",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        Util::Join(sarms, "\n | "),
-                       ExpString(def));
+                       ExpStringEx(def, depth));
   }
 
   case ExpType::SUMCASE: {
@@ -529,13 +536,13 @@ std::string ExpString(const Exp *e) {
     for (const auto &[s, x, arm] : arms)
       sarms.push_back(std::format("{} ({}) => {}",
                                   s, x,
-                                  ExpString(arm)));
+                                  ExpStringEx(arm, depth)));
     return std::format("sumcase {} of\n"
                        "   {}\n"
                        " | _ => {}",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        Util::Join(sarms, "\n | "),
-                       ExpString(def));
+                       ExpStringEx(def, depth));
   }
 
   case ExpType::PACK: {
@@ -545,7 +552,7 @@ std::string ExpString(const Exp *e) {
                        TypeString(t_hidden),
                        alpha,
                        TypeString(t_packed),
-                       ExpString(exp));
+                       ExpStringEx(exp, depth));
   }
 
   case ExpType::UNPACK: {
@@ -555,26 +562,26 @@ std::string ExpString(const Exp *e) {
     return std::format("unpack {},{} = {}\n"
                        "in {} end",
                        alpha, x,
-                       ExpString(rhs),
-                       ExpString(body));
+                       ExpStringEx(rhs, depth),
+                       ExpStringEx(body, depth));
   }
 
   case ExpType::TYPEFN: {
     const auto &[alpha, exp] = e->TypeFn();
     return std::format("typefn {} => {}",
-                       alpha, ExpString(exp));
+                       alpha, ExpStringEx(exp, depth));
   }
 
   case ExpType::TYPEAPP: {
     const auto &[exp, t] = e->TypeApp();
     return std::format("{}<{}>",
-                       ExpString(exp), TypeString(t));
+                       ExpStringEx(exp, depth), TypeString(t));
   }
 
   case ExpType::HAS: {
     const auto &[obj, field, oft] = e->Has();
     return std::format("(has {}.{} : {})",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        field,
                        ObjFieldTypeString(oft));
   }
@@ -582,7 +589,7 @@ std::string ExpString(const Exp *e) {
   case ExpType::GET: {
     const auto &[obj, field, oft] = e->Get();
     return std::format("(get {}.{} : {})",
-                       ExpString(obj),
+                       ExpStringEx(obj, depth),
                        field,
                        ObjFieldTypeString(oft));
   }
@@ -590,6 +597,12 @@ std::string ExpString(const Exp *e) {
   default:
     return "ILLEGAL EXPRESSION";
   }
+}
+
+static constexpr int MAX_DEPTH = 8;
+
+std::string ExpString(const Exp *e) {
+  return ExpStringEx(e, MAX_DEPTH);
 }
 
 std::pair<std::vector<std::string>, std::vector<const Type *>>
@@ -811,20 +824,30 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
 std::string ProgramString(const Program &pgm) {
   std::string ret = "globals\n";
   for (const Global &glob : pgm.globals) {
+    Print("Global size {}. Ret size {}\n", glob.sym.size(), ret.size());
+    Print("    ... Global {}.\n", glob.sym);
+
     std::string tyvars;
     if (!glob.tyvars.empty()) {
       tyvars = std::format("({}) ", Util::Join(glob.tyvars, ","));
     }
+    std::string t = TypeString(glob.type);
+    std::string e = ExpStringEx(glob.exp, MAX_DEPTH);
+    Print("   ... tv {}, t {}, e {}\n", tyvars.size(), t.size(), e.size());
     AppendFormat(&ret, "  global {}{} : {} = {}\n",
-                  tyvars,
-                  glob.sym,
-                  TypeString(glob.type),
-                  ExpString(glob.exp));
+                 tyvars,
+                 glob.sym,
+                 t,
+                 e);
   }
+  Print("Body...\n");
+  fflush(stdout);
+  std::string ee = "BODY"; // ExpStringEx(pgm.body, MAX_DEPTH);
+  Print("body size {}\n", ee.size());
   AppendFormat(&ret,
                "in\n"
                "  {}\n"
-               "end\n", ExpString(pgm.body));
+               "end\n", ee);
   return ret;
 }
 

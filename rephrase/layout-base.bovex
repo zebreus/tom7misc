@@ -4,6 +4,8 @@
    objects that are used by the internal GetBoxes,
    and has standardized wrappers for the internal
    algorithms. *)
+do REQUIRE-STDLIB
+datatype provide-layout-base = REQUIRE-LAYOUT-BASE
 
 fun inch (d : float) = d *. 72.0
 fun point (d : float) = d

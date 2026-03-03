@@ -4770,10 +4770,20 @@ struct SVGEmitter {
         state.has_stroke = true;
         const auto &[r, g, b, a] = Unpack32F(sc);
         state.stroke_alpha = a;
-        AppendFormat(out, "{} {} {} rg\n",
+        AppendFormat(out, "{} {} {} RG\n",
                      Float(r), Float(g), Float(b));
         stroke_alpha_changed = true;
       }
+    }
+
+    if (style.stroke_dasharray.has_value()) {
+      out->append("[");
+      for (double val : style.stroke_dasharray.value()) {
+        AppendFormat(out, "{} ", Float(val));
+      }
+
+      double offset = style.stroke_dashoffset.value_or(0.0);
+      AppendFormat(out, "] {} d\n", Float(offset));
     }
 
     if (style.stroke_opacity.has_value()) {

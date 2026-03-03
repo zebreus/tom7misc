@@ -678,8 +678,8 @@ struct PeepholePass : public il::Pass<> {
           // add a rounding double constructor for BigInt and use
           // that, both here an in execution (which is currently
           // sloppy).
-          if (d > std::numeric_limits<int64_t>::min() &&
-              d < std::numeric_limits<int64_t>::max()) {
+          if (d > (double)std::numeric_limits<int64_t>::min() &&
+              d < (double)std::numeric_limits<int64_t>::max()) {
             Simplified("float-round primop");
             return pool->Int(std::llround(d));
           }
@@ -690,8 +690,8 @@ struct PeepholePass : public il::Pass<> {
         if (ees[0]->type == ExpType::FLOAT) {
           const double d = ees[0]->Float();
           // (Same comment as FLOAT_ROUND.)
-          if (d > std::numeric_limits<int64_t>::min() &&
-              d < std::numeric_limits<int64_t>::max()) {
+          if (d > (double)std::numeric_limits<int64_t>::min() &&
+              d < (double)std::numeric_limits<int64_t>::max()) {
             Simplified("float-trunc primop");
             return pool->Int(std::llround(std::trunc(d)));
           }
@@ -1131,9 +1131,9 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
-  virtual const Exp *DoWith(const Exp *obj_in, const std::string &field,
-                            ObjFieldType oft, const Exp *rhs_in,
-                            const Exp *guess) {
+  const Exp *DoWith(const Exp *obj_in, const std::string &field,
+                    ObjFieldType oft, const Exp *rhs_in,
+                    const Exp *guess) override {
     const Exp *obj = DoExp(obj_in);
     const Exp *rhs = DoExp(rhs_in);
     if ((opts & Simplification::O_REDUCE) &&
@@ -1144,7 +1144,8 @@ struct PeepholePass : public il::Pass<> {
       // If we're overwriting, just sequence the discarded expression.
       const Exp *discard = nullptr;
       {
-        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> new_fields;
+        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>>
+          new_fields;
         for (const auto &[ff, oo, ee] : fields) {
           if (oo == oft && field == ff) {
             CHECK(discard == nullptr) << "Duplicate field in object? " << field;
@@ -1167,9 +1168,9 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
-  virtual const Exp *DoWithout(const Exp *obj_in, const std::string &field,
-                               ObjFieldType oft,
-                               const Exp *guess) {
+  const Exp *DoWithout(const Exp *obj_in, const std::string &field,
+                       ObjFieldType oft,
+                       const Exp *guess) override {
     const Exp *obj = DoExp(obj_in);
     if ((opts & Simplification::O_REDUCE) &&
         obj->type == ExpType::OBJECT) {
@@ -1180,7 +1181,8 @@ struct PeepholePass : public il::Pass<> {
       // effects.
       const Exp *discard = nullptr;
       {
-        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> new_fields;
+        std::vector<std::tuple<std::string, ObjFieldType, const Exp *>>
+          new_fields;
         for (const auto &[ff, oo, ee] : fields) {
           if (oo == oft && field == ff) {
             CHECK(discard == nullptr) << "Duplicate field in object? " << field;
@@ -2242,6 +2244,7 @@ struct Uses {
       old_used = other.old_used;
       old_multi = other.old_multi;
       other.parent = nullptr;
+      return *this;
     }
 
    private:

@@ -3,7 +3,6 @@ let
   import "stdlib.bovex"
   import "pdf-document.bovex"
   import "layout.bovex"
-  import "palatino.bovex"
   import "cite.bovex"
   import "httpi.bib"
 
@@ -52,14 +51,40 @@ let
   fun BODY-LINE-HEIGHT() = !BODY-FONT-SIZE +. !BODY-LINE-SPACING
 
   val layout-sup = sup
+  val layout-sub = sub
+
+  val SCRIPT-SIZE = point 8.0
 
   fun sup lay =
-    span {(Span) font-size = 8.0,
+    span {(Span) font-size = SCRIPT-SIZE,
           (* Don't rephrase the text in these. *)
           no-rephrase = true } lay
 
-  fun sub lay =
-    span {(Box) font-size = 8.0, dy = 8.0 } lay
+  fun sub lay = layout-sub (!BODY-FONT-SIZE) lay
+
+  fun supsub above below =
+    let
+      val pts = !BODY-FONT-SIZE
+      val p : layout = text-box (span {(Span)
+                                       font-size = pts *. 0.75,
+                                       no-rephrase = true} above)
+      val b : layout = text-box (span {(Span)
+                                       font-size = pts *. 0.75,
+                                       no-rephrase = true} below)
+  in
+    case (layoutcase p, layoutcase b) of
+      (Node (BOX, pattrs as {(Box) width = pw}, pc : layout list),
+       Node (BOX, battrs as {(Box) width = bw}, bc : layout list)) =>
+      let
+        val sp = box-stick-at { x = 0.0, y = pts *. -0.05 } p
+        val sb = box-stick-at { x = 0.0, y = pts *. 0.33 } b
+      in
+        box {(Box) width = float-max (pw, bw),
+             height = !BODY-FONT-SIZE} [[sp][sb]]
+      end
+    | _ => fail "expected box from text-box!"
+  end
+
 
   fun centered-image width filename =
     let
@@ -115,10 +140,20 @@ let
     image-inline { img = image-load "check.svg", height = 12.0, dy = 3.0 }
 
   val green-lock-icon =
-    image-inline { img = image-load "green-padlock.svg", height = 12.0, dy = 3.0 }
+    image-inline { img = image-load "green-padlock.svg",
+                   height = 12.0, dy = 3.0 }
+
+  val warning-triangle-icon =
+    image-inline { img = image-load "warning-triangle.svg",
+                   height = 12.0, dy = 1.5 }
 
   (* TODO *)
   fun underline lay = lay
+
+  fun paragraph-no-period lay =
+    span {(Span) font-bold = true} lay ^^
+    box {(Box) width = 3.0, glue-ideal = 3.0,
+         glue-min = 1.0, glue-expand = 1.5 } []
 
   (* TODO: I think it would be cleaner to insert a soft-hyphen
      character (U+00AD) and let the built-in hyphenation code
@@ -137,9 +172,13 @@ let
 
   val httpi = tt[httpi]
   val openssl = [OpenSSL]
-  val red-alert = color 0x990000FF [RED ALERT]
+  val red-alert = [[warning-triangle-icon] [color 0x990000FF [RED ALERT]]]
+
+  val bbz = noto-serif [ℤ]
+  val heavy-asterisk = (noto-serif [*])
 
   val DEBUG-BAD-LAYOUT = false
+
 in
 if DEBUG-BAD-LAYOUT
 then
@@ -151,6 +190,7 @@ important sites like [tt[google.com]],
 about 0.35% of all revocations.])
 
 else
+
 
 (main-text
 [[title (layout doc-title)][hfill()][break()]
@@ -331,17 +371,17 @@ owner of that key can decrypt (using the private key). The client can
 then decide on an AES key, encrypt it with the server’s public key,
 and send it to the server.
 
-[b[Oops—HACKED!!]] This doesn’t work, though. While a passive observer
-can’t uncover the key, an attacker can insinuate themselves into the
-connection. To the client, they pretend to be the server, passing
-their [it[own]] public key to the client and receiving the client’s
-chosen AES key. To the server, they pretend to be the client,
-negotiating a secure connection and forwarding data between the real
-client and the server. This “man-in-the-middle” (often a computer and
-not a biological man) is invisible to the client and server, but
-can read (and often modify) any data encrypted data sent between
-them. The possibility of such a rude intermezzo is arguably the core
-difficulty of designing protocols like TLS.
+[paragraph-no-period[Oops—HACKED!!]] This doesn’t work, though. While
+a passive observer can’t uncover the key, an attacker can insinuate
+themselves into the connection. To the client, they pretend to be the
+server, passing their [it[own]] public key to the client and receiving
+the client’s chosen AES key. To the server, they pretend to be the
+client, negotiating a secure connection and forwarding data between
+the real client and the server. This “man-in-the-middle” (often a
+computer and not a biological man) is invisible to the client and
+server, but can read (and often modify) any data encrypted data sent
+between them. The possibility of such a rude intermezzo is arguably
+the core difficulty of designing protocols like TLS.
 
 The way that TLS prevents against man-in-the-middle attacks is for
 the client to check that the public key actually belongs to the server.
@@ -385,7 +425,7 @@ their key–domain pairs. They’re supposed to check that the key
 actually belongs to the domain name; originally this happened through
 some kind of verification process, like when you try to go to the
 deepfake pornography web site but it demands a credit card number to
-check that you're really 18 years old.
+check that you’re really 18 years old.
 
 [section [Let’s Encrypt]]
 
@@ -433,14 +473,14 @@ itself.
 
 [section [The many dirty secrets of TLS]]
 
-I'm alluding to a bit of hypocrisy here: The way you get a certificate
-is itself vulnerable to the same attacks it's meant to protect
+I’m alluding to a bit of hypocrisy here: The way you get a certificate
+is itself vulnerable to the same attacks it’s meant to protect
 against. For example, if you can successfully act as a
 man-in-the-middle, intercepting and modifying traffic to my website
 using HTTP,[footnote[As I understand, you do need to have a pretty
-robust hack in place, since Let's Encrypt will try requesting the HTTP
+robust hack in place, since Let’s Encrypt will try requesting the HTTP
 challenge from multiple sources. So this is a bit harder than doing a
-man-in-the-middle on the coffee shop wifi.]] then you can ask Let's
+man-in-the-middle on the coffee shop wifi.]] then you can ask Let’s
 Encrypt to issue you a certificate, succeed the challenge-reponse
 protocol, and then turn your HTTP man-in-the-middle into a [green-lock-icon] Green
 Padlock 4096-bit man-in-the-middle. For a very conscientious site
@@ -448,7 +488,7 @@ owner there are some potential protections but if someone can
 man-in-the-middle your site, you are already in trouble.[footnote[As I
 understand, you can turn off certain challenge-response protocols
 using your DNS records, and use DNSSEC to make sure those records
-can't be spoofed. (By the way, if this was all handled by the domain
+can’t be spoofed. (By the way, if this was all handled by the domain
 registrar, whom I already need to trust and pay a fee to, I would be a
 lot less irritated!) You can also actively and continuously monitor
 the Certificate Transparency logs and cryptographically verify the
@@ -459,12 +499,12 @@ the challenge-response yourself to convince the CA to revoke the rogue
 certificate. Or perhaps the attacker will be doing the same to revoke
 [it[your]] certificate.
 
-[b[Oops—HACKED!!]] Even if you revoke a certificate, it might not
-matter! Browsers have kinda stopped checking for certificate
-revocation. The issues include:
+[paragraph-no-period[Oops—HACKED!!]] Even if you revoke a certificate,
+it might not matter! Browsers have kinda stopped checking for
+certificate revocation. The issues include:
 [ul(
 
-[Certificate Revocation Lists are enormous. For one Let's Encrypt
+[Certificate Revocation Lists are enormous. For one Let’s Encrypt
 certificate, the corresponding CRL is 50–100 MB as of 2026. Why
 are there so many revoked certificates? Who knows? Anyway, downloading
 100 MB before visiting a site is considered rude; browser vendors
@@ -474,12 +514,12 @@ copies of jQuery and the full-screen video advertisement.] ::
 [An alternative protocol called OCSP lets you check the certificate
 for a specific domain.[cite rfc8954] But oh yeah, like CRLs, OCSP
 queries happen over bare, unencrypted http connections. So an attacker
-who wants to see what sites you're visiting could just see what
-certificates you're checking on.] ::
+who wants to see what sites you’re visiting could just see what
+certificates you’re checking on.] ::
 
 [Also, because some people on the browser teams (and good for them)
 know that you mostly want to browse the web and not see error messages,
-revocation support is typically "fail-open;" if you can't check
+revocation support is typically "fail-open;" if you can’t check
 for revocation because the CA is having trouble or because an
 attacker interfered with your connection to it, then the browser
 will just trust the certificate anyway.] ::
@@ -490,7 +530,7 @@ everybody that a user should not trust your site unless you staple
 OCSP. But since a typical OCSP response is valid for 7 days, an
 attacker can just keep reusing one for a week, even if the CA would
 have stopped validating the rogue certificate. Also, we deprecated
-OCSP so it doesn't really do anything any
+OCSP so it doesn’t really do anything any
 more.[cite letsencrypt2024ending]] ::
 
 [So Chrome mostly checks for revocations using CRLSet, which
@@ -503,19 +543,19 @@ about 0.35% of all revocations,[cite larisch2017crlite] so as long
 as your website is in Lycos’s “Top 5% Of The Web,” you have almost
 a 10% chance of being included. If you are an old academic site
 forced to get a certificate due to [red-alert], your users probably
-won't see if the certificate is revoked.] ::
+won’t see if the certificate is revoked.] ::
 
 [Firefox, to its credit, attempts to cover all revocations using
-Bloom filters (CRLite). There's a good chance that if a certificate
+Bloom filters (CRLite). There’s a good chance that if a certificate
 is revoked, Firefox will notice within a few hours. Hours is still
 a pretty long time, especially since it takes only a few seconds
 to get a new certificate.] ::
 
 nil)]
 
-So, all that is to say: If you are accessing your bank's website or
-a major tech company's, the fact that it says "secure" probably does
-mean something. But if you don't know whether the site's own network
+So, all that is to say: If you are accessing your bank’s website or
+a major tech company’s, the fact that it says “secure” probably does
+mean something. But if you don’t know whether the site’s own network
 is compromised, it does not mean much, other than that somebody did
 some chores recently (maybe a hacker on their behalf).
 
@@ -537,43 +577,49 @@ Too Many Secrets
 [section [Let’sn’t Encrypt]]
 
 
-And so! It is time for my petty "revenge." Every good project starts
+And so! It is time for my petty “revenge.” Every good project starts
 with some criteria. Here are the parameters:
 
-I want my website to be accessible to users without them having to do anything special,
-like in the old days. I wasn't able to figure out a way to do this
-without a valid certificate (such a thing would be a major security
-incident), so I'll do the chores to get a certificate.
+I want my website to be accessible to users without them having to do
+anything special, like in the old days. I wasn't able to figure out a
+way to do this without a valid certificate (such an achievement would
+be a major security incident), so I'll do the chores to get a
+certificate.
 
-But: I resent being "forced" to make my site secure. So I'm going to
-do the worst job implementing TLS that I can manage. I want it
-to be painfully bad to security professionals, in the hopes that it
-causes psychological harm to some of the same people who
-are locking people out of my website and scaring them about
-their credit card numbers.
+But: As you already know from the title and tone of this paper, I resent being
+“forced” to make my site secure. So I'm going to do the worst job
+implementing TLS that I can manage. I want it to be painfully bad to
+security professionals, in the hopes that it causes psychological harm
+to some of the same people who are locking people out of my website
+and scaring them about their credit card numbers.
 
 One of the things that the toxic max-security people love to tell
 you is that you aren't a good enough programmer to implement
-cryptography algorithms yourself. But these are the same dudes
-who wrote [openssl][cite viega2002openssl], the main source
-of security holes on the internet, and what you to use
+cryptography algorithms yourself. But these are the same cowboys
+who wrote [openssl],[cite viega2002openssl] the main source
+of security holes on the internet, and want you to use
 [it[that]]?[footnote[I just looked to see if indeed [openssl] is still
 an endless fount of security
 vulnerabilities—like, maybe I am being too hard on it?—and I saw
 that merely [it[three days ago]] there were two different buffer
-overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which "may
+overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which “may
 also potentially enable code execution depending on platform
-mitigations" and ten additional "low severity" problems like
+mitigations” and ten additional “low severity” problems like
 incomplete validation, excessive memory allocation, and null pointer
 dereferences.]] No OpenSSL in this project. It doesn't even need
 to be installed.
 
-On the other hand, I don't people to be able to "hack" my server
+[* It is actually tremendously easy to make an insecure TLS implementation,
+and people do it all the time by accident. Don't just post the
+secrets on the website. Should be evident from protocol traffic.
+*]
+
+On the other hand, I don't want people to be able to “hack” my server
 in the sense of gaining unauthorized access (buffer overflows, etc.).
 Anyone has authorization to access the public websites on there, and to observe the traffic
-if they want to be creepy. The site does not promise to be robust
-to impostors or interlopers. My goal is to provide "HTTP but worse";
-roughly no security guarantees, slower, more complicated, and
+if they want to be creepy. The site does not purport to be robust
+to impostors or interlopers. My goal is to provide “HTTP but worse”:
+Roughly no security guarantees, but also slower, more complicated, and
 with a [green-lock-icon] green padlock.
 
 The result is [httpi], a TLS 1.2 reverse proxy that all major browsers
@@ -587,17 +633,76 @@ bad a job I did, I'll need to explain how TLS works, so this will also
 be a decent way to learn about the protocol.
 
 [subsection[Secret handshake]]
-The initial phase of a TLS connection—the "handshake"—happens in plaintext
+In TLS's steady state, the client and server are sending each other
+data encrypted with a block cipher like AES. The tricky part of the
+protocol is getting into that steady state.
+
+The initial phase of a TLS connection—the “handshake”—happens in plaintext
 for anyone to see. Its job is to negotiate what cryptographic algorithms will
 be used to encrypt the data later, and what keys to use. The server and
 client also decide on what extensions can be used. During the handshake
 the server presents its certificate to the client, so that the client can check
 that they are talking to someone who 0wned the domain.
 
-The classic way to establish the server's identity and
+The classic way to establish the server's identity and secretly
+exchange encryption keys is RSA. The server
+presents its certificate, which is signed by the CA and contains the
+server’s public RSA key. The client can verify the signature if it
+cares, and then send a message encrypted with the public key, which
+can only be deciphered using the server’s private key. They use this
+secret channel to negotiate the encryption keys.
 
 [subsection[Too many secrets]]
-RSA[cite rivest1978rsa]
+
+RSA, which stands for Really Secure Algorithm,[cite rivest1978rsa] is
+based on the believed difficulty of factoring large numbers. The
+server comes up with two large primes [it [p]] and [it[q]], keeps them
+secret, and shares just [it[n]] = [it [pq]]. This is the public
+key.[footnote [Technically, the public key contains the exponent
+[it[e]] as well. Since this is public anyway, many systems require
+this to be exactly 65537 (one of the fastest primes); for example, Let’s
+Encrypt will not even sign your key unless [it[e]] = 65537. There will be other
+simplifications in this paper.]] To encrypt a message (a number [it [m]]),
+the client computes
+
+[it[c]] = [it[m]][sup (it[e])] mod [it[n]]
+
+We say that the difficulty of RSA comes from the difficulty of
+factoring, but really it comes from the difficulty of computing
+modular roots (the [it[e]]th root); the reverse of the above
+operation. It just happens that if you know the prime factors of
+[it[n]] (as the server does), then you have an easy way to compute the
+order of the group (the multiplicative group of integers mod [it[n]],
+aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy way to compute
+the exponent [it[d]] such that
+[it [x]][sup (it [ed])] = [it [x]] mod [it [n]].
+
+Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
+will only allow you to sign one that is 1024 bits, 2048 bits, or 4096
+bits. This doesn’t actually imply that the key is secure; for example,
+we can get a 4096-bit key by choosing the primes to be 7 and some
+random 4093-bit prime. This number would be trivial to factor, by
+trying small divisors, various general-purpose algorithms, or simply
+knowing my name. Let’s Encrypt will check that you don’t have trivial
+factors like this, but it will let you have another small prime
+divisor like 31337 (one of the most elite primes).
+
+[paragraph-no-period[Oops—HACKED!!]] The original version of [httpi]
+used a key with 31337 as one of its factors, but the certificate was
+revoked after about a week! Let’s Encrypt lets anybody revoke a
+certificate for you—as a favor I guess—if they have the private key.
+
+What happened?
+
+5 million certificates a day ([figure "t"
+(fn fig => [[image { img = image-load "encrypt-growth.svg",
+                     width = COLUMN-WIDTH() }][*
+*][b fig]. Daily number of certificates issued by Let’s Encrypt
+since its birth.[cite lets2026stats]
+You can see the vigorous decline in certificates that began
+around November 2025, which is when [httpi] first went online.
+(I think this is, in fact, a coincidence.)
+])])
 
 [*
 We have a pretty good handle on the computational resources needed
@@ -605,21 +710,12 @@ to break an RSA key of a certain level. Is it plausible that someone
 would spend nation-state level resources to intercept my credit
 card number?
 
-openssl, the solution to, and source of, most security vulnerabilities
-openssl, the source of most security vulnerabilities I mean, I just
-looked to see if OpenSSL was still a fount of security
-vulnerabilities---like, maybe I am being too hard on it?--- and I saw
-that merely [it[three days ago]] there were two different buffer
-overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which "may
-also potentially enable code execution depending on platform
-mitigations" and ten additional "low severity" problems like
-incomplete validation, excessive memory allocation, and null pointer
-dereferences.
-
 even openssl is XXX lines of code
 
 using the credit card to encrypt the data
 *]
+
+[subsection[Limitations]]
 
 Some applications with a high level of toxic max-security will refuse
 to connect to [httpi] servers because they are not able to negotiate
@@ -902,6 +998,7 @@ it to look like I want forevermore. This includes all the path types
 (except arcs),
 rounded rectangles,
 the three different ways that strokes and fills can be transparent,
+dashed lines,
 clip paths, transforms, and fill rules.
 
 [paragraph[Footnotes]] I can’t believe I wrote two whole papers
@@ -952,10 +1049,19 @@ Chrome-I-Am browser
 T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
 *]
 
+[cite schneier1996applied] - red book
+[cite reuters2013secret] - rsa payola
+[cite wehrheim2012stadt] - hostile architecture
+
 [section [Bibliography]]
 
 [bibliography()]
 
 ])
+
+;
+
+output (0, text-sticker {x = 10.0, y = 10.0 }
+        [[color 0x990000FF [REJECTED]] from SIGBOVIK 2026])
 
 end

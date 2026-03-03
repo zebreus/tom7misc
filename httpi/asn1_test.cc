@@ -1,9 +1,9 @@
 #include "asn1.h"
 
 #include <cassert>
-#include <vector>
 #include <cstdint>
 #include <initializer_list>
+#include <vector>
 
 #include "ansi.h"
 #include "base/print.h"

@@ -114,7 +114,6 @@ struct PeepholePass {
             }
           }
 
-
         }
 
         // If we didn't 'continue' above, then we pass through the

@@ -24,7 +24,7 @@
   } while (0)
 
 
-static void TestRoundTrip() {
+static void TestSerializationRoundTrip() {
   MultiRSA::Key key;
   key.n = BigInt("238402292925117127099162286134407962123");
   key.e = BigInt(65537);
@@ -80,7 +80,32 @@ void TestDecryptCRT() {
   CHECK_VEQ(block, block2);
 }
 
+void TestEncryptDecrypt() {
+  std::optional<MultiRSA::Key> okey =
+    MultiRSA::KeyFromPrimes(std::vector<BigInt>{
+      BigInt("1452183499217746936988050278709957755003934074480911"),
+      BigInt("2696423543995307208401026789711225014797731381216367"),
+      BigInt("2465074989005639593525836528988016925392176901709149")});
+  CHECK(okey.has_value());
+  const MultiRSA::Key &key = okey.value();
+
+  std::vector<uint8_t> block(MultiRSA::BlockSize(key));
+  for (int i = 0; i < block.size(); i++) {
+    block[i] = i;
+  }
+  CHECK(BigInt::FromBigEndianBytes(block) < key.n) << "The first whole byte "
+    "of the block is zero, so this should be smaller than n.";
+
+  std::vector<uint8_t> original = block;
+
+  MultiRSA::RawEncryptInPlace(key.n, key.e, block);
+  CHECK(block != original);
+  MultiRSA::RawDecryptInPlace(key, block);
+  CHECK(block == original);
+}
+
 void BenchDecrypt() {
+  Print("Benchmarking decryption:\n");
   std::vector<BigInt> primes = {
   BigInt("220579997080201528679866389806010526018328171628748766160655660624723379952863"),
   BigInt("109925413483831602130182558106571963601983168935027100919610231432894866318593"),
@@ -120,7 +145,8 @@ void BenchDecrypt() {
       MultiRSA::RawDecryptInPlace(key, test_block);
     }
     double sec = timer.Seconds();
-    Print("[{} in {}] Standard: {} ea.\n", ROUNDS, ANSI::Time(sec), ANSI::Time(sec / ROUNDS));
+    Print("[{} in {}] Standard: {} ea.\n", ROUNDS,
+          ANSI::Time(sec), ANSI::Time(sec / ROUNDS));
   }
 
   {
@@ -130,14 +156,16 @@ void BenchDecrypt() {
       MultiRSA::RawDecryptInPlaceCRT(key, test_block);
     }
     double sec = timer.Seconds();
-    Print("[{} in {}] CRT: {} ea.\n", ROUNDS, ANSI::Time(sec), ANSI::Time(sec / ROUNDS));
+    Print("[{} in {}] CRT: {} ea.\n", ROUNDS,
+          ANSI::Time(sec), ANSI::Time(sec / ROUNDS));
   }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestRoundTrip();
+  TestSerializationRoundTrip();
+  TestEncryptDecrypt();
   TestDecryptCRT();
 
   BenchDecrypt();

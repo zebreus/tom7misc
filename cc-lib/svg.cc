@@ -723,6 +723,31 @@ struct Converter {
       }
     }
 
+    if (auto so = GetStripAttribute("stroke-dasharray")) {
+      had_style = true;
+      if (so.value() == "none") {
+        style.stroke_dasharray = {{}};
+      } else {
+        auto args = AllNumbers(so.value());
+        if (!args.has_value() || args.value().empty()) {
+          error = "stroke-dasharray needs at least one number or 'none'";
+          return {};
+        }
+
+        style.stroke_dasharray = {args.value()};
+      }
+    }
+
+    if (auto so = GetStripAttribute("stroke-dashoffset")) {
+      had_style = true;
+      if (auto co = ParseLength(so.value())) {
+        style.stroke_width = co;
+      } else {
+        error = "Invalid length in stroke-offset";
+        return {};
+      }
+    }
+
     if (auto so = GetStripAttribute("opacity")) {
       had_style = true;
       if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
@@ -861,13 +886,32 @@ struct Converter {
           return {};
         }
 
-      } else if (tag == "polygon") {
+      } else if (tag == "line") {
+        double x1 = Util::ParseDouble(node->attrs["x1"], 0.0);
+        double y1 = Util::ParseDouble(node->attrs["y1"], 0.0);
+        double x2 = Util::ParseDouble(node->attrs["x2"], 0.0);
+        double y2 = Util::ParseDouble(node->attrs["y2"], 0.0);
+
+        std::string d = std::format("M {},{} L {},{}", x1, y1, x2, y2);
+        node->tag = "path";
+        node->attrs.erase("x1");
+        node->attrs.erase("y1");
+        node->attrs.erase("x2");
+        node->attrs.erase("y2");
+        node->attrs["d"] = std::move(d);
+        return ConvertRec(node);
+
+      } else if (tag == "polygon" || tag == "polyline") {
         auto pit = node->attrs.find("points");
         if (pit == node->attrs.end()) {
           return SVG::Node(SVG::G());
         }
 
-        std::string d = std::format("M {} Z", pit->second);
+        // Polyline and polygon are the same except that
+        // the polygon closes the path.
+        const char *z = tag == "polygon" ? " Z" : "";
+
+        std::string d = std::format("M {}{}", pit->second, z);
 
         node->tag = "path";
         node->attrs.erase(pit);
@@ -1729,6 +1773,21 @@ struct Unconverter {
     if (style.stroke_width.has_value()) {
       AppendFormat(out, " stroke-width=\"{}px\"",
                    Rtos(style.stroke_width.value()));
+    }
+
+    if (style.stroke_dasharray.has_value()) {
+      const auto &a = style.stroke_dasharray.value();
+      out->append(" stroke-dasharray=\"");
+      for (size_t i = 0; i < a.size(); i++) {
+        if (i != 0) out->append(" ");
+        out->append(Rtos(a[i]));
+      }
+      out->append("\"");
+    }
+
+    if (style.stroke_dashoffset.has_value()) {
+      AppendFormat(out, " stroke-dashoffset=\"{}\"",
+                   Rtos(style.stroke_dashoffset.value()));
     }
 
     if (style.line_cap.has_value()) {

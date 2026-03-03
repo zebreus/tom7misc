@@ -133,6 +133,7 @@ object PhdThesis of { author : string, title : string,
 object News of { author : string, title : string,
                  year : int, month : int, day : int,
                  work : string, publisher : string,
+                 location : string,
                  url : string }
 
 object TechReport of { author : string, title : string,

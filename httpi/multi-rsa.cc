@@ -207,6 +207,22 @@ void MultiRSA::RawDecryptInPlaceCRT(const Key &key,
   CHECK(BigInt::ToBigEndianBytes(m, buffer));
 }
 
+void MultiRSA::RawEncryptInPlace(const BigInt &n, const BigInt &e,
+                                 std::span<uint8_t> buffer) {
+  int byte_len = BigInt::NumBytes(n);
+  CHECK(buffer.size() == byte_len) << "Wrong buffer size.";
+
+  BigInt m = BigInt::FromBigEndianBytes(buffer);
+
+  CHECK(m >= 0 && m < n) << "Message is larger than the modulus.";
+  CHECK(n > 0) << "Invalid modulus.";
+
+  BigInt c = BigInt::PowMod(m, e, n);
+
+  CHECK(c >= 0 && c < n);
+  CHECK(BigInt::ToBigEndianBytes(c, buffer));
+}
+
 std::optional<std::span<const uint8_t>> MultiRSA::ExtractPadded(
     std::span<const uint8_t> buffer) {
   PacketParser packet(buffer);

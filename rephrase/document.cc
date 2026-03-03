@@ -763,7 +763,9 @@ Document::BoxifyText(const TextProps &props,
       d.SetDoubleAttr("glue-ideal", space_width * props.font_size);
       // Relative penalty for contracting.
       d.SetDoubleAttr("glue-contract", 4.0);
-      d.SetDoubleAttr("glue-min", space_width * props.font_size * 0.1);
+      d.SetDoubleAttr("glue-min",
+                      // Don't get smaller than half a space between words.
+                      space_width * props.font_size * 0.5);
     } else {
       d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
       d.SetDoubleAttr("glue-ideal", 0.0);

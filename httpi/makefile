@@ -7,6 +7,8 @@ UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
 CC=clang
 CXX=clang++ -stdlib=libc++
+HARDEN=-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2
+LHARDEN=-z relro -z now
 endif
 
 # This is optional; if you want to use plain C++ code, just
@@ -22,9 +24,6 @@ endif
 
 CC_LIB=../cc-lib
 
-HARDEN=-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2
-LHARDEN=-z relro -z now
-
 # OPT=-O -g
 # OPT=-O3 -flto=thin
 # ASAN=-g -fsanitize=address -fsanitize=undefined
@@ -35,7 +34,11 @@ LFLAGS=$(ASAN) $(LHARDEN) $(GMP_LFLAGS) -flto
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/color-util.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/hexdump.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/base64.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o
 
-OBJECTS=$(CC_LIB_OBJECTS) multi-rsa.o rsa.o asn1.o pem.o tls.o config.o csr.o
+# Objects that are plain portable C++
+HTTPI_LIB_OBJECTS=$(CC_LIB_OBJECTS) multi-rsa.o rsa.o asn1.o pem.o tls.o csr.o
+
+# Objects that may require linux APIs
+SERVER_OBJECTS=config.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -45,55 +48,55 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-gen.exe : gen.o $(OBJECTS)
+gen.exe : gen.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-multi-gen.exe : multi-gen.o $(OBJECTS)
+multi-gen.exe : multi-gen.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-keyinfo.exe : keyinfo.o $(OBJECTS)
+keyinfo.exe : keyinfo.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-from-ssl.exe : from-ssl.o $(OBJECTS)
+from-ssl.exe : from-ssl.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-multi-rsa_test.exe : multi-rsa_test.o $(OBJECTS)
+multi-rsa_test.exe : multi-rsa_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-tls_test.exe : tls_test.o $(OBJECTS)
+tls_test.exe : tls_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-packet-parser_test.exe : packet-parser_test.o $(OBJECTS)
+packet-parser_test.exe : packet-parser_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-packet-writer_test.exe : packet-writer_test.o $(OBJECTS)
+packet-writer_test.exe : packet-writer_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-asn1_test.exe : asn1_test.o $(OBJECTS)
+asn1_test.exe : asn1_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-httpi.exe : httpi.o $(OBJECTS)
+httpi.exe : httpi.o $(SERVER_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-renew.exe : renew.o $(OBJECTS)
+renew.exe : renew.o $(SERVER_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-csr_test.exe : csr_test.o $(OBJECTS)
+csr_test.exe : csr_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-send-buffer_test.exe : send-buffer_test.o $(OBJECTS)
+send-buffer_test.exe : send-buffer_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -102,7 +105,7 @@ install : httpi.exe
 	cp httpi.exe /usr/local/sbin/httpi.exe
 
 clean :
-	rm -f *.o *.exe $(OBJECTS)
+	rm -f *.o *.exe $(HTTPI_LIB_OBJECTS) $(SERVER_OBJECTS)
 
 ifeq ($(OPT),)
   $(warning Warning: OPT is completely disabled!)

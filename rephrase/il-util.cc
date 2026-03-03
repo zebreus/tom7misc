@@ -737,10 +737,10 @@ struct UniversePass : public Pass<> {
   std::unordered_set<std::string> *typ_vars;
 
   UniversePass(
-      AstPool *pool,
+      AstPool *pool_in,
       std::unordered_set<std::string> *exp_vars,
       std::unordered_set<std::string> *typ_vars) :
-    Pass(pool),
+    Pass(pool_in),
     exp_vars(exp_vars),
     typ_vars(typ_vars) {}
 

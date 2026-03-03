@@ -46,6 +46,12 @@ struct MultiRSA {
   static void RawDecryptInPlace(const Key &key, std::span<uint8_t> buffer);
   static void RawDecryptInPlaceCRT(const Key &key, std::span<uint8_t> buffer);
 
+  // Treats the span of bytes as a BigInt and performs the encryption
+  // operation in place. Aborts if the plaintext is the wrong size or
+  // larger than the modulus, or the key is very invalid.
+  static void RawEncryptInPlace(const BigInt &n, const BigInt &e,
+                                std::span<uint8_t> buffer);
+
   // Extract a valid padded PCKS#1 message from a decrypted buffer.
   // Returns nullopt if the message is invalid. (Note: Never expose
   // that the padding was invalid to an attacker; this would

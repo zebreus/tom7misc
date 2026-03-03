@@ -20,9 +20,9 @@ do REQUIRE-STDLIB
 datatype provide-layout = REQUIRE-LAYOUT
 
 (* XXX Temporary? *)
+import "layout-base.bovex"
 import "font.bovex"
 import "image.bovex"
-import "layout-base.bovex"
 
 val LAYOUT-VERBOSE = false
 
@@ -83,9 +83,6 @@ fun image-sticker { img = img as (Image img-handle),
              img = img-handle, img-width = width, img-height = height} []
   end
 
-fun apply-font font lay =
-  span {(Span) font-face = (font-family font)} lay
-
 fun fill-rectangle { x, y, width, height, fill-color } : layout =
   sticker {(Sticker) x = x, y = y, rect-width = width, rect-height = height,
            fill-color = fill-color } []
@@ -99,15 +96,8 @@ fun line { x0, y0, x1, y1, stroke-color, line-width } : layout =
   sticker {(Sticker) x = x0, y = y0, line-x1 = x1, line-y1 = y1,
            stroke-color = stroke-color, line-width = line-width} []
 
-fun helvetica layout = apply-font HELVETICA layout
-fun times-roman layout = apply-font TIMES layout
-fun courier layout = apply-font COURIER layout
-fun zapf-dingbats layout = apply-font ZAPF-DINGBATS layout
-fun fixedersys layout = apply-font FIXEDERSYS layout
-
 fun b layout =
   span {(Span) font-bold = true} layout
-
 
 val BODY-FONT = ref (font-family TIMES)
 val BODY-FONT-SIZE = ref (point 12.0)
@@ -138,9 +128,6 @@ fun color rgba layout =
 
 fun size pts layout =
   span {(Span) font-size = pts } layout
-
-fun sup pts layout = span {(Box) font-size = pts *. 0.75,
-                           dy = -0.25 *. pts } layout
 
 fun sticker-translate (dx, dy) layout =
   case get-attrs layout of
@@ -307,30 +294,6 @@ fun approx-lines-prefix (width, height, content) : { badness: float,
   in
     { badness = badness, lines = prefix, suffix = suffix }
   end
-
-(* TODO: float-box and footnote *)
-(* fun float-box  *)
-
-(* Default footnote.
-   Picks the next footnote mark, and places it here in
-   the text. Emits the footnote body as a floating element. *)
-val FOOTNOTE-MARK-SCALE = ref (9.0 /. 12.0)
-val FOOTNOTE-FONT-SCALE = ref (10.0 /. 12.0)
-val next-footnote = ref 1
-fun footnote lay : layout =
-  let
-    val mark = layout (int-to-string (!next-footnote))
-  in
-    next-footnote := !next-footnote + 1;
-    (* XXX sup should use the percentage to also compute the y offset *)
-    sup (!FOOTNOTE-MARK-SCALE *. !BODY-FONT-SIZE) mark ^^
-    span {(Span)
-          font-size = !FOOTNOTE-FONT-SCALE *. !BODY-FONT-SIZE,
-          font-face = !BODY-FONT,
-          line-spacing = !FOOTNOTE-FONT-SCALE *. !BODY-LINE-SPACING,
-          footnote = true} [[mark]. [lay]]
-  end
-
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).
@@ -703,38 +666,33 @@ fun stick-vertically (x : float, lay : layout) : layout =
       end
   end
 
-(* Place properly kerned text, but with no wrapping. *)
-fun text-sticker { x, y } lay =
+(* A properly kerned line of text as a box with known dimensions; no
+   wrapping. *)
+fun text-box (lay : layout) : layout =
   let
     val lay = layout-map-text normalize-whitespace lay
     val boxes = get-boxes lay
-
-    (* Turn the line into a sticker, ignoring its width/height *)
-    fun stick-line (line : layout) : layout =
-      case layoutcase line of
-        Node (BOX, attrs, children) =>
-          sticker (attrs without (Box)width
-                   without (Box)height
-                   with x = 0.0
-                   with y = 0.0) (layout-concat children)
-      | _ => fail "expected box containing the line's stickers"
-
   in
     (* Hack: "infinite" line width. *)
     case pack-boxes-horiz (BEST, LEFT-JUSTIFIED, 9999999999.0, boxes) of
-      (badness-ignored, line :: nil) =>
-        let
-          val s = stick-line (stick-horizontally line)
-        in
-          (* debug-print-doc s; *)
-          sticker {(Sticker) x = x, y = y } s
-        end
+      (badness-ignored, line :: nil) => stick-horizontally line
     | (_, nil) =>
-        (* Empty title ok. *)
-        []
+        (* Empty OK; we just produce an empty box. *)
+        box {(Box) width = 0.0, height = 0.0} []
     | _ => fail ("Expected just one line when packing boxes on " ^
                  "an 'infinite' line.")
   end
+
+(* Place properly kerned text, but with no wrapping. *)
+fun text-sticker { x, y } lay =
+  (* Turn the line into a sticker, ignoring its width/height *)
+  case layoutcase (text-box lay) of
+    Node (BOX, attrs, children) =>
+      sticker (attrs without (Box)width
+               without (Box)height
+               with (Sticker)x = x
+               with (Sticker)y = y) (layout-concat children)
+  | _ => fail "expected box containing the line's stickers"
 
 fun centered-text-sticker { x, y, width } lay =
   let
@@ -769,6 +727,48 @@ fun box-stick-at {x : float, y : float} lay =
     Node (BOX, attrs, children) =>
       sticker (attrs with x = x with y = y) (layout-concat children)
     | _ => fail "Expected box argument to box-stick-at"
+
+fun sup pts layout = span {(Box) font-size = pts *. 0.75,
+                           dy = -0.25 *. pts } layout
+
+(* Perhaps would be better as a text property. *)
+fun sub pts lay =
+  let
+    val b : layout = text-box (span {(Span)
+                                     font-size = pts *. 0.75,
+                                     no-rephrase = true} lay)
+  in
+    case layoutcase b of
+      Node (BOX, attrs : obj, children : layout list) =>
+        box (attrs
+             with dx = 0.0
+             with dy = pts *. 0.33) (layout-concat children)
+    | _ => fail "expected box from text-box!"
+  end
+
+
+(* TODO: float-box and footnote *)
+(* fun float-box  *)
+
+(* Default footnote.
+   Picks the next footnote mark, and places it here in
+   the text. Emits the footnote body as a floating element. *)
+val FOOTNOTE-MARK-SCALE = ref (9.0 /. 12.0)
+val FOOTNOTE-FONT-SCALE = ref (10.0 /. 12.0)
+val next-footnote = ref 1
+fun footnote lay : layout =
+  let
+    val mark = layout (int-to-string (!next-footnote))
+  in
+    next-footnote := !next-footnote + 1;
+    (* XXX sup should use the percentage to also compute the y offset *)
+    sup (!FOOTNOTE-MARK-SCALE *. !BODY-FONT-SIZE) mark ^^
+    span {(Span)
+          font-size = !FOOTNOTE-FONT-SCALE *. !BODY-FONT-SIZE,
+          font-face = !BODY-FONT,
+          line-spacing = !FOOTNOTE-FONT-SCALE *. !BODY-LINE-SPACING,
+          footnote = true} [[mark]. [lay]]
+  end
 
 (* Image on its own line, maintaining aspect ratio. *)
 fun image { img = img as (Image img-handle), width } =
@@ -937,7 +937,8 @@ fun subsubsection lay =
 
 fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^
-  box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 1.5 } []
+  box {(Box) width = 3.0, glue-ideal = 3.0,
+       glue-min = 1.0, glue-expand = 1.5 } []
 
 (* TODO: Hanging indent. *)
 (* TODO: intra-bullet spacing. We need for them to not just be
@@ -950,7 +951,8 @@ fun ul laylist =
   layout-concat
   (list-map (fn lay =>
              span {(Span) font-bold = true} [•] ^^
-             box {(Box) width=2.0, glue-ideal=2.0,
+             box {(Box) width = 2.0, glue-ideal = 2.0,
+                  glue-min = 1.0,
                   glue-expand = 0.25, glue-contract = 0.75 } [] ^^
              lay ^^ [\\])
    laylist)

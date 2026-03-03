@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -176,6 +177,25 @@ static void TestParseNumbers() {
   NO_PARSE(",");
 }
 
+static void TestDashes() {
+  static constexpr std::string_view LINE_SVG = R"(
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 432 432">
+<line x1="62.9594" y1="4.611" x2="62.9594" y2="324.6078" fill="none" stroke="#e0e0e0" stroke-dasharray="4 5.1" stroke-miterlimit="4" stroke-width="1"/>
+</svg>
+)";
+
+  SVG::Doc doc = SVG::ParseOrDie(LINE_SVG);
+  const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+  CHECK(g != nullptr) << "This document has styles applied, so its "
+    "root must be a group.";
+  CHECK(g->style.stroke_dasharray.has_value());
+  const std::vector<double> &da = g->style.stroke_dasharray.value();
+  CHECK(da.size() == 2);
+  CHECK_FEQ(da[0], 4.0);
+  CHECK_FEQ(da[1], 5.1);
+}
+
 static void TestPathInterpreter() {
   auto GetMove = [](const SVG::PathCommand &cmd) -> SVG::MoveTo {
     CHECK(std::holds_alternative<SVG::MoveTo>(cmd));
@@ -312,6 +332,7 @@ int main() {
   TestPathInterpreter();
   TestParseTransform();
   TestParseCheck();
+  TestDashes();
 
   Print("OK\n");
   return 0;

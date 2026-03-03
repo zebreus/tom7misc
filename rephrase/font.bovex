@@ -3,8 +3,13 @@
    in BoVeX, which just uses strings to name fonts.
 
    This also declares some standard fonts.
+
+   Most of these fonts don't come with BoVeX. You can
+   usually just find them on the internet or in your OS,
+   although BoVeX wants the actual .ttf files.
 *)
 do REQUIRE-STDLIB
+do REQUIRE-LAYOUT-BASE
 
 datatype provide-font = REQUIRE-FONT
 
@@ -99,6 +104,9 @@ fun font-builtin family = FontFamily (susp-of { family = family,
                                                 italic = NONE,
                                                 bold-italic = NONE })
 
+fun apply-font font lay =
+  span {(Span) font-face = (font-family font)} lay
+
 val HELVETICA : font-family = font-builtin "helvetica"
 val TIMES : font-family = font-builtin "times"
 val COURIER : font-family = font-builtin "courier"
@@ -114,7 +122,7 @@ val FIXEDERSYS : font-family =
 (* Some common non-free fonts. You need to find the font files
    yourself! *)
 val GEORGIA : font-family = font-load-family
-  { name = "Georgia",
+  { name = "georgia",
     regular = SOME "Georgia.ttf",
     bold = SOME "GeorgiaBold.ttf",
     italic = SOME "GeorgiaItalic.ttf",
@@ -127,13 +135,26 @@ val PALATINO : font-family = font-load-family
     italic = SOME "palai.ttf",
     bold-italic = SOME "palabi.ttf" }
 
-(*
-  Should move apply-font here, but it depends on Span...
+val CAMBRIA : font-family = font-load-family
+  { name = "cambria",
+    regular = SOME "cambria.ttf",
+    bold = SOME "cambriab.ttf",
+    italic = SOME "cambriai.ttf",
+    bold-italic = SOME "cambriabi.ttf" }
+
+val NOTO-SERIF : font-family = font-load-family
+  { name = "notoserif",
+    regular = SOME "notoserif.ttf",
+    bold = SOME "notoserifb.ttf",
+    italic = SOME "notoserifi.ttf",
+    bold-italic = SOME "notoserifbi.ttf" }
 
 fun helvetica layout = apply-font HELVETICA layout
 fun times layout = apply-font TIMES layout
 fun courier layout = apply-font COURIER layout
 fun zapf-dingbats layout = apply-font ZAPF-DINGBATS layout
+fun fixedersys layout = apply-font FIXEDERSYS layout
 fun georgia layout = apply-font GEORGIA layout
 fun palatino layout = apply-font PALATINO layout
-*)
+fun cambria layout = apply-font CAMBRIA layout
+fun noto-serif layout = apply-font NOTO-SERIF layout

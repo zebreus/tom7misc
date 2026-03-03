@@ -1,9 +1,0 @@
-(* TODO: This should just be part of the "font" library now
-   that it lazy-loads. *)
-
-do REQUIRE-LAYOUT
-do REQUIRE-FONT
-datatype provide-palatino = REQUIRE-PALATINO
-
-fun palatino layout = apply-font PALATINO layout
-

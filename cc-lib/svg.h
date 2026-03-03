@@ -85,6 +85,9 @@ struct SVG {
     std::optional<LineCap> line_cap;
     std::optional<LineJoin> line_join;
     std::optional<double> miter_limit;
+    // An empty array means to reset to "none" (no dashes).
+    std::optional<std::vector<double>> stroke_dasharray;
+    std::optional<double> stroke_dashoffset;
 
     std::optional<bool> use_even_odd_rule;
 

@@ -3,7 +3,6 @@ let
   import "stdlib.bovex"
   import "pdf-document.bovex"
   import "layout.bovex"
-  import "palatino.bovex"
   import "cite.bovex"
   import "paper.bib"
 

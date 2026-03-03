@@ -26,7 +26,7 @@ GMP_CFLAGS=-DBIG_USE_GMP
 # being too clever with std::move! Or you incremented
 # the wrong loop counter!
 
-# ASAN=true
+ASAN=true
 # PROFILE=true
 
 # Pro-tip for understanding compilation time:
@@ -425,10 +425,10 @@ html_test.exe : html_test.o html.o $(CC_LIB_OBJECTS)
 maketalk.exe : maketalk.o talk.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex palatino.bovex hyph-en-us.tex anti-aliasing.png paper.bib
+test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout-base.bovex font.bovex layout.bovex hyph-en-us.tex anti-aliasing.png paper.bib
 	./bovex.exe -v test.bovex -o test.pdf
 
-paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex palatino.bovex paper.bib hyph-en-us.tex
+paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout-base.bovex font.bovex layout.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
 sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
@@ -440,7 +440,7 @@ aeoud/aeoud.talk : bovex.exe talk-shared.bovex aeoud.bovex stdlib.bovex cite.bov
 	./bovex.exe -v aeoud.bovex -o aeoud.talk
 	./maketalk.exe aeoud aeoud.talk
 
-aeoud-invoice.pdf : bovex.exe hyph-en-us.tex stdlib.bovex layout.bovex palatino.bovex invoice.bovex aeoud-invoice.bovex
+aeoud-invoice.pdf : bovex.exe hyph-en-us.tex stdlib.bovex layout-base.bovex font.bovex layout.bovex invoice.bovex aeoud-invoice.bovex
 	./bovex.exe -v aeoud-invoice.bovex -o aeoud-invoice.pdf
 
 # comparison movie
