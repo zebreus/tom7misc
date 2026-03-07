@@ -100,6 +100,10 @@ send-buffer_test.exe : send-buffer_test.o $(HTTPI_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+vanity.exe : vanity.o $(HTTPI_LIB_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 install : httpi.exe
 	rm -f /usr/local/sbin/httpi.exe
 	cp httpi.exe /usr/local/sbin/httpi.exe

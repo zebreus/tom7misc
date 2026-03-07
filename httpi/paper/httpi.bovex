@@ -180,14 +180,21 @@ let
   val DEBUG-BAD-LAYOUT = false
 
 in
+(* TODO: pp too close; why? *)
 if DEBUG-BAD-LAYOUT
 then
 (main-text
 [
-important sites like [tt[google.com]],
-[tt[mail.goo[shy]gle.com]], [tt[ad.double[shy]click.net]], [tt[wave.goo[shy]gle.com]],
-[tt[you[shy]tube.com]], and [tt[FUNNY_[shy]SITE_[shy]HERE]]. CRLSets contain
-about 0.35% of all revocations.])
+
+[layout "[32]"] Bruce Schneier. “Applied Cryptography Second Edition: Protocols, algorithms and source code in C”. [it[John Wiley & Sons]]. New York, 1996.
+
+])
+
+(*
+
+[layout "[4]"] https://developer.apple.com/support/terms/apple-developer-program-license-agreement/. Apple Inc.. “Apple Developer Program License Agreement”. Cupertino, CA, 2023.
+*)
+
 
 else
 
@@ -568,11 +575,9 @@ TODO: List of Root CAs that I "trust"
 TODO: Certificate Transparency leaks your website
 
 
-[* Cloudflare,
+TODO: Cloudflare
 
-Too Many Secrets
-
-*]
+... introduce reverse proxy ...
 
 [section [Let’sn’t Encrypt]]
 
@@ -610,17 +615,17 @@ dereferences.]] No OpenSSL in this project. It doesn't even need
 to be installed.
 
 [* It is actually tremendously easy to make an insecure TLS implementation,
-and people do it all the time by accident. Don't just post the
+and people do it all the time by accident. More criteria: Don't just post the
 secrets on the website. Should be evident from protocol traffic.
 *]
 
 On the other hand, I don't want people to be able to “hack” my server
 in the sense of gaining unauthorized access (buffer overflows, etc.).
-Anyone has authorization to access the public websites on there, and to observe the traffic
-if they want to be creepy. The site does not purport to be robust
-to impostors or interlopers. My goal is to provide “HTTP but worse”:
-Roughly no security guarantees, but also slower, more complicated, and
-with a [green-lock-icon] green padlock.
+Anyone has authorization to access the public websites on there, and
+to observe the traffic if they want to be creepy. The site does not
+purport to be robust to impostors or interlopers. My goal is to
+provide “HTTP but worse”: Roughly no security guarantees, but also
+slower, more complicated, and with a [green-lock-icon] green padlock.
 
 The result is [httpi], a TLS 1.2 reverse proxy that all major browsers
 will connect to, and which has been serving all of my websites for
@@ -673,8 +678,8 @@ modular roots (the [it[e]]th root); the reverse of the above
 operation. It just happens that if you know the prime factors of
 [it[n]] (as the server does), then you have an easy way to compute the
 order of the group (the multiplicative group of integers mod [it[n]],
-aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy way to compute
-the exponent [it[d]] such that
+aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy
+way to compute the exponent [it[d]] such that
 [it [x]][sup (it [ed])] = [it [x]] mod [it [n]].
 
 Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
@@ -683,8 +688,8 @@ bits. This doesn’t actually imply that the key is secure; for example,
 we can get a 4096-bit key by choosing the primes to be 7 and some
 random 4093-bit prime. This number would be trivial to factor, by
 trying small divisors, various general-purpose algorithms, or simply
-knowing my name. Let’s Encrypt will check that you don’t have trivial
-factors like this, but it will let you have another small prime
+knowing my name. Let’s Encrypt will check that you don’t have [it[extremely]]
+small factors like this, but it will let you have a [it[very]] small prime
 divisor like 31337 (one of the most elite primes).
 
 [paragraph-no-period[Oops—HACKED!!]] The original version of [httpi]
@@ -692,9 +697,28 @@ used a key with 31337 as one of its factors, but the certificate was
 revoked after about a week! Let’s Encrypt lets anybody revoke a
 certificate for you—as a favor I guess—if they have the private key.
 
-What happened?
-
-5 million certificates a day ([figure "t"
+What happened? I don't actually know. Let's Encrypt does not notify
+you about a revocation (except in the sense that they publish it to
+the Certificate Revocation List and maybe browsers check it). The most
+likely thing is that someone (maybe Let's Encrypt itself) bulk-scans
+individual certificates after they’re issued to try to find weak ones.
+A key with a factor of 31337 would trivially be found by any such
+scan. It's also possible that one of my "friends"[footnote[Or someone
+snooping on my Subversion repository! For the record it’s fair game to
+mess with me in a fun way—as long as it’s not too close to a deadline.
+But I would not recommend getting spoilers this way, and forbid
+disseminating spoilers to others!]] who knew I was working on this did
+it to me out of a secretly harbored resentment. Another possibility I
+realized is that someone may scan for keys that share factors. If one
+of the secret primes is [it[ever]] reused in another key, then you can
+easily recover it by performing GCD on the two public keys.
+A plausible security mistake would be for two keys for
+the same domain to be created using a weak random number generator
+(like, "always use 31337 as the first prime"). And so a plausible
+security scan would be to check GCD of a pool of historic keys for
+a specific domain.
+It seems like a bit much to do O(n[sup[2]]) of these given that Let’s
+Encrypt alone issues over 5 million certificates a day ([figure "t"
 (fn fig => [[image { img = image-load "encrypt-growth.svg",
                      width = COLUMN-WIDTH() }][*
 *][b fig]. Daily number of certificates issued by Let’s Encrypt
@@ -702,7 +726,94 @@ since its birth.[cite lets2026stats]
 You can see the vigorous decline in certificates that began
 around November 2025, which is when [httpi] first went online.
 (I think this is, in fact, a coincidence.)
-])])
+])]), but you can use some simple tricks to check batches in
+O(n lg(n)) time.[cite heninger2012mining][cite lenstra2012ron]
+
+So: Someone scanning for reused primes [it[can]] force me to have
+a secure website by revoking my certificate, if my keys contain
+constant vanity primes. This is true even for moderately big primes like
+(hexadecimal, with a sea of 558 zeroes):
+[
+
+hfill() ^^ break() ^^
+monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 10.0,
+                      attrs = {(Object) } }
+(* ----------------------------------------------- *)
+[
+C0FFEE00000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000
+0000000000000000000000000000000000D00D7] ^^
+break() ^^ vspace (point 0.1)
+
+]
+
+So we need a different [tt[0xC00L]] [tt[0xD00D]] way to
+make the RSA keys weak. Note that although normative
+public keys are the product of two primes, the key [it[n]]
+is composite. Although there are good ways to quickly
+test whether a number is prime, there is no known[footnote[Well,
+publicly known. Maybe the NSA knows.]] way to test that
+[it[n]] is the product of [it[two]] primes. And in fact,
+the decryption math can be straightforwardly adapted to
+accommodate a public modulus with more than two prime factors.
+So I can actually use an RSA key of [it[n]] =
+[sub[it p][1]] ×
+[sub[it p][2]] ×
+[sub[it p][3]] ×
+... ×
+[sub[it p][k]]
+and nobody can quickly test that it is an unusual key (the
+fastest known test is to factor it).
+
+My server uses a key with 16 prime factors. It is 4096 bits,
+so it is Military-Grade, but each factor is only ~256 bits,
+so it is Baby-Diaper-Grade—perfect for the modern United States.
+
+How do we know what diaper size? The performance of some factoring
+algorithms depend on the size of the factor being found, like
+ECM.[cite lenstra1987factoring] So the security achieved here is more
+like a 512-bit modulus, which is considered very insecure; even in
+2009 NIST required a minimum of 1024 bits.[cite
+barker2009recommendation] The current world record for the largest
+factor found by ECM is 83 digits (276 bits),[cite
+zimmerman2025largest] so 256 bits is completely doable in 2026.
+
+It would still take hundreds to thousands of dollars of computer time
+to find a factor of my RSA modulus. If someone does, they can decrypt
+the traffic to my public website (and if they don't want to pay for
+the computer time, there will be easier ways). Here's a non-obvious
+fact: Although finding a single factor probably allows compromising
+the session keys (it reveals [it[m]] mod [sub[it p][it i]]), revoking
+the certificate requires being able to create signatures, which needs
+the complete factorization. That means repeating that modestly
+expensive factoring 14 more times on the remaining composite. So,
+paradoxically, having sixteen 256-bit factors actually [it[increases]]
+security compared to a single 256-bit factor and one 3840-bit factor.
+Since I am not trying to prevent people from snooping on the traffic,
+but I would rather not have them revoking the certificate, this is a
+favorable tradeoff.
+
+If someone does factor the key and revokes it, then probably most
+browsers won’t notice, and I can get another one automatically. I can
+adjust the number of bits upward if this happens too often, or even
+automate the difficulty setting to find the sweet spot. This is not an
+invitation or encouragement to spend money to revoke my key. It's more
+like the observation that some idiot can smash into my parked car on
+the street, and this sucks for both of us, but is also
+straightforwardly dealt with.
+
+Speaking of which:
 
 [*
 We have a pretty good handle on the computational resources needed
@@ -714,6 +825,17 @@ even openssl is XXX lines of code
 
 using the credit card to encrypt the data
 *]
+
+So that's bad RSA. TODO here about ECDHE, "perfect forward secrecy"?
+
+[subsection[XXX]]
+
+1. ClientHello (SNI, client random)
+2. ServerHello (cert, server random)
+
+
+[subsection[Ticket to Ride]]
+... extensions ...
 
 [subsection[Limitations]]
 
@@ -854,6 +976,88 @@ lucky for that RAM to contain something important. [it[My]] cowboy C++
 code reads from a configurable buffer where you can reveal anything
 you choose, so you can guarantee that it is passwords or your private
 files or whatever you like.
+
+[section [Transfer protocol alignment chart]]
+
+You may have noticed the name [httpi] is similar to the protocol
+[tt [https]], with an edit distance of one. This is actually because
+https is part of a hithertofore generalization of the Myers–Briggs Type
+Indicator[cite myers2003mbti] that includes additional categories
+and orthonormal basis vectors.
+
+   attitudes        function 1       function 2    lifestyle      confidence
+
+   [E]xtraversion    [S]ensing       [T]hinking    [J]udging      [S]ecure
+   [I]ntroversion    I[N]tuitive     [F]eeling     [P]erceiving   [V]ulnerable
+   [H]ierarchical    [T]op-down
+   [E]galitarian     [F]oundational
+        H              T             T             P               V
+
+
+New:
+   attitudes        function 1       function 2    lifestyle      confidence
+
+   [E]xtraversion    [S]ensing       [T]hinking    [J]udging      [S]ecure
+   [I]ntroversion    I[N]tuitive     [F]eeling     [P]erceiving   [V]ulnerable
+   [H]ierarchical    [T]axonomic
+   [A]utonomous      [F]oundational
+        H              T             T             P               V
+
+0 Foundational Thinking Perceiving 0
+Hierarchical Taxonomic Thinking Perceiving *
+C
+OK so "information processing" is generalized from the S..N axis.
+
+              ^ imposed     (a priori)
+ foundational |    top-down/taxonomic
+   formal?    |
+<--------------------------->
+atomic        |      holistic
+              |
+   sensing    |   intuitive
+              v emergent    (a posteriori)
+
+(unfortunately there is no other word to oppose "top", so we have
+a letter collision with "feeling" for "f" as well. the position in the
+code will make it clear)
+
+This x axis is "scope of information: atomic(S) vs holistic (N)"
+The y axis is the relationship between the entity and the world;
+the direction of flow of information. For people, they are usually
+collecting information from the world (websites) so that is why
+we only discovered the S/N quadrants.
+
+And then "interaction type":
+
+x axis is "singular vs plural focus"
+
+              ^ rigid (systemified)
+ autonomous   |  hierarchical
+              |
+<--------------------------->
+  internal    |      external
+              |
+introverted   |    extraverted
+              v fluid (organic)
+
+
+HTTP is server/client
+
+[subsection[Which NARUTO character are you?]]
+
+I took buzzfeed's "Which NARUTO character are you?", answering
+questions on [httpi]'s behalf, but after a few questions it's
+like
+
+Who did you train under?
+Jirayah
+Orochimaru
+Tsunade
+Kureni
+Asuma
+Asuma sensei
+
+https://www.buzzfeed.com/m4shy/which-naruto-character-are-you-3alik
 
 [section [Niceties]]
 
