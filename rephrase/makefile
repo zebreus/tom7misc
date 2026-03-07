@@ -66,7 +66,7 @@ else
   CXX=g++
   CC=gcc
   # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
-  # OPTFLAGS=-O
+  OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
   # Check if g++ is actually clang
   ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l), 1)
@@ -81,7 +81,9 @@ else
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
 	LLAMA_DEBUG=true
   else
-    OPTFLAGS=-O3 -march=native -mtune=native
+    # OPTFLAGS=-O3 -march=native -mtune=native
+	# XXX
+	# OPTFLAGS=-O
   endif
 
   ifdef PROFILE
