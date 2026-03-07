@@ -35,6 +35,9 @@ struct XML {
   static std::optional<Node>
   Parse(std::string_view xml_bytes, std::string *error = nullptr);
 
+  // Convert back to text, mostly for debugging messages.
+  // May not handle huge documents well.
+  static std::string DebugString(const Node &node);
 };
 
 #endif

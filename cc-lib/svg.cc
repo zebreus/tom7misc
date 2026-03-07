@@ -14,6 +14,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -72,7 +73,9 @@ bool SVG::IsDefault(const Style &style) {
            style.miter_limit.has_value() ||
            style.use_even_odd_rule.has_value() ||
            style.opacity.has_value() ||
-           style.clip_path.has_value());
+           style.clip_path.has_value() ||
+           style.font_family.has_value() ||
+           style.font_size.has_value());
 }
 
 double SVG::ParseLeadingNumber(std::string_view *d) {
@@ -506,7 +509,8 @@ std::optional<std::array<double, 6>> SVG::ParseTransformList(
   }
 }
 
-SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
+SVG::Node SVG::MakeGroup(std::optional<Style> style,
+                         std::vector<Node> children) {
   std::vector<Node> progeny;
   progeny.reserve(children.size());
   for (Node &node : children) {
@@ -533,12 +537,13 @@ SVG::Node SVG::MakeGroup(Style style, std::vector<Node> children) {
 
   // No need for unstyled singleton nodes.
   // PERF: Even better would be to merge the parent and child style.
-  if (progeny.size() == 1 && IsDefault(style)) {
+  bool no_style = !style.has_value() || IsDefault(style.value());
+  if (progeny.size() == 1 && no_style) {
     return std::move(progeny[0]);
   }
 
   return SVG::Node{SVG::G{
-      .style = std::move(style),
+      .style = style.has_value() ? std::move(style.value()) : Style{},
       .children = std::move(progeny),
     }};
 }
@@ -624,7 +629,8 @@ struct Converter {
   // themselves, this will be nullopt.
   std::optional<std::unordered_map<std::string, SVG::G>> doc_defs;
 
-  std::optional<SVG::Style> RemoveStyleAttributes(XML::Node *node) {
+  std::optional<SVG::Style> RemoveStyleAttributes(XML::Node *node,
+                                                  bool is_text) {
     if (node->attrs.empty()) return std::nullopt;
 
     SVG::Style style;
@@ -814,8 +820,100 @@ struct Converter {
       }
     }
 
+    if (auto fo = GetStripAttribute("font-family")) {
+      had_style = true;
+      std::vector<std::string> ffs = Util::Split(fo.value(), ',');
+      // For some reason, Illustrator will do like "Helvetica, Helvetica".
+      std::unordered_set<std::string> already;
+      std::vector<std::string> out;
+      for (std::string &ff : ffs) {
+        ff = Util::NormalizeWhitespace(ff);
+        if (!already.contains(ff)) {
+          already.insert(ff);
+          out.push_back(std::move(ff));
+        }
+      }
+      if (out.empty()) {
+        error = "There must be at least one font in font-family.";
+        return {};
+      }
+      style.font_family = std::make_optional(std::move(out));
+    }
+
+    if (auto fo = GetStripAttribute("font-size")) {
+      had_style = true;
+      if (auto fso = ParseLength(fo.value())) {
+        style.font_size = fso;
+      } else {
+        error = "Invalid length in font-size";
+        return {};
+      }
+    }
+
+    if (is_text) {
+      if (auto xo = GetStripAttribute("x")) {
+        had_style = true;
+        double x = Util::ParseDouble(xo.value(), 0.0);
+        if (!style.transform.has_value())
+          style.transform = std::make_optional(IDENTITY_TRANSFORM);
+        style.transform.value() =
+          ComposeTransforms(style.transform.value(),
+                            Transform{1.0, 0.0, 0.0, 1.0, x, 0.0});
+      }
+      if (auto yo = GetStripAttribute("y")) {
+        had_style = true;
+        double y = Util::ParseDouble(yo.value(), 0.0);
+        if (!style.transform.has_value())
+          style.transform = std::make_optional(IDENTITY_TRANSFORM);
+        style.transform.value() =
+          ComposeTransforms(style.transform.value(),
+                            Transform{1.0, 0.0, 0.0, 1.0, 0.0, y});
+      }
+    }
+
+    CHECK(!GetStripAttribute("text-anchor").has_value()) << "Sorry, "
+      "text-anchor is not supported.";
+
     // Only if we actually saw style attributes.
     return had_style ? std::make_optional(style) : std::nullopt;
+  }
+
+  // Convert when inside a <text> node. Here, text XML nodes become
+  // SVG text.
+  SVG::Node ConvertTextRec(XML::Node *node) {
+    if (node->type == XML::NodeType::Text) {
+      // We need to collapse whitespace like in HTML.
+      std::string collapsed = Util::NormalizeWhitespace(node->contents);
+
+      if (collapsed.empty()) {
+        return SVG::Node{SVG::G{.style = {}, .children = {}}};
+      }
+
+      return SVG::Node{SVG::Text{.content = std::move(collapsed)}};
+    }
+
+    CHECK(node->type == XML::NodeType::Element);
+
+    // Both "tspan" and "text" are just treated like a <g> here.
+    // (We only expect to see text in the initial call but we're not
+    // strict about it.)
+    if (node->tag == "tspan" || node->tag == "text") {
+      std::optional<SVG::Style> maybe_style =
+        RemoveStyleAttributes(node, true);
+      if (!error.empty()) return {};
+
+      std::vector<SVG::Node> children;
+      for (XML::Node &child : node->children) {
+        children.emplace_back(ConvertTextRec(&child));
+      }
+
+      return SVG::MakeGroup(std::move(maybe_style),
+                            std::move(children));
+    } else {
+      Print("Looking at XML:\n{}\n", XML::DebugString(*node));
+      error = "Inside <text>, we can only handle text nodes and <tspan>.";
+      return {};
+    }
   }
 
   // Modifies the XML tree in place.
@@ -835,8 +933,11 @@ struct Converter {
 
       const std::string &tag = node->tag;
 
+      // We treat x= and y= as style attributes (transform) for
+      // text nodes and their descendants.
+      const bool is_text = tag == "text";
       std::optional<SVG::Style> maybe_style =
-        RemoveStyleAttributes(node);
+        RemoveStyleAttributes(node, is_text);
       if (!error.empty())
         return {};
 
@@ -848,9 +949,8 @@ struct Converter {
           children.emplace_back(ConvertRec(&child));
         }
 
-        return SVG::MakeGroup(
-            maybe_style.has_value() ? maybe_style.value() : SVG::Style{},
-            std::move(children));
+        return SVG::MakeGroup(std::move(maybe_style),
+                              std::move(children));
 
       } else if (maybe_style.has_value()) {
         // Otherwise, if there are style attributes, insert
@@ -859,7 +959,7 @@ struct Converter {
         //
         // We know that the recusion is well-founded because we must
         // have removed at least one attribute.
-        return SVG::MakeGroup(maybe_style.value(), {ConvertRec(node)});
+        return SVG::MakeGroup(maybe_style, {ConvertRec(node)});
 
       } else if (tag == "path") {
         // This is the main thing we're interested in, and we
@@ -1064,6 +1164,11 @@ struct Converter {
         // Handled in the first phase, and unrendered
         // by definition (hehe).
         return SVG::Node(SVG::G{});
+
+      } else if (tag == "text") {
+        // Attributes have already been handled, so this acts
+        // as a <g> that processes the subtree in text mode.
+        return ConvertTextRec(node);
 
       } else if (IsUnrendered(tag)) {
         // Skip unrendered nodes.
@@ -1800,6 +1905,15 @@ struct Unconverter {
       LOG(FATAL) << "Unimplemented miter_limit";
     }
 
+    if (style.font_family.has_value()) {
+      AppendFormat(out, " font-family=\"{}\"",
+                   Util::Join(style.font_family.value(), ", "));
+    }
+
+    if (style.font_size.has_value()) {
+      AppendFormat(out, " font-size=\"{}\"", Rtos(style.font_size.value()));
+    }
+
     if (style.use_even_odd_rule.has_value()) {
       out->append(style.use_even_odd_rule.value() ?
                   " fill-rule=\"evenodd\"" :
@@ -1832,6 +1946,9 @@ struct Unconverter {
     } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
       std::string d = PathDataString(path->data);
       AppendFormat(out, "{}<path d=\"{}\" />\n", std::string(depth, ' '), d);
+    } else if (const SVG::Text *text = std::get_if<SVG::Text>(&node.v)) {
+      AppendFormat(out, "{}<text>{}</text>\n",
+                   std::string(depth, ' '), text->content);
     } else {
       LOG(FATAL) << "Bad variant?";
    }

@@ -4,7 +4,6 @@
 #ifndef _CC_LIB_BIGNUM_BIG_H
 #define _CC_LIB_BIGNUM_BIG_H
 
-#include <cstdlib>
 #ifdef BIG_USE_GMP
 # include <gmp.h>
 # include "bignum/wrap-gmp.h"
@@ -14,7 +13,6 @@
 # include "bignum/bigq.h"
 #endif
 
-#include <span>
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -25,10 +23,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -65,6 +65,11 @@ struct BigInt {
 
   // TODO: From doubles (rounding), which is useful because
   // uint64_t can't represent all large doubles.
+
+  // No 0x prefix. Aborts on non-hex characters.
+  // Negative numbers are not currently supported but we might
+  // support this in the future.
+  static BigInt FromHex(std::string_view hex_digits);
 
   // Aborts if the string is not valid.
   // Bases from [2, 62] are permitted.

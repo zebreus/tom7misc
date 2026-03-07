@@ -38,6 +38,7 @@
 #include <initializer_list>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <stdarg.h>
 #include <string>
 #include <string_view>
@@ -1209,7 +1210,7 @@ int PDF::SaveObject(FILE *fp, int index) {
           "  /Subtype /TrueType\n"
           "  /BaseFont /Font{}\n"
           "  /Encoding /WinAnsiEncoding\n"
-          "  /FontDescriptor {}\n"
+          "  /FontDescriptor {} 0 R\n"
           "  /FirstChar {}\n"
           "  /LastChar {}\n"
           "  /Widths {} 0 R\n"
@@ -1384,10 +1385,10 @@ int PDF::SaveObject(FILE *fp, int index) {
 }
 
 // Slightly modified djb2 hash algorithm to get pseudo-random ID
-static uint64_t Hash(uint64_t seed, const void *data, size_t len) {
+static uint64_t Hash(uint64_t seed, std::span<const uint8_t> s) {
   uint64_t hash = seed;
-  const uint8_t *d8 = (const uint8_t *)data;
-  for (size_t idx = 0; idx < len; idx++) {
+  const uint8_t *d8 = (const uint8_t *)s.data();
+  for (size_t idx = 0; idx < s.size(); idx++) {
     hash = (((hash & uint64_t{0x03ffffffffffffff}) << 5) +
             (hash & uint64_t{0x7fffffffffffffff})) +
       d8[idx];
@@ -1395,8 +1396,12 @@ static uint64_t Hash(uint64_t seed, const void *data, size_t len) {
   return hash;
 }
 
+static uint64_t HashString(uint64_t seed, std::string_view sv) {
+  return Hash(seed, std::span<const uint8_t>((const uint8_t*)sv.data(),
+                                             sv.size()));
+}
+
 int PDF::SaveFile(FILE *fp) {
-  int xref_offset;
   int xref_count = 0;
   time_t now = time(nullptr);
 
@@ -1425,7 +1430,7 @@ int PDF::SaveFile(FILE *fp) {
   }
 
   /* xref */
-  xref_offset = ftell(fp);
+  const int xref_offset = ftell(fp);
   Print(fp, "xref\n");
   Print(fp, "0 {}\n", xref_count + 1);
   // Note: Space here after the n is to ensure the line
@@ -1454,9 +1459,17 @@ int PDF::SaveFile(FILE *fp) {
   // strings; the first is the "permanent" document id and the second
   // is the version id. We always use the same for each.
 
-  uint64_t id1 = Hash(5381, &iobj->info, sizeof (PDF::Info));
-  id1 = Hash(id1, &xref_count, sizeof (xref_count));
-  uint64_t id2 = Hash(uint64_t{0x31337CAFED00D}, &now, sizeof(now));
+  uint64_t id1 = HashString(5381, iobj->info.creator);
+  id1 = HashString(id1, iobj->info.producer);
+  id1 = HashString(id1, iobj->info.keywords);
+  id1 = HashString(id1, iobj->info.subject);
+  id1 = HashString(id1, iobj->info.author);
+  id1 = HashString(id1, iobj->info.title);
+  id1 = HashString(id1, iobj->info.date);
+  id1 = HashString(id1, std::format("{}", xref_count));
+
+  uint64_t id2 = HashString(uint64_t{0x31337CAFED00D},
+                            std::format("{}", now));
   std::string id32 = std::format("{:016x}{:016x}", id1, id2);
   Print(fp, "/ID [<{}> <{}>]\n", id32, id32);
   Print(fp, ">>\n"
@@ -2706,10 +2719,12 @@ bool PDF::AddPolygon(
                Float(PDF_RGB_R_FLOAT(color)),
                Float(PDF_RGB_G_FLOAT(color)),
                Float(PDF_RGB_B_FLOAT(color)));
-  AppendFormat(&str, "{} w ", border_width);
-  AppendFormat(&str, "{} {} m ", points[0].first, points[0].second);
+  AppendFormat(&str, "{} w ", Float(border_width));
+  AppendFormat(&str, "{} {} m ",
+               Float(points[0].first), Float(points[0].second));
   for (int i = 1; i < (int)points.size(); i++) {
-    AppendFormat(&str, "{} {} l ", points[i].first, points[i].second);
+    AppendFormat(&str, "{} {} l ",
+                 Float(points[i].first), Float(points[i].second));
   }
   AppendFormat(&str, "h S");
 

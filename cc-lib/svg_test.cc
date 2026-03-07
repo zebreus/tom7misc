@@ -39,6 +39,14 @@
     }                                             \
   } while (0)
 
+#define PARSE_OR_DIE(xml_bytes) []{                               \
+    std::string error;                                            \
+    auto eo = SVG::Parse(xml_bytes, &error);                      \
+    CHECK(eo.has_value()) << "On input document:\n" << xml_bytes  \
+      << "\nUnable to parse as SVG: " << error;                   \
+    return std::move(eo.value());                                 \
+  }()
+
 static void PrintRec(int depth, const SVG::Node &node) {
   if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
     Print("{}<" ABLUE("g"), std::string(depth, ' '));
@@ -50,10 +58,14 @@ static void PrintRec(int depth, const SVG::Node &node) {
     for (const auto &c : g->children) {
       PrintRec(depth + 2, c);
     }
-    Print("{}<" ABLUE("/g") ">\n", std::string(depth, ' '));
+    Print("{}<" AYELLOW("/") ABLUE("g") ">\n",
+          std::string(depth, ' '));
   } else if ([[maybe_unused]] const SVG::Path *path =
              std::get_if<SVG::Path>(&node.v)) {
     Print("{}<" APURPLE("path") " />\n", std::string(depth, ' '));
+  } else if (const SVG::Text *text = std::get_if<SVG::Text>(&node.v)) {
+    Print("{}<" ACYAN("text") ">{}<" AYELLOW("/") ACYAN("text") ">\n",
+          std::string(depth, ' '), text->content);
   } else {
     LOG(FATAL) << "Bad variant?";
  }
@@ -132,7 +144,7 @@ static constexpr std::string_view CHECK_SVG = R"(
 )";
 
 static void TestParseCheck() {
-  SVG::Doc doc = SVG::ParseOrDie(CHECK_SVG);
+  SVG::Doc doc = PARSE_OR_DIE(CHECK_SVG);
   CHECK(std::holds_alternative<SVG::G>(doc.root.v)) << "This document "
     "has styles applied, so its root must be a group.";
   CHECK(doc.view_box.has_value());
@@ -185,7 +197,7 @@ static void TestDashes() {
 </svg>
 )";
 
-  SVG::Doc doc = SVG::ParseOrDie(LINE_SVG);
+  SVG::Doc doc = PARSE_OR_DIE(LINE_SVG);
   const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
   CHECK(g != nullptr) << "This document has styles applied, so its "
     "root must be a group.";
@@ -325,6 +337,125 @@ static void TestPathInterpreter() {
 
 }
 
+static void TestParseText() {
+  static constexpr std::string_view TEXT_SVG = R"@@(
+  <?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 432 432">
+    <g>
+      <text font-family="Helvetica" font-size="12"></text>
+
+      <text transform="translate(243 108)" font-family="Helvetica, Arial, Helvetica" font-size="21" x="10" y="20">
+        <tspan x="0" y="0">Extra</tspan>
+        <tspan x="31.5" y="0" fill="#ea1515">verted</tspan>
+      </text>
+    </g>
+  </svg>
+  )@@";
+
+  SVG::Doc doc = PARSE_OR_DIE(TEXT_SVG);
+  PrintDoc(doc);
+
+  CHECK(!SVG::ToSVG(doc).empty());
+
+}
+
+static void TestText() {
+  {
+    SVG::Doc doc = PARSE_OR_DIE(
+        "<svg><text font-family=\"Helvetica, Arial, Helvetica\" "
+        "font-size=\"14.5\">Hello</text></svg>");
+
+    PrintDoc(doc);
+
+    const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+    CHECK(g != nullptr);
+    CHECK(g->children.size() == 1);
+    CHECK(g->style.font_size.has_value());
+    CHECK_FEQ(g->style.font_size.value(), 14.5);
+
+    CHECK(g->style.font_family.has_value());
+    CHECK(g->style.font_family.value().size() == 2);
+    // Second Helvetica should be deduped.
+    CHECK(g->style.font_family.value()[0] == "Helvetica");
+    CHECK(g->style.font_family.value()[1] == "Arial");
+
+    CHECK(g->children.size() == 1);
+    const SVG::Text *text = std::get_if<SVG::Text>(&g->children[0].v);
+    CHECK(text != nullptr);
+    CHECK(text->content == "Hello");
+  }
+
+  {
+    SVG::Doc doc = PARSE_OR_DIE(
+      "<svg><text x=\"10\" y=\"20\">Pos</text></svg>");
+
+    const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+    CHECK(g != nullptr);
+    CHECK(g->style.transform.has_value());
+
+    SVG::Transform tf = g->style.transform.value();
+    CHECK_FEQ(tf[4], 10.0);
+    CHECK_FEQ(tf[5], 20.0);
+  }
+
+  {
+    // Note: We expect to parse this, but SVGs like this
+    // are prone to ambiguity/misinterpretation in rendering:
+    SVG::Doc doc = PARSE_OR_DIE(
+      R"@@(
+        <svg>
+          <text x="5.0" y="15">
+            <tspan x="10">A</tspan>
+            <tspan fill="#ff0000">B</tspan>
+          </text>
+        </svg>
+      )@@"
+    );
+
+    const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+    CHECK(g != nullptr);
+    CHECK(g->children.size() == 2);
+
+    auto tf_parent = g->style.transform.value();
+    CHECK_FEQ(tf_parent[4], 5.0);
+    CHECK_FEQ(tf_parent[5], 15.0);
+
+    {
+      const SVG::G *g1 = std::get_if<SVG::G>(&g->children[0].v);
+      CHECK(g1 != nullptr);
+      auto tf_child = g1->style.transform.value();
+      CHECK_FEQ(tf_child[4], 10.0);
+      CHECK_FEQ(tf_child[5], 0.0);
+
+      const SVG::Text *t = std::get_if<SVG::Text>(&g1->children[0].v);
+      CHECK(t != nullptr);
+      CHECK(t->content == "A");
+    }
+
+    {
+      const SVG::G *g2 = std::get_if<SVG::G>(&g->children[1].v);
+      CHECK(g2 != nullptr);
+      CHECK(g2->style.fill_color.has_value());
+      CHECK(g2->style.fill_color.value() == 0xFF0000FF);
+
+      const SVG::Text *t = std::get_if<SVG::Text>(&g2->children[0].v);
+      CHECK(t != nullptr);
+      CHECK(t->content == "B");
+    }
+  }
+
+  {
+    SVG::Doc doc = PARSE_OR_DIE(
+      R"SVG(<svg><text>Hello   World</text></svg>)SVG"
+    );
+
+    // No styles here, so it's just a text node.
+    const SVG::Text *t = std::get_if<SVG::Text>(&doc.root.v);
+    CHECK(t != nullptr);
+    CHECK(t->content == "Hello World");
+  }
+}
+
 int main() {
   ANSI::Init();
 
@@ -333,6 +464,9 @@ int main() {
   TestParseTransform();
   TestParseCheck();
   TestDashes();
+  TestText();
+
+  TestParseText();
 
   Print("OK\n");
   return 0;

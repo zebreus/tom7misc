@@ -7,10 +7,12 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <optional>
 #include <random>
+#include <span>
 #include <stdlib.h>
 #include <string_view>
 #include <tuple>
@@ -1644,6 +1646,42 @@ bool BigInt::ToBigEndianBytes(const BigInt &a, std::span<uint8_t> bytes) {
     bytes[bytes.size() - 1 - pos] = b;
   }
   return true;
+}
+
+BigInt BigInt::FromHex(std::string_view hex_digits) {
+  // PERF: I think GMP has a native from-hex routine.
+  // PERF: This is assuming that FromBigEndianBytes is fast, but
+  // it is currently not.
+  auto IsHexDigit = [](char c) {
+      return (c >= '0' && c <= '9') ||
+        ((c | 32) >= 'a' && (c | 32) <= 'f');
+    };
+  auto HexDigitValue = [](char c) -> uint8_t {
+      return ((int)c | 4400) % 55;
+    };
+
+  // Number of full bytes. Note we may have a stray nybble.
+  size_t num_bytes = (hex_digits.size() + (hex_digits.size() & 1)) >> 1;
+
+  std::vector<uint8_t> bytes(num_bytes);
+  std::span<uint8_t> write(bytes);
+  // Handle the odd nybble if any.
+  if (hex_digits.size() & 1) {
+    assert(IsHexDigit(hex_digits[0]));
+    write[0] = HexDigitValue(hex_digits[0]);
+    hex_digits.remove_prefix(1);
+    write = write.subspan(1);
+  }
+
+  DCHECK(write.size() * 2 == hex_digits.size()) << hex_digits << " "
+    << write.size();
+  for (size_t i = 0; i < write.size(); i++) {
+    char hi = hex_digits[i * 2 + 0];
+    char lo = hex_digits[i * 2 + 1];
+    assert(IsHexDigit(hi) && IsHexDigit(lo));
+    write[i] = (HexDigitValue(hi) << 4) | HexDigitValue(lo);
+  }
+  return FromBigEndianBytes(bytes);
 }
 
 

@@ -1,5 +1,7 @@
 #include "xml.h"
 
+#include <algorithm>
+#include <format>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1439,5 +1441,32 @@ optional<XML::Node> XML::Parse(std::string_view xml_bytes,
     if (error != nullptr)
       *error = "Syntax error at EOF.";
     return nullopt;
+  }
+}
+
+std::string XML::DebugString(const XML::Node &node) {
+  if (node.type == NodeType::Text) {
+    return std::format("\"{}\"", node.contents);
+  } else {
+    // element
+    std::string ret = std::format("<{}", node.tag);
+    // Normalize order for determinism (tests, etc.).
+    std::vector<std::string> sorted;
+    sorted.reserve(node.attrs.size());
+    for (const auto &[k, v] : node.attrs) {
+      sorted.push_back(std::format("{}=\"{}\"", k, v));
+    }
+    std::sort(sorted.begin(), sorted.end());
+    for (const std::string &s : sorted) {
+      ret.append(" ");
+      ret.append(s);
+    }
+    ret.append(">");
+
+    for (const Node &c : node.children) {
+      ret.append(DebugString(c));
+    }
+    ret.append(std::format("</{}>", node.tag));
+    return ret;
   }
 }

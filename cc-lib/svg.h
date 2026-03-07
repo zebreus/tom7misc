@@ -96,6 +96,12 @@ struct SVG {
     // An id in the symbol table. The transform from
     // this style object is also applied.
     std::optional<std::string> clip_path;
+
+    // Minimal text style support.
+    // TODO: font-style (italics), font-weight (bold)
+    // text-anchor (alignment).
+    std::optional<std::vector<std::string>> font_family;
+    std::optional<double> font_size;
   };
 
   struct Node;
@@ -109,10 +115,14 @@ struct SVG {
     std::vector<PathCommand> data;
   };
 
+  struct Text {
+    std::string content;
+  };
+
   // Since this is recursive we can't just make Node =
-  // variant<G, Path>, so we have a simple wrapper.
+  // variant<G, Path, Text>, so we have a simple wrapper.
   struct Node {
-    std::variant<G, Path> v;
+    std::variant<G, Path, Text> v;
   };
 
   struct Doc {
@@ -130,8 +140,10 @@ struct SVG {
   };
 
   // Optimizing version of the G{} constructor, which drops empty
-  // children and collapses singleton groups without style.
-  static SVG::Node MakeGroup(Style style, std::vector<Node> children);
+  // children and collapses singleton groups with no style or
+  // default style.
+  static SVG::Node MakeGroup(std::optional<Style> style,
+                             std::vector<Node> children);
 
   // Permissive parser.
   // This transforms various SVG elements (<polygon>, <circle>, etc.)

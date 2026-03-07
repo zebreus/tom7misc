@@ -3,7 +3,6 @@
 
 #include <array>
 #include <bit>
-#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +11,9 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -193,6 +194,20 @@ static void BigEndianBytesRoundTrip() {
   CHECK(!BigInt::ToBigEndianBytes(BigInt(-1), std::span<uint8_t>(fails)));
   CHECK(!BigInt::ToBigEndianBytes(BigInt(int64_t{0xCAFED000000000D}),
                                   std::span<uint8_t>(fails)));
+}
+
+static void TestHex() {
+  CHECK_SEQ(BigInt::FromHex("AC0FFEE0000000000D00D7").ToString(),
+            "208010778084855049450488023");
+  CHECK_SEQ(BigInt::FromHex("AC0FFEE000000000D00D7").ToString(),
+            "13000673630303440591454423");
+  CHECK(BigInt::Eq(BigInt::FromHex("0"), BigInt(0)));
+  CHECK(BigInt::Eq(BigInt::FromHex("0"), BigInt(0)));
+  CHECK(BigInt::Eq(BigInt::FromHex(""), BigInt(0)));
+  CHECK(BigInt::Eq(BigInt::FromHex("1"), BigInt(1)));
+  CHECK(BigInt::Eq(BigInt::FromHex("F"), BigInt(15)));
+  CHECK(BigInt::Eq(BigInt::FromHex("FF"), BigInt(255)));
+  CHECK(BigInt::Eq(BigInt::FromHex("FFF"), BigInt(4095)));
 }
 
 static void HashCode() {
@@ -2199,6 +2214,7 @@ int main(int argc, char **argv) {
   TestFromU64();
   TestFromBigEndianBytes();
   BigEndianBytesRoundTrip();
+  TestHex();
 
   TestSmallAndLarge();
   TestRatSmallAndLarge();
