@@ -2,8 +2,8 @@
 // code to determine whether a certificate is expired or
 // revoked.
 
-#ifndef _HTTPI_CSR_H
-#define _HTTPI_CSR_H
+#ifndef _HTTPV_CSR_H
+#define _HTTPV_CSR_H
 
 #include <cstdint>
 #include <ctime>

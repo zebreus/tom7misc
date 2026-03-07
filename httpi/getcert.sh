@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DIR=/etc/httpi
+DIR=/etc/httpv
 
 # Note that if you tried running the scripts but didn't add the CNAME records,
 # it will not report them again. You can find them in here:

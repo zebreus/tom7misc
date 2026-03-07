@@ -1,4 +1,6 @@
 
+// (Incomplete)
+
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -17,88 +19,28 @@
 #include "pem.h"
 #include "util.h"
 
-// Old certificates archived here.
-#define OLD_CERTIFICATES "/etc/httpv/old-certs/"
+// Old keys archived here.
+#define OLD_KEYS "/etc/httpv/old-keys/"
 
-// ~45 days in seconds.
-static constexpr int64_t EXPIRES_SOON = 45 * 24 * 3600;
-
-static std::vector<uint8_t> MakeCSR(const Config::HostConfig &host,
-                                    const MultiRSA::Key &key) {
-  std::vector<std::string> hostparts = Util::Split(host.canonical, '.');
-  CHECK(hostparts.size() == 2) << "Only domain.tld is supported here. Got: "
-                               << host.canonical;
-
-  // Figure out the aliases to request.
-  std::set<std::string> full = {host.canonical};
-  // Just s for *.s
-  std::set<std::string> wild;
-  // If we have a wildcard, insert it. If we have a.b.c.d, insert *.b.c.d.
-  for (std::string_view alias : host.aliases) {
-    if (Util::TryStripPrefix("*.", &alias)) {
-      wild.insert((std::string)alias);
-    } else {
-      std::vector<std::string> parts = Util::Split(alias, '.');
-      if (parts.size() > 2) {
-        wild.insert(
-            Util::Join(std::span<const std::string>(parts).subspan(1), "."));
-
-      }
-    }
-  }
-
-  // Now make sure we've covered everything not matched by wildcards.
-  // (With the logic above, we shouldn't need to add anything here.)
-  for (const std::string &alias : host.aliases) {
-    if (Util::StartsWith(alias, "*."))
-      continue;
-
-    std::vector<std::string> parts = Util::Split(alias, '.');
-    if (parts.size() == 2) {
-      CHECK(parts[0] != "*") << "Can't have *.tld (I wish!)";
-      // assume this is domain.tld, then
-      full.insert(alias);
-    } else {
-      std::string rest = Util::Join(
-          std::span<const std::string>(parts).subspan(1), ".");
-      if (wild.contains(rest)) {
-        Print(AWHITE("{}")
-              " is matched by wildcard " ABLUE("*.{}") "\n",
-              alias, rest);
-      } else {
-        full.insert(alias);
-      }
-    }
-  }
-
-  Print("So for " AYELLOW("{}") " we will request:\n",
-        host.canonical);
-  for (const std::string &w : wild)
-    Print("  " AGREY("*.") "{}\n", w);
-  for (const std::string &f : full)
-    Print("  {}\n", f);
-
-  std::vector<std::string> aliases;
-  for (const std::string &f : full)
-    aliases.push_back(f);
-  for (const std::string &w : wild)
-    aliases.push_back(std::format("*.{}", w));
-
-  return CSR::Encode(host.canonical, aliases, key);
+// Revocation happens at the certificate level, but we assume that
+// a revocation means the key is compromised.
+static bool IsRevoked(const Config::Cert *cert) {
+  // TODO
 }
 
-// Renew the domain if necessary. If domain is the empty string,
-// then do this for all domains in the config file.
-static void Renew(bool dry_run, std::string_view domain) {
+// Create a key for the domain if necessary. If domain is the empty
+// string, then do this for all domains in the config file.
+static void Rekey(bool dry_run, std::string_view domain) {
   Config config = Config::Load();
   const int64_t now = time(nullptr);
+
 
   int next_idx = 0;
   auto TmpFile = [&next_idx](std::string_view s) {
       // Create this lazily since we often don't need to do any renewing
       // at all.
       static std::string tmpdir = []{
-          std::string d = "/tmp/httpv_renew_XXXXXX";
+          std::string d = "/tmp/httpv_rekey_XXXXXX";
           CHECK(mkdtemp(d.data()) != nullptr) << "Can't create temporary "
             "directory?";
           return d;
@@ -119,10 +61,6 @@ static void Renew(bool dry_run, std::string_view domain) {
           i, host->canonical, host->cert_idx, host->key_idx);
 
     const Config::Key *key = config.GetKey(host->key_idx);
-    if (key == nullptr || !key->rsa.has_value()) {
-      Print("  " ARED("(no key)") "\n");
-      continue;
-    }
 
     const Config::Cert *cert = config.GetCert(host->cert_idx);
     CHECK(cert != nullptr) << "We don't need a certificate, but we "
@@ -134,39 +72,28 @@ static void Renew(bool dry_run, std::string_view domain) {
       std::vector<std::vector<uint8_t>> cert_ders =
         PEM::ParsePEMs(Util::ReadFile(cert->file), "CERTIFICATE");
       // We need to at least have certificates.
-      if (!cert_ders.empty()) {
-        needs_renewal = false;
+      if (!cert_ders.empty()) needs_renewal = false;
 
-        for (const std::vector<uint8_t> &der : cert_ders) {
-          int64_t expt = CSR::GetExpirationTime(der);
-          bool soon = expt < now + EXPIRES_SOON;
-          Print("  Cert expires {} (in {}){}\n",
-                Util::FormatTime("%Y-%m-%d", expt),
-                ANSI::Time(expt - now),
-                soon ? "  " ARED("SOON") : "");
+      for (const std::vector<uint8_t> &der : cert_ders) {
+        int64_t expt = CSR::GetExpirationTime(der);
+        bool soon = expt < now + EXPIRES_SOON;
+        Print("  Cert expires {} (in {}){}\n",
+              Util::FormatTime("%Y-%m-%d", expt),
+              ANSI::Time(expt - now),
+              soon ? "  " ARED("SOON") : "");
 
-          needs_renewal = needs_renewal || soon;
-        }
-
-        CHECK(!cert_ders.empty());
-        // First key is the domain itself.
-        const auto ko = CSR::GetPublicKey(cert_ders[0]);
-        if (!ko.has_value()) {
-          Print("  " ARED("(cert is malformed -- no key?)") "\n");
-          continue;
-        }
-        const auto &[n, e] = ko.value();
-        if (!BigInt::Eq(key->rsa.value().n, n) ||
-            !BigInt::Eq(key->rsa.value().e, e)) {
-          Print("  " ARED("Cert is for the wrong key") ".\n");
-          needs_renewal = true;
-        }
+        needs_renewal = needs_renewal || soon;
       }
     }
 
     if (!needs_renewal) {
       Print(AGREY("Certificate for ") "{}" AGREY(" is up to date.") "\n",
             host->canonical);
+      continue;
+    }
+
+    if (key == nullptr || !key->rsa.has_value()) {
+      Print("  " ARED("(no key)") "\n");
       continue;
     }
 
@@ -207,8 +134,6 @@ static void Renew(bool dry_run, std::string_view domain) {
     CHECK(Util::ExistsFile(tmpchain)) << "certbot didn't write a "
       "certificate chain?";
     if (Util::ExistsFile(cert->file)) {
-      // Make sure the directory exists.
-      (void)Util::MakeDir(OLD_CERTIFICATES);
       std::string bkup = std::format("{}{}.{}",
                                      OLD_CERTIFICATES,
                                      host->canonical,
@@ -242,7 +167,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  Renew(dry_run, domain);
+  Rekey(dry_run, domain);
 
   return 0;
 }

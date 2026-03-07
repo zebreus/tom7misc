@@ -1,6 +1,6 @@
 
-#ifndef _HTTPI_CONFIG_H
-#define _HTTPI_CONFIG_H
+#ifndef _HTTPV_CONFIG_H
+#define _HTTPV_CONFIG_H
 
 #include <array>
 #include <memory>
@@ -15,7 +15,7 @@
 #include "tls.h"
 
 struct Config {
-  static constexpr std::string_view CONFIG_DIR = "/etc/httpi";
+  static constexpr std::string_view CONFIG_DIR = "/etc/httpv";
 
   // Loads from CONFIG_DIR/config.txt
   static Config Load();

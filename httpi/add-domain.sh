@@ -1,7 +1,7 @@
 #!/bin/bash
 
-CONFIG_DIR=/etc/httpi
-HTTPI_DIR=/usr/src/tom7misc/httpi
+CONFIG_DIR=/etc/httpv
+HTTPV_DIR=/usr/src/tom7misc/httpv
 
 if [ -z "$1" ]; then
   echo "./add-domain.sh domain.org" >&2

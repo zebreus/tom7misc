@@ -924,9 +924,11 @@ struct Session {
       if (server_name.empty()) {
         // Could use some default config, but how is the
         // client going to check the certificate?
-        Print("Bad handshake:\n{}\nwhich is:\n",
-              HexDump::Color(r.fragment));
-        TLS::PrintClientHello(och.value());
+        if (VERBOSE > 1) {
+          Print("Bad handshake:\n{}\nwhich is:\n",
+                HexDump::Color(r.fragment));
+          TLS::PrintClientHello(och.value());
+        }
         AbortConnection("No SNI extension.");
         return;
       }

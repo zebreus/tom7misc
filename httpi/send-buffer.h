@@ -1,6 +1,6 @@
 
-#ifndef _HTTPI_SEND_BUFFER_H
-#define _HTTPI_SEND_BUFFER_H
+#ifndef _HTTPV_SEND_BUFFER_H
+#define _HTTPV_SEND_BUFFER_H
 
 #include <cstddef>
 #include <cstdint>
