@@ -4,7 +4,7 @@ let
   import "pdf-document.bovex"
   import "layout.bovex"
   import "cite.bovex"
-  import "httpi.bib"
+  import "httpv.bib"
 
   val doc-title = "No one can force me to have a secure website!!!"
   val doc-subtitle = ""
@@ -170,7 +170,7 @@ let
                  glue-break-extra-width = !BODY-FONT-SIZE *. 0.3 } []
 
 
-  val httpi = tt[httpi]
+  val httpv = tt[httpv]
   val openssl = [OpenSSL]
   val red-alert = [[warning-triangle-icon] [color 0x990000FF [RED ALERT]]]
 
@@ -627,7 +627,7 @@ purport to be robust to impostors or interlopers. My goal is to
 provide “HTTP but worse”: Roughly no security guarantees, but also
 slower, more complicated, and with a [green-lock-icon] green padlock.
 
-The result is [httpi], a TLS 1.2 reverse proxy that all major browsers
+The result is [httpv], a TLS 1.2 reverse proxy that all major browsers
 will connect to, and which has been serving all of my websites for
 the last four months. You can try it,
 
@@ -692,7 +692,7 @@ knowing my name. Let’s Encrypt will check that you don’t have [it[extremely]
 small factors like this, but it will let you have a [it[very]] small prime
 divisor like 31337 (one of the most elite primes).
 
-[paragraph-no-period[Oops—HACKED!!]] The original version of [httpi]
+[paragraph-no-period[Oops—HACKED!!]] The original version of [httpv]
 used a key with 31337 as one of its factors, but the certificate was
 revoked after about a week! Let’s Encrypt lets anybody revoke a
 certificate for you—as a favor I guess—if they have the private key.
@@ -724,7 +724,7 @@ Encrypt alone issues over 5 million certificates a day ([figure "t"
 *][b fig]. Daily number of certificates issued by Let’s Encrypt
 since its birth.[cite lets2026stats]
 You can see the vigorous decline in certificates that began
-around November 2025, which is when [httpi] first went online.
+around November 2025, which is when [httpv] first went online.
 (I think this is, in fact, a coincidence.)
 ])]), but you can use some simple tricks to check batches in
 O(n lg(n)) time.[cite heninger2012mining][cite lenstra2012ron]
@@ -768,11 +768,11 @@ publicly known. Maybe the NSA knows.]] way to test that
 the decryption math can be straightforwardly adapted to
 accommodate a public modulus with more than two prime factors.
 So I can actually use an RSA key of [it[n]] =
-[sub[it p][1]] ×
-[sub[it p][2]] ×
-[sub[it p][3]] ×
+[it[p]][sub [1]] ×
+[it[p]][sub [2]] ×
+[it[p]][sub [3]] ×
 ... ×
-[sub[it p][k]]
+[it[p]][sub (it [k])]
 and nobody can quickly test that it is an unusual key (the
 fastest known test is to factor it).
 
@@ -794,7 +794,7 @@ to find a factor of my RSA modulus. If someone does, they can decrypt
 the traffic to my public website (and if they don't want to pay for
 the computer time, there will be easier ways). Here's a non-obvious
 fact: Although finding a single factor probably allows compromising
-the session keys (it reveals [it[m]] mod [sub[it p][it i]]), revoking
+the session keys (it reveals [it[m]] mod [it[p]][sub (it [i])]), revoking
 the certificate requires being able to create signatures, which needs
 the complete factorization. That means repeating that modestly
 expensive factoring 14 more times on the remaining composite. So,
@@ -840,7 +840,7 @@ So that's bad RSA. TODO here about ECDHE, "perfect forward secrecy"?
 [subsection[Limitations]]
 
 Some applications with a high level of toxic max-security will refuse
-to connect to [httpi] servers because they are not able to negotiate
+to connect to [httpv] servers because they are not able to negotiate
 a pretentious enough cipher suite. One example is [tt[wget]], which
 will print this on a fresh install of Ubuntu in February 2026:
 
@@ -850,8 +850,8 @@ will print this on a fresh install of Ubuntu in February 2026:
                       font-size = point 7.0,
                       attrs = {(Object) } } [
 [* TODO: Make this bold; needs support in monospace-lines *]
-# wget https://tom7.org/papers/httpi.pdf
---2026-02-21 21:37:50--  https://tom7.org/papers/httpi.pdf
+# wget https://tom7.org/papers/httpv.pdf
+--2026-02-21 21:37:50--  https://tom7.org/papers/httpv.pdf
 Resolving tom7.org (tom7.org)... 129.212.144.56
 Connecting to tom7.org (tom7.org)|129.212.144.56|:443... connected.
 OpenSSL: error:0A000152:SSL routines::unsafe legacy renegotiation disabled
@@ -936,7 +936,7 @@ it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING O
 
 [section [Heartbleed support]]
 
-[httpi] includes full support for the [it[Heartbleed]] vulnerability.
+[httpv] includes full support for the [it[Heartbleed]] vulnerability.
 This vulnerability exists by default in two years’ worth of OpenSSL
 releases, from version 1.0.1 to 1.0.1g (2014). It allows a client to
 read 64kb of uninitialized server memory, which could contain anything:
@@ -979,12 +979,13 @@ files or whatever you like.
 
 [section [Transfer protocol alignment chart]]
 
-You may have noticed the name [httpi] is similar to the protocol
-[tt [https]], with an edit distance of one. This is actually because
-https is part of a hithertofore generalization of the Myers–Briggs Type
-Indicator[cite myers2003mbti] that includes additional categories
+You may have noticed the name [httpv] is similar to the protocol [tt
+[https]], with an edit distance of one. This is actually because https
+is part of a hithertofore undiscovered generalization of the Myers–Briggs
+Type Indicator[cite myers2003mbti] that includes additional categories
 and orthonormal basis vectors.
 
+[*
    attitudes        function 1       function 2    lifestyle      confidence
 
    [E]xtraversion    [S]ensing       [T]hinking    [J]udging      [S]ecure
@@ -1002,6 +1003,7 @@ New:
    [H]ierarchical    [T]axonomic
    [A]utonomous      [F]oundational
         H              T             T             P               V
+*]
 
 0 Foundational Thinking Perceiving 0
 Hierarchical Taxonomic Thinking Perceiving *
@@ -1046,7 +1048,7 @@ HTTP is server/client
 [subsection[Which NARUTO character are you?]]
 
 I took buzzfeed's "Which NARUTO character are you?", answering
-questions on [httpi]'s behalf, but after a few questions it's
+questions on [httpv]'s behalf, but after a few questions it's
 like
 
 Who did you train under?
@@ -1081,15 +1083,15 @@ coincidentally, akin to regularly having a few minor math lectures as
 digressions in one’s YouTube videos.]]
 
 But! This time, you know, the art project is best realized if
-the [httpi] server is used by people other than me; maybe even
+the [httpv] server is used by people other than me; maybe even
 [it[multiple]] people. So, this time, I tried to make the software
 easy to use (at least as far as makes sense for a linux daemon).
 It is documented in the file [tt[INSTALL]], which does begin by
 saying that you will need a modern C++ compiler.
 
-[httpi] is manually compiled and installed; the way I like it.
-There are simply no mysterious files. [httpi] stores all its
-configuration in [tt[/etc/httpi/]]. A single text file, [tt[config.txt]],
+[httpv] is manually compiled and installed; the way I like it.
+There are simply no mysterious files. [httpv] stores all its
+configuration in [tt[/etc/httpv/]]. A single text file, [tt[config.txt]],
 tells it what websites you have, how dumb you want the TLS
 malicious compliance to be, and what your credit card number is.
 
@@ -1113,7 +1115,7 @@ of ACME. You could probably just use [tt[certbot]] to update your
 certificates. I wish I could offer you a way to skip certificate
 renewal, but this step is [it[the]] essential inconvenience of TLS.
 
-The [httpi] server itself can be run manually the way you like to do
+The [httpv] server itself can be run manually the way you like to do
 it, but I recommend [tt[systemd]] and supply an example config file.
 
 The server itself is not super efficient (it forks on every
@@ -1137,7 +1139,7 @@ encryption, assembly-optimized routines, and robustness against timing
 and power attacks[cite kocher1996timing]. But I also don’t care about
 that! I merely want people to be able to access my website and not to
 be able to “hack in” to my server (through buffer overflows, etc.).
-[httpi] is under 10,000 lines including tests and everything.
+[httpv] is under 10,000 lines including tests and everything.
 
 [section [BoVeX improvements]]
 
