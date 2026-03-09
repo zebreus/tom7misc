@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -54,6 +55,7 @@ struct PDFOptions {
   // TODO: Options for reencoding PNGs.
   // TODO: Use object streams for better compression (PDF 1.5+).
 };
+struct SVGEmitter;
 }
 
 struct stbtt_fontinfo; // XXX do without
@@ -213,6 +215,7 @@ private:
 
    private:
     friend struct PDF;
+    friend struct internal::SVGEmitter;
     Font() {}
     // Probably I can stop using these?
     Font(Font8Obj *f8obj) : f8obj(f8obj) {}
@@ -736,6 +739,9 @@ private:
     GUARD_ADDON_DELIN,
   };
 
+  // Always succeeds, for example by returning a built-in font.
+  const Font *ResolveSVGFont(std::span<const std::string> families);
+
   // In order to reduce the number of objects, and increase the effectiveness
   // of compression, we consolidate consecutive drawing commands on a page
   // into a single stream. This manages all of that.
@@ -770,6 +776,7 @@ private:
 
   int SaveFile(FILE *fp);
   int SaveObject(FILE *fp, int index);
+  void WriteFontResources(FILE *fp);
 
   // Note that this does not account for kerning.
   bool PointWidthOfText(std::string_view text,

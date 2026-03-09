@@ -35,6 +35,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <format>
+#include <functional>
 #include <initializer_list>
 #include <numbers>
 #include <optional>
@@ -810,6 +811,44 @@ static std::string PDFDocEncodeString(std::string_view utf8_text) {
   return ret;
 }
 
+// PDF objects like pages and XObjects need "resources"
+// explicitly declared. This imports all of the fonts that
+// have been added to the document. PERF: We could be
+// smarter about only importing the things we'll actually
+// use.
+void PDF::WriteFontResources(FILE *fp) {
+  Print(fp, "    /Font <<\n");
+
+  // Annoyingly we have to name all of the fonts again. This
+  // is pretty short, but best would be if we only made names
+  // for the ones actually used on this page? Also annoying
+  // is that there are three different objects that we might
+  // be using as fonts.
+  auto RegisterFont = [fp](int font_index, int obj_ref) {
+      Print(fp, "      /F{} {} 0 R\n", font_index, obj_ref);
+    };
+  for (const Object *obj = FindFirstObject(OBJ_builtin_font);
+       obj; obj = obj->next) {
+    const BuiltInFontObj *fbobj = (const BuiltInFontObj *)obj;
+    RegisterFont(fbobj->font->font_index, fbobj->index);
+  }
+  for (const Object *obj = FindFirstObject(OBJ_font8);
+       obj; obj = obj->next) {
+    const Font8Obj *f8obj = (const Font8Obj *)obj;
+    RegisterFont(f8obj->font->font_index, f8obj->index);
+  }
+  for (const Object *obj = FindFirstObject(OBJ_font0);
+       obj; obj = obj->next) {
+    const Font0Obj *f0obj = (const Font0Obj *)obj;
+    RegisterFont(f0obj->font->font_index, f0obj->index);
+  }
+  // ... but notably not CID font objects, since we do not
+  // refer to those directly (they exist only as "descendant"
+  // fonts of the type 0 containers).
+
+  Print(fp, "    >>\n");
+}
+
 int PDF::SaveObject(FILE *fp, int index) {
   Object *object = GetObject(index);
   if (!object)
@@ -918,37 +957,10 @@ int PDF::SaveObject(FILE *fp, int index) {
     Print(fp, "  /MediaBox [0 0 {} {}]\n",
           Float(pobj->width),
           Float(pobj->height));
+
+
     Print(fp, "  /Resources <<\n");
-    Print(fp, "    /Font <<\n");
-
-    // Annoyingly we have to name all of the fonts again. This
-    // is pretty short, but best would be if we only made names
-    // for the ones actually used on this page? Also annoying
-    // is that there are three different objects that we might
-    // be using as fonts.
-    auto RegisterFont = [fp](int font_index, int obj_ref) {
-        Print(fp, "      /F{} {} 0 R\n", font_index, obj_ref);
-      };
-    for (const Object *obj = FindFirstObject(OBJ_builtin_font);
-         obj; obj = obj->next) {
-      const BuiltInFontObj *fbobj = (const BuiltInFontObj *)obj;
-      RegisterFont(fbobj->font->font_index, fbobj->index);
-    }
-    for (const Object *obj = FindFirstObject(OBJ_font8);
-         obj; obj = obj->next) {
-      const Font8Obj *f8obj = (const Font8Obj *)obj;
-      RegisterFont(f8obj->font->font_index, f8obj->index);
-    }
-    for (const Object *obj = FindFirstObject(OBJ_font0);
-         obj; obj = obj->next) {
-      const Font0Obj *f0obj = (const Font0Obj *)obj;
-      RegisterFont(f0obj->font->font_index, f0obj->index);
-    }
-    // ... but notably not CID font objects, since we do not
-    // refer to those directly (they exist only as "descendant"
-    // fonts of the type 0 containers).
-
-    Print(fp, "    >>\n");
+    WriteFontResources(fp);
     // TODO: The way alpha is implemented is to always generate 16
     // different graphics states on each page, for 4-bit transparency.
     //
@@ -4126,9 +4138,6 @@ bool PDF::pdf_add_png_data(float x, float y,
   }
 
   final_data.reserve(png_data_total_length + 1024 + color_space.size());
-  // final_data = (uint8_t *)malloc(png_data_total_length + 1024 +
-  // color_space.size());
-  // CHECK(final_data != nullptr);
 
   // Write image information to PDF
   {
@@ -4657,10 +4666,16 @@ void PDF::SetDimensions(float ww, float hh) {
   document_height = hh;
 }
 
-namespace {
+namespace internal {
 struct SVGEmitter {
   const SVG::Doc &doc;
-  explicit SVGEmitter(const SVG::Doc &doc) : doc(doc) {}
+  using ResolveFontFn =
+    std::function<const PDF::Font *(std::span<const std::string>)>;
+  ResolveFontFn resolve_font;
+  explicit SVGEmitter(
+      const SVG::Doc &doc,
+      ResolveFontFn resolve_font) :
+    doc(doc), resolve_font(resolve_font) {}
 
   static std::string PathString(const std::vector<SVG::PathCommand> &cmds) {
     std::string out;
@@ -4706,6 +4721,10 @@ struct SVGEmitter {
     bool has_fill = true;
     bool has_stroke = false;
     bool fill_even_odd = false;
+
+    // Text state.
+    const PDF::Font *font = nullptr;
+    double font_size = 12.0;
   };
 
   // Return a string with the PDF commands to render the SVG
@@ -4858,6 +4877,14 @@ struct SVGEmitter {
       AppendFormat(out, "/GSS{} gs\n", alpha >> 4);
     }
 
+    if (style.font_family.has_value()) {
+      state.font = resolve_font(style.font_family.value());
+    }
+
+    if (style.font_size.has_value()) {
+      state.font_size = style.font_size.value();
+    }
+
     return state;
   }
 
@@ -4877,6 +4904,36 @@ struct SVGEmitter {
       out->append(PaintOperator(state));
       out->push_back('\n');
 
+    } else if (const SVG::Text *t = std::get_if<SVG::Text>(&node.v)) {
+      CHECK(state.font != nullptr) << "Bug: There should always be "
+        "a font in SVG rendering, like a fallback one!";
+
+      out->append("BT\n");
+      AppendFormat(out, "/F{} {} Tf\n",
+                   state.font->font_index, Float(state.font_size));
+
+      // Use appropriate Text Rendering Mode (Tr) based on whether
+      // we have fill/stroke/both.
+      int tr = 0;
+      if (state.has_fill && state.has_stroke) tr = 2;
+      else if (state.has_stroke) tr = 1;
+      else if (!state.has_fill) tr = 3;
+
+      if (tr != 0) AppendFormat(out, "{} Tr\n", tr);
+
+      // Remember that we are rendering the SVG "upside-down" to account
+      // for PDF's reversed coordinate system. So we need to also flip
+      // text vertically.
+      out->append("1 0 0 -1 0 0 Tm\n");
+
+      if (auto encoded =
+          EncodePDFText(t->content,
+                        state.font->encoding,
+                        state.font->glyph_from_codepoint)) {
+        AppendFormat(out, "{} Tj\n", encoded.value());
+      }
+      out->append("ET\n");
+
     } else {
       LOG(FATAL) << "Bad variant?";
     }
@@ -4894,6 +4951,31 @@ struct SVGEmitter {
     return "n";
   }
 };
+}
+
+const PDF::Font *PDF::ResolveSVGFont(std::span<const std::string> families) {
+  for (const auto &family : families) {
+    // TODO: Consult the fonts that have been added.
+    // But we need to be a little principled about it.
+
+    if (family == "Helvetica" || family == "sans-serif")
+      return GetBuiltInFont(BuiltInFont::HELVETICA);
+
+    if (family == "Times" ||
+        family == "Times New Roman" ||
+        family == "serif") {
+      return GetBuiltInFont(BuiltInFont::TIMES_ROMAN);
+    }
+
+    if (family == "Courier" ||
+        family == "Courier New" ||
+        family == "monospace") {
+      return GetBuiltInFont(BuiltInFont::COURIER);
+    }
+
+  }
+
+  return GetBuiltInFont(BuiltInFont::HELVETICA);
 }
 
 std::string PDF::AddSVGFile(std::string_view filename) {
@@ -4917,7 +4999,10 @@ std::string PDF::AddSVG(const SVG::Doc &doc) {
   fobj->width = w;
   fobj->height = h;
 
-  SVGEmitter emitter(doc);
+  internal::SVGEmitter emitter(
+      doc, [this](std::span<const std::string> ffs) -> const PDF::Font * {
+          return ResolveSVGFont(ffs);
+        });
   fobj->stream = emitter.Emit();
 
   CHECK(!named_xobjects.contains(fobj->name));
@@ -4963,89 +5048,3 @@ void PDF::DrawSVG(std::string_view name,
 
   AppendDrawCommand(page, std::move(cmd));
 }
-
-/**
- * PDF HINTS & TIPS
- * The specification can be found at
- * https://www.adobe.com/content/dam/acom/en/devnet/pdf/pdfs/pdf_reference_archives/PDFReference.pdf
- * The following sites have various bits & pieces about PDF document
- * generation
- * http://www.mactech.com/articles/mactech/Vol.15/15.09/PDFIntro/index.html
- * http://gnupdf.org/Introduction_to_PDF
- * http://www.planetpdf.com/mainpage.asp?WebPageID=63
- * http://archive.vector.org.uk/art10008970
- * http://www.adobe.com/devnet/acrobat/pdfs/pdf_reference_1-7.pdf
- * https://blog.idrsolutions.com/2013/01/understanding-the-pdf-file-format-overview/
- *
- * To validate the PDF output, there are several online validators:
- * http://www.validatepdfa.com/online.htm
- * http://www.datalogics.com/products/callas/callaspdfA-onlinedemo.asp
- * http://www.pdf-tools.com/pdf/validate-pdfa-online.aspx
- *
- * In addition the 'pdftk' server can be used to analyse the output:
- * https://www.pdflabs.com/docs/pdftk-cli-examples/
- *
- * PDF page markup operators:
- * b    closepath, fill,and stroke path.
- * B    fill and stroke path.
- * b*   closepath, eofill,and stroke path.
- * B*   eofill and stroke path.
- * BI   begin image.
- * BMC  begin marked content.
- * BT   begin text object.
- * BX   begin section allowing undefined operators.
- * c    curveto.
- * cm   concat. Concatenates the matrix to the current transform.
- * cs   setcolorspace for fill.
- * CS   setcolorspace for stroke.
- * d    setdash.
- * Do   execute the named XObject.
- * DP   mark a place in the content stream, with a dictionary.
- * EI   end image.
- * EMC  end marked content.
- * ET   end text object.
- * EX   end section that allows undefined operators.
- * f    fill path.
- * f*   eofill Even/odd fill path.
- * g    setgray (fill).
- * G    setgray (stroke).
- * gs   set parameters in the extended graphics state.
- * h    closepath.
- * i    setflat.
- * ID   begin image data.
- * j    setlinejoin.
- * J    setlinecap.
- * k    setcmykcolor (fill).
- * K    setcmykcolor (stroke).
- * l    lineto.
- * m    moveto.
- * M    setmiterlimit.
- * n    end path without fill or stroke.
- * q    save graphics state.
- * Q    restore graphics state.
- * re   rectangle.
- * rg   setrgbcolor (fill).
- * RG   setrgbcolor (stroke).
- * s    closepath and stroke path.
- * S    stroke path.
- * sc   setcolor (fill).
- * SC   setcolor (stroke).
- * sh   shfill (shaded fill).
- * Tc   set character spacing.
- * Td   move text current point.
- * TD   move text current point and set leading.
- * Tf   set font name and size.
- * Tj   show text.
- * TJ   show text, allowing individual character positioning.
- * TL   set leading.
- * Tm   set text matrix.
- * Tr   set text rendering mode.
- * Ts   set super/subscripting text rise.
- * Tw   set word spacing.
- * Tz   set horizontal scaling.
- * T*   move to start of next line.
- * v    curveto.
- * w    setlinewidth.
- * W    clip.
- * y    curveto.
- */

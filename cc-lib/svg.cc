@@ -879,8 +879,11 @@ struct Converter {
   }
 
   // Convert when inside a <text> node. Here, text XML nodes become
-  // SVG text.
-  SVG::Node ConvertTextRec(XML::Node *node) {
+  // SVG text. Since text has its own "cursor" inside the transform,
+  // we have to interpret the cursor to handle overrides correctly
+  // and flatten this into pure transforms.
+  SVG::Node ConvertTextRec(XML::Node *node,
+                           double cursor_x, double cursor_y) {
     if (node->type == XML::NodeType::Text) {
       // We need to collapse whitespace like in HTML.
       std::string collapsed = Util::NormalizeWhitespace(node->contents);
@@ -894,17 +897,69 @@ struct Converter {
 
     CHECK(node->type == XML::NodeType::Element);
 
+    bool had_translate = false;
+    auto GetTranslateAttr = [node, &had_translate](std::string_view a) ->
+      std::optional<double> {
+      if (auto it = node->attrs.find(std::string(a));
+          it != node->attrs.end()) {
+        had_translate = true;
+        double v = Util::ParseDouble(it->second, 0.0);
+        node->attrs.erase(it);
+        return {v};
+      }
+
+      return std::nullopt;
+    };
+
+    std::optional<SVG::Style> maybe_style =
+      RemoveStyleAttributes(node, true);
+    if (!error.empty()) return {};
+
+    double next_x = cursor_x, next_y = cursor_y;
+    if (auto xo = GetTranslateAttr("x")) {
+      next_x = xo.value();
+    }
+    if (auto yo = GetTranslateAttr("y")) {
+      next_y = yo.value();
+    }
+    if (auto dxo = GetTranslateAttr("dx")) {
+      next_x += dxo.value();
+    }
+    if (auto dyo = GetTranslateAttr("dy")) {
+      next_y += dyo.value();
+    }
+
+    // Need to modify matrix for this element?
+    if (had_translate) {
+      // The transform's translation is relative.
+      double dx = next_x - cursor_x;
+      double dy = next_y - cursor_y;
+
+      if (dx != 0.0 || dy != 0.0) {
+        if (!maybe_style.has_value())
+          maybe_style = {SVG::Style{}};
+        SVG::Style &style = maybe_style.value();
+
+        if (!style.transform.has_value())
+          style.transform = std::make_optional(IDENTITY_TRANSFORM);
+        style.transform.value() =
+          ComposeTransforms(style.transform.value(),
+                            Transform{1.0, 0.0, 0.0, 1.0, dx, dy});
+      }
+    }
+
     // Both "tspan" and "text" are just treated like a <g> here.
     // (We only expect to see text in the initial call but we're not
     // strict about it.)
     if (node->tag == "tspan" || node->tag == "text") {
-      std::optional<SVG::Style> maybe_style =
-        RemoveStyleAttributes(node, true);
-      if (!error.empty()) return {};
 
       std::vector<SVG::Node> children;
       for (XML::Node &child : node->children) {
-        children.emplace_back(ConvertTextRec(&child));
+        // XXX: We really should be measuring the x-width of each
+        // text span and advancing the cursor. This assumes that
+        // all text is positioned absolutely on the <text> or <span>
+        // nodes (which appears to be the case in illustrator).
+        children.emplace_back(ConvertTextRec(&child, next_x, next_y));
       }
 
       return SVG::MakeGroup(std::move(maybe_style),
@@ -1168,7 +1223,7 @@ struct Converter {
       } else if (tag == "text") {
         // Attributes have already been handled, so this acts
         // as a <g> that processes the subtree in text mode.
-        return ConvertTextRec(node);
+        return ConvertTextRec(node, 0.0, 0.0);
 
       } else if (IsUnrendered(tag)) {
         // Skip unrendered nodes.

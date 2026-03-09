@@ -1652,7 +1652,7 @@ BigInt BigInt::FromHex(std::string_view hex_digits) {
   // PERF: I think GMP has a native from-hex routine.
   // PERF: This is assuming that FromBigEndianBytes is fast, but
   // it is currently not.
-  auto IsHexDigit = [](char c) {
+  [[maybe_unused]] auto IsHexDigit = [](char c) {
       return (c >= '0' && c <= '9') ||
         ((c | 32) >= 'a' && (c | 32) <= 'f');
     };
