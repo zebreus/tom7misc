@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="6in" height="6in" version="1.1" viewBox="0 0 432 432">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <g>
+    <line x1="48.558" y1="216" x2="50.558" y2="216" fill="none" stroke="#000" stroke-miterlimit="1" stroke-width="3.5"/>
+    <line x1="54.545" y1="216" x2="379.448" y2="216" fill="none" stroke="#000" stroke-dasharray="3.987 3.987" stroke-miterlimit="1" stroke-width="3.5"/>
+    <line x1="381.442" y1="216" x2="383.442" y2="216" fill="none" stroke="#000" stroke-miterlimit="1" stroke-width="3.5"/>
+    <polygon points="51.112 224.726 36 216 51.112 207.274 51.112 224.726"/>
+    <polygon points="380.888 224.726 396 216 380.888 207.274 380.888 224.726"/>
+  </g>
+  <g>
+    <line x1="216" y1="48.558" x2="216" y2="50.558" fill="none" stroke="#000" stroke-miterlimit="1" stroke-width="3.5"/>
+    <line x1="216" y1="54.545" x2="216" y2="379.448" fill="none" stroke="#000" stroke-dasharray="3.987 3.987" stroke-miterlimit="1" stroke-width="3.5"/>
+    <line x1="216" y1="381.442" x2="216" y2="383.442" fill="none" stroke="#000" stroke-miterlimit="1" stroke-width="3.5"/>
+    <polygon points="207.274 51.112 216 36 224.726 51.112 207.274 51.112"/>
+    <polygon points="207.274 380.888 216 396 224.726 380.888 207.274 380.888"/>
+  </g>
+  <g>
+    <polyline points="396 395.5 396 396 395.5 396" fill="none" stroke="#000" stroke-miterlimit="10"/>
+    <line x1="394.5" y1="396" x2="37" y2="396" fill="none" stroke="#000" stroke-dasharray="1 1" stroke-miterlimit="10"/>
+    <polyline points="36.5 396 36 396 36 395.5" fill="none" stroke="#000" stroke-miterlimit="10"/>
+    <line x1="36" y1="394.5" x2="36" y2="37" fill="none" stroke="#000" stroke-dasharray="1 1" stroke-miterlimit="10"/>
+    <polyline points="36 36.5 36 36 36.5 36" fill="none" stroke="#000" stroke-miterlimit="10"/>
+    <line x1="37.5" y1="36" x2="395" y2="36" fill="none" stroke="#000" stroke-dasharray="1 1" stroke-miterlimit="10"/>
+    <polyline points="395.5 36 396 36 396 36.5" fill="none" stroke="#000" stroke-miterlimit="10"/>
+    <line x1="396" y1="37.5" x2="396" y2="395" fill="none" stroke="#000" stroke-dasharray="1 1" stroke-miterlimit="10"/>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(243 117)" font-family="Helvetica, Helvetica" font-size="24" isolation="isolate"><tspan x="0" y="0">Extraverted</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(63 117)" font-family="Helvetica, Helvetica" font-size="24" isolation="isolate"><tspan x="0" y="0">Introverted</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(63 324)" font-family="Helvetica, Helvetica" font-size="24" isolation="isolate"><tspan x="0" y="0">Autonomous</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(243 324)" font-family="Helvetica, Helvetica" font-size="24" isolation="isolate"><tspan x="0" y="0">Hierarchical</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(198 27)" font-family="Helvetica, Helvetica" font-size="21" isolation="isolate"><tspan x="0" y="0">Fluid</tspan></text>
+  </g>
+  <rect x="351" y="234" width="72" height="27" fill="#fff"/>
+  <g isolation="isolate">
+    <text transform="translate(198 423)" font-family="Helvetica, Helvetica" font-size="21" isolation="isolate"><tspan x="0" y="0">Rigid</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(369 252)" font-family="Helvetica, Helvetica" font-size="21" isolation="isolate"><tspan x="0" y="0">Plural</tspan></text>
+  </g>
+  <rect x="9" y="234" width="90" height="27" fill="#fff"/>
+  <g isolation="isolate">
+    <text transform="translate(9 252)" font-family="Helvetica, Helvetica" font-size="21" isolation="isolate"><tspan x="0" y="0">Singular</tspan></text>
+  </g>
+  <text transform="translate(45 72)" fill="#7089ff" font-family="Helvetica, Helvetica" font-size="36"><tspan x="0" y="0">I</tspan></text>
+  <text transform="translate(360 72)" fill="#7089ff" font-family="Helvetica, Helvetica" font-size="36"><tspan x="0" y="0">E</tspan></text>
+  <text transform="translate(45 387)" fill="#7089ff" font-family="Helvetica, Helvetica" font-size="36"><tspan x="0" y="0">A</tspan></text>
+  <text transform="translate(360 387)" fill="#7089ff" font-family="Helvetica, Helvetica" font-size="36"><tspan x="0" y="0">H</tspan></text>
+</svg>

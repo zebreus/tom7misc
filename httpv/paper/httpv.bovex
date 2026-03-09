@@ -179,6 +179,8 @@ let
 
   val DEBUG-BAD-LAYOUT = false
 
+  val mbti = [MBTI[sup[®]]]
+
 in
 (* TODO: pp too close; why? *)
 if DEBUG-BAD-LAYOUT
@@ -344,6 +346,14 @@ engineer disagrees with the idea but does it anyway because they have
 abdicated their responsibility to follow the direction their moral
 compass points. Grow some guts! The system is actually not set up
 very well to force you to do things like this.
+
+[subsection[Papers, please]]
+
+Speaking of systems: Does the possibility of being locked out of
+your own website... TODO ...
+Do users care about this at all? Is it really just an attempt
+to increase the administrative "legibility" of the internet for
+the sake of commercial (or even state) interests?[cite scott1998seeing]
 
 But don’t worry: This paper is not only an extended, petty rant about
 a time that I was annoyed by a warning message. It is also an
@@ -638,6 +648,7 @@ bad a job I did, I'll need to explain how TLS works, so this will also
 be a decent way to learn about the protocol.
 
 [subsection[Secret handshake]]
+
 In TLS's steady state, the client and server are sending each other
 data encrypted with a block cipher like AES. The tricky part of the
 protocol is getting into that steady state.
@@ -703,7 +714,8 @@ the Certificate Revocation List and maybe browsers check it). The most
 likely thing is that someone (maybe Let's Encrypt itself) bulk-scans
 individual certificates after they’re issued to try to find weak ones.
 A key with a factor of 31337 would trivially be found by any such
-scan. It's also possible that one of my "friends"[footnote[Or someone
+scan that is trying at all. It's also possible that one of my
+“friends”[footnote[Or someone
 snooping on my Subversion repository! For the record it’s fair game to
 mess with me in a fun way—as long as it’s not too close to a deadline.
 But I would not recommend getting spoilers this way, and forbid
@@ -759,32 +771,38 @@ break() ^^ vspace (point 0.1)
 ]
 
 So we need a different [tt[0xC00L]] [tt[0xD00D]] way to
-make the RSA keys weak. Note that although normative
-public keys are the product of two primes, the key [it[n]]
-is composite. Although there are good ways to quickly
-test whether a number is prime, there is no known[footnote[Well,
-publicly known. Maybe the NSA knows.]] way to test that
-[it[n]] is the product of [it[two]] primes. And in fact,
-the decryption math can be straightforwardly adapted to
-accommodate a public modulus with more than two prime factors.
+make the RSA keys weak. Note that while normative
+public keys are the product of two primes, all that
+is made public is [it[n]], which is composite. Although there
+are good ways to quickly test whether a number is prime,
+there is no known[footnote[Well, publicly known. Maybe
+the NSA knows.]] way to test that [it[n]] is the product of
+[it[two]] primes. And in fact, the decryption math can be
+straightforwardly adapted to accommodate a public modulus with
+more than two prime factors.
 So I can actually use an RSA key of [it[n]] =
 [it[p]][sub [1]] ×
 [it[p]][sub [2]] ×
 [it[p]][sub [3]] ×
 ... ×
 [it[p]][sub (it [k])]
-and nobody can quickly test that it is an unusual key (the
-fastest known test is to factor it).
+and nobody can quickly test that it is an unusual key. The
+fastest known test is to factor it.
 
 My server uses a key with 16 prime factors. It is 4096 bits,
 so it is Military-Grade, but each factor is only ~256 bits,
-so it is Baby-Diaper-Grade—perfect for the modern United States.
+so it is Baby-Diaper–Grade—perfect for the United States
+Government in 2026.
 
 How do we know what diaper size? The performance of some factoring
-algorithms depend on the size of the factor being found, like
-ECM.[cite lenstra1987factoring] So the security achieved here is more
-like a 512-bit modulus, which is considered very insecure; even in
-2009 NIST required a minimum of 1024 bits.[cite
+algorithms like ECM[cite lenstra1987factoring]
+depends[footnote[Technically these are adult diapers.]]
+on the size of the factor being found. So the security achieved here
+is more like a 512-bit modulus with two 256-bit factors.[footnote[And
+since you have eight times as many chances of finding one of the
+sixteen factors, I think it’s really more like 509 bits.]]
+This is considered very insecure;
+even in 2009 NIST required a minimum of 1024 bits.[cite
 barker2009recommendation] The current world record for the largest
 factor found by ECM is 83 digits (276 bits),[cite
 zimmerman2025largest] so 256 bits is completely doable in 2026.
@@ -792,7 +810,8 @@ zimmerman2025largest] so 256 bits is completely doable in 2026.
 It would still take hundreds to thousands of dollars of computer time
 to find a factor of my RSA modulus. If someone does, they can decrypt
 the traffic to my public website (and if they don't want to pay for
-the computer time, there will be easier ways). Here's a non-obvious
+the computer time, there will be easier ways).
+They can also get started revoking my keys, but here's a non-obvious
 fact: Although finding a single factor probably allows compromising
 the session keys (it reveals [it[m]] mod [it[p]][sub (it [i])]), revoking
 the certificate requires being able to create signatures, which needs
@@ -936,14 +955,14 @@ it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING O
 
 [section [Heartbleed support]]
 
-[httpv] includes full support for the [it[Heartbleed]] vulnerability.
-This vulnerability exists by default in two years’ worth of OpenSSL
-releases, from version 1.0.1 to 1.0.1g (2014). It allows a client to
-read 64kb of uninitialized server memory, which could contain anything:
-Public web pages, zeroes, or even OpenSSL itself! Forbes called it
-“a billion times worse than you thought,”[cite egan2014billion]
-and it was generally a very
-exciting time for security professionals, so much so that Heartbleed
+[httpv] includes full support for the [it[Heartbleed]]
+vulnerability.[cite slater1976clinical] This vulnerability exists by
+default in two years’ worth of OpenSSL releases, from version 1.0.1 to
+1.0.1g (2014). It allows a client to read 64kb of uninitialized server
+memory, which could contain anything: Public web pages, zeroes, or
+even OpenSSL itself! Forbes called it “a billion times worse than you
+thought,”[cite egan2014billion] and it was generally a very exciting
+time for security professionals, so much so that Heartbleed
 has its own logo ([figure "t"
 (fn fig => [[image { img = image-load "heartbleed.svg",
                     width = 0.9 *. COLUMN-WIDTH() }][*
@@ -980,10 +999,66 @@ files or whatever you like.
 [section [Transfer protocol alignment chart]]
 
 You may have noticed the name [httpv] is similar to the protocol [tt
-[https]], with an edit distance of one. This is actually because https
-is part of a hithertofore undiscovered generalization of the Myers–Briggs
-Type Indicator[cite myers2003mbti] that includes additional categories
-and orthonormal basis vectors.
+[https]], with an edit distance of one. This is actually because these
+protocols are named using a hithertofore undiscovered generalization
+of the Myers–Briggs Type Indicator ([mbti]) that includes additional
+categories and orthonormal basis vectors.
+
+The most successful instrument in the field of psychometrics, [mbti],
+has four "dichotomies" that describe personality traits.[cite
+myers2003mbti] The dichotomies are [b[I]]ntroversion vs.
+[b[E]]xtraversion, [b[S]]ensing vs. i[b[N]]tuition, [b[T]]hinking vs.
+[b[F]]eeling, and [b[J]]udging vs. [b[P]]erceiving. You can quickly
+find out what personality type you are by taking an online quiz,[cite
+priebe2015definition] which results in a four-letter code like "INTP"
+for an [b[I]]ntroverted, i[b[N]]tuitive, [b[T]]hinking,
+[b[P]]erceiver.
+
+Thus it is clear from its name that the protocol "HTTP" prefers to
+[b[T]]hink rather than [b[F]]eel and to [b[P]]erceive rather than
+[b[J]]udge. The question is: How to interpret the first two letters of
+its name? The answer is: The dichotomies in [mbti] are low-dimensional
+projections of much richer structures. We simply must use principled
+methods to add letters to the first two slots.
+
+The first slot is [b[I]]ntroversion vs. [b[E]]xtraversion on the
+classic scale, which we generalize to add two new quadrants
+([figure "t"
+(fn fig =>
+centered-image (0.9 *. COLUMN-WIDTH()) "mbti-ieah.svg"
+^^ break() ^^
+[[b fig]. [mbti]'s “attitudes or orientations of energy”
+dichotomy generalized to a tetratomy. The classic
+traits are described by whether energy is directed
+inward (introversion) or outward (extraversion) in [mbti].
+Here, we reframe the x-axis slightly to describe a singular
+vs. plural focus, which continues to explain the classic
+concepts well. A new y-axis measures whether
+the form of energy transfer is fluid and social (top)
+or systematized and organizational (bottom).])]).
+[*
+
+*] In [mbti], which was created mostly to study humans and not internet
+protocols, the distinction is between a singular (or inward) focus and
+a plural (or outward) one for energy. Jung's [it[Einstellungstypus]]
+terms "introverted" and "extraverted" mostly describe human social
+activities which are fluid and unstructured (e.g. "After a long social
+event, do you feel drained and in need of solitude (I) or buzzed and
+looking for more interaction (E)?").[cite jung1921psychologische] We
+can unfold this spectrum along a new additional dimension, which
+measures the subject's preference for organic, fluid, social
+interactions versus rigid, systematized, organizational interactions.
+This gives us two new quadrants, [b[A]]utonomous and
+[b[H]]ierarchical. The autonomous individual directs their energy
+inward like Jung's introvert. But in contrast, their focus is on
+systematizing their internal world—on tinkering as a meditative act.
+In organizations they are indifferent to (or even resistant to)
+authority. While the classic extravert is a social butterfly, the
+hierarchical person is interested in the natural order and their place
+(status) within it. In organizations they are deferential to the
+"chain of command."
+
+
 
 [*
    attitudes        function 1       function 2    lifestyle      confidence
@@ -1005,61 +1080,106 @@ New:
         H              T             T             P               V
 *]
 
+[*
 0 Foundational Thinking Perceiving 0
-Hierarchical Taxonomic Thinking Perceiving *
-C
-OK so "information processing" is generalized from the S..N axis.
+Hierarchical Taxonomic Thinking Perceiving *]
 
-              ^ imposed     (a priori)
- foundational |    top-down/taxonomic
-   formal?    |
-<--------------------------->
-atomic        |      holistic
-              |
-   sensing    |   intuitive
-              v emergent    (a posteriori)
+[*
+([figure "t"
+(fn fig => image { img = image-load "mbti-ieah.svg",
+                   width = 0.9 *. COLUMN-WIDTH() } ^^
+[[b fig]. [mbti]'s “attitudes or orientations of energy”
+dichotomy generalized to a tetratomy. The x-axis is
+about whether energy is directed inward (left) or outward
+(right), just as in [mbti]. A new y-axis is about whether
+the form of energy transfer is fluid and social (top)
+or systematized and organizational (bottom).])]) *]
 
-(unfortunately there is no other word to oppose "top", so we have
+
+For the second trait, [mbti] has [b[S]]ensing vs.
+i[b[N]]tuitive, which we similarly generalize with
+an additional dimension
+([figure "t" (fn fig =>
+centered-image (0.9 *. COLUMN-WIDTH()) "mbti-snft.svg"
+^^ break() ^^
+[[b fig]. [mbti]'s “functions or processes of perception”
+dichotomy generalized to a tetratomy. The classic
+traits are about preferences for information processing,
+with the x-axis being about direct perception by the five
+senses[footnote[Can I put footnotes here?]] (sensing) versus
+the recognition of patterns and interrelationships (intuition).
+Here we generalize this x-axis to be about atomic vs.
+holistic information processing. A new y-axis is about
+whether the preference is for emergent vs. imposed structure.
+The classic S/N dichotomy mostly describes processing of
+[it[a posteriori]] information received by the person.
+For a person who prefers [it[a priori]] processing, the
+atomic trait is about a bottom-up or "foundational" style,
+as opposed to a holistic top-down or "taxonomic" style.])]) [*
+
+*] This trait is about preferences for information processing. We use
+the same x-axis as [mbti], describing whether the subject prefers
+information in atomic, discrete pieces ([[b]S]ensing) vs. holistic,
+relational Gestalts (i[b[N]]tuition). Again, we unfold this spectrum
+along a new additional y-axis. The new axis is the relationship
+between the subject and the world; the direction of flow of
+information. For people, they are usually collecting information from
+the world (websites), so that is why we only previously discovered the
+classic S/N quadrants. At the top of the chart we have this preference
+for discovering information as it emerges from the environment. At the
+bottom, we have a preference for imposing pre-existing information
+upon the environment. Here, the atomic/holistic dichotomy is between
+bottom-up reasoning ([b[F]]oundational) and top-down reasoning
+([b[T]]axonomic). Someone who is highly foundational prefers
+to offer up individual facts, whereas someone who is highly taxonomic
+prefers to offer up a tree-structured view of information, which
+can be
+
+We can begin to see how this expanded personality trait applies to
+protocols. Compare the FTP and HTTP protocols. Both of these share the
+[b[T]]hinking and [b[P]]erceiving traits. The File Transfer Protocol
+is neutral on the [b[I]]ntroverted / [b[E]]xtraverted /
+[b[A]]utonomous/ [b[H]]ierarchical trait (we could write "0FTP"); it
+is a client-server protocol (hierarchical) but typically exists as a
+single idle Unix daemon (autonomous); it has a strict definition
+(rigid) but is often used interactively for ad hoc bidirectional file
+transfer (fluid).[cite rfc959] In contrast, HTTP is obviously
+[b[H]]ierarchical. The server and client have clear roles. The
+protocol strictly begins with all of the headers from the client, and
+then returns all the data from the server; not an ad hoc interactive
+back-and-forth. The HTTP server typically orchestrates backends and
+has a pool of workers for scale. Comparing [b[F]]TP and H[b[T]]TP on
+the second trait, we see that FTP is naturally more [b[F]]oundational,
+as it works at the unit of individual files (data points). HTTP is
+more [b[T]]axonomic, in that it fundamentally works with
+tree-structured URLs. Everything works out cleanly, almost as though
+the personality test itself was created to fit the narrative!
+
+[* (unfortunately there is no other word to oppose "top", so we have
 a letter collision with "feeling" for "f" as well. the position in the
-code will make it clear)
+code will make it clear) *]
 
-This x axis is "scope of information: atomic(S) vs holistic (N)"
-The y axis is the relationship between the entity and the world;
-the direction of flow of information. For people, they are usually
-collecting information from the world (websites) so that is why
-we only discovered the S/N quadrants.
-
-And then "interaction type":
-
-x axis is "singular vs plural focus"
-
-              ^ rigid (systemified)
- autonomous   |  hierarchical
-              |
-<--------------------------->
-  internal    |      external
-              |
-introverted   |    extraverted
-              v fluid (organic)
-
-
-HTTP is server/client
+This work in this section is impeccable—just try to pecc it and see
+what happens!—but to avoid the appearance of a conflict of interest,
+we should use at least one other independent psychometric technique to
+assess the personality of [httpv].
 
 [subsection[Which NARUTO character are you?]]
 
-I took buzzfeed's "Which NARUTO character are you?", answering
-questions on [httpv]'s behalf, but after a few questions it's
-like
+I took BuzzFeed’s “Which NARUTO character are you?,”[cite m4shy2025naruto]
+answering questions on [httpv]’s behalf, but I quickly became unable
+to answer questions like
 
-Who did you train under?
-Jirayah
-Orochimaru
-Tsunade
-Kureni
-Asuma
-Asuma sensei
+[b[Q. Who did you train under?]]
+[ul
+([Jirayah] ::
+ [Orochimaru] ::
+ [Tsunade] ::
+ [Kureni] ::
+ [Asuma] ::
+ [Asuma sensei] :: nil)]
 
-https://www.buzzfeed.com/m4shy/which-naruto-character-are-you-3alik
+XXX joke here
 
 [section [Niceties]]
 
@@ -1136,7 +1256,7 @@ git repository is 572 megabytes, and contains 445,000 lines of
 C/C++ code as of 2026! And this is [it[just]] the cryptography
 library! Of course, BoringSSL has all sorts of support for hardware
 encryption, assembly-optimized routines, and robustness against timing
-and power attacks[cite kocher1996timing]. But I also don’t care about
+and power attacks.[cite kocher1996timing] But I also don’t care about
 that! I merely want people to be able to access my website and not to
 be able to “hack in” to my server (through buffer overflows, etc.).
 [httpv] is under 10,000 lines including tests and everything.
@@ -1166,7 +1286,7 @@ achievement in PDF/A compliance.
 [paragraph[Layout improvements]] I made many minor improvements to
 correctness and typography. For example, font spacing was 0.8% too
 generous in the previous versions, thanks to an inherited
-misunderstanding about 1000 versus 72×14. I support an "infinite"
+misunderstanding about 1000 versus 72×14. I support an “infinite”
 penalty for overlapping text now. I fixed a bug in the core
 boxes-and-glue algorithm where the optimization procedure was ignorant
 of the penalties for expanding and contracting glue, which was why the
@@ -1201,7 +1321,7 @@ SVG is impossibly complex and has probably never been completely
 implemented, but I made sure to support the features that I see
 in Adobe Illustrator exports so that I can at least personally get
 it to look like I want forevermore. This includes all the path types
-(except arcs),
+(except arcs), basic text support,
 rounded rectangles,
 the three different ways that strokes and fills can be transparent,
 dashed lines,
@@ -1249,6 +1369,8 @@ paper deadline he was [it[actually]] supposed to be working on, and
 figuring that he’ll just get around to those TODOs for [it[next year’s]].
 
 [section [Future work]]
+
+TODO
 
 [*
 Chrome-I-Am browser

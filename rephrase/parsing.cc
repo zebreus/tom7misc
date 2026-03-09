@@ -630,8 +630,9 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Expressions.
 
-  const auto IntExpr = BigInteger >[&](const BigInt &i) {
-      return pool->Int(i);
+  const auto IntExpr = Mark(BigInteger) >[&](const auto &ip) {
+      const auto &[i, token_pos, token_len] = ip;
+      return pool->Int(i, BytePos(token_pos));
     };
   const auto FloatExpr = Float >[&](double d) { return pool->Float(d); };
   const auto StrLitExpr = Mark(StrLit)

@@ -26,7 +26,7 @@ GMP_CFLAGS=-DBIG_USE_GMP
 # being too clever with std::move! Or you incremented
 # the wrong loop counter!
 
-ASAN=true
+# ASAN=true
 # PROFILE=true
 
 # Pro-tip for understanding compilation time:

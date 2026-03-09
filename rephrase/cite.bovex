@@ -80,6 +80,7 @@ object Article of { author : string, title : string,
 
 object Book of { author : string, title : string,
                  subtitle : string,
+                 edition : string,
                  year : int, month : int, day : int,
                  page-start : int, page-end : int,
                  isbn : string, pages : int,
@@ -316,6 +317,8 @@ fun bib-convert-talk (obj as {(Talk) speaker}) =
       | _ => fail "bib-talk needs a venue or location or both."
   in
     obj without (Talk)speaker
+    without (Talk)location
+    without (Talk)venue
     with (Presentation)presenter = speaker
     with (Presentation)work = work
   end
@@ -392,6 +395,7 @@ fun add-citation (c : bibsource) : int =
             end
   | SOME n => n
 
+(* TODO: cite-multiple *)
 fun cite (c : bibsource) : layout =
   let
     val n = add-citation c
@@ -578,15 +582,20 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
         let
           val j =
             case fields of
-              {(Article) publisher} => it(layout publisher)
+              {(Book) publisher} => it(layout publisher)
             | _ => []
 
           (* TODO: Better way to render a subtitle? *)
           (* TODO: Can also treat 'chapter' as subtitle? *)
           val t = make-subtitled title fields
 
+          val ed =
+            case fields of
+              {(Book) edition} => [ ([layout edition] edition)]
+            | _ => []
+
           val r =
-            joindots (layout authors :: [“[t]”] ::
+            joindots (layout authors :: [“[t]”[ed]] ::
                       j :: location-date fields ::
                       pp :: nil)
 
@@ -596,7 +605,6 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
           r
         end
 
-(*
     | (Presentation, {(Presentation) title}) =>
         let
           val h =
@@ -628,17 +636,20 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
              | (SOME h, SOME m, SOME s) => [[layout h][layout m][layout s]]
              | _ => fail "impossible")
 
+          val w =
+            (case fields of
+               {(Presentation) work} => it (layout work)
+             | _ => [])
+
           val url =
             (case fields of
                {(Presentation) url} => bib-url url
              | _ => [])
         in
           joindots (layout authors :: [“[layout title]”] ::
-                      j :: location-date fields ::
-                      hms :: url :: nil)
-
+                    w :: location-date fields ::
+                    hms :: url :: nil)
         end
-*)
 
     | (Misc, {(Misc) note }) =>
         let

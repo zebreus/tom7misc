@@ -162,7 +162,7 @@ struct Pass {
   }
 
   virtual const Exp *DoInt(const BigInt &i, size_t pos, Args... args) {
-    return pool->Int(i);
+    return pool->Int(i, pos);
   }
 
   virtual const Exp *DoBool(bool b, size_t pos, Args... args) {
