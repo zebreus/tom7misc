@@ -1061,15 +1061,6 @@ hierarchical person is interested in the natural order and their place
 
 
 [*
-   attitudes        function 1       function 2    lifestyle      confidence
-
-   [E]xtraversion    [S]ensing       [T]hinking    [J]udging      [S]ecure
-   [I]ntroversion    I[N]tuitive     [F]eeling     [P]erceiving   [V]ulnerable
-   [H]ierarchical    [T]op-down
-   [E]galitarian     [F]oundational
-        H              T             T             P               V
-
-
 New:
    attitudes        function 1       function 2    lifestyle      confidence
 
@@ -1079,22 +1070,6 @@ New:
    [A]utonomous      [F]oundational
         H              T             T             P               V
 *]
-
-[*
-0 Foundational Thinking Perceiving 0
-Hierarchical Taxonomic Thinking Perceiving *]
-
-[*
-([figure "t"
-(fn fig => image { img = image-load "mbti-ieah.svg",
-                   width = 0.9 *. COLUMN-WIDTH() } ^^
-[[b fig]. [mbti]'s “attitudes or orientations of energy”
-dichotomy generalized to a tetratomy. The x-axis is
-about whether energy is directed inward (left) or outward
-(right), just as in [mbti]. A new y-axis is about whether
-the form of energy transfer is fluid and social (top)
-or systematized and organizational (bottom).])]) *]
-
 
 For the second trait, [mbti] has [b[S]]ensing vs.
 i[b[N]]tuitive, which we similarly generalize with
@@ -1130,10 +1105,10 @@ for discovering information as it emerges from the environment. At the
 bottom, we have a preference for imposing pre-existing information
 upon the environment. Here, the atomic/holistic dichotomy is between
 bottom-up reasoning ([b[F]]oundational) and top-down reasoning
-([b[T]]axonomic). Someone who is highly foundational prefers
-to offer up individual facts, whereas someone who is highly taxonomic
-prefers to offer up a tree-structured view of information, which
-can be
+([b[T]]axonomic). Someone who is highly foundational prefers to offer
+up individual facts, whereas someone who is highly taxonomic prefers
+to impose its unified pre-existing worldview, organizing the world
+into its own recursively-structured categories.
 
 We can begin to see how this expanded personality trait applies to
 protocols. Compare the FTP and HTTP protocols. Both of these share the
@@ -1159,13 +1134,49 @@ the personality test itself was created to fit the narrative!
 a letter collision with "feeling" for "f" as well. the position in the
 code will make it clear) *]
 
+Finally, and unsurprisingly, we have a wholly new trait for emotional
+permeability, which gives us the last letter of the personality code.
+On the one hand, we have a [b[S]]ecure or guarded personality, and on
+the other we have a [b[V]]ulnerable or open personality. One standard
+framing of secure vs. vulnerable is in attachment theory.[cite
+bowlby1969attachment] Being secure is painted as a clearly positive
+trait (high self-esteem; worthy of love; views others as reliable),
+whereas vulnerability is seen as negative (contingent self-esteem;
+high neuroticism; chronic anxiety; distrustful of others). Does this
+sound like an accurate description of HTTPS's notion of "Secure"? In
+my view its personality is much more similar to the negative trait
+described here. The https server is extremely distrustful of others,
+assuming that each interaction is actually mediated by an invisible
+adversary equipped with nation-state levels of resources dedicated to
+deceiving it during banal tasks. It distrusts its own code, actively
+scrubbing secrets from memory, and running with address-space
+randomization and TODO. You get the sense that if it were an option,
+it would simply detach from the world completely. To better describe
+the Secure/Vulnerable dichotomy we can use a more neutral framing. For
+example, Byrne describes a spectrum of "repressors" (guarded) vs.
+"sensitizers" (transparent), where a sensitizer is emotionally attuned
+and open at the expense of possibly experiencing more distress.[cite
+byrne1964repression]
+[* In this next line, "et alter eiusdem nominis" is "and another
+person by the same name", for Aron & Aron
+
+*]
+Similarly, Aron [it[et alt. eiusd. nom.]] describe this same idea as
+"Sensory Processing Sensitivity," where the low-SPS person is tough
+and emotionally steady, but potentially closed off to subtle cues from
+their environment. The high-SPS person wears their "heart on their
+sleeve," easily overwhelmed, but capable of deep empathy and
+interpersonal openness.[cite aron1997sensory] The OpenSSL project
+clearly values openness (Section TODO Heartbleed)! This more neutral framing is what I propose
+for the [b[S]]ecure vs. [b[V]]ulnerable dichotomy, and I think it
+accurately describes the personalities of HTTPS versus HTTPV.
+
 This work in this section is impeccable—just try to pecc it and see
 what happens!—but to avoid the appearance of a conflict of interest,
 we should use at least one other independent psychometric technique to
 assess the personality of [httpv].
 
-[subsection[Which NARUTO character are you?]]
-
+[paragraph[Which NARUTO character are you?]]
 I took BuzzFeed’s “Which NARUTO character are you?,”[cite m4shy2025naruto]
 answering questions on [httpv]’s behalf, but I quickly became unable
 to answer questions like
