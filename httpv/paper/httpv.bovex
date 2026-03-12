@@ -221,7 +221,7 @@ I don’t want you to have to log in, or give me permission for cookies,
 or enable notifications, or it’s better in our app, or sign up for the
 e-mail list, or figure out which one is the search box and which one
 is a trick to get me to enter my search terms in the e-mail sign up
-box, nor dismiss 15% off coupon / privacy policy pop-up / how may I
+box (??), nor dismiss 15% off coupon / privacy policy pop-up / how may I
 help you? AI chat assistant, nor do I want you to consent to or refuse
 consent to or leave open in silent protest data collection per the EU
 General Data Protection Regulation, click to enable Flash Player, or
@@ -346,14 +346,6 @@ engineer disagrees with the idea but does it anyway because they have
 abdicated their responsibility to follow the direction their moral
 compass points. Grow some guts! The system is actually not set up
 very well to force you to do things like this.
-
-[subsection[Papers, please]]
-
-Speaking of systems: Does the possibility of being locked out of
-your own website... TODO ...
-Do users care about this at all? Is it really just an attempt
-to increase the administrative "legibility" of the internet for
-the sake of commercial (or even state) interests?[cite scott1998seeing]
 
 But don’t worry: This paper is not only an extended, petty rant about
 a time that I was annoyed by a warning message. It is also an
@@ -584,13 +576,53 @@ TODO: Plaintext SNI!
 TODO: List of Root CAs that I "trust"
 TODO: Certificate Transparency leaks your website
 
+[paragraph[SSL offloading]]
+Since setting up and maintaining `https` remains a chore that many
+site owners do not want, but they feel somehow obligated by
+[red-alert], there is other help! Most Content Delivery Networks offer
+"SSL offloading" or a "TLS termination proxy" where your server does
+not need to do the chore of HTTPS. For example, CloudFlare offers a
+free service called Flexible HTTPS that makes your site “partially
+secure.” Cloudflare manages the TLS connection with the user, and
+communicates with your site over bare unencrypted HTTP (regardless of
+where it is hosted). It acts as a Machine-in-the-Middle that encrypts
+"some" of the traffic! Wow! Military Grade! The best part is that it
+is totally transparent to the user. The user gets the
+[green-lock-icon] green padlock so they can tell that they are talking
+to Cloudflare, and since they trust Cloudflare to not leak their data,
+all is well. Then Cloudflare decrypts and leaks their data, as
+deliberately configured.
 
-TODO: Cloudflare
+Of course nobody cares! The whole dance is to work around the fact
+that the site owner does not care, the user does not care, and
+Cloudflare wants to help them not care. I support it, but we could
+have saved even [it[more]] resources by allowing regular [tt[http]] to
+continue to coexist. This might help attentive users distinguish
+between cases where their connection was encrypted and when it was
+not, and to know when they are talking directly to a site versus a
+Machine-in-the-Middle.
 
-... introduce reverse proxy ...
+Arguably the "SSL offloading" approach is already getting significant
+straight-faced revenge on the toxic max-security people, and is barely
+considered aberrant behavior. So this would be a decent way for me to
+get my site to support [tt[https]] connections while feeling smug that
+I was not fully defeated. But: It requires me to do chores, to start
+relying on a whole additional provider, and maybe even give them my
+credit card number. They can enact arbitrary restrictions at any time,
+and take my site offline at any time.[footnote[While writing this
+paper I encountered firsthand yet another global Cloudflare outage.
+These CDNs do have impressive infrastructure, but it seems to be a
+mistake to assume that they will not have regular, unpredictable
+downtime!]] Another classic approach is the "TLS reverse proxy," which
+does this same thing but communicates with a local HTTP server (not
+over the open internet). This is considered secure, since the HTTP
+connection happens over a private loopback, and is architecturally
+nice because you can separate the concerns of web serving from the
+concerns of security dance. Unfortunately, if I do that, then the
+toxic max-security people will have succeeded in forcing me to have
+a secure website!
 
 [section [Let’sn’t Encrypt]]
-
 
 And so! It is time for my petty “revenge.” Every good project starts
 with some criteria. Here are the parameters:
@@ -601,12 +633,12 @@ way to do this without a valid certificate (such an achievement would
 be a major security incident), so I'll do the chores to get a
 certificate.
 
-But: As you already know from the title and tone of this paper, I resent being
-“forced” to make my site secure. So I'm going to do the worst job
-implementing TLS that I can manage. I want it to be painfully bad to
-security professionals, in the hopes that it causes psychological harm
-to some of the same people who are locking people out of my website
-and scaring them about their credit card numbers.
+But: As you already know from the title and tone of this paper, I
+resent being “forced” to make my site secure. So I'm going to do the
+worst job implementing TLS that I can manage. I want it to be
+painfully bad to security professionals, in the hopes that it causes
+psychological harm to some of the same people who are locking people
+out of my website and scaring them about their credit card numbers.
 
 One of the things that the toxic max-security people love to tell
 you is that you aren't a good enough programmer to implement
@@ -653,20 +685,21 @@ In TLS's steady state, the client and server are sending each other
 data encrypted with a block cipher like AES. The tricky part of the
 protocol is getting into that steady state.
 
-The initial phase of a TLS connection—the “handshake”—happens in plaintext
-for anyone to see. Its job is to negotiate what cryptographic algorithms will
-be used to encrypt the data later, and what keys to use. The server and
-client also decide on what extensions can be used. During the handshake
-the server presents its certificate to the client, so that the client can check
-that they are talking to someone who 0wned the domain.
+The initial phase of a TLS connection—the “handshake”—happens in
+plaintext for anyone to see. Its job is to negotiate what
+cryptographic algorithms will be used to encrypt the data later, and
+what keys to use. The server and client also decide what extensions
+can be used. During the handshake the server presents its certificate
+to the client, so that the client can check that they are talking to
+someone who 0wned the domain.
 
 The classic way to establish the server's identity and secretly
-exchange encryption keys is RSA. The server
-presents its certificate, which is signed by the CA and contains the
-server’s public RSA key. The client can verify the signature if it
-cares, and then send a message encrypted with the public key, which
-can only be deciphered using the server’s private key. They use this
-secret channel to negotiate the encryption keys.
+exchange encryption keys is RSA. The server presents its certificate,
+which is signed by the CA and contains the server’s public RSA key.
+The client can verify the signature if it cares, and then send a
+message encrypted with the public key, which can only be deciphered
+using the server’s private key. They use this secret channel to
+negotiate the encryption keys.
 
 [subsection[Too many secrets]]
 
@@ -676,10 +709,10 @@ server comes up with two large primes [it [p]] and [it[q]], keeps them
 secret, and shares just [it[n]] = [it [pq]]. This is the public
 key.[footnote [Technically, the public key contains the exponent
 [it[e]] as well. Since this is public anyway, many systems require
-this to be exactly 65537 (one of the fastest primes); for example, Let’s
-Encrypt will not even sign your key unless [it[e]] = 65537. There will be other
-simplifications in this paper.]] To encrypt a message (a number [it [m]]),
-the client computes
+this to be exactly 65537 (one of the fastest primes); for example,
+Let’s Encrypt will not even sign your key unless [it[e]] = 65537.
+There will be other simplifications in this paper.]] To encrypt a
+message (a number [it [m]]), the client computes
 
 [it[c]] = [it[m]][sup (it[e])] mod [it[n]]
 
@@ -690,8 +723,8 @@ operation. It just happens that if you know the prime factors of
 [it[n]] (as the server does), then you have an easy way to compute the
 order of the group (the multiplicative group of integers mod [it[n]],
 aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy
-way to compute the exponent [it[d]] such that
-[it [x]][sup (it [ed])] = [it [x]] mod [it [n]].
+way to compute the exponent [it[d]] such that [it [x]][sup (it [ed])]
+= [it [x]] mod [it [n]].
 
 Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
 will only allow you to sign one that is 1024 bits, 2048 bits, or 4096
@@ -699,11 +732,12 @@ bits. This doesn’t actually imply that the key is secure; for example,
 we can get a 4096-bit key by choosing the primes to be 7 and some
 random 4093-bit prime. This number would be trivial to factor, by
 trying small divisors, various general-purpose algorithms, or simply
-knowing my name. Let’s Encrypt will check that you don’t have [it[extremely]]
-small factors like this, but it will let you have a [it[very]] small prime
-divisor like 31337 (one of the most elite primes).
+knowing my name. Let’s Encrypt will check that you don’t have
+[it[extremely]] small factors like this, but it will let you have a
+[it[very]] small prime divisor like 31337 (one of the most elite
+primes).
 
-[paragraph-no-period[Oops—HACKED!!]] The original version of [httpv]
+[paragraph-no-period[Oops—REVOKED!!]] The original version of [httpv]
 used a key with 31337 as one of its factors, but the certificate was
 revoked after about a week! Let’s Encrypt lets anybody revoke a
 certificate for you—as a favor I guess—if they have the private key.
@@ -713,22 +747,21 @@ you about a revocation (except in the sense that they publish it to
 the Certificate Revocation List and maybe browsers check it). The most
 likely thing is that someone (maybe Let's Encrypt itself) bulk-scans
 individual certificates after they’re issued to try to find weak ones.
-A key with a factor of 31337 would trivially be found by any such
-scan that is trying at all. It's also possible that one of my
-“friends”[footnote[Or someone
-snooping on my Subversion repository! For the record it’s fair game to
-mess with me in a fun way—as long as it’s not too close to a deadline.
-But I would not recommend getting spoilers this way, and forbid
-disseminating spoilers to others!]] who knew I was working on this did
-it to me out of a secretly harbored resentment. Another possibility I
-realized is that someone may scan for keys that share factors. If one
-of the secret primes is [it[ever]] reused in another key, then you can
-easily recover it by performing GCD on the two public keys.
-A plausible security mistake would be for two keys for
-the same domain to be created using a weak random number generator
-(like, "always use 31337 as the first prime"). And so a plausible
-security scan would be to check GCD of a pool of historic keys for
-a specific domain.
+A key with a factor of 31337 would trivially be found by any such scan
+that is trying at all. It's also possible that one of my
+“friends”[footnote[Or someone snooping on my Subversion repository!
+For the record it’s fair game to mess with me in a fun way—as long as
+it’s not too close to a deadline. But I would not recommend getting
+spoilers this way, and forbid disseminating spoilers to others!]] who
+knew I was working on this did it to me out of a secretly harbored
+resentment. Another possibility I realized is that someone may scan
+for keys that share factors. If one of the secret primes is [it[ever]]
+reused in another key, then you can easily recover it by performing
+GCD on the two public keys. A plausible security mistake would be for
+two keys for the same domain to be created using a weak random number
+generator (like, "always use 31337 as the first prime"). And so a
+plausible security scan would be to check GCD of a pool of historic
+keys for a specific domain.
 It seems like a bit much to do O(n[sup[2]]) of these given that Let’s
 Encrypt alone issues over 5 million certificates a day ([figure "t"
 (fn fig => [[image { img = image-load "encrypt-growth.svg",
@@ -770,61 +803,57 @@ break() ^^ vspace (point 0.1)
 
 ]
 
-So we need a different [tt[0xC00L]] [tt[0xD00D]] way to
-make the RSA keys weak. Note that while normative
-public keys are the product of two primes, all that
-is made public is [it[n]], which is composite. Although there
-are good ways to quickly test whether a number is prime,
-there is no known[footnote[Well, publicly known. Maybe
-the NSA knows.]] way to test that [it[n]] is the product of
-[it[two]] primes. And in fact, the decryption math can be
-straightforwardly adapted to accommodate a public modulus with
-more than two prime factors.
+So we need a different [tt[0xC00L]] [tt[0xD00D]] way to make the RSA
+keys weak. Note that while normative public keys are the product of
+two primes, all that is made public is [it[n]], which is composite.
+Although there are good ways to quickly test whether a number is
+prime, there is no known[footnote[Well, publicly known. Maybe the NSA
+knows.]] way to test that [it[n]] is the product of [it[two]] primes.
+And in fact, the decryption math can be straightforwardly adapted to
+accommodate a public modulus with more than two prime factors.
 So I can actually use an RSA key of [it[n]] =
 [it[p]][sub [1]] ×
 [it[p]][sub [2]] ×
 [it[p]][sub [3]] ×
 ... ×
 [it[p]][sub (it [k])]
-and nobody can quickly test that it is an unusual key. The
-fastest known test is to factor it.
+and nobody can quickly test that it is an unusual key. The fastest
+known test is to factor it.
 
-My server uses a key with 16 prime factors. It is 4096 bits,
-so it is Military-Grade, but each factor is only ~256 bits,
-so it is Baby-Diaper–Grade—perfect for the United States
-Government in 2026.
+My server uses a key with 16 prime factors. It is 4096 bits, so it is
+Military-Grade, but each factor is only ~256 bits, so it is
+Baby-Diaper–Grade—perfect for the United States Government in 2026.
 
 How do we know what diaper size? The performance of some factoring
 algorithms like ECM[cite lenstra1987factoring]
-depends[footnote[Technically these are adult diapers.]]
-on the size of the factor being found. So the security achieved here
-is more like a 512-bit modulus with two 256-bit factors.[footnote[And
-since you have eight times as many chances of finding one of the
-sixteen factors, I think it’s really more like 509 bits.]]
-This is considered very insecure;
-even in 2009 NIST required a minimum of 1024 bits.[cite
+depends[footnote[Technically these are adult diapers.]] on the size of
+the factor being found. So the security achieved here is more like a
+512-bit modulus with two 256-bit factors.[footnote[And since you have
+eight times as many chances of finding one of the sixteen factors, I
+think it’s really more like 509 bits.]] This is considered very
+insecure; even in 2009 NIST required a minimum of 1024 bits.[cite
 barker2009recommendation] The current world record for the largest
 factor found by ECM is 83 digits (276 bits),[cite
-zimmerman2025largest] so 256 bits is completely doable in 2026.
+zimmerman2025largest] so 256 bits is clearly doable.
 
 It would still take hundreds to thousands of dollars of computer time
 to find a factor of my RSA modulus. If someone does, they can decrypt
 the traffic to my public website (and if they don't want to pay for
-the computer time, there will be easier ways).
-They can also get started revoking my keys, but here's a non-obvious
-fact: Although finding a single factor probably allows compromising
-the session keys (it reveals [it[m]] mod [it[p]][sub (it [i])]), revoking
-the certificate requires being able to create signatures, which needs
-the complete factorization. That means repeating that modestly
-expensive factoring 14 more times on the remaining composite. So,
-paradoxically, having sixteen 256-bit factors actually [it[increases]]
-security compared to a single 256-bit factor and one 3840-bit factor.
-Since I am not trying to prevent people from snooping on the traffic,
-but I would rather not have them revoking the certificate, this is a
+the computer time, there will be easier ways). They can also get
+started revoking my keys, but here's a non-obvious twist: Although
+finding a single factor probably allows compromising the session keys
+(it reveals [it[m]] mod [it[p]][sub (it [i])]), revoking the
+certificate requires being able to create signatures, which needs the
+complete factorization. That means repeating that modestly expensive
+factoring 14 more times on the remaining composite. So, paradoxically,
+having sixteen 256-bit factors actually [it[increases]] security
+compared to a single 256-bit factor and one 3840-bit factor. Since I
+am not trying to prevent people from snooping on the traffic, but I
+would rather not have them revoking the certificate, this is a
 favorable tradeoff.
 
 If someone does factor the key and revokes it, then probably most
-browsers won’t notice, and I can get another one automatically. I can
+browsers won’t notice, and I can get another one lickety-split. I can
 adjust the number of bits upward if this happens too often, or even
 automate the difficulty setting to find the sweet spot. This is not an
 invitation or encouragement to spend money to revoke my key. It's more
@@ -847,14 +876,131 @@ using the credit card to encrypt the data
 
 So that's bad RSA. TODO here about ECDHE, "perfect forward secrecy"?
 
-[subsection[XXX]]
+[subsection[XXX Hello]]
 
-1. ClientHello (SNI, client random)
-2. ServerHello (cert, server random)
+On to the actual protocol. The client first sends its [tt[ClientHello]]
+packet, which contains the following information:
+
+[ul (
+[The name of the server it wants to connect to (SNI extension).] ::
+[A 32-byte random value (client random).] ::
+[The list of ciphers and extensions it supports.] :: nil)]
+
+The server can look up the correct key for the server the client
+wants, and then respond with its [tt[ServerHello]], containing:
+
+[ul (
+[The certificate that applies, which contains the public key.] ::
+[A 32-byte random value (server random).] ::
+[The selected cipher and extensions that are mutually supported.] ::
+nil)]
+
+The goal of the cipher and extension negotiation is to make sure that
+the client and server agree on what options are enabled, so that new
+functionality can be rolled out over time and then de facto required,
+breaking your website. In fact, one of the ciphers offered is called
+[tt[NULL]] (maybe more accurately [tt[identity]]), which means no
+encryption. Fortunately, this cipher is no longer supported by any
+browser, so we’ll have to do more work to defeat the encryption. I
+choose the venerable (but not vulnerable)
+[tt[RSA_WITH_AES_256_CBC_SHA]] ([tt 0x0035]), which is universally
+supported and secure if used correctly. I do not use it correctly.
+
+The client then sends another random 48-byte string ("PMS") to the
+server in the `ClientKeyExchange` message; this time it is encrypted
+with the server's public RSA key. This is actually the only thing
+encrypted with RSA and the only thing so far that can't be seen by
+observers.
+
+To encrypt with AES-256 we need a 256-bit key. The key is chosen in
+an unpredictable way that uses information from both the server and
+client: This is one purpose of the 32-bit random strings sent during
+the [tt[Hello]] messages. Both the server and client compute the
+same thing:
+
+[hfill() ^^ [Hash(PMS, client random, server random)] ^^ hfill()]
+
+to derive a 48-byte "master secret." They then do a similar hash of
+the master secret to compute the client’s AES key and the server’s AES
+key.
+
+For the purposes of [httpv] it would be nice if we could just choose
+constant AES keys, like all zeroes. This would make decrypting the
+traffic very easy. But since the client random and PMS are inputs to
+the hash function (a strong hash function based on SHA-256) we don't
+have any way to force a specific output without the client's help.
+However, we can still create serious security problems. The server
+"random" is generally "pseudo-random," and we can make it be [it[very pseudo-]]
+by always using the same random value. 32 bytes is enough space to
+comfortably put my credit card number and expiration date in ASCII.
+One nice thing about this is that it elegantly makes good on the
+warning we saw at the beginning of the paper about attackers
+trying to steal my credit card!
+
+Another good thing about this is that it makes the server vulnerable
+to replay attacks. An observer who captures the handshake knows the
+server and client random values, and also the encrypted PMS, which is
+used to derive the session key. If the server always uses the same
+server random, then the attacker can replay these same messages and
+establish the same exact keys used before. Since the attacker can't
+decrypt the RSA-encrypted PMS, they won't actually know what their
+keys are, but this can still be useful. As one obvious example, if the
+replayed request has an effect like posting a message to my blog, they
+can post that same message a second time. That's okay with me because
+it means [helvetica[more engagement]].
+
+... leads to discussion of ECB vs CBC ...
+... constant IVs ...
+... "algebraic relationship" ...
+
+(screenshot of wireshark? or just a hex dump)
 
 
 [subsection[Ticket to Ride]]
 ... extensions ...
+
+[section [Heartbleed support]]
+
+[httpv] includes full support for the [it[Heartbleed]]
+vulnerability.[cite slater1976clinical] This vulnerability exists by
+default in two years’ worth of OpenSSL releases, from version 1.0.1 to
+1.0.1g (2014). It allows a client to read 64kb of uninitialized server
+memory, which could contain anything: Public web pages, zeroes, or
+even OpenSSL itself! Forbes called it “a billion times worse than you
+thought,”[cite egan2014billion] and it was generally a very exciting
+time for security professionals, so much so that Heartbleed
+has its own logo ([figure "t"
+(fn fig => [[image { img = image-load "heartbleed.svg",
+                    width = 0.9 *. COLUMN-WIDTH() }][*
+*][b fig]. The Heartbleed logo. This is mainly present in the paper to
+demonstrate BoVeX’s new support for SVGs and floating figures.])]).
+According to Wikipedia, high profile hacks included the exposure of
+900 social insurance numbers from the Canada Revenue Agency and
+impersonation of the CEO of the UK Parenting forum
+[it[Mumsnet]]—serious business!
+
+The TLS Heartbeat feature (RFC 6520) is basically ICMP ECHO for the
+TLS transport stream.[cite rfc6520] One side can send a
+[tt[HEARTBEAT]] message to the other with some payload, and that side
+echos it back. This can be used, for example, to store files.[cite
+murphy2022harder] Heartbleed happens because the [tt[HEARTBEAT]]
+message contains a length field, which does not necessarily concur
+with the length field of the containing TLS Record.[footnote[TLS is
+rife with redundant length fields in nested structures. It is a
+strange design to me: Since the outer record structure tells you
+exactly how long the payload is (this is necessary to compute the hash
+used for message authentication), it would have been easy to architect
+the protocol so that the parser always worked with a buffer of known
+size. This would reduce protocol overhead and the work to keep
+validating length fields whose values you should know. It also would
+have made heartbleed impossible.]] In the case that the heartbeat
+claimed it was long but it was not, OpenSSL’s cowboy C code would read
+past the end of the client's packet and echo back whatever happened to
+be after it in RAM (or, I guess, segfault). You had to get pretty
+lucky for that RAM to contain something important. [it[My]] cowboy C++
+code reads from a configurable buffer where you can reveal anything
+you choose, so you can guarantee that it is passwords or your private
+files or whatever you like.
 
 [subsection[Limitations]]
 
@@ -953,49 +1099,6 @@ it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING O
 
 ...
 
-[section [Heartbleed support]]
-
-[httpv] includes full support for the [it[Heartbleed]]
-vulnerability.[cite slater1976clinical] This vulnerability exists by
-default in two years’ worth of OpenSSL releases, from version 1.0.1 to
-1.0.1g (2014). It allows a client to read 64kb of uninitialized server
-memory, which could contain anything: Public web pages, zeroes, or
-even OpenSSL itself! Forbes called it “a billion times worse than you
-thought,”[cite egan2014billion] and it was generally a very exciting
-time for security professionals, so much so that Heartbleed
-has its own logo ([figure "t"
-(fn fig => [[image { img = image-load "heartbleed.svg",
-                    width = 0.9 *. COLUMN-WIDTH() }][*
-*][b fig]. The Heartbleed logo. This is mainly present in the paper to
-demonstrate BoVeX’s new support for SVGs and floating figures.])]).
-According to Wikipedia, high profile hacks included the exposure of
-900 social insurance numbers from the Canada Revenue Agency and
-impersonation of the CEO of the UK Parenting forum
-[it[Mumsnet]]—serious business!
-
-The TLS Heartbeat feature (RFC 6520) is basically ICMP ECHO for the
-TLS transport stream.[cite rfc6520] One side can send a
-[tt[HEARTBEAT]] message to the other with some payload, and that side
-echos it back. This can be used, for example, to store files.[cite
-murphy2022harder] Heartbleed happens because the [tt[HEARTBEAT]]
-message contains a length field, which does not necessarily concur
-with the length field of the containing TLS Record.[footnote[TLS is
-rife with redundant length fields in nested structures. It is a
-strange design to me: Since the outer record structure tells you
-exactly how long the payload is (this is necessary to compute the hash
-used for message authentication), it would have been easy to architect
-the protocol so that the parser always worked with a buffer of known
-size. This would reduce protocol overhead and the work to keep
-validating length fields whose values you should know. It also would
-have made heartbleed impossible.]] In the case that the heartbeat
-claimed it was long but it was not, OpenSSL’s cowboy C code would read
-past the end of the client's packet and echo back whatever happened to
-be after it in RAM (or, I guess, segfault). You had to get pretty
-lucky for that RAM to contain something important. [it[My]] cowboy C++
-code reads from a configurable buffer where you can reveal anything
-you choose, so you can guarantee that it is passwords or your private
-files or whatever you like.
-
 [section [Transfer protocol alignment chart]]
 
 You may have noticed the name [httpv] is similar to the protocol [tt
@@ -1058,8 +1161,6 @@ hierarchical person is interested in the natural order and their place
 (status) within it. In organizations they are deferential to the
 "chain of command."
 
-
-
 [*
 New:
    attitudes        function 1       function 2    lifestyle      confidence
@@ -1070,7 +1171,6 @@ New:
    [A]utonomous      [F]oundational
         H              T             T             P               V
 *]
-
 For the second trait, [mbti] has [b[S]]ensing vs.
 i[b[N]]tuitive, which we similarly generalize with
 an additional dimension
@@ -1094,7 +1194,7 @@ as opposed to a holistic top-down or "taxonomic" style.])]) [*
 
 *] This trait is about preferences for information processing. We use
 the same x-axis as [mbti], describing whether the subject prefers
-information in atomic, discrete pieces ([[b]S]ensing) vs. holistic,
+information in atomic, discrete pieces ([b[S]]ensing) vs. holistic,
 relational Gestalts (i[b[N]]tuition). Again, we unfold this spectrum
 along a new additional y-axis. The new axis is the relationship
 between the subject and the world; the direction of flow of
@@ -1105,10 +1205,11 @@ for discovering information as it emerges from the environment. At the
 bottom, we have a preference for imposing pre-existing information
 upon the environment. Here, the atomic/holistic dichotomy is between
 bottom-up reasoning ([b[F]]oundational) and top-down reasoning
-([b[T]]axonomic). Someone who is highly foundational prefers to offer
-up individual facts, whereas someone who is highly taxonomic prefers
-to impose its unified pre-existing worldview, organizing the world
-into its own recursively-structured categories.
+([b[T]]axonomic). Someone who is highly foundational prefers to work
+from a collection of presupposed rules or individual axioms, whereas
+someone who is highly taxonomic prefers to impose their unified
+pre-existing worldview, organizing the world into their own
+recursively-structured categories.
 
 We can begin to see how this expanded personality trait applies to
 protocols. Compare the FTP and HTTP protocols. Both of these share the
@@ -1191,6 +1292,16 @@ to answer questions like
  [Asuma sensei] :: nil)]
 
 XXX joke here
+
+[subsection[Papers, please]]
+
+Speaking of systems: Does the possibility of being locked out of
+your own website... TODO ...
+Do users care about this at all? Is it really just an attempt
+to increase the administrative "legibility" of the internet for
+the sake of commercial (or even state) interests?[cite scott1998seeing]
+
+[cite schneier1996applied] - red book ("denuded cryptography" or "strippedography") Gymnography (from 'gymnós', naked... actually gγμνòσ would be better for the troll factor)
 
 [section [Niceties]]
 
@@ -1388,7 +1499,6 @@ Chrome-I-Am browser
 T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
 *]
 
-[cite schneier1996applied] - red book
 [cite reuters2013secret] - rsa payola
 [cite wehrheim2012stadt] - hostile architecture
 
