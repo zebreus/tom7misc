@@ -266,6 +266,11 @@ fun box-height box =
     Node (BOX, {(Box) height }, _) => height
   | _ => fail "box-height expected a box with height!"
 
+fun box-width box =
+  case layoutcase box of
+    Node (BOX, {(Box) width }, _) => width
+  | _ => fail "box-width expected a box with width!"
+
 (* Generates boxes and glue from text, making this into "AllBox" format. *)
 fun get-boxes (content : layout) =
   internal-get-boxes content

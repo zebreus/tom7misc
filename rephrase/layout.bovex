@@ -173,7 +173,9 @@ fun rigid-hspace dim =
        glue-expand = EPSILON-COEFFICIENT,
        glue-break-penalty = 9999999.0 } []
 
-(* Easily shrinks. Give the max width. *)
+(* Easily shrinks. Give the max width.
+   TODO: This doesn't seem to work like I'd expect. Debug.
+*)
 fun shrinking-hspace dim =
   box {(Box) height = 0.0, width = 0.0,
        glue-ideal = dim,
@@ -472,8 +474,7 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
           (case attrs of
              {(Box) width, height} =>
                let
-                 val ch = layout-map-text normalize-whitespace
-                   (layout-concat ch)
+                 val ch = layout-concat ch
                in
                  append-float
                  (FloatBox { pos = parse-float-pos floating,
@@ -683,6 +684,15 @@ fun text-box (lay : layout) : layout =
                  "an 'infinite' line.")
   end
 
+(* Get the width of the layout if it were placed on a line
+   with infinite length. Since the layout algorithms will
+   make different decisions (e.g. kerning) depending on the
+   scenario, you usually don't want to reason about text
+   this way. But it can be useful for something like
+   knowing the current size of a space in the current font. *)
+fun layout-natural-width (lay : layout) : float =
+  box-width (text-box lay)
+
 (* Place properly kerned text, but with no wrapping. *)
 fun text-sticker { x, y } lay =
   (* Turn the line into a sticker, ignoring its width/height *)
@@ -785,9 +795,9 @@ fun image { img = img as (Image img-handle), width } =
            glue-break-penalty = -9999999.0 } [ ]]]
   end
 
-(* Here we give the height, since the typical usage is to make it flow
-   with some text. Allows breaks. *)
-fun image-inline { img = img as (Image img-handle), height, dy } = let
+fun image-inline-ext { break-after : bool,
+                       img = img as (Image img-handle), height, dy } =
+  let
     (* Compute width from image native dimensions. *)
     val ratio : float = image-aspect-ratio img
     val width = height *. ratio
@@ -796,11 +806,19 @@ fun image-inline { img = img as (Image img-handle), height, dy } = let
     val doc =
       box {(Box) height = height, width = width, dy = dy,
            img = img-handle, img-width = width, img-height = height,
-           glue-break-penalty = 0.0, glue-ideal = 0.0 } []
+           glue-break-penalty = if break-after
+                                then 0.0
+                                else 100000.0,
+           glue-ideal = 0.0 } []
   in
     doc
   end
 
+(* Here we give the height, since the typical usage is to make it flow
+   with some text. Allows breaks. *)
+fun image-inline { img = img as (Image img-handle), height, dy } =
+  image-inline-ext { break-after = true, img = img,
+                     height = height, dy = dy }
 
 (* This creates a rigid box. We could improve it in various ways:
    - Don't be fixed width!

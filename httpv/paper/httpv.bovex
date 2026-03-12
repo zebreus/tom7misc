@@ -19,9 +19,9 @@ let
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
 
-  do SECTION-FONT-SIZE := point 15.0
-  do SUBSECTION-FONT-SIZE := point 14.0
-  do SUBSUBSECTION-FONT-SIZE := point 13.0
+  do SECTION-FONT-SIZE := point 16.0
+  do SUBSECTION-FONT-SIZE := point 13.0
+  do SUBSUBSECTION-FONT-SIZE := point 11.0
 
   do TITLE-FONT-SIZE := point 36.0
   do SUBTITLE-FONT-SIZE := point 20.0
@@ -49,6 +49,10 @@ let
 
   (* This could be built in, I think? *)
   fun BODY-LINE-HEIGHT() = !BODY-FONT-SIZE +. !BODY-LINE-SPACING
+
+  val CAPTION-FONT = !BODY-FONT
+  val CAPTION-FONT-SIZE = 10.0 (* !BODY-FONT-SIZE *. (10.0 /. 12.0) *)
+  val CAPTION-LINE-SPACING = !BODY-LINE-SPACING *. (10.0 /. 12.0)
 
   val layout-sup = sup
   val layout-sub = sub
@@ -119,15 +123,22 @@ let
       do next-figure := !next-figure + 1
 
       val name = [Figure [layout (int-to-string num)]]
+
       (* XXX hack: space should be added when it's placed, since it depends
          on whether it's top/bottom/inline! *)
-      val body = (f name) ^^ hfill() ^^ break() ^^
-        vspace (point 12.0)
+      val raw-body = (f name) ^^ hfill() ^^ break() ^^
+        vspace (point 16.0)
 
-      val fig = paragraph-to-box (COLUMN-WIDTH()) body
+      val body = layout-map-text normalize-whitespace raw-body
+
+      val fig = paragraph-to-box (COLUMN-WIDTH())
+        (span {(Span)
+               font-face = CAPTION-FONT,
+               font-size = CAPTION-FONT-SIZE,
+               line-spacing = CAPTION-LINE-SPACING } body)
 
       (* Mark the box as floating; we extract it from the doc during
-         layout.  *)
+         layout. *)
       val fig = map-attrs (fn attrs => attrs with (Box)floating = pos) fig
     in
       (* The floating figure itself. *)
@@ -144,8 +155,9 @@ let
                    height = 12.0, dy = 3.0 }
 
   val warning-triangle-icon =
-    image-inline { img = image-load "warning-triangle.svg",
-                   height = 12.0, dy = 1.5 }
+    image-inline-ext { break-after = false,
+                       img = image-load "warning-triangle.svg",
+                       height = 12.0, dy = 1.5 }
 
   (* TODO *)
   fun underline lay = lay
@@ -154,6 +166,31 @@ let
     span {(Span) font-bold = true} lay ^^
     box {(Box) width = 3.0, glue-ideal = 3.0,
          glue-min = 1.0, glue-expand = 1.5 } []
+
+  fun center-hack lay =
+    let
+      val bx = get-box lay
+      val w = box-width bx
+
+      val m = COLUMN-WIDTH() -. w
+    in
+      if m >. 0.0
+      then
+        rigid-hspace (m *. 0.5) ^^ bx ^^ hfill()
+      else
+        let in
+          print "In center-hack, content already too wide!";
+          emit-badness 1000.0;
+          bx
+        end
+    end
+
+  fun body-text lay =
+    span
+    {(Span)
+     font-face = !BODY-FONT,
+     font-size = !BODY-FONT-SIZE,
+     line-spacing = !BODY-LINE-SPACING } lay
 
   (* TODO: I think it would be cleaner to insert a soft-hyphen
      character (U+00AD) and let the built-in hyphenation code
@@ -166,13 +203,24 @@ let
                  (* Lower penalty than automatic hyphen. *)
                  glue-break-penalty = 3.0,
                  glue-break-insert = [-],
-                 (* XXX should be able to measure this using get-boxes *)
+                 (* XXX base on layout-natural-width *)
                  glue-break-extra-width = !BODY-FONT-SIZE *. 0.3 } []
 
+  (* TODO: Cleaner to just use unicode non-breaking space and
+     handle this in the backend, right? *)
+  val NATURAL-SPACE = layout-natural-width (body-text [ ])
+  val nbsp = box {(Box)
+                  width = 0.0,
+                  glue-break-penalty = 100.0,
+                  glue-ideal = NATURAL-SPACE,
+                  glue-expand = 1.0,
+                  glue-contract = 1.0,
+                  (* Whole point is to set a high penalty for breaking *)
+                  glue-break-penalty = 10000.0 } [ ]
 
   val httpv = tt[httpv]
   val openssl = [OpenSSL]
-  val red-alert = [[warning-triangle-icon] [color 0x990000FF [RED ALERT]]]
+  val red-alert = [[warning-triangle-icon][nbsp][color 0x990000FF [RED ALERT]]]
 
   val bbz = noto-serif [ℤ]
   val heavy-asterisk = (noto-serif [*])
@@ -590,8 +638,8 @@ where it is hosted). It acts as a Machine-in-the-Middle that encrypts
 is totally transparent to the user. The user gets the
 [green-lock-icon] green padlock so they can tell that they are talking
 to Cloudflare, and since they trust Cloudflare to not leak their data,
-all is well. Then Cloudflare decrypts and leaks their data, as
-deliberately configured.
+all is well.[cite conger2017major] Then Cloudflare decrypts and leaks
+their data, as deliberately configured.
 
 Of course nobody cares! The whole dance is to work around the fact
 that the site owner does not care, the user does not care, and
@@ -673,7 +721,7 @@ The result is [httpv], a TLS 1.2 reverse proxy that all major browsers
 will connect to, and which has been serving all of my websites for
 the last four months. You can try it,
 
-[tt[https://tom7.org]]
+[center-hack (tt[https://tom7.org])]
 
 Now I'll walk through some of its innovations. In order to explain how
 bad a job I did, I'll need to explain how TLS works, so this will also
@@ -714,7 +762,7 @@ Let’s Encrypt will not even sign your key unless [it[e]] = 65537.
 There will be other simplifications in this paper.]] To encrypt a
 message (a number [it [m]]), the client computes
 
-[it[c]] = [it[m]][sup (it[e])] mod [it[n]]
+[center-hack [[it[c]] = [it[m]][sup (it[e])] mod [it[n]]]]
 
 We say that the difficulty of RSA comes from the difficulty of
 factoring, but really it comes from the difficulty of computing
@@ -765,7 +813,7 @@ keys for a specific domain.
 It seems like a bit much to do O(n[sup[2]]) of these given that Let’s
 Encrypt alone issues over 5 million certificates a day ([figure "t"
 (fn fig => [[image { img = image-load "encrypt-growth.svg",
-                     width = COLUMN-WIDTH() }][*
+                     width = COLUMN-WIDTH() }][vspace (point 0.5)][*
 *][b fig]. Daily number of certificates issued by Let’s Encrypt
 since its birth.[cite lets2026stats]
 You can see the vigorous decline in certificates that began
@@ -903,7 +951,7 @@ breaking your website. In fact, one of the ciphers offered is called
 encryption. Fortunately, this cipher is no longer supported by any
 browser, so we’ll have to do more work to defeat the encryption. I
 choose the venerable (but not vulnerable)
-[tt[RSA_WITH_AES_256_CBC_SHA]] ([tt 0x0035]), which is universally
+[tt[RSA_WITH_AES_256_CBC_SHA]] ([tt [0x0035]]), which is universally
 supported and secure if used correctly. I do not use it correctly.
 
 The client then sends another random 48-byte string ("PMS") to the
@@ -912,13 +960,13 @@ with the server's public RSA key. This is actually the only thing
 encrypted with RSA and the only thing so far that can't be seen by
 observers.
 
-To encrypt with AES-256 we need a 256-bit key. The key is chosen in
-an unpredictable way that uses information from both the server and
-client: This is one purpose of the 32-bit random strings sent during
-the [tt[Hello]] messages. Both the server and client compute the
-same thing:
+To encrypt the remainder of the session with AES-256, we need a
+256-bit key. The key is chosen in an unpredictable way that uses
+information from both the server and client: This is one purpose of
+the 32-bit random strings sent during the [tt[Hello]] messages. Both
+the server and client compute the same thing:
 
-[hfill() ^^ [Hash(PMS, client random, server random)] ^^ hfill()]
+[center-hack[Hash(PMS, client random, server random)]]
 
 to derive a 48-byte "master secret." They then do a similar hash of
 the master secret to compute the client’s AES key and the server’s AES
@@ -1056,7 +1104,7 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 
 This is literally what people do with curl these days: They pipe that
 shit right into their shell without even looking at it.[footnote[The
-16-kilobyte shell script installs installs a program that installs
+16-kilobyte shell script installs a program that installs
 Node.js® so that you can install [tt[npm]] and YOLO tens of millions
 of lines more code onto your computer. You can tell the whole ordeal
 is expected to be done with eyes closed and was also written by an asshole,
@@ -1107,7 +1155,7 @@ protocols are named using a hithertofore undiscovered generalization
 of the Myers–Briggs Type Indicator ([mbti]) that includes additional
 categories and orthonormal basis vectors.
 
-The most successful instrument in the field of psychometrics, [mbti],
+The most successful instrument in the field of psychometrics, [mbti]
 has four "dichotomies" that describe personality traits.[cite
 myers2003mbti] The dichotomies are [b[I]]ntroversion vs.
 [b[E]]xtraversion, [b[S]]ensing vs. i[b[N]]tuition, [b[T]]hinking vs.
@@ -1389,7 +1437,9 @@ You may be happy to know that I have continued building my own
 alternate universe of software tools for writing SIGBOVIK papers the
 hard way, with the centerpiece being BoVeX. I wrote it as what is
 seeming decreasingly like a joke for SIGBOVIK 2024.[cite
-murphy2024badness]
+murphy2024badness] In fact, during the course of this project, I spent
+far longer working on BoVeX itself than on the code that is the
+subject of this paper.
 
 [paragraph[Compliance]] Being in a mood for rules, whether the
 compliance with them malicious or not, I fixed a number of picky
