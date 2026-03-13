@@ -704,54 +704,52 @@ const Exp *Parsing::Parse(AstPool *pool,
       });
   };
 
-  const auto LayoutExpr = [&](const auto &Expr) {
-      const auto Lay =
-        Fix<Token, const Layout *>([&](const auto &Self) {
-            // This is the contents of [brackets] inside a layout
-            // expression. It can either be a regular expression,
-            // or a [* layout comment *] token. In the latter case,
-            // we return nullptr and ignore it in the Join.
-            auto Nested =
-              Expr ||
-              (IsToken<LAYOUT_COMMENT>() >>
-               Succeed<Token, const Exp *>(nullptr));
+  const auto LayoutExpr = [&](const auto &Expr, const auto &Decl) {
+      // This is the contents of [brackets] inside a layout
+      // expression. It can either be a standard expression,
+      // a series of declarations, or a [* layout comment *] token.
+      // In the last case, we return nullptr and ignore it in the Join.
+      auto Nested =
+        Expr ||
+        (IsToken<LAYOUT_COMMENT>() >>
+         Succeed<Token, const Exp *>(nullptr));
 
-            auto LayoutParticle =
-              (IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) ||
+      auto LayoutParticle =
+        (IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) ||
 
-              (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> const Exp * {
-                  const auto &[_, start, length] = err;
-                  LOG(FATAL) << ErrorAtIndex(start, length) <<
-                    "Expected LBRACKET exp RBRACKET after seeing LBRACKET "
-                    "inside layout.\n"
-                    "At: " << start << " for " << length;
-                  return nullptr;
-                });
-
-            return (LayoutLit &&
-              *(LayoutParticle &&
-                LayoutLit))
-              >[&](const auto &p) {
-                  const auto &[l1, v] = p;
-                  const Layout *x1 = pool->TextLayout(l1);
-                  if (v.empty()) {
-                    // No need for a join node.
-                    return x1;
-                  } else {
-                    std::vector<const Layout *> joinme;
-                    joinme.reserve(1 + 2 * v.size());
-                    joinme.push_back(x1);
-                    for (const auto &[e, t] : v) {
-                      // For layout comments, there is no expression.
-                      if (e != nullptr) {
-                        joinme.push_back(pool->ExpLayout(e));
-                      }
-                      joinme.push_back(pool->TextLayout(t));
-                    }
-                    return pool->JoinLayout(std::move(joinme));
-                  }
-                };
+        (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> const Exp * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected LBRACKET exp RBRACKET after seeing LBRACKET "
+              "inside layout.\n"
+              "At: " << start << " for " << length;
+            return nullptr;
           });
+
+      auto Lay =
+        (LayoutLit &&
+         *(LayoutParticle &&
+           LayoutLit))
+        >[&](const auto &p) {
+            const auto &[l1, v] = p;
+            const Layout *x1 = pool->TextLayout(l1);
+            if (v.empty()) {
+              // No need for a join node.
+              return x1;
+            } else {
+              std::vector<const Layout *> joinme;
+              joinme.reserve(1 + 2 * v.size());
+              joinme.push_back(x1);
+              for (const auto &[e, t] : v) {
+                // For layout comments, there is no expression.
+                if (e != nullptr) {
+                  joinme.push_back(pool->ExpLayout(e));
+                }
+                joinme.push_back(pool->TextLayout(t));
+              }
+              return pool->JoinLayout(std::move(joinme));
+            }
+          };
 
       return Mark(IsToken<LBRACKET>() >> Lay << IsToken<RBRACKET>())
           >[&](const auto &lay_pos) {
@@ -1146,7 +1144,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
             BracedExpr(Expr) ||
-            LayoutExpr(Expr) ||
+            LayoutExpr(Expr, Decl) ||
             LetExpr(Expr, Decl) ||
             ProjectExpr ||
             // Just here for convenience of writing a || b || ...

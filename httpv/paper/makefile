@@ -1,5 +1,5 @@
 
-default : httpv.pdf
+default : httpv.pdf install
 
 # requires building bovex.exe
 BOVEX=../../rephrase
@@ -7,6 +7,10 @@ BOVEX=../../rephrase
 BOVEX_LIB=$(BOVEX)/stdlib.bovex $(BOVEX)/cite.bovex $(BOVEX)/layout.bovex $(BOVEX)/layout-base.bovex $(BOVEX)/font.bovex $(BOVEX)/hyph-en-us.tex
 
 default : httpv.pdf
+
+install : httpv.pdf
+	cp httpv.pdf /var/www/html/httpv-`date +%s`.pdf
+	chmod -R a+rX /var/www/html
 
 ALL_IMAGES=advanced.svg back-to-safety.svg check.svg red-triangle.png green-padlock.svg warning-triangle.svg encrypt-growth.svg mbti-ieah.svg
 

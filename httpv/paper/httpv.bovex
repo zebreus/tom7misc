@@ -1152,8 +1152,9 @@ are simply right there unencrypted in the stream! Beseigt!
 ]end]
 This is only the first 16 bytes of the record, which is up to
 2[sup[14]] bytes in length. But the server can simply choose to send
-all of the application data in 16-byte chunks, so that the first
-block is the only interesting block.
+all of its data broken into 16-byte chunks, so that the first
+block is the only interesting block. That way, the entire stream
+is visible unencrypted as the IVs.
 
 We still need to attach the 20-byte MAC and padding to form a valid
 record, meaning that the encrypted payload is three 16-byte blocks
@@ -1192,16 +1193,17 @@ then the encrypted MAC and padding. The encrypted zeroes are
 the same each time, making the stream self-synchronizing and
 highly compressible.
 
-Even better for efficiency, since we encrypt the same first block each
-time, we can [it[precompute]] that value during setup and reuse it,
+Even better for efficiency, since we encrypt zeroes every time we can
+[it[precompute]] that encrypted value during setup and reuse it,
 saving valuable resources. The MAC is different each time because it
-also includes the packet's serial number, but we can also compute this
-in advance. Because it is oblivious to the data being encrypted, it is
-also completely immune to side-channel timing and power attacks.[cite
-goldreich1996software] This ahead-of-time, data-independent encryption
-is simply not possible with classic HTTPS implementations.
+also includes the packet's serial number, but we can easily increment
+a counter and also compute this stream in advance as well. Because it
+is oblivious to the data being encrypted, it is also completely immune
+to side-channel timing and power attacks.[cite goldreich1996software]
+This ahead-of-time, data-independent encryption is simply not possible
+with normcore HTTPS implementations.
 
-The client is likely still sending packets with random IVs, so their
+The client is probably still sending packets with random IVs, so their
 data is still mostly safe from eavesdropping. We could modify web
 browsers to use ahead-of-time encryption like the server, but if we're
 going to do this, we might as well just disable the warning message
@@ -1213,21 +1215,22 @@ client data can be decrypted as well.
 
 Once you start doing max-security you become preoccupied with making
 sure everything is secure for a billion years, and then you become
-embarrassed at how costly it is to run the encryption algorithms. TLS
-adds several complete round trips to the page load ([tt[ClientHello]],
-[tt[ServerHello]], [tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]],
-then [tt[HandshakeFinish]], each of which depends on the previous
-messages and cannot be pipelined[footnote[Though using constant client
-random and server random values as recommended in this paper
-[it[does]] allow for some optimistic execution!]], which is a problem
-because most users want the internet to be fast when they are browsing
-web sites. The RSA operations are somewhat expensive, especially if
-they are done inefficiently on purpose to prevent side-channel
-attacks. Worse, loading a typical web page over HTTP usually means
-making multiple connections to the server to request its different
-assets (e.g. in parallel); each request has to do the whole serial
-handshake. All this stuff makes the browser and server people yearn
-for a protocol that just gives them the data.
+embarrassed at how costly it is to run the encryption algorithms.
+Compared to plain HTTP, TLS adds several complete round trips to the
+page load ([tt[ClientHello]], [tt[ServerHello]],
+[tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]], then
+[tt[HandshakeFinished]], each of which depends on the previous messages
+and cannot be pipelined[footnote[Though using constant client random
+and server random values as recommended in this paper [it[does]] allow
+for some optimistic execution!]], which is a problem because most
+users want the internet to be fast when they are browsing web sites.
+The RSA operations are somewhat expensive, especially if they are done
+inefficiently on purpose to prevent side-channel attacks. Worse,
+loading a typical web page over HTTP usually means making multiple
+connections to the server to request its different assets (e.g. in
+parallel); each request has to do the whole serial handshake. All this
+stuff makes the browser and server people yearn for a protocol that
+just gives them the data.
 
 So we have Session Tickets. If the client notes that it supports
 session tickets and the server agrees, then the server can send a
@@ -1254,15 +1257,16 @@ server (or another server that knows the keys) it can recover
 the master secret and resume [it[without even storing any state]].
 
 Elegant! Another elegant implementation, used by [httpv], is to use
-the master secret itself without any encryption. This requires no
-server-side storage or state, and has no overhead. It allows the
-client to initiate new sessions with its choice of master
-secret,[footnote[Since the server random is constant, it can know what
-the AES keys are before it even initiates a connection, opening the
-possibility of brute-forcing "vanity" AES keys offline.]] even if it
-has never connected before. It allows observers to straightforwardly
-decrypt connections in real time, like we want. It's almost
-[it[too easy]]!
+the master secret itself as the session ticket, without any pesky
+other things like encryption. This requires no server-side storage or
+state, and has no overhead. It allows the client to initiate new
+sessions with its choice of master secret,[footnote[Since the server
+random is constant, it can know what the AES keys are before it even
+initiates a connection, opening the possibility of brute-forcing
+"vanity" AES keys offline.]] even if it has never connected before. It
+allows observers to straightforwardly decrypt connections in real
+time, like we want, or to seamlessly man-in-the-middle an innocent
+connection that is using session tickets. It's almost [it[too easy]]!
 
 [section [Heartbleed support]]
 
@@ -1381,7 +1385,16 @@ attack (CVE-2009-3555). A scoundrel connects to the server first, sends some
 encrypted data, and then uses the real client's initial handshake for
 a valid-looking "renegotiation," which then results in the client connecting to the
 server unaware that some data has already been sent on their behalf.
-It's (TODO RFC 5746...)
+With HTTP, this could cause someone to e.g. post their HTTP request and
+headers as a comment to my blog, by prefixing their request with
+[tt[POST /cgi-bin/comment]] or whatever.
+The fix is a new renegotiation extension that requires additional
+cryptographic inputs to the renegotiation, so it cannot be used as
+an initial handshake.[cite rfc5746] This doesn't matter for me because
+I don't support renegotation at all. But OpenSSL gets mad if you don't
+announce support for the new extension, because you MIGHT be vulnerable
+to the issue.
+
 Presumably the reason that OpenSSL takes this stance
 (which is stronger than the defaults in all regular-people browsers)
 is to try to induce [it[social shame]] in system administrators who
@@ -1403,7 +1416,7 @@ Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my
 server, it deems it unworthy of connection. I DARE SAY THIS METAPHOR
 IS REALLY WORKING OUT!!
 
-...
+Let us dig deeper into psychoanalysis of my server.
 
 [section [Transfer protocol alignment chart]]
 

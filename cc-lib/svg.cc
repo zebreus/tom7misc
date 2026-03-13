@@ -732,7 +732,7 @@ struct Converter {
     if (auto so = GetStripAttribute("stroke-dasharray")) {
       had_style = true;
       if (so.value() == "none") {
-        style.stroke_dasharray = {{}};
+        style.stroke_dasharray = {std::vector<double>()};
       } else {
         auto args = AllNumbers(so.value());
         if (!args.has_value() || args.value().empty()) {
