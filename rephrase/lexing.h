@@ -3,10 +3,11 @@
 #define _REPHRASE_LEXING_H
 
 #include <cstddef>
-#include <utility>
-#include <string>
-#include <vector>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace el {
 
@@ -121,7 +122,7 @@ struct Lexing {
   // Interpret the contents of a string literal as a raw string (or
   // abort if it is ill-formed). Note that the STR_LIT token contains
   // the "" characters, so the caller should extract the substring.
-  static std::string UnescapeStrLit(const std::string &s);
+  static std::string UnescapeStrLit(std::string_view s);
 
   static std::string UnescapeLayoutLit(const std::string &s);
 };

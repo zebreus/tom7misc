@@ -18,6 +18,8 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "re2/re2.h"
+#include "utf8.h"
+#include "util.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -249,11 +251,27 @@ std::optional<std::vector<Token>> Lexing::Lex(
   // also output tokens for LBRACKET and RBRACKET as appropriate.
   //
   // We don't actually have an escape character inside layout.
-  // The way to write a ] or [ is to use expression mode, like ["["].
+  // The way to write a ] or [ is to use expression mode, like
+  // [layout "["].
   //
   // As a result, a layout literal is just any text (not containing
   // square brackets) between any square brackets. We have special
   // handling to ignore [* layout comments *], however.
+  //
+  // TODO: A document's body is typically a long layout expression,
+  // so it's useful to be able to intersperse declarations (whose
+  // scope is the rest of the layout). This can be done by nesting
+  // with [], but then you have to close all the nesting at the
+  // end, which is obnoxious. Add some tasteful-ish sugar like
+  //   layout1
+  //   [; fun f x = x ^^ x]
+  //   layout2
+  // which just means
+  //   layout1
+  //   [let fun f x = x ^^ x in
+  //    [layout2]
+  //    end]
+
 #define ANY_BRACKET R"([\[\]])"
   static const RE2 layoutlit(
       ANY_BRACKET
@@ -490,24 +508,42 @@ std::optional<std::vector<Token>> Lexing::Lex(
   return {ret};
 }
 
-std::string Lexing::UnescapeStrLit(const std::string &s) {
+// TODO: Return optional so that we can report the position of
+// errors.
+std::string Lexing::UnescapeStrLit(std::string_view s) {
   std::string out;
   out.reserve(s.size());
-  for (int i = 0; i < (int)s.size(); i++) {
-    const char c = s[i];
+  while (!s.empty()) {
+    const char c = s[0];
     if (c == '\\') {
-      CHECK(i < (int)s.size() - 1) << "Bug: Trailing escape "
+      s.remove_prefix(1);
+      CHECK(!s.empty()) << "Bug: Trailing escape "
         "character in string literal.";
-      i++;
-      const char d = s[i];
+      const char d = s[0];
       switch (d) {
       case 'n': out.push_back('\n'); break;
       case 'r': out.push_back('\r'); break;
       case 't': out.push_back('\t'); break;
       case '\\': out.push_back('\\'); break;
       case '\"': out.push_back('\"'); break;
+      case 'x': {
+        s.remove_prefix(1);
+        CHECK(s.size() >= 2) << "Incomplete hex escape "
+          "in string literal.";
+        char hi = s[0];
+        char lo = s[1];
+        s.remove_prefix(2);
+        CHECK(Util::IsHexDigit(hi) &&
+              Util::IsHexDigit(lo)) << "Hex escape needs "
+          "exactly two hex digits, but got " <<
+          std::format("\\x{:c}{:c}.", hi, lo);
+        uint32_t codepoint = Util::HexDigitValue(hi) * 16 +
+          Util::HexDigitValue(lo);
+        out.append(UTF8::Encode(codepoint));
+        break;
+      }
       default:
-        // TODO: Implement \x and \u{1234} stuff.
+        // TODO: Implement \u{1234} and other stuff.
         CHECK(false) << "Unimplemented or illegal escape "
                      << std::format("\\{:c}", d)
                      << " in string literal.";
@@ -515,6 +551,7 @@ std::string Lexing::UnescapeStrLit(const std::string &s) {
     } else {
       out.push_back(c);
     }
+    s.remove_prefix(1);
   }
   return out;
 }

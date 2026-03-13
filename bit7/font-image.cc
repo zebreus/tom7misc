@@ -2170,6 +2170,12 @@ REUSE_FOR = {
   {0x05D2, 0x2137},  // Gimel
   {0x05D3, 0x2138},  // Dalet
 
+  // Some math operators exist in n-ary forms, which look
+  // the same.
+  {0x2295, 0x2A01},  // oplus
+  {0x2279, 0x2A02},  // otimes
+  // ... more here.
+
   // Various spaces. Since the font is fixed-width,
   // we just render these the same as space. Most of these
   // are not mapped in the font image.

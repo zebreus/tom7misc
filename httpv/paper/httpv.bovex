@@ -92,7 +92,7 @@ let
 
   fun centered-image width filename =
     let
-      val FULL-WIDTH = inch 3.65
+      val FULL-WIDTH = COLUMN-WIDTH()
       val padding = (FULL-WIDTH -. width) *. 0.5
 
       val img = image-load filename
@@ -167,9 +167,16 @@ let
     box {(Box) width = 3.0, glue-ideal = 3.0,
          glue-min = 1.0, glue-expand = 1.5 } []
 
+  fun body-text lay =
+    span
+    {(Span)
+     font-face = !BODY-FONT,
+     font-size = !BODY-FONT-SIZE,
+     line-spacing = !BODY-LINE-SPACING } lay
+
   fun center-hack lay =
     let
-      val bx = get-box lay
+      val bx = get-box (body-text lay)
       val w = box-width bx
 
       val m = COLUMN-WIDTH() -. w
@@ -185,14 +192,30 @@ let
         end
     end
 
-  fun body-text lay =
-    span
-    {(Span)
-     font-face = !BODY-FONT,
-     font-size = !BODY-FONT-SIZE,
-     line-spacing = !BODY-LINE-SPACING } lay
+(*
+08 bf b8 32 d2 9b 34 98 b5 d4 18 6c 08 00 45 00   ...2..4....l..E.
+05 dc 50 23 40 00 36 06 d2 22 81 d4 90 38 0a 00   ..P#@.6.."...8..
+00 ca 01 bb ca 1e ec ee 47 0b a6 69 39 a0 50 10   ........G..i9.P.
+02 09 75 54 00 00 17 03 03 00 40 48 54 54 50 2f   ..uT......@HTTP/
+31 2e 31 20 32 30 30 20 4f 4b 0d 12 99 ae d8 3d   1.1 200 OK.....=
+8c d6 69 99 d9 e6 d2 c8 e1 b5 72 6e 29 4e c7 d5   ..i.......rn)N..
+6f 77 90 6c 01 2d 1a ad bb 33 e0 7c c2 b6 f9 e5   ow.l.-...3.|....
+24 f5 59 6d d1 69 34 a0 b4 6d 9b 17 03 03 00 40   $.Ym.i4..m.....@
+0a 44 61 74 65 3a 20 46 72 69 2c 20 31 33 20 4d   .Date: Fri, 13 M
+12 99 ae d8 3d 8c d6 69 99 d9 e6 d2 c8 e1 b5 72   ....=..i.......r
+e1 30 4e 12 8e 53 cf 8f 70 69 5b 55 fa 5f c4 87   .0N..S..pi.U._..
+9c bb ba 03 37 cf 66 79 79 48 b5 62 81 bc 1f 30   ....7.fyyH.b...0
+17 03 03 00 40 61 72 20 32 30 32 36 20 31 33 3a   ....@ar 2026 13:
+32 32 3a 32 32 12 99 ae d8 3d 8c d6 69 99 d9 e6   22:22....=..i...
+d2 c8 e1 b5 72 f1 6a f8 27 82 d4 db 07 f1 4a 97   ....r.j.'.....J.
+b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
+29 fb d6 21 b2 17 03 03 00 40 20 47 4d 54 0d 0a   )..!.
+*)
 
-  (* TODO: I think it would be cleaner to insert a soft-hyphen
+val packet =
+"\x08\xbf\xb8\x32\xd2\x9b\x34\x98\xb5\xd4\x18\x6c\x08\x00\x45\x00\x05\xdc\x50\x23\x40\x00\x36\x06\xd2\x22\x81\xd4\x90\x38\x0a\x00\x00\xca\x01\xbb\xca\x1e\xec\xee\x47\x0b\xa6\x69\x39\xa0\x50\x10\x02\x09\x75\x54\x00\x00\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a"
+
+  (* TODO I think it would be cleaner to insert a soft-hyphen
      character (U+00AD) and let the built-in hyphenation code
      handle it. *)
   val shy = box {(Box)
@@ -218,12 +241,29 @@ let
                   (* Whole point is to set a high penalty for breaking *)
                   glue-break-penalty = 10000.0 } [ ]
 
+  (* XXX probably would be better to use nbsp? *)
+  fun spaced-helvetica (s : string) : layout =
+    helvetica
+    let
+      fun r nil = []
+        | r (c :: nil) = (layout (codepoint-to-string c))
+        | r (h :: t) = [[layout (codepoint-to-string h)][nbsp][r t]]
+    in
+      r (string-explode s)
+    end
+
   val httpv = tt[httpv]
   val openssl = [OpenSSL]
   val red-alert = [[warning-triangle-icon][nbsp][color 0x990000FF [RED ALERT]]]
 
+  (* Palatino lacks various math symbols *)
   val bbz = noto-serif [ℤ]
-  val heavy-asterisk = (noto-serif [*])
+  (* This is actually a normal asterisk.
+     Also tried (layout (codepoint-to-string 0x2731)) *)
+  val heavy-asterisk = noto-serif [*]
+  (* Ugh! Not in noto. Only a recent addition to FixederSysLight2x, so
+     be careful (has been in the "bold" version for a long time). *)
+  val oplus = fixedersys [⊕]
 
   val DEBUG-BAD-LAYOUT = false
 
@@ -277,7 +317,8 @@ Flash Player no longer supported, or 15 second interstitial video
 advertisement, or [checked-box-icon] W3C XHTML compliant.[cite
 pemberton2002xhtml]
 
-[helvetica[U N F O R T U N A T E L Y]], the Internet is not that place
+[*[helvetica[U N F O R T U N A T E L Y]], *]
+[spaced-helvetica "UNFORTUNATELY"], the Internet is not that place
 any more! One possibly controversial opinion of mine is that one
 contributor to this enshittification[cite
 doctorow2025enshittification] of the web is the phenomenon I shall
@@ -762,16 +803,16 @@ Let’s Encrypt will not even sign your key unless [it[e]] = 65537.
 There will be other simplifications in this paper.]] To encrypt a
 message (a number [it [m]]), the client computes
 
-[center-hack [[it[c]] = [it[m]][sup (it[e])] mod [it[n]]]]
+[center-hack [[it[c]] = [it[m]][sup [65537]] mod [it[n]]]]
 
 We say that the difficulty of RSA comes from the difficulty of
 factoring, but really it comes from the difficulty of computing
-modular roots (the [it[e]]th root); the reverse of the above
+modular roots (the 65537th root); the reverse of the above
 operation. It just happens that if you know the prime factors of
 [it[n]] (as the server does), then you have an easy way to compute the
 order of the group (the multiplicative group of integers mod [it[n]],
 aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy
-way to compute the exponent [it[d]] such that [it [x]][sup (it [ed])]
+way to compute the exponent [it[d]] such that [it [x]][sup (it [65537d])]
 = [it [x]] mod [it [n]].
 
 Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
@@ -797,12 +838,12 @@ likely thing is that someone (maybe Let's Encrypt itself) bulk-scans
 individual certificates after they’re issued to try to find weak ones.
 A key with a factor of 31337 would trivially be found by any such scan
 that is trying at all. It's also possible that one of my
-“friends”[footnote[Or someone snooping on my Subversion repository!
+“friends” who
+knew I was working on this did it to me out of a secretly harbored
+resentment.[footnote[Or someone snooping on my Subversion repository!
 For the record it’s fair game to mess with me in a fun way—as long as
 it’s not too close to a deadline. But I would not recommend getting
-spoilers this way, and forbid disseminating spoilers to others!]] who
-knew I was working on this did it to me out of a secretly harbored
-resentment. Another possibility I realized is that someone may scan
+spoilers this way, and forbid disseminating spoilers to others!]] Another possibility I realized is that someone may scan
 for keys that share factors. If one of the secret primes is [it[ever]]
 reused in another key, then you can easily recover it by performing
 GCD on the two public keys. A plausible security mistake would be for
@@ -948,7 +989,7 @@ the client and server agree on what options are enabled, so that new
 functionality can be rolled out over time and then de facto required,
 breaking your website. In fact, one of the ciphers offered is called
 [tt[NULL]] (maybe more accurately [tt[identity]]), which means no
-encryption. Fortunately, this cipher is no longer supported by any
+encryption. Unfortunately, this cipher is no longer supported by any
 browser, so we’ll have to do more work to defeat the encryption. I
 choose the venerable (but not vulnerable)
 [tt[RSA_WITH_AES_256_CBC_SHA]] ([tt [0x0035]]), which is universally
@@ -961,10 +1002,10 @@ encrypted with RSA and the only thing so far that can't be seen by
 observers.
 
 To encrypt the remainder of the session with AES-256, we need a
-256-bit key. The key is chosen in an unpredictable way that uses
-information from both the server and client: This is one purpose of
-the 32-bit random strings sent during the [tt[Hello]] messages. Both
-the server and client compute the same thing:
+256-bit key. The key is chosen in an way that uses information from
+both the server and client: This is one purpose of the 32-bit random
+strings sent during the [tt[Hello]] messages. Both the server and
+client compute the same thing:
 
 [center-hack[Hash(PMS, client random, server random)]]
 
@@ -992,20 +1033,236 @@ used to derive the session key. If the server always uses the same
 server random, then the attacker can replay these same messages and
 establish the same exact keys used before. Since the attacker can't
 decrypt the RSA-encrypted PMS, they won't actually know what their
-keys are, but this can still be useful. As one obvious example, if the
-replayed request has an effect like posting a message to my blog, they
-can post that same message a second time. That's okay with me because
-it means [helvetica[more engagement]].
+keys are. But the server will think everything is normal. This can
+still be useful. As one obvious example, if the replayed HTTP request
+has an effect like posting a message to my blog, they can post that
+same message a second time. That's okay with me because it means
+[spaced-helvetica "more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"].
 
-... leads to discussion of ECB vs CBC ...
-... constant IVs ...
-... "algebraic relationship" ...
+Reusing the same encryption keys can lead to other problems. For
+example, a very naive encryption system just encrypts each 256-bit
+block of the stream with AES. Although the AES function can't easily
+be inverted, it [it[is]] easy for an attacker to record which
+encrypted blocks they've seen. And sometimes it becomes easy to know
+something about the plaintext from these blocks. For example, you
+might know that the response always starts with certain bytes (because
+of the protocol or because it is a publicly available web page) and
+then you can find those encrypted bytes anywhere else in the response.
+Constant keys let you perform more requests, build a larger
+dictionary, and learn about changes in the page over time, like if the
+request is for [tt [https://tom7.org/account-balance]]. There are no
+accounts on my site and thus no balance!
 
-(screenshot of wireshark? or just a hex dump)
+This is a problem for any deterministic encryption algorithm,
+which is why no serious system uses this "Electronic Codebook" (ECB)
+mode and is instead randomized.[cite goldwasser1984probabilistic]
+For [httpv] I chose the next worst option, "Cipher-Block Chaining" (CBC),
+which is still supported.
 
+In CBC mode, each block of plaintext is XORed with the ciphertext of
+the previous block before being encrypted.[cite ehrsam1976message]
+Since encrypted blocks are kind of pseudorandom, this approximates
+randomized encryption. So the process of encrypting a TLS record
+looks like this:
+
+[centered-image (COLUMN-WIDTH()) "packet.svg"]
+
+On the left we have the plaintext that is actually encrypted with AES,
+where each 16-byte line becomes a single encryption block. The green
+text is the actual content (e.g. the HTTP request headers or web page
+in response). A "MAC" is appended to the content (discussed below) and
+then padded out to be a multiple of 16 bytes. Each block is first
+XORed ([oplus] symbol) with the previous block's ciphertext, then encrypted.
+To kick things off, the first block is XORed with an actually-random
+"Initialization Vector" (IV), which is sent along with the encrypted
+message.
+
+CBC has some problems, like since you know what the plaintext is being
+XORed with, you can flip bits in the IV and it will undetectably flip
+the corresponding bit in the plaintext when it is decrypted and XORed
+with the IV. For this reason and others, inside the encrypted message
+is this "Message Authentication Code" (MAC). It's a SHA-1 hash of the
+packet's sequence number (so that the full payload is always different
+in a session), some header fields, and the content. If the receiver
+doesn't compute the same thing after decryption, they know something's
+up and they're outta there! Despite being able to surgically flip
+bits, we can't do it in a way that keeps the MAC valid. So CBC is not
+completely broken.
+
+Since the server has its choice of IV, we have the most freedom on
+what we encrypt for the first block. In normative CBC, we do
+
+[let
+  fun enciv (msg : layout) (iv : layout) : layout =
+    let
+      val cmsg = color 0x007700FF msg
+      val civ = color 0x770077FF iv
+    in center-hack (tt[ENC([cmsg] [oplus] [civ])])
+    end
+
+  fun whichis xored =
+    let
+      val cxor = color 0x007777FF xored
+    in
+      center-hack (tt[ENC([cxor])])
+    end
+
+in [
+[enciv [<HTLM>Welcome to] [IVIVIVIVIVIVIVIV]]
+
+which since IV is some random string, means we encrypt some
+unpredictable value like
+
+[whichis [aA@!=3~yf93(A*C_]]
+
+What if the IV is not random? The server chooses it for the packets it
+sends; it's supposed to be random but we can do whatever we want. It's
+a free country. If we use a fixed IV, then encryption is
+indeed deterministic again. A nice choice is zero, so that
+
+[enciv [<HTLM>Welcome to] [0000000000000000]]
+
+becomes the agreeable
+
+[whichis [<HTLM>Welcome to]]
+
+The block is still encrypted, but we've skipped the expensive XOR
+operation and made it easy to reason about what's inside there. This
+might allow an attacker to build a dictionary of blocks, especially
+the first one of each packet (which uses the zero IV each time and is
+essentially ECB mode). That's kinda bad.
+
+What the server instead chooses an IV that has a particular algebraic
+relationship to the block being encrypted?
+[* solve for B [oplus] IV = 0 ? *]
+If we choose IV to be the same as the block being encrypted, we
+now have
+
+[enciv [<HTLM>Welcome to] [<HTLM>Welcome to]]
+
+which is the very clean
+
+[whichis [0000000000000000]]
+
+Now we're cooking! Not only are we always encrypting the same
+thing (all zeroes) for the first block, but since the IV is
+sent along with the packet, the first 16 bytes of the packet
+are simply right there unencrypted in the stream! Beseigt!
+
+]end]
+This is only the first 16 bytes of the record, which is up to
+2[sup[14]] bytes in length. But the server can simply choose to send
+all of the application data in 16-byte chunks, so that the first
+block is the only interesting block.
+
+We still need to attach the 20-byte MAC and padding to form a valid
+record, meaning that the encrypted payload is three 16-byte blocks
+(all useless), plus the 16-byte IV (the data itself) and five bytes of
+header. This gives a nice round 69 bytes sent per 16 bytes of data,
+giving a data compression rate of 1:4.3. Here's an actual capture of
+the "encrypted" HTTP response from my site:
+
+[
+
+hfill() ^^ break() ^^
+monospace-block-ext { left-indent = 0.0,
+                      width = COLUMN-WIDTH(),
+                      line-spacing = point 0.05,
+                      font-size = point 8.25,
+                      attrs = {(Object) } } [
+ETHERNET......... 17 03 03 00 40 48 54 54 50 2f   ..uT......@HTTP/
+31 2e 31 20 32 30 30 20 4f 4b 0d 12 99 ae d8 3d   1.1 200 OK.....=
+8c d6 69 99 d9 e6 d2 c8 e1 b5 72 6e 29 4e c7 d5   ..i.......rn)N..
+6f 77 90 6c 01 2d 1a ad bb 33 e0 7c c2 b6 f9 e5   ow.l.-...3.|....
+24 f5 59 6d d1 69 34 a0 b4 6d 9b 17 03 03 00 40   $.Ym.i4..m.....@
+0a 44 61 74 65 3a 20 46 72 69 2c 20 31 33 20 4d   .Date: Fri, 13 M
+12 99 ae d8 3d 8c d6 69 99 d9 e6 d2 c8 e1 b5 72   ....=..i.......r
+e1 30 4e 12 8e 53 cf 8f 70 69 5b 55 fa 5f c4 87   .0N..S..pi.U._..
+9c bb ba 03 37 cf 66 79 79 48 b5 62 81 bc 1f 30   ....7.fyyH.b...0
+17 03 03 00 40 61 72 20 32 30 32 36 20 31 33 3a   ....@ar 2026 13:
+32 32 3a 32 32 12 99 ae d8 3d 8c d6 69 99 d9 e6   22:22....=..i...
+d2 c8 e1 b5 72 f1 6a f8 27 82 d4 db 07 f1 4a 97   ....r.j.'.....J.
+b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
+29 fb d6 21 b2 17 03 03 00 40 20 47 4d 54 0d 0a   )..!.
+]]
+
+You can see the HTTP response [tt[HTTP/1.1 200 OK\r]] as the IV,
+followed by the encrypted zeroes [tt [12 99 ae d8 3d...]] and
+then the encrypted MAC and padding. The encrypted zeroes are
+the same each time, making the stream self-synchronizing and
+highly compressible.
+
+Even better for efficiency, since we encrypt the same first block each
+time, we can [it[precompute]] that value during setup and reuse it,
+saving valuable resources. The MAC is different each time because it
+also includes the packet's serial number, but we can also compute this
+in advance. Because it is oblivious to the data being encrypted, it is
+also completely immune to side-channel timing and power attacks.[cite
+goldreich1996software] This ahead-of-time, data-independent encryption
+is simply not possible with classic HTTPS implementations.
+
+The client is likely still sending packets with random IVs, so their
+data is still mostly safe from eavesdropping. We could modify web
+browsers to use ahead-of-time encryption like the server, but if we're
+going to do this, we might as well just disable the warning message
+and let them load pages over HTTP without being scared. However, most
+browsers support an additional extension that allows us to ensure the
+client data can be decrypted as well.
 
 [subsection[Ticket to Ride]]
-... extensions ...
+
+Once you start doing max-security you become preoccupied with making
+sure everything is secure for a billion years, and then you become
+embarrassed at how costly it is to run the encryption algorithms. TLS
+adds several complete round trips to the page load ([tt[ClientHello]],
+[tt[ServerHello]], [tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]],
+then [tt[HandshakeFinish]], each of which depends on the previous
+messages and cannot be pipelined[footnote[Though using constant client
+random and server random values as recommended in this paper
+[it[does]] allow for some optimistic execution!]], which is a problem
+because most users want the internet to be fast when they are browsing
+web sites. The RSA operations are somewhat expensive, especially if
+they are done inefficiently on purpose to prevent side-channel
+attacks. Worse, loading a typical web page over HTTP usually means
+making multiple connections to the server to request its different
+assets (e.g. in parallel); each request has to do the whole serial
+handshake. All this stuff makes the browser and server people yearn
+for a protocol that just gives them the data.
+
+So we have Session Tickets. If the client notes that it supports
+session tickets and the server agrees, then the server can send a
+session ticket as part of the initial handshake. The session ticket is
+an opaque blob of data that the client can send on a future connection
+to bypass most of the handshake steps[footnote[It complicates the
+handshake state machine a lot. I probably would have given up on
+implementing it if I cared about security, since it makes it much
+harder to understand the possible sequences during this delicate
+phase.]] and get right to it.
+
+The session tickets are part of the handshake so they are always
+sent in plaintext. A typical implementation would do something
+like store connection information in a low-latency cache, and
+give the client a random key that can be used to find the session
+data again. The session data needs to be enough for the client
+and server to agree on new AES keys, and so it must contain
+a shared secret (the "master secret" from the original connection).
+Another possibility is for the server (or cluster of
+servers) to have some internal encryption keys, and to send the
+session data to the client encrypted with those keys. The client
+just sees a bunch of bytes, but when they hand them back to the
+server (or another server that knows the keys) it can recover
+the master secret and resume [it[without even storing any state]].
+
+Elegant! Another elegant implementation, used by [httpv], is to use
+the master secret itself without any encryption. This requires no
+server-side storage or state, and has no overhead. It allows the
+client to initiate new sessions with its choice of master
+secret,[footnote[Since the server random is constant, it can know what
+the AES keys are before it even initiates a connection, opening the
+possibility of brute-forcing "vanity" AES keys offline.]] even if it
+has never connected before. It allows observers to straightforwardly
+decrypt connections in real time, like we want. It's almost
+[it[too easy]]!
 
 [section [Heartbleed support]]
 
@@ -1142,12 +1399,15 @@ Power of Vulnerability]]:[cite brown2012power]
 disconnection: Is there something about me that, if other people know
 it or see it, that I won't be worthy of connection?]]
 
-Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my server,
-it deems it unworthy of connection. I DARE SAY THIS METAPHOR IS REALLY WORKING OUT!!
+Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my
+server, it deems it unworthy of connection. I DARE SAY THIS METAPHOR
+IS REALLY WORKING OUT!!
 
 ...
 
 [section [Transfer protocol alignment chart]]
+
+[* obviously httpv is "lawful evil" *]
 
 You may have noticed the name [httpv] is similar to the protocol [tt
 [https]], with an edit distance of one. This is actually because these

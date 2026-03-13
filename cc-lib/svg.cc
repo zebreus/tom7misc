@@ -822,12 +822,18 @@ struct Converter {
 
     if (auto fo = GetStripAttribute("font-family")) {
       had_style = true;
+      // TODO: Should parse a comma inside quotes correctly.
       std::vector<std::string> ffs = Util::Split(fo.value(), ',');
       // For some reason, Illustrator will do like "Helvetica, Helvetica".
       std::unordered_set<std::string> already;
       std::vector<std::string> out;
       for (std::string &ff : ffs) {
         ff = Util::NormalizeWhitespace(ff);
+        if (ff.size() >= 2 && ff[0] == ff.back() &&
+            (ff[0] == '\'' || ff[0] == '\"')) {
+          ff = ff.substr(1, ff.size() - 2);
+        }
+
         if (!already.contains(ff)) {
           already.insert(ff);
           out.push_back(std::move(ff));

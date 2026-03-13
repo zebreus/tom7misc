@@ -1454,7 +1454,12 @@ fun main-text lay =
                we just use the first space's width.
 
                Since height is zero, any lines that we consume here
-               have zero height (and thus are irrelevant) *)
+               have zero height (and thus are irrelevant)
+
+               XXX Should make sure that we make progress here. If
+               the space is too small to fit anything, we could get
+               stuck looping.
+               *)
             val { badness = _, lines = _, suffix } =
               approx-lines-prefix (first-width, 0.0, body)
 
