@@ -241,7 +241,6 @@ val packet =
                   (* Whole point is to set a high penalty for breaking *)
                   glue-break-penalty = 10000.0 } [ ]
 
-  (* XXX probably would be better to use nbsp? *)
   fun spaced-helvetica (s : string) : layout =
     helvetica
     let
@@ -373,6 +372,29 @@ to my website for the sake of toxic max-security. But before that final
 straw, there were many other irritations.
 
 Earlier straws:
+
+[ul
+
+([I want to go to an old good website, but I can't, because their
+  certificate has actually expired. Why is this even a problem?
+  This is like when I go to buy a beer and the guy sends me away
+  because my driver's license expired. Do you think that I
+  GOT YOUNGER in the time since it was valid?] ::
+
+ [I try to copy-paste a URL from my site but Chrome "helpfully"
+  turns the [tt[http:]] prefix into [tt[https:]], making it
+  no longer work.] ::
+
+ [I try to go to a http site in incognito mode, perhaps precisely
+  because I don't really trust it and don't want it sending
+  cookies or infesting me with cookies. Chrome refuses on
+  the grounds that when I'm incognito mode, I must require
+  encryption (?) even though that's not at all what incognito
+  mode is about (??).] ::
+
+ [] ::
+
+ nil)
 
 [* copy-paste URL
    can't go to http site in incognito

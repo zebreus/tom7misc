@@ -232,7 +232,7 @@ static void TestParse() {
   {
     // This is actually syntactic sugar for
     //   [layout[let val x = 3 in [after] end]]
-    const Exp *e = Parse("[layout[  val x = 3 val y = 5  ]after]");
+    const Exp *e = Parse("[layout[val x = 3 val y = 5]after]");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LAYOUT);
     const std::vector<const Layout *> v =
@@ -252,7 +252,6 @@ static void TestParse() {
     CHECK(vv[0]->type == LayoutType::TEXT);
     CHECK(vv[0]->str == "after");
   }
-
 
   {
     const Exp *e = Parse("let do u in 7 end");

@@ -717,13 +717,13 @@ const Exp *Parsing::Parse(AstPool *pool,
       // a series of declarations, or a [* layout comment *] token.
       // In the last case, we return nullptr and ignore it in the Join.
       auto Nested =
+        (IsToken<LAYOUT_COMMENT>() >>
+         Succeed<Token, LayoutPart>(LayoutPart())) ||
         (Expr >[&](const Exp *e) -> LayoutPart { return LayoutPart(e); }) ||
         (*Decl >[&](std::vector<const Dec *> dv) -> LayoutPart {
             Print("Got {} decs\n", dv.size());
             return LayoutPart(std::move(dv));
-          }) ||
-        (IsToken<LAYOUT_COMMENT>() >>
-         Succeed<Token, LayoutPart>(LayoutPart()));
+          });
 
       auto LayoutParticle =
         (IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) ||
@@ -1234,7 +1234,8 @@ const Exp *Parsing::Parse(AstPool *pool,
             +FixityElement /= ResolveExprFixity;
 
           // XXX get the precedence of these correct.
-          auto AnnotatableExpr = FnExpr(Expr) ||
+          auto AnnotatableExpr =
+            FnExpr(Expr) ||
             IfExpr(Expr) ||
             CaseExpr(Expr) ||
             FailExpr(Expr) ||
