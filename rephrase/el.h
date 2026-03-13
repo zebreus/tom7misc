@@ -16,6 +16,10 @@ namespace el {
 enum class LayoutType {
   TEXT,
   JOIN,
+  // Note: In the concrete syntax, layout can contain declarations
+  // (whose scope is the remainder of the layout expression). The
+  // parser rewrites the sequence as a tree just using LET and nests
+  // it using an EXP layout node.
   EXP,
 };
 

@@ -230,6 +230,31 @@ static void TestParse() {
   }
 
   {
+    // This is actually syntactic sugar for
+    //   [layout[let val x = 3 in [after] end]]
+    const Exp *e = Parse("[layout[  val x = 3 val y = 5  ]after]");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LAYOUT);
+    const std::vector<const Layout *> v =
+      FlattenLayout(e->layout);
+    CHECK(v.size() == 2) << v.size();
+    CHECK(v[0]->type == LayoutType::TEXT);
+    CHECK(v[0]->str == "layout");
+    CHECK(v[1]->type == LayoutType::EXP);
+    const Exp *let = v[1]->exp;
+    CHECK(let != nullptr);
+    CHECK(let->type == ExpType::LET);
+    CHECK(let->decs.size() == 2);
+    CHECK(let->a->type == ExpType::LAYOUT);
+    const std::vector<const Layout *> vv =
+      FlattenLayout(let->a->layout);
+    CHECK(vv.size() == 1);
+    CHECK(vv[0]->type == LayoutType::TEXT);
+    CHECK(vv[0]->str == "after");
+  }
+
+
+  {
     const Exp *e = Parse("let do u in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);

@@ -56,6 +56,16 @@ static void VectorReverse(std::vector<A> *vec) {
 }
 
 template<class A>
+static std::vector<A> VectorReversed(std::vector<A> in) {
+  std::vector<A> rev;
+  rev.reserve(in.size());
+  for (size_t i = 0; i < in.size(); i++) {
+    rev.emplace_back(std::move(in[in.size() - 1 - i]));
+  }
+  return rev;
+}
+
+template<class A>
 static bool VectorContains(const std::vector<A> &vec, const A &a) {
   for (const auto &aa : vec) {
     if (a == aa) return true;

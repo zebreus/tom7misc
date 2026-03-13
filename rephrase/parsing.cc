@@ -23,6 +23,7 @@
 #include "parser-combinators.h"
 #include "utf8.h"
 #include "util.h"
+#include "vector-util.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -717,7 +718,10 @@ const Exp *Parsing::Parse(AstPool *pool,
       // In the last case, we return nullptr and ignore it in the Join.
       auto Nested =
         (Expr >[&](const Exp *e) -> LayoutPart { return LayoutPart(e); }) ||
-        // Decl ||
+        (*Decl >[&](std::vector<const Dec *> dv) -> LayoutPart {
+            Print("Got {} decs\n", dv.size());
+            return LayoutPart(std::move(dv));
+          }) ||
         (IsToken<LAYOUT_COMMENT>() >>
          Succeed<Token, LayoutPart>(LayoutPart()));
 
@@ -727,44 +731,67 @@ const Exp *Parsing::Parse(AstPool *pool,
         (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> LayoutPart {
             const auto &[_, start, length] = err;
             LOG(FATAL) << ErrorAtIndex(start, length) <<
-              "Expected exp or dec (and then RBRACKET) after seeing LBRACKET "
+              "Expected exp or decs (and then RBRACKET) after seeing LBRACKET "
               "inside layout.\n"
               "At: " << start << " for " << length;
             return LayoutPart();
           });
 
       auto Lay =
-        (LayoutLit &&
-         *(LayoutParticle &&
-           LayoutLit))
-        >[&](const std::pair<std::string,
-                             std::vector<std::pair<LayoutPart,
-                                                   std::string>>> &p) {
-            const auto &[l1, v] = p;
+        Mark(LayoutLit &&
+             *(LayoutParticle &&
+               LayoutLit))
+        >[&](const auto &pp) {
+            const auto &[p, start, length] = pp;
+            const size_t pos = BytePos(start);
+            const std::string &l1 = p.first;
+            const std::vector<std::pair<LayoutPart,
+                                        std::string>> &v = p.second;
             const Layout *x1 = pool->TextLayout(l1);
             if (v.empty()) {
               // No need for a join node.
               return x1;
-            } else {
-              std::vector<const Layout *> joinme;
-              joinme.reserve(1 + 2 * v.size());
-              joinme.push_back(x1);
-              for (const auto &[part, lit] : v) {
-                if (std::holds_alternative<std::monostate>(part)) {
-                  // For layout comments, there is nothing to
-                  // add.
-                } else if (const Exp *const *e = std::get_if<const Exp *>(&part)) {
-                  joinme.push_back(pool->ExpLayout(*e));
-                } else if (const std::vector<const Dec *> *dv =
-                           std::get_if<std::vector<const Dec *>>(&part)) {
-                  LOG(FATAL) << "Sorry, dec in layout not yet supported!";
-                } else {
-                  LOG(FATAL) << "Bad variant?";
-                }
-                joinme.push_back(pool->TextLayout(lit));
-              }
-              return pool->JoinLayout(std::move(joinme));
             }
+
+            // We have a nontrivial sequence of join particles separated
+            // by layout literals (text). We'll attempt to keep the joins flat.
+            // But declarations are transformed into a nested tree here so
+            // that we don't need to think about a new kind of scope
+            // after parsing.
+            std::vector<const Layout *> joinme_rev;
+            joinme_rev.reserve(1 + 2 * v.size());
+
+            for (int idx = (int)v.size() - 1; idx >= 0; idx--) {
+              auto &[part, lit] = v[idx];
+
+              // Since it's reversed, the literal goes on first.
+              joinme_rev.push_back(pool->TextLayout(lit));
+
+              if (std::holds_alternative<std::monostate>(part)) {
+                // For layout comments, there is nothing to
+                // add.
+              } else if (const Exp *const *e = std::get_if<const Exp *>(&part)) {
+                joinme_rev.push_back(pool->ExpLayout(*e));
+              } else if (const std::vector<const Dec *> *dv =
+                         std::get_if<std::vector<const Dec *>>(&part)) {
+                // When we have declarations, we translate
+                // this into a let with the remainder of the
+                // layout vector joined into the body.
+                const Exp *body =
+                  pool->LayoutExp(pool->JoinLayout(VectorReversed(joinme_rev)), pos);
+                joinme_rev.clear();
+                joinme_rev.push_back(pool->ExpLayout(pool->Let(*dv, body, pos)));
+                // Now we have restored joinme as the reversed tail of the
+                // parts, so we can continue.
+
+              } else {
+                LOG(FATAL) << "Bad variant?";
+              }
+            }
+
+            // The first literal goes on last.
+            joinme_rev.push_back(x1);
+            return pool->JoinLayout(VectorReversed(std::move(joinme_rev)));
           };
 
       return Mark(IsToken<LBRACKET>() >> Lay << IsToken<RBRACKET>())
