@@ -704,33 +704,42 @@ const Exp *Parsing::Parse(AstPool *pool,
       });
   };
 
+  // Thing that can appear inside a layout literal.
+  // The monostate represents [* comments *].
+  using LayoutPart = std::variant<std::monostate,
+                                  const Exp *,
+                                  std::vector<const Dec *>>;
+
   const auto LayoutExpr = [&](const auto &Expr, const auto &Decl) {
       // This is the contents of [brackets] inside a layout
       // expression. It can either be a standard expression,
       // a series of declarations, or a [* layout comment *] token.
       // In the last case, we return nullptr and ignore it in the Join.
       auto Nested =
-        Expr ||
+        (Expr >[&](const Exp *e) -> LayoutPart { return LayoutPart(e); }) ||
+        // Decl ||
         (IsToken<LAYOUT_COMMENT>() >>
-         Succeed<Token, const Exp *>(nullptr));
+         Succeed<Token, LayoutPart>(LayoutPart()));
 
       auto LayoutParticle =
         (IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) ||
 
-        (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> const Exp * {
+        (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> LayoutPart {
             const auto &[_, start, length] = err;
             LOG(FATAL) << ErrorAtIndex(start, length) <<
-              "Expected LBRACKET exp RBRACKET after seeing LBRACKET "
+              "Expected exp or dec (and then RBRACKET) after seeing LBRACKET "
               "inside layout.\n"
               "At: " << start << " for " << length;
-            return nullptr;
+            return LayoutPart();
           });
 
       auto Lay =
         (LayoutLit &&
          *(LayoutParticle &&
            LayoutLit))
-        >[&](const auto &p) {
+        >[&](const std::pair<std::string,
+                             std::vector<std::pair<LayoutPart,
+                                                   std::string>>> &p) {
             const auto &[l1, v] = p;
             const Layout *x1 = pool->TextLayout(l1);
             if (v.empty()) {
@@ -740,12 +749,19 @@ const Exp *Parsing::Parse(AstPool *pool,
               std::vector<const Layout *> joinme;
               joinme.reserve(1 + 2 * v.size());
               joinme.push_back(x1);
-              for (const auto &[e, t] : v) {
-                // For layout comments, there is no expression.
-                if (e != nullptr) {
-                  joinme.push_back(pool->ExpLayout(e));
+              for (const auto &[part, lit] : v) {
+                if (std::holds_alternative<std::monostate>(part)) {
+                  // For layout comments, there is nothing to
+                  // add.
+                } else if (const Exp *const *e = std::get_if<const Exp *>(&part)) {
+                  joinme.push_back(pool->ExpLayout(*e));
+                } else if (const std::vector<const Dec *> *dv =
+                           std::get_if<std::vector<const Dec *>>(&part)) {
+                  LOG(FATAL) << "Sorry, dec in layout not yet supported!";
+                } else {
+                  LOG(FATAL) << "Bad variant?";
                 }
-                joinme.push_back(pool->TextLayout(t));
+                joinme.push_back(pool->TextLayout(lit));
               }
               return pool->JoinLayout(std::move(joinme));
             }
