@@ -95,11 +95,11 @@ Initial::Initial(AstPool *pool) {
     {"string-greater", Primop::STRING_GREATER},
     {"string-empty", Primop::STRING_EMPTY},
     {"string-size", Primop::STRING_SIZE},
+    {"string-sub", Primop::STRING_SUB},
     // Internal so that we can wrap with option.
     {"internal-string-find", Primop::STRING_FIND},
     {"substr", Primop::STRING_SUBSTR},
     {"string-replace", Primop::STRING_REPLACE},
-    {"internal-string-first-codepoint", Primop::STRING_FIRST_CODEPOINT},
     {"codepoint-to-string", Primop::CODEPOINT_TO_STRING},
     {"normalize-whitespace", Primop::NORMALIZE_WHITESPACE},
     {"string-lowercase", Primop::STRING_LOWERCASE},

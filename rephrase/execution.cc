@@ -642,6 +642,30 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::STRING_SUB: {
+    const std::string *s = std::get_if<std::string>(&a->v);
+    CHECK(s != nullptr) << Err() <<
+      "Expected string argument (lhs) to string-sub";
+
+    const BigInt *bbi = std::get_if<BigInt>(&b->v);
+    CHECK(bbi != nullptr) << Err() <<
+      "Expected int arg (rhs) to string-sub";
+    const int64_t idx = GetInt64("string-sub", *bbi);
+    // Sub takes size_t so this has to be non-negative.
+    if (idx < 0) {
+      InternalFail(
+          "Index out of bounds (negative) to string-sub",
+          state);
+    }
+
+    if (std::optional<uint32_t> cpo = UTF8::Sub(*s, idx)) {
+      return Big(BigInt(cpo.value()));
+    } else {
+      InternalFail("index out of bounds in string-sub", state);
+      return NonceValue();
+    }
+  }
+
   case Primop::WORD_EQ: {
     const auto &[aa, bb] = TwoWords("word_eq");
     return Bool(aa == bb, state);
@@ -1131,6 +1155,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt(UTF8::Length(s)), state);
   }
 
+#if 0
   case Primop::STRING_FIRST_CODEPOINT: {
     const std::string &s = GetString("string-first-codepoint");
     if (s.empty()) return Obj({}, state);
@@ -1146,6 +1171,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
     return Obj(std::move(m), state);
   }
+#endif
 
   case Primop::CODEPOINT_TO_STRING: {
     const BigInt &bi = GetInt("codepoint-to-string");

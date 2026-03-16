@@ -73,7 +73,8 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_FIND: return "STRING_FIND";
   case Primop::STRING_SUBSTR: return "STRING_SUBSTR";
   case Primop::STRING_REPLACE: return "STRING_REPLACE";
-  case Primop::STRING_FIRST_CODEPOINT: return "STRING_FIRST_CODEPOINT";
+  // case Primop::STRING_FIRST_CODEPOINT: return "STRING_FIRST_CODEPOINT";
+  case Primop::STRING_SUB: return "STRING_SUB";
   case Primop::CODEPOINT_TO_STRING: return "CODEPOINT_TO_STRING";
   case Primop::NORMALIZE_WHITESPACE: return "NORMALIZE_WHITESPACE";
   case Primop::STRING_LOWERCASE: return "STRING_LOWERCASE";
@@ -186,7 +187,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_FIND: return std::make_tuple(0, 2);
   case Primop::STRING_SUBSTR: return std::make_tuple(0, 3);
   case Primop::STRING_REPLACE: return std::make_tuple(0, 3);
-  case Primop::STRING_FIRST_CODEPOINT: return std::make_tuple(0, 1);
+  // case Primop::STRING_FIRST_CODEPOINT: return std::make_tuple(0, 1);
+  case Primop::STRING_SUB: return std::make_tuple(0, 2);
   case Primop::CODEPOINT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::NORMALIZE_WHITESPACE: return std::make_tuple(0, 1);
   case Primop::STRING_LOWERCASE: return std::make_tuple(0, 1);
@@ -306,12 +308,15 @@ bool IsPrimopTotal(Primop p) {
   case Primop::STRING_SIZE: return true;
   case Primop::STRING_FIND: return true;
   case Primop::STRING_SUBSTR:
+  case Primop::STRING_SUB:
     // It can fail.
     return false;
   case Primop::STRING_REPLACE: return true;
+    /*
   case Primop::STRING_FIRST_CODEPOINT:
     // Returns zero if string is empty, so this always succeeds.
     return true;
+    */
   case Primop::CODEPOINT_TO_STRING:
     // Returns empty string for invalid codepoints.
     return true;
@@ -510,8 +515,12 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_REPLACE:
     // string-replace(haystack, needle, replacement)
     return {{}, pool->Arrow(pool->Product({String, String, String}), String)};
+    /*
   case Primop::STRING_FIRST_CODEPOINT:
     return {{}, pool->Arrow(String, Obj)};
+*/
+  case Primop::STRING_SUB:
+    return {{}, pool->Arrow(pool->Product({String, Int}), Int)};
   case Primop::CODEPOINT_TO_STRING:
     return {{}, pool->Arrow(Int, String)};
   case Primop::NORMALIZE_WHITESPACE: return {{}, pool->Arrow(String, String)};

@@ -767,8 +767,8 @@ struct PeepholePass : public il::Pass<> {
       case Primop::INT_DIV_TO_FLOAT:
         // TODO
         break;
-      case Primop::STRING_FIRST_CODEPOINT:
-        // TODO
+      case Primop::STRING_SUB:
+        // TODO! EZ
         break;
       case Primop::NORMALIZE_WHITESPACE:
         // TODO

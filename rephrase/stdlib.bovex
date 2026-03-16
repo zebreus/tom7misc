@@ -343,35 +343,11 @@ fun string-split small big =
     r big
   end
 
-(* PERF: This can be quite expensive! *)
+(* PERF: This is quadratic time because string-sub
+   needs to do a linear-time scan. I think a string-to-vec
+   builtin would be good. *)
 fun string-explode str : int list =
-  let
-    (* Returns empty object if string is empty. *)
-    object ISFC of { cp : int, len : int }
-    fun r s =
-      case internal-string-first-codepoint s of
-        {(ISFC) cp, len } =>
-          cp :: r (substr-rest (s, len))
-      | _ => nil
-  in
-    r str
-  end
-
-(* Returns the nth unicode codepoint. *)
-fun string-sub (s : string, pos : int) : int =
-  let
-    (* PERF: Should build this in if we're going to use it
-       regularly. It still needs to scan the string, but
-       does not need to do copying. *)
-    val c = substr-rest (s, pos)
-
-    (* Returns empty object if string is empty. *)
-    object ISFC of { cp : int, len : int }
-  in
-    case internal-string-first-codepoint s of
-      {(ISFC) cp, len} => cp
-    | _ => fail "string-sub out of bounds"
-  end
+  list-tabulate (string-size str, fn i => string-sub(str, i))
 
 (* Split s1c1s2c2...cnsn into s1 :: s2 :: ... :: sn :: nil
    where pred ci is true, and pred is false for each codepoint
@@ -379,20 +355,17 @@ fun string-sub (s : string, pos : int) : int =
    at least one string. *)
 fun string-fields pred str : string list =
   let
-    (* Returns empty object if string is empty. *)
-    object ISFC of { cp : int, len : int }
-
-    fun r (sofar, s) =
-      case internal-string-first-codepoint s of
-        {(ISFC) cp, len } =>
-          let
-            val ss = substr-rest (s, len)
-          in
-            if pred cp
-            then sofar :: r ("", ss)
-            else r (sofar ^ codepoint-to-string cp, ss)
-          end
-        | _ => sofar :: nil
+    (* PERF. Better to at least use find. *)
+    fun r (sofar, "") = nil
+      | r (sofar, s) =
+      let
+        val cp = string-sub (s, 0)
+        val ss = substr (s, 1, string-size s - 1)
+      in
+        if pred cp
+        then sofar :: r ("", ss)
+        else r (sofar ^ codepoint-to-string cp, ss)
+      end
   in
     r ("", str)
   end
@@ -400,25 +373,20 @@ fun string-fields pred str : string list =
 (* like string-fields, but no empty strings in the result list. *)
 fun string-tokens pred str : string list =
   let
-    object ISFC of { cp : int, len : int }
-
-    fun r (sofar, s) =
-      case internal-string-first-codepoint s of
-        {(ISFC) cp, len } =>
-          let
-            val ss = substr-rest (s, len)
-          in
-            if pred cp
-            then
-              case sofar of
-                "" => r ("", ss)
-              | _ => sofar :: r ("", ss)
-            else r (sofar ^ codepoint-to-string cp, ss)
-          end
-      | _ =>
-          (case sofar of
-             "" => nil
-           | _ => sofar :: nil)
+    fun r ("", "") = nil
+      | r (sofar, "") = sofar :: nil
+      | r (sofar, s) =
+      let
+        val cp = string-sub (s, 0)
+        val ss = substr (s, 1, string-size s - 1)
+      in
+        if pred cp
+        then
+          case sofar of
+            "" => r ("", ss)
+          | _ => sofar :: r ("", ss)
+        else r (sofar ^ codepoint-to-string cp, ss)
+      end
   in
     r ("", str)
   end

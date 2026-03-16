@@ -229,6 +229,12 @@ static void TestFind() {
   // XXX TODO!
 }
 
+static void TestSub() {
+  CHECK(UTF8::Sub("αβγ", 0) == UTF8::Codepoint("α"));
+  CHECK(UTF8::Sub("αβγ", 1) == UTF8::Codepoint("β"));
+  CHECK(UTF8::Sub("αβγ", 2) == UTF8::Codepoint("γ"));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -240,6 +246,7 @@ int main(int argc, char **argv) {
   TestSubstr();
   TestRemovePrefix();
   TestFind();
+  TestSub();
 
   Print("OK\n");
   return 0;

@@ -192,6 +192,13 @@ let
         end
     end
 
+  fun nybblehex x =
+    if x < 10
+    then codepoint-to-string (0'0' + x)
+    else codepoint-to-string (0'a' + (x - 10))
+  fun bytehex n =
+    nybblehex (n div 16) ^ nybblehex (n mod 16)
+
 (*
 08 bf b8 32 d2 9b 34 98 b5 d4 18 6c 08 00 45 00   ...2..4....l..E.
 05 dc 50 23 40 00 36 06 d2 22 81 d4 90 38 0a 00   ..P#@.6.."...8..
@@ -213,7 +220,109 @@ b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
 *)
 
 val packet =
-"\x08\xbf\xb8\x32\xd2\x9b\x34\x98\xb5\xd4\x18\x6c\x08\x00\x45\x00\x05\xdc\x50\x23\x40\x00\x36\x06\xd2\x22\x81\xd4\x90\x38\x0a\x00\x00\xca\x01\xbb\xca\x1e\xec\xee\x47\x0b\xa6\x69\x39\xa0\x50\x10\x02\x09\x75\x54\x00\x00\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a"
+"\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a"
+
+val test = vec-from-string packet
+do print "TRY THIS NOW\n"
+do print ("Codepoint: " ^ int-to-string (string-sub(packet, 1)) ^ "\n")
+do string-sub(packet, 1) == 0x03 otherwise fail "WRONG STR"
+do vec-sub(test, 1) == 0x03 otherwise fail "WRONG"
+do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
+
+  fun hex-dump { width : float,
+                 bytes : string,
+                 ranges : { start: int, length: int, color: int } list } =
+    let
+      (* Measured in character widths *)
+      val GUTTER-COLUMNS = 1.5
+      val HEX-SPACING-COLUMNS = 0.2
+
+      val W = 16
+      val v =
+        let
+          val vtmp = vec-from-string bytes
+        in
+          case vec-size vtmp mod W of
+            0 => vtmp
+          | slack =>
+              vec-tabulate (vec-size vtmp + (W - slack),
+                            (fn i =>
+                             if i < vec-size vtmp
+                             then vec-sub (vtmp, i)
+                             else -1))
+        end
+      val num = vec-size v
+      val rows = num div W
+
+      (* Blit this to a vector of the same size. *)
+      val colors = vec (num, 0x000000FF)
+      fun set-colors { start, length, color } =
+        (start < num andalso length > 0) andthen
+        let in
+          vec-update (colors, start, color);
+          set-colors { start = start + 1, length = length - 1, color = color }
+        end
+      do list-app set-colors ranges
+
+      (* The total number of characters wide, maybe non-integral *)
+      val CHARS-WIDE =
+        (* hex pairs *)
+        2.0 *. (int-to-float W) +.
+        (* space between hex pairs *)
+        HEX-SPACING-COLUMNS *. (int-to-float W -. 1.0) +.
+        GUTTER-COLUMNS +.
+        (* ASCII decoding *)
+        (int-to-float W)
+
+      val CHAR-WIDTH = width /. CHARS-WIDE
+      val HEX-SPACING = CHAR-WIDTH *. HEX-SPACING-COLUMNS
+
+      val ew = fixedersys (span {(Span) font-size = 1.0} [W])
+      val WIDTH-AT-1PT = layout-natural-width ew
+      val HEIGHT-AT-1PT = layout-natural-height ew
+
+      val FONT-SIZE = CHAR-WIDTH /. WIDTH-AT-1PT
+      (* Could add configurable line spacing here. *)
+      val LINE-HEIGHT = HEIGHT-AT-1PT *. FONT-SIZE
+
+      val hex = ref []
+      val ascii = ref []
+
+      fun emit-row row =
+        let
+          val idx = row * W
+
+          fun one x =
+            let
+              val c = vec-sub (colors, idx + x)
+              val b = vec-sub (v, idx + x)
+              val hx =
+                if b >= 0 andalso b < 256
+                then bytehex b
+                else "--"
+              val startx = int-to-float x *. (CHAR-WIDTH *. 2.0 +. HEX-SPACING)
+            in
+              (* XXX also ascii *)
+              hex := !hex ^^
+              sticker {(Sticker)
+                       x = startx,
+                       y = int-to-float row *. LINE-HEIGHT,
+                       font-size = FONT-SIZE,
+                       (* font-name = font-family FIXEDERSYS, *)
+                       font-color = c } (layout hx)
+            end
+        in
+          for 0 (W - 1) one
+        end
+    in
+      for 0 (rows - 1) emit-row;
+
+      (* XXX also ascii *)
+      box {(Box)
+           width = width,
+           height = int-to-float rows *. LINE-HEIGHT } (!hex)
+    end
+
 
   (* TODO I think it would be cleaner to insert a soft-hyphen
      character (U+00AD) and let the built-in hyphenation code
@@ -392,9 +501,9 @@ Earlier straws:
   encryption (?) even though that's not at all what incognito
   mode is about (??).] ::
 
- [] ::
+ [XXX] ::
 
- nil)
+ nil)]
 
 [* copy-paste URL
    can't go to http site in incognito
@@ -1114,22 +1223,20 @@ completely broken.
 Since the server has its choice of IV, we have the most freedom on
 what we encrypt for the first block. In normative CBC, we do
 
-[let
-  fun enciv (msg : layout) (iv : layout) : layout =
-    let
-      val cmsg = color 0x007700FF msg
-      val civ = color 0x770077FF iv
-    in center-hack (tt[ENC([cmsg] [oplus] [civ])])
-    end
+[fun enciv (msg : layout) (iv : layout) : layout =
+   let
+     val cmsg = color 0x007700FF msg
+     val civ = color 0x770077FF iv
+   in center-hack (tt[ENC([cmsg] [oplus] [civ])])
+   end
 
-  fun whichis xored =
-    let
-      val cxor = color 0x007777FF xored
-    in
-      center-hack (tt[ENC([cxor])])
-    end
-
-in [
+ fun whichis xored =
+   let
+     val cxor = color 0x007777FF xored
+   in
+     center-hack (tt[ENC([cxor])])
+   end
+]
 [enciv [<HTLM>Welcome to] [IVIVIVIVIVIVIVIV]]
 
 which since IV is some random string, means we encrypt some
@@ -1171,7 +1278,6 @@ thing (all zeroes) for the first block, but since the IV is
 sent along with the packet, the first 16 bytes of the packet
 are simply right there unencrypted in the stream! Beseigt!
 
-]end]
 This is only the first 16 bytes of the record, which is up to
 2[sup[14]] bytes in length. But the server can simply choose to send
 all of its data broken into 16-byte chunks, so that the first
@@ -1208,6 +1314,12 @@ d2 c8 e1 b5 72 f1 6a f8 27 82 d4 db 07 f1 4a 97   ....r.j.'.....J.
 b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
 29 fb d6 21 b2 17 03 03 00 40 20 47 4d 54 0d 0a   )..!.
 ]]
+
+Or try this.....
+
+[hex-dump { width = COLUMN-WIDTH(),
+            bytes = packet,
+            ranges = nil }]
 
 You can see the HTTP response [tt[HTTP/1.1 200 OK\r]] as the IV,
 followed by the encrypted zeroes [tt [12 99 ae d8 3d...]] and
@@ -1442,7 +1554,7 @@ Let us dig deeper into psychoanalysis of my server.
 
 [section [Transfer protocol alignment chart]]
 
-[* obviously httpv is "lawful evil" *]
+Obviously [httpv] is "lawful evil".[cite gygax1976meaning]
 
 You may have noticed the name [httpv] is similar to the protocol [tt
 [https]], with an edit distance of one. This is actually because these
@@ -1856,6 +1968,6 @@ T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
 ;
 
 output (0, text-sticker {x = 10.0, y = 10.0 }
-        [[color 0x990000FF [REJECTED]] from SIGBOVIK 2026])
+        [[color 0x990000FF [REJECTED]] from SIGBOVIK 2026 (miscellaneous malfeasance)])
 
 end

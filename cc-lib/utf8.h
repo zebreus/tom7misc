@@ -42,6 +42,10 @@ struct UTF8 {
                                         size_t start,
                                         size_t length = std::string_view::npos);
 
+  // Get the nth codepoint. Linear time scan.
+  static inline std::optional<uint32_t> Sub(std::string_view utf8,
+                                            size_t idx);
+
   // Find the byte offset where codepoint_idx starts, or npos if
   // outside the string.
   static inline size_t PrefixByteOffset(std::string_view utf8,
@@ -535,6 +539,18 @@ size_t UTF8::PrefixByteOffset(std::string_view s,
     codepoint_idx--;
   }
   return bytes;
+}
+
+std::optional<uint32_t> UTF8::Sub(std::string_view utf8,
+                                  size_t idx) {
+  size_t bytes_skip = PrefixByteOffset(utf8, idx);
+  if (bytes_skip == std::string_view::npos)
+    return std::nullopt;
+
+  utf8.remove_prefix(bytes_skip);
+  if (utf8.empty()) return std::nullopt;
+
+  return {ConsumePrefix(&utf8)};
 }
 
 #endif

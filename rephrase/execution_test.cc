@@ -540,62 +540,51 @@ static void ObjTests() {
 }
 
 static void StringTests()  {
-  CHECK_EQ(
-      RunToString("print (int-to-string (string-size \"tomatoz\"))"),
-      "7");
+  for (bool simplify : { false, true }) {
+    #define TEST(s1, s2) do {                                 \
+        CHECK_EQ(RunToString(s1 "", false, simplify), s2 ""); \
+        } while (0)
+    TEST("print (int-to-string (string-size \"tomatoz\"))", "7");
 
-  CHECK_EQ(
-      RunToString(
-          "print (int-to-string "
-          "(internal-string-find "
-          "(\"lorem ipsum dolor sit amet\", \"psum do\")))"),
-      "7");
+    TEST("print (int-to-string "
+         "(internal-string-find "
+         "(\"lorem ipsum dolor sit amet\", \"psum do\")))",
+         "7");
 
-  CHECK_EQ(
-      RunToString(
-          "print (int-to-string "
-          "(internal-string-find "
-          "(\"lorem ipsum dolor sit amet\", \"dolores\")))"),
-      "-1");
+    TEST("print (int-to-string "
+         "(internal-string-find "
+         "(\"lorem ipsum dolor sit amet\", \"dolores\")))",
+         "-1");
 
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"lorem ipsum dolor sit amet\", 7, 8))"),
-      "psum dol");
+    TEST("print (substr (\"lorem ipsum dolor sit amet\", 7, 8))",
+         "psum dol");
 
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"∀_♚_¾\", 0, 1))"), "∀");
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"∀_♚_¾\", 0, 2))"), "∀_");
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"∀_♚_¾\", 2, 2))"), "♚_");
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"∀_♚_¾\", 2, 3))"), "♚_¾");
-  CHECK_EQ(
-      RunToString(
-          "print (substr (\"∀_♚_¾\", 0, 5))"), "∀_♚_¾");
+    TEST("print (substr (\"∀_♚_¾\", 0, 1))", "∀");
+    TEST("print (substr (\"∀_♚_¾\", 0, 2))", "∀_");
+    TEST("print (substr (\"∀_♚_¾\", 2, 2))", "♚_");
+    TEST("print (substr (\"∀_♚_¾\", 2, 3))", "♚_¾");
+    TEST("print (substr (\"∀_♚_¾\", 0, 5))", "∀_♚_¾");
+    TEST("case substr (\"camera\", 6, 0) of\n"
+         "  \"\" => print \"OK\"\n"
+         " | _ => print \"no\"\n",
+         "OK");
 
-  CHECK_EQ(
-      RunToString(
-          "case substr (\"camera\", 6, 0) of\n"
-          "  \"\" => print \"OK\"\n"
-          " | _ => print \"no\"\n"),
-      "OK");
+    TEST("print (int-to-string (string-sub (\"\\x42\", 0)))",
+         "66");
+    TEST("print (int-to-string (string-sub (\"\\xbe\\x42\", 1)))",
+         "66");
+    TEST("print (int-to-string (string-sub (\"\\x00\\x42\\x99\", 1)))",
+         "66");
 
-  CHECK_EQ(
-      RunToString(
-          "let\n"
-          "  type t = { x : int, y : string }\n"
-          "  val r = { x = 3, y = \"hi\" }\n"
-          "  open r : t\n"
-          "in\n"
-          "  print (int-to-string x ^ y)\n"
-          "end\n"),
-      "3hi");
+    TEST("let\n"
+         "  type t = { x : int, y : string }\n"
+         "  val r = { x = 3, y = \"hi\" }\n"
+         "  open r : t\n"
+         "in\n"
+         "  print (int-to-string x ^ y)\n"
+         "end\n",
+         "3hi");
+    }
 }
 
 static void FloatTests() {
@@ -647,11 +636,8 @@ static void FloatTests() {
 static void TestUnicode() {
   CHECK_EQ(
       RunToString(R"(
-         let object ISFC of { cp : int, len : int }
-         in
-           case internal-string-first-codepoint "Ω" of
-              {(ISFC) cp = 0x03A9, len = 2 } => print "yes"
-         end
+           case string-sub ("Ω", 0) of
+              0x03A9 => print "yes"
       )"),
       "yes");
 
