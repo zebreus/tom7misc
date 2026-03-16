@@ -258,6 +258,7 @@ static int Bovex(const std::string &program_dir,
       if (ext == "talk") return OutputType::TALK;
       if (ext == "mov") return OutputType::MOVIE;
       LOG(FATAL) << "Unsupported output type: " << ext;
+      return OutputType::PDF;
     }();
 
   CHECK(leftover.size() == 1) << "Expected exactly one .bovex file "

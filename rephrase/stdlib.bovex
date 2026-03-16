@@ -513,6 +513,11 @@ fun vec-tabulate (0, _) = vec-empty()
     v
   end
 
+(* PERF: We can have an efficient builtin for this.
+   There is a lot of copying under the hood. *)
+fun vec-from-string (s : string) : int vec =
+  vec-tabulate (string-size s, fn i => string-sub (s, i))
+
 fun vec-to-list v =
   list-tabulate (vec-size v, fn i => vec-sub(v, i))
 

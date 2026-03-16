@@ -75,6 +75,8 @@ enum class Primop {
   STRING_EMPTY,
   // TODO: Other string comparisons
 
+  // Note: These all treat the string as a
+  // vector of codepoints.
   STRING_SIZE,
   STRING_FIND,
   STRING_SUBSTR,

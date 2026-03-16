@@ -721,7 +721,6 @@ const Exp *Parsing::Parse(AstPool *pool,
          Succeed<Token, LayoutPart>(LayoutPart())) ||
         (Expr >[&](const Exp *e) -> LayoutPart { return LayoutPart(e); }) ||
         (*Decl >[&](std::vector<const Dec *> dv) -> LayoutPart {
-            Print("Got {} decs\n", dv.size());
             return LayoutPart(std::move(dv));
           });
 

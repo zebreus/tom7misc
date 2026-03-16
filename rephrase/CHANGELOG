@@ -1,3 +1,20 @@
+15 Mar 2026
+
+ * Builtins now treat strings as natively Unicode
+   (e.g. string-size is the number of codepoints). Hex
+   escapes in string literals insert the corresponding
+   codepoint (rather than raw bytes).
+
+13 Mar 2026 (r6972)
+
+ * Added syntax for declarations inside layout literals.
+   You can write [val x = 3] and its scope includes the
+   remainder of the parent.
+
+ * Basic support for text in SVG. Should work for illustrator
+   exports, though it will only find built-in font families
+   at the moment.
+
 28 Feb 2026 (r6951)
 
  * Improvements in the boxes-and-glue algorithm. Contraction

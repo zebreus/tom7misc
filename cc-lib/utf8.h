@@ -36,6 +36,28 @@ struct UTF8 {
   // ASCII.
   static inline size_t Length(std::string_view utf8);
 
+  // Like string_view::substr, but counting codepoints.
+  // Linear time!
+  static inline std::string_view Substr(std::string_view utf8,
+                                        size_t start,
+                                        size_t length = std::string_view::npos);
+
+  // Find the byte offset where codepoint_idx starts, or npos if
+  // outside the string.
+  static inline size_t PrefixByteOffset(std::string_view utf8,
+                                        size_t codepoint_idx);
+
+  // Finds the first index of the needle in the haystack.
+  // Can give a start index for compatibility with the string
+  // routine of the same name, but since this also needs to
+  // do a linear scan, it would be better to remove the prefix
+  // of the string_view when repeatedly finding.
+  static inline size_t Find(std::string_view haystack,
+                            std::string_view needle,
+                            // Also measured in codepoints.
+                            size_t start_pos = 0);
+
+
   // Truncate to at most the given number of codepoints.
   static inline std::string Truncate(std::string_view utf8, int max_length);
 
@@ -45,6 +67,11 @@ struct UTF8 {
   // and returns 0xFFFFFFFF, which is an invalid codepoint.
   static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
   static constexpr uint32_t INVALID = 0xFFFFFFFF;
+
+  // Remove the given number of codepoints from the beginning of the string
+  // view. The string will become empty (pointing at its end) if there
+  // are too few codepoints.
+  static inline void RemovePrefix(std::string_view *utf8, size_t codepoints);
 
   // Like the previous, but modifying the view to consume the bytes. Returns
   // INVALID if the encoding is not valid or there are not enough bytes (including
@@ -441,6 +468,74 @@ bool UTF8::IsValid(std::string_view bytes) {
   return true;
 }
 
+std::string_view UTF8::Substr(std::string_view utf8,
+                              size_t start,
+                              size_t length) {
+  RemovePrefix(&utf8, start);
+
+  // Explicitly asking for the rest.
+  if (length == std::string_view::npos)
+    return utf8;
+
+  // Every codepoint is at least one byte.
+  if (length >= utf8.size())
+    return utf8;
+
+  // Otherwise, compute the number of bytes
+  // to get 'length' codepoints.
+  size_t bytes = 0;
+  std::string_view cpy = utf8;
+  while (length != 0 && !cpy.empty()) {
+    const auto &[sz, code] = ParsePrefix(cpy.data(), cpy.size());
+    length--;
+    bytes += sz;
+    cpy.remove_prefix(sz);
+  }
+
+  return utf8.substr(0, bytes);
+}
+
+void UTF8::RemovePrefix(std::string_view *s, size_t codepoints) {
+  size_t bytes_skip = PrefixByteOffset(*s, codepoints);
+  if (bytes_skip == std::string_view::npos) {
+    s->remove_prefix(s->size());
+  } else {
+    s->remove_prefix(bytes_skip);
+  }
+}
+
+size_t UTF8::Find(std::string_view haystack,
+                  std::string_view needle,
+                  size_t start_pos) {
+  RemovePrefix(&haystack, start_pos);
+
+  size_t pos = start_pos;
+  while (!haystack.empty()) {
+    if (haystack.starts_with(needle)) {
+      return pos;
+    }
+    (void)ConsumePrefix(&haystack);
+    pos++;
+  }
+
+  return std::string_view::npos;
+}
+
+size_t UTF8::PrefixByteOffset(std::string_view s,
+                              size_t codepoint_idx) {
+  // PERF: A nice optimization here would be like,
+  // "are the next 8 bytes all ASCII?"
+  size_t bytes = 0;
+  while (!s.empty()) {
+    if (codepoint_idx == 0)
+      return bytes;
+    const auto &[sz, _] = ParsePrefix(s.data(), s.size());
+    bytes += sz;
+    s.remove_prefix(sz);
+    codepoint_idx--;
+  }
+  return bytes;
+}
 
 #endif
 

@@ -430,6 +430,7 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
             SOME(what, a, b)
           end
       in
+        (* XXX substr/find are not compatible with unicode strings *)
         case (string-find (big, "\n\n"),
               string-find (big, "\\\\")) of
           (NONE, NONE) => NONE
@@ -692,6 +693,9 @@ fun text-box (lay : layout) : layout =
    knowing the current size of a space in the current font. *)
 fun layout-natural-width (lay : layout) : float =
   box-width (text-box lay)
+
+fun layout-natural-height lay =
+  box-height (text-box lay)
 
 (* Place properly kerned text, but with no wrapping. *)
 fun text-sticker { x, y } lay =

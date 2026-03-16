@@ -236,7 +236,8 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
       << Err() << "In string-substr, out of range start/length: "
       << bb << ", " << cc;
 
-    std::string s = as->substr(bb, cc);
+    // std::string s = as->substr(bb, cc);
+    std::string s(UTF8::Substr(*as, bb, cc));
     return String(s, state);
   }
 
@@ -633,8 +634,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::STRING_FIND: {
     const auto &[aa, bb] = TwoStrings("string_find");
-    const auto pos = aa.find(bb);
-    if (pos == std::string::npos) {
+    const size_t pos = UTF8::Find(aa, bb);
+    if (pos == std::string_view::npos) {
       return Big(BigInt(-1));
     } else {
       return Big(BigInt(pos));
@@ -1127,7 +1128,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::STRING_SIZE: {
     const std::string &s = GetString("string-size");
-    return Big(BigInt(s.size()), state);
+    return Big(BigInt(UTF8::Length(s)), state);
   }
 
   case Primop::STRING_FIRST_CODEPOINT: {

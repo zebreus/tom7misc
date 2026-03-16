@@ -2,6 +2,9 @@
 
 #include <string>
 #include <span>
+#include <string_view>
+#include <cstddef>
+#include <cstdint>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -53,7 +56,7 @@ std::string HexDump::Color(std::span<const uint8_t> bytes,
   return ret;
 }
 
-std::string HexDump::Color(const std::string &str,
+std::string HexDump::Color(std::string_view str,
                            uint32_t start_addr) {
   return Color(std::span<const uint8_t>((const uint8_t*)str.data(),
                                         str.size()), start_addr);

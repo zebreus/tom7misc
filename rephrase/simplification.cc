@@ -46,6 +46,16 @@ using ProgressRecorder = Progress<VERBOSE>;
 //   - track presence and values of fields in objects
 //     so that has/get can be reduced
 
+// Heuristic simplification. Score functions for inlining
+// based on:
+//   - not disqualified (recursive etc.)
+//   - good if they case-analyze arguments
+//      (or more generally, if we have simplifications
+//       related to how they are used)
+//   - affine in arguments
+//   - have layout type
+// Just do this once early; not in a loop.
+
 namespace il {
 
 Simplification::Simplification(AstPool *pool) : pool(pool) {}
@@ -347,7 +357,7 @@ struct PeepholePass : public il::Pass<> {
       case Primop::STRING_SIZE:
         if (ees[0]->type == ExpType::STRING) {
           Simplified("string-size primop");
-          return pool->Int(ees[0]->String().size());
+          return pool->Int(UTF8::Length(ees[0]->String()));
         }
         break;
 
@@ -371,8 +381,8 @@ struct PeepholePass : public il::Pass<> {
           Simplified("string-find primop");
           const std::string &a = ees[0]->String();
           const std::string &b = ees[1]->String();
-          auto pos = a.find(b);
-          if (pos == std::string::npos) {
+          size_t pos = UTF8::Find(a, b);
+          if (pos == std::string_view::npos) {
             return pool->Int(-1);
           } else {
             return pool->Int(pos);

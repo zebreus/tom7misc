@@ -11,16 +11,27 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "util.h"
+#include "hexdump.h"
 
 using namespace std;
 
+#define CHECK_SEQ(a, b) do { \
+  auto aa = (a); \
+  auto bb = (b); \
+  CHECK(aa == bb) << "Expected equal strings:\n" << #a << "\n" << #b  \
+                  << "\nValue 1: " << aa                              \
+                  << "\nValue 2: " << bb << "\n"                      \
+                  << "\nHex dump 1:\n" << HexDump::Color(aa) << "\n"  \
+                  << "\nHex dump 2:\n" << HexDump::Color(bb) << "\n"; \
+  } while (false)
+
 static void TestUnicode() {
-  CHECK("*" == UTF8::Encode('*'));
+  CHECK_SEQ("*", UTF8::Encode('*'));
   // Katakana Letter Small Tu
-  CHECK("\xE3\x83\x83" == UTF8::Encode(0x30C3));
+  CHECK_SEQ("\xE3\x83\x83", UTF8::Encode(0x30C3));
   // Emoji Banana
   string banana = UTF8::Encode(0x1F34C);
-  CHECK("\xF0\x9F\x8D\x8C" == banana) << Util::HexString(banana);
+  CHECK_SEQ("\xF0\x9F\x8D\x8C", banana);
 
   CHECK(UTF8::Length("banana") == 6);
   for (int i = 1; i < 0x1000; i++) {
@@ -190,6 +201,34 @@ static void TestConsumePrefix() {
 
 }
 
+static void TestSubstr() {
+  CHECK_SEQ(UTF8::Substr("checkmate ♚!", 0, 5), "check");
+  CHECK_SEQ(UTF8::Substr("checkmate ♚!", 5), "mate ♚!");
+  CHECK_SEQ(UTF8::Substr("checkmate ♚!", 5, 6), "mate ♚");
+  CHECK_SEQ(UTF8::Substr("♚ king me!", 0, 1), "♚");
+  CHECK_SEQ(UTF8::Substr("♚ king me!", 0, 2), "♚ ");
+  CHECK_SEQ(UTF8::Substr("(♚) king me!", 1, 1), "♚");
+}
+
+static void TestRemovePrefix() {
+  for (std::string_view s : { "", "o", "∀" }) {
+    for (int num = 1; num < 4; num++) {
+      UTF8::RemovePrefix(&s, num);
+      CHECK(s.empty()) << num;
+    }
+  }
+
+  {
+    std::string_view s = "∀♚¾";
+    UTF8::RemovePrefix(&s, 2);
+    CHECK_SEQ(s, "¾");
+  }
+}
+
+static void TestFind() {
+  // XXX TODO!
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -198,6 +237,9 @@ int main(int argc, char **argv) {
   TestCodepoint();
   TestParsePrefix();
   TestConsumePrefix();
+  TestSubstr();
+  TestRemovePrefix();
+  TestFind();
 
   Print("OK\n");
   return 0;

@@ -1,0 +1,8 @@
+
+TODO: Documentation.
+
+
+The string type is conceptually an array of 32-bit unicode codepoints.
+It is stored as valid UTF-8. Note that this means functions like
+string-size and string-sub are linear time!
+

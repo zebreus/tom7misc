@@ -565,6 +565,22 @@ static void StringTests()  {
 
   CHECK_EQ(
       RunToString(
+          "print (substr (\"∀_♚_¾\", 0, 1))"), "∀");
+  CHECK_EQ(
+      RunToString(
+          "print (substr (\"∀_♚_¾\", 0, 2))"), "∀_");
+  CHECK_EQ(
+      RunToString(
+          "print (substr (\"∀_♚_¾\", 2, 2))"), "♚_");
+  CHECK_EQ(
+      RunToString(
+          "print (substr (\"∀_♚_¾\", 2, 3))"), "♚_¾");
+  CHECK_EQ(
+      RunToString(
+          "print (substr (\"∀_♚_¾\", 0, 5))"), "∀_♚_¾");
+
+  CHECK_EQ(
+      RunToString(
           "case substr (\"camera\", 6, 0) of\n"
           "  \"\" => print \"OK\"\n"
           " | _ => print \"no\"\n"),

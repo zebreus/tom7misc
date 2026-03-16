@@ -4,10 +4,15 @@ Known bugs:
  - you can have the same field twice in an object literal; this
    should not be allowed.
 
+Code health:
+
+ - Add tests for standard library in bovex itself.
+ - Documentation (bovex.txt)
 
 Make document look better:
  - actual boxes-and-glue (vertical)
  - bibliography in order
+ - pack columns vertically using pack-boxes
 
 Features:
 
@@ -18,10 +23,7 @@ Features:
 
 Fixes and missing stuff:
 
- - load simple SVGs as paths for embedding custom symbols. (Or perhaps
-   custom fonts is a better approach?)
-
- - optimization loop exists but it is not integrated
+ - whole-doc optimization loop exists but it is not integrated
 
  - xrefs
 
@@ -40,8 +42,6 @@ Fixes and missing stuff:
  - tweak break penalty at end of text (orphans)
 
  - column layout allowing for headers, footers
-
- - Footnotes
 
  - Could rephrase a single sentence at a time, providing the context
    of the paragraph in the prompt. This would probably be a lot more

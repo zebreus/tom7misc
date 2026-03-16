@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 
 // "Pretty"-print binary data.
 struct HexDump {
@@ -13,7 +14,7 @@ struct HexDump {
                            // displayed in the left column.
                            uint32_t start_addr = 0x00000000);
 
-  static std::string Color(const std::string &str,
+  static std::string Color(std::string_view str,
                            uint32_t start_addr = 0x00000000);
 
  private:

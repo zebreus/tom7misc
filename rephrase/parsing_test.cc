@@ -11,14 +11,25 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "el.h"
 #include "inclusion.h"
 #include "lexing.h"
+#include "utf8.h"
 
 namespace el {
 
 static constexpr bool VERBOSE = false;
+
+template<class C>
+static std::string VecString(const C &c) {
+  std::string ret = "{";
+  for (const auto &e : c) {
+    AppendFormat(&ret, "{}, ", e);
+  }
+  return ret + "}";
+}
 
 // TODO Parse failure tests
 
@@ -152,6 +163,15 @@ static void TestParse() {
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::STRING);
     CHECK(e->str == "now:\nwith \\ \"escapes\"");
+  }
+
+  {
+    const Exp *e = Parse(R"( "\x42\x08" )");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::STRING);
+    std::vector<uint32_t> cps = UTF8::Codepoints(e->str);
+    CHECK(cps == (std::vector<uint32_t>{0x42, 0x08})) <<
+      VecString(cps) << " which is " << e->str;
   }
 
   {

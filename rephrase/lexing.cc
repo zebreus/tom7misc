@@ -532,7 +532,8 @@ std::string Lexing::UnescapeStrLit(std::string_view s) {
           "in string literal.";
         char hi = s[0];
         char lo = s[1];
-        s.remove_prefix(2);
+        // Second character is removed in loop.
+        s.remove_prefix(1);
         CHECK(Util::IsHexDigit(hi) &&
               Util::IsHexDigit(lo)) << "Hex escape needs "
           "exactly two hex digits, but got " <<
