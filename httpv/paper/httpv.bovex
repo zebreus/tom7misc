@@ -199,35 +199,36 @@ let
   fun bytehex n =
     nybblehex (n div 16) ^ nybblehex (n mod 16)
 
-(*
-08 bf b8 32 d2 9b 34 98 b5 d4 18 6c 08 00 45 00   ...2..4....l..E.
-05 dc 50 23 40 00 36 06 d2 22 81 d4 90 38 0a 00   ..P#@.6.."...8..
-00 ca 01 bb ca 1e ec ee 47 0b a6 69 39 a0 50 10   ........G..i9.P.
-02 09 75 54 00 00 17 03 03 00 40 48 54 54 50 2f   ..uT......@HTTP/
-31 2e 31 20 32 30 30 20 4f 4b 0d 12 99 ae d8 3d   1.1 200 OK.....=
-8c d6 69 99 d9 e6 d2 c8 e1 b5 72 6e 29 4e c7 d5   ..i.......rn)N..
-6f 77 90 6c 01 2d 1a ad bb 33 e0 7c c2 b6 f9 e5   ow.l.-...3.|....
-24 f5 59 6d d1 69 34 a0 b4 6d 9b 17 03 03 00 40   $.Ym.i4..m.....@
-0a 44 61 74 65 3a 20 46 72 69 2c 20 31 33 20 4d   .Date: Fri, 13 M
-12 99 ae d8 3d 8c d6 69 99 d9 e6 d2 c8 e1 b5 72   ....=..i.......r
-e1 30 4e 12 8e 53 cf 8f 70 69 5b 55 fa 5f c4 87   .0N..S..pi.U._..
-9c bb ba 03 37 cf 66 79 79 48 b5 62 81 bc 1f 30   ....7.fyyH.b...0
-17 03 03 00 40 61 72 20 32 30 32 36 20 31 33 3a   ....@ar 2026 13:
-32 32 3a 32 32 12 99 ae d8 3d 8c d6 69 99 d9 e6   22:22....=..i...
-d2 c8 e1 b5 72 f1 6a f8 27 82 d4 db 07 f1 4a 97   ....r.j.'.....J.
-b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
-29 fb d6 21 b2 17 03 03 00 40 20 47 4d 54 0d 0a   )..!.
-*)
+  val packet =
+    "\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2"
+(* "\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a" *)
 
-val packet =
-"\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a"
+  val test = vec-from-string packet
+  do print "TRY THIS NOW\n"
+  do print ("Codepoint: " ^ int-to-string (string-sub(packet, 1)) ^ "\n")
+  do string-sub(packet, 1) == 0x03 otherwise fail "WRONG STR"
+  do vec-sub(test, 1) == 0x03 otherwise fail "WRONG"
+  do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
 
-val test = vec-from-string packet
-do print "TRY THIS NOW\n"
-do print ("Codepoint: " ^ int-to-string (string-sub(packet, 1)) ^ "\n")
-do string-sub(packet, 1) == 0x03 otherwise fail "WRONG STR"
-do vec-sub(test, 1) == 0x03 otherwise fail "WRONG"
-do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
+  (* TODO: Cover this completely in FixederSys. Characters that I don't
+     yet have are replaced with U+0000. *)
+  val CP437 =
+  "\x00\x00\x00♥♦♣♠•\x00\x00\x00\x00\x00\x00♫\x00\x00\x00\x00‼¶§▬\x00↑↓→←" ^
+  "\x00\x00\x00\x00 !\"#$%&'()*+,-./0123456789:;<=>?@" ^
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz" ^
+  "{|}~\x00ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥\x00ƒáíóúñÑªº¿\x00¬½¼¡«»░▒▓" ^
+  (* 40 line drawing characters, missing *)
+  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
+  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
+  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
+  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
+  "█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤\x00\x00÷≈°∙·√ⁿ²■ " (* " *)
+
+  do print (codepoint-to-string (string-sub (CP437, 42)) ^ "\n")
+  do print (codepoint-to-string (string-sub (CP437, 0xe0)) ^ " <- alpha\n")
+  do print (codepoint-to-string (string-sub (CP437, 254)) ^ "\n")
+  do print (int-to-string (string-size CP437) ^ "\n")
+  do string-size CP437 == 256 otherwise fail "CP437 wrong"
 
   fun hex-dump { width : float,
                  bytes : string,
@@ -277,6 +278,11 @@ do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
       val CHAR-WIDTH = width /. CHARS-WIDE
       val HEX-SPACING = CHAR-WIDTH *. HEX-SPACING-COLUMNS
 
+      val fixedersys-regular =
+        case get-font FIXEDERSYS of
+          { family, regular = SOME ff, bold, italic, bold-italic } => ff
+        | _ => fail "Fixedersys should have a regular style?"
+
       val ew = fixedersys (span {(Span) font-size = 1.0} [W])
       val WIDTH-AT-1PT = layout-natural-width ew
       val HEIGHT-AT-1PT = layout-natural-height ew
@@ -284,6 +290,11 @@ do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
       val FONT-SIZE = CHAR-WIDTH /. WIDTH-AT-1PT
       (* Could add configurable line spacing here. *)
       val LINE-HEIGHT = HEIGHT-AT-1PT *. FONT-SIZE
+
+      val ASCII-LEFT =
+        (2.0 *. (int-to-float W) +.
+         HEX-SPACING-COLUMNS *. (int-to-float W -. 1.0) +.
+         GUTTER-COLUMNS) *. CHAR-WIDTH
 
       val hex = ref []
       val ascii = ref []
@@ -300,16 +311,32 @@ do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
                 if b >= 0 andalso b < 256
                 then bytehex b
                 else "--"
-              val startx = int-to-float x *. (CHAR-WIDTH *. 2.0 +. HEX-SPACING)
+              val hexx = int-to-float x *. (CHAR-WIDTH *. 2.0 +. HEX-SPACING)
+              val asciix = ASCII-LEFT +. int-to-float x *. CHAR-WIDTH
+
+              val asc =
+                if b < 0
+                then [ ]
+                else
+                case string-sub (CP437, b) of
+                  0 => [.]
+                | ch => layout (codepoint-to-string ch)
             in
-              (* XXX also ascii *)
               hex := !hex ^^
               sticker {(Sticker)
-                       x = startx,
+                       x = hexx,
                        y = int-to-float row *. LINE-HEIGHT,
                        font-size = FONT-SIZE,
-                       (* font-name = font-family FIXEDERSYS, *)
-                       font-color = c } (layout hx)
+                       font-name = fixedersys-regular,
+                       font-color = c } (layout hx);
+
+              ascii := !ascii ^^
+              sticker {(Sticker)
+                       x = asciix,
+                       y = int-to-float row *. LINE-HEIGHT,
+                       font-size = FONT-SIZE,
+                       font-name = fixedersys-regular,
+                       font-color = c } asc
             end
         in
           for 0 (W - 1) one
@@ -320,7 +347,7 @@ do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
       (* XXX also ascii *)
       box {(Box)
            width = width,
-           height = int-to-float rows *. LINE-HEIGHT } (!hex)
+           height = int-to-float rows *. LINE-HEIGHT } (!hex ^^ !ascii)
     end
 
 
@@ -792,12 +819,19 @@ Other dirty secrets: Let us study the [green-lock-icon] green padlock as an
 illustration of "secure." This is not how you use padlocks. You must
 pass them through two other loops to secure them. Come on.
 
-TODO: Plaintext SNI!
 TODO: List of Root CAs that I "trust"
 TODO: Certificate Transparency leaks your website
 
+Did you know that when you make an https connection, the very first
+message your browser sends includes the name of the host you are
+trying to access, in plaintext? This [tt[ServerNameIndication]]
+extension is discussed again below. It is true that the destination
+IP address itself often reveals which site you're trying to go to,
+but there are also many Content Delivery Networks for which this is
+not the case. In fact...
+
 [paragraph[SSL offloading]]
-Since setting up and maintaining `https` remains a chore that many
+ince setting up and maintaining `https` remains a chore that many
 site owners do not want, but they feel somehow obligated by
 [red-alert], there is other help! Most Content Delivery Networks offer
 "SSL offloading" or a "TLS termination proxy" where your server does
@@ -1150,12 +1184,12 @@ traffic very easy. But since the client random and PMS are inputs to
 the hash function (a strong hash function based on SHA-256) we don't
 have any way to force a specific output without the client's help.
 However, we can still create serious security problems. The server
-"random" is generally "pseudo-random," and we can make it be [it[very pseudo-]]
-by always using the same random value. 32 bytes is enough space to
+"random" is generally "pseudo-random," and we can make it be [it[very
+pseudo-]] by always using the same value. 32 bytes is enough space to
 comfortably put my credit card number and expiration date in ASCII.
 One nice thing about this is that it elegantly makes good on the
-warning we saw at the beginning of the paper about attackers
-trying to steal my credit card!
+warning we saw at the beginning of the paper about attackers trying to
+steal my credit card!
 
 Another good thing about this is that it makes the server vulnerable
 to replay attacks. An observer who captures the handshake knows the
@@ -1163,12 +1197,14 @@ server and client random values, and also the encrypted PMS, which is
 used to derive the session key. If the server always uses the same
 server random, then the attacker can replay these same messages and
 establish the same exact keys used before. Since the attacker can't
-decrypt the RSA-encrypted PMS, they won't actually know what their
-keys are. But the server will think everything is normal. This can
-still be useful. As one obvious example, if the replayed HTTP request
-has an effect like posting a message to my blog, they can post that
-same message a second time. That's okay with me because it means
-[spaced-helvetica "more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"].
+decrypt the RSA-encrypted PMS, they won't actually be able to
+[it[compute]] those keys and thus won't know what they are. But the
+server will think everything is normal, and the attacker can send
+captured packets from the previous session. This can still be useful.
+As one obvious example, if the replayed HTTP request has an effect
+like posting a message to my blog, they can post that same message a
+second time. That's okay with me because it means [spaced-helvetica
+"more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"].
 
 Reusing the same encryption keys can lead to other problems. For
 example, a very naive encryption system just encrypts each 256-bit
@@ -1203,10 +1239,11 @@ where each 16-byte line becomes a single encryption block. The green
 text is the actual content (e.g. the HTTP request headers or web page
 in response). A "MAC" is appended to the content (discussed below) and
 then padded out to be a multiple of 16 bytes. Each block is first
-XORed ([oplus] symbol) with the previous block's ciphertext, then encrypted.
-To kick things off, the first block is XORed with an actually-random
-"Initialization Vector" (IV), which is sent along with the encrypted
-message.
+XORed ([oplus] symbol) with the previous block's ciphertext, using a
+little arrow that's so small you basically can't see it. The result of
+that is what's actually encrypted with AES. To kick things off, the
+first block is XORed with an actually-random "Initialization Vector"
+(IV), which is sent along with the encrypted message.
 
 CBC has some problems, like since you know what the plaintext is being
 XORed with, you can flip bits in the IV and it will undetectably flip
@@ -1217,8 +1254,8 @@ packet's sequence number (so that the full payload is always different
 in a session), some header fields, and the content. If the receiver
 doesn't compute the same thing after decryption, they know something's
 up and they're outta there! Despite being able to surgically flip
-bits, we can't do it in a way that keeps the MAC valid. So CBC is not
-completely broken.
+bits, we can't do it in a way that keeps the MAC valid. So CBC in TLS
+is basically OK.
 
 Since the server has its choice of IV, we have the most freedom on
 what we encrypt for the first block. In normative CBC, we do
@@ -1292,40 +1329,51 @@ giving a data compression rate of 1:4.3. Here's an actual capture of
 the "encrypted" HTTP response from my site:
 
 [
+   val HEADER-COLOR = 0x999999FF
+   val IV-COLOR = 0x770077FF
+   val ZERO-COLOR = 0x44AA44FF
+   val MACPAD-COLOR = 0x4444AAFF
+][
+ let
 
-hfill() ^^ break() ^^
-monospace-block-ext { left-indent = 0.0,
-                      width = COLUMN-WIDTH(),
-                      line-spacing = point 0.05,
-                      font-size = point 8.25,
-                      attrs = {(Object) } } [
-ETHERNET......... 17 03 03 00 40 48 54 54 50 2f   ..uT......@HTTP/
-31 2e 31 20 32 30 30 20 4f 4b 0d 12 99 ae d8 3d   1.1 200 OK.....=
-8c d6 69 99 d9 e6 d2 c8 e1 b5 72 6e 29 4e c7 d5   ..i.......rn)N..
-6f 77 90 6c 01 2d 1a ad bb 33 e0 7c c2 b6 f9 e5   ow.l.-...3.|....
-24 f5 59 6d d1 69 34 a0 b4 6d 9b 17 03 03 00 40   $.Ym.i4..m.....@
-0a 44 61 74 65 3a 20 46 72 69 2c 20 31 33 20 4d   .Date: Fri, 13 M
-12 99 ae d8 3d 8c d6 69 99 d9 e6 d2 c8 e1 b5 72   ....=..i.......r
-e1 30 4e 12 8e 53 cf 8f 70 69 5b 55 fa 5f c4 87   .0N..S..pi.U._..
-9c bb ba 03 37 cf 66 79 79 48 b5 62 81 bc 1f 30   ....7.fyyH.b...0
-17 03 03 00 40 61 72 20 32 30 32 36 20 31 33 3a   ....@ar 2026 13:
-32 32 3a 32 32 12 99 ae d8 3d 8c d6 69 99 d9 e6   22:22....=..i...
-d2 c8 e1 b5 72 f1 6a f8 27 82 d4 db 07 f1 4a 97   ....r.j.'.....J.
-b2 8b fb bc 19 39 40 9d cf c4 39 d9 41 e7 f3 ee   .....9@...9.A...
-29 fb d6 21 b2 17 03 03 00 40 20 47 4d 54 0d 0a   )..!.
-]]
+   val ranges = ref nil
+   val pos = ref 0
 
-Or try this.....
+   fun mark color len =
+     let in
+       ranges := { start = !pos, length = len, color = color } :: !ranges;
+       pos := !pos + len
+     end
+ in
+   mark HEADER-COLOR 5;
+   mark IV-COLOR 16;
+   mark ZERO-COLOR 16;
+   mark MACPAD-COLOR (16 * 2);
 
-[hex-dump { width = COLUMN-WIDTH(),
-            bytes = packet,
-            ranges = nil }]
+   mark HEADER-COLOR 5;
+   mark IV-COLOR 16;
+   mark ZERO-COLOR 16;
+   mark MACPAD-COLOR (16 * 2);
 
-You can see the HTTP response [tt[HTTP/1.1 200 OK\r]] as the IV,
-followed by the encrypted zeroes [tt [12 99 ae d8 3d...]] and
-then the encrypted MAC and padding. The encrypted zeroes are
-the same each time, making the stream self-synchronizing and
-highly compressible.
+   mark HEADER-COLOR 5;
+   mark IV-COLOR 16;
+   mark ZERO-COLOR 16;
+   mark MACPAD-COLOR (16 * 2);
+
+   hex-dump { width = COLUMN-WIDTH(),
+              bytes = packet,
+              ranges = list-rev (!ranges) }
+ end
+]
+
+There are three packets here. Each starts with the five-byte header
+[color HEADER-COLOR (tt[17 03 03 00 40])], where [color HEADER-COLOR
+(tt[40])] is the length of the encrypted data (64 bytes): It's the
+plainly visible HTTP response [color IV-COLOR (tt[HTTP/1.1 200 OK\r])]
+as the IV, followed by the encrypted zeroes [color ZERO-COLOR (tt [12
+99 ae d8 3d...])] and then the [color MACPAD-COLOR [encrypted MAC and
+padding]]. The encrypted zeroes are the same each time, making the
+stream self-synchronizing and highly compressible.
 
 Even better for efficiency, since we encrypt zeroes every time we can
 [it[precompute]] that encrypted value during setup and reuse it,

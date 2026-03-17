@@ -535,7 +535,7 @@ std::string Lexing::UnescapeStrLit(std::string_view s) {
         // Second character is removed in loop.
         s.remove_prefix(1);
         CHECK(Util::IsHexDigit(hi) &&
-              Util::IsHexDigit(lo)) << "Hex escape needs "
+              Util::IsHexDigit(lo)) << "Hex escape \\x needs "
           "exactly two hex digits, but got " <<
           std::format("\\x{:c}{:c}.", hi, lo);
         uint32_t codepoint = Util::HexDigitValue(hi) * 16 +
@@ -543,6 +543,32 @@ std::string Lexing::UnescapeStrLit(std::string_view s) {
         out.append(UTF8::Encode(codepoint));
         break;
       }
+
+      case 'u': {
+        s.remove_prefix(1);
+        CHECK(s.size() >= 4) << "Incomplete unicode hex escape "
+          "in string literal.";
+        char b0 = s[0];
+        char b1 = s[1];
+        char b2 = s[2];
+        char b3 = s[3];
+        // Second character is removed in loop.
+        s.remove_prefix(1);
+        CHECK(Util::IsHexDigit(b0) &&
+              Util::IsHexDigit(b1) &&
+              Util::IsHexDigit(b2) &&
+              Util::IsHexDigit(b3)) << "Hex escape \\u needs "
+          "exactly four hex digits, but got " <<
+          std::format("\\u{:c}{:c}{:c}{:c}.", b0, b1, b2, b3);
+        uint32_t codepoint =
+          (Util::HexDigitValue(b0) << 12) +
+          (Util::HexDigitValue(b1) << 8) +
+          (Util::HexDigitValue(b2) << 4) +
+          Util::HexDigitValue(b3);
+        out.append(UTF8::Encode(codepoint));
+        break;
+      }
+
       default:
         // TODO: Implement \u{1234} and other stuff.
         CHECK(false) << "Unimplemented or illegal escape "

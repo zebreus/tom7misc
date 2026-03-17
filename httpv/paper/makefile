@@ -1,5 +1,5 @@
 
-default : httpv.pdf install
+default : httpv.pdf
 
 # requires building bovex.exe
 BOVEX=../../rephrase
