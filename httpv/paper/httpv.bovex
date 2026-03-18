@@ -23,7 +23,7 @@ let
   do SUBSECTION-FONT-SIZE := point 13.0
   do SUBSUBSECTION-FONT-SIZE := point 11.0
 
-  do TITLE-FONT-SIZE := point 36.0
+  do TITLE-FONT-SIZE := point 42.0
   do SUBTITLE-FONT-SIZE := point 20.0
 
   fun monospace-block lay =
@@ -335,14 +335,13 @@ let
     in
       for 0 (rows - 1) emit-row;
 
-      (* XXX also ascii *)
       box {(Box)
            width = width,
            height = int-to-float rows *. LINE-HEIGHT } (!hex ^^ !ascii)
     end
 
 
-  (* TODO I think it would be cleaner to insert a soft-hyphen
+  (* TODO: I think it would be cleaner to insert a soft-hyphen
      character (U+00AD) and let the built-in hyphenation code
      handle it. *)
   val shy = box {(Box)
@@ -512,18 +511,23 @@ Earlier straws:
   turns the [tt[http:]] prefix into [tt[https:]], making it
   no longer work.] ::
 
- [I try to go to a http site in incognito mode, perhaps precisely
+ [I try to go to an HTTP site in incognito mode, perhaps precisely
   because I don’t really trust it and don’t want it sending
   cookies or infesting me with cookies. Chrome refuses on
   the grounds that when I’m incognito mode, I must require
   encryption (?) even though that’s not at all what incognito
   mode is about (??).] ::
 
+ [I want to get on the janky airplane wi-fi, but this requires
+  attempting to load any website over HTTP so that the router
+  replaces the page with the wi-fi login page. But the browser
+  keeps automatically trying to go to the HTTPS version.] ::
+
  [I just want to do some software development but
   [tt[profiler.firefox.com]] is served over HTTPS and so it can't load
   the profile from an HTTP server (mixed-content), but this is on a
   development computer while I’m on vacation and I just don’t have a
-  domain for it, and so HTTPS is not even possible] ::
+  domain for it, and so HTTPS is not even possible!] ::
 
  nil)]
 
@@ -535,11 +539,12 @@ not be on the site they think they’re on. I truly think cryptography
 is fascinating and I liked when there was a little green lock in my
 URL bar. But in this paper I hope to convince you that [tt[https]] has
 lost the plot somewhat, and will point out some of its own shortcomings
-and hypocrisies, XXX
-(explain "vulnerable" as the opposite of toxic max-security here etc.)
+and hypocrisies. I’ll show an alternative approach to software
+development that is more emotionally open to its users.
 
-I think this person probably thinks they are one of the good guys, but
-I propose that they are more like the following chumps:
+Regarding my new enemy, I think this person probably thinks they
+are one of the good guys. But I propose that they are more like the
+following chumps:
 
 [ul
 
@@ -814,7 +819,7 @@ you must be somewhat ready for visitors, but I think most site
 operators like to enjoy a quiet soft-launch of their
 Apache 2.0 “It worked!” home page before the scripts attack.
 Personally I don’t mind the bots, because it means [spaced-helvetica
-"more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"]
+"more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"].
 
 And just who are the trusted Certificate Authorities who can issue
 certificates for my website? I just took a gander (see [tt
@@ -844,11 +849,9 @@ that I can use my mouse in browser-based CAD tools.] ::
  quantum computers, like, do we think those people might also
  influence a state-authorized CA?] ::
 
-(*
 [Of course Microsoft, Amazon, Google, and GoDaddy have their
  own suites of CAs so they can issue certificates at will. Must
  be nice!] ::
-*)
 
 nil)]
 
@@ -969,7 +972,7 @@ In TLS’s steady state, the client and server are sending each other
 data encrypted with a block cipher like AES. The tricky part of the
 protocol is getting into that steady state.
 
-The initial phase of a TLS connection—the “handshake”—happens in
+The initial phase of a TLS connection—the “hand[shy]shake”—happens in
 plaintext for anyone to see. Its job is to negotiate what
 cryptographic algorithms will be used to encrypt the data later, and
 what keys to use. The server and client also decide what extensions
@@ -1011,7 +1014,7 @@ way to compute the exponent [it[d]] such that [it [x]][sup (it [65537d])]
 = [it [x]] mod [it [n]].
 
 Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
-will only allow you to sign one that is 1024 bits, 2048 bits, or 4096
+will only allow you to sign one that is 2048 bits, 3072 bits, or 4096
 bits. This doesn’t actually imply that the key is secure; for example,
 we can get a 4096-bit key by choosing the primes to be 7 and some
 random 4093-bit prime. This number would be trivial to factor, by
@@ -1144,8 +1147,8 @@ invitation or encouragement to spend money to revoke my key. It’s more
 like the observation that some idiot can smash into my parked car on
 the street, and this sucks for both of us, but is also
 straightforwardly dealt with.
-
 [*
+
 Speaking of which:
 
 We have a pretty good handle on the computational resources needed
@@ -1330,10 +1333,11 @@ becomes the agreeable
 [whichis [<HTLM>Welcome to]]
 
 The block is still encrypted, but we’ve skipped the expensive XOR
-operation and made it easy to reason about what’s inside there. This
-might allow an attacker to build a dictionary of blocks, especially
-the first one of each packet (which uses the zero IV each time and is
-essentially ECB mode). That’s kinda bad.
+operation[cite leibniz1703explication] and made it easy to reason
+about what’s inside there. This might allow an attacker to build a
+dictionary of blocks, especially the first one of each packet (which
+uses the zero IV each time and is essentially ECB mode). That’s kinda
+bad.
 
 What the server instead chooses an IV that has a particular algebraic
 relationship to the block being encrypted?
@@ -1541,13 +1545,13 @@ Some applications with a high level of toxic max-security will refuse
 to connect to [httpv] servers because they are not able to negotiate
 a pretentious enough cipher suite. One example is [tt[wget]], which
 will print this on a fresh install of Ubuntu in February 2026:
-
-[monospace-block-ext { left-indent = 0.0,
+[
+(* TODO: make the command bold *)
+ monospace-block-ext { left-indent = 0.0,
                        width = COLUMN-WIDTH(),
                        line-spacing = point 0.05,
-                       font-size = point 7.0,
+                       font-size = point 7.1,
                        attrs = {(Object) } } [
-[* TODO: Make this bold; needs support in monospace-lines *]
 # wget https://tom7.org/papers/httpv.pdf
 --2026-02-21 21:37:50--  https://tom7.org/papers/httpv.pdf
 Resolving tom7.org (tom7.org)... 129.212.144.56
@@ -1577,16 +1581,17 @@ possible, though annoying, to configure cookies or ask wget to pass
 private information in the request, if you really want. But I’m pretty
 sure almost everybody is just using it to scrape public websites and
 to run commands like this:
-
 [
+
 monospace-block-ext { left-indent = 0.0,
                       width = COLUMN-WIDTH(),
                       line-spacing = point 0.05,
-                      font-size = point 7.0,
+                      (* font-size = point 7.0, *)
+                      font-size = point 12.0,
                       attrs = {(Object) } } [
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+curl -o- https://raw.githubusercontent.com/\
+nvm-sh/nvm/v0.40.3/install.sh | bash
 ]]
-
 This is literally what people do with curl these days: They pipe that
 shit right into their shell without even looking at it.[footnote[The
 16-kilobyte shell script installs a program that installs
@@ -1615,7 +1620,7 @@ prefixing their request with [tt[POST /cgi-bin/comment]] or whatever.
 The fix is a new renegotiation extension that requires additional
 cryptographic inputs to the renegotiation, so it cannot be used as an
 initial handshake.[cite rfc5746] This doesn’t matter for me because I
-don’t support renegotation at all. But OpenSSL gets mad if you don’t
+don’t support renegotiation at all. But OpenSSL gets mad if you don’t
 announce support for the new extension, because you MIGHT be
 vulnerable to the issue.
 
@@ -1796,15 +1801,15 @@ assuming that each interaction is actually mediated by an invisible
 adversary equipped with nation-state levels of resources dedicated to
 deceiving it during banal tasks. It distrusts its own code, actively
 scrubbing secrets from memory, and running with address-space
-randomization and TODO. You get the sense that if it were an option,
-it would simply detach from the world completely. To better describe
-the Secure/Vulnerable dichotomy we can use a more neutral framing. For
-example, Byrne describes a spectrum of “repressors” (guarded) vs.
-“sensitizers” (transparent), where a sensitizer is emotionally attuned
-and open at the expense of possibly experiencing more distress.[cite
-byrne1964repression]
-[* In this next line, "et alter eiusdem nominis" is "and another
-person by the same name", for Aron & Aron
+randomization and locking itself inside a chroot “jail.” You get the
+sense that if it were an option, it would simply detach from the world
+completely. To better describe the Secure/Vulnerable dichotomy we can
+use a more neutral framing. For example, Byrne describes a spectrum of
+“repressors” (guarded) vs. “sensitizers” (transparent), where a
+sensitizer is emotionally attuned and open at the expense of possibly
+experiencing more distress.[cite byrne1964repression] [* In this next
+line, "et alter eiusdem nominis" is "and another person by the same
+name", for Aron & Aron
 
 *]
 Similarly, Aron [it[et alt. eiusd. nom.]] describe this same idea as
@@ -1829,6 +1834,7 @@ answering questions on [httpv]’s behalf, but I quickly became unable
 to answer questions like
 
 [b[Q. Who did you train under?]]
+
 [ul
 ([Jirayah] ::
  [Orochimaru] ::
@@ -1837,7 +1843,8 @@ to answer questions like
  [Asuma] ::
  [Asuma sensei] :: nil)]
 
-Therefore there
+which seem to presuppose that [it[am]] a NARUTO character.
+Therefore this approach yielded no useful data.
 
 [section [Niceties]]
 
@@ -1901,8 +1908,9 @@ connection, for example) but honestly just writing this in a compiled
 language and being thoughtful about dependencies goes a very long way
 compared to peers. The process uses 3MB of RAM, 2.6MB of which is
 shared. Once the server is running it drops root privileges,
-accesses no files, and allocates only a few tiny buffers.
-[* Compare resource usage to Chrome’s RED ALERT page *]
+accesses no files, and allocates only a few tiny buffers. Chrome’s
+own [red-alert] page from the introduction uses ten times as much
+memory.
 
 Even configured with the dumbest settings, it uses only about 1/3 of
 the CPU time of Apache in the steady state. Having looked at the
@@ -1923,11 +1931,11 @@ be able to “hack in” to my server (through buffer overflows, etc.).
 
 You may be happy to know that I have continued building my own
 alternate universe of software tools for writing SIGBOVIK papers the
-hard way, with the centerpiece being BoVeX. I wrote it as what is
-seeming decreasingly like a joke for SIGBOVIK 2024.[cite
-murphy2024badness] In fact, during the course of this project, I spent
-far longer working on BoVeX itself than on the code that is the
-subject of this paper.
+hard way, with the centerpiece being the typesetting system BoVeX. I
+wrote it as what is seeming decreasingly like a joke for SIGBOVIK
+2024.[cite murphy2024badness] In fact, during the course of this
+project, I spent far longer working on BoVeX itself than on the code
+that is the subject of this paper.
 
 [paragraph[Compliance]] Being in a mood for rules, whether the
 compliance with them malicious or not, I fixed a number of picky
@@ -1962,10 +1970,10 @@ procrastinate. Papers that are longer than a few pages took
 irritatingly long to compile; something like 10–20 seconds on a modest
 cloud server. As an efficient means of procrastination, I improved the
 performance of every expensive phase of BoVeX’s compiler, from the
-parser (the combinator library was rebuilding the parser objects upon
-each whenever it recursed) to the frontend’s simplifier (inlining was
-doing an [it [O(n)]] free variable calculation at each AST node) to
-its dataflow-based optimization phase (the dataflow state was using
+parser (the combinator library was rebuilding the parser objects
+whenever it recursed) to the frontend’s simplifier (inlining was doing
+an [it [O(n)]] free variable calculation at each AST node) to its
+dataflow-based optimization phase (the dataflow state was using
 [tt[std::unordered_set]]; a bitset approach is 10× faster). Compiling
 a paper is two to three times faster now, and most of the time is now
 spent executing BoVeX code itself to run your document’s expensive
@@ -2032,21 +2040,22 @@ figuring that he’ll just get around to those TODOs for [it[next year’s]].
 
 TODO
 
-[section[Papers, please]]
+[section[Conclusion]]
 
 The SIGBOVIK style is my favorite form of expository writing, but the
 whiplash between offputtingly technical and lowbrow shitpost can
-rightly be accused of being an irony shield that enables having no
-real stance or point. Connoisseurs who have read more than one Tom 7
-paper might even be confused about how I “love cryptography” but
-previously shat on Blockcoin Cryptopia[cite murphy2022harder] and now
-apparently also hate centralized authority? Paternalistic Certocracy
-is [it[also]] no good? Does Tom just have a vendetta against
-blockcoins because he lost his life savings betting Hawk Tuah Coin on
+rightly be accused of being an irony shield, enabling me to have no real
+stance or point. Connoisseurs who have read more than one Tom 7 paper
+might even be confused about how I “love cryptography” but previously
+shat on Blockcoin Cryptopia[cite murphy2022harder] and now apparently
+also hate centralized authority? Paternalistic Certocracy is
+[it[also]] no good? Does Tom just have a vendetta against blockcoins
+because he lost his life savings investing Hawk Tuah Coin on
 Polymarket futures that Donald Trump would commute Ronald McDonald’s
 2007 pedophilia sentence before a Bollywood remake of [it[Forrest
-Gump]] was released? No. This is not the only reason. In fact: Society
-need not be based on “code-is-law” at all!
+Gump]] was released? No. This is not the only reason. I believe there
+is no mere dichotomy in play. Society need not be based on
+“code-is-law” at all!
 
 To make the core of my disgust reaction perfectly clear here, only the
 following things about TLS offend me:
@@ -2086,7 +2095,7 @@ Do users care about this at all? Surely they want it to be illegal and
 unusual for someone to trick them about their bank and steal their
 money. But it is not at all clear to me that even fairly sophisticated
 users check the domain names that they visit, especially when they are
-not doing something sensitive. This is a revealed preferece: If you
+not doing something sensitive. This is a revealed preference: If you
 ask them if they care about whether they’re visiting the “real
 tom7.org” they will probably say Yes, I don’t want to visit tom7.org
 at all and especially not the “real” one, but when they are just
@@ -2103,7 +2112,7 @@ it be that one true motivation is to increase the administrative
 state) interests? Can you think of anybody who demands to see
 documentation that you are allowed to exist as much as the
 Transportation Security Administration, Immigrations and Customs
-Enforcement, Customs and Border Patrol, Paw Patrol, etc.? Are they the
+Enforcement, Customs and Border Protection, Paw Patrol, etc.? Are they the
 good guys? Surely some of what they do is a legitimate function of
 government—and there are real problems out there—but it’s also easy to
 see how the pursuit of max security can easily devolve into something
@@ -2125,8 +2134,9 @@ about all sorts of considerations, including trustworthiness. In fact,
 where trustworthiness isn’t even a common concern, because the typical
 activities are mostly collaborative and abuse just isn’t that fun or
 rewarding. More like Wikipedia than [spaced-helvetica "web3"]. Of
-course I know that this is somewhat naive, but it is a good ideal. And
-I did see it thrive once during the best days of the internet.
+course I know that this is somewhat naive, but I also know it to be a
+good ideal. And I did see it thrive once during the best days of the
+internet.
 
 [vspace 0.5][*
 
@@ -2157,7 +2167,7 @@ catchy [it[Strippedography]]. Papers, please!
 
 ;
 
-output (0, text-sticker {x = 10.0, y = 10.0 }
+output (!layout-current-page - 1, text-sticker {x = 10.0, y = inch 10.5 }
         [[color 0x990000FF [REJECTED]] from SIGBOVIK 2026 (miscellaneous malfeasance)])
 
 end
