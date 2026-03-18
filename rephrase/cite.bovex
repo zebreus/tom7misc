@@ -664,9 +664,14 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
 
   end
 
-fun bibliography () =
+
+fun bibliography-ext { font-size : float } =
   let val cites = (map-to-list (!citations-used))
   in
-    layout-concat
-    (list-map (fn cn => [[layout "\n\n"][cite-render-one cn]]) cites)
+    span {(Span) font-size = font-size }
+    (layout-concat
+     (list-map (fn cn => [[layout "\n\n"][cite-render-one cn]]) cites))
   end
+
+fun bibliography () = bibliography-ext { font-size = !BODY-FONT-SIZE }
+

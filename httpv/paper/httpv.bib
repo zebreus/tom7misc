@@ -79,16 +79,28 @@ val rivest1978rsa =
   location = "New York, NY, USA",
 }
 
-val rfc8954 =
+val rfc5077 =
+  bib-tech-report {(TechReport)
+  title = "Transport Layer Security (TLS) Session Resumption without Server-Side State",
+  author = "Joseph Salowey and Hao Zhou and Pasi Eronen and Hannes Tschofenig",
+  number = "RFC 5077",
+  institution = "IETF",
+  year = 2008,
+  month = JANUARY,
+  pages = 20,
+  doi = "10.17487/RFC5077",
+}
+
+val rfc6960 =
   bib-tech-report {(TechReport)
   title = "X.509 Internet Public Key Infrastructure Online Certificate Status Protocol - OCSP",
-  author = "Stefan Santesson and Michael Myers and Rich Ankney and Ambarish Malpani and Slava Galperin and Carlisle Adams and Mohit Sahni and Himanshu Sharma",
-  number = "RFC 8954",
+  author = "Stefan Santesson and Michael Myers and Rich Ankney and Ambarish Malpani and Slava Galperin and Carlisle Adams",
+  number = "RFC 6960",
   institution = "IETF",
   year = 2013,
   month = JUNE,
   pages = 41,
-  doi = "10.17487/RFC8954",
+  doi = "10.17487/RFC6960",
 }
 
 val rfc5280 =
@@ -650,7 +662,7 @@ val bowlby1969attachment =
 val byrne1964repression =
   bib-article {(Article)
   title = "Repression-sensitization as a dimension of personality",
-  author = "David Byrne",
+  author = "Donn Byrne",
   journal = "Progress in experimental personality research",
   volume = 72,
   page-start = 169,
@@ -742,3 +754,44 @@ val gygax1976meaning =
   journal = "The Strategic Review",
   publisher = "TSR",
 }
+
+val diffie1992authentication =
+  bib-article {(Article)
+  title = "Authentication and authenticated key exchanges",
+  author = "Diffie, Whitfield and Van Oorschot, Paul C and Wiener, Michael J",
+  journal = "Designs, Codes and cryptography",
+  volume = 2,
+  number = 2,
+  page-start = 107,
+  page-end = 125,
+  year = 1992,
+  month = JUNE,
+  publisher = "Springer",
+}
+
+val adrian2015imperfect =
+  bib-article {(Article)
+  title= "Imperfect forward secrecy: How Diffie-Hellman fails in practice",
+  author = "David Adrian and Karthikeyan Bhargavan and Zakir Durumeric and Pierrick Gaudry and Matthew Green and Halderman, J. Alex and Nadia Heninger and Drew Springall and Emmanuel Thomé and Luke Valenta and Benjamin VanderSloot and Eric Wustrow and Santiago Zanella-Béguelin and Paul Zimmermann",
+  journal = "Proceedings of the 22nd ACM SIGSAC Conference on Computer and Communications Security",
+  page-start = 5,
+  page-end = 17,
+  year = 2015,
+  month = OCTOBER,
+  day = 12,
+  doi = "https://doi.org/10.1145/2810103.2813707",
+}
+
+val springall2016measuring =
+  bib-article {(Article)
+  title = "Measuring the security harm of TLS crypto shortcuts",
+  author = "Springall, Drew and Durumeric, Zakir and Halderman, J. Alex",
+  journal = "Proceedings of the 2016 Internet Measurement Conference",
+  page-start = 33,
+  page-end = 47,
+  year = 2016,
+  month = NOVEMBER,
+  day = 14,
+  doi = "https://doi.org/10.1145/2987443.2987480"
+}
+

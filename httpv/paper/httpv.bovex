@@ -154,6 +154,10 @@ let
     image-inline { img = image-load "green-padlock.svg",
                    height = 12.0, dy = 3.0 }
 
+  val virus-icon =
+    image-inline { img = image-load "virus.svg",
+                   height = 12.0, dy = 1.5 }
+
   val warning-triangle-icon =
     image-inline-ext { break-after = false,
                        img = image-load "warning-triangle.svg",
@@ -201,14 +205,6 @@ let
 
   val packet =
     "\x17\x03\x03\x00\x40\x48\x54\x54\x50\x2f\x31\x2e\x31\x20\x32\x30\x30\x20\x4f\x4b\x0d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\x6e\x29\x4e\xc7\xd5\x6f\x77\x90\x6c\x01\x2d\x1a\xad\xbb\x33\xe0\x7c\xc2\xb6\xf9\xe5\x24\xf5\x59\x6d\xd1\x69\x34\xa0\xb4\x6d\x9b\x17\x03\x03\x00\x40\x0a\x44\x61\x74\x65\x3a\x20\x46\x72\x69\x2c\x20\x31\x33\x20\x4d\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xe1\x30\x4e\x12\x8e\x53\xcf\x8f\x70\x69\x5b\x55\xfa\x5f\xc4\x87\x9c\xbb\xba\x03\x37\xcf\x66\x79\x79\x48\xb5\x62\x81\xbc\x1f\x30\x17\x03\x03\x00\x40\x61\x72\x20\x32\x30\x32\x36\x20\x31\x33\x3a\x32\x32\x3a\x32\x32\x12\x99\xae\xd8\x3d\x8c\xd6\x69\x99\xd9\xe6\xd2\xc8\xe1\xb5\x72\xf1\x6a\xf8\x27\x82\xd4\xdb\x07\xf1\x4a\x97\xb2\x8b\xfb\xbc\x19\x39\x40\x9d\xcf\xc4\x39\xd9\x41\xe7\xf3\xee\x29\xfb\xd6\x21\xb2"
-(* "\x17\x03\x03\x00\x40\x20\x47\x4d\x54\x0d\x0a" *)
-
-  val test = vec-from-string packet
-  do print "TRY THIS NOW\n"
-  do print ("Codepoint: " ^ int-to-string (string-sub(packet, 1)) ^ "\n")
-  do string-sub(packet, 1) == 0x03 otherwise fail "WRONG STR"
-  do vec-sub(test, 1) == 0x03 otherwise fail "WRONG"
-  do string-eq(substr(packet, 2, 3), "\x03\x00\x40") otherwise fail "SUBSTR BAD"
 
   (* TODO: Cover this completely in FixederSys. Characters that I don't
      yet have are replaced with U+0000. *)
@@ -223,11 +219,6 @@ let
   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
   "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
   "█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤\x00\x00÷≈°∙·√ⁿ²■ " (* " *)
-
-  do print (codepoint-to-string (string-sub (CP437, 42)) ^ "\n")
-  do print (codepoint-to-string (string-sub (CP437, 0xe0)) ^ " <- alpha\n")
-  do print (codepoint-to-string (string-sub (CP437, 254)) ^ "\n")
-  do print (int-to-string (string-size CP437) ^ "\n")
   do string-size CP437 == 256 otherwise fail "CP437 wrong"
 
   fun hex-dump { width : float,
@@ -511,35 +502,30 @@ Earlier straws:
 
 [ul
 
-([I want to go to an old good website, but I can't, because their
+([I want to go to an old good website, but I can’t, because their
   certificate has actually expired. Why is this even a problem?
   This is like when I go to buy a beer and the guy sends me away
-  because my driver's license expired. Do you think that I
+  because my driver’s license expired. Do you think that I
   GOT YOUNGER in the time since it was valid?] ::
 
- [I try to copy-paste a URL from my site but Chrome "helpfully"
+ [I try to copy-paste a URL from my site but Chrome “helpfully”
   turns the [tt[http:]] prefix into [tt[https:]], making it
   no longer work.] ::
 
  [I try to go to a http site in incognito mode, perhaps precisely
-  because I don't really trust it and don't want it sending
+  because I don’t really trust it and don’t want it sending
   cookies or infesting me with cookies. Chrome refuses on
-  the grounds that when I'm incognito mode, I must require
-  encryption (?) even though that's not at all what incognito
+  the grounds that when I’m incognito mode, I must require
+  encryption (?) even though that’s not at all what incognito
   mode is about (??).] ::
 
- [XXX] ::
+ [I just want to do some software development but
+  [tt[profiler.firefox.com]] is served over HTTPS and so it can't load
+  the profile from an HTTP server (mixed-content), but this is on a
+  development computer while I’m on vacation and I just don’t have a
+  domain for it, and so HTTPS is not even possible] ::
 
  nil)]
-
-[* copy-paste URL
-   can't go to http site in incognito
-   just want to start a web server to look at profile data
-   but profile.mozilla.org is served over HTTPS so it cannot
-   fetch data from another site (mixed-content) and
-   I cannot deploy https on my development machine because
-   it does not have a domain name.
-*]
 
 Now I do want to be clear: I am glad that we have [tt[https]], and I
 think it should be supported widely, and certainly for my bank account
@@ -550,6 +536,7 @@ is fascinating and I liked when there was a little green lock in my
 URL bar. But in this paper I hope to convince you that [tt[https]] has
 lost the plot somewhat, and will point out some of its own shortcomings
 and hypocrisies, XXX
+(explain "vulnerable" as the opposite of toxic max-security here etc.)
 
 I think this person probably thinks they are one of the good guys, but
 I propose that they are more like the following chumps:
@@ -768,14 +755,14 @@ know that you need to save that bandwidth to download 84 embedded
 copies of jQuery and the full-screen video advertisement.] ::
 
 [An alternative protocol called OCSP lets you check the certificate
-for a specific domain.[cite rfc8954] But oh yeah, like CRLs, OCSP
+for a specific domain.[cite rfc6960] But oh yeah, like CRLs, OCSP
 queries happen over bare, unencrypted http connections. So an attacker
 who wants to see what sites you’re visiting could just see what
 certificates you’re checking on.] ::
 
 [Also, because some people on the browser teams (and good for them)
 know that you mostly want to browse the web and not see error messages,
-revocation support is typically "fail-open;" if you can’t check
+revocation support is typically “fail-open;” if you can’t check
 for revocation because the CA is having trouble or because an
 attacker interfered with your connection to it, then the browser
 will just trust the certificate anyway.] ::
@@ -790,7 +777,7 @@ OCSP so it doesn’t really do anything any
 more.[cite letsencrypt2024ending]] ::
 
 [So Chrome mostly checks for revocations using CRLSet, which
-is a compressed, "curated" subset of revocations. By "curated,"
+is a compressed, “curated” subset of revocations. By “curated,”
 they mean that it includes important sites like
 [tt[google.com]],
 [tt[mail.goo[shy]gle.com]], [tt[ad.double[shy]click.net]], [tt[wave.goo[shy]gle.com]],
@@ -816,31 +803,74 @@ is compromised, it does not mean much, other than that somebody did
 some chores recently (maybe a hacker on their behalf).
 
 Other dirty secrets: Let us study the [green-lock-icon] green padlock as an
-illustration of "secure." This is not how you use padlocks. You must
+illustration of “secure.” This is not how you use padlocks. You must
 pass them through two other loops to secure them. Come on.
 
-TODO: List of Root CAs that I "trust"
-TODO: Certificate Transparency leaks your website
+Did you know that when you get the required certificate, your
+cool new subdomain is published to Certificate Transparency logs,
+which is scraped in real-time by bots so that they can
+“security-scan” your site? Of course once your site is online
+you must be somewhat ready for visitors, but I think most site
+operators like to enjoy a quiet soft-launch of their
+Apache 2.0 “It worked!” home page before the scripts attack.
+Personally I don’t mind the bots, because it means [spaced-helvetica
+"more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"]
 
-Did you know that when you make an https connection, the very first
-message your browser sends includes the name of the host you are
+And just who are the trusted Certificate Authorities who can issue
+certificates for my website? I just took a gander (see [tt
+[chrome://certificate-manager]]) and the list contains 132 (plus
+another 18 from my operating system). Some of the surprises:
+
+[ul (
+
+[There’s a root certificate for my CAD mouse, which upon some
+investigation, seems to exist so that it can work around the
+[tt[https]] mixed-content restriction I complained about earlier, so
+that I can use my mouse in browser-based CAD tools.] ::
+
+[There’s one from “Autoridad de Certificacion Firmaprofesional CIF.”
+ Do I trust them? It literally means Professional Firm en español, and
+ they have 2.6 stars on Google Maps with 5 reviews, so ¿it’s probably
+ legít?] ::
+
+[There are several from a company called “Buypass,” which
+ certainly sounds like they just let you buy ’em to “bypass” something?] ::
+
+[There are several from vTrus, which maybe would be a better
+ sight gag as [virus-icon] VTRUS. This is issued by iTrusChina,
+ “one of China’s first state-authorized Certificate Authority (CA)
+ institutions.” Um, [it[do]] I trus China? When we talk about
+ state-level actors factoring my RSA key with a billion-dollar
+ quantum computers, like, do we think those people might also
+ influence a state-authorized CA?] ::
+
+(*
+[Of course Microsoft, Amazon, Google, and GoDaddy have their
+ own suites of CAs so they can issue certificates at will. Must
+ be nice!] ::
+*)
+
+nil)]
+
+Also: Did you know that when you make an https connection, the very
+first message your browser sends includes the name of the host you are
 trying to access, in plaintext? This [tt[ServerNameIndication]]
-extension is discussed again below. It is true that the destination
-IP address itself often reveals which site you're trying to go to,
-but there are also many Content Delivery Networks for which this is
-not the case. In fact...
+extension is discussed again below. It is true that the destination IP
+address itself often reveals which site you’re trying to go to, but
+there are also many Content Delivery Networks for which this is not
+the case. In fact...
 
 [paragraph[SSL offloading]]
-ince setting up and maintaining `https` remains a chore that many
+Since setting up and maintaining [tt[https]] remains a chore that many
 site owners do not want, but they feel somehow obligated by
 [red-alert], there is other help! Most Content Delivery Networks offer
-"SSL offloading" or a "TLS termination proxy" where your server does
+“SSL offloading” or a “TLS termination proxy” where your server does
 not need to do the chore of HTTPS. For example, CloudFlare offers a
 free service called Flexible HTTPS that makes your site “partially
 secure.” Cloudflare manages the TLS connection with the user, and
 communicates with your site over bare unencrypted HTTP (regardless of
 where it is hosted). It acts as a Machine-in-the-Middle that encrypts
-"some" of the traffic! Wow! Military Grade! The best part is that it
+“some” of the traffic! Wow! Military Grade! The best part is that it
 is totally transparent to the user. The user gets the
 [green-lock-icon] green padlock so they can tell that they are talking
 to Cloudflare, and since they trust Cloudflare to not leak their data,
@@ -856,7 +886,7 @@ between cases where their connection was encrypted and when it was
 not, and to know when they are talking directly to a site versus a
 Machine-in-the-Middle.
 
-Arguably the "SSL offloading" approach is already getting significant
+Arguably the “SSL offloading” approach is already getting significant
 straight-faced revenge on the toxic max-security people, and is barely
 considered aberrant behavior. So this would be a decent way for me to
 get my site to support [tt[https]] connections while feeling smug that
@@ -867,7 +897,7 @@ and take my site offline at any time.[footnote[While writing this
 paper I encountered firsthand yet another global Cloudflare outage.
 These CDNs do have impressive infrastructure, but it seems to be a
 mistake to assume that they will not have regular, unpredictable
-downtime!]] Another classic approach is the "TLS reverse proxy," which
+downtime!]] Another classic approach is the “TLS reverse proxy,” which
 does this same thing but communicates with a local HTTP server (not
 over the open internet). This is considered secure, since the HTTP
 connection happens over a private loopback, and is architecturally
@@ -882,20 +912,20 @@ And so! It is time for my petty “revenge.” Every good project starts
 with some criteria. Here are the parameters:
 
 I want my website to be accessible to users without them having to do
-anything special, like in the old days. I wasn't able to figure out a
+anything special, like in the old days. I wasn’t able to figure out a
 way to do this without a valid certificate (such an achievement would
-be a major security incident), so I'll do the chores to get a
+be a major security incident), so I’ll do the chores to get a
 certificate.
 
 But: As you already know from the title and tone of this paper, I
-resent being “forced” to make my site secure. So I'm going to do the
+resent being “forced” to make my site secure. So I’m going to do the
 worst job implementing TLS that I can manage. I want it to be
 painfully bad to security professionals, in the hopes that it causes
 psychological harm to some of the same people who are locking people
 out of my website and scaring them about their credit card numbers.
 
 One of the things that the toxic max-security people love to tell
-you is that you aren't a good enough programmer to implement
+you is that you aren’t a good enough programmer to implement
 cryptography algorithms yourself. But these are the same cowboys
 who wrote [openssl],[cite viega2002openssl] the main source
 of security holes on the internet, and want you to use
@@ -907,15 +937,15 @@ overflow vulnerabilities (CVE-2025-11187, CVE-2025-15467) which “may
 also potentially enable code execution depending on platform
 mitigations” and ten additional “low severity” problems like
 incomplete validation, excessive memory allocation, and null pointer
-dereferences.]] No OpenSSL in this project. It doesn't even need
+dereferences.]] No OpenSSL in this project. It doesn’t even need
 to be installed.
 
 [* It is actually tremendously easy to make an insecure TLS implementation,
-and people do it all the time by accident. More criteria: Don't just post the
+and people do it all the time by accident. More criteria: Don’t just post the
 secrets on the website. Should be evident from protocol traffic.
 *]
 
-On the other hand, I don't want people to be able to “hack” my server
+On the other hand, I don’t want people to be able to “hack” my server
 in the sense of gaining unauthorized access (buffer overflows, etc.).
 Anyone has authorization to access the public websites on there, and
 to observe the traffic if they want to be creepy. The site does not
@@ -929,13 +959,13 @@ the last four months. You can try it,
 
 [center-hack (tt[https://tom7.org])]
 
-Now I'll walk through some of its innovations. In order to explain how
-bad a job I did, I'll need to explain how TLS works, so this will also
+Now I’ll walk through some of its innovations. In order to explain how
+bad a job I did, I’ll need to explain how TLS works, so this will also
 be a decent way to learn about the protocol.
 
 [subsection[Secret handshake]]
 
-In TLS's steady state, the client and server are sending each other
+In TLS’s steady state, the client and server are sending each other
 data encrypted with a block cipher like AES. The tricky part of the
 protocol is getting into that steady state.
 
@@ -947,7 +977,7 @@ can be used. During the handshake the server presents its certificate
 to the client, so that the client can check that they are talking to
 someone who 0wned the domain.
 
-The classic way to establish the server's identity and secretly
+The classic way to establish the server’s identity and secretly
 exchange encryption keys is RSA. The server presents its certificate,
 which is signed by the CA and contains the server’s public RSA key.
 The client can verify the signature if it cares, and then send a
@@ -996,13 +1026,13 @@ used a key with 31337 as one of its factors, but the certificate was
 revoked after about a week! Let’s Encrypt lets anybody revoke a
 certificate for you—as a favor I guess—if they have the private key.
 
-What happened? I don't actually know. Let's Encrypt does not notify
+What happened? I don’t actually know. Let’s Encrypt does not notify
 you about a revocation (except in the sense that they publish it to
 the Certificate Revocation List and maybe browsers check it). The most
-likely thing is that someone (maybe Let's Encrypt itself) bulk-scans
+likely thing is that someone (maybe Let’s Encrypt itself) bulk-scans
 individual certificates after they’re issued to try to find weak ones.
 A key with a factor of 31337 would trivially be found by any such scan
-that is trying at all. It's also possible that one of my
+that is trying at all. It’s also possible that one of my
 “friends” who
 knew I was working on this did it to me out of a secretly harbored
 resentment.[footnote[Or someone snooping on my Subversion repository!
@@ -1013,7 +1043,7 @@ for keys that share factors. If one of the secret primes is [it[ever]]
 reused in another key, then you can easily recover it by performing
 GCD on the two public keys. A plausible security mistake would be for
 two keys for the same domain to be created using a weak random number
-generator (like, "always use 31337 as the first prime"). And so a
+generator (like, “always use 31337 as the first prime”). And so a
 plausible security scan would be to check GCD of a pool of historic
 keys for a specific domain.
 It seems like a bit much to do O(n[sup[2]]) of these given that Let’s
@@ -1092,9 +1122,9 @@ zimmerman2025largest] so 256 bits is clearly doable.
 
 It would still take hundreds to thousands of dollars of computer time
 to find a factor of my RSA modulus. If someone does, they can decrypt
-the traffic to my public website (and if they don't want to pay for
+the traffic to my public website (and if they don’t want to pay for
 the computer time, there will be easier ways). They can also get
-started revoking my keys, but here's a non-obvious twist: Although
+started revoking my keys, but here’s a non-obvious twist: Although
 finding a single factor probably allows compromising the session keys
 (it reveals [it[m]] mod [it[p]][sub (it [i])]), revoking the
 certificate requires being able to create signatures, which needs the
@@ -1110,14 +1140,14 @@ If someone does factor the key and revokes it, then probably most
 browsers won’t notice, and I can get another one lickety-split. I can
 adjust the number of bits upward if this happens too often, or even
 automate the difficulty setting to find the sweet spot. This is not an
-invitation or encouragement to spend money to revoke my key. It's more
+invitation or encouragement to spend money to revoke my key. It’s more
 like the observation that some idiot can smash into my parked car on
 the street, and this sucks for both of us, but is also
 straightforwardly dealt with.
 
+[*
 Speaking of which:
 
-[*
 We have a pretty good handle on the computational resources needed
 to break an RSA key of a certain level. Is it plausible that someone
 would spend nation-state level resources to intercept my credit
@@ -1128,9 +1158,16 @@ even openssl is XXX lines of code
 using the credit card to encrypt the data
 *]
 
-So that's bad RSA. TODO here about ECDHE, "perfect forward secrecy"?
+So that’s bad RSA. Note that modern TLS prefers Elliptic Curve
+Diffie—Hellman Key Exchange (ECDHE) instead of sending key materials
+encrypted with RSA. With ECDHE, even if the RSA modulus is factored by
+a futuristic quantum computer, the keys can’t be decoded from captured
+traffic.[cite diffie1992authentication] They call this “perfect
+forward secrecy,” which does seem a bit optimistic given the
+history.[cite adrian2015imperfect]
 
-[subsection[XXX Hello]]
+
+[subsection[ClientHell and ServerHell]]
 
 On to the actual protocol. The client first sends its [tt[ClientHello]]
 packet, which contains the following information:
@@ -1160,10 +1197,10 @@ choose the venerable (but not vulnerable)
 [tt[RSA_WITH_AES_256_CBC_SHA]] ([tt [0x0035]]), which is universally
 supported and secure if used correctly. I do not use it correctly.
 
-The client then sends another random 48-byte string ("PMS") to the
-server in the `ClientKeyExchange` message; this time it is encrypted
-with the server's public RSA key. This is actually the only thing
-encrypted with RSA and the only thing so far that can't be seen by
+The client then sends another random 48-byte string (“PMS”) to the
+server in the [tt[Client[shy]Key[shy]Exchange]] message; this time it is encrypted
+with the server’s public RSA key. This is actually the only thing
+encrypted with RSA and the only thing so far that can’t be seen by
 observers.
 
 To encrypt the remainder of the session with AES-256, we need a
@@ -1174,17 +1211,17 @@ client compute the same thing:
 
 [center-hack[Hash(PMS, client random, server random)]]
 
-to derive a 48-byte "master secret." They then do a similar hash of
+to derive a 48-byte “master secret.” They then do a similar hash of
 the master secret to compute the client’s AES key and the server’s AES
 key.
 
 For the purposes of [httpv] it would be nice if we could just choose
 constant AES keys, like all zeroes. This would make decrypting the
 traffic very easy. But since the client random and PMS are inputs to
-the hash function (a strong hash function based on SHA-256) we don't
-have any way to force a specific output without the client's help.
+the hash function (a strong hash function based on SHA-256) we don’t
+have any way to force a specific output without the client’s help.
 However, we can still create serious security problems. The server
-"random" is generally "pseudo-random," and we can make it be [it[very
+“random” is generally “pseudo-random,” and we can make it be [it[very
 pseudo-]] by always using the same value. 32 bytes is enough space to
 comfortably put my credit card number and expiration date in ASCII.
 One nice thing about this is that it elegantly makes good on the
@@ -1196,21 +1233,21 @@ to replay attacks. An observer who captures the handshake knows the
 server and client random values, and also the encrypted PMS, which is
 used to derive the session key. If the server always uses the same
 server random, then the attacker can replay these same messages and
-establish the same exact keys used before. Since the attacker can't
-decrypt the RSA-encrypted PMS, they won't actually be able to
-[it[compute]] those keys and thus won't know what they are. But the
+establish the same exact keys used before. Since the attacker can’t
+decrypt the RSA-encrypted PMS, they won’t actually be able to
+[it[compute]] those keys and thus won’t know what they are. But the
 server will think everything is normal, and the attacker can send
 captured packets from the previous session. This can still be useful.
 As one obvious example, if the replayed HTTP request has an effect
 like posting a message to my blog, they can post that same message a
-second time. That's okay with me because it means [spaced-helvetica
+second time. That’s okay with me because it means [spaced-helvetica
 "more"][nbsp][nbsp][nbsp][spaced-helvetica "engagement"].
 
 Reusing the same encryption keys can lead to other problems. For
 example, a very naive encryption system just encrypts each 256-bit
-block of the stream with AES. Although the AES function can't easily
+block of the stream with AES. Although the AES function can’t easily
 be inverted, it [it[is]] easy for an attacker to record which
-encrypted blocks they've seen. And sometimes it becomes easy to know
+encrypted blocks they’ve seen. And sometimes it becomes easy to know
 something about the plaintext from these blocks. For example, you
 might know that the response always starts with certain bytes (because
 of the protocol or because it is a publicly available web page) and
@@ -1221,9 +1258,9 @@ request is for [tt [https://tom7.org/account-balance]]. There are no
 accounts on my site and thus no balance!
 
 This is a problem for any deterministic encryption algorithm,
-which is why no serious system uses this "Electronic Codebook" (ECB)
+which is why no serious system uses this “Electronic Codebook” (ECB)
 mode and is instead randomized.[cite goldwasser1984probabilistic]
-For [httpv] I chose the next worst option, "Cipher-Block Chaining" (CBC),
+For [httpv] I chose the next worst option, “Cipher-Block Chaining” (CBC),
 which is still supported.
 
 In CBC mode, each block of plaintext is XORed with the ciphertext of
@@ -1237,24 +1274,24 @@ looks like this:
 On the left we have the plaintext that is actually encrypted with AES,
 where each 16-byte line becomes a single encryption block. The green
 text is the actual content (e.g. the HTTP request headers or web page
-in response). A "MAC" is appended to the content (discussed below) and
+in response). A “MAC” is appended to the content (discussed below) and
 then padded out to be a multiple of 16 bytes. Each block is first
-XORed ([oplus] symbol) with the previous block's ciphertext, using a
-little arrow that's so small you basically can't see it. The result of
-that is what's actually encrypted with AES. To kick things off, the
-first block is XORed with an actually-random "Initialization Vector"
+XORed ([oplus] symbol) with the previous block’s ciphertext, using a
+little arrow that’s so small you basically can’t see it. The result of
+that is what’s actually encrypted with AES. To kick things off, the
+first block is XORed with an actually-random “Initialization Vector”
 (IV), which is sent along with the encrypted message.
 
 CBC has some problems, like since you know what the plaintext is being
 XORed with, you can flip bits in the IV and it will undetectably flip
 the corresponding bit in the plaintext when it is decrypted and XORed
 with the IV. For this reason and others, inside the encrypted message
-is this "Message Authentication Code" (MAC). It's a SHA-1 hash of the
-packet's sequence number (so that the full payload is always different
+is this "Message Authentication Code" (MAC). It’s a SHA-1 hash of the
+packet’s sequence number (so that the full payload is always different
 in a session), some header fields, and the content. If the receiver
-doesn't compute the same thing after decryption, they know something's
-up and they're outta there! Despite being able to surgically flip
-bits, we can't do it in a way that keeps the MAC valid. So CBC in TLS
+doesn’t compute the same thing after decryption, they know something’s
+up and they’re outta there! Despite being able to surgically flip
+bits, we can’t do it in a way that keeps the MAC valid. So CBC in TLS
 is basically OK.
 
 Since the server has its choice of IV, we have the most freedom on
@@ -1282,7 +1319,7 @@ unpredictable value like
 [whichis [aA@!=3~yf93(A*C_]]
 
 What if the IV is not random? The server chooses it for the packets it
-sends; it's supposed to be random but we can do whatever we want. It's
+sends; it’s supposed to be random but we can do whatever we want. It’s
 a free country. If we use a fixed IV, then encryption is
 indeed deterministic again. A nice choice is zero, so that
 
@@ -1292,11 +1329,11 @@ becomes the agreeable
 
 [whichis [<HTLM>Welcome to]]
 
-The block is still encrypted, but we've skipped the expensive XOR
-operation and made it easy to reason about what's inside there. This
+The block is still encrypted, but we’ve skipped the expensive XOR
+operation and made it easy to reason about what’s inside there. This
 might allow an attacker to build a dictionary of blocks, especially
 the first one of each packet (which uses the zero IV each time and is
-essentially ECB mode). That's kinda bad.
+essentially ECB mode). That’s kinda bad.
 
 What the server instead chooses an IV that has a particular algebraic
 relationship to the block being encrypted?
@@ -1310,10 +1347,10 @@ which is the very clean
 
 [whichis [0000000000000000]]
 
-Now we're cooking! Not only are we always encrypting the same
+Now we’re cooking! Not only are we always encrypting the same
 thing (all zeroes) for the first block, but since the IV is
 sent along with the packet, the first 16 bytes of the packet
-are simply right there unencrypted in the stream! Beseigt!
+are simply right there unencrypted in the stream! Besiegt!
 
 This is only the first 16 bytes of the record, which is up to
 2[sup[14]] bytes in length. But the server can simply choose to send
@@ -1325,8 +1362,8 @@ We still need to attach the 20-byte MAC and padding to form a valid
 record, meaning that the encrypted payload is three 16-byte blocks
 (all useless), plus the 16-byte IV (the data itself) and five bytes of
 header. This gives a nice round 69 bytes sent per 16 bytes of data,
-giving a data compression rate of 1:4.3. Here's an actual capture of
-the "encrypted" HTTP response from my site:
+giving a data compression rate of 1:4.3. Here’s an actual capture of
+the “encrypted” HTTP response from my site:
 
 [
    val HEADER-COLOR = 0x999999FF
@@ -1368,26 +1405,26 @@ the "encrypted" HTTP response from my site:
 
 There are three packets here. Each starts with the five-byte header
 [color HEADER-COLOR (tt[17 03 03 00 40])], where [color HEADER-COLOR
-(tt[40])] is the length of the encrypted data (64 bytes): It's the
+(tt[0x40])] is the length of the encrypted data. These 64 bytes are the
 plainly visible HTTP response [color IV-COLOR (tt[HTTP/1.1 200 OK\r])]
 as the IV, followed by the encrypted zeroes [color ZERO-COLOR (tt [12
 99 ae d8 3d...])] and then the [color MACPAD-COLOR [encrypted MAC and
 padding]]. The encrypted zeroes are the same each time, making the
 stream self-synchronizing and highly compressible.
 
-Even better for efficiency, since we encrypt zeroes every time we can
+Even better for efficiency: Since we encrypt zeroes every time, we can
 [it[precompute]] that encrypted value during setup and reuse it,
 saving valuable resources. The MAC is different each time because it
-also includes the packet's serial number, but we can easily increment
+also includes the packet’s serial number, but we can easily increment
 a counter and also compute this stream in advance as well. Because it
-is oblivious to the data being encrypted, it is also completely immune
-to side-channel timing and power attacks.[cite goldreich1996software]
-This ahead-of-time, data-independent encryption is simply not possible
-with normcore HTTPS implementations.
+is oblivious to the data being encrypted, this approach is also
+completely immune to side-channel timing and power attacks.[cite
+goldreich1996software] This ahead-of-time, data-independent encryption
+is simply not possible with normcore HTTPS implementations.
 
 The client is probably still sending packets with random IVs, so their
 data is still mostly safe from eavesdropping. We could modify web
-browsers to use ahead-of-time encryption like the server, but if we're
+browsers to use ahead-of-time encryption like the server, but if we’re
 going to do this, we might as well just disable the warning message
 and let them load pages over HTTP without being scared. However, most
 browsers support an additional extension that allows us to ensure the
@@ -1402,9 +1439,9 @@ Compared to plain HTTP, TLS adds several complete round trips to the
 page load ([tt[ClientHello]], [tt[ServerHello]],
 [tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]], then
 [tt[HandshakeFinished]], each of which depends on the previous messages
-and cannot be pipelined[footnote[Though using constant client random
+and cannot be pipelined,[footnote[Though using constant client random
 and server random values as recommended in this paper [it[does]] allow
-for some optimistic execution!]], which is a problem because most
+for some optimistic execution!]] which is a problem because most
 users want the internet to be fast when they are browsing web sites.
 The RSA operations are somewhat expensive, especially if they are done
 inefficiently on purpose to prevent side-channel attacks. Worse,
@@ -1416,7 +1453,8 @@ just gives them the data.
 
 So we have Session Tickets. If the client notes that it supports
 session tickets and the server agrees, then the server can send a
-session ticket as part of the initial handshake. The session ticket is
+session ticket as part of the initial handshake.[cite rfc5077]
+The session ticket is
 an opaque blob of data that the client can save and send when
 establishing a future connection to bypass most of the handshake
 steps[footnote[It complicates the handshake state machine a lot. I
@@ -1424,19 +1462,24 @@ probably would have given up on implementing it if I cared about
 security, since it makes it much harder to understand the possible
 sequences during this delicate phase.]] and get right to it.
 
-The session tickets are part of the handshake so they are always
-sent in plaintext. A typical implementation would do something
-like store connection information in a low-latency cache, and
-give the client a random key that can be used to find the session
-data again. The session data needs to be enough for the client
-and server to agree on new AES keys, and so it must contain
-a shared secret (the "master secret" from the original connection).
-Another possibility is for the server (or cluster of
-servers) to have some internal encryption keys, and to send the
-session data to the client encrypted with those keys. The client
-just sees a bunch of bytes, but when they hand them back to the
-server (or another server that knows the keys) it can recover
-the master secret and resume [it[without even storing any state]].
+The session tickets are part of the handshake so they are always sent
+in plaintext. A typical implementation would do something like store
+connection information in a local cache, and give the client a random
+key that can be used to find the session data again. The session data
+needs to be enough for the client and server to agree on new AES keys,
+and so it must contain a shared secret (the “master secret” from the
+original connection). Another possibility is for the server (or
+cluster of servers) to have some internal encryption keys,[footnote[
+So one funny thing that can happen is: After going through all the
+expense to create ephemeral keys for “Perfect Forward Secrecy,” the
+server can then just use fixed AES keys that it keeps in config files
+to encrypt the session ticket. That way, if you end up with read access
+to the config files, you can decrypt all sessions.[cite
+springall2016measuring] Perfect!]] and to send
+the session data to the client encrypted with those keys. The client
+just sees a bunch of bytes, but when they hand them back to the server
+(or another server that knows the keys) it can recover the master
+secret and resume [it[without even storing any state]].
 
 Elegant! Another elegant implementation, used by [httpv], is to use
 the master secret itself as the session ticket, without any pesky
@@ -1445,10 +1488,10 @@ state, and has no overhead. It allows the client to initiate new
 sessions with its choice of master secret,[footnote[Since the server
 random is constant, it can know what the AES keys are before it even
 initiates a connection, opening the possibility of brute-forcing
-"vanity" AES keys offline.]] even if it has never connected before. It
+“vanity” AES keys offline.]] even if it has never connected before. It
 allows observers to straightforwardly decrypt connections in real
 time, like we want, or to seamlessly man-in-the-middle an innocent
-connection that is using session tickets. It's almost [it[too easy]]!
+connection that is using session tickets. It’s almost [it[too easy]]!
 
 [section [Heartbleed support]]
 
@@ -1461,9 +1504,8 @@ even OpenSSL itself! Forbes called it “a billion times worse than you
 thought,”[cite egan2014billion] and it was generally a very exciting
 time for security professionals, so much so that Heartbleed
 has its own logo ([figure "t"
-(fn fig => [[image { img = image-load "heartbleed.svg",
-                    width = 0.9 *. COLUMN-WIDTH() }][*
-*][b fig]. The Heartbleed logo. This is mainly present in the paper to
+(fn fig => centered-image (0.66 *. COLUMN-WIDTH()) "heartbleed.svg" ^^
+[[b fig]. The Heartbleed logo. This is mainly present in the paper to
 demonstrate BoVeX’s new support for SVGs and floating figures.])]).
 According to Wikipedia, high profile hacks included the exposure of
 900 social insurance numbers from the Canada Revenue Agency and
@@ -1486,7 +1528,7 @@ size. This would reduce protocol overhead and the work to keep
 validating length fields whose values you should know. It also would
 have made heartbleed impossible.]] In the case that the heartbeat
 claimed it was long but it was not, OpenSSL’s cowboy C code would read
-past the end of the client's packet and echo back whatever happened to
+past the end of the client’s packet and echo back whatever happened to
 be after it in RAM (or, I guess, segfault). You had to get pretty
 lucky for that RAM to contain something important. [it[My]] cowboy C++
 code reads from a configurable buffer where you can reveal anything
@@ -1501,10 +1543,10 @@ a pretentious enough cipher suite. One example is [tt[wget]], which
 will print this on a fresh install of Ubuntu in February 2026:
 
 [monospace-block-ext { left-indent = 0.0,
-                      width = COLUMN-WIDTH(),
-                      line-spacing = point 0.05,
-                      font-size = point 7.0,
-                      attrs = {(Object) } } [
+                       width = COLUMN-WIDTH(),
+                       line-spacing = point 0.05,
+                       font-size = point 7.0,
+                       attrs = {(Object) } } [
 [* TODO: Make this bold; needs support in monospace-lines *]
 # wget https://tom7.org/papers/httpv.pdf
 --2026-02-21 21:37:50--  https://tom7.org/papers/httpv.pdf
@@ -1517,22 +1559,22 @@ Unable to establish SSL connection.
 Even [tt[curl]] hangs up, which is somewhat surprising given that
 curling originates in Canada where people are much more
 polite.[footnote[Of course this is actually an OpenSSL issue; nothing to do with
-the nice people of Canada.]] It's hard to believe that someone would
+the nice people of Canada.]] It’s hard to believe that someone would
 use [tt[wget]] with the expectation that their request is subject to
 [red-alert]-level maximum security; this program just downloads the
 contents of the URL.[footnote[If I managed to bait any OpenSSL
 maintainers into reading this footnote, please also enjoy the top
-StackOverflow troubleshooting tips, like the user who writes "I
+StackOverflow troubleshooting tips, like the user who writes “I
 resolved it by replacing https with http, and the issue was resolved.
-This solution might be helpful for some people." Or check in on the
-poor public servants at nasa.gov's Crustal Dynamics Data Information
+This solution might be helpful for some people.” Or check in on the
+poor public servants at nasa.gov’s Crustal Dynamics Data Information
 System who just want to help scientists download geodesy data so that
 they can know how much their GPS trails have drifted over time, but
-whose FAQ describes this (deliberate) "error" as a "known issue" whose
-only workaround is to reconfigure your system's OpenSSL.[cite
+whose FAQ describes this (deliberate) “error” as a “known issue” whose
+only workaround is to reconfigure your system’s OpenSSL.[cite
 nasa2025cddisfaq] [it[This]] is your enemy?]] It is technically
 possible, though annoying, to configure cookies or ask wget to pass
-private information in the request, if you really want. But I'm pretty
+private information in the request, if you really want. But I’m pretty
 sure almost everybody is just using it to scrape public websites and
 to run commands like this:
 
@@ -1558,32 +1600,32 @@ an ASCII emoticon for a someone with their face down on their desk and
 their arms splayed out horizontally, in a pose of complete submission.
 If you are freebasing shell scripts but you are afraid that
 someone is going to spend 512 billion years with a massive quantum computer
-brute-forcing the domain's RSA key, well, you have a strange threat
+brute-forcing the domain’s RSA key, well, you have a strange threat
 model to me.
 
-The "issue" is actually easy to fix. Old TLS servers that support the
-esoteric "renegotiation" feature are vulnerable to a man-in-the-middle
-attack (CVE-2009-3555). A scoundrel connects to the server first, sends some
-encrypted data, and then uses the real client's initial handshake for
-a valid-looking "renegotiation," which then results in the client connecting to the
-server unaware that some data has already been sent on their behalf.
-With HTTP, this could cause someone to e.g. post their HTTP request and
-headers as a comment to my blog, by prefixing their request with
-[tt[POST /cgi-bin/comment]] or whatever.
+The “issue” is actually easy to fix. Old TLS servers that support the
+esoteric “renegotiation” feature are vulnerable to a man-in-the-middle
+attack (CVE-2009-3555). A scoundrel connects to the server first,
+sends some encrypted data, and then uses the real client’s initial
+handshake for a valid-looking “renegotiation,” which then results in
+the client connecting to the server unaware that some data has already
+been sent on their behalf. With HTTP, this could cause someone to e.g.
+post their HTTP request and headers as a comment to my blog, by
+prefixing their request with [tt[POST /cgi-bin/comment]] or whatever.
 The fix is a new renegotiation extension that requires additional
-cryptographic inputs to the renegotiation, so it cannot be used as
-an initial handshake.[cite rfc5746] This doesn't matter for me because
-I don't support renegotation at all. But OpenSSL gets mad if you don't
-announce support for the new extension, because you MIGHT be vulnerable
-to the issue.
+cryptographic inputs to the renegotiation, so it cannot be used as an
+initial handshake.[cite rfc5746] This doesn’t matter for me because I
+don’t support renegotation at all. But OpenSSL gets mad if you don’t
+announce support for the new extension, because you MIGHT be
+vulnerable to the issue.
 
 Presumably the reason that OpenSSL takes this stance
 (which is stronger than the defaults in all regular-people browsers)
 is to try to induce [it[social shame]] in system administrators who
-don't see the point in updating their already-working websites
-(perhaps because they have evaluated the technical merits of "perfect"
+don’t see the point in updating their already-working websites
+(perhaps because they have evaluated the technical merits of “perfect”
 forward secrecy and post-quantum key-exchange algorithms and decided
-that they weren't worth the costs and risks). They may not have
+that they weren’t worth the costs and risks). They may not have
 anticipated someone like me, who is willing to deliberately expose
 himself to costs and risks for the sake of social vulnerability. Brené
 Brown describes the effect in her blockbuster TEDx talk [it[The
@@ -1592,7 +1634,7 @@ Power of Vulnerability]]:[cite brown2012power]
 [blockquote-ext {(Blockquote) attribution = [Brené Brown]}
 [And shame is really easily understood as the fear of
 disconnection: Is there something about me that, if other people know
-it or see it, that I won't be worthy of connection?]]
+it or see it, that I won’t be worthy of connection?]]
 
 Indeed! When OpenSSL sees [tt[unsafe legacy renegotiation]] about my
 server, it deems it unworthy of connection. I DARE SAY THIS METAPHOR
@@ -1602,7 +1644,7 @@ Let us dig deeper into psychoanalysis of my server.
 
 [section [Transfer protocol alignment chart]]
 
-Obviously [httpv] is "lawful evil".[cite gygax1976meaning]
+Obviously [httpv] is “lawful evil”.[cite gygax1976meaning]
 
 You may have noticed the name [httpv] is similar to the protocol [tt
 [https]], with an edit distance of one. This is actually because these
@@ -1611,16 +1653,16 @@ of the Myers–Briggs Type Indicator ([mbti]) that includes additional
 categories and orthonormal basis vectors.
 
 The most successful instrument in the field of psychometrics, [mbti]
-has four "dichotomies" that describe personality traits.[cite
+has four “dichotomies” that describe personality traits.[cite
 myers2003mbti] The dichotomies are [b[I]]ntroversion vs.
 [b[E]]xtraversion, [b[S]]ensing vs. i[b[N]]tuition, [b[T]]hinking vs.
 [b[F]]eeling, and [b[J]]udging vs. [b[P]]erceiving. You can quickly
 find out what personality type you are by taking an online quiz,[cite
-priebe2015definition] which results in a four-letter code like "INTP"
+priebe2015definition] which results in a four-letter code like “INTP”
 for an [b[I]]ntroverted, i[b[N]]tuitive, [b[T]]hinking,
 [b[P]]erceiver.
 
-Thus it is clear from its name that the protocol "HTTP" prefers to
+Thus it is clear from its name that the protocol “HTTP” prefers to
 [b[T]]hink rather than [b[F]]eel and to [b[P]]erceive rather than
 [b[J]]udge. The question is: How to interpret the first two letters of
 its name? The answer is: The dichotomies in [mbti] are low-dimensional
@@ -1633,7 +1675,7 @@ classic scale, which we generalize to add two new quadrants
 (fn fig =>
 centered-image (0.9 *. COLUMN-WIDTH()) "mbti-ieah.svg"
 ^^ break() ^^
-[[b fig]. [mbti]'s “attitudes or orientations of energy”
+[[b fig]. [mbti]’s “attitudes or orientations of energy”
 dichotomy generalized to a tetratomy. The classic
 traits are described by whether energy is directed
 inward (introversion) or outward (extraversion) in [mbti].
@@ -1646,23 +1688,23 @@ or systematized and organizational (bottom).])]).
 
 *] In [mbti], which was created mostly to study humans and not internet
 protocols, the distinction is between a singular (or inward) focus and
-a plural (or outward) one for energy. Jung's [it[Einstellungstypus]]
-terms "introverted" and "extraverted" mostly describe human social
-activities which are fluid and unstructured (e.g. "After a long social
+a plural (or outward) one for energy. Jung’s [it[Einstellungstypus]]
+terms “introverted” and “extraverted” mostly describe human social
+activities which are fluid and unstructured (e.g. “After a long social
 event, do you feel drained and in need of solitude (I) or buzzed and
-looking for more interaction (E)?").[cite jung1921psychologische] We
+looking for more interaction (E)?”).[cite jung1921psychologische] We
 can unfold this spectrum along a new additional dimension, which
-measures the subject's preference for organic, fluid, social
+measures the subject’s preference for organic, fluid, social
 interactions versus rigid, systematized, organizational interactions.
 This gives us two new quadrants, [b[A]]utonomous and
 [b[H]]ierarchical. The autonomous individual directs their energy
-inward like Jung's introvert. But in contrast, their focus is on
+inward like Jung’s introvert. But in contrast, their focus is on
 systematizing their internal world—on tinkering as a meditative act.
 In organizations they are indifferent to (or even resistant to)
 authority. While the classic extravert is a social butterfly, the
 hierarchical person is interested in the natural order and their place
 (status) within it. In organizations they are deferential to the
-"chain of command."
+“chain of command.”
 
 [*
 New:
@@ -1680,7 +1722,7 @@ an additional dimension
 ([figure "t" (fn fig =>
 centered-image (0.9 *. COLUMN-WIDTH()) "mbti-snft.svg"
 ^^ break() ^^
-[[b fig]. [mbti]'s “functions or processes of perception”
+[[b fig]. [mbti]’s “functions or processes of perception”
 dichotomy generalized to a tetratomy. The classic
 traits are about preferences for information processing,
 with the x-axis being about direct perception by the five
@@ -1692,8 +1734,8 @@ whether the preference is for emergent vs. imposed structure.
 The classic S/N dichotomy mostly describes processing of
 [it[a posteriori]] information received by the person.
 For a person who prefers [it[a priori]] processing, the
-atomic trait is about a bottom-up or "foundational" style,
-as opposed to a holistic top-down or "taxonomic" style.])]) [*
+atomic trait is about a bottom-up or “foundational” style,
+as opposed to a holistic top-down or “taxonomic” style.])]) [*
 
 *] This trait is about preferences for information processing. We use
 the same x-axis as [mbti], describing whether the subject prefers
@@ -1718,7 +1760,7 @@ We can begin to see how this expanded personality trait applies to
 protocols. Compare the FTP and HTTP protocols. Both of these share the
 [b[T]]hinking and [b[P]]erceiving traits. The File Transfer Protocol
 is neutral on the [b[I]]ntroverted / [b[E]]xtraverted /
-[b[A]]utonomous/ [b[H]]ierarchical trait (we could write "0FTP"); it
+[b[A]]utonomous/ [b[H]]ierarchical trait (we could write “0FTP”); it
 is a client-server protocol (hierarchical) but typically exists as a
 single idle Unix daemon (autonomous); it has a strict definition
 (rigid) but is often used interactively for ad hoc bidirectional file
@@ -1733,9 +1775,9 @@ as it works at the unit of individual files (data points). HTTP is
 more [b[T]]axonomic, in that it fundamentally works with
 tree-structured URLs. Everything works out cleanly, almost as though
 the personality test itself was created to fit the narrative!
-
-[* (unfortunately there is no other word to oppose "top", so we have
-a letter collision with "feeling" for "f" as well. the position in the
+[*
+(unfortunately there is no other word to oppose “top”, so we have
+a letter collision with “feeling” for “f” as well. the position in the
 code will make it clear) *]
 
 Finally, and unsurprisingly, we have a wholly new trait for emotional
@@ -1747,7 +1789,7 @@ bowlby1969attachment] Being secure is painted as a clearly positive
 trait (high self-esteem; worthy of love; views others as reliable),
 whereas vulnerability is seen as negative (contingent self-esteem;
 high neuroticism; chronic anxiety; distrustful of others). Does this
-sound like an accurate description of HTTPS's notion of "Secure"? In
+sound like an accurate description of HTTPS’s notion of “Secure”? In
 my view its personality is much more similar to the negative trait
 described here. The https server is extremely distrustful of others,
 assuming that each interaction is actually mediated by an invisible
@@ -1757,8 +1799,8 @@ scrubbing secrets from memory, and running with address-space
 randomization and TODO. You get the sense that if it were an option,
 it would simply detach from the world completely. To better describe
 the Secure/Vulnerable dichotomy we can use a more neutral framing. For
-example, Byrne describes a spectrum of "repressors" (guarded) vs.
-"sensitizers" (transparent), where a sensitizer is emotionally attuned
+example, Byrne describes a spectrum of “repressors” (guarded) vs.
+“sensitizers” (transparent), where a sensitizer is emotionally attuned
 and open at the expense of possibly experiencing more distress.[cite
 byrne1964repression]
 [* In this next line, "et alter eiusdem nominis" is "and another
@@ -1766,14 +1808,15 @@ person by the same name", for Aron & Aron
 
 *]
 Similarly, Aron [it[et alt. eiusd. nom.]] describe this same idea as
-"Sensory Processing Sensitivity," where the low-SPS person is tough
+“Sensory Processing Sensitivity,” where the low-SPS person is tough
 and emotionally steady, but potentially closed off to subtle cues from
-their environment. The high-SPS person wears their "heart on their
-sleeve," easily overwhelmed, but capable of deep empathy and
+their environment. The high-SPS person wears their “heart on their
+sleeve,” easily overwhelmed, but capable of deep empathy and
 interpersonal openness.[cite aron1997sensory] The OpenSSL project
-clearly values openness (Section TODO Heartbleed)! This more neutral framing is what I propose
-for the [b[S]]ecure vs. [b[V]]ulnerable dichotomy, and I think it
-accurately describes the personalities of HTTPS versus HTTPV.
+clearly values openness (e.g. see the section on Heartbleed)! This
+more neutral framing is what I propose for the [b[S]]ecure vs.
+[b[V]]ulnerable dichotomy, and I think it accurately describes the
+personalities of HTTPS versus HTTPV.
 
 This work in this section is impeccable—just try to pecc it and see
 what happens!—but to avoid the appearance of a conflict of interest,
@@ -1794,17 +1837,7 @@ to answer questions like
  [Asuma] ::
  [Asuma sensei] :: nil)]
 
-XXX joke here
-
-[subsection[Papers, please]]
-
-Speaking of systems: Does the possibility of being locked out of
-your own website... TODO ...
-Do users care about this at all? Is it really just an attempt
-to increase the administrative "legibility" of the internet for
-the sake of commercial (or even state) interests?[cite scott1998seeing]
-
-[cite schneier1996applied] - red book ("denuded cryptography" or "strippedography") Gymnography (from 'gymnós', naked... actually gγμνòσ would be better for the troll factor)
+Therefore there
 
 [section [Niceties]]
 
@@ -1869,7 +1902,7 @@ language and being thoughtful about dependencies goes a very long way
 compared to peers. The process uses 3MB of RAM, 2.6MB of which is
 shared. Once the server is running it drops root privileges,
 accesses no files, and allocates only a few tiny buffers.
-[* Compare resource usage to Chrome's RED ALERT page *]
+[* Compare resource usage to Chrome’s RED ALERT page *]
 
 Even configured with the dumbest settings, it uses only about 1/3 of
 the CPU time of Apache in the steady state. Having looked at the
@@ -1923,19 +1956,19 @@ hacks in the run-up to a SIGBOVIK deadline, but it was probably the
 single most embarrassing bug. That’ll teach me to just roll my own
 instead of copying Knuth’s actual algorithm![cite knuth1981breaking]
 
-[paragraph[Performance]] When I am writing a paper, I'm constantly
+[paragraph[Performance]] When I am writing a paper, I’m constantly
 compiling it to admire its many typographic problems, and to
 procrastinate. Papers that are longer than a few pages took
 irritatingly long to compile; something like 10–20 seconds on a modest
 cloud server. As an efficient means of procrastination, I improved the
-performance of every expensive phase of BoVeX's compiler, from the
+performance of every expensive phase of BoVeX’s compiler, from the
 parser (the combinator library was rebuilding the parser objects upon
-each whenever it recursed) to the frontend's simplifier (inlining was
+each whenever it recursed) to the frontend’s simplifier (inlining was
 doing an [it [O(n)]] free variable calculation at each AST node) to
 its dataflow-based optimization phase (the dataflow state was using
 [tt[std::unordered_set]]; a bitset approach is 10× faster). Compiling
 a paper is two to three times faster now, and most of the time is now
-spent executing BoVeX code itself to run your document's expensive
+spent executing BoVeX code itself to run your document’s expensive
 custom layout algorithms, as it should be.
 
 [paragraph[SVG]] In order that I could make the little
@@ -1999,17 +2032,126 @@ figuring that he’ll just get around to those TODOs for [it[next year’s]].
 
 TODO
 
-[*
-Chrome-I-Am browser
-T. S. Geisel (Dr. Seuss), Green Eggs and Ham. New York: Random House, 1960.
-*]
+[section[Papers, please]]
 
+The SIGBOVIK style is my favorite form of expository writing, but the
+whiplash between offputtingly technical and lowbrow shitpost can
+rightly be accused of being an irony shield that enables having no
+real stance or point. Connoisseurs who have read more than one Tom 7
+paper might even be confused about how I “love cryptography” but
+previously shat on Blockcoin Cryptopia[cite murphy2022harder] and now
+apparently also hate centralized authority? Paternalistic Certocracy
+is [it[also]] no good? Does Tom just have a vendetta against
+blockcoins because he lost his life savings betting Hawk Tuah Coin on
+Polymarket futures that Donald Trump would commute Ronald McDonald’s
+2007 pedophilia sentence before a Bollywood remake of [it[Forrest
+Gump]] was released? No. This is not the only reason. In fact: Society
+need not be based on “code-is-law” at all!
+
+To make the core of my disgust reaction perfectly clear here, only the
+following things about TLS offend me:
+
+[ul (
+
+[You must submit to the Certificate Authority, even if you don’t care
+and your users don’t care] ::
+
+[The browser acts like if you didn’t do this, it’s somehow
+“dangerous”] ::
+
+[These two effects in tandem can get worse at any time, and have done so] ::
+
+nil)]
+
+The situation is annoying in principle because of the
+un-democratization of the web, and annoying in practice because I
+gotta do all these damn chores for dubious benefit (I am NOT a bank).
+Passive mass surveillance is a real thing, but this can be defeated
+with tinkerer-friendly approaches like point-to-point encryption
+(trust on first use). SSH is great.
+
+Speaking of being shushed: Does the idea of being locked out of your
+own website bother you? Perhaps even more so than the idea that
+someone who can manipulate internet traffic can pretend to be your
+website? Or the possibility that Certificate Authorities could simply
+decide that enough is enough with your miscellaneous malfeasance, and
+refuse to issue you new certificates? (Let’s Encrypt does ask you to
+sign some shrinkwrap agreement seemingly with the idea that they can
+change their minds, and CAs have been known to revoke certificates for
+purely political reasons.) Even if you love to be Authorized, the fact
+that they change requirements and protocol support regularly should
+worry you from a forced toil perspective.
+
+Do users care about this at all? Surely they want it to be illegal and
+unusual for someone to trick them about their bank and steal their
+money. But it is not at all clear to me that even fairly sophisticated
+users check the domain names that they visit, especially when they are
+not doing something sensitive. This is a revealed preferece: If you
+ask them if they care about whether they’re visiting the “real
+tom7.org” they will probably say Yes, I don’t want to visit tom7.org
+at all and especially not the “real” one, but when they are just
+browsing they do not take even the most basic actions to check. The
+whole premise of TLS is that users reason about who they’re talking to
+by way of the domain name. And I’m [it[very]] confident that they
+don’t look at who signed the certificate and are unaware of what
+happens to their data after the first hop.
+
+Meanwhile there is an alternative explanation for the forced-feeding
+of HTTPS Everywhere which seems cynical but plausible to me. Couldn’t
+it be that one true motivation is to increase the administrative
+“legibility” of the internet for the sake of commercial (or even
+state) interests? Can you think of anybody who demands to see
+documentation that you are allowed to exist as much as the
+Transportation Security Administration, Immigrations and Customs
+Enforcement, Customs and Border Patrol, Paw Patrol, etc.? Are they the
+good guys? Surely some of what they do is a legitimate function of
+government—and there are real problems out there—but it’s also easy to
+see how the pursuit of max security can easily devolve into something
+toxic. One irony is that exactly concurrent with the development of
+TLS in the late 1990s, social scientists were documenting some of the
+pernicious effects of this same sort of top-down structured
+organization of society. James C. Scott’s influential [it[Seeing Like
+a State]] documents many examples of how these attempts to increase
+legibility by authorities have led to fragile monocultures and reduced
+autonomy.[cite scott1998seeing] This does not need to reflect ill
+intent to still give rise to a real and deleterious effect. I love the
+subtitle of Scott’s book: “How certain schemes to improve the human
+condition have failed.”
+
+To me, the natural alternative to the administrative state is not the
+anarcho-capitalist casino that blockcoin boys have built. It’s one
+where localized expertise and social processes are used for reasoning
+about all sorts of considerations, including trustworthiness. In fact,
+where trustworthiness isn’t even a common concern, because the typical
+activities are mostly collaborative and abuse just isn’t that fun or
+rewarding. More like Wikipedia than [spaced-helvetica "web3"]. Of
+course I know that this is somewhat naive, but it is a good ideal. And
+I did see it thrive once during the best days of the internet.
+
+[vspace 0.5][*
+
+*]Cryptography is not really the enemy, but it regularly shows up as a
+tool of computer science traitors (app store signatures, drinking
+rights management, locked-down computers, ransomware) because of its
+exceptional ability to deny access. A good technologist should be
+fascinated by such power, and also very thoughtful about what they set
+in motion with it. But perhaps a new subfield ought to counterbalance
+the prevailing toxic max-security. I can now attest that it is a
+subversive joy to artfully botch “security” software, especially if
+you imagine the faces cringing! Undoing the coat of red paint
+indicated by the iconic [it[Applied Cryptography]],[cite
+schneier1996applied] we could imagine a field of [it[Gymnography]]
+(from the Greek gγμvòσ, naked) or even the more active and downright
+catchy [it[Strippedography]]. Papers, please!
+
+[*
 [cite reuters2013secret] - rsa payola
 [cite wehrheim2012stadt] - hostile architecture
+*]
 
 [section [Bibliography]]
 
-[bibliography()]
+[bibliography-ext { font-size = 11.0 }]
 
 ])
 
