@@ -30,6 +30,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "config.h"
+#include "contiguous-buffer.h"
 #include "crypt/aes.h"
 #include "crypt/cryptrand.h"
 #include "crypt/sha256.h"
@@ -38,7 +39,6 @@
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "randutil.h"
-#include "send-buffer.h"
 #include "timer.h"
 #include "tls.h"
 
@@ -326,7 +326,7 @@ struct Connection {
   // If zero, then the connection was closed (or hasn't been
   // set yet).
   int fd = 0;
-  SendBuffer send_buf;
+  ContiguousBuffer send_buf;
   // Once this is true, we have finalized the send_buf and
   // no more shall be added.
   bool send_buf_eof = false;
@@ -412,7 +412,7 @@ struct ClientConnection : public Connection {
       rec.fragment.resize(length);
       memcpy(rec.fragment.data(), incoming_partial.data() + 5, length);
       incoming.push(std::move(rec));
-      // PERF could use ring buffer here, or SendBuffer
+      // PERF could use ring buffer here, or ContiguousBuffer
       incoming_partial.erase(
           incoming_partial.begin(), incoming_partial.begin() + length + 5);
       // Loop again; we could have more packets.

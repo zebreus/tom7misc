@@ -234,20 +234,6 @@ fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
     (badness, list-map set-height lines)
   end
 
-
-(* Pack boxes (e.g. paragraphs) vertically into columns.
-   NOT YET USED
-*)
-fun pack-boxes-vert (height : float, content : layout) : (float * layout list) =
-  let
-    (* XXX this seems wrong. don't we need to convert the input box heights
-       into "widths" for the underlying algorithm? *)
-    (* XXX we probably want left-justified here. *)
-    val (badness, columns) = pack-boxes (BEST, FULLY-JUSTIFIED, height, content)
-  in
-    (badness, vec-to-list columns)
-  end
-
 (* Approximately how many lines of text would fit into the rectangle?
    Return that and the text that would *not* fit. Converts glue parameters
    into concrete widths like packing would, so this text should not
@@ -1195,6 +1181,66 @@ fun paragraph-to-box (width : float) (para : layout) : layout =
     box {(Box) width = width, height = !ypos } body
   end
 
+(* To paragraphs lines into columns, we create transposed boxes whose
+   width is the line height, with penalties for orphans/widows etc.
+
+   XXX not used yet! We might want to actually keep indices to the
+   original paragraphs (rather than content) so that we can join them
+   back up.
+*)
+fun transpose-paragraphs (lines : layout list, space-after : float) :
+  layout list =
+  let
+    val num-lines = list-length lines
+
+    (* The inter-paragraph glue, which is returned at the end of
+       the lines list. *)
+    val para-glue =
+      box {(Box)
+           width = 0.0, height = 0.0,
+           glue-min = space-after *. 0.75,
+           glue-ideal = space-after,
+           (* Allow vertical stretching with low penalty. *)
+           glue-expand = 1.0,
+           glue-contract = 0.5,
+           (* Preferred to break between paragraphs. *)
+           glue-break-penalty = -50.0} []
+
+    fun generate (idx, nil) = para-glue :: nil
+      | generate (idx, line :: rest) =
+        let
+          val h = box-height line
+
+          (* For non-singleton paragraphs, include a penalty for
+             breaking after the first line, or before the last line.
+             TODO: Scale this up as the line becomes shorter, since
+             that makes orphans worse. *)
+          val penalty =
+            if num-lines > 1
+            then
+              if idx == 0 orelse idx == num-lines - 2
+              then 1000.0
+              else 0.0
+            else 0.0
+        in
+          (* The transposed box.
+             It contains the actual line so that we can recover it
+             later, but note that it likely does not fit! *)
+          box {(Box)
+               width = box-height line,
+               glue-break-penalty = penalty,
+               glue-ideal = 0.0,
+               (* TODO: Consider allowing a little bit of expansion,
+                  or even contraction, since flush columns will look
+                  good. *)
+               glue-expand = EPSILON-COEFFICIENT,
+               glue-contract = EPSILON-COEFFICIENT} line ::
+          generate (idx + 1, rest)
+        end
+  in
+    generate (0, lines)
+  end
+
 (*
   TODO: xrefs allow us to refer to a string that is not known at the time
   the document is evaluated.
@@ -1246,6 +1292,10 @@ val FOOTNOTES-HEADER : (float -> layout) ref = ref
 val FOOTNOTE-SEPARATOR : (float -> layout) ref =
   ref (fn width => vspace (point 2.0))
 
+(* This is normally only used by the layout algorithm itself,
+   but is available for shenanigans. *)
+val layout-current-page = ref 0
+
 (* TODO: Some kind of page config object that specifies the
    various constant dimensions, with defaults. *)
 
@@ -1270,14 +1320,14 @@ fun main-text lay =
        line-spacing = !BODY-LINE-SPACING } lay
 
     (* The next page index we'll allocate space on. See allocate-page. *)
-    val current-page = ref 0
+    val current-page = layout-current-page
 
-    (* Parse layout to find paragraph breaks. This handles whitespace
-       and figures out how much space comes after each paragraph.
-       Normalize spans that contain paragraphs onto the constituent
-       paragraphs.
-       It also accumulates "floats," which are not yet rendered.
-       XXX: Render floats! *)
+    (* Gat all the paragraphs in the document. This parses layout to find
+       paragraph breaks. It handles whitespace and figures out how
+       much space comes after each paragraph. Normalize spans that
+       contain paragraphs onto the constituent paragraphs. This list
+       also accumulates parafloats, which we activate when we emit the
+       paragraph. *)
     val para-items : paragraph-item list = get-paragraphs (lay :: nil)
 
     (* Blank space that can hold text, like a "column." Used as part of

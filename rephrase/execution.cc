@@ -656,6 +656,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       InternalFail(
           "Index out of bounds (negative) to string-sub",
           state);
+      return NonceValue();
     }
 
     if (std::optional<uint32_t> cpo = UTF8::Sub(*s, idx)) {

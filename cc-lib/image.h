@@ -361,7 +361,7 @@ struct ImageA {
   // x/y out of bounds will repeat edge pixels.
   float SampleBilinear(float x, float y) const;
 
-private:
+ private:
   int width, height;
   // Size width * height.
   std::vector<uint8> alpha;
@@ -415,7 +415,7 @@ struct ImageF {
   // image.
   float SampleBilinear(float x, float y, float outside_value) const;
 
-private:
+ private:
   int width, height;
   // Size width * height.
   std::vector<float> alpha;
@@ -469,7 +469,7 @@ struct Image1 {
 
   void SetRect(int x, int y, int w, int h, bool value = true);
 
-private:
+ private:
   int width, height;
   // Size width * height / 64.
   // Only padded at the end (with zeroes); a word can span more than

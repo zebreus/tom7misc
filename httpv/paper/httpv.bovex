@@ -514,7 +514,7 @@ Earlier straws:
  [I try to go to an HTTP site in incognito mode, perhaps precisely
   because I don’t really trust it and don’t want it sending
   cookies or infesting me with cookies. Chrome refuses on
-  the grounds that when I’m incognito mode, I must require
+  the grounds that when I’m in incognito mode, I must require
   encryption (?) even though that’s not at all what incognito
   mode is about (??).] ::
 
@@ -524,7 +524,7 @@ Earlier straws:
   keeps automatically trying to go to the HTTPS version.] ::
 
  [I just want to do some software development but
-  [tt[profiler.firefox.com]] is served over HTTPS and so it can't load
+  [tt[profiler.firefox.com]] is served over HTTPS and so it can’t load
   the profile from an HTTP server (mixed-content), but this is on a
   development computer while I’m on vacation and I just don’t have a
   domain for it, and so HTTPS is not even possible!] ::
@@ -589,7 +589,13 @@ very well to force you to do things like this.
 But don’t worry: This paper is not only an extended, petty rant about
 a time that I was annoyed by a warning message. It is also an
 extended, petty project to attempt to get some kind of symbolic
-revenge for the time that I was annoyed by a warning message.
+revenge for the time that I was annoyed by a warning
+message.[footnote[In fairness, in the months since launching my petty
+project (and for what I assume are unrelated reasons) Chrome has
+mostly retreated on its red alerts. I would say that I still have
+[tt[0xBEEF5]] and I assume that someone out there is just itching to
+do it again, but I would describe its behavior as of SIGBOVIK 2026
+as “medium straws” and not “last straw.”]]
 
 [section [TLS]]
 
@@ -631,15 +637,16 @@ server, but can read (and often modify) any data encrypted data sent
 between them. The possibility of such a rude intermezzo is arguably
 the core difficulty of designing protocols like TLS.
 
-The way that TLS prevents against man-in-the-middle attacks is for
-the client to check that the public key actually belongs to the server.
+The way that TLS prevents against man-in-the-middle attacks is for the
+client to check that the public key actually belongs to the server.
 This is accomplished by having someone [it[else]] that the user
-absolutely trusts vouch for the key that the server presents. They
-do this by “signing” the key–domain pair (using their own public key,
-which just comes with your browser), creating a [it[certificate]].[footnote[
-SSH isn’t quite TLS but it needs to solve a similar problem.
-Absent certificates (which is typical) it just gives you a message like
-[
+absolutely trusts vouch for the key that the server presents. This
+Certificate Authority does this by “signing” the key–domain pair using
+their own private key, creating a [it[certificate]]. Your browser can
+verify this using the Authority’s corresponding public key, which just
+comes with your browser.[footnote[SSH isn’t quite TLS but it needs to
+solve a similar problem. Absent certificates (which is typical) it
+just gives you a message like [
 
 hfill() ^^ break() ^^
 monospace-block-ext { left-indent = 0.0,
@@ -729,7 +736,7 @@ using HTTP,[footnote[As I understand, you do need to have a pretty
 robust hack in place, since Let’s Encrypt will try requesting the HTTP
 challenge from multiple sources. So this is a bit harder than doing a
 man-in-the-middle on the coffee shop wifi.]] then you can ask Let’s
-Encrypt to issue you a certificate, succeed the challenge-reponse
+Encrypt to issue you a certificate, succeed the challenge-response
 protocol, and then turn your HTTP man-in-the-middle into a [green-lock-icon] Green
 Padlock 4096-bit man-in-the-middle. For a very conscientious site
 owner there are some potential protections but if someone can
@@ -773,7 +780,7 @@ attacker interfered with your connection to it, then the browser
 will just trust the certificate anyway.] ::
 
 [So we invented OCSP stapling (the web server gets the OCSP
-certificate itself and sends it when you connect), and a way to tell
+assertion itself and forwards it when you connect), and a way to tell
 everybody that a user should not trust your site unless you staple
 OCSP. But since a typical OCSP response is valid for 7 days, an
 attacker can just keep reusing one for a week, even if the CA would
@@ -846,7 +853,7 @@ that I can use my mouse in browser-based CAD tools.] ::
  “one of China’s first state-authorized Certificate Authority (CA)
  institutions.” Um, [it[do]] I trus China? When we talk about
  state-level actors factoring my RSA key with a billion-dollar
- quantum computers, like, do we think those people might also
+ quantum computer, like, do we think those people might also
  influence a state-authorized CA?] ::
 
 [Of course Microsoft, Amazon, Google, and GoDaddy have their
@@ -990,8 +997,8 @@ negotiate the encryption keys.
 
 [subsection[Too many secrets]]
 
-RSA, which stands for Really Secure Algorithm,[cite rivest1978rsa] is
-based on the believed difficulty of factoring large numbers. The
+RSA, which stands for Really Secure Algorithm,[cite reuters2013secret]
+is based on the believed difficulty of factoring large numbers. The
 server comes up with two large primes [it [p]] and [it[q]], keeps them
 secret, and shares just [it[n]] = [it [pq]]. This is the public
 key.[footnote [Technically, the public key contains the exponent
@@ -1011,7 +1018,7 @@ operation. It just happens that if you know the prime factors of
 order of the group (the multiplicative group of integers mod [it[n]],
 aka [bbz][supsub heavy-asterisk (it [n])]), which gives you an easy
 way to compute the exponent [it[d]] such that [it [x]][sup (it [65537d])]
-= [it [x]] mod [it [n]].
+= [it [x]] mod [it [n]].[cite rivest1978rsa]
 
 Decorum requires the public key [it[n]] to be large, and Let’s Encrypt
 will only allow you to sign one that is 2048 bits, 3072 bits, or 4096
@@ -1035,20 +1042,20 @@ the Certificate Revocation List and maybe browsers check it). The most
 likely thing is that someone (maybe Let’s Encrypt itself) bulk-scans
 individual certificates after they’re issued to try to find weak ones.
 A key with a factor of 31337 would trivially be found by any such scan
-that is trying at all. It’s also possible that one of my
-“friends” who
+that is trying at all. It’s also possible that one of my “friends” who
 knew I was working on this did it to me out of a secretly harbored
 resentment.[footnote[Or someone snooping on my Subversion repository!
 For the record it’s fair game to mess with me in a fun way—as long as
 it’s not too close to a deadline. But I would not recommend getting
-spoilers this way, and forbid disseminating spoilers to others!]] Another possibility I realized is that someone may scan
-for keys that share factors. If one of the secret primes is [it[ever]]
-reused in another key, then you can easily recover it by performing
-GCD on the two public keys. A plausible security mistake would be for
-two keys for the same domain to be created using a weak random number
-generator (like, “always use 31337 as the first prime”). And so a
-plausible security scan would be to check GCD of a pool of historic
-keys for a specific domain.
+spoilers this way, and forbid disseminating spoilers to others!]]
+Another possibility I realized is that someone may scan for keys that
+share factors. If one of the secret primes is [it[ever]] reused in
+another key, then you can easily recover it by performing GCD on the
+two public keys. A plausible security mistake would be for two keys
+for the same domain to be created using a weak random number generator
+(like, “always use 31337 as the first prime”). And so a plausible
+security scan would be to check GCD of a pool of historic keys for a
+specific domain.
 It seems like a bit much to do O(n[sup[2]]) of these given that Let’s
 Encrypt alone issues over 5 million certificates a day ([figure "t"
 (fn fig => [[image { img = image-load "encrypt-growth.svg",
@@ -1157,17 +1164,18 @@ would spend nation-state level resources to intercept my credit
 card number?
 
 even openssl is XXX lines of code
-
-using the credit card to encrypt the data
 *]
 
 So that’s bad RSA. Note that modern TLS prefers Elliptic Curve
-Diffie—Hellman Key Exchange (ECDHE) instead of sending key materials
+Diffie–Hellman Key Exchange (ECDHE) instead of sending key materials
 encrypted with RSA. With ECDHE, even if the RSA modulus is factored by
 a futuristic quantum computer, the keys can’t be decoded from captured
-traffic.[cite diffie1992authentication] They call this “perfect
-forward secrecy,” which does seem a bit optimistic given the
-history.[cite adrian2015imperfect]
+traffic.[cite diffie1992authentication] Unless that same futuristic
+quantum computer running Shor’s algorithm can also compute discrete
+logarithms efficiently and break Diffie–Hellman itself.[cite
+shor1999polynomial] They call this “perfect forward secrecy,” which
+does seem a bit optimistic given the history.[cite
+adrian2015imperfect]
 
 
 [subsection[ClientHell and ServerHell]]
@@ -1207,7 +1215,7 @@ encrypted with RSA and the only thing so far that can’t be seen by
 observers.
 
 To encrypt the remainder of the session with AES-256, we need a
-256-bit key. The key is chosen in an way that uses information from
+256-bit key. The key is chosen in a way that uses information from
 both the server and client: This is one purpose of the 32-bit random
 strings sent during the [tt[Hello]] messages. Both the server and
 client compute the same thing:
@@ -1229,7 +1237,9 @@ pseudo-]] by always using the same value. 32 bytes is enough space to
 comfortably put my credit card number and expiration date in ASCII.
 One nice thing about this is that it elegantly makes good on the
 warning we saw at the beginning of the paper about attackers trying to
-steal my credit card!
+steal my credit card![footnote[A parallel punchline is: Rather than
+the normal mode of encrypting the sacred credit card numbers, we use
+the credit card numbers [it[to encrypt]].]]
 
 Another good thing about this is that it makes the server vulnerable
 to replay attacks. An observer who captures the handshake knows the
@@ -1289,7 +1299,7 @@ CBC has some problems, like since you know what the plaintext is being
 XORed with, you can flip bits in the IV and it will undetectably flip
 the corresponding bit in the plaintext when it is decrypted and XORed
 with the IV. For this reason and others, inside the encrypted message
-is this "Message Authentication Code" (MAC). It’s a SHA-1 hash of the
+is this “Message Authentication Code” (MAC). It’s a SHA-1 hash of the
 packet’s sequence number (so that the full payload is always different
 in a session), some header fields, and the content. If the receiver
 doesn’t compute the same thing after decryption, they know something’s
@@ -1339,7 +1349,7 @@ dictionary of blocks, especially the first one of each packet (which
 uses the zero IV each time and is essentially ECB mode). That’s kinda
 bad.
 
-What the server instead chooses an IV that has a particular algebraic
+What if the server instead chooses an IV that has a particular algebraic
 relationship to the block being encrypted?
 [* solve for B [oplus] IV = 0 ? *]
 If we choose IV to be the same as the block being encrypted, we
@@ -1409,12 +1419,12 @@ the “encrypted” HTTP response from my site:
 
 There are three packets here. Each starts with the five-byte header
 [color HEADER-COLOR (tt[17 03 03 00 40])], where [color HEADER-COLOR
-(tt[0x40])] is the length of the encrypted data. These 64 bytes are the
-plainly visible HTTP response [color IV-COLOR (tt[HTTP/1.1 200 OK\r])]
-as the IV, followed by the encrypted zeroes [color ZERO-COLOR (tt [12
-99 ae d8 3d...])] and then the [color MACPAD-COLOR [encrypted MAC and
-padding]]. The encrypted zeroes are the same each time, making the
-stream self-synchronizing and highly compressible.
+(tt[0x40])] is the length of the encrypted data. These 64 bytes are
+the plainly visible HTTP response [color IV-COLOR (tt[HTTP/1.1 200
+OK\r])] as the IV, followed by the encrypted zeroes [color ZERO-COLOR
+(tt [12 99 ae d8 3d...])] and then the [color MACPAD-COLOR [encrypted
+MAC and padding]]. The encrypted zeroes are the same each time, making
+the stream self-synchronizing and highly compressible.
 
 Even better for efficiency: Since we encrypt zeroes every time, we can
 [it[precompute]] that encrypted value during setup and reuse it,
@@ -1442,29 +1452,28 @@ embarrassed at how costly it is to run the encryption algorithms.
 Compared to plain HTTP, TLS adds several complete round trips to the
 page load ([tt[ClientHello]], [tt[ServerHello]],
 [tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]], then
-[tt[HandshakeFinished]], each of which depends on the previous messages
-and cannot be pipelined,[footnote[Though using constant client random
-and server random values as recommended in this paper [it[does]] allow
-for some optimistic execution!]] which is a problem because most
-users want the internet to be fast when they are browsing web sites.
-The RSA operations are somewhat expensive, especially if they are done
-inefficiently on purpose to prevent side-channel attacks. Worse,
-loading a typical web page over HTTP usually means making multiple
-connections to the server to request its different assets (e.g. in
-parallel); each request has to do the whole serial handshake. All this
-stuff makes the browser and server people yearn for a protocol that
-just gives them the data.
+[tt[HandshakeFinished]], each of which depends on the previous
+messages and cannot be pipelined,[footnote[Though using constant
+client random and server random values as recommended in this paper
+[it[does]] allow for some optimistic execution!]] which is a problem
+because most users want the internet to be fast when they are browsing
+web sites. The RSA operations are somewhat expensive, especially if
+they are done inefficiently on purpose to prevent side-channel
+attacks. Worse, loading a typical web page over HTTP usually means
+making multiple connections to the server to request its different
+assets (e.g. in parallel); each request has to do the whole serial
+handshake. All this stuff makes the browser and server people yearn
+for a protocol that just gives them the data.
 
 So we have Session Tickets. If the client notes that it supports
 session tickets and the server agrees, then the server can send a
-session ticket as part of the initial handshake.[cite rfc5077]
-The session ticket is
-an opaque blob of data that the client can save and send when
-establishing a future connection to bypass most of the handshake
-steps[footnote[It complicates the handshake state machine a lot. I
-probably would have given up on implementing it if I cared about
-security, since it makes it much harder to understand the possible
-sequences during this delicate phase.]] and get right to it.
+session ticket as part of the initial handshake.[cite rfc5077] The
+session ticket is an opaque blob of data that the client can save and
+send when establishing a future connection to bypass most of the
+handshake steps[footnote[It complicates the handshake state machine a
+lot. I probably would have given up on implementing it if I cared
+about security, since it makes it much harder to understand the
+possible sequences during this delicate phase.]] and get right to it.
 
 The session tickets are part of the handshake so they are always sent
 in plaintext. A typical implementation would do something like store
@@ -1477,13 +1486,13 @@ cluster of servers) to have some internal encryption keys,[footnote[
 So one funny thing that can happen is: After going through all the
 expense to create ephemeral keys for “Perfect Forward Secrecy,” the
 server can then just use fixed AES keys that it keeps in config files
-to encrypt the session ticket. That way, if you end up with read access
-to the config files, you can decrypt all sessions.[cite
-springall2016measuring] Perfect!]] and to send
-the session data to the client encrypted with those keys. The client
-just sees a bunch of bytes, but when they hand them back to the server
-(or another server that knows the keys) it can recover the master
-secret and resume [it[without even storing any state]].
+to encrypt the session ticket. That way, if you end up with read
+access to the config files, you can decrypt all sessions.[cite
+springall2016measuring] Perfect!]] and to send the session data to the
+client encrypted with those keys. The client just sees a bunch of
+bytes, but when they hand them back to the server (or another server
+that knows the keys) it can recover the master secret and resume
+[it[without even storing any state]].
 
 Elegant! Another elegant implementation, used by [httpv], is to use
 the master secret itself as the session ticket, without any pesky
@@ -1601,7 +1610,7 @@ is expected to be done with eyes closed and was also written by an asshole,
 because early on the script will chide you [tt[Error: the install
 instructions explicitly say to pipe the install script to `bash`;
 please follow them]].]] The mysterious argument [tt[-o-]] is actually
-an ASCII emoticon for a someone with their face down on their desk and
+an ASCII emoticon for someone with their face down on their desk and
 their arms splayed out horizontally, in a pose of complete submission.
 If you are freebasing shell scripts but you are afraid that
 someone is going to spend 512 billion years with a massive quantum computer
@@ -1828,7 +1837,7 @@ what happens!—but to avoid the appearance of a conflict of interest,
 we should use at least one other independent psychometric technique to
 assess the personality of [httpv].
 
-[paragraph[Which NARUTO character are you?]]
+[paragraph-no-period[Which NARUTO character are you?]]
 I took BuzzFeed’s “Which NARUTO character are you?,”[cite m4shy2025naruto]
 answering questions on [httpv]’s behalf, but I quickly became unable
 to answer questions like
@@ -1843,7 +1852,7 @@ to answer questions like
  [Asuma] ::
  [Asuma sensei] :: nil)]
 
-which seem to presuppose that [it[am]] a NARUTO character.
+which seem to presuppose that I [it[am]] a NARUTO character.
 Therefore this approach yielded no useful data.
 
 [section [Niceties]]
@@ -1853,32 +1862,33 @@ for a few reasons: I generally make the software for my own use, and
 that use is typically self-flagellative, and so if you are using the
 software then you are clearly asking for the flagellum (example: file
 system that stores your data in hundreds of thousands of live emulated
-Tetris games). But also, there’s a selective pressure here that
-is—if not intentionally so, then certainly by welcome byproduct—a
-sort of autonomous tech support talisman. This is sort of like those
-robot phone trees that, when you call the bank’s technical support to
-tell them that their TLS certificate has expired, the bots ask if you
-if you want to do a menu of somethings that can be trivially
-accomplished on the bank’s website, with the idea that they can ward
-off the majority of their tech support calls without a word spoken to
-human ears. If the first paragraph of the documentation is “You will
-need a modern C++ compiler,” it increases the quality of the e-mail
-inquiries to a manageable level.[footnote[It is also, not
-coincidentally, akin to regularly having a few minor math lectures as
-digressions in one’s YouTube videos.]]
+Tetris games). But also, there’s a selective pressure here that is—if
+not intentionally so, then certainly by welcome byproduct—a sort of
+autonomous tech support talisman. This is sort of like those robot
+phone trees that, when you call the bank’s technical support to tell
+them that their TLS certificate has expired, the bots ask if you want
+to do a menu of somethings that can be trivially accomplished on the
+bank’s website, with the idea that they can ward off the majority of
+their tech support calls without a word spoken to human ears. If the
+first paragraph of the documentation is “You will need a modern C++
+compiler,” it increases the quality of the e-mail inquiries to a
+manageable level.[footnote[It is also, not coincidentally, akin to
+regularly having a few minor math lectures as digressions in one’s
+YouTube videos.]]
 
 But! This time, you know, the art project is best realized if
 the [httpv] server is used by people other than me; maybe even
 [it[multiple]] people. So, this time, I tried to make the software
 easy to use (at least as far as makes sense for a linux daemon).
 It is documented in the file [tt[INSTALL]], which does begin by
-saying that you will need a modern C++ compiler.
+saying that you will need a modern C++ compiler.[footnote[You can
+find the project site at [tt [http://tom7.org/httpv]].]]
 
-[httpv] is manually compiled and installed; the way I like it.
-There are simply no mysterious files. [httpv] stores all its
-configuration in [tt[/etc/httpv/]]. A single text file, [tt[config.txt]],
-tells it what websites you have, how dumb you want the TLS
-malicious compliance to be, and what your credit card number is.
+[httpv] is manually compiled and installed; the way I like it. There
+are simply no mysterious files. [httpv] stores all its configuration
+in [tt[/etc/httpv/]]. A single text file, [tt[config.txt]], tells it
+what websites you have, how dumb you want the TLS malicious compliance
+to be, and what your credit card number is.
 
 You can use the [tt[multi-gen.exe]] program to make yourself RSA keys.
 These can be 4096 bits so that it is “military-grade encryption” but
@@ -1986,14 +1996,12 @@ finite-resolution devices), BoVeX now supports vector images via a
 significant subset of the SVG format.[cite dahlstrom2011scalable] This
 is a horrific task that I of course did entirely by hand. Like PDF,
 SVG is impossibly complex and has probably never been completely
-implemented, but I made sure to support the features that I see
-in Adobe Illustrator exports so that I can at least personally get
-it to look like I want forevermore. This includes all the path types
-(except arcs), basic text support,
-rounded rectangles,
-the three different ways that strokes and fills can be transparent,
-dashed lines,
-clip paths, transforms, and fill rules.
+implemented, but I made sure to support the features that I see in
+Adobe Illustrator exports so that I can at least personally get it to
+look like I want forevermore. This includes all the path types (except
+arcs), basic text support, rounded rectangles, the three different
+ways that strokes and fills can be transparent, dashed lines, clip
+paths, transforms, and fill rules.
 
 [paragraph[Footnotes]] I can’t believe I wrote two whole papers
 in BoVeX without any real support for Footnotes![bovex-2025-footnote [In the
@@ -2145,19 +2153,15 @@ tool of computer science traitors (app store signatures, drinking
 rights management, locked-down computers, ransomware) because of its
 exceptional ability to deny access. A good technologist should be
 fascinated by such power, and also very thoughtful about what they set
-in motion with it. But perhaps a new subfield ought to counterbalance
-the prevailing toxic max-security. I can now attest that it is a
-subversive joy to artfully botch “security” software, especially if
-you imagine the faces cringing! Undoing the coat of red paint
-indicated by the iconic [it[Applied Cryptography]],[cite
-schneier1996applied] we could imagine a field of [it[Gymnography]]
-(from the Greek gγμvòσ, naked) or even the more active and downright
-catchy [it[Strippedography]]. Papers, please!
-
-[*
-[cite reuters2013secret] - rsa payola
-[cite wehrheim2012stadt] - hostile architecture
-*]
+in motion with it.[cite wehrheim2012stadt] But perhaps a new subfield
+ought to counterbalance the prevailing toxic max-security. I can now
+attest that it is a subversive joy to artfully botch “security”
+software, especially if you imagine the faces cringing! Undoing the
+coat of red paint indicated by the iconic [it[Applied
+Cryptography]],[cite schneier1996applied] we could imagine a field of
+[it[Gymnography]] (from the Greek [it [gγμvòσ]], naked) or even the
+more active and downright catchy [it[Strippedography]]. Papers,
+please!
 
 [section [Bibliography]]
 

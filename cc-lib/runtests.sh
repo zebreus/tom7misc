@@ -77,3 +77,4 @@ make -j
 ./string-table_test.exe
 ./unicode-data_test.exe
 ./html-entities_test.exe
+./contiguous-buffer_test.exe

@@ -96,10 +96,6 @@ csr_test.exe : csr_test.o $(HTTPV_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-send-buffer_test.exe : send-buffer_test.o $(HTTPV_LIB_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
 vanity.exe : vanity.o $(HTTPV_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

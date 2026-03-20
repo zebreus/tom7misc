@@ -127,14 +127,14 @@ static TTF::Contour MakeContour(const vector<pair<int, int>> &points) {
 // points. (0, 0) is the top-left corner of the top-left pixel, with
 // y increasing downward.
 //
-// The bitmap must have oine contiguous non-empty region with values >0,
+// The bitmap must have one contiguous non-empty region with values >0,
 // which is the shape to trace.
 //
 // This is based on code that was tracing SDFs (from ../lowercase) which
 // might account for some overkill therein?
 static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
   auto InBlob = [&bitmap](int x, int y) -> bool {
-      if (x < 0 || y <0 || x >= bitmap.Width() || y >= bitmap.Height())
+      if (x < 0 || y < 0 || x >= bitmap.Width() || y >= bitmap.Height())
         return false;
       return bitmap.GetPixel(x, y) > 0;
     };

@@ -1,32 +1,34 @@
 
-#ifndef _HTTPV_SEND_BUFFER_H
-#define _HTTPV_SEND_BUFFER_H
+#ifndef _CC_LIB_CONTIGUOUS_BUFFER_H
+#define _CC_LIB_CONTIGUOUS_BUFFER_H
 
 #include <cstddef>
 #include <cstdint>
-#include <span>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
+#include <span>
 
 #include "base/logging.h"
 
-// Buffered output that supports dynamic resizing,
-// but reduces copying. Not thread-safe.
-struct SendBuffer {
-
-  SendBuffer(int initial_size = 16384) {
+// Byte queue (e.g. for buffered network I/O) that supports appending
+// to its end and removing from its beginning. It can grow to
+// arbitrary size, but avoids copying. It always represents the data
+// contiguously in memory.
+struct ContiguousBuffer {
+  explicit ContiguousBuffer(int initial_size = 16384) {
     allocated = initial_size;
     buf = (uint8_t*)malloc(initial_size);
   }
 
-  ~SendBuffer() {
+  ~ContiguousBuffer() {
     free(buf);
   }
 
   bool empty() const { return end == start; }
   void clear() { start = end = 0; }
   size_t size() const { return end - start; }
-  // These two are invalidated by Append and RemovePrefix, of course.
+  // These references are invalidated by Append and RemovePrefix, of
+  // course.
   const uint8_t *data() const { return buf + start; }
   std::span<const uint8_t> Span() const {
     return std::span<const uint8_t>(data(), size());
@@ -54,6 +56,7 @@ struct SendBuffer {
     const size_t nbytes = end - start;
     if (nbytes + data.size() > allocated) {
       // Need to grow the vector to accommodate.
+      // XXX PERF realloc
       const size_t new_alloc = nbytes + data.size() + (allocated >> 1);
       uint8_t *new_buf = (uint8_t*)malloc(new_alloc);
 
@@ -79,10 +82,10 @@ struct SendBuffer {
   }
 
  private:
-  SendBuffer(const SendBuffer &) = delete;
-  SendBuffer(SendBuffer &&) = delete;
-  void operator=(const SendBuffer &) = delete;
-  void operator=(SendBuffer &&) = delete;
+  ContiguousBuffer(const ContiguousBuffer &) = delete;
+  ContiguousBuffer(ContiguousBuffer &&) = delete;
+  void operator=(const ContiguousBuffer &) = delete;
+  void operator=(ContiguousBuffer &&) = delete;
 
   // Index of the next byte to send.
   size_t start = 0;

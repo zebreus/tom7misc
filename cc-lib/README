@@ -239,6 +239,8 @@ zip:
   My simple C++ wrapper for compressed streams, using miniz.
 byte-set:
   Fast and/or compact sets of 8-bit bytes for model checking applications.
+contiguous-buffer:
+  A byte buffer for stuff like network IO which keeps the data contiguous.
 small-int-set:
   Efficiently store sets of integers in 0..63, using bitmask. Supports
   fast iteration, unlike std::bitset.

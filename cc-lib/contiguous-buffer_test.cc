@@ -1,5 +1,5 @@
 
-#include "send-buffer.h"
+#include "contiguous-buffer.h"
 
 #include <cstdint>
 #include <cstring>
@@ -15,7 +15,7 @@ static std::span<const uint8_t> S(std::string_view s) {
 }
 
 static void TestBasic() {
-  SendBuffer b(100);
+  ContiguousBuffer b(100);
   const uint8_t msg[] = "Hello World";
   b.Append(std::span<const uint8_t>(msg, 5));
   CHECK(b.size() == 5);
@@ -41,7 +41,7 @@ static void TestBasic() {
 }
 
 static void TestReset() {
-  SendBuffer b(20);
+  ContiguousBuffer b(20);
   b.Append(S("123456789"));
   b.RemovePrefix(9);
   CHECK(b.size() == 0);
@@ -52,7 +52,7 @@ static void TestReset() {
 }
 
 static void TestCompact() {
-  SendBuffer b(10);
+  ContiguousBuffer b(10);
 
   b.Append(S("12345678"));
   CHECK(b.size() == 8);
@@ -71,7 +71,7 @@ static void TestCompact() {
 }
 
 static void TestGrowth() {
-  SendBuffer b(10);
+  ContiguousBuffer b(10);
   b.Append(S("abcdefghij"));
   CHECK(b.size() == 10);
 
