@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -88,6 +89,10 @@ struct PacketWriter {
     }
     std::span buf = Buf(bs.size());
     memcpy(buf.data(), bs.data(), bs.size());
+  }
+
+  void Bytes(std::string_view str) {
+    Bytes(std::span<const uint8_t>((const uint8_t*)str.data(), str.size()));
   }
 
   // Append uninitialized space of the given size and return a view of

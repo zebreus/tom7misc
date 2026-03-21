@@ -21,6 +21,137 @@
       return o.value();                                \
     }())
 
+static void TestSerializeClientHello() {
+  TLS::ClientHello orig;
+  orig.version_major = 3;
+  orig.version_minor = 3;
+
+  for (int i = 0; i < 32; i++) {
+    orig.client_random[i] = (uint8_t)i;
+  }
+
+  orig.session_id = {0x11, 0x22, 0x33, 0x44};
+  orig.cipher_suites = {TLS::RSA_WITH_AES_256_CBC_SHA, 0x9999};
+  orig.compression_methods = {0x00};
+
+  orig.extensions.push_back(
+      TLS::ServerNameIndication{.hosts = {"example.com"}});
+  orig.extensions.push_back(TLS::SessionTicket{.ticket = {0xab, 0xcd}});
+  orig.extensions.push_back(TLS::HeartbeatExt{.mode = 1});
+  orig.extensions.push_back(
+      TLS::UnknownExt{.type = 0x5575, .bytes = {0x01, 0x02, 0x03}});
+
+  std::vector<uint8_t> serialized =
+    CHECK_SOME(TLS::SerializeClientHello(orig));
+
+  TLS::ClientHello parsed =
+    CHECK_SOME(TLS::ParseClientHello(PacketParser(serialized)));
+
+  // Verify basic fields
+  CHECK(parsed.version_major == orig.version_major);
+  CHECK(parsed.version_minor == orig.version_minor);
+  CHECK(parsed.client_random == orig.client_random);
+  CHECK(parsed.session_id == orig.session_id);
+  CHECK(parsed.cipher_suites == orig.cipher_suites);
+  CHECK(parsed.compression_methods == orig.compression_methods);
+
+  // Verify extensions
+  CHECK(parsed.extensions.size() == orig.extensions.size());
+
+  {
+    const auto* sni =
+      std::get_if<TLS::ServerNameIndication>(&parsed.extensions[0]);
+    CHECK(sni != nullptr);
+    CHECK(sni->hosts.size() == 1);
+    CHECK(sni->hosts[0] == "example.com");
+  }
+
+  {
+    const auto* st = std::get_if<TLS::SessionTicket>(&parsed.extensions[1]);
+    CHECK(st != nullptr);
+    CHECK(st->ticket.size() == 2);
+    CHECK(st->ticket[0] == 0xab);
+    CHECK(st->ticket[1] == 0xcd);
+  }
+
+  {
+    const auto* hb = std::get_if<TLS::HeartbeatExt>(&parsed.extensions[2]);
+    CHECK(hb != nullptr);
+    CHECK(hb->mode == 1);
+  }
+
+  {
+    const auto* unk = std::get_if<TLS::UnknownExt>(&parsed.extensions[3]);
+    CHECK(unk != nullptr);
+    CHECK(unk->type == 0x5575);
+    CHECK(unk->bytes.size() == 3);
+    CHECK(unk->bytes[0] == 0x01);
+    CHECK(unk->bytes[1] == 0x02);
+    CHECK(unk->bytes[2] == 0x03);
+  }
+}
+
+static void TestParseServerHello() {
+  TLS::ServerHello orig;
+  orig.version_major = 3;
+  orig.version_minor = 3;
+
+  for (int i = 0; i < 32; i++) {
+    orig.server_random[i] = (uint8_t)(31 - i);
+  }
+
+  orig.session_id = {0xaa, 0xbb, 0xcc};
+  orig.cipher_suite = TLS::RSA_WITH_AES_256_CBC_SHA;
+  orig.compression_method = 0;
+
+  orig.extensions.push_back(TLS::SessionTicket{.ticket = {0x11, 0x22, 0x33}});
+  orig.extensions.push_back(TLS::HeartbeatExt{.mode = 2});
+  orig.extensions.push_back(TLS::UnknownExt{
+      .type = 0x7757,
+      .bytes = {0x09, 0x08},
+    });
+
+  std::vector<uint8_t> serialized =
+    CHECK_SOME(TLS::SerializeServerHello(orig));
+
+  TLS::ServerHello parsed =
+    CHECK_SOME(TLS::ParseServerHello(PacketParser(serialized)));
+
+  CHECK(parsed.version_major == orig.version_major);
+  CHECK(parsed.version_minor == orig.version_minor);
+  CHECK(parsed.server_random == orig.server_random);
+  CHECK(parsed.session_id == orig.session_id);
+  CHECK(parsed.cipher_suite == orig.cipher_suite);
+  CHECK(parsed.compression_method == orig.compression_method);
+
+  // Verify extensions
+  CHECK(parsed.extensions.size() == orig.extensions.size());
+
+  {
+    const auto* st = std::get_if<TLS::SessionTicket>(&parsed.extensions[0]);
+    CHECK(st != nullptr);
+    CHECK(st->ticket.size() == 3);
+    CHECK(st->ticket[0] == 0x11);
+    CHECK(st->ticket[1] == 0x22);
+    CHECK(st->ticket[2] == 0x33);
+  }
+
+  {
+    const auto* hb = std::get_if<TLS::HeartbeatExt>(&parsed.extensions[1]);
+    CHECK(hb != nullptr);
+    CHECK(hb->mode == 2);
+  }
+
+  {
+    const auto* unk = std::get_if<TLS::UnknownExt>(&parsed.extensions[2]);
+    CHECK(unk != nullptr);
+    CHECK(unk->type == 0x7757);
+    CHECK(unk->bytes.size() == 2);
+    CHECK(unk->bytes[0] == 0x09);
+    CHECK(unk->bytes[1] == 0x08);
+  }
+}
+
 static void TestParseClientHello() {
   // Example ClientHello from tls12.xargs.org
   static constexpr uint8_t EXAMPLE[] = {
@@ -66,6 +197,42 @@ static void TestParseClientHello() {
   CHECK(had_sni) << "Didn't parse SNI extension";
 }
 
+static void TestSerializeParseServerHelloDone() {
+  std::vector<uint8_t> serialized = TLS::SerializeServerHelloDone();
+  CHECK(TLS::ParseServerHelloDone(PacketParser(serialized)));
+
+  // Verify it fails on a bad packet
+  serialized.push_back(0x00);
+  CHECK(!TLS::ParseServerHelloDone(PacketParser(serialized)));
+}
+
+static void TestClientKeyExchange() {
+  TLS::ClientKeyExchange orig;
+  orig.encrypted_pms = {0x12, 0x34, 0x56, 0x78};
+
+  std::vector<uint8_t> serialized =
+    CHECK_SOME(TLS::SerializeClientKeyExchange(orig));
+  TLS::ClientKeyExchange parsed =
+    CHECK_SOME(TLS::ParseClientKeyExchange(PacketParser(serialized)));
+
+  CHECK(parsed.encrypted_pms == orig.encrypted_pms);
+}
+
+static void TestServerCertificate() {
+  TLS::ServerCertificate orig;
+  orig.chain.push_back({0x01, 0x02, 0x03});
+  orig.chain.push_back({0x0A, 0x0B, 0x0C, 0x0D});
+
+  std::vector<uint8_t> serialized =
+    CHECK_SOME(TLS::SerializeServerCertificate(orig));
+  TLS::ServerCertificate parsed =
+    CHECK_SOME(TLS::ParseServerCertificate(PacketParser(serialized)));
+
+  CHECK(parsed.chain.size() == orig.chain.size());
+  CHECK(parsed.chain[0] == orig.chain[0]);
+  CHECK(parsed.chain[1] == orig.chain[1]);
+}
+
 static void TestPRF() {
   // For SHA-256.
   std::vector<uint8_t> secret = {
@@ -101,7 +268,7 @@ static void TestPRF() {
   CHECK(expected_output == actual_output);
 }
 
-static void TestRoundTrip() {
+static void TestEncryptRoundTrip() {
   ArcFour rc("roundtrip");
   auto Randomize = [&rc](std::vector<uint8_t> *v) {
       for (int i = 0; i < v->size(); i++) {
@@ -160,15 +327,18 @@ static void TestRoundTrip() {
     CHECK(decrypted.size() == content_len);
     CHECK(0 == memcmp(decrypted.data(), content.data(), content_len));
   }
-
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestParseClientHello();
+  TestSerializeClientHello();
+  TestParseServerHello();
+  TestServerCertificate();
+  TestClientKeyExchange();
   TestPRF();
-  TestRoundTrip();
+  TestEncryptRoundTrip();
 
   Print("OK\n");
   return 0;

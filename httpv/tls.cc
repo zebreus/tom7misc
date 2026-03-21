@@ -214,7 +214,7 @@ TLS::ParseClientHello(PacketParser packet) {
 
   if (packet.size() < 4) return std::nullopt;
   // ClientHello type.
-  if (packet.Byte() != 1) return std::nullopt;
+  if (packet.Byte() != CLIENT_HELLO) return std::nullopt;
 
   const uint32_t handshake_len = packet.W24();
   if (handshake_len != packet.size()) return std::nullopt;
@@ -312,6 +312,104 @@ TLS::ParseClientHello(PacketParser packet) {
   return {std::move(hello)};
 }
 
+std::optional<TLS::ServerHello> TLS::ParseServerHello(PacketParser packet) {
+   ServerHello hello;
+
+  if (packet.Byte() != SERVER_HELLO) return std::nullopt;
+
+  const uint32_t handshake_len = packet.W24();
+  if (handshake_len != packet.size()) return std::nullopt;
+
+  hello.version_major = packet.Byte();
+  hello.version_minor = packet.Byte();
+
+  packet.BytesTo(32, hello.server_random.data());
+
+  if (packet.empty()) return std::nullopt;
+  uint8_t session_id_len = packet.Byte();
+  if (session_id_len > 32) return std::nullopt;
+
+  hello.session_id.resize(session_id_len);
+  packet.BytesTo(session_id_len, hello.session_id.data());
+
+  hello.cipher_suite = packet.W16();
+  hello.compression_method = packet.Byte();
+
+  if (!packet.OK()) return std::nullopt;
+
+  if (packet.empty()) {
+    // Valid to have no extensions
+    return {std::move(hello)};
+  }
+
+  if (packet.size() < 2) return std::nullopt;
+  uint16_t extensions_len = packet.W16();
+  // Ensure we have exactly the right number of bytes remaining
+  if (!packet.OK() ||
+      packet.size() != extensions_len) return std::nullopt;
+
+  while (!packet.empty()) {
+    uint16_t type = packet.W16();
+    uint16_t len = packet.W16();
+
+    switch (type) {
+    case SESSION_TICKET_EXT: {
+      hello.extensions.emplace_back(SessionTicket{
+          .ticket = packet.Bytes(len),
+      });
+      break;
+    }
+
+    case HEARTBEAT_EXT: {
+      // Always one byte.
+      if (len != 1) return std::nullopt;
+      hello.extensions.emplace_back(HeartbeatExt{
+          .mode = packet.Byte(),
+      });
+      break;
+    }
+
+    default: {
+      UnknownExt unk;
+      unk.type = type;
+      unk.bytes.resize(len);
+      packet.BytesTo(len, unk.bytes.data());
+      hello.extensions.emplace_back(std::move(unk));
+      break;
+    }
+    }
+  }
+
+  if (!packet.OK()) return std::nullopt;
+
+  CHECK(packet.empty());
+  return {std::move(hello)};
+}
+
+std::optional<TLS::ServerCertificate>
+TLS::ParseServerCertificate(PacketParser packet) {
+  if (packet.size() < 4) return std::nullopt;
+  if (packet.Byte() != CERTIFICATE) return std::nullopt;
+
+  const uint32_t handshake_len = packet.W24();
+  if (handshake_len != packet.size()) return std::nullopt;
+
+  if (packet.size() < 3) return std::nullopt;
+  const uint32_t chain_len = packet.W24();
+  if (chain_len != packet.size()) return std::nullopt;
+
+  ServerCertificate cert;
+  while (!packet.empty()) {
+    if (packet.size() < 3) return std::nullopt;
+    uint32_t der_len = packet.W24();
+    if (packet.size() < der_len) return std::nullopt;
+    cert.chain.push_back(packet.Bytes(der_len));
+  }
+
+  if (!packet.OK()) return std::nullopt;
+  return {std::move(cert)};
+}
+
 std::optional<TLS::ClientKeyExchange>
 TLS::ParseClientKeyExchange(PacketParser packet) {
   ClientKeyExchange kex;
@@ -336,6 +434,12 @@ TLS::ParseClientKeyExchange(PacketParser packet) {
   return {kex};
 }
 
+bool TLS::ParseServerHelloDone(PacketParser packet) {
+  if (packet.size() != 4) return false;
+  if (packet.Byte() != SERVER_HELLO_DONE) return false;
+  return packet.W24() == 0;
+}
+
 bool TLS::ParseChangeCipherSpec(PacketParser packet) {
   return packet.size() == 1 && packet.Byte() == 0x01;
 }
@@ -355,14 +459,98 @@ TLS::ParseHandshakeFinished(PacketParser packet) {
   return {std::move(finished)};
 }
 
+std::optional<std::vector<uint8_t>> TLS::SerializeClientHello(
+    const ClientHello &hello) {
+  if (hello.session_id.size() > 32) return std::nullopt;
+  if (hello.cipher_suites.size() * 2 > 0xFFFF) return std::nullopt;
+  if (hello.compression_methods.size() > 0xFF) return std::nullopt;
+
+  PacketWriter packet;
+  packet.Byte(CLIENT_HELLO);
+  auto length = packet.Length24();
+
+  // TLS 1.2
+  packet.Byte(hello.version_major);
+  packet.Byte(hello.version_minor);
+
+  packet.Bytes(hello.client_random);
+
+  packet.Byte((uint8_t)hello.session_id.size());
+  packet.Bytes(hello.session_id);
+
+  // Cipher Suites (each 16 bits)
+  packet.W16((uint16_t)(hello.cipher_suites.size() * 2));
+  for (uint16_t cs : hello.cipher_suites) {
+    packet.W16(cs);
+  }
+
+  packet.Byte((uint8_t)hello.compression_methods.size());
+  packet.Bytes(hello.compression_methods);
+
+  if (!hello.extensions.empty()) {
+    // Total extensions length
+    auto ext_list_len = packet.Length16();
+
+    for (const auto &ext : hello.extensions) {
+      if (const ServerNameIndication *sni =
+            std::get_if<ServerNameIndication>(&ext)) {
+        packet.W16(SERVER_NAME_INDICATION_EXT);
+        auto ext_len = packet.Length16();
+
+        // The SNI extension contains a list of names
+        auto sni_list_len = packet.Length16();
+        for (const std::string &host : sni->hosts) {
+          // host_name type.
+          packet.Byte(0);
+          if (host.size() > 0xFFFF) return std::nullopt;
+          packet.W16((uint16_t)host.size());
+          packet.Bytes(host);
+        }
+
+        sni_list_len.Fill();
+        ext_len.Fill();
+
+      } else if (const SessionTicket *st = std::get_if<SessionTicket>(&ext)) {
+        packet.W16(SESSION_TICKET_EXT);
+        if (st->ticket.size() > 0xFFFF) return std::nullopt;
+        packet.W16((uint16_t)st->ticket.size());
+        packet.Bytes(st->ticket);
+
+      } else if (const HeartbeatExt *h = std::get_if<HeartbeatExt>(&ext)) {
+        packet.W16(HEARTBEAT_EXT);
+        packet.W16(1);
+        packet.Byte(h->mode);
+
+      } else if (const UnknownExt *unk = std::get_if<UnknownExt>(&ext)) {
+        packet.W16(unk->type);
+        if (unk->bytes.size() > 0xFFFF) return std::nullopt;
+        packet.W16((uint16_t)unk->bytes.size());
+        packet.Bytes(unk->bytes);
+      }
+    }
+
+    ext_list_len.Fill();
+  }
+
+  length.Fill();
+
+  return {std::move(packet).Release()};
+}
+
 std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
     const ServerHello &hello) {
-  // A ServerHello message is a Handshake message. The structure is:
-  //
-  // Handshake Header:
-  //  - Handshake Type (1 byte): 2 for ServerHello
-  //  - Length (3 bytes): Length of the ServerHello payload
-  //
+  if (hello.session_id.size() > 32) {
+    return std::nullopt;
+  }
+
+  PacketWriter packet;
+  // Header.
+  packet.Byte(SERVER_HELLO);
+  // Placeholder for length, written at the end.
+  size_t length_pos = packet.size();
+  packet.W24(0);
+  size_t payload_start_pos = packet.size();
+
   // ServerHello Payload:
   //  - Protocol Version (2 bytes)
   //  - Server Random (32 bytes)
@@ -372,21 +560,6 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerHello(
   //  - Compression Method (1 byte)
   //  - [Optional] Extensions Length (2 bytes)
   //  - [Optional] Extensions (variable)
-
-  // Validate inputs first.
-  if (hello.session_id.size() > 32) {
-    return std::nullopt;
-  }
-
-  PacketWriter packet;
-  // Server Hello
-  packet.Byte(SERVER_HELLO);
-
-  // Placeholder for length, written at the end.
-  size_t length_pos = packet.size();
-  packet.W24(0);
-  size_t payload_start_pos = packet.size();
-
   packet.Byte(hello.version_major);
   packet.Byte(hello.version_minor);
   packet.Bytes(hello.server_random);
@@ -455,6 +628,22 @@ std::optional<std::vector<uint8_t>> TLS::SerializeServerCertificate(
   chain_length.Fill();
 
   all_length.Fill();
+  return {std::move(packet).Release()};
+}
+
+std::optional<std::vector<uint8_t>> TLS::SerializeClientKeyExchange(
+    const ClientKeyExchange &kex) {
+  if (kex.encrypted_pms.size() > 0xFFFF)
+    return std::nullopt;
+
+  PacketWriter packet;
+  packet.Byte(CLIENT_KEY_EXCHANGE);
+  auto hs_len = packet.Length24();
+
+  packet.W16((uint16_t)kex.encrypted_pms.size());
+  packet.Bytes(kex.encrypted_pms);
+
+  hs_len.Fill();
   return {std::move(packet).Release()};
 }
 

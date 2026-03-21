@@ -171,8 +171,15 @@ struct TLS {
 
   static std::optional<ClientHello> ParseClientHello(PacketParser packet);
 
+  static std::optional<ServerHello> ParseServerHello(PacketParser packet);
+
   static std::optional<ClientKeyExchange> ParseClientKeyExchange(
       PacketParser packet);
+
+  static std::optional<TLS::ServerCertificate>
+  ParseServerCertificate(PacketParser packet);
+
+  static bool ParseServerHelloDone(PacketParser packet);
 
   // This is always just a single 0x01, so we just return true if
   // it is succesfully parsed. (Note that this is not a handshake
@@ -182,11 +189,17 @@ struct TLS {
   static std::optional<HandshakeFinished>
   ParseHandshakeFinished(PacketParser packet);
 
+  static std::optional<std::vector<uint8_t>> SerializeClientHello(
+      const ClientHello &hello);
+
   static std::optional<std::vector<uint8_t>> SerializeServerHello(
       const ServerHello &hello);
 
   static std::optional<std::vector<uint8_t>> SerializeServerCertificate(
       const ServerCertificate &cert);
+
+  static std::optional<std::vector<uint8_t>> SerializeClientKeyExchange(
+      const ClientKeyExchange &kex);
 
   static std::vector<uint8_t> SerializeServerHelloDone();
 
