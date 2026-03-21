@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "bignum/big.h"
@@ -42,6 +43,11 @@ struct CSR {
   // Pass the ASN.1 DER bytes of the certificate.
   static std::optional<std::pair<BigInt, BigInt>>
   GetPublicKey(std::span<const uint8_t> cert_der);
+
+  // Extract the RSA modulus and exponent from an ASN.1 DER
+  // SubjectPublicKeyInfo.
+  static std::optional<std::pair<BigInt, BigInt>>
+  ParseSubjectPublicKeyInfo(std::span<const uint8_t> spki_der);
 
   // For certificate renewal you often need to check the
   // expiration time of a certificate. Pass the ASN.1 DER bytes.

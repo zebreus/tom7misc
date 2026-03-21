@@ -69,7 +69,7 @@ static void Generate() {
   CryptRand cr;
   // RSA::Key key = RSA::GenerateKey(4096, &cr);
   // RSA::Key key = GenerateBad(4096, &cr);
-  RSA::Key key = RSA::GenerateKey(2048, &cr);
+  RSA::Key key = RSA::GenerateKey(256, &cr);
 
   Print("--------\n"
         "n: {}\n"

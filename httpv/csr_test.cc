@@ -11,6 +11,7 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "csr.h"
+#include "hexdump.h"
 #include "multi-rsa.h"
 #include "pem.h"
 #include "util.h"
@@ -162,6 +163,26 @@ static void TestRevoked() {
   CHECK(CSR::IsRevoked(crl_der, beefs));
 }
 
+static void TestSPKI() {
+  BigInt original_n("83930703446655686381661558676537631998282957044"
+                    "071316832289146811655299598199");
+  BigInt original_e(65537);
+
+  std::vector<uint8_t> spki_der =
+    CSR::SubjectPublicKeyInfo(original_n, original_e);
+  CHECK(!spki_der.empty());
+
+  auto spki = CSR::ParseSubjectPublicKeyInfo(spki_der);
+  CHECK(spki.has_value()) << HexDump::Color(spki_der);
+
+  // Since it's DER, reserializing should give the exact same bytes.
+  std::vector<uint8_t> round_trip_der =
+    CSR::SubjectPublicKeyInfo(spki.value().first, spki.value().second);
+
+  CHECK(spki_der == round_trip_der) << HexDump::Color(spki_der) << "\nvs\n"
+                                    << HexDump::Color(round_trip_der);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -174,6 +195,7 @@ int main(int argc, char **argv) {
   TestGetPublicKey();
   TestGetCRL();
   TestRevoked();
+  TestSPKI();
 
   Print("OK\n");
   return 0;
