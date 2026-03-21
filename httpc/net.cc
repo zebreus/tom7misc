@@ -6,21 +6,26 @@
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
+#include <minwindef.h>
+#include <winerror.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#include <minwindef.h>
 #else
 
 // Posix.
-#include <sys/socket.h>
-#include <sys/types.h>
+#include <fcntl.h>
 #include <netdb.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 using SOCKET = int;
@@ -33,6 +38,7 @@ using SOCKET = int;
 #include "base/logging.h"
 
 using Address = Net::Address;
+using Socket = Net::Socket;
 
 // This exists to enjoy Net's friendship with the wrappers, so that
 // we can make utilities that work with their private methods.
@@ -41,6 +47,106 @@ struct Net::Impl {
     return reinterpret_cast<const struct sockaddr*>(addr.buffer);
   }
 
+  // Make a raw socket non-blocking, or return false.
+  static bool MakeNonBlocking(SOCKET s) {
+    #ifdef _WIN32
+    u_long mode = 1;
+    return 0 == ioctlsocket(s, FIONBIO, &mode);
+    #else
+    int flags = fcntl(s, F_GETFL, 0);
+    if (flags == -1) return false;
+    return 0 == fcntl(s, F_SETFL, flags | O_NONBLOCK);
+    #endif
+  }
+
+  static bool LastSelectShouldRetry(int select_return) {
+    if (select_return == SOCKET_ERROR) {
+      #ifdef _WIN32
+      // n.b. this is allegedly extremely rare in practice.
+      return WSAGetLastError() == WSAEINTR;
+      #else
+      return errno == EINTR || errno == EAGAIN || errno == ENOMEM;
+      #endif
+    }
+
+    return false;
+  }
+
+  // Was the last network syscall (e.g. send/recv) on this thread's
+  // error that it "would have blocked" (or should retry because it
+  // was interrupted)?
+  static bool LastCallWouldHaveBlocked() {
+    #ifdef _WIN32
+    return WSAGetLastError() == WSAEWOULDBLOCK;
+    #else
+    return errno == EAGAIN || errno == EWOULDBLOCK;
+    #endif
+  }
+
+  // Returns false if the socket is broken (e.g. closed).
+  static bool BlockUntilWritable(Socket *sock) {
+    DCHECK(sock->IsValid());
+    for (;;) {
+      fd_set fds;
+      FD_ZERO(&fds);
+      FD_SET((SOCKET)sock->fd, &fds);
+      int ret = select((int)sock->fd + 1, nullptr, &fds, nullptr, nullptr);
+      if (ret > 0) return true;
+      if (!LastSelectShouldRetry(ret)) {
+        return false;
+      }
+    }
+  }
+
+  // Returns false if the socket is broken (e.g. closed).
+  static bool BlockUntilReadable(Socket *sock) {
+    DCHECK(sock->IsValid());
+    for (;;) {
+      fd_set fds;
+      FD_ZERO(&fds);
+      FD_SET((SOCKET)sock->fd, &fds);
+      int ret = select((int)sock->fd + 1, &fds, nullptr, nullptr, nullptr);
+      if (ret > 0) return true;
+      if (!LastSelectShouldRetry(ret)) {
+        return false;
+      }
+    }
+  }
+
+  // Allowing std::vector, std::string.
+  template <class Cont>
+  static bool RecvAllTo(Socket *sock, Cont *out) {
+    CHECK(sock && sock->IsValid() && out);
+
+    static constexpr size_t EACH_CHUNK = 16384;
+
+    for (;;) {
+      const size_t start = out->size();
+      // We will resize the vector back down (including when we're looping
+      // because the recv would block), but this should be cheap to do
+      // repeatedly because the vector has hysteresis ('reserved').
+      out->resize(out->size() + EACH_CHUNK);
+
+      auto res = Recv(sock, std::span((uint8_t*)out->data() + start,
+                                      EACH_CHUNK));
+      if (std::holds_alternative<Error>(res)) {
+        out->resize(start);
+        return false;
+      } else if (std::holds_alternative<EndOfStream>(res)) {
+        out->resize(start);
+        return true;
+      } else {
+        const size_t *bytes = std::get_if<size_t>(&res);
+        CHECK(bytes != nullptr);
+
+        out->resize(start + *bytes);
+        if (*bytes == 0) {
+          Impl::BlockUntilReadable(sock);
+        }
+      }
+    }
+
+  }
 };
 
 void Net::Init() {
@@ -150,14 +256,18 @@ std::vector<Address> Net::Resolve(std::string_view hostname, uint16_t port) {
 
 Net::Socket Net::Connect(const Address &addr) {
   SOCKET raw_sock = socket(addr.family, addr.socktype, addr.protocol);
-  if (raw_sock == INVALID_SOCKET) {
+  if (raw_sock == INVALID_SOCKET)
     return Socket{};
-  }
 
   if (connect(raw_sock,
               Net::Impl::SockAddr(addr),
               (socklen_t)addr.addrlen) == SOCKET_ERROR) {
 
+    closesocket(raw_sock);
+    return Socket{};
+  }
+
+  if (!Impl::MakeNonBlocking(raw_sock)) {
     closesocket(raw_sock);
     return Socket{};
   }
@@ -193,11 +303,23 @@ bool Net::SendAll(Socket *sock, std::span<const uint8_t> bytes) {
     int sent = send((SOCKET)sock->fd,
                     (const char *)bytes.data(), to_send, MSG_NOSIGNAL);
 
-    if (sent == SOCKET_ERROR || sent == 0) {
+    if (sent > 0) {
+      // Success, and we made progress.
+      bytes = bytes.subspan(sent);
+      // We optimistically try again without blocking.
+      continue;
+    }
+
+    if (sent == 0 || (sent == SOCKET_ERROR &&
+                      Impl::LastCallWouldHaveBlocked())) {
+      Impl::BlockUntilWritable(sock);
+      continue;
+    } else {
+      // Failed.
       return false;
     }
 
-    bytes = bytes.subspan(sent);
+    LOG(FATAL) << "Unexpected return from send.";
   }
 
   return true;
@@ -209,7 +331,8 @@ bool Net::SendAll(Socket *sock, std::string_view str) {
 }
 
 
-int64_t Net::Recv(Socket *sock, std::span<uint8_t> buffer) {
+Net::RecvResult Net::Recv(Socket *sock, std::span<uint8_t> buffer) {
+  // Preconditions.
   CHECK(sock && sock->IsValid() && !buffer.empty());
 
   // 32-bit lengths on windows.
@@ -217,69 +340,128 @@ int64_t Net::Recv(Socket *sock, std::span<uint8_t> buffer) {
   int to_read = (int)std::min(buffer.size(), MAX_CHUNK);
   int received = recv((SOCKET)sock->fd, (char*)buffer.data(), to_read, 0);
 
-  if (received == SOCKET_ERROR) {
-    return -1;
+  if (received < 0) {
+    if (Impl::LastCallWouldHaveBlocked()) {
+      return {(size_t)0};
+    }
+    return {Net::Error{}};
   }
 
-  // If 0, the server gracefully closed the connection.
-  return received;
+  if (received == 0)
+    return {Net::EndOfStream{}};
+
+  return {(size_t)received};
+}
+
+int64_t Net::RecvSome(Socket *sock, std::span<uint8_t> buffer) {
+  // Preconditions.
+  CHECK(sock && sock->IsValid() && !buffer.empty());
+
+  for (;;) {
+    auto res = Recv(sock, buffer);
+    if (std::holds_alternative<Error>(res)) {
+      return -1;
+    } else if (std::holds_alternative<EndOfStream>(res)) {
+      return 0;
+    } else {
+      const size_t *bytes = std::get_if<size_t>(&res);
+      CHECK(bytes != nullptr);
+
+      if (*bytes > 0)
+        return *bytes;
+
+      // Try again when indicated.
+      Impl::BlockUntilReadable(sock);
+      continue;
+    }
+  }
 }
 
 
 bool Net::RecvAll(Socket *sock, std::vector<uint8_t> *out) {
-  CHECK(sock && sock->IsValid() && out);
-
-  static constexpr size_t EACH_CHUNK = 16384;
-
-  for (;;) {
-    const size_t start = out->size();
-    out->resize(out->size() + EACH_CHUNK);
-
-    int64_t bytes_read = Recv(sock, std::span(out->data() + start, EACH_CHUNK));
-
-    if (bytes_read < 0) {
-      // No data written.
-      out->resize(start);
-      return false;
-    }
-
-    // Keep (only) the successfully read bytes.
-    out->resize(start + bytes_read);
-
-    if (bytes_read == 0) {
-      // The server finished sending data and gracefully closed the stream.
-      return true;
-    }
-  }
+  return Impl::RecvAllTo(sock, out);
 }
 
-// Just as above, but appending to a string. We could use a template
-// maybe, but it's a short piece of code.
 bool Net::RecvAll(Socket *sock, std::string *out) {
-  CHECK(sock && sock->IsValid() && out);
+  return Impl::RecvAllTo(sock, out);
+}
 
-  static constexpr size_t EACH_CHUNK = 16384;
+Net::ReadySockets Net::Select(std::span<const Socket> check_read,
+                              std::span<const Socket> check_write,
+                              std::optional<int> timeout_ms) {
+  fd_set read_fds;
+  fd_set write_fds;
+  FD_ZERO(&read_fds);
+  FD_ZERO(&write_fds);
 
-  for (;;) {
-    const size_t start = out->size();
-    out->resize(out->size() + EACH_CHUNK);
+  #ifdef _WIN32
+  CHECK(check_read.size() <= FD_SETSIZE &&
+        check_write.size() <= FD_SETSIZE) << "Too "
+    "many sockets passed to Select.";
+  #endif
 
-    int64_t bytes_read = Recv(sock,
-                              std::span((uint8_t *)out->data() + start,
-                                        EACH_CHUNK));
+  SOCKET max_fd = 0;
+  bool has_valid_sockets = false;
+  auto FillSet = [&](std::span<const Socket> socks, fd_set *fds) {
+    for (const Socket &s : socks) {
+      if (s.IsValid()) {
+        SOCKET raw_fd = (SOCKET)s.fd;
 
-    if (bytes_read < 0) {
-      // No data written.
-      out->resize(start);
-      return false;
+        #ifndef _WIN32
+        // On POSIX, fd_set is a bitmask. We must not exceed FD_SETSIZE.
+        if (raw_fd >= FD_SETSIZE) {
+          fprintf(stderr, "Socket fd exceeds FD_SETSIZE!\n");
+          continue;
+        }
+        #endif
+
+        FD_SET(raw_fd, fds);
+        has_valid_sockets = true;
+        max_fd = std::max(max_fd, raw_fd);
+      }
     }
+  };
 
-    // Keep (only) the successfully read bytes.
-    out->resize(start + bytes_read);
+  FillSet(check_read, &read_fds);
+  FillSet(check_write, &write_fds);
 
-    if (bytes_read == 0) {
-      // The server finished sending data and gracefully closed the stream.
-      return true;
+  // Nothing can be ready if nothing is valid.
+  // XXX maybe should wait for the timeout if we have one, though.
+  if (!has_valid_sockets) {
+    return ReadySockets{};
+  }
+
+  timeval tv;
+  timeval *tv_ptr = nullptr;
+  if (timeout_ms.has_value()) {
+    tv.tv_sec = timeout_ms.value() / 1000;
+    tv.tv_usec = (timeout_ms.value() % 1000) * 1000;
+    tv_ptr = &tv;
+  }
+
+  // First arg is ignored on Windows, but must be max_fd + 1 on POSIX.
+  int res = select((int)max_fd + 1, &read_fds, &write_fds, nullptr, tv_ptr);
+
+  if (res <= 0) {
+    // 0 means timeout, and negative means an error; either way we
+    // have no sockets ready.
+    return ReadySockets{};
+  }
+
+  ReadySockets result;
+  for (size_t ridx = 0; ridx < check_read.size(); ridx++) {
+    const Socket &s = check_read[ridx];
+    if (s.IsValid() && FD_ISSET((SOCKET)s.fd, &read_fds)) {
+      result.readable.push_back(ridx);
     }
   }
+
+  for (size_t ridx = 0; ridx < check_write.size(); ridx++) {
+    const Socket &s = check_write[ridx];
+    if (s.IsValid() && FD_ISSET((SOCKET)s.fd, &write_fds)) {
+      result.writable.push_back(ridx);
+    }
+  }
+
+  return result;
 }

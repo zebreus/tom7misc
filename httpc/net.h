@@ -5,13 +5,19 @@
 #define _CC_LIB_NET_H
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 // Simple wrapper for sockets on both win32 and posix.
 // On windows, link with -lws2_32
+
+// Sockets are always non-blocking after connecting, although there
+// are convenience wrappers that will do a single send or receive in a
+// blocking-like loop.
 
 struct Net {
 
@@ -36,16 +42,39 @@ struct Net {
   static bool SendAll(Socket *sock, std::span<const uint8_t> bytes);
   static bool SendAll(Socket *sock, std::string_view str);
 
-  // Read into the non-empty buffer. Blocks until some data is read, and
-  // returns the number of bytes read. Returns 0 on graceful end-of-stream.
+  // Read into the non-empty buffer. Non-blocking. Returns one of:
+  //   Number of bytes read (can be zero).
+  //   Graceful end-of-stream.
+  //   Socket-fatal error.
+  struct Error {};
+  struct EndOfStream {};
+  using RecvResult = std::variant<Error, EndOfStream, size_t>;
+  static RecvResult Recv(Socket *sock, std::span<uint8_t> buffer);
+
+  // Blocks until there is some data to read (or socket is closed, or error).
+  // Returns the number of bytes read; this is 0 on graceful end of stream.
   // Returns -1 if something went wrong.
-  static int64_t Recv(Socket *sock, std::span<uint8_t> buffer);
+  static int64_t RecvSome(Socket *sock, std::span<uint8_t> buffer);
 
   // Read until the socket is closed, and append it all to the vector.
-  // Returns false if the connection fails (non-gracefully) but
-  // data may still be written to out.
+  // Returns false if the connection fails (non-gracefully), but
+  // data may still be appended to out in any case.
   static bool RecvAll(Socket *sock, std::vector<uint8_t> *out);
   static bool RecvAll(Socket *sock, std::string *out);
+
+  // From a modest number of sockets (up to ~64), check whether
+  // they are ready to read and/or write data without blocking.
+  // Waits until at least one is ready, or up to the timeout.
+  struct ReadySockets {
+    // Indexing into the read span.
+    std::vector<int> readable;
+    // And the write span.
+    std::vector<int> writable;
+  };
+  static ReadySockets Select(std::span<const Socket> check_read,
+                             std::span<const Socket> check_write,
+                             // Returns immediately.
+                             std::optional<int> timeout_ms = {0});
 
   // Value semantics. Keep in mind that an address that
   // comes from DNS resolution can get stale, though.
