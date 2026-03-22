@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -28,7 +29,9 @@
 #include "packet-writer.h"
 #include "tls.h"
 
+// Bidirectional stream of TLS Records.
 struct TLSStream {
+  // TODO: Record state of the connection.
   Net::Socket sock;
 
   // Takes ownership of the socket.
@@ -41,6 +44,10 @@ struct TLSStream {
   }
 
   bool IsValid() const { return sock.IsValid(); }
+
+  void HangUp() {
+    Net::Close(&sock);
+  }
 
   // Send a completely raw byte span.
   void SendRaw(std::span<const uint8_t> bytes) {
@@ -76,6 +83,7 @@ struct TLSStream {
 
       // Read more data from the network.
       // Net::RecvSome blocks until at least 1 byte is available, or EOF.
+      // PERF: Read directly into the end of the ContiguousBuffer.
       std::array<uint8_t, 4096> buf;
       int64_t bytes = Net::RecvSome(&sock, buf);
 
@@ -85,53 +93,51 @@ struct TLSStream {
         return std::nullopt;
       }
 
-      incoming_partial.insert(incoming_partial.end(),
-                              buf.begin(), buf.begin() + bytes);
+      buffer.Append(std::span(buf.begin(), bytes));
+
       ParsePackets();
     }
     return std::nullopt;
   }
 
  private:
+
   void ParsePackets() {
-    while (incoming_partial.size() >= 5) {
-      if (!TLS::IsValidContentType(incoming_partial[0])) {
+    while (buffer.size() >= 5) {
+      if (!TLS::IsValidContentType(buffer[0])) {
         Print(ARED("Error:") " Invalid TLS record type received: {}\n",
-              incoming_partial[0]);
+              buffer[0]);
         Net::Close(&sock);
         return;
       }
 
-      uint16_t length = (incoming_partial[3] << 8) | incoming_partial[4];
+      uint16_t length = (buffer[3] << 8) | buffer[4];
       if (length > TLS::MAX_CIPHERTEXT_SIZE) {
         Print(ARED("Error:") " Record exceeds maximum length: {}\n", length);
         Net::Close(&sock);
         return;
       }
 
-      if (incoming_partial.size() < length + 5) {
+      if (buffer.size() < length + 5) {
         // We have a partial record; wait for more data.
         break;
       }
 
       TLS::Record rec;
-      rec.type = (TLS::ContentType)incoming_partial[0];
-      rec.version_major = incoming_partial[1];
-      rec.version_minor = incoming_partial[2];
-      rec.fragment.assign(
-          incoming_partial.begin() + 5,
-          incoming_partial.begin() + 5 + length);
+      rec.type = (TLS::ContentType)buffer[0];
+      rec.version_major = buffer[1];
+      rec.version_minor = buffer[2];
+      buffer.RemovePrefix(5);
+      auto payload = buffer.Prefix(length);
+      rec.fragment.assign(payload.begin(), payload.end());
+      buffer.RemovePrefix(length);
 
       incoming.push_back(std::move(rec));
-
-      incoming_partial.erase(
-          incoming_partial.begin(),
-          incoming_partial.begin() + length + 5);
     }
   }
 
   std::deque<TLS::Record> incoming;
-  std::vector<uint8_t> incoming_partial;
+  ContiguousBuffer buffer;
 };
 
 struct MiniTLSClient {
@@ -178,44 +184,67 @@ struct MiniTLSClient {
     client_hello.extensions.emplace_back(std::move(sni));
   }
 
-  // Only for plaintext handshake messages (so not Finished).
-  std::optional<std::vector<uint8_t>> NextHandshakeMessage() {
-    for (;;) {
-      // We need the header to see the length, and then to
-      // have enough bytes.
-      if (handshake_buffer.size() >= 4) {
-        const uint8_t *data = handshake_buffer.data();
-        const uint32_t msg_len =
-          (handshake_buffer[1] << 16) |
-          (handshake_buffer[2] << 8) |
-          handshake_buffer[3];
-        const uint32_t total_len = 4 + msg_len;
+  // Send application data over the encrypted channel.
+  void Send(std::span<const uint8_t> bytes) {
+    // TODO: Exit the loop if the stream becomes unhealthy.
+    while (!bytes.empty()) {
+      const size_t chunk_size =
+        std::min<size_t>(bytes.size(), TLS::MAX_PLAINTEXT_SIZE);
+      std::span<const uint8_t> chunk = bytes.first(chunk_size);
 
-        if (total_len > MAX_HANDSHAKE_LEN)
-          return std::nullopt;
+      std::array<uint8_t, TLS::IV_SIZE> iv;
+      for (int i = 0; i < TLS::IV_SIZE; i++) {
+        iv[i] = rc.Byte();
+      }
 
-        if (handshake_buffer.size() >= total_len) {
-          std::vector<uint8_t> msg(data, data + total_len);
-          handshake_buffer.RemovePrefix(total_len);
-          return msg;
+      stream.SendRaw(TLS::MakeEncryptedRecord(
+          client_mac_key,
+          client_enc_key,
+          client_seq_num++,
+          TLS::APPLICATION_DATA,
+          3, 3,
+          iv,
+          chunk));
+
+      // Advance the span
+      bytes = bytes.subspan(chunk_size);
+    }
+  }
+
+  void Send(std::string_view text) {
+    Send(std::span((const uint8_t *)text.data(), text.size()));
+  }
+
+  ContiguousBuffer read_buffer;
+  bool read_eos = false;
+  // Block until some more application data can be added to the read_buffer.
+  void ReadSome() {
+    CHECK(!read_eos) << "Precondition. In order for us to get more data "
+      "from the connection, it has to still be open for reading!";
+    CHECK(stream.IsValid());
+    if (auto omsg = stream.NextRecord()) {
+      // Always decrypt so that we keep the stream in sync.
+      if (std::optional<std::span<const uint8_t>> dec =
+          TLS::DecryptRecord(
+              server_mac_key, server_enc_key, server_seq_num++,
+              omsg.value(), true, false)) {
+
+        // Only keep application data, though.
+        if (omsg.value().type == TLS::APPLICATION_DATA) {
+          read_buffer.Append(dec.value());
+        } else {
+          // TODO: Should probably handle fatal and close_notify here.
+          Print(AORANGE("Note") ": Ignored {} packet\n",
+                TLS::ContentTypeString(omsg.value().type));
         }
+
+      } else {
+        Print(ARED("Decryption failed") "!\n");
+        stream.HangUp();
       }
 
-      std::optional<TLS::Record> rec = stream.NextRecord();
-      if (!rec.has_value()) return std::nullopt;
-
-      if (rec.value().type == TLS::ALERT) {
-        Print(ARED("Fatal:") " Received TLS Alert during handshake.\n");
-        return std::nullopt;
-      }
-
-      if (rec.value().type != TLS::HANDSHAKE) {
-        Print(ARED("Fatal:") " Expected HANDSHAKE record, got {}\n",
-              TLS::ContentTypeString(rec.value().type));
-        return std::nullopt;
-      }
-
-      handshake_buffer.Append(rec->fragment);
+    } else {
+      read_eos = true;
     }
   }
 
@@ -439,6 +468,55 @@ struct MiniTLSClient {
     return true;
   }
 
+
+ private:
+  // Only for plaintext handshake messages (so not Finished).
+  std::optional<std::vector<uint8_t>> NextHandshakeMessage() {
+    for (;;) {
+      // We need the header to see the length, and then to
+      // have enough bytes.
+      if (handshake_buffer.size() >= 4) {
+        const uint8_t *data = handshake_buffer.data();
+        const uint32_t msg_len =
+          (handshake_buffer[1] << 16) |
+          (handshake_buffer[2] << 8) |
+          handshake_buffer[3];
+        const uint32_t total_len = 4 + msg_len;
+
+        if (total_len > MAX_HANDSHAKE_LEN)
+          return std::nullopt;
+
+        if (handshake_buffer.size() >= total_len) {
+          std::vector<uint8_t> msg(data, data + total_len);
+          handshake_buffer.RemovePrefix(total_len);
+          return msg;
+        }
+      }
+
+      std::optional<TLS::Record> rec = stream.NextRecord();
+      if (!rec.has_value()) return std::nullopt;
+
+      if (rec.value().type == TLS::ALERT) {
+        Print(ARED("Fatal:") " Received TLS Alert during handshake.\n");
+        PacketParser packet(rec.value().fragment);
+        if (std::optional<TLS::Alert> alert = TLS::ParseAlert(packet)) {
+          Print("  {}\n", TLS::AlertDescriptionString(alert.value().desc));
+        } else {
+          Print("  ... which was unparseable?\n");
+        }
+        return std::nullopt;
+      }
+
+      if (rec.value().type != TLS::HANDSHAKE) {
+        Print(ARED("Fatal:") " Expected HANDSHAKE record, got {}\n",
+              TLS::ContentTypeString(rec.value().type));
+        return std::nullopt;
+      }
+
+      handshake_buffer.Append(rec->fragment);
+    }
+  }
+
   void ComputeKeys(const std::array<uint8_t, 48> &pre_master_secret) {
     std::array<uint8_t, 64> ms_seed;
     memcpy(ms_seed.data(), client_hello.client_random.data(), 32);
@@ -509,11 +587,21 @@ int main(int argc, char* argv[]) {
   MiniTLSClient client(sock, hostname);
   client.DoHandshake();
 
-  // TODO: TLS Client handshake here.
+  std::string request =
+    std::format("GET / HTTP/1.1\r\n"
+                "Host: {}\r\n"
+                "Connection: close\r\n"
+                "\r\n", hostname);
 
-  // TODO: HTTP get.
+  client.Send(request);
 
-  // TODO: Print response body.
+  while (!client.read_eos) {
+    if (!client.read_buffer.empty()) {
+      Print("{}", client.read_buffer.StringView());
+    }
+
+    client.ReadSome();
+  }
 
   Net::Shutdown();
   return 0;
