@@ -19,4 +19,4 @@ InlayHints:
 
 # -DBIG_USE_GMP=1,
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, -DBIG_USE_GMP, --std=c++23, -I., -I../cc-lib, -I../codec, -I../sqlite]
+  Add: [-xc++, -Wall, -Wshadow-field, -DBIG_USE_GMP, --std=c++23, -I., -I../cc-lib, -I../httpv]

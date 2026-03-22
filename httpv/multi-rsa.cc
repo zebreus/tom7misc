@@ -164,6 +164,10 @@ int MultiRSA::BlockSize(const Key &key) {
   return BigInt::NumBytes(key.n);
 }
 
+int MultiRSA::BlockSize(const BigInt &modulus) {
+  return BigInt::NumBytes(modulus);
+}
+
 void MultiRSA::RawDecryptInPlace(const Key &key,
                                  std::span<uint8_t> buffer) {
   int byte_len = BlockSize(key);

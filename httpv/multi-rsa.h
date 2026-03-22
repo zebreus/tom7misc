@@ -39,6 +39,9 @@ struct MultiRSA {
 
   // Size of ciphertext and padded plaintext in bytes.
   static int BlockSize(const Key &key);
+  // Same from just the public modulus n.
+  static int BlockSize(const BigInt &modulus);
+
   // Treats the span of bytes as a BigInt and performs the decryption
   // operation in place. Aborts if the ciphertext is the wrong size or
   // the key is very invalid (e.g. zero modulus), but otherwise this

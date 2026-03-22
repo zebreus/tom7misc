@@ -34,6 +34,10 @@ struct ContiguousBuffer {
     return std::span<const uint8_t>(data(), size());
   }
 
+  uint8_t operator[](size_t idx) const {
+    return data()[idx];
+  }
+
   void RemovePrefix(size_t n) {
     CHECK(n <= size());
     start += n;

@@ -25,6 +25,20 @@ struct TLS {
   static constexpr int MAX_PLAINTEXT_SIZE = 16384;
   static constexpr int MAX_CIPHERTEXT_SIZE = 16384 + 2048;
 
+  enum HandshakeType : uint8_t {
+    HELLO_REQUEST = 0,
+    CLIENT_HELLO = 1,
+    SERVER_HELLO = 2,
+    CERTIFICATE = 11,
+    SERVER_KEY_EXCHANGE = 12,
+    CERTIFICATE_REQUEST = 13,
+    SERVER_HELLO_DONE = 14,
+    CERTIFICATE_VERIFY = 15,
+    CLIENT_KEY_EXCHANGE = 16,
+    FINISHED = 20,
+    CERTIFICATE_STATUS = 22,
+  };
+
   enum ContentType : uint8_t {
     INVALID = 0,
     CHANGE_CIPHER_SPEC = 20,

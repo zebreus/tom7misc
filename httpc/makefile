@@ -30,10 +30,10 @@ endif
 CC_LIB=../cc-lib
 HTTPV=../httpv
 
-# OPT=-O -g
+OPT=-O -g
 # OPT=-O3 -flto=thin
-# ASAN=-g -fsanitize=address -fsanitize=undefined
-OPT=-O3
+ASAN=-g -fsanitize=address -fsanitize=undefined
+# OPT=-O3
 
 CXXFLAGS=$(REMARKS) $(HARDEN) $(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi  -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(HTTPV) --std=c++23
 LFLAGS=$(ASAN) $(LHARDEN) $(GMP_LFLAGS) -flto $(PLATFORM_LFLAGS)
@@ -58,6 +58,10 @@ $(HTTPV)/%.o : $(HTTPV)/%.cc makefile
 	@echo -n "."
 
 minget.exe : minget.o $(HTTPV_LIB_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+sget.exe : sget.o $(HTTPV_LIB_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
