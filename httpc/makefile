@@ -41,9 +41,9 @@ LFLAGS=$(ASAN) $(LHARDEN) $(GMP_LFLAGS) -flto $(PLATFORM_LFLAGS)
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/color-util.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/hexdump.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/base64.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o
 
 # Objects that are plain portable C++
-HTTPV_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
+HTTPV_OBJECTS=$(CC_LIB_OBJECTS) $(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
 
-LIB=net.o
+LIB=net.o tls-client.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -57,16 +57,16 @@ $(HTTPV)/%.o : $(HTTPV)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-minget.exe : minget.o $(HTTPV_LIB_OBJECTS) $(LIB)
+minget.exe : minget.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-sget.exe : sget.o $(HTTPV_LIB_OBJECTS) $(LIB)
+sget.exe : sget.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 clean :
-	rm -f *.o *.exe $(HTTPV_LIB_OBJECTS)
+	rm -f *.o *.exe $(HTTPV_OBJECTS)
 
 ifeq ($(OPT),)
   $(warning Warning: OPT is completely disabled!)
