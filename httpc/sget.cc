@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
   Net::Init();
   CHECK(argc == 2) <<
     "Usage:\n"
-    "  minget.exe host.com\n";
+    "  sget.exe host.com\n";
 
   const std::string hostname = argv[1];
   const int port = 443;
@@ -59,9 +59,10 @@ int main(int argc, char* argv[]) {
 
   client.Send(request);
 
-  while (!client.read_eos) {
-    if (!client.read_buffer.empty()) {
-      Print("{}", client.read_buffer.StringView());
+  while (!client.ReadEOS()) {
+    if (!client.ReadSpan().empty()) {
+      Print("{}", client.ReadView());
+      client.ClearReadBuffer();
     }
 
     client.ReadSome();

@@ -97,9 +97,12 @@ struct Net {
     operator bool() const { return IsValid(); }
     bool IsValid() const { return fd != -1; }
 
+    // In an invalid state. Use Net functions to get
+    // valid sockets.
+    constexpr Socket() {}
+
    private:
     friend struct Net;
-    Socket() = default;
     int64_t fd = -1;
   };
 

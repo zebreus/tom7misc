@@ -9,7 +9,6 @@
 #include <format>
 #include <optional>
 #include <span>
-#include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -30,6 +29,42 @@
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "tls.h"
+
+namespace internal {
+// Bidirectional stream of TLS Records.
+struct TLSStream {
+  // Takes ownership of the socket.
+  explicit TLSStream(Net::Socket s) : sock(std::move(s)) {}
+
+  ~TLSStream() {
+    if (sock.IsValid()) {
+      Net::Close(&sock);
+    }
+  }
+
+  bool IsValid() const { return sock.IsValid(); }
+
+  void HangUp() {
+    Net::Close(&sock);
+  }
+
+  void SendRaw(std::span<const uint8_t> bytes);
+
+  // Send a plaintext TLS record.
+  void SendTLSRecord(TLS::ContentType ct, uint8_t version_major,
+                     uint8_t version_minor, std::span<const uint8_t> payload);
+
+  // Blocks until the next complete TLS record is available,
+  // or returns nullopt if the connection drops.
+  std::optional<TLS::Record> NextRecord();
+
+ private:
+  void ParsePackets();
+  // TODO: Record state of the connection.
+  Net::Socket sock;
+  std::deque<TLS::Record> incoming;
+  ContiguousBuffer buffer;
+};
 
 // Send a completely raw byte span.
 void TLSStream::SendRaw(std::span<const uint8_t> bytes) {
@@ -83,7 +118,7 @@ std::optional<TLS::Record> TLSStream::NextRecord() {
 void TLSStream::ParsePackets() {
   while (buffer.size() >= 5) {
     if (!TLS::IsValidContentType(buffer[0])) {
-      Print(ARED("Error:") " Invalid TLS record type received: {}\n",
+      Print(stderr, ARED("Error:") " Invalid TLS record type received: {}\n",
             buffer[0]);
       Net::Close(&sock);
       return;
@@ -91,7 +126,8 @@ void TLSStream::ParsePackets() {
 
     uint16_t length = (buffer[3] << 8) | buffer[4];
     if (length > TLS::MAX_CIPHERTEXT_SIZE) {
-      Print(ARED("Error:") " Record exceeds maximum length: {}\n", length);
+      Print(stderr,
+            ARED("Error:") " Record exceeds maximum length: {}\n", length);
       Net::Close(&sock);
       return;
     }
@@ -114,12 +150,14 @@ void TLSStream::ParsePackets() {
   }
 }
 
+}  // internal
+
 void TLSClient::RecordHandshakeMessage(std::span<const uint8_t> msg) {
   SHA256::UpdateSpan(&handshake_ctx, msg);
 }
 
 TLSClient::TLSClient(Net::Socket sock, std::string_view host)
-  : stream(std::move(sock)),
+  : stream(new internal::TLSStream(std::move(sock))),
     rc(std::format("{:016x}{:016x}{}",
                    CryptRand().Word64(),
                    CryptRand().Word64(),
@@ -153,7 +191,7 @@ void TLSClient::Send(std::span<const uint8_t> bytes) {
       iv[i] = rc.Byte();
     }
 
-    stream.SendRaw(TLS::MakeEncryptedRecord(
+    stream->SendRaw(TLS::MakeEncryptedRecord(
                        client_mac_key,
                        client_enc_key,
                        client_seq_num++,
@@ -174,8 +212,8 @@ void TLSClient::Send(std::string_view text) {
 void TLSClient::ReadSome() {
   CHECK(!read_eos) << "Precondition. In order for us to get more data "
     "from the connection, it has to still be open for reading!";
-  CHECK(stream.IsValid());
-  if (auto omsg = stream.NextRecord()) {
+  CHECK(stream->IsValid());
+  if (auto omsg = stream->NextRecord()) {
     // Always decrypt so that we keep the stream in sync.
     if (std::optional<std::span<const uint8_t>> dec =
         TLS::DecryptRecord(
@@ -187,13 +225,13 @@ void TLSClient::ReadSome() {
         read_buffer.Append(dec.value());
       } else {
         // TODO: Should probably handle fatal and close_notify here.
-        Print(AORANGE("Note") ": Ignored {} packet\n",
+        Print(stderr, AORANGE("Note") ": Ignored {} packet\n",
               TLS::ContentTypeString(omsg.value().type));
       }
 
     } else {
-      Print(ARED("Decryption failed") "!\n");
-      stream.HangUp();
+      Print(stderr, ARED("Decryption failed") "!\n");
+      stream->HangUp();
     }
 
   } else {
@@ -206,7 +244,7 @@ bool TLSClient::DoHandshake() {
   CHECK(ch.has_value()) << "Failed to serialize ClientHello";
 
   RecordHandshakeMessage(ch.value());
-  stream.SendTLSRecord(TLS::HANDSHAKE, 3, 3, ch.value());
+  stream->SendTLSRecord(TLS::HANDSHAKE, 3, 3, ch.value());
 
   Print(stderr, "Sent ClientHello.\n");
 
@@ -216,21 +254,23 @@ bool TLSClient::DoHandshake() {
 
     std::optional<TLS::ServerHello> osh = TLS::ParseServerHello(packet);
     if (!osh.has_value()) {
-      Print(ARED("Error:") " Failed to parse ServerHello.\n");
+      Print(stderr, ARED("Error:") " Failed to parse ServerHello.\n");
       return false;
     }
 
     server_random = osh.value().server_random;
 
-    Print("Received ServerHello. Cipher Suite: {:04x}\n",
+    Print(stderr,
+          "Received ServerHello. Cipher Suite: {:04x}\n",
           osh->cipher_suite);
 
     if (osh->cipher_suite != TLS::RSA_WITH_AES_256_CBC_SHA) {
-      Print(ARED("Error:") " Server chose unsupported cipher suite.\n");
+      Print(stderr,
+            ARED("Error:") " Server chose unsupported cipher suite.\n");
       return false;
     }
   } else {
-    Print(ARED("Error:") " Expected SERVER_HELLO.\n");
+    Print(stderr, ARED("Error:") " Expected SERVER_HELLO.\n");
     return false;
   }
 
@@ -241,22 +281,23 @@ bool TLSClient::DoHandshake() {
       TLS::ParseServerCertificate(packet);
 
     if (!ocert.has_value()) {
-      Print(ARED("Error:") " Expected CERTIFICATE.\n");
+      Print(stderr, ARED("Error:") " Expected CERTIFICATE.\n");
       return false;
     }
 
     const TLS::ServerCertificate &cert = ocert.value();
     if (cert.chain.empty()) {
-      Print(ARED("Error:") " No certificates!\n");
+      Print(stderr, ARED("Error:") " No certificates!\n");
       return false;
     }
 
     // Note that we don't verify the certificate chain!
     if (auto okey = CSR::GetPublicKey(cert.chain[0])) {
       std::tie(modulus, exponent) = std::move(okey.value());
-      Print("Got key: {} {}\n", modulus.ToString(), exponent.ToString());
+      Print(stderr, "Got key: {} {}\n",
+            modulus.ToString(), exponent.ToString());
     } else {
-      Print(ARED("Error:") " Failed to extract RSA public key "
+      Print(stderr, ARED("Error:") " Failed to extract RSA public key "
             "from certificate.\n");
       return false;
     }
@@ -266,7 +307,7 @@ bool TLSClient::DoHandshake() {
     PacketParser packet(omsg.value());
     RecordHandshakeMessage(packet.View());
     if (!TLS::ParseServerHelloDone(packet)) {
-      Print(ARED("Error:") " Expected SERVER_HELLO_DONE.\n");
+      Print(stderr, ARED("Error:") " Expected SERVER_HELLO_DONE.\n");
       return false;
     }
 
@@ -275,13 +316,13 @@ bool TLSClient::DoHandshake() {
     // to check that nothing has been smuggled in *after* the
     // final handshake message in the same record.
     if (!handshake_buffer.empty()) {
-      Print(ARED("Fatal:") " SERVER_HELLO_DONE must conclude "
+      Print(stderr, ARED("Fatal:") " SERVER_HELLO_DONE must conclude "
             "the handshake messages.\n");
       return false;
     }
   }
 
-  Print(AGREEN("OK") " Server hello done.\n");
+  Print(stderr, AGREEN("OK") " Server hello done.\n");
 
 
   // Send ClientKeyExchange.
@@ -297,7 +338,7 @@ bool TLSClient::DoHandshake() {
   // 00 02 [random bytes] 00 [48 bytes pms]
   const int pad_len = block_size - 48 - 3;
   if (pad_len < 0) {
-    Print(ARED("Error:") " RSA Modulus is way too small!\n");
+    Print(stderr, ARED("Error:") " RSA Modulus is way too small!\n");
     return false;
   }
   PacketWriter padded;
@@ -324,7 +365,7 @@ bool TLSClient::DoHandshake() {
     auto ckx_bytes = TLS::SerializeClientKeyExchange(ckx);
     CHECK(ckx_bytes.has_value());
     RecordHandshakeMessage(ckx_bytes.value());
-    stream.SendTLSRecord(TLS::HANDSHAKE, 3, 3, ckx_bytes.value());
+    stream->SendTLSRecord(TLS::HANDSHAKE, 3, 3, ckx_bytes.value());
     Print(stderr, "Sent ClientKeyExchange.\n");
   }
 
@@ -332,7 +373,7 @@ bool TLSClient::DoHandshake() {
 
   {
     std::vector<uint8_t> ccs = TLS::SerializeChangeCipherSpec();
-    stream.SendTLSRecord(TLS::CHANGE_CIPHER_SPEC, 3, 3, ccs);
+    stream->SendTLSRecord(TLS::CHANGE_CIPHER_SPEC, 3, 3, ccs);
     Print(stderr, "Sent ChangeCipherSpec.\n");
   }
 
@@ -356,20 +397,20 @@ bool TLSClient::DoHandshake() {
         client_mac_key, client_enc_key, client_seq_num++,
         TLS::HANDSHAKE, 3, 3, iv, fin);
 
-    stream.SendRaw(enc);
+    stream->SendRaw(enc);
   }
 
   {
     // CCS is not a handshake message.
-    if (auto omsg = stream.NextRecord()) {
+    if (auto omsg = stream->NextRecord()) {
       PacketParser packet(omsg.value().fragment);
       if (omsg.value().type != TLS::CHANGE_CIPHER_SPEC ||
           !TLS::ParseChangeCipherSpec(packet)) {
-        Print(ARED("Error:") " Expected Server CHANGE_CIPHER_SPEC.\n");
+        Print(stderr, ARED("Error:") " Expected Server CHANGE_CIPHER_SPEC.\n");
         return false;
       }
     } else {
-      Print(ARED("Error:") " Expected Server CHANGE_CIPHER_SPEC.\n");
+      Print(stderr, ARED("Error:") " Expected Server CHANGE_CIPHER_SPEC.\n");
       return false;
     }
   }
@@ -379,9 +420,9 @@ bool TLSClient::DoHandshake() {
     // Since this message is encrypted, we can't use NextHandshakeMessage,
     // and thus we don't support a technically legal but aberrant
     // fragmented Finished message.
-    auto omsg = stream.NextRecord();
+    auto omsg = stream->NextRecord();
     if (!omsg.has_value() || omsg.value().type != TLS::HANDSHAKE) {
-      Print(ARED("Error:") " Expected Server FINISHED.\n");
+      Print(stderr, ARED("Error:") " Expected Server FINISHED.\n");
       return false;
     }
 
@@ -393,7 +434,8 @@ bool TLSClient::DoHandshake() {
       PacketParser packet(dec.value());
       auto server_fin = TLS::ParseHandshakeFinished(packet);
       if (!server_fin.has_value()) {
-        Print(ARED("Error:") " Couldn't parse server FINISHED message.\n");
+        Print(stderr,
+              ARED("Error:") " Couldn't parse server FINISHED message.\n");
         return false;
       }
 
@@ -406,17 +448,19 @@ bool TLSClient::DoHandshake() {
                server_vd, expected_verify_data);
 
       if (server_fin->verify_data != expected_verify_data) {
-        Print(ARED("Error:") " Server FINISHED verify_data mismatch!\n");
+        Print(stderr,
+              ARED("Error:") " Server FINISHED verify_data mismatch!\n");
         return false;
       }
 
     } else {
-      Print(ARED("Error:") " Couldn't decrypt server FINISHED.\n");
+      Print(stderr,
+            ARED("Error:") " Couldn't decrypt server FINISHED.\n");
       return false;
     }
   }
 
-  Print(AGREEN("OK") " Handshake successful!\n");
+  Print(stderr, AGREEN("OK") " Handshake successful!\n");
 
   return true;
 }
@@ -443,22 +487,24 @@ std::optional<std::vector<uint8_t>> TLSClient::NextHandshakeMessage() {
       }
     }
 
-    std::optional<TLS::Record> rec = stream.NextRecord();
+    std::optional<TLS::Record> rec = stream->NextRecord();
     if (!rec.has_value()) return std::nullopt;
 
     if (rec.value().type == TLS::ALERT) {
-      Print(ARED("Fatal:") " Received TLS Alert during handshake.\n");
+      Print(stderr, ARED("Fatal:") " Received TLS Alert during handshake.\n");
       PacketParser packet(rec.value().fragment);
       if (std::optional<TLS::Alert> alert = TLS::ParseAlert(packet)) {
-        Print("  {}\n", TLS::AlertDescriptionString(alert.value().desc));
+        Print(stderr,
+              "  {}\n", TLS::AlertDescriptionString(alert.value().desc));
       } else {
-        Print("  ... which was unparseable?\n");
+        Print(stderr,
+              "  ... which was unparseable?\n");
       }
       return std::nullopt;
     }
 
     if (rec.value().type != TLS::HANDSHAKE) {
-      Print(ARED("Fatal:") " Expected HANDSHAKE record, got {}\n",
+      Print(stderr, ARED("Fatal:") " Expected HANDSHAKE record, got {}\n",
             TLS::ContentTypeString(rec.value().type));
       return std::nullopt;
     }
@@ -497,4 +543,7 @@ void TLSClient::ComputeKeys(const std::array<uint8_t, 48> &pre_master_secret) {
   Consume(unused_server_iv);
 
   CHECK(remaining.empty());
+}
+
+TLSClient::~TLSClient() {
 }
