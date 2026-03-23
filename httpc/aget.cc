@@ -14,11 +14,12 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "contiguous-buffer.h"
+#include "hexdump.h"
 #include "net.h"
+#include "re2/re2.h"
 #include "timer.h"
 #include "tls-client.h"
 #include "util.h"
-#include "hexdump.h"
 
 #ifdef _WIN32
 #include <io.h>
@@ -80,11 +81,114 @@ struct ModelClient {
     return client->DoHandshake();
   }
 
-  int verbose = 1;
+  int verbose = 2;
+
+  void ReadSomeJSON() {
+    CHECK(json_state != JSONState::COMPLETED);
+
+    #define RE_IN_QUOTES R"_((?:[^"\\]|\\.))_"
+
+    static RE2 pattern(
+        "\"(text|totalTokenCount|finishReason)\"\\s*:\\s*"
+        "("
+        "(?:\\d+)"
+        "|"
+        "(?:\"" RE_IN_QUOTES "*\")"
+        ")");
+
+    CHECK(pattern.ok());
+
+    CHECK(RE2::PartialMatch("   \"totalTokenCount\": 1234\n", pattern));
+    CHECK(RE2::PartialMatch("   \"text\": \"This is it!\"\n", pattern));
+
+    if (verbose > 1) {
+      Print(stderr, "In ReadSomeJSON, read some HTTP.\n");
+    }
+
+    ReadSomeHTTP();
+
+    // TODO: I think a cleaner thing would be to have a partial
+    // JSON parser.
+
+    {
+      std::string_view s = http_content.StringView();
+      // json_preparsed_to is the index before which we've already
+      // ingested the data.
+      CHECK(s.size() >= json_preparsed_to);
+      s.remove_prefix(json_preparsed_to);
+      std::string_view orig = s;
+      if (verbose > 1) {
+        Print(stderr, "JSON: {}\n", s);
+      }
+
+      std::string_view key, value;
+
+      while (RE2::FindAndConsume(&s, pattern, &key, &value)) {
+        Print(stderr, AYELLOW("{}") " = " AWHITE("{}") "\n",
+              key, value);
+        if (key == "text") {
+
+          if (value.size() >= 2 &&
+              value[0] == '\"' &&
+              value.back() == '\"') {
+            value.remove_prefix(1);
+            value.remove_suffix(1);
+
+            // XXX really want UnescapeJSON
+            std::optional<std::vector<uint8_t>> unesc =
+              Util::UnescapeC(value);
+
+            if (!unesc.has_value()) {
+              json_state = JSONState::BUSTED;
+              return;
+            }
+
+            std::string_view sunesc =
+              std::string_view((const char *)unesc.value().data(),
+                               unesc.value().size());
+            model_response.append(sunesc);
+          } else {
+            json_state = JSONState::BUSTED;
+            return;
+          }
+
+        } else if (key == "totalTokenCount") {
+          if (std::optional<int64_t> tok = Util::ParseInt64(value)) {
+            total_token_count = tok.value();
+
+          } else {
+            json_state = JSONState::BUSTED;
+            return;
+          }
+
+        } else if (key == "promptTokenCount") {
+          if (std::optional<int64_t> tok = Util::ParseInt64(value)) {
+            prompt_token_count = tok.value();
+
+          } else {
+            json_state = JSONState::BUSTED;
+            return;
+          }
+
+        } else if (key == "finishReason") {
+          json_state = JSONState::COMPLETED;
+          break;
+
+        } else {
+          LOG(FATAL) << "Bug!";
+        }
+      }
+
+      // Parsed to this point.
+      size_t consumed = s.data() - orig.data();
+      json_preparsed_to += consumed;
+    }
+  }
+
 
   // Read data to pump the http state machine, or block until
   // some is available.
-  void ReadSome() {
+  void ReadSomeHTTP() {
     // We must be connected and not already done.
     CHECK(client.get() != nullptr);
     CHECK(!client->ReadEOS());
@@ -157,19 +261,23 @@ struct ModelClient {
         std::string_view hex = s.substr(0, eol);
         std::string_view packet = s.substr(eol + 2);
         if (std::optional<uint64_t> olen = Util::ParseHex(hex)) {
+          const size_t payload_size = olen.value();
           if (verbose > 2) {
             Print(stderr, AGREY("Length {} = {}; have {}") "\n",
-                  hex, olen.value(), packet.size());
+                  hex, payload_size, packet.size());
           }
           // Also need to read the trailing \r\n.
-          size_t size = olen.value() + 2;
-          if (packet.size() >= size) {
-            content.Append(packet.substr(0, size));
+          size_t take_size = payload_size + 2;
+          if (packet.size() >= take_size) {
+            http_content.Append(packet.substr(0, payload_size));
             // Consume length\r\npacket\r\n.
-            client->RemovePrefix(eol + 2 + size);
+            client->RemovePrefix(eol + 2 + payload_size + 2);
+          } else {
+            // Not enough data yet.
+            break;
           }
 
-          if (olen.value() == 0) {
+          if (payload_size == 0) {
             // This is how the end of stream is marked.
             http_state = HTTPState::COMPLETED;
             break;
@@ -187,7 +295,7 @@ struct ModelClient {
         }
 
         // Any bytes are just content.
-        content.Append(client->ReadSpan());
+        http_content.Append(client->ReadSpan());
         client->ClearReadBuffer();
         break;
       }
@@ -248,18 +356,18 @@ struct ModelClient {
     // We just append to the buffer according to the way that
     // the HTTP response is structured (e.g. Transfer-Encoding).
 
+    size_t printed = 0;
     for (;;) {
-      if (http_state == HTTPState::COMPLETED) {
-        // XXX parse json to get *actual* result.
-        return std::string(content.StringView());
-      } else if (http_state == HTTPState::BUSTED) {
-        // Return partial result?
+      if (json_state == JSONState::COMPLETED) {
+        return model_response;
+      } else if (json_state == JSONState::BUSTED) {
         return "ERROR";
-      } else {
-        ReadSome();
+      } else if (json_state == JSONState::PARTIAL) {
 
-        // XXX Show progress...
-        Print(stderr, APURPLE("."));
+        ReadSomeJSON();
+
+        Print(stderr, AGREY("{}"), model_response.substr(printed));
+        printed = model_response.size();
       }
     }
   }
@@ -270,6 +378,15 @@ struct ModelClient {
   std::string api_key;
   std::unique_ptr<TLSClient> client;
 
+  // API response stuff.
+  enum class JSONState { PARTIAL, BUSTED, COMPLETED, };
+  JSONState json_state = JSONState::PARTIAL;
+  size_t json_preparsed_to = 0;
+  ContiguousBuffer json;
+  std::string model_response;
+  int64_t prompt_token_count = 0;
+  int64_t total_token_count = 0;
+
   // State describing the HTTP response.
   enum class HTTPState { STATUS, HEADERS, BODY, BUSTED, COMPLETED, };
   HTTPState http_state = HTTPState::STATUS;
@@ -277,7 +394,7 @@ struct ModelClient {
   bool transfer_chunked = false;
   std::vector<std::pair<std::string, std::string>> headers;
   // The content of the HTTP response.
-  ContiguousBuffer content;
+  ContiguousBuffer http_content;
 };
 
 
