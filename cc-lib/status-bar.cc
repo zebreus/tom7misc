@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -34,7 +35,7 @@ void StatusBar::Printf(const char *format, ...) {
   Emit(result);
 }
 
-void StatusBar::Emit(const std::string &s) {
+void StatusBar::Emit(std::string_view s) {
   std::vector<std::string> lines = Util::SplitToLines(s);
   std::unique_lock<std::mutex> ml(m);
   MoveUp();
@@ -70,7 +71,7 @@ void StatusBar::Progressf(int64_t numer, int64_t denom,
                              timer.Seconds()));
 }
 
-void StatusBar::EmitStatus(const std::string &s) {
+void StatusBar::EmitStatus(std::string_view s) {
   std::vector<std::string> lines = Util::SplitToLines(s);
   std::unique_lock<std::mutex> ml(m);
   prev_status_lines = lines;
@@ -142,11 +143,11 @@ void StatusBar::LineStatusf(int idx, const char *format, ...) {
   EmitLine(idx, result);
 }
 
-void StatusBar::EmitLine(int idx, const std::string &s) {
+void StatusBar::EmitLine(int idx, std::string_view s) {
   CHECK(idx >= 0 && idx < num_lines) << "StatusBar index out of bounds: "
                                      << idx << " vs " << num_lines;
   // Strip trailing newlines for convenience.
-  std::string line = s;
+  std::string line(s);
   while (!line.empty() && line.back() == '\n') line.pop_back();
 
   std::unique_lock<std::mutex> ml(m);

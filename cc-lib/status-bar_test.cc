@@ -13,6 +13,13 @@ static void Test() {
       "Not " ARED("this one") "...\n"
       "Nor " ARED("this one either") "!!\n");
 
+  bar.EmitStatus({
+      AORANGE("...............this should be overwritten..........."
+              "......................."),
+      ARED("this line should also be overwritten!"),
+      ABGCOLOR(255, 0, 0, "this line should be gone")
+    });
+
   bar.Printf(AWHITE("This line should say forty-two: %d and be before "
                     "the status.") "\n",
              42);
@@ -22,7 +29,7 @@ static void Test() {
 
   bar.Statusf(
       "| This is the three-line " ABLUE("status bar") ".\n"
-      "# this one should get overwritten!!!\n"
+      ARED("# this one should get overwritten!!!") "\n"
       "| This is the end of the status bar. " ACYAN("♥") "\n");
 
 

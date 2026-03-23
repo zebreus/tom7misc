@@ -12,6 +12,7 @@
 #include <format>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/macros.h"
@@ -32,7 +33,7 @@ struct StatusBar {
   void Print(std::format_string<Args...> fmt, Args&&... args);
 
   // Prints lines above the status bar. Adds trailing newline if not present.
-  void Emit(const std::string &s);
+  void Emit(std::string_view s);
 
   // Update the status bar. This should be done in one call that
   // contains num_lines lines. Trailing newline not necessary.
@@ -42,7 +43,7 @@ struct StatusBar {
 
   // Update the status bar with a string, which should contain num_lines
   // lines.
-  void EmitStatus(const std::string &s);
+  void EmitStatus(std::string_view s);
   void EmitStatus(const std::vector<std::string> &lines);
 
   // Output an ANSI progress indicator in the last line of the status.
@@ -67,7 +68,7 @@ struct StatusBar {
   template<typename... Args>
   void LineStatus(int idx, std::format_string<Args...> fmt, Args&&... args);
 
-  void EmitLine(int idx, const std::string &s);
+  void EmitLine(int idx, std::string_view s);
 
   // Set every status line empty; keeps any lines above.
   void Clear();

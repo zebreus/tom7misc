@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,6 +18,7 @@ struct UTF8 {
   // Encode the codepoint as a 1-4 byte string. Returns the empty string
   // if the codepoint is out of range.
   static inline constexpr std::string Encode(uint32_t codepoint);
+  static inline std::string EncodeVec(std::span<const uint32_t> codepoints);
 
   static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
   // Decode the string as a vector of codepoints, assuming it is
@@ -64,6 +66,8 @@ struct UTF8 {
 
   // Truncate to at most the given number of codepoints.
   static inline std::string Truncate(std::string_view utf8, int max_length);
+  // Same but dropping codepoints from the beginning of the string.
+  static inline std::string RTruncate(std::string_view utf8, int max_length);
 
   // Convert up to len bytes of utf8 data to get one codepoint. There
   // must be at least 1 byte in the input. Return the number of bytes
@@ -77,9 +81,9 @@ struct UTF8 {
   // are too few codepoints.
   static inline void RemovePrefix(std::string_view *utf8, size_t codepoints);
 
-  // Like the previous, but modifying the view to consume the bytes. Returns
-  // INVALID if the encoding is not valid or there are not enough bytes (including
-  // an empty string).
+  // Like the previous, but modifying the view to consume the bytes.
+  // Returns INVALID if the encoding is not valid or there are not
+  // enough bytes (including an empty string).
   static inline uint32_t ConsumePrefix(std::string_view *utf8);
 
   // True if the string is valid UTF-8.
@@ -160,6 +164,16 @@ constexpr std::string UTF8::Encode(uint32_t codepoint) {
     return s;
   }
   return "";
+}
+
+std::string UTF8::EncodeVec(std::span<const uint32_t> codepoints) {
+  std::string ret;
+  // PERF: Could do a first pass to get an exact count?
+  ret.reserve(codepoints.size());
+  for (uint32_t cp : codepoints) {
+    ret += Encode(cp);
+  }
+  return ret;
 }
 
 size_t UTF8::Length(std::string_view utf8) {
@@ -295,12 +309,18 @@ std::string UTF8::Truncate(std::string_view utf8, int max_length) {
   std::vector<uint32_t> codepoints = Codepoints(utf8);
   if ((int)codepoints.size() > max_length) {
     codepoints.resize(max_length);
-    std::string ret;
-    ret.reserve(utf8.size());
-    for (uint32_t cp : codepoints) {
-      ret += Encode(cp);
-    }
-    return ret;
+    return EncodeVec(codepoints);
+  } else {
+    return std::string(utf8);
+  }
+}
+
+std::string UTF8::RTruncate(std::string_view utf8, int max_length) {
+  std::vector<uint32_t> codepoints_vec = Codepoints(utf8);
+  std::span<uint32_t> codepoints(codepoints_vec);
+  if ((int)codepoints.size() > max_length) {
+    codepoints = codepoints.subspan(codepoints.size() - max_length);
+    return EncodeVec(codepoints);
   } else {
     return std::string(utf8);
   }

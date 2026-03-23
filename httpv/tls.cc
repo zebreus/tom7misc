@@ -783,7 +783,7 @@ void TLS::PRF(std::span<const uint8_t> secret,
 }
 
 // Decrypts a TLS record. If successful, the span will refer into
-// the record, which is modified into place.
+// the record, which is modified in place.
 std::optional<std::span<const uint8_t>> TLS::DecryptRecord(
     std::span<const uint8_t> mac_key,
     std::span<const uint8_t> enc_key,

@@ -27,6 +27,9 @@
 #include <processenv.h>
 #include <winnls.h>
 #include <winnt.h>
+#include <io.h>
+#include <fcntl.h>
+#include <stdio.h>
 #undef ARRAYSIZE
 #endif
 
@@ -77,6 +80,7 @@ void ANSI::Init() {
   //
   // TODO: This works but seems to subsequently break control keys
   // and stuff like that in cygwin bash?
+
   HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   // mingw headers may not know about this new flag
   static constexpr int kVirtualTerminalProcessing = 0x0004;
@@ -88,6 +92,13 @@ void ANSI::Init() {
   // Maybe we should separate this out? Someone might want to use
   // high-ascii output?
   SetConsoleOutputCP(CP_UTF8);
+
+  // Always use binary modes for the standard streams. This
+  // matches linux behavior better and prevents surprises.
+  _setmode(_fileno(stdin), _O_BINARY);
+  _setmode(_fileno(stdout), _O_BINARY);
+  _setmode(_fileno(stderr), _O_BINARY);
+
   #endif
 }
 

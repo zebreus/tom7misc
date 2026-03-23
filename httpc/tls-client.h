@@ -22,6 +22,9 @@ struct TLSClient {
   TLSClient(Net::Socket sock, std::string_view host);
   ~TLSClient();
 
+  // No output unless this is > 0.
+  void SetVerbose(int v);
+
   // True if we've reached the end of the input stream (graceful).
   inline bool ReadEOS() const;
 
@@ -56,6 +59,8 @@ struct TLSClient {
   bool DoHandshake();
 
  private:
+  int verbose = 0;
+
   // Only for plaintext handshake messages (so not Finished).
   std::optional<std::vector<uint8_t>> NextHandshakeMessage();
   // Add to the running hash.

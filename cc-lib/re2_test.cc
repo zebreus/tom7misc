@@ -105,7 +105,8 @@ void TestBitStateFirstMatchBug() {
     std::string_view text = "word";
     std::string_view match;
     CHECK(RE2::PartialMatch(text, "(\\w+)", &match));
-    CHECK_EQ(match, "word") << "Match was not captured correctly. Got: " << match;
+    CHECK_EQ(match, "word") << "Match was not captured correctly. Got: "
+                            << match;
   }
 
   {
@@ -1618,7 +1619,8 @@ static void Bug10131674() {
 
 
 static void Bug18391750() {
-  // Stray write past end of match_ in nfa.cc, caught by fuzzing + address sanitizer.
+  // Stray write past end of match_ in nfa.cc, caught by fuzzing +
+  // address sanitizer.
   std::array t = {
       (char)0x28, (char)0x28, (char)0xfc, (char)0xfc, (char)0x08, (char)0x08,
       (char)0x26, (char)0x26, (char)0x28, (char)0xc2, (char)0x9b, (char)0xc5,

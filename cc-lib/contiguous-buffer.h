@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <span>
+#include <string_view>
 
 #include "base/logging.h"
 
@@ -32,6 +33,13 @@ struct ContiguousBuffer {
   const uint8_t *data() const { return buf + start; }
   std::span<const uint8_t> Span() const {
     return std::span<const uint8_t>(data(), size());
+  }
+  std::string_view StringView() const {
+    return std::string_view((const char *)data(), size());
+  }
+  std::span<const uint8_t> Prefix(size_t n) const {
+    DCHECK(n <= size());
+    return std::span<const uint8_t>(data(), n);
   }
 
   uint8_t operator[](size_t idx) const {
@@ -85,6 +93,10 @@ struct ContiguousBuffer {
     end += data.size();
   }
 
+  void Append(std::string_view s) {
+    Append(std::span((const uint8_t *)s.data(), s.size()));
+  }
+
  private:
   ContiguousBuffer(const ContiguousBuffer &) = delete;
   ContiguousBuffer(ContiguousBuffer &&) = delete;
@@ -100,5 +112,6 @@ struct ContiguousBuffer {
   // owned. malloc'd.
   uint8_t *buf = nullptr;
 };
+
 
 #endif

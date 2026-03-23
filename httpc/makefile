@@ -45,7 +45,7 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(
 # Objects that are plain portable C++
 HTTPV_OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
 
-LIB=net.o tls-client.o
+LIB=net.o tls-client.o model-client.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

@@ -244,10 +244,12 @@ std::string Util::ReadStdin() {
     // Make space to read at least BUFFER_SIZE bytes.
     while (content.size() - offset < BUFFER_SIZE) {
       // PERF: Uninitialized resize.
-      content.resize(std::max((size_t)(content.size() * 1.5), content.size() + BUFFER_SIZE));
+      content.resize(std::max((size_t)(content.size() * 1.5),
+                              content.size() + BUFFER_SIZE));
     }
 
-    size_t bytes_read = std::fread(content.data() + offset, 1, BUFFER_SIZE, stdin);
+    size_t bytes_read = std::fread(content.data() + offset, 1,
+                                   BUFFER_SIZE, stdin);
     offset += bytes_read;
     // Upon any short read, we are done. We don't distinguish errors from EOF.
     if (bytes_read < BUFFER_SIZE) {
