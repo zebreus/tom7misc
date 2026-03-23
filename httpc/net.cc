@@ -189,11 +189,11 @@ std::string Net::Address::ToString() const {
   }
 
   if (family == AF_INET6) {
-    return std::format("[{}]:{}", host, serv);
+    return std::format("[{}]:{}", (const char*)host, (const char*)serv);
   }
 
   // Standard IPv4 format: "128.2.1.2:80"
-  return std::format("{}:{}", host, serv);
+  return std::format("{}:{}", (const char*)host, (const char*)serv);
 }
 
 std::vector<Address> Net::Resolve(std::string_view hostname, uint16_t port) {
