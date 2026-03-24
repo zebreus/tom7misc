@@ -1,5 +1,5 @@
 
-default : minget.exe
+default : minget.exe sget.exe aget.exe
 
 all : minget.exe
 

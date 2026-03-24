@@ -209,16 +209,13 @@ let
   (* TODO: Cover this completely in FixederSys. Characters that I don't
      yet have are replaced with U+0000. *)
   val CP437 =
-  "\x00\x00\x00♥♦♣♠•\x00\x00\x00\x00\x00\x00♫\x00\x00\x00\x00‼¶§▬\x00↑↓→←" ^
+  "\x00☺☻♥♦♣♠•\x00\x00\x00♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←" ^
   "\x00\x00\x00\x00 !\"#$%&'()*+,-./0123456789:;<=>?@" ^
   "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz" ^
-  "{|}~\x00ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥\x00ƒáíóúñÑªº¿\x00¬½¼¡«»░▒▓" ^
-  (* 40 line drawing characters, missing *)
-  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
-  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
-  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
-  "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00" ^
+  "{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥\x00ƒáíóúñÑªº¿\x00¬½¼¡«»░▒▓" ^
+  "│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌" ^
   "█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤\x00\x00÷≈°∙·√ⁿ²■ " (* " *)
+  do string-sub (CP437, 128) == string-sub("⌂", 0)
   do string-size CP437 == 256 otherwise fail "CP437 wrong"
 
   fun hex-dump { width : float,

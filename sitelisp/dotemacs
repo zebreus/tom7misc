@@ -601,7 +601,7 @@
   (let* ((n (if number number 1)))
     (save-excursion
       (re-search-backward "\\<[0-9]+\\>" (- (point) 122))
-      (replace-match (format "%d" (+ n (string-to-int (match-string 0))))))))
+      (replace-match (format "%d" (+ n (string-to-number (match-string 0))))))))
 
 
 (message "DOTEMACS 1")
@@ -610,11 +610,6 @@
 
 (defvar buffer-cycle-size 5
   "*Number of buffers to cycle through with `cycle-recent'.")
-
-;; where is this? it must be built in...
-(defun nth (n l)
-  (cond ((= n 0) (car l))
-        (t (nth (1- n) (cdr l)))))
 
 (defun cycle-showbufs (targ bbl mx cur)
   (cond ((> cur mx) "")
@@ -862,7 +857,7 @@
 
 ;; added this to suppress "free variable" warning at startup in 26.1.
 ;; not sure if it's the right way -tom7 28 Jul 2018
-(setq langelem nil)
+(defvar langelem)
 
 (defadvice c-lineup-arglist (around my activate)
   "Improve indentation of continued C++11 lambda function opened as argument."
@@ -1231,20 +1226,20 @@
 
 ;; XXX add shell-bind-key
 (add-hook 'comint-mode-hook
-          '(lambda ()
-             (progn
-               (local-set-key "\M-p" 'comint-end-then-prev)
-               (local-set-key "\M-]" 'send-invisible))))
+          (lambda ()
+            (progn
+              (local-set-key "\M-p" 'comint-end-then-prev)
+              (local-set-key "\M-]" 'send-invisible))))
 
 (add-hook 'font-lock-mode-hook
-          '(lambda ()
-             (font-lock-add-keywords
-              nil
-              '(("\\(unimplemented\\|0x255\\>\\|TODO\\|PERF\\|FIXME!*\\|XXX*\\|\\<[H][E][R][E]\\>\\)" 1
-                 font-lock-warning-face t)))
-             (set-face-foreground (quote font-lock-warning-face)
-                                  "red")
-             ))
+          (lambda ()
+            (font-lock-add-keywords
+             nil
+             '(("\\(unimplemented\\|0x255\\>\\|TODO\\|PERF\\|FIXME!*\\|XXX*\\|\\<[H][E][R][E]\\>\\)" 1
+                font-lock-warning-face t)))
+            (set-face-foreground (quote font-lock-warning-face)
+                                 "red")
+            ))
 
 ; (require 'rust-mode)
 
@@ -1252,8 +1247,8 @@
 ;; for some reason, the customize variable that seems to control this
 ;; doesn't do anything?
 (add-hook 'typescript-mode-hook
-          '(lambda ()
-             (electric-indent-mode 'no)))
+          (lambda ()
+            (electric-indent-mode 'no)))
 
 ;; Try to highlight
 ;;   for (k in obj)
@@ -1275,26 +1270,26 @@
             (not (equal v "var")))))))
 
 (add-hook 'js-mode-hook
-          '(lambda ()
-             (font-lock-add-keywords
-              nil
-              '((match-js-bad-for 1 font-lock-warning-face t)))
-             (set-face-foreground (quote font-lock-warning-face) "red")))
+          (lambda ()
+            (font-lock-add-keywords
+             nil
+             '((match-js-bad-for 1 font-lock-warning-face t)))
+            (set-face-foreground (quote font-lock-warning-face) "red")))
 
 (make-empty-face 'outline-mode-one-face)
 (defvar typescript-mode-any-face   'typescript-mode-any-face
   "Color the 'any' type keyword.")
 
 (add-hook 'typescript-mode-hook
-          '(lambda ()
-             (font-lock-add-keywords
-              nil
-              '((match-js-bad-for 1 font-lock-warning-face t)
-                ;; now doing this inside typescript.el
-                ;; TODO: only match this as a type?
-                ;; ("\\<\\(any\\)\\>" 1 typescript-mode-any-face t)
-                ))
-             (set-face-foreground (quote font-lock-warning-face) "red")))
+          (lambda ()
+            (font-lock-add-keywords
+             nil
+             '((match-js-bad-for 1 font-lock-warning-face t)
+               ;; now doing this inside typescript.el
+               ;; TODO: only match this as a type?
+               ;; ("\\<\\(any\\)\\>" 1 typescript-mode-any-face t)
+               ))
+            (set-face-foreground (quote font-lock-warning-face) "red")))
 
 ;;;;;;;;; fix outline mode levels
 

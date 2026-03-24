@@ -123,16 +123,11 @@ static PageInfo PageBit7Classic() {
     // LEFT DOUBLE QUOTE, RIGHT DOUBLE QUOTE
     0x201C, 0x201D,
 
-    // BULLET
-    0x2022,
-    // HORIZONTAL ELLIPSIS
-    0x2026,
-    // SINGLE HIGH REVERSED 9 QUOTE
-    0x201B,
-    // DOUBLE HIGH REVERSED 9 QUOTE
-    0x201F,
-    // unclaimed
-    -1,
+    0x2022,  // BULLET
+    0x2026,  // HORIZONTAL ELLIPSIS
+    0x201B,  // SINGLE HIGH REVERSED 9 QUOTE
+    0x201F,  // DOUBLE HIGH REVERSED 9 QUOTE
+    0x266A,  // (♪) EIGHTH NOTE
 
     // dagger, double-dagger
     0x2020, 0x2021,
@@ -173,7 +168,10 @@ static PageInfo PageBit7Classic() {
     0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
     0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
     0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E,
-    -1,
+
+    // 0x7F is DELETE in unicode (no glyph) but in CP-437 this
+    // renders as a "house" symbol
+    0x2302,  // (⌂) HOUSE
 
     // white king, queen, rook, bishop, knight, pawn
     0x2654,
@@ -674,6 +672,7 @@ static PageInfo PageBit7Extended() {
 
   info.sections = {
     {0, 16 * 3},
+    {16 * 12, 4 * 16 - 8},
     {16 * 16, 2 * 16 - 6},
     {18 * 16, 6 * 16},
   };
@@ -789,10 +788,75 @@ static PageInfo PageBit7Extended() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Remainder of CP437.
+    0x263A,  // (☺︎)
+    0x263B,  // (☻)
+    // suits are in main page
+    // cullet is in main page
+    0x25D8,  // (◘)
+    0x25CB,  // (○)
+    0x25D9,  // (◙)
+    0x2642,  // (♂︎)
+    0x2640,  // (♀︎)
+    // notes in main page
+    0x263C,  // (☼),
+    0x25BA,  // (►),
+    0x25C4,  // (◄),
+    0x2195,  // (↕︎),
+    // double exclamation, pilcrow, section in main page
+    0x25AC,  // (▬),
+    0x21A8,  // (↨), UP DOWN ARROW WITH BASE
+    // up, down, right, left arrows in main page
+    // right angle in main page
+    0x2194,  // (↔︎)
+    0x25B2,  // (▲)
+    0x25BC,  // (▼)
+
+    // Various line drawing; same order as CP-437
+    0x2502,  // (│)
+    0x2524,  // (┤)
+    0x2561,  // (╡)
+    0x2562,  // (╢)
+    0x2556,  // (╖)
+    0x2555,  // (╕)
+    0x2563,  // (╣)
+    0x2551,  // (║)
+    0x2557,  // (╗)
+    0x255D,  // (╝)
+    0x255C,  // (╜)
+    0x255B,  // (╛)
+    0x2510,  // (┐)
+    0x2514,  // (└)
+    0x2534,  // (┴)
+    0x252C,  // (┬)
+
+    0x251C,  // (├)
+    0x2500,  // (─)
+    0x253C,  // (┼)
+    0x255E,  // (╞)
+    0x255F,  // (╟)
+    0x255A,  // (╚)
+    0x2554,  // (╔)
+    0x2569,  // (╩)
+    0x2566,  // (╦)
+    0x2560,  // (╠)
+    0x2550,  // (═)
+    0x256C,  // (╬)
+    0x2567,  // (╧)
+    0x2568,  // (╨)
+    0x2564,  // (╤)
+    0x2565,  // (╥)
+
+    0x2559,  // (╙)
+    0x2558,  // (╘)
+    0x2552,  // (╒)
+    0x2553,  // (╓)
+    0x256B,  // (╫)
+    0x256A,  // (╪)
+    0x2518,  // (┘)
+    0x250C,  // (┌)
+    // Unclaimed
+    -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Two rows for Greek Extended (custom mapping)
     0x0385,  // (΅) GREEK DIALYTIKA TONOS
