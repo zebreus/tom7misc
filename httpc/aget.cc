@@ -5,7 +5,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -14,7 +13,6 @@
 #include "net.h"
 #include "timer.h"
 #include "util.h"
-#include "status-bar.h"
 
 int main(int argc, char **argv) {
   ANSI::Init();

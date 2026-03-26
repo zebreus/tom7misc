@@ -71,6 +71,10 @@ aget.exe : aget.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+wtf.exe : wtf.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o *.exe $(HTTPV_OBJECTS)
 
