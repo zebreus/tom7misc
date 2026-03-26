@@ -16,6 +16,7 @@
 
 #include "base/logging.h"
 #include "base/print.h"
+#include "utf8.h"
 
 using namespace std;
 
@@ -190,6 +191,8 @@ static void TestUnescapeC() {
            HasValue("hello\x23world"));
   CHECK_EQ(StringVector(""), HasValue(""));
   CHECK(!Util::UnescapeC("\\").has_value());
+  // I think this is actually technically legal C, but clang
+  // doesn't allow it.
   CHECK(!Util::UnescapeC("\\x").has_value());
   CHECK_EQ(StringVector("\n"), HasValue("\\n"));
   CHECK_EQ(StringVector("\r"), HasValue("\\r"));
@@ -203,11 +206,55 @@ static void TestUnescapeC() {
   CHECK(!Util::UnescapeC("\\x10000000000000000000"));
   CHECK_EQ(StringVector("\x002a"), HasValue("\\x002a"));
 
+  CHECK(!Util::UnescapeC("\\x100").has_value()) << "Above 0xFF";
+
+  CHECK_EQ(HasValue("\\u2203"), StringVector("\xE2\x88\x83"));
+  CHECK_EQ(HasValue("\\u{2203}"), StringVector("\xE2\x88\x83"));
+  CHECK_EQ(HasValue("\\U0001F34C"), StringVector("\xF0\x9F\x8D\x8C"));
+  CHECK_EQ(HasValue("\\u{1F34C}"), StringVector("\xF0\x9F\x8D\x8C"));
+
+  CHECK_EQ(HasValue("\\x1"), StringVector("\x1"));
+
   {
     auto v = HasValue("\\0");
     CHECK(v.size() == 1 && v[0] == 0);
   }
 
+  CHECK(!Util::UnescapeC("\\u{}").has_value());
+  CHECK(!Util::UnescapeC("\\u{12").has_value());
+  CHECK(!Util::UnescapeC("\\U1234").has_value());
+  CHECK(!Util::UnescapeC("\\u123").has_value());
+  CHECK(!Util::UnescapeC("\\uD83D").has_value()) << "UTF-16 surrogate";
+  CHECK(!Util::UnescapeC("\\u{110000}")) << "out of bounds";
+}
+
+static void TestUnescapeJS() {
+  auto HasValue = [](std::string_view s) -> std::string {
+      if (auto v = Util::UnescapeJS(s)) {
+        return v.value();
+      } else {
+        LOG(FATAL) << "Expected to successfully unescape: " << s;
+        return {};
+      }
+    };
+
+  // Basic escapes
+  CHECK_SEQ(HasValue("hello\\nworld"), "hello\nworld");
+  CHECK_SEQ(HasValue("\\0"), UTF8::Encode(0));
+
+  CHECK_SEQ(HasValue("\\x41"), "A");
+  CHECK_SEQ(HasValue("\\xFF"), "\xC3\xBF");
+  CHECK_SEQ(HasValue("\\x411"), "A1");
+  CHECK(!Util::UnescapeJS("\\x1").has_value());
+
+  // \u behavior
+  CHECK_SEQ(HasValue("\\u2203"), "\xE2\x88\x83");
+  CHECK_SEQ(HasValue("\\u{1F34C}"), "\xF0\x9F\x8D\x8C");
+
+  CHECK(!Util::UnescapeJS("\\U0001F34C").has_value());
+
+  CHECK_SEQ(HasValue("\\uD83C\\uDF4C"),
+            "\xED\xA0\xBC\xED\xBD\x8C");
 }
 
 static void TestJoin() {
@@ -915,6 +962,7 @@ int main(int argc, char **argv) {
   TestPad();
   TestPadEx();
   TestUnescapeC();
+  TestUnescapeJS();
   TestJoin();
   TestSplit();
   TestSplitWith();

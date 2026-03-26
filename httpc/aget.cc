@@ -16,19 +16,27 @@
 #include "util.h"
 #include "status-bar.h"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char **argv) {
   ANSI::Init();
   Net::Init();
 
-  if (false) {
-    StatusBar status(3);
-    for (int i = 0; i < 10; i++) {
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(500ms);
-      status.EmitStatus({"first line", std::format(ABLUE("{}"), i),
-          APURPLE("bottom line")});
+  int verbose = 1;
+  Model model = Model::GEMINI_CHEAPEST;
+  for (int i = 1; i < argc; i++) {
+    std::string_view arg = argv[i];
+    if (arg == "-cheap") {
+      model = Model::GEMINI_CHEAPEST;
+    } else if (arg == "-fast") {
+      model = Model::GEMINI_FASTEST;
+    } else if (arg == "-medium") {
+      model = Model::GEMINI_MEDIUM;
+    } else if (arg == "-best") {
+      model = Model::GEMINI_BEST;
+    } else if (arg == "-v") {
+      verbose++;
+    } else {
+      LOG(FATAL) << "Command line argument not understood: " << arg;
     }
-    exit(-1);
   }
 
   const std::string api_key =
@@ -36,22 +44,12 @@ int main(int argc, char* argv[]) {
   CHECK(!api_key.empty());
 
   std::unique_ptr<ModelClient> client =
-    ModelClient::Create(Model::GEMINI_FASTEST, api_key);
+    ModelClient::Create(model, api_key);
   CHECK(client.get() != nullptr);
-  client->SetVerbose(1);
+  client->SetVerbose(verbose);
 
   // Read stdin.
   std::string prompt = Util::ReadStdin();
-    /*
-    "Can you tell me about an important fact you've discovered, that "
-    "nobody seems to know about? I'm not talking about one of life's "
-    "mysteries, or an underappreciated fact that is nonetheless "
-    "documented, but a unique and new insight that you've had by "
-    "observing documents and code on the internet. Like a bug in "
-    "a piece of software, an accepted historical fact that can't "
-    "be true because of contradictions with other facts, or evidence "
-    "of wrongdoing. Use no more than 50 words.";
-    */
 
   Timer response_timer;
   std::string result = client->Infer(prompt);

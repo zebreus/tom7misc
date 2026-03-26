@@ -301,11 +301,20 @@ struct Util {
   static string PadEx(int n, string s, char c);
 
   // Parses \0, \xAA..., \r, \n, \t, \', \", \\.
+  // Parses \u####, \U########, and \u{#...} to UTF-8 bytes.
   // Remember that \x takes one or more hexadecimal digit, but
   // if the byte's value is more than 0xFF, it not valid.
   // More escapes may be supported in the future.
   static std::optional<std::vector<uint8_t>>
   UnescapeC(std::string_view str);
+
+  // Very similar to UnescapeC, but:
+  //  \x## denotes the codepoint U+00##, which is then encoded
+  //  in UTF-8.
+  // UTF-16 surrogates are allowed.
+  // Returns a UTF-8 string.
+  static std::optional<std::string>
+  UnescapeJS(std::string_view str);
 
   /* try to remove the file. If it
      doesn't exist or is successfully

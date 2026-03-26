@@ -235,6 +235,38 @@ static void TestSub() {
   CHECK(UTF8::Sub("αβγ", 2) == UTF8::Codepoint("γ"));
 }
 
+static void TestSanitize() {
+  CHECK_SEQ("", UTF8::Sanitize(""));
+  CHECK_SEQ("hello", UTF8::Sanitize("hello"));
+  CHECK_SEQ("checkmate ♚!", UTF8::Sanitize("checkmate ♚!"));
+  CHECK_SEQ("IMAGE💡", UTF8::Sanitize("IMAGE💡"));
+
+  #define REP "\xEF\xBF\xBD"
+
+  CHECK_SEQ(REP, UTF8::Sanitize("\xFF"));
+  CHECK_SEQ(REP, UTF8::Sanitize("\x80"));
+  CHECK_SEQ("a" REP "c", UTF8::Sanitize("a\xFF" "c"));
+
+  // This is an overlong encoding of '/'.
+  // Each byte should be individually converted to the replacement
+  // codepoint.
+  CHECK_SEQ(REP REP, UTF8::Sanitize("\xC0\xAF"));
+
+  // This encodes U+D800 (UTF-16 surrogate)
+  CHECK_SEQ(REP REP REP, UTF8::Sanitize("\xED\xA0\x80"));
+
+  // This encodes U+110000 (out of bounds)
+  CHECK_SEQ(REP REP REP REP, UTF8::Sanitize("\xF4\x90\x80\x80"));
+
+  // This is missing its 4th byte.
+  CHECK_SEQ(REP REP REP, UTF8::Sanitize("\xF0\x9F\x8D"));
+  CHECK_SEQ("a" REP REP, UTF8::Sanitize("a\xE9\x85"));
+
+  // 7. Span overload
+  std::vector<uint8_t> bad_vec = {'v', 'e', 'c', 0x80};
+  CHECK_SEQ("vec" REP, UTF8::Sanitize(bad_vec));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -247,6 +279,7 @@ int main(int argc, char **argv) {
   TestRemovePrefix();
   TestFind();
   TestSub();
+  TestSanitize();
 
   Print("OK\n");
   return 0;

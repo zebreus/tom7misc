@@ -247,7 +247,7 @@ static void TestBasic() {
   }
 }
 
-// This is mostly a compilation tests, since the implementation
+// This is mostly compilation tests, since the implementation
 // is just C+++++++++y.
 static void TestFixN() {
   const auto &[I, S, D] =

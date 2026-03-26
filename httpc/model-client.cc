@@ -34,6 +34,7 @@ static std::string_view InternalModelName(Model model) {
   case Model::GEMINI_BEST: return "gemini-3.1-pro-preview";
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
   case Model::GEMINI_FASTEST: return "gemini-3.1-flash-lite-preview";
+  case Model::GEMINI_CHEAPEST: return "gemini-flash-lite-latest";
   }
 };
 
@@ -41,6 +42,25 @@ ModelClient::ModelClient() {}
 ModelClient::~ModelClient() {}
 ModelResponse::ModelResponse() {}
 ModelResponse::~ModelResponse() {}
+
+// To util?
+static std::string EscapeJS(std::string_view input) {
+  std::string out;
+  out.reserve(input.size());
+  for (char c : input) {
+    if (c == '"') out += "\\\"";
+    else if (c == '\\') out += "\\\\";
+    else if (c == '\n') out += "\\n";
+    else if (c == '\r') out += "\\r";
+    else if (c == '\t') out += "\\t";
+    else if ((uint8_t)c <= 0x1F) {
+      out += std::format("\\u{:04x}", (uint8_t)c);
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
 
 namespace {
 // Individual call to the LLM (rest-style).
@@ -54,8 +74,6 @@ struct ModelConnection {
     api_key(api_key),
     Info(Info) {
   }
-
-
 
   bool Connect() {
     const int port = 443;
@@ -115,6 +133,19 @@ struct ModelConnection {
 
     ReadSomeHTTP();
 
+    // If we need more JSON content, but the underlying stream is
+    // busted, then we are busted.
+    if (http_state == HTTPState::BUSTED) {
+      if (Info) {
+        Info(std::format("JSON busted because HTTP busted. "
+                         "Have {} with {} preparsed",
+                         http_content.StringView().size(),
+                         json_preparsed_to));
+      }
+      json_state = JSONState::BUSTED;
+      return;
+    }
+
     // TODO: I think a cleaner thing would be to have a partial
     // JSON parser.
 
@@ -148,20 +179,22 @@ struct ModelConnection {
             value.remove_prefix(1);
             value.remove_suffix(1);
 
-            // XXX really want UnescapeJSON
-            std::optional<std::vector<uint8_t>> unesc =
-              Util::UnescapeC(value);
+            std::optional<std::string> unesc = Util::UnescapeJS(value);
 
             if (!unesc.has_value()) {
+              if (Info) {
+                Info(std::format("Could not unescape JSON: {}", value));
+              }
               json_state = JSONState::BUSTED;
               return;
             }
 
-            std::string_view sunesc =
-              std::string_view((const char *)unesc.value().data(),
-                               unesc.value().size());
-            model_response.append(sunesc);
+            model_response.append(unesc.value());
           } else {
+            if (Info) {
+              Info(std::format("Expected quoted string for text, but got: {}",
+                               value));
+            }
             json_state = JSONState::BUSTED;
             return;
           }
@@ -171,6 +204,11 @@ struct ModelConnection {
             total_token_count = tok.value();
 
           } else {
+            if (Info) {
+              Info(std::format("Expected int for totalTokenCount: {}",
+                               value));
+            }
+
             json_state = JSONState::BUSTED;
             return;
           }
@@ -180,6 +218,11 @@ struct ModelConnection {
             prompt_token_count = tok.value();
 
           } else {
+            if (Info) {
+              Info(std::format("Expected int for promptTokenCount: {}",
+                               value));
+            }
+
             json_state = JSONState::BUSTED;
             return;
           }
@@ -208,6 +251,11 @@ struct ModelConnection {
     // We must be connected and not already done.
     CHECK(client.get() != nullptr);
     CHECK(!client->ReadEOS());
+
+    if (Info && verbose > 2) {
+      size_t bytes = client->ReadView().size();
+      Info(std::format("ReadSomeHTTP (have {} so far)...\n", bytes));
+    }
 
     client->ReadSome();
 
@@ -339,6 +387,10 @@ struct ModelConnection {
     return true;
   }
 
+  void SetVerbose(int v) {
+    verbose = v;
+  }
+
   std::string hostname;
   std::string model_name;
   std::string api_key;
@@ -451,6 +503,13 @@ struct ModelResponseImpl : public ModelResponse {
 
   }
 
+  void SetVerbose(int v) {
+    verbose = v;
+    if (conn.get() != nullptr) {
+      conn->SetVerbose(verbose);
+    }
+  }
+
   // This is mostly just a light wrapper around a connection.
   std::unique_ptr<ModelConnection> conn;
   int verbose = 0;
@@ -486,13 +545,14 @@ struct ModelClientImpl : public ModelClient {
 
     std::unique_ptr<ModelResponseImpl> resp(
         new ModelResponseImpl(API_HOST, model_name, api_key, Info));
+    resp->SetVerbose(verbose);
 
     std::string path =
       std::format("/v1beta/models/{}:streamGenerateContent", model_name);
 
     std::string payload =
       std::format(R"({{"contents": [{{"parts": [{{"text": "{}"}}]}}]}})",
-                  prompt);
+                  EscapeJS(prompt));
 
     std::string request =
       std::format(
@@ -527,7 +587,6 @@ struct ModelClientImpl : public ModelClient {
     std::unique_ptr<ModelResponse> resp =
       RunInternal(prompt,
                   [status = status.get()](std::string_view s) {
-                    return;
                     if (status) {
                       status->Emit(s);
                     }
@@ -542,6 +601,9 @@ struct ModelClientImpl : public ModelClient {
                                 "\n", ANSI_GREY "¶" PROMPT_COLOR));
 
     for (;;) {
+      if (status.get() != nullptr && verbose > 2) {
+        status->Print("Start status loop.\n");
+      }
       if (resp->Completed()) {
         return std::string(resp->Text());
       } else if (resp->Failed()) {

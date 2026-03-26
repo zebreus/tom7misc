@@ -21,6 +21,10 @@ struct UTF8 {
   static inline std::string EncodeVec(std::span<const uint32_t> codepoints);
 
   static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
+  // Replace invalid encoding with the replacement codepoint.
+  static std::string Sanitize(std::string_view almost_utf8);
+  static std::string Sanitize(std::span<const uint8_t> bytes);
+
   // Decode the string as a vector of codepoints, assuming it is
   // encoded correctly. This treats no codepoints specially. Invalid
   // encodings are transformed to U+FFFD, the replacement character,
@@ -73,7 +77,8 @@ struct UTF8 {
   // must be at least 1 byte in the input. Return the number of bytes
   // read and the codepoint. If the data are invalid, reads one byte
   // and returns 0xFFFFFFFF, which is an invalid codepoint.
-  static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
+  static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8,
+                                                     size_t len);
   static constexpr uint32_t INVALID = 0xFFFFFFFF;
 
   // Remove the given number of codepoints from the beginning of the string
@@ -326,10 +331,11 @@ std::string UTF8::RTruncate(std::string_view utf8, int max_length) {
   }
 }
 
-std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int buffer_len) {
+std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8,
+                                           size_t buffer_len) {
   // Always need at least one byte!
   // This is a precondition of the function, but at least don't crash.
-  if (buffer_len <= 0) return std::make_pair(1, INVALID);
+  if (buffer_len == 0) return std::make_pair(1, INVALID);
 
   uint32_t ch = (uint8_t)utf8[0];
   int enc_len = 0;
@@ -571,6 +577,52 @@ std::optional<uint32_t> UTF8::Sub(std::string_view utf8,
   if (utf8.empty()) return std::nullopt;
 
   return {ConsumePrefix(&utf8)};
+}
+
+inline std::string UTF8::Sanitize(std::string_view almost_utf8) {
+  std::string result;
+  // Optimistically assume that it's already valid.
+  result.reserve(almost_utf8.size());
+
+  const char *data = almost_utf8.data();
+  size_t len = almost_utf8.size();
+
+  while (len > 0) {
+    auto [bytes_consumed, cp] = ParsePrefix(data, len);
+
+    bool valid = true;
+    if (cp == INVALID) {
+      valid = false;
+    } else if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+      // Out of range or UTF-16 surrogate.
+      valid = false;
+      bytes_consumed = 1;
+    } else if ((bytes_consumed == 2 && cp < 0x80) ||
+               (bytes_consumed == 3 && cp < 0x800) ||
+               (bytes_consumed == 4 && cp < 0x10000)) {
+      // Overlong (non-canonical) encoding.
+      valid = false;
+      bytes_consumed = 1;
+    }
+
+    if (valid) {
+      result.append(data, bytes_consumed);
+    } else {
+      result.append(Encode(REPLACEMENT_CODEPOINT));
+    }
+
+    data += bytes_consumed;
+    // ParsePrefix cannot return more than the length itself.
+    assert(bytes_consumed > 0 && (size_t)bytes_consumed <= len);
+    len -= bytes_consumed;
+  }
+
+  return result;
+}
+
+inline std::string UTF8::Sanitize(std::span<const uint8_t> bytes) {
+  return Sanitize(std::string_view((const char *)bytes.data(),
+                                   bytes.size()));
 }
 
 #endif

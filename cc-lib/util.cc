@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "base/print.h"
+#include "utf8.h"
 
 // Note: It is a design goal for this to only depend on the standard
 // library (not even base/*)!
@@ -238,7 +239,7 @@ std::string Util::ReadStdin() {
   std::string content(BUFFER_SIZE, 0);
   size_t offset = 0;
 
-  // 2. Read from stdin in chunks until EOF is reached.
+  // Read from stdin in chunks until EOF is reached.
   for (;;) {
     assert(content.size() >= offset);
     // Make space to read at least BUFFER_SIZE bytes.
@@ -531,17 +532,48 @@ string Util::PadEx(int n, string s, char c) {
   return PadWith(n, std::move(s), c);
 }
 
-std::optional<std::vector<uint8_t>>
-Util::UnescapeC(std::string_view str) {
-  std::vector<uint8_t> out;
+namespace {
+struct UnescapeOpts {
+  bool ALLOW_UTF16_SURROGATES = false;
+  bool ALLOW_CAPITAL_U = false;
+  bool ALLOW_LONG_X = false;
+  bool ONLY_UNICODE = false;
+};
+
+inline constexpr UnescapeOpts c_unescape_opts{
+  .ALLOW_UTF16_SURROGATES = false,
+  .ALLOW_CAPITAL_U = true,
+  .ALLOW_LONG_X = true,
+  .ONLY_UNICODE = false,
+};
+
+inline constexpr UnescapeOpts js_unescape_opts{
+  .ALLOW_UTF16_SURROGATES = true,
+  .ALLOW_CAPITAL_U = false,
+  .ALLOW_LONG_X = false,
+  .ONLY_UNICODE = true,
+};
+}  // namespace
+
+template<class Out, UnescapeOpts OPTS>
+static std::optional<Out>
+UnescapeInternal(std::string_view str) {
+  Out out;
   out.reserve(str.size());
+  // For both vector and string.
+  auto Append = [&](std::string_view s) {
+      for (size_t i = 0; i < s.size(); i++) {
+        out.push_back(s[i]);
+      }
+    };
+
   while (!str.empty()) {
-    char c = str[0];
+    const char c = str[0];
     str.remove_prefix(1);
     if (c == '\\') {
       if (str.empty()) return std::nullopt;
 
-      char d = str[0];
+      const char d = str[0];
       str.remove_prefix(1);
       switch (d) {
       case '\\':
@@ -550,8 +582,15 @@ Util::UnescapeC(std::string_view str) {
         out.push_back(d);
         break;
       case '0':
-        out.push_back(0);
+        // Technically an octal escape; we should
+        // probably check for it?
+        if constexpr (OPTS.ONLY_UNICODE) {
+          Append(UTF8::Encode(0));
+        } else {
+          out.push_back(0);
+        }
         break;
+
       case 'r':
         out.push_back('\r');
         break;
@@ -561,24 +600,99 @@ Util::UnescapeC(std::string_view str) {
       case 't':
         out.push_back('\t');
         break;
+
       case 'x': {
         uint32_t val = 0;
-        bool had_char = false;
+
+        int count = 0;
         while (!str.empty() &&
-               IsHexDigit(str[0])) {
+               (OPTS.ALLOW_LONG_X || count < 2) &&
+               Util::IsHexDigit(str[0])) {
           val *= 0x10;
-          val += HexDigitValue(str[0]);
+          val += Util::HexDigitValue(str[0]);
           str.remove_prefix(1);
-          had_char = true;
           if (val > 0xFF) {
             return std::nullopt;
           }
+          count++;
         }
 
-        if (!had_char)
+        if (!OPTS.ALLOW_LONG_X && count != 2)
           return std::nullopt;
 
-        out.push_back(val);
+        if (count == 0)
+          return std::nullopt;
+
+        if (OPTS.ONLY_UNICODE) {
+          // In e.g. JS, the codepoint.
+          Append(UTF8::Encode(val));
+        } else {
+          // In C, the raw byte.
+          out.push_back(val);
+        }
+        break;
+      }
+
+      case 'U':
+      case 'u': {
+        if (!OPTS.ALLOW_CAPITAL_U && d == 'U')
+          return std::nullopt;
+
+        // Take n bytes off the beginning of the string,
+        // interpret them as hex for a codepoint, and
+        // append that codepoint as UTF-8. Return false
+        // if something's wrong.
+        auto FixedHex = [&](size_t n) -> bool {
+            if (str.size() < n) return false;
+            uint32_t codepoint = 0;
+            for (size_t i = 0; i < n; i++) {
+              if (!Util::IsHexDigit(str[i])) return false;
+              codepoint <<= 4;
+              codepoint += Util::HexDigitValue(str[i]);
+            }
+
+            // Out of range.
+            if (codepoint > 0x10FFFF) return false;
+
+            if (!OPTS.ALLOW_UTF16_SURROGATES &&
+                codepoint >= 0xD800 && codepoint <= 0xDFFF)
+              return false;
+
+            str.remove_prefix(n);
+            std::string utf8 = UTF8::Encode(codepoint);
+            for (size_t i = 0; i < utf8.size(); i++) {
+              out.push_back(utf8[i]);
+            }
+            return true;
+          };
+
+        // Need at least {#}.
+        if (str.size() < 3) return std::nullopt;
+        if (d == 'u' && str[0] == '{') {
+          str.remove_prefix(1);
+
+          auto pos = str.find('}');
+          if (pos == std::string_view::npos)
+            return std::nullopt;
+
+          if (!FixedHex(pos))
+            return std::nullopt;
+
+          // Closing brace we already found.
+          assert(!str.empty());
+          str.remove_prefix(1);
+
+        } else if (d == 'u') {
+          if (!FixedHex(4)) {
+            return std::nullopt;
+          }
+
+        } else {
+          assert(d == 'U');
+          if (!FixedHex(8))
+            return std::nullopt;
+        }
+
         break;
       }
 
@@ -592,6 +706,17 @@ Util::UnescapeC(std::string_view str) {
   }
 
   return {out};
+}
+
+
+std::optional<std::vector<uint8_t>>
+Util::UnescapeC(std::string_view str) {
+  return UnescapeInternal<std::vector<uint8_t>, c_unescape_opts>(str);
+}
+
+std::optional<std::string>
+Util::UnescapeJS(std::string_view str) {
+  return UnescapeInternal<std::string, js_unescape_opts>(str);
 }
 
 

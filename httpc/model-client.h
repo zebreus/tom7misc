@@ -13,6 +13,8 @@ enum class Model {
   GEMINI_BEST,
   GEMINI_MEDIUM,
   GEMINI_FASTEST,
+  // For easy problems or testing.
+  GEMINI_CHEAPEST,
 };
 
 // Client for a remote LLM API. Can perform multiple inferences.
