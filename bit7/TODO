@@ -9,21 +9,14 @@ right stem compared to latin u.
 Finish DOS code page 437!
 "☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼ !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_abcdefghijklmnopqrstuvwxyz{|}~⌂ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "
 
-☺
 (っ◔◡◔)っ
 
    ├─269318 /usr/local/sbin/httpi.exe
    └─269319 /usr/local/sbin/httpi.exe
 
-╔══════════════════════════════════════════════════════════════════════════════╗
-║ Upgrade Embedded Controller from 0x02004203 to 0x02004b03?                   ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║ This update improves the performance and stability of the Embedded           ║
-║ Controller in DGX Spark                                                      ║
-║                                                                              ║
-║ NVIDIA_DGX_Spark must remain plugged into a power source for the duration    ║
-║ of the update to avoid damage.                                               ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+from htop:
+HR S  CPU%▽MEM%
+R S  CPU%△MEM%
 
 
 Glyphs todo:

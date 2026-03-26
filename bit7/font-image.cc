@@ -672,7 +672,7 @@ static PageInfo PageBit7Extended() {
 
   info.sections = {
     {0, 16 * 3},
-    {16 * 12, 4 * 16 - 8},
+    {16 * 12, 4 * 16 - 4},
     {16 * 16, 2 * 16 - 6},
     {18 * 16, 6 * 16},
   };
@@ -855,8 +855,20 @@ static PageInfo PageBit7Extended() {
     0x256A,  // (╪)
     0x2518,  // (┘)
     0x250C,  // (┌)
+
+    0x2320,  // (⌠) TOP HALF INTEGRAL
+    0x2321,  // (⌡) BOTTOM HALF INTEGRAL
+    0x2310,  // (⌐) REVERSED NOT SIGN
+    // Note that some fonts will show this as a P with a stroke,
+    // but this is apparently an error. It should be a squished
+    // "Pt" (if emulating DOS CP 437) or "Pts" if you have the
+    // space.
+    0x20A7,  // (₧) PESETA SIGN
     // Unclaimed
-    -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1,
+
+    // TODO: Maybe a good place to fill out stuff like CP 850.
+    // For CP 850: U+2017
 
     // Two rows for Greek Extended (custom mapping)
     0x0385,  // (΅) GREEK DIALYTIKA TONOS
