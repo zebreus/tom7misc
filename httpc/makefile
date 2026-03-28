@@ -1,5 +1,5 @@
 
-default : minget.exe sget.exe aget.exe
+default : minget.exe sget.exe aget.exe markdown_test.exe
 
 all : minget.exe
 
@@ -58,6 +58,10 @@ $(HTTPV)/%.o : $(HTTPV)/%.cc makefile
 %.o : %.cc *.h makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
+
+markdown_test.exe : markdown.o markdown_test.o $(CC_LIB_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 minget.exe : minget.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)

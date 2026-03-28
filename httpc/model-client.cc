@@ -1,6 +1,7 @@
 #include "model-client.h"
 
 #include <cstdio>
+#include <ctime>
 #include <format>
 #include <functional>
 #include <memory>
@@ -23,6 +24,8 @@
 #include "tls-client.h"
 #include "utf8.h"
 #include "util.h"
+
+static constexpr bool SAVE_HTTP = true;
 
 static constexpr std::string_view API_HOST =
   "generativelanguage.googleapis.com";
@@ -163,7 +166,7 @@ struct ModelConnection {
       std::string_view key, value;
 
       while (RE2::FindAndConsume(&s, pattern, &key, &value)) {
-        if (Info && verbose > 0) {
+        if (Info && verbose > 1) {
           Info(std::format(AYELLOW("{}") " = " AWHITE("{}") "\n",
                            key, value));
         }
@@ -371,7 +374,7 @@ struct ModelConnection {
 
   bool ProcessHeaders() {
     for (const auto &[key, value] : headers) {
-      if (Info && verbose > 0) {
+      if (Info && verbose > 1) {
         Info(std::format(AYELLOW("{}") ": " AWHITE("{}") "\n",
                          key, value));
       }
@@ -539,7 +542,7 @@ struct ModelClientImpl : public ModelClient {
       });
   }
 
-  std::unique_ptr<ModelResponse> RunInternal(
+  std::unique_ptr<ModelResponseImpl> RunInternal(
       std::string_view prompt,
       std::function<void(std::string_view)> Info) {
 
@@ -574,7 +577,7 @@ struct ModelClientImpl : public ModelClient {
     resp->Send(request);
 
     // Upcast
-    return std::unique_ptr<ModelResponse>(resp.release());
+    return resp;
   }
 
   std::string Infer(std::string_view prompt) override {
@@ -584,7 +587,7 @@ struct ModelClientImpl : public ModelClient {
       status.reset(new StatusBar(3));
     }
 
-    std::unique_ptr<ModelResponse> resp =
+    std::unique_ptr<ModelResponseImpl> resp =
       RunInternal(prompt,
                   [status = status.get()](std::string_view s) {
                     if (status) {
@@ -594,20 +597,24 @@ struct ModelClientImpl : public ModelClient {
 
     #define PROMPT_COLOR ANSI_FG(138, 188, 242)
     #define RESP_COLOR ANSI_FG(207, 138, 242)
+    #define MARK_COLOR ANSI_FG(30, 30, 35)
 
     std::string prompt_line =
       std::format(PROMPT_COLOR "{}" ANSI_RESET,
                   Util::Replace(UTF8::Truncate(prompt, 75),
                                 "\n", ANSI_GREY "¶" PROMPT_COLOR));
 
+    std::string result = "ERROR";
     for (;;) {
       if (status.get() != nullptr && verbose > 2) {
         status->Print("Start status loop.\n");
       }
       if (resp->Completed()) {
-        return std::string(resp->Text());
+        result = std::string(resp->Text());
+        break;
       } else if (resp->Failed()) {
-        return "ERROR";
+        result = "ERROR";
+        break;
       } else {
         if (status.get() != nullptr) {
           std::string stats =
@@ -623,7 +630,7 @@ struct ModelClientImpl : public ModelClient {
           std::string resp_line =
             std::format(RESP_COLOR "{}" ANSI_RESET,
                         Util::Replace(r,
-                                      "\n", ANSI_GREY "¶" RESP_COLOR));
+                                      "\n", MARK_COLOR "¶" RESP_COLOR));
 
           status->EmitStatus({stats, prompt_line, resp_line});
         }
@@ -632,8 +639,21 @@ struct ModelClientImpl : public ModelClient {
       }
     }
 
-    // TODO: Clean up status bar
-    return std::string(resp->Text());
+    if (status.get() != nullptr) {
+      status->Remove();
+    }
+    if (SAVE_HTTP) {
+      if (resp.get() && resp->conn.get()) {
+        std::string filename = std::format("http.{}.txt",
+                                           time(nullptr));
+        Util::WriteFile(filename, resp->conn->http_content.StringView());
+        Print("Wrote http response to " AGREEN("{}") "\n", filename);
+      } else {
+        Print(ARED("No http response to save") "?\n");
+      }
+    }
+
+    return result;
   }
 };
 

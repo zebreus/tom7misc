@@ -47,6 +47,9 @@ int main(int argc, char **argv) {
   client->SetVerbose(verbose);
 
   // Read stdin.
+  // TODO: Ideally we would have the command that was run, too.
+  // Maybe it could be run like
+  //   wtf.exe "Why is the test failing?" ./whatever_test.exe args...
   std::string prompt = Util::ReadStdin();
 
   Timer response_timer;
