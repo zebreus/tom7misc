@@ -1,9 +1,8 @@
 
 #include "status-bar.h"
 
-#include <cstdio>
-
 #include "ansi.h"
+#include "base/print.h"
 
 static void Test() {
   StatusBar bar(3);
@@ -47,15 +46,33 @@ static void TestIndexed() {
                   "emitting first.");
 }
 
+static void TestThatItGoesAway() {
+  StatusBar bar(3);
+
+  Print("The next line should say " AWHITE("xzzy") ":\n");
+
+  bar.EmitStatus(
+      ARED("WRONG") ": These bars should go away when we Remove().\n"
+      ARED("NO") "................................................\n"
+      ARED("ERROR") "!!!!!!!\n");
+
+  bar.Remove();
+
+  Print("I am saying " AWHITE("xyzzy") " to confirm success.\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestThatItGoesAway();
+
+  Print(AGREY("---- blank lines expected in here ----") "\n");
   TestIndexed();
-  printf("------\n");
+  Print(AGREY("--------------------------------------") "\n");
 
   Test();
 
-  printf("^ This test requires visual inspection\n");
-  printf("OK\n");
+  Print("^ This test requires visual inspection\n");
+  Print("OK\n");
   return 0;
 }

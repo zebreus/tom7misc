@@ -159,3 +159,9 @@ void StatusBar::EmitLine(int idx, std::string_view s) {
 void StatusBar::Clear() {
   EmitStatus(std::string(num_lines, '\n'));
 }
+
+void StatusBar::Remove() {
+  EmitStatus(std::string(num_lines, '\n'));
+  MoveUp();
+  first = true;
+}

@@ -173,7 +173,8 @@ Subprocess *Subprocess::Create(const string &filename) {
 
   // XXX: Probably need to clean these up if e.g. CreateProcess fails?
   // Create a pipe for the child process's STDOUT.
-  if (!CreatePipe(&sub->g_hChildStd_OUT_Rd, &sub->g_hChildStd_OUT_Wr, &saAttr, 0))
+  if (!CreatePipe(&sub->g_hChildStd_OUT_Rd, &sub->g_hChildStd_OUT_Wr,
+                  &saAttr, 0))
     return nullptr;
 
   // Ensure the read handle to the pipe for STDOUT is not inherited.

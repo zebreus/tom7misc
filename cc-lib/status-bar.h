@@ -73,6 +73,13 @@ struct StatusBar {
   // Set every status line empty; keeps any lines above.
   void Clear();
 
+  // Clear the status lines, and move the cursor up so the next normal
+  // IO goes where the status bar was. This is intended to be a final
+  // act when you're done with a transient status bar and won't use it
+  // any more. After this, writing anything to the StatusBar will do
+  // something weird.
+  void Remove();
+
   // Advanced: By default, the status bar tries to figure out the
   // width of the terminal (or assumes 80) and then truncates status
   // lines to fit. (If status lines wrap, then it will usually mess up
