@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <format>
 #include <map>
@@ -14,6 +15,8 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
+#include "color-util.h"
+#include "markdown.h"
 #include "model-client.h"
 #include "net.h"
 #include "process-util.h"
@@ -29,23 +32,62 @@ static std::string GetPrompt(std::string_view filename) {
   return content;
 }
 
+static void ConsumeWS(std::string_view *s) {
+  while (!s->empty() && std::isspace((*s)[0])) {
+    s->remove_prefix(1);
+  }
+}
+
 static std::vector<std::string> SvnList(std::string_view dir) {
-  std::string cmd = std::format("svn list \"{}\"", dir);
+  // "svn list" uses the server's version of the files at
+  // some revision, which might not be the newest one. This
+  // is not what we want.
+  //
+  // "svn status -vq" will show everything we want, but we
+  // have to remove some stuff to find the filename:
+  // M             6997     6996 tom7         makefile
+  std::string cmd = std::format("svn st -vq \"{}\"", dir);
   std::optional<std::string> out = ProcessUtil::GetOutput(cmd);
   CHECK(out.has_value()) << "Command failed: " << cmd;
 
-  // Join the paths.
+
+  // Parse.
   std::vector<std::string> ret;
-  for (std::string file : Util::SplitToLines(out.value())) {
-    if (!file.empty()) {
-      if (dir == ".") {
-        if (Util::StartsWith(file, "./")) {
-          file = file.substr(2);
-        }
-        ret.push_back(file);
-      } else {
-        ret.push_back(Util::DirPlus(dir, file));
+  for (std::string_view line : Util::SplitToLines(out.value())) {
+    if (line.empty())
+      continue;
+
+    CHECK(line.size() > 8) << "Must have at least the 8 status chars?";
+    line.remove_prefix(8);
+
+    ConsumeWS(&line);
+    // Now two columns of revision numbers or "-".
+    while (!line.empty() && (line[0] == '-' || std::isdigit(line[0]))) {
+      line.remove_prefix(1);
+    }
+    ConsumeWS(&line);
+
+    while (!line.empty() && (line[0] == '-' || std::isdigit(line[0]))) {
+      line.remove_prefix(1);
+    }
+    ConsumeWS(&line);
+
+    // Now looking at username.
+    while (!line.empty() && !std::isspace(line[0])) {
+      line.remove_prefix(1);
+    }
+    ConsumeWS(&line);
+
+    CHECK(!line.empty()) << "Line didn't contain filename?";
+
+    // Don't include the directory itself.
+    if (line != dir) {
+      // svn st will already include the path. But use minimal
+      // relative filenames when it's right here.
+      if (dir == "." && Util::StartsWith(line, "./")) {
+        line.remove_prefix(2);
       }
+      ret.emplace_back(line);
     }
   }
   return ret;
@@ -157,6 +199,10 @@ include code, don't repeat large sections from the input files.
 The user has these files open in their editor and prefers to
 apply edits manually. Just give enough context so that it will be
 clear to the user where proposed edits are supposed to apply.
+Keep any code under 78 columns. Follow the commenting style of
+the surrounding code (typically you should not write comments that
+simply say what the code that following does, or number the steps,
+but it can be helpful to leave brief notes about subtle things).
 
 You only get one shot at this; asking the user direct questions on
 what to do next is not appropriate. If you determine that there is
@@ -351,7 +397,7 @@ int main(int argc, char **argv) {
 
   Print("Solve phase done in {}\n", ANSI::Time(solve_timer.Seconds()));
   Print("\n\n" AWHITE("Raw response") ":\n"
-        "{}", json);
+        AGREY("{}"), json);
 
   {
     using namespace rapidjson;
@@ -369,8 +415,34 @@ int main(int argc, char **argv) {
           0, 100);
     }
 
-    // ... parse more ...
+    std::string solution;
+    if (document.HasMember("solution") &&
+        document["solution"].IsString()) {
+      solution = document["solution"].GetString();
+    } else {
+      // Could output from notes, missing, etc.?
+      solution = "UNSOLVED";
+    }
 
+    int w = std::max(16, ANSI::TerminalWidth().value_or(80) - 8);
+    uint32_t pcolor = ColorUtil::LinearGradient32(
+        ColorUtil::PROBABILITY_TEXT, confidence/100.0);
+    std::string title =
+      std::format(" " ANSI_FG(255, 255, 255) "Solution"
+                  ANSI_FG(200, 200, 200) " (Confidence "
+                  "{}{}%"
+                  ANSI_FG(200, 200, 200) ") ",
+                  ANSI::ForegroundRGB32(pcolor),
+                  confidence);
+    int slack = std::max(0, w - ANSI::StringWidth(title));
+    title.append(slack, ' ');
+
+    Print("\n"
+          ANSI_BG(0, 4, 89) " " ANSI_FG(245, 237, 154) "☻"
+          "{}" ANSI_RESET "\n\n", title);
+
+    Markdown::Document doc = Markdown::Parse(solution);
+    Print("\n{}\n", Markdown::ToColorTerminal(doc));
   }
 
 

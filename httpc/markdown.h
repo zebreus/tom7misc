@@ -4,6 +4,7 @@
 #ifndef _CC_LIB_MARKDOWN_H
 #define _CC_LIB_MARKDOWN_H
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -79,6 +80,21 @@ struct Markdown {
   // Recompute markdown syntax for the text.
   static std::string ToMarkdown(const Document &doc);
   static std::string ToMarkdown(const Text &text);
+
+  // Render in a fixed width font for the current terminal, using ANSI
+  // color codes.
+  // If the terminal width is not supplied, it tries to get this
+  // from the OS (or guesses 80).
+  static std::string ToColorTerminal(const Document &doc,
+                                     std::optional<int> term_width = {});
+
+  // Render the text as a rectangle (series of lines) to fit the given
+  // width. Uses ANSI color codes. Uses smart line breaking. Note that
+  // a line can exceed the requested width, for example if there is a
+  // token that is longer than the width.
+  static std::vector<std::string>
+  TextRectangle(const Text &text, int width = 78);
+
 };
 
 #endif

@@ -1,16 +1,22 @@
 #include "markdown.h"
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <functional>
 #include <optional>
-#include <string_view>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
+#include "boxes-and-glue.h"
+#include "hexdump.h"
 #include "util.h"
 
 static Markdown::Text ParseText(std::string_view body) {
@@ -413,6 +419,288 @@ std::string Markdown::ToMarkdown(const Document &doc) {
   }
   if (!ret.empty()) {
     ret.push_back('\n');
+  }
+
+  return ret;
+}
+
+std::vector<std::string> Markdown::TextRectangle(const Text &text, int width) {
+  // TODO: Here first.
+
+  static constexpr std::string_view NORMAL_COLOR = ANSI_RESET;
+  static constexpr std::string_view BOLD_COLOR = ANSI_FG(255, 255, 255);
+  static constexpr std::string_view CODE_COLOR = ANSI_FG(217, 192, 237);
+  // we just write [link](url) as link (url) where the link and parenthesized
+  // URL are colored.
+  static constexpr std::string_view LINK_COLOR = ANSI_FG(104, 129, 242);
+  static constexpr std::string_view URL_COLOR = ANSI_FG(48, 57, 97);
+
+  // Recommended steps:
+  // Flatten the text into boxes at word boundaries, assuming a fixed-width
+  // font. The boxes know their colors. We increase the glue penalty
+  // a little inside bold text, and a little more inside inline code,
+  // since we know those tokens belong together somewhat.
+  //
+  // Run the boxes-and-glue algorithm. Don't use justification, since this
+  // is a fixed-width terminal font.
+  //
+  // Take the resulting boxes and render them into a vector of lines,
+  // with color. We should keep track of the color so that we only emit
+  // ANSI codes when it changes. Reset at the end of each line.
+
+  // Box for the boxes-and-glue algorithm.
+  struct Token {
+    std::string text;
+    std::string_view color;
+    double break_penalty_add = 0.0;
+    bool space_after = false;
+  };
+
+  std::vector<Token> tokens;
+  bool pending_space = false;
+
+  auto AddWordPart = [&](std::string_view s,
+                         std::string_view color,
+                         double penalty) {
+    int i = 0;
+    while (i < (int)s.size()) {
+      // Treat any whitespace character as a space
+      if (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r') {
+        pending_space = true;
+        i++;
+      } else {
+        if (pending_space && !tokens.empty()) {
+          tokens.back().space_after = true;
+        }
+        pending_space = false;
+
+        int start = i;
+        while (i < (int)s.size() && s[i] != ' ' && s[i] != '\n' && s[i] != '\t' && s[i] != '\r') {
+          i++;
+        }
+        tokens.push_back({std::string(s.substr(start, i - start)), color, penalty, false});
+      }
+    }
+  };
+
+
+  for (const TextPart &part : text) {
+    if (const Plain *p = std::get_if<Plain>(&part)) {
+      AddWordPart(p->text, NORMAL_COLOR, 0.0);
+    } else if (const Bold *b = std::get_if<Bold>(&part)) {
+      // Small penalty increase inside bold text
+      AddWordPart(b->text, BOLD_COLOR, 10.0);
+    } else if (const InlineCode *c = std::get_if<InlineCode>(&part)) {
+      // Larger penalty increase inside inline code
+      AddWordPart(c->text, CODE_COLOR, 20.0);
+    } else if (const URL *u = std::get_if<URL>(&part)) {
+      AddWordPart(u->text, LINK_COLOR, 0.0);
+      pending_space = true; // force a space between link and (url)
+      std::string url_str = "(" + u->url + ")";
+      AddWordPart(url_str, URL_COLOR, 0.0);
+    }
+  }
+
+  if (tokens.empty()) return {};
+
+
+  // Convert to boxes.
+  std::vector<BoxesAndGlue::BoxIn> boxes_in;
+  boxes_in.reserve(tokens.size());
+
+  for (int i = 0; i < (int)tokens.size(); i++) {
+    const Token &tok = tokens[i];
+    BoxesAndGlue::BoxIn box;
+
+    box.width = ANSI::StringWidth(tok.text);
+    // Linear structure.
+    box.parent_idx = i - 1;
+
+    static constexpr double EPSILON_COEFFICIENT = 1.0e-6;
+
+    if (tok.space_after) {
+      box.glue_ideal = 1.0;
+      box.glue_min = 1.0;
+      // These don't matter much since we aren't actually
+      // justifying.
+      box.glue_expand = 1.0;
+      box.glue_contract = 1.0;
+      // Add formatting penalties when breaking on this space
+      box.glue_break_penalty = tok.break_penalty_add;
+    } else {
+      box.glue_ideal = 0.0;
+      box.glue_min = 0.0;
+      box.glue_expand = EPSILON_COEFFICIENT;
+      box.glue_contract = EPSILON_COEFFICIENT;
+      // Large penalty when the token is part of a word (e.g. when
+      // we bold part of a word).
+      box.glue_break_penalty = 10000.0;
+    }
+
+    box.data = (void*)&tok;
+    boxes_in.push_back(box);
+  }
+
+  std::vector<std::vector<BoxesAndGlue::BoxOut>> layout =
+    BoxesAndGlue::PackBoxes(width, boxes_in,
+                            BoxesAndGlue::Justification::LEFT);
+
+  std::vector<std::string> lines;
+  lines.reserve(layout.size());
+
+  // In the future, we might want to accumulate error. But this
+  // only really matters if we're doing justification.
+  auto Round = [](double d) { return (int)std::round(d); };
+
+  for (const std::vector<BoxesAndGlue::BoxOut> &line : layout) {
+    std::string line_str;
+    std::string_view current_color = "";
+
+    for (size_t i = 0; i < line.size(); i++) {
+      const auto &box_out = line[i];
+      const Token *tok = static_cast<const Token*>(box_out.box->data);
+
+      // There should not be left-padding, but for future-proofing
+      // we emit it if so.
+      if (i == 0 && box_out.left_padding > 0.0) {
+        line_str.append(Round(box_out.left_padding), ' ');
+      }
+
+      // Only emit ANSI sequences on color state changes
+      if (tok->color != current_color) {
+        line_str.append(tok->color);
+        current_color = tok->color;
+      }
+
+      line_str.append(tok->text);
+
+      // Skip glue on the last token.
+      if (i + 1 < line.size()) {
+        // Since we have glue_min and are using justification, this should
+        // actually always be one.
+        int spaces = Round(box_out.actual_glue);
+        if (spaces > 0) {
+          line_str.append(spaces, ' ');
+        }
+      }
+    }
+
+    if (!line_str.empty()) {
+      line_str.append(ANSI_RESET);
+    }
+
+    lines.push_back(std::move(line_str));
+  }
+
+  return lines;
+}
+
+static void WriteColorBullet(const Markdown::Bullet &b, int indent, int width,
+                             std::string *ret) {
+  std::string prefix_first = std::string(indent * 2, ' ') +
+    AFGCOLOR(171, 169, 104, "⏹") " ";
+  const int prefix_size = indent * 2 + 2;
+  std::string prefix_rest = std::string(prefix_size, ' ');
+
+  int text_width = std::max(10, width - prefix_size);
+  std::vector<std::string> lines = Markdown::TextRectangle(b.text, text_width);
+
+  if (lines.empty()) {
+    AppendFormat(ret, "{}\n", prefix_first);
+  } else {
+    AppendFormat(ret, "{}{}\n", prefix_first, lines[0]);
+    for (size_t i = 1; i < lines.size(); i++) {
+      AppendFormat(ret, "{}{}\n", prefix_rest, lines[i]);
+    }
+  }
+
+  for (const Markdown::Bullet &child : b.children) {
+    WriteColorBullet(child, indent + 1, width, ret);
+  }
+}
+
+std::string Markdown::ToColorTerminal(const Document &doc,
+                                      std::optional<int> opt_term_width) {
+  const int term_width =
+    opt_term_width.value_or(ANSI::TerminalWidth().value_or(80));
+
+  // It looks bad to go all the way to the right-hand side.
+  const int comfy_width = std::max(16, term_width - 2);
+
+  std::string ret;
+
+  const Section *prev_sec = nullptr;
+  for (const Section &sec : doc) {
+    if (const Paragraph *p = std::get_if<Paragraph>(&sec)) {
+      for (std::string_view line : TextRectangle(p->text, comfy_width)) {
+        AppendFormat(&ret, "{}\n", line);
+      }
+      ret.push_back('\n');
+
+    } else if (const Heading *h = std::get_if<Heading>(&sec)) {
+
+      std::string_view style;
+      switch (h->level) {
+      case 0:
+        style = ANSI_BG(22, 28, 186) ANSI_FG(141, 239, 242);
+        break;
+      case 1:
+        style = ANSI_FG(137, 229, 232);
+        break;
+      case 2:
+      default:
+        style = ANSI_FG(227, 254, 255);
+        break;
+      }
+
+      AppendFormat(&ret, "{}{}" ANSI_RESET "\n\n", style, h->text);
+
+    } else if (const Code *c = std::get_if<Code>(&sec)) {
+
+      // #define CODE_BG ANSI_BG(0, 20, 1)
+      // #define CODE_FG ANSI_FG(120, 156, 126)
+
+      #define CODE_BG ANSI_BG(12, 9, 40)
+      #define CODE_FG ANSI_FG(155, 151, 204)
+      #define SEP_FG ANSI_FG(14, 80, 130)
+      #define SEP_BG CODE_BG // ANSI_BG(6, 3, 46)
+
+      auto AddSep = [&ret, comfy_width]() {
+          ret.append(SEP_BG SEP_FG);
+          for (int i = 0; i < comfy_width; i++) ret.append("═");
+          ret.append(ANSI_RESET "\n");
+        };
+
+      AddSep();
+
+      // TODO: use type for syntax highlighting
+      for (std::string &line : Util::SplitToLines(c->body)) {
+        size_t cur = line.size();
+        if (cur < comfy_width) line.append(comfy_width - cur, ' ');
+        AppendFormat(&ret, CODE_BG CODE_FG "{}" ANSI_RESET "\n", line);
+      }
+
+      AddSep();
+      ret.push_back('\n');
+
+    } else if (const Bullet *b = std::get_if<Bullet>(&sec)) {
+
+      // Attach bullets to textual parents.
+      if (ret.ends_with("\n\n") &&
+          prev_sec != nullptr &&
+          (std::holds_alternative<Paragraph>(*prev_sec) ||
+           std::holds_alternative<Bullet>(*prev_sec))) {
+        ret.pop_back();
+      }
+
+      WriteColorBullet(*b, 1, comfy_width, &ret);
+      ret.push_back('\n');
+
+    } else {
+      LOG(FATAL) << "Bad section variant?";
+    }
+
+    prev_sec = &sec;
   }
 
   return ret;
