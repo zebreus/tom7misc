@@ -128,6 +128,14 @@ struct ColorUtil {
     GradRGB(1.00f, 0xFF00FF),
   };
 
+  // for a probability with 0="bad" (red) and 1="good" (green).
+  static constexpr Gradient PROBABILITY_TEXT{
+    GradRGB(0.0f, 0xde2323),
+    GradRGB(0.33f, 0xde8d23),
+    GradRGB(0.66f, 0xbcde23),
+    GradRGB(1.0f, 0x63e65a),
+  };
+
   // TODO: Arrays of color values. A frequent thing I need
   // is "a bunch of distinct colors that look good on a
   // dark background."

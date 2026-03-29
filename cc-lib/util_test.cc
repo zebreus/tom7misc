@@ -76,6 +76,16 @@ static string SlowReadFile(const string &filename) {
 static constexpr char NONEXISTENT_FILE[] =
   "util_test_DOESNT_EXIST.cc";
 
+static void TestFileSize(const char *argv0) {
+  CHECK(!Util::FileSize(NONEXISTENT_FILE).has_value());
+
+  std::string self = Util::DirPlus(Util::BinaryDir(argv0), "util_test.cc");
+  const string reference = SlowReadFile(self);
+  CHECK(!reference.empty()) << self;
+
+  CHECK_OPT_VALUE(Util::FileSize(self), reference.size());
+}
+
 
 // This test uses its source code as test data, so don't
 // mess with the lines that tell you to keep them, duh.
@@ -956,6 +966,7 @@ static void TestUnixTime() {
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
+  TestFileSize(argv[0]);
   TestReadFiles(argv[0]);
   TestWriteFiles();
   TestWhitespace();

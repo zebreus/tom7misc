@@ -1,5 +1,5 @@
 
-default : minget.exe sget.exe aget.exe markdown_test.exe
+default : minget.exe sget.exe aget.exe fill-in.exe markdown_test.exe
 
 all : minget.exe
 
@@ -45,7 +45,7 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(
 # Objects that are plain portable C++
 HTTPV_OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
 
-LIB=net.o tls-client.o model-client.o markdown.o
+LIB=net.o tls-client.o model-client.o markdown.o model-util.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -80,6 +80,14 @@ wtf.exe : wtf.o $(HTTPV_OBJECTS) $(LIB)
 	@echo -n "!"
 
 render-markdown.exe : render-markdown.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+fill-in.exe : fill-in.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test-status.exe : test-status.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

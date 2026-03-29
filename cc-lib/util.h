@@ -84,9 +84,14 @@ struct Util {
   static bool WriteUint64File(std::string_view filename,
                               std::span<const uint64_t> contents);
 
+  // Return the file size in bytes. Returns nullopt if the file can't
+  // be opened. Might returns nullopt, 0, or something weird for
+  // special files (e.g. in /proc).
+  static std::optional<size_t> FileSize(std::string_view filename);
+
   // Return a vector of all the files and directories in the target
   // dir. Skips ".", ".." but is not built to handle any funny business.
-  static std::vector<string> ListFiles(const string &dir);
+  static std::vector<string> ListFiles(std::string_view dir);
 
   // Join the strings in the input vector with the given delimiter.
   // Join({"a", "b", "c"}, ".") = "a.b.c"

@@ -47,6 +47,7 @@
 
 ;; experimental
 (require 'eprocs)
+(require 'fill-in)
 
 (defun code-format-paragraph ()
   "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."
@@ -267,28 +268,29 @@
    (list "FixederSys 1x-12:antialias=none" 80 128)
    (list "FixederSys 2x-48:antialias=none" 80 32)
    )
-  "*List of font, width, height for zoom toggle. Experimental."
-  )
+  "*List of font, width, height for zoom toggle. Experimental.")
 
-;; XXX this should be frame local
-(defvar toggle-zoom-pos 0
-  "*Current index for toggling zoom. Experimental.")
 (defun toggle-zoom ()
-  "*Go to the next zoom. Experimental."
+  "*Go to the next zoom for this frame. Experimental."
   (interactive "")
   (progn
     (message "toggle zoom")
     (let ((nz (list-length zoom-settings-list)))
       (progn
         (message (format "%d" nz))
-        (setq toggle-zoom-pos (mod (+ 1 toggle-zoom-pos) nz))
-        (let* ((record (nth toggle-zoom-pos zoom-settings-list))
-               (font (nth 0 record))
-               (width (nth 1 record))
-               (height (nth 2 record)))
-          (set-frame-font font)
-          (modify-frame-parameters nil (list (cons 'width width)))
-          (modify-frame-parameters nil (list (cons 'height height)))
+        ;; Read from the frame's parameters, defaulting to 0 if not set
+        (let* ((current-pos (or (frame-parameter nil 'toggle-zoom-pos) 0))
+               (next-pos (mod (+ 1 current-pos) nz)))
+          ;; Save the new position back to this specific frame
+          (modify-frame-parameters nil (list (cons 'toggle-zoom-pos next-pos)))
+          (let* ((record (nth next-pos zoom-settings-list))
+                 (font (nth 0 record))
+                 (width (nth 1 record))
+                 (height (nth 2 record)))
+            (set-frame-font font)
+            (modify-frame-parameters nil (list (cons 'width width)))
+            (modify-frame-parameters nil (list (cons 'height height)))
+            )
           )
         )
       )

@@ -131,8 +131,9 @@ int Util::stoi(const string &s) {
 }
 
 // TODO: I never tested this on posix.
-vector<string> Util::ListFiles(const string &s) {
+vector<string> Util::ListFiles(string_view s_in) {
   vector<string> v;
+  std::string s(s_in);
   DIR *dir = opendir(s.c_str());
   if (dir == nullptr) return {};
   while (struct dirent *res = readdir(dir)) {
@@ -259,6 +260,21 @@ std::string Util::ReadStdin() {
       return content;
     }
   }
+}
+
+std::optional<size_t> Util::FileSize(std::string_view filename) {
+  std::filesystem::path path(filename);
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(path, ec) || ec) {
+    return std::nullopt;
+  }
+
+  std::uintmax_t size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return std::nullopt;
+  }
+
+  return {(size_t)size};
 }
 
 // Internal helper used by ReadFile, ReadFileMagic, ReadFileBytes.

@@ -30,6 +30,10 @@
 // will treat the bold colors as both bright and bold font.
 // So this attempts to get "however your terminal is configured
 // for bright red, but normal font weight."
+//
+// Note: These also turn everything else off (0;) which might
+// not be what we want (makes it hard to compose with background
+// color).
 #define ANSI_RED "\x1B[0;91m"
 #define ANSI_GREY "\x1B[0;90m"
 #define ANSI_BLUE "\x1B[0;94m"
