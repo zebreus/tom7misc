@@ -45,6 +45,9 @@
 
 (load "z3-mode")
 
+;; experimental
+(require 'eprocs)
+
 (defun code-format-paragraph ()
   "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."
   (interactive "")
@@ -914,7 +917,7 @@
     (setq tab-width 2)
     (setq indent-tabs-mode nil)))
 
-(setq enable-local-variables 'query)
+(setq enable-local-variables t)
 (setq next-line-add-newlines nil)
 (setq add-log-full-name "Tom 7")
 
@@ -1359,6 +1362,17 @@
 (add-hook 'nxml-mode-hook (lambda ()
                             (setq truncate-lines nil)))
 
+(defun auto-recompile-elisp ()
+  "Automatically byte-compile the current file on save, BUT
+   only if a .elc file already exists."
+  (when (and (eq major-mode 'emacs-lisp-mode)
+             buffer-file-name
+             (file-exists-p (byte-compile-dest-file buffer-file-name)))
+    (message (format "Byte-compiling %s..." buffer-file-name))
+    (byte-compile-file buffer-file-name)))
+
+(add-hook 'after-save-hook #'auto-recompile-elisp)
+
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
@@ -1385,7 +1399,8 @@
  '(cleanup-pattern-face ((t (:foreground "#c99"))))
  '(cleanup-tab-face ((t (:background "#004" :strike-through "#55c"))))
  '(comint-highlight-prompt ((((background dark)) (:foreground "#AAEEEE"))))
- '(compilation-info ((t (:foreground "#7c7"))))
+ '(compilation-error ((t (:foreground "#800"))))
+ '(compilation-info ((t (:foreground "#393"))))
  '(cursor ((t (:background "lightskyblue" :foreground "black"))))
  '(custom-state-face ((t (:foreground "#99CC99"))) t)
  '(custom-visibility ((t (:inherit link))))
@@ -1398,7 +1413,7 @@
  '(eglot-diagnostic-tag-unnecessary-face ((t (:background "#3C2C00"))))
  '(eglot-highlight-symbol-face ((t (:background "#448"))))
  '(eglot-inlay-hint-face ((t (:foreground "#444"))))
- '(eglot-mode-line ((t (:foreground "#11A"))))
+ '(eglot-mode-line ((t (:foreground "#339"))))
  '(error ((t (:foreground "#C44"))))
  '(flymake-error ((t (:background "#622" :underline (:color "#f00" :style line :position t)))))
  '(flymake-warning ((t (:background "#531"))))
