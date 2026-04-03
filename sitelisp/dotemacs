@@ -654,7 +654,7 @@
 
 (defun cycle-filter (l)
   "*How to filter out buffers from the cycle list."
-  (remove-if (lambda (buff) ""
+  (seq-remove (lambda (buff) ""
                (or (and (not (string= "*shell*" (buffer-name buff)))
                         (string-match ".*\\*.*\\*" (buffer-name buff)))))
              l))

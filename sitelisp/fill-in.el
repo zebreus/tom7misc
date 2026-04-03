@@ -163,3 +163,5 @@
              (when (search-forward placeholder nil t)
                (replace-match region-text t t)))))
        (message "Error: Process failed! OS reported: %s" err)))))
+
+(provide 'fill-in)
