@@ -87,7 +87,15 @@ fill-in.exe : fill-in.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+ask.exe : ask.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 test-status.exe : test-status.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+model-util_test.exe : model-util_test.o $(HTTPV_OBJECTS) $(LIB) $(CC_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -221,7 +221,7 @@ int main(int argc, char **argv) {
   // Wildcards to never offer up.
   std::vector<std::string> exclude = {"*.png", "*.jpg"};
 
-  std::string current_file;
+  std::string file_arg;
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -232,21 +232,34 @@ int main(int argc, char **argv) {
       i++;
       dirs.insert(argv[i]);
     } else {
-      CHECK(current_file.empty()) << "Just one file on the command line.";
-      current_file = std::string(arg);
+      CHECK(file_arg.empty()) << "Just one file on the command line.";
+      file_arg = std::string(arg);
     }
   }
 
-  CHECK(!current_file.empty()) << "Need a file on the command line!";
-  std::string current_file_contents = Util::ReadFile(current_file);
-  CHECK(!current_file_contents.empty()) << current_file;
+  CHECK(!file_arg.empty()) << "Need a file on the command line!";
+
+  // Use the location of the file on the command line as
+  // the current one.
+  std::string current_wd = Util::PathOf(file_arg);
+  std::string current_file = Util::FileOf(file_arg);
+  CHECK(Util::ChangeDir(current_wd)) << "Couldn't change directory to the "
+    "location of " << file_arg << " which is " << current_wd << " ..?";
+
+  std::string current_file_contents = Util::ReadFile(file_arg);
+  CHECK(!current_file_contents.empty()) << file_arg;
 
   std::string request = Util::ReadStdin();
   if (request.empty()) {
     request = "Can you fill this part in?";
   }
 
-  // TODO: Read .clangd in the current directory for dirs to mine.
+  #if 1
+  for (const std::string &d : ModelUtil::IncludeDirs(current_file)) {
+    Print("Via clangd: " AYELLOW("{}") "\n", d);
+    dirs.insert(d);
+  }
+  #endif
 
   // Relative paths to files, with sizes.
   std::map<std::string, int64_t> files;
@@ -283,7 +296,15 @@ int main(int argc, char **argv) {
       CHECK(cheap.get() != nullptr);
       cheap->SetVerbose(verbose);
 
-      std::string json = ModelUtil::StripMarkup(cheap->Infer(includes_prompt));
+      std::string raw = cheap->Infer(includes_prompt);
+      std::optional<std::string> oj = ModelUtil::FindOneJSONObject(raw);
+      if (!oj.has_value()) {
+        Print(ARED("Unable to find a JSON object!") "\n"
+              "\n"
+              AGREY("{}\n"), raw);
+        return {};
+      }
+      const std::string &json = oj.value();
 
       std::vector<std::string> to_include;
 
@@ -334,6 +355,7 @@ int main(int argc, char **argv) {
     for (const std::string &f : to_include) {
       Print("  {}\n", f);
     }
+    fflush(stdout);
   }
 
   // Read the file content.
@@ -359,11 +381,18 @@ int main(int argc, char **argv) {
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);
 
-  std::string json = ModelUtil::StripMarkup(best->Infer(solve_prompt));
-
+  std::string raw = best->Infer(solve_prompt);
   Print("Solve phase done in {}\n", ANSI::Time(solve_timer.Seconds()));
-  Print("\n\n" AWHITE("Raw response") ":\n"
-        AGREY("{}"), json);
+
+  std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
+  if (json.empty()) {
+    Print(ARED("Unable to find a JSON object!") "\n"
+          "\n"
+          AGREY("{}\n"), raw);
+  } else {
+    Print("\n\n" AWHITE("Raw json") ":\n"
+          AGREY("{}"), json);
+  }
   fflush(stdout);
 
   bool failed = false;

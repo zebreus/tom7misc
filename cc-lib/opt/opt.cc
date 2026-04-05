@@ -3888,9 +3888,11 @@ inline int biteopt_minimize(
 // cc-lib:
 
 #include "opt/opt.h"
+
 #include <span>
 #include <functional>
 #include <vector>
+#include <utility>
 
 using namespace std;
 

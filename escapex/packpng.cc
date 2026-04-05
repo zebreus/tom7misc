@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
      images needed. */
   if (argc > 0) {
     string wd = Util::PathOf(argv[0]);
-    Util::changedir(wd);
+    Util::ChangeDir(wd);
   }
 
   if (argc != 3) {

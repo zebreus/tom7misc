@@ -48,6 +48,7 @@
 ;; experimental
 (require 'eprocs)
 (require 'fill-in)
+(require 'wtf)
 
 (defun code-format-paragraph ()
   "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."

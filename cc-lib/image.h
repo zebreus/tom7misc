@@ -154,7 +154,7 @@ struct ImageRGBA {
                  uint8 r, uint8 g, uint8 b, uint8 a);
   void BlendLine32(int x1, int y1, int x2, int y2, uint32 color);
 
-  // PERF: This is slow (rasterizes the entire bounding box).
+  // PERF: This is slow (rasterizes the on-screen bounding box).
   void BlendThickLine32(float x1, float y1, float x2, float y2, float radius,
                         uint32 color);
 

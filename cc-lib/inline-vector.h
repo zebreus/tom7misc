@@ -4,6 +4,7 @@
 #ifndef _CC_LIB_INLINE_VECTOR_H
 #define _CC_LIB_INLINE_VECTOR_H
 
+#include <algorithm>
 #include <memory>
 #include <cstdlib>
 #include <array>
@@ -40,7 +41,8 @@ struct InlineVector {
   static_assert(internal::is_memcpy_safe_v<T>,
                 "T must be blessed as memcpy-able (e.g. by being "
                 "trivially copyable)");
-  static_assert(std::is_trivially_destructible_v<T>, "T must be trivially destructible");
+  static_assert(std::is_trivially_destructible_v<T>,
+                "T must be trivially destructible");
 
   static constexpr bool VERBOSE = false;
 
@@ -144,7 +146,8 @@ struct InlineVector {
   // Compute the number of T elements (properly aligned, after the
   // size field) that we can fit within the target size. We require
   // at least one.
-  static constexpr size_t ALIGNED_OFFSET = (sizeof(size_t) + alignof(T) - 1) & ~(alignof(T) - 1);
+  static constexpr size_t ALIGNED_OFFSET =
+    (sizeof(size_t) + alignof(T) - 1) & ~(alignof(T) - 1);
   static constexpr size_t MAX_INLINE =
     std::max<size_t>(1, (BYTES - ALIGNED_OFFSET) / sizeof(T));
   static_assert(MAX_INLINE > 0);

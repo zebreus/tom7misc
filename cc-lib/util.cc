@@ -61,6 +61,8 @@
 #    pragma warning(disable: 4996)
 #  endif
 
+#define WINDOWS 1
+
 #else /* posix */
    /* chdir, unlink */
 #  include <unistd.h>
@@ -78,7 +80,7 @@
 #  define fstat64 fstat
 #endif
 
-#if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+#if WINDOWS
 static constexpr inline bool IsDirSep(char c) {
   return c == '/' || c == '\\';
 }
@@ -94,33 +96,6 @@ using namespace std;
 using uint8 = uint8_t;
 using int64 = int64_t;
 using uint64 = uint64_t;
-
-// TODO: This is used internally, but only for tempfile.
-// We should just use mkstmp, which also avoids races.
-static int Random();
-namespace {
-struct RandomSeeder {
-  RandomSeeder() {
-# if defined(WIN32) || defined(__MINGW32__)
-    srand((int)time(nullptr) ^ getpid());
-# else
-    srandom(time(0) ^ getpid());
-# endif
-  }
-};
-}
-
-static int Random() {
-  // Run exactly once, with initialization thread safe.
-  // Result is not used.
-  static RandomSeeder *unused = new RandomSeeder;
-  (void)unused;
-# if defined(WIN32) || defined(__MINGW32__)
-  return ::rand();
-# else
-  return ::random();
-# endif
-}
 
 string Util::itos(int i) {
   return std::format("{}", i);
@@ -227,7 +202,7 @@ bool Util::existsdir(const string &d) {
 
 /* XXX what mode? */
 bool Util::MakeDir(const string &d) {
-# if defined(WIN32) || defined(__MINGW32__)
+# if WINDOWS
   return !mkdir(d.c_str());
 # else /* posix */
   return !mkdir(d.c_str(), 0755);
@@ -265,12 +240,13 @@ std::string Util::ReadStdin() {
 std::optional<size_t> Util::FileSize(std::string_view filename) {
   std::filesystem::path path(filename);
   std::error_code ec;
-  if (!std::filesystem::is_regular_file(path, ec) || ec) {
+  if (!std::filesystem::is_regular_file(path, ec) ||
+      ec != std::error_code{}) {
     return std::nullopt;
   }
 
   std::uintmax_t size = std::filesystem::file_size(path, ec);
-  if (ec) {
+  if (ec != std::error_code{}) {
     return std::nullopt;
   }
 
@@ -985,8 +961,8 @@ bool Util::StrContains(string_view haystack, string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
 }
 
-int Util::changedir(string s) {
-  return !chdir(s.c_str());
+bool Util::ChangeDir(string_view s) {
+  return 0 == chdir(std::string(s).c_str());
 }
 
 int Util::getpid() {
@@ -1213,21 +1189,6 @@ string Util::NormalizeWhitespace(std::string_view s) {
   }
 
   return LoseWhiteR(std::move(ret));
-}
-
-string Util::tempfile(const string &suffix) {
-  static int tries = 0;
-
-  std::string fname;
-
-  do {
-    fname = std::format("{}_{}_{}{}",
-                        tries, getpid(), Random(),
-                        suffix);
-    tries++;
-  } while (ExistsFile(fname));
-
-  return fname;
 }
 
 /* break up the strings into tokens. A token is either
@@ -1516,39 +1477,66 @@ bool Util::library_matches(char k, const string &s) {
   else return (s.length() > 0 && (s[idx]|32) == (k|32));
 }
 
-/* try a few methods to remove a file.
-   An executable can't remove itself in
-   Windows 98, though.
+// Best-effort random filename generator. mkstemp opens the
+// file to prevent races, so it doesn't really work for the
+// RemoveFile need below.
+static string TempFile(std::string_view suffix) {
+  [[maybe_unused]]
+  static int seed = []() {
+      # if WINDOWS
+      srand((int)time(nullptr) ^ getpid());
+      # else
+      srandom(time(0) ^ getpid());
+      # endif
+      return 0;
+    }();
 
-   XXX Remove escape-specific logic in here.
-   Can just use remove from stdio.h
+  auto Random = []() {
+      # if WINDOWS
+      return ::rand();
+      # else
+      return ::random();
+      # endif
+    };
 
-*/
+  static int tries = 0;
+
+  std::string filename;
+
+  do {
+    filename = std::format("{}_{}_{}{}",
+                           tries, getpid(), Random(),
+                           suffix);
+    tries++;
+  } while (Util::ExistsFile(filename));
+
+  return filename;
+}
+
 bool Util::RemoveFile(std::string_view filename) {
-  if (!ExistsFile(filename)) return true;
-  else {
-    std::string f{filename};
-# ifdef WIN32
-    /* We can do this by:
-       rename tmp  delme1234.exe
-       exec(delme1234.exe "-replace" "escape.exe")
-          (now, the program has to have a flag -replace
-           that instructs it to replace escape.exe
-           with itself, then exit)
-       .. hopefully exec will unlock the original
-       process's executable!! */
+  std::filesystem::path p(filename);
 
-    /* try unlinking. if that fails,
-       rename it away. */
-    if (0 == unlink(f.c_str())) return true;
-
-    string fname = tempfile(".deleteme");
-    if (0 == rename(f.c_str(), fname.c_str())) return true;
-
-# else /* posix */
-    if (0 == unlink(f.c_str())) return true;
-# endif
+  {
+    std::error_code ec;
+    if (std::filesystem::remove(p, ec) || ec == std::error_code{}) {
+      return true;
+    }
   }
+
+#if WINDOWS
+  // Windows is pickier about removing a file that's in use. We try
+  // renaming it out of the way if it can't be unlinked.
+  std::error_code ec;
+  std::string fname = TempFile(".deleteme");
+  std::filesystem::rename(p, fname, ec);
+  if (ec == std::error_code{}) {
+    // Attempt to remove the renamed file immediately. It's fine
+    // if this fails (e.g., because it's still in use).
+    (void)std::filesystem::remove(fname, ec);
+    return true;
+  }
+#endif
+
   return false;
 }
 
@@ -1561,7 +1549,7 @@ bool Util::RelocateFile(std::string_view src, std::string_view dst) {
   error.clear();
   fs::rename(p1, p2, error);
 
-  return !error;
+  return error == std::error_code{};
 }
 
 std::string Util::BackupFile(std::string_view src) {
@@ -1623,6 +1611,13 @@ string Util::DirPlus(string_view dir_in, string_view file) {
   if (!IsDirSep(dir.back()))
     dir += DIRSEPC;
   return dir + std::string(file);
+}
+
+// Turn a path like "./../asdf" into just "../asdf". Uses
+// conventions from the operating system. Keeps absolute
+// paths absolute and relative paths relative.
+string Util::NormalizePath(std::string_view path) {
+  return std::filesystem::path(path).lexically_normal().string();
 }
 
 string Util::cdup(const string &dir) {
@@ -1775,7 +1770,7 @@ static std::tm LocalTime(int64_t unix_timestamp) {
 
 static void LocalTimeTo(int64_t unix_timestamp, std::tm *tm) {
   const time_t tt = unix_timestamp;
-  #ifdef WIN32
+  #if WINDOWS
   // On windows, localtime_s has its arguments reversed
   // compared to unix.
   localtime_s(tm, &tt);

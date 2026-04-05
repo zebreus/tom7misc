@@ -14,7 +14,7 @@ int main(int argc, char **argv) {
      images needed. */
   if (argc > 0) {
     string wd = Util::PathOf(argv[0]);
-    Util::changedir(wd);
+    Util::ChangeDir(wd);
   }
 
   /* XXX it's not implausible that we could pack the wave files

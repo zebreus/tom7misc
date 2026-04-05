@@ -15,22 +15,16 @@ string TextSVG::HeaderEx(double x, double y,
                          const string &generator) {
   string out;
   out += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-  if (!generator.empty()) out += (string)"<!-- Generator: " +
-                            generator + (string)" -->\n";
+  if (!generator.empty()) {
+    out += (string)"<!-- Generator: " + generator + (string)" -->\n";
+  }
 
   string xu = Rtos(x) + units;
   string yu = Rtos(y) + units;
   string wu = Rtos(width) + units;
   string hu = Rtos(height) + units;
 
-  out += "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" "
-         "\"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\" [\n"
-         "<!ENTITY ns_flows \"http://ns.adobe.com/Flows/1.0/\">\n"
-         "]>\n"
-         "<svg version=\"1.1\"\n"
-         " xmlns=\"http://www.w3.org/2000/svg\""
-         " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
-         " xmlns:a=\"http://ns.adobe.com/AdobeSVGViewerExtensions/3.0/\"";
+  out += "<svg xmlns=\"http://www.w3.org/2000/svg\"";
   out += " x=\"" + xu + "\" y=\"" + yu + "\"";
   out += " width=\"" + wu + "\" height=\"" + hu + "\"";
   out += " viewBox=\"" + Rtos(x) + " " + Rtos(y) + " " +

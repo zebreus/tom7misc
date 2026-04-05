@@ -719,6 +719,24 @@ static void TestReplace() {
   CHECK_SEQ(Util::Replace("abc", "z", "xxx"), "abc");
   CHECK_SEQ(Util::Replace("aaa", "a", "aba"), "abaabaaba");
   CHECK_SEQ(Util::Replace("unaffected", "", "z"), "unaffected");
+
+  CHECK_SEQ(Util::Replace("hello", "he", "y"), "yllo");
+  CHECK_SEQ(Util::Replace("hello", "l", "w"), "hewwo");
+  CHECK_SEQ(Util::Replace("hello", "lo", "p"), "help");
+  CHECK_SEQ(Util::Replace("hello", "l", ""), "heo");
+  CHECK_SEQ(Util::Replace("hello", "ll", "y"), "heyo");
+  CHECK_SEQ(Util::Replace("hello", "hello", "bye"), "bye");
+  CHECK_SEQ(Util::Replace("hello", "hello world", "bye"), "hello");
+
+  CHECK_SEQ(Util::Replace("", "a", "b"), "");
+  CHECK_SEQ(Util::Replace("a", "a", "b"), "b");
+  CHECK_SEQ(Util::Replace("a", "b", "c"), "a");
+
+  CHECK_SEQ(Util::Replace("abc", "b", ""), "ac");
+  CHECK_SEQ(Util::Replace("aaaa", "a", ""), "");
+  CHECK_SEQ(Util::Replace("aabbcc", "bb", "d"), "aadcc");
+  CHECK_SEQ(Util::Replace("abababa", "ab", "Z"), "ZZZa");
+  CHECK_SEQ(Util::Replace("hello world", " ", "_"), "hello_world");
 }
 
 static void TestCommas() {
@@ -761,6 +779,38 @@ static void TestPaths() {
   CHECK_SEQ(Util::FileBaseOf("no.test.pdf"), "no.test");
   CHECK_SEQ(Util::FileBaseOf("test."), "test");
   CHECK_SEQ(Util::FileBaseOf("test"), "test");
+}
+
+// Note that DIRSEPC is actually / on a mingw32 build!
+static void TestDirPlus() {
+  if constexpr (DIRSEPC == '\\') {
+    CHECK_SEQ(Util::DirPlus("C:\\usr\\local", "core"),
+              "C:\\usr\\local\\core");
+    CHECK_SEQ(Util::DirPlus("C:\\usr\\local\\", "core"),
+              "C:\\usr\\local\\core");
+    CHECK_SEQ(Util::DirPlus("C:\\usr\\local", "D:\\etc\\passwd"),
+              "D:\\etc\\passwd");
+    CHECK_SEQ(Util::DirPlus("C:\\usr\\local", "\\etc\\passwd"),
+              "\\etc\\passwd");
+  } else {
+    CHECK_SEQ(Util::DirPlus("/usr/local", "core"), "/usr/local/core");
+    CHECK_SEQ(Util::DirPlus("/usr/local/", "core"), "/usr/local/core");
+    CHECK_SEQ(Util::DirPlus("/usr/local", "/etc/passwd"), "/etc/passwd");
+  }
+}
+
+static void TestNormalizePath() {
+#if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+  CHECK_SEQ(Util::NormalizePath(".\\..\\asdf"), "..\\asdf");
+  CHECK_SEQ(Util::NormalizePath("a\\.\\b"), "a\\b");
+  CHECK_SEQ(Util::NormalizePath("a\\b\\..\\c"), "a\\c");
+  CHECK_SEQ(Util::NormalizePath("C:\\a\\b\\..\\c"), "C:\\a\\c");
+#else
+  CHECK_SEQ(Util::NormalizePath("./../asdf"), "../asdf");
+  CHECK_SEQ(Util::NormalizePath("a/./b"), "a/b");
+  CHECK_SEQ(Util::NormalizePath("a/b/../c"), "a/c");
+  CHECK_SEQ(Util::NormalizePath("/a/b/../c"), "/a/c");
+#endif
 }
 
 static void TestRemoveChars() {
@@ -996,7 +1046,11 @@ int main(int argc, char **argv) {
   TestNormalizeLines();
   TestMemMem();
   TestCase();
+
   TestPaths();
+  TestDirPlus();
+  TestNormalizePath();
+
   TestRemoveChars();
   TestLoseWhiteL();
   TestChop();

@@ -112,8 +112,6 @@ struct EscapeUtil {
 
   /* open a new file. if it exists, return 0 */
   static FILE *open_new(string s);
-  /* 0 on failure */
-  static int changedir(string s);
   static int random();
   /* random in 0.0 .. 1.0 */
   static float randfrac();

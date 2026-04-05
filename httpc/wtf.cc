@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <format>
 #include <map>
 #include <memory>
@@ -35,18 +36,18 @@ static bool Excluded(const std::vector<std::string> &exclude,
   return false;
 }
 
-static size_t FileSize(std::string_view path) {
-  // PERF use stat! I must have this somewhere?
-  return Util::ReadFile(path).size();
-}
-
-static std::string IncludesPrompt(std::string_view question,
+static std::string IncludesPrompt(std::string_view file,
+                                  std::string_view question,
                                   std::string_view output,
                                   const std::map<std::string, int64_t> &files) {
   std::string filestring;
   for (const auto &[f, sz] : files) {
     AppendFormat(&filestring, "{: 8d}  {}\n", sz, f);
   }
+
+  std::string context =
+    file.empty() ? "is this" :
+    std::format("comes from the file {}", file);
 
   return std::format(
 R"(Domain: AI programming assistance.
@@ -59,7 +60,7 @@ given below, with their sizes. Your repsonse to the task will be in
 JSON format, and will consist of your notes about the thought process,
 and the list of files you would like to open.
 
-The context for the user's question is this:
+The context for the user's question {}:
 ```
 {}
 ```
@@ -91,7 +92,7 @@ Your result is a JSON object that looks like this:
 }}
 
 JSON:
-)", output, question, filestring);
+)", context, output, question, filestring);
 }
 
 static std::string SolvePrompt(std::string_view question,
@@ -106,7 +107,7 @@ see the contents of some files (like source code) that might help
 answer the user's question. There may be irrelevant information
 present; focus on the user's question.
 
-The context for the user's question is the output of some command:
+The context for the user's question is this:
 ```
 {}
 ```
@@ -180,6 +181,9 @@ int main(int argc, char **argv) {
 
   std::optional<std::string> question;
 
+  // The current file we're looking at.
+  std::string file_arg;
+
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
     if (arg == "-v") {
@@ -188,9 +192,14 @@ int main(int argc, char **argv) {
       CHECK(i + 1 < argc);
       i++;
       dirs.insert(argv[i]);
+    } else if (arg == "-file") {
+      CHECK(file_arg.empty()) << "At most one -file.";
+      CHECK(i + 1 < argc);
+      i++;
+      file_arg = argv[i];
     } else {
       CHECK(!question.has_value()) << "Quote the question on the "
-        "command line.";
+        "command line. (Already saw " << question.value() << ")";
       question = {std::string(arg)};
     }
   }
@@ -199,20 +208,43 @@ int main(int argc, char **argv) {
     question = {"What's going on here? Can you fix it?"};
   }
 
+  const std::string file = [&]() -> std::string {
+      if (file_arg.empty())
+        return "";
+
+      std::string current_wd = Util::PathOf(file_arg);
+      std::string current_file = Util::FileOf(file_arg);
+      CHECK(Util::ChangeDir(current_wd)) << "Couldn't change directory to the "
+        "location of " << file_arg << " which is " << current_wd << " ..?";
+      return current_file;
+    }();
+
+  // This will now include the location of the file arg, if there is one.
+  for (const std::string &dir : ModelUtil::IncludeDirs("."))
+    dirs.insert(dir);
+
   std::string output = Util::ReadStdin();
 
-  // TODO: Read .clangd in the current directory for dirs to mine.
-
   // Relative paths to files, with sizes.
-  std::map<std::string, int64_t> files;
+  std::map<std::string, int64_t> available_files;
+
+  // The current file is always available, even if not checked in.
+  // We don't necessarily read it, though (the provided context)
+  // might be enough.
+  if (!file.empty()) {
+    size_t size = Util::FileSize(file).value_or(0);
+    CHECK(size != 0) << "Couldn't read file argument " << file;
+    available_files[file] = size;
+  }
+
   for (const std::string &dir : dirs) {
     for (const std::string &file : ModelUtil::SvnList(dir)) {
-      if (!files.contains(file) &&
+      if (!available_files.contains(file) &&
           !Excluded(exclude, file)) {
 
-        size_t size = FileSize(file);
+        size_t size = Util::FileSize(file).value_or(0);
         if (size > 0) {
-          files[file] = size;
+          available_files[file] = size;
         }
       }
     }
@@ -224,7 +256,7 @@ int main(int argc, char **argv) {
   std::vector<std::string> to_include = [&]{
       CHECK(question.has_value());
       std::string includes_prompt =
-        IncludesPrompt(question.value(), output, files);
+        IncludesPrompt(file_arg, question.value(), output, available_files);
 
       std::unique_ptr<ModelClient> cheap =
         ModelClient::Create(Model::GEMINI_CHEAPEST, api_key);
@@ -232,7 +264,14 @@ int main(int argc, char **argv) {
       CHECK(cheap.get() != nullptr);
       cheap->SetVerbose(verbose);
 
-      std::string json = ModelUtil::StripMarkup(cheap->Infer(includes_prompt));
+      std::string raw = cheap->Infer(includes_prompt);
+      std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
+      if (json.empty()) {
+        Print(ARED("Unable to find a JSON object!") "\n"
+              "\n"
+              AGREY("{}\n"), raw);
+        return std::vector<std::string>{};
+      }
 
       std::vector<std::string> to_include;
 
@@ -250,7 +289,7 @@ int main(int argc, char **argv) {
             if (Util::StartsWith(file, "./")) {
               file = file.substr(2);
             }
-            if (files.contains(file)) {
+            if (available_files.contains(file)) {
               to_include.push_back(file);
             } else {
               Print(AORANGE("Warning") ": Unavailable file chosen. {}\n",
@@ -307,11 +346,18 @@ int main(int argc, char **argv) {
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);
 
-  std::string json = ModelUtil::StripMarkup(best->Infer(solve_prompt));
-
+  std::string raw = best->Infer(solve_prompt);
   Print("Solve phase done in {}\n", ANSI::Time(solve_timer.Seconds()));
-  Print("\n\n" AWHITE("Raw response") ":\n"
-        AGREY("{}"), json);
+  std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
+  if (json.empty()) {
+    Print(ARED("Unable to find a JSON object!") "\n"
+          "\n"
+          AGREY("{}\n"), raw);
+  } else {
+    Print("\n\n" AWHITE("Raw json") ":\n"
+          AGREY("{}"), json);
+  }
+  fflush(stdout);
 
   {
     using namespace rapidjson;

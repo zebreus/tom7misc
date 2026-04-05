@@ -15,7 +15,8 @@ struct UnicodeData {
   // e.g. FromContent(Util::ReadFile("UnicodeData.txt"));
   // or   FromContent(ZIP::UnCCZ(Util::ReadFile("unicode-data.ccz")));
   static std::unique_ptr<UnicodeData> FromContent(std::string_view contents);
-  static std::unique_ptr<UnicodeData> FromContent(std::span<const uint8_t> contents);
+  static std::unique_ptr<UnicodeData> FromContent(
+      std::span<const uint8_t> contents);
 
   // More data may be added in the future.
   struct CodepointData {
@@ -27,8 +28,10 @@ struct UnicodeData {
   // "PRESENTATION FORM FOR VERTICAL RIGHT WHITE LENTICULAR BRAKCET".
   // Note that some codepoints don't have good names and so they can't really
   // be looked up this way. Like, there are a bunch named "<control>".
-  virtual std::optional<CodepointData> GetByName(std::string_view name) const = 0;
-  virtual std::optional<CodepointData> GetByCodepoint(uint32_t codepoint) const = 0;
+  virtual std::optional<CodepointData> GetByName(
+      std::string_view name) const = 0;
+  virtual std::optional<CodepointData> GetByCodepoint(
+      uint32_t codepoint) const = 0;
 
  protected:
   // Use factory.

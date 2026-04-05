@@ -215,10 +215,6 @@ bool EscapeUtil::startswith(string big, string small_) {
   return big.substr(0, small_.length()) == small_;
 }
 
-int EscapeUtil::changedir(string s) {
-  return !chdir(s.c_str());
-}
-
 int EscapeUtil::getpid() {
   return ::getpid();
 }

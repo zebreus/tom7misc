@@ -38,8 +38,22 @@ static std::string_view InternalModelName(Model model) {
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
   case Model::GEMINI_FASTEST: return "gemini-3.1-flash-lite-preview";
   case Model::GEMINI_CHEAPEST: return "gemini-flash-lite-latest";
+    // case Model::GEMINI_FREE: return "gemma-4-31b-it";
+  case Model::GEMINI_FREE: return "gemma-4-26b-a4b-it";
   }
 };
+
+std::string_view ModelClient::ModelName(Model model) {
+  switch (model) {
+  default:
+    LOG(FATAL) << "Bad model?";
+  case Model::GEMINI_BEST: return "best";
+  case Model::GEMINI_MEDIUM: return "medium";
+  case Model::GEMINI_FASTEST: return "fastest";
+  case Model::GEMINI_CHEAPEST: return "cheapest";
+  case Model::GEMINI_FREE: return "free";
+  }
+}
 
 ModelClient::ModelClient() {}
 ModelClient::~ModelClient() {}
@@ -633,6 +647,7 @@ struct ModelClientImpl : public ModelClient {
                                       "\n", MARK_COLOR "¶" RESP_COLOR));
 
           status->EmitStatus({stats, prompt_line, resp_line});
+          fflush(stdout);
         }
 
         resp->ReadSome();
@@ -641,6 +656,7 @@ struct ModelClientImpl : public ModelClient {
 
     if (status.get() != nullptr) {
       status->Remove();
+      fflush(stdout);
     }
     if (SAVE_HTTP) {
       if (resp.get() && resp->conn.get()) {
@@ -659,6 +675,14 @@ struct ModelClientImpl : public ModelClient {
 
 }  // namespace
 
+std::optional<Model> ModelClient::ModelByName(std::string_view s) {
+  if (s == "best") return {Model::GEMINI_BEST};
+  if (s == "medium") return {Model::GEMINI_MEDIUM};
+  if (s == "fastest") return {Model::GEMINI_FASTEST};
+  if (s == "cheapest") return {Model::GEMINI_CHEAPEST};
+  if (s == "free") return {Model::GEMINI_FREE};
+  return std::nullopt;
+}
 
 std::unique_ptr<ModelClient> ModelClient::Create(
       Model model,

@@ -20,6 +20,7 @@
 #include <array>
 #include <functional>
 #include <span>
+#include <tuple>
 #include <utility>
 #include <vector>
 

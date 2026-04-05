@@ -8,6 +8,7 @@
 #define _CC_LIB_VECTOR_UTIL_H
 
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 #include <span>
 

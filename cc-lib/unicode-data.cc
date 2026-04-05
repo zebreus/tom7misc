@@ -35,7 +35,8 @@ struct UnicodeData_ : public UnicodeData {
     return std::nullopt;
   }
 
-  std::optional<CodepointData> GetByCodepoint(uint32_t codepoint) const override {
+  std::optional<CodepointData> GetByCodepoint(
+      uint32_t codepoint) const override {
     if (auto it = cp_to_row.find(codepoint); it != cp_to_row.end()) {
       const Row &row = rows[it->second];
       return {CodepointData{
@@ -54,7 +55,8 @@ struct UnicodeData_ : public UnicodeData {
     // 2077;SUPERSCRIPT SEVEN;No;0;EN;<super> 0037;;7;7;N;SUPERSCRIPT DIGIT SEVEN;;;;
     CHECK(cols.size() >= 2) << "Bad line: " << line;
     auto co = Util::ParseHex(cols[0]);
-    CHECK(co.has_value() && co.value() <= (uint64_t)std::numeric_limits<uint32_t>::max) <<
+    CHECK(co.has_value() && co.value() <=
+          (uint64_t)std::numeric_limits<uint32_t>::max) <<
       "Bad line: " << line;
     rows.push_back(Row{
         .codepoint = (uint32_t)co.value(),
@@ -85,7 +87,8 @@ struct UnicodeData_ : public UnicodeData {
 
 }
 
-std::unique_ptr<UnicodeData> UnicodeData::FromContent(std::string_view content) {
+std::unique_ptr<UnicodeData> UnicodeData::FromContent(
+    std::string_view content) {
   std::unique_ptr<UnicodeData_> ud(new UnicodeData_);
 
   Util::ForEachLineInString(content, [&ud](std::string_view line) {
@@ -97,6 +100,8 @@ std::unique_ptr<UnicodeData> UnicodeData::FromContent(std::string_view content) 
   return std::unique_ptr<UnicodeData>(ud.release());
 }
 
-std::unique_ptr<UnicodeData> UnicodeData::FromContent(std::span<const uint8_t> content) {
-  return FromContent(std::string_view((const char *)content.data(), content.size()));
+std::unique_ptr<UnicodeData> UnicodeData::FromContent(
+    std::span<const uint8_t> content) {
+  return FromContent(std::string_view((const char *)content.data(),
+                                      content.size()));
 }

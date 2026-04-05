@@ -30,7 +30,8 @@ struct StringTable {
   // Convert an entry into a string view that refers into the table.
   // Note that it is invalidated when you add more strings or finalize.
   std::string_view GetView(const Entry &entry) const {
-    return std::string_view((const char *)storage.data() + entry.offset, entry.size);
+    return std::string_view((const char *)storage.data() + entry.offset,
+                            entry.size);
   }
 
   // Same, but a byte span.

@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
      images needed. */
   if (argc > 0) {
     string wd = EscapeUtil::pathof(argv[0]);
-    EscapeUtil::changedir(wd);
+    Util::ChangeDir(wd);
 
 #   if WIN32
     /* on win32, the ".exe" may or may not

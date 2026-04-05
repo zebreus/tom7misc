@@ -1,10 +1,13 @@
 
+#include "textsvg.h"
+
 #include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "textsvg.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "ansi.h"
 
 using namespace std;
 
@@ -14,7 +17,7 @@ using namespace std;
                      << "\nShould equal: " #b "\nWhich was: " << bb;    \
   } while (0)
 
-int main(int argc, char **argv) {
+static void TestRtos() {
   EXPECT_EQ(TextSVG::Rtos(0.0), "0");
   EXPECT_EQ(TextSVG::Rtos(0.01), ".01");
   EXPECT_EQ(TextSVG::Rtos(-0.01), "-.01");
@@ -42,7 +45,13 @@ int main(int argc, char **argv) {
 
   EXPECT_EQ(TextSVG::Rtos(800.0), "800");
   EXPECT_EQ(TextSVG::Rtos(-800.0), "-800");
+}
 
-  printf("OK\n");
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  TestRtos();
+
+  Print("OK\n");
   return 0;
 }

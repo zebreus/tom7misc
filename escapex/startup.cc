@@ -5,6 +5,7 @@
 #include <string>
 
 #include "escape-util.h"
+#include "util.h"
 
 #ifndef WIN32
 /* for symlink */
@@ -51,13 +52,13 @@ int StartUp::install_levels(string path) {
       if (!EscapeUtil::makedir(dn)) return 0;
       /* and go there... */
       // printf("chdir %s\n", dn.c_str());
-      if (!EscapeUtil::changedir(dn)) return 0;
+      if (!Util::ChangeDir(dn)) return 0;
 
       /* copy all the files recursively */
       if (!install_levels(full)) return 0;
 
       // printf("chdir ..\n");
-      if (!EscapeUtil::changedir("..")) return 0;
+      if (!Util::ChangeDir("..")) return 0;
     } else {
       /* regular file; copy or symlink as appropriate */
       // printf("copy %s -> %s\n", full.c_str(), dn.c_str());
@@ -75,7 +76,7 @@ int StartUp::setdir(int argc, char **argv) {
 # ifdef MULTIUSER
 #  ifdef LINUX
 
-  if (!EscapeUtil::changedir(getenv("HOME"))) {
+  if (!Util::ChangeDir(getenv("HOME"))) {
     printf("Can't change to home directory!\n");
     return 0;
   }
@@ -84,7 +85,7 @@ int StartUp::setdir(int argc, char **argv) {
     /* first startup. */
     if (EscapeUtil::makedir(DOTESCAPE)) {
       printf("Created " DOTESCAPE " ...\n");
-      if (EscapeUtil::changedir(DOTESCAPE) && install_levels(STARTUP_LEVELS)) {
+      if (Util::ChangeDir(DOTESCAPE) && install_levels(STARTUP_LEVELS)) {
         printf("Installed levels...\n");
       } else {
         printf("Warning: wasn't able to create local cache of levels\n");
@@ -97,8 +98,8 @@ int StartUp::setdir(int argc, char **argv) {
   }
 
   /* now change into the directory we created */
-  if (!(EscapeUtil::changedir(getenv("HOME")) &&
-        EscapeUtil::changedir(DOTESCAPE))) {
+  if (!(Util::ChangeDir(getenv("HOME")) &&
+        Util::ChangeDir(DOTESCAPE))) {
     printf("Can't change into " DOTESCAPE " directory!\n");
     return 0;
   }
@@ -112,7 +113,7 @@ int StartUp::setdir(int argc, char **argv) {
 
   if (argc > 0) {
     string wd = EscapeUtil::pathof(argv[0]);
-    EscapeUtil::changedir(wd);
+    Util::ChangeDir(wd);
 
 #   if WIN32
     /* on win32, the ".exe" may or may not

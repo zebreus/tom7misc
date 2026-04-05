@@ -15,6 +15,9 @@
 #include <utility>
 #include <vector>
 
+// TODO: Careful! On mingw this ends up defining it as '/', which
+// maybe is just a better choice anyway (the underlying file routines
+// will accept it).
 #ifdef WIN32
 #   define DIRSEP  "\\"
 #   define DIRSEPC '\\'
@@ -176,6 +179,10 @@ struct Util {
      DirPlus("/usr/local/", core")  both give  "/usr/local/core"
      DirPlus("/usr/local", "/etc/passwd")  gives "/etc/passwd"  */
   static string DirPlus(string_view dir, string_view file);
+  // Turn a path like "./../asdf" into just "../asdf". Uses
+  // conventions from the operating system. Keeps absolute
+  // paths absolute and relative paths relative.
+  static string NormalizePath(std::string_view path);
 
   /* spec is a character spec like "A-Z0-9`,."
      If the first character is ^, negates the spec.
@@ -214,8 +221,8 @@ struct Util {
   // like 1,000,000.
   static string UnsignedWithCommas(uint64_t u);
 
-  /* 0 on failure */
-  static int changedir(string s);
+  // False on failure.
+  static bool ChangeDir(std::string_view s);
 
   static int getpid();
   /* anything ending with \n. ignores \r.
@@ -340,8 +347,6 @@ struct Util {
 
   /* make a copy by reading/writing */
   static bool CopyFileBytes(std::string_view src, std::string_view dst);
-
-  static string tempfile(const string &suffix);
 
   /* does this file exist and is it a directory? */
   static bool isdir(std::string_view s);

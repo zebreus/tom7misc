@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -15,6 +16,8 @@ enum class Model {
   GEMINI_FASTEST,
   // For easy problems or testing.
   GEMINI_CHEAPEST,
+  // Seemingly free, lower-quality models.
+  GEMINI_FREE,
 };
 
 // Client for a remote LLM API. Can perform multiple inferences.
@@ -23,6 +26,10 @@ struct ModelClient {
   static std::unique_ptr<ModelClient> Create(
       Model model,
       std::string_view api_key);
+
+  // e.g. from "best", "medium", ...
+  static std::optional<Model> ModelByName(std::string_view s);
+  static std::string_view ModelName(Model model);
 
   virtual void SetVerbose(int v) = 0;
 

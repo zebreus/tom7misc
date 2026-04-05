@@ -824,9 +824,11 @@ void ImageRGBA::BlendLine32(int x1, int y1, int x2, int y2,
   }
 }
 
-void ImageRGBA::BlendThickLine32(float x1, float y1, float x2, float y2,
+void ImageRGBA::BlendThickLine32(float x1, float y1,
+                                 float x2, float y2,
                                  float radius,
                                  uint32 color) {
+
   const auto [r, g, b, a] = Unpack32(color);
 
   // Get bounding rect.
