@@ -108,7 +108,9 @@ ansi:
   colors.
 wavesave:
   Saves an array of audio samples as a WAV file. Limited input
-  formats, though it is not hard to add more. See also dr_wav.
+  formats, though it is not hard to add more. See also wav.
+wav:
+  Loads WAV files; wrapper around dr_wave.
 util:
   General C++ utilities, accumulated throughout the ages. Some
   are pretty embarrassing and should be cleaned up/out.

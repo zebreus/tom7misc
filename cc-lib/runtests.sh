@@ -78,3 +78,4 @@ make -j
 ./unicode-data_test.exe
 ./html-entities_test.exe
 ./contiguous-buffer_test.exe
+./wav_test.exe
