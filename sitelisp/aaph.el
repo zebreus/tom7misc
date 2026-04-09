@@ -716,14 +716,18 @@ then comment out the highlighted region instead. "
           (let ((indent (aaph-get-indent)))
             (cond
              ((looking-at "|")
-              ;; Lets see if it is the follower of a function definition
+              ;; Some constructs get additional (or different)
+              ;; default indentation.
               (if (aaph-find-matching-starter
-                   "\\bfun\\b\\|\\bfn\\b\\|\\band\\b\\|\\bhandle\\b")
+                   "\\bfun\\b\\|\\bfn\\b\\|\\band\\b\\|\\bhandle|\\bdatatype\\b")
                   (cond
                    ((looking-at "fun\\b") (- (current-column) aaph-pipe-indent))
                    ((looking-at "fn\\b") (1+ (current-column)))
                    ((looking-at "and\\b") (1+ (1+ (current-column))))
-                   ((looking-at "handle\\b") (+ (current-column) 5)))
+                   ((looking-at "handle\\b") (+ (current-column) 5))
+                   ((looking-at "datatype") (+ (current-column)
+                                               aaph-indent-level))
+                   )
                 (+ indent aaph-pipe-indent)))
              (t
               (if aaph-paren-lookback    ; Look for open parenthesis ?
@@ -778,9 +782,14 @@ then comment out the highlighted region instead. "
            ((looking-at "if")
             (+ (current-column) 3))
 
+           ;; tom 7 added this too! 9 Apr 2026
+           ((looking-at "datatype")
+            ;; but if it has a bar, it will be unindented
+            (+ (current-column) (* 2 aaph-indent-level)))
+           
            ((looking-at aaph-indent-starters-reg)
             (+ (current-column) aaph-indent-level))
-           ;; Indent after "=>" pattern, but only if its not an fn _ =>
+           ;; Indent after "=>" pattern, but only if it's not an fn _ =>
            ;; (890726)
            ((looking-at ".*=>")
             (if (looking-at ".*\\bfn\\b.*=>")
