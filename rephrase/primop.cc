@@ -95,6 +95,7 @@ const char *PrimopString(Primop po) {
 
   case Primop::IMAGE_LOAD_FILE: return "IMAGE_LOAD_FILE";
   case Primop::IMAGE_PROPS: return "IMAGE_PROPS";
+  case Primop::IMAGE_SCALE: return "IMAGE_SCALE";
   case Primop::IMAGE_INTEGER_SCALE: return "IMAGE_INTEGER_SCALE";
   case Primop::AUTO_DRAW: return "AUTO_DRAW";
 
@@ -205,6 +206,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
 
   case Primop::IMAGE_LOAD_FILE: return std::make_tuple(0, 1);
   case Primop::IMAGE_PROPS: return std::make_tuple(0, 1);
+  case Primop::IMAGE_SCALE: return std::make_tuple(0, 1);
   case Primop::IMAGE_INTEGER_SCALE: return std::make_tuple(0, 2);
   case Primop::AUTO_DRAW: return std::make_tuple(0, 2);
 
@@ -357,6 +359,7 @@ bool IsPrimopTotal(Primop p) {
     // Can fail if image handle is bad
     return false;
 
+  case Primop::IMAGE_SCALE:
   case Primop::IMAGE_INTEGER_SCALE:
     // also inserts a new image
     return false;
@@ -550,6 +553,8 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::IMAGE_LOAD_FILE: return {{}, pool->Arrow(String, String)};
   case Primop::IMAGE_PROPS: return {{}, pool->Arrow(String, Obj)};
+    // arguments as object fields
+  case Primop::IMAGE_SCALE: return {{}, pool->Arrow(Obj, String)};
   case Primop::IMAGE_INTEGER_SCALE: return {{}, BinOp(String, Int, String)};
   case Primop::AUTO_DRAW: return {{}, BinOp(String, Obj, Vec(String))};
 

@@ -174,7 +174,7 @@ fun slide-props (s : obj) : slide-props =
 
     val LOOP-VIDEO =
       case s of {(Slide) LOOP-VIDEO = lv } => lv
-        | _ => false
+    | _ => false
   in
     { BACKGROUND-IMAGE = BACKGROUND-IMAGE,
       TITLE-FONT-SIZE = TITLE-FONT-SIZE,
@@ -234,10 +234,18 @@ object Bullet of {
                   indent : int
                   }
 
-datatype image-scaling = ORIGINAL | WIDTH of float | SCALE of float
+datatype image-scaling =
+    ORIGINAL
+  | WIDTH of float
+  | SCALE of float
+(*
+  TODO: Consider something like this...
+  | SCALE-WITH of float * image-scaling
+  | WIDTH-WITH of float * image-scaling
+*)
 
 datatype element =
-  Title of layout
+    Title of layout
   | Bullets of layout list
   | BulletsExt of obj * layout list
   | Bullet of obj * layout
@@ -450,28 +458,6 @@ fun quote-slide slide title lay =
                      font-face = font-family PALATINO,
                      font-color = BODY-FONT-COLOR,
                      font-italic = true } lay
-
-    fun process p =
-      let
-        val p = (layout-map-text normalize-whitespace p)
-      in
-        (* FIXME I broke this when I redid paragraph layout. *)
-        process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
-      end
-
-    val paras : paragraph list =
-      list-concat (list-map process (get-paragraphs (body :: nil)))
-
-    (*
-    do print ("There are " ^ int-to-string (list-length paras) ^
-              " paragraphs\n")
-    *)
-
-    val pboxes =
-      list-map (fn (Paragraph { lines }) =>
-                stick-vertically (0.0, layout-concat lines ))
-      paras
-
   in
     add-background-image BACKGROUND-IMAGE;
 
@@ -480,7 +466,8 @@ fun quote-slide slide title lay =
     output-frame
     (!current-page, !current-frame,
      box-stick-at { x = xpos, y = !ypos }
-     (stick-vertically (0.0, layout-concat pboxes)));
+     (paragraph-to-box COLUMN-WIDTH
+      (layout-map-text normalize-whitespace body)));
 
     next-slide()
   end
@@ -524,9 +511,9 @@ fun diagram-slide slide title img =
     val { width, height } = image-size img
     val content-height = SLIDE-HEIGHT -. CONTENT-START-Y
     val IMG-PAD-TOP = CONTENT-START-Y +.
-      (content-height -. int-to-float height) *. 0.5
+      (content-height -. height) *. 0.5
     val IMG-PAD-LEFT =
-      (SLIDE-WIDTH -. int-to-float width) *. 0.5
+      (SLIDE-WIDTH -. width) *. 0.5
   in
     add-background-image BACKGROUND-IMAGE;
     add-title props title;
@@ -571,6 +558,18 @@ fun just-image filename =
 
     next-slide()
   end
+
+fun just-fit-image filename =
+  let
+    val img = image-load filename
+  in
+    output-frame
+    (!current-page, !current-frame,
+     image-sticker { img = img, x = 0.0, y = 0.0, width = SLIDE-WIDTH });
+
+    next-slide()
+  end
+
 
 (* The whole slide is this full-screen video. *)
 fun just-video slide src =

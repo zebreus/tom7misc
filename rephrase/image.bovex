@@ -54,6 +54,9 @@ fun image-is-raster img =
   in raster
   end
 
+(* RESAMPLE is an unspecified "good" method that blends
+   pixels. TODO: Support explicitly specifying more filters. *)
+datatype image-scaling = NEAREST-NEIGHBOR | RESAMPLE
 
 (* scale by 2x, 3x, etc. Creates a new image handle.
    Currently this only works for raster images, but there
@@ -62,3 +65,31 @@ fun image-is-raster img =
 fun image-exact-scale (Image img, scale-by : int) : image-handle =
   Image (image-integer-scale (img, scale-by))
 
+local
+  val METHOD-NEAREST = 0
+  val METHOD-RESAMPLE = 1
+
+  fun scalecode NEAREST-NEIGHBOR = METHOD-NEAREST
+    | scalecode RESAMPLE = METHOD-RESAMPLE
+
+  object InternalImageScale of { image : string,
+                                 width : float, height : float,
+                                 method : int }
+in
+  fun image-scale { image = image as Image img,
+                    scale-x : float,
+                    scale-y : float,
+                    scaling : image-scaling } =
+    let
+      val { width : float, height : float } = image-size image
+    in
+      Image (internal-image-scale {(InternalImageScale)
+                                   image = img,
+                                   width = scale-x *. width,
+                                   height = scale-y *. height,
+                                   method = scalecode scaling})
+    end
+
+  (* TODO image-scale-to, etc. *)
+
+end

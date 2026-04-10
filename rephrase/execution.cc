@@ -27,6 +27,7 @@
 #include "bignum/big.h"
 #include "boxes-and-glue.h"
 #include "document.h"
+#include "image-resize.h"
 #include "image.h"
 #include "primop.h"
 #include "rephrasing.h"
@@ -917,11 +918,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     // scale.
     Document *doc = DocumentHook();
     const Image *image = doc->GetImageByName(*imghandle);
-    ImageRGBA rgba = image->GetRaster();
     if (image == nullptr) {
       InternalFail("unknown image handle " + *imghandle, state);
       return NonceValue();
     }
+    ImageRGBA rgba = image->GetRaster();
 
     auto scaled = std::make_unique<ImageRGBA>(rgba.ScaleBy(scale));
 
@@ -1060,6 +1061,9 @@ Value *Execution::Unit(State *state) {
 
 Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
+  // TODO: Add this to internal errors below.
+  auto Err = [state]() { return StateDump(*state); };
+
   auto GetInt = [a](const char *what) -> const BigInt & {
       const BigInt *bi = std::get_if<BigInt>(&a->v);
       CHECK(bi != nullptr) << "Expected int argument to " << what;
@@ -1083,6 +1087,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       CHECK(v != nullptr) << "Expected vector argument to " << what;
       return *v;
   };
+
+  auto GetObj = [a](const char *what) -> const map_type & {
+      const map_type *m = std::get_if<map_type>(&a->v);
+      CHECK(m != nullptr) << "Expected obj argument to " << what;
+      return *m;
+    };
 
   switch (primop) {
   case Primop::INT_NEG: {
@@ -1141,9 +1151,8 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::OBJ_EMPTY: {
-    const map_type *obj = std::get_if<map_type>(&a->v);
-    CHECK(obj != nullptr) << "obj_empty on a non-object.";
-    return Bool(obj->empty(), state);
+    const map_type &obj = GetObj("obj_empty");
+    return Bool(obj.empty(), state);
   }
 
   case Primop::STRING_EMPTY: {
@@ -1344,6 +1353,52 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       {raster_field, Bool(r, state)},
     };
     return Obj(std::move(obj), state);
+  }
+
+  case Primop::IMAGE_SCALE: {
+    const map_type &obj = GetObj("image_scale");
+
+    const std::string *imghandle =
+        GetObjStringField("image-scale", "image", obj);
+    const double *width = GetObjDoubleField("image-scale", "width", obj);
+    const double *height = GetObjDoubleField("image-scale", "height", obj);
+    const BigInt *method = GetObjIntField("image-scale", "method", obj);
+
+    CHECK(imghandle != nullptr && width != nullptr &&
+          height != nullptr && method != nullptr) << Err() <<
+      "Missing required fields in image-scale object.";
+
+    Document *doc = DocumentHook();
+    const Image *image = doc->GetImageByName(*imghandle);
+    if (image == nullptr) {
+      InternalFail("unknown image handle " + *imghandle, state);
+      return NonceValue();
+    }
+
+    // TODO: Should be easy to support resizing vector images
+    ImageRGBA rgba = image->GetRaster();
+
+    // Rounding to integer sizes for now.
+    int w = std::round(*width);
+    int h = std::round(*height);
+    if (w < 0 || h < 0) {
+      InternalFail("Scale dimensions must be nonnegative.", state);
+      return NonceValue();
+    }
+
+    std::unique_ptr<ImageRGBA> scaled;
+    if (BigInt::Eq(*method, 0)) {
+      scaled = std::make_unique<ImageRGBA>(
+          ImageResize::ResizeNearest(rgba, w, h));
+    } else if (BigInt::Eq(*method, 1)) {
+      scaled = std::make_unique<ImageRGBA>(
+          ImageResize::Resize(rgba, w, h));
+    } else {
+      InternalFail("Invalid method for image-scale.", state);
+      return NonceValue();
+    }
+
+    return NewValue(state, doc->AddImage(std::move(scaled)));
   }
 
   case Primop::REF:

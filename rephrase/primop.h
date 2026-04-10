@@ -128,6 +128,7 @@ enum class Primop {
 
   IMAGE_LOAD_FILE,
   IMAGE_PROPS,
+  IMAGE_SCALE,
   IMAGE_INTEGER_SCALE,
   AUTO_DRAW,
 

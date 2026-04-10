@@ -140,6 +140,7 @@ Initial::Initial(AstPool *pool) {
     {"image-load-file", Primop::IMAGE_LOAD_FILE},
     {"internal-image-props", Primop::IMAGE_PROPS},
     {"image-integer-scale", Primop::IMAGE_INTEGER_SCALE},
+    {"internal-image-scale", Primop::IMAGE_SCALE},
     {"internal-auto-draw", Primop::AUTO_DRAW},
 
     {"achievement", Primop::ACHIEVEMENT},

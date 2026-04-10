@@ -839,6 +839,7 @@ struct PeepholePass : public il::Pass<> {
       case Primop::FONT_REGISTER:
       case Primop::IMAGE_LOAD_FILE:
       case Primop::IMAGE_PROPS:
+      case Primop::IMAGE_SCALE:
       case Primop::IMAGE_INTEGER_SCALE:
       case Primop::REPHRASE_ONCE:
       case Primop::REPHRASINGS:
