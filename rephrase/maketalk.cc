@@ -2,7 +2,6 @@
 #include "talk.h"
 
 #include <cstdlib>
-#include <string>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -23,4 +22,5 @@ int main(int argc, char **argv) {
       argv[1]);
 
   Print("OK\n");
+  return 0;
 }

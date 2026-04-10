@@ -206,7 +206,8 @@ object Sticker of { x: float, y: float, scale: float,
                     video: string,
                     video-width: float,
                     video-height: float,
-                    video-loop: bool
+                    video-loop: bool,
+                    video-audio: bool
                     }
 
 fun sticker (attrs : obj) (l : layout) =

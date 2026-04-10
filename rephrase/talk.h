@@ -2,9 +2,10 @@
 #ifndef _REPHRASE_TALK_H
 #define _REPHRASE_TALK_H
 
-#include <string>
-#include <vector>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 struct Talk {
 
@@ -17,6 +18,7 @@ struct Talk {
     int width = 0, height = 0;
     std::string src;
     bool loop = false;
+    bool audio = false;
   };
 
   struct Frame {
@@ -35,13 +37,13 @@ struct Talk {
 
   static Talk Load(
       // The .talk file to load.
-      const std::string &filename);
+      std::string_view filename);
 
   void SaveJS(
       // The location of support files like talk.html
-      const std::string &program_dir,
+      std::string_view program_dir,
       // The directory to write into.
-      const std::string &out_dir);
+      std::string_view out_dir);
 
   std::vector<Slide> slides;
 };

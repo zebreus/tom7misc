@@ -24,4 +24,4 @@ bovex.prof : httpv.bovex $(BOVEX)/bovex.exe
 	CPUPROFILE=bovex.prof LD_PRELOAD=libprofiler.so.0 $(BOVEX)/bovex.exe -I . -v httpv.bovex -o httpv.pdf
 
 clean :
-	rm -f *.o $(OBJECTS) httpv.pdf $(RESIDUE_SVG) $(SOLID_SVG)
+	rm -f *.o $(OBJECTS) httpv.pdf

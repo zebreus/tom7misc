@@ -31,11 +31,12 @@ fun image-load-cache (f : string) : image-handle =
         img
       end
 
-fun fullscreen-video loop src =
+fun fullscreen-video { loop : bool, audio : bool, src : string } =
   sticker {(Sticker) x = 0.0, y = 0.0,
            video-width = SLIDE-WIDTH,
            video-height = SLIDE-HEIGHT,
            video-loop = loop,
+           video-audio = true,
            video = src } []
 
 fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
@@ -75,7 +76,8 @@ object Slide of
    TITLE-FONT-COLOR: int,
    BODY-FONT-COLOR: int,
 
-   LOOP-VIDEO: bool
+   LOOP-VIDEO: bool,
+   VIDEO-AUDIO: bool
    }
 
 type slide-props =
@@ -101,7 +103,8 @@ type slide-props =
    TITLE-FONT-COLOR: int,
    BODY-FONT-COLOR: int,
 
-   LOOP-VIDEO: bool
+   LOOP-VIDEO: bool,
+   VIDEO-AUDIO: bool
    }
 
 val DEFAULT-LEFT-MARGIN = inch 2.0
@@ -175,6 +178,11 @@ fun slide-props (s : obj) : slide-props =
     val LOOP-VIDEO =
       case s of {(Slide) LOOP-VIDEO = lv } => lv
     | _ => false
+
+    val VIDEO-AUDIO =
+      case s of {(Slide) VIDEO-AUDIO = a } => a
+    | _ => false
+
   in
     { BACKGROUND-IMAGE = BACKGROUND-IMAGE,
       TITLE-FONT-SIZE = TITLE-FONT-SIZE,
@@ -191,7 +199,8 @@ fun slide-props (s : obj) : slide-props =
       GAP = GAP,
       TITLE-FONT-COLOR = TITLE-FONT-COLOR,
       BODY-FONT-COLOR = BODY-FONT-COLOR,
-      LOOP-VIDEO = LOOP-VIDEO
+      LOOP-VIDEO = LOOP-VIDEO,
+      VIDEO-AUDIO = VIDEO-AUDIO,
       } : slide-props
   end
 
@@ -583,7 +592,8 @@ fun just-video slide src =
 
     output-frame
     (!current-page, !current-frame,
-     fullscreen-video LOOP-VIDEO src);
+     fullscreen-video { loop = LOOP-VIDEO, audio = VIDEO-AUDIO,
+                        src = src });
 
     next-slide()
   end

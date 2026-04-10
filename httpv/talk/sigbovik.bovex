@@ -1,0 +1,84 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "font.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+
+  import "talk-shared.bovex"
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel 1920.0,
+                    height = pixel 1080.0 }
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+  val slide = slide with BACKGROUND = "blue-background.png"
+
+in
+  title-slide slide (size (point 200.0) (color 0xFFFFFFFF [
+    No one can force me to have a secure website!!
+]))
+  [by Tom 7]
+  [SIGBOVIK 2025];
+
+  (* I have a website from the 1900s... *)
+  just-fit-image "xena.png";
+  just-fit-image "yahoo-charts.png";
+
+  just-fit-image "red-alert.png";
+  just-fit-image "unsafe.png";
+
+  just-fit-image "blog.png";
+  just-video slide "blog-cc.mp4";
+
+  just-video slide "you-were-hacked.mp4";
+
+  quote-slide slide [¿Cómo se LLama?]
+   [now your dead!!!];
+
+  (* just-video slide "bottle.mp4"; *)
+
+  combo-slide (slide with GAP = 0.0)
+  ( (* Image { img = image-load "lorem-portrait.png",
+       x = pixel 1100.0,
+       y = pixel 100.0,
+       scale = ORIGINAL } :: *)
+   Title [The Villain: Lorem Epsom] ::
+   Bullets ([Probably never even read the Wikipedia article
+             on [it[Lorem Ipsum]]] ::
+            (* [Leverages synergy] :: *)
+            [If you tell him there's a mistake in the
+             math he takes this as a personal attack] ::
+            [Loves the phrases "[em[metaverse]]" and
+             "[em[blockchain]]" and
+             "[em[generative AI]]" but doesn't know why] ::
+            [Is successful and rich] ::
+            nil) ::
+   nil);
+
+  (* in practice, was here at 4:38 *)
+  set-target-seconds (!current-page, 4 * 60 - 20);
+
+  (* This talk is not about the paper. But I did also use
+     it to make these slides. For example, here's the source
+     code for the slide you're looking at. *)
+(*
+  diagram-slide (slide
+                 with BACKGROUND = "emacs-grey.png"
+                 with TITLE-FONT-SIZE = 80.0
+                 with TITLE-FONT-COLOR = 0xFFFF90FF
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Here is what [it[this]] slide looks like]
+  (image-load "self.png");
+*)
+
+  just-video (slide with VIDEO-AUDIO = true) "hacker-crap.mp4";
+
+  ()
+
+end

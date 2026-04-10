@@ -1587,11 +1587,13 @@ void Document::PlaceStickersRec(Context context,
     const double *width = doc.GetDoubleAttr("video-width");
     const double *height = doc.GetDoubleAttr("video-height");
     const bool *loop = doc.GetBoolAttr("video-loop");
+    const bool *audio = doc.GetBoolAttr("video-audio");
     CHECK(width != nullptr && height != nullptr) << "A video=\"\" on a "
       "sticker also requires video-width=\"\" and video-height\"\" (doubles).";
     Transform ct = Translate(transform, *x, *y);
     page->DrawVideo(ct.dx, ct.dy, *width, *height, *video,
-                    (loop != nullptr) && *loop);
+                    (loop != nullptr) && *loop,
+                    (audio != nullptr) && *audio);
   }
 
   if (const std::string *font_name = doc.GetStringAttr("font-name")) {
@@ -1649,7 +1651,8 @@ void Page::DrawImage(const Image *image,
 void Page::DrawVideo(double x, double y,
                      double width, double height,
                      std::string_view src,
-                     bool loop) {
+                     bool loop,
+                     bool audio) {
 }
 
 void Page::DrawRect(double x, double y,

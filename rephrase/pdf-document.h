@@ -92,7 +92,8 @@ struct PDFPage : public Page {
   void DrawVideo(double x, double y,
                  double width, double height,
                  std::string_view src,
-                 bool loop) override;
+                 bool loop,
+                 bool audio) override;
 
  private:
   PDFPage(const PDFPage &other) = delete;

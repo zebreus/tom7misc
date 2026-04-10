@@ -38,6 +38,7 @@
    let now = performance.now();
    let elapsed = Math.round((now - start_time) / 1000.0);
    let left = next_target - elapsed;
+   if (left < 0) left = 0;
    let s = '';
    if (left > 60) {
      console.log(left);
@@ -73,8 +74,11 @@
        video.style.top = (slide.video.y || 0) + 'px';
        video.style.width = (slide.video.w || 1920) + 'px';
        video.style.height = (slide.video.h || 1080) + 'px';
-       video.defaultMuted = true;
-       video.muted = true;
+
+       let mute = !slide.video.audio;
+       video.defaultMuted = mute;
+       video.muted = mute;
+
        video.playsInline = true;
        if (slide.video.loop) {
          video.loop = true;

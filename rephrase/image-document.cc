@@ -244,13 +244,17 @@ void ImagePage::DrawLine(double x0, double y0, double x1, double y1,
 void ImagePage::DrawVideo(double x, double y,
                           double width, double height,
                           std::string_view src,
-                          bool loop) {
+                          bool loop,
+                          bool audio) {
   CHECK(!video.has_value()) << "Just one video per slide is supported "
     "in the talk format. It would not be that bad to support more; you "
     "just gotta make it work in talk.html. Had: " << video.value().src <<
     " and tried to add " << src;
-  video.emplace(Video{.x = x, .y = y, .width = width, .height = height,
-      .src = std::string(src), .loop = loop});
+  video.emplace(Video{
+      .x = x, .y = y, .width = width, .height = height,
+      .src = std::string(src),
+      .loop = loop,
+      .audio = audio});
 }
 
 void ImageDocument::GenerateOutput(

@@ -92,7 +92,8 @@ struct ImagePage : public Page {
   void DrawVideo(double x, double y,
                  double width, double height,
                  std::string_view src,
-                 bool loop) override;
+                 bool loop,
+                 bool audio) override;
 
   void DrawLine(double x0, double y0, double x1, double y1,
                 double stroke_width, uint32_t color) override;
@@ -119,6 +120,7 @@ struct ImagePage : public Page {
     double x = 0.0, y = 0.0, width = 0.0, height = 0.0;
     std::string src;
     bool loop = false;
+    bool audio = false;
   };
 
   std::optional<Video> video;

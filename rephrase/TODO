@@ -23,6 +23,8 @@ Features:
 
 Fixes and missing stuff:
 
+ - allow trailing commas in object types, record types
+
  - whole-doc optimization loop exists but it is not integrated
 
  - xrefs

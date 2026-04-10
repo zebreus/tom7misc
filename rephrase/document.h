@@ -163,7 +163,8 @@ struct Page {
   virtual void DrawVideo(double x, double y,
                          double width, double height,
                          std::string_view src,
-                         bool loop);
+                         bool loop,
+                         bool audio);
 
   // TODO: Other graphics drawing commands
 

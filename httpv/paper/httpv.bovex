@@ -1206,10 +1206,10 @@ choose the venerable (but not vulnerable)
 supported and secure if used correctly. I do not use it correctly.
 
 The client then sends another random 48-byte string (“PMS”) to the
-server in the [tt[Client[shy]Key[shy]Exchange]] message; this time it is encrypted
-with the server’s public RSA key. This is actually the only thing
-encrypted with RSA and the only thing so far that can’t be seen by
-observers.
+server in the [tt[Client[shy]Key[shy]Exchange]] message; this time it
+is encrypted with the server’s public RSA key. This is actually the
+only thing encrypted with RSA and the only thing so far that can’t be
+seen by observers.
 
 To encrypt the remainder of the session with AES-256, we need a
 256-bit key. The key is chosen in a way that uses information from

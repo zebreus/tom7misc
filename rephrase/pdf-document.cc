@@ -392,7 +392,8 @@ void PDFPage::DrawLine(double x0, double y0,
 void PDFPage::DrawVideo(double x, double y,
                         double width, double height,
                         std::string_view src,
-                        bool loop) {
+                        bool loop,
+                        bool audio) {
   LOG(FATAL) << "Incredibly, PDF does support embedding videos, but "
     "I did not implement it!";
 }

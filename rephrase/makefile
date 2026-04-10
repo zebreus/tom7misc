@@ -1,5 +1,5 @@
 
-default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe optimization_test.exe execution_test.exe execution_test.exe concat.exe bc_test.exe
+default: bovex.exe maketalk.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe optimization_test.exe execution_test.exe execution_test.exe concat.exe bc_test.exe
 
 # Forgot to check this in?
 # makecodeimage.exe

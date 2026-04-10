@@ -167,6 +167,9 @@ void TalkDocument::GenerateOutput(
         if (v.loop) {
           AppendFormat(&talk, "  loop-video\n");
         }
+        if (v.audio) {
+          AppendFormat(&talk, "  enable-video-audio\n");
+        }
       }
 
       for (const auto &frame : page) {
