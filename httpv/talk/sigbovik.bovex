@@ -18,64 +18,155 @@ let
 
   val slide = slide with BACKGROUND = "blue-background.png"
 
+  fun just-crisp-image filename =
+    let
+      val img = image-scale-to { image = image-load filename,
+                                 width = SLIDE-WIDTH,
+                                 height = SLIDE-HEIGHT,
+                                 scaling = NEAREST-NEIGHBOR }
+    in
+      output-frame
+      (!current-page, !current-frame,
+       image-sticker { img = img, x = 0.0, y = 0.0, width = SLIDE-WIDTH });
+
+      next-slide()
+    end
+
+
+  fun bullet-reveal slide title bullets =
+    let
+      val n = list-length bullets
+    in
+      for 0 n
+      (fn len =>
+       combo-slide slide
+       (Title title ::
+        Bullets (list-take len bullets) ::
+        nil))
+    end
+
 in
-  title-slide slide (size (point 200.0) (color 0xFFFFFFFF [
-    No one can force me to have a secure website!!
-]))
-  [by Tom 7]
-  [SIGBOVIK 2025];
+  set-target-seconds (!current-page, 0);
+
+  title-slide slide [Go to next slide] [by Tom 7] [SIGBOVIK];
+
+  set-target-seconds (!current-page, 0);
+  just-video (slide with LOOP-VIDEO = true) "title-loop.mp4";
+
+  just-video slide "website.mp4";
 
   (* I have a website from the 1900s... *)
   just-fit-image "xena.png";
-  just-fit-image "yahoo-charts.png";
+  (* just-fit-image "yahoo-charts.png"; *)
+  just-video slide "illustrated-zoom.mp4";
 
   just-fit-image "red-alert.png";
-  just-fit-image "unsafe.png";
+  (* just-fit-image "unsafe.png"; *)
 
   just-fit-image "blog.png";
   just-video slide "blog-cc.mp4";
 
-  just-video slide "you-were-hacked.mp4";
+  title-slide slide (size (point 200.0) (color 0xFFFFFFFF [
+    “toxic max-security”
+]))
+  [ ] [ ];
 
-  quote-slide slide [¿Cómo se LLama?]
-   [now your dead!!!];
+  just-crisp-image "authority.png";
 
-  (* just-video slide "bottle.mp4"; *)
+  (* I don't want PAPERS.
+     Don't you know who I am?
+     I was in YAHOO INTERNET LIFE MAGAZINE. *)
 
-  combo-slide (slide with GAP = 0.0)
-  ( (* Image { img = image-load "lorem-portrait.png",
-       x = pixel 1100.0,
-       y = pixel 100.0,
-       scale = ORIGINAL } :: *)
-   Title [The Villain: Lorem Epsom] ::
-   Bullets ([Probably never even read the Wikipedia article
-             on [it[Lorem Ipsum]]] ::
-            (* [Leverages synergy] :: *)
-            [If you tell him there's a mistake in the
-             math he takes this as a personal attack] ::
-            [Loves the phrases "[em[metaverse]]" and
-             "[em[blockchain]]" and
-             "[em[generative AI]]" but doesn't know why] ::
-            [Is successful and rich] ::
-            nil) ::
-   nil);
-
-  (* in practice, was here at 4:38 *)
-  set-target-seconds (!current-page, 4 * 60 - 20);
-
-  (* This talk is not about the paper. But I did also use
-     it to make these slides. For example, here's the source
-     code for the slide you're looking at. *)
 (*
-  diagram-slide (slide
-                 with BACKGROUND = "emacs-grey.png"
-                 with TITLE-FONT-SIZE = 80.0
-                 with TITLE-FONT-COLOR = 0xFFFF90FF
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
-  [Here is what [it[this]] slide looks like]
-  (image-load "self.png");
+  just-image "ca-3dconnexion.png";
+  just-fit-image "mouse-salt-bed.png";
+  just-image "ca-firma.png";
+  just-image "ca-firma-reviews.png";
 *)
+
+  (* Probably skippable, but can do it fast *)
+(*
+  just-crisp-image "acme.png";
+  just-crisp-image "acme-http.png";
+
+  just-crisp-image "cloudflare.png";
+*)
+
+  title-slide slide (size (point 200.0) (color 0xFFFFFFFF
+                                         [HTTPV]))
+  [A [color 0xFFFF77FF [pre-paid]] self-own]
+  (size (point 100.0) [by Tom 7, Computer Science Idiot]);
+
+
+  just-crisp-image "httpv.png";
+
+  just-video (slide with VIDEO-AUDIO = true) "sick-burn.mp4";
+
+  (* great random numbers to prevent replay attacks
+
+     as you know it's very important to pick high quality
+     random numbers *)
+  just-crisp-image "handshake.png";
+
+  (* just-crisp-image "dictionary-attack.png"; *)
+
+  bullet-reveal slide (size 100.0 [Who has the best random numbers?])
+  ((size 200.0 [Banks]) :: nil);
+
+  just-video slide "cc-rng.mp4";
+
+  (* just-crisp-image "full-handshake.png"; *)
+  just-crisp-image "dictionary-attack.png";
+
+  just-crisp-image "rsa.png";
+
+  just-crisp-image "rsa-7.png";
+  just-crisp-image "rsa-31337.png";
+  just-crisp-image "rsa-31337-revoked.png";
+  just-crisp-image "rsa-16-factors.png";
+  just-crisp-image "baby-diaper-grade.png";
+
+  (* CBC mode *)
+
+  (* I only got five minutes here, so it's a good thing I'm talking
+     to a room full of geniuses who already know the details of
+     AES-256 in CBC mode. *)
+  just-crisp-image "cbc-mode.png";
+
+  (* or explain it? *)
+  just-crisp-image "cbc-xor.png";
+  just-crisp-image "cbc-record-size.png";
+
+  just-crisp-image "packet-capture.png";
+
+  (* Limitations *)
+  just-video slide "wget.mp4";
+
+  just-crisp-image "curling.png";
+
+  bullet-reveal slide [Toxic max-security begone!!]
+   ([There is no real security problem here. They are just
+     trying to [b (color 0xFF5555FF [shame me])] into compliance.] ::
+    [Perhaps we need to counterbalance this with some ...
+     VULNERABILITY‽ ] :: nil);
+
+  just-video (slide with VIDEO-AUDIO = true) "vulnerability.mp4";
+
+  combo-slide (slide with BACKGROUND = "applied.png")
+  (Title [In conclusion] :: nil);
+
+  bullet-reveal (slide
+                 with BACKGROUND = "unapplied.png") [In conclusion]
+  ([Join me in Unapplying cryptography] ::
+   [I welcome your submissions in the new field of
+    [b[gymnography]] (from the Greek [color 0xFFFF00FF (it [gγμvòσ])], naked)] ::
+   [Papers, please!] :: nil);
+
+  centered-text-slide slide [http://tom7.org/httpv/];
+
+  set-target-seconds (!current-page, 5 * 60);
+
+  centered-text-slide slide [ ];
 
   just-video (slide with VIDEO-AUDIO = true) "hacker-crap.mp4";
 
