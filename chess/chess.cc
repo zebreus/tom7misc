@@ -1,14 +1,14 @@
 
 #include "chess.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <random>
 #include <string>
-#include <cstdint>
 #include <tuple>
 #include <vector>
-#include <random>
 
 using namespace std;
 

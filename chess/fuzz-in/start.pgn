@@ -1,0 +1,17 @@
+[Event "Casual Blitz game"]
+[Date "2022.05.16"]
+[White "anonymous"]
+[Black "stockfish"]
+[Result "0-1"]
+[UTCDate "2022.01.01"]
+[UTCTime "23:12:58"]
+[WhiteElo "10"]
+[BlackElo "3000"]
+[Variant "Standard"]
+[TimeControl "300+3"]
+[ECO "A03"]
+[Opening "Bird Opening: Dutch Variation, Dudweiler Gambit"]
+[Termination "Normal"]
+[Annotator "lichess.org"]
+
+1. f4 { [%eval -0.31] [%clk 0:05:00] } 1... d5 { [%eval -0.16] [%clk 0:05:00] } 2. g4?? { (-0.16 → -4.44) Blunder. Nf3 was best. } { [%eval -4.44] [%clk 0:05:01] } { A03 Bird Opening: Dutch Variation, Dudweiler Gambit } 2... Bxg4 { [%eval -3.04] [%clk 0:05:00] } 3. h4?! { (-3.04 → -4.61) Inaccuracy. Bg2 was best. } { [%eval -4.61] [%clk 0:04:47] } 3... e6 { [%eval -3.9] [%clk 0:05:01] } 4. Rh3? { (-3.90 → -8.54) Mistake. Bg2 was best. } { [%eval -8.54] [%clk 0:04:38] } 4... Bxh3 { [%eval -8.27] [%clk 0:05:02] } 5. a3? { (-8.27 → Mate in 1) Checkmate is now unavoidable. Nxh3 was best. } { [%eval #-1] [%clk 0:04:38] } 5... Qxh4# { [%clk 0:05:00] } { Black wins by checkmate. } 0-1

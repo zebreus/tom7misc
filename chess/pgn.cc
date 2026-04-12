@@ -110,12 +110,14 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
             RE2::Consume(&post_input, eval_re, &e)) {
           if (e[0] == '#') {
             int moves = atoi(e.c_str() + 1);
-            eval.emplace();
+            PGN::Eval ee;
+            eval.emplace(ee);
             eval->type = PGN::EvalType::MATE;
             eval->e.mate = moves;
           } else {
             float pawns = atof(e.c_str());
-            eval.emplace();
+            PGN::Eval ee;
+            eval.emplace(ee);
             eval->type = PGN::EvalType::PAWNS;
             eval->e.pawns = pawns;
           }

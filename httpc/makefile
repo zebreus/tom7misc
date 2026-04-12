@@ -4,12 +4,12 @@ default : minget.exe sget.exe aget.exe fill-in.exe markdown_test.exe
 all : minget.exe
 
 UNAME := $(shell uname -o)
-ifeq ($(findstring Linux,$(UNAME)),Linux)
-CC=clang
-CXX=clang++ -stdlib=libc++
-HARDEN=-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2
-LHARDEN=-z relro -z now
-endif
+# ifeq ($(findstring Linux,$(UNAME)),Linux)
+# CC=clangc
+# CXX=clang++ -stdlib=libc++
+# HARDEN=-fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2
+# LHARDEN=-z relro -z now
+# endif
 
 # This is optional; if you want to use plain C++ code, just
 # comment it out. But GMP is much faster.

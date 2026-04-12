@@ -44,7 +44,7 @@ struct PGN {
 
   struct Eval {
     EvalType type = EvalType::MATE;
-    union {
+    union U {
       // Score in (nominal) pawns. +2.1 means that white has a 2.1 pawn
       // advantage.
       float pawns;
