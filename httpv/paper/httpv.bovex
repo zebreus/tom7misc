@@ -630,7 +630,7 @@ the client’s chosen AES key. To the server, they pretend to be the
 client, negotiating a secure connection and forwarding data between
 the real client and the server. This “man-in-the-middle” (often a
 computer and not a biological man) is invisible to the client and
-server, but can read (and often modify) any data encrypted data sent
+server, but can read (and often modify) any encrypted data sent
 between them. The possibility of such a rude intermezzo is arguably
 the core difficulty of designing protocols like TLS.
 
