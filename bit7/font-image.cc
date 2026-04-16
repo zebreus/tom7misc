@@ -1,5 +1,6 @@
 #include "font-image.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -53,6 +54,7 @@ Page Config::ParsePage(std::string_view p) {
   if (p == "bit7-extended2") return Page::BIT7_EXTENDED2;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   if (p == "bit7-math") return Page::BIT7_MATH;
+  if (p == "bit7-braille") return Page::BIT7_BRAILLE;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -70,13 +72,21 @@ const char *Config::PageString(Page p) {
     return "bit7-cyrillic";
   case Page::BIT7_MATH:
     return "bit7-math";
+  case Page::BIT7_BRAILLE:
+    return "bit7-braille";
   default:
     break;
   }
 }
 
 inline static bool PageUsesEmptyGlyphs(Page p) {
-  return p == Page::BIT7_CLASSIC;
+  // Bit7 classic has the main space character.
+  // Another case is U+2800, which is a blank braille pattern. We could
+  // just map it to space, but since this Unicode block is nice and
+  // orderly (based on the binary) it is cleaner to reserve space in
+  // the image for it.
+  return p == Page::BIT7_CLASSIC ||
+    p == Page::BIT7_BRAILLE;
 }
 
 // Tips:
@@ -674,7 +684,7 @@ static PageInfo PageBit7Extended() {
     {0, 16 * 3},
     {16 * 12, 4 * 16 - 4},
     {16 * 16, 2 * 16 - 6},
-    {18 * 16, 6 * 16},
+    {18 * 16 - 3, 6 * 16 + 3},
   };
 
   info.codepoints = {
@@ -907,7 +917,14 @@ static PageInfo PageBit7Extended() {
     0x03E1,  // (ϡ) GREEK SMALL LETTER SAMPI
 
     // Space for more Greek Extended
-    -1, -1, -1, -1, -1, -1,
+    -1, -1, -1,
+
+
+    // Characters often used in Japanese writing systems.
+
+    0x300C,  // (「) LEFT CORNER BRACKET
+    0x300D,  // (」) RIGHT CORNER BRACKET
+    0x3001,  // (、) IDEOGRAPHIC COMMA
 
     // Unicode Katakana
     // 96 characters in unicode order, U+30A0 to U+30FF.
@@ -2060,6 +2077,30 @@ static PageInfo PageBit7Math() {
   return info;
 };
 
+static PageInfo PageBit7Braille() {
+  PageInfo info;
+  info.sections = {
+    // Braille 6 row
+    {0, 4 * 16},
+    // Braille 8-row (with nonzero bottom row)
+    {4 * 16, 12 * 16},
+  };
+
+  for (uint32_t c = 0; c < 0x100; c++) {
+    // Note that the bits are arrayed like this:
+    // 1 4
+    // 2 5
+    // 3 6
+    // 7 8
+    info.codepoints.push_back(0x2800 + c);
+  }
+
+  while (info.codepoints.size() < 16 * 24)
+    info.codepoints.push_back(-1);
+
+  return info;
+}
+
 static PageInfo GetPageInfo(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
@@ -2068,6 +2109,7 @@ static PageInfo GetPageInfo(Page p) {
   case Page::BIT7_EXTENDED2: return PageBit7Extended2();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   case Page::BIT7_MATH: return PageBit7Math();
+  case Page::BIT7_BRAILLE: return PageBit7Braille();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
@@ -2167,14 +2209,6 @@ REUSE_FOR = {
   {0x02CA, 0x00B4},  // acute accent
   {0x02CB, 0x0060},  // grave
 
-  // Full-width comma
-  {',', 0xFF0C},
-  // Fullwidth parentheses
-  // Actually we can just map these all from ascii?
-  // en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)
-  {'(', 0xFF08},
-  {')', 0xFF09},
-
   // "equal and parallel to" is like an octothorpe
   {'#', 0x22D5},
 
@@ -2270,7 +2304,147 @@ REUSE_FOR = {
   {' ', 0x202F},  // Narrow No-Break Space
   {' ', 0x205F},  // Medium Mathematical Space
   {' ', 0x3000},  // Ideographic space
+  {' ', 0x2800},  // Braille 0
 };
+
+// Unicode has width variants for characters that normally
+// take double-width, but since all of our glyphs are the
+// same width, these can be mapped from the standard codepoints.
+// (And also: Vice versa.)
+//
+// (This is just like REUSE_FOR, but many of these are computed
+// programmatically.)
+//
+// Maps e.g. ASCII 'X' to U+FF3A, the "full-width form" X.
+// and 'ト' (normal wide U+30C8 "to") to U+FF84, the half-width
+// form for that same katakana. Calls f(src, dst) for each
+// pair in the mapping.
+template<class F>
+static void WidthVariants(const F &f)
+  requires requires (uint32_t src, uint32_t dst) { f(src, dst); }
+ {
+  // ASCII fullwidth forms (FF01-FF5E map from 0021-007E)
+  for (uint32_t c = 0x0021; c <= 0x007E; c++) {
+    f(c, c + 0xFEE0);
+  }
+
+  // Map regular Katakana to half-width.
+  static constexpr uint32_t KATAKANA_SRC[61] = {
+    0x3002, 0x300C, 0x300D, 0x3001, 0x30FB, 0x30F2, 0x30A1, 0x30A3,
+    0x30A5, 0x30A7, 0x30A9, 0x30E3, 0x30E5, 0x30E7, 0x30C3, 0x30FC,
+    0x30A2, 0x30A4, 0x30A6, 0x30A8, 0x30AA, 0x30AB, 0x30AD, 0x30AF,
+    0x30B1, 0x30B3, 0x30B5, 0x30B7, 0x30B9, 0x30BB, 0x30BD, 0x30BF,
+    0x30C1, 0x30C4, 0x30C6, 0x30C8, 0x30CA, 0x30CB, 0x30CC, 0x30CD,
+    0x30CE, 0x30CF, 0x30D2, 0x30D5, 0x30D8, 0x30DB, 0x30DE, 0x30DF,
+    0x30E0, 0x30E1, 0x30E2, 0x30E4, 0x30E6, 0x30E8, 0x30E9, 0x30EA,
+    0x30EB, 0x30EC, 0x30ED, 0x30EF, 0x30F3,
+  };
+
+  for (int idx = 0; idx < 64; idx++) {
+    if (uint32_t src = KATAKANA_SRC[idx]) {
+      f(src, 0xFF61 + idx);
+    }
+  }
+
+  // Note: Missing are Hangul characters and a handful of
+  // rare symbols.
+
+  // Fullwidth and halfwidth symbol variants
+  for (const auto &[src, dst] :
+         std::initializer_list<std::pair<uint32_t, uint32_t>>{
+      {0x00A2, 0xFFE0}, // FULLWIDTH CENT SIGN
+      {0x00A3, 0xFFE1}, // FULLWIDTH POUND SIGN
+      {0x00AC, 0xFFE2}, // FULLWIDTH NOT SIGN
+      {0x00AF, 0xFFE3}, // FULLWIDTH MACRON
+      {0x00A6, 0xFFE4}, // FULLWIDTH BROKEN BAR
+      {0x00A5, 0xFFE5}, // FULLWIDTH YEN SIGN
+      {0x2502, 0xFFE8}, // HALFWIDTH FORMS LIGHT VERTICAL
+      {0x2190, 0xFFE9}, // HALFWIDTH LEFTWARDS ARROW
+      {0x2191, 0xFFEA}, // HALFWIDTH UPWARDS ARROW
+      {0x2192, 0xFFEB}, // HALFWIDTH RIGHTWARDS ARROW
+      {0x2193, 0xFFEC}, // HALFWIDTH DOWNWARDS ARROW
+      {0x25A0, 0xFFED}, // HALFWIDTH BLACK SQUARE
+      {0x25CB, 0xFFEE}, // HALFWIDTH WHITE CIRCLE
+    }) {
+    f(src, dst);
+  }
+ };
+
+// Reads the lines and populates the lines like Util::ReadFileToMap
+// does. But allows a multi-line value delimited by [ and ], like
+// for bitmaps in braille-on and braille-off.
+static std::map<string, string> ReadConfigToMap(std::string_view cfgfile) {
+  std::map<string, string> m;
+  std::vector<string> lines = Util::ReadFileToLines(cfgfile);
+  for (int i = 0; i < (int)lines.size(); i++) {
+    string_view rest = lines[i];
+    Util::RemoveOuterWhitespace(&rest);
+    string_view key = Util::Chop(&rest);
+
+    Util::RemoveOuterWhitespace(&rest);
+
+    // [ ] delimits a multi-line value. We trim the brackets but keep
+    // everything else intact.
+    if (rest.starts_with('[')) {
+      rest.remove_prefix(1);
+      string value{rest};
+      while (value.find(']') == string::npos && i + 1 < (int)lines.size()) {
+        i++;
+        value.push_back('\n');
+        value.append(lines[i]);
+      }
+      size_t end_pos = value.find(']');
+      CHECK(end_pos != std::string_view::npos) << "Unclosed [ in multi-line "
+        "value for key " << key;
+      value.resize(end_pos);
+      m.emplace(key, std::move(value));
+    } else {
+      m.emplace(key, rest);
+    }
+  }
+  return m;
+}
+
+// value is a multi-line string. Leading and trailing whitespace
+// (including newlines) is ignored. Otherwise, each line is a row
+// of pixels with @ denoting a 1 pixel and . denoting 0. Spaces
+// are allowed and ignored, but anything else is a fatal error.
+static Image1 ParseBitmap(std::string_view value) {
+  Util::RemoveOuterWhitespace(&value);
+  std::vector<std::string> lines = Util::SplitToLines(value);
+  int height = lines.size();
+  int width = 0;
+
+  for (const std::string &line : lines) {
+    int line_width = 0;
+    for (char c : line) {
+      if (c == ' ' || c == '\t' || c == '\r') {
+        continue;
+      } else if (c == '@' || c == '.') {
+        line_width++;
+      } else {
+        LOG(FATAL) << "Invalid character in bitmap: '" << c << "'";
+      }
+    }
+    width = std::max(width, line_width);
+  }
+
+  Image1 img(width, height);
+  for (int y = 0; y < height; y++) {
+    int x = 0;
+    for (char c : lines[y]) {
+      if (c == '@') {
+        img.SetPixel(x++, y, true);
+      } else if (c == '.') {
+        img.SetPixel(x++, y, false);
+      } else {
+        CHECK(c == ' ');
+      }
+    }
+  }
+
+  return img;
+}
 
 Config Config::ParseConfig(std::string_view cfgfile) {
   std::string path = Util::PathOf(cfgfile);
@@ -2524,24 +2698,30 @@ FontImage::FontImage(const Config &config) : config(config) {
 
   // After every page is loaded, fill in any unused codepoints that
   // can be copied from existing ones.
-  for (const auto &[src, dst] : REUSE_FOR) {
-    // If we do have a non-blank source, but don't have the dest,
-    // copy. (This includes if the dest is completely blank. It would
-    // make logical sense to be able to somehow suppress the copy
-    // over an empty glyph, but little practical sense.)
-    auto sit = unicode_to_glyph.find(src);
-    if (sit != unicode_to_glyph.end() &&
-        !EmptyGlyph(glyphs[sit->second])) {
-      auto dit = unicode_to_glyph.find(dst);
-      if (dit == unicode_to_glyph.end() ||
-          EmptyGlyph(glyphs[dit->second])) {
-        if (VERBOSE) {
-          Print("Copy {:04x} to {:04x}\n", src, dst);
+  auto Reuse = [&](uint32_t src, uint32_t dst) {
+      // If we do have a non-blank source, but don't have the dest,
+      // copy. (This includes if the dest is completely blank. It would
+      // make logical sense to be able to somehow suppress the copy
+      // over an empty glyph, but little practical sense.)
+      auto sit = unicode_to_glyph.find(src);
+      if (sit != unicode_to_glyph.end() &&
+          !EmptyGlyph(glyphs[sit->second])) {
+        auto dit = unicode_to_glyph.find(dst);
+        if (dit == unicode_to_glyph.end() ||
+            EmptyGlyph(glyphs[dit->second])) {
+          if (VERBOSE) {
+            Print("Copy {:04x} to {:04x}\n", src, dst);
+          }
+          unicode_to_glyph[dst] = unicode_to_glyph[src];
         }
-        unicode_to_glyph[dst] = unicode_to_glyph[src];
       }
-    }
+    };
+
+  for (const auto &[src, dst] : REUSE_FOR) {
+    Reuse(src, dst);
   }
+
+  WidthVariants(Reuse);
 }
 
 namespace {
