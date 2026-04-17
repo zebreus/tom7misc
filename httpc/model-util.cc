@@ -43,6 +43,11 @@ std::vector<std::string> ModelUtil::SvnList(std::string_view dir) {
     line.remove_prefix(8);
 
     ConsumeWS(&line);
+
+    // e.g. "> moved from original.cc"
+    if (line.empty() || line[0] == '>')
+      continue;
+
     // Now two columns of revision numbers or "-".
     while (!line.empty() && (line[0] == '-' || std::isdigit(line[0]))) {
       line.remove_prefix(1);

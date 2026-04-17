@@ -297,14 +297,13 @@ int main(int argc, char **argv) {
       cheap->SetVerbose(verbose);
 
       std::string raw = cheap->Infer(includes_prompt);
-      std::optional<std::string> oj = ModelUtil::FindOneJSONObject(raw);
-      if (!oj.has_value()) {
+      std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
+      if (json.empty()) {
         Print(ARED("Unable to find a JSON object!") "\n"
               "\n"
               AGREY("{}\n"), raw);
         return {};
       }
-      const std::string &json = oj.value();
 
       std::vector<std::string> to_include;
 
