@@ -1,5 +1,8 @@
 
-// XXX intended for cc-lib but still experimental
+// Simple, non-standard implementation of a subset of Markdown, in
+// the tradition of Markdown. Can parse to an in-memory document tree,
+// and render to a color terminal (with smart line wrapping and other
+// perks).
 
 #ifndef _CC_LIB_MARKDOWN_H
 #define _CC_LIB_MARKDOWN_H

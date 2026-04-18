@@ -1,4 +1,9 @@
 
+// I think this is a throwaway test of getting status output
+// with ANSI codes working in emacs.
+
+#include <cstdio>
+#include <format>
 #include <string_view>
 #include <chrono>
 #include <thread>

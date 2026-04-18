@@ -48,15 +48,15 @@ std::vector<std::string> ModelUtil::SvnList(std::string_view dir) {
     if (line.empty() || line[0] == '>')
       continue;
 
-    // Now two columns of revision numbers or "-".
-    while (!line.empty() && (line[0] == '-' || std::isdigit(line[0]))) {
-      line.remove_prefix(1);
-    }
+    // Now two columns of revision numbers or "-" or "?".
+    auto OKChar = [](char c) {
+        return std::isdigit(c) || c == '-' || c == '?';
+      };
+
+    while (!line.empty() && OKChar(line[0])) line.remove_prefix(1);
     ConsumeWS(&line);
 
-    while (!line.empty() && (line[0] == '-' || std::isdigit(line[0]))) {
-      line.remove_prefix(1);
-    }
+    while (!line.empty() && OKChar(line[0])) line.remove_prefix(1);
     ConsumeWS(&line);
 
     // Now looking at username.

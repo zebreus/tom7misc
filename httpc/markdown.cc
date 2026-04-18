@@ -13,10 +13,8 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/print.h"
 #include "base/stringprintf.h"
 #include "boxes-and-glue.h"
-#include "hexdump.h"
 #include "util.h"
 
 static Markdown::Text ParseText(std::string_view body) {
@@ -425,8 +423,6 @@ std::string Markdown::ToMarkdown(const Document &doc) {
 }
 
 std::vector<std::string> Markdown::TextRectangle(const Text &text, int width) {
-  // TODO: Here first.
-
   static constexpr std::string_view NORMAL_COLOR = ANSI_RESET;
   static constexpr std::string_view BOLD_COLOR = ANSI_FG(255, 255, 255);
   static constexpr std::string_view CODE_COLOR = ANSI_FG(217, 192, 237);
@@ -435,20 +431,7 @@ std::vector<std::string> Markdown::TextRectangle(const Text &text, int width) {
   static constexpr std::string_view LINK_COLOR = ANSI_FG(104, 129, 242);
   static constexpr std::string_view URL_COLOR = ANSI_FG(48, 57, 97);
 
-  // Recommended steps:
-  // Flatten the text into boxes at word boundaries, assuming a fixed-width
-  // font. The boxes know their colors. We increase the glue penalty
-  // a little inside bold text, and a little more inside inline code,
-  // since we know those tokens belong together somewhat.
-  //
-  // Run the boxes-and-glue algorithm. Don't use justification, since this
-  // is a fixed-width terminal font.
-  //
-  // Take the resulting boxes and render them into a vector of lines,
-  // with color. We should keep track of the color so that we only emit
-  // ANSI codes when it changes. Reset at the end of each line.
-
-  // Box for the boxes-and-glue algorithm.
+  // Pre-colored box for the boxes-and-glue algorithm.
   struct Token {
     std::string text;
     std::string_view color;
@@ -462,23 +445,23 @@ std::vector<std::string> Markdown::TextRectangle(const Text &text, int width) {
   auto AddWordPart = [&](std::string_view s,
                          std::string_view color,
                          double penalty) {
-    int i = 0;
-    while (i < (int)s.size()) {
-      // Treat any whitespace character as a space
-      if (s[i] == ' ' || s[i] == '\n' || s[i] == '\t' || s[i] == '\r') {
+    while (!s.empty()) {
+      if (Util::IsWhitespace(s[0])) {
         pending_space = true;
-        i++;
+        Util::RemoveLeadingWhitespace(&s);
       } else {
         if (pending_space && !tokens.empty()) {
           tokens.back().space_after = true;
         }
         pending_space = false;
 
-        int start = i;
-        while (i < (int)s.size() && s[i] != ' ' && s[i] != '\n' && s[i] != '\t' && s[i] != '\r') {
-          i++;
+        size_t len = 0;
+        while (len < s.size() && !Util::IsWhitespace(s[len])) {
+          len++;
         }
-        tokens.push_back({std::string(s.substr(start, i - start)), color, penalty, false});
+        tokens.push_back({std::string(s.substr(0, len)), color, penalty,
+                          false});
+        s.remove_prefix(len);
       }
     }
   };
@@ -495,7 +478,8 @@ std::vector<std::string> Markdown::TextRectangle(const Text &text, int width) {
       AddWordPart(c->text, CODE_COLOR, 20.0);
     } else if (const URL *u = std::get_if<URL>(&part)) {
       AddWordPart(u->text, LINK_COLOR, 0.0);
-      pending_space = true; // force a space between link and (url)
+      // force a space between link and (url)
+      pending_space = true;
       std::string url_str = "(" + u->url + ")";
       AddWordPart(url_str, URL_COLOR, 0.0);
     }
@@ -656,9 +640,6 @@ std::string Markdown::ToColorTerminal(const Document &doc,
       AppendFormat(&ret, "{}{}" ANSI_RESET "\n\n", style, h->text);
 
     } else if (const Code *c = std::get_if<Code>(&sec)) {
-
-      // #define CODE_BG ANSI_BG(0, 20, 1)
-      // #define CODE_FG ANSI_FG(120, 156, 126)
 
       #define CODE_BG ANSI_BG(12, 9, 40)
       #define CODE_FG ANSI_FG(155, 151, 204)
