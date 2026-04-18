@@ -171,7 +171,7 @@ struct PacketWriter {
     return std::span<uint8_t>(payload.data() + old_size, size);
   }
 
-  template<size_t B, bool BIG_ENDIAN>
+  template<size_t B, bool USE_BE>
   struct DelayedLength {
     static_assert(B >= 1 && B <= 3);
     DelayedLength(PacketWriter *p) :
@@ -189,19 +189,19 @@ struct PacketWriter {
         "made space for the length in the ctor?";
 
       if constexpr (B == 1) {
-        if constexpr (BIG_ENDIAN) {
+        if constexpr (USE_BE) {
           packet->SetW8(length_pos, len);
         } else {
           packet->SetW8LE(length_pos, len);
         }
       } else if constexpr (B == 2) {
-        if constexpr (BIG_ENDIAN) {
+        if constexpr (USE_BE) {
           packet->SetW16(length_pos, len);
         } else {
           packet->SetW16LE(length_pos, len);
         }
       } else if constexpr (B == 3) {
-        if constexpr (BIG_ENDIAN) {
+        if constexpr (USE_BE) {
           packet->SetW24(length_pos, len);
         } else {
           packet->SetW24LE(length_pos, len);

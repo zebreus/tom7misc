@@ -656,7 +656,7 @@ std::string Markdown::ToColorTerminal(const Document &doc,
 
       // TODO: use type for syntax highlighting
       for (std::string &line : Util::SplitToLines(c->body)) {
-        size_t cur = line.size();
+        const int cur = (int)line.size();
         if (cur < comfy_width) line.append(comfy_width - cur, ' ');
         AppendFormat(&ret, CODE_BG CODE_FG "{}" ANSI_RESET "\n", line);
       }

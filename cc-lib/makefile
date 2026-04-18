@@ -358,7 +358,7 @@ packet-writer_test.exe : packet-writer_test.o $(BASE) $(TEST_UTIL)
 	@echo -n "!"
 
 markdown_test.exe : markdown.o markdown_test.o boxes-and-glue.o $(BASE) $(TEST_UTIL)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
 clean :

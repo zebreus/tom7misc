@@ -1487,6 +1487,7 @@ bool Util::library_matches(char k, const string &s) {
 // Best-effort random filename generator. mkstemp opens the
 // file to prevent races, so it doesn't really work for the
 // RemoveFile need below.
+[[maybe_unused]]
 static string TempFile(std::string_view suffix) {
   [[maybe_unused]]
   static int seed = []() {
