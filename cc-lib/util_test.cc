@@ -146,6 +146,20 @@ static void TestWhitespace() {
   {
     std::string orig = "\t  y  east \n ";
     std::string_view v(orig);
+    Util::RemoveLeadingWhitespace(&v);
+    CHECK(v == "y  east \n ");
+  }
+
+  {
+    std::string orig = " \n teST? \r\n";
+    std::string_view v(orig);
+    Util::RemoveTrailingWhitespace(&v);
+    CHECK(v == " \n teST?");
+  }
+
+  {
+    std::string orig = "\t  y  east \n ";
+    std::string_view v(orig);
     Util::RemoveOuterWhitespace(&v);
     CHECK(v == "y  east");
   }

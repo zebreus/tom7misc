@@ -58,6 +58,55 @@ static void TestDelayedLength() {
   CHECK(actual == expected);
 }
 
+static void TestIntegersLE() {
+  PacketWriter p;
+  p.Byte(0x12);
+  p.W16LE(0x3456);
+  p.W24LE(0x789ABC);
+  p.W32LE(0xDEF01234);
+  p.W64LE(uint64_t{0x56789ABCDEF01234});
+
+  std::vector<uint8_t> expected = {
+    0x12,
+    0x56, 0x34,
+    0xBC, 0x9A, 0x78,
+    0x34, 0x12, 0xF0, 0xDE,
+    0x34, 0x12, 0xF0, 0xDE, 0xBC, 0x9A, 0x78, 0x56,
+  };
+
+  CHECK(p.size() == expected.size());
+  for (size_t i = 0; i < p.size(); i++) {
+    CHECK(p.View()[i] == expected[i]) << "Mismatch at index " << i;
+  }
+
+  std::vector<uint8_t> actual = std::move(p).Release();
+  CHECK(actual == expected);
+}
+
+static void TestDelayedLengthLE() {
+  PacketWriter p;
+  {
+    p.Byte(0x2A);
+    auto len = p.Length16LE();
+    p.W16LE(0xCAFE);
+    p.Byte(0xBB);
+    len.Fill();
+  }
+
+  uint8_t expected_len = 0x03;
+  std::vector<uint8_t> expected = {
+    0x2A, expected_len, 0x00, 0xFE, 0xCA, 0xBB
+  };
+
+  CHECK(p.size() == expected.size());
+  for (size_t i = 0; i < p.size(); i++) {
+    CHECK(p.View()[i] == expected[i]);
+  }
+
+  std::vector<uint8_t> actual = std::move(p).Release();
+  CHECK(actual == expected);
+}
+
 static void TestAliasing() {
   PacketWriter p;
   // We want the PacketWriter's underlying vector to not have capacity
@@ -90,6 +139,9 @@ int main(int argc, char **argv) {
   TestIntegers();
   TestDelayedLength();
   TestAliasing();
+
+  TestIntegersLE();
+  TestDelayedLengthLE();
 
   Print("OK\n");
   return 0;

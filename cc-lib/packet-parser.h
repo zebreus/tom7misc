@@ -1,5 +1,13 @@
-#ifndef _HTTPV_PACKET_PARSER_H
-#define _HTTPV_PACKET_PARSER_H
+// Header-only utilities for reading in-memory binary streams, like
+// packets in some network protocol or file formats.
+//
+// This is just a thin wrapper around std::span with some utilities.
+// The main benefit is an error state that allows you to do deferred
+// error handling; this makes it less tedious to deal with short
+// packets. But you must check OK() before declaring success.
+
+#ifndef _CC_LIB_PACKET_PARSER_H
+#define _CC_LIB_PACKET_PARSER_H
 
 #include <cstddef>
 #include <cstdint>
@@ -46,7 +54,10 @@ struct PacketParser {
     return b;
   }
 
+  // Words are network byte order (big-endian) by default.
+
   uint8_t W8() { return Byte(); }
+
 
   uint16_t W16() {
     if (error || rest.size() < 2) {
@@ -61,6 +72,20 @@ struct PacketParser {
     return (b1 << 8) | b2;
   }
 
+  uint16_t W16LE() {
+    if (error || rest.size() < 2) {
+      error = true;
+      return 0;
+    }
+
+    CHECK(rest.size() >= 2);
+    const uint16_t b1 = rest[0];
+    const uint16_t b2 = rest[1];
+    rest = rest.last(rest.size() - 2);
+    return (b2 << 8) | b1;
+  }
+
+
   uint32_t W24() {
     if (error || rest.size() < 3) {
       error = true;
@@ -74,6 +99,21 @@ struct PacketParser {
     rest = rest.last(rest.size() - 3);
     return (b1 << 16) | (b2 << 8) | b3;
   }
+
+  uint32_t W24LE() {
+    if (error || rest.size() < 3) {
+      error = true;
+      return 0;
+    }
+
+    CHECK(rest.size() >= 3);
+    const uint32_t b1 = rest[0];
+    const uint32_t b2 = rest[1];
+    const uint32_t b3 = rest[2];
+    rest = rest.last(rest.size() - 3);
+    return (b3 << 16) | (b2 << 8) | b1;
+  }
+
 
   uint32_t W32() {
     if (error || rest.size() < 4) {
@@ -90,7 +130,23 @@ struct PacketParser {
     return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4;
   }
 
-  void BytesTo(int num, uint8_t *out) {
+  uint32_t W32LE() {
+    if (error || rest.size() < 4) {
+      error = true;
+      return 0;
+    }
+
+    CHECK(rest.size() >= 4);
+    const uint32_t b1 = rest[0];
+    const uint32_t b2 = rest[1];
+    const uint32_t b3 = rest[2];
+    const uint32_t b4 = rest[3];
+    rest = rest.last(rest.size() - 4);
+    return (b4 << 24) | (b3 << 16) | (b2 << 8) | b1;
+  }
+
+
+  void BytesTo(size_t num, uint8_t *out) {
     // Don't call memcpy with an invalid pointer
     // (e.g. unallocated vector::data).
     if (num == 0) return;
@@ -131,7 +187,7 @@ struct PacketParser {
 
   // Extract and consume the next len bytes.
   // A packet in an error state extracts an error packet.
-  PacketParser Subpacket(int len) {
+  PacketParser Subpacket(size_t len) {
     if (error || rest.size() < len) {
       error = true;
       return *this;

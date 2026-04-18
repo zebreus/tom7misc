@@ -1160,12 +1160,19 @@ string Util::RemoveChar(std::string_view s, char c) {
   return RemoveCharsMatching(s, [c](char cc) { return c == cc; });
 }
 
-void Util::RemoveOuterWhitespace(std::string_view *s) {
+void Util::RemoveLeadingWhitespace(std::string_view *s) {
   while (!s->empty() && IsWhitespace((*s)[0]))
     s->remove_prefix(1);
+}
 
+void Util::RemoveTrailingWhitespace(std::string_view *s) {
   while (!s->empty() && IsWhitespace(s->back()))
     s->remove_suffix(1);
+}
+
+void Util::RemoveOuterWhitespace(std::string_view *s) {
+  RemoveLeadingWhitespace(s);
+  RemoveTrailingWhitespace(s);
 }
 
 string Util::NormalizeWhitespace(std::string_view s) {

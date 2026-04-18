@@ -27,8 +27,8 @@ struct Image1;
 struct ImageRGBA {
   using uint8 = uint8_t;
   using uint32 = uint32_t;
-  ImageRGBA(const std::vector<uint8> &rgba8, int width, int height);
-  ImageRGBA(const std::vector<uint32> &rgba32, int width, int height);
+  ImageRGBA(std::span<const uint8_t> rgba8, int width, int height);
+  ImageRGBA(std::span<const uint32_t> rgba32, int width, int height);
   ImageRGBA(std::vector<uint32> &&rgba, int width, int height);
   ImageRGBA(int width, int height);
   ImageRGBA() : width(0), height(0) {}
@@ -46,7 +46,7 @@ struct ImageRGBA {
 
   // Supports PNG, JPEG, GIF, others (see stb_image.h).
   static ImageRGBA *Load(std::string_view filename);
-  static ImageRGBA *LoadFromMemory(const std::vector<uint8> &bytes);
+  static ImageRGBA *LoadFromMemory(std::span<const uint8> bytes);
   static ImageRGBA *LoadFromMemory(const char *data, size_t size);
 
   // Saves in RGBA PNG format. Returns true if successful.
@@ -226,10 +226,8 @@ struct ImageRGBA {
 
   // View of the underlying words. There should be Width() * Height()
   // pixels, each packed R-G-B-A regardless of host byte order.
-#if defined(__cpp_lib_span) && __cpp_lib_span >= 202002L
   std::span<const uint32_t> data() const;
   std::span<uint32_t> data();
-#endif
 
  private:
   friend struct ImageResize;
@@ -370,7 +368,7 @@ struct ImageA {
 // Like ImageA, but float pixel values. The nominal range is [0, 1],
 // but this supports "HDR" pixels, including even negative values.
 struct ImageF {
-  ImageF(const std::vector<float> &alpha, int width, int height);
+  ImageF(std::span<const float> alpha, int width, int height);
   ImageF(int width, int height);
   ImageF() : ImageF(0, 0) {}
   explicit ImageF(const ImageA &other);

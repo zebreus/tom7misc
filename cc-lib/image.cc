@@ -150,9 +150,9 @@ static inline std::string VecToString(const std::vector<uint8_t> &v) {
 
 // TODO: Duplicate code between the different Load routines..
 
-ImageRGBA::ImageRGBA(const std::vector<uint32> &rgba32,
+ImageRGBA::ImageRGBA(std::span<const uint32_t> rgba32,
                      int width, int height) :
-  width(width), height(height), rgba(rgba32) {
+  width(width), height(height), rgba(rgba32.begin(), rgba32.end()) {
   CHECK((int)rgba.size() == width * height);
 }
 
@@ -192,11 +192,11 @@ ImageRGBA *ImageRGBA::LoadFromMemory(const char *data, size_t size) {
   return new ImageRGBA(std::move(ret), width, height);
 }
 
-ImageRGBA *ImageRGBA::LoadFromMemory(const vector<uint8> &filebytes) {
+ImageRGBA *ImageRGBA::LoadFromMemory(span<const uint8_t> filebytes) {
   return LoadFromMemory((const char *)filebytes.data(), filebytes.size());
 }
 
-ImageRGBA::ImageRGBA(const vector<uint8> &rgba8, int width, int height)
+ImageRGBA::ImageRGBA(span<const uint8> rgba8, int width, int height)
   : width(width), height(height) {
   CHECK((int)rgba8.size() == width * height * 4);
   rgba.resize(width * height);
@@ -228,7 +228,6 @@ std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
   return ret;
 }
 
-#if defined(__cpp_lib_span) && __cpp_lib_span >= 202002L
 std::span<const uint32_t> ImageRGBA::data() const {
   return std::span<const uint32_t>((const uint32_t*)rgba.data(), rgba.size());
 }
@@ -236,7 +235,6 @@ std::span<const uint32_t> ImageRGBA::data() const {
 std::span<uint32_t> ImageRGBA::data() {
   return std::span<uint32_t>((uint32_t*)rgba.data(), rgba.size());
 }
-#endif
 
 bool ImageRGBA::Save(std::string_view filename) const {
   std::string filename_string = std::string(filename);
@@ -1873,8 +1871,8 @@ ImageRGBA ImageA::AlphaMaskRGBA(uint8 r, uint8 g, uint8 b) const {
 
 // --- ImageF ---
 
-ImageF::ImageF(const vector<float> &alpha, int width, int height)
-    : width(width), height(height), alpha(alpha) {
+ImageF::ImageF(std::span<const float> alpha, int width, int height)
+  : width(width), height(height), alpha(alpha.begin(), alpha.end()) {
   CHECK((int)alpha.size() == width * height);
 }
 

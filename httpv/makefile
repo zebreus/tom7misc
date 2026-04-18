@@ -1,7 +1,7 @@
 
 default : httpv.exe renew.exe multi-gen.exe
 
-all : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe multi-rsa_test.exe tls_test.exe packet-writer_test.exe packet-parser_test.exe asn1_test.exe
+all : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe multi-rsa_test.exe tls_test.exe asn1_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
@@ -69,14 +69,6 @@ multi-rsa_test.exe : multi-rsa_test.o $(HTTPV_LIB_OBJECTS)
 	@echo -n "!"
 
 tls_test.exe : tls_test.o $(HTTPV_LIB_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-packet-parser_test.exe : packet-parser_test.o $(HTTPV_LIB_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-packet-writer_test.exe : packet-writer_test.o $(HTTPV_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -294,7 +294,10 @@ struct Util {
   // All whitespace becomes a single space. Leading and trailing
   // whitespace is dropped.
   static string NormalizeWhitespace(std::string_view s);
-  // Only removes whitesapce from beginning and end.
+
+  static void RemoveLeadingWhitespace(std::string_view *s);
+  static void RemoveTrailingWhitespace(std::string_view *s);
+  // Only removes whitespace from beginning and end.
   static void RemoveOuterWhitespace(std::string_view *s);
 
   static bool IsWhitespace(char c);

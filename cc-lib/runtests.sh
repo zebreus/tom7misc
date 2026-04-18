@@ -79,3 +79,5 @@ make -j
 ./html-entities_test.exe
 ./contiguous-buffer_test.exe
 ./wav_test.exe
+./packet-parser_test.exe
+./packet-writer_test.exe

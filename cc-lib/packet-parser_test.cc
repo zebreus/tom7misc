@@ -207,6 +207,38 @@ static void TestError() {
   }
 }
 
+static void TestLittleEndian() {
+  {
+    std::vector<uint8_t> data = {
+      0x12,
+      0x34, 0x56,
+      0x78, 0x9A, 0xBC,
+      0xDE, 0xF0, 0x12, 0x34
+    };
+
+    PacketParser p(data);
+    CHECK(p.OK());
+    CHECK(p.Byte() == 0x12);
+    CHECK(p.OK());
+    CHECK(p.W16LE() == 0x5634);
+    CHECK(p.OK());
+    CHECK(p.W24LE() == 0xBC9A78);
+    CHECK(p.OK());
+    CHECK(p.W32LE() == 0x3412F0DE);
+    CHECK(p.empty());
+    CHECK(p.OK());
+  }
+
+  {
+    std::vector<uint8_t> short_data = {
+      0x42, 0x5A,
+    };
+
+    PacketParser pp(short_data);
+    (void)pp.W24LE();
+    CHECK(!pp.OK());
+  }
+}
 
 
 int main(int argc, char **argv) {
@@ -220,6 +252,7 @@ int main(int argc, char **argv) {
   TestPrefix();
   TestEquals();
   TestSkip();
+  TestLittleEndian();
 
   TestError();
 
