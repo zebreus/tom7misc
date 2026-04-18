@@ -25,24 +25,14 @@
 #include "timer.h"
 #include "util.h"
 
-static bool Excluded(const std::vector<std::string> &exclude,
-                     std::string_view file) {
-  for (const std::string &wc : exclude) {
-    if (Util::MatchesWildcard(wc, file)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static std::string IncludesPrompt(std::string_view file,
-                                  std::string_view question,
-                                  std::string_view output,
-                                  const std::map<std::string, int64_t> &files) {
+static std::string IncludesPrompt(
+    std::string_view file,
+    std::string_view question,
+    std::string_view output,
+    const std::map<std::string, ModelUtil::AvailableFile> &available_files) {
   std::string filestring;
-  for (const auto &[f, sz] : files) {
-    AppendFormat(&filestring, "{: 8d}  {}\n", sz, f);
+  for (const auto &[f, af] : available_files) {
+    AppendFormat(&filestring, "{: 8d}  {}\n", af.bytes, f);
   }
 
   std::string context =
@@ -176,10 +166,16 @@ int main(int argc, char **argv) {
   // Dirs to search for files.
   std::set<std::string> dirs = {"."};
 
-  // Wildcards to never offer up.
-  std::vector<std::string> exclude = {"*.png", "*.jpg"};
-
   std::optional<std::string> question;
+
+  ModelUtil::FileCollection files;
+  // Wildcards to never offer up.
+  files.AddExcludePattern("*.png");
+  files.AddExcludePattern("*.jpg");
+  files.AddExcludePattern("*COPYING");
+  files.AddExcludePattern("*LICENSE");
+  files.AddExcludePattern("*APACHE20.txt");
+  files.AddExcludePattern("*CONTRIBUTORS");
 
   // The current file we're looking at.
   std::string file_arg;
@@ -191,6 +187,7 @@ int main(int argc, char **argv) {
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
       i++;
+      Print("Considering " AYELLOW("{}") " (command-line)\n", argv[i]);
       dirs.insert(argv[i]);
     } else if (arg == "-file") {
       CHECK(file_arg.empty()) << "At most one -file.";
@@ -219,39 +216,33 @@ int main(int argc, char **argv) {
       return current_file;
     }();
 
-  // This will now include the location of the file arg, if there is one.
-  for (const std::string &dir : ModelUtil::IncludeDirs("."))
-    dirs.insert(dir);
-
   std::string output = Util::ReadStdin();
 
-  // Relative paths to files, with sizes.
-  std::map<std::string, int64_t> available_files;
-
-  // The current file is always available, even if not checked in.
-  // We don't necessarily read it, though (the provided context)
-  // might be enough.
-  if (!file.empty()) {
-    size_t size = Util::FileSize(file).value_or(0);
-    CHECK(size != 0) << "Couldn't read file argument " << file;
-    available_files[file] = size;
+  // Probably should use paths here too.
+  for (const std::string &d : ModelUtil::IncludeDirs(file)) {
+    // Print("Via clangd: " AYELLOW("{}") "\n", d);
+    dirs.insert(d);
   }
 
   for (const std::string &dir : dirs) {
-    for (const std::string &file : ModelUtil::SvnList(dir)) {
-      if (!available_files.contains(file) &&
-          !Excluded(exclude, file)) {
+    files.AddSvnFiles(dir);
+  }
 
-        size_t size = Util::FileSize(file).value_or(0);
-        if (size > 0) {
-          available_files[file] = size;
-        }
-      }
-    }
+  // The current file is always available, even if not checked in.
+  // We don't necessarily read it, though (the provided context
+  // might be enough).
+  if (!file.empty()) files.AddFile(file);
+
+  std::map<std::string, ModelUtil::AvailableFile> available_files =
+    files.AvailableFiles();
+
+  Print("List of available files:\n");
+  for (const auto &[f, af] : available_files) {
+    Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
+          f, af.path.string(), af.bytes);
   }
 
   // Construct prompt to guess at files to include (cheap model).
-
   Timer include_timer;
   std::vector<std::string> to_include = [&]{
       CHECK(question.has_value());
@@ -324,16 +315,8 @@ int main(int argc, char **argv) {
   }
 
   // Read the file content.
-  std::string file_text;
-  for (const std::string &f : to_include) {
-    AppendFormat(&file_text,
-                 "\n"
-                 "The file {}:\n"
-                 "```\n"
-                 "{}"
-                 "```\n", f, Util::ReadFile(f));
-  }
-
+  std::string file_text =
+    ModelUtil::TextualizeChosenFiles(available_files, to_include);
 
   Timer solve_timer;
   CHECK(question.has_value());

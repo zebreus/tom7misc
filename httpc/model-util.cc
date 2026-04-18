@@ -3,16 +3,25 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
+#include <map>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "base/stringprintf.h"
 #include "process-util.h"
 #include "util.h"
+
+static constexpr bool VERBOSE = false;
 
 static void ConsumeWS(std::string_view *s) {
   while (!s->empty() && std::isspace((*s)[0])) {
@@ -20,7 +29,65 @@ static void ConsumeWS(std::string_view *s) {
   }
 }
 
-std::vector<std::string> ModelUtil::SvnList(std::string_view dir) {
+// Translate both windows paths (which could be "..\file" or
+// "c:\dir\file" or just "file") and unix-style cygwin/msys2
+// paths (which could be "../file" or "./file" or "file" or
+// "/d/dir/file") to native OS paths like "d:\dir\file".
+std::filesystem::path ModelUtil::NormalizePath(std::string_view p) {
+  if (p.empty())
+    return "";
+
+  std::string s = [&]() {
+      // Intercept msys2 drive mappings like "/c/..." or "/c"
+      if (p.length() >= 2 && p[0] == '/' && std::isalpha(p[1])) {
+        if (p.length() == 2) {
+          // Just the drive letter, like "/c"
+          return std::string(p.substr(1, 1)) + ":\\";
+        } else if (p[2] == '/') {
+          return std::string(p.substr(1, 1)) + ":" + std::string(p.substr(2));
+        }
+      }
+      return std::string(p);
+    }();
+
+  // 2. Pass to std::filesystem to handle normalization
+  std::filesystem::path path(s);
+
+  // Make the path absolute based on the Current Working Directory.
+  // (If it's already absolute like C:\file, this does nothing).
+  path = std::filesystem::absolute(path);
+
+  // Resolve any "." or ".." and remove redundant slashes.
+  path = path.lexically_normal();
+
+  // Convert all forward slashes '/' to native backslashes '\'.
+  path.make_preferred();
+
+  return path;
+}
+
+std::string ModelUtil::UnixPath(std::filesystem::path p) {
+  #ifdef _WIN32
+  std::string s = Util::Replace(p.string(), "\\", "/");
+
+  if (s.length() >= 2 && std::isalpha(s[0]) && s[1] == ':') {
+    s[1] = std::tolower(s[0]);
+    s[0] = '/';
+    if (s.length() > 2 && s[2] != '/') {
+      s.insert(2, 1, '/');
+    }
+  }
+
+  return s;
+
+  #else
+  return p.string();
+  #endif
+}
+
+
+std::vector<std::filesystem::path>
+ModelUtil::SvnList(std::string_view dir) {
   // "svn list" uses the server's version of the files at
   // some revision, which might not be the newest one. This
   // is not what we want.
@@ -29,15 +96,25 @@ std::vector<std::string> ModelUtil::SvnList(std::string_view dir) {
   // have to remove some stuff to find the filename:
   // M             6997     6996 tom7         makefile
 
-  std::string cmd = std::format("svn st -vq \"{}\"", dir);
+  std::string cmd = std::format("svn st -vq \"{}\"",
+                                // svn insists on unix-style pathnames
+                                UnixPath(dir));
   std::optional<std::string> out = ProcessUtil::GetOutput(cmd);
   CHECK(out.has_value()) << "Command failed (is svn in your PATH?): " << cmd;
 
+  if (VERBOSE) {
+    Print(AWHITE("{}") "\n", cmd);
+  }
+
   // Parse.
-  std::vector<std::string> ret;
+  std::vector<std::filesystem::path> ret;
   for (std::string_view line : Util::SplitToLines(out.value())) {
     if (line.empty())
       continue;
+
+    if (VERBOSE) {
+      Print(AGREY("{}") "\n", line);
+    }
 
     CHECK(line.size() > 8) << "Must have at least the 8 status chars?";
     line.remove_prefix(8);
@@ -67,18 +144,134 @@ std::vector<std::string> ModelUtil::SvnList(std::string_view dir) {
 
     CHECK(!line.empty()) << "Line didn't contain filename?";
 
-    // Don't include the directory itself.
-    if (line != dir) {
-      // svn st will already include the path. But use minimal
-      // relative filenames when it's right here.
-      if (dir == "." && Util::StartsWith(line, "./")) {
-        line.remove_prefix(2);
-      }
-      ret.emplace_back(line);
+    std::filesystem::path p = NormalizePath(line);
+    if (std::filesystem::is_regular_file(p)) {
+      ret.push_back(p);
     }
   }
   return ret;
 }
+
+void ModelUtil::FileCollection::AddSvnFiles(std::string_view dir) {
+  for (const std::filesystem::path &p : SvnList(dir)) {
+    all.insert(p);
+  }
+}
+
+void ModelUtil::FileCollection::AddFile(std::filesystem::path file) {
+  all.insert(file);
+}
+
+void ModelUtil::FileCollection::AddExcludePattern(std::string_view pat) {
+  exclude.emplace_back(pat);
+}
+
+static bool Excluded(const std::vector<std::string> &exclude,
+                     std::string_view file) {
+  for (const std::string &wc : exclude) {
+    if (Util::MatchesWildcard(wc, file)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static size_t FileSize(std::string_view path) {
+  // PERF use stat! I must have this somewhere?
+  return Util::ReadFile(path).size();
+}
+
+std::map<std::string, ModelUtil::AvailableFile>
+ModelUtil::FileCollection::AvailableFiles(std::filesystem::path pwd) const {
+  std::map<std::string, ModelUtil::AvailableFile> ret;
+
+  std::vector<AvailableFile> valid_files;
+  std::unordered_set<std::filesystem::path> dirs;
+
+  // Apply the exclusion filters, and get the sizes of the files.
+  for (const std::filesystem::path &p : all) {
+    std::string p_str = p.string();
+    if (!Excluded(exclude, p_str)) {
+      size_t sz = FileSize(p_str);
+      valid_files.push_back(AvailableFile{p, sz});
+      dirs.insert(p.parent_path());
+    }
+  }
+
+  pwd = pwd.lexically_normal();
+  pwd.make_preferred();
+
+  struct DirInfo {
+    std::vector<std::string> segs;
+    int segs_to_use = 1;
+  };
+  std::map<std::filesystem::path, DirInfo> dir_info;
+
+  for (const std::filesystem::path &d : dirs) {
+    if (d == pwd) continue;
+    DirInfo info;
+    for (const auto &part : d) {
+      info.segs.push_back(part.string());
+    }
+    dir_info[d] = info;
+  }
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    std::map<std::string, std::vector<std::filesystem::path>> name_to_dirs;
+
+    for (const auto &[d, info] : dir_info) {
+      std::filesystem::path p;
+      int start = (int)info.segs.size() - info.segs_to_use;
+      if (start < 0) start = 0;
+      for (int i = start; i < (int)info.segs.size(); ++i) {
+        p /= info.segs[i];
+      }
+
+      std::string name = p.string();
+      name = Util::Replace(name, "\\", "/");
+      name_to_dirs[name].push_back(d);
+    }
+
+    for (const auto &[name, conflicts] : name_to_dirs) {
+      if (conflicts.size() > 1) {
+        for (const auto &d : conflicts) {
+          DirInfo &info = dir_info[d];
+          if (info.segs_to_use < (int)info.segs.size()) {
+            info.segs_to_use++;
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Build the map and return it.
+  for (const auto &vf : valid_files) {
+    std::filesystem::path d = vf.path.parent_path();
+    std::string key;
+    if (d == pwd) {
+      key = vf.path.filename().string();
+    } else {
+      std::filesystem::path p;
+      const DirInfo &info = dir_info[d];
+      int start = (int)info.segs.size() - info.segs_to_use;
+      if (start < 0) start = 0;
+      for (int i = start; i < (int)info.segs.size(); ++i) {
+        p /= info.segs[i];
+      }
+      p /= vf.path.filename();
+      key = p.string();
+      key = Util::Replace(key, "\\", "/");
+    }
+    ret[key] = vf;
+  }
+
+  return ret;
+}
+
 
 // Gemini likes to wrap json output in markdown.
 std::string ModelUtil::StripMarkup(std::string_view json) {
@@ -262,4 +455,21 @@ std::set<std::string> ModelUtil::IncludeDirs(
   }
 
   return dirs;
+}
+
+std::string ModelUtil::TextualizeChosenFiles(
+    const std::map<std::string, AvailableFile> &available,
+    std::span<const std::string> to_include) {
+  std::string text;
+  for (const std::string &f : to_include) {
+    auto it = available.find(f);
+    CHECK(it != available.end());
+    const ModelUtil::AvailableFile &af = it->second;
+    AppendFormat(&text,
+                 "The file {}:\n"
+                 "```\n"
+                 "{}"
+                 "```\n", f, Util::ReadFile(af.path.string()));
+  }
+  return text;
 }

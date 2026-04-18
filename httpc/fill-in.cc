@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <memory>
@@ -32,10 +33,10 @@ static std::string IncludesPrompt(
     std::string_view current_file,
     std::string_view current_file_contents,
     std::string_view request,
-    const std::map<std::string, int64_t> &files) {
+    const std::map<std::string, ModelUtil::AvailableFile> &files) {
   std::string filestring;
-  for (const auto &[f, sz] : files) {
-    AppendFormat(&filestring, "{: 8d}  {}\n", sz, f);
+  for (const auto &[f, af] : files) {
+    AppendFormat(&filestring, "{: 8d}  {}\n", af.bytes, f);
   }
 
   return std::format(
@@ -54,7 +55,8 @@ to the task. If the user's request is to write tests for some code,
 then we likely need to see both the header and implementation for
 that code in order to know how to test it well. Files that describe
 the project or contain a style guide for the current language are
-useful too.
+useful too. The "llm" directory contains style guides that apply
+to all projects.
 
 You may only choose from the list of available files. The available
 files will be given below, with their sizes. Your repsonse to the task
@@ -218,10 +220,16 @@ int main(int argc, char **argv) {
   // Dirs to search for files.
   std::set<std::string> dirs = {"."};
 
-  // Wildcards to never offer up.
-  std::vector<std::string> exclude = {"*.png", "*.jpg"};
-
   std::string file_arg;
+
+  ModelUtil::FileCollection files;
+  // Wildcards to never offer up.
+  files.AddExcludePattern("*.png");
+  files.AddExcludePattern("*.jpg");
+  files.AddExcludePattern("*COPYING");
+  files.AddExcludePattern("*LICENSE");
+  files.AddExcludePattern("*APACHE20.txt");
+  files.AddExcludePattern("*CONTRIBUTORS");
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -230,6 +238,7 @@ int main(int argc, char **argv) {
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
       i++;
+      Print("Considering " AYELLOW("{}") " (command-line)\n", argv[i]);
       dirs.insert(argv[i]);
     } else {
       CHECK(file_arg.empty()) << "Just one file on the command line.";
@@ -254,33 +263,32 @@ int main(int argc, char **argv) {
     request = "Can you fill this part in?";
   }
 
-  #if 1
+  // Probably should use paths here too.
   for (const std::string &d : ModelUtil::IncludeDirs(current_file)) {
-    Print("Via clangd: " AYELLOW("{}") "\n", d);
+    // Print("Via clangd: " AYELLOW("{}") "\n", d);
     dirs.insert(d);
   }
-  #endif
 
-  // Relative paths to files, with sizes.
-  std::map<std::string, int64_t> files;
   for (const std::string &dir : dirs) {
-    for (const std::string &file : ModelUtil::SvnList(dir)) {
-      if (!files.contains(file) &&
-          !Excluded(exclude, file)) {
-
-        size_t size = FileSize(file);
-        if (size > 0) {
-          files[file] = size;
-        }
-      }
-    }
+    files.AddSvnFiles(dir);
   }
+
+  std::map<std::string, ModelUtil::AvailableFile> available_files =
+    files.AvailableFiles();
+
+  Print("List of available files:\n");
+  for (const auto &[f, af] : available_files) {
+    Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
+          f, af.path.string(), af.bytes);
+  }
+
+  // LOG(FATAL) << "Disabled!";
 
   // Construct prompt to guess at files to include (cheap model).
 
   Timer include_timer;
   std::vector<std::string> to_include = [&]() -> std::vector<std::string> {
-      if (files.empty()) {
+      if (available_files.empty()) {
         Print("No files available! Skipping that phase.\n");
         return {};
       }
@@ -288,7 +296,7 @@ int main(int argc, char **argv) {
       CHECK(!request.empty());
       std::string includes_prompt =
         IncludesPrompt(current_file, current_file_contents,
-                       request, files);
+                       request, available_files);
 
       std::unique_ptr<ModelClient> cheap =
         ModelClient::Create(Model::GEMINI_CHEAPEST, api_key);
@@ -321,7 +329,7 @@ int main(int argc, char **argv) {
             if (Util::StartsWith(file, "./")) {
               file = file.substr(2);
             }
-            if (files.contains(file)) {
+            if (available_files.contains(file)) {
               to_include.push_back(file);
             } else {
               Print(AORANGE("Warning") ": Unavailable file chosen. {}\n",
@@ -358,16 +366,8 @@ int main(int argc, char **argv) {
   }
 
   // Read the file content.
-  std::string file_text;
-  for (const std::string &f : to_include) {
-    AppendFormat(&file_text,
-                 "\n"
-                 "The file {}:\n"
-                 "```\n"
-                 "{}"
-                 "```\n", f, Util::ReadFile(f));
-  }
-
+  std::string file_text = ModelUtil::TextualizeChosenFiles(available_files,
+                                                           to_include);
 
   Timer solve_timer;
   CHECK(!request.empty());
