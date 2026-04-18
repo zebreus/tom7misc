@@ -357,5 +357,9 @@ packet-writer_test.exe : packet-writer_test.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 
+markdown_test.exe : markdown.o markdown_test.o boxes-and-glue.o $(BASE) $(TEST_UTIL)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(TEST_UTIL) $(BASE) $(RE2_OBJECTS)

@@ -264,6 +264,9 @@ image-frgba:
   Images with floating point color channels and EXR support.
 image-resize:
   Fast and good quality image resizing, based on stb library.
+markdown:
+  Standalone parser for a subset of markdown; renderer for color
+  terminals (smart line breaking, etc.).
 montgomery64:
   Represents 64-bit numbers in "Montgomery Form", which allows for fast
   modular multiplication.
@@ -271,6 +274,10 @@ nice:
   Portable functions for changing the process's priority.
 optional-iterator:
   Possibly ill-advised trick for unpacking std::optional.
+packet-parser:
+  Wrapper around std::span for parsing in-memory packets or files.
+packet-writer:
+  Wrapper around std::vector for preparing in-memory packets or files.
 packrect:
   Packs rectangles, like to create a texture image atlas.
 periodically:

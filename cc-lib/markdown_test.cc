@@ -129,7 +129,7 @@ static void TestUnclosed() {
       "No [link](",
       // Here the bracket is actually ignored, not unclosed.
       // But it still should result in plain text.
-      "No [link",
+      "No [link]",
       "No [link",
     }) {
     Markdown::Document doc = Markdown::Parse(unclosed);
