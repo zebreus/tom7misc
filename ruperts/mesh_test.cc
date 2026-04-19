@@ -9,7 +9,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 

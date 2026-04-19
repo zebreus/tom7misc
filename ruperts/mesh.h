@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "hashing.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // A 3D triangle mesh; not necessarily convex. Some code expects that
 // faces be consistently oriented, that it be a proper manifold, or

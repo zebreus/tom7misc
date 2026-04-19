@@ -44,7 +44,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // TODO:
 //  - try initial_disc method again

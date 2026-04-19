@@ -14,7 +14,7 @@
 #include "polyhedra.h"
 #include "rendering.h"
 #include "status-bar.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 constexpr int DIGITS = 24;
 

@@ -2,7 +2,6 @@
 #include <cmath>
 #include <numbers>
 #include <string>
-#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -12,7 +11,7 @@
 #include "mov.h"
 #include "randutil.h"
 #include "status-bar.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 using frame2 = yocto::frame<double, 2>;
@@ -45,7 +44,8 @@ static void Spirograph() {
   img.Clear32(0x000000FF);
 
   const double angle_slice = 2.0 * std::numbers::pi / 7.0;
-  for (int p = 0; p < 10; p++) {
+  static constexpr int LIMIT = 10;
+  for (int p = 0; p < LIMIT; p++) {
     Piece piece;
     piece.v0 = vec2((RandDouble(&rc) - 0.5) * (HEIGHT * 0.9),
                     (RandDouble(&rc) - 0.5) * (HEIGHT * 0.9));
@@ -74,7 +74,7 @@ static void Spirograph() {
       }
     }
 
-    status.Progressf(i, 100, "Spirograph");
+    status.Progress(p, LIMIT, "Spirograph");
   }
 }
 

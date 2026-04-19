@@ -2,10 +2,9 @@
 #include "symmetry-groups.h"
 
 #include <vector>
-#include <numbers>
 
 #include "polyhedra.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 void SymmetryGroups::EdgeRotations(const Polyhedron &poly,
                                    std::vector<frame3> *rots) {

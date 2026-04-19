@@ -1,24 +1,19 @@
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
-#include <numbers>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <utility>
 #include <unordered_set>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
-#include "hashing.h"
 #include "image.h"
 #include "mesh.h"
 #include "polyhedra.h"
 #include "textsvg.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 using frame3 = yocto::frame<double, 3>;

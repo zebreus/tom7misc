@@ -6,10 +6,10 @@
 #include <utility>
 #include <vector>
 
-#include "yocto_matht.h"
-#include "mesh.h"
-#include "image.h"
 #include "base/logging.h"
+#include "image.h"
+#include "mesh.h"
+#include "yocto-math.h"
 
 // UDIM textures store more than one unit square, which can also be of
 // different resolution.

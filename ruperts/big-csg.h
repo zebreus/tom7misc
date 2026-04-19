@@ -6,7 +6,7 @@
 
 #include "mesh.h"
 #include "polyhedra.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // Internally uses rational coordinates. Expose this in interface too?
 //

@@ -24,7 +24,7 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 

@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <string>
 #include <vector>
-#include <format>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -14,7 +13,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 

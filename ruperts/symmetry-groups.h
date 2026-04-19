@@ -5,7 +5,7 @@
 #include <vector>
 #include <numbers>
 
-#include "yocto_matht.h"
+#include "yocto-math.h"
 #include "polyhedra.h"
 
 // The platonic solids are a nice way to get to their corresponding

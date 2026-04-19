@@ -13,7 +13,7 @@
 #include "periodically.h"
 #include "status-bar.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 [[maybe_unused]]
 static double Sample(const Polyhedron &poly, ArcFour *rc) {

@@ -1,42 +1,27 @@
 
-#include <bit>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <format>
-#include <mutex>
 #include <optional>
-#include <string>
 #include <string_view>
-#include <tuple>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "big-polyhedra.h"
-#include "bignum/big.h"
 #include "bounds.h"
 #include "color-util.h"
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
 #include "polyhedra.h"
-#include "randutil.h"
-#include "rendering.h"
-#include "run-z3.h"
 #include "status-bar.h"
-#include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "vector-util.h"
-#include "yocto_matht.h"
-#include "z3.h"
+#include "yocto-math.h"
 
 static constexpr int DIGITS = 24;
 

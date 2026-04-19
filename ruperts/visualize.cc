@@ -22,7 +22,7 @@
 #include "rendering.h"
 #include "status-bar.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;

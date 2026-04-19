@@ -13,7 +13,7 @@
 #include "big-polyhedra.h"
 #include "randutil.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 struct CompareVec3 {
   bool operator()(const vec3 &a, const vec3 &b) const {

@@ -39,7 +39,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "threadutil.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using namespace std;
 

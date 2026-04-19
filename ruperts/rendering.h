@@ -7,10 +7,9 @@
 #include <utility>
 #include <vector>
 
-#include "polyhedra.h"
-#include "yocto_matht.h"
-
 #include "image.h"
+#include "polyhedra.h"
+#include "yocto-math.h"
 
 struct Rendering {
   using vec2 = yocto::vec<double, 2>;

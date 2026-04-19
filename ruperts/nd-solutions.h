@@ -35,7 +35,7 @@
 #include "integer-voronoi.h"
 #include "threadutil.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // Maps N doubles to a score and solution.
 // Supports multi-threading, but not multiple processes.

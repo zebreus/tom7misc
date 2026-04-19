@@ -310,7 +310,8 @@ Markdown::Document Markdown::Parse(std::string_view s) {
         EmitCur();
         cur = PendingBullet{
           .indentation = leading_whitespace,
-          .body = std::string(rest)
+          .body = std::string(rest),
+          .children = {},
         };
       } else {
         // Find where this new bullet point belongs in the tree.
@@ -318,7 +319,8 @@ Markdown::Document Markdown::Parse(std::string_view s) {
 
         parent->children.push_back(PendingBullet{
           .indentation = leading_whitespace,
-          .body = std::string(rest)
+          .body = std::string(rest),
+          .children = {},
         });
       }
       continue;

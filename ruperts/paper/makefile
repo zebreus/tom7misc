@@ -36,7 +36,7 @@ $(SQLITE)/%.o : $(SQLITE)/%.cc makefile
 	@./makesvg.exe $< $@
 	@echo -n "⊿"
 
-BOVEX_LIB=$(BOVEX)/stdlib.bovex $(BOVEX)/cite.bovex $(BOVEX)/layout.bovex $(BOVEX)/palatino.bovex $(BOVEX)/paper.bib $(BOVEX)/hyph-en-us.tex
+BOVEX_LIB=$(BOVEX)/stdlib.bovex $(BOVEX)/cite.bovex $(BOVEX)/layout.bovex $(BOVEX)/font.bovex $(BOVEX)/paper.bib $(BOVEX)/hyph-en-us.tex
 
 solution-table.bovex : table.exe
 	@./table.exe > $@

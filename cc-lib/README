@@ -12,8 +12,8 @@ it's kind of complicated, you know?
 As of 2020 I'm pretty much on C++17 everywhere now, so these libraries
 may assume C++17 features and semantics. It's worth it. GCC 8 seems ok
 for C++17, but I am now on at least 9.2 on every platform. On Windows,
-I use and endorse x86_64-w64-mingw32-g++, which is version 11.3+!. On
-linux, just get the newest GCC.
+I use x86_64-w64-clang64 via msys2, which is clang version 22.1+!. On
+linux, just get the newest GCC or clang.
 
 Some of what's here is various parts of google "base" libraries (now
 "abseil"), since those are quite useful and I know them well. They
@@ -83,6 +83,8 @@ APACHE20 license, and you can consider my port to be APACHE20 as well.
 
 UnicodeData.txt is included. This is © 2025 Unicode®, Inc.
 See UNICODE.LICENSE for (just) this file.
+
+The yocto math templates have an MIT-like license, which is in the file.
 
 My own fresh code is licensed under the GPL, which can be found in
 COPYING.
@@ -320,3 +322,6 @@ wikipedia:
   the text in a Wikipedia dump.
 work-queue:
   Thread-safe work queue, which can batch inputs.
+yocto-math:
+  Templated geometry math (e.g. vec3) header.
+

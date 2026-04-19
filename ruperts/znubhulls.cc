@@ -21,7 +21,7 @@
 #include "run-z3.h"
 #include "status-bar.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 #include "z3.h"
 
 static constexpr int DIGITS = 24;

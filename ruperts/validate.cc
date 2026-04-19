@@ -15,7 +15,7 @@
 #include "polyhedra.h"
 #include "rendering.h"
 #include "solutions.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // We use rational numbers with at least this many digits of
 // precision.

@@ -2,10 +2,10 @@
 #ifndef _RUPERTS_HULL_H
 #define _RUPERTS_HULL_H
 
-#include "yocto_matht.h"
-
 #include <tuple>
 #include <vector>
+
+#include "yocto-math.h"
 
 // Note: Buggy?? See hull_test.cc.
 // You can use hull3d.h.

@@ -17,7 +17,7 @@
 #include "base/logging.h"
 #include "database.h"
 #include "polyhedra.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 struct SolutionDB {
   using vec3 = yocto::vec<double, 3>;

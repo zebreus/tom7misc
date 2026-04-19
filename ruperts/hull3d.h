@@ -2,7 +2,7 @@
 #ifndef _RUPERTS_HULL3D_H
 #define _RUPERTS_HULL3D_H
 
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 #include <tuple>
 #include <vector>

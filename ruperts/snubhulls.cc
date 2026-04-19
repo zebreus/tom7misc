@@ -33,7 +33,7 @@
 #include "timer.h"
 #include "util.h"
 #include "vector-util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 

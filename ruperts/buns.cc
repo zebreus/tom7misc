@@ -32,15 +32,14 @@
 #include "image.h"
 #include "opt/opt.h"
 #include "periodically.h"
+#include "polyhedra.h"
+#include "rendering.h"
+#include "solutions.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-
-#include "polyhedra.h"
-#include "rendering.h"
-#include "solutions.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 DECLARE_COUNTERS(iters, attempts, u1_, u2_, u3_, u4_, u5_, u6_);
 

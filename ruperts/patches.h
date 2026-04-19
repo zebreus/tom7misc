@@ -21,7 +21,7 @@
 #include "base/logging.h"
 #include "big-polyhedra.h"
 #include "polyhedra.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 using frame3 = yocto::frame<double, 3>;

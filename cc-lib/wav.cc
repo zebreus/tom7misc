@@ -768,6 +768,7 @@ bool drwav_init_file(drwav* pWav, const char* filename)
     return drwav_init(pWav, drwav__on_read_stdio, drwav__on_seek_stdio, (void*)pFile);
 }
 
+[[maybe_unused]]
 drwav* drwav_open_file(const char* filename)
 {
     FILE* pFile;
@@ -856,6 +857,7 @@ bool drwav_init_memory(drwav* pWav, const void* data, size_t dataSize)
     return true;
 }
 
+[[maybe_unused]]
 drwav* drwav_open_memory(const void* data, size_t dataSize)
 {
     drwav__memory_stream memoryStream;
@@ -1041,6 +1043,7 @@ drwav* drwav_open(drwav_read_proc onRead, drwav_seek_proc onSeek, void* pUserDat
     return pWav;
 }
 
+[[maybe_unused]]
 void drwav_close(drwav* pWav)
 {
     drwav_uninit(pWav);
@@ -1079,6 +1082,7 @@ uint64_t drwav_read(drwav* pWav, uint64_t samplesToRead, void* pBufferOut)
     return bytesRead / pWav->bytesPerSample;
 }
 
+[[maybe_unused]]
 bool drwav_seek_to_sample(drwav* pWav, uint64_t sample)
 {
     // Seeking should be compatible with wave files > 2GB.
@@ -1792,6 +1796,7 @@ int32_t* drwav__read_and_close_s32(drwav* pWav, unsigned int* channels, unsigned
 }
 
 
+[[maybe_unused]]
 int16_t* drwav_open_and_read_s16(drwav_read_proc onRead, drwav_seek_proc onSeek, void* pUserData, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1806,6 +1811,7 @@ int16_t* drwav_open_and_read_s16(drwav_read_proc onRead, drwav_seek_proc onSeek,
     return drwav__read_and_close_s16(&wav, channels, sampleRate, totalSampleCount);
 }
 
+[[maybe_unused]]
 float* drwav_open_and_read_f32(drwav_read_proc onRead, drwav_seek_proc onSeek, void* pUserData, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1820,6 +1826,7 @@ float* drwav_open_and_read_f32(drwav_read_proc onRead, drwav_seek_proc onSeek, v
     return drwav__read_and_close_f32(&wav, channels, sampleRate, totalSampleCount);
 }
 
+[[maybe_unused]]
 int32_t* drwav_open_and_read_s32(drwav_read_proc onRead, drwav_seek_proc onSeek, void* pUserData, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1835,6 +1842,7 @@ int32_t* drwav_open_and_read_s32(drwav_read_proc onRead, drwav_seek_proc onSeek,
 }
 
 #ifndef DR_WAV_NO_STDIO
+[[maybe_unused]]
 int16_t* drwav_open_and_read_file_s16(const char* filename, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1863,6 +1871,7 @@ float* drwav_open_and_read_file_f32(const char* filename, unsigned int* channels
     return drwav__read_and_close_f32(&wav, channels, sampleRate, totalSampleCount);
 }
 
+[[maybe_unused]]
 int32_t* drwav_open_and_read_file_s32(const char* filename, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1878,6 +1887,7 @@ int32_t* drwav_open_and_read_file_s32(const char* filename, unsigned int* channe
 }
 #endif
 
+[[maybe_unused]]
 int16_t* drwav_open_and_read_memory_s16(const void* data, size_t dataSize, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;
@@ -1906,6 +1916,7 @@ float* drwav_open_and_read_memory_f32(const void* data, size_t dataSize, unsigne
     return drwav__read_and_close_f32(&wav, channels, sampleRate, totalSampleCount);
 }
 
+[[maybe_unused]]
 int32_t* drwav_open_and_read_memory_s32(const void* data, size_t dataSize, unsigned int* channels, unsigned int* sampleRate, uint64_t* totalSampleCount)
 {
     if (sampleRate) *sampleRate = 0;

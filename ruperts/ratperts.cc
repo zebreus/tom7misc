@@ -43,7 +43,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 DECLARE_COUNTERS(iters, attempts, u1_, u2_, u3_, u4_, u5_, u6_);
 

@@ -21,7 +21,7 @@
 #include "point-map.h"
 #include "polyhedra.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 [[maybe_unused]]
 static double IsNear(double a, double b) {

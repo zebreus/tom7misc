@@ -7,11 +7,10 @@
 #include "ansi.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
-#include "bignum/big.h"
 #include "patches.h"
 #include "polyhedra.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 static constexpr int DIGITS = 24;
 

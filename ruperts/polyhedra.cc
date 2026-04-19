@@ -30,8 +30,7 @@
 #include "randutil.h"
 #include "set-util.h"
 #include "util.h"
-
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // XXX for debugging
 #include "rendering.h"

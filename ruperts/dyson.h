@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 struct Dyson {
   using vec3 = yocto::vec<double, 3>;

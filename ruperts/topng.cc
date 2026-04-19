@@ -11,7 +11,7 @@
 #include "polyhedra.h"
 #include "rendering.h"
 #include "solutions.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using frame3 = yocto::frame<double, 3>;
 

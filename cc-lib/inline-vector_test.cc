@@ -1,6 +1,10 @@
 #include "inline-vector.h"
 
+#include <array>
 #include <cstdint>
+#include <span>
+#include <string>
+#include <utility>
 
 #include "ansi.h"
 #include "base/print.h"
@@ -197,7 +201,9 @@ static void TestCopySemantics() {
   CHECK(assigned == original);
 
   // Self-assignment.
-  assigned = assigned;
+  // (Suppress clang warning by doing it via an alias.)
+  auto &alias = assigned;
+  assigned = alias;
   CHECK(assigned.size() == 20);
   CHECK(assigned[19] == 19);
 }

@@ -41,7 +41,7 @@
 #include "union-find.h"
 #include "util.h"
 #include "vector-util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 #include "z3.h"
 
 static const char *NONEMPTY_PATCHES_FILE = "scube-nonempty-patches.txt";

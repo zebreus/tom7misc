@@ -10,13 +10,13 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <yocto_matht.h>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "randutil.h"
 #include "hull3d.h"
+#include "randutil.h"
+#include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 

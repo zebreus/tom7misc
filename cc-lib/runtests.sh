@@ -4,7 +4,7 @@ set +e
 set +x
 
 make clean
-make -j
+make -j || exit -1
 
 ./heap_test.exe
 ./rle_test.exe
@@ -81,3 +81,5 @@ make -j
 ./wav_test.exe
 ./packet-parser_test.exe
 ./packet-writer_test.exe
+./markdown_test.exe
+./yocto-math_test.exe

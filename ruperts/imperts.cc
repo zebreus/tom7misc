@@ -24,7 +24,6 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
-#include "base/stringprintf.h"
 #include "opt/opt.h"
 #include "periodically.h"
 #include "polyhedra.h"
@@ -35,7 +34,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // Save an image for each (best) improved solution we find.
 static constexpr bool SAVE_IMAGES = false;

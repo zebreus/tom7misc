@@ -39,16 +39,14 @@
 #include "dyson.h"
 #include "image.h"
 #include "lines.h"
+#include "mesh.h"
+#include "mov-recorder.h"
+#include "mov.h"
 #include "periodically.h"
 #include "re2/re2.h"
 #include "smallest-sphere.h"
 #include "util.h"
-
-#include "mesh.h"
-#include "yocto_matht.h"
-
-#include "mov.h"
-#include "mov-recorder.h"
+#include "yocto-math.h"
 
 using namespace std;
 

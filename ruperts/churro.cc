@@ -12,7 +12,6 @@
 // graph which are just induced by the specific choice of parameter.
 
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -20,7 +19,6 @@
 #include <format>
 #include <functional>
 #include <mutex>
-#include <numbers>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -40,7 +38,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 DECLARE_COUNTERS(solve_attempts, improve_attempts, hard, noperts, prisms,
                  already);

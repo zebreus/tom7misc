@@ -13,7 +13,7 @@
 #include "base/logging.h"
 #include "polyhedra.h"
 #include "randutil.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using vec3 = Dyson::vec3;
 using quat4 = Dyson::quat4;

@@ -11,7 +11,7 @@
 #include "base/stringprintf.h"
 #include "image.h"
 #include "util.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 void SaveAsOBJ(const TexturedMesh &tmesh, std::string_view filename_base) {
   std::string base = (std::string)filename_base;

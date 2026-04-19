@@ -24,7 +24,7 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 DECLARE_COUNTERS(iters, attempts);
 

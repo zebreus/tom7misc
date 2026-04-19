@@ -8,14 +8,13 @@
 
 #include "hull3d.h"
 
-#include <tuple>
-#include <vector>
 #include <algorithm>
+#include <tuple>
 #include <unordered_set>
-
-#include "yocto_matht.h"
+#include <vector>
 
 #include "base/logging.h"
+#include "yocto-math.h"
 
 #define CONVHULL_3D_ENABLE
 

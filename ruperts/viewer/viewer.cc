@@ -6,7 +6,6 @@
 #include <ctime>
 #include <format>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -35,15 +34,13 @@
 #include "base/print.h"
 #include "image.h"
 #include "lines.h"
+#include "mesh.h"
+#include "mov-recorder.h"
+#include "mov.h"
 #include "periodically.h"
 #include "polyhedra.h"
 #include "util.h"
-
-#include "mesh.h"
-#include "yocto_matht.h"
-
-#include "mov.h"
-#include "mov-recorder.h"
+#include "yocto-math.h"
 
 using namespace std;
 

@@ -22,8 +22,8 @@ let
     in
       sticker {(Sticker) x = int-to-float x, y = int-to-float y,
                img = img-handle,
-               img-width = int-to-float pixel-width,
-               img-height = int-to-float pixel-height } []
+               img-width = pixel-width,
+               img-height = pixel-height } []
     end
 
   (* The whole slide is just this image exactly. *)

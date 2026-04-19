@@ -15,9 +15,8 @@
 #include "base/logging.h"
 #include "color-util.h"
 #include "image.h"
-
-#include "yocto_matht.h"
 #include "polyhedra.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;

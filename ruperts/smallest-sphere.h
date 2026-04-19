@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "yocto_matht.h"
+#include "yocto-math.h"
 #include "arcfour.h"
 
 struct SmallestSphere {

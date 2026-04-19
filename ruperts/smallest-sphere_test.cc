@@ -17,7 +17,7 @@
 #include "randutil.h"
 #include "status-bar.h"
 #include "timer.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 using namespace yocto;
 

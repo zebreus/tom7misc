@@ -2,12 +2,12 @@
 #ifndef _RUPERTS_POINT_MAP_H
 #define _RUPERTS_POINT_MAP_H
 
-#include <optional>
-#include <vector>
 #include <cstddef>
+#include <optional>
 #include <utility>
+#include <vector>
 
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // Below there is also PointSet3, which is a simple wrapper for
 // the common case that you don't need interesting values.

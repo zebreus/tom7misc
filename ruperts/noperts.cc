@@ -44,7 +44,7 @@
 #include "timer.h"
 #include "util.h"
 #include "work-queue.h"
-#include "yocto_matht.h"
+#include "yocto-math.h"
 
 // Try to find counterexamples.
 
