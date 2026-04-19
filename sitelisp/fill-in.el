@@ -28,6 +28,14 @@
 (defvar fill-in-exe "c:\\code\\sf_svn\\httpc\\fill-in.exe"
   "The executable to use for the fill-in command.")
 
+(defcustom fill-in-default-directories
+  '("/d/tom/llm"
+    ; "/c/code/sf_svn/cc-lib"
+    )
+  "List of directories that are suggested by default for fill-in."
+  :type '(repeat directory)
+  :group 'fill-in)
+
 (defvar-local fill-in--font-lock-set-up-p nil)
 
 (defun fill-in--set-up-font-lock ()
@@ -82,6 +90,12 @@
          
          ;; Generate a short random nonce.
          (nonce (format "%06x" (random #xffffff)))
+
+         (fill-in-command
+          (append (list fill-in-exe filename)
+                  (apply #'append
+                         (mapcar (lambda (dir) (list "-dir" dir))
+                                 fill-in-default-directories))))
          
          ;; Direct check for C-family languages
          (is-c-like (derived-mode-p 'c-mode 'c++-mode 'objc-mode
@@ -127,7 +141,7 @@
     (eprocs-run
      :name (format "fill-in-%s" nonce)
      :buffer (format "*Fill In Async %s*" nonce)
-     :command (list fill-in-exe filename)
+     :command fill-in-command
      :input region-text
      :pipeline
      (list #'eprocs-filter-ansi-colors

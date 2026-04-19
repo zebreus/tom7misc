@@ -50,6 +50,25 @@
 (require 'fill-in)
 (require 'wtf)
 
+;; On windows, "env GZIP= gzip -d" is not a good way to run
+;; gzip (there is no "env" command). So replace that with normal
+;; gzip, which should be available in msys2 path. This works fine
+;; on linux too. But also, prefer zstd.
+(with-eval-after-load 'tramp-sh
+  ;; Remove the wacky one
+  (setq tramp-inline-compress-commands 
+        (remove '("env GZIP= gzip" "env GZIP= gzip -d")
+                tramp-inline-compress-commands))  
+  ;; Add a reasonable one.
+  (add-to-list 'tramp-inline-compress-commands '("gzip" "gzip -d"))
+
+  ;; And move the superior zstd to the front.
+  (setq tramp-inline-compress-commands
+        (cons '("zstd --rm" "zstd -d --rm")
+              (remove '("zstd --rm" "zstd -d --rm")
+                      tramp-inline-compress-commands)))
+  )
+
 (defun code-format-paragraph ()
   "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."
   (interactive "")
