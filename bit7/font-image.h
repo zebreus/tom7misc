@@ -1,6 +1,7 @@
 #ifndef _BIT7_FONT_IMAGE_H
 #define _BIT7_FONT_IMAGE_H
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -62,6 +63,12 @@ struct Config {
 
   char vendor[4] = {'f', 'o', 'n', 't'};
 
+  // Details for composing the braille glyphs.
+  std::optional<Image1> braille_on;
+  std::optional<Image1> braille_off;
+  // Two x locations, 4 y locations.
+  std::vector<int> braille_x, braille_y;
+
   static Page ParsePage(std::string_view p);
   static const char *PageString(Page p);
   static Config ParseConfig(std::string_view cfgfile);
@@ -110,6 +117,7 @@ struct FontImage {
 
  private:
   void AddPage(const ImageRGBA &img, Page p);
+  void ComposeBraille();
 };
 
 // For drawing to ImageRGBA.

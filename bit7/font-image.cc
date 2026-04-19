@@ -54,7 +54,6 @@ Page Config::ParsePage(std::string_view p) {
   if (p == "bit7-extended2") return Page::BIT7_EXTENDED2;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   if (p == "bit7-math") return Page::BIT7_MATH;
-  if (p == "bit7-braille") return Page::BIT7_BRAILLE;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -72,8 +71,6 @@ const char *Config::PageString(Page p) {
     return "bit7-cyrillic";
   case Page::BIT7_MATH:
     return "bit7-math";
-  case Page::BIT7_BRAILLE:
-    return "bit7-braille";
   default:
     break;
   }
@@ -81,12 +78,7 @@ const char *Config::PageString(Page p) {
 
 inline static bool PageUsesEmptyGlyphs(Page p) {
   // Bit7 classic has the main space character.
-  // Another case is U+2800, which is a blank braille pattern. We could
-  // just map it to space, but since this Unicode block is nice and
-  // orderly (based on the binary) it is cleaner to reserve space in
-  // the image for it.
-  return p == Page::BIT7_CLASSIC ||
-    p == Page::BIT7_BRAILLE;
+  return p == Page::BIT7_CLASSIC;
 }
 
 // Tips:
@@ -786,7 +778,10 @@ static PageInfo PageBit7Extended() {
     // "Place of interest" (mac "open apple" key)
     0x2318,
 
-    -1, -1, -1, -1, -1, -1, -1, -1,
+    // Warning Sign
+    0x26A0,
+
+    -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -2077,30 +2072,6 @@ static PageInfo PageBit7Math() {
   return info;
 };
 
-static PageInfo PageBit7Braille() {
-  PageInfo info;
-  info.sections = {
-    // Braille 6 row
-    {0, 4 * 16},
-    // Braille 8-row (with nonzero bottom row)
-    {4 * 16, 12 * 16},
-  };
-
-  for (uint32_t c = 0; c < 0x100; c++) {
-    // Note that the bits are arrayed like this:
-    // 1 4
-    // 2 5
-    // 3 6
-    // 7 8
-    info.codepoints.push_back(0x2800 + c);
-  }
-
-  while (info.codepoints.size() < 16 * 24)
-    info.codepoints.push_back(-1);
-
-  return info;
-}
-
 static PageInfo GetPageInfo(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
@@ -2109,7 +2080,6 @@ static PageInfo GetPageInfo(Page p) {
   case Page::BIT7_EXTENDED2: return PageBit7Extended2();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   case Page::BIT7_MATH: return PageBit7Math();
-  case Page::BIT7_BRAILLE: return PageBit7Braille();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
@@ -2304,7 +2274,6 @@ REUSE_FOR = {
   {' ', 0x202F},  // Narrow No-Break Space
   {' ', 0x205F},  // Medium Mathematical Space
   {' ', 0x3000},  // Ideographic space
-  {' ', 0x2800},  // Braille 0
 };
 
 // Unicode has width variants for characters that normally
@@ -2450,7 +2419,8 @@ Config Config::ParseConfig(std::string_view cfgfile) {
   std::string path = Util::PathOf(cfgfile);
 
   Config config;
-  std::map<string, string> m = Util::ReadFileToMap(cfgfile);
+  std::map<string, string> m = ReadConfigToMap(cfgfile);
+
   CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
   config.pngfile = Util::DirPlus(path, m["pngfile"]);
   config.name = m["name"];
@@ -2475,8 +2445,9 @@ Config Config::ParseConfig(std::string_view cfgfile) {
   if (m.find("fixed-width") != m.end())
     config.fixed_width = true;
 
-  std::vector<std::string> pp =
-    Util::Tokens(m["pages"], [](char c) { return c == ' '; });
+  auto IsSpace = [](char c) { return c == ' '; };
+
+  std::vector<std::string> pp = Util::Tokens(m["pages"], IsSpace);
 
   if (m.find("vendor") != m.end()) {
     std::string v = m["vendor"];
@@ -2491,6 +2462,30 @@ Config Config::ParseConfig(std::string_view cfgfile) {
     if (!p.empty()) {
       config.pages.push_back(ParsePage(p));
     }
+  }
+
+  if (m.find("braille-on") != m.end()) {
+    config.braille_on = ParseBitmap(m["braille-on"]);
+  }
+
+  if (m.find("braille-off") != m.end()) {
+    config.braille_off = ParseBitmap(m["braille-off"]);
+  }
+
+  if (m.find("braille-x") != m.end()) {
+    for (const std::string &t : Util::Tokens(m["braille-x"], IsSpace)) {
+      if (!t.empty()) config.braille_x.push_back(atoi(t.c_str()));
+    }
+    CHECK(config.braille_x.size() == 2) << "There should be exactly 2 "
+      "x positions for braille-x (space-separated integers)";
+  }
+
+  if (m.find("braille-y") != m.end()) {
+    for (const std::string &t : Util::Tokens(m["braille-y"], IsSpace)) {
+      if (!t.empty()) config.braille_y.push_back(atoi(t.c_str()));
+    }
+    CHECK(config.braille_y.size() == 4) << "There should be exactly 4 "
+      "y positions for braille-y (space-separated integers)";
   }
 
   return config;
@@ -2657,6 +2652,69 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
   }
 }
 
+// If we have images for braille_on and braille_off, and the
+// correct number of row and column positions, then compose
+// glyphs for the 256 codepoints starting at U+2800; insert
+// them in the glyphs array and map them in the codepoint_to_glyph
+// map.
+void FontImage::ComposeBraille() {
+  if (!config.braille_on.has_value() || !config.braille_off.has_value() ||
+      config.braille_x.size() != 2 || config.braille_y.size() != 4) {
+    return;
+  }
+
+  int width = config.charbox_width - config.spacing;
+  if (width <= 0) {
+    width = config.charbox_width;
+  }
+
+  for (int i = 0; i < 256; i++) {
+    ImageA glyph(width, config.charbox_height);
+    glyph.Clear(0x00);
+
+    for (int dot_idx = 0; dot_idx < 8; dot_idx++) {
+      // Note that the bits are arrayed like this:
+      // 1 4
+      // 2 5
+      // 3 6
+      // 7 8
+      const auto &[row, col] = [dot_idx]() -> std::pair<int, int> {
+          switch (dot_idx) {
+          default:
+          case 0: return {0, 0};
+          case 1: return {1, 0};
+          case 2: return {2, 0};
+          case 3: return {0, 1};
+          case 4: return {1, 1};
+          case 5: return {2, 1};
+          case 6: return {3, 0};
+          case 7: return {3, 1};
+          }
+        }();
+
+      const bool is_on = !!(i & (1 << dot_idx));
+      const Image1 &dot = is_on ?
+        config.braille_on.value() :
+        config.braille_off.value();
+
+      const int dx = config.braille_x[col];
+      const int dy = config.braille_y[row];
+
+      for (int y = 0; y < dot.Height(); y++) {
+        for (int x = 0; x < dot.Width(); x++) {
+          if (dot.GetPixel(x, y)) {
+            glyph.SetPixel(dx + x, dy + y, 0xFF);
+          }
+        }
+      }
+    }
+
+    const int gidx = (int)glyphs.size();
+    glyphs.push_back(Glyph{.left_edge = 0, .pic = std::move(glyph)});
+    unicode_to_glyph[0x2800 + i] = gidx;
+  }
+}
+
 FontImage::FontImage(const Config &config) : config(config) {
 
   // For fixed-width fonts, the width is always the size of the charbox
@@ -2695,6 +2753,8 @@ FontImage::FontImage(const Config &config) : config(config) {
                            page_width, page_height);
     AddPage(page_img, p);
   }
+
+  ComposeBraille();
 
   // After every page is loaded, fill in any unused codepoints that
   // can be copied from existing ones.
