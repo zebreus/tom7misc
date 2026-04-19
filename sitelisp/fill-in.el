@@ -36,6 +36,14 @@
   :type '(repeat directory)
   :group 'fill-in)
 
+(defcustom fill-in-configs
+  '("/c/code/sf_svn/sitelisp/model-config.txt"
+    ; ...
+    )
+  "List of config files passed to fill-in."
+  :type '(repeat file)
+  :group 'fill-in)
+
 (defvar-local fill-in--font-lock-set-up-p nil)
 
 (defun fill-in--set-up-font-lock ()
@@ -95,7 +103,11 @@
           (append (list fill-in-exe filename)
                   (apply #'append
                          (mapcar (lambda (dir) (list "-dir" dir))
-                                 fill-in-default-directories))))
+                                 fill-in-default-directories))
+                  (apply #'append
+                         (mapcar (lambda (cfg) (list "-config" cfg))
+                                 fill-in-configs))
+                  ))
          
          ;; Direct check for C-family languages
          (is-c-like (derived-mode-p 'c-mode 'c++-mode 'objc-mode

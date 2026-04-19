@@ -17,27 +17,46 @@
 (require 'eprocs)
 
 (defvar wtf-exe "c:\\code\\sf_svn\\httpc\\wtf.exe"
-  "The executable to use for the wtf command. It will be invoked like 
+  "The executable to use for the wtf command. It will be invoked like
   wtf.exe -file current_file \"This is the user's question.\"
   with the contents of the region as stdin.")
+
+(defcustom wtf-configs
+  '("/c/code/sf_svn/sitelisp/model-config.txt"
+    ; ...
+    )
+  "List of config files passed to wtf."
+  :type '(repeat file)
+  :group 'wtf)
 
 (defun wtf (question beg end)
   "Prompt the user for a QUESTION and send it to the wtf subprocess.
 If the buffer visits a file, it is saved and passed on the command line."
   (interactive "sQuestion: \nr")
-  (when buffer-file-name
-    (save-buffer))
-  (let ((command (if buffer-file-name
-                     (list wtf-exe "-file" buffer-file-name question)
-                   (list wtf-exe question)))
-        (input (buffer-substring-no-properties beg end)))
+  ;; Grab the selected region before we do anything else, so that
+  ;; something like a save hook doesn't wreck it.
+  (let ((input (buffer-substring-no-properties beg end))
+        (nonce (format "%06x" (random #xffffff))))
+
+    (when buffer-file-name
+      (save-buffer))
     (deactivate-mark)
-    (eprocs-run
-     :name "wtf"
-     :buffer "*wtf*"
-     :command command
-     :input input
-     :pipeline (list #'eprocs-filter-ansi-colors))))
+
+    (let* ((wtf-command
+            (append (list wtf-exe)
+                    (if buffer-file-name
+                        (list "-file" buffer-file-name)
+                      nil)
+                    (apply #'append
+                           (mapcar (lambda (cfg) (list "-config" cfg))
+                                   fill-in-configs))
+                    (list question))))
+      (eprocs-run
+       :name (format "wtf-%s" nonce)
+       :buffer (format "*wtf-%s*" nonce)
+       :command wtf-command
+       :input input
+       :pipeline (list #'eprocs-filter-ansi-colors)))))
 
 
 (provide 'wtf)

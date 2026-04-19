@@ -94,8 +94,12 @@ struct ModelUtil {
     // prevent files from being returned in AvailableFiles.
     void AddExcludePattern(std::string_view exclude);
 
+    // Read a config file and add files, exclusion patterns, directory
+    // descriptions and so on from there.
+    void AddConfig(std::string_view config_file);
+
    private:
-    friend struct AvailableFile;
+    friend struct AvailableFiles;
     std::vector<std::string> exclude;
     // All files that have been added.
     std::unordered_set<std::filesystem::path> all;

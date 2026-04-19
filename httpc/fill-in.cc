@@ -219,9 +219,14 @@ int main(int argc, char **argv) {
   std::string file_arg;
 
   ModelUtil::FileCollection files;
+  // files.DescribeDir("../cc-lib/", "General C++ utilities");
+  // files.DescribeDir("../cc-lib/geom", "C++ geometry utilities");
+  // files.DescribeDir("d:\\tom\\llm", "Style guides");
+
   // Wildcards to never offer up.
   files.AddExcludePattern("*.png");
   files.AddExcludePattern("*.jpg");
+  files.AddExcludePattern("*.ccz");
   files.AddExcludePattern("*COPYING");
   files.AddExcludePattern("*LICENSE");
   files.AddExcludePattern("*APACHE20.txt");
@@ -231,11 +236,19 @@ int main(int argc, char **argv) {
     std::string_view arg = argv[i];
     if (arg == "-v") {
       verbose++;
+
+    } else if (arg == "-config") {
+      CHECK(i + 1 < argc);
+      i++;
+      Print("Read config " ABLUE("{}") "\n", argv[i]);
+      files.AddConfig(argv[i]);
+
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
       i++;
       Print("Considering " AYELLOW("{}") " (command-line)\n", argv[i]);
       dirs.insert(argv[i]);
+
     } else {
       CHECK(file_arg.empty()) << "Just one file on the command line.";
       file_arg = std::string(arg);
@@ -272,12 +285,14 @@ int main(int argc, char **argv) {
   ModelUtil::AvailableFiles available = files.GetAvailable();
 
   Print("List of available files:\n");
+  /*
   for (const auto &[f, af] : available.files) {
     Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
           f, af.path.string(), af.bytes);
   }
+  */
 
-  // LOG(FATAL) << "Disabled!";
+  Print("{}\n", available.Textualize());
 
   // Construct prompt to guess at files to include (cheap model).
 

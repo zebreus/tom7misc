@@ -101,7 +101,7 @@ struct PGNParser {
   bool Parse(const std::string &s, PGN *pgn) const;
   PGNParser();
 
-private:
+ private:
   const RE2 meta_line_re, move_re, comment_re, clock_re, eval_re, end_re;
 };
 

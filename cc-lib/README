@@ -159,6 +159,8 @@ threadutil:
   convenience methods; if you want to do anything fancy
   you'll probably want to be managing thread lifetimes
   yourself.
+ico:
+  Parses and encodes ICO and CUR image files.
 interval-tree:
   Stores intervals on a 1D number line, with an efficient query
   for intervals that contain a given point.

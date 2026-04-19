@@ -180,16 +180,25 @@ int main(int argc, char **argv) {
     std::string_view arg = argv[i];
     if (arg == "-v") {
       verbose++;
+
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
       i++;
       Print("Considering " AYELLOW("{}") " (command-line)\n", argv[i]);
       dirs.insert(argv[i]);
+
     } else if (arg == "-file") {
       CHECK(file_arg.empty()) << "At most one -file.";
       CHECK(i + 1 < argc);
       i++;
       file_arg = argv[i];
+
+    } else if (arg == "-config") {
+      CHECK(i + 1 < argc);
+      i++;
+      Print("Read config " ABLUE("{}") "\n", argv[i]);
+      files.AddConfig(argv[i]);
+
     } else {
       CHECK(!question.has_value()) << "Quote the question on the "
         "command line. (Already saw " << question.value() << ")";

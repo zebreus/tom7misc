@@ -58,7 +58,9 @@ std::filesystem::path ModelUtil::NormalizePath(std::string_view p) {
   path = std::filesystem::absolute(path);
 
   // Resolve any "." or ".." and remove redundant slashes.
-  path = path.lexically_normal();
+  // This will also make the drive letter have the appropriate
+  // case (and similar OS-specific normalizations).
+  path = std::filesystem::weakly_canonical(path);
 
   // Convert all forward slashes '/' to native backslashes '\'.
   path.make_preferred();
@@ -87,7 +89,7 @@ std::string ModelUtil::UnixPath(std::filesystem::path p) {
 
 void ModelUtil::FileCollection::DescribeDir(std::filesystem::path dir,
                                             std::string_view desc) {
-  dir_descs[dir] = std::string(desc);
+  dir_descs[std::filesystem::weakly_canonical(dir)] = std::string(desc);
 }
 
 // Must be like *.h.
@@ -100,6 +102,35 @@ void ModelUtil::FileCollection::AddWildcard(std::filesystem::path dir,
       if (std::filesystem::is_regular_file(p)) {
         all.insert(p);
       }
+    }
+  }
+}
+
+void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
+  // For interpreting relative paths.
+  std::filesystem::path config_path =
+    std::filesystem::weakly_canonical(Util::PathOf(config_file));
+
+  for (std::string_view line : Util::ReadFileToLines(config_file)) {
+    Util::RemoveOuterWhitespace(&line);
+    if (line.empty() || line.starts_with("#")) continue;
+
+    if (Util::TryStripPrefix("describe", &line)) {
+      std::string_view dir = Util::Chop(&line);
+      Util::RemoveLeadingWhitespace(&line);
+
+      std::filesystem::path cc = config_path / dir;
+      if (VERBOSE) {
+        Print("Config describes {} / {} = {}\n",
+              config_path.string(), dir, cc.string());
+      }
+
+      if (!line.empty()) {
+        DescribeDir(cc, line);
+      }
+
+    } else {
+      LOG(FATAL) << "Unexpected command in config: " << line;
     }
   }
 }
@@ -200,14 +231,78 @@ static bool Excluded(const std::vector<std::string> &exclude,
   return false;
 }
 
+// Textualize the list of chosen files using the directory
+// descriptions.
+//
+// Style guides:
+//     3168  llm/cpp-style-guide.txt
+//     2456  llm/makefile-style-guide.txt
+// General C++ utilities:
+//     2341  cc-lib/stats.h
+//     1214  cc-lib/stats_test.cc
+//     3218  cc-lib/base/logging.h
+// C++ geometry libraries:
+//     2156  cc-lib/geom/lines.h
+// Other files:
+//     3414  project.txt
 std::string ModelUtil::AvailableFiles::Textualize() const {
-  std::string filestring;
+  CHECK(parent != nullptr);
+  std::string text;
 
-  for (const auto &[f, af] : files) {
-    AppendFormat(&filestring, "{: 8d}  {}\n", af.bytes, f);
+  struct FileRef {
+    const std::string *name;
+    const AvailableFile *file;
+  };
+  std::map<std::string, std::vector<FileRef>> groups;
+  std::vector<FileRef> other_files;
+
+  if (VERBOSE) {
+    for (const auto &[dir, desc] : parent->dir_descs) {
+      Print("{}: {}\n", dir.string(), desc);
+    }
   }
 
-  return filestring;
+  for (const auto &[f, af] : files) {
+    // Empty string means no description matched.
+    std::string desc;
+
+    std::filesystem::path p = af.path.parent_path();
+    if (VERBOSE) {
+      Print("Path to test: {}\n", p.string());
+    }
+
+    for (;;) {
+      auto it = parent->dir_descs.find(p);
+      if (it != parent->dir_descs.end()) {
+        desc = it->second;
+        break;
+      }
+      std::filesystem::path next = p.parent_path();
+      if (next == p) break;
+      p = next;
+    }
+
+    groups[desc].push_back({&f, &af});
+  }
+
+  auto OutputGroup = [&text](std::string_view desc,
+                            const std::vector<FileRef> &files) {
+      AppendFormat(&text, "{}:\n", desc);
+      for (const auto &ref : files) {
+        AppendFormat(&text, "{:8d}  {}\n",
+                     ref.file->bytes, *ref.name);
+      }
+    };
+
+  for (const auto &[desc, fs] : groups)
+    if (!desc.empty())
+      OutputGroup(desc, fs);
+
+  std::string_view other_header =
+    groups.size() > 1 ? "Other" : "Files";
+  if (groups.contains("")) OutputGroup(other_header, groups[""]);
+
+  return text;
 }
 
 
