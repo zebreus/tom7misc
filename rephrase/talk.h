@@ -32,7 +32,7 @@ struct Talk {
     std::optional<Video> video;
     // Goal pace is to reach this slide by this number
     // of seconds (total).
-    int target_seconds = 0;
+    std::optional<int> target_seconds;
   };
 
   static Talk Load(

@@ -112,7 +112,7 @@ struct ImagePage : public Page {
   const ImageDocument *doc = nullptr;
 
   int duration = 0;
-  int target_sec = 0;
+  std::optional<int> target_sec;
   std::string section;
   std::unique_ptr<ImageRGBA> image;
 

@@ -267,6 +267,11 @@ datatype element =
                  width : float,
                  text : layout }
   | StickerElt of layout
+  (* TODO: This makes a video, but the frame's contents
+     won't be rendered above it. We should render the
+     frame with a transparent background in this case,
+     and put it on top of the video. *)
+  | VideoBackground of string
 
 fun add-textbox props { x : float,
                         y : float,
@@ -401,6 +406,11 @@ fun combo-slide slide (elts : element list) =
       output-frame
       (!current-page, !current-frame,
        lay)
+      | add-elt (VideoBackground src) =
+      output-frame
+      (!current-page, !current-frame,
+       fullscreen-video { loop = LOOP-VIDEO, audio = VIDEO-AUDIO,
+                          src = src })
 
   in
     add-background-image BACKGROUND-IMAGE;
@@ -511,6 +521,30 @@ fun title-slide slide title author venue =
 
     next-slide()
   end
+
+fun centered-text-slide slide title =
+  let
+    val props = slide-props slide
+    open props : slide-props
+
+    fun title-text lay =
+      span {(Span)
+            font-bold = true,
+            font-color = TITLE-FONT-COLOR,
+            font-size = TITLE-FONT-SIZE} (palatino lay)
+
+    val cy = (SLIDE-HEIGHT -. TITLE-FONT-SIZE) *. 0.5
+  in
+    add-background-image BACKGROUND-IMAGE;
+
+    output-frame
+    (!current-page, !current-frame,
+     centered-text-sticker { x = 0.0, y = cy, width = SLIDE-WIDTH }
+     (title-text title));
+
+    next-slide()
+  end
+
 
 (* Titled slide with a single centered image on it. *)
 fun diagram-slide slide title img =

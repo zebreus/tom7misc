@@ -101,6 +101,10 @@ fun list-head (h :: t) = h
 fun list-tail (h :: t) = t
   | list-tail nil = fail "empty list"
 
+fun list-take 0 _ = nil
+  | list-take _ nil = nil
+  | list-take n (h :: t) = h :: list-take (n - 1) t
+
 fun list-foldl f b nil = b
   | list-foldl f b (h :: t) = list-foldl f (f (h, b)) t
 

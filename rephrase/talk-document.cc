@@ -173,10 +173,10 @@ void TalkDocument::GenerateOutput(
       }
 
       for (const auto &frame : page) {
-        if (frame->target_sec > 0) {
+        if (frame->target_sec.has_value()) {
           AppendFormat(&talk,
                        "  target {}\n",
-                       frame->target_sec);
+                       frame->target_sec.value());
           // Just the first one we see.
           break;
         }

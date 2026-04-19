@@ -37,10 +37,18 @@
    let elt = document.getElementById('timer');
    let now = performance.now();
    let elapsed = Math.round((now - start_time) / 1000.0);
+
+   // "target time 0" means that this is a reset slide,
+   // like the title. we also don't show timer.
+   if (next_target <= 0) {
+     start_time = now;
+     elt.innerHTML = '';
+   }
+
    let left = next_target - elapsed;
    if (left < 0) left = 0;
    let s = '';
-   if (left > 60) {
+   if (left >= 60) {
      console.log(left);
      s += '' + ((left / 60) | 0);
      s += ":";
@@ -118,7 +126,7 @@
 
    next_target = 0;
    for (let i = slide_idx; i < slides.length; i++) {
-     if (slides[i].target > 0) {
+     if ('target' in slides[i]) {
        next_target = slides[i].target;
        break;
      }

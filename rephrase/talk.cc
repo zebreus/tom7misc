@@ -79,7 +79,7 @@ Talk Talk::Load(string_view src_filename) {
     } else if (cmd == "target") {
       CHECK(slide != nullptr) << "target: Add a slide first.";
       string sec = Util::chop(line);
-      slide->target_seconds = atoi(sec.c_str());
+      slide->target_seconds = {atoi(sec.c_str())};
 
     } else if (cmd == "array") {
       CHECK(slide != nullptr) << "array: start slide first";
@@ -145,10 +145,11 @@ void Talk::SaveJS(string_view program_dir, string_view out_dir) {
       AppendFormat(&json, "}}");
     }
 
-    if (slide.target_seconds > 0) {
+    if (slide.target_seconds.has_value()) {
+      Print("Target seconds: {}\n", slide.target_seconds.value());
       AppendFormat(&json,
                    ", target: {}",
-                   slide.target_seconds);
+                   slide.target_seconds.value());
     }
 
     AppendFormat(&json, "}},\n");

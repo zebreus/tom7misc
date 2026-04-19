@@ -54,6 +54,10 @@ fun image-is-raster img =
   in raster
   end
 
+(* Remember that a BoVeX document allows images to be
+   placed at arbitrary scales, and this may be better
+   than scaling the image yourself. *)
+
 (* RESAMPLE is an unspecified "good" method that blends
    pixels. TODO: Support explicitly specifying more filters. *)
 datatype image-scaling = NEAREST-NEIGHBOR | RESAMPLE
@@ -90,6 +94,14 @@ in
                                    method = scalecode scaling})
     end
 
-  (* TODO image-scale-to, etc. *)
+  fun image-scale-to { image = image as Image img,
+                       width : float,
+                       height : float,
+                       scaling : image-scaling } =
+    Image (internal-image-scale {(InternalImageScale)
+                                 image = img,
+                                 width = width,
+                                 height = height,
+                                 method = scalecode scaling})
 
 end
