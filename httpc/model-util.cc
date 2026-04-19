@@ -85,6 +85,24 @@ std::string ModelUtil::UnixPath(std::filesystem::path p) {
   #endif
 }
 
+void ModelUtil::FileCollection::DescribeDir(std::filesystem::path dir,
+                                            std::string_view desc) {
+  dir_descs[dir] = std::string(desc);
+}
+
+// Must be like *.h.
+// Can call this multiple times for the same directory, though.
+void ModelUtil::FileCollection::AddWildcard(std::filesystem::path dir,
+                                            std::string_view pattern) {
+  for (std::string_view f : Util::ListFiles(dir.string())) {
+    if (Util::MatchesWildcard(pattern, f)) {
+      std::filesystem::path p = dir / f;
+      if (std::filesystem::is_regular_file(p)) {
+        all.insert(p);
+      }
+    }
+  }
+}
 
 std::vector<std::filesystem::path>
 ModelUtil::SvnList(std::string_view dir) {
@@ -95,8 +113,13 @@ ModelUtil::SvnList(std::string_view dir) {
   // "svn status -vq" will show everything we want, but we
   // have to remove some stuff to find the filename:
   // M             6997     6996 tom7         makefile
+  //
+  // We use --depth files to only show files, since otherwise
+  // we get the full tree recursively. We might want to get the
+  // tracked subdirectories too, so that they could be offered
+  // for a second pass.
 
-  std::string cmd = std::format("svn st -vq \"{}\"",
+  std::string cmd = std::format("svn st -vq --depth files \"{}\"",
                                 // svn insists on unix-style pathnames
                                 UnixPath(dir));
   std::optional<std::string> out = ProcessUtil::GetOutput(cmd);
@@ -177,23 +200,29 @@ static bool Excluded(const std::vector<std::string> &exclude,
   return false;
 }
 
-static size_t FileSize(std::string_view path) {
-  // PERF use stat! I must have this somewhere?
-  return Util::ReadFile(path).size();
+std::string ModelUtil::AvailableFiles::Textualize() const {
+  std::string filestring;
+
+  for (const auto &[f, af] : files) {
+    AppendFormat(&filestring, "{: 8d}  {}\n", af.bytes, f);
+  }
+
+  return filestring;
 }
 
-std::map<std::string, ModelUtil::AvailableFile>
-ModelUtil::FileCollection::AvailableFiles(std::filesystem::path pwd) const {
-  std::map<std::string, ModelUtil::AvailableFile> ret;
+
+ModelUtil::AvailableFiles
+ModelUtil::FileCollection::GetAvailable(std::filesystem::path pwd) const {
+  AvailableFiles ret(this);
 
   std::vector<AvailableFile> valid_files;
   std::unordered_set<std::filesystem::path> dirs;
 
   // Apply the exclusion filters, and get the sizes of the files.
   for (const std::filesystem::path &p : all) {
-    std::string p_str = p.string();
-    if (!Excluded(exclude, p_str)) {
-      size_t sz = FileSize(p_str);
+    std::string path_name = p.string();
+    if (!Excluded(exclude, path_name)) {
+      size_t sz = Util::FileSize(path_name).value_or(0);
       valid_files.push_back(AvailableFile{p, sz});
       dirs.insert(p.parent_path());
     }
@@ -202,6 +231,8 @@ ModelUtil::FileCollection::AvailableFiles(std::filesystem::path pwd) const {
   pwd = pwd.lexically_normal();
   pwd.make_preferred();
 
+  // Find the minimal number of trailing segments that we need
+  // for each directory to make it unique.
   struct DirInfo {
     std::vector<std::string> segs;
     int segs_to_use = 1;
@@ -266,7 +297,7 @@ ModelUtil::FileCollection::AvailableFiles(std::filesystem::path pwd) const {
       key = p.string();
       key = Util::Replace(key, "\\", "/");
     }
-    ret[key] = vf;
+    ret.files[key] = vf;
   }
 
   return ret;
@@ -458,12 +489,12 @@ std::set<std::string> ModelUtil::IncludeDirs(
 }
 
 std::string ModelUtil::TextualizeChosenFiles(
-    const std::map<std::string, AvailableFile> &available,
+    const AvailableFiles &available,
     std::span<const std::string> to_include) {
   std::string text;
   for (const std::string &f : to_include) {
-    auto it = available.find(f);
-    CHECK(it != available.end());
+    auto it = available.files.find(f);
+    CHECK(it != available.files.end());
     const ModelUtil::AvailableFile &af = it->second;
     AppendFormat(&text,
                  "The file {}:\n"

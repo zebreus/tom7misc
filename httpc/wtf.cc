@@ -15,7 +15,6 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "base/stringprintf.h"
 #include "color-util.h"
 #include "markdown.h"
 #include "model-client.h"
@@ -29,11 +28,8 @@ static std::string IncludesPrompt(
     std::string_view file,
     std::string_view question,
     std::string_view output,
-    const std::map<std::string, ModelUtil::AvailableFile> &available_files) {
-  std::string filestring;
-  for (const auto &[f, af] : available_files) {
-    AppendFormat(&filestring, "{: 8d}  {}\n", af.bytes, f);
-  }
+    const ModelUtil::AvailableFiles &available) {
+  std::string filestring = available.Textualize();
 
   std::string context =
     file.empty() ? "is this" :
@@ -233,11 +229,10 @@ int main(int argc, char **argv) {
   // might be enough).
   if (!file.empty()) files.AddFile(file);
 
-  std::map<std::string, ModelUtil::AvailableFile> available_files =
-    files.AvailableFiles();
+  ModelUtil::AvailableFiles available = files.GetAvailable();
 
   Print("List of available files:\n");
-  for (const auto &[f, af] : available_files) {
+  for (const auto &[f, af] : available.files) {
     Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
           f, af.path.string(), af.bytes);
   }
@@ -247,7 +242,7 @@ int main(int argc, char **argv) {
   std::vector<std::string> to_include = [&]{
       CHECK(question.has_value());
       std::string includes_prompt =
-        IncludesPrompt(file_arg, question.value(), output, available_files);
+        IncludesPrompt(file_arg, question.value(), output, available);
 
       std::unique_ptr<ModelClient> cheap =
         ModelClient::Create(Model::GEMINI_CHEAPEST, api_key);
@@ -280,7 +275,7 @@ int main(int argc, char **argv) {
             if (Util::StartsWith(file, "./")) {
               file = file.substr(2);
             }
-            if (available_files.contains(file)) {
+            if (available.files.contains(file)) {
               to_include.push_back(file);
             } else {
               Print(AORANGE("Warning") ": Unavailable file chosen. {}\n",
@@ -316,7 +311,7 @@ int main(int argc, char **argv) {
 
   // Read the file content.
   std::string file_text =
-    ModelUtil::TextualizeChosenFiles(available_files, to_include);
+    ModelUtil::TextualizeChosenFiles(available, to_include);
 
   Timer solve_timer;
   CHECK(question.has_value());

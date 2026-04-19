@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -50,15 +51,43 @@ struct ModelUtil {
     size_t bytes = 0;
   };
 
+  struct FileCollection;
+  struct AvailableFiles {
+    std::map<std::string, AvailableFile> files;
+
+    // Textualize the list of files, using the chosen short names,
+    // including sizes, and directory descriptions.
+    std::string Textualize() const;
+
+   private:
+    friend struct FileCollection;
+    explicit AvailableFiles(const FileCollection *fc) : parent(fc) {}
+    const FileCollection *parent = nullptr;
+  };
+
   struct FileCollection {
     // Get all files, keyed by nice names. For example, a file
     // in the current directory just has its filename as the key.
-    std::map<std::string, AvailableFile> AvailableFiles(
-        std::filesystem::path pwd = ".") const;
+    AvailableFiles GetAvailable(std::filesystem::path pwd = ".") const;
+
+    // Add a description for a directory, which can be used
+    // when textualizing the listing.
+    void DescribeDir(std::filesystem::path dir,
+                     std::string_view desc);
+
+    // Pattern is applied to the base filename, and just supports
+    // * wildcards. (You can call it multiple times for the
+    // same directory, though.)
+    // Not recursive.
+    void AddWildcard(std::filesystem::path dir,
+                     std::string_view pattern);
 
     // Add all files that are currently tracked in this dir.
+    // Not recursive.
     void AddSvnFiles(std::string_view dir);
-    // Add a specific file, whether or not it is tracked.
+
+    // Add a specific file, regardless of whether it is tracked.
+    // (Exclusion patterns still apply.)
     void AddFile(std::filesystem::path file);
 
     // Add an exclude pattern (with wildcards like *), which
@@ -66,13 +95,15 @@ struct ModelUtil {
     void AddExcludePattern(std::string_view exclude);
 
    private:
+    friend struct AvailableFile;
     std::vector<std::string> exclude;
     // All files that have been added.
     std::unordered_set<std::filesystem::path> all;
+    std::unordered_map<std::filesystem::path, std::string> dir_descs;
   };
 
   static std::string TextualizeChosenFiles(
-      const std::map<std::string, AvailableFile> &available,
+      const AvailableFiles &available,
       std::span<const std::string> to_include);
 
   // Exposed mostly for testing:
