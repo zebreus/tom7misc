@@ -9,7 +9,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"

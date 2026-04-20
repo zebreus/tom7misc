@@ -3,10 +3,10 @@
 //
 // https://github.com/leomccormack/convhull_3d/blob/master/convhull_3d.h
 //
-// My wrapper implementing the function in hull3d.h is at the bottom.
+// My wrapper implementing the function in hull-3d.h is at the bottom.
 // The other functions are not exported.
 
-#include "hull3d.h"
+#include "hull-3d.h"
 
 #include <algorithm>
 #include <tuple>
@@ -21,6 +21,8 @@
 #undef CONVHULL_3D_USE_SINGLE_PRECISION
 
 #define NDEBUG 1
+
+namespace {
 
 /*
  Copyright (c) 2017-2021 Leo McCormack
@@ -1910,6 +1912,7 @@ void delaunay_nd_mesh_alloc
 #endif /* CONVHULL_3D_ENABLE */
 
 // ------------------ end convhull_3d.h
+}  // namespace
 
 std::vector<int> Hull3D::HullPoints(const std::vector<vec3> &pts) {
   std::vector<ch_vec3> ch_pts;

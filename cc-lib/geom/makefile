@@ -1,5 +1,5 @@
 
-default : latlon_test.exe latlon-tree_test.exe bezier_test.exe hilbert-curve_test.exe tree-2d_test.exe tree-3d_test.exe tree-nd_test.exe mesh_test.exe
+default : latlon_test.exe latlon-tree_test.exe bezier_test.exe hilbert-curve_test.exe tree-2d_test.exe tree-3d_test.exe tree-nd_test.exe mesh_test.exe hull-3d_test.exe
 
 CC_LIB=..
 
@@ -36,6 +36,9 @@ tree-nd_test.exe : tree-nd_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 mesh_test.exe : mesh.o mesh_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+hull-3d_test.exe : hull-3d.o hull-3d_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

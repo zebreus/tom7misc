@@ -886,8 +886,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
     Document *doc = DocumentHook();
     const Image *image = doc->GetImageByName(*imghandle);
-    std::unique_ptr<Animation> anim(
-        Animation::Create(image->GetRaster(), options));
+    ImageRGBA raster = image->GetRaster();
+    std::unique_ptr<Animation> anim(Animation::Create(raster, options));
     std::vector<ImageRGBA> frames = anim->Animate();
 
     // Construct the vector of image handles to return.

@@ -8,7 +8,7 @@
 #include "yocto-math.h"
 
 // Note: Buggy?? See hull_test.cc.
-// You can use hull3d.h.
+// You can use geom/hull3d.h.
 struct QuickHull3D {
   using vec3 = yocto::vec<double, 3>;
 

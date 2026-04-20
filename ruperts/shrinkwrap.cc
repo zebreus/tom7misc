@@ -26,7 +26,7 @@
 #include "base/logging.h"
 #include "dyson.h"
 #include "factorization.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "opt/large-optimizer.h"
 #include "opt/opt.h"
 #include "periodically.h"

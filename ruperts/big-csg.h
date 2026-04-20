@@ -4,7 +4,7 @@
 
 #include <vector>
 
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "polyhedra.h"
 #include "yocto-math.h"
 

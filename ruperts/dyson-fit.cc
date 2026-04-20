@@ -17,7 +17,7 @@
 #include "atomic-util.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "opt/opt.h"
 #include "periodically.h"
 #include "polyhedra.h"

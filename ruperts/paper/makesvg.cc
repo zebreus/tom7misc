@@ -7,8 +7,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
+#include "geom/mesh.h"
 #include "image.h"
-#include "mesh.h"
 #include "polyhedra.h"
 #include "textsvg.h"
 #include "util.h"
@@ -28,6 +28,7 @@ void TransformMesh(const mat4 &mtx, TriangularMesh3D *mesh) {
   for (vec3 &v : mesh->vertices) v = yocto::transform_point(mtx, v);
 }
 
+[[maybe_unused]]
 static ImageRGBA FlipImage(const ImageRGBA &img) {
   ImageRGBA out(img.Width(), img.Height());
   for (int y = 0; y < img.Height(); y++) {

@@ -17,7 +17,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "randutil.h"
 #include "yocto-math.h"
 

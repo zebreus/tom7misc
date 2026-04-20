@@ -1,10 +1,9 @@
+
+Some code in here (bign, bigz, bigq) is based on "bigz".
 See https://sourceforge.net/projects/bigz/ for the original source
 of this project. It was forked from version 1.6.2.
 
-C++ in big.* is new in this fork.
-
 Some portions are derived from GMP source code, GPL. See ../COPYING.
-
 
 Original bigz license:
 

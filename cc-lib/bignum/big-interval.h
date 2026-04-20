@@ -30,9 +30,8 @@
 // interval width will decrease as inv_epsilon increases; this is
 // usually all you need.
 
-// XXX to cc-lib/bignum
-#ifndef _RUPERTS_BIG_INTERVAL_H
-#define _RUPERTS_BIG_INTERVAL_H
+#ifndef _CC_LIB_BIGNUM_BIG_INTERVAL_H
+#define _CC_LIB_BIGNUM_BIG_INTERVAL_H
 
 #include <optional>
 #include <string>

@@ -14,7 +14,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "hull3d.h"
+#include "geom/hull-3d.h"
 #include "randutil.h"
 #include "yocto-math.h"
 

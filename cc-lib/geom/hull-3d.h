@@ -1,6 +1,6 @@
 
-#ifndef _RUPERTS_HULL3D_H
-#define _RUPERTS_HULL3D_H
+#ifndef _CC_LIB_GEOM_HULL_3D_H
+#define _CC_LIB_GEOM_HULL_3D_H
 
 #include "yocto-math.h"
 

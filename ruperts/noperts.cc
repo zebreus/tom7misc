@@ -26,7 +26,7 @@
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/stringprintf.h"
-#include "hull3d.h"
+#include "geom/hull-3d.h"
 #include "interval-cover-util.h"
 #include "interval-cover.h"
 #include "opt/large-optimizer.h"

@@ -11,7 +11,7 @@
 
 #include "ansi.h"
 #include "big-csg.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "polyhedra.h"
 #include "rendering.h"
 #include "solutions.h"

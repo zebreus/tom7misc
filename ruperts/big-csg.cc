@@ -25,7 +25,7 @@
 #include "bounds.h"
 #include "image.h"
 #include "dirty.h"
-#include "mesh.h"
+#include "geom/mesh.h"
 #include "rendering.h"
 #include "polyhedra.h"
 

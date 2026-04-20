@@ -1,34 +1,41 @@
-BigNum is a simple wrapper for arbitrary precision arithmetic
-(integers and rational numbers). It has a built-in plain C++
-implementation (adapted from https://sourceforge.net/projects/bigz/)
-or can use libgmp. GMP is much faster but can be annoying to
-install/compile for some projects.
+cc-lib bignum                  Tom 7           19 Apr 2026
+
+BigNum is a wrapper for arbitrary precision arithmetic (integers and
+rational numbers). It has a built-in plain C++ implementation (adapted
+from https://sourceforge.net/projects/bigz/) or can use libgmp. GMP is
+much faster but can be annoying to install/compile for some projects.
 
 This code is not a complete wrapper and not super-well tested (for
 example, rounding modes might differ between the built-in and gmp
-implementations); it's intended for my personal projects. One or
-the other mode may lag when I add functions that are hard to do
-in the other, but I try.
+implementations); it's intended for my personal projects. One or the
+other mode may lag when I add functions that are hard to do in the
+other, but I try.
 
 To use libgmp, define BIG_USE_GMP and include appropriate -I -L
 -libgmp flags to the compiler. On mingw, I had to compile this myself
 because cygwin only ships the dynamically-linked version (which
-doesn't work for me). libgmp 6.3.0 worked out of the box, though;
-I configured it like
+doesn't work for me). libgmp 6.3.0 worked out of the box, though; I
+configured it like
 
 ABI=64 CC=x86_64-w64-mingw-gcc CC_FOR_BUILD=x86_64-w64-mingw-gcc ./configure
 make -j
 
 The GMP c++ support is not required; big.h does its own wrapping.
 
-With msys2-clang64, which is what I recommend in 2025, it worked
+With msys2-clang64, which is what I recommend in 2026, it worked
 great with just -lgmp after installing the package. See makefile.
 
 Include big-overloads.h for custom literal support (write 12345_b) and
-some operator overloads. I don't recommend the custom literals if
-you care about performance, because it is easy to accidentally
-write code that repeatedly parses!
+some operator overloads. I don't recommend the custom literals if you
+care about performance, because it is easy to accidentally write code
+that repeatedly parses!
 
+There are also some utilities for working with big numbers in here:
+
+big-interval is for rational interval arithmetic.
+big-numbers computes some constants, though I would recommend using
+            the interval versions for transcendentals.
+polynomial is symbolic polynomials with big rational coefficients.
 
 
 TODO: Note that there is mini-gmp, which is a two-file portable
