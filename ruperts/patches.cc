@@ -35,6 +35,7 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "run-z3.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"

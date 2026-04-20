@@ -56,7 +56,7 @@ CL_OBJECTS=$(CC_LIB)/opencl/clutil.o
 
 SQLITE_OBJECTS=$(SQLITE)/database.o $(SQLITE)/sqlite3.o
 
-OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) polyhedra.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o symmetry-groups.o textured-mesh.o smallest-sphere.o dyson.o z3.o run-z3.o patches.o intervals.o hypercube.o
+OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) polyhedra.o ruperts-util.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o symmetry-groups.o textured-mesh.o smallest-sphere.o dyson.o z3.o run-z3.o patches.o intervals.o hypercube.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

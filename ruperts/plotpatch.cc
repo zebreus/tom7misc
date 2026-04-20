@@ -18,6 +18,7 @@
 #include "patches.h"
 #include "periodically.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "util.h"

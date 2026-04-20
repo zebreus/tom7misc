@@ -35,6 +35,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "textured-mesh.h"
 #include "threadutil.h"

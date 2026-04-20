@@ -12,6 +12,7 @@
 #include "rendering.h"
 #include "solutions.h"
 #include "yocto-math.h"
+#include "ruperts-util.h"
 
 using frame3 = yocto::frame<double, 3>;
 

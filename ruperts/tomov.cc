@@ -16,6 +16,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "yocto-math.h"
 

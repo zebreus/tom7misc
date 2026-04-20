@@ -16,6 +16,7 @@
 #include "color-util.h"
 #include "image.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;

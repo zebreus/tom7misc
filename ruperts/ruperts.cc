@@ -37,6 +37,7 @@
 #include "timer.h"
 #include "util.h"
 
+#include "ruperts-util.h"
 #include "polyhedra.h"
 #include "rendering.h"
 #include "solutions.h"

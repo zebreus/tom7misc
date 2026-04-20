@@ -13,6 +13,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
+#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;

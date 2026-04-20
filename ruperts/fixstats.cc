@@ -10,6 +10,7 @@
 
 #include "ansi.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "timer.h"
 #include "util.h"

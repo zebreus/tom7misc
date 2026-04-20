@@ -36,6 +36,7 @@
 #include "polyhedra.h"
 #include "randutil.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "smallest-sphere.h"
 #include "solutions.h"
 #include "status-bar.h"

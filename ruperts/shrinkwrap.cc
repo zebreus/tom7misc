@@ -32,6 +32,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
+#include "ruperts-util.h"
 #include "shrinklutions.h"
 #include "smallest-sphere.h"
 #include "status-bar.h"

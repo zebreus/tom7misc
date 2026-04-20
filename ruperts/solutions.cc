@@ -18,6 +18,7 @@
 #include "base/stringprintf.h"
 #include "database.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "util.h"
 
 using frame3 = SolutionDB::frame3;

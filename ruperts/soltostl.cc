@@ -14,6 +14,7 @@
 #include "geom/mesh.h"
 #include "polyhedra.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "timer.h"
 #include "util.h"

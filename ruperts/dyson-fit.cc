@@ -21,6 +21,7 @@
 #include "opt/opt.h"
 #include "periodically.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "timer.h"
 #include "yocto-math.h"
 

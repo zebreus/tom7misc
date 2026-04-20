@@ -20,6 +20,7 @@
 #include "polyhedra.h"
 #include "randutil.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto-math.h"

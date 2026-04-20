@@ -14,6 +14,7 @@
 #include "bignum/big.h"
 #include "polyhedra.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "yocto-math.h"
 

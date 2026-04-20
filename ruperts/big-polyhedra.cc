@@ -21,6 +21,7 @@
 #include "bignum/big.h"
 #include "point-map.h"
 #include "polyhedra.h"
+#include "ruperts-util.h"
 #include "util.h"
 #include "yocto-math.h"
 
