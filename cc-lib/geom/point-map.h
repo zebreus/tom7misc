@@ -1,7 +1,8 @@
 
 // Simple map keyed by points in 3D.
 // Note that this is just a linear scan! It should be
-// improved to use kd-tree!
+// improved to use kd-tree! We should also have a configurable
+// epsilon, precision, etc.
 
 #ifndef _CC_LIB_POINT_MAP_H
 #define _CC_LIB_POINT_MAP_H
@@ -90,7 +91,7 @@ struct PointMap2 {
   }
 
   bool Contains(const vec2 &p) const {
-    for (const vec2 &q : pts) {
+    for (const auto &[q, v] : pts) {
       if (distance_squared(p, q) < sqdist) {
         return true;
       }
