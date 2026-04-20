@@ -1,4 +1,4 @@
-default : ruperts.exe buns.exe soltostl.exe topng.exe polyhedra_test.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe symmetry-groups_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe
+default : ruperts.exe buns.exe soltostl.exe topng.exe polyhedra_test.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe symmetry-groups_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe
 
 # by default, don't require opencl
 all: default gpuperts.exe
@@ -95,6 +95,10 @@ soltostl.exe : soltostl.o $(OBJECTS)
 	@echo -n "!"
 
 polyhedra_test.exe : polyhedra_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+ruperts-util_test.exe : ruperts-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
