@@ -784,14 +784,11 @@ static void TestDualize() {
   // Test that dualizing a polyhedron twice gets us back close
   // to the original. Because the order of vertices and edges
   // is not guaranteed, we compare using the function above.
-  #define TEST_DUAL(p) do {                            \
+  #define TEST_DUAL(p) do {                           \
       Polyhedron orig = (p);                          \
       Polyhedron d = DualizePoly(orig);               \
       Polyhedron dd = DualizePoly(d);                 \
       CHECK(ConvexPolyhedraAlmostEq(orig, dd)) << #p; \
-      delete orig.faces;                              \
-      delete d.faces;                                 \
-      delete dd.faces;                                \
   } while (false)
 
   TEST_DUAL(Cube());

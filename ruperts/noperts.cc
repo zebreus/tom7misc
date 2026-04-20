@@ -723,6 +723,8 @@ static Polyhedron RandomRhombicPolyhedron(ArcFour *rc, int num_points) {
 
 // Like a pointer to a polyhedron, but it should be explicitly
 // returned.
+// Note: I finally switched Polyhedron to shared_ptr for the
+// faces, so there might not be any reason for this any more.
 struct LeasedPoly {
   virtual ~LeasedPoly() {}
   virtual const Polyhedron &Value() const = 0;
@@ -804,9 +806,7 @@ struct RandomCandidateMaker : public CandidateMaker {
   struct RandomLeasedPoly : public LeasedPoly {
     RandomLeasedPoly(Polyhedron p) : poly(std::move(p)) {}
 
-    ~RandomLeasedPoly() override {
-      delete poly.faces;
-    }
+    ~RandomLeasedPoly() override {}
 
     const Polyhedron &Value() const override { return poly; }
 
@@ -931,10 +931,6 @@ struct ReduceCandidateMaker : public CandidateMaker {
     return name;
   }
 
-  ~ReduceCandidateMaker() {
-    delete reference.faces;
-  }
-
   void AttemptFailed(int64_t num_poly, const AutoHisto &iter_histo) override {
     MutexLock ml(&m);
     // Should insert or something?
@@ -973,7 +969,6 @@ struct ReduceCandidateMaker : public CandidateMaker {
 
     ~ReduceLeasedPoly() override {
       parent->MarkDone(idx);
-      delete poly.faces;
     }
 
     const Polyhedron &Value() const override { return poly; }
@@ -1264,7 +1259,6 @@ static void UnOpt(int64_t num_points) {
             polyhedra++;
             std::optional<int> oiters = DoSolve(0, &rc, poly,
                                                 nullptr, nullptr);
-            delete poly.faces;
 
             if (!oiters.has_value()) {
               // Success!
@@ -1422,7 +1416,6 @@ static void UnOpt(int64_t num_points) {
 
             SolutionDB db;
             db.AddNopert(poly, SolutionDB::NOPERT_METHOD_UNOPT);
-            delete poly.faces;
             return;
           }
         }

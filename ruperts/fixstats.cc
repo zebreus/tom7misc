@@ -3,12 +3,12 @@
 // Marks invalid solutions as invalid.
 
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "ansi.h"
-#include "base/stringprintf.h"
 #include "polyhedra.h"
 #include "solutions.h"
 #include "timer.h"
@@ -64,8 +64,6 @@ static void FixAll() {
               "where id = {}",
               ratio.value(), clearance.value(), sol.id));
     }
-
-    delete poly.faces;
   }
 
   printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());

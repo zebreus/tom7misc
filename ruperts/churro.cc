@@ -415,7 +415,6 @@ std::optional<std::tuple<frame3, frame3, double>> ComputeMinimumClearance(
       db.AddNopert(poly, SolutionDB::NOPERT_METHOD_CHURRO);
     }
 
-    delete poly.faces;
     return std::nullopt;
 
   } else {
@@ -429,8 +428,6 @@ std::optional<std::tuple<frame3, frame3, double>> ComputeMinimumClearance(
                 solve_result->outer, solve_result->inner,
                 solve_result->clearance,
                 num_improve_opts);
-
-    delete poly.faces;
 
     if (best_error < 0.0) {
       return std::make_tuple(best_outer, best_inner, -best_error);

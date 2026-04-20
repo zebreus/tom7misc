@@ -407,7 +407,5 @@ int main(int argc, char **argv) {
   Meperts meperts(target);
   meperts.Solve();
 
-  delete target.faces;
-
   return 0;
 }

@@ -3,6 +3,7 @@
 
 #include <format>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
@@ -1697,7 +1698,7 @@ void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
   Util::WriteFile(f, contents);
   printf("Wrote " AGREEN("%s") "\n", f.c_str());
 
-  delete tet.faces;
+  // delete tet.faces;
 }
 
 void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
@@ -1795,7 +1796,7 @@ Polyhedron NPrism(int64_t num_points, double depth) {
     fs.push_back(std::vector<int>{side1, side1 + 1, side2 + 1, side2});
   }
 
-  poly.faces = new Faces(num_points * 2, std::move(fs));
+  poly.faces.reset(new Faces(num_points * 2, std::move(fs)));
   poly.name = std::format("{}-prism", num_points);
 
   return poly;
@@ -1854,7 +1855,7 @@ Polyhedron NAntiPrism(int64_t num_points, double depth) {
     fs.push_back({t0, t1, b1});
   }
 
-  poly.faces = new Faces(num_points * 2, std::move(fs));
+  poly.faces.reset(new Faces(num_points * 2, std::move(fs)));
   poly.name = std::format("{}-antiprism", num_points);
 
   return poly;
@@ -2150,10 +2151,11 @@ Polyhedron Dodecahedron() {
     }
   }
 
-  Faces *faces = new Faces(vertices.size(), std::move(fs));
+  std::shared_ptr<const Faces> faces =
+    std::make_shared<Faces>(vertices.size(), std::move(fs));
   return Polyhedron{
     .vertices = std::move(vertices),
-    .faces = faces,
+    .faces = std::move(faces),
     .name = "dodecahedron",
   };
 }
@@ -2255,7 +2257,7 @@ TriangularMesh3D ApproximateSphere(int depth) {
         .vertices = icos.vertices,
         .triangles = icos.faces->triangulation,
       };
-      delete icos.faces;
+      // delete icos.faces;
 
       for (vec3 &v : mesh.vertices) {
         v = normalize(v);
@@ -2487,8 +2489,8 @@ static bool InitPolyhedronInternal(
     fs.push_back(std::move(face));
   }
 
-  out->faces = Faces::Create(vertices.size(), std::move(fs));
-  if (out->faces == nullptr) {
+  out->faces.reset(Faces::Create(vertices.size(), std::move(fs)));
+  if (out->faces.get() == nullptr) {
     if (FRAGILE) {
       LOG(FATAL) << "Couldn't create faces.";
     }
@@ -2643,10 +2645,11 @@ Polyhedron Cube() {
   // back
   fs.push_back({a, b, f, e});
 
-  Faces *faces = new Faces(8, std::move(fs));
+  std::shared_ptr<const Faces> faces =
+    std::make_shared<Faces>(8, std::move(fs));
   return Polyhedron{
     .vertices = std::move(vertices),
-    .faces = faces,
+    .faces = std::move(faces),
     .name = "cube",
   };
 }
@@ -2857,8 +2860,7 @@ Polyhedron TruncatedIcosahedron() {
       }
     }
   }
-  delete ico.faces;
-  ico.faces = nullptr;
+  // delete ico.faces;
 
   CHECK(vertices.size() == 60);
   return MakeConvexOrDie(
@@ -3763,7 +3765,7 @@ Polyhedron Onperthedron() {
   Polyhedron no = Noperthedron();
   Polyhedron on = DualizePoly(no);
   on.name = "onperthedron";
-  delete no.faces;
+  // delete no.faces;
   return on;
 }
 

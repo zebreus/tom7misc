@@ -1245,8 +1245,6 @@ static void GrindNoperts() {
                  ABLUE("{}") " vertices...\n",
                  nopert.id, (int)nopert.vertices.size());
     SolveWith(opoly.value(), method, &status, 3600.0);
-
-    delete opoly.value().faces;
   }
 }
 

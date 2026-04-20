@@ -381,7 +381,5 @@ int main(int argc, char **argv) {
   Threeperts threeperts(target);
   threeperts.Solve();
 
-  delete target.faces;
-
   return 0;
 }

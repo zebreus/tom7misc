@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -1124,10 +1125,11 @@ BigPoly BigCube(int digits) {
   // back
   fs.push_back({a, b, f, e});
 
-  Faces *faces = new Faces(8, std::move(fs));
+  std::shared_ptr<const Faces> faces =
+    std::make_shared<Faces>(8, std::move(fs));
   return BigPoly{
     .vertices = std::move(vertices),
-    .faces = faces,
+    .faces = std::move(faces),
     .name = "cube",
   };
 }

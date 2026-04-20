@@ -1843,7 +1843,7 @@ struct Hypersolver {
                       (100.0 * n) / d);
       };
 
-    {
+    if (false) {
       const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
       const Bigival &outer_angle = volume[OUTER_ANGLE];
       const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
@@ -1852,7 +1852,9 @@ struct Hypersolver {
       Bigival daz = (outer_azimuth - inner_azimuth).Abs();
       Bigival dan = (outer_angle - inner_angle).Abs();
 
+      [[maybe_unused]]
       bool diag_daz = (daz <= DIAG_THRESHOLD_AZ) == Bigival::MaybeBool::True;
+      [[maybe_unused]]
       bool diag_dan = (dan <= DIAG_THRESHOLD_AN) == Bigival::MaybeBool::True;
 
       // TODO: Output in image!

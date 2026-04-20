@@ -99,7 +99,7 @@ static void BenchSample() {
          ITERS, ANSI::Time(total_sec),
          ITERS / total_sec);
 
-  delete poly.faces;
+  // delete poly.faces;
 }
 
 static std::vector<vec2> GetPoly(const std::vector<vec2> &vertices,
@@ -166,8 +166,8 @@ static void BenchPolyTester() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  // BenchSample();
-  BenchPolyTester();
+  BenchSample();
+  // BenchPolyTester();
 
   return 0;
 }

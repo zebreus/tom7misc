@@ -29,7 +29,6 @@ struct SymmetryGroups {
       Polyhedron t = Tetrahedron();
       VertexRotationsTriangular(t, &tetrahedron.rots);
       tetrahedron.points = 4;
-      delete t.faces;
     }
 
     {
@@ -37,7 +36,6 @@ struct SymmetryGroups {
       VertexRotationsQuadrilateral(o, &octahedron.rots);
       EdgeRotations(o, &octahedron.rots);
       octahedron.points = 6;
-      delete o.faces;
     }
 
     {
@@ -45,7 +43,6 @@ struct SymmetryGroups {
       VertexRotationsPentagonal(i, &icosahedron.rots);
       EdgeRotations(i, &icosahedron.rots);
       icosahedron.points = 20;
-      delete i.faces;
     }
   }
 

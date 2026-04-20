@@ -654,7 +654,6 @@ struct Imperts {
           }
 
           MaybeStatus();
-          delete poly.faces;
         }
       });
   }

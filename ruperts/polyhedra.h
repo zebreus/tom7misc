@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -72,9 +73,9 @@ struct Polyhedron {
   // in the polyhedron. The indices of the vertices are
   // significant.
   std::vector<vec3> vertices;
-  // Not owned. Note that the routines below allocate
-  // a new Faces object that you have to manage.
-  const Faces *faces = nullptr;
+  // Might be shared with transformations of the
+  // polyhedron; a global registry, etc.
+  std::shared_ptr<const Faces> faces;
   // The optional name of the polyhedron.
   std::string name;
   // The optional symmetry group(s).
@@ -87,8 +88,8 @@ struct Polyhedron {
 struct Mesh2D {
   // As above.
   std::vector<vec2> vertices;
-  // Not owned.
-  const Faces *faces = nullptr;
+  // e.g. shared with the Polyhedron.
+  std::shared_ptr<const Faces> faces;
 };
 
 inline vec4 VecFromQuat(const quat4 &q) {

@@ -256,7 +256,6 @@ ComputeMinimumClearance(
   const auto result = DoSolve(thread_idx,
                               theta, phi, stretch,
                               rc, poly);
-  delete poly.faces;
 
   if (!result.has_value()) {
     noperts++;

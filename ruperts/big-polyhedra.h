@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -54,13 +55,13 @@ BigQuat ApproxBigQuat(const quat4 &smallquat, int64_t max_denom);
 
 struct BigPoly {
   std::vector<BigVec3> vertices;
-  const Faces *faces = nullptr;
+  std::shared_ptr<const Faces> faces;
   std::string name;
 };
 
 struct BigMesh2D {
   std::vector<BigVec2> vertices;
-  const Faces *faces = nullptr;
+  std::shared_ptr<const Faces> faces;
 };
 
 // Rigid frames stored as a column-major affine transform matrix.
