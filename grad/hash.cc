@@ -8,28 +8,26 @@
 // the throughput.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <string>
-#include <cmath>
 #include <vector>
 
 #include "base/logging.h"
 #include "base/print.h"
-#include "base/stringprintf.h"
 
 #include "half.h"
 #include "image.h"
 #include "threadutil.h"
 #include "util.h"
 
+#include "ansi.h"
+#include "bit-string.h"
+#include "choppy.h"
+#include "expression.h"
 #include "grad-util.h"
 #include "hash-util.h"
-#include "expression.h"
-#include "choppy.h"
-#include "ansi.h"
-#include "bitbuffer.h"
 #include "timer.h"
 
 using namespace std;
@@ -451,7 +449,7 @@ int main(int argc, char **argv) {
     // Generate a bitstream for statistical testing.
     static constexpr int SIZE_BYTES = 6 * 1024 * 1024;
     HashState hs;
-    BitBuffer bb;
+    BitString bb;
     bb.Reserve(SIZE_BYTES * 8);
     Timer timer;
     // 16 bits at a time

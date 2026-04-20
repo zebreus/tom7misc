@@ -33,7 +33,7 @@ make -j || exit -1
 ./bounds_test.exe
 ./optional-iterator_test.exe
 ./tuple-util_test.exe
-./bitbuffer_test.exe
+./bit-string_test.exe
 ./ansi_test.exe
 ./factorization_test.exe
 ./atomic-util_test.exe
