@@ -1,7 +1,4 @@
 
-#include "auto-histo.h"
-#include "base/stringprintf.h"
-#include "polyhedra.h"
 #include "smallest-sphere.h"
 
 #include <cstdint>
@@ -12,9 +9,13 @@
 
 #include "ansi.h"
 #include "arcfour.h"
+#include "auto-histo.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "periodically.h"
+#include "polyhedra.h"
 #include "randutil.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto-math.h"

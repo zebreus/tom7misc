@@ -6,7 +6,6 @@
 #ifndef _RUPERTS_POLYHEDRA_H
 #define _RUPERTS_POLYHEDRA_H
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -14,16 +13,14 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "arcfour.h"
 #include "base/logging.h"
-#include "geom/mesh.h"
-#include "randutil.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -109,8 +106,6 @@ std::string VecString(const vec2 &v);
 std::string Points2DString(const std::vector<vec2> &v);
 std::string QuatString(const quat4 &q);
 std::string FrameString(const frame3 &f);
-std::string MatString(const mat4 &m);
-std::string FormatNum(uint64_t n);
 
 inline bool TriangleIsDegenerate(const vec3 &v0,
                                  const vec3 &v1,
@@ -133,6 +128,12 @@ inline frame2 rotation_frame2(double angle) {
 // Euclidean distance (non-negative) to the line segment from
 // the point. This may be one of the endpoints.
 double PointLineDistance(
+    // Line segment
+    const vec2 &v0, const vec2 &v1,
+    // Point to test
+    const vec2 &pt);
+// Same, but squared.
+double SquaredPointLineDistance(
     // Line segment
     const vec2 &v0, const vec2 &v1,
     // Point to test
@@ -162,43 +163,24 @@ inline double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
   return dist;
 }
 
+// Signed distance to the triangle from the point p. Vertex order
+// does not matter. Negative sign means the interior of the triangle.
+double TriangleSignedDistance(vec2 p0, vec2 p1, vec2 p2, vec2 p);
+
+// Positive if screen clockwise (cartesian ccw) winding order;
+// negative for screen ccw (cartesian cw).
+double SignedAreaOfConvexPoly(std::span<const vec2> points);
+
 // Precomputation for testing points in a polygon. This
 // should be faster if you need to call PointInPolygon
 // many times for the same polygon.
-double SignedAreaOfConvexPoly(const std::vector<vec2> &points);
-bool IsConvexAndScreenClockwise(const std::vector<vec2> &poly);
-
 #define POLYTESTER_USE_BB 0
 struct PolyTester2D {
   static constexpr bool SELF_CHECK = false;
 
   // The polygon must be convex, screen clockwise, and must include
   // the origin. These conditions are not checked.
-  PolyTester2D(const std::vector<vec2> &poly) : poly(poly) {
-    if (SELF_CHECK) {
-      CHECK(SignedAreaOfConvexPoly(poly) > 0.0);
-      CHECK(IsConvexAndScreenClockwise(poly));
-    }
-
-    // TODO: Precompute.
-    edges.reserve(poly.size());
-    edge_sqlens.reserve(poly.size());
-
-    for (int i = 0; i < poly.size(); i++) {
-      const vec2 &v0 = poly[i];
-      const vec2 &v1 = poly[(i + 1) % poly.size()];
-      const vec2 edge = v1 - v0;
-      const double sqlen = length_squared(edge);
-      edges.push_back(edge);
-      edge_sqlens.push_back(sqlen);
-      #if POLYTESTER_USE_BB
-      min_x = std::min(min_x, v0.x);
-      max_x = std::max(max_x, v0.x);
-      min_y = std::min(min_y, v0.y);
-      max_y = std::max(max_y, v0.y);
-      #endif
-    }
-  }
+  PolyTester2D(std::span<const vec2> poly);
 
   // Returns nullopt if the point is inside. Otherwise, minimum squared
   // distance to the polygon.
@@ -212,7 +194,7 @@ struct PolyTester2D {
   double SquaredDistanceToPoly(const vec2 &pt) const;
   bool PointInPolygon(const vec2 &point) const;
 
-  const std::vector<vec2> &poly;
+  std::span<const vec2> poly;
   // parallel to the vertices. Represents the edge from the vertex
   // to the next one.
   std::vector<vec2> edges;
@@ -262,13 +244,13 @@ inline Mesh2D Translate(const Mesh2D &m, const vec2 &t) {
   return ret;
 }
 
-bool IsHullConvex(const std::vector<vec2> &points,
-                  const std::vector<int> &polygon);
+bool IsHullConvex(std::span<const vec2> points,
+                  std::span<const int> polygon);
 
-bool IsPolyConvex(const std::vector<vec2> &poly);
+bool IsPolyConvex(std::span<const vec2> poly);
 
 // Screen clockwise = cartesian CCW.
-bool IsConvexAndScreenClockwise(const std::vector<vec2> &poly);
+bool IsConvexAndScreenClockwise(std::span<const vec2> poly);
 
 // Maximum distance between any two points.
 // Note: This is non-standard.
@@ -317,17 +299,12 @@ double PlanarityError(const Polyhedron &p);
 // planar sets.
 double PlanarityError(const std::vector<vec3> &pts);
 
-inline quat4 RandomQuaternion(ArcFour *rc) {
-  const auto &[x, y, z, w] = RandomUnit4D(rc);
-  return quat4{.x = x, .y = y, .z = z, .w = w};
-}
-
 inline vec2 Project(const vec3 &point, const mat4 &proj) {
   vec4 pp = proj * vec4{.x = point.x, .y = point.y, .z = point.z, .w = 1.0};
   return vec2{.x = pp.x / pp.w, .y = pp.y / pp.w};
 }
 
-// Point-in-polygon test using the winding number algorithm.
+// Point-in-polygon test using the even-odd algorithm.
 // Takes a vertex buffer and indices into that set.
 bool PointInPolygon(const vec2 &point,
                     const std::vector<vec2> &vertices,
@@ -355,20 +332,12 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
   return PointInPolygon(pt, mesh.vertices, hull);
 }
 
-// Orient the mesh and save as STL.
-void SaveAsSTL(const Polyhedron &poly, std::string_view filename);
-
 // Generate little tetrahedra at the points, for debugging.
 void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
                           std::string_view filename);
 
 // Save polyhedron as JSON.
 void SaveAsJSON(const Polyhedron &poly, std::string_view filename);
-
-// Save solution as JSON.
-void SaveAsJSON(const frame3 &outer_frame,
-                const frame3 &inner_frame,
-                std::string_view filename);
 
 // True if the faces are very close to parallel. The face indices
 // must be in bounds!

@@ -1,40 +1,35 @@
 
 #include "polyhedra.h"
 
-#include <format>
-#include <limits>
-#include <memory>
-#include <string_view>
-#include <tuple>
-#include <unordered_map>
-#include <unordered_set>
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
+#include <limits>
+#include <memory>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
-#include <cstdint>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
-#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "geom/hull-3d.h"
 #include "geom/mesh.h"
 #include "hashing.h"
-#include "randutil.h"
 #include "set-util.h"
 #include "util.h"
 #include "yocto-math.h"
-
-// XXX for debugging
-#include "rendering.h"
 
 [[maybe_unused]]
 static double consteval SqrtNewtons(double x, double cur, double prev) {
@@ -158,26 +153,6 @@ std::string FrameString(const frame3 &f) {
       f.y.x, f.y.y, f.y.z,
       f.z.x, f.z.y, f.z.z,
       f.o.x, f.o.y, f.o.z);
-}
-
-std::string FormatNum(uint64_t n) {
-  if (n > 1'000'000) {
-    double m = n / 1'000'000.0;
-    if (m >= 1'000'000.0) {
-      return std::format("{:.1f}T", m / 1'000'000.0);
-    } else if (m >= 1000.0) {
-      return std::format("{:.1f}B", m / 1000.0);
-    } else if (m >= 100.0) {
-      return std::format("{}M", (int)std::round(m));
-    } else if (m > 10.0) {
-      return std::format("{:.1f}M", m);
-    } else {
-      // TODO: Integer division. color decimal place and suffix.
-      return std::format("{:.2f}M", m);
-    }
-  } else {
-    return Util::UnsignedWithCommas(n);
-  }
 }
 
 template<typename T>
@@ -351,7 +326,7 @@ static vec2 ClosestPointOnSegment(
 }
 
 // Return the minimum distance between the point and the line segment.
-inline double SquaredPointLineDistance(
+double SquaredPointLineDistance(
     // Line segment
     const vec2 &v0, const vec2 &v1,
     // Point to test
@@ -494,89 +469,31 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
   return sqrt(best_sqdist.value());
 }
 
-double HullClearance(const std::vector<vec2> &outer_points,
-                     const std::vector<int> &outer_hull,
-                     const std::vector<vec2> &inner_points,
-                     const std::vector<int> &inner_hull) {
-  // The minimum distance must be between a vertex on one and
-  // an edge on the other.
-
-  double min_sqdist = std::numeric_limits<double>::infinity();
-  for (int i = 0; i < inner_hull.size(); i++) {
-    const vec2 &i1 = inner_points[inner_hull[i]];
-    const vec2 &i2 = inner_points[inner_hull[(i + 1) % inner_hull.size()]];
-    for (int o = 0; o < outer_hull.size(); o++) {
-      const vec2 &o1 = outer_points[outer_hull[o]];
-      const vec2 &o2 = outer_points[outer_hull[(o + 1) % outer_hull.size()]];
-
-      double di = SquaredPointLineDistance(i1, i2, o1);
-      double ii = SquaredPointLineDistance(o1, o2, i1);
-      min_sqdist = std::min(min_sqdist, std::min(di, ii));
-    }
+PolyTester2D::PolyTester2D(std::span<const vec2> poly) : poly(poly) {
+  if (SELF_CHECK) {
+    CHECK(SignedAreaOfConvexPoly(poly) > 0.0);
+    CHECK(IsConvexAndScreenClockwise(poly));
   }
 
-  return std::sqrt(min_sqdist);
-}
-
-#if 0
-
-bool PolyTester2D::PointInPolygon(const vec2 &point) const {
-  int winding_number = 0;
-
-  #if POLYTESTER_USE_BB
-  if (point.x < min_x) return false;
-  if (point.x > max_x) return false;
-
-  if (point.y < min_y) return false;
-  if (point.y > max_y) return false;
-  #endif
+  // TODO: Precompute.
+  edges.reserve(poly.size());
+  edge_sqlens.reserve(poly.size());
 
   for (int i = 0; i < poly.size(); i++) {
-    const vec2 &p0 = poly[i];
-    // p1 would be the next vertex, wrapping around
-
-    // const vec2 edge = p1 - p0;
-    const vec2 &edge = edges[i];
-
-    // This is p1.y
-    // double p1y = endy[i];
-
-    // from v0 to the test point.
-    const vec2 dv = point - p0;
-
-    // We use the same cross product regardless.
-    // cross product = a - b
-    const double cross_a = edge.x * dv.y;
-    const double cross_b = edge.y * dv.x;
-
-    // Here we want to compare point.y and p1.y, without having to
-    // look up p1. Both dv and edge are vectors rooted at v0 (that are
-    // equal to point and p1, respectively), so dv.y and edge.y have
-    // the same relationship.
-
-    // p0.y <= point.y
-    if (0.0 <= dv.y) {
-      // p1y > point.y
-      if (edge.y > dv.y) {
-        // Upward crossing
-        if (cross_a > cross_b) {
-          winding_number++;
-        }
-      }
-    } else {
-      // p1y <= point.y
-      if (edge.y <= dv.y) {
-        // Downward crossing
-        if (cross_a < cross_b) {
-          winding_number--;
-        }
-      }
-    }
+    const vec2 &v0 = poly[i];
+    const vec2 &v1 = poly[(i + 1) % poly.size()];
+    const vec2 edge = v1 - v0;
+    const double sqlen = length_squared(edge);
+    edges.push_back(edge);
+    edge_sqlens.push_back(sqlen);
+    #if POLYTESTER_USE_BB
+    min_x = std::min(min_x, v0.x);
+    max_x = std::max(max_x, v0.x);
+    min_y = std::min(min_y, v0.y);
+    max_y = std::max(max_y, v0.y);
+    #endif
   }
-
-  return winding_number != 0; // Non-zero winding number means inside
 }
-#else
 
 bool PolyTester2D::PointInPolygon(const vec2 &point) const {
   #if POLYTESTER_USE_BB
@@ -604,7 +521,6 @@ bool PolyTester2D::PointInPolygon(const vec2 &point) const {
   return true;
 }
 
-#endif
 
 double PolyTester2D::SquaredDistanceToPoly(const vec2 &pt) const {
   double best_sqdist = std::numeric_limits<double>::infinity();
@@ -657,472 +573,6 @@ PolyTester2D::SquaredDistanceOutside(const vec2 &pt) const {
   }
 
   return SquaredDistanceToPoly(pt);
-}
-
-std::vector<int> GiftWrapConvexHull(const std::vector<vec2> &vertices) {
-  constexpr bool VERBOSE = false;
-  constexpr bool SELF_CHECK = false;
-  CHECK(vertices.size() > 2);
-
-  auto ColorIndex = [](int i) {
-      return std::format(
-          "{}{}" ANSI_RESET,
-          ANSI::ForegroundRGB32(Rendering::Color(i)),
-          i);
-    };
-
-  // Explicitly mark vertices as used to avoid reusing them. This may
-  // not actually be necessary (I think the real issue was that I used
-  // to always start with "next" being node cur+1, even if that was an
-  // invalid choice) but it is pretty cheap and colinear/coincident
-  // points can cause tests to behave in countergeometric ways.
-  std::vector<bool> used(vertices.size(), false);
-
-  // Find the starting point. This must be a point on the convex hull.
-  // The leftmost bottommost point is one.
-  const int start = [&]() {
-      int besti = 0;
-      for (int i = 1; i < vertices.size(); i++) {
-        if ((vertices[i].y < vertices[besti].y) ||
-            (vertices[i].y == vertices[besti].y &&
-             vertices[i].x < vertices[besti].x)) {
-          besti = i;
-        }
-      }
-      return besti;
-    }();
-
-  if (VERBOSE) {
-    Print("Start idx: {}\n", ColorIndex(start));
-
-    for (const vec2 &v : vertices) {
-      Print("vec2{{" "{:.17g}, {:.17g}" "}}, ", v.x, v.y);
-    }
-  }
-
-  const vec2 &vstart = vertices[start];
-
-  if (VERBOSE) {
-    Print("\n");
-  }
-
-  std::vector<int> hull;
-  int cur = start;
-  do {
-    if (VERBOSE) {
-      Print("Loop with cur={}\n", ColorIndex(cur));
-    }
-
-    if (SELF_CHECK) {
-      for (int a : hull) {
-        if (a == cur) {
-          fprintf(stderr, "About to add duplicate point %d to hull.\n"
-                  "Points so far:\n",
-                  cur);
-          for (int i = 0; i < (int)vertices.size(); i++) {
-            fprintf(stderr, "%d. vec2{%.17g, %.17g}\n",
-                    i, vertices[i].x, vertices[i].y);
-          }
-          fprintf(stderr, "Hull so far:");
-          for (int x : hull) {
-            fprintf(stderr, " %d%s", x,
-                    used[x] ? " used" : ARED(" not used??"));
-          }
-          fprintf(stderr, "\n");
-          LOG(FATAL) << "Infinite loop!";
-        }
-      }
-    }
-
-    hull.push_back(cur);
-    used[cur] = true;
-
-    // We consider every other point, finding the one with
-    // the smallest angle from the current point.
-
-    // We need to choose a point that's not already used (unless
-    // we're closing the loop). So start is a good choice, except
-    // on the first step (because then the start-start edge is
-    // degenerate).
-    // int next = (cur == start) ? ((cur + 1) % vertices.size()) :
-    // start;
-    int next = -1;
-
-    // First, find any point that's unused and not exactly the same as
-    // the current point.
-    for (int i = 0; i < vertices.size(); i++) {
-      if (i != cur && (i == start || !used[i]) &&
-          vertices[i] != vertices[cur]) {
-        next = i;
-        break;
-      }
-    }
-
-    // We exhausted all of the nodes, so we must be done.
-    if (next == -1) {
-      if (VERBOSE) {
-        Print(ACYAN("No more nodes.") "\n");
-      }
-      return hull;
-    }
-
-    for (int i = 0; i < vertices.size(); i++) {
-      if (VERBOSE) {
-        Print("Inner loop at i={} w/ next={}.\n",
-              ColorIndex(i),
-              ColorIndex(next));
-      }
-      // We need to consider the start point as a candidate
-      // (which will always have been marked 'used') because
-      // it's how we actually end. It prevents us from choosing
-      // invalid points (that are not "to the left").
-      if ((i == start || !used[i]) && i != cur && i != next) {
-        const vec2 &vcur = vertices[cur];
-        const vec2 &vnext = vertices[next];
-        const vec2 &vi = vertices[i];
-
-        const vec2 to_next = vnext - vcur;
-        const vec2 to_i = vi - vcur;
-
-        // Compare against the current candidate, using cross
-        // product to find the "leftmost" one.
-        double angle = yocto::cross(to_next, to_i);
-
-        const bool is_strictly_left = angle < 0.0;
-
-        bool take = is_strictly_left;
-
-        if (VERBOSE) {
-          Print("  Angle: {:.17g}. {} {}\n", angle,
-                is_strictly_left ? " left" : "",
-                take ? " take." : "");
-        }
-
-        if (take) {
-          // However, if we get back to a point that's exactly equal
-          // to start, we want to use the start index (for one thing,
-          // so that this loop terminates).
-          if (vi == vstart) {
-            next = start;
-          } else {
-            next = i;
-          }
-        }
-      }
-    }
-
-    cur = next;
-  } while (cur != start);
-
-  if (VERBOSE) {
-    Print(ACYAN("Returned to start.") "\n");
-  }
-  return hull;
-}
-
-std::vector<int> GrahamScan(const std::vector<vec2> &vertices) {
-
-  // Place the leftmost bottommost point first in the
-  // working hull. This will be on the hull and it is the
-  // reference point.
-  const int ref = [&]() {
-      int besti = 0;
-      for (int i = 1; i < vertices.size(); i++) {
-        if ((vertices[i].y < vertices[besti].y) ||
-            (vertices[i].y == vertices[besti].y &&
-             vertices[i].x < vertices[besti].x)) {
-          besti = i;
-        }
-      }
-      return besti;
-    }();
-
-  const vec2 &vref = vertices[ref];
-
-  struct Point {
-    int idx;
-    double angle;
-    double distsq;
-  };
-  // Get the remainder of the point indices.
-  std::vector<Point> points;
-  points.reserve(vertices.size() - 1);
-  for (int i = 0; i < vertices.size(); i++) {
-    if (i != ref) {
-      const vec2 &v = vertices[i];
-      const vec2 e = v - vref;
-      points.emplace_back(Point{
-          .idx = i,
-          .angle = std::atan2(e.y, e.x),
-          .distsq = length_squared(e),
-        });
-    }
-  }
-
-  // Sort the remaining points by their polar angle.
-  std::sort(points.begin(),
-            points.end(),
-            [&](const Point &a, const Point &b) {
-              if (a.angle == b.angle) {
-                if (a.distsq == b.distsq) {
-                  return a.idx < b.idx;
-                } else {
-                  return a.distsq < b.distsq;
-                }
-              } else {
-                return a.angle < b.angle;
-              }
-            });
-
-  // Remove collinear points now. We keep the farthest
-  // one (and in the case of ties, break them using the
-  // largest index).
-  int new_size = 0;
-  for (int i = 0; i < points.size(); i++) {
-    // Skip a point if it has the same angle as the
-    // next one; the last point in such a sequence is the
-    // best one.
-    if (i + 1 < points.size() &&
-        points[i].angle == points[i + 1].angle) {
-      continue;
-    } else {
-      points[new_size++] = points[i];
-    }
-  }
-  points.resize(new_size);
-
-  // Now we have the candidate set.
-  // If it's trivial or degenerate, return those points.
-  if (points.size() <= 2) {
-    std::vector<int> hull = {ref};
-    for (const Point &p : points) hull.push_back(p.idx);
-    return hull;
-  }
-
-  // A proper set. Do the scan.
-  std::vector<int> hull = {ref, points[0].idx, points[1].idx};
-
-  // Taking vertex indices.
-  auto CCW = [&vertices] (int a, int b, int c) {
-      const vec2 &va = vertices[a];
-      const vec2 &vb = vertices[b];
-      const vec2 &vc = vertices[c];
-
-      return cross(vb - va, vc - va) < 0.0;
-    };
-
-  for (int i = 2; i < points.size(); i++) {
-    const Point &point = points[i];
-
-    while (hull.size() >= 2 && CCW(hull[hull.size() - 2],
-                                   hull[hull.size() - 1],
-                                   point.idx)) {
-      hull.pop_back();
-    }
-
-    hull.push_back(point.idx);
-  }
-
-  return hull;
-}
-
-// The QuickHull implementation below and its helper routines are based on code
-// by Miguel Vieira (see LICENSES) although I have heavily modified it.
-// Some changes:
-//  - Uses yocto library for more stuff
-//  - Uses vertex indices so it can be run directly on Polyhedron/Mesh2D.
-//  - Fixes some bugs relating to exactly equal or colinear input points
-//  - Some algorithmic improvements (e.g. left and right sets in the recursive
-//    calls must be disjoint).
-
-// Returns the index of the farthest point from segment (a, b).
-// Requires that all points are to the left of the segment (a,b) (or colinear).
-// (If you need it to handle both, you can just use fabs in the Dist function,
-// but for quickhull our candidate set always lies on the left of the edge.)
-static int GetFarthest(const vec2 &a, const vec2 &b,
-                       const std::vector<vec2> &v,
-                       const std::vector<int> &pts) {
-  CHECK(!pts.empty());
-  const double dx = b.x - a.x;
-  const double dy = b.y - a.y;
-  auto Dist = [&](const vec2 &p) -> double {
-      return dx * (a.y - p.y) - dy * (a.x - p.x);
-    };
-
-  int best_idx = pts[0];
-  double best_dist = Dist(v[best_idx]);
-
-  for (int i = 1; i < pts.size(); i++) {
-    int p = pts[i];
-    double d = Dist(v[p]);
-    if (d < best_dist) {
-      best_idx = p;
-      best_dist = d;
-    }
-  }
-
-  return best_idx;
-}
-
-// The z-value of the cross product of segments
-// (a, b) and (a, c). Positive means c is ccw (to the left)
-// from (a, b), negative cw. Zero means it's colinear.
-static inline double CounterClockwise(
-    const vec2 &a, const vec2 &b, const vec2 &c) {
-  return yocto::cross(b - a, c - a);
-}
-
-
-// Recursive call of the quickhull algorithm.
-static void QuickHullRec(const std::vector<vec2> &vertices,
-                         const std::vector<int> &pts,
-                         int a, int b,
-                         std::vector<int> *hull) {
-  static constexpr bool SELF_CHECK = false;
-  static constexpr int VERBOSE = 0;
-
-  if (VERBOSE == 1) {
-    printf("QuickHullRec(%d vs, %d pts, %d (%s), %d (%s))\n",
-           (int)vertices.size(), (int)pts.size(),
-           a, VecString(vertices[a]).c_str(),
-           b, VecString(vertices[b]).c_str());
-  } else if (VERBOSE > 0) {
-    printf("QuickHullRec(%d vs, %d pts, %d (%s), %d (%s)):",
-           (int)vertices.size(), (int)pts.size(),
-           a, VecString(vertices[a]).c_str(),
-           b, VecString(vertices[b]).c_str());
-    for (int p : pts) {
-      if (p == a || p == b) {
-        printf(" " ANSI_BG(0, 0, 128) "%s" ANSI_RESET,
-               VecString(vertices[p]).c_str());
-      } else {
-        printf(" %s", VecString(vertices[p]).c_str());
-      }
-    }
-    printf("\n");
-  }
-  if (pts.empty()) {
-    return;
-  }
-
-  if (SELF_CHECK) {
-    for (int x : pts) {
-      CHECK(x != a && x != b) << x << " candidate points should "
-        "not include the endpoints of the recursed upon segment.";
-      for (int y : *hull) {
-        CHECK(x != y) << x << " is already in the hull!";
-      }
-    }
-  }
-
-  const vec2 &aa = vertices[a];
-  const vec2 &bb = vertices[b];
-
-  if (SELF_CHECK) {
-    for (int x : pts) {
-      const vec2 &xx = vertices[x];
-      CHECK(aa == xx || bb == xx ||
-            CounterClockwise(aa, bb, xx) > 0.0);
-    }
-  }
-
-  int f = GetFarthest(aa, bb, vertices, pts);
-  const vec2 &ff = vertices[f];
-  if (VERBOSE) printf("Farthest is %d (%s)\n", f, VecString(ff).c_str());
-
-  // CHECK(CounterClockwise(aa, ff, aa) <= 0.0);
-  // CHECK(CounterClockwise(aa, ff, ff) <= 0.0);
-
-  // Collect points to the left of segment (a, f) and to the left
-  // of segment f, b (which we call "right"). A point cannot be in both
-  // sets, because that would require it to be farther away than f, but f
-  // is maximal.
-  //
-  //             f
-  //       left / \   right
-  //      set  /   \   set
-  //          a     b
-  //
-  std::vector<int> left, right;
-  for (int i : pts) {
-    const vec2 &ii = vertices[i];
-    // In the presence of exact duplicates for one of the endpoints,
-    // we need to filter them out here or else we can end up in
-    // infinite loops. Removing duplicates does not affect the hull.
-    if (ii == aa || ii == bb || ii == ff) continue;
-
-    if (CounterClockwise(aa, ff, ii) > 0.0) {
-      left.push_back(i);
-    } else if (CounterClockwise(ff, bb, ii) > 0.0) {
-      right.push_back(i);
-    }
-  }
-  if (VERBOSE) printf("%d left, %d right vertices.\n",
-                      (int)left.size(), (int)right.size());
-  QuickHullRec(vertices, left, a, f, hull);
-
-  // Add f to the hull
-  hull->push_back(f);
-
-  if (VERBOSE) printf("%d right vertices.\n", (int)right.size());
-  QuickHullRec(vertices, right, f, b, hull);
-}
-
-// QuickHull algorithm.
-// https://en.wikipedia.org/wiki/QuickHull
-std::vector<int> QuickHull(const std::vector<vec2> &vertices) {
-  std::vector<int> hull;
-  if (vertices.empty()) return {};
-  if (vertices.size() == 1) return {0};
-  if (vertices.size() == 2) return {0, 1};
-
-  // Returns true if a is lexicographically before b.
-  auto LeftOf = [](const vec2 &a, const vec2 &b) -> bool {
-      return (a.x < b.x || (a.x == b.x && a.y < b.y));
-    };
-
-
-  // Get the leftmost (a) and rightmost (b) points.
-  int a = 0, b = 0;
-  for (int i = 1; i < (int)vertices.size(); i++) {
-    if (LeftOf(vertices[i], vertices[a])) a = i;
-    if (LeftOf(vertices[b], vertices[i])) b = i;
-  }
-
-  if (a == b) [[unlikely]] {
-    fprintf(stderr, "Quickhull failure on:\n");
-    for (const vec2 &v : vertices) {
-      printf("  {%.17g, %.17g},\n",
-             v.x, v.y);
-    }
-    LOG(FATAL) << "Should not be possible!";
-  }
-
-  // Split the points on either side of segment (a, b).
-  std::vector<int> left, right;
-  for (int i = 0; i < (int)vertices.size(); i++) {
-    if (i != a && i != b) {
-      double side = CounterClockwise(vertices[a], vertices[b], vertices[i]);
-      if (side > 0.0) left.push_back(i);
-      else if (side < 0.0) right.push_back(i);
-      // Ignore if colinear.
-    }
-  }
-
-  // Be careful to add points to the hull
-  // in the correct order. Add our leftmost point.
-  hull.push_back(a);
-
-  // Add hull points from the left (top)
-  QuickHullRec(vertices, left, a, b, &hull);
-
-  // Add our rightmost point
-  hull.push_back(b);
-
-  // Add hull points from the right (bottom)
-  QuickHullRec(vertices, right, b, a, &hull);
-
-  return hull;
 }
 
 // This can be done faster with "rotating calipers" although
@@ -1209,8 +659,8 @@ double PlanarityError(const Polyhedron &p) {
   return error;
 }
 
-bool IsHullConvex(const std::vector<vec2> &vertices,
-              const std::vector<int> &polygon) {
+bool IsHullConvex(std::span<const vec2> vertices,
+                  std::span<const int> polygon) {
   if (polygon.size() <= 3) return true;
   std::optional<int> s;
   for (int i = 0; i < polygon.size(); i++) {
@@ -1231,7 +681,7 @@ bool IsHullConvex(const std::vector<vec2> &vertices,
   return true;
 }
 
-bool IsPolyConvex(const std::vector<vec2> &poly) {
+bool IsPolyConvex(std::span<const vec2> poly) {
   if (poly.size() < 3) return false;
   std::optional<int> s;
   for (int i = 0; i < poly.size(); i++) {
@@ -1252,7 +702,8 @@ bool IsPolyConvex(const std::vector<vec2> &poly) {
   return true;
 }
 
-bool IsConvexAndScreenClockwise(const std::vector<vec2> &poly) {
+bool IsConvexAndScreenClockwise(std::span<const vec2> poly) {
+  static constexpr bool VERBOSE = false;
   if (poly.size() < 3) return false;
 
   for (int i = 0; i < poly.size(); i++) {
@@ -1262,22 +713,35 @@ bool IsConvexAndScreenClockwise(const std::vector<vec2> &poly) {
 
     double cx = cross(vb - va, vc - vb);
     if (cx < -1.0e-10) {
-      #if 0
-      printf("[%d] No, because %.11g < 0. For:\n"
-             "%s\n"
-             "%s\n"
-             "%s\n",
-             i,
-             cx,
-             VecString(va).c_str(),
-             VecString(vb).c_str(),
-             VecString(vc).c_str());
-      #endif
+      if constexpr (VERBOSE) {
+        Print("[{}] No, because {:.11g} < 0. For:\n"
+              "{}\n"
+              "{}\n"
+              "{}\n",
+              i,
+              cx,
+              VecString(va),
+              VecString(vb),
+              VecString(vc));
+      }
       return false;
     }
   }
 
   return true;
+}
+
+double SignedAreaOfConvexPoly(std::span<const vec2> pts) {
+  if (pts.size() < 3) return 0.0;
+  double area = 0.0;
+  // Iterate through the polygon vertices, using the shoelace formula.
+  for (size_t i = 0; i < pts.size(); i++) {
+    const vec2 &v0 = pts[i];
+    const vec2 &v1 = pts[(i + 1) % pts.size()];
+    area += v0.x * v1.y - v1.x * v0.y;
+  }
+
+  return area * 0.5;
 }
 
 template<class GetPt>
@@ -1341,7 +805,7 @@ bool FacesParallel(const Polyhedron &poly, int face1, int face2) {
     };
 
   double dot = yocto::dot(Normal(face1), Normal(face2));
-  double angle = std::acos(std::abs(dot));
+  double angle = std::acos(std::clamp(std::abs(dot), 0.0, 1.0));
   // Don't need to worry too much about "close to zero" since these
   // polyhedra don't have nearly-parallel faces.
   return angle < 1.0e-6;
@@ -1410,7 +874,7 @@ void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
 
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
-  printf("Wrote " AGREEN("%s") "\n", f.c_str());
+  Print("Wrote " AGREEN("{}") "\n", f);
 }
 
 void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
@@ -1449,34 +913,7 @@ void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
 
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
-  printf("Wrote " AGREEN("%s") "\n", f.c_str());
-}
-
-void SaveAsJSON(const frame3 &outer_frame,
-                const frame3 &inner_frame,
-                std::string_view filename) {
-  std::string contents = "{\n";
-  AppendFormat(
-      &contents,
-      " \"outerframe\": "
-      "[\n  {},{},{},\n  {},{},{},\n  {},{},{},\n  {},{},{}],",
-      outer_frame.x.x, outer_frame.x.y, outer_frame.x.z,
-      outer_frame.y.x, outer_frame.y.y, outer_frame.y.z,
-      outer_frame.z.x, outer_frame.z.y, outer_frame.z.z,
-      outer_frame.o.x, outer_frame.o.y, outer_frame.o.z);
-  AppendFormat(
-      &contents,
-      " \"innerframe\": "
-      "[\n  {},{},{},\n  {},{},{},\n  {},{},{},\n  {},{},{}]",
-      inner_frame.x.x, inner_frame.x.y, inner_frame.x.z,
-      inner_frame.y.x, inner_frame.y.y, inner_frame.y.z,
-      inner_frame.z.x, inner_frame.z.y, inner_frame.z.z,
-      inner_frame.o.x, inner_frame.o.y, inner_frame.o.z);
-  contents.append("\n}\n");
-
-  std::string f = (std::string)filename;
-  Util::WriteFile(f, contents);
-  printf("Wrote " AGREEN("%s") "\n", f.c_str());
+  Print("Wrote " AGREEN("{}") "\n", f);
 }
 
 Polyhedron NPrism(int64_t num_points, double depth) {
@@ -1633,7 +1070,7 @@ Polyhedron Dodecahedron() {
               });
     others.resize(3);
     for (const auto &[idx, dist_] : others) {
-      // printf("src %d, n %d, dist %.11g\n", i, idx, dist_);
+      // Print("src {}, n {}, dist {:.11g}\n", i, idx, dist_);
       neighbors[i].push_back(idx);
     }
   }
@@ -1641,13 +1078,13 @@ Polyhedron Dodecahedron() {
   if (VERBOSE) {
     for (int i = 0; i < vertices.size(); i++) {
       const vec3 &v = vertices[i];
-      printf("v " AWHITE("%d")
-             ". (" ARED("%.3f") ", " AGREEN("%.3f") ", " ABLUE("%.3f")
-             ") neighbors:", i, v.x, v.y, v.z);
+      Print("v " AWHITE("{}")
+            ". (" ARED("{:.3f}") ", " AGREEN("{:.3f}") ", " ABLUE("{:.3f}")
+            ") neighbors:", i, v.x, v.y, v.z);
       for (int n : neighbors[i]) {
-        printf(" %d", n);
+        Print(" {}", n);
       }
-      printf("\n");
+      Print("\n");
     }
   }
 
@@ -1727,93 +1164,6 @@ Polyhedron Dodecahedron() {
 }
 
 
-TriangularMesh3D ApproximateSphere(int depth) {
-
-  #if 0
-  // Start with tetrahedron.
-  // You get a cool looking shape, but it's actually pretty
-  // irregular.
-  TriangularMesh3D mesh;
-  mesh.vertices = {
-    normalize(vec3{1.0,   1.0,  1.0}),
-    normalize(vec3{1.0,  -1.0, -1.0}),
-    normalize(vec3{-1.0,  1.0, -1.0}),
-    normalize(vec3{-1.0, -1.0,  1.0}),
-  };
-
-  for (int i = 0; i < 4; i++) {
-    for (int j = i + 1; j < 4; j++) {
-      for (int k = j + 1; k < 4; k++) {
-        mesh.triangles.emplace_back(i, j, k);
-      }
-    }
-  }
-  #endif
-
-  // Icosahedron is way better!
-  TriangularMesh3D mesh = []() {
-      Polyhedron icos = Icosahedron();
-      TriangularMesh3D mesh{
-        .vertices = icos.vertices,
-        .triangles = icos.faces->triangulation,
-      };
-
-      for (vec3 &v : mesh.vertices) {
-        v = normalize(v);
-      }
-
-      OrientMesh(&mesh);
-
-      return mesh;
-    }();
-
-  // Triforce Subdivision.
-  while (depth--) {
-    std::unordered_map<std::pair<int, int>, int,
-                       Hashing<std::pair<int, int>>> midpoints;
-    TriangularMesh3D submesh;
-    submesh.vertices = mesh.vertices;
-
-    auto MidPoint = [&](int a, int b) {
-        if (a > b) std::swap(a, b);
-        auto it = midpoints.find(std::make_pair(a, b));
-        if (it == midpoints.end()) {
-          CHECK(b < mesh.vertices.size());
-          // We want the average, but since we are normalizing anyway,
-          // we can skip the scale.
-          vec3 m = normalize(mesh.vertices[a] + mesh.vertices[b]);
-          int id = submesh.vertices.size();
-          midpoints[std::make_pair(a, b)] = id;
-          submesh.vertices.push_back(m);
-          return id;
-        }
-        else return it->second;
-      };
-
-    for (const auto &[a, b, c] : mesh.triangles) {
-      //
-      //    a---d---b
-      //     \ / \ /
-      //      e---f
-      //       \ /
-      //        c
-      //
-      int d = MidPoint(a, b);
-      int e = MidPoint(a, c);
-      int f = MidPoint(b, c);
-
-      // Preserve clockwise winding.
-      submesh.triangles.emplace_back(a, d, e);
-      submesh.triangles.emplace_back(d, b, f);
-      submesh.triangles.emplace_back(d, f, e);
-      submesh.triangles.emplace_back(e, f, c);
-    }
-    mesh = std::move(submesh);
-  }
-
-  return mesh;
-}
-
 // Take all planes where all of the other vertices
 // are on one side. (Basically, the 3D convex hull.)
 // This is not fast but it should work for any convex polyhedron,
@@ -1861,11 +1211,11 @@ static bool InitPolyhedronInternal(
       yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
 
     if (VERBOSE > 1) {
-      printf("Try %s;%s;%s\n   Normal: %s\n",
-             VecString(v0).c_str(),
-             VecString(v1).c_str(),
-             VecString(v2).c_str(),
-             VecString(normal).c_str());
+      Print("Try {};{};{}\n   Normal: {}\n",
+            VecString(v0),
+            VecString(v1),
+            VecString(v2),
+            VecString(normal));
     }
 
     std::vector<int> coplanar;
@@ -2213,7 +1563,7 @@ Polyhedron Rhombicuboctahedron() {
     vertices.emplace_back(s1, s2, s3 * u);
   }
 
-  // printf("Get faces..\n");
+  // Print("Get faces..\n");
   return MakeConvexOrDie(
       std::move(vertices), "rhombicuboctahedron",
       SYM_OCTAHEDRAL

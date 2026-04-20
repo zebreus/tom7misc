@@ -13,6 +13,7 @@
 #include "base/logging.h"
 #include "polyhedra.h"
 #include "randutil.h"
+#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec3 = Dyson::vec3;
