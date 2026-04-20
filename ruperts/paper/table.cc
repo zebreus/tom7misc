@@ -1,20 +1,17 @@
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <limits>
 #include <map>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/stringprintf.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
+#include "ruperts-util.h"
 #include "smallest-sphere.h"
 #include "solutions.h"
 #include "util.h"
@@ -161,8 +158,6 @@ static void PrintTable(const std::unordered_set<std::string> &filter) {
 
       printf(") ::\n");
     }
-
-    delete poly.faces;
   }
 
   printf("  nil\n");

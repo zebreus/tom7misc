@@ -7,7 +7,7 @@
 #include <string_view>
 
 #include "base/print.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "ruperts-util.h"
 #include "solutions.h"
 #include "yocto-math.h"

@@ -5,8 +5,8 @@
 #include <vector>
 #include <numbers>
 
+#include "geom/polyhedra.h"
 #include "yocto-math.h"
-#include "polyhedra.h"
 
 // The platonic solids are a nice way to get to their corresponding
 // symmetry groups. We normalize them and convert each vertex to

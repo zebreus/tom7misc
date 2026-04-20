@@ -14,8 +14,8 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "color-util.h"
+#include "geom/polyhedra.h"
 #include "image.h"
-#include "polyhedra.h"
 #include "ruperts-util.h"
 #include "yocto-math.h"
 

@@ -11,7 +11,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "ruperts-util.h"
 #include "yocto-math.h"

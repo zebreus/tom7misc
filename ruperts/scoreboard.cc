@@ -13,7 +13,7 @@
 
 #include "ansi.h"
 #include "base/print.h"
-#include "polyhedra.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "util.h"
 

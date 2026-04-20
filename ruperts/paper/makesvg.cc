@@ -9,7 +9,7 @@
 #include "bounds.h"
 #include "geom/mesh.h"
 #include "image.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "textsvg.h"
 #include "util.h"
 #include "yocto-math.h"

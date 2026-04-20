@@ -27,7 +27,7 @@
 #include "dirty.h"
 #include "geom/mesh.h"
 #include "rendering.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 
 static constexpr bool DEBUG = false;
 static constexpr bool VERBOSE = false;

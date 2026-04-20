@@ -9,14 +9,11 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <unordered_set>
 
 #include "ansi.h"
 #include "base/stringprintf.h"
-#include "bignum/polynomial.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "util.h"
-
 #include "z3.h"
 
 // require no translation of either polyhedron, only rotations.

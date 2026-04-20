@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "yocto-math.h"
 
 void SymmetryGroups::EdgeRotations(const Polyhedron &poly,

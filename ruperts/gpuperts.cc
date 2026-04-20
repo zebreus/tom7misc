@@ -15,17 +15,16 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "color-util.h"
+#include "geom/polyhedra.h"
 #include "image.h"
 #include "opencl/clutil.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "rendering.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "util.h"
-
-#include "polyhedra.h"
-#include "rendering.h"
-
 
 static CL *cl = nullptr;
 
@@ -605,9 +604,6 @@ static void Run() {
   printf("Running on the " APURPLE("%s") "\n", target.name.c_str());
   gpupert.Run();
   printf("Run done\n");
-
-  delete target.faces;
-  target.faces = nullptr;
 }
 
 static void Info() {

@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "geom/polyhedra.h"
 #include "image.h"
-#include "polyhedra.h"
 #include "yocto-math.h"
 
 struct Rendering {

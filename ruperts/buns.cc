@@ -32,7 +32,7 @@
 #include "image.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "rendering.h"
 #include "ruperts-util.h"
 #include "solutions.h"

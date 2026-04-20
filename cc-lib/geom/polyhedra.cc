@@ -1,5 +1,5 @@
 
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 
 #include <algorithm>
 #include <bit>
@@ -226,7 +226,7 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
   for (const std::vector<int> &face : v) {
     if (VERBOSE) {
       Print("Face:");
-      for (int i = 0; i < (int)face.size(); i++) {
+      for (size_t i = 0; i < face.size(); i++) {
         Print(" {}", face[i]);
       }
       Print("\n");
@@ -234,7 +234,7 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
     // Add each edge forwards and backwards.
     for (int i = 0; i < (int)face.size(); i++) {
       int v0 = face[i];
-      int v1 = face[(i + 1) % face.size()];
+      int v1 = face[(i + 1) % (int)face.size()];
       CHECK(v0 >= 0 && v0 < num_vertices);
       CHECK(v1 >= 0 && v1 < num_vertices);
       collated[v0].insert(v1);
@@ -263,7 +263,7 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
   for (const std::vector<int> &face : v) {
     if (face.size() < 3) return false;
     int p0 = face[0];
-    for (int i = 1; i + 1 < face.size(); i++) {
+    for (int i = 1; i + 1 < (int)face.size(); i++) {
       triangulation.emplace_back(p0, face[i], face[i + 1]);
     }
   }
@@ -391,7 +391,7 @@ double PointLineDistance(
 Mesh2D Shadow(const Polyhedron &p) {
   Mesh2D mesh;
   mesh.vertices.resize(p.vertices.size());
-  for (int i = 0; i < p.vertices.size(); i++) {
+  for (int i = 0; i < (int)p.vertices.size(); i++) {
     const vec3 &v = p.vertices[i];
     mesh.vertices[i] = vec2{.x = v.x, .y = v.y};
   }
@@ -402,7 +402,7 @@ Mesh2D Shadow(const Polyhedron &p) {
 double SquaredDistanceToPoly(const std::vector<vec2> &poly,
                              const vec2 &pt) {
   double best_sqdist = std::numeric_limits<double>::infinity();
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &v0 = poly[i];
     const vec2 &v1 = poly[(i + 1) % poly.size()];
 
@@ -417,7 +417,7 @@ static double SquaredDistanceToHull(
     const std::vector<vec2> &points, const std::vector<int> &hull,
     const vec2 &pt) {
   std::optional<double> best_sqdist;
-  for (int i = 0; i < hull.size(); i++) {
+  for (int i = 0; i < (int)hull.size(); i++) {
     const vec2 &v0 = points[hull[i]];
     const vec2 &v1 = points[hull[(i + 1) % hull.size()]];
 
@@ -441,7 +441,7 @@ std::pair<vec2, double> ClosestPointOnHull(
     const vec2 &pt) {
   std::optional<double> best_sqdist;
   vec2 best;
-  for (int i = 0; i < hull.size(); i++) {
+  for (int i = 0; i < (int)hull.size(); i++) {
     const vec2 &v0 = points[hull[i]];
     const vec2 &v1 = points[hull[(i + 1) % hull.size()]];
 
@@ -479,7 +479,7 @@ PolyTester2D::PolyTester2D(std::span<const vec2> poly) : poly(poly) {
   edges.reserve(poly.size());
   edge_sqlens.reserve(poly.size());
 
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &v0 = poly[i];
     const vec2 &v1 = poly[(i + 1) % poly.size()];
     const vec2 edge = v1 - v0;
@@ -504,7 +504,7 @@ bool PolyTester2D::PointInPolygon(const vec2 &point) const {
   if (point.y > max_y) return false;
   #endif
 
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &v0 = poly[i];
     const vec2 &edge = edges[i];
     const vec2 pt_vec = point - v0;
@@ -524,7 +524,7 @@ bool PolyTester2D::PointInPolygon(const vec2 &point) const {
 
 double PolyTester2D::SquaredDistanceToPoly(const vec2 &pt) const {
   double best_sqdist = std::numeric_limits<double>::infinity();
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &v0 = poly[i];
 
     // This is SquaredPointLineDistance, but we use some
@@ -580,8 +580,8 @@ PolyTester2D::SquaredDistanceOutside(const vec2 &pt) const {
 // have many parallel faces for these regular shapes).
 double Diameter(const Polyhedron &p) {
   double dist = 0.0;
-  for (int i = 0; i < p.vertices.size(); i++) {
-    for (int j = i + 1; j < p.vertices.size(); j++) {
+  for (int i = 0; i < (int)p.vertices.size(); i++) {
+    for (int j = i + 1; j < (int)p.vertices.size(); j++) {
       dist = std::max(dist, yocto::distance_squared(p.vertices[i],
                                                     p.vertices[j]));
     }
@@ -627,7 +627,7 @@ double PlanarityError(const std::vector<vec3> &vs) {
   vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
 
   // Check error against this plane.
-  for (int i = 3; i < vs.size(); i++) {
+  for (int i = 3; i < (int)vs.size(); i++) {
     vec3 v = vs[i];
     double err = std::abs(yocto::dot(v - v0, normal));
     error += err;
@@ -649,7 +649,7 @@ double PlanarityError(const Polyhedron &p) {
       vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
 
       // Check error against this plane.
-      for (int i = 3; i < face.size(); i++) {
+      for (int i = 3; i < (int)face.size(); i++) {
         vec3 v = p.vertices[face[i]];
         double err = std::abs(yocto::dot(v - v0, normal));
         error += err;
@@ -663,7 +663,7 @@ bool IsHullConvex(std::span<const vec2> vertices,
                   std::span<const int> polygon) {
   if (polygon.size() <= 3) return true;
   std::optional<int> s;
-  for (int i = 0; i < polygon.size(); i++) {
+  for (int i = 0; i < (int)polygon.size(); i++) {
     const vec2 &p0 = vertices[polygon[i]];
     const vec2 &p1 = vertices[polygon[(i + 1) % polygon.size()]];
     const vec2 &p2 = vertices[polygon[(i + 2) % polygon.size()]];
@@ -684,7 +684,7 @@ bool IsHullConvex(std::span<const vec2> vertices,
 bool IsPolyConvex(std::span<const vec2> poly) {
   if (poly.size() < 3) return false;
   std::optional<int> s;
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &p0 = poly[i];
     const vec2 &p1 = poly[(i + 1) % poly.size()];
     const vec2 &p2 = poly[(i + 2) % poly.size()];
@@ -706,7 +706,7 @@ bool IsConvexAndScreenClockwise(std::span<const vec2> poly) {
   static constexpr bool VERBOSE = false;
   if (poly.size() < 3) return false;
 
-  for (int i = 0; i < poly.size(); i++) {
+  for (int i = 0; i < (int)poly.size(); i++) {
     const vec2 &va = poly[i];
     const vec2 &vb = poly[(i + 1) % poly.size()];
     const vec2 &vc = poly[(i + 2) % poly.size()];
@@ -882,16 +882,16 @@ void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
   AppendFormat(&contents, " \"name\": \"{}\",\n", poly.name);
   AppendFormat(&contents, " \"verts\": [\n");
   const auto &verts = poly.vertices;
-  for (int ii = 0; ii < verts.size(); ++ ii) {
+  for (int ii = 0; ii < (int)verts.size(); ++ ii) {
     const auto &v = verts[ii];
     AppendFormat(&contents, "  [{},{},{}]", v[0], v[1], v[2]);
-    if (ii + 1 < verts.size()) {
+    if (ii + 1 < (int)verts.size()) {
       AppendFormat(&contents, ",\n");
     }
   }
   AppendFormat(&contents, "],\n");
   AppendFormat(&contents, " \"faces\": [\n");
-  for (int ii = 0; ii < poly.faces->v.size(); ++ ii) {
+  for (int ii = 0; ii < (int)poly.faces->v.size(); ++ ii) {
     AppendFormat(&contents, "  [");
     const auto &face = poly.faces->v[ii];
     int n = face.size();
@@ -903,7 +903,7 @@ void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
       }
     }
     AppendFormat(&contents, "]");
-    if (ii + 1 < poly.faces->v.size()) {
+    if (ii + 1 < (int)poly.faces->v.size()) {
       AppendFormat(&contents, ",\n");
     }
   }
@@ -1055,10 +1055,10 @@ Polyhedron Dodecahedron() {
   // and they are to the three closest (other) vertices.
 
   std::vector<std::vector<int>> neighbors(20);
-  for (int i = 0; i < vertices.size(); i++) {
+  for (int i = 0; i < (int)vertices.size(); i++) {
     std::vector<std::pair<int, double>> others;
     others.reserve(19);
-    for (int o = 0; o < vertices.size(); o++) {
+    for (int o = 0; o < (int)vertices.size(); o++) {
       if (o != i) {
         others.emplace_back(o, distance(vertices[i], vertices[o]));
       }
@@ -1223,7 +1223,7 @@ static bool InitPolyhedronInternal(
     bool above = false, below = false;
 
     // Now for every other vertex...
-    for (int o = 0; o < vertices.size(); o++) {
+    for (int o = 0; o < (int)vertices.size(); o++) {
       if (o != i && o != j && o != k) {
         const vec3 &v = vertices[o];
         double dot = yocto::dot(v - v0, normal);
@@ -1264,7 +1264,7 @@ static bool InitPolyhedronInternal(
   }
 
   // wlog i > j > k.
-  for (int i = 0; i < vertices.size(); i++) {
+  for (int i = 0; i < (int)vertices.size(); i++) {
     for (int j = 0; j < i; j++) {
       for (int k = 0; k < j; k++) {
         if (std::optional<std::vector<int>> fo =
@@ -1696,7 +1696,7 @@ Polyhedron TruncatedIcosahedron() {
   Polyhedron ico = Icosahedron();
   CHECK(ico.vertices.size() == ico.faces->neighbors.size()) <<
     ico.vertices.size() << " vs " << ico.faces->neighbors.size();
-  for (int i = 0; i < ico.faces->neighbors.size(); i++) {
+  for (int i = 0; i < (int)ico.faces->neighbors.size(); i++) {
     for (int j : ico.faces->neighbors[i]) {
       // Consider every edge, but only once.
       if (i < j) {

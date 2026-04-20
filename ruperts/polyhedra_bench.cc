@@ -1,5 +1,5 @@
 
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 
 #include <limits>
 #include <optional>
@@ -11,6 +11,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "periodically.h"
+#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto-math.h"
@@ -110,6 +111,7 @@ static std::vector<vec2> GetPoly(const std::vector<vec2> &vertices,
   return poly;
 }
 
+[[maybe_unused]]
 static void BenchPolyTester() {
   Polyhedron poly = SnubCube();
 

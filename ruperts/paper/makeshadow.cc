@@ -4,13 +4,15 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
 #include "geom/mesh.h"
+#include "geom/polyhedra.h"
 #include "image.h"
-#include "polyhedra.h"
+#include "ruperts-util.h"
 #include "textsvg.h"
 #include "util.h"
 #include "yocto-math.h"

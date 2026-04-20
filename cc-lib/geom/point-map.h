@@ -1,6 +1,10 @@
 
-#ifndef _RUPERTS_POINT_MAP_H
-#define _RUPERTS_POINT_MAP_H
+// Simple map keyed by points in 3D.
+// Note that this is just a linear scan! It should be
+// improved to use kd-tree!
+
+#ifndef _CC_LIB_POINT_MAP_H
+#define _CC_LIB_POINT_MAP_H
 
 #include <cstddef>
 #include <optional>
@@ -69,7 +73,7 @@ struct PointMap3 {
 
  private:
   double sqdist = 0.000001;
-  // perf use kd-tree
+  // PERF use kd-tree
   std::vector<std::pair<vec3, Value>> pts;
 };
 

@@ -20,7 +20,7 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "big-polyhedra.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;

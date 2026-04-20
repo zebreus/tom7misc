@@ -3,8 +3,8 @@
 // and projections of them to 2D. From the ruperts project, but
 // "cleaned up."
 
-#ifndef _RUPERTS_POLYHEDRA_H
-#define _RUPERTS_POLYHEDRA_H
+#ifndef _CC_LIB_GEOM_POLYHEDRA_H
+#define _CC_LIB_GEOM_POLYHEDRA_H
 
 #include <cmath>
 #include <cstdint>
@@ -147,21 +147,26 @@ double SquaredPointLineDistance(
 inline double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
                                    const vec2 &p) {
   vec2 edge = v1 - v0;
-
   vec2 p_edge = p - v0;
+
   double cx = yocto::cross(edge, p_edge);
+
+  double dotprod = yocto::dot(p_edge, edge);
+  double sqlen = yocto::dot(edge, edge);
+
+  const bool neg = cx < 0.0;
+  if (dotprod <= 0.0) {
+    const double len = yocto::length(p_edge);
+    return neg ? -len : len;
+  } else if (dotprod >= sqlen) {
+    const double len = yocto::length(p - v1);
+    return len ? -len : len;
+  }
+
   // Signed. Negative means on the left.
-  double dist = cx / yocto::length(edge);
-
-  // Consider the endpoints. These are unsigned distances.
-  double d0 = yocto::length(p_edge);
-  double d1 = yocto::length(p - v1);
-
-  if (d0 < std::abs(dist)) dist = d0 * yocto::sign(cx);
-  if (d1 < std::abs(dist)) dist = d1 * yocto::sign(cx);
-
-  return dist;
+  return cx / yocto::length(edge);
 }
+
 
 // Signed distance to the triangle from the point p. Vertex order
 // does not matter. Negative sign means the interior of the triangle.

@@ -7,8 +7,8 @@
 #include "ansi.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "geom/polyhedra.h"
 #include "patches.h"
-#include "polyhedra.h"
 #include "util.h"
 #include "yocto-math.h"
 

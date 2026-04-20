@@ -1,4 +1,6 @@
 
+;; this is typically bound to C-c c
+
 (defun cleanup ()
   "Apply cleanups defined in the *Cleanups* buffer."
   (interactive)

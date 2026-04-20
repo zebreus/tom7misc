@@ -26,7 +26,7 @@
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "ruperts-util.h"
 #include "status-bar.h"

@@ -16,7 +16,7 @@
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "database.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "yocto-math.h"
 
 struct SolutionDB {

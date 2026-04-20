@@ -1,9 +1,8 @@
 
-#include "polyhedra.h"
+#include "ruperts-util.h"
 
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <numbers>
 #include <optional>
@@ -18,10 +17,10 @@
 #include "base/print.h"
 #include "bounds.h"
 #include "dirty.h"
+#include "geom/polyhedra.h"
 #include "image.h"
 #include "randutil.h"
 #include "rendering.h"
-#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;

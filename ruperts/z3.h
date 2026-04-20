@@ -15,10 +15,10 @@
 #include <vector>
 
 #include "base/stringprintf.h"
+#include "big-polyhedra.h"
 #include "bignum/big.h"
 #include "bignum/polynomial.h"
-#include "polyhedra.h"
-#include "big-polyhedra.h"
+#include "geom/polyhedra.h"
 
 struct SymbolTable {
   std::string Fresh(std::string_view hint);

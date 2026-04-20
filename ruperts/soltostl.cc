@@ -12,7 +12,7 @@
 #include "ansi.h"
 #include "big-csg.h"
 #include "geom/mesh.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "rendering.h"
 #include "ruperts-util.h"
 #include "solutions.h"

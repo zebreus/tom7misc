@@ -5,6 +5,7 @@
 #include <ctime>
 #include <format>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -17,7 +18,7 @@
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"

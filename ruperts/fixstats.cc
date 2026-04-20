@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "ansi.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "ruperts-util.h"
 #include "solutions.h"
 #include "timer.h"

@@ -1,7 +1,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <map>
@@ -13,7 +12,8 @@
 
 #include "ansi.h"
 #include "base/print.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "util.h"
 

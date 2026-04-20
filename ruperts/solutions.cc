@@ -17,7 +17,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "database.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "ruperts-util.h"
 #include "util.h"
 

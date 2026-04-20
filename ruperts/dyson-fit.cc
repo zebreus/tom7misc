@@ -20,7 +20,7 @@
 #include "geom/mesh.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "ruperts-util.h"
 #include "timer.h"
 #include "yocto-math.h"

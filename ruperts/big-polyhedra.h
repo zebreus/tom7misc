@@ -14,7 +14,7 @@
 #include "base/logging.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "hashing.h"
 
 // TODO: To cc-lib bignum

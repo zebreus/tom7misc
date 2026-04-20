@@ -2,15 +2,15 @@
 #include "z3.h"
 
 #include <format>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <mutex>
 
 #include "base/stringprintf.h"
 #include "bignum/polynomial.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "threadutil.h"
 
 std::string SymbolTable::Fresh(std::string_view hint) {

@@ -1,5 +1,3 @@
-#include "arcfour.h"
-#include "randutil.h"
 #include "hull.h"
 
 #include <cmath>
@@ -9,8 +7,10 @@
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
+#include "randutil.h"
 #include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;

@@ -36,9 +36,8 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-
 #include "ruperts-util.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "rendering.h"
 #include "solutions.h"
 #include "yocto-math.h"

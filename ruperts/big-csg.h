@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "geom/mesh.h"
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "yocto-math.h"
 
 // Internally uses rational coordinates. Expose this in interface too?

@@ -1,5 +1,5 @@
 
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 
 #include <algorithm>
 #include <cmath>
@@ -17,8 +17,8 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "color-util.h"
+#include "geom/point-map.h"
 #include "image.h"
-#include "point-map.h"
 #include "randutil.h"
 #include "timer.h"
 #include "yocto-math.h"
@@ -308,6 +308,114 @@ static void TestDualize() {
   Print("Dualization OK!\n");
 }
 
+static void TestInTriangle() {
+  vec2 a{0.0, 0.0};
+  vec2 b{10.0, 0.0};
+  vec2 c{0.0, 10.0};
+
+  CHECK(InTriangle(a, b, c, vec2{1.0, 1.0}));
+  CHECK(InTriangle(a, b, c, vec2{2.0, 5.0}));
+
+  // Outside
+  CHECK(!InTriangle(a, b, c, vec2{-1.0, 1.0}));
+  CHECK(!InTriangle(a, b, c, vec2{1.0, -1.0}));
+  CHECK(!InTriangle(a, b, c, vec2{6.0, 6.0}));
+
+  // Both winding orders
+  CHECK(InTriangle(a, c, b, vec2{1.0, 1.0}));
+  CHECK(!InTriangle(a, c, b, vec2{-1.0, 1.0}));
+}
+
+static void TestPointInPolygon() {
+  std::vector<vec2> poly = {
+    vec2{0.0, 0.0},
+    vec2{10.0, 0.0},
+    vec2{10.0, 10.0},
+    vec2{5.0, 5.0},
+    vec2{0.0, 10.0},
+  };
+
+  CHECK(PointInPolygon(vec2{5.0, 2.0}, poly));
+  CHECK(!PointInPolygon(vec2{5.0, 8.0}, poly));
+  CHECK(!PointInPolygon(vec2{-1.0, 5.0}, poly));
+}
+
+static void TestPolyhedronTransformations() {
+  {
+    Polyhedron cube = Cube();
+    // Cube is 2x2x2 centered at origin.
+    CHECK_NEAR(Diameter(cube), std::sqrt(12.0));
+
+    Polyhedron scaled = Scale(cube, 2.0);
+    CHECK_NEAR(Diameter(scaled), std::sqrt(12.0) * 2.0);
+  }
+
+  {
+    Polyhedron cube = Cube();
+    // Normalizing radius should make all points distance 1 from origin.
+    Polyhedron normalized = NormalizeRadius(cube);
+    for (const vec3 &v : normalized.vertices) {
+      CHECK_NEAR(yocto::length(v), 1.0);
+    }
+  }
+
+  {
+    Polyhedron cube = Cube();
+    Polyhedron moved = cube;
+    for (vec3 &v : moved.vertices) {
+      v += vec3{1.0, 2.0, 3.0};
+    }
+    Polyhedron recentered = Recenter(moved);
+    for (int i = 0; i < (int)cube.vertices.size(); i++) {
+      CHECK_NEAR(cube.vertices[i].x, recentered.vertices[i].x);
+      CHECK_NEAR(cube.vertices[i].y, recentered.vertices[i].y);
+      CHECK_NEAR(cube.vertices[i].z, recentered.vertices[i].z);
+    }
+  }
+}
+
+static void TestPlanarityError() {
+  {
+    Polyhedron cube = Cube();
+    CHECK_NEAR(PlanarityError(cube), 0.0);
+  }
+
+  {
+    // Perturb a vertex to make it non-planar.
+    Polyhedron bad_cube = Cube();
+    bad_cube.vertices[0].z += 1.0;
+    CHECK(PlanarityError(bad_cube) > 0.1);
+  }
+}
+
+static void TestHullDistances() {
+  std::vector<vec2> pts = {
+    vec2{0.0, 0.0},
+    vec2{10.0, 0.0},
+    vec2{10.0, 10.0},
+    vec2{0.0, 10.0},
+  };
+  std::vector<int> hull = {0, 1, 2, 3};
+
+  CHECK_NEAR(DistanceToHull(pts, hull, vec2{12.0, 5.0}), 2.0);
+
+  auto [closest, dist] = ClosestPointOnHull(pts, hull, vec2{12.0, 5.0});
+  CHECK_NEAR(dist, 2.0);
+  CHECK_NEAR(closest.x, 10.0);
+  CHECK_NEAR(closest.y, 5.0);
+}
+
+static void TestSignedDistanceToEdgeEndpoints() {
+  vec2 v0{0.0, 0.0};
+  vec2 v1{10.0, 0.0};
+
+  // The distance to the infinite line is 4.0.
+  // The distance to the segment is the distance to v0, which is 5.0.
+  double dist = SignedDistanceToEdge(v0, v1, vec2{-3.0, 4.0});
+
+  CHECK_NEAR(dist, 5.0);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Print("\n");
@@ -319,6 +427,13 @@ int main(int argc, char **argv) {
   TestPolyTester2();
 
   TestDualize();
+
+  TestInTriangle();
+  TestPointInPolygon();
+  TestPolyhedronTransformations();
+  TestPlanarityError();
+  TestHullDistances();
+  TestSignedDistanceToEdgeEndpoints();
 
   Print("OK\n");
   return 0;

@@ -8,11 +8,11 @@
 #include <utility>
 #include <vector>
 
-#include "polyhedra.h"
+#include "geom/polyhedra.h"
 #include "rendering.h"
+#include "ruperts-util.h"
 #include "solutions.h"
 #include "yocto-math.h"
-#include "ruperts-util.h"
 
 using frame3 = yocto::frame<double, 3>;
 
