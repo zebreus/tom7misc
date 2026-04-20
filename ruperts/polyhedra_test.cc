@@ -17,10 +17,12 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bounds.h"
 #include "color-util.h"
 #include "dirty.h"
 #include "image.h"
+#include "point-map.h"
 #include "randutil.h"
 #include "rendering.h"
 #include "timer.h"
@@ -747,6 +749,61 @@ static void TestPolyTester2() {
       2.0 * 2.0);
 }
 
+static bool ConvexPolyhedraAlmostEq(const Polyhedron &a,
+                                    const Polyhedron &b) {
+  if (a.vertices.size() != b.vertices.size()) {
+    return false;
+  }
+
+  PointSet3 pts_a;
+  for (const vec3 &v : a.vertices) {
+    pts_a.Add(v);
+  }
+
+  PointSet3 pts_b;
+  for (const vec3 &v : b.vertices) {
+    pts_b.Add(v);
+  }
+
+  for (const vec3 &v : b.vertices) {
+    if (!pts_a.Contains(v)) {
+      return false;
+    }
+  }
+
+  for (const vec3 &v : a.vertices) {
+    if (!pts_b.Contains(v)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static void TestDualize() {
+  // Test that dualizing a polyhedron twice gets us back close
+  // to the original. Because the order of vertices and edges
+  // is not guaranteed, we compare using the function above.
+  #define TEST_DUAL(p) do {                            \
+      Polyhedron orig = (p);                          \
+      Polyhedron d = DualizePoly(orig);               \
+      Polyhedron dd = DualizePoly(d);                 \
+      CHECK(ConvexPolyhedraAlmostEq(orig, dd)) << #p; \
+      delete orig.faces;                              \
+      delete d.faces;                                 \
+      delete dd.faces;                                \
+  } while (false)
+
+  TEST_DUAL(Cube());
+  TEST_DUAL(Tetrahedron());
+  TEST_DUAL(Octahedron());
+  TEST_DUAL(Dodecahedron());
+  TEST_DUAL(Icosahedron());
+  TEST_DUAL(SnubCube());
+  TEST_DUAL(Noperthedron());
+  TEST_DUAL(PentagonalIcositetrahedron());
+  Print("Dualization OK!\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -782,6 +839,8 @@ int main(int argc, char **argv) {
   TestPolyTester1();
   TestPolyTester2();
 
-  printf("OK\n");
+  TestDualize();
+
+  Print("OK\n");
   return 0;
 }

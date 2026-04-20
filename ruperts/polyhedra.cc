@@ -1895,6 +1895,7 @@ Polyhedron PolyhedronByName(std::string_view name) {
   if (name == "pentagonalhexecontahedron") return PentagonalHexecontahedron();
 
   if (name == "noperthedron") return Noperthedron();
+  if (name == "onperthedron") return Onperthedron();
   LOG(FATAL) << "Unknown polyhedron " << name;
 }
 
@@ -1932,7 +1933,10 @@ struct NameMap {
         {"kicos", "triakisicosahedron", "triakis icosahedron"},
         {"pdode", "pentakisdodecahedron", "pentakis dodecahedron"},
         {"dtriac", "disdyakistriacontahedron", "disdyakis triacontahedron"},
-        {"phexe", "pentagonalhexecontahedron", "pentagonal hexecontahedron"}
+        {"phexe", "pentagonalhexecontahedron", "pentagonal hexecontahedron"},
+
+        {"nope", "noperthedron", "noperthedron"},
+        {"onpe", "onperthedron", "onperthedron"},
       }) {}
   std::vector<std::tuple<std::string, std::string, std::string>> names;
 };
@@ -3753,4 +3757,42 @@ Polyhedron Noperthedron() {
   return MakeConvexOrDie(
       std::move(vertices), "noperthedron",
       SYM_UNKNOWN);
+}
+
+Polyhedron Onperthedron() {
+  Polyhedron no = Noperthedron();
+  Polyhedron on = DualizePoly(no);
+  on.name = "onperthedron";
+  delete no.faces;
+  return on;
+}
+
+
+// https://en.wikipedia.org/wiki/Dual_polyhedron#Polar_reciprocation
+Polyhedron DualizePoly(const Polyhedron &p) {
+  std::vector<vec3> dual_vertices;
+  dual_vertices.reserve(p.faces->v.size());
+
+  for (const std::vector<int> &face : p.faces->v) {
+    CHECK(face.size() >= 3);
+    const vec3 &v0 = p.vertices[face[0]];
+    const vec3 &v1 = p.vertices[face[1]];
+    const vec3 &v2 = p.vertices[face[2]];
+
+    vec3 normal = yocto::cross(v1 - v0, v2 - v0);
+    double c = yocto::dot(normal, v0);
+
+    CHECK(std::abs(c) > 1e-9) << "Face plane passes through the origin!";
+
+    dual_vertices.push_back(normal / c);
+  }
+
+  std::string dual_name = p.name.empty() ? "" : "dual-" + p.name;
+
+  std::optional<Polyhedron> dual =
+      PolyhedronFromConvexVertices(std::move(dual_vertices), dual_name);
+  CHECK(dual.has_value());
+
+  dual->symmetry = p.symmetry;
+  return std::move(dual.value());
 }

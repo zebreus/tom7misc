@@ -1,5 +1,5 @@
-#ifndef _RUPERTS_MESH_H
-#define _RUPERTS_MESH_H
+#ifndef _CC_LIB_GEOM_MESH_H
+#define _CC_LIB_GEOM_MESH_H
 
 #include <string>
 #include <string_view>

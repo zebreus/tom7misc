@@ -37,12 +37,12 @@ TriangularMesh3D LoadSTL(std::string_view filename) {
   */
 
   TriangularMesh3D mesh;
-  auto AddVertex = [&mesh](const vec3 &v) {
-      for (int i = 0; i < mesh.vertices.size(); i++) {
+  auto AddVertex = [&mesh](const vec3 &v) -> int {
+      for (size_t i = 0; i < mesh.vertices.size(); i++) {
         if (mesh.vertices[i] == v) return i;
       }
 
-      int next = (int)mesh.vertices.size();
+      size_t next = mesh.vertices.size();
       mesh.vertices.push_back(v);
       return next;
     };
@@ -122,7 +122,7 @@ static FaceType ClassifyTriangle(const TriangularMesh3D &mesh,
   bool above = false, below = false;
 
   // Now for every other vertex, check which side they are on.
-  for (int o = 0; o < mesh.vertices.size(); o++) {
+  for (int o = 0; o < (int)mesh.vertices.size(); o++) {
     if (o != a && o != b && o != c) {
       const vec3 &v = mesh.vertices[o];
       double dot = yocto::dot(v - v0, normal);

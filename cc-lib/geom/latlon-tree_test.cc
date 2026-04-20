@@ -33,7 +33,7 @@ static void InsertApp() {
 
   // Find each node exactly once.
   latlontree.App([&points](LatLon ll, int idx) {
-      CHECK(idx >= 0 && idx < points.size());
+      CHECK(idx >= 0 && idx < (int)points.size());
       CHECK(!points[idx].second) << idx;
       points[idx].second = true;
     });
@@ -55,7 +55,7 @@ static void InsertApp() {
         40233600.0);
 
   for (const auto &[ll, idx, dist_] : res) {
-    CHECK(idx >= 0 && idx < points.size());
+    CHECK(idx >= 0 && idx < (int)points.size());
     CHECK(!points[idx].second) << idx;
     points[idx].second = true;
   }

@@ -236,6 +236,11 @@ inline Polyhedron Rotate(const Polyhedron &p, const quat4 &quat) {
   return Rotate(p, yocto::rotation_frame(quat));
 }
 
+// Compute the polar dual of the polyhedron. The position matters
+// here; you usually want the "center" of the polyhedron at the
+// origin.
+Polyhedron DualizePoly(const Polyhedron &p);
+
 // Shadow(Rotate(frame, p))
 Mesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p);
 
@@ -630,5 +635,6 @@ Polyhedron DisdyakisTriacontahedron();
 Polyhedron PentagonalHexecontahedron();
 
 Polyhedron Noperthedron();
+Polyhedron Onperthedron();
 
 #endif

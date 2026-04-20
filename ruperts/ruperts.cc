@@ -1411,7 +1411,7 @@ int main(int argc, char **argv) {
   }
 
 
-  Polyhedron target = SnubCube();
+  // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
   // Polyhedron target = TruncatedCuboctahedron();
   // Polyhedron target = TruncatedDodecahedron();
@@ -1429,6 +1429,8 @@ int main(int argc, char **argv) {
   // Polyhedron target = PentakisDodecahedron();
   // Polyhedron target = PentagonalHexecontahedron();
   // Polyhedron target = DeltoidalHexecontahedron();
+
+  Polyhedron target = DualizePoly(Noperthedron());
 
   // Call one of the solution procedures:
 
