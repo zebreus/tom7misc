@@ -50,6 +50,17 @@ struct Faces {
   // triangle, but now faces can be coplanar).
   std::vector<std::tuple<int, int, int>> triangulation;
 
+  // Edges in the polyhedron (not its triangulation). Each one
+  // connects two vertices and two faces.
+  struct Edge {
+    // v0 < v1
+    int v0, v1;
+    // f0 < f1
+    // Indices into the v array.
+    int f0, f1;
+  };
+  std::vector<Edge> edges;
+
   // Number of vertices we expect.
   int NumVertices() const { return (int)neighbors.size(); }
 

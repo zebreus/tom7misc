@@ -416,6 +416,92 @@ static void TestSignedDistanceToEdgeEndpoints() {
   CHECK_NEAR(dist, 5.0);
 }
 
+static void TestStructure() {
+  auto CheckPoly = [](const Polyhedron &p,
+                      // expected vertices, edges, faces
+                      int vs, int es, int fs) {
+    CHECK(p.faces != nullptr);
+    const Faces &faces = *p.faces;
+
+    CHECK((int)p.vertices.size() == vs);
+    CHECK(faces.NumVertices() == vs);
+    CHECK((int)faces.v.size() == fs);
+    CHECK((int)faces.edges.size() == es);
+
+    // Euler characteristic: V - E + F = 2
+    CHECK(vs - es + fs == 2);
+
+    for (const std::vector<int> &nbs : faces.neighbors) {
+      CHECK(std::is_sorted(nbs.begin(), nbs.end()));
+      CHECK(nbs.size() >= 3);
+    }
+
+    std::vector<int> edge_counts(vs, 0);
+
+    auto contains = [](const std::vector<int> &vec, int val) {
+      return std::find(vec.begin(), vec.end(), val) != vec.end();
+    };
+
+    for (const Faces::Edge &edge : faces.edges) {
+      // Edge invariants.
+      CHECK(edge.v0 >= 0);
+      CHECK(edge.v0 < edge.v1) << p.name;
+      CHECK(edge.v1 < vs);
+
+      CHECK(edge.f0 >= 0);
+      CHECK(edge.f0 < edge.f1);
+      CHECK(edge.f1 < fs);
+
+      edge_counts[edge.v0]++;
+      edge_counts[edge.v1]++;
+
+      // Implied invariants:
+      // The faces f0 and f1 must both contain v0 and v1.
+      CHECK(contains(faces.v[edge.f0], edge.v0));
+      CHECK(contains(faces.v[edge.f0], edge.v1));
+      CHECK(contains(faces.v[edge.f1], edge.v0));
+      CHECK(contains(faces.v[edge.f1], edge.v1));
+
+      // v0 and v1 should be listed as neighbors of each other.
+      CHECK(contains(faces.neighbors[edge.v0], edge.v1));
+      CHECK(contains(faces.neighbors[edge.v1], edge.v0));
+    }
+
+    for (int i = 0; i < vs; i++) {
+      // The number of edges touching a vertex should equal its degree.
+      CHECK(edge_counts[i] == (int)faces.neighbors[i].size());
+    }
+  };
+
+  CheckPoly(Tetrahedron(), 4, 6, 4);
+  CheckPoly(Cube(), 8, 12, 6);
+  CheckPoly(Octahedron(), 6, 12, 8);
+  CheckPoly(Dodecahedron(), 20, 30, 12);
+  CheckPoly(Icosahedron(), 12, 30, 20);
+
+  CheckPoly(TruncatedTetrahedron(), 12, 18, 8);
+  CheckPoly(Cuboctahedron(), 12, 24, 14);
+  CheckPoly(TruncatedCube(), 24, 36, 14);
+  CheckPoly(TruncatedOctahedron(), 24, 36, 14);
+  CheckPoly(Rhombicuboctahedron(), 24, 48, 26);
+  CheckPoly(SnubCube(), 24, 60, 38);
+  CheckPoly(Icosidodecahedron(), 30, 60, 32);
+  CheckPoly(TruncatedIcosahedron(), 60, 90, 32);
+  CheckPoly(SnubDodecahedron(), 60, 150, 92);
+
+  CheckPoly(TriakisTetrahedron(), 8, 18, 12);
+  CheckPoly(RhombicDodecahedron(), 14, 24, 12);
+  CheckPoly(TriakisOctahedron(), 14, 36, 24);
+  CheckPoly(PentagonalIcositetrahedron(), 38, 60, 24);
+  CheckPoly(RhombicTriacontahedron(), 32, 60, 30);
+  CheckPoly(PentagonalHexecontahedron(), 92, 150, 60);
+
+  CheckPoly(NPrism(3, 1.0), 6, 9, 5);
+  CheckPoly(NPrism(5, 1.0), 10, 15, 7);
+  CheckPoly(NAntiPrism(4, 1.0), 8, 16, 10);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Print("\n");
@@ -434,6 +520,8 @@ int main(int argc, char **argv) {
   TestPlanarityError();
   TestHullDistances();
   TestSignedDistanceToEdgeEndpoints();
+
+  TestStructure();
 
   Print("OK\n");
   return 0;

@@ -15,7 +15,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -25,7 +24,6 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "geom/hull-3d.h"
-#include "geom/mesh.h"
 #include "hashing.h"
 #include "set-util.h"
 #include "util.h"
@@ -256,6 +254,62 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
       }
       return false;
     }
+  }
+
+  // Extract all edges and pair them with adjacent faces.
+  struct HalfEdge {
+    int v0 = 0, v1 = 0;
+    int face = 0;
+  };
+  std::vector<HalfEdge> half_edges;
+  for (int f = 0; f < (int)v.size(); f++) {
+    const std::vector<int> &face = v[f];
+    for (int i = 0; i < (int)face.size(); i++) {
+      int v0 = face[i];
+      int v1 = face[(i + 1) % face.size()];
+      if (v0 > v1) std::swap(v0, v1);
+      half_edges.emplace_back(HalfEdge{
+          .v0 = v0,
+          .v1 = v1,
+          .face = f
+        });
+    }
+  }
+
+  std::sort(half_edges.begin(), half_edges.end(),
+            [](const HalfEdge &a, const HalfEdge &b) {
+              if (a.v0 != b.v0) return a.v0 < b.v0;
+              if (a.v1 != b.v1) return a.v1 < b.v1;
+              return a.face < b.face;
+            });
+  edges.reserve(half_edges.size() / 2);
+
+  for (size_t ei = 0; ei < half_edges.size(); ) {
+    const HalfEdge &e1 = half_edges[ei];
+
+    // All of the edges that share these vertices.
+    size_t ej = ei + 1;
+    while (ej < half_edges.size() &&
+           e1.v0 == half_edges[ej].v0 &&
+           e1.v1 == half_edges[ej].v1) {
+      ej++;
+    }
+
+    // ... There should be exactly two!
+    if (ej != ei + 2) {
+      if (VERBOSE) {
+        Print("Edge {}-{} has {} adjacent faces; expected 2.\n",
+              e1.v0, e1.v1, ej - ei);
+      }
+      return false;
+    }
+
+    int f0 = e1.face;
+    int f1 = half_edges[ei + 1].face;
+    if (f0 > f1) std::swap(f0, f1);
+
+    edges.push_back(Edge{.v0 = e1.v0, .v1 = e1.v1, .f0 = f0, .f1 = f1});
+    ei = ej;
   }
 
   // And triangulate. Since the faces are convex, we can
