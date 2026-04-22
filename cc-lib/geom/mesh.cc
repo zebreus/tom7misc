@@ -249,7 +249,10 @@ static inline double SignedVolume(const vec3 &a, const vec3 &b,
 double MeshVolume(const TriangularMesh3D &mesh) {
   double vol = 0.0;
   for (const auto &[a, b, c] : mesh.triangles) {
-    vol += SignedVolume(mesh.vertices[a], mesh.vertices[b], mesh.vertices[c], vec3{0, 0, 0});
+    vol += SignedVolume(mesh.vertices[a],
+                        mesh.vertices[b],
+                        mesh.vertices[c],
+                        vec3{0, 0, 0});
   }
   return vol;
 }

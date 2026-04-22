@@ -10,6 +10,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1082,6 +1083,16 @@ BigPoly BigTriac(int digits) {
       std::move(vertices), "disdyakistriacontahedron");
 }
 
+// Convert vertices into regular floating-point vertices; we
+// just need this temporarily to compute the orientation of faces.
+static std::vector<vec3> SmallVertices(
+    std::span<const BigVec3> big_verts) {
+  std::vector<vec3> ret(big_verts.size());
+  for (int i = 0; i < ret.size(); i++)
+    ret[i] = SmallVec(big_verts[i]);
+  return ret;
+}
+
 BigPoly BigCube(int digits) {
   //                  +y
   //      a------b     | +z
@@ -1127,7 +1138,7 @@ BigPoly BigCube(int digits) {
   fs.push_back({a, b, f, e});
 
   std::shared_ptr<const Faces> faces =
-    std::make_shared<Faces>(8, std::move(fs));
+    std::make_shared<Faces>(SmallVertices(vertices), std::move(fs));
   return BigPoly{
     .vertices = std::move(vertices),
     .faces = std::move(faces),

@@ -41,8 +41,9 @@ using SymmetryGroup = uint8_t;
 // in question, so we can avoid copying the faces.
 struct Faces {
   // Each face is represented as the list of vertex (indices) that
-  // circumscribe it. The vertices may appear in clockwise or
-  // counter-clockwise order.
+  // circumscribe it. In a standard right-handed Euclidean coordinate
+  // system, the faces are oriented clockwise when viewed from the
+  // exterior of the polyhedron.
   std::vector<std::vector<int>> v;
   // For each vertex id, its immediate neighbors, in ascending order.
   std::vector<std::vector<int>> neighbors;
@@ -64,19 +65,24 @@ struct Faces {
   // Number of vertices we expect.
   int NumVertices() const { return (int)neighbors.size(); }
 
-  // Computes the neighbors and triangulation from the faces. This
-  // assumes that every vertex is on at least one face, which will be
-  // true for well-formed polyhedra.
-  Faces(int num_vertices, std::vector<std::vector<int>> v);
+  // The vertices are not stored, but are used to orient the faces.
+  // The solid must be manifold. Computes the neighbors,
+  // triangulation, and edges from those faces. This assumes that
+  // every vertex is on at least one face, which will be true for
+  // well-formed polyhedra.
+  Faces(std::span<const vec3> vertices,
+        std::vector<std::vector<int>> v);
 
   Faces() {}
 
   // Like the constructor, but returns nullptr if something goes wrong
   // (like there are vertices that are not on faces).
-  static Faces *Create(int num_vertices, std::vector<std::vector<int>> v);
+  static Faces *Create(std::span<const vec3> vertices,
+                       std::vector<std::vector<int>> v);
 
  private:
-  bool Init(int num_vertices, std::vector<std::vector<int>> v);
+  bool Init(std::span<const vec3> vertices,
+            std::vector<std::vector<int>> v);
 };
 
 struct Polyhedron {

@@ -64,9 +64,14 @@ std::string PolynomialToZ3(std::string_view var, const Polynomial &p) {
 
 SymbolicPolyhedron SymbolicCube() {
   std::vector<P3> vertices;
-  auto AddVertex = [&vertices](int x, int y, int z) {
+  // We just need numeric versions of the vertices to compute
+  // the orientation of the faces in the Faces object.
+  std::vector<vec3> numeric_vertices;
+  auto AddVertex = [&vertices, &numeric_vertices](
+      int x, int y, int z) {
       int idx = (int)vertices.size();
       vertices.push_back(P3(x, y, z));
+      numeric_vertices.push_back(vec3(x, y, z));
       return idx;
     };
   int a = AddVertex(-1, +1, +1);
@@ -95,7 +100,7 @@ SymbolicPolyhedron SymbolicCube() {
   // back
   fs.push_back({a, b, f, e});
 
-  Faces *faces = new Faces(8, std::move(fs));
+  Faces *faces = new Faces(numeric_vertices, std::move(fs));
   return SymbolicPolyhedron{
     .vertices = std::move(vertices),
     .faces = faces,
@@ -105,9 +110,12 @@ SymbolicPolyhedron SymbolicCube() {
 
 SymbolicPolyhedron SymbolicTetrahedron() {
   std::vector<P3> vertices;
-  auto AddVertex = [&vertices](int x, int y, int z) {
+  std::vector<vec3> numeric_vertices;
+  auto AddVertex = [&vertices, &numeric_vertices](
+      int x, int y, int z) {
       int idx = (int)vertices.size();
       vertices.push_back(P3(x, y, z));
+      numeric_vertices.push_back(vec3(x, y, z));
       return idx;
     };
 
@@ -124,7 +132,8 @@ SymbolicPolyhedron SymbolicTetrahedron() {
   fs.push_back({c, d, b});
   fs.push_back({a, b, d});
 
-  Faces *faces = new Faces(4, std::move(fs));
+
+  Faces *faces = new Faces(numeric_vertices, std::move(fs));
   return SymbolicPolyhedron{
     .vertices = std::move(vertices),
     .faces = faces,

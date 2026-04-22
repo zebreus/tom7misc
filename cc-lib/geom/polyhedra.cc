@@ -205,10 +205,11 @@ bool InTriangle(const vec2 &a, const vec2 &b, const vec2 &c,
     SameSide(c, a, b, pt);
 }
 
-Faces *Faces::Create(int num_vertices, std::vector<std::vector<int>> v) {
+Faces *Faces::Create(std::span<const vec3> vertices,
+                     std::vector<std::vector<int>> v) {
 
   Faces *faces = new Faces;
-  if (faces->Init(num_vertices, std::move(v))) {
+  if (faces->Init(vertices, std::move(v))) {
     return faces;
   } else {
     delete faces;
@@ -216,9 +217,230 @@ Faces *Faces::Create(int num_vertices, std::vector<std::vector<int>> v) {
   }
 }
 
-bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
+enum FaceType {
+  ALL_ABOVE,
+  ALL_BELOW,
+  MIXED,
+};
+
+// Given three vertex indices on a face (in general position),
+// classify that face's relationship to the rest of the vertices in
+// the solid.
+static FaceType ClassifyFace(
+    std::span<const vec3> vertices,
+    int a, int b, int c) {
+  const vec3 &v0 = vertices[a];
+  const vec3 &v1 = vertices[b];
+  const vec3 &v2 = vertices[c];
+
+  const vec3 normal =
+    yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+
+  bool above = false, below = false;
+
+  // Now for every other vertex, check which side they are on.
+  for (int o = 0; o < (int)vertices.size(); o++) {
+    if (o != a && o != b && o != c) {
+      const vec3 &v = vertices[o];
+      double dot = yocto::dot(v - v0, normal);
+      if (dot < -0.00001) {
+        if (above) return MIXED;
+        below = true;
+      } else if (dot > 0.00001) {
+        if (below) return MIXED;
+        above = true;
+      } else {
+        // On plane (for example, on the same face).
+        continue;
+      }
+    }
+  }
+
+  CHECK(above || below) << "Degenerate: All faces are coplanar.";
+  CHECK(!(above && below)) << "Impossible";
+  if (above) return ALL_ABOVE;
+  else return ALL_BELOW;
+}
+
+static std::vector<int> ReverseVector(std::span<const int> in) {
+  std::vector<int> rev;
+  rev.reserve(in.size());
+  for (size_t i = 0; i < in.size(); i++) {
+    rev.push_back(in[in.size() - 1 - i]);
+  }
+  return rev;
+}
+
+
+static std::vector<int> GetOrientedFace(
+    std::span<const vec3> vertices,
+    std::span<const std::vector<int>> faces) {
+  // Find one face for which the entire rest of the mesh is on one
+  // side of it (or coplanar). For convex solids any face should do.
+
+  for (const auto &v : faces) {
+    CHECK(v.size() >= 3) << "Bad face.";
+    // XXX: This assumes that a-b-c are not colinear!
+    switch (ClassifyFace(vertices, v[0], v[1], v[2])) {
+    case ALL_ABOVE: return v;
+    case ALL_BELOW: return ReverseVector(v);
+    case MIXED:
+      // Try the next one.
+      continue;
+    }
+  }
+
+  LOG(FATAL) << "No face could be oriented? Something is "
+    "seriously wrong!";
+}
+
+/*
+  void OrientMesh(TriangularMesh3D *mesh) {
+  const auto &[oa, ob, oc] = GetOrientedTriangle(*mesh);
+
+  // Now iteratively orient triangles that share an edge.
+
+  // Edges that have been processed, in *forward* order.
+  // (i.e. we already inserted a triangle in the correct orientation
+  // a-b-c, and so this set contains a-b. etc.)
+  std::unordered_set<std::pair<int, int>, Hashing<std::pair<int, int>>>
+    edges;
+
+  std::vector<std::tuple<int, int, int>> out, remaining;
+  out.reserve(mesh->triangles.size());
+  remaining.reserve(mesh->triangles.size());
+
+  auto AddTriangle = [&](int a, int b, int c) {
+      out.emplace_back(a, b, c);
+      edges.insert(std::make_pair(a, b));
+      edges.insert(std::make_pair(b, c));
+      edges.insert(std::make_pair(c, a));
+    };
+
+  for (const auto &[a, b, c] : mesh->triangles) {
+    if (SameTriangle(oa, ob, oc, a, b, c)) {
+      AddTriangle(a, b, c);
+    } else {
+      remaining.emplace_back(a, b, c);
+    }
+  }
+
+  while (!remaining.empty()) {
+    bool progress = false;
+    std::vector<std::tuple<int, int, int>> new_remaining;
+    for (const auto &[a, b, c] : remaining) {
+      if (edges.contains({b, a}) ||
+          edges.contains({c, b}) ||
+          edges.contains({a, c})) {
+        // Already in correct orientation
+        AddTriangle(a, b, c);
+        progress = true;
+      } else if (edges.contains({a, b}) ||
+                 edges.contains({b, c}) ||
+                 edges.contains({c, a})) {
+        // Reversed.
+        AddTriangle(c, b, a);
+        progress = true;
+      } else {
+        new_remaining.emplace_back(a, b, c);
+      }
+    }
+
+    // TODO: We could actually just repeat this whole process on
+    // the remainder.
+    CHECK(progress) << "Surface is disconnected";
+    remaining = std::move(new_remaining);
+  }
+
+  CHECK(out.size() == mesh->triangles.size()) <<
+    mesh->triangles.size() << " became " << out.size();
+  mesh->triangles = std::move(out);
+}
+*/
+
+static void OrientFaces(std::span<const vec3> vertices,
+                        std::vector<std::vector<int>> *faces) {
+  if (faces->empty()) return;
+
+  const std::vector<int> start_face = GetOrientedFace(vertices, *faces);
+
+  // Edges that have been processed, in *forward* order.
+  // (i.e. we already inserted a face in the correct orientation
+  // a-b-c, and so this set contains a-b. etc.)
+  std::unordered_set<std::pair<int, int>, Hashing<std::pair<int, int>>> edges;
+
+  auto AddFace = [&](const std::vector<int> &f) {
+      for (size_t i = 0; i < f.size(); i++) {
+        edges.insert(std::make_pair(f[i], f[(i + 1) % f.size()]));
+      }
+    };
+
+  auto SameFace = [](std::span<const int> a, std::span<const int> b) {
+      if (a.size() != b.size()) return false;
+      for (int v : a) {
+        if (std::find(b.begin(), b.end(), v) == b.end()) return false;
+      }
+      return true;
+    };
+
+  std::vector<std::vector<int>> out;
+  out.reserve(faces->size());
+  out.push_back(start_face);
+  AddFace(start_face);
+
+  std::vector<std::vector<int>> remaining;
+  remaining.reserve(faces->size() - 1);
+
+  for (std::vector<int> &f : *faces) {
+    if (!SameFace(f, start_face)) {
+      remaining.push_back(std::move(f));
+    }
+  }
+
+  while (!remaining.empty()) {
+    bool progress = false;
+    std::vector<std::vector<int>> new_remaining;
+    new_remaining.reserve(remaining.size());
+
+    for (std::vector<int> &f : remaining) {
+      for (size_t i = 0; i < f.size(); i++) {
+        int a = f[i];
+        int b = f[(i + 1) % f.size()];
+        if (edges.contains(std::make_pair(b, a))) {
+          AddFace(f);
+          out.push_back(std::move(f));
+          progress = true;
+          goto next_face;
+        } else if (edges.contains(std::make_pair(a, b))) {
+          std::vector<int> rev = ReverseVector(f);
+          AddFace(rev);
+          out.push_back(std::move(rev));
+          progress = true;
+          goto next_face;
+        }
+      }
+
+      new_remaining.push_back(std::move(f));
+    next_face:;
+    }
+
+    CHECK(progress) << "Surface is disconnected";
+    remaining = std::move(new_remaining);
+  }
+
+  CHECK(out.size() == faces->size())
+      << "Expected " << faces->size() << " faces, got " << out.size();
+  *faces = std::move(out);
+}
+
+bool Faces::Init(std::span<const vec3> vertices,
+                 std::vector<std::vector<int>> v_in) {
   static constexpr int VERBOSE = 0;
   v = std::move(v_in);
+
+  const int num_vertices = (int)vertices.size();
+
+  OrientFaces(vertices, &v);
 
   std::vector<std::unordered_set<int>> collated(num_vertices);
   for (const std::vector<int> &face : v) {
@@ -325,8 +547,9 @@ bool Faces::Init(int num_vertices, std::vector<std::vector<int>> v_in) {
   return true;
 }
 
-Faces::Faces(int num_vertices, std::vector<std::vector<int>> v_in) {
-  CHECK(Init(num_vertices, std::move(v_in))) << num_vertices;
+Faces::Faces(std::span<const vec3> vertices,
+             std::vector<std::vector<int>> v_in) {
+  CHECK(Init(vertices, std::move(v_in))) << vertices.size();
 }
 
 Polyhedron Scale(const Polyhedron &p, double s) {
@@ -999,7 +1222,7 @@ Polyhedron NPrism(int64_t num_points, double depth) {
     fs.push_back(std::vector<int>{side1, side1 + 1, side2 + 1, side2});
   }
 
-  poly.faces.reset(new Faces(num_points * 2, std::move(fs)));
+  poly.faces.reset(new Faces(poly.vertices, std::move(fs)));
   poly.name = std::format("{}-prism", num_points);
 
   return poly;
@@ -1058,7 +1281,7 @@ Polyhedron NAntiPrism(int64_t num_points, double depth) {
     fs.push_back({t0, t1, b1});
   }
 
-  poly.faces.reset(new Faces(num_points * 2, std::move(fs)));
+  poly.faces.reset(new Faces(poly.vertices, std::move(fs)));
   poly.name = std::format("{}-antiprism", num_points);
 
   return poly;
@@ -1209,7 +1432,7 @@ Polyhedron Dodecahedron() {
   }
 
   std::shared_ptr<const Faces> faces =
-    std::make_shared<Faces>(vertices.size(), std::move(fs));
+    std::make_shared<Faces>(vertices, std::move(fs));
   return Polyhedron{
     .vertices = std::move(vertices),
     .faces = std::move(faces),
@@ -1392,7 +1615,7 @@ static bool InitPolyhedronInternal(
     fs.push_back(std::move(face));
   }
 
-  out->faces.reset(Faces::Create(vertices.size(), std::move(fs)));
+  out->faces.reset(Faces::Create(vertices, std::move(fs)));
   if (out->faces.get() == nullptr) {
     if (FRAGILE) {
       LOG(FATAL) << "Couldn't create faces.";
@@ -1549,7 +1772,7 @@ Polyhedron Cube() {
   fs.push_back({a, b, f, e});
 
   std::shared_ptr<const Faces> faces =
-    std::make_shared<Faces>(8, std::move(fs));
+    std::make_shared<Faces>(vertices, std::move(fs));
   return Polyhedron{
     .vertices = std::move(vertices),
     .faces = std::move(faces),

@@ -471,6 +471,39 @@ static void TestStructure() {
       // The number of edges touching a vertex should equal its degree.
       CHECK(edge_counts[i] == (int)faces.neighbors[i].size());
     }
+
+    for (int f = 0; f < fs; f++) {
+      const std::vector<int> &fv = faces.v[f];
+      CHECK(fv.size() >= 3);
+      for (int v : fv) {
+        CHECK(v >= 0 && v < vs);
+      }
+    }
+
+    // Check for consistent orientation (winding order) across all edges.
+    // Each edge should be traversed in opposite directions by the two
+    // faces that share it.
+    for (const Faces::Edge &edge : faces.edges) {
+      auto get_dir = [&](int f) {
+        const std::vector<int> &fv = faces.v[f];
+        for (int i = 0; i < (int)fv.size(); i++) {
+          int a = fv[i];
+          int b = fv[(i + 1) % fv.size()];
+          if (a == edge.v0 && b == edge.v1) return 1;
+          if (a == edge.v1 && b == edge.v0) return -1;
+        }
+        return 0;
+      };
+
+      int d0 = get_dir(edge.f0);
+      int d1 = get_dir(edge.f1);
+
+      CHECK(d0 != 0) << "Edge missing from face " << edge.f0;
+      CHECK(d1 != 0) << "Edge missing from face " << edge.f1;
+      CHECK(d0 == -d1) << "Inconsistent winding order on edge "
+                       << edge.v0 << "-" << edge.v1 << " between faces "
+                       << edge.f0 << " and " << edge.f1;
+    }
   };
 
   CheckPoly(Tetrahedron(), 4, 6, 4);
@@ -499,6 +532,8 @@ static void TestStructure() {
   CheckPoly(NPrism(3, 1.0), 6, 9, 5);
   CheckPoly(NPrism(5, 1.0), 10, 15, 7);
   CheckPoly(NAntiPrism(4, 1.0), 8, 16, 10);
+
+  CheckPoly(Noperthedron(), 90, 240, 152);
 }
 
 
