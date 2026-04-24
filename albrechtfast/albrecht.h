@@ -199,7 +199,7 @@ struct Albrecht {
     BitString visited_faces(num_faces, 0);
 
     struct PlacedFace {
-      int face_idx;
+      int face_idx = 0;
       std::vector<vec2> vertices;
     };
     std::vector<PlacedFace> laid_out_faces;
@@ -266,47 +266,10 @@ struct Albrecht {
       DFS(0, -1, identity);
     }
 
-    auto StrictlyOverlaps = [](const std::vector<vec2> &a,
-                               const std::vector<vec2> &b) {
-      auto HasSeparatingAxis = [](const std::vector<vec2> &p1,
-                                  const std::vector<vec2> &p2) {
-        for (size_t i = 0; i < p1.size(); ++i) {
-          vec2 p = p1[i];
-          vec2 q = p1[(i + 1) % p1.size()];
-          vec2 edge = {q.x - p.x, q.y - p.y};
-          double len = std::sqrt(edge.x * edge.x + edge.y * edge.y);
-          if (len < 1e-9) continue;
-          vec2 normal = {-edge.y / len, edge.x / len};
-
-          double min1 = std::numeric_limits<double>::infinity();
-          double max1 = -std::numeric_limits<double>::infinity();
-          for (vec2 v : p1) {
-            double d = v.x * normal.x + v.y * normal.y;
-            if (d < min1) min1 = d;
-            if (d > max1) max1 = d;
-          }
-
-          double min2 = std::numeric_limits<double>::infinity();
-          double max2 = -std::numeric_limits<double>::infinity();
-          for (vec2 v : p2) {
-            double d = v.x * normal.x + v.y * normal.y;
-            if (d < min2) min2 = d;
-            if (d > max2) max2 = d;
-          }
-
-          if (max1 <= min2 + 1e-7 || max2 <= min1 + 1e-7) {
-            return true;
-          }
-        }
-        return false;
-      };
-      return !HasSeparatingAxis(a, b) && !HasSeparatingAxis(b, a);
-    };
-
     BitString face_overlaps(num_faces, false);
     for (size_t i = 0; i < laid_out_faces.size(); ++i) {
       for (size_t j = i + 1; j < laid_out_faces.size(); ++j) {
-        if (StrictlyOverlaps(laid_out_faces[i].vertices,
+        if (PolygonsOverlap(laid_out_faces[i].vertices,
                              laid_out_faces[j].vertices)) {
           int f0 = laid_out_faces[i].face_idx;
           int f1 = laid_out_faces[j].face_idx;
@@ -448,6 +411,146 @@ struct Albrecht {
 
     return result;
   }
+
+  static bool PolygonsOverlap(std::span<const vec2> a,
+                              std::span<const vec2> b) {
+    return !HasSeparatingAxis(a, b) && !HasSeparatingAxis(b, a);
+  }
+
+  // Checks if there's a separating axis parallel to edge normals of p1.
+  // You need to check both (a, b) and (b, a) if you want to prove
+  // two polyhedra are non-overlapping.
+  static bool HasSeparatingAxis(std::span<const vec2> p1,
+                                std::span<const vec2> p2) {
+    for (size_t i = 0; i < p1.size(); ++i) {
+      vec2 p = p1[i];
+      vec2 q = p1[(i + 1) % p1.size()];
+      vec2 edge = {q.x - p.x, q.y - p.y};
+      double len = std::sqrt(edge.x * edge.x + edge.y * edge.y);
+      if (len < 1e-9)
+        continue;
+      vec2 normal = {-edge.y / len, edge.x / len};
+
+      double min1 = std::numeric_limits<double>::infinity();
+      double max1 = -std::numeric_limits<double>::infinity();
+      for (vec2 v : p1) {
+        double d = v.x * normal.x + v.y * normal.y;
+        if (d < min1) min1 = d;
+        if (d > max1) max1 = d;
+      }
+
+      double min2 = std::numeric_limits<double>::infinity();
+      double max2 = -std::numeric_limits<double>::infinity();
+      for (vec2 v : p2) {
+        double d = v.x * normal.x + v.y * normal.y;
+        if (d < min2) min2 = d;
+        if (d > max2) max2 = d;
+      }
+
+      if (max1 <= min2 + 1e-7 || max2 <= min1 + 1e-7) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Determines whether the unfolding is a valid net without producing
+  // any debug information. This can assume that the unfolding is a
+  // proper face-spanning tree (no cycles, no disconnected components).
+  static bool IsNet(const AugmentedPoly &aug,
+                    BitStringConstView unfolding) {
+    const Polyhedron &poly = aug.poly;
+    const Faces &faces = *poly.faces;
+    const int num_faces = faces.NumFaces();
+    if (num_faces <= 4) return true;
+
+    int total_vertices = 0;
+    for (const auto &poly2d : aug.polygons) total_vertices += poly2d.size();
+
+    struct PlacedFace {
+      int offset = 0;
+      int count = 0;
+      vec2 min_b{}, max_b{};
+    };
+
+    std::vector<PlacedFace> placed;
+    placed.reserve(num_faces);
+
+    std::vector<vec2> all_vertices;
+    all_vertices.reserve(total_vertices);
+
+    struct StackNode {
+      int face_idx = 0;
+      int parent_face = 0;
+      frame2 tf{};
+    };
+
+    std::vector<StackNode> stack;
+    stack.reserve(num_faces);
+
+    frame2 identity = {{1.0, 0.0}, {0.0, 1.0}, {0.0, 0.0}};
+    stack.push_back({0, -1, identity});
+
+    while (!stack.empty()) {
+      StackNode node = stack.back();
+      stack.pop_back();
+
+      int face_idx = node.face_idx;
+      const std::vector<vec2> &poly2d = aug.polygons[face_idx];
+
+      int offset = all_vertices.size();
+      int count = poly2d.size();
+
+      vec2 min_b = {std::numeric_limits<double>::infinity(),
+                    std::numeric_limits<double>::infinity()};
+      vec2 max_b = {-std::numeric_limits<double>::infinity(),
+                    -std::numeric_limits<double>::infinity()};
+
+      for (const vec2 &v : poly2d) {
+        vec2 tv = yocto::transform_point(node.tf, v);
+        all_vertices.push_back(tv);
+        if (tv.x < min_b.x) min_b.x = tv.x;
+        if (tv.y < min_b.y) min_b.y = tv.y;
+        if (tv.x > max_b.x) max_b.x = tv.x;
+        if (tv.y > max_b.y) max_b.y = tv.y;
+      }
+
+      std::span<const vec2> current_poly(&all_vertices[offset], count);
+
+      for (const PlacedFace &pf : placed) {
+        // First, quick AABB test.
+        if (max_b.x <= pf.min_b.x + 1e-7 || min_b.x >= pf.max_b.x - 1e-7 ||
+            max_b.y <= pf.min_b.y + 1e-7 || min_b.y >= pf.max_b.y - 1e-7) {
+          continue;
+        }
+
+        std::span<const vec2> other_poly(&all_vertices[pf.offset], pf.count);
+
+        // Precise overlap test.
+        if (PolygonsOverlap(current_poly, other_poly)) {
+          return false;
+        }
+      }
+
+      placed.push_back({offset, count, min_b, max_b});
+
+      for (int edge_idx : aug.face_edges[face_idx]) {
+        if (unfolding.Get(edge_idx)) {
+          const Faces::Edge &edge = faces.edges[edge_idx];
+          int next_face = (edge.f0 == face_idx) ? edge.f1 : edge.f0;
+
+          if (next_face != node.parent_face) {
+            const auto &[f10, f01] = aug.edge_transforms[edge_idx];
+            frame2 edge_tf = (edge.f0 == face_idx) ? f10 : f01;
+            stack.push_back({next_face, face_idx, node.tf * edge_tf});
+          }
+        }
+      }
+    }
+
+    return true;
+  }
+
 };
 
 

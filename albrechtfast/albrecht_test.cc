@@ -126,6 +126,43 @@ static void CheckAugmentedPoly(const Albrecht::AugmentedPoly &aug,
   }
 }
 
+static void TestHasSeparatingAxis() {
+  const std::vector<vec2> p1 = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+  const std::vector<vec2> p2 = {{2, 0}, {3, 0}, {3, 1}, {2, 1}};
+
+  // Totally separated, axis-aligned.
+  CHECK(Albrecht::HasSeparatingAxis(p1, p2));
+  CHECK(Albrecht::HasSeparatingAxis(p2, p1));
+
+  // Overlapping.
+  const std::vector<vec2> p3 = {{0.5, 0.5}, {1.5, 0.5},
+                                {1.5, 1.5}, {0.5, 1.5}};
+  CHECK(!Albrecht::HasSeparatingAxis(p1, p3));
+  CHECK(!Albrecht::HasSeparatingAxis(p3, p1));
+
+  // One contained in the other.
+  const std::vector<vec2> p4 = {{0.1, 0.1}, {0.9, 0.1},
+                                {0.9, 0.9}, {0.1, 0.9}};
+  CHECK(!Albrecht::HasSeparatingAxis(p1, p4));
+  CHECK(!Albrecht::HasSeparatingAxis(p4, p1));
+
+  // Touching at an edge. (These are considered "separating enough.")
+  const std::vector<vec2> p5 = {{1, 0}, {2, 0}, {2, 1}, {1, 1}};
+  CHECK(Albrecht::HasSeparatingAxis(p1, p5));
+  CHECK(Albrecht::HasSeparatingAxis(p5, p1));
+
+  // Touching at a vertex. (Also considered "separating enough.")
+  const std::vector<vec2> p6 = {{-1, -1}, {0, -1}, {0, 0}, {-1, 0}};
+  CHECK(Albrecht::HasSeparatingAxis(p1, p6));
+  CHECK(Albrecht::HasSeparatingAxis(p6, p1));
+
+  // Asymmetric case; HasSeparatingAxis checks only the
+  // axes from p1.
+  const std::vector<vec2> p7 = {{0.9, 1.2}, {1.2, 0.9}, {2.0, 2.0}};
+  CHECK(!Albrecht::HasSeparatingAxis(p1, p7));
+  CHECK(Albrecht::HasSeparatingAxis(p7, p1));
+}
+
 static void Unfold(Polyhedron poly_in, std::string_view name) {
   static ArcFour *rc = new ArcFour(std::format("{}", time(nullptr)));
 
@@ -179,10 +216,16 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
 
   Util::WriteFile(std::format("test-{}.svg", name),
                   SVG::ToSVG(dr.svg));
+
+  CHECK(dr.cycle_free) << "By construction!";
+  CHECK(dr.is_connected) << "By construction!";
+  CHECK(dr.is_net == Albrecht::IsNet(aug, unfolding));
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  TestHasSeparatingAxis();
 
   Unfold(Icosahedron(), "icos");
   Unfold(Dodecahedron(), "dodec");
