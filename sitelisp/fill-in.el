@@ -37,7 +37,7 @@
   :group 'fill-in)
 
 (defcustom fill-in-configs
-  '("/c/code/sf_svn/sitelisp/model-config.txt"
+  '("c:\\code\\sf_svn\\sitelisp\\model-config.txt"
     ; ...
     )
   "List of config files passed to fill-in."

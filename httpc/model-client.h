@@ -30,6 +30,8 @@ struct ModelClient {
   // e.g. from "best", "medium", ...
   static std::optional<Model> ModelByName(std::string_view s);
   static std::string_view ModelName(Model model);
+  // e.g. -best, -fastest
+  static std::optional<Model> IsModelFlag(std::string_view arg);
 
   virtual void SetVerbose(int v) = 0;
 

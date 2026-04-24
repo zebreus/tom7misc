@@ -1904,18 +1904,30 @@ struct Unconverter {
                    "{:.11g} {:.11g} {:.11g})\"", a, b, c, d, e, f);
     }
 
-    // Note: Illustrator does not seem to support rgba colors for fill
-    // or stroke! rgb(255 255 0 / 0.5) might be a good compromise since
-    // illustrator will treat that as opaque yellow, but compliant
-    // parsers will treat it as 50% transparent yellow.
-    //
-    // try svgviewer.dev instead.
+    auto ColorString = [](uint32_t c) -> std::string {
+        if (c == SVG::COLOR_NONE) {
+          return "none";
+        } else {
+          const auto &[r, g, b, a] = Unpack32(c);
+          if (a == 0xFF) {
+            return std::format("#{:02x}{:02x}{:02x}", r, g, b);
+          } else {
+            // Note: Illustrator does not seem to support rgba colors
+            // for fill or stroke! rgb(255 255 0 / 0.5) might be a
+            // good compromise since illustrator will treat that as
+            // opaque yellow, but compliant parsers will treat it as
+            // 50% transparent yellow. (BTW this may be technically
+            // correct behavior in SVG 1.1?)
+            //
+            // try svgviewer.dev instead.
+            return std::format("#{:08x}", c);
+          }
+        }
+      };
+
     if (style.fill_color.has_value()) {
-      if (style.fill_color.value() == SVG::COLOR_NONE) {
-        out->append(" fill=\"none\"");
-      } else {
-        AppendFormat(out, " fill=\"#{:08X}\"", style.fill_color.value());
-      }
+      AppendFormat(out, " fill=\"{}\"",
+                   ColorString(style.fill_color.value()));
     }
 
     if (style.fill_opacity.has_value()) {
@@ -1924,11 +1936,8 @@ struct Unconverter {
     }
 
     if (style.stroke_color.has_value()) {
-      if (style.stroke_color.value() == SVG::COLOR_NONE) {
-        out->append(" stroke=\"none\"");
-      } else {
-        AppendFormat(out, " stroke=\"#{:08X}\"", style.stroke_color.value());
-      }
+      AppendFormat(out, " stroke=\"{}\"",
+                   ColorString(style.stroke_color.value()));
     }
 
     if (style.stroke_opacity.has_value()) {

@@ -36,6 +36,8 @@ inline constexpr bool is_memcpy_safe_v = is_memcpy_safe<T>::value;
 // Like std::vector<T> but with the possibility of storing a
 // small number of elements inline. Only works for POD-type
 // T, like a pointer or integer.
+// On a typical 64-bit machine, you can store 14 uint32s inline,
+// or 7 uint64s.
 template<class T>
 struct InlineVector {
   static_assert(internal::is_memcpy_safe_v<T>,
@@ -237,8 +239,9 @@ struct InlineVector {
       if constexpr (VERBOSE)
         Print("Alloc reserved {} with contents:\n{}\n",
               u.ar.reserved,
-              HexDump::Color(std::span<const uint8_t>((const uint8_t*)new_alloc,
-                                                      sizeof (T) * current_size)));
+              HexDump::Color(
+                  std::span<const uint8_t>((const uint8_t*)new_alloc,
+                                           sizeof (T) * current_size)));
 
       DCHECK(HasAlloc());
     }

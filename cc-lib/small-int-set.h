@@ -12,7 +12,8 @@
 #include "base/macros.h"
 
 // Holds values in 0..RADIX-1. Supports a radix up to 64.
-// If you need more, consider ByteSet or std::vector<bool>!
+// If you need more, consider ByteSet. If you need
+// dynamic size, consider BitString or std::vector<bool>.
 template<int RADIX>
 struct SmallIntSet {
   static_assert(RADIX > 0 && RADIX <= 64);

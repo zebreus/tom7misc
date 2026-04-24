@@ -10,13 +10,11 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "color-util.h"
 #include "markdown.h"
 #include "model-client.h"
 #include "model-util.h"
 #include "net.h"
 #include "rapidjson/document.h"
-#include "timer.h"
 #include "util.h"
 
 static bool Ask(int verbose,

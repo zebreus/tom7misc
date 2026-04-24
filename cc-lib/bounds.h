@@ -94,6 +94,10 @@ struct Bounds {
       return Scale(p.x, p.y);
     }
 
+    // Size of one unit in screen space (no translation).
+    double SizeX() const;
+    double SizeY() const;
+
     // Inverse of the above (i.e., convert from screen coordinates to
     // points in the original coordinate system).
     double UnscaleX(double x) const;

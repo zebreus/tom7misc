@@ -64,6 +64,8 @@ struct Faces {
 
   // Number of vertices we expect.
   int NumVertices() const { return (int)neighbors.size(); }
+  int NumFaces() const { return (int)v.size(); }
+  int NumEdges() const { return (int)edges.size(); }
 
   // The vertices are not stored, but are used to orient the faces.
   // The solid must be manifold. Computes the neighbors,

@@ -191,6 +191,22 @@ static void TestSub() {
   }
 }
 
+static void TestConstructor() {
+  {
+    BitString bb(8, true);
+    CHECK(bb.NumBits() == 8);
+    CHECK(bb.Get(0) == true);
+    CHECK(bb.Get(7) == true);
+  }
+
+  {
+    BitString bb(9, false);
+    CHECK(bb.NumBits() == 9);
+    CHECK(bb.Get(0) == false);
+    CHECK(bb.Get(8) == false);
+  }
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -200,6 +216,7 @@ int main(int argc, char **argv) {
   EZ1();
   TestViews();
   TestSub();
+  TestConstructor();
 
   printf("OK\n");
   return 0;

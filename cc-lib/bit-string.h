@@ -19,6 +19,7 @@ struct BitString {
 
   // Create a new empty bitstring.
   BitString() { }
+  inline BitString(size_t bits, bool bit = false);
 
   // Hint that we will want to store this many bits.
   inline void Reserve(size_t bits);
@@ -35,12 +36,16 @@ struct BitString {
   inline size_t NumBits() const { return num_bits; }
   inline size_t Size() const { return num_bits; }
 
+  // True if every bit is zero.
+  inline bool Zero() const;
+
   /* give the number of bytes needed to store n bits */
   static inline size_t Ceil(int64_t bits) {
     return (bits >> 3) + !!(bits & 7);
   }
 
   inline bool Get(size_t idx) const;
+  inline void Set(size_t idx, bool bit);
   inline bool operator [](size_t idx) const;
 
   inline BitStringView View();
@@ -123,11 +128,49 @@ struct BitStringConstView {
 
 // Inline implementations follow.
 
+BitString::BitString(size_t bits, bool bit) {
+  // PERF: Faster to create the vector with the
+  // correct size in the first place.
+  Reserve(bits);
+
+  if (bit) {
+    while (bits >= 8) {
+      bytes.push_back(0xFF);
+      num_bits += 8;
+      bits -= 8;
+    }
+  } else {
+    while (bits >= 8) {
+      bytes.push_back(0x00);
+      num_bits += 8;
+      bits -= 8;
+    }
+  }
+
+  for (; bits > 0; bits--) WriteBit(bit);
+}
+
 std::string BitString::GetString() const {
   std::string s;
   s.reserve(bytes.size());
   for (uint8_t b : bytes) s.push_back(b);
   return s;
+}
+
+void BitString::Set(size_t idx, bool bit) {
+  DCHECK(idx < num_bits) << idx << " vs " << num_bits;
+  if (bit) {
+    bytes[idx >> 3] |= (1 << (7 - (idx & 7)));
+  } else {
+    bytes[idx >> 3] &= ~(1 << (7 - (idx & 7)));
+  }
+}
+
+bool BitString::Zero() const {
+  for (uint8_t b : bytes)
+    if (b != 0)
+      return false;
+  return true;
 }
 
 std::vector<uint8_t> BitString::GetBytes() const {

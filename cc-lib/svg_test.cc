@@ -356,7 +356,6 @@ static void TestParseText() {
   PrintDoc(doc);
 
   CHECK(!SVG::ToSVG(doc).empty());
-
 }
 
 static void TestText() {

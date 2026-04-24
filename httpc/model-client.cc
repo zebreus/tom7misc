@@ -55,6 +55,16 @@ std::string_view ModelClient::ModelName(Model model) {
   }
 }
 
+std::optional<Model> ModelClient::IsModelFlag(std::string_view arg) {
+  if (arg.starts_with("-")) {
+    arg.remove_prefix(1);
+    return ModelByName(arg);
+  }
+
+  return std::nullopt;
+}
+
+
 ModelClient::ModelClient() {}
 ModelClient::~ModelClient() {}
 ModelResponse::ModelResponse() {}
@@ -267,7 +277,13 @@ struct ModelConnection {
   void ReadSomeHTTP() {
     // We must be connected and not already done.
     CHECK(client.get() != nullptr);
-    CHECK(!client->ReadEOS());
+    if (client->ReadEOS()) {
+      if (Info && verbose > 1) {
+        Info(std::format("HTTP stream closed.\n"));
+      }
+      http_state = HTTPState::BUSTED;
+      return;
+    }
 
     if (Info && verbose > 2) {
       size_t bytes = client->ReadView().size();
@@ -448,7 +464,7 @@ struct ModelResponseImpl : public ModelResponse {
     api_key(api_key) {
     conn.reset(new ModelConnection(host, model_name, api_key, Info));
     // XXX handle failure
-    (void)conn->Connect();
+    CHECK(conn->Connect()) << "Failed to connect.";
   }
 
   void Send(std::string_view http_request) {

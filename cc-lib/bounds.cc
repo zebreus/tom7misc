@@ -102,6 +102,13 @@ Bounds::Scaler::Scale(std::pair<double, double> p) const {
   return {ScaleX(p.first), ScaleY(p.second)};
 }
 
+double Bounds::Scaler::SizeX() const {
+  return xs;
+}
+double Bounds::Scaler::SizeY() const {
+  return ys;
+}
+
 double Bounds::Scaler::UnscaleX(double x) const {
   // PERF could compute and save xs inverse?
   return (x / xs) - xoff;

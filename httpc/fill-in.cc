@@ -213,6 +213,8 @@ int main(int argc, char **argv) {
 
   const std::string api_key = ModelUtil::GetAPIKey();
 
+  Model solve_model = Model::GEMINI_BEST;
+
   // Dirs to search for files.
   std::set<std::string> dirs = {"."};
 
@@ -249,6 +251,12 @@ int main(int argc, char **argv) {
       Print("Considering " AYELLOW("{}") " (command-line)\n", argv[i]);
       dirs.insert(argv[i]);
 
+    } else if (std::optional<Model> argmodel =
+               ModelClient::IsModelFlag(arg)) {
+      solve_model = argmodel.value();
+      Print("Using " APURPLE("{}") " for solve phase.\n",
+            ModelClient::ModelName(solve_model));
+
     } else {
       CHECK(file_arg.empty()) << "Just one file on the command line.";
       file_arg = std::string(arg);
@@ -284,15 +292,16 @@ int main(int argc, char **argv) {
 
   ModelUtil::AvailableFiles available = files.GetAvailable();
 
-  Print("List of available files:\n");
-  /*
-  for (const auto &[f, af] : available.files) {
-    Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
-          f, af.path.string(), af.bytes);
+  if (verbose) {
+    Print("List of available files:\n");
+    for (const auto &[f, af] : available.files) {
+      Print("  " AWHITE("{}") " = {} " AGREY("({})") "\n",
+            f, af.path.string(), af.bytes);
+    }
   }
-  */
 
   Print("{}\n", available.Textualize());
+  fflush(stdout);
 
   // Construct prompt to guess at files to include (cheap model).
 
@@ -385,7 +394,7 @@ int main(int argc, char **argv) {
     GenerateFill(current_file, current_file_contents, request, file_text);
 
   std::unique_ptr<ModelClient> best =
-    ModelClient::Create(Model::GEMINI_BEST, api_key);
+    ModelClient::Create(solve_model, api_key);
 
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);

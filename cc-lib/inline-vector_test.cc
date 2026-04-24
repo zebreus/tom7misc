@@ -19,14 +19,14 @@ struct WithPadding {
 
 static void TestSizes() {
   InlineVector<uint8_t> iv1;
-  CHECK(iv1.MaxInline() >= 48) << "This depends on compiler alignment so it isn't "
-    "really guaranteed. But we should tweak something if we can't even inline "
-    "a significant number of bytes.";
+  CHECK(iv1.MaxInline() >= 48) << "This depends on compiler alignment so "
+    "it isn't really guaranteed. But we should tweak something if we can't "
+    "even inline a significant number of bytes.";
 
   InlineVector<uint8_t *> iv2;
-  CHECK(iv2.MaxInline() >= 4) << "This depends on compiler alignment so it isn't "
-    "really guaranteed. But we should tweak something if we can't even inline "
-    "a few pointers.";
+  CHECK(iv2.MaxInline() >= 4) << "This depends on compiler alignment so it "
+    "isn't really guaranteed. But we should tweak something if we can't "
+    "even inline a few pointers.";
 
   InlineVector<WithPadding> iv3;
   CHECK(iv3.MaxInline() < iv1.MaxInline()) << "Object is bigger";

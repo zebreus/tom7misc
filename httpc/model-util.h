@@ -16,7 +16,8 @@
 // C++ Utilities for writing little LLM-based utilities.
 struct ModelUtil {
   // List the files that are tracked in the given directory.
-  static std::vector<std::filesystem::path> SvnList(std::string_view dir);
+  static std::vector<std::filesystem::path> SvnList(
+      std::filesystem::path dir);
 
   // Heuristically find directories that may have relevant files,
   // e.g. by looking in .clangd or makefiles.
@@ -84,7 +85,7 @@ struct ModelUtil {
 
     // Add all files that are currently tracked in this dir.
     // Not recursive.
-    void AddSvnFiles(std::string_view dir);
+    void AddSvnFiles(std::filesystem::path dir);
 
     // Add a specific file, regardless of whether it is tracked.
     // (Exclusion patterns still apply.)

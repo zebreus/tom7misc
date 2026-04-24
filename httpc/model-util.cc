@@ -115,7 +115,16 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
     Util::RemoveOuterWhitespace(&line);
     if (line.empty() || line.starts_with("#")) continue;
 
-    if (Util::TryStripPrefix("describe", &line)) {
+    if (Util::TryStripPrefix("svn", &line)) {
+      // Include files from the indicated directory, if tracked by
+      // svn.
+      std::string_view dir = Util::Chop(&line);
+      Util::RemoveLeadingWhitespace(&line);
+      std::filesystem::path cc = config_path / dir;
+
+      AddSvnFiles(cc);
+
+    } else if (Util::TryStripPrefix("describe", &line)) {
       std::string_view dir = Util::Chop(&line);
       Util::RemoveLeadingWhitespace(&line);
 
@@ -136,7 +145,7 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
 }
 
 std::vector<std::filesystem::path>
-ModelUtil::SvnList(std::string_view dir) {
+ModelUtil::SvnList(std::filesystem::path dir) {
   // "svn list" uses the server's version of the files at
   // some revision, which might not be the newest one. This
   // is not what we want.
@@ -206,7 +215,7 @@ ModelUtil::SvnList(std::string_view dir) {
   return ret;
 }
 
-void ModelUtil::FileCollection::AddSvnFiles(std::string_view dir) {
+void ModelUtil::FileCollection::AddSvnFiles(std::filesystem::path dir) {
   for (const std::filesystem::path &p : SvnList(dir)) {
     all.insert(p);
   }
