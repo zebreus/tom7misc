@@ -617,7 +617,7 @@ static Polyhedron RandomSymmetricPolyhedron(ArcFour *rc, int num_points) {
   }
 }
 
-static Polyhedron RandomRhombicPolyhedron(ArcFour *rc, int num_points) {
+static Polyhedron RandomOctahedralPolyhedron(ArcFour *rc, int num_points) {
   static const SymmetryGroups *symmetry = new SymmetryGroups;
 
   auto Rotate = [rc](const vec3 &v) {
@@ -789,8 +789,8 @@ struct RandomCandidateMaker : public CandidateMaker {
       return LP(RandomCyclicPolyhedron(&rc, num_points));
     case SolutionDB::NOPERT_METHOD_SYMMETRIC:
       return LP(RandomSymmetricPolyhedron(&rc, num_points));
-    case SolutionDB::NOPERT_METHOD_RHOMBIC:
-      return LP(RandomRhombicPolyhedron(&rc, num_points));
+    case SolutionDB::NOPERT_METHOD_OCTAHEDRAL:
+      return LP(RandomOctahedralPolyhedron(&rc, num_points));
     default:
       LOG(FATAL) << "Bad Nopert method";
       return LP(Cube());
@@ -2122,7 +2122,7 @@ static constexpr int METHOD = SolutionDB::NOPERT_METHOD_FLATTEN76;
   case SolutionDB::NOPERT_METHOD_RANDOM:
   case SolutionDB::NOPERT_METHOD_CYCLIC:
   case SolutionDB::NOPERT_METHOD_SYMMETRIC:
-  case SolutionDB::NOPERT_METHOD_RHOMBIC: {
+  case SolutionDB::NOPERT_METHOD_OCTAHEDRAL: {
 
     CHECK(parameter >= 4) << "Must have at least four vertices.";
     for (;;) {

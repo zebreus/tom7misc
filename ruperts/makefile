@@ -1,4 +1,4 @@
-default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe symmetry-groups_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe
+default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe
 
 # by default, don't require opencl
 all: default gpuperts.exe
@@ -45,7 +45,7 @@ OPT=-O3 -flto=thin
 CXXFLAGS=$(REMARKS) $(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi  -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(CODEC) -I$(SQLITE) --std=c++23
 LFLAGS=$(ASAN) $(GMP_LFLAGS) -flto -lz $(MALLOC_LFLAGS)
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/interval-cover.o $(CC_LIB)/interval-cover-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/textsvg.o $(CC_LIB)/hexdump.o $(CC_LIB)/integer-voronoi.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o $(CC_LIB)/nice.o $(CC_LIB)/png.o $(CC_LIB)/geom/mesh.o $(CC_LIB)/geom/hull-3d.o $(CC_LIB)/geom/polyhedra.o $(CC_LIB)/z3/run-z3.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/interval-cover.o $(CC_LIB)/interval-cover-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/textsvg.o $(CC_LIB)/hexdump.o $(CC_LIB)/integer-voronoi.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o $(CC_LIB)/nice.o $(CC_LIB)/png.o $(CC_LIB)/geom/mesh.o $(CC_LIB)/geom/hull-3d.o $(CC_LIB)/geom/polyhedra.o $(CC_LIB)/geom/symmetry-groups.o $(CC_LIB)/z3/run-z3.o
 
 # This is only for generating animations of polyhedra; it should be pretty
 # easy to excise the code if you're having trouble with it.
@@ -56,7 +56,7 @@ CL_OBJECTS=$(CC_LIB)/opencl/clutil.o
 
 SQLITE_OBJECTS=$(SQLITE)/database.o $(SQLITE)/sqlite3.o
 
-OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) ruperts-util.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o symmetry-groups.o textured-mesh.o smallest-sphere.o dyson.o z3.o patches.o intervals.o hypercube.o
+OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) ruperts-util.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o textured-mesh.o smallest-sphere.o dyson.o z3.o patches.o intervals.o hypercube.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -151,10 +151,6 @@ big-polyhedra_test.exe : big-polyhedra_test.o $(OBJECTS)
 	@echo -n "!"
 
 zuperts.exe : zuperts.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-symmetry-groups_test.exe : symmetry-groups_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

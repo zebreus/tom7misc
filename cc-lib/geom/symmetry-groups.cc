@@ -1,5 +1,5 @@
 
-#include "symmetry-groups.h"
+#include "geom/symmetry-groups.h"
 
 #include <vector>
 

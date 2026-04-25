@@ -47,5 +47,8 @@ polyhedra_test.exe : polyhedra.o hull-3d.o polyhedra_test.o $(CC_LIB_OBJECTS)
 point-map_test.exe : point-map_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+symmetry-groups_test.exe : symmetry-groups.o symmetry-groups_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe $(CC_LIB_OBJECTS)

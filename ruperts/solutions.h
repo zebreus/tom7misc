@@ -159,7 +159,7 @@ struct SolutionDB {
   static constexpr int NOPERT_METHOD_SYMMETRIC = 3;
   static constexpr int NOPERT_METHOD_REDUCE_SC = 4;
   static constexpr int NOPERT_METHOD_ADVERSARY = 5;
-  static constexpr int NOPERT_METHOD_RHOMBIC = 6;
+  static constexpr int NOPERT_METHOD_OCTAHEDRAL = 6;
   static constexpr int NOPERT_METHOD_UNOPT = 7;
   static constexpr int NOPERT_METHOD_CHURRO = 8;
   static constexpr int NOPERT_METHOD_FLATTEN76 = 9;
@@ -171,7 +171,7 @@ struct SolutionDB {
     case NOPERT_METHOD_SYMMETRIC: return "NOPERT_METHOD_SYMMETRIC";
     case NOPERT_METHOD_REDUCE_SC: return "NOPERT_METHOD_REDUCE_SC";
     case NOPERT_METHOD_ADVERSARY: return "NOPERT_METHOD_ADVERSARY";
-    case NOPERT_METHOD_RHOMBIC: return "NOPERT_METHOD_RHOMBIC";
+    case NOPERT_METHOD_OCTAHEDRAL: return "NOPERT_METHOD_OCTAHEDRAL";
     case NOPERT_METHOD_UNOPT: return "NOPERT_METHOD_UNOPT";
     case NOPERT_METHOD_CHURRO: return "NOPERT_METHOD_CHURRO";
     case NOPERT_METHOD_FLATTEN76: return "NOPERT_METHOD_FLATTEN76";

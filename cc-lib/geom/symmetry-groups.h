@@ -1,6 +1,6 @@
 
-#ifndef _RUPERTS_SYMMETRY_GROUPS_H
-#define _RUPERTS_SYMMETRY_GROUPS_H
+#ifndef _CC_LIB_GEOM_SYMMETRY_GROUPS_H
+#define _CC_LIB_GEOM_SYMMETRY_GROUPS_H
 
 #include <vector>
 #include <numbers>
@@ -8,6 +8,7 @@
 #include "geom/polyhedra.h"
 #include "yocto-math.h"
 
+// The three finite subgroups of SO(3), i.e. rotations in 3D space.
 // The platonic solids are a nice way to get to their corresponding
 // symmetry groups. We normalize them and convert each vertex to
 // a rotation frame.
