@@ -86,7 +86,7 @@ struct SymmetryGroups {
         rots->push_back(
             yocto::rotation_frame(
                 yocto::rotation_quat(
-                    axis, fifth_turn / 5.0 * std::numbers::pi / 2.0)));
+                    axis, fifth_turn * 2.0 * std::numbers::pi / 5.0)));
       }
     }
   }
