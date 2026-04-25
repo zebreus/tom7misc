@@ -34,7 +34,6 @@
 #include "periodically.h"
 #include "randutil.h"
 #include "rendering.h"
-#include "run-z3.h"
 #include "ruperts-util.h"
 #include "status-bar.h"
 #include "threadutil.h"
@@ -44,6 +43,7 @@
 #include "vector-util.h"
 #include "yocto-math.h"
 #include "z3.h"
+#include "z3/run-z3.h"
 
 static const char *NONEMPTY_PATCHES_FILE = "scube-nonempty-patches.txt";
 static const char *MASK_AND_EXAMPLE_FILE = "scube-patch-mask-ex.txt";

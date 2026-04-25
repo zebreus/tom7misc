@@ -18,11 +18,11 @@
 #include "geom/polyhedra.h"
 #include "numbers.h"
 #include "patches.h"
-#include "run-z3.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto-math.h"
 #include "z3.h"
+#include "z3/run-z3.h"
 
 static constexpr int DIGITS = 24;
 
