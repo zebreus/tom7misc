@@ -5,4 +5,5 @@ describe ../cc-lib General C++ utilities
 describe ../cc-lib/opt C++ Black-box optimizer
 
 describe ../cc-lib/geom C++ geometry libraries
-svn ../cc-lib/geom
+
+

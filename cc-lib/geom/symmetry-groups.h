@@ -22,6 +22,7 @@ struct SymmetryGroups {
 
   struct Group {
     std::vector<frame3> rots;
+    // The number of points in the smallest nontrivial orbit.
     int points = 0;
   };
   Group tetrahedron, octahedron, icosahedron;
@@ -43,7 +44,7 @@ struct SymmetryGroups {
       Polyhedron i = Icosahedron();
       VertexRotationsPentagonal(i, &icosahedron.rots);
       EdgeRotations(i, &icosahedron.rots);
-      icosahedron.points = 20;
+      icosahedron.points = 12;
     }
   }
 

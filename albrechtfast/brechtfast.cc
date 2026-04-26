@@ -54,17 +54,6 @@ static constexpr ColorUtil::Gradient BLACKBODY{
   GradRGB(1.0f, 0xFFFFFF)
 };
 
-static TriangularMesh3D PolyToTriangularMesh(const Polyhedron &poly) {
-  return TriangularMesh3D{.vertices = poly.vertices,
-    .triangles = poly.faces->triangulation};
-}
-
-static void SaveAsSTL(const Polyhedron &poly, std::string_view filename) {
-  TriangularMesh3D mesh = PolyToTriangularMesh(poly);
-  OrientMesh(&mesh);
-  return SaveAsSTL(mesh, filename, poly.name);
-}
-
 // Each of x,y,z in [-1, 1].
 static vec3 RandomVec(ArcFour *rc) {
   return vec3(2.0 * RandDouble(rc) - 1.0,
@@ -413,7 +402,7 @@ struct Brechtfast {
         status.Print(AGREEN("New best!") " {} faces, {} edges, {} vert. "
                      "Wrote {}\n", nfaces, nedges, nverts, filename);
         SaveAsSTL(poly, filename);
-        // best_netness = netness;
+        best_netness = netness;
       }
 
       status_per.RunIf([&]{

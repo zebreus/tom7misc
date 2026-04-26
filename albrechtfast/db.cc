@@ -13,9 +13,12 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "database.h"
 #include "geom/polyhedra.h"
+#include "periodically.h"
+#include "status-bar.h"
 #include "util.h"
 
 using frame3 = DB::frame3;
@@ -139,5 +142,43 @@ void DB::AddHard(const Polyhedron &poly, int method,
           method,
           time(nullptr),
           netness_numer, netness_denom));
+}
+
+void DB::Spreadsheet(std::string_view filename) {
+  std::string content = "id\tfaces\tedges\tverts"
+    "\tmethod\tcreatedate\tnumer\tdenom\n";
+  StatusBar status(1);
+  Periodically status_per(1);
+  std::vector<Hard> hards =
+    GetHardForQuery(
+        db->ExecuteString(
+            std::format(
+                "select "
+                "id, poly, method, createdate, netness_numer, netness_denom "
+                "from hard")));
+  for (int i = 0; i < (int)hards.size(); i++) {
+    const Hard &h = hards[i];
+
+    int nfaces = 0, nedges = 0, nverts = 0;
+    if (std::optional<Polyhedron> opoly =
+        PolyhedronFromConvexVertices(h.poly_points)) {
+      nfaces = opoly.value().faces->NumFaces();
+      nedges = opoly.value().faces->NumEdges();
+      nverts = opoly.value().faces->NumVertices();
+    }
+
+    AppendFormat(&content, "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                 h.id, nfaces, nedges, nverts,
+                 MethodName(h.method),
+                 Util::FormatTime("%Y-%m-%d %H:%M:%S", h.createdate),
+                 h.netness_numer, h.netness_denom);
+    status_per.RunIf([&]{
+        status.Progress(i + 1, hards.size(), "Exporting");
+      });
+  }
+  status.Remove();
+
+  Util::WriteFile(filename, content);
+  Print("Wrote {}\n", filename);
 }
 

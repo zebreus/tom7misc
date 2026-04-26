@@ -36,9 +36,12 @@ using SOCKET = int;
 #endif
 
 #include "base/logging.h"
+#include "base/print.h"
 
 using Address = Net::Address;
 using Socket = Net::Socket;
+
+static bool initialized = false;
 
 // This exists to enjoy Net's friendship with the wrappers, so that
 // we can make utilities that work with their private methods.
@@ -163,6 +166,7 @@ void Net::Init() {
   assert(WSAStartup(MAKEWORD(2, 2), &wsaData) == 0 &&
          "initializing network");
   #endif
+  initialized = true;
 }
 
 void Net::Shutdown() {
@@ -197,6 +201,8 @@ std::string Net::Address::ToString() const {
 }
 
 std::vector<Address> Net::Resolve(std::string_view hostname, uint16_t port) {
+  CHECK(initialized) << "Must call Net::Init() first!";
+
   struct addrinfo hints;
   std::memset(&hints, 0, sizeof(hints));
   // IPV4 or 6 ok.
@@ -218,6 +224,9 @@ std::vector<Address> Net::Resolve(std::string_view hostname, uint16_t port) {
 
   struct addrinfo* result = nullptr;
   if (0 != getaddrinfo(host_buf, port_string, &hints, &result)) {
+    // Fails here!
+    Print("can't getaddrinfo\n");
+
     return {};
   }
 

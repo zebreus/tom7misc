@@ -379,8 +379,7 @@ Polyhedron NAntiPrism(int64_t num_points, double depth);
 // Takes ownership of the vertices, which should be a convex hull.
 // Creates faces as all planes where all the other points are on one
 // side. This is not fast; it's intended for a small number of
-// vertices. The Faces pointer in the returned Polyhedron is owned
-// by the caller. Can fail if the points are not actually a convex
+// vertices. Can fail if the points are not actually a convex
 // hull, returning nullopt.
 std::optional<Polyhedron> PolyhedronFromConvexVertices(
     std::vector<vec3> vertices, std::string_view name = "");

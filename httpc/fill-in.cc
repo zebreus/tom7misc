@@ -280,6 +280,10 @@ int main(int argc, char **argv) {
     request = "Can you fill this part in?";
   }
 
+  if (Util::ExistsFile(".model-config")) {
+    files.AddConfig(".model-config");
+  }
+
   // Probably should use paths here too.
   for (const std::string &d : ModelUtil::IncludeDirs(current_file)) {
     // Print("Via clangd: " AYELLOW("{}") "\n", d);

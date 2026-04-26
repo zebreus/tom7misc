@@ -6,6 +6,7 @@
 #include <ctime>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/logging.h"
@@ -31,6 +32,7 @@ struct DB {
     switch (m) {
     case METHOD_INVALID: return "INVALID";
     case METHOD_RANDOM_CYCLIC: return "METHOD_RANDOM_CYCLIC";
+    case METHOD_RANDOM_SYMMETRIC: return "METHOD_RANDOM_SYMMETRIC";
     default: return "UNKNOWN";
     }
   }
@@ -59,6 +61,10 @@ struct DB {
   void ExecuteAndPrint(const std::string &s) {
     db->ExecuteAndPrint(s);
   }
+
+  // Write a TSV file with the data. The polyhedra points are
+  // not included.
+  void Spreadsheet(std::string_view filename);
 
  private:
   std::unique_ptr<Database> db;

@@ -27,20 +27,20 @@
 #include "auto-histo.h"
 #include "base/stringprintf.h"
 #include "geom/hull-3d.h"
+#include "geom/point-map.h"
+#include "geom/polyhedra.h"
+#include "geom/symmetry-groups.h"
 #include "interval-cover-util.h"
 #include "interval-cover.h"
 #include "opt/large-optimizer.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "geom/point-map.h"
-#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "rendering.h"
 #include "ruperts-util.h"
 #include "smallest-sphere.h"
 #include "solutions.h"
 #include "status-bar.h"
-#include "symmetry-groups.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
@@ -575,7 +575,8 @@ static Polyhedron RandomSymmetricPolyhedron(ArcFour *rc, int num_points) {
     // Deduplicate points if they are too close. This is particularly
     // important when reflections are included.
     {
-      std::vector<vec3> dedup_pts = points;
+      std::vector<vec3> dedup_pts;
+      dedup_pts.reserve(points.size());
       for (const vec3 &p : points) {
         for (const vec3 &q : dedup_pts) {
           if (distance_squared(p, q) < 0.0001) {
