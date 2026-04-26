@@ -3,10 +3,8 @@
 #include <deque>
 #include <string>
 #include <mutex>
-#include <cstdio>
 #include <iostream>
 #include <cstdlib>
-#include <chrono>
 #include <condition_variable>
 #include <utility>
 
@@ -28,7 +26,7 @@ void Console::ReadThread() {
   for (;;) {
     string input;
     getline(cin, input);
-    // printf("Got [%s]\n", input.c_str());
+    // Print("Got [%s]\n", input.c_str());
     {
       std::unique_lock<std::mutex> ul(m);
       input_lines.push_back(std::move(input));

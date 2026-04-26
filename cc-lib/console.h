@@ -1,5 +1,5 @@
-#ifndef _CONSOLE_H
-#define _CONSOLE_H
+#ifndef _CC_LIB_CONSOLE_H
+#define _CC_LIB_CONSOLE_H
 
 #include <deque>
 #include <string>
@@ -8,10 +8,9 @@
 #include <thread>
 #include <condition_variable>
 
-// TODO: To cc-lib
-
 // TODO: Printf, which keeps the output separate from the input line(s).
 // TODO: Unbuffered IO.
+// TODO: Merge with StatusBar, or share some functionality?
 // Asynchronous console.
 struct Console {
   Console();
@@ -23,7 +22,7 @@ struct Console {
 
   bool HasInput();
 
-private:
+ private:
   void ReadThread();
   std::mutex m;
   std::condition_variable cond;
