@@ -22,6 +22,7 @@ struct DB {
 
   static constexpr int METHOD_INVALID = 0;
   static constexpr int METHOD_RANDOM_CYCLIC = 1;
+  static constexpr int METHOD_RANDOM_SYMMETRIC = 2;
 
   static constexpr int FIRST_METHOD = 1;
   static constexpr int LAST_METHOD = 1;
