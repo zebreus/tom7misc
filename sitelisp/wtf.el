@@ -16,10 +16,16 @@
 
 (require 'eprocs)
 
-(defvar wtf-exe "c:\\code\\sf_svn\\httpc\\wtf.exe"
+(defgroup wtf nil
+  "Settings for wtf command integration."
+  :group 'external)
+
+(defcustom wtf-exe "c:\\code\\sf_svn\\httpc\\wtf.exe"
   "The executable to use for the wtf command. It will be invoked like
   wtf.exe -file current_file \"This is the user's question.\"
-  with the contents of the region as stdin.")
+  with the contents of the region as stdin."
+  :type 'file
+  :group 'wtf)
 
 (defcustom wtf-configs
   '("/c/code/sf_svn/sitelisp/model-config.txt"
@@ -49,7 +55,7 @@ If the buffer visits a file, it is saved and passed on the command line."
                       nil)
                     (apply #'append
                            (mapcar (lambda (cfg) (list "-config" cfg))
-                                   fill-in-configs))
+                                   wtf-configs))
                     (list question))))
       (eprocs-run
        :name (format "wtf-%s" nonce)

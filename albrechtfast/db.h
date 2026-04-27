@@ -24,6 +24,8 @@ struct DB {
   static constexpr int METHOD_INVALID = 0;
   static constexpr int METHOD_RANDOM_CYCLIC = 1;
   static constexpr int METHOD_RANDOM_SYMMETRIC = 2;
+  static constexpr int METHOD_OPT = 3;
+  static constexpr int METHOD_CONSTRUCT = 4;
 
   static constexpr int FIRST_METHOD = 1;
   static constexpr int LAST_METHOD = 1;
@@ -33,6 +35,8 @@ struct DB {
     case METHOD_INVALID: return "INVALID";
     case METHOD_RANDOM_CYCLIC: return "METHOD_RANDOM_CYCLIC";
     case METHOD_RANDOM_SYMMETRIC: return "METHOD_RANDOM_SYMMETRIC";
+    case METHOD_OPT: return "METHOD_OPT";
+    case METHOD_CONSTRUCT: return "METHOD_CONSTRUCT";
     default: return "UNKNOWN";
     }
   }

@@ -14,6 +14,10 @@
 
 (require 'eprocs)
 
+(defgroup fill-in nil
+  "Settings for fill-in command integration."
+  :group 'external)
+
 ;; Faces for placeholder text.
 (defface fill-in-processing-face
   '((t :foreground "cyan" :background "#003366"))
@@ -25,8 +29,10 @@
   "Face for the fill-in failure placeholder."
   :group 'fill-in)
 
-(defvar fill-in-exe "c:\\code\\sf_svn\\httpc\\fill-in.exe"
-  "The executable to use for the fill-in command.")
+(defcustom fill-in-exe "c:\\code\\sf_svn\\httpc\\fill-in.exe"
+  "The executable to use for the fill-in command."
+  :type 'file
+  :group 'fill-in)
 
 (defcustom fill-in-default-directories
   '("/d/tom/llm"

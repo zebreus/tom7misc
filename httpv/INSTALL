@@ -5,9 +5,43 @@ five years from now.
 
 It expects to find its configuration in /etc/httpv.
 You put keys in here (example.key) and certificate configs (domain.conf)
-and use Let's Encrypt to generate certificate chains (example.domain.cert).
+and use Let's Encrypt (or whatever you want) to generate certificate
+chains (example.domain.cert).
 
 In /etc/httpv there should also be config.txt, which configures httpv itself.
+
+So for example we might have, in /etc/httpv:
+
+  key31337.key    (RSA key; "BEGIN PRIVATE KEY" format like PEM)
+  tom7.org.chain  (Certs; "BEGIN CERTIFICATE" format; typically two)
+  config.txt
+
+And your config.txt might look like:
+
+  session-tickets true
+
+  default-port 81
+  user nobody
+
+  # expensive!
+  max-plaintext-size 16
+
+  iv-strategy data
+
+  heartbleed A message to return\x00
+
+  # Fixed server random. Up to 32 bytes.
+  server-random \x20\x20\x20hi\x20:)\x20\x20\x20
+
+  key /etc/httpv/key31337.key
+  cert /etc/httpv/tom7.org.chain
+
+    host tom7.org
+      alias www.tom7.org
+      alias h4x3r.tom7.org
+
+You can have lots of hosts and aliases, with the same key or different ones.
+See config.cc to to see what options exist.
 
 use "make install" to build the executable and put it in /usr/local/sbin/httpv.exe
 
@@ -36,7 +70,11 @@ Restart=always
 RestartSec=5
 
 # Maximum number of forked children (concurrent requests).
-TasksMax=256
+# You can make this lower, but when people "security scan" me
+# and/or the scrapers are in full effect, I do see it exceed
+# 256 tasks. The symptom is "fork: Resource temporarily unavailable"
+# in systemd logs.
+TasksMax=512
 
 NoNewPrivileges=yes
 

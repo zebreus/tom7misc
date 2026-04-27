@@ -124,6 +124,13 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
 
       AddSvnFiles(cc);
 
+    } else if (Util::TryStripPrefix("file", &line)) {
+      std::string_view file = Util::Chop(&line);
+      Util::RemoveLeadingWhitespace(&line);
+
+      std::filesystem::path cc = config_path / file;
+      AddFile(cc);
+
     } else if (Util::TryStripPrefix("describe", &line)) {
       std::string_view dir = Util::Chop(&line);
       Util::RemoveLeadingWhitespace(&line);
@@ -535,6 +542,13 @@ std::string ModelUtil::GetAPIKey() {
     if (!api_key.empty()) {
       return api_key;
     }
+  }
+
+  {
+    Print("Try /root\n");
+    std::string key = Util::ReadFile("/root/GEMINI_API_KEY");
+    if (!key.empty())
+      return Util::NormalizeWhitespace(key);
   }
 
   std::string api_key =

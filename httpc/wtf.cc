@@ -152,6 +152,8 @@ int main(int argc, char **argv) {
 
   const std::string api_key = ModelUtil::GetAPIKey();
 
+  Model solve_model = Model::GEMINI_BEST;
+
   // pipe the output of a command (or paste on stdin)
   // and ask a question on the command line.
 
@@ -198,6 +200,12 @@ int main(int argc, char **argv) {
       i++;
       Print("Read config " ABLUE("{}") "\n", argv[i]);
       files.AddConfig(argv[i]);
+
+    } else if (std::optional<Model> argmodel =
+               ModelClient::IsModelFlag(arg)) {
+      solve_model = argmodel.value();
+      Print("Using " APURPLE("{}") " for solve phase.\n",
+            ModelClient::ModelName(solve_model));
 
     } else {
       CHECK(!question.has_value()) << "Quote the question on the "
@@ -328,7 +336,7 @@ int main(int argc, char **argv) {
     SolvePrompt(question.value(), output, file_text);
 
   std::unique_ptr<ModelClient> best =
-    ModelClient::Create(Model::GEMINI_BEST, api_key);
+    ModelClient::Create(solve_model, api_key);
 
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);

@@ -221,9 +221,6 @@ int main(int argc, char **argv) {
   std::string file_arg;
 
   ModelUtil::FileCollection files;
-  // files.DescribeDir("../cc-lib/", "General C++ utilities");
-  // files.DescribeDir("../cc-lib/geom", "C++ geometry utilities");
-  // files.DescribeDir("d:\\tom\\llm", "Style guides");
 
   // Wildcards to never offer up.
   files.AddExcludePattern("*.png");

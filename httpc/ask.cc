@@ -137,11 +137,14 @@ int main(int argc, char **argv) {
         continue;
       }
 
-      if (std::optional<Model> m =
-          ModelClient::ModelByName(arg.substr(1))) {
-        model = m.value();
+      if (std::optional<Model> argmodel =
+          ModelClient::IsModelFlag(arg)) {
+        model = argmodel.value();
+        Print("Using " APURPLE("{}") ".\n",
+              ModelClient::ModelName(model));
         continue;
       }
+
     }
 
     CHECK(!question.has_value()) << usage;
