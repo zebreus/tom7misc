@@ -44,6 +44,8 @@ struct BitString {
     return (bits >> 3) + !!(bits & 7);
   }
 
+  // Comparisons via implicit conversion to const view.
+
   inline bool Get(size_t idx) const;
   inline void Set(size_t idx, bool bit);
   inline bool operator [](size_t idx) const;
@@ -114,6 +116,24 @@ struct BitStringConstView {
 
   inline BitStringConstView Sub(size_t offset, size_t length = npos) const;
 
+  inline static auto Spaceship(BitStringConstView a, BitStringConstView b) {
+    size_t min_len = a.length < b.length ? a.length : b.length;
+    for (size_t i = 0; i < min_len; i++) {
+      bool l = a[i], r = b[i];
+      if (l != r) return l <=> r;
+    }
+    return a.length <=> b.length;
+  }
+
+  inline static bool Equal(BitStringConstView a, BitStringConstView b) {
+    if (a.length != b.length) return false;
+    for (size_t i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+
  private:
   friend struct BitString;
   friend struct BitStringView;
@@ -125,6 +145,13 @@ struct BitStringConstView {
   size_t length = 0;
 };
 
+inline auto operator<=>(BitStringConstView a, BitStringConstView b) {
+  return BitStringConstView::Spaceship(a, b);
+}
+
+inline bool operator==(BitStringConstView a, BitStringConstView b) {
+  return BitStringConstView::Equal(a, b);
+}
 
 // Inline implementations follow.
 

@@ -207,6 +207,47 @@ static void TestConstructor() {
   }
 }
 
+static void TestComparisons() {
+  BitString bb1;
+  bb1.WriteBits(4, 0b1010);
+  BitStringView view1 = bb1.View();
+
+  BitString bb2;
+  bb2.WriteBits(4, 0b1010);
+  BitStringConstView cview2 = bb2.View();
+
+  BitString bb3;
+  bb3.WriteBits(4, 0b1100);
+
+  BitString bb4;
+  bb4.WriteBits(5, 0b10100);
+
+  BitString bb5;
+  bb5.WriteBits(3, 0b110);
+
+  // Compare a BitString with a BitStringView.
+  CHECK(bb2 == view1);
+  CHECK(view1 == bb2);
+  CHECK(bb3 != view1);
+  CHECK(bb3 > view1);
+  CHECK(bb4 > view1);
+  CHECK(bb5 > view1);
+  CHECK(view1 < bb5);
+
+  // Compare a BitStringView with a BitStringConstView.
+  CHECK(view1 == cview2);
+  CHECK(cview2 == view1);
+
+  BitStringView view3 = bb3.View();
+  CHECK(view3 != cview2);
+  CHECK(view3 > cview2);
+
+  BitStringView view4 = bb4.View();
+  CHECK(view4 > cview2);
+
+  BitStringView view5 = bb5.View();
+  CHECK(view5 > cview2);
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -217,6 +258,7 @@ int main(int argc, char **argv) {
   TestViews();
   TestSub();
   TestConstructor();
+  TestComparisons();
 
   printf("OK\n");
   return 0;
