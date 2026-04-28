@@ -1662,6 +1662,8 @@ std::optional<Polyhedron> PolyhedronFromVertices(
   return PolyhedronFromConvexVertices(std::move(hull_vertices), name);
 }
 
+
+
 Polyhedron SnubCube() {
   const double tribonacci =
     (1.0 + std::cbrt(19.0 + 3.0 * std::sqrt(33.0)) +
@@ -2923,4 +2925,171 @@ Polyhedron DualizePoly(const Polyhedron &p) {
 
   dual->symmetry = p.symmetry;
   return std::move(dual.value());
+}
+
+
+bool IsManifold(const Polyhedron &p) {
+  CHECK(p.faces.get() != nullptr);
+  const Faces &faces = *p.faces;
+
+  const int vs = p.vertices.size();
+  const int fs = faces.v.size();
+  [[maybe_unused]]
+  const int es = faces.edges.size();
+
+  for (const std::vector<int> &nbs : faces.neighbors) {
+    if (!std::is_sorted(nbs.begin(), nbs.end())) return false;
+    if (nbs.size() < 3) return false;
+  }
+
+  std::vector<int> edge_counts(vs, 0);
+
+  auto Contains = [](std::span<const int> vec, int val) {
+      return std::find(vec.begin(), vec.end(), val) != vec.end();
+    };
+
+  for (const Faces::Edge &edge : faces.edges) {
+    // Edge invariants.
+    if (edge.v0 < 0 || edge.v0 >= vs) return false;
+    if (edge.v1 < 0 || edge.v1 >= vs) return false;
+    if (edge.v0 >= edge.v1) return false;
+
+    if (edge.f0 < 0 || edge.f0 >= fs) return false;
+    if (edge.f1 < 0 || edge.f1 >= fs) return false;
+    if (edge.f0 >= edge.f1) return false;
+
+    edge_counts[edge.v0]++;
+    edge_counts[edge.v1]++;
+
+    // The faces f0 and f1 must both contain v0 and v1.
+    if (!Contains(faces.v[edge.f0], edge.v0) ||
+        !Contains(faces.v[edge.f0], edge.v1) ||
+        !Contains(faces.v[edge.f1], edge.v0) ||
+        !Contains(faces.v[edge.f1], edge.v1)) {
+      return false;
+    }
+
+    // v0 and v1 should be listed as neighbors of each other.
+    if (!Contains(faces.neighbors[edge.v0], edge.v1) ||
+        !Contains(faces.neighbors[edge.v1], edge.v0)) {
+      return false;
+    }
+  }
+
+  // The number of edges touching a vertex should equal its degree.
+  for (int i = 0; i < vs; i++)
+    if (edge_counts[i] != (int)faces.neighbors[i].size())
+      return false;
+
+  for (int f = 0; f < fs; f++) {
+    const std::vector<int> &fv = faces.v[f];
+    if (fv.size() < 3) return false;
+    for (int v : fv) {
+      if (v < 0 || v >= vs) {
+        return false;
+      }
+    }
+  }
+
+  // Check for consistent orientation (winding order) across all edges.
+  // Each edge should be traversed in opposite directions by the two
+  // faces that share it.
+  for (const Faces::Edge &edge : faces.edges) {
+    auto GetDir = [&](int f) {
+        const std::vector<int> &fv = faces.v[f];
+        for (int i = 0; i < (int)fv.size(); i++) {
+          int a = fv[i];
+          int b = fv[(i + 1) % fv.size()];
+          if (a == edge.v0 && b == edge.v1) return 1;
+          if (a == edge.v1 && b == edge.v0) return -1;
+        }
+        return 0;
+      };
+
+    int d0 = GetDir(edge.f0);
+    int d1 = GetDir(edge.f1);
+
+    if (d0 == 0) return false;
+    if (d1 == 0) return false;
+    if (d0 != -d1) return false;
+  }
+
+  // Check that faces are planar and convex polygons.
+  for (int f = 0; f < fs; f++) {
+    const std::vector<int> &fv = faces.v[f];
+
+    // Newell's method.
+    vec3 normal{0.0, 0.0, 0.0};
+    for (size_t i = 0; i < fv.size(); i++) {
+      const vec3 &v0 = p.vertices[fv[i]];
+      const vec3 &v1 = p.vertices[fv[(i + 1) % fv.size()]];
+      normal.x += (v0.y - v1.y) * (v0.z + v1.z);
+      normal.y += (v0.z - v1.z) * (v0.x + v1.x);
+      normal.z += (v0.x - v1.x) * (v0.y + v1.y);
+    }
+
+    double nlen = yocto::length(normal);
+    if (nlen < 1.0e-12) return false;
+    normal /= nlen;
+
+    const vec3 &v_ref = p.vertices[fv[0]];
+    for (size_t i = 0; i < fv.size(); i++) {
+      // Check planarity.
+      if (std::abs(yocto::dot(p.vertices[fv[i]] - v_ref, normal)) > 1.0e-5) {
+        return false;
+      }
+
+      // Check convexity.
+      const vec3 &p0 = p.vertices[fv[i]];
+      const vec3 &p1 = p.vertices[fv[(i + 1) % fv.size()]];
+      const vec3 &p2 = p.vertices[fv[(i + 2) % fv.size()]];
+
+      vec3 cp = yocto::cross(p1 - p0, p2 - p0);
+      if (yocto::dot(normal, cp) < -1.0e-6) {
+        return false;
+      }
+    }
+  }
+
+
+  return true;
+}
+
+bool IsWellConditioned(std::span<const vec3> vs,
+                       double min_distance) {
+  const double min_distance_sq = min_distance * min_distance;
+
+  // To avoid a full O(n^2) check in most cases, we sort by
+  // the x coordinate (arbitrarily).
+  std::vector<const vec3 *> sorted;
+  sorted.reserve(vs.size());
+  for (const vec3 &v : vs) {
+    if (!std::isfinite(v.x) ||
+        !std::isfinite(v.y) ||
+        !std::isfinite(v.z))
+      return false;
+    sorted.push_back(&v);
+  }
+
+  std::sort(sorted.begin(), sorted.end(),
+            [](const vec3 *a, const vec3 *b) { return a->x < b->x; });
+
+  for (size_t i = 0; i < sorted.size(); i++) {
+    const vec3 &v0 = *sorted[i];
+    for (size_t j = i + 1; j < sorted.size(); j++) {
+      const vec3 &v1 = *sorted[j];
+
+      // We can stop searching once the x distance already exceeds
+      // the minimum distance.
+      if (v1.x - v0.x >= min_distance) {
+        break;
+      }
+
+      if (yocto::distance_squared(v0, v1) < min_distance_sq) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }

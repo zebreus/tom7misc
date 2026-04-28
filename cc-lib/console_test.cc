@@ -4,22 +4,25 @@
 #include <deque>
 #include <cstdlib>
 #include <chrono>
+#include <string>
+#include <thread>
 
-#include "threadutil.h"
 #include "ansi.h"
-
+#include "base/print.h"
+#include "threadutil.h"
 
 void Chat() {
   Console console;
+  Print("This is an interactive test!\n");
 
   for (;;) {
     using namespace std::chrono_literals;
     std::this_thread::sleep_for(200ms);
-    printf("hi ");
+    Print("hi ");
 
     if (console.HasInput()) {
       std::string line = console.WaitLine();
-      printf("Client read [%s]\n", line.c_str());
+      Print("Client read [{}]\n", line);
     }
   }
 }

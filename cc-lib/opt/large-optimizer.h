@@ -12,19 +12,23 @@
 // an improvement even when a local one does exist. Therefore this
 // is best suited to fairly easy convex problems.
 
-#include <cstdio>
+#include <algorithm>
 #include <bit>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <optional>
+#include <span>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
-#include <cassert>
 #include <variant>
+#include <vector>
 
 #include "opt/opt.h"
 

@@ -389,6 +389,21 @@ std::optional<Polyhedron> PolyhedronFromConvexVertices(
 std::optional<Polyhedron> PolyhedronFromVertices(
     std::vector<vec3> vertices, std::string_view name = "");
 
+// True if the polyhedron is properly formed, at least within the
+// limits of floating point and the checks we perform:
+//  * Edges connect exactly two faces
+//  * Faces are planar, and simple convex polygons
+//  * Winding order of edges is consistent
+//  * Structural invariants (e.g. indices within bounds).
+bool IsManifold(const Polyhedron &poly);
+
+// Checks that the set of vertices are well-conditioned: No two
+// vertices can have Euclidean distance less than the specified
+// minimum. All coordinates must be finite. (n^2 in the worst
+// case but usually n*lg(n)).
+bool IsWellConditioned(std::span<const vec3> vs,
+                       double min_distance = 1.0e-12);
+
 // Generate some polyhedra. Many of these are not fast because they do
 // some kind of search (e.g. a polynomial-time convex hull
 // calculation) to find the connectivity. You should reuse the base

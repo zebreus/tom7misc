@@ -420,91 +420,96 @@ static void TestStructure() {
   auto CheckPoly = [](const Polyhedron &p,
                       // expected vertices, edges, faces
                       int vs, int es, int fs) {
-    CHECK(p.faces != nullptr);
-    const Faces &faces = *p.faces;
+      CHECK(p.faces.get() != nullptr);
+      const Faces &faces = *p.faces;
 
-    CHECK((int)p.vertices.size() == vs);
-    CHECK(faces.NumVertices() == vs);
-    CHECK((int)faces.v.size() == fs);
-    CHECK((int)faces.edges.size() == es);
+      CHECK((int)p.vertices.size() == vs);
+      CHECK(faces.NumVertices() == vs);
+      CHECK((int)faces.v.size() == fs);
+      CHECK((int)faces.edges.size() == es);
 
-    // Euler characteristic: V - E + F = 2
-    CHECK(vs - es + fs == 2);
+      // Euler characteristic: V - E + F = 2
+      CHECK(vs - es + fs == 2);
 
-    for (const std::vector<int> &nbs : faces.neighbors) {
-      CHECK(std::is_sorted(nbs.begin(), nbs.end()));
-      CHECK(nbs.size() >= 3);
-    }
-
-    std::vector<int> edge_counts(vs, 0);
-
-    auto contains = [](const std::vector<int> &vec, int val) {
-      return std::find(vec.begin(), vec.end(), val) != vec.end();
-    };
-
-    for (const Faces::Edge &edge : faces.edges) {
-      // Edge invariants.
-      CHECK(edge.v0 >= 0);
-      CHECK(edge.v0 < edge.v1) << p.name;
-      CHECK(edge.v1 < vs);
-
-      CHECK(edge.f0 >= 0);
-      CHECK(edge.f0 < edge.f1);
-      CHECK(edge.f1 < fs);
-
-      edge_counts[edge.v0]++;
-      edge_counts[edge.v1]++;
-
-      // Implied invariants:
-      // The faces f0 and f1 must both contain v0 and v1.
-      CHECK(contains(faces.v[edge.f0], edge.v0));
-      CHECK(contains(faces.v[edge.f0], edge.v1));
-      CHECK(contains(faces.v[edge.f1], edge.v0));
-      CHECK(contains(faces.v[edge.f1], edge.v1));
-
-      // v0 and v1 should be listed as neighbors of each other.
-      CHECK(contains(faces.neighbors[edge.v0], edge.v1));
-      CHECK(contains(faces.neighbors[edge.v1], edge.v0));
-    }
-
-    for (int i = 0; i < vs; i++) {
-      // The number of edges touching a vertex should equal its degree.
-      CHECK(edge_counts[i] == (int)faces.neighbors[i].size());
-    }
-
-    for (int f = 0; f < fs; f++) {
-      const std::vector<int> &fv = faces.v[f];
-      CHECK(fv.size() >= 3);
-      for (int v : fv) {
-        CHECK(v >= 0 && v < vs);
+      for (const std::vector<int> &nbs : faces.neighbors) {
+        CHECK(std::is_sorted(nbs.begin(), nbs.end()));
+        CHECK(nbs.size() >= 3);
       }
-    }
 
-    // Check for consistent orientation (winding order) across all edges.
-    // Each edge should be traversed in opposite directions by the two
-    // faces that share it.
-    for (const Faces::Edge &edge : faces.edges) {
-      auto get_dir = [&](int f) {
+      std::vector<int> edge_counts(vs, 0);
+
+      auto Contains = [](const std::vector<int> &vec, int val) {
+          return std::find(vec.begin(), vec.end(), val) != vec.end();
+        };
+
+      for (const Faces::Edge &edge : faces.edges) {
+        // Edge invariants.
+        CHECK(edge.v0 >= 0);
+        CHECK(edge.v0 < edge.v1) << p.name;
+        CHECK(edge.v1 < vs);
+
+        CHECK(edge.f0 >= 0);
+        CHECK(edge.f0 < edge.f1);
+        CHECK(edge.f1 < fs);
+
+        edge_counts[edge.v0]++;
+        edge_counts[edge.v1]++;
+
+        // Implied invariants:
+        // The faces f0 and f1 must both contain v0 and v1.
+        CHECK(Contains(faces.v[edge.f0], edge.v0));
+        CHECK(Contains(faces.v[edge.f0], edge.v1));
+        CHECK(Contains(faces.v[edge.f1], edge.v0));
+        CHECK(Contains(faces.v[edge.f1], edge.v1));
+
+        // v0 and v1 should be listed as neighbors of each other.
+        CHECK(Contains(faces.neighbors[edge.v0], edge.v1));
+        CHECK(Contains(faces.neighbors[edge.v1], edge.v0));
+      }
+
+      for (int i = 0; i < vs; i++) {
+        // The number of edges touching a vertex should equal its degree.
+        CHECK(edge_counts[i] == (int)faces.neighbors[i].size());
+      }
+
+      for (int f = 0; f < fs; f++) {
         const std::vector<int> &fv = faces.v[f];
-        for (int i = 0; i < (int)fv.size(); i++) {
-          int a = fv[i];
-          int b = fv[(i + 1) % fv.size()];
-          if (a == edge.v0 && b == edge.v1) return 1;
-          if (a == edge.v1 && b == edge.v0) return -1;
+        CHECK(fv.size() >= 3);
+        for (int v : fv) {
+          CHECK(v >= 0 && v < vs);
         }
-        return 0;
-      };
+      }
 
-      int d0 = get_dir(edge.f0);
-      int d1 = get_dir(edge.f1);
+      // Check for consistent orientation (winding order) across all edges.
+      // Each edge should be traversed in opposite directions by the two
+      // faces that share it.
+      for (const Faces::Edge &edge : faces.edges) {
+        auto GetDir = [&](int f) {
+            const std::vector<int> &fv = faces.v[f];
+            for (int i = 0; i < (int)fv.size(); i++) {
+              int a = fv[i];
+              int b = fv[(i + 1) % fv.size()];
+              if (a == edge.v0 && b == edge.v1) return 1;
+              if (a == edge.v1 && b == edge.v0) return -1;
+            }
+            return 0;
+          };
 
-      CHECK(d0 != 0) << "Edge missing from face " << edge.f0;
-      CHECK(d1 != 0) << "Edge missing from face " << edge.f1;
-      CHECK(d0 == -d1) << "Inconsistent winding order on edge "
-                       << edge.v0 << "-" << edge.v1 << " between faces "
-                       << edge.f0 << " and " << edge.f1;
-    }
-  };
+        int d0 = GetDir(edge.f0);
+        int d1 = GetDir(edge.f1);
+
+        CHECK(d0 != 0) << "Edge missing from face " << edge.f0;
+        CHECK(d1 != 0) << "Edge missing from face " << edge.f1;
+        CHECK(d0 == -d1) << "Inconsistent winding order on edge "
+                         << edge.v0 << "-" << edge.v1 << " between faces "
+                         << edge.f0 << " and " << edge.f1;
+      }
+
+      // This is mostly redundant with the checks above, so we
+      // check it last for better error messages.
+      CHECK(IsManifold(p));
+      CHECK(IsWellConditioned(p.vertices));
+    };
 
   CheckPoly(Tetrahedron(), 4, 6, 4);
   CheckPoly(Cube(), 8, 12, 6);
@@ -535,7 +540,6 @@ static void TestStructure() {
 
   CheckPoly(Noperthedron(), 90, 240, 152);
 }
-
 
 int main(int argc, char **argv) {
   ANSI::Init();

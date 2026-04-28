@@ -1,0 +1,3 @@
+
+describe ../httpc Simple TLS client and Gemini API client
+svn ../httpc

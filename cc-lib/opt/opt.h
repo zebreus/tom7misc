@@ -96,7 +96,7 @@ struct Opt {
   // be exposed but it should be easy to ignore them, especially
   // their interaction with iters).
 
-private:
+ private:
   typedef double (*internal_func)(int N, const double* x,
                                   void* func_data);
 

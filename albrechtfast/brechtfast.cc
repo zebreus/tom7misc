@@ -25,12 +25,13 @@
 #include "bit-string.h"
 #include "color-util.h"
 #include "db.h"
-#include "geom/mesh.h"
 #include "geom/point-map.h"
 #include "geom/polyhedra.h"
 #include "geom/symmetry-groups.h"
 #include "image.h"
+#include "opt/opt.h"
 #include "periodically.h"
+#include "poly-util.h"
 #include "randutil.h"
 #include "status-bar.h"
 #include "threadutil.h"
@@ -41,7 +42,8 @@
 
 using Aug = Albrecht::AugmentedPoly;
 
-DECLARE_COUNTERS(ctr_poly, ctr_only_net, ctr_degenerate, ctr_too_big);
+DECLARE_COUNTERS(ctr_poly, ctr_only_net, ctr_degenerate, ctr_too_big,
+                 ctr_ill_conditioned, ctr_not_manifold);
 
 // (actually an upper bound, not inclusive)
 static constexpr int MAX_FACES = 80;
@@ -61,9 +63,30 @@ static vec3 RandomVec(ArcFour *rc) {
               2.0 * RandDouble(rc) - 1.0);
 }
 
+static std::optional<Polyhedron> CarefulPolyhedron(
+    std::vector<vec3> verts) {
+  if (!IsWellConditioned(verts)) {
+    ctr_ill_conditioned++;
+    return std::nullopt;
+  }
+
+
+  auto opoly = PolyhedronFromVertices(std::move(verts));
+  if (!opoly.has_value())
+    return std::nullopt;
+
+  if (!IsManifold(opoly.value())) {
+    ctr_not_manifold++;
+    return std::nullopt;
+  }
+
+  return opoly;
+}
+
 struct Brechtfast {
 
-  static constexpr int METHOD = DB::METHOD_RANDOM_SYMMETRIC;
+  static constexpr int METHOD = DB::METHOD_OPT;
+    // DB::METHOD_RANDOM_SYMMETRIC;
 
   static constexpr int SAMPLES_PER_THREAD = 16384;
   static constexpr int NUM_THREADS = 8;
@@ -278,7 +301,9 @@ struct Brechtfast {
   }
 
 
-  std::pair<int64_t, int64_t> Netness(const Aug &aug) {
+  std::pair<int64_t, int64_t> Netness(const Aug &aug,
+                                      int samples_per_thread =
+                                      SAMPLES_PER_THREAD) {
     const Faces &faces = *aug.poly.faces;
     const int num_faces = faces.NumFaces();
     const int num_edges = faces.NumEdges();
@@ -296,7 +321,7 @@ struct Brechtfast {
           for (int i = 0; i < num_edges; i++)
             edges.push_back(i);
 
-          for (int sample = 0; sample < SAMPLES_PER_THREAD; sample++) {
+          for (int sample = 0; sample < samples_per_thread; sample++) {
             BitString unfolding(num_edges, false);
             // Greedily connect them, but in some random order.
             Shuffle(&thread_rc, &edges);
@@ -321,8 +346,11 @@ struct Brechtfast {
     int total = 0;
     for (int s : nets) total += s;
 
-    return std::make_pair(total, NUM_THREADS * SAMPLES_PER_THREAD);
+    return std::make_pair(total, NUM_THREADS * samples_per_thread);
   }
+
+  static constexpr int SAMPLE_LINE = 0;
+  StatusBar status = StatusBar(3);
 
   double best_netness = 1.0;
   Brechtfast() : rc(std::format("hardiness.{}", time(nullptr))) {
@@ -333,12 +361,121 @@ struct Brechtfast {
 
   }
 
+  struct OneSample {
+    Aug aug;
+    int64_t numer = 0, denom = 0;
+  };
+
+  OneSample OptSample() {
+    // Naive black-box optimization.
+
+    const int num_verts = 12 + RandTo(&rc, 20);
+
+    // To ensure that the shape has volume, we require one
+    // point to fall in each octant.
+
+    // Vertices are flattened as x,y,z for the optimizer.
+    std::vector<double> lbs(3 * num_verts), ubs(3 * num_verts);
+    for (int i = 0; i < num_verts; i++) {
+      for (int axis = 0; axis < 3; axis++) {
+        if (i < 8) {
+          if (i & (1 << axis)) {
+            lbs[i * 3 + axis] = +0.5;
+            ubs[i * 3 + axis] = +1.0;
+          } else {
+            lbs[i * 3 + axis] = -1.0;
+            ubs[i * 3 + axis] = -0.5;
+          }
+
+        } else {
+          lbs[i * 3 + axis] = -1.0;
+          ubs[i * 3 + axis] = +1.0;
+        }
+      }
+    }
+
+    auto MakePoly = [num_verts](std::span<const double> pts) {
+        CHECK(pts.size() == num_verts * 3);
+        std::vector<vec3> vertices(num_verts);
+        for (size_t i = 0; i < num_verts; i++) {
+          vertices[i] = {pts[i * 3 + 0], pts[i * 3 + 1], pts[i * 3 + 2]};
+        }
+
+        return CarefulPolyhedron(std::move(vertices));
+      };
+
+    Periodically status_per(1);
+    int64_t calls = 0;
+    Timer timer;
+    static constexpr double LARGE_LOSS = 1.0e10;
+    auto Loss = [&](std::span<const double> pts) -> double {
+        std::optional<Polyhedron> opoly = MakePoly(pts);
+        if (!opoly.has_value()) {
+          return LARGE_LOSS;
+        }
+
+        Aug aug(std::move(opoly.value()));
+
+        // 128 samples per thread provides a modest 1024 total samples.
+        auto [numer, denom] = Netness(aug, 128);
+
+        calls++;
+        if ((calls % 128) == 0) {
+          status_per.RunIf([&]{
+              status.LineStatus(
+                  SAMPLE_LINE,
+                  "{} calls in {}", calls, ANSI::Time(timer.Seconds()));
+            });
+        }
+
+        return numer / static_cast<double>(denom);
+      };
+
+    // Just do one optimization pass so that we can get finer-grained
+    // parallelism.
+    const auto &[best, loss] =
+      Opt::Minimize(num_verts * 3, Loss, lbs, ubs, 1000,
+                    1, 1, Rand64(&rc));
+
+    std::optional<Polyhedron> opoly = MakePoly(best);
+    CHECK(opoly.has_value());
+    Aug aug(std::move(opoly.value()));
+    auto [numer, denom] = Netness(aug);
+    return OneSample{.aug = std::move(aug), .numer = numer, .denom = denom};
+  }
+
+  OneSample Sample(int method) {
+    switch (METHOD) {
+    case DB::METHOD_RANDOM_CYCLIC: {
+      const int num_verts = 8 + RandTo(&rc, 54);
+      Aug aug = Aug(RandomCyclicPolyhedron(&rc, num_verts));
+      const auto &[numer, denom] = Netness(aug);
+      return OneSample{.aug = std::move(aug), .numer = numer, .denom = denom};
+    }
+
+    case DB::METHOD_RANDOM_SYMMETRIC: {
+      const int num_verts = 8 + RandTo(&rc, 54);
+      Aug aug = Aug(RandomSymmetricPolyhedron(&rc, num_verts));
+      const auto &[numer, denom] = Netness(aug);
+      return OneSample{.aug = std::move(aug), .numer = numer, .denom = denom};
+    }
+
+    case DB::METHOD_OPT: {
+      return OptSample();
+    }
+
+    default:
+      LOG(FATAL) << "Bad method?";
+    }
+
+
+  }
+
   void Run() {
     DB db;
 
     LoadHisto();
 
-    StatusBar status(1);
     Periodically status_per(1.0);
     Periodically histo_per(10.0);
     Periodically flush_per(59.0, false);
@@ -351,28 +488,16 @@ struct Brechtfast {
 
     for (;;) {
 
-      const int num_verts = 8 + RandTo(&rc, 54);
+      OneSample sample = Sample(METHOD);
 
-      Aug aug = [&]() {
-          switch (METHOD) {
-          case DB::METHOD_RANDOM_CYCLIC:
-            return Aug(RandomCyclicPolyhedron(&rc, num_verts));
-          case DB::METHOD_RANDOM_SYMMETRIC:
-            return Aug(RandomSymmetricPolyhedron(&rc, num_verts));
-          default:
-            LOG(FATAL) << "Bad method?";
-          }
-        }();
-
-      const Polyhedron &poly = aug.poly;
+      const Polyhedron &poly = sample.aug.poly;
       const int nfaces = poly.faces->NumFaces();
       const int nedges = poly.faces->NumEdges();
       const int nverts = poly.faces->NumVertices();
 
-      const auto &[numer, denom] = Netness(aug);
-      const double netness = numer / (double)denom;
+      double netness = sample.numer / (double)sample.denom;
       ctr_poly++;
-      if (numer == denom) {
+      if (sample.numer == sample.denom) {
         ctr_only_net++;
       }
 
@@ -390,7 +515,7 @@ struct Brechtfast {
           // Then it must be the best in this channel.
           new_best[nfaces] = std::make_tuple(
               poly, METHOD,
-              numer, denom);
+              sample.numer, sample.denom);
 
         }();
       }
@@ -406,11 +531,18 @@ struct Brechtfast {
       }
 
       status_per.RunIf([&]{
-          status.Status("{} polys, {} only, best {:.7g}, {}\n",
-                        ctr_poly.Read(),
-                        ctr_only_net.Read(),
-                        best_netness,
-                        ANSI::Time(timer.Seconds()));
+          status.Status(
+              // First line reserved for subprocess
+              "\n"
+              "{} ill, {} notman, {} degen\n"
+              "{} polys, {} only, best {:.7g}, {}\n",
+              ctr_ill_conditioned.Read(),
+              ctr_not_manifold.Read(),
+              ctr_degenerate.Read(),
+              ctr_poly.Read(),
+              ctr_only_net.Read(),
+              best_netness,
+              ANSI::Time(timer.Seconds()));
         });
 
       histo_per.RunIf([&] {

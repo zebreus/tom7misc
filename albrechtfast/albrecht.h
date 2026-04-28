@@ -167,6 +167,12 @@ struct Albrecht {
     }
   };
 
+  struct PlacedFace {
+    int face_idx = 0;
+    // In the same order they appear in the Polyhedron's face.
+    std::vector<vec2> vertices;
+  };
+
   struct DebugResult {
     // True if the input is free from cycles.
     bool cycle_free = false;
@@ -180,6 +186,11 @@ struct Albrecht {
     // If non-planar, an example of overlapping faces, given
     // as two face indices with f0 < f1.
     std::optional<std::pair<int, int>> overlapping_faces;
+
+    // The 2D locations of each face. Note that these do
+    // not appear in face order, but each has its distinct
+    // face_idx.
+    std::vector<PlacedFace> placed_faces;
 
     // True if the graph is acyclic (a tree), completely connected,
     // and planar.
@@ -198,12 +209,7 @@ struct Albrecht {
 
     BitString visited_faces(num_faces, 0);
 
-    struct PlacedFace {
-      int face_idx = 0;
-      std::vector<vec2> vertices;
-    };
-    std::vector<PlacedFace> laid_out_faces;
-    laid_out_faces.reserve(num_faces);
+    result.placed_faces.reserve(num_faces);
 
     bool is_valid_tree = true;
     // We maintain a stack of the current path to extract a cycle
@@ -242,7 +248,7 @@ struct Albrecht {
           for (const vec2 &v : aug.polygons[face_idx]) {
             pf.vertices.push_back(yocto::transform_point(global_tf, v));
           }
-          laid_out_faces.push_back(std::move(pf));
+          result.placed_faces.push_back(std::move(pf));
 
           for (int edge_idx : aug.face_edges[face_idx]) {
             if (unfolding.Get(edge_idx)) {
@@ -267,12 +273,12 @@ struct Albrecht {
     }
 
     BitString face_overlaps(num_faces, false);
-    for (size_t i = 0; i < laid_out_faces.size(); ++i) {
-      for (size_t j = i + 1; j < laid_out_faces.size(); ++j) {
-        if (PolygonsOverlap(laid_out_faces[i].vertices,
-                             laid_out_faces[j].vertices)) {
-          int f0 = laid_out_faces[i].face_idx;
-          int f1 = laid_out_faces[j].face_idx;
+    for (size_t i = 0; i < result.placed_faces.size(); ++i) {
+      for (size_t j = i + 1; j < result.placed_faces.size(); ++j) {
+        if (PolygonsOverlap(result.placed_faces[i].vertices,
+                             result.placed_faces[j].vertices)) {
+          int f0 = result.placed_faces[i].face_idx;
+          int f1 = result.placed_faces[j].face_idx;
           if (f0 > f1) std::swap(f0, f1);
           result.overlapping_faces = std::make_pair(f0, f1);
           face_overlaps.Set(f0, true);
@@ -288,7 +294,7 @@ struct Albrecht {
     }
 
     result.cycle_free = is_valid_tree;
-    result.is_connected = (laid_out_faces.size() == (size_t)num_faces);
+    result.is_connected = (result.placed_faces.size() == (size_t)num_faces);
     result.is_net = result.cycle_free && result.is_connected &&
       result.is_planar;
 
@@ -300,7 +306,7 @@ struct Albrecht {
     group.style.fill_opacity = 0.25;
     group.style.stroke_width = 2.0;
 
-    for (const PlacedFace &pf : laid_out_faces)
+    for (const PlacedFace &pf : result.placed_faces)
       for (const vec2 &v : pf.vertices)
         bounds.Bound(v);
 
@@ -308,7 +314,7 @@ struct Albrecht {
         1024, 1024, 32, true);
 
 
-    for (const PlacedFace &pf : laid_out_faces) {
+    for (const PlacedFace &pf : result.placed_faces) {
       SVG::Path path;
       for (size_t i = 0; i < pf.vertices.size(); ++i) {
         const auto &[sx, sy] = scaler.Scale(pf.vertices[i]);
@@ -365,7 +371,7 @@ struct Albrecht {
     edge_text_group.style.font_family = {"sans-serif"};
     edge_text_group.style.font_size = scaler.SizeX() * e_fs;
 
-    for (const PlacedFace &pf : laid_out_faces) {
+    for (const PlacedFace &pf : result.placed_faces) {
       int f_idx = pf.face_idx;
 
       vec2 center = {0.0, 0.0};
