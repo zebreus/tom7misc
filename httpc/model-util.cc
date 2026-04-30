@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -19,6 +20,7 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "process-util.h"
+#include "rapidjson/document.h"
 #include "util.h"
 
 static constexpr bool VERBOSE = false;
@@ -92,6 +94,11 @@ void ModelUtil::FileCollection::DescribeDir(std::filesystem::path dir,
   dir_descs[std::filesystem::weakly_canonical(dir)] = std::string(desc);
 }
 
+void ModelUtil::FileCollection::DescribeFile(std::filesystem::path file,
+                                            std::string_view desc) {
+  file_descs[std::filesystem::weakly_canonical(file)] = std::string(desc);
+}
+
 // Must be like *.h.
 // Can call this multiple times for the same directory, though.
 void ModelUtil::FileCollection::AddWildcard(std::filesystem::path dir,
@@ -131,6 +138,8 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
       std::filesystem::path cc = config_path / file;
       AddFile(cc);
 
+
+
     } else if (Util::TryStripPrefix("describe", &line)) {
       std::string_view dir = Util::Chop(&line);
       Util::RemoveLeadingWhitespace(&line);
@@ -142,7 +151,12 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
       }
 
       if (!line.empty()) {
-        DescribeDir(cc, line);
+
+        if (std::filesystem::is_directory(cc)) {
+          DescribeDir(cc, line);
+        } else {
+          DescribeFile(cc, line);
+        }
       }
 
     } else {
@@ -254,7 +268,7 @@ static bool Excluded(const std::vector<std::string> &exclude,
 //     3168  llm/cpp-style-guide.txt
 //     2456  llm/makefile-style-guide.txt
 // General C++ utilities:
-//     2341  cc-lib/stats.h
+//     2341  cc-lib/stats.h (Statistics routines)
 //     1214  cc-lib/stats_test.cc
 //     3218  cc-lib/base/logging.h
 // C++ geometry libraries:
@@ -301,12 +315,18 @@ std::string ModelUtil::AvailableFiles::Textualize() const {
     groups[desc].push_back({&f, &af});
   }
 
-  auto OutputGroup = [&text](std::string_view desc,
-                            const std::vector<FileRef> &files) {
+  auto OutputGroup = [this, &text](std::string_view desc,
+                                   const std::vector<FileRef> &files) {
       AppendFormat(&text, "{}:\n", desc);
       for (const auto &ref : files) {
-        AppendFormat(&text, "{:8d}  {}\n",
+        AppendFormat(&text, "{:8d}  {}",
                      ref.file->bytes, *ref.name);
+        const std::filesystem::path &path = ref.file->path;
+        auto it = parent->file_descs.find(path);
+        if (it != parent->file_descs.end()) {
+          AppendFormat(&text, "  ({})", it->second);
+        }
+        text.push_back('\n');
       }
     };
 
@@ -533,6 +553,52 @@ std::optional<std::string> ModelUtil::FindOneJSONObject(
 
   return std::nullopt;
 }
+
+std::string ModelUtil::RescueJSON(std::string_view j) {
+  std::string out;
+  out.reserve(j.size());
+  bool in_str = false;
+  for (size_t i = 0; i < j.size(); ++i) {
+    char c = j[i];
+    if (c == '"') {
+      // Check if quote is escaped by counting backslashes
+      size_t b = 0;
+      while (i > b && j[i - b - 1] == '\\') b++;
+      if (b % 2 == 0) in_str = !in_str;
+    }
+
+    if (in_str && c == '\n') out += "\\n";
+    else if (in_str && c == '\r') out += "\\r";
+    else out.push_back(c);
+  }
+  return out;
+}
+
+std::optional<rapidjson::Document> ModelUtil::ParseSloppy(
+    std::string_view json) {
+  rapidjson::Document doc;
+  if (!doc.Parse(json.data(), json.size()).HasParseError()) {
+    return {std::move(doc)};
+  }
+
+  std::string rescued = ModelUtil::RescueJSON(json);
+
+  if (doc.Parse(rescued).HasParseError()) {
+    return std::nullopt;
+  }
+
+  return {std::move(doc)};
+}
+
+
+rapidjson::Document ModelUtil::ParseSloppyOrDie(std::string_view json) {
+  std::optional<rapidjson::Document> odoc = ParseSloppy(json);
+  CHECK(odoc.has_value()) << "Failed to parse JSON "
+    "(permissive):\n\n" << json;
+
+  return std::move(odoc.value());
+}
+
 
 std::string ModelUtil::GetAPIKey() {
   // First, check if the GEMINI_API_KEY environment variable is

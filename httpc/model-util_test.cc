@@ -1,12 +1,15 @@
 
 #include "model-util.h"
 
+#include <cmath>
+#include <string>
 #include <string_view>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "util.h"
+#include "rapidjson/document.h"
 
 static void TestStripMarkdown() {
   CHECK(ModelUtil::StripMarkup("").empty());
@@ -82,12 +85,73 @@ static void TestFindOneJSONObject() {
   CHECK(!ModelUtil::FindOneJSONObject("```json\n [1, 2 \n```").has_value());
 }
 
+// Technically, JSON strings cannot contain newlines. But sometimes
+// the model will do it (e.g. when outputting code blocks).
+static constexpr std::string_view BAD_JSON1 = R"(
+{
+  "notes": "v5 is coplanar with f2 but outside edge 6.",
+  "solution": "This situation is indeed organically possible.\n\nMathematically, `e6` is a \"dead end\" and cannot be extended. The bug is at the very end of `ComputeFeasibleAngles`:\n\n```cpp
+  if (max_angle < min_angle) {
+    max_angle = min_angle;
+  }
+
+  return {min_angle, max_angle};
+```\n\nThis clamp forces `max_angle` to `0.005`.\n\n**Diagnostic Step:**\nRemove the clamp:\n\n```cpp
+
+  // Remove or comment out this clamp so the caller can detect dead-end edges
+  // if (max_angle < min_angle) {
+  //   max_angle = min_angle;
+  // }
+
+  return {min_angle, max_angle};
+```\n\nYour `CHECK(subtended > 1.0e-5)` will still fail.",
+  "confidence": 95
+}
+
+)";
+
+static constexpr std::string_view UNRECOVERABLE1 = R"(
+} it ain\'t
+
+even close‽\n
+
+\\" "
+{)";
+
+static void TestRecoverJSON() {
+  rapidjson::Document document;
+  CHECK(document.Parse(std::string(BAD_JSON1)).HasParseError()) << "This "
+    "test wants an input that does not parse!";
+
+  std::string rescued(ModelUtil::RescueJSON(BAD_JSON1));
+
+  CHECK(!document.Parse(rescued).HasParseError() &&
+        document.IsObject());
+}
+
+static void TestParseSloppy() {
+  rapidjson::Document doc = ModelUtil::ParseSloppyOrDie(BAD_JSON1);
+  CHECK(doc.HasMember("notes") &&
+        doc.HasMember("solution") &&
+        doc.HasMember("confidence"));
+
+  CHECK(doc["confidence"].IsNumber());
+  CHECK((int)std::round(doc["confidence"].GetDouble()) == 95);
+
+  CHECK(ModelUtil::ParseSloppy(BAD_JSON1).has_value());
+
+  CHECK(!ModelUtil::ParseSloppy(UNRECOVERABLE1).has_value());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestStripMarkdown();
   TestIsBalancedJSON();
   TestFindOneJSONObject();
+
+  TestRecoverJSON();
+  TestParseSloppy();
 
   Print("OK\n");
   return 0;

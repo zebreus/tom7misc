@@ -1,5 +1,5 @@
 
-default : minget.exe sget.exe aget.exe fill-in.exe render-markdown.exe wtf.exe
+default : minget.exe sget.exe aget.exe fill-in.exe render-markdown.exe wtf.exe ask.exe
 
 all : minget.exe
 

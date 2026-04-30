@@ -66,9 +66,10 @@ files are often sufficient to understand the interface to a library.
 Now it's time for your output. Given the user's question, what would
 be the most important files to read in order to provide the background
 information to answer it? Sometimes the question will be self-evident,
-so your answer might be the empty list. You may only name files from
-the list but can describe other missing information in an optional
-separate field.
+so your answer might be the empty list. When the question needs more
+context, the current file should typically be included. You may only
+name files from the list but can describe other missing information in
+an optional separate field.
 
 Your result is a JSON object that looks like this:
 
@@ -245,6 +246,8 @@ int main(int argc, char **argv) {
   // We don't necessarily read it, though (the provided context
   // might be enough).
   if (!file.empty()) files.AddFile(file);
+  files.DescribeFile(file,
+                     "The file the user is currently looking at.");
 
   ModelUtil::AvailableFiles available = files.GetAvailable();
 
@@ -280,8 +283,7 @@ int main(int argc, char **argv) {
 
       {
         using namespace rapidjson;
-        Document document;
-        CHECK(!document.Parse(json.c_str()).HasParseError());
+        Document document = ModelUtil::ParseSloppyOrDie(json);
 
         CHECK(document.IsObject());
         CHECK(document.HasMember("notes"));
@@ -356,8 +358,7 @@ int main(int argc, char **argv) {
 
   {
     using namespace rapidjson;
-    Document document;
-    CHECK(!document.Parse(json.c_str()).HasParseError());
+    Document document = ModelUtil::ParseSloppyOrDie(json);
 
     CHECK(document.IsObject());
     CHECK(document.HasMember("notes"));

@@ -339,6 +339,42 @@ bool Net::SendAll(Socket *sock, std::string_view str) {
                                                 str.size()));
 }
 
+Net::SendResult Net::SendNow(Socket *sock, std::span<const uint8_t> bytes) {
+  CHECK(sock && sock->IsValid());
+
+  if (bytes.empty()) {
+    return {(size_t)0};
+  }
+
+  #ifndef MSG_NOSIGNAL
+  // Pass no flags if not available.
+  #define MSG_NOSIGNAL 0
+  #endif
+
+  // Windows has a 32-bit size pointer, so send only 1GB at a time.
+  static constexpr size_t MAX_CHUNK = 1024 * 1024 * 1024;
+  int to_send = (int)std::min(bytes.size(), MAX_CHUNK);
+
+  int sent = send((SOCKET)sock->fd,
+                  (const char *)bytes.data(), to_send, MSG_NOSIGNAL);
+
+  if (sent > 0) {
+    return {(size_t)sent};
+  }
+
+  if (sent == 0 || (sent == SOCKET_ERROR &&
+                    Impl::LastCallWouldHaveBlocked())) {
+    return {(size_t)0};
+  }
+
+  return {Net::Error{}};
+}
+
+
+Net::SendResult Net::SendNow(Socket *sock, std::string_view str) {
+  return SendNow(sock, std::span<const uint8_t>((const uint8_t*)str.data(),
+                                                str.size()));
+}
 
 Net::RecvResult Net::Recv(Socket *sock, std::span<uint8_t> buffer) {
   // Preconditions.

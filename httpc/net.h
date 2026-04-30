@@ -37,17 +37,25 @@ struct Net {
   // Close the socket.
   static void Close(Socket *sock);
 
+  struct Error {};
+  struct EndOfStream {};
+
   // Send all the data, blocking until complete.
   // Returns false if the connection was closed during sending.
   static bool SendAll(Socket *sock, std::span<const uint8_t> bytes);
   static bool SendAll(Socket *sock, std::string_view str);
+  // Send immediately without blocking. Returns the number of
+  // bytes sent (from the beginning; might not be all of them)
+  // or Error if something went wrong (like the connection was
+  // closed by the peer).
+  using SendResult = std::variant<Error, size_t>;
+  static SendResult SendNow(Socket *sock, std::span<const uint8_t> bytes);
+  static SendResult SendNow(Socket *sock, std::string_view str);
 
   // Read into the non-empty buffer. Non-blocking. Returns one of:
   //   Number of bytes read (can be zero).
   //   Graceful end-of-stream.
   //   Socket-fatal error.
-  struct Error {};
-  struct EndOfStream {};
   using RecvResult = std::variant<Error, EndOfStream, size_t>;
   static RecvResult Recv(Socket *sock, std::span<uint8_t> buffer);
 

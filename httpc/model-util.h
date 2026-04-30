@@ -13,6 +13,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "rapidjson/document.h"
+
 // C++ Utilities for writing little LLM-based utilities.
 struct ModelUtil {
   // List the files that are tracked in the given directory.
@@ -36,6 +38,18 @@ struct ModelUtil {
   // just love to put a preamble even if you ask only for JSON.
   static std::optional<std::string> FindOneJSONObject(
       std::string_view response);
+
+  // If the model's JSON doesn't parse, sometimes we can recover
+  // it by doing some transformations (e.g. escaping newlines that
+  // incorrectly appear inside string values).
+  static std::string RescueJSON(std::string_view json);
+
+  // Parse the "JSON" or abort (including the raw JSON in the output).
+  // Includes RescueJSON if the first attempt does not work.
+  static rapidjson::Document ParseSloppyOrDie(std::string_view json);
+  // Same, but nullopt on failure.
+  static std::optional<rapidjson::Document> ParseSloppy(std::string_view j);
+
 
   // Supports cygwin/msys paths like "/d/tom/llm/file" meaning
   // "d:\\tom\\llm\\file".
@@ -76,6 +90,11 @@ struct ModelUtil {
     void DescribeDir(std::filesystem::path dir,
                      std::string_view desc);
 
+    // Add a description for a specific file, which can be used
+    // when textualizing the listing.
+    void DescribeFile(std::filesystem::path filename,
+                      std::string_view desc);
+
     // Pattern is applied to the base filename, and just supports
     // * wildcards. (You can call it multiple times for the
     // same directory, though.)
@@ -105,6 +124,7 @@ struct ModelUtil {
     // All files that have been added.
     std::unordered_set<std::filesystem::path> all;
     std::unordered_map<std::filesystem::path, std::string> dir_descs;
+    std::unordered_map<std::filesystem::path, std::string> file_descs;
   };
 
   static std::string TextualizeChosenFiles(

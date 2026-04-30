@@ -85,12 +85,14 @@ JSON:
           AGREY("{}\n"), raw);
     return false;
   }
-  const std::string &json = oj.value();
 
-  rapidjson::Document document;
-  if (document.Parse(json).HasParseError() || !document.IsObject()) {
-    return false;
-  }
+  std::optional<rapidjson::Document> odoc =
+    ModelUtil::ParseSloppy(oj.value());
+
+  if (!odoc.has_value()) return false;
+  const rapidjson::Document &document = odoc.value();
+
+  if (!document.IsObject()) return false;
 
   if (document.HasMember("response") && document["response"].IsString()) {
     std::string response = document["response"].GetString();

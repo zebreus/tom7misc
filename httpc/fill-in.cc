@@ -337,8 +337,7 @@ int main(int argc, char **argv) {
 
       {
         using namespace rapidjson;
-        Document document;
-        CHECK(!document.Parse(json.c_str()).HasParseError());
+        Document document = ModelUtil::ParseSloppyOrDie(json);
 
         CHECK(document.IsObject());
         CHECK(document.HasMember("notes"));
@@ -417,8 +416,7 @@ int main(int argc, char **argv) {
   bool failed = false;
   {
     using namespace rapidjson;
-    Document document;
-    CHECK(!document.Parse(json.c_str()).HasParseError());
+    Document document = ModelUtil::ParseSloppyOrDie(json);
 
     CHECK(document.IsObject());
     CHECK(document.HasMember("notes"));
