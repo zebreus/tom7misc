@@ -7,6 +7,7 @@
 #include <format>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -16,6 +17,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "hashing.h"
 #include "sorting-network.h"
@@ -289,7 +291,7 @@ void SaveAsSTL(const TriangularMesh3D &mesh, std::string_view filename,
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
   if (!quiet) {
-    printf("Wrote " AGREEN("%s") "\n", f.c_str());
+    Print("Wrote " AGREEN("%s") "\n", f);
   }
 }
 
@@ -411,4 +413,41 @@ MeshEdgeInfo::MeshEdgeInfo(const TriangularMesh3D &mesh) {
     // printf("Angle %d-%d: %.11g\n", a, b, angle);
     dihedral_angle[e] = angle;
   }
+}
+
+// Unpack 32-bit RGBA colors.
+static inline constexpr std::tuple<float, float, float, float>
+Unpack32F(uint32_t color) {
+  return {((color >> 24) & 255) / 255.0f,
+          ((color >> 16) & 255) / 255.0f,
+          ((color >> 8) & 255) / 255.0f,
+          (color & 255) / 255.0f};
+}
+
+void SaveAsOBJ(const Mesh3D &mesh,
+               std::optional<std::span<const uint32_t>> vertex_color,
+               std::string_view filename) {
+
+  std::string contents;
+
+  for (size_t i = 0; i < mesh.vertices.size(); i++) {
+    const auto &v = mesh.vertices[i];
+    if (vertex_color.has_value() && i < vertex_color.value().size()) {
+      auto [r, g, b, a] = Unpack32F(vertex_color.value()[i]);
+      AppendFormat(&contents, "v {} {} {} {} {} {}\n", v.x, v.y, v.z, r, g, b);
+    } else {
+      AppendFormat(&contents, "v {} {} {}\n", v.x, v.y, v.z);
+    }
+  }
+
+  for (const auto &face : mesh.faces) {
+    contents += "f";
+    for (int idx : face) {
+      AppendFormat(&contents, " {}", idx + 1);
+    }
+    contents += "\n";
+  }
+
+  Util::WriteFile(std::string(filename), contents);
+  Print("Wrote {}\n", filename);
 }

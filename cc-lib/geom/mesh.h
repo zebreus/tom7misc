@@ -1,6 +1,8 @@
 #ifndef _CC_LIB_GEOM_MESH_H
 #define _CC_LIB_GEOM_MESH_H
 
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -51,6 +53,17 @@ double MeshVolume(const TriangularMesh3D &mesh);
 
 // Flip all of the normals.
 void FlipNormals(TriangularMesh3D *mesh);
+
+// Save as a wavefront OBJ file. This natively supports polygonal
+// faces. Optionally outputs the parallel vector of RGBA vertex colors.
+void SaveAsOBJ(const Mesh3D &mesh,
+               std::optional<std::span<const uint32_t>> vertex_color,
+               std::string_view filename);
+
+
+// TODO: These are inherited from the ruperts project, but I should
+// either move the utilities that involved these here, or move them
+// back to the project.
 
 struct MeshView {
   using vec3 = yocto::vec<double, 3>;
