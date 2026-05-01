@@ -5,4 +5,4 @@
 svn ../cc-lib/geom
 
 file project.txt
-
+describe project.txt Project description

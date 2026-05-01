@@ -24,6 +24,7 @@
 #include "base/stringprintf.h"
 #include "bit-string.h"
 #include "color-util.h"
+#include "construct.h"
 #include "db.h"
 #include "geom/point-map.h"
 #include "geom/polyhedra.h"
@@ -43,7 +44,10 @@
 using Aug = Albrecht::AugmentedPoly;
 
 DECLARE_COUNTERS(ctr_poly, ctr_only_net, ctr_degenerate, ctr_too_big,
-                 ctr_ill_conditioned, ctr_not_manifold);
+                 ctr_ill_conditioned, ctr_not_manifold, ctr_no_angle,
+                 ctr_no_feasible);
+
+DECLARE_COUNTERS(ctr_face_not_feasible);
 
 // (actually an upper bound, not inclusive)
 static constexpr int MAX_FACES = 80;
@@ -85,7 +89,9 @@ static std::optional<Polyhedron> CarefulPolyhedron(
 
 struct Brechtfast {
 
-  static constexpr int METHOD = DB::METHOD_OPT;
+  static constexpr int METHOD =
+    DB::METHOD_CONSTRUCT;
+    // DB::METHOD_OPT;
     // DB::METHOD_RANDOM_SYMMETRIC;
 
   static constexpr int SAMPLES_PER_THREAD = 16384;
@@ -352,6 +358,9 @@ struct Brechtfast {
   static constexpr int SAMPLE_LINE = 0;
   StatusBar status = StatusBar(3);
 
+  double time_sample = 0.0;
+  double time_measure = 0.0;
+
   double best_netness = 1.0;
   Brechtfast() : rc(std::format("hardiness.{}", time(nullptr))) {
 
@@ -365,6 +374,117 @@ struct Brechtfast {
     Aug aug;
     int64_t numer = 0, denom = 0;
   };
+
+  OneSample ConstructSample() {
+    Timer sample_timer;
+    for (;;) {
+      const int target_faces = 12 + RandTo(&rc, 29);
+      PartialPolyhedron pp(&rc, target_faces, 100);
+
+      while (pp.NumFaces() < target_faces) {
+        std::vector<int> b_edges = pp.GetBoundaryEdges();
+        if (b_edges.empty()) {
+          break;
+        }
+        Shuffle(&rc, &b_edges);
+
+        auto [min_v, max_v] = pp.AABB();
+        const double diameter = yocto::length(max_v - min_v);
+
+        bool face_added = false;
+        for (int edge_idx : b_edges) {
+          auto [min_angle, max_angle] = pp.ComputeFeasibleAngles(edge_idx);
+          if (max_angle < min_angle + 1e-3) {
+            continue;
+          }
+
+          double subtended = max_angle - min_angle;
+          if (subtended < 1.0e-5) {
+            ctr_no_angle++;
+            continue;
+          }
+
+          double angle = min_angle + RandDouble(&rc) * subtended;
+          std::vector<vec2> feasible_poly =
+              pp.ComputeFeasibleRegion(edge_idx, angle);
+
+          // Insist that we have a polygon with area and y
+          // extent; this is a precondition of FaceChooser.
+          {
+            double max_y = 0.0;
+            for (const vec2 &p : feasible_poly) {
+              max_y = std::max(max_y, p.y);
+            }
+
+            if (max_y < 1.0e-5) {
+              ctr_no_feasible++;
+              continue;
+            }
+          }
+
+          const MeshEdge &e = pp.GetEdge(edge_idx);
+          vec3 p0 = pp.GetVertex(e.v0).pos;
+          vec3 p1 = pp.GetVertex(e.v1).pos;
+          vec3 normal_left = pp.GetFace(e.left_face).plane.normal;
+
+          FaceChooser chooser(feasible_poly, p0, p1, normal_left,
+                              angle, diameter);
+
+          double best_overlap = -1.0;
+          std::vector<vec2> best_poly;
+
+          for (int sample = 0; sample < 100; ++sample) {
+            double u = RandDouble(&rc);
+            double v = RandDouble(&rc);
+            std::vector<vec2> poly = chooser.Generate2DFace(u, v);
+
+            double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
+            if (overlap > best_overlap) {
+              best_overlap = overlap;
+              best_poly = std::move(poly);
+            }
+          }
+
+          if (best_overlap >= 0.0) {
+            std::vector<vec3> best_face = chooser.ConvertTo3D(best_poly);
+            if (!pp.IsFeasible(edge_idx, best_face)) {
+              status.Print("Bug... Not Feasible!\n");
+              break;
+            }
+
+            pp.AddFace(edge_idx, best_face);
+            pp.ReplenishUnfoldings();
+            face_added = true;
+            break;
+          }
+        }
+
+        if (!face_added) {
+          break;
+        }
+      }
+
+      std::optional<Polyhedron> opoly = pp.Close();
+      if (!opoly.has_value()) {
+        ctr_degenerate++;
+        continue;
+      }
+      if (opoly.value().faces->NumFaces() >= MAX_FACES) {
+        ctr_too_big++;
+        continue;
+      }
+
+      time_sample += sample_timer.Seconds();
+
+      Timer measure_timer;
+      Aug aug(std::move(opoly.value()));
+      auto [numer, denom] = Netness(aug);
+      OneSample sample{.aug = std::move(aug), .numer = numer, .denom = denom};
+      time_measure += measure_timer.Seconds();
+
+      return sample;
+    }
+  }
 
   OneSample OptSample() {
     // Naive black-box optimization.
@@ -464,6 +584,10 @@ struct Brechtfast {
       return OptSample();
     }
 
+    case DB::METHOD_CONSTRUCT: {
+      return ConstructSample();
+    }
+
     default:
       LOG(FATAL) << "Bad method?";
     }
@@ -531,18 +655,26 @@ struct Brechtfast {
       }
 
       status_per.RunIf([&]{
+          double total_time = timer.Seconds();
+          double sample_pct = (time_sample * 100.0) / total_time;
+          double measure_pct = (time_measure * 100.0) / total_time;
+
           status.Status(
               // First line reserved for subprocess
               "\n"
-              "{} ill, {} notman, {} degen\n"
-              "{} polys, {} only, best {:.7g}, {}\n",
+              "{} ill, {} notman, {} degen, {} noθ, {} no∆, {}✘\n"
+              "{} polys, {} only, best {:.7g}, {} ({:1f}% + {:1f}%) \n",
               ctr_ill_conditioned.Read(),
               ctr_not_manifold.Read(),
               ctr_degenerate.Read(),
+              ctr_no_angle.Read(),
+              ctr_no_feasible.Read(),
+              ctr_face_not_feasible.Read(),
               ctr_poly.Read(),
               ctr_only_net.Read(),
               best_netness,
-              ANSI::Time(timer.Seconds()));
+              ANSI::Time(total_time),
+              sample_pct, measure_pct);
         });
 
       histo_per.RunIf([&] {

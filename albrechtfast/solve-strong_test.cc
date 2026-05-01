@@ -40,8 +40,8 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
                    << " face = " << f << " and edge = " << e;
       }
 
-      // Check that the net (from Albrecht::DebugUnfolding) does indeed have
-      // the described property. It should be a valid net...
+      // Check that the net does indeed have the described property.
+      // It should be a valid net...
       Albrecht::DebugResult debug = Albrecht::DebugUnfolding(aug, *res);
       CHECK(debug.is_net) << "Resulting unfolding is not a valid net!";
 
