@@ -24,7 +24,7 @@
 #include "svg.h"
 #include "yocto-math.h"
 
-// Some code for investigating Albrecht Durer's conjecture that every
+// Some code for investigating Albrecht Dürer's conjecture that every
 // convex polyhedron has a net.
 //
 // Given a polyhedron (which has its faces and vertices numbered), we
