@@ -1,16 +1,15 @@
 #include "image-resize.h"
 
-#include <string>
 #include <memory>
-#include <cstdio>
 #include <algorithm>
 
-#include "image.h"
 #include "ansi.h"
+#include "base/print.h"
+#include "image.h"
 
 static void ShowImageANSI(const ImageRGBA &img) {
   for (int y = 0; y < img.Height(); y++) {
-    printf("  ");
+    Print("  ");
     for (int x = 0; x < img.Width(); x++) {
       const auto &[r, g, b, a] = img.GetPixel(x, y);
       // composite on black.
@@ -18,13 +17,13 @@ static void ShowImageANSI(const ImageRGBA &img) {
       uint32_t gg = std::clamp(((uint32_t)g * (uint32_t)a) / 255, 0u, 255u);
       uint32_t bb = std::clamp(((uint32_t)b * (uint32_t)a) / 255, 0u, 255u);
       if (rr != 0 || gg != 0 || bb != 0) {
-        printf("%s██" ANSI_RESET,
-               ANSI::ForegroundRGB(rr, gg, bb).c_str());
+        Print("{}██" ANSI_RESET,
+              ANSI::ForegroundRGB(rr, gg, bb));
       } else {
-        printf("  ");
+        Print("  ");
       }
     }
-    printf("\n");
+    Print("\n");
   }
 }
 
@@ -36,6 +35,10 @@ static void TestSimple() {
 }
 
 int main(int argc, char **argv) {
+  ANSI::Init();
+
   TestSimple();
+
+  Print("OK\n");
   return 0;
 }

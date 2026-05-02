@@ -2,7 +2,6 @@
 #include "pdf.h"
 
 #include <cmath>
-#include <cstdio>
 #include <initializer_list>
 #include <numbers>
 #include <string>
@@ -13,6 +12,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "svg.h"
 #include "util.h"
@@ -140,7 +140,7 @@ static void SpaceLine() {
     CHECK(line2[0].first == "one");
   }
 
-  printf("SpaceLine " AGREEN("OK") ".\n");
+  Print("SpaceLine " AGREEN("OK") ".\n");
 }
 
 static constexpr std::string_view WARNING_SVG = R"(
@@ -170,7 +170,7 @@ static void MakeSimplePDF() {
 
   static constexpr bool COMPRESS_TEST_PDF = false;
 
-  printf("Create PDF object.\n");
+  Print("Create PDF object.\n");
   PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT,
           PDF::Options{.use_compression = COMPRESS_TEST_PDF});
 
@@ -189,7 +189,7 @@ static void MakeSimplePDF() {
                                          PDF::FontEncoding::UNICODE);
 
   {
-    printf(AWHITE("Shapes page") ".\n");
+    Print(AWHITE("Shapes page") ".\n");
     PDF::Page *page = pdf.AppendNewPage();
 
     pdf.AddLine(3, 8, 100, 50, 2.0f,
@@ -284,7 +284,7 @@ static void MakeSimplePDF() {
   }
 
   {
-    printf(AWHITE("Kerning page") ".\n");
+    Print(AWHITE("Kerning page") ".\n");
     [[maybe_unused]]
     PDF::Page *page = pdf.AppendNewPage();
 
@@ -380,7 +380,7 @@ static void MakeSimplePDF() {
         }
 
        } else {
-        printf("Missing " ARED("%s") "\n", filename);
+        Print("Missing " ARED("{}") "\n", filename);
         CHECK(pdf.AddText("Missing " + std::string(filename), 36,
                           30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
                           PDF_RGB(0, 0, 0)));
@@ -389,7 +389,7 @@ static void MakeSimplePDF() {
   }
 
   {
-    printf(AWHITE("Barcode page") ".\n");
+    Print(AWHITE("Barcode page") ".\n");
     PDF::Page *page = pdf.AppendNewPage();
 
     static constexpr float GAP = 38.0f;
@@ -456,7 +456,7 @@ static void MakeSimplePDF() {
   }
 
   {
-    printf(AWHITE("Image page") ".\n");
+    Print(AWHITE("Image page") ".\n");
     // Barcode page.
     PDF::Page *page = pdf.AppendNewPage();
 
@@ -502,14 +502,14 @@ static void MakeSimplePDF() {
               PDF::PDF_ALIGN_JUSTIFY)) << "Error: " << pdf.GetErr();
   }
 
-  printf("Save it...\n");
+  Print("Save it...\n");
 
   pdf.Save("test.pdf");
-  printf("Wrote " AGREEN("test.pdf") "\n");
+  Print("Wrote " AGREEN("test.pdf") "\n");
 }
 
 static void MakeMinimalEmbeddedFontPDF() {
-  printf("Create PDF object.\n");
+  Print("Create PDF object.\n");
   PDF::Options opt;
   opt.use_compression = false;
   PDF pdf(PDF::PDF_LETTER_WIDTH,
@@ -537,11 +537,11 @@ static void MakeMinimalEmbeddedFontPDF() {
                     PDF_RGB(0, 0, 0)));
 
   pdf.Save("minimal-embed.pdf");
-  printf("Wrote " AGREEN("minimal-embed.pdf") "\n");
+  Print("Wrote " AGREEN("minimal-embed.pdf") "\n");
 }
 
 static void MakeMinimalPDF() {
-  printf("Create PDF object.\n");
+  Print("Create PDF object.\n");
   PDF::Options opt;
   opt.use_compression = false;
   PDF pdf(PDF::PDF_LETTER_WIDTH,
@@ -567,11 +567,11 @@ static void MakeMinimalPDF() {
                     PDF_RGB(0, 0, 0)));
 
   pdf.Save("minimal.pdf");
-  printf("Wrote " AGREEN("minimal.pdf") "\n");
+  Print("Wrote " AGREEN("minimal.pdf") "\n");
 }
 
 static void SimpleUnicode() {
-  printf("Create PDF object.\n");
+  Print("Create PDF object.\n");
   PDF::Options opt;
   opt.use_compression = false;
   PDF pdf(PDF::PDF_LETTER_WIDTH,
@@ -622,7 +622,7 @@ static void SimpleUnicode() {
   yy -= 36 + 12;
 
   pdf.Save("simple.pdf");
-  printf("Wrote " AGREEN("simple.pdf") "\n");
+  Print("Wrote " AGREEN("simple.pdf") "\n");
 }
 
 
@@ -637,6 +637,6 @@ int main(int argc, char **argv) {
   SimpleUnicode();
   MakeSimplePDF();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

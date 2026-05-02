@@ -89,7 +89,7 @@ struct StatusBar {
   void EnableTruncation();
 
  private:
-  void MoveUp();
+  void MoveUpWithLock();
 
   void EmitStatusLinesWithLock(
       const std::vector<std::string> &lines);

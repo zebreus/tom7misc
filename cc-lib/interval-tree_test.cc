@@ -1,14 +1,14 @@
 
 #include "interval-tree.h"
 
-#include <cstdio>
 #include <set>
 #include <vector>
 #include <string>
 
 #include "arcfour.h"
-#include "randutil.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "randutil.h"
 
 using namespace std;
 
@@ -53,8 +53,8 @@ int main(int argc, char *argv[]) {
   auto IsSameSet = [](const set<string> &expected,
                       const vector<IT::Interval *> &v) -> bool {
     if (expected.size() != v.size()) {
-      printf("Expected %d elements, got %d\n",
-             (int)expected.size(), (int)v.size());
+      Print("Expected {} elements, got {}\n",
+            expected.size(), v.size());
       return false;
     }
     CHECK(expected.size() == v.size());
@@ -62,12 +62,12 @@ int main(int argc, char *argv[]) {
     for (const IT::Interval *ival : v) {
       // No duplicates.
       if (ContainsKey(already, ival->t)) {
-        printf("Duplicate key: %s\n", ival->t.c_str());
+        Print("Duplicate key: {}\n", ival->t);
         return false;
       }
       already.insert(ival->t);
       if (!ContainsKey(expected, ival->t)) {
-        printf("Key present that shouldn't be: %s\n", ival->t.c_str());
+        Print("Key present that shouldn't be: %s\n", ival->t);
         return false;
       }
     }
@@ -119,6 +119,6 @@ int main(int argc, char *argv[]) {
     Shuffle(&rc, &data);
   }
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

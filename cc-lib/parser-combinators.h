@@ -151,7 +151,7 @@ struct ParserWrapper {
   ParserWrapper(const ParserWrapper &other) :
     nothing("PW ctor const\n"),
     func(other.func) {
-    printf("PW ctor const ret\n");
+    Print("PW ctor const ret\n");
   }
   #endif
 
@@ -165,18 +165,18 @@ struct ParserWrapper {
     nothing("PW f ctor")
     // This gets us into an infinite loop...
      {
-       if (PARSE_VERBOSE) printf("make fn @ %s\n", src);
+       if (PARSE_VERBOSE) Print("make fn @ {}\n", src);
        std::function<Parsed<Out>(TokenSpan<Token>)> fn =
          std::forward<F>(f);
-       if (PARSE_VERBOSE) printf("move fn\n");
+       if (PARSE_VERBOSE) Print("move fn\n");
        func = std::move(fn);
-       if (PARSE_VERBOSE) printf("PW f ctor end\n");
+       if (PARSE_VERBOSE) Print("PW f ctor end\n");
      }
 
   Parsed<Out> operator ()(TokenSpan<Token> t) const {
-    if (PARSE_VERBOSE) printf("Call PW op()\n");
+    if (PARSE_VERBOSE) Print("Call PW op()\n");
     auto ret = func(t);
-    if (PARSE_VERBOSE) printf("PW func returned\n");
+    if (PARSE_VERBOSE) Print("PW func returned\n");
     return ret;
   }
 
@@ -273,7 +273,7 @@ requires std::same_as<typename A::token_type,
 inline auto operator >>(const A &a, const B &b) {
   using in = A::token_type;
   using out = B::out_type;
-  if (PARSE_VERBOSE) printf("In >>, about to call PW ctor\n");
+  if (PARSE_VERBOSE) Print("In >>, about to call PW ctor\n");
   return ParserWrapper<in, out>(
       // I guess this is the "problem"... the constructor
       // for ParserWrapper ends up calling itself again,
@@ -281,7 +281,7 @@ inline auto operator >>(const A &a, const B &b) {
       // shared_ptr or something so that it doesn't copy?
       [a = std::make_shared<A>(a),
        b = std::make_shared<B>(b)](TokenSpan<in> toks) -> Parsed<out> {
-        if (PARSE_VERBOSE) printf("in >> op()\n");
+        if (PARSE_VERBOSE) Print("in >> op()\n");
         auto o1 = (*a)(toks);
         if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();

@@ -168,6 +168,13 @@ void ParallelComp(int64_t num,
   max_concurrency = std::min(num, (int64_t)max_concurrency);
   // Need at least one thread for correctness.
   max_concurrency = std::max(max_concurrency, 1);
+
+  // Avoid thread creation overhead if there's just one.
+  if (max_concurrency == 1) {
+    for (int64_t i = 0; i < num; i++) (void)f(i);
+    return;
+  }
+
   std::mutex index_m;
   int64_t next_index = 0;
 
@@ -536,6 +543,11 @@ void ParallelComp3D(int64_t num1, int64_t num2, int64_t num3,
 // index in [0, num_threads).
 template<class F>
 void ParallelFan(int num_threads, const F &f) {
+  if (num_threads == 1) {
+    f(0);
+    return;
+  }
+
   std::vector<std::thread> threads;
   threads.reserve(num_threads);
   for (int i = 0; i < num_threads; i++) {

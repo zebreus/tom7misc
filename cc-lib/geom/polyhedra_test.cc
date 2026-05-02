@@ -99,7 +99,7 @@ static void TestSignedDistance() {
   DrawLine(pt2, pt0);
 
   img.Save("triangle.png");
-  printf("Wrote " AGREEN("triangle.png") "\n");
+  Print("Wrote " AGREEN("triangle.png") "\n");
 }
 
 static void TestPointLineDistance() {
@@ -155,7 +155,7 @@ static void TestPointLineDistance() {
   }
 
   double spi = timer.Seconds() / ITERS;
-  printf("PointLineDistance time: %s\n", ANSI::Time(spi).c_str());
+  Print("PointLineDistance time: {}\n", ANSI::Time(spi));
 }
 
 static void TestPolyTester1() {

@@ -6,17 +6,18 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 
 static void Favicon() {
   std::unique_ptr<ImageRGBA> favicon(ImageRGBA::Load("favicon.png"));
 
   // The characters have a black outline.
-  printf("%s", ANSIImage::HalfChar(*favicon, 0xAAAAAAFF).c_str());
+  Print("{}", ANSIImage::HalfChar(*favicon, 0xAAAAAAFF));
 
 
 
-  printf("^ This test requires visual inspection.\n");
+  Print("^ This test requires visual inspection.\n");
 }
 
 
@@ -26,6 +27,6 @@ int main(int argc, char **argv) {
   Favicon();
 
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

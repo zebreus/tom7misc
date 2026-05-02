@@ -1,10 +1,10 @@
 #include "crypt/aes.h"
 
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 using uint8 = uint8_t;
 
@@ -13,18 +13,18 @@ template<int KEYBITS>
 static void phex(uint8_t *str) {
   const uint8_t len = KEYBITS == 256 ? 32 : KEYBITS == 102 ? 24 : 16;
   for (uint8 i = 0; i < len; ++i)
-    printf("%.2x", str[i]);
-  printf("\n");
+    Print("{:02x}", str[i]);
+  Print("\n");
 }
 
 #define COMPARE(s, size)                                \
   do {                                                  \
-    printf(s ": ");                                     \
+    Print(s ": ");                                     \
     if (0 == memcmp((char*) out, (char*) in, 16)) {     \
-      printf("OK\n");                                   \
+      Print("OK\n");                                   \
       return true;                                      \
     } else {                                            \
-      printf("FAILURE!\n");                             \
+      Print("FAILURE!\n");                             \
       return false;                                     \
     }                                                   \
   } while (false)
@@ -49,19 +49,19 @@ static void test_encrypt_ecb_verbose128() {
     0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10 };
 
   // print text to encrypt, key and IV
-  printf("ECB encrypt verbose:\n\n");
-  printf("plain text:\n");
+  Print("ECB encrypt verbose:\n\n");
+  Print("plain text:\n");
   for (uint8 i = (uint8_t) 0; i < (uint8_t) 4; ++i) {
     phex<128>(plain_text + i * (uint8_t) 16);
   }
-  printf("\n");
+  Print("\n");
 
-  printf("key:\n");
+  Print("key:\n");
   phex<128>(key);
-  printf("\n");
+  Print("\n");
 
   // print the resulting cipher as 4 x 16 byte strings
-  printf("ciphertext:\n");
+  Print("ciphertext:\n");
 
   AES<128>::Ctx ctx;
   AES<128>::InitCtx(&ctx, key);
@@ -70,7 +70,7 @@ static void test_encrypt_ecb_verbose128() {
     AES<128>::EncryptECB(&ctx, plain_text + (i * 16));
     phex<128>(plain_text + (i * 16));
   }
-  printf("\n");
+  Print("\n");
 }
 
 
@@ -385,7 +385,7 @@ static int test_xcrypt_ctr256(const char *xcrypt) {
   AES<256>::InitCtxIV(&ctx, key, iv);
   AES<256>::XcryptCTR(&ctx, in, 64);
 
-  printf("CTR %s ", xcrypt);
+  Print("CTR {} ", xcrypt);
   COMPARE("256", 64);
 }
 
@@ -421,7 +421,7 @@ static int test_xcrypt_ctr192(const char *xcrypt) {
   AES<192>::InitCtxIV(&ctx, key, iv);
   AES<192>::XcryptCTR(&ctx, in, 64);
 
-  printf("CTR %s ", xcrypt);
+  Print("CTR {} ", xcrypt);
   COMPARE("192", 64);
 }
 
@@ -456,7 +456,7 @@ static int test_xcrypt_ctr128(const char *xcrypt) {
   AES<128>::InitCtxIV(&ctx, key, iv);
   AES<128>::XcryptCTR(&ctx, in, 64);
 
-  printf("CTR %s ", xcrypt);
+  Print("CTR {} ", xcrypt);
   COMPARE("128", 64);
 }
 

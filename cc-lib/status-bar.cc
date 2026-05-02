@@ -13,11 +13,10 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "timer.h"
 #include "util.h"
-
-
 
 using namespace std;
 
@@ -38,9 +37,9 @@ void StatusBar::Printf(const char *format, ...) {
 void StatusBar::Emit(std::string_view s) {
   std::vector<std::string> lines = Util::SplitToLines(s);
   std::unique_lock<std::mutex> ml(m);
-  MoveUp();
+  MoveUpWithLock();
   for (const string &line : lines) {
-    printf("%s\n", line.c_str());
+    ::Print("{}\n", line);
   }
   // Maintain space for status.
   EmitStatusLinesWithLock(prev_status_lines);
@@ -75,14 +74,14 @@ void StatusBar::EmitStatus(std::string_view s) {
   std::vector<std::string> lines = Util::SplitToLines(s);
   std::unique_lock<std::mutex> ml(m);
   prev_status_lines = lines;
-  MoveUp();
+  MoveUpWithLock();
   EmitStatusLinesWithLock(lines);
 }
 
 void StatusBar::EmitStatus(const std::vector<std::string> &lines) {
   std::unique_lock<std::mutex> ml(m);
   prev_status_lines = lines;
-  MoveUp();
+  MoveUpWithLock();
   EmitStatusLinesWithLock(lines);
 }
 
@@ -91,7 +90,7 @@ void StatusBar::EmitStatus(const std::vector<std::string> &lines) {
 // is always throw-away space. When we print something other than
 // status, we just pad with the number of blank lines so that the
 // next call will not overwrite what we wrote.
-void StatusBar::MoveUp() {
+void StatusBar::MoveUpWithLock() {
   if (!first) {
     for (int i = 0; i < num_lines; i++) {
       printf(
@@ -126,11 +125,11 @@ void StatusBar::EmitStatusLinesWithLock(const std::vector<std::string> &lines) {
   }
 
   if ((int)trunc_lines.size() != num_lines) {
-    printf(ARED("...wrong number of lines (have %d want %d)...") "\n",
-           (int)trunc_lines.size(), num_lines);
+    ::Print(ARED("...wrong number of lines (have {} want {})...") "\n",
+            trunc_lines.size(), num_lines);
   }
   for (const string &line : trunc_lines) {
-    printf("%s\n", line.c_str());
+    ::Print("{}\n", line);
   }
 }
 
@@ -152,7 +151,7 @@ void StatusBar::EmitLine(int idx, std::string_view s) {
 
   std::unique_lock<std::mutex> ml(m);
   prev_status_lines[idx] = std::move(line);
-  MoveUp();
+  MoveUpWithLock();
   EmitStatusLinesWithLock(prev_status_lines);
 }
 
@@ -162,6 +161,7 @@ void StatusBar::Clear() {
 
 void StatusBar::Remove() {
   EmitStatus(std::string(num_lines, '\n'));
-  MoveUp();
+  std::unique_lock<std::mutex> ml(m);
+  MoveUpWithLock();
   first = true;
 }

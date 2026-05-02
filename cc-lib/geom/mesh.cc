@@ -291,7 +291,7 @@ void SaveAsSTL(const TriangularMesh3D &mesh, std::string_view filename,
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
   if (!quiet) {
-    Print("Wrote " AGREEN("%s") "\n", f);
+    Print("Wrote " AGREEN("{}") "\n", f);
   }
 }
 

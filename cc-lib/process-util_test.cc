@@ -7,6 +7,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "hexdump.h"
 
 using namespace std;
@@ -37,7 +38,7 @@ int main(int argc, char **argv) {
 
     {
       string cmd1 = std::format("{} -child", argv[0]);
-      printf("running self: [%s]\n", cmd1.c_str());
+      Print("running self: [{}]\n", cmd1);
 
       std::optional<string> reso =
         ProcessUtil::GetOutput(cmd1);
@@ -50,7 +51,7 @@ int main(int argc, char **argv) {
 
     {
       string cmd2 = std::format("{} -longchild", argv[0]);
-      printf("running self: [%s]\n", cmd2.c_str());
+      Print("running self: [{}]\n", cmd2);
 
       std::optional<string> reso =
         ProcessUtil::GetOutput(cmd2);

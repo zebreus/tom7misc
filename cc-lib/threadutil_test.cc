@@ -98,12 +98,12 @@ struct DoNotCopy {
   DoNotCopy() {};
   DoNotCopy(DoNotCopy &&other) = default;
   DoNotCopy(const DoNotCopy &other) {
-    printf(ARED("WARNING") ": Object copied (" AWHITE("%s") ")\n",
-           msg);
+    Print(ARED("WARNING") ": Object copied (" AWHITE("{}") ")\n",
+          msg);
   }
   DoNotCopy &operator=(DoNotCopy &other) {
-    printf(ARED("WARNING") ": Object assigned (" AWHITE("%s") ")\n",
-           msg);
+    Print(ARED("WARNING") ": Object assigned (" AWHITE("{}") ")\n",
+          msg);
   }
   DoNotCopy &operator=(DoNotCopy &&other) = default;
   std::string payload = msg;

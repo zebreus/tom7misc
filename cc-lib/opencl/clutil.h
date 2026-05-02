@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <map>
 #include <optional>
 #include <set>
@@ -18,7 +19,6 @@
 // Maybe make this not depend on base/logging?
 // We only need some basic asserts.
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 // TODO: Some profiling support via clGetEventProfilingInfo.
 
@@ -75,10 +75,10 @@ struct CL {
 #define CHECK_SUCCESS(e) do {                                           \
     const int ret = (e);                                                \
     CHECK(ret == CL_SUCCESS) <<                                         \
-      StringPrintf(__FILE__ ":%d in %s:\n"                              \
-                   "Not successful with code %d (%s).\n",               \
-                   __LINE__, __func__,                                  \
-                   ret, CL::ErrorString(ret));                          \
+      std::format(__FILE__ ":{} in {}:\n"                               \
+                  "Not successful with code {} ({}).\n",                \
+                  __LINE__, __func__,                                   \
+                  ret, CL::ErrorString(ret));                           \
   } while (0)
 
 // Template implementations follow.

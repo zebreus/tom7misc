@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 struct BigInt {
   static_assert(std::integral<size_t>);
@@ -533,7 +534,7 @@ BigInt::BigInt(std::string_view digits) {
   // but mpz_set_str wants zero-termination.
   int res = mpz_set_str(rep.Mpz(), std::string(digits).c_str(), 10);
   if (0 != res) {
-    printf("Invalid number [%s]\n", std::string(digits).c_str());
+    Print("Invalid number [{}]\n", digits);
     assert(false);
   }
 }
@@ -1846,7 +1847,7 @@ double BigInt::ToDouble() const {
   for (int idx = size - 1; idx >= 0; idx--) {
     uint64_t udigit = BzGetDigit(rep, idx);
     double ddigit = udigit;
-    // printf("d %.17g | u %llu | dd %.17g\n", d, udigit, ddigit);
+    // Print("d {:.17g} | u }{ | dd {:.17g}\n", d, udigit, ddigit);
     for (size_t e = 0; e < sizeof (BigNumDigit); e++)
       d *= 256.0;
     d += ddigit;
@@ -2333,7 +2334,7 @@ BigRat BigRat::FromDouble(double num) {
   }
 
   /*
-    printf("numer %llu, denom %llu, exp %d\n",
+    Print("numer {}, denom {}, exp {}\n",
     numerator, denom, exponent);
   */
   if (exponent > 0) {

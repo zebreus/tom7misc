@@ -1,14 +1,20 @@
 
 #include "tree-nd.h"
 
-#include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <span>
 #include <string>
+#include <tuple>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "timer.h"
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "status-bar.h"
@@ -302,7 +308,7 @@ static void TestDouble3D() {
       });
   }
 
-  printf("Total Closest time: %s\n", ANSI::Time(lookup_sec).c_str());
+  Print("Total Closest time: {}\n", ANSI::Time(lookup_sec));
 }
 
 int main(int argc, char **argv) {
@@ -315,6 +321,6 @@ int main(int argc, char **argv) {
 
   // TODO: Some random tests?
 
-  printf("OK");
+  Print("OK");
   return 0;
 }

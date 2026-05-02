@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <optional>
 #include <string>
 #include <cstdint>
@@ -16,7 +17,7 @@
 
 #include "timer.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 
 using namespace std;
 
@@ -28,7 +29,7 @@ CL::CL(int verbose) : verbose(verbose) {
   cl_platform_id platform = nullptr;
   CHECK(CL_SUCCESS == clGetPlatformIDs(0, nullptr, &num_platforms));
   if (verbose > 0) {
-    fprintf(stderr, "CL:: Number of platforms: %d.\n", num_platforms);
+    Print(stderr, "CL:: Number of platforms: {}.\n", num_platforms);
   }
 
   // Choose the first platform that has a GPU.
@@ -59,28 +60,28 @@ CL::CL(int verbose) : verbose(verbose) {
       }
 
       if (verbose > 1) {
-        fprintf(stderr,
-                "% 4d. %s (%s):\n"
-                "      %s; %s\n"
-                // ?
-                "      %s\n",
-                i, props[2].value, props[0].value,
-                props[1].value, props[3].value, props[4].value);
+        Print(stderr,
+              "{: 4d}. {} ({}):\n"
+              "      {}; {}\n"
+              // ?
+              "      {}\n",
+              i, props[2].value, props[0].value,
+              props[1].value, props[3].value, props[4].value);
       }
 
       cl_uint platform_devices = 0;
       if (CL_SUCCESS == clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_GPU,
                                        0, nullptr, &platform_devices)) {
         if (verbose > 0) {
-          fprintf(stderr,
-                  "      Number of GPUs: %d\n", (int)platform_devices);
+          Print(stderr,
+                "      Number of GPUs: {}\n", platform_devices);
         }
         if (chosen_platform_id == -1)
           chosen_platform_id = i;
       } else {
         if (verbose > 0) {
-          fprintf(stderr,
-                  "      NO GPU devices.\n");
+          Print(stderr,
+                "      NO GPU devices.\n");
         }
       }
 
@@ -92,7 +93,7 @@ CL::CL(int verbose) : verbose(verbose) {
     }
 
     if (verbose > 1) {
-      fprintf(stderr, "Using platform %d.\n", chosen_platform_id);
+      Print(stderr, "Using platform {}.\n", chosen_platform_id);
     }
     platform = platforms[chosen_platform_id];
     free(platforms);
@@ -123,13 +124,13 @@ CL::CL(int verbose) : verbose(verbose) {
 
 CL::~CL() {
   if (verbose > 0) {
-    fprintf(stderr, "Destroying CL.\n");
+    Print(stderr, "Destroying CL.\n");
   }
   CHECK_SUCCESS(clReleaseCommandQueue(queue));
   CHECK_SUCCESS(clReleaseContext(context));
   free(devices);
   if (verbose > 0) {
-    fprintf(stderr, "CL destroyed.\n");
+    Print(stderr, "CL destroyed.\n");
   }
 }
 
@@ -165,8 +166,8 @@ std::optional<std::string> CL::DecodeProgram(cl_program p) {
   }
   binaries.clear();
 
-  printf("There were %d binaries, sizes ", (int)number_of_devices);
-  for (size_t i : sizes) printf("%d, ", (int)i);
+  Print("There were {} binaries, sizes ", number_of_devices);
+  for (size_t i : sizes) Print("{}, ", i);
 
   // Assume binary 0 is nvidia.
   // XXX We should try to detect this case more robustly!
@@ -204,7 +205,7 @@ std::pair<cl_program, std::map<std::string, cl_kernel>> CL::BuildKernels(
                                 CL_PROGRAM_BUILD_LOG, blsize, build_log,
                                 nullptr));
     build_log[blsize] = 0;
-    fprintf(stderr, "Failed to compile:\n %s", build_log);
+    Print(stderr, "Failed to compile:\n {}", build_log);
     free(build_log);
     LOG(FATAL) << "Kernel compilation failed.";
   }
@@ -217,8 +218,8 @@ std::pair<cl_program, std::map<std::string, cl_kernel>> CL::BuildKernels(
                                       &kernel_error);
     CHECK_SUCCESS(kernel_error);
     if (fn_verbose > 0) {
-      fprintf(stderr, "Compiled %s in %.1fms.\n",
-              function_name.c_str(), gpu_compile.MS());
+      Print(stderr, "Compiled {} in {:.1f}ms.\n",
+            function_name, gpu_compile.MS());
     }
     kernels[function_name] = kernel;
   }
@@ -251,7 +252,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               sizeof(local_mem_size), &local_mem_size, nullptr);
     if (err == CL_SUCCESS) {
       ret["local mem size"] =
-        StringPrintf("%lld kb", (int64_t)local_mem_size);
+        std::format("{} kb", local_mem_size);
     } else {
       ret["local mem size"] = "(error)";
     }
@@ -264,7 +265,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               nullptr);
     if (err == CL_SUCCESS) {
       ret["global mem size"] =
-        StringPrintf("%lld MB", (int64_t)(global_mem_size / (1024 * 1024)));
+        std::format("{} MB", (int64_t)(global_mem_size / (1024 * 1024)));
     } else {
       ret["global mem size"] = "(error)";
     }
@@ -276,7 +277,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
         clGetDeviceInfo(devices[0], CL_DEVICE_MAX_COMPUTE_UNITS,
                         sizeof(max_compute_units), &max_compute_units, nullptr);
     if (err == CL_SUCCESS) {
-      ret["max compute units"] = StringPrintf("%d", max_compute_units);
+      ret["max compute units"] = std::format("{}", max_compute_units);
     } else {
       ret["max compute units"] = "(error)";
     }
@@ -289,7 +290,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               nullptr);
     if (err == CL_SUCCESS) {
       ret["max work group size"] =
-          StringPrintf("%lld", (int64_t)max_work_group_size);
+        std::format("{}", max_work_group_size);
     } else {
       ret["max work group size"] = "(error)";
     }
@@ -301,7 +302,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               sizeof(max_clock_frequency), &max_clock_frequency,
                               nullptr);
     if (err == CL_SUCCESS) {
-      ret["max clock frequency"] = StringPrintf("%d MHz", max_clock_frequency);
+      ret["max clock frequency"] = std::format("{} MHz", max_clock_frequency);
     } else {
       ret["max clock frequency"] = "(error)";
     }
@@ -357,8 +358,8 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               sizeof(max_mem_alloc_size), &max_mem_alloc_size,
                               nullptr);
     if (err == CL_SUCCESS) {
-      ret["max mem alloc size"] = StringPrintf(
-          "%lld MB", (int64_t)(max_mem_alloc_size / (1024 * 1024)));
+      ret["max mem alloc size"] = std::format(
+          "{} MB", (int64_t)(max_mem_alloc_size / (1024 * 1024)));
     } else {
       ret["max mem alloc size"] = "(error)";
     }
@@ -371,7 +372,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               &max_constant_buffer_size, nullptr);
     if (err == CL_SUCCESS) {
       ret["max constant buffer size"] =
-          StringPrintf("%lld KB", (int64_t)(max_constant_buffer_size / 1024));
+        std::format("{} KB", (int64_t)(max_constant_buffer_size / 1024));
     } else {
       ret["max constant buffer size"] = "(error)";
     }
@@ -382,7 +383,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
     int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_SAMPLERS,
                               sizeof(max_samplers), &max_samplers, nullptr);
     if (err == CL_SUCCESS) {
-      ret["max samplers"] = StringPrintf("%d", max_samplers);
+      ret["max samplers"] = std::format("{}", max_samplers);
     } else {
       ret["max samplers"] = "(error)";
     }
@@ -394,7 +395,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               sizeof(max_read_image_args), &max_read_image_args,
                               nullptr);
     if (err == CL_SUCCESS) {
-      ret["max read image args"] = StringPrintf("%d", max_read_image_args);
+      ret["max read image args"] = std::format("{}", max_read_image_args);
     } else {
       ret["max read image args"] = "(error)";
     }
@@ -406,7 +407,7 @@ std::map<std::string, std::string> CL::DeviceInfo() {
                               sizeof(max_write_image_args),
                               &max_write_image_args, nullptr);
     if (err == CL_SUCCESS) {
-      ret["max write image args"] = StringPrintf("%d", max_write_image_args);
+      ret["max write image args"] = std::format("{}", max_write_image_args);
     } else {
       ret["max write image args"] = "(error)";
     }

@@ -10,6 +10,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "hexdump.h"
 #include "randutil.h"
@@ -189,17 +190,17 @@ static void TestMany() {
     }
   }
   double elapsed = timer.Seconds();
-  printf("\n"
-         "Total uncompressed: %d\n"
-         "Total compressed:   %d\n"
-         "Average ratio: %.3f:1\n"
-         "Time: %s\n"
-         "kB/sec (round trip plus validation): %.1f\n",
-         (int)uncompressed_bytes,
-         (int)compressed_bytes,
-         (double)uncompressed_bytes / compressed_bytes,
-         ANSI::Time(elapsed).c_str(),
-         (uncompressed_bytes / 1000.0) / elapsed);
+  Print("\n"
+        "Total uncompressed: {}\n"
+        "Total compressed:   {}\n"
+        "Average ratio: {:.3f}:1\n"
+        "Time: {}\n"
+        "kB/sec (round trip plus validation): {:.1f}\n",
+        uncompressed_bytes,
+        compressed_bytes,
+        (double)uncompressed_bytes / compressed_bytes,
+        ANSI::Time(elapsed),
+        (uncompressed_bytes / 1000.0) / elapsed);
 }
 
 int main(int argc, char **argv) {
@@ -213,5 +214,6 @@ int main(int argc, char **argv) {
 
   TestMany();
 
+  Print("OK\n");
   return 0;
 }

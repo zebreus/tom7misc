@@ -2,16 +2,16 @@
 #include "hilbert-curve.h"
 
 #include <algorithm>
-#include <cinttypes>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <string>
 #include <tuple>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "randutil.h"
 
@@ -40,7 +40,7 @@ static void DrawLine() {
   }
   std::string filename = std::format("lines-{}.png", base);
   img.ScaleBy(4).Save(filename);
-  printf("Wrote %s\n", filename.c_str());
+  Print("Wrote {}\n", filename);
 }
 
 
@@ -60,7 +60,7 @@ static void Brightness() {
   }
   std::string filename = std::format("brightness-{}.png", base);
   img.Save(filename);
-  printf("Wrote %s\n", filename.c_str());
+  Print("Wrote {}\n", filename);
 }
 
 // Check that the functions are inverses for all valid inputs on
@@ -85,7 +85,7 @@ static void Spot() {
   // for (int base = 11; base <= 32; base++) {
   for (int base = 11; base <= 32; base++) {
     const uint64_t side = uint64_t{1} << base;
-    printf("Base %d: %" PRIu64 " x %" PRIu64 " \n", base, side, side);
+    Print("Base {}: {} x {}\n", base, side, side);
 
     for (int samples = 0; samples < 10000; samples++) {
       {
@@ -128,10 +128,13 @@ static void Spot() {
 
 
 int main() {
+  ANSI::Init();
+
   DrawLine();
   Brightness();
   Inv();
   Spot();
-  printf("OK\n");
+
+  Print("OK\n");
   return 0;
 }
