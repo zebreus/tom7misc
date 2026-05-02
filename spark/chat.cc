@@ -6,9 +6,11 @@
 #include <format>
 #include <optional>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "base/logging.h"
@@ -43,7 +45,7 @@ struct ModelResponse {
 };
 
 
-static ModelResponse Infer(const ModelRequest &req, bool verbose = false) {
+static ModelResponse Infer(const ModelRequest &req, int verbose = 0) {
   static constexpr std::string_view endpoint = "10.0.0.34";
   static constexpr int port = 8080;
 
@@ -96,19 +98,74 @@ static ModelResponse Infer(const ModelRequest &req, bool verbose = false) {
         endpoint, port, payload.size(),
         payload);
 
-  if (!Net::SendAll(&sock, http_req)) {
-    res.error = "Failed to send HTTP request";
-    Net::Close(&sock);
-    return res;
+  if (verbose > 1) {
+    Print(ACYAN("{}") "\n", http_req);
   }
 
+  Timer open_time;
+  constexpr double MAX_SECONDS = 120.0;
+
+  bool resp_done = false;
   std::string http_resp;
-  if (!Net::RecvAll(&sock, &http_resp)) {
-    res.error = "Failed to receive HTTP response";
-    Net::Close(&sock);
+
+  Net::Socket socks[1] = {sock};
+
+  std::string_view req_remaining = http_req;
+  while (open_time.Seconds() < MAX_SECONDS) {
+    std::span<const Net::Socket> check_read;
+    std::span<const Net::Socket> check_write;
+
+    if (!req_remaining.empty()) {
+      check_write = socks;
+    } else {
+      check_read = socks;
+    }
+
+    // Wait up to 20ms to keep the loop responsive but yielding
+    Net::ReadySockets ready = Net::Select(check_read, check_write, 20);
+
+    if (!req_remaining.empty()) {
+      if (!ready.writable.empty()) {
+        auto send_res = Net::SendNow(&sock, req_remaining);
+        if (std::holds_alternative<Net::Error>(send_res)) {
+          res.error = "Failed to send HTTP request";
+          Net::Close(&sock);
+          return res;
+        } else {
+          const size_t *bytes = std::get_if<size_t>(&send_res);
+          CHECK(bytes != nullptr);
+          req_remaining.remove_prefix(*bytes);
+        }
+      }
+
+    } else {
+      if (!ready.readable.empty()) {
+        uint8_t buf[8192];
+        auto recv_res = Net::Recv(&sock, buf);
+        if (std::holds_alternative<Net::Error>(recv_res)) {
+          res.error = "Failed to receive HTTP response";
+          Net::Close(&sock);
+          return res;
+        } else if (std::holds_alternative<Net::EndOfStream>(recv_res)) {
+          resp_done = true;
+          break;
+        } else {
+          const size_t *bytes = std::get_if<size_t>(&recv_res);
+          CHECK(bytes != nullptr);
+          if (*bytes > 0) {
+            http_resp.append((const char*)buf, *bytes);
+          }
+        }
+      }
+    }
+  }
+
+  Net::Close(&sock);
+
+  if (!resp_done) {
+    res.error = "Operation timed out";
     return res;
   }
-  Net::Close(&sock);
 
   size_t body_pos = http_resp.find("\r\n\r\n");
   if (body_pos == std::string::npos) {
@@ -166,7 +223,7 @@ static void Test() {
   };
 
   Timer timer;
-  ModelResponse res = Infer(req, true);
+  ModelResponse res = Infer(req, 1);
   Print("Got response in {}\n", ANSI::Time(timer.Seconds()));
   if (!res.error.empty()) {
     Print(ARED("{}") "\n", res.error);
@@ -185,6 +242,14 @@ struct Conversation {
     std::string text;
     bool is_action = false;
   };
+
+  static std::string MessageString(const Message &msg) {
+    if (msg.is_action) {
+      return std::format(" * {} {}", msg.speaker, msg.text);
+    } else {
+      return std::format("<{}> {}", msg.speaker, msg.text);
+    }
+  }
 
   // 0: Only show the messages
   // 1: Shows sent data and thoughts
@@ -224,7 +289,7 @@ struct Conversation {
       std::string_view line = lines[i];
       Util::RemoveOuterWhitespace(&line);
       if (line.empty()) continue;
-      if (std::optional<Message> omsg = ParseMessage(line)) {
+      if (std::optional<Message> omsg = ParseMessage(line, false)) {
         messages.emplace_back(std::move(omsg.value()));
       } else {
         Print(AORANGE("Unparseable line") ": {}\n", line);
@@ -268,11 +333,7 @@ struct Conversation {
     std::string transcript = preamble;
     transcript.push_back('\n');
     for (const Message &msg : messages) {
-      if (msg.is_action) {
-        AppendFormat(&transcript, " * {} {}\n", msg.speaker, msg.text);
-      } else {
-        AppendFormat(&transcript, "<{}> {}\n", msg.speaker, msg.text);
-      }
+      AppendFormat(&transcript, "{}\n", MessageString(msg));
     }
 
     req.messages.emplace_back(ReqMessage{
@@ -280,7 +341,7 @@ struct Conversation {
         .content = transcript,
       });
 
-    ModelResponse resp = Infer(req, verbosity > 0);
+    ModelResponse resp = Infer(req, verbosity);
     if (!resp.error.empty()) {
       // Just print the error and give control back to the user.
       Print(ARED("{}") "\n", resp.error);
@@ -294,7 +355,9 @@ struct Conversation {
     }
 
     for (std::string_view line : Util::SplitToLines(resp.content)) {
-      if (std::optional<Message> omsg = ParseMessage(line)) {
+      if (line.empty()) continue;
+
+      if (std::optional<Message> omsg = ParseMessage(line, true)) {
         PrintMessage(omsg.value());
         messages.push_back(std::move(omsg.value()));
       } else {
@@ -303,7 +366,7 @@ struct Conversation {
     }
   }
 
-  std::optional<Message> ParseMessage(std::string_view sv) {
+  std::optional<Message> ParseMessage(std::string_view sv, bool sloppy) {
     Util::RemoveOuterWhitespace(&sv);
     if (sv.empty()) return std::nullopt;
 
@@ -330,6 +393,16 @@ struct Conversation {
         msg.speaker = std::string(sv.substr(0, rangle));
         sv.remove_prefix(rangle + 1);
         Util::RemoveLeadingWhitespace(&sv);
+
+        if (sloppy) {
+          // Allow <Tom> *wrings his hands*
+          if (sv.size() > 2 && sv.starts_with("*") &&
+              sv.ends_with("*")) {
+            msg.is_action = true;
+            sv.remove_prefix(1);
+            sv.remove_suffix(1);
+          }
+        }
         msg.text = std::string(sv);
       } else {
         return std::nullopt;
@@ -355,7 +428,7 @@ struct Conversation {
     n = std::min((int)messages.size(), n);
     Print(AGREY("..."));
     for (int i = 0; i < n; i++) {
-      PrintMessage(messages[messages.size() - 1 - i]);
+      PrintMessage(messages[messages.size() - n + i]);
     }
   }
 
@@ -367,7 +440,7 @@ struct Conversation {
     if (Util::TryStripPrefix("/raw ", &input) ||
         Util::TryStripPrefix("/force ", &input)) {
 
-      if (std::optional<Message> omsg = ParseMessage(input)) {
+      if (std::optional<Message> omsg = ParseMessage(input, false)) {
         PrintMessage(omsg.value());
         messages.push_back(std::move(omsg.value()));
       }
@@ -415,6 +488,33 @@ struct Conversation {
 
       return false;
 
+    } else if (Util::TryStripPrefix("/dump", &input)) {
+      PrintRecent(messages.size());
+      return false;
+
+    } else if (Util::TryStripPrefix("/save ", &input)) {
+      Util::RemoveOuterWhitespace(&input);
+      std::string content;
+      for (std::string_view up : user_participants) {
+        if (!content.empty()) content.append(",");
+        content.append(up);
+      }
+      for (const std::string &ppt : participants) {
+        if (!user_participants.contains(ppt)) {
+          if (!content.empty()) content.append(",");
+          content.append(ppt);
+        }
+      }
+
+      AppendFormat(&content, "\n{}\n", preamble);
+      for (const Message &msg : messages) {
+        AppendFormat(&content, "{}\n", MessageString(msg));
+      }
+
+      Util::WriteFile(input, content);
+      Print("\nWrote " AGREEN("{}") ".\n", input);
+      return false;
+
     } else if (Util::TryStripPrefix("/pass", &input)) {
       // XXX take explicit participant
       return true;
@@ -423,6 +523,8 @@ struct Conversation {
       Util::RemoveOuterWhitespace(&input);
       verbosity = Util::ParseInt64(input, 1);
       return false;
+
+      // TODO /kick
 
     } else if (Util::TryStripPrefix("/invite ", &input)) {
       Util::RemoveOuterWhitespace(&input);
@@ -439,6 +541,29 @@ struct Conversation {
           });
       }
 
+      return false;
+
+    } else if (Util::TryStripPrefix("/reset", &input)) {
+      messages.clear();
+      preamble = "";
+      Util::RemoveOuterWhitespace(&input);
+      if (!input.empty()) {
+        // Reset participants too.
+        std::vector<std::string> ppts = Util::Split(input, ',');
+        for (std::string &ppt : ppts) {
+          ppt = Util::LoseWhiteL(Util::LoseWhiteR(ppt));
+        }
+
+        if (!ppts.empty() && !ppts[0].empty()) {
+          participants.clear();
+          user_participants = {ppts[0]};
+          Print("[Reset. You are {}]\n", ppts[0]);
+          for (int i = 1; i < ppts.size(); i++) {
+            participants.insert(ppts[i]);
+            Print(" * {} joined\n", ppts[i]);
+          }
+        }
+      }
       return false;
 
     } else if (Util::TryStripPrefix("/become ", &input)) {
