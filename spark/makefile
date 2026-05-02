@@ -1,7 +1,7 @@
 
-default : minget.exe sget.exe aget.exe fill-in.exe render-markdown.exe wtf.exe
+default : chat.exe
 
-all : minget.exe
+all : chat.exe spark-infer_test.exe
 
 UNAME := $(shell uname -o)
 # ifeq ($(findstring Linux,$(UNAME)),Linux)
@@ -48,8 +48,7 @@ HTTPV_OBJECTS=$(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o
 
 HTTPC_OBJECTS=$(HTTPC)/net.o $(HTTPC)/tls-client.o
 
-OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV_OBJECTS) $(HTTPC_OBJECTS)
-
+OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV_OBJECTS) $(HTTPC_OBJECTS) spark-infer.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -68,6 +67,10 @@ $(HTTPC)/%.o : $(HTTPC)/%.cc makefile
 	@echo -n "."
 
 chat.exe : chat.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+spark-infer_test.exe : spark-infer_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

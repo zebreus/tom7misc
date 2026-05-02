@@ -10,7 +10,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "base/logging.h"
@@ -18,196 +17,21 @@
 #include "base/stringprintf.h"
 #include "console.h"
 #include "net.h"
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
+#include "spark-infer.h"
 #include "timer.h"
 #include "util.h"
 
-struct ReqMessage {
-  std::string role;
-  std::string content;
-};
 
-struct ModelRequest {
-  std::vector<ReqMessage> messages;
-};
+static constexpr std::string_view HOST = "10.0.0.34";
+static constexpr int PORT = 8080;
 
-struct ModelResponse {
-  // The model's response.
-  std::string content;
-  // Optional thinking content.
-  std::string reasoning_content;
-
-  // If non-empty, then something went wrong and the content
-  // may be absent.
-  std::string error;
-};
-
-
-static ModelResponse Infer(const ModelRequest &req, int verbose = 0) {
-  static constexpr std::string_view endpoint = "10.0.0.34";
-  static constexpr int port = 8080;
-
-  ModelResponse res;
-
-  std::string payload = [&] -> std::string {
-      rapidjson::StringBuffer buffer;
-      rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-      writer.StartObject();
-      writer.Key("messages");
-      writer.StartArray();
-      for (const ReqMessage &msg : req.messages) {
-        writer.StartObject();
-        writer.Key("role");
-        writer.String(msg.role.c_str());
-        writer.Key("content");
-        writer.String(msg.content.c_str());
-        writer.EndObject();
-      }
-      writer.EndArray();
-      writer.EndObject();
-      return buffer.GetString();
-    }();
-
-  if (verbose) {
-    Print(ABLUE("{}") "\n", payload);
-  }
-
-  std::vector<Net::Address> addrs = Net::Resolve(endpoint, port);
-  if (addrs.empty()) {
-    res.error = "DNS resolution failed";
-    return res;
-  }
-
-  Net::Socket sock = Net::Connect(addrs[0]);
-  if (!sock.IsValid()) {
-    res.error = "Connection failed";
-    return res;
-  }
-
-  std::string http_req =
-    std::format(
-        "POST /v1/chat/completions HTTP/1.0\r\n"
-        "Host: {}:{}\r\n"
-        "Content-Type: application/json\r\n"
-        "Connection: close\r\n"
-        "Content-Length: {}\r\n"
-        "\r\n"
-        "{}",
-        endpoint, port, payload.size(),
-        payload);
-
-  if (verbose > 1) {
-    Print(ACYAN("{}") "\n", http_req);
-  }
-
-  Timer open_time;
-  constexpr double MAX_SECONDS = 120.0;
-
-  bool resp_done = false;
-  std::string http_resp;
-
-  Net::Socket socks[1] = {sock};
-
-  std::string_view req_remaining = http_req;
-  while (open_time.Seconds() < MAX_SECONDS) {
-    std::span<const Net::Socket> check_read;
-    std::span<const Net::Socket> check_write;
-
-    if (!req_remaining.empty()) {
-      check_write = socks;
-    } else {
-      check_read = socks;
-    }
-
-    // Wait up to 20ms to keep the loop responsive but yielding
-    Net::ReadySockets ready = Net::Select(check_read, check_write, 20);
-
-    if (!req_remaining.empty()) {
-      if (!ready.writable.empty()) {
-        auto send_res = Net::SendNow(&sock, req_remaining);
-        if (std::holds_alternative<Net::Error>(send_res)) {
-          res.error = "Failed to send HTTP request";
-          Net::Close(&sock);
-          return res;
-        } else {
-          const size_t *bytes = std::get_if<size_t>(&send_res);
-          CHECK(bytes != nullptr);
-          req_remaining.remove_prefix(*bytes);
-        }
-      }
-
-    } else {
-      if (!ready.readable.empty()) {
-        uint8_t buf[8192];
-        auto recv_res = Net::Recv(&sock, buf);
-        if (std::holds_alternative<Net::Error>(recv_res)) {
-          res.error = "Failed to receive HTTP response";
-          Net::Close(&sock);
-          return res;
-        } else if (std::holds_alternative<Net::EndOfStream>(recv_res)) {
-          resp_done = true;
-          break;
-        } else {
-          const size_t *bytes = std::get_if<size_t>(&recv_res);
-          CHECK(bytes != nullptr);
-          if (*bytes > 0) {
-            http_resp.append((const char*)buf, *bytes);
-          }
-        }
-      }
-    }
-  }
-
-  Net::Close(&sock);
-
-  if (!resp_done) {
-    res.error = "Operation timed out";
-    return res;
-  }
-
-  size_t body_pos = http_resp.find("\r\n\r\n");
-  if (body_pos == std::string::npos) {
-    res.error = "Invalid HTTP response format";
-    return res;
-  }
-  std::string body = http_resp.substr(body_pos + 4);
-
-  rapidjson::Document d;
-  d.Parse(body);
-  if (d.HasParseError()) {
-    res.error = "JSON parse error";
-    return res;
-  }
-
-  if (!d.IsObject() || !d.HasMember("choices") || !d["choices"].IsArray() ||
-      d["choices"].Empty()) {
-    res.error = "Invalid or empty JSON response structure";
-    return res;
-  }
-
-  const auto &choice = d["choices"][0];
-  if (!choice.HasMember("message") || !choice["message"].IsObject()) {
-    res.error = "No message found in the first choice";
-    return res;
-  }
-
-  const auto &message = choice["message"];
-  if (message.HasMember("content") && message["content"].IsString()) {
-    res.content = message["content"].GetString();
-  }
-
-  if (message.HasMember("reasoning_content") &&
-      message["reasoning_content"].IsString()) {
-    res.reasoning_content = message["reasoning_content"].GetString();
-  }
-
-  return res;
-}
+using ReqMessage = Spark::ReqMessage;
+using ModelRequest = Spark::ModelRequest;
+using ModelResponse = Spark::ModelResponse;
 
 [[maybe_unused]]
 static void Test() {
+  Spark spark(HOST, PORT);
   ModelRequest req{
     .messages = {
       ReqMessage{
@@ -223,7 +47,7 @@ static void Test() {
   };
 
   Timer timer;
-  ModelResponse res = Infer(req, 1);
+  ModelResponse res = spark.Infer(req, 1);
   Print("Got response in {}\n", ANSI::Time(timer.Seconds()));
   if (!res.error.empty()) {
     Print(ARED("{}") "\n", res.error);
@@ -237,6 +61,8 @@ static void Test() {
 }
 
 struct Conversation {
+  Conversation() : spark(HOST, PORT) {}
+
   struct Message {
     std::string speaker;
     std::string text;
@@ -250,6 +76,8 @@ struct Conversation {
       return std::format("<{}> {}", msg.speaker, msg.text);
     }
   }
+
+  Spark spark;
 
   // 0: Only show the messages
   // 1: Shows sent data and thoughts
@@ -341,7 +169,7 @@ struct Conversation {
         .content = transcript,
       });
 
-    ModelResponse resp = Infer(req, verbosity);
+    ModelResponse resp = spark.Infer(req, verbosity);
     if (!resp.error.empty()) {
       // Just print the error and give control back to the user.
       Print(ARED("{}") "\n", resp.error);
