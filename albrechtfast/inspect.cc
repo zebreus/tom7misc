@@ -109,38 +109,49 @@ static void Inspect(int id, std::string_view filename) {
 
   std::vector<SVG::Node> quadrant_roots;
   for (int i = 0; i < 3; ++i) {
-    quadrant_roots.push_back(std::move(non_nets[i].svg.root));
+    SVG::Doc svg = Albrecht::MakeSVG(aug, non_nets[i]);
+    quadrant_roots.push_back(std::move(svg.root));
   }
-  quadrant_roots.push_back(std::move(nets[0].svg.root));
+
+  if (!nets.empty()) {
+    SVG::Doc svg = Albrecht::MakeSVG(aug, nets[0]);
+    quadrant_roots.push_back(std::move(svg.root));
+  }
 
   SVG::Doc doc;
   doc.view_box = std::array<double, 4>{0, 0, 2048, 2048};
 
   SVG::G main_group;
 
-  for (int i = 0; i < 4; ++i) {
+  double margin = 16.0;
+  for (int i = 0; i < 4; i++) {
     double tx = (i & 1) * 1024.0;
     double ty = (i >> 1) * 1024.0;
 
+    double bx = tx + ((i & 1) ? margin / 2.0 : margin);
+    double by = ty + ((i >> 1) ? margin / 2.0 : margin);
+    double size = 1024.0 - 1.5 * margin;
+
     SVG::Path bg_rect;
     bg_rect.data = {
-      SVG::MoveTo{tx, ty},
-      SVG::LineTo{tx + 1024.0, ty},
-      SVG::LineTo{tx + 1024.0, ty + 1024.0},
-      SVG::LineTo{tx, ty + 1024.0},
+      SVG::MoveTo{bx, by},
+      SVG::LineTo{bx + size, by},
+      SVG::LineTo{bx + size, by + size},
+      SVG::LineTo{bx, by + size},
       SVG::ClosePath{}
     };
 
     SVG::G rect_group;
     rect_group.style.fill_color = SVG::COLOR_NONE;
     rect_group.style.stroke_color = 0x000000FF;
-    rect_group.style.stroke_width = 4.0;
+    rect_group.style.stroke_width = 2.0;
     rect_group.children.push_back(SVG::Node{std::move(bg_rect)});
     main_group.children.push_back(SVG::Node{std::move(rect_group)});
 
+    double s = size / 1024.0;
     SVG::G sub_group;
     sub_group.style.transform =
-      std::array<double, 6>{1.0, 0.0, 0.0, 1.0, tx, ty};
+      std::array<double, 6>{s, 0.0, 0.0, s, bx, by};
     sub_group.children.push_back(std::move(quadrant_roots[i]));
     main_group.children.push_back(SVG::Node{std::move(sub_group)});
   }

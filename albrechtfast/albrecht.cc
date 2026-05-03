@@ -30,11 +30,9 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
 
   BitString visited_faces(num_faces, 0);
 
-  result.placed_faces.reserve(num_faces);
+  result.mesh.polygons.resize(num_faces);
 
   bool is_valid_tree = true;
-  // We maintain a stack of the current path to extract a cycle
-  // if we found one.
   std::vector<int> current_path;
 
   std::function<void(int, int, frame2)> DFS =
@@ -44,7 +42,6 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
 
         if (visited_faces.Get(face_idx)) {
           is_valid_tree = false;
-          // If we haven't recorded an example cycle yet, we can do so now.
           if (!result.cycle.has_value()) {
             std::vector<int> cycle;
             for (size_t i = 0; i < current_path.size(); ++i) {
@@ -64,12 +61,16 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
         current_path.push_back(face_idx);
 
         PlacedFace pf;
-        pf.face_idx = face_idx;
-        pf.vertices.reserve(aug.polygons[face_idx].size());
-        for (const vec2 &v : aug.polygons[face_idx]) {
-          pf.vertices.push_back(yocto::transform_point(global_tf, v));
+        pf.v.reserve(aug.polygons[face_idx].size());
+        for (size_t i = 0; i < aug.polygons[face_idx].size(); ++i) {
+          int v_idx = result.mesh.vertices.size();
+          result.mesh.vertices.push_back(
+              yocto::transform_point(global_tf, aug.polygons[face_idx][i]));
+          result.mesh.polyhedron_vertex.push_back(
+              poly.faces->v[face_idx][i]);
+          pf.v.push_back(v_idx);
         }
-        result.placed_faces.push_back(std::move(pf));
+        result.mesh.polygons[face_idx] = std::move(pf);
 
         for (int edge_idx : aug.face_edges[face_idx]) {
           if (unfolding.Get(edge_idx)) {
@@ -93,17 +94,23 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
     DFS(0, -1, identity);
   }
 
-  BitString face_overlaps(num_faces, false);
-  for (size_t i = 0; i < result.placed_faces.size(); ++i) {
-    for (size_t j = i + 1; j < result.placed_faces.size(); ++j) {
-      if (PolygonsOverlap(result.placed_faces[i].vertices,
-                           result.placed_faces[j].vertices)) {
-        int f0 = result.placed_faces[i].face_idx;
-        int f1 = result.placed_faces[j].face_idx;
-        if (f0 > f1) std::swap(f0, f1);
-        result.overlapping_faces = std::make_pair(f0, f1);
-        face_overlaps.Set(f0, true);
-        face_overlaps.Set(f1, true);
+  std::vector<std::vector<vec2>> face_vertices(num_faces);
+  for (int i = 0; i < num_faces; ++i) {
+    face_vertices[i].reserve(result.mesh.polygons[i].v.size());
+    for (int idx : result.mesh.polygons[i].v) {
+      face_vertices[i].push_back(result.mesh.vertices[idx]);
+    }
+  }
+
+  BitString face_overlaps(num_faces, 0);
+  for (int i = 0; i < num_faces; ++i) {
+    if (face_vertices[i].empty()) continue;
+    for (int j = i + 1; j < num_faces; ++j) {
+      if (face_vertices[j].empty()) continue;
+      if (PolygonsOverlap(face_vertices[i], face_vertices[j])) {
+        result.overlapping_faces = std::make_pair(i, j);
+        face_overlaps.Set(i, 1);
+        face_overlaps.Set(j, 1);
         break;
       }
     }
@@ -114,31 +121,77 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
     CHECK(result.overlapping_faces.has_value());
   }
 
+  int visited_count = 0;
+  for (int i = 0; i < num_faces; ++i) {
+    if (!result.mesh.polygons[i].v.empty()) {
+      visited_count++;
+    }
+  }
+
   result.cycle_free = is_valid_tree;
-  result.is_connected = (result.placed_faces.size() == (size_t)num_faces);
+  result.is_connected = (visited_count == num_faces);
   result.is_net = result.cycle_free && result.is_connected &&
     result.is_planar;
 
+  return result;
+}
+
+SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
+                           const DebugResult &debug_result) {
+  SVG::Doc doc;
+
   Bounds bounds;
+  for (const vec2 &v : debug_result.mesh.vertices) {
+    bounds.Bound(v);
+  }
+
+  if (debug_result.mesh.vertices.empty()) {
+    doc.view_box = std::array<double, 4>{0, 0, 1024, 1024};
+    doc.root = SVG::Node{SVG::G{}};
+    return doc;
+  }
+
+  Bounds::Scaler scaler = bounds.ScaleToFitWithMargin(
+      1024, 1024, 32, true);
 
   SVG::G group;
   group.style.stroke_color = 0x000000FF;
   group.style.fill_color = 0xCCCCFFFF;
   group.style.fill_opacity = 0.25;
-  group.style.stroke_width = 2.0;
+  group.style.stroke_width = 1.0;
 
-  for (const PlacedFace &pf : result.placed_faces)
-    for (const vec2 &v : pf.vertices)
-      bounds.Bound(v);
+  // TODO: We should just calculate the full set of overlapping faces
+  // in DebugResult.
+  BitString face_overlaps(debug_result.mesh.polygons.size(), 0);
+  if (!debug_result.is_planar) {
+    std::vector<std::vector<vec2>> face_vertices(
+        debug_result.mesh.polygons.size());
+    for (size_t i = 0; i < debug_result.mesh.polygons.size(); ++i) {
+      for (int idx : debug_result.mesh.polygons[i].v) {
+        face_vertices[i].push_back(debug_result.mesh.vertices[idx]);
+      }
+    }
+    for (size_t i = 0; i < face_vertices.size(); ++i) {
+      if (face_vertices[i].empty()) continue;
+      for (size_t j = i + 1; j < face_vertices.size(); ++j) {
+        if (face_vertices[j].empty()) continue;
+        if (PolygonsOverlap(face_vertices[i], face_vertices[j])) {
+          face_overlaps.Set(i, 1);
+          face_overlaps.Set(j, 1);
+          break;
+        }
+      }
+    }
+  }
 
-  Bounds::Scaler scaler = bounds.ScaleToFitWithMargin(
-      1024, 1024, 32, true);
+  for (size_t f_idx = 0; f_idx < debug_result.mesh.polygons.size(); ++f_idx) {
+    const PlacedFace &pf = debug_result.mesh.polygons[f_idx];
+    if (pf.v.empty()) continue;
 
-
-  for (const PlacedFace &pf : result.placed_faces) {
     SVG::Path path;
-    for (size_t i = 0; i < pf.vertices.size(); ++i) {
-      const auto &[sx, sy] = scaler.Scale(pf.vertices[i]);
+    for (size_t i = 0; i < pf.v.size(); ++i) {
+      const vec2 &v = debug_result.mesh.vertices[pf.v[i]];
+      const auto &[sx, sy] = scaler.Scale(v);
 
       if (i == 0) {
         path.data.push_back(SVG::MoveTo{sx, sy});
@@ -148,7 +201,7 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
     }
     path.data.push_back(SVG::ClosePath{});
 
-    if (face_overlaps[pf.face_idx]) {
+    if (face_overlaps.Get(f_idx)) {
       SVG::G error_group;
       error_group.style.fill_color = 0xFF0000FF;
       error_group.children = {SVG::Node{std::move(path)}};
@@ -160,21 +213,6 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
 
   double local_dim = std::max(bounds.Width(), bounds.Height());
 
-  auto AddText = [&scaler](SVG::G *g,
-                           // baseline (nominally the center)
-                           double cx, double cy,
-                           std::string_view text) {
-
-      const auto &[scx, scy] = scaler.Scale(cx, cy);
-
-      SVG::G e_node;
-      e_node.style.transform =
-        std::array<double, 6>{1.0, 0.0, 0.0, 1.0, scx, scy};
-      e_node.children.push_back(SVG::Node{SVG::Text{std::string(text)}});
-      g->children.push_back(SVG::Node{std::move(e_node)});
-    };
-
-  // face font size, edge font size
   double fs = local_dim * 0.025;
   double e_fs = local_dim * 0.01;
 
@@ -184,6 +222,7 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
   text_group.style.stroke_color = SVG::COLOR_NONE;
   text_group.style.font_family = {"sans-serif"};
   text_group.style.font_size = scaler.SizeX() * fs;
+  text_group.style.text_anchor = SVG::TextAnchor::MIDDLE;
 
   SVG::G edge_text_group;
   edge_text_group.style.fill_color = 0x000000FF;
@@ -191,26 +230,38 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
   edge_text_group.style.stroke_color = SVG::COLOR_NONE;
   edge_text_group.style.font_family = {"sans-serif"};
   edge_text_group.style.font_size = scaler.SizeX() * e_fs;
+  edge_text_group.style.text_anchor = SVG::TextAnchor::MIDDLE;
 
-  for (const PlacedFace &pf : result.placed_faces) {
-    int f_idx = pf.face_idx;
+  auto AddText = [&scaler](SVG::G *g,
+                           double cx, double cy,
+                           std::string_view text) {
+      const auto &[scx, scy] = scaler.Scale(cx, cy);
+
+      SVG::G e_node;
+      e_node.style.transform =
+        std::array<double, 6>{1.0, 0.0, 0.0, 1.0, scx, scy};
+      e_node.children.push_back(SVG::Node{SVG::Text{std::string(text)}});
+      g->children.push_back(SVG::Node{std::move(e_node)});
+    };
+
+  for (size_t f_idx = 0; f_idx < debug_result.mesh.polygons.size(); ++f_idx) {
+    const PlacedFace &pf = debug_result.mesh.polygons[f_idx];
+    if (pf.v.empty()) continue;
 
     vec2 center = {0.0, 0.0};
-    for (const vec2 &v : pf.vertices) {
-      center.x += v.x;
-      center.y += v.y;
+    for (int idx : pf.v) {
+      center.x += debug_result.mesh.vertices[idx].x;
+      center.y += debug_result.mesh.vertices[idx].y;
     }
-    if (!pf.vertices.empty()) {
-      center.x /= pf.vertices.size();
-      center.y /= pf.vertices.size();
-    }
+    center.x /= pf.v.size();
+    center.y /= pf.v.size();
 
     AddText(&text_group, center.x, center.y, std::format("{}", f_idx));
 
-    for (size_t i = 0; i < pf.vertices.size(); ++i) {
+    for (size_t i = 0; i < pf.v.size(); ++i) {
       const int edge_idx = aug.face_edges[f_idx][i];
-      vec2 p0 = pf.vertices[i];
-      vec2 p1 = pf.vertices[(i + 1) % pf.vertices.size()];
+      vec2 p0 = debug_result.mesh.vertices[pf.v[i]];
+      vec2 p1 = debug_result.mesh.vertices[pf.v[(i + 1) % pf.v.size()]];
       vec2 mid = {(p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5};
 
       vec2 dir = {center.x - mid.x, center.y - mid.y};
@@ -220,7 +271,6 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
         dir.y /= len;
       }
 
-      // Push the edge number slightly towards the center of the face
       double offset = e_fs * 0.8;
       double ex = mid.x + dir.x * offset;
       double ey = mid.y + dir.y * offset;
@@ -232,12 +282,12 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
   group.children.push_back(SVG::Node{std::move(edge_text_group)});
   group.children.push_back(SVG::Node{std::move(text_group)});
 
-  result.svg.root = SVG::Node{std::move(group)};
+  doc.root = SVG::Node{std::move(group)};
+  doc.view_box = std::array<double, 4>{0, 0, 1024, 1024};
 
-  result.svg.view_box = std::array<double, 4>{0, 0, 1024, 1024};
-
-  return result;
+  return doc;
 }
+
 
 bool Albrecht::IsNet(const AugmentedPoly &aug,
                      BitStringConstView unfolding) {

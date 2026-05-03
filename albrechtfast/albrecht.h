@@ -160,11 +160,34 @@ struct Albrecht {
     }
   };
 
+  /* old
   struct PlacedFace {
+    // Same as the face index in the polyhedron.
     int face_idx = 0;
     // In the same order they appear in the Polyhedron's face.
     std::vector<vec2> vertices;
   };
+  */
+
+  struct PlacedFace {
+    // The index of the 2D vertex in the UnfoldedMesh.
+    // The vertices are in the same order they appear in the
+    // Polyhedron's face.
+    std::vector<int> v;
+  };
+
+  struct UnfoldedMesh {
+    // The location of vertices in the mesh.
+    std::vector<vec2> vertices;
+    // Parallel to the vertices. Gives the index of the corresponding
+    // polyhedron vertex. A vertex may appear once or twice.
+    std::vector<int> polyhedron_vertex;
+
+    // The faces (now polygons) appear in the same order as they do in
+    // the polyhedron.
+    std::vector<PlacedFace> polygons;
+  };
+
 
   struct DebugResult {
     // True if the input is free from cycles.
@@ -180,20 +203,28 @@ struct Albrecht {
     // as two face indices with f0 < f1.
     std::optional<std::pair<int, int>> overlapping_faces;
 
+    /*
+      old
     // The 2D locations of each face. Note that these do
     // not appear in face order, but each has its distinct
     // face_idx.
     std::vector<PlacedFace> placed_faces;
+    */
+    // The unfolded mesh.
+    UnfoldedMesh mesh;
 
     // True if the graph is acyclic (a tree), completely connected,
     // and planar.
     bool is_net = false;
-    // An SVG displaying the unfolded polyhedron.
-    SVG::Doc svg;
   };
 
   static DebugResult DebugUnfolding(const AugmentedPoly &aug,
                                     BitStringConstView unfolding);
+
+  // An SVG displaying the unfolded polyhedron.
+  static SVG::Doc MakeSVG(const AugmentedPoly &aug,
+                          const DebugResult &debug_result);
+
 
   // Determines whether the unfolding is a valid net without producing
   // any debug information. This can assume that the unfolding is a

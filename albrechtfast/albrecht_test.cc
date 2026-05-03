@@ -214,8 +214,10 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
   }
   Print("Is net: {}\n", dr.is_net ? AGREEN("true") : ARED("false"));
 
+  SVG::Doc svg = Albrecht::MakeSVG(aug, dr);
+
   Util::WriteFile(std::format("test-{}.svg", name),
-                  SVG::ToSVG(dr.svg));
+                  SVG::ToSVG(svg));
 
   CHECK(dr.cycle_free) << "By construction!";
   CHECK(dr.is_connected) << "By construction!";
