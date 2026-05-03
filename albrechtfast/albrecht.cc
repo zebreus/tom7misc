@@ -102,24 +102,21 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
     }
   }
 
-  BitString face_overlaps(num_faces, 0);
+  bool has_overlap = false;
+  result.face_overlap.resize(num_faces, -1);
   for (int i = 0; i < num_faces; ++i) {
     if (face_vertices[i].empty()) continue;
     for (int j = i + 1; j < num_faces; ++j) {
       if (face_vertices[j].empty()) continue;
       if (PolygonsOverlap(face_vertices[i], face_vertices[j])) {
-        result.overlapping_faces = std::make_pair(i, j);
-        face_overlaps.Set(i, 1);
-        face_overlaps.Set(j, 1);
-        break;
+        result.face_overlap[i] = j;
+        result.face_overlap[j] = i;
+        has_overlap = true;
       }
     }
   }
 
-  result.is_planar = face_overlaps.Zero();
-  if (!result.is_planar) {
-    CHECK(result.overlapping_faces.has_value());
-  }
+  result.is_planar = !has_overlap;
 
   int visited_count = 0;
   for (int i = 0; i < num_faces; ++i) {
@@ -137,15 +134,15 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
 }
 
 SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
-                           const DebugResult &debug_result) {
+                           const DebugResult &dr) {
   SVG::Doc doc;
 
   Bounds bounds;
-  for (const vec2 &v : debug_result.mesh.vertices) {
+  for (const vec2 &v : dr.mesh.vertices) {
     bounds.Bound(v);
   }
 
-  if (debug_result.mesh.vertices.empty()) {
+  if (dr.mesh.vertices.empty()) {
     doc.view_box = std::array<double, 4>{0, 0, 1024, 1024};
     doc.root = SVG::Node{SVG::G{}};
     return doc;
@@ -160,37 +157,13 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
   group.style.fill_opacity = 0.25;
   group.style.stroke_width = 1.0;
 
-  // TODO: We should just calculate the full set of overlapping faces
-  // in DebugResult.
-  BitString face_overlaps(debug_result.mesh.polygons.size(), 0);
-  if (!debug_result.is_planar) {
-    std::vector<std::vector<vec2>> face_vertices(
-        debug_result.mesh.polygons.size());
-    for (size_t i = 0; i < debug_result.mesh.polygons.size(); ++i) {
-      for (int idx : debug_result.mesh.polygons[i].v) {
-        face_vertices[i].push_back(debug_result.mesh.vertices[idx]);
-      }
-    }
-    for (size_t i = 0; i < face_vertices.size(); ++i) {
-      if (face_vertices[i].empty()) continue;
-      for (size_t j = i + 1; j < face_vertices.size(); ++j) {
-        if (face_vertices[j].empty()) continue;
-        if (PolygonsOverlap(face_vertices[i], face_vertices[j])) {
-          face_overlaps.Set(i, 1);
-          face_overlaps.Set(j, 1);
-          break;
-        }
-      }
-    }
-  }
-
-  for (size_t f_idx = 0; f_idx < debug_result.mesh.polygons.size(); ++f_idx) {
-    const PlacedFace &pf = debug_result.mesh.polygons[f_idx];
+  for (size_t f_idx = 0; f_idx < dr.mesh.polygons.size(); ++f_idx) {
+    const PlacedFace &pf = dr.mesh.polygons[f_idx];
     if (pf.v.empty()) continue;
 
     SVG::Path path;
     for (size_t i = 0; i < pf.v.size(); ++i) {
-      const vec2 &v = debug_result.mesh.vertices[pf.v[i]];
+      const vec2 &v = dr.mesh.vertices[pf.v[i]];
       const auto &[sx, sy] = scaler.Scale(v);
 
       if (i == 0) {
@@ -201,7 +174,7 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
     }
     path.data.push_back(SVG::ClosePath{});
 
-    if (face_overlaps.Get(f_idx)) {
+    if (dr.face_overlap[f_idx] != -1) {
       SVG::G error_group;
       error_group.style.fill_color = 0xFF0000FF;
       error_group.children = {SVG::Node{std::move(path)}};
@@ -244,14 +217,14 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
       g->children.push_back(SVG::Node{std::move(e_node)});
     };
 
-  for (size_t f_idx = 0; f_idx < debug_result.mesh.polygons.size(); ++f_idx) {
-    const PlacedFace &pf = debug_result.mesh.polygons[f_idx];
+  for (size_t f_idx = 0; f_idx < dr.mesh.polygons.size(); ++f_idx) {
+    const PlacedFace &pf = dr.mesh.polygons[f_idx];
     if (pf.v.empty()) continue;
 
     vec2 center = {0.0, 0.0};
     for (int idx : pf.v) {
-      center.x += debug_result.mesh.vertices[idx].x;
-      center.y += debug_result.mesh.vertices[idx].y;
+      center.x += dr.mesh.vertices[idx].x;
+      center.y += dr.mesh.vertices[idx].y;
     }
     center.x /= pf.v.size();
     center.y /= pf.v.size();
@@ -260,8 +233,8 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
 
     for (size_t i = 0; i < pf.v.size(); ++i) {
       const int edge_idx = aug.face_edges[f_idx][i];
-      vec2 p0 = debug_result.mesh.vertices[pf.v[i]];
-      vec2 p1 = debug_result.mesh.vertices[pf.v[(i + 1) % pf.v.size()]];
+      vec2 p0 = dr.mesh.vertices[pf.v[i]];
+      vec2 p1 = dr.mesh.vertices[pf.v[(i + 1) % pf.v.size()]];
       vec2 mid = {(p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5};
 
       vec2 dir = {center.x - mid.x, center.y - mid.y};

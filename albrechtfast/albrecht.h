@@ -199,9 +199,11 @@ struct Albrecht {
     // True if the graph can be embedded in the plane without
     // overlap.
     bool is_planar = false;
-    // If non-planar, an example of overlapping faces, given
-    // as two face indices with f0 < f1.
-    std::optional<std::pair<int, int>> overlapping_faces;
+
+    // Parallel to the faces. If the face overlaps other
+    // faces, the index of one face it overlaps. If the
+    // face is non-overlapping, then -1.
+    std::vector<int> face_overlap;
 
     /*
       old

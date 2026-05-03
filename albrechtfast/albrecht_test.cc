@@ -208,9 +208,13 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
         dr.is_connected ? AGREEN("true") : ARED("false"));
   Print("Planar? {}\n",
         dr.is_planar ? AGREEN("true") : ARED("false"));
-  if (dr.overlapping_faces.has_value()) {
-    const auto &[f0, f1] = dr.overlapping_faces.value();
-    Print("Overlapping: " ARED("{} {}") "\n", f0, f1);
+  for (int f0 = 0; f0 < num_faces; f0++) {
+    int f1 = dr.face_overlap[f0];
+    if (f0 != -1) {
+      Print("Overlapping: " ARED("{} {}") "\n", f0, f1);
+      // Just print one.
+      break;
+    }
   }
   Print("Is net: {}\n", dr.is_net ? AGREEN("true") : ARED("false"));
 
