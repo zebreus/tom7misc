@@ -59,6 +59,10 @@ struct DB {
   // Or abort.
   Hard GetHard(int id);
 
+  std::vector<Hard> AllHard(bool include_invalid = false);
+
+  void MarkValidity(int id, bool valid);
+
   void AddHard(const Polyhedron &poly, int method,
                int64_t netness_numer, int64_t netness_denom);
 

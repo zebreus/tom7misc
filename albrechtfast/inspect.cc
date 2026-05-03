@@ -14,6 +14,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bit-string.h"
 #include "db.h"
 #include "geom/polyhedra.h"
@@ -102,6 +103,10 @@ static void Inspect(int id, std::string_view filename) {
       });
   }
 
+  status.Remove();
+  Print("In {} attempts, Got {} net(s) and {} non-net(s).\n",
+        attempts, nets.size(), non_nets.size());
+
   std::vector<SVG::Node> quadrant_roots;
   for (int i = 0; i < 3; ++i) {
     quadrant_roots.push_back(std::move(non_nets[i].svg.root));
@@ -145,6 +150,7 @@ static void Inspect(int id, std::string_view filename) {
 
   // Save the SVG to the named file.
   Util::WriteFile(filename, contents);
+  Print("Wrote " AGREEN("{}") "\n", filename);
 }
 
 int main(int argc, char **argv) {

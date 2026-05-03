@@ -1228,3 +1228,46 @@ std::string PartialPolyhedron::DebugString() const {
   return s;
 }
 
+
+FaceChooser::FaceChooser(
+    // The feasible region. This will be on the 2D
+    // segment (0, 0)-(edge_len, 0) where edge_len
+    // is the length of the 3D edge.
+    const std::vector<vec2> &feasible_poly,
+    // The edge being extended.
+    const vec3 &p0, const vec3 &p1,
+    // The normal of the existing face that's being extended.
+    // (the "left face" in a partial polyhedron). The dihedral
+    // angle is measured from this.
+    const vec3 &normal_left,
+    // The dihedral angle.
+    double angle,
+    // The diameter of the current polyhedron,
+    // which we use to limit the sampled face's size.
+    double diameter) : p0(p0), p1(p1) {
+  vec3 edge_dir = yocto::normalize(p1 - p0);
+  vec3 outward_dir = yocto::cross(edge_dir, normal_left);
+
+  // Calculate the normal of the plane containing the new face.
+  vec3 n_new =
+    std::cos(angle) * normal_left +
+    std::sin(angle) * outward_dir;
+
+  // Define a 2D local coordinate system for the new face.
+  origin = p1;
+  x_dir = yocto::normalize(p0 - p1);
+  y_dir = yocto::cross(n_new, x_dir);
+
+  edge_len = yocto::length(p0 - p1);
+
+  v_top = {0.0, 0.0};
+  for (int j = 0; j < (int)feasible_poly.size(); j++) {
+    if (feasible_poly[j].y > v_top.y) {
+      v_top = feasible_poly[j];
+    }
+  }
+  CHECK(v_top.y > 1e-5) << "Polygon must have area in +y";
+
+  max_dist = std::max(edge_len, diameter * MAX_DIAMETER_RATIO);
+}
+

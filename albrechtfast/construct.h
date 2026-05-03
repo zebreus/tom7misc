@@ -315,32 +315,7 @@ struct FaceChooser {
       double angle,
       // The diameter of the current polyhedron,
       // which we use to limit the sampled face's size.
-      double diameter) : p0(p0), p1(p1) {
-    vec3 edge_dir = yocto::normalize(p1 - p0);
-    vec3 outward_dir = yocto::cross(edge_dir, normal_left);
-
-    // Calculate the normal of the plane containing the new face.
-    vec3 n_new =
-      std::cos(angle) * normal_left +
-      std::sin(angle) * outward_dir;
-
-    // Define a 2D local coordinate system for the new face.
-    origin = p1;
-    x_dir = yocto::normalize(p0 - p1);
-    y_dir = yocto::cross(n_new, x_dir);
-
-    edge_len = yocto::length(p0 - p1);
-
-    v_top = {0.0, 0.0};
-    for (int j = 0; j < (int)feasible_poly.size(); j++) {
-      if (feasible_poly[j].y > v_top.y) {
-        v_top = feasible_poly[j];
-      }
-    }
-    CHECK(v_top.y > 1e-5) << "Polygon must have area in +y";
-
-    max_dist = std::max(edge_len, diameter * MAX_DIAMETER_RATIO);
-  }
+      double diameter);
 
   // Generates a 2D triangular face given two continuous parameters in [0, 1].
   // u determines the base point along the boundary edge.

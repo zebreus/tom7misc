@@ -94,7 +94,8 @@ void DB::Init() {
                       "method integer not null, "
                       "createdate integer not null, "
                       "netness_numer not null, "
-                      "netness_denom not null "
+                      "netness_denom not null, "
+                      "invalid boolean not null default 0"
                       ")");
 }
 
@@ -144,6 +145,28 @@ void DB::AddHard(const Polyhedron &poly, int method,
           netness_numer, netness_denom));
 }
 
+std::vector<Hard> DB::AllHard(bool include_invalid) {
+  std::string query =
+      "select "
+      "id, poly, method, createdate, netness_numer, netness_denom "
+      "from hard";
+  if (!include_invalid) {
+    query += " where invalid = 0";
+  }
+  return GetHardForQuery(db->ExecuteString(query));
+}
+
+void DB::MarkValidity(int id, bool valid) {
+  db->ExecuteAndPrint(
+      std::format(
+          "update hard "
+          "set invalid = {} "
+          "where id = {}",
+          valid ? 0 : 1,
+          id));
+}
+
+
 void DB::Spreadsheet(std::string_view filename) {
   std::string content = "id\tfaces\tedges\tverts"
     "\tmethod\tcreatedate\tnumer\tdenom\n";
@@ -155,7 +178,8 @@ void DB::Spreadsheet(std::string_view filename) {
             std::format(
                 "select "
                 "id, poly, method, createdate, netness_numer, netness_denom "
-                "from hard")));
+                "from hard "
+                "where invalid = 0")));
   for (int i = 0; i < (int)hards.size(); i++) {
     const Hard &h = hards[i];
 
