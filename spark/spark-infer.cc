@@ -261,6 +261,7 @@ event: response.completed
 
 Spark::StreamingModelResponse::~StreamingModelResponse() = default;
 
+namespace {
 struct SMRImpl : public Spark::StreamingModelResponse {
   struct Shared {
     std::mutex mu;
@@ -304,7 +305,7 @@ struct SMRImpl : public Spark::StreamingModelResponse {
     std::unique_lock<std::mutex> lock(shared->mu);
     shared->cv.wait(lock, [this] {
       return shared->state == State::DONE ||
-             shared->state == State::ERROR;
+        shared->state == State::ERROR;
     });
     return shared->full_content;
   }
@@ -313,25 +314,33 @@ struct SMRImpl : public Spark::StreamingModelResponse {
     std::unique_lock<std::mutex> lock(shared->mu);
     shared->cv.wait(lock, [this] {
       return shared->state == State::DONE ||
-             shared->state == State::ERROR;
+        shared->state == State::ERROR;
     });
     return shared->error;
   }
 
-  std::string ThoughtToken() override {
+  PollResult Poll() override {
     MutexLock ml(&shared->mu);
-    std::string ret = std::move(shared->thought_queue);
-    shared->thought_queue.clear();
-    return ret;
-  }
-
-  std::string ContentToken() override {
-    MutexLock ml(&shared->mu);
-    std::string ret = std::move(shared->content_queue);
-    shared->content_queue.clear();
-    return ret;
+    if (!shared->thought_queue.empty()) {
+      std::string ret = std::move(shared->thought_queue);
+      shared->thought_queue.clear();
+      return {Thought{std::move(ret)}};
+    }
+    if (!shared->content_queue.empty()) {
+      std::string ret = std::move(shared->content_queue);
+      shared->content_queue.clear();
+      return {Content{std::move(ret)}};
+    }
+    if (shared->state == State::ERROR) {
+      return {Error{shared->error}};
+    }
+    if (shared->state == State::DONE) {
+      return {Done{}};
+    }
+    return {Wait{}};
   }
 };
+}
 
 std::unique_ptr<Spark::StreamingModelResponse>
 Spark::Stream(const ModelRequest &req, int verbose) {

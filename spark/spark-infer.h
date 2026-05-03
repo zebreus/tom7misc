@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 struct Spark {
@@ -41,20 +42,35 @@ struct Spark {
 
     virtual State GetState() = 0;
 
-    // These block until complete. The string may be empty, for
-    // example if an error occurs.
+    // These block until that channel is complete. The string may be
+    // empty, for example if an error occurs. These can be called
+    // in any order.
     virtual std::string FullThought() = 0;
     virtual std::string FullContent() = 0;
     virtual std::string FullError() = 0;
 
-    // Polling interface. Each token is returned at most once.
-    // A token does not necessarily correspond to a model token;
-    // it could be the whole response at once.
-    // Returns the empty string if there is no token ready yet, or we
-    // have returned them all (use GetState to distinguish between
-    // these situations).
-    virtual std::string ThoughtToken() = 0;
-    virtual std::string ContentToken() = 0;
+    // Non-blocking polling interface. Each thought or content token
+    // is returned at most once. (A token does not necessarily
+    // correspond to a model token; it could be the whole response at
+    // once.) Once an error occurs, it is permanent. Done is returned
+    // on success (and is then permanent).
+
+    struct Thought {
+      std::string tok;
+    };
+    struct Content {
+      std::string tok;
+    };
+    struct Error {
+      std::string msg;
+    };
+    struct Done { };
+    // Nothing to return.
+    struct Wait { };
+
+    using PollResult = std::variant<Thought, Content, Error, Done, Wait>;
+
+    virtual PollResult Poll() = 0;
 
     virtual ~StreamingModelResponse() = 0;
   };

@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <variant>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -51,65 +52,32 @@ static void TestSpark() {
     std::unique_ptr<Spark::StreamingModelResponse> res =
       spark.Stream(req, 1);
 
-    using State = Spark::StreamingModelResponse::State;
-
     std::string assembled_thought, assembled_content;
 
     auto ThoughtToken = [&](std::string_view tok) {
-        Print(AGREY("{}"), tok);
-        assembled_thought.append(tok);
-      };
+      Print(AGREY("{}"), tok);
+      assembled_thought.append(tok);
+    };
 
     auto ContentToken = [&](std::string_view tok) {
-        Print(APURPLE("{}"), tok);
-        assembled_content.append(tok);
-      };
+      Print(APURPLE("{}"), tok);
+      assembled_content.append(tok);
+    };
 
     using namespace std::chrono_literals;
-    bool done = false;
-    while (!done) {
-      switch (res->GetState()) {
-      case State::ERROR:
-        LOG(FATAL) << "Error: " << res->FullError();
-        break;
+    using SMR = Spark::StreamingModelResponse;
 
-      case State::THINKING: {
-        std::string tok = res->ThoughtToken();
-        if (tok.empty()) {
-          std::this_thread::sleep_for(100ms);
-        } else {
-          ThoughtToken(tok);
-        }
-        break;
-      }
-
-      case State::CONTENT: {
-        {
-          std::string ttok = res->ThoughtToken();
-          if (!ttok.empty()) ThoughtToken(ttok);
-        }
-
-        std::string tok = res->ContentToken();
-        if (tok.empty()) {
-          std::this_thread::sleep_for(100ms);
-        } else {
-          ContentToken(tok);
-        }
-        break;
-      }
-
-      case State::DONE:
-        {
-          std::string ttok = res->ThoughtToken();
-          if (!ttok.empty()) ThoughtToken(ttok);
-        }
-
-        {
-          std::string ttok = res->ContentToken();
-          if (!ttok.empty()) ContentToken(ttok);
-        }
-
-        done = true;
+    for (;;) {
+      auto p = res->Poll();
+      if (auto* t = std::get_if<SMR::Thought>(&p)) {
+        ThoughtToken(t->tok);
+      } else if (auto* c = std::get_if<SMR::Content>(&p)) {
+        ContentToken(c->tok);
+      } else if (auto* e = std::get_if<SMR::Error>(&p)) {
+        LOG(FATAL) << "Error: " << e->msg;
+      } else if (std::holds_alternative<SMR::Wait>(p)) {
+        std::this_thread::sleep_for(10ms);
+      } else if (std::holds_alternative<SMR::Done>(p)) {
         break;
       }
     }
