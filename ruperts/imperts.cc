@@ -24,6 +24,7 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "opt/opt.h"
 #include "periodically.h"
@@ -77,7 +78,7 @@ static double InnerDistanceLoss(
   // Although computing the convex hull is expensive, the tests
   // below are O(n*m), so it is helpful to significantly reduce
   // one of the factors.
-  const std::vector<int> outer_hull = GrahamScan(souter.vertices);
+  const std::vector<int> outer_hull = Hull2D::GrahamScan(souter.vertices);
   HullInscribedCircle circle(souter.vertices, outer_hull);
 
   // Does every vertex in inner fall inside the outer shadow?
@@ -176,8 +177,8 @@ static void SaveImprovement(SolutionDB *db,
           return;
         }
 
-        std::vector<int> outer_hull = QuickHull(souter.vertices);
-        std::vector<int> inner_hull = QuickHull(sinner.vertices);
+        std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+        std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
         rendering.RenderHull(souter, outer_hull, outer_color);
         rendering.RenderHull(sinner, inner_hull, inner_color);

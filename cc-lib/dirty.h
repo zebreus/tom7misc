@@ -1,5 +1,9 @@
-#ifndef _RUPERTS_DIRTY_H
-#define _RUPERTS_DIRTY_H
+
+// Experimental "Dirty rectangles"-like data structure.
+// It's just a raster bitmap!
+
+#ifndef _CC_LIB_DIRTY_H
+#define _CC_LIB_DIRTY_H
 
 #include <cmath>
 #include <utility>
@@ -8,7 +12,6 @@
 
 #include "image.h"
 
-// XXX To cc-lib?
 // TODO: Allow a scale parameter to reduce the minimum feature
 // size; we rarely need pixel precision.
 struct Dirty {

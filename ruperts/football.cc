@@ -26,12 +26,13 @@
 #include "big-csg.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
+#include "geom/hull-2d.h"
 #include "geom/mesh.h"
+#include "geom/polyhedra.h"
 #include "geom/tree-3d.h"
 #include "nd-solutions.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "rendering.h"
 #include "ruperts-util.h"
@@ -529,6 +530,7 @@ static void Plot() {
               "football-2D-21.png");
 }
 
+[[maybe_unused]]
 static void STL() {
   Polyhedron poly = Football(0.0, 0.0, 1.0);
   SaveAsSTL(poly, "football001.stl");
@@ -542,6 +544,7 @@ static void STL() {
   SaveAsSTL(poly3, "football445.stl");
 }
 
+[[maybe_unused]]
 static void GetSol() {
   StatusBar status(1);
   NDSolutions<3> sols("football.nds");
@@ -617,7 +620,7 @@ static void GetSol() {
     Polyhedron opoly = Rotate(poly, outer);
     Polyhedron ipoly = Rotate(poly, inner);
     Mesh2D sinner = Shadow(ipoly);
-    std::vector<int> hull = QuickHull(sinner.vertices);
+    std::vector<int> hull = Hull2D::QuickHull(sinner.vertices);
 
     std::vector<vec2> polygon;
     polygon.reserve(hull.size());

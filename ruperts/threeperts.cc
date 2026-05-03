@@ -17,6 +17,7 @@
 #include "atomic-util.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "opt/opt.h"
 #include "periodically.h"
@@ -167,7 +168,8 @@ struct Threeperts {
           // Although computing the convex hull is expensive, the tests
           // below are O(n*m), so it is helpful to significantly reduce
           // one of the factors.
-          const std::vector<int> outer_hull = GrahamScan(souter.vertices);
+          const std::vector<int> outer_hull =
+              Hull2D::GrahamScan(souter.vertices);
           if (outer_hull.size() < 3) {
             // If the outer hull is degenerate, then the inner hull
             // cannot be strictly within it. We don't have a good
@@ -176,12 +178,14 @@ struct Threeperts {
           }
 
           // Same for inner/middle pair.
-          const std::vector<int> middle_hull = GrahamScan(smiddle.vertices);
+          const std::vector<int> middle_hull =
+              Hull2D::GrahamScan(smiddle.vertices);
           if (middle_hull.size() < 3) {
             return {1'000'000.0, 1'000'000.0};
           }
 
-          const std::vector<int> inner_hull = GrahamScan(sinner.vertices);
+          const std::vector<int> inner_hull =
+              Hull2D::GrahamScan(sinner.vertices);
           // This would "fit", but we never expect this to be
           // degenerate. Could be something like a 0 quaternion.
           // Reject such situations as well.

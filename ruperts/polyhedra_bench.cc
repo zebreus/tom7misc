@@ -10,6 +10,7 @@
 #include "base/do-not-optimize.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "geom/hull-2d.h"
 #include "periodically.h"
 #include "ruperts-util.h"
 #include "status-bar.h"
@@ -57,7 +58,7 @@ static double SampleWithHull(const Polyhedron &poly, ArcFour *rc) {
   Mesh2D sinner = Shadow(Rotate(poly, inner_frame));
 
   // For snub cube, Graham Scan seems to be fastest.
-  const std::vector<int> outer_hull = GrahamScan(souter.vertices);
+  const std::vector<int> outer_hull = Hull2D::GrahamScan(souter.vertices);
   HullInscribedCircle circle(souter.vertices, outer_hull);
 
   // Does every vertex in inner fall inside the outer shadow?
@@ -134,8 +135,8 @@ static void BenchPolyTester() {
     Mesh2D sinner = Shadow(Rotate(poly, inner_frame));
 
     // For snub cube, Graham Scan seems to be fastest.
-    const std::vector<int> outer_hull = GrahamScan(souter.vertices);
-    const std::vector<int> inner_hull = GrahamScan(sinner.vertices);
+    const std::vector<int> outer_hull = Hull2D::GrahamScan(souter.vertices);
+    const std::vector<int> inner_hull = Hull2D::GrahamScan(sinner.vertices);
 
     std::vector<vec2> outer_poly = GetPoly(souter.vertices, outer_hull);
     std::vector<vec2> inner_poly = GetPoly(sinner.vertices, inner_hull);

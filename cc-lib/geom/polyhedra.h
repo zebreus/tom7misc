@@ -268,9 +268,6 @@ inline Mesh2D Translate(const Mesh2D &m, const vec2 &t) {
   return ret;
 }
 
-bool IsHullConvex(std::span<const vec2> points,
-                  std::span<const int> polygon);
-
 bool IsPolyConvex(std::span<const vec2> poly);
 
 // Screen clockwise = cartesian CCW.

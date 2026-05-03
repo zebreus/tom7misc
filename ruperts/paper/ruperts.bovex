@@ -1957,7 +1957,7 @@ Then you can run this thing and it can tell you whether it is
 satisfiable (with solution!) or whether it is unsatisfiable
 (proving that the conjecture is false, at least if Z3 does not
 have a bug) or “unknown” if it can’t figure it out one way or the
-other (some theories are undecidable, even for some decidable
+other (some theories are undecidable, and even for some decidable
 theories, Z3 is incomplete). Or it can print
 
 [monospace-block[(nlsat :conflicts 2 :decisions 0 :propagations 40

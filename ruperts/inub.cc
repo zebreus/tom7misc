@@ -25,11 +25,13 @@
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "bignum/big-interval.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "bounds.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "hypercube.h"
 #include "image.h"
@@ -1652,7 +1654,7 @@ struct Hypersolver {
       // you get a kind of donut. So to be perfectly clear,
       // effiency here is judged relative to the convex hull
       // of the shape.)
-      std::vector<int> sample_hull = QuickHull(sampled_points);
+      std::vector<int> sample_hull = Hull2D::QuickHull(sampled_points);
       double hull_area = AreaOfHull(sampled_points, sample_hull);
 
       double efficiency = hull_area / aabb.Area().ToDouble();
@@ -2667,7 +2669,7 @@ struct Hypersolver {
     // means positive area.
     CHECK(SignedAreaOfHull(mesh, hull) > 0.0);
     // Of course convex hull should be convex.
-    CHECK(IsHullConvex(mesh.vertices, hull));
+    CHECK(Hull2D::IsHullConvex(mesh.vertices, hull));
     // Must contain the origin.
     CHECK(PointInPolygon(vec2{0, 0}, mesh.vertices, hull));
   }

@@ -13,6 +13,7 @@
 
 #include "ansi.h"
 #include "arcfour.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "image.h"
 #include "mov-recorder.h"
@@ -81,12 +82,12 @@ static void AnimateHull(std::string_view filename) {
     }
 
     Timer timer1;
-    std::vector<int> hull1 = GrahamScan(points);
+    std::vector<int> hull1 = Hull2D::GrahamScan(points);
     sec1 += timer1.Seconds();
 
     #if 0
     Timer timer2;
-    std::vector<int> hull2 = QuickHull(points);
+    std::vector<int> hull2 = Hull2D::QuickHull(points);
     sec2 += timer2.Seconds();
     #endif
 
@@ -177,7 +178,7 @@ static void Visualize(const Polyhedron &poly) {
 
     printf("Get convex hull (%d vertices):\n",
            (int)mesh.vertices.size());
-    std::vector<int> hull = QuickHull(mesh.vertices);
+    std::vector<int> hull = Hull2D::QuickHull(mesh.vertices);
     printf("Hull size %d\n", (int)hull.size());
     // rendering.RenderHull(mesh, hull);
 

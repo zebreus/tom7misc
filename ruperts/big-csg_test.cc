@@ -9,18 +9,14 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "geom/hull-2d.h"
 #include "geom/mesh.h"
 #include "geom/polyhedra.h"
 #include "periodically.h"
 #include "randutil.h"
-#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
-
-static inline double IsNear(double a, double b) {
-  return std::abs(a - b) < 0.0000001;
-}
 
 #define CHECK_NEAR(f, g) do {                                           \
   const double fv = (f);                                                \
@@ -43,7 +39,7 @@ static void StressTest() {
       vertices.push_back(p);
     }
 
-    std::vector<int> hull = QuickHull(vertices);
+    std::vector<int> hull = Hull2D::QuickHull(vertices);
 
     std::vector<vec2> polygon;
     for (int i : hull) polygon.push_back(vertices[i]);

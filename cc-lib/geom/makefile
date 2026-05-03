@@ -38,6 +38,9 @@ tree-nd_test.exe : tree-nd_test.o $(CC_LIB_OBJECTS)
 mesh_test.exe : mesh.o mesh_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+hull-2d_test.exe : hull-2d.o hull-2d_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 hull-3d_test.exe : hull-3d.o hull-3d_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 

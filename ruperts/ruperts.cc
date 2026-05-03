@@ -27,19 +27,20 @@
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
 #include "image.h"
 #include "nice.h"
 #include "opt/opt.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "rendering.h"
+#include "ruperts-util.h"
+#include "solutions.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "ruperts-util.h"
-#include "geom/polyhedra.h"
-#include "rendering.h"
-#include "solutions.h"
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(iters, attempts, u1_, u2_, u3_, u4_, u5_, u6_);
@@ -66,8 +67,8 @@ static void SaveSolution(const Polyhedron &poly,
     Polyhedron inner = Rotate(poly, inner_frame);
     Mesh2D souter = Shadow(outer);
     Mesh2D sinner = Shadow(inner);
-    std::vector<int> outer_hull = QuickHull(souter.vertices);
-    std::vector<int> inner_hull = QuickHull(sinner.vertices);
+    std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+    std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
     Rendering rendering(poly, 3840, 2160);
     rendering.RenderHull(souter, outer_hull, 0xAA0000FF);
@@ -143,7 +144,7 @@ struct Solver {
     rendering.DarkenBG();
 
     rendering.RenderMesh(sinner);
-    std::vector<int> hull = QuickHull(sinner.vertices);
+    std::vector<int> hull = Hull2D::QuickHull(sinner.vertices);
     rendering.RenderHull(sinner, hull, 0x000000AA);
     rendering.RenderBadPoints(sinner, souter);
     rendering.img.Save(filename);
@@ -293,7 +294,7 @@ struct HullSolver : public Solver<SolutionDB::METHOD_HULL> {
     Polyhedron outer = Rotate(polyhedron, outer_frame);
     Mesh2D souter = Shadow(outer);
 
-    const std::vector<int> shadow_hull = QuickHull(souter.vertices);
+    const std::vector<int> shadow_hull = Hull2D::QuickHull(souter.vertices);
     // PERF: HullCircle would probably be helpful here.
 
     // Starting orientation/position.
@@ -471,7 +472,7 @@ struct MaxSolver : public Solver<SolutionDB::METHOD_MAX> {
         Mesh2D souter = Shadow(outer);
 
         // PERF: Now we want a faster convex hull algorithm...
-        const std::vector<int> shadow_hull = QuickHull(souter.vertices);
+        const std::vector<int> shadow_hull = Hull2D::QuickHull(souter.vertices);
         return -AreaOfHull(souter, shadow_hull);
       };
 
@@ -486,7 +487,7 @@ struct MaxSolver : public Solver<SolutionDB::METHOD_MAX> {
     const frame3 outer_frame = OuterFrame(area_args);
     Polyhedron outer = Rotate(polyhedron, outer_frame);
     Mesh2D souter = Shadow(outer);
-    const std::vector<int> shadow_hull = QuickHull(souter.vertices);
+    const std::vector<int> shadow_hull = Hull2D::QuickHull(souter.vertices);
 
     // Starting orientation/position for inner polyhedron.
     const quat4 inner_rot = RandomQuaternion(rc);
@@ -669,7 +670,7 @@ struct ParallelSolver : public Solver<SolutionDB::METHOD_PARALLEL> {
     // convex hull once up front.
     const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
     const std::vector<vec2> inner_hull_pts = [&]() {
-        const std::vector<int> inner_hull = QuickHull(sinner.vertices);
+        const std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
         std::vector<vec2> v;
         v.reserve(inner_hull.size());
         for (int p : inner_hull) {
@@ -711,7 +712,7 @@ struct ParallelSolver : public Solver<SolutionDB::METHOD_PARALLEL> {
         // Computing the outer hull is still much faster (at least for
         // snub cube) even though we have a reduced set of inner
         // points.
-        const std::vector<int> outer_hull = GrahamScan(souter.vertices);
+        const std::vector<int> outer_hull = Hull2D::GrahamScan(souter.vertices);
         HullInscribedCircle circle(souter.vertices, outer_hull);
 
         // Does every vertex in inner fall inside the outer shadow?
@@ -784,7 +785,7 @@ struct SpecialSolver : public Solver<SolutionDB::METHOD_SPECIAL> {
 
     const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
     const std::vector<vec2> inner_hull_pts = [&]() {
-        const std::vector<int> inner_hull = QuickHull(sinner.vertices);
+        const std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
         std::vector<vec2> v;
         v.reserve(inner_hull.size());
         for (int p : inner_hull) {
@@ -822,7 +823,7 @@ struct SpecialSolver : public Solver<SolutionDB::METHOD_SPECIAL> {
         // Computing the outer hull is still much faster (at least for
         // snub cube) even though we have a reduced set of inner
         // points.
-        const std::vector<int> outer_hull = GrahamScan(souter.vertices);
+        const std::vector<int> outer_hull = Hull2D::GrahamScan(souter.vertices);
         HullInscribedCircle circle(souter.vertices, outer_hull);
 
         // Does every vertex in inner fall inside the outer shadow?

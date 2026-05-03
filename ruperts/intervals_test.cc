@@ -20,6 +20,7 @@
 #include "big-polyhedra.h"
 #include "bignum/big-interval.h"
 #include "bignum/big.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "patches.h"
 #include "periodically.h"
@@ -491,7 +492,7 @@ static void BenchAABB(const F1 &f1,
     }
 
 
-    std::vector<int> hull_indices = QuickHull(points);
+    std::vector<int> hull_indices = Hull2D::QuickHull(points);
     double hull_area = AreaOfHull(points, hull_indices);
 
     double aabb1_area = aabb1.Area().ToDouble();

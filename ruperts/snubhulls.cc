@@ -21,12 +21,13 @@
 #include "bignum/big.h"
 #include "bounds.h"
 #include "color-util.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
 #include "geom/tree-3d.h"
 #include "hashing.h"
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
-#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "ruperts-util.h"
 #include "status-bar.h"
@@ -118,10 +119,10 @@ static void PlotPatch(const Boundaries &boundaries,
 
   const vec3 v = normalize(SmallVec(bigv));
 
-  const std::vector<int> hull = [&]() {
+  const std::vector<int> hull = [&]() -> std::vector<int> {
       frame3 frame = FrameFromViewPos(v);
       Mesh2D shadow = Shadow(Rotate(small_poly, frame));
-      return QuickHull(shadow.vertices);
+      return Hull2D::QuickHull(shadow.vertices);
     }();
 
   // Generate vectors that have the same code.
@@ -462,6 +463,7 @@ static void BigSnubHulls() {
 // Visualize a sample of the distinct convex hulls.
 // By distinct convex hull, we mean a specific set of
 // points on the hull.
+[[maybe_unused]]
 static void SnubHulls() {
 
   Polyhedron cube = SnubCube();
@@ -530,7 +532,7 @@ static void SnubHulls() {
             inverse(frame_fromz(vec3{0, 0, 0}, sphere_point));
           // frame3 frame = rotation_frame(small_quat);
           Mesh2D shadow = Shadow(Rotate(cube, frame));
-          std::vector<int> hull = QuickHull(shadow.vertices);
+          std::vector<int> hull = Hull2D::QuickHull(shadow.vertices);
 
           {
             MutexLock ml(&m);

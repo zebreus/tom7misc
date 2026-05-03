@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "rendering.h"
 #include "ruperts-util.h"
@@ -45,8 +46,8 @@ static void RenderAny(std::string_view name) {
     rendering.Save(std::format("topng-{}.png", name));
   }
 
-  std::vector<int> outer_hull = QuickHull(souter.vertices);
-  std::vector<int> inner_hull = QuickHull(sinner.vertices);
+  std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+  std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
   {
     Rendering rendering(polyhedron, 3840 * 2, 2160 * 2);

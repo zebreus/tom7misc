@@ -20,6 +20,7 @@
 #include "bignum/big-numbers.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
+#include "geom/hull-2d.h"
 #include "geom/point-map.h"
 #include "geom/polyhedra.h"
 #include "ruperts-util.h"
@@ -441,7 +442,7 @@ std::vector<int> BigHull(const std::vector<BigVec2> &bigvs) {
     dvs.emplace_back(dv);
   }
 
-  return QuickHull(dvs);
+  return Hull2D::QuickHull(dvs);
 }
 
 Polyhedron SmallPoly(const BigPoly &big) {

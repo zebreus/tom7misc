@@ -26,6 +26,7 @@
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/stringprintf.h"
+#include "geom/hull-2d.h"
 #include "geom/hull-3d.h"
 #include "geom/point-map.h"
 #include "geom/polyhedra.h"
@@ -1536,8 +1537,8 @@ static void DoAdversary(int64_t num_points) {
             Polyhedron ipoly = Rotate(poly, inner_frame);
             Mesh2D ishadow = Shadow(ipoly);
 
-            std::vector<int> ohull = QuickHull(oshadow.vertices);
-            std::vector<int> ihull = QuickHull(ishadow.vertices);
+            std::vector<int> ohull = Hull2D::QuickHull(oshadow.vertices);
+            std::vector<int> ihull = Hull2D::QuickHull(ishadow.vertices);
 
             // Heuristically, it would be better to move a vertex that is
             // on the inner hull (thus certainly increasing the area of the
@@ -1607,7 +1608,7 @@ static void DoAdversary(int64_t num_points) {
                 rendering.RenderHull(oshadow, ohull, 0xCCCCCCAA);
 
                 Mesh2D nishadow = Shadow(ipoly);
-                std::vector<int> nihull = QuickHull(nishadow.vertices);
+                std::vector<int> nihull = Hull2D::QuickHull(nishadow.vertices);
                 rendering.RenderHull(nishadow, nihull, 0x66FF66AA);
 
                 std::string filename = std::format("adversary{}.png", frames);

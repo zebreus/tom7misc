@@ -11,6 +11,7 @@
 
 #include "ansi.h"
 #include "big-csg.h"
+#include "geom/hull-2d.h"
 #include "geom/mesh.h"
 #include "geom/polyhedra.h"
 #include "rendering.h"
@@ -48,8 +49,8 @@ static void RenderPNG(const Polyhedron &polyhedron,
     rendering.Save(std::format("soltostl-{}.png", name));
   }
 
-  std::vector<int> outer_hull = QuickHull(souter.vertices);
-  std::vector<int> inner_hull = QuickHull(sinner.vertices);
+  std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+  std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
   {
     Rendering rendering(polyhedron, 3840 * 2, 2160 * 2);
@@ -90,7 +91,7 @@ static void RenderAny(std::string_view name) {
 
   Polyhedron inner = Rotate(polyhedron, inner_frame);
   Mesh2D sinner = Shadow(inner);
-  std::vector<int> hull = QuickHull(sinner.vertices);
+  std::vector<int> hull = Hull2D::QuickHull(sinner.vertices);
 
   std::vector<vec2> polygon;
   polygon.reserve(hull.size());

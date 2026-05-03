@@ -936,28 +936,6 @@ double PlanarityError(const Polyhedron &p) {
   return error;
 }
 
-bool IsHullConvex(std::span<const vec2> vertices,
-                  std::span<const int> polygon) {
-  if (polygon.size() <= 3) return true;
-  std::optional<int> s;
-  for (int i = 0; i < (int)polygon.size(); i++) {
-    const vec2 &p0 = vertices[polygon[i]];
-    const vec2 &p1 = vertices[polygon[(i + 1) % polygon.size()]];
-    const vec2 &p2 = vertices[polygon[(i + 2) % polygon.size()]];
-
-    vec2 e1 = p1 - p0;
-    vec2 e2 = p2 - p1;
-
-    double cx = cross(e1, e2);
-    if (std::abs(cx) < 1e-10) continue;
-    int sign = sgn(cx);
-    if (s.has_value() && s.value() != sign)
-      return false;
-    s = {sign};
-  }
-  return true;
-}
-
 bool IsPolyConvex(std::span<const vec2> poly) {
   if (poly.size() < 3) return false;
   std::optional<int> s;

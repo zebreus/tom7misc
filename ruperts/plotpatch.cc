@@ -15,11 +15,11 @@
 #include "big-polyhedra.h"
 #include "bounds.h"
 #include "color-util.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
-#include "geom/polyhedra.h"
-#include "ruperts-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "util.h"
@@ -40,10 +40,10 @@ static void PlotPatch(const Boundaries &boundaries,
 
   const vec3 v = normalize(SmallVec(bigv));
 
-  const std::vector<int> hull = [&]() {
+  const std::vector<int> hull = [&]() -> std::vector<int> {
       frame3 frame = FrameFromViewPos(v);
       Mesh2D shadow = Shadow(Rotate(small_poly, frame));
-      return QuickHull(shadow.vertices);
+      return Hull2D::QuickHull(shadow.vertices);
     }();
 
   // Generate vectors that have the same code.

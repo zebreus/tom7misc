@@ -14,9 +14,9 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "color-util.h"
+#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
 #include "image.h"
-#include "ruperts-util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -248,8 +248,8 @@ void Rendering::RenderSolution(const Polyhedron &poly,
                                const frame3 &inner_frame) {
   Mesh2D souter = Shadow(Rotate(poly, outer_frame));
   Mesh2D sinner = Shadow(Rotate(poly, inner_frame));
-  std::vector<int> outer_hull = QuickHull(souter.vertices);
-  std::vector<int> inner_hull = QuickHull(sinner.vertices);
+  std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+  std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
   RenderHull(souter, outer_hull, 0xFF7777AA);
   RenderHull(sinner, inner_hull, 0x77FF77AA);

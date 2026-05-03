@@ -29,10 +29,11 @@
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
 #include "image.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "geom/polyhedra.h"
 #include "rendering.h"
 #include "ruperts-util.h"
 #include "solutions.h"
@@ -64,8 +65,8 @@ static void SaveSolution(const Polyhedron &outer_poly,
     Polyhedron inner = Rotate(inner_poly, inner_frame);
     Mesh2D souter = Shadow(outer);
     Mesh2D sinner = Shadow(inner);
-    std::vector<int> outer_hull = QuickHull(souter.vertices);
-    std::vector<int> inner_hull = QuickHull(sinner.vertices);
+    std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+    std::vector<int> inner_hull = Hull2D::QuickHull(sinner.vertices);
 
     Rendering rendering(outer_poly, 3840, 2160);
     rendering.RenderHull(souter, outer_hull, 0xAA0000FF);
@@ -148,7 +149,7 @@ struct HeteroSolver {
     rendering.DarkenBG();
 
     rendering.RenderMesh(sinner);
-    std::vector<int> hull = QuickHull(sinner.vertices);
+    std::vector<int> hull = Hull2D::QuickHull(sinner.vertices);
     rendering.RenderHull(sinner, hull, 0x000000AA);
     rendering.RenderBadPoints(sinner, souter);
     rendering.img.Save(filename);
