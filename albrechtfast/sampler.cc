@@ -9,7 +9,6 @@
 #include <vector>
 #include <optional>
 
-#include "albrecht.h"
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
@@ -132,7 +131,7 @@ OneSample Sampler::ConstructSample(StatusBar *status,
         for (int sample = 0; sample < 100; ++sample) {
           double u = RandDouble(rc);
           double v = RandDouble(rc);
-          std::vector<vec2> poly = chooser.Generate2DFace(u, v);
+          std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
 
           double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
           if (overlap > best_overlap) {
@@ -143,8 +142,9 @@ OneSample Sampler::ConstructSample(StatusBar *status,
 
         if (best_overlap >= 0.0) {
           std::vector<vec3> best_face = chooser.ConvertTo3D(best_poly);
-          if (!pp.IsFeasible(edge_idx, best_face)) {
-            status->Print("Bug... Not Feasible!\n");
+          if (const char *problem =
+              pp.FeasibilityProblem(edge_idx, best_face)) {
+            status->Print("Not Feasible: " AGREY("{}") "\n", problem);
             break;
           }
 
@@ -165,6 +165,12 @@ OneSample Sampler::ConstructSample(StatusBar *status,
       ctr_degenerate++;
       continue;
     }
+
+    if (!IsManifold(opoly.value())) {
+      ctr_not_manifold++;
+      continue;
+    }
+
     if (opoly.value().faces->NumFaces() >= max_faces) {
       ctr_too_big++;
       continue;

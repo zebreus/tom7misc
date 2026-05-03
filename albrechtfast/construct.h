@@ -171,10 +171,12 @@ struct PartialPolyhedron {
   std::vector<vec2> ComputeFeasibleRegion(int edge_idx,
                                           double dihedral_angle) const;
 
-  // Check if adding the candidate face points to the specified boundary
-  // edge maintains convexity and manifold properties.
-  bool IsFeasible(int boundary_edge_idx,
-                  const std::vector<vec3> &new_face_pts) const;
+  // Check if adding the candidate face points to the specified
+  // boundary edge would maintain convexity and manifold properties.
+  // Returns nullptr if all is well, or else a message indicating the
+  // type of problem.
+  const char *FeasibilityProblem(int boundary_edge_idx,
+                                 const std::vector<vec3> &new_face_pts) const;
 
   // Measure the amount of overlap (in the current population of
   // candidate unfoldings) created by a new polygonal face attached to
@@ -343,7 +345,7 @@ struct FaceChooser {
   // Generates a 2D triangular face given two continuous parameters in [0, 1].
   // u determines the base point along the boundary edge.
   // v determines the height of the new vertex towards the feasible top.
-  std::vector<vec2> Generate2DFace(double u, double v) const {
+  std::vector<vec2> Triangular2DFace(double u, double v) const {
     static constexpr double LENGTH_MARGIN = 0.1;
     static constexpr double OM2L = 1.0 - 2.0 * LENGTH_MARGIN;
 

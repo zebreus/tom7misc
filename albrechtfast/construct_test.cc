@@ -139,7 +139,7 @@ static void TestAddFace() {
       FaceChooser chooser(poly, p0, p1, normal_left, angle, diameter);
 
       std::vector<vec2> new_poly =
-        chooser.Generate2DFace(RandDouble(&rc), RandDouble(&rc));
+        chooser.Triangular2DFace(RandDouble(&rc), RandDouble(&rc));
 
       CHECK(new_poly.size() >= 3) << "Face must have at least 3 vertices.";
 
@@ -377,7 +377,7 @@ static void TestReplenish() {
       FaceChooser chooser(poly, p0, p1, normal_left, angle, diameter);
 
       std::vector<vec2> new_poly =
-        chooser.Generate2DFace(RandDouble(&rc), RandDouble(&rc));
+        chooser.Triangular2DFace(RandDouble(&rc), RandDouble(&rc));
 
       std::vector<vec3> new_face_pts =
         chooser.ConvertTo3D(new_poly);

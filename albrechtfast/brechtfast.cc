@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <format>
 #include <mutex>
@@ -79,15 +80,19 @@ struct Brechtfast {
   }
 
   void LoadHisto() {
-    std::vector<std::string> vals = Util::ReadFileToLines(HistoFile());
+    std::string filename = HistoFile();
+    Print("Try load {}\n", filename);
+    std::vector<std::string> vals = Util::ReadFileToLines(filename);
+    Print("Got {} lines\n", vals.size());
     if (vals.size() != MAX_FACES * 101) {
-      Print("Invalid or missing histo file.\n");
+      status.Print("Invalid or missing histo file.\n");
       return;
     }
 
     for (int i = 0; i < vals.size(); i++) {
       histo[i] = Util::ParseInt64(vals[i], 0);
     }
+    Print("Loaded {} values from histo.\n", vals.size());
   }
 
   static constexpr int SAMPLE_LINE = 0;
@@ -155,24 +160,28 @@ struct Brechtfast {
     const int64_t seed = Rand64(&main_rc);
 
     std::mutex m;
+    status.Print("Begin parallel...\n");
+    fflush(stdout);
     ParallelFan(
         NUM_THREADS,
         [&](int thread_idx) {
           ArcFour rc(std::format("{}.{}", seed, thread_idx));
+          status.Print("Started thread {}.\n", thread_idx);
+          fflush(stdout);
 
           for (;;) {
 
             OneSample sample = Sample(&rc, METHOD);
-
-            time_sample += sample.sample_sec;
-            time_measure += sample.measure_sec;
 
             const Polyhedron &poly = sample.aug.poly;
             const int nfaces = poly.faces->NumFaces();
             const int nedges = poly.faces->NumEdges();
             const int nverts = poly.faces->NumVertices();
 
-            double netness = sample.numer / (double)sample.denom;
+            double netness =
+              // Should always have positive denominator..!
+              sample.denom == 0 ? 1.0 :
+              (sample.numer / (double)sample.denom);
             ctr_poly++;
             if (sample.numer == 0) {
               ctr_zero++;
@@ -183,6 +192,10 @@ struct Brechtfast {
 
             {
               MutexLock ml(&m);
+
+              time_sample += sample.sample_sec;
+              time_measure += sample.measure_sec;
+
               int pct = std::clamp((int)std::round(100.0 * netness), 0, 100);
               HistoCell(nfaces, pct)++;
 
@@ -201,80 +214,83 @@ struct Brechtfast {
               }();
             }
 
-            if (netness < best_netness) {
+            {
               MutexLock ml(&m);
-              std::string filename =
-                std::format("brecht-{}-{:.5g}.stl", time(nullptr),
-                            netness * 100.0);
-              status.Print(AGREEN("New best!") " {} faces, {} edges, {} vert. "
-                           "Wrote {}\n", nfaces, nedges, nverts, filename);
-              SaveAsSTL(poly, filename);
-              best_netness = netness;
+              if (netness < best_netness) {
+                std::string filename =
+                  std::format("brecht-{}-{:.5g}.stl", time(nullptr),
+                              netness * 100.0);
+                status.Print(AGREEN("New best!")
+                             " {} faces, {} edges, {} vert. "
+                             "Wrote {}\n", nfaces, nedges, nverts, filename);
+                SaveAsSTL(poly, filename);
+                best_netness = netness;
+              }
             }
 
-          status_per.RunIf([&]{
-              double total_time = timer.Seconds();
-              double sample_pct = (time_sample * 100.0) / total_time;
-              double measure_pct = (time_measure * 100.0) / total_time;
+            status_per.RunIf([&]{
+                double total_time = timer.Seconds();
+                double sample_pct = (time_sample * 100.0) / total_time;
+                double measure_pct = (time_measure * 100.0) / total_time;
 
-              // First line reserved for subprocess
-              status.LineStatus(1,
-                            "{}\n",
-                            Sampler::SampleStats());
-              status.LineStatus(
-                  2,
-                  "{} polys, {} zero, {} only, "
-                  "best {:.7g}, {} ({:.1f}% + {:.1f}%) \n",
-                  ctr_poly.Read(),
-                  ctr_zero.Read(),
-                  ctr_only_net.Read(),
-                  best_netness,
-                  ANSI::Time(total_time),
-                  sample_pct, measure_pct);
-            });
+                // First line reserved for subprocess
+                status.LineStatus(1,
+                              "{}\n",
+                              Sampler::SampleStats());
+                status.LineStatus(
+                    2,
+                    "{} polys, {} zero, {} only, "
+                    "best {:.7g}, {} ({:.1f}% + {:.1f}%) \n",
+                    ctr_poly.Read(),
+                    ctr_zero.Read(),
+                    ctr_only_net.Read(),
+                    best_netness,
+                    ANSI::Time(total_time),
+                    sample_pct, measure_pct);
+              });
 
-          histo_per.RunIf([&] {
-              MutexLock ml(&m);
-              int norm = 0;
-              for (int n : histo)
-                norm = std::max(norm, n);
-              if (norm > 0) {
-                ImageRGBA img(MAX_FACES, 101);
-                for (int y = 0; y <= 100; y++) {
-                  for (int x = 0; x < MAX_FACES; x++) {
-                    int count = HistoCell(x, 100 - y);
-                    double f = count / (double)norm;
-                    uint32_t c = count == 0
-                      ? 0x000000FF
-                      : ColorUtil::LinearGradient32(BLACKBODY, f);
-                    img.SetPixel32(x, y, c);
+            histo_per.RunIf([&] {
+                MutexLock ml(&m);
+                int norm = 0;
+                for (int n : histo)
+                  norm = std::max(norm, n);
+                if (norm > 0) {
+                  ImageRGBA img(MAX_FACES, 101);
+                  for (int y = 0; y <= 100; y++) {
+                    for (int x = 0; x < MAX_FACES; x++) {
+                      int count = HistoCell(x, 100 - y);
+                      double f = count / (double)norm;
+                      uint32_t c = count == 0
+                        ? 0x000000FF
+                        : ColorUtil::LinearGradient32(BLACKBODY, f);
+                      img.SetPixel32(x, y, c);
+                    }
                   }
+
+                  // Crop out left column because there are no such
+                  // polyhedra, and we want to fit in 80 columns.
+                  img = img.Crop32(3, 0, img.Width() - 3, img.Height());
+
+                  status.Print("{}\n", ANSIImage::HalfChar(img));
                 }
+              });
 
-                // Crop out left column because there are no such
-                // polyhedra, and we want to fit in 80 columns.
-                img = img.Crop32(3, 0, img.Width() - 3, img.Height());
-
-                status.Print("{}\n", ANSIImage::HalfChar(img));
-              }
-            });
-
-          flush_per.RunIf([&]{
-              MutexLock ml(&m);
-              SaveHisto();
-              bool any = false;
-              for (auto &ov : new_best) {
-                if (ov.has_value()) {
-                  any = true;
-                  const auto &[poly, method, numer, denom] = ov.value();
-                  db.AddHard(poly, method, numer, denom);
+            flush_per.RunIf([&]{
+                MutexLock ml(&m);
+                SaveHisto();
+                bool any = false;
+                for (auto &ov : new_best) {
+                  if (ov.has_value()) {
+                    any = true;
+                    const auto &[poly, method, numer, denom] = ov.value();
+                    db.AddHard(poly, method, numer, denom);
+                  }
+                  ov = std::nullopt;
                 }
-                ov = std::nullopt;
-              }
-              if (any) {
-                status.Print("Saved to DB.");
-              }
-            });
+                if (any) {
+                  status.Print("Saved to DB.");
+                }
+              });
 
           }
 
@@ -286,8 +302,13 @@ struct Brechtfast {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  printf("Started...\n");
+  fflush(stdout);
+
   {
     Brechtfast brechtfast;
+    printf("Created...\n");
+    fflush(stdout);
     brechtfast.Run();
   }
 

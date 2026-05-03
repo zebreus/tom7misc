@@ -290,10 +290,15 @@ void PartialPolyhedron::CheckDihedralAngles() const {
           break;
         }
       }
+
       if (test_v != -1) {
         vec3 p = vertices[test_v].pos;
+        vec3 p0 = vertices[e.v0].pos;
+        vec3 p1 = vertices[e.v1].pos;
         double dist = yocto::dot(f_left.plane.normal, p) - f_left.plane.d;
-        CHECK(dist < -1e-5)
+        double dist_to_hinge = yocto::length(
+            yocto::cross(p - p0, yocto::normalize(p1 - p0)));
+        CHECK(dist < -1e-5 * dist_to_hinge)
             << "Non-convex dihedral angle at edge " << i;
       }
     }
@@ -766,17 +771,18 @@ PartialPolyhedron::ComputeFeasibleRegion(int edge_idx,
   return poly;
 }
 
-bool PartialPolyhedron::IsFeasible(
+const char *PartialPolyhedron::FeasibilityProblem(
     int boundary_edge_idx, const std::vector<vec3> &new_face_pts) const {
   if (new_face_pts.size() < 3)
-    return false;
+    return "face has no area";
 
   if (boundary_edge_idx < 0 || boundary_edge_idx >= (int)edges.size()) {
-    return false;
+    return "boundary out of range";
   }
 
   const MeshEdge &e = edges[boundary_edge_idx];
-  if (e.left_face == -1 || e.right_face != -1) return false;
+  if (e.left_face == -1 || e.right_face != -1)
+    return "edge not on boundary";
 
   vec3 p0 = vertices[e.v0].pos;
   vec3 p1 = vertices[e.v1].pos;
@@ -792,10 +798,10 @@ bool PartialPolyhedron::IsFeasible(
       break;
     }
   }
-  if (!found_edge) return false;
+  if (!found_edge) return "edge not found";
 
   // Check planarity.
-  if (PlanarityError(new_face_pts) > 1e-4) return false;
+  if (PlanarityError(new_face_pts) > 1e-4) return "new face not planar";
 
   // Compute normal robustly using the cross product of sequential vertices.
   vec3 normal = {0.0, 0.0, 0.0};
@@ -805,7 +811,7 @@ bool PartialPolyhedron::IsFeasible(
     normal += yocto::cross(p_curr, p_next);
   }
   double len = yocto::length(normal);
-  if (len < 1e-5) return false;
+  if (len < 1e-5) return "degenerate normal";
   normal /= len;
 
   // Check strict convexity of the new face.
@@ -819,7 +825,7 @@ bool PartialPolyhedron::IsFeasible(
     vec3 cross = yocto::cross(e1, e2);
 
     if (yocto::dot(cross, normal) <= 1e-5) {
-      return false;
+      return "new face not convex";
     }
   }
 
@@ -827,7 +833,7 @@ bool PartialPolyhedron::IsFeasible(
   for (const vec3 &p : new_face_pts) {
     for (const HalfSpace &hs : half_spaces) {
       if (yocto::dot(hs.normal, p) > hs.d + 1e-4) {
-        return false;
+        return "points outside half-spaces";
       }
     }
   }
@@ -839,18 +845,22 @@ bool PartialPolyhedron::IsFeasible(
 
   for (const MeshVertex &v : vertices) {
     if (yocto::dot(new_hs.normal, v.pos) > new_hs.d + 1e-4) {
-      return false;
+      return "existing vertex outside new half-space";
     }
   }
 
   // Dihedral angle checks against the adjacent face.
   const MeshFace &f_left = faces[e.left_face];
   double dot_n = yocto::dot(f_left.plane.normal, normal);
-  if (dot_n <= -1.0 + 1e-5 || dot_n >= 1.0 - 1e-5) {
-    return false;
+  if (dot_n <= -1.0 + 1e-5) {
+    return "bad dihedral angle: faces folded back on each other";
+  }
+  if (dot_n >= 1.0 - 1e-5) {
+    return "bad dihedral angle: faces are coplanar";
   }
 
-  // Ensure strict convexity of the dihedral angle.
+  // Ensure strict convexity of the dihedral angle (it must fold
+  // "inward".
   int test_v_idx = -1;
   for (int i = 0; i < (int)new_face_pts.size(); ++i) {
     // Pick a vertex from the new face that isn't on the shared edge.
@@ -862,14 +872,18 @@ bool PartialPolyhedron::IsFeasible(
   }
 
   if (test_v_idx != -1) {
-    double dist = yocto::dot(f_left.plane.normal,
-                             new_face_pts[test_v_idx]) - f_left.plane.d;
-    if (dist >= -1e-5) {
-      return false;
+    vec3 pt = new_face_pts[test_v_idx];
+    double dist = yocto::dot(f_left.plane.normal, pt) - f_left.plane.d;
+    double dist_to_hinge = yocto::length(
+        yocto::cross(pt - p0, yocto::normalize(p1 - p0)));
+
+    if (dist >= -1e-5 * dist_to_hinge) {
+      return "dihedral angle is not strictly convex";
     }
   }
 
-  return true;
+  // OK.
+  return nullptr;
 }
 
 void PartialPolyhedron::AddFace(int boundary_edge_idx,
@@ -1027,6 +1041,10 @@ std::optional<Polyhedron> PartialPolyhedron::Close() const {
   for (const MeshVertex &v : vertices) {
     pts.push_back(v.pos);
   }
+  if (!IsWellConditioned(pts)) {
+    return std::nullopt;
+  }
+
   return PolyhedronFromConvexVertices(Hull3D::ReduceToHull(pts));
 }
 
