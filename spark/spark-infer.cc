@@ -259,7 +259,7 @@ event: response.completed
 
 #include <condition_variable>
 
-Spark::StreamingModelResponse::~StreamingModelResponse() = default;
+Spark::StreamingModelResponse::~StreamingModelResponse() {}
 
 namespace {
 struct SMRImpl : public Spark::StreamingModelResponse {

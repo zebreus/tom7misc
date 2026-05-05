@@ -4,23 +4,24 @@
 #include <algorithm>
 #include <cstdio>
 #include <format>
+#include <memory>
 #include <optional>
 #include <set>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "base/logging.h"
-#include "base/print.h"
 #include "base/stringprintf.h"
 #include "console.h"
 #include "net.h"
+#include "periodically.h"
 #include "spark-infer.h"
-#include "timer.h"
 #include "util.h"
-
 
 static constexpr std::string_view HOST = "10.0.0.34";
 static constexpr int PORT = 8080;
@@ -28,40 +29,12 @@ static constexpr int PORT = 8080;
 using ReqMessage = Spark::ReqMessage;
 using ModelRequest = Spark::ModelRequest;
 using ModelResponse = Spark::ModelResponse;
-
-[[maybe_unused]]
-static void Test() {
-  Spark spark(HOST, PORT);
-  ModelRequest req{
-    .messages = {
-      ReqMessage{
-        .role = "system",
-        .content = "Answer precisely."
-      },
-      ReqMessage{
-        .role = "user",
-        .content = "What is a bash one-liner to see how many cores "
-        "I have on a linux machine?",
-      },
-    },
-  };
-
-  Timer timer;
-  ModelResponse res = spark.Infer(req, 1);
-  Print("Got response in {}\n", ANSI::Time(timer.Seconds()));
-  if (!res.error.empty()) {
-    Print(ARED("{}") "\n", res.error);
-  } else {
-    if (!res.reasoning_content.empty()) {
-      Print(AGREY("{}") "\n", res.reasoning_content);
-    }
-
-    Print("{}\n", res.content);
-  }
-}
+using SMR = Spark::StreamingModelResponse;
 
 struct Conversation {
-  Conversation() : spark(HOST, PORT) {}
+  Conversation() : spark(HOST, PORT) {
+    console = std::make_unique<Console>(1, 1000, 1, 0);
+  }
 
   struct Message {
     std::string speaker;
@@ -82,7 +55,7 @@ struct Conversation {
   // 0: Only show the messages
   // 1: Shows sent data and thoughts
   // 2: Show debugging information
-  int verbosity = 1;
+  int verbosity = 0;
 
   std::vector<Message> messages;
   std::string preamble = "Chat between Tom and his Computer.";
@@ -95,14 +68,15 @@ struct Conversation {
   void Load(std::string_view filename) {
     std::vector<std::string> lines = Util::ReadFileToLines(filename);
     if (lines.size() < 2) {
-      Print(ARED("File not found / too short") ": {}\n", filename);
+      console->Print(ARED("File not found / too short") ": {}\n", filename);
       return;
     }
 
     std::vector<std::string> ppts = Util::Split(lines[0], ',');
     if (ppts.size() < 2) {
-      Print(ARED("First line should be comma-separated participants") ": {}\n",
-            lines[0]);
+      console->Print(ARED("First line should be comma-separated "
+                          "participants") ": {}\n",
+                     lines[0]);
     }
     participants.clear();
 
@@ -120,11 +94,19 @@ struct Conversation {
       if (std::optional<Message> omsg = ParseMessage(line, false)) {
         messages.emplace_back(std::move(omsg.value()));
       } else {
-        Print(AORANGE("Unparseable line") ": {}\n", line);
+        console->Print(AORANGE("Unparseable line") ": {}\n", line);
       }
     }
 
-    Print(AGREEN("OK") "\n");
+    console->Print(AGREEN("OK") "\n");
+  }
+
+  void SetTop(std::string_view s) {
+    console->SetStatus(Console::TOP,
+                       0,
+                       ANSI_BG(0, 0, 80)
+                       ANSI_FG(255, 255, 255)
+                       "{}", s);
   }
 
   // Get at least one continuation line, synchronously.
@@ -143,20 +125,16 @@ struct Conversation {
       example_speaker = robot_ppts[0];
 
     std::string roles = Util::Join(robot_ppts, ", ");
-
-    req.messages.emplace_back(ReqMessage{
-        .role = "system",
-        .content = std::format(
-            "Think briefly. "
-            "Task: Continue the conversation in a natural way. "
-            "Respond with one or two messages, using IRC syntax:\n"
-            "<{}> A message spoken aloud\n"
-            " * {} takes an action.\n"
-            "You play only the role{} of {}.\n",
-            example_speaker, example_speaker,
-            robot_ppts.size() == 1 ? "" : "s",
-            roles),
-      });
+    req.instructions = std::format(
+        "Think briefly. "
+        "Task: Continue the conversation in a natural way. "
+        "Respond with one or two messages, using IRC syntax:\n"
+        "<{}> A message spoken aloud\n"
+        " * {} takes an action.\n"
+        "You play only the role{} of {}.\n",
+        example_speaker, example_speaker,
+        robot_ppts.size() == 1 ? "" : "s",
+        roles);
 
     std::string transcript = preamble;
     transcript.push_back('\n');
@@ -169,29 +147,80 @@ struct Conversation {
         .content = transcript,
       });
 
-    ModelResponse resp = spark.Infer(req, verbosity);
-    if (!resp.error.empty()) {
-      // Just print the error and give control back to the user.
-      Print(ARED("{}") "\n", resp.error);
-      return;
-    }
+    std::unique_ptr<SMR> res = spark.Stream(req, verbosity);
 
-    if (!resp.reasoning_content.empty()) {
+    int64_t thought_bytes = 0;
+    std::string content;
+    Periodically status_per(0.250);
+      /*
+        could show this if verbose is on
+            if (!resp.reasoning_content.empty()) {
       if (verbosity > 0) {
         Print(AGREY("{}") "\n", resp.reasoning_content);
       }
-    }
+      */
 
-    for (std::string_view line : Util::SplitToLines(resp.content)) {
-      if (line.empty()) continue;
+    auto ThoughtToken = [&](std::string_view tok) {
+        thought_bytes += tok.size();
+        status_per.RunIf([&]{
+            SetTop(std::format("Thinking... {}", thought_bytes));
+          });
+      };
 
-      if (std::optional<Message> omsg = ParseMessage(line, true)) {
-        PrintMessage(omsg.value());
-        messages.push_back(std::move(omsg.value()));
-      } else {
-        Print(ARED("Unable to parse: ") "{}\n", line);
+    auto ConsumeLine = [&](std::string_view line) {
+        Util::RemoveLeadingWhitespace(&line);
+        Util::RemoveTrailingWhitespace(&line);
+        if (line.empty())
+          return;
+        if (std::optional<Message> omsg = ParseMessage(line, true)) {
+          PrintMessage(omsg.value());
+          messages.push_back(std::move(omsg.value()));
+        } else {
+          console->Print(ARED("Unable to parse: ") "{}\n", line);
+        }
+      };
+
+    auto ContentToken = [&](std::string_view tok) {
+        status_per.RunIf([&]{
+            SetTop(ANSI_WHITE "...");
+          });
+        content.append(tok);
+
+        for (;;) {
+          size_t pos = content.find('\n');
+          if (pos == std::string::npos)
+            return;
+
+          std::string line = content.substr(0, pos);
+          content = content.substr(pos + 1);
+          ConsumeLine(line);
+        }
+      };
+
+    using namespace std::chrono_literals;
+    using SMR = Spark::StreamingModelResponse;
+
+    for (;;) {
+      auto p = res->Poll();
+      if (SMR::Thought *t = std::get_if<SMR::Thought>(&p)) {
+        ThoughtToken(t->tok);
+      } else if (SMR::Content *c = std::get_if<SMR::Content>(&p)) {
+        ContentToken(c->tok);
+      } else if (SMR::Error *e = std::get_if<SMR::Error>(&p)) {
+        // Just print the error and give control back to the user.
+        console->Print(ARED("{}") "\n", e->msg);
+        return;
+      } else if (std::holds_alternative<SMR::Wait>(p)) {
+        std::this_thread::sleep_for(100ms);
+      } else if (std::holds_alternative<SMR::Done>(p)) {
+        break;
       }
     }
+
+    SetTop(ANSI_GREEN "READY");
+
+    // If it did not have a trailing newline, say.
+    ConsumeLine(content);
   }
 
   std::optional<Message> ParseMessage(std::string_view sv, bool sloppy) {
@@ -242,19 +271,18 @@ struct Conversation {
   }
 
   void PrintMessage(const Message &msg) {
-    // TODO: Color etc.
     if (msg.is_action) {
-      Print(" " AYELLOW("*") " " ACYAN("{}") " {}\n",
-            msg.speaker, msg.text);
+      console->Print(" " AYELLOW("*") " " ACYAN("{}") " {}\n",
+                     msg.speaker, msg.text);
     } else {
-      Print(AWHITE("<") ACYAN("{}") AWHITE(">") " {}\n",
-            msg.speaker, msg.text);
+      console->Print(AWHITE("<") ACYAN("{}") AWHITE(">") " {}\n",
+                     msg.speaker, msg.text);
     }
   }
 
   void PrintRecent(int n) {
     n = std::min((int)messages.size(), n);
-    Print(AGREY("..."));
+    console->Print(AGREY("...") "\n");
     for (int i = 0; i < n; i++) {
       PrintMessage(messages[messages.size() - n + i]);
     }
@@ -340,7 +368,7 @@ struct Conversation {
       }
 
       Util::WriteFile(input, content);
-      Print("\nWrote " AGREEN("{}") ".\n", input);
+      console->Print("\nWrote " AGREEN("{}") ".\n", input);
       return false;
 
     } else if (Util::TryStripPrefix("/pass", &input)) {
@@ -359,7 +387,7 @@ struct Conversation {
       std::string target = std::string(input);
 
       if (participants.contains(target)) {
-        Print(AORANGE("Already here") ": {}\n", target);
+        console->Print(AORANGE("Already here") ": {}\n", target);
       } else {
         participants.insert(target);
         messages.emplace_back(Message{
@@ -385,10 +413,10 @@ struct Conversation {
         if (!ppts.empty() && !ppts[0].empty()) {
           participants.clear();
           user_participants = {ppts[0]};
-          Print("[Reset. You are {}]\n", ppts[0]);
+          console->Print("[Reset. You are {}]\n", ppts[0]);
           for (int i = 1; i < ppts.size(); i++) {
             participants.insert(ppts[i]);
-            Print(" * {} joined\n", ppts[i]);
+            console->Print(" * {} joined\n", ppts[i]);
           }
         }
       }
@@ -399,7 +427,7 @@ struct Conversation {
       std::string target = std::string(input);
 
       if (!participants.contains(target)) {
-        Print(ARED("Error:") " unknown participant '{}'\n", target);
+        console->Print(ARED("Error:") " unknown participant '{}'\n", target);
         return false;
       }
 
@@ -411,23 +439,33 @@ struct Conversation {
       return false;
 
     } else {
-      Print(ARED("REDO FROM START") "\n");
+      console->Print(ARED("REDO FROM START") "\n");
       return false;
     }
   }
 
+  std::unique_ptr<Console> console;
+
   void Loop() {
-    Console console;
+
+    console->SetStatus(Console::TOP, 0,
+                       ANSI_BG(0, 0, 80) "Chat");
+
+    console->SetStatus(Console::MID, 0,
+                       ANSI_BG(30, 30, 30)
+                       "─────────────────────────────────────────");
+
+    console->Redraw();
 
     for (;;) {
-      Print(AWHITE(":") AGREEN("> "));
-      fflush(stdout);
+      // Print(AWHITE(":") AGREEN("> "));
+      // fflush(stdout);
 
       // True if we have a message (like /say) that implies
       // passing.
       bool pass = false;
 
-      std::string input_line = console.WaitLine();
+      std::string input_line = console->WaitLine();
 
       std::vector<std::string> raw_inputs =
         Util::SplitWith(input_line, "\\n");

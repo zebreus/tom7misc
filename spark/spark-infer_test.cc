@@ -69,11 +69,11 @@ static void TestSpark() {
 
     for (;;) {
       auto p = res->Poll();
-      if (auto* t = std::get_if<SMR::Thought>(&p)) {
+      if (SMR::Thought *t = std::get_if<SMR::Thought>(&p)) {
         ThoughtToken(t->tok);
-      } else if (auto* c = std::get_if<SMR::Content>(&p)) {
+      } else if (SMR::Content *c = std::get_if<SMR::Content>(&p)) {
         ContentToken(c->tok);
-      } else if (auto* e = std::get_if<SMR::Error>(&p)) {
+      } else if (SMR::Error *e = std::get_if<SMR::Error>(&p)) {
         LOG(FATAL) << "Error: " << e->msg;
       } else if (std::holds_alternative<SMR::Wait>(p)) {
         std::this_thread::sleep_for(10ms);
