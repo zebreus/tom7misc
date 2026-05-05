@@ -59,6 +59,12 @@ struct SVG {
     ROUND,
   };
 
+  enum class TextAnchor : uint8_t {
+    START,
+    MIDDLE,
+    END,
+  };
+
   static constexpr uint32_t COLOR_NONE = 0x00000000;
 
   struct Style {
@@ -98,10 +104,10 @@ struct SVG {
     std::optional<std::string> clip_path;
 
     // Minimal text style support.
-    // TODO: font-style (italics), font-weight (bold)
-    // text-anchor (alignment).
+    // TODO: font-style (italics), font-weight (bold).
     std::optional<std::vector<std::string>> font_family;
     std::optional<double> font_size;
+    std::optional<TextAnchor> text_anchor;
   };
 
   struct Node;
@@ -165,6 +171,13 @@ struct SVG {
   // is empty.
   static std::optional<std::vector<PathCommand>>
   InterpretPathData(std::string_view d, std::string *err);
+
+  // Add the prefix (presumed to be unique) to the name of every def,
+  // and to every use of that def in the doc. Modifies the document in
+  // place. This allows multiple SVGs to be merged without
+  // interference.
+  static void RenameDefs(std::string_view prefix,
+                         Doc *doc);
 
   using Transform = std::array<double, 6>;
 

@@ -75,7 +75,8 @@ bool SVG::IsDefault(const Style &style) {
            style.opacity.has_value() ||
            style.clip_path.has_value() ||
            style.font_family.has_value() ||
-           style.font_size.has_value());
+           style.font_size.has_value() ||
+           style.text_anchor.has_value());
 }
 
 double SVG::ParseLeadingNumber(std::string_view *d) {
@@ -877,8 +878,19 @@ struct Converter {
       }
     }
 
-    CHECK(!GetStripAttribute("text-anchor").has_value()) << "Sorry, "
-      "text-anchor is not supported.";
+    if (auto ao = GetStripAttribute("text-anchor")) {
+      had_style = true;
+      if (ao.value() == "middle") {
+        style.text_anchor = SVG::TextAnchor::MIDDLE;
+      } else if (ao.value() == "end") {
+        style.text_anchor = SVG::TextAnchor::END;
+      } else if (ao.value() == "start") {
+        style.text_anchor = SVG::TextAnchor::START;
+      } else {
+        error = "Invalid text-anchor";
+        return {};
+      }
+    }
 
     // Only if we actually saw style attributes.
     return had_style ? std::make_optional(style) : std::nullopt;
@@ -1877,6 +1889,43 @@ static std::string PathDataString(const std::vector<SVG::PathCommand> &cmds) {
   return out;
 }
 
+void SVG::RenameDefs(std::string_view prefix, SVG::Doc *doc) {
+  std::unordered_map<std::string, SVG::G> new_defs;
+  for (auto &pair : doc->defs) {
+    std::string new_id = std::format("{}{}", prefix, pair.first);
+    new_defs[new_id] = std::move(pair.second);
+  }
+  doc->defs = std::move(new_defs);
+
+  std::vector<SVG::G *> stack;
+
+  auto PushNode = [&stack](SVG::Node *node) {
+    if (SVG::G *g = std::get_if<SVG::G>(&node->v)) {
+      stack.push_back(g);
+    }
+  };
+
+  PushNode(&doc->root);
+  for (auto &pair : doc->defs) {
+    stack.push_back(&pair.second);
+  }
+
+  while (!stack.empty()) {
+    SVG::G *g = stack.back();
+    stack.pop_back();
+
+    if (g->style.clip_path.has_value()) {
+      g->style.clip_path = std::format("{}{}", prefix,
+                                       g->style.clip_path.value());
+    }
+
+    for (SVG::Node &child : g->children) {
+      PushNode(&child);
+    }
+  }
+}
+
+
 struct Unconverter {
   explicit Unconverter(const SVG::Doc &doc) : doc(doc) {}
 
@@ -1984,6 +2033,20 @@ struct Unconverter {
       AppendFormat(out, " font-size=\"{}\"", Rtos(style.font_size.value()));
     }
 
+    if (style.text_anchor.has_value()) {
+      switch (style.text_anchor.value()) {
+        case SVG::TextAnchor::START:
+          out->append(" text-anchor=\"start\"");
+          break;
+        case SVG::TextAnchor::MIDDLE:
+          out->append(" text-anchor=\"middle\"");
+          break;
+        case SVG::TextAnchor::END:
+          out->append(" text-anchor=\"end\"");
+          break;
+      }
+    }
+
     if (style.use_even_odd_rule.has_value()) {
       out->append(style.use_even_odd_rule.value() ?
                   " fill-rule=\"evenodd\"" :
@@ -2047,7 +2110,6 @@ struct Unconverter {
     out->append("  </defs>\n");
   }
 };
-
 
 std::string SVG::ToSVG(const SVG::Doc &doc) {
   std::string out = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
