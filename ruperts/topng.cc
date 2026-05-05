@@ -26,7 +26,7 @@ static std::pair<frame3, frame3> GetSolution(std::string_view name) {
 }
 
 static void RenderAny(std::string_view name) {
-  Polyhedron polyhedron = PolyhedronByName(name);
+  Polyhedron polyhedron = PolyhedronByNameOrDie(name);
   const auto &[outer_frame, inner_frame] = GetSolution(name);
 
   Polyhedron outer = Rotate(polyhedron, outer_frame);

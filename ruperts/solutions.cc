@@ -456,5 +456,5 @@ Polyhedron SolutionDB::AnyPolyhedronByName(std::string_view name) {
     return std::move(opoly.value());
   }
 
-  return PolyhedronByName(name);
+  return PolyhedronByNameOrDie(name);
 }

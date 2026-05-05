@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
 
   CHECK(argc == 3) << "./tomov.exe polyhedron output.mov";
 
-  Polyhedron target = PolyhedronByName(argv[1]);
+  Polyhedron target = PolyhedronByNameOrDie(argv[1]);
   std::string filename = argv[2];
 
   AnimateMesh(target, filename);

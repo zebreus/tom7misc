@@ -603,7 +603,7 @@ struct Imperts {
           const Solution &solution = osol.value();
 
           // PERF: Use singletons for this.
-          Polyhedron poly = PolyhedronByName(solution.polyhedron);
+          Polyhedron poly = PolyhedronByNameOrDie(solution.polyhedron);
           polyhedra++;
           const double gen_sec = gen_timer.Seconds();
 

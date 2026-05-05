@@ -358,9 +358,9 @@ static std::vector<int> GetOrientedFace(
 }
 */
 
-static void OrientFaces(std::span<const vec3> vertices,
-                        std::vector<std::vector<int>> *faces) {
-  if (faces->empty()) return;
+static bool TryOrientFaces(std::span<const vec3> vertices,
+                           std::vector<std::vector<int>> *faces) {
+  if (faces->empty()) return false;
 
   const std::vector<int> start_face = GetOrientedFace(vertices, *faces);
 
@@ -424,13 +424,14 @@ static void OrientFaces(std::span<const vec3> vertices,
     next_face:;
     }
 
-    CHECK(progress) << "Surface is disconnected";
+    if (!progress) return false;
     remaining = std::move(new_remaining);
   }
 
   CHECK(out.size() == faces->size())
-      << "Expected " << faces->size() << " faces, got " << out.size();
+      << "Bug: Expected " << faces->size() << " faces, got " << out.size();
   *faces = std::move(out);
+  return true;
 }
 
 bool Faces::Init(std::span<const vec3> vertices,
@@ -440,7 +441,9 @@ bool Faces::Init(std::span<const vec3> vertices,
 
   const int num_vertices = (int)vertices.size();
 
-  OrientFaces(vertices, &v);
+  if (!TryOrientFaces(vertices, &v)) {
+    return false;
+  }
 
   std::vector<std::unordered_set<int>> collated(num_vertices);
   for (const std::vector<int> &face : v) {
@@ -3070,4 +3073,43 @@ bool IsWellConditioned(std::span<const vec3> vs,
   }
 
   return true;
+}
+
+std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
+  if (name == "tetrahedron") return Tetrahedron();
+  if (name == "cube") return Cube();
+  if (name == "dodecahedron") return Dodecahedron();
+  if (name == "icosahedron") return Icosahedron();
+  if (name == "octahedron") return Octahedron();
+  if (name == "truncatedtetrahedron") return TruncatedTetrahedron();
+  if (name == "cuboctahedron") return Cuboctahedron();
+  if (name == "truncatedcube") return TruncatedCube();
+  if (name == "truncatedoctahedron") return TruncatedOctahedron();
+  if (name == "rhombicuboctahedron") return Rhombicuboctahedron();
+  if (name == "truncatedcuboctahedron") return TruncatedCuboctahedron();
+  if (name == "snubcube") return SnubCube();
+  if (name == "icosidodecahedron") return Icosidodecahedron();
+  if (name == "truncateddodecahedron") return TruncatedDodecahedron();
+  if (name == "truncatedicosahedron") return TruncatedIcosahedron();
+  if (name == "rhombicosidodecahedron") return Rhombicosidodecahedron();
+  if (name == "truncatedicosidodecahedron") return TruncatedIcosidodecahedron();
+  if (name == "snubdodecahedron") return SnubDodecahedron();
+  if (name == "triakistetrahedron") return TriakisTetrahedron();
+  if (name == "rhombicdodecahedron") return RhombicDodecahedron();
+  if (name == "triakisoctahedron") return TriakisOctahedron();
+  if (name == "tetrakishexahedron") return TetrakisHexahedron();
+  if (name == "deltoidalicositetrahedron") return DeltoidalIcositetrahedron();
+  if (name == "disdyakisdodecahedron") return DisdyakisDodecahedron();
+  if (name == "deltoidalhexecontahedron") return DeltoidalHexecontahedron();
+  if (name == "pentagonalicositetrahedron") return PentagonalIcositetrahedron();
+  if (name == "rhombictriacontahedron") return RhombicTriacontahedron();
+  if (name == "triakisicosahedron") return TriakisIcosahedron();
+  if (name == "pentakisdodecahedron") return PentakisDodecahedron();
+  if (name == "disdyakistriacontahedron") return DisdyakisTriacontahedron();
+  if (name == "pentagonalhexecontahedron") return PentagonalHexecontahedron();
+
+  if (name == "noperthedron") return Noperthedron();
+  if (name == "onperthedron") return Onperthedron();
+
+  return std::nullopt;
 }

@@ -541,6 +541,15 @@ static void TestStructure() {
   CheckPoly(Noperthedron(), 90, 240, 152);
 }
 
+static void TestGetByName() {
+  auto po = PolyhedronByName("cube");
+  CHECK(po.has_value());
+  CHECK(po.faces->NumFaces() == 8);
+
+  CHECK(!PolyhedronByName("").has_value());
+  CHECK(!PolyhedronByName("fakeohedron").has_value());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Print("\n");
@@ -561,6 +570,8 @@ int main(int argc, char **argv) {
   TestSignedDistanceToEdgeEndpoints();
 
   TestStructure();
+
+  TestGetByName();
 
   Print("OK\n");
   return 0;

@@ -841,7 +841,7 @@ struct ReduceCandidateMaker : public CandidateMaker {
     method(method), done(done), reference_name(reference_name),
     start(start), end(end) {
     name = std::format("reduce_{}", reference_name);
-    reference = PolyhedronByName(reference_name);
+    reference = PolyhedronByNameOrDie(reference_name);
     next = start;
   }
 

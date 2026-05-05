@@ -34,7 +34,7 @@ static void FixAll() {
     }
 
     // PERF: Maybe should avoid recomputing these?
-    Polyhedron poly = PolyhedronByName(sol.polyhedron);
+    Polyhedron poly = PolyhedronByNameOrDie(sol.polyhedron);
 
     std::optional<double> ratio = GetRatio(poly, outer_frame, inner_frame);
     std::optional<double> clearance =
