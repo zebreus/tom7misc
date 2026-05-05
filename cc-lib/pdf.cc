@@ -4725,6 +4725,7 @@ struct SVGEmitter {
     // Text state.
     const PDF::Font *font = nullptr;
     double font_size = 12.0;
+    // TODO: text-anchor
   };
 
   // Return a string with the PDF commands to render the SVG
@@ -4883,6 +4884,11 @@ struct SVGEmitter {
 
     if (style.font_size.has_value()) {
       state.font_size = style.font_size.value();
+    }
+
+    if (style.text_anchor.has_value()) {
+      LOG(FATAL) << "Unimplemented: text_anchor. This should "
+        "be pretty easy, but I want to have a test case in hand!";
     }
 
     return state;

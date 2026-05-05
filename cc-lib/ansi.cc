@@ -612,13 +612,20 @@ std::string ANSI::ColorSubstring(std::string_view s,
 
 
 std::optional<int> ANSI::TerminalWidth() {
+  std::optional<std::pair<int, int>> o = TerminalDimensions();
+  if (!o.has_value()) return std::nullopt;
+
+  return {o.value().first};
+}
+
+std::optional<std::pair<int, int>> ANSI::TerminalDimensions() {
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
 
   struct winsize size;
   // TIOCGWINSZ is "Get WINdow SiZe".
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0) {
     if (size.ws_col > 0) {
-      return {size.ws_col};
+      return {std::make_pair(size.ws_col, size.ws_row)};
     }
   }
 
@@ -634,7 +641,9 @@ std::optional<int> ANSI::TerminalWidth() {
   }
 
   if (GetConsoleScreenBufferInfo(h, &csbi)) {
-    return {csbi.srWindow.Right - csbi.srWindow.Left + 1};
+    int h = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+    int w = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+    return {std::make_pair(w, h)};
   }
   return std::nullopt;
 

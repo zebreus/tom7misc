@@ -22,6 +22,8 @@
 #define ANSI_UP ANSI_PREVLINE ANSI_CLEARLINE
 
 #define ANSI_RESET "\x1B[m"
+// Move the cursor to the top-left of the screen.
+#define ANSI_HOME "\x1B[H"
 
 // These are "bright" or "high intensity" foreground colors.
 //
@@ -224,7 +226,8 @@ struct ANSI {
   // nullopt if unavailable (e.g. not supported on this platform, or
   // output is not a terminal). Try TerminalWidth().value_or(80).
   static std::optional<int> TerminalWidth();
-
+  // Returns the (width, height).
+  static std::optional<std::pair<int, int>> TerminalDimensions();
 };
 
 #endif

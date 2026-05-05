@@ -18,6 +18,9 @@
 #include "timer.h"
 #include "util.h"
 
+// Hot tip for mysterious crashes: Make sure you're not
+// calling StatusBar::Print when you meant ::Print!
+
 using namespace std;
 
 StatusBar::StatusBar(int num_lines) : num_lines(num_lines) {
