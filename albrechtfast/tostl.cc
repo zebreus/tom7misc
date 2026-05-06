@@ -8,12 +8,12 @@
 #include <string_view>
 
 #include "ansi.h"
-#include "db.h"
-#include "geom/polyhedra.h"
-#include "util.h"
-#include "poly-util.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "db.h"
+#include "geom/polyhedra.h"
+#include "poly-util.h"
+#include "util.h"
 
 static void Export(int id, std::string_view filename) {
   DB db;

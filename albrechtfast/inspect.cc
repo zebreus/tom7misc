@@ -107,15 +107,18 @@ static void Inspect(int id, std::string_view filename) {
   Print("In {} attempts, Got {} net(s) and {} non-net(s).\n",
         attempts, nets.size(), non_nets.size());
 
-  std::vector<SVG::Node> quadrant_roots;
-  for (int i = 0; i < 3; ++i) {
+
+  std::vector<SVG::Doc> quadrant_docs;
+  for (size_t i = 0; i < non_nets.size() && i < 3; ++i) {
     SVG::Doc svg = Albrecht::MakeSVG(aug, non_nets[i]);
-    quadrant_roots.push_back(std::move(svg.root));
+    SVG::RenameDefs(std::format("q{}-", i), &svg);
+    quadrant_docs.push_back(std::move(svg));
   }
 
   if (!nets.empty()) {
     SVG::Doc svg = Albrecht::MakeSVG(aug, nets[0]);
-    quadrant_roots.push_back(std::move(svg.root));
+    SVG::RenameDefs("q3-", &svg);
+    quadrant_docs.push_back(std::move(svg));
   }
 
   SVG::Doc doc;
@@ -124,7 +127,7 @@ static void Inspect(int id, std::string_view filename) {
   SVG::G main_group;
 
   double margin = 16.0;
-  for (int i = 0; i < 4; i++) {
+  for (size_t i = 0; i < quadrant_docs.size(); i++) {
     double tx = (i & 1) * 1024.0;
     double ty = (i >> 1) * 1024.0;
 
@@ -149,11 +152,19 @@ static void Inspect(int id, std::string_view filename) {
     main_group.children.push_back(SVG::Node{std::move(rect_group)});
 
     double s = size / 1024.0;
+    std::array<double, 6> transform = {s, 0.0, 0.0, s, bx, by};
+
     SVG::G sub_group;
-    sub_group.style.transform =
-      std::array<double, 6>{s, 0.0, 0.0, s, bx, by};
-    sub_group.children.push_back(std::move(quadrant_roots[i]));
+    sub_group.style.transform = transform;
+    sub_group.children.push_back(std::move(quadrant_docs[i].root));
     main_group.children.push_back(SVG::Node{std::move(sub_group)});
+
+    // Don't need to transform the clip paths, because SVG semantics
+    // will move the clip path to the coordinate system of the element
+    // it's used on!
+    for (auto &[id, def] : quadrant_docs[i].defs) {
+      doc.defs[id] = std::move(def);
+    }
   }
 
   doc.root = SVG::Node{std::move(main_group)};

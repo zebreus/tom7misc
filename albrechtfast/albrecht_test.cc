@@ -218,7 +218,7 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
   }
   Print("Is net: {}\n", dr.is_net ? AGREEN("true") : ARED("false"));
 
-  SVG::Doc svg = Albrecht::MakeSVG(aug, dr);
+  SVG::Doc svg = Albrecht::MakeSVG(aug, dr, true, true);
 
   Util::WriteFile(std::format("test-{}.svg", name),
                   SVG::ToSVG(svg));

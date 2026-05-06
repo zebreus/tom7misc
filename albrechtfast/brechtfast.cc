@@ -37,7 +37,7 @@
 using Aug = Albrecht::AugmentedPoly;
 using OneSample = Sampler::OneSample;
 
-DECLARE_COUNTERS(ctr_poly, ctr_zero, ctr_only_net);
+DECLARE_COUNTERS(ctr_poly, ctr_zero, ctr_only_net, ctr_saved);
 
 // (actually an upper bound, not inclusive)
 static constexpr int MAX_FACES = 80;
@@ -217,13 +217,17 @@ struct Brechtfast {
             {
               MutexLock ml(&m);
               if (netness < best_netness) {
-                std::string filename =
-                  std::format("brecht-{}-{:.5g}.stl", time(nullptr),
-                              netness * 100.0);
+                std::string wrote;
+                if (netness < 0.0005) {
+                  std::string filename =
+                    std::format("brecht-{}-{:.5g}.stl", time(nullptr),
+                                netness * 100.0);
+                  wrote = std::format(" Wrote " ACYAN("{}"), filename);
+                  SaveAsSTL(poly, filename);
+                }
                 status.Print(AGREEN("New best!")
-                             " {} faces, {} edges, {} vert. "
-                             "Wrote {}\n", nfaces, nedges, nverts, filename);
-                SaveAsSTL(poly, filename);
+                             " {} faces, {} edges, {} vert.{}\n",
+                             nfaces, nedges, nverts, wrote);
                 best_netness = netness;
               }
             }
@@ -284,6 +288,7 @@ struct Brechtfast {
                     any = true;
                     const auto &[poly, method, numer, denom] = ov.value();
                     db.AddHard(poly, method, numer, denom);
+                    ctr_saved++;
                   }
                   ov = std::nullopt;
                 }

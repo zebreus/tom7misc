@@ -882,6 +882,37 @@ const char *PartialPolyhedron::FeasibilityProblem(
     }
   }
 
+  // Simulate vertex merging to check for edge collisions.
+  std::vector<int> face_v_indices;
+  for (const vec3 &pt : new_face_pts) {
+    int match_idx = -1;
+    for (int j = 0; j < (int)vertices.size(); j++) {
+      if (yocto::length(vertices[j].pos - pt) < 1e-4) {
+        match_idx = j;
+        break;
+      }
+    }
+    face_v_indices.push_back(match_idx);
+  }
+
+  for (int i = 0; i < (int)face_v_indices.size(); i++) {
+    int v0 = face_v_indices[i];
+    int v1 = face_v_indices[(i + 1) % face_v_indices.size()];
+    if (v0 != -1 && v1 != -1) {
+      if (v0 == v1) {
+        return "degenerate edge after vertex merging";
+      }
+      for (const MeshEdge &edge : edges) {
+        if (edge.v0 == v1 && edge.v1 == v0 && edge.right_face != -1) {
+          return "edge is already shared";
+        }
+        if (edge.v0 == v0 && edge.v1 == v1) {
+          return "edge already exists in same direction";
+        }
+      }
+    }
+  }
+
   // OK.
   return nullptr;
 }

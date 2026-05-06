@@ -1,24 +1,29 @@
 
-#include "solve-strong.h"
+#include "solve-leaf.h"
 
 #include <algorithm>
+#include <condition_variable>
+#include <format>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
+#include <mutex>
 
 #include "albrecht.h"
+#include "arcfour.h"
 #include "bit-string.h"
 #include "geom/polyhedra.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "union-find.h"
 #include "yocto-math.h"
 
 using AugmentedPoly = Albrecht::AugmentedPoly;
 
 namespace {
-
-// There are exponentially many of these, but it's often easy to find
-// unfoldings (or easy to rule out entire subtrees) so exploring them
-// exhaustively works fine for small polyhedra.
 
 // Represents a face that has been successfully laid out in 2D.
 struct PlacedFace {
@@ -47,32 +52,53 @@ struct SearchState {
   // num_edges in size.
   BitString forbidden_edges;
   std::vector<PlacedFace> placed_faces;
+  ArcFour rc;
+};
+
+// Collects the result of multiple processes searching in parallel.
+struct ResultChannel {
+  std::mutex m;
+  std::condition_variable cv;
+  bool should_die = false;
+  std::optional<BitString> result;
+  // Send the result (only the first time this is called), and notify
+  // all threads that we're done.
+  void Send(std::optional<BitString> r) {
+    {
+      MutexLock ml(&m);
+      if (!should_die) {
+        result = std::move(r);
+      }
+      should_die = true;
+    }
+    cv.notify_all();
+  }
+  // Check whether we succeeded in another thread.
+  bool ShouldDie() {
+    MutexLock ml(&m);
+    return should_die;
+  }
 };
 
 // One solver instance with shared state for the recursion.
-struct Solver {
+struct RecSolver {
   // Arguments.
+  std::shared_ptr<ResultChannel> result_channel;
   const AugmentedPoly &aug;
   const int input_face_idx;
   const int input_edge_idx;
 
-  Solver(const AugmentedPoly &aug, int face_idx, int edge_idx) :
+  RecSolver(std::shared_ptr<ResultChannel> result_channel,
+            const AugmentedPoly &aug, int face_idx, int edge_idx) :
+    result_channel(std::move(result_channel)),
     aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx) {
-
-  }
-
-  // Check whether new_face can be placed, or whether it would violate
-  // our requirement that the input edge be on the convex hull.
-  static bool CheckBounds(const PlacedFace &new_face) {
-    // We allow a little slop here, since numerical precision could
-    // cause a series of rotations to make a point look like it is
-    // outside when it's really not (or colinear).
-    return new_face.min_b.x < -1.0e-5;
   }
 
   // Checks if new_face overlaps with any face already in
   // state.placed_faces.
-  bool CheckOverlap(const SearchState &state, const PlacedFace &new_face) {
+  bool CheckOverlap(const SearchState &state,
+                    int src_idx,
+                    const PlacedFace &new_face) {
     for (const PlacedFace &pf : state.placed_faces) {
       if (new_face.max_b.x <= pf.min_b.x + 1e-7 ||
           new_face.min_b.x >= pf.max_b.x - 1e-7 ||
@@ -81,6 +107,9 @@ struct Solver {
         continue;
       }
 
+      if (pf.face_idx == src_idx) {
+        continue;
+      }
       if (Albrecht::PolygonsOverlap(new_face.vertices, pf.vertices)) {
         return true;
       }
@@ -125,33 +154,34 @@ struct Solver {
       }
     }
 
-    if (reached_count < num_faces) return false;
-    return true;
+    return reached_count == num_faces;
   }
 
   // Recursive search.
-  //
-  // The frontier is the queue of candidate edges. We never put a
-  // forbidden edge into the queue. To process each edge, we try
-  // both including it and not including it recursively.
   bool Search(SearchState &state, std::vector<int> &frontier) {
     // Success?
     if (state.placed_faces.size() == aug.poly.faces->NumFaces()) {
       return true;
     }
 
+    // If no edges left but we haven't placed all faces, this branch
+    // fails.
+    if (frontier.empty()) return false;
+
     // Early pruning.
     if (!CanReachAllFaces(state)) {
       return false;
     }
 
-    // If no edges left but we haven't placed all faces, this branch
-    // fails.
-    if (frontier.empty()) return false;
+    // Other thread won?
+    if (result_channel->ShouldDie()) return false;
 
+    // Pick a random edge.
+    const int frontier_idx = RandTo(&state.rc, frontier.size());
+    std::swap(frontier[frontier_idx], frontier.back());
     const int edge_idx = frontier.back();
     frontier.pop_back();
-    CHECK(!state.forbidden_edges.Get(edge_idx));
+    CHECK(!state.forbidden_edges.Get(edge_idx)) << edge_idx;
 
     const Faces::Edge &edge = aug.poly.faces->edges[edge_idx];
     bool f0_visited = state.visited_faces.Get(edge.f0);
@@ -159,13 +189,12 @@ struct Solver {
 
     if (f0_visited && f1_visited) {
       // Including this edge would form a cycle in our face tree,
-      // so we must not include it. Note we probably don't need
-      // to forbid it for the recursive search, but it's easier
-      // to understand if we do.
+      // so we must not include it.
       state.forbidden_edges.Set(edge_idx, true);
       bool result = Search(state, frontier);
       state.forbidden_edges.Set(edge_idx, false);
       frontier.push_back(edge_idx);
+      std::swap(frontier[frontier_idx], frontier.back());
       return result;
     }
 
@@ -204,7 +233,7 @@ struct Solver {
       }
 
       // See if it fits.
-      if (!CheckBounds(U) && !CheckOverlap(state, U)) {
+      if (!CheckOverlap(state, v_idx, U)) {
         state.placed_faces.push_back(U);
         state.visited_faces.Set(u_idx, 1);
         state.unfolding.Set(edge_idx, 1);
@@ -238,7 +267,6 @@ struct Solver {
 
     {
       // Try not taking the edge.
-
       state.forbidden_edges.Set(edge_idx, true);
       if (Search(state, frontier)) {
         return true;
@@ -247,90 +275,169 @@ struct Solver {
       state.forbidden_edges.Set(edge_idx, false);
     }
 
-    // Either way, return the edge to the frontier when we
-    // pop.
+    // Either way, return the edge to the frontier when we pop.
     frontier.push_back(edge_idx);
+    std::swap(frontier[frontier_idx], frontier.back());
     return false;
   }
 
-  std::optional<BitString> DoSearch() {
-    // Place the first face rotated so that the input edge is vertical
-    // at x=0. This gives us a fast test for when we place a face:
-    // None of its vertices can have x < 0 (or else the input edge
-    // would not be on the 2D convex hull, as required).
-
+  void DoSearch() {
     int num_faces = aug.poly.faces->NumFaces();
     int num_edges = aug.poly.faces->NumEdges();
 
-    SearchState state;
-    state.unfolding = BitString(num_edges, false);
-    state.visited_faces = BitString(num_faces, false);
-    state.forbidden_edges = BitString(num_edges, false);
+    SearchState state{
+      .unfolding = BitString(num_edges, false),
+      .visited_faces = BitString(num_faces, false),
+      .forbidden_edges = BitString(num_edges, false),
+      .rc = ArcFour("pseudorandom"),
+    };
 
-    // Must cut the input edge.
-    state.forbidden_edges.Set(input_edge_idx, true);
-
-    int edge_index_in_face = 0;
-    const auto &face_edges = aug.face_edges[input_face_idx];
-    for (size_t i = 0; i < face_edges.size(); ++i) {
-      if (face_edges[i] == input_edge_idx) {
-        edge_index_in_face = i;
-        break;
+    // To force input_face_idx to be a leaf attached solely via input_edge_idx,
+    // we explicitly forbid all of its other edges from being in the spanning tree.
+    for (int e_idx : aug.face_edges[input_face_idx]) {
+      if (e_idx != input_edge_idx) {
+        state.forbidden_edges.Set(e_idx, true);
       }
     }
-
-    const std::vector<vec2> &poly = aug.polygons[input_face_idx];
-    vec2 p0 = poly[edge_index_in_face];
-    vec2 p1 = poly[(edge_index_in_face + 1) % poly.size()];
-    vec2 v = yocto::normalize(p1 - p0);
 
     PlacedFace initial_face;
     initial_face.face_idx = input_face_idx;
 
-    // Construct a frame2 that maps p0 to (0,0) and the direction v to (0,1).
-    initial_face.global_tf.x = {v.y, v.x};
-    initial_face.global_tf.y = {-v.x, v.y};
-    initial_face.global_tf.o = -(initial_face.global_tf.x * p0.x +
-                                 initial_face.global_tf.y * p0.y);
+    // We do not require any convex hull conditions, so placing the initial
+    // face at the origin with the identity transform works fine.
+    initial_face.global_tf.x = {1.0, 0.0};
+    initial_face.global_tf.y = {0.0, 1.0};
+    initial_face.global_tf.o = {0.0, 0.0};
 
-    initial_face.vertices.reserve(poly.size());
-    for (const vec2 &pt : poly) {
-      vec2 tv = yocto::transform_point(initial_face.global_tf, pt);
-      initial_face.vertices.push_back(tv);
-      initial_face.min_b.x = std::min(initial_face.min_b.x, tv.x);
-      initial_face.min_b.y = std::min(initial_face.min_b.y, tv.y);
-      initial_face.max_b.x = std::max(initial_face.max_b.x, tv.x);
-      initial_face.max_b.y = std::max(initial_face.max_b.y, tv.y);
+    initial_face.vertices.reserve(aug.polygons[input_face_idx].size());
+    for (const vec2 &pt : aug.polygons[input_face_idx]) {
+      initial_face.vertices.push_back(pt);
+      initial_face.min_b.x = std::min(initial_face.min_b.x, pt.x);
+      initial_face.min_b.y = std::min(initial_face.min_b.y, pt.y);
+      initial_face.max_b.x = std::max(initial_face.max_b.x, pt.x);
+      initial_face.max_b.y = std::max(initial_face.max_b.y, pt.y);
     }
 
     state.placed_faces.push_back(std::move(initial_face));
     state.visited_faces.Set(input_face_idx, true);
 
     std::vector<int> frontier;
-    for (int e_idx : aug.face_edges[input_face_idx]) {
-      if (e_idx != input_edge_idx) {
-        frontier.push_back(e_idx);
+    frontier.push_back(input_edge_idx);
+
+    if (Search(state, frontier)) {
+      result_channel->Send(state.unfolding);
+    } else {
+      result_channel->Send(std::nullopt);
+    }
+  }
+};
+
+struct ShotgunSolver {
+  std::shared_ptr<ResultChannel> result_channel;
+  const AugmentedPoly &aug;
+  const int input_face_idx;
+  const int input_edge_idx;
+  ArcFour rc;
+
+  ShotgunSolver(std::shared_ptr<ResultChannel> result_channel,
+                const AugmentedPoly &aug, int face_idx, int edge_idx,
+                uint64_t seed) :
+    result_channel(std::move(result_channel)),
+    aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx),
+    rc(std::format("shot.{:x}", seed)) {
+  }
+
+  void Solve() {
+    const Faces &faces = *aug.poly.faces;
+    const int num_faces = faces.NumFaces();
+    const int num_edges = faces.NumEdges();
+    BitString unfolding(num_edges, false);
+    UnionFind uf(num_faces);
+    // The randomly-ordered set of edges that we'll try connecting
+    // until we have a complete graph.
+    std::vector<int> edges;
+    for (int e = 0; e < num_edges; e++) {
+      // We always include the target edge, and always cut the
+      // other edges on the target face. So any edge on the
+      // target face is excluded from this vector and handled
+      // manually during initialization.
+      const Faces::Edge &edge = faces.edges[e];
+      if (edge.f0 != input_face_idx &&
+          edge.f1 != input_face_idx) {
+        edges.push_back(e);
       }
     }
 
-    if (Search(state, frontier)) {
-      return state.unfolding;
-    }
+    while (!result_channel->ShouldDie()) {
+      // Reset state in place.
+      uf.Reset();
+      Shuffle(&rc, &edges);
 
-    return std::nullopt;
+      unfolding.Clear(false);
+      // The target edge must be included.
+      // The other edges on the face are not included, because
+      // they are not in the edges vector.
+      unfolding.Set(input_edge_idx, true);
+
+      for (int i : edges) {
+        const Faces::Edge &edge = faces.edges[i];
+        if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
+          uf.Union(edge.f0, edge.f1);
+          unfolding.Set(i, true);
+        }
+      }
+
+      if (Albrecht::IsNet(aug, unfolding)) {
+        result_channel->Send(unfolding);
+        return;
+      }
+    }
   }
 
 };
 
+static std::optional<BitString>
+MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
+  std::shared_ptr<ResultChannel> result_channel =
+    std::make_shared<ResultChannel>();
+
+  std::vector<std::unique_ptr<std::thread>> threads;
+
+  threads.emplace_back(std::make_unique<std::thread>([&]{
+      RecSolver rec(result_channel, poly, face_idx, edge_idx);
+      (void)rec.DoSearch();
+    }));
+
+  ArcFour rc("shot");
+  static constexpr int NUM_SHOTGUN_THREADS = 6;
+  for (int i = 0; i < NUM_SHOTGUN_THREADS; i++) {
+    uint64_t seed = Rand64(&rc);
+    threads.emplace_back(std::make_unique<std::thread>([&, seed]{
+        ShotgunSolver ss(result_channel, poly, face_idx, edge_idx,
+                         seed);
+        ss.Solve();
+      }));
+  }
+
+  // Wait for one to finish.
+
+  std::unique_lock<std::mutex> lock(result_channel->m);
+  result_channel->cv.wait(lock, [&]{ return result_channel->should_die; });
+  std::optional<BitString> result = std::move(result_channel->result);
+  lock.unlock();
+
+  for (auto &t : threads) t->join();
+
+  return result;
+}
+
 }  // namespace
 
-
-std::optional<BitString> SolveStrong::FindStrongUnfolding(
+std::optional<BitString> SolveLeaf::FindLeafUnfolding(
     const Albrecht::AugmentedPoly &aug,
     int face_idx,
     int edge_idx) {
 
-  Solver solver(aug, face_idx, edge_idx);
-
-  return solver.DoSearch();
+  return MultiSolve(aug, face_idx, edge_idx);
 }
+

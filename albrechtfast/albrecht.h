@@ -205,13 +205,6 @@ struct Albrecht {
     // face is non-overlapping, then -1.
     std::vector<int> face_overlap;
 
-    /*
-      old
-    // The 2D locations of each face. Note that these do
-    // not appear in face order, but each has its distinct
-    // face_idx.
-    std::vector<PlacedFace> placed_faces;
-    */
     // The unfolded mesh.
     UnfoldedMesh mesh;
 
@@ -225,8 +218,9 @@ struct Albrecht {
 
   // An SVG displaying the unfolded polyhedron.
   static SVG::Doc MakeSVG(const AugmentedPoly &aug,
-                          const DebugResult &debug_result);
-
+                          const DebugResult &debug_result,
+                          bool inserts = true,
+                          bool labels = true);
 
   // Determines whether the unfolding is a valid net without producing
   // any debug information. This can assume that the unfolding is a

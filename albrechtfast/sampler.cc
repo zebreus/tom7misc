@@ -1,6 +1,8 @@
 #include "sampler.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <format>
 #include <numbers>
 #include <span>
@@ -13,6 +15,7 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "construct.h"
+#include "geom/hull-2d.h"
 #include "geom/point-map.h"
 #include "geom/polyhedra.h"
 #include "geom/symmetry-groups.h"
@@ -67,6 +70,8 @@ static std::optional<Polyhedron> CarefulPolyhedron(
 
   return opoly;
 }
+
+static constexpr bool TRIANGLES_ONLY = false;
 
 OneSample Sampler::ConstructSample(StatusBar *status,
                                    ArcFour *rc,
@@ -125,23 +130,164 @@ OneSample Sampler::ConstructSample(StatusBar *status,
         FaceChooser chooser(feasible_poly, p0, p1, normal_left,
                             angle, diameter);
 
-        double best_overlap = -1.0;
-        std::vector<vec2> best_poly;
+        static constexpr int NUM_FACE_SAMPLES = 100;
+        std::optional<std::vector<vec2>> best_poly;
+        if constexpr (TRIANGLES_ONLY) {
+          double best_overlap = -1.0;
+          for (int sample = 0; sample < NUM_FACE_SAMPLES; ++sample) {
+            double u = RandDouble(rc);
+            double v = RandDouble(rc);
+            std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
 
-        for (int sample = 0; sample < 100; ++sample) {
-          double u = RandDouble(rc);
-          double v = RandDouble(rc);
-          std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
-
-          double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
-          if (overlap > best_overlap) {
-            best_overlap = overlap;
-            best_poly = std::move(poly);
+            double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
+            if (overlap > best_overlap) {
+              best_overlap = overlap;
+              best_poly = {std::move(poly)};
+            }
           }
+        } else {
+
+          double best_overlap = -1.0;
+          for (int sample = 0; sample < NUM_FACE_SAMPLES; sample++) {
+            int num_extra = 1;
+            while (num_extra < 6 && rc->Byte() < 128) {
+              num_extra++;
+            }
+
+            std::vector<vec2> pts;
+            pts.reserve(num_extra + 2);
+            pts.push_back({0.0, 0.0});
+            pts.push_back({chooser.edge_len, 0.0});
+
+            for (int i = 0; i < num_extra; i++) {
+              vec2 pt = {0.0, 0.0};
+              double sum = 0.0;
+              for (const vec2 &fp : feasible_poly) {
+                // -log(U) gives exponential distribution for Dirichlet weights.
+                double w = -std::log(std::max(1.0e-9, RandDouble(rc)));
+                pt.x += w * fp.x;
+                pt.y += w * fp.y;
+                sum += w;
+              }
+              pt.x /= sum;
+              pt.y /= sum;
+
+              vec2 base_pt = {chooser.edge_len * 0.5, 0.0};
+              double dist = yocto::length(pt - base_pt);
+              if (dist > chooser.max_dist) {
+                pt = base_pt + (pt - base_pt) * (chooser.max_dist / dist);
+              }
+              pts.push_back(pt);
+            }
+
+            std::vector<int> poly_indices = Hull2D::GrahamScan(pts);
+            if (poly_indices.size() < 3) continue;
+
+            std::vector<vec2> poly;
+            poly.reserve(poly_indices.size());
+            for (int idx : poly_indices) poly.push_back(pts[idx]);
+
+            // Ensure CCW winding so that the base edge is {0,0} -> {edge_len,0}.
+            double area = 0.0;
+            for (int i = 0; i < (int)poly.size(); i++) {
+              vec2 pa = poly[i];
+              vec2 pb = poly[(i + 1) % poly.size()];
+              area += pa.x * pb.y - pb.x * pa.y;
+            }
+            if (area < 0.0) {
+              std::reverse(poly.begin(), poly.end());
+            }
+
+            // Reorient the polygon to guarantee the attaching boundary edge
+            // is exactly the segment from {0,0} to {edge_len, 0}.
+            int start_idx = -1;
+            for (int i = 0; i < (int)poly.size(); i++) {
+              vec2 p0 = poly[i];
+              vec2 p1 = poly[(i + 1) % poly.size()];
+              if (std::abs(p0.x) < 1.0e-5 && std::abs(p0.y) < 1.0e-5 &&
+                  std::abs(p1.x - chooser.edge_len) < 1.0e-5 &&
+                  std::abs(p1.y) < 1.0e-5) {
+                start_idx = i;
+                break;
+              }
+            }
+
+            if (start_idx < 0) continue;
+
+            if (start_idx != 0) {
+              std::vector<vec2> reordered;
+              reordered.reserve(poly.size());
+              for (int i = 0; i < (int)poly.size(); i++) {
+                reordered.push_back(poly[(start_idx + i) % poly.size()]);
+              }
+              poly = std::move(reordered);
+            }
+
+            // Clean up the polygon to ensure strictly convex vertices.
+            // If an angle is too flat, remove a vertex. We never remove
+            // the required base vertices at index 0 and 1.
+            bool changed = true;
+            while (changed && poly.size() > 3) {
+              changed = false;
+              for (int i = 0; i < (int)poly.size(); i++) {
+                vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+                vec2 p_curr = poly[i];
+                vec2 p_next = poly[(i + 1) % poly.size()];
+
+                vec2 e1 = p_curr - p_prev;
+                vec2 e2 = p_next - p_curr;
+
+                double len1 = yocto::length(e1);
+                double len2 = yocto::length(e2);
+
+                // Check for short edges or angles that are too flat
+                // (sin(θ) <= 1e-3)
+                if (len1 < 1e-3 || len2 < 1e-3 ||
+                    (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
+                  int remove_idx = i;
+                  if (i == 0) remove_idx = (int)poly.size() - 1;
+                  else if (i == 1) remove_idx = 2;
+
+                  poly.erase(poly.begin() + remove_idx);
+                  changed = true;
+                  break;
+                }
+              }
+            }
+
+            // Final strict convexity check (also catches poly.size() == 3)
+            bool strictly_convex = true;
+            for (int i = 0; i < (int)poly.size(); i++) {
+              vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+              vec2 p_curr = poly[i];
+              vec2 p_next = poly[(i + 1) % poly.size()];
+
+              vec2 e1 = p_curr - p_prev;
+              vec2 e2 = p_next - p_curr;
+
+              double len1 = yocto::length(e1);
+              double len2 = yocto::length(e2);
+
+              if (len1 < 1e-3 || len2 < 1e-3 ||
+                  (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
+                strictly_convex = false;
+                break;
+              }
+            }
+            if (!strictly_convex) continue;
+
+            double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
+            if (overlap > best_overlap) {
+              best_overlap = overlap;
+              best_poly = {std::move(poly)};
+            }
+          }
+
+
         }
 
-        if (best_overlap >= 0.0) {
-          std::vector<vec3> best_face = chooser.ConvertTo3D(best_poly);
+        if (best_poly.has_value()) {
+          std::vector<vec3> best_face = chooser.ConvertTo3D(best_poly.value());
           if (const char *problem =
               pp.FeasibilityProblem(edge_idx, best_face)) {
             status->Print("Not Feasible: " AGREY("{}") "\n", problem);
