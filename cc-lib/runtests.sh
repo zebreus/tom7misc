@@ -83,3 +83,5 @@ make -j || exit -1
 ./packet-writer_test.exe
 ./markdown_test.exe
 ./yocto-math_test.exe
+# ./console_test.exe
+./union-find_test.exe
