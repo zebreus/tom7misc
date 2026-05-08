@@ -3,7 +3,7 @@ default : latlon_test.exe latlon-tree_test.exe bezier_test.exe hilbert-curve_tes
 
 CC_LIB=..
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/arcfour.o $(CC_LIB)/status-bar.o $(CC_LIB)/ansi.o $(CC_LIB)/color-util.o $(CC_LIB)/util.o $(CC_LIB)/dirty.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/arcfour.o $(CC_LIB)/status-bar.o $(CC_LIB)/ansi.o $(CC_LIB)/color-util.o $(CC_LIB)/util.o $(CC_LIB)/dirty.o $(CC_LIB)/integer-voronoi.o
 
 # OPT=-fsanitize=address -O
 OPT=-O3 $(FLTO)
@@ -51,6 +51,12 @@ point-map_test.exe : point-map_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 symmetry-groups_test.exe : symmetry-groups.o symmetry-groups_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+convert-johnson.exe : convert-johnson.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+johnson-solids_test.exe : johnson-solids.o johnson-solids_test.o polyhedra.o hull-3d.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

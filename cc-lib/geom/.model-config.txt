@@ -1,0 +1,6 @@
+
+# Useful directories to look in.
+# Better to put descriptions in ../sitelisp/model-config.txt
+
+svn ..
+file ../yocto-math.h
