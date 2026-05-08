@@ -8,7 +8,9 @@
 #include "ansi.h"
 #include "base/print.h"
 #include "bit-string.h"
+#include "geom/johnson-solids.h"
 #include "geom/polyhedra.h"
+#include "nasty.h"
 #include "periodically.h"
 #include "status-bar.h"
 
@@ -62,6 +64,21 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
 }
 
 static void FindAndCheckAll() {
+  // New ones first..
+
+  CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
+  CheckOnePoly(Nasty::FlattenedIcosahedron(), "flattenedicosahedron");
+  CheckOnePoly(Nasty::LongTaperedPrism(), "longtaperedprism");
+  CheckOnePoly(Nasty::LongTaperedAntiprism(), "longtaperedantiprism");
+  // too big!
+  // CheckOnePoly(Nasty::Lens(), "lens");
+  CheckOnePoly(Nasty::LowPolyLens(), "lowpolylens");
+  CheckOnePoly(Nasty::Coin(), "coin");
+  CheckOnePoly(Nasty::Sawblade(), "sawblade");
+  CheckOnePoly(Nasty::Dome(), "dome");
+  CheckOnePoly(Nasty::Chisel(), "chisel");
+
+
   CheckOnePoly(Icosahedron(), "icos");
   CheckOnePoly(Dodecahedron(), "dodec");
   CheckOnePoly(Cube(), "cube");
@@ -90,7 +107,6 @@ static void FindAndCheckAll() {
   CheckOnePoly(PentakisDodecahedron(), "pentakisdodecahedron");
   CheckOnePoly(PentagonalHexecontahedron(), "pentagonalhexecontahedron");
 
-
   // Big, slow
   CheckOnePoly(Rhombicosidodecahedron(), "rhombicosidodecahedron");
   CheckOnePoly(TruncatedIcosidodecahedron(), "truncatedicosidodecahedron");
@@ -101,6 +117,10 @@ static void FindAndCheckAll() {
 
   CheckOnePoly(Noperthedron(), "nope");
   CheckOnePoly(Onperthedron(), "onpe");
+
+  for (int i = 1; i <= 92; i++) {
+    CheckOnePoly(JohnsonSolid(i), JohnsonSolidName(i));
+  }
 
 }
 
