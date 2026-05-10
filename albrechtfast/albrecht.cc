@@ -173,7 +173,7 @@ static constexpr int CELLSH = HEIGHT / CELL_SIZE;
 // Constants controlling complexity thresholds and insert placement
 static constexpr double COMPLEXITY_THRESHOLD = 15.0;
 static constexpr double INSERT_ZOOM_FACTOR = 3.0;
-static constexpr double OUTSIDE_PENALTY = 1000.0;
+static constexpr double OUTSIDE_PENALTY = 5000.0;
 static constexpr double NEARNESS_PENALTY = 10000.0;
 
 
@@ -288,6 +288,19 @@ static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
     }
 
     Print("Got {} candidates.\n", candidates.size());
+
+    // If any of them is larger than half the image, this will be
+    // pointless. Suppress them all.
+    double graph_area = bounds.Width() * bounds.Height();
+    for (const Candidate &c : candidates) {
+      double cand_area = (c.poly_max.x - c.poly_min.x) *
+                         (c.poly_max.y - c.poly_min.y);
+      if (cand_area > 0.5 * graph_area) {
+        candidates.clear();
+        Print("... But they are too big!\n");
+        break;
+      }
+    }
 
     for (const Candidate &c : candidates) {
       auto RecalcDirty = [&]() {
@@ -563,8 +576,9 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
                          std::string_view text, double font_size) {
         const auto &[scx, scy] = scaler.Scale(cx, cy);
         SVG::G e_node;
+        const double baseline_fudge = font_size * 0.4;
         e_node.style.transform =
-            std::array<double, 6>{1.0, 0.0, 0.0, 1.0, scx, scy};
+            std::array<double, 6>{1.0, 0.0, 0.0, 1.0, scx, scy + baseline_fudge};
         e_node.style.font_size = font_size;
         e_node.children.push_back(SVG::Node{SVG::Text{std::string(text)}});
         g->children.push_back(SVG::Node{std::move(e_node)});
@@ -911,3 +925,85 @@ bool Albrecht::IsNet(const AugmentedPoly &aug,
 
   return true;
 }
+
+
+Albrecht::Stretch Albrecht::StretchFactor(const AugmentedPoly &aug,
+                                          BitStringConstView unfolding) {
+  const Polyhedron &poly = aug.poly;
+  const Faces &faces = *poly.faces;
+  const int num_faces = faces.NumFaces();
+
+  std::vector<std::vector<int>> adj_3d(num_faces);
+  std::vector<std::vector<int>> adj_2d(num_faces);
+
+  for (int i = 0; i < num_faces; ++i) {
+    for (int edge_idx : aug.face_edges[i]) {
+      const Faces::Edge &edge = faces.edges[edge_idx];
+      int next_face = (edge.f0 == i) ? edge.f1 : edge.f0;
+      adj_3d[i].push_back(next_face);
+      if (unfolding.Get(edge_idx)) {
+        adj_2d[i].push_back(next_face);
+      }
+    }
+  }
+
+  Stretch max_stretch;
+  double max_ratio = -1.0;
+
+  std::vector<int> dist_3d(num_faces);
+  std::vector<int> dist_2d(num_faces);
+  std::vector<int> q;
+  q.reserve(num_faces);
+
+  for (int start = 0; start < num_faces; ++start) {
+    std::fill(dist_3d.begin(), dist_3d.end(), -1);
+    std::fill(dist_2d.begin(), dist_2d.end(), -1);
+
+    // BFS 3D
+    q.clear();
+    q.push_back(start);
+    dist_3d[start] = 0;
+    size_t head = 0;
+    while (head < q.size()) {
+      int curr = q[head++];
+      for (int nxt : adj_3d[curr]) {
+        if (dist_3d[nxt] == -1) {
+          dist_3d[nxt] = dist_3d[curr] + 1;
+          q.push_back(nxt);
+        }
+      }
+    }
+
+    // BFS 2D
+    q.clear();
+    q.push_back(start);
+    dist_2d[start] = 0;
+    head = 0;
+    while (head < q.size()) {
+      int curr = q[head++];
+      for (int nxt : adj_2d[curr]) {
+        if (dist_2d[nxt] == -1) {
+          dist_2d[nxt] = dist_2d[curr] + 1;
+          q.push_back(nxt);
+        }
+      }
+    }
+
+    // Check stretch against max for all pairs (f0 < f1)
+    for (int i = start + 1; i < num_faces; ++i) {
+      if (dist_3d[i] > 0 && dist_2d[i] > 0) {
+        double ratio = static_cast<double>(dist_2d[i]) / dist_3d[i];
+        if (ratio > max_ratio) {
+          max_ratio = ratio;
+          max_stretch.f0 = start;
+          max_stretch.f1 = i;
+          max_stretch.distance_3d = dist_3d[i];
+          max_stretch.unfolded_distance = dist_2d[i];
+        }
+      }
+    }
+  }
+
+  return max_stretch;
+}
+

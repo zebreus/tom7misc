@@ -17,7 +17,9 @@
 #include "base/print.h"
 #include "bit-string.h"
 #include "db.h"
+#include "geom/johnson-solids.h"
 #include "geom/polyhedra.h"
+#include "nasty.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "status-bar.h"
@@ -27,24 +29,100 @@
 
 using Aug = Albrecht::AugmentedPoly;
 
-static void Inspect(int id, std::string_view filename) {
-  DB db;
-  DB::Hard hard = db.GetHard(id);
+static Polyhedron GetPolyhedron(std::string_view name) {
+  {
+    std::string_view johnson = name;
+    if (Util::TryStripPrefix("j", &johnson)) {
+      int64_t i = Util::ParseInt64(johnson);
+      if (i >= 1 && i <= 92) return JohnsonSolid(i);
+    }
+  }
 
-  std::optional<Polyhedron> opoly =
-    PolyhedronFromConvexVertices(hard.poly_points);
-  CHECK(opoly.has_value());
+  if (auto opoly = Nasty::ByName(name)) {
+    return opoly.value();
+  } else if (auto opoly = PolyhedronByName(name)) {
+    return opoly.value();
+  } else {
+    int64_t id = Util::ParseInt64(name);
+    if (id > 0) {
+      DB db;
+      DB::Hard hard = db.GetHard(id);
 
-  CHECK(IsWellConditioned(opoly.value().vertices));
-  CHECK(IsManifold(opoly.value()));
+      std::optional<Polyhedron> opoly =
+        PolyhedronFromConvexVertices(hard.poly_points);
+      CHECK(opoly.has_value()) << name;
+      return opoly.value();
+    }
+  }
 
-  Aug aug = Aug(std::move(opoly.value()));
+  LOG(FATAL) << "Unknown polyhedron " << name;
+}
 
-  std::string contents;
-
+static BitString Sample(ArcFour *rc, const Aug &aug, bool want_net, bool want_non_net) {
   const Faces &faces = *aug.poly.faces;
   int num_faces = faces.NumFaces();
   int num_edges = faces.NumEdges();
+
+  if (want_non_net && rc->Byte() > 200) {
+    // If we still want non-nets, most of the time we'll try a mostly depth-first approach.
+    // This tends to produce longer chains of faces, which have a higher chance of self-intersection,
+    // compared to the bushy graphs produced by Kruskal's algorithm below.
+    BitString unfolding(num_edges, false);
+    BitString visited(num_faces, false);
+    std::vector<int> stack = {0};
+    visited.Set(0, true);
+
+    while (!stack.empty()) {
+      int cur = stack.back();
+
+      std::vector<int> candidates;
+      for (int e : aug.face_edges[cur]) {
+        int next_face = (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
+        if (!visited[next_face]) {
+          candidates.push_back(e);
+        }
+      }
+
+      if (candidates.empty()) {
+        stack.pop_back();
+      } else {
+        int e = candidates[RandTo(rc, candidates.size())];
+        int next_face = (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
+        visited.Set(next_face, true);
+        unfolding.Set(e, true);
+        stack.push_back(next_face);
+      }
+    }
+
+    return unfolding;
+  }
+
+  BitString unfolding(num_edges, false);
+  std::vector<int> edges(num_edges);
+  for (int i = 0; i < num_edges; ++i) edges[i] = i;
+  Shuffle(rc, &edges);
+
+  UnionFind uf(num_faces);
+  for (int i : edges) {
+    const Faces::Edge &edge = faces.edges[i];
+    if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
+      uf.Union(edge.f0, edge.f1);
+      unfolding.Set(i, true);
+    }
+  }
+
+  return unfolding;
+}
+
+static void Inspect(std::string_view poly_name, std::string_view filename) {
+  Polyhedron poly = GetPolyhedron(poly_name);
+
+  CHECK(IsWellConditioned(poly.vertices));
+  CHECK(IsManifold(poly));
+
+  Aug aug = Aug(std::move(poly));
+
+  std::string contents;
 
   std::vector<Albrecht::DebugResult> non_nets;
   std::vector<BitString> seen_non_nets;
@@ -65,21 +143,10 @@ static void Inspect(int id, std::string_view filename) {
 
   StatusBar status(1);
   Periodically status_per(1.0);
-  while ((non_nets.size() < 3 || nets.empty()) && attempts < 10000) {
+  static constexpr int TARGET_NON_NETS = 3;
+  while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) && attempts < 100000) {
     attempts++;
-    BitString unfolding(num_edges, false);
-    std::vector<int> edges(num_edges);
-    for (int i = 0; i < num_edges; ++i) edges[i] = i;
-    Shuffle(&rc, &edges);
-
-    UnionFind uf(num_faces);
-    for (int i : edges) {
-      const Faces::Edge &edge = faces.edges[i];
-      if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
-        uf.Union(edge.f0, edge.f1);
-        unfolding.Set(i, true);
-      }
-    }
+    BitString unfolding = Sample(&rc, aug, nets.empty(), non_nets.size() < TARGET_NON_NETS);
 
     if (Albrecht::IsNet(aug, unfolding)) {
       if (nets.empty()) {
@@ -178,12 +245,9 @@ static void Inspect(int id, std::string_view filename) {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  CHECK(argc == 2) << "./inspect.exe id";
+  CHECK(argc == 2) << "./inspect.exe name";
 
-  int id = atoi(argv[1]);
-  CHECK(id > 0) << argv[1];
-
-  Inspect(id, std::format("inspect-{}.svg", id));
+  Inspect(argv[1], std::format("inspect-{}.svg", argv[1]));
 
   return 0;
 }

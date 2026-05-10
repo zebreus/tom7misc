@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <format>
@@ -12,7 +13,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <cstdint>
 
 #include "ansi-image.h"
 #include "ansi.h"
@@ -38,6 +38,8 @@ using Aug = Albrecht::AugmentedPoly;
 using OneSample = Sampler::OneSample;
 
 DECLARE_COUNTERS(ctr_poly, ctr_zero, ctr_only_net, ctr_saved);
+
+static constexpr bool SAVE_STL = false;
 
 // (actually an upper bound, not inclusive)
 static constexpr int MAX_FACES = 80;
@@ -200,13 +202,19 @@ struct Brechtfast {
               HistoCell(nfaces, pct)++;
 
               [&]{
-                for (int p = pct - 1; p >= 0; p--) {
-                  if (HistoCell(nfaces, p) > 0) {
+                if (sample.numer > 0) {
+                  // Don't save lots of ties.
+                  if (HistoCell(nfaces, pct) > 3)
                     return;
+
+                  for (int p = pct - 1; p >= 0; p--) {
+                    if (HistoCell(nfaces, p) > 0) {
+                      return;
+                    }
                   }
                 }
 
-                // Then it must be the best in this channel.
+                // Then it must be the best in this channel (or a zero).
                 new_best[nfaces] = std::make_tuple(
                     poly, METHOD,
                     sample.numer, sample.denom);
@@ -218,7 +226,7 @@ struct Brechtfast {
               MutexLock ml(&m);
               if (netness < best_netness) {
                 std::string wrote;
-                if (netness < 0.0005) {
+                if (SAVE_STL && netness < 0.0005) {
                   std::string filename =
                     std::format("brecht-{}-{:.5g}.stl", time(nullptr),
                                 netness * 100.0);
@@ -287,7 +295,7 @@ struct Brechtfast {
                   if (ov.has_value()) {
                     any = true;
                     const auto &[poly, method, numer, denom] = ov.value();
-                    db.AddHard(poly, method, numer, denom);
+                    db.AddHard(poly, method, numer, denom, {});
                     ctr_saved++;
                   }
                   ov = std::nullopt;

@@ -814,6 +814,18 @@ const char *PartialPolyhedron::FeasibilityProblem(
   if (len < 1e-5) return "degenerate normal";
   normal /= len;
 
+  // Explicitly check that the winding order of the new face is correct.
+  // The convexity check below does NOT imply this: if the face is wound
+  // clockwise, both its Newell normal and its edge cross products will
+  // flip to point inward, keeping their dot product positive! We verify
+  // that the normal points "outward" relative to the shared edge.
+  vec3 edge_dir = yocto::normalize(p1 - p0);
+  vec3 outward_dir = yocto::cross(edge_dir, faces[e.left_face].plane.normal);
+  if (yocto::dot(normal, outward_dir) < -1e-5) {
+    return "wrong winding order";
+  }
+
+
   // Check strict convexity of the new face.
   for (int j = 0; j < (int)new_face_pts.size(); ++j) {
     vec3 p_prev = new_face_pts[j];

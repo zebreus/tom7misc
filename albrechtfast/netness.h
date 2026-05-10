@@ -3,9 +3,11 @@
 #define _BRECHTFAST_NETNESS_H
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "albrecht.h"
+#include "bit-string.h"
 
 struct Netness {
   using Aug = Albrecht::AugmentedPoly;
@@ -19,6 +21,18 @@ struct Netness {
                                              int num_samples,
                                              int num_repeat = 8,
                                              int num_threads = 8);
+  struct NetnessResult {
+    int64_t numer = 0;
+    int64_t denom = 0;
+    // An example net, unless numer is zero.
+    std::optional<BitString> example;
+  };
+
+  static NetnessResult ComputeWithExample(uint64_t seed,
+                                          const Aug &aug,
+                                          int num_samples,
+                                          int num_repeat = 8,
+                                          int num_threads = 8);
 
 };
 

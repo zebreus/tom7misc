@@ -328,7 +328,7 @@ OneSample Sampler::ConstructSample(StatusBar *status,
     Aug aug(std::move(opoly.value()));
     auto [numer, denom] = Netness::Compute(Rand64(rc),
                                            aug,
-                                           131072, 16, 1);
+                                           32768, 64, 1);
 
     double measure_sec = measure_timer.Seconds();
 

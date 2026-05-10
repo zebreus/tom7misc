@@ -2,17 +2,20 @@
 #include "nasty.h"
 
 #include <cmath>
+#include <numbers>
 #include <optional>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "geom/polyhedra.h"
 
+static constexpr double pi = std::numbers::pi;
+
 Polyhedron Nasty::TiltedDecagonPyramid() {
   std::vector<vec3> vertices;
   vertices.reserve(11);
 
-  const double pi = std::acos(-1.0);
   for (int i = 0; i < 10; i++) {
     double angle = i * (2.0 * pi / 10.0);
     vertices.push_back(vec3{std::cos(angle), std::sin(angle), 0.0});
@@ -46,7 +49,6 @@ Polyhedron Nasty::LongTaperedPrism() {
   std::vector<vec3> vertices;
   vertices.reserve(20);
 
-  const double pi = std::acos(-1.0);
   for (int i = 0; i < 10; i++) {
     double angle = (double)i * (2.0 * pi / 10.0);
     double c = std::cos(angle);
@@ -66,7 +68,6 @@ Polyhedron Nasty::LongTaperedAntiprism() {
   std::vector<vec3> vertices;
   vertices.reserve(20);
 
-  const double pi = std::acos(-1.0);
   for (int i = 0; i < 10; i++) {
     double angle1 = (double)i * (2.0 * pi / 10.0);
     vertices.push_back(
@@ -88,7 +89,6 @@ Polyhedron Nasty::Lens() {
   std::vector<vec3> vertices;
   vertices.reserve(212);
 
-  const double pi = std::acos(-1.0);
   const double r_sphere = 2.0;
   const double r_eq = 1.0;
   const double z_offset = std::sqrt(r_sphere * r_sphere - r_eq * r_eq);
@@ -129,7 +129,6 @@ Polyhedron Nasty::LowPolyLens() {
   std::vector<vec3> vertices;
   vertices.reserve(42);
 
-  const double pi = std::acos(-1.0);
   // Extremely flat top and bottom poles
   vertices.push_back(vec3{0.0, 0.0, 0.2});
   vertices.push_back(vec3{0.0, 0.0, -0.2});
@@ -156,7 +155,6 @@ Polyhedron Nasty::Coin() {
   std::vector<vec3> vertices;
   vertices.reserve(60);
 
-  const double pi = std::acos(-1.0);
   for (int i = 0; i < 30; i++) {
     double angle = (double)i * (2.0 * pi / 30.0);
     double c = std::cos(angle);
@@ -176,7 +174,6 @@ Polyhedron Nasty::Sawblade() {
   std::vector<vec3> vertices;
   vertices.reserve(40);
 
-  const double pi = std::acos(-1.0);
   for (int i = 0; i < 20; i++) {
     double angle1 = (double)i * (2.0 * pi / 20.0);
     vertices.push_back(
@@ -198,7 +195,6 @@ Polyhedron Nasty::Dome() {
   std::vector<vec3> vertices;
   vertices.reserve(33);
 
-  const double pi = std::acos(-1.0);
   vertices.push_back(vec3{0.0, 0.0, 2.0}); // Pole
 
   for (int i = 0; i < 16; i++) {
@@ -222,8 +218,6 @@ Polyhedron Nasty::Chisel() {
   std::vector<vec3> vertices;
   vertices.reserve(32);
 
-  const double pi = std::acos(-1.0);
-
   // Base is a wide, flat 16-gon (an ellipse)
   for (int i = 0; i < 16; i++) {
     double angle = (double)i * (2.0 * pi / 16.0);
@@ -240,4 +234,63 @@ Polyhedron Nasty::Chisel() {
       std::move(vertices), "chisel");
   CHECK(opt.has_value());
   return std::move(opt.value());
+}
+
+Polyhedron Nasty::Cigar() {
+  std::vector<vec3> vertices;
+
+  // Tunable parameter: dictates the topological diameter of the shape.
+  // num_layers = 6 yields 30 faces.
+  // num_layers = 10 yields 54 faces.
+  const int num_layers = 8;
+  vertices.reserve(num_layers * 3 + 2);
+
+  // Dimensions of the cigar
+  const double length = 10.0; // Z-axis stretch
+  const double radius = 2.0;  // X/Y-axis max thickness
+
+  // Top Pole
+  vertices.push_back(vec3{0.0, 0.0, length});
+
+  // Intermediate triangular rings
+  for (int i = 1; i < num_layers; i++) {
+    // Map i to an angle between 0 and PI for spherical distribution
+    double theta = pi * (double)i / (double)num_layers;
+
+    // Ellipsoid profile
+    double z = length * std::cos(theta);
+    double r = radius * std::sin(theta);
+
+    // Twist every other layer by 60 degrees to ensure strictly convex
+    // triangular faces (forming an antiprism stack)
+    double twist = (i % 2) * (pi / 3.0);
+
+    for (int j = 0; j < 3; j++) {
+      double angle = (double)j * (2.0 * pi / 3.0) + twist;
+      vertices.push_back(vec3{r * std::cos(angle), r * std::sin(angle), z});
+    }
+  }
+
+  // Bottom Pole
+  vertices.push_back(vec3{0.0, 0.0, -length});
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "cigar");
+  CHECK(opt.has_value());
+  return std::move(opt.value());
+}
+
+std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
+  if (name == "tilteddecagonpyramid") return TiltedDecagonPyramid();
+  if (name == "flattenedicosahedron") return FlattenedIcosahedron();
+  if (name == "longtaperedprism") return LongTaperedPrism();
+  if (name == "longtaperedantiprism") return LongTaperedAntiprism();
+  if (name == "lens") return Lens();
+  if (name == "lowpolylens") return LowPolyLens();
+  if (name == "coin") return Coin();
+  if (name == "sawblade") return Sawblade();
+  if (name == "dome") return Dome();
+  if (name == "chisel") return Chisel();
+  if (name == "cigar") return Cigar();
+  return std::nullopt;
 }

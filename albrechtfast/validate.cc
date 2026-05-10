@@ -10,6 +10,7 @@
 #include "ansi.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bit-string.h"
 #include "db.h"
 #include "geom/polyhedra.h"
@@ -31,6 +32,13 @@ void Validate(int id) {
   DB db;
   db.Init();
 
+  StatusBar status(1);
+  Periodically status_per(0.25);
+
+  status.Print("Fixup DB.\n");
+  db.Fixup();
+  status.Print("DB fixed.\n");
+
   std::vector<DB::Hard> hards;
   if (id != 0) {
     hards.push_back(db.GetHard(id));
@@ -38,10 +46,9 @@ void Validate(int id) {
     hards = db.AllHard();
   }
 
-  static constexpr int max_threads = 8;
+  status.Print("Got {} hard.\n", hards.size());
 
-  StatusBar status(1);
-  Periodically status_per(0.25);
+  static constexpr int max_threads = 8;
 
   ParallelApp(
       hards,

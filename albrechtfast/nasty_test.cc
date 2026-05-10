@@ -16,6 +16,7 @@ static void WriteSTLs() {
   SaveAsSTL(Nasty::Sawblade(), "sawblade.stl");
   SaveAsSTL(Nasty::Dome(), "dome.stl");
   SaveAsSTL(Nasty::Chisel(), "chisel.stl");
+  SaveAsSTL(Nasty::Cigar(), "cigar.stl");
 }
 
 
@@ -26,3 +27,5 @@ int main(int argc, char **argv) {
 
   return 0;
 }
+
+

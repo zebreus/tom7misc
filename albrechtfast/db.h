@@ -5,11 +5,13 @@
 #include <cstdint>
 #include <ctime>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "base/logging.h"
+#include "bit-string.h"
 #include "database.h"
 #include "geom/polyhedra.h"
 #include "yocto-math.h"
@@ -54,6 +56,8 @@ struct DB {
     int64_t createdate = 0;
     int64_t netness_numer = 0;
     int64_t netness_denom = 0;
+
+    std::optional<BitString> example_net;
   };
 
   // Or abort.
@@ -64,7 +68,8 @@ struct DB {
   void MarkValidity(int id, bool valid);
 
   void AddHard(const Polyhedron &poly, int method,
-               int64_t netness_numer, int64_t netness_denom);
+               int64_t netness_numer, int64_t netness_denom,
+               std::optional<BitString> example_net);
 
   void ExecuteAndPrint(const std::string &s) {
     db->ExecuteAndPrint(s);
@@ -73,6 +78,13 @@ struct DB {
   // Write a TSV file with the data. The polyhedra points are
   // not included.
   void Spreadsheet(std::string_view filename);
+
+  void DeleteHard(int id);
+  void UpdateHard(int id, int64_t netness_numer, int64_t netness_denom,
+                  std::optional<BitString> example_net);
+
+  // Perform one-time fixes after schema updates.
+  void Fixup();
 
  private:
   std::unique_ptr<Database> db;

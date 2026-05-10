@@ -15,6 +15,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
+#include "bit-string.h"
 #include "database.h"
 #include "geom/polyhedra.h"
 #include "periodically.h"
@@ -93,8 +94,12 @@ void DB::Init() {
                       "poly string not null, "
                       "method integer not null, "
                       "createdate integer not null, "
-                      "netness_numer not null, "
-                      "netness_denom not null, "
+                      "netness_numer integer not null, "
+                      "netness_denom integer not null, "
+                      "faces integer not null, "
+                      "edges integer not null, "
+                      "vertices integer not null, "
+                      "example_net string not null, "
                       "invalid boolean not null default 0"
                       ")");
 }
@@ -113,6 +118,8 @@ static std::vector<DB::Hard> GetHardForQuery(
     hard.createdate = r->GetInt(3);
     hard.netness_numer = r->GetInt(4);
     hard.netness_denom = r->GetInt(5);
+    // This will produce nullopt for the empty string, which is how we represent no net.
+    hard.example_net = BitString::FromASCII(r->GetStringOpt(6).value_or(""));
     ret.push_back(std::move(hard));
   }
   return ret;
@@ -124,7 +131,7 @@ Hard DB::GetHard(int id) {
     db->ExecuteString(
         std::format(
             "select "
-            "id, poly, method, createdate, netness_numer, netness_denom "
+            "id, poly, method, createdate, netness_numer, netness_denom, example_net "
             "from hard "
             "where id = {}", id)));
   CHECK(sols.size() == 1) << "Hard " << id << " not found";
@@ -132,23 +139,34 @@ Hard DB::GetHard(int id) {
 }
 
 void DB::AddHard(const Polyhedron &poly, int method,
-                 int64_t netness_numer, int64_t netness_denom) {
+                 int64_t netness_numer, int64_t netness_denom,
+                 std::optional<BitString> example_net) {
   std::string polystring = StringFromVec3s(poly.vertices);
+  std::string netstring;
+  if (example_net.has_value()) netstring = example_net.value().ToASCII();
+  const int faces = poly.faces->NumFaces();
+  const int edges = poly.faces->NumEdges();
+  const int vertices = poly.faces->NumVertices();
   db->ExecuteAndPrint(
       std::format(
           "insert into hard "
-          "(poly, method, createdate, netness_numer, netness_denom) "
-          "values ('{}', {}, {}, {}, {})",
+          "(poly, faces, edges, vertices, "
+          "method, createdate, netness_numer, netness_denom, example_net) "
+          "values ('{}', "
+          "{}, {}, {}, "
+          "{}, {}, {}, {}, '{}')",
           polystring,
+          faces, edges, vertices,
           method,
           time(nullptr),
-          netness_numer, netness_denom));
+          netness_numer, netness_denom,
+          netstring));
 }
 
 std::vector<Hard> DB::AllHard(bool include_invalid) {
   std::string query =
       "select "
-      "id, poly, method, createdate, netness_numer, netness_denom "
+      "id, poly, method, createdate, netness_numer, netness_denom, example_net "
       "from hard";
   if (!include_invalid) {
     query += " where invalid = 0";
@@ -177,7 +195,7 @@ void DB::Spreadsheet(std::string_view filename) {
         db->ExecuteString(
             std::format(
                 "select "
-                "id, poly, method, createdate, netness_numer, netness_denom "
+                "id, poly, method, createdate, netness_numer, netness_denom, example_net "
                 "from hard "
                 "where invalid = 0")));
   for (int i = 0; i < (int)hards.size(); i++) {
@@ -206,3 +224,59 @@ void DB::Spreadsheet(std::string_view filename) {
   Print("Wrote {}\n", filename);
 }
 
+void DB::DeleteHard(int id) {
+  db->ExecuteAndPrint(std::format("delete from hard where id = {}", id));
+}
+
+void DB::UpdateHard(int id, int64_t netness_numer, int64_t netness_denom,
+                    std::optional<BitString> example_net) {
+  std::string netstring;
+  if (example_net.has_value()) netstring = example_net.value().ToASCII();
+  db->ExecuteAndPrint(
+      std::format(
+          "update hard "
+          "set netness_numer = {}, netness_denom = {}, example_net = '{}' "
+          "where id = {}",
+          netness_numer, netness_denom, netstring, id));
+}
+
+void DB::Fixup() {
+  std::vector<std::pair<int, std::string>> to_fix;
+  {
+    std::unique_ptr<Database::Query> q = db->ExecuteString(
+        "select id, poly from hard "
+        "where invalid = 0 and "
+        "(faces = 0 or edges = 0 or vertices = 0 or "
+        "faces is null or edges is null or vertices is null)");
+    while (std::unique_ptr<Database::Row> r = q->NextRow()) {
+      to_fix.emplace_back(r->GetInt(0), r->GetString(1));
+    }
+  }
+
+  Periodically status_per(1, false);
+  StatusBar status(1);
+  int64_t processed = 0, fixed = 0;
+  for (const auto &[id, poly_str] : to_fix) {
+    std::optional<std::vector<vec3>> pts = Vec3sFromString(poly_str);
+    if (!pts.has_value()) continue;
+
+    if (std::optional<Polyhedron> opoly =
+            PolyhedronFromConvexVertices(std::move(pts.value()))) {
+      const int nfaces = opoly.value().faces->NumFaces();
+      const int nedges = opoly.value().faces->NumEdges();
+      const int nverts = opoly.value().faces->NumVertices();
+
+      db->ExecuteAndPrint(
+          std::format("update hard "
+                      "set faces = {}, edges = {}, vertices = {} "
+                      "where id = {}",
+                      nfaces, nedges, nverts, id));
+      fixed++;
+    }
+    processed++;
+    status_per.RunIf([&]{
+        status.Progress(processed, to_fix.size(), "Fixed {}", fixed);
+      });
+  }
+  status.Remove();
+}

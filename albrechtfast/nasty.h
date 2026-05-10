@@ -2,6 +2,9 @@
 #ifndef _BRECHTFAST_NASTY_H
 #define _BRECHTFAST_NASTY_H
 
+#include <optional>
+#include <string_view>
+
 #include "geom/polyhedra.h"
 
 struct Nasty {
@@ -32,6 +35,11 @@ struct Nasty {
   static Polyhedron Dome();
 
   static Polyhedron Chisel();
+
+  // Long topological diameter between the top and bottom faces.
+  static Polyhedron Cigar();
+
+  static std::optional<Polyhedron> ByName(std::string_view name);
 };
 
 #endif

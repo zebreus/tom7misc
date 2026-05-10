@@ -160,15 +160,6 @@ struct Albrecht {
     }
   };
 
-  /* old
-  struct PlacedFace {
-    // Same as the face index in the polyhedron.
-    int face_idx = 0;
-    // In the same order they appear in the Polyhedron's face.
-    std::vector<vec2> vertices;
-  };
-  */
-
   struct PlacedFace {
     // The index of the 2D vertex in the UnfoldedMesh.
     // The vertices are in the same order they appear in the
@@ -228,6 +219,21 @@ struct Albrecht {
   // components).
   static bool IsNet(const AugmentedPoly &aug,
                     BitStringConstView unfolding);
+
+  // For the unfolding (which should be a spanning tree, but doesn't
+  // need to be non-overlapping), find the most "stretched" pair of
+  // faces. This is the largest ratio of the distance in the spanning
+  // tree compared to their intrinsic distance from the geometry itself.
+  struct Stretch {
+    // The face indices, with f0 < f1.
+    int f0 = 0, f1 = 0;
+    // Their minimum distance in the 3D geometry (in the dual graph).
+    int distance_3d = 0;
+    // Their distance in the 2D spanning tree.
+    int unfolded_distance = 0;
+  };
+  static Stretch StretchFactor(const AugmentedPoly &aug,
+                               BitStringConstView unfolding);
 
   static bool PolygonsOverlap(std::span<const vec2> a,
                               std::span<const vec2> b) {

@@ -228,10 +228,53 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
   CHECK(dr.is_net == Albrecht::IsNet(aug, unfolding));
 }
 
+static void TestStretchFactor() {
+  // A BFS tree on a Cube's faces always yields the exact same
+  // topology regardless of face order: a root (Top) connected to 4
+  // side faces, and one side face connected to the Bottom face. The
+  // max stretch is exactly 3 (between the Bottom face and a side face
+  // not connected to it). Starting at face 0 works generically
+  // because the cube is face-transitive.
+
+  Albrecht::AugmentedPoly aug(Cube());
+  const Faces &faces = *aug.poly.faces;
+  int num_faces = faces.NumFaces();
+  int num_edges = faces.NumEdges();
+
+  BitString unfolding(num_edges, false);
+  std::vector<int> q;
+  std::vector<bool> visited(num_faces, false);
+
+  q.push_back(0);
+  visited[0] = true;
+  size_t head = 0;
+
+  while (head < q.size()) {
+    int curr = q[head++];
+    for (int e : aug.face_edges[curr]) {
+      const Faces::Edge &edge = faces.edges[e];
+      int nxt = (edge.f0 == curr) ? edge.f1 : edge.f0;
+      if (!visited[nxt]) {
+        visited[nxt] = true;
+        unfolding.Set(e, true);
+        q.push_back(nxt);
+      }
+    }
+  }
+
+  Albrecht::Stretch stretch = Albrecht::StretchFactor(aug, unfolding);
+  CHECK(stretch.f0 < stretch.f1);
+  CHECK(stretch.distance_3d == 1);
+  CHECK(stretch.unfolded_distance == 3);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestHasSeparatingAxis();
+
+  TestStretchFactor();
 
   Unfold(Icosahedron(), "icos");
   Unfold(Dodecahedron(), "dodec");
