@@ -58,6 +58,7 @@ struct Console {
  private:
   void SetStatusTo(Location loc, int idx, std::string_view s);
   void RedrawStatusWithLock(Location loc);
+  void HideCursorWithLock();
   void ReplaceCursorWithLock();
   void Append(std::string_view s);
   void AppendWithLock(std::string_view s);

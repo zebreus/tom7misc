@@ -2,9 +2,13 @@
 #ifndef _CC_LIB_BIT_STRING_H
 #define _CC_LIB_BIT_STRING_H
 
+#include <cstring>
+#include <format>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <optional>
+#include <string_view>
 
 #include "base/logging.h"
 
@@ -23,6 +27,8 @@ struct BitString {
 
   // Hint that we will want to store this many bits.
   inline void Reserve(size_t bits);
+  // Set all the bits to the same value.
+  inline void Clear(bool bit = false);
 
   /* Appends the n low-order bits to the bit buffer. */
   inline void WriteBits(int n, uint64_t bits);
@@ -53,9 +59,15 @@ struct BitString {
   inline BitStringView View();
   inline BitStringConstView View() const;
 
+  inline std::string ToASCII() const;
+  static inline std::optional<BitString> FromASCII(std::string_view ascii);
+
  private:
   friend struct BitStringView;
   friend struct BitStringConstView;
+  // Change the size, but leave the data in an unspecified (but valid)
+  // state.
+  inline void ResizeUninitialized(size_t bits);
   // Always Ceil(num_bits) bytes, with trailing zero bits.
   std::vector<uint8_t> bytes;
   size_t num_bits = 0;
@@ -82,6 +94,8 @@ struct BitStringView {
 
   inline BitStringView Sub(size_t offset, size_t length = npos);
   inline BitStringConstView Sub(size_t offset, size_t length = npos) const;
+
+  inline std::string ToASCII() const;
 
  private:
   friend struct BitString;
@@ -115,6 +129,8 @@ struct BitStringConstView {
   inline void RemoveSuffix(size_t n);
 
   inline BitStringConstView Sub(size_t offset, size_t length = npos) const;
+
+  inline std::string ToASCII() const;
 
   inline static auto Spaceship(BitStringConstView a, BitStringConstView b) {
     size_t min_len = a.length < b.length ? a.length : b.length;
@@ -157,24 +173,30 @@ inline bool operator==(BitStringConstView a, BitStringConstView b) {
 
 BitString::BitString(size_t bits, bool bit) {
   // PERF: Faster to create the vector with the
-  // correct size in the first place.
-  Reserve(bits);
+  // correct data in the first place.
+  ResizeUninitialized(bits);
+  Clear(bit);
+}
 
-  if (bit) {
-    while (bits >= 8) {
-      bytes.push_back(0xFF);
-      num_bits += 8;
-      bits -= 8;
-    }
-  } else {
-    while (bits >= 8) {
-      bytes.push_back(0x00);
-      num_bits += 8;
-      bits -= 8;
-    }
+void BitString::Clear(bool bit) {
+  memset(bytes.data(), bit ? 0xFF : 0x00, bytes.size());
+
+  // Trailing bits must be zero. We need to branch on
+  // the possibility that there are no bytes anyway, so
+  // we test whether we have nonzero slack.
+  if (num_bits & 7) {
+    bytes.back() &= (0xFF << (8 - (num_bits & 7)));
   }
+}
 
-  for (; bits > 0; bits--) WriteBit(bit);
+void BitString::ResizeUninitialized(size_t bits) {
+  int num_bytes = Ceil(bits);
+  // (PERF: This actually does initialize, but prepping for
+  // resize_and_overwrite).
+  bytes.resize(num_bytes, 0);
+  // To be valid, the trailing bits must be zero.
+  if (num_bytes > 0) bytes.back() = 0;
+  num_bits = bits;
 }
 
 std::string BitString::GetString() const {
@@ -313,6 +335,95 @@ BitStringConstView BitStringConstView::Sub(size_t off, size_t len) const {
   }
   DCHECK(len <= length - off);
   return BitStringConstView(parent, offset + off, len);
+}
+
+inline std::string BitString::ToASCII() const {
+  return View().ToASCII();
+}
+
+inline std::string BitStringView::ToASCII() const {
+  return BitStringConstView(*this).ToASCII();
+}
+
+inline std::string BitStringConstView::ToASCII() const {
+  std::string result = std::format("{:x}.", length);
+  result.reserve(result.length() + length / 6 + (length % 6 != 0 ? 1 : 0));
+
+  constexpr std::string_view CHARS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  for (size_t i = 0; i < length; i += 6) {
+    int val = 0;
+    for (int b = 0; b < 6; b++) {
+      if (i + b < length && Get(i + b)) {
+        val |= (1 << (5 - b));
+      }
+    }
+    result.push_back(CHARS[val]);
+  }
+
+  return result;
+}
+
+inline std::optional<BitString> BitString::FromASCII(std::string_view s) {
+  size_t dot = s.find('.');
+  if (dot == std::string_view::npos) return std::nullopt;
+
+  std::string_view hex_len = s.substr(0, dot);
+  // Reject empty length or strings that would overflow size_t
+  if (hex_len.empty() || hex_len.size() > sizeof(size_t) * 2) {
+    return std::nullopt;
+  }
+
+  size_t length = 0;
+  for (char c : hex_len) {
+    length <<= 4;
+    if (c >= '0' && c <= '9') {
+      length |= (c - '0');
+    } else if (c >= 'a' && c <= 'f') {
+      length |= (c - 'a' + 10);
+    } else if (c >= 'A' && c <= 'F') {
+      length |= (c - 'A' + 10);
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  std::string_view data = s.substr(dot + 1);
+  size_t expected_chars = length / 6 + (length % 6 != 0 ? 1 : 0);
+  if (data.size() != expected_chars) {
+    return std::nullopt;
+  }
+
+  BitString bs;
+  bs.Reserve(length);
+
+  for (char c : data) {
+    int val = 0;
+    if (c >= 'A' && c <= 'Z') {
+      val = c - 'A';
+    } else if (c >= 'a' && c <= 'z') {
+      val = c - 'a' + 26;
+    } else if (c >= '0' && c <= '9') {
+      val = c - '0' + 52;
+    } else if (c == '-') {
+      val = 62;
+    } else if (c == '_') {
+      val = 63;
+    } else {
+      return std::nullopt;
+    }
+
+    for (int b = 0; b < 6; b++) {
+      if (bs.NumBits() < length) {
+        bs.WriteBit(!!(val & (1 << (5 - b))));
+      } else if (val & (1 << (5 - b))) {
+        // Enforce canonical representation: unused bits must be 0
+        return std::nullopt;
+      }
+    }
+  }
+
+  return bs;
 }
 
 #endif

@@ -360,6 +360,7 @@ void Console::SetStatusTo(Location loc, int idx, std::string_view s) {
       break;
   }
 
+  HideCursorWithLock();
   RedrawStatusWithLock(loc);
   ReplaceCursorWithLock();
 }
@@ -393,6 +394,7 @@ static void PrintPadded(
       line, eol);
 }
 
+// Does not hide or show cursor.
 void Console::RedrawStatusWithLock(Location loc) {
   if (loc == Location::TOP) {
     for (size_t r = 0; r < data->top_status.size(); r++) {
@@ -457,8 +459,13 @@ void Console::Redraw() {
 
   // "\x1B[%dA" and "\x1B[%dG"
 
+  // Don't show a flickering cursor while we're redrawing.
+  // We restore this at the end.
+  HideCursorWithLock();
+
   // Move to the top-left of the screen.
-  ::Print(ANSI_HOME);
+  // (Not necessary now because we move to each section.)
+  // ::Print(ANSI_HOME);
 
   RedrawStatusWithLock(Location::TOP);
 
@@ -490,6 +497,10 @@ void Console::Redraw() {
   ReplaceCursorWithLock();
 }
 
+void Console::HideCursorWithLock() {
+  ::Print("\x1b[?25l");
+}
+
 void Console::ReplaceCursorWithLock() {
   // PERF: Cache this
   // Restore the cursor to the input line so typing feels natural.
@@ -504,6 +515,8 @@ void Console::ReplaceCursorWithLock() {
   ::Print(
       // move to the end of the input
       "\x1b[{};{}H"
+      // and show cursor again
+      "\x1b[?25h"
       // and reset colors
       ANSI_RESET, cursor_row + 1, cursor_col + 1);
 

@@ -43,6 +43,23 @@ static void EZ1() {
     CHECK(b[0] == 0b10111001);
     CHECK(b[1] == 0b10110011);
   }
+
+  bb.WriteBit(1);
+  bb.WriteBit(0);
+  bb.WriteBit(1);
+  CHECK(bb.NumBits() == 19);
+
+  bb.Clear(true);
+  CHECK(bb.NumBits() == 19);
+  for (int i = 0; i < (int)bb.NumBits(); i++) {
+    CHECK(bb[i] == true);
+  }
+
+  bb.Clear(false);
+  CHECK(bb.NumBits() == 19);
+  for (int i = 0; i < (int)bb.NumBits(); i++) {
+    CHECK(bb[i] == false);
+  }
 }
 
 static void TestViews() {
@@ -249,6 +266,65 @@ static void TestComparisons() {
   CHECK(view5 > cview2);
 }
 
+static void TestASCII() {
+  auto check_round_trip = [](const BitString &bb) {
+    std::string ascii = bb.ToASCII();
+    std::optional<BitString> parsed = BitString::FromASCII(ascii);
+    CHECK(parsed.has_value());
+    CHECK(parsed.value() == bb);
+  };
+
+  {
+    BitString empty;
+    check_round_trip(empty);
+    CHECK(empty.ToASCII() == "0.");
+  }
+
+  for (int len = 1; len < 32; len++) {
+    BitString zeros(len, false);
+    check_round_trip(zeros);
+
+    BitString ones(len, true);
+    check_round_trip(ones);
+
+    BitString alternating;
+    for (int i = 0; i < len; i++) {
+      alternating.WriteBit((i % 2) == 0);
+    }
+    check_round_trip(alternating);
+  }
+
+  {
+    BitString large;
+    for (int i = 0; i < 1000; i++) {
+      large.WriteBit((i % 3) == 0);
+    }
+    check_round_trip(large);
+  }
+
+  {
+    // Test that canonical representation is enforced.
+    // 'h' is 33 (100001 in binary). If length is 1, only the first bit
+    // is used, so the last bit being 1 makes it non-canonical.
+    std::optional<BitString> parsed = BitString::FromASCII("1.h");
+    CHECK(!parsed.has_value());
+  }
+
+  {
+    // Missing dot.
+    std::optional<BitString> parsed = BitString::FromASCII("1");
+    CHECK(!parsed.has_value());
+
+    // Invalid character.
+    parsed = BitString::FromASCII("1.?");
+    CHECK(!parsed.has_value());
+
+    // Incorrect length of base64 data.
+    parsed = BitString::FromASCII("1.AA");
+    CHECK(!parsed.has_value());
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -259,6 +335,7 @@ int main(int argc, char **argv) {
   TestSub();
   TestConstructor();
   TestComparisons();
+  TestASCII();
 
   printf("OK\n");
   return 0;

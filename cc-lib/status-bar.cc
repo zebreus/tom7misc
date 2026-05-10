@@ -163,8 +163,12 @@ void StatusBar::Clear() {
 }
 
 void StatusBar::Remove() {
-  EmitStatus(std::string(num_lines, '\n'));
+  // Nothing to do if the status bar hasn't been
+  // used yet!
   std::unique_lock<std::mutex> ml(m);
+  if (first) return;
+
+  EmitStatusLinesWithLock(std::vector<std::string>(num_lines, ""));
   MoveUpWithLock();
   first = true;
 }
