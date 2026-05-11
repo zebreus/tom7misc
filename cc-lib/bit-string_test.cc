@@ -2,6 +2,8 @@
 #include "bit-string.h"
 
 #include <cstdio>
+#include <optional>
+#include <string>
 #include <vector>
 #include <cstdint>
 

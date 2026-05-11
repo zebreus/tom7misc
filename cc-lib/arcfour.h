@@ -14,21 +14,19 @@
 #ifndef _CC_LIB_ARCFOUR_H
 #define _CC_LIB_ARCFOUR_H
 
-#include <string>
-#include <vector>
 #include <cstdint>
+#include <span>
+#include <string_view>
 
 struct ArcFour {
-  using uint8 = uint8_t;
-
-  explicit ArcFour(const std::vector<uint8> &v);
-  explicit ArcFour(const std::string &s);
+  explicit ArcFour(std::span<const uint8_t> v);
+  explicit ArcFour(std::string_view s);
   // Unspecified initialization (and of course 64 bits
   // is not enough entropy to be secure).
   explicit ArcFour(uint64_t seed);
 
   // Get the next byte.
-  uint8 Byte();
+  uint8_t Byte();
   inline uint64_t Word64();
 
   // Discard n bytes from the stream. It is
@@ -39,8 +37,8 @@ struct ArcFour {
   void Discard(int n);
 
  private:
-  uint8 ii, jj;
-  uint8 ss[256];
+  uint8_t ii, jj;
+  uint8_t ss[256];
 };
 
 

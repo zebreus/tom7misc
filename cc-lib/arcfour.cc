@@ -2,8 +2,8 @@
 #include "arcfour.h"
 
 #include <cstdint>
-#include <string>
-#include <vector>
+#include <span>
+#include <string_view>
 
 using namespace std;
 
@@ -23,11 +23,11 @@ static void Initialize(K k,
   }
 }
 
-ArcFour::ArcFour(const vector<uint8> &v) : ii(0), jj(0) {
+ArcFour::ArcFour(std::span<const uint8_t> v) : ii(0), jj(0) {
   Initialize([&v](int i) { return v[i % v.size()]; }, ss);
 }
 
-ArcFour::ArcFour(const string &s) : ii(0), jj(0) {
+ArcFour::ArcFour(string_view s) : ii(0), jj(0) {
   Initialize([&s](int i) { return s[i % s.size()]; }, ss);
 }
 

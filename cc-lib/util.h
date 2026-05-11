@@ -331,6 +331,9 @@ struct Util {
   static std::optional<std::string>
   UnescapeJS(std::string_view str);
 
+  // Escape a string for a JavaScript (or JSON) string literal.
+  static std::string EscapeJS(std::string_view str);
+
   /* try to remove the file. If it
      doesn't exist or is successfully
      removed, then return true. */

@@ -281,6 +281,35 @@ static void TestUnescapeJS() {
             "\xED\xA0\xBC\xED\xBD\x8C");
 }
 
+static void TestEscapeJS() {
+  CHECK_SEQ(Util::EscapeJS(""), "");
+  CHECK_SEQ(Util::EscapeJS("hello world"), "hello world");
+
+  // Standard string escapes.
+  CHECK_SEQ(Util::EscapeJS("a\nb\tc\rd\be\f"), "a\\nb\\tc\\rd\\be\\f");
+  CHECK_SEQ(Util::EscapeJS("\""), "\\\"");
+  CHECK_SEQ(Util::EscapeJS("\\"), "\\\\");
+
+  // Single quotes are not escaped.
+  CHECK_SEQ(Util::EscapeJS("'"), "'");
+
+  // Control characters under 0x20 without special escapes.
+  CHECK_SEQ(Util::EscapeJS("\0"sv), "\\u0000");
+  CHECK_SEQ(Util::EscapeJS("\x01\x0b\x1f"), "\\u0001\\u000b\\u001f");
+
+  // 0x7F (DEL) is not escaped.
+  CHECK_SEQ(Util::EscapeJS("\x7F"), "\x7F");
+
+  // UTF-8 bytes (>= 0x20) should pass through unmodified.
+  CHECK_SEQ(Util::EscapeJS("\xFF"), "\xFF");
+  CHECK_SEQ(Util::EscapeJS("\xE2\x88\x83"), "\xE2\x88\x83");
+  CHECK_SEQ(Util::EscapeJS("\xF0\x9F\x8D\x8C"), "\xF0\x9F\x8D\x8C");
+
+  // Mixed corner case.
+  CHECK_SEQ(Util::EscapeJS("\n \xE2\x88\x83 \" \\ \0"sv),
+            "\\n \xE2\x88\x83 \\\" \\\\ \\u0000");
+}
+
 static void TestJoin() {
   CHECK_EQ("", Util::Join({}, "X"));
   CHECK_EQ("aYYbYYcde", Util::Join(
@@ -1038,6 +1067,7 @@ int main(int argc, char **argv) {
   TestPadEx();
   TestUnescapeC();
   TestUnescapeJS();
+  TestEscapeJS();
   TestJoin();
   TestSplit();
   TestSplitWith();

@@ -711,6 +711,52 @@ Util::UnescapeJS(std::string_view str) {
   return UnescapeInternal<std::string, js_unescape_opts>(str);
 }
 
+// Escape a string for a JavaScript (or JSON) string literal.
+std::string Util::EscapeJS(std::string_view str) {
+  std::string out;
+  out.reserve(str.size());
+
+  while (!str.empty()) {
+    const char c = str[0];
+    str.remove_prefix(1);
+
+    switch (c) {
+    case '\"':
+      out += "\\\"";
+      break;
+    case '\\':
+      out += "\\\\";
+      break;
+    case '\b':
+      out += "\\b";
+      break;
+    case '\f':
+      out += "\\f";
+      break;
+    case '\n':
+      out += "\\n";
+      break;
+    case '\r':
+      out += "\\r";
+      break;
+    case '\t':
+      out += "\\t";
+      break;
+    default:
+      if ((unsigned char)c < 0x20) {
+        out += "\\u00";
+        out += Util::HexDigit(((unsigned char)c >> 4) & 0xF);
+        out += Util::HexDigit((unsigned char)c & 0xF);
+      } else {
+        out.push_back(c);
+      }
+      break;
+    }
+  }
+
+  return out;
+}
+
 
 vector<uint8> Util::ReadFileBytes(std::string_view filename) {
   if (Util::isdir(filename)) return {};
