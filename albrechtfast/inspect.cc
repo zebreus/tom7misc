@@ -22,6 +22,7 @@
 #include "nasty.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "solve-leaf.h"
 #include "status-bar.h"
 #include "svg.h"
 #include "union-find.h"
@@ -58,26 +59,32 @@ static Polyhedron GetPolyhedron(std::string_view name) {
   LOG(FATAL) << "Unknown polyhedron " << name;
 }
 
-static BitString Sample(ArcFour *rc, const Aug &aug, bool want_net, bool want_non_net) {
+static BitString Sample(ArcFour *rc, const Aug &aug, std::optional<int> face_idx,
+                        bool want_net, bool want_non_net) {
   const Faces &faces = *aug.poly.faces;
   int num_faces = faces.NumFaces();
   int num_edges = faces.NumEdges();
 
   if (want_non_net && rc->Byte() > 200) {
-    // If we still want non-nets, most of the time we'll try a mostly depth-first approach.
-    // This tends to produce longer chains of faces, which have a higher chance of self-intersection,
-    // compared to the bushy graphs produced by Kruskal's algorithm below.
+    // If we still want non-nets, most of the time we'll try a mostly
+    // depth-first approach. This tends to produce longer chains of
+    // faces, which have a higher chance of self-intersection,
+    // compared to the bushy graphs produced by Kruskal's algorithm
+    // below.
+
+    int root = face_idx.value_or(RandTo(rc, num_faces));
     BitString unfolding(num_edges, false);
     BitString visited(num_faces, false);
-    std::vector<int> stack = {0};
-    visited.Set(0, true);
+    std::vector<int> stack = {root};
+    visited.Set(root, true);
 
     while (!stack.empty()) {
       int cur = stack.back();
 
       std::vector<int> candidates;
       for (int e : aug.face_edges[cur]) {
-        int next_face = (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
+        int next_face =
+          (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
         if (!visited[next_face]) {
           candidates.push_back(e);
         }
@@ -87,14 +94,27 @@ static BitString Sample(ArcFour *rc, const Aug &aug, bool want_net, bool want_no
         stack.pop_back();
       } else {
         int e = candidates[RandTo(rc, candidates.size())];
-        int next_face = (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
+        int next_face =
+          (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
         visited.Set(next_face, true);
         unfolding.Set(e, true);
+
+        if (face_idx.has_value() && cur == root) {
+          // Prevent the root from gaining additional children by removing
+          // it from the stack, forcing it to be a leaf.
+          stack.pop_back();
+        }
+
         stack.push_back(next_face);
       }
     }
 
     return unfolding;
+  }
+
+  // If we have a face_idx, use the leaf solver to sample.
+  if (face_idx.has_value()) {
+    return SolveLeaf::SampleFace(rc, aug, face_idx.value());
   }
 
   BitString unfolding(num_edges, false);
@@ -114,7 +134,9 @@ static BitString Sample(ArcFour *rc, const Aug &aug, bool want_net, bool want_no
   return unfolding;
 }
 
-static void Inspect(std::string_view poly_name, std::string_view filename) {
+static void Inspect(std::string_view poly_name,
+                    std::optional<int> face_idx,
+                    std::string_view filename) {
   Polyhedron poly = GetPolyhedron(poly_name);
 
   CHECK(IsWellConditioned(poly.vertices));
@@ -144,9 +166,10 @@ static void Inspect(std::string_view poly_name, std::string_view filename) {
   StatusBar status(1);
   Periodically status_per(1.0);
   static constexpr int TARGET_NON_NETS = 3;
-  while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) && attempts < 100000) {
+  while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) && attempts < 500000) {
     attempts++;
-    BitString unfolding = Sample(&rc, aug, nets.empty(), non_nets.size() < TARGET_NON_NETS);
+    BitString unfolding = Sample(&rc, aug, face_idx, nets.empty(),
+                                 non_nets.size() < TARGET_NON_NETS);
 
     if (Albrecht::IsNet(aug, unfolding)) {
       if (nets.empty()) {
@@ -245,9 +268,16 @@ static void Inspect(std::string_view poly_name, std::string_view filename) {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  CHECK(argc == 2) << "./inspect.exe name";
+  CHECK(argc == 2 || argc == 3) << "./inspect.exe name [face_idx]";
 
-  Inspect(argv[1], std::format("inspect-{}.svg", argv[1]));
+  std::optional<int> face_idx;
+  if (argc == 3) {
+    std::optional<int64_t> of = Util::ParseDoubleOpt(argv[2]);
+    CHECK(of.has_value()) << "Face idx must be a number!";
+    face_idx = {of.value()};
+  }
+
+  Inspect(argv[1], face_idx, std::format("inspect-{}.svg", argv[1]));
 
   return 0;
 }

@@ -1,11 +1,14 @@
 
 #include "solve-leaf.h"
 
+#include <cmath>
+#include <format>
 #include <optional>
 #include <string_view>
 
 #include "albrecht.h"
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/print.h"
 #include "bit-string.h"
 #include "geom/johnson-solids.h"
@@ -14,13 +17,46 @@
 #include "periodically.h"
 #include "status-bar.h"
 
+// 20 ok
+static constexpr double MAX_STRETCH_FACTOR = 10.0;
+
+static void TestSampleFace(const Albrecht::AugmentedPoly &aug,
+                           std::string_view name) {
+  ArcFour rc{name};
+  const int num_faces = aug.poly.faces->NumFaces();
+
+  for (int i = 0; i < 100; i++) {
+    int f = i % num_faces;
+    BitString res = SolveLeaf::SampleFace(&rc, aug, f);
+
+    Albrecht::DebugResult debug = Albrecht::DebugUnfolding(aug, res);
+    CHECK(debug.cycle_free) << "Sampled unfolding has cycles!";
+    CHECK(debug.is_connected) << "Sampled unfolding is not connected!";
+
+    int uncut_count = 0;
+    for (int edge_idx : aug.face_edges[f]) {
+      if (res[edge_idx]) {
+        uncut_count++;
+      }
+    }
+
+    CHECK_EQ(uncut_count, 1) << "Face " << f << " is not a leaf in sample!";
+  }
+}
+
 static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   Albrecht::AugmentedPoly aug(poly);
+
+  TestSampleFace(aug, name);
 
   StatusBar status(1);
   Periodically status_per(1);
 
   const int num_edges = poly.faces->NumEdges();
+  const int num_faces = poly.faces->NumFaces();
+
+  std::optional<double> max_stretch =
+    {MAX_STRETCH_FACTOR * std::sqrt(num_faces)};
 
   // Loop over all edges and run the strong solver.
   for (int e = 0; e < num_edges; e++) {
@@ -32,12 +68,14 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
     for (int f : {edge.f0, edge.f1}) {
 
       std::optional<BitString> res =
-        SolveLeaf::FindLeafUnfolding(aug, f, e);
+        SolveLeaf::FindLeafUnfolding(aug, f, e, max_stretch);
 
       // If we don't get a result, just abort so we can investigate!
       if (!res.has_value()) {
         LOG(FATAL) << "No solution found for " << name << " with "
-                   << " face = " << f << " and edge = " << e;
+                   << " face = " << f << " and edge = " << e
+                   << (max_stretch.has_value() ?
+                       std::format(" and max_stretch = {}", max_stretch.value()) : "");
       }
 
       // Check that the net does indeed have the described property.
@@ -56,6 +94,13 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
 
       CHECK(res.value()[e]) << "Edge " << e << " is cut in the unfolding!";
       CHECK_EQ(uncut_count, 1) << "Face " << f << " is not a leaf!";
+
+      // And the stretch factor should be in bounds.
+      if (max_stretch.has_value()) {
+        Albrecht::Stretch stretch = Albrecht::StretchFactor(aug, res.value());
+        CHECK((stretch.unfolded_distance / (double)stretch.distance_3d) <
+              max_stretch.value());
+      }
     }
   }
 
@@ -67,6 +112,7 @@ static void FindAndCheckAll() {
   // New ones first..
 
   CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
+  CheckOnePoly(Nasty::SquatSnail(), "squatsnail");
   CheckOnePoly(Nasty::FlattenedIcosahedron(), "flattenedicosahedron");
   CheckOnePoly(Nasty::LongTaperedPrism(), "longtaperedprism");
   CheckOnePoly(Nasty::LongTaperedAntiprism(), "longtaperedantiprism");

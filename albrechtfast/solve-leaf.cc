@@ -52,6 +52,8 @@ struct SearchState {
   // num_edges in size.
   BitString forbidden_edges;
   std::vector<PlacedFace> placed_faces;
+  // tree_dist[i][j] is the distance between face i and face j in the current tree.
+  std::vector<std::vector<int>> tree_dist;
   ArcFour rc;
 };
 
@@ -80,18 +82,88 @@ struct ResultChannel {
   }
 };
 
+// Precomputes the shortest-path distance (number of hops) between all pairs
+// of faces in the 3D dual graph of the polyhedron.
+static std::vector<std::vector<int>> ComputeDualDistances(const AugmentedPoly &aug) {
+  int num_faces = aug.poly.faces->NumFaces();
+  std::vector<std::vector<int>> dual_dist(num_faces, std::vector<int>(num_faces, -1));
+  for (int start = 0; start < num_faces; ++start) {
+    dual_dist[start][start] = 0;
+    std::vector<int> q = {start};
+    size_t head = 0;
+    while (head < q.size()) {
+      int u = q[head++];
+      for (int edge_idx : aug.face_edges[u]) {
+        const auto &edge = aug.poly.faces->edges[edge_idx];
+        int v = (edge.f0 == u) ? edge.f1 : edge.f0;
+        if (dual_dist[start][v] == -1) {
+          dual_dist[start][v] = dual_dist[start][u] + 1;
+          q.push_back(v);
+        }
+      }
+    }
+  }
+  return dual_dist;
+}
+
+// Check whether the unfolding so far would exceed the stretch factor.
+// Since we generate acylcic unfoldings, if a subtree exceeds the bound,
+// we can never make it better. So we can prune the search.
+bool CheckTreeStretch(const AugmentedPoly &aug, const BitString &unfolding,
+                      const std::vector<std::vector<int>> &dual_dist,
+                      std::optional<double> max_stretch_opt) {
+  if (!max_stretch_opt.has_value()) {
+    return true;
+  }
+  const double max_stretch = max_stretch_opt.value();
+
+  int num_faces = aug.poly.faces->NumFaces();
+  std::vector<std::vector<int>> adj(num_faces);
+  for (int e = 0; e < aug.poly.faces->NumEdges(); ++e) {
+    if (unfolding.Get(e)) {
+      const auto &edge = aug.poly.faces->edges[e];
+      adj[edge.f0].push_back(edge.f1);
+      adj[edge.f1].push_back(edge.f0);
+    }
+  }
+
+  for (int start = 0; start < num_faces; ++start) {
+    std::vector<int> t_dist(num_faces, -1);
+    t_dist[start] = 0;
+    std::vector<int> q = {start};
+    size_t head = 0;
+    while (head < q.size()) {
+      int u = q[head++];
+      for (int v : adj[u]) {
+        if (t_dist[v] == -1) {
+          t_dist[v] = t_dist[u] + 1;
+          if ((double)t_dist[v] > max_stretch * dual_dist[start][v] + 1e-9) {
+            return false; // Early failure!
+          }
+          q.push_back(v);
+        }
+      }
+    }
+  }
+  return true;
+}
+
 // One solver instance with shared state for the recursion.
 struct RecSolver {
-  // Arguments.
   std::shared_ptr<ResultChannel> result_channel;
   const AugmentedPoly &aug;
   const int input_face_idx;
   const int input_edge_idx;
+  const std::optional<double> max_stretch;
+  const std::vector<std::vector<int>> &dual_dist;
 
   RecSolver(std::shared_ptr<ResultChannel> result_channel,
-            const AugmentedPoly &aug, int face_idx, int edge_idx) :
+            const AugmentedPoly &aug, int face_idx, int edge_idx,
+            std::optional<double> max_stretch,
+            const std::vector<std::vector<int>> &dual_dist) :
     result_channel(std::move(result_channel)),
-    aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx) {
+    aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx),
+    max_stretch(max_stretch), dual_dist(dual_dist) {
   }
 
   // Checks if new_face overlaps with any face already in
@@ -157,7 +229,6 @@ struct RecSolver {
     return reached_count == num_faces;
   }
 
-  // Recursive search.
   bool Search(SearchState &state, std::vector<int> &frontier) {
     // Success?
     if (state.placed_faces.size() == aug.poly.faces->NumFaces()) {
@@ -205,63 +276,88 @@ struct RecSolver {
     {
       // Try taking the edge.
 
-      // Calculate U's frame2 using V's global_tf and the aug.edge_transforms.
-      frame2 v_global_tf;
-      for (const PlacedFace &pf : state.placed_faces) {
-        if (pf.face_idx == v_idx) {
-          v_global_tf = pf.global_tf;
-          break;
+      // ... but only if it keeps the stretch factor in bounds.
+      bool stretch_ok = true;
+      if (max_stretch.has_value()) {
+        for (const PlacedFace &pf : state.placed_faces) {
+          int w = pf.face_idx;
+          int proposed_dist = state.tree_dist[v_idx][w] + 1;
+          if ((double)proposed_dist >
+              max_stretch.value() * dual_dist[u_idx][w] + 1e-9) {
+            stretch_ok = false;
+            break;
+          }
         }
       }
 
-      const auto &[f10, f01] = aug.edge_transforms[edge_idx];
-      frame2 edge_tf = (edge.f0 == v_idx) ? f10 : f01;
-
-      // Compute what U would look like if placed.
-      PlacedFace U;
-      U.face_idx = u_idx;
-      U.global_tf = v_global_tf * edge_tf;
-      U.vertices.reserve(aug.polygons[u_idx].size());
-
-      for (const vec2 &v : aug.polygons[u_idx]) {
-        vec2 tv = yocto::transform_point(U.global_tf, v);
-        U.vertices.push_back(tv);
-        U.min_b.x = std::min(U.min_b.x, tv.x);
-        U.min_b.y = std::min(U.min_b.y, tv.y);
-        U.max_b.x = std::max(U.max_b.x, tv.x);
-        U.max_b.y = std::max(U.max_b.y, tv.y);
-      }
-
-      // See if it fits.
-      if (!CheckOverlap(state, v_idx, U)) {
-        state.placed_faces.push_back(U);
-        state.visited_faces.Set(u_idx, 1);
-        state.unfolding.Set(edge_idx, 1);
-
-        size_t old_frontier_size = frontier.size();
-
-        // Push U's incident edges (that aren't forbidden/visited) to frontier.
-        for (int u_edge_idx : aug.face_edges[u_idx]) {
-          if (u_edge_idx == edge_idx) continue;
-
-          const Faces::Edge &ue = aug.poly.faces->edges[u_edge_idx];
-          int other_f = (ue.f0 == u_idx) ? ue.f1 : ue.f0;
-
-          if (!state.visited_faces.Get(other_f) &&
-              !state.forbidden_edges.Get(u_edge_idx)) {
-            frontier.push_back(u_edge_idx);
+      if (stretch_ok) {
+        // Calculate U's frame2 using V's global_tf and the aug.edge_transforms.
+        frame2 v_global_tf;
+        for (const PlacedFace &pf : state.placed_faces) {
+          if (pf.face_idx == v_idx) {
+            v_global_tf = pf.global_tf;
+            break;
           }
         }
 
-        if (Search(state, frontier)) {
-          return true;
+        const auto &[f10, f01] = aug.edge_transforms[edge_idx];
+        frame2 edge_tf = (edge.f0 == v_idx) ? f10 : f01;
+
+        // Compute what U would look like if placed.
+        PlacedFace U;
+        U.face_idx = u_idx;
+        U.global_tf = v_global_tf * edge_tf;
+        U.vertices.reserve(aug.polygons[u_idx].size());
+
+        for (const vec2 &v : aug.polygons[u_idx]) {
+          vec2 tv = yocto::transform_point(U.global_tf, v);
+          U.vertices.push_back(tv);
+          U.min_b.x = std::min(U.min_b.x, tv.x);
+          U.min_b.y = std::min(U.min_b.y, tv.y);
+          U.max_b.x = std::max(U.max_b.x, tv.x);
+          U.max_b.y = std::max(U.max_b.y, tv.y);
         }
 
-        // Undo the state changes.
-        frontier.resize(old_frontier_size);
-        state.unfolding.Set(edge_idx, false);
-        state.visited_faces.Set(u_idx, false);
-        state.placed_faces.pop_back();
+        // See if it fits.
+        if (!CheckOverlap(state, v_idx, U)) {
+          // Record tree distances for U. Because U is a leaf attached only to V:
+          for (const PlacedFace &pf : state.placed_faces) {
+            int w = pf.face_idx;
+            state.tree_dist[u_idx][w] =
+              state.tree_dist[w][u_idx] =
+              state.tree_dist[v_idx][w] + 1;
+          }
+          state.tree_dist[u_idx][u_idx] = 0;
+
+          state.placed_faces.push_back(U);
+          state.visited_faces.Set(u_idx, 1);
+          state.unfolding.Set(edge_idx, 1);
+
+          size_t old_frontier_size = frontier.size();
+
+          for (int u_edge_idx : aug.face_edges[u_idx]) {
+            if (u_edge_idx == edge_idx) continue;
+
+            const Faces::Edge &ue = aug.poly.faces->edges[u_edge_idx];
+            int other_f = (ue.f0 == u_idx) ? ue.f1 : ue.f0;
+
+            if (!state.visited_faces.Get(other_f) &&
+                !state.forbidden_edges.Get(u_edge_idx)) {
+              frontier.push_back(u_edge_idx);
+            }
+          }
+
+          if (Search(state, frontier)) {
+            return true;
+          }
+
+          // Undo state changes (no need to clean tree_dist; it won't
+          // be queried while U is unvisited)
+          frontier.resize(old_frontier_size);
+          state.unfolding.Set(edge_idx, false);
+          state.visited_faces.Set(u_idx, false);
+          state.placed_faces.pop_back();
+        }
       }
     }
 
@@ -289,6 +385,8 @@ struct RecSolver {
       .unfolding = BitString(num_edges, false),
       .visited_faces = BitString(num_faces, false),
       .forbidden_edges = BitString(num_edges, false),
+      .placed_faces = {},
+      .tree_dist = std::vector<std::vector<int>>(num_faces, std::vector<int>(num_faces, 0)),
       .rc = ArcFour("pseudorandom"),
     };
 
@@ -338,13 +436,17 @@ struct ShotgunSolver {
   const int input_face_idx;
   const int input_edge_idx;
   ArcFour rc;
+  const std::optional<double> max_stretch;
+  const std::vector<std::vector<int>> &dual_dist;
 
   ShotgunSolver(std::shared_ptr<ResultChannel> result_channel,
                 const AugmentedPoly &aug, int face_idx, int edge_idx,
-                uint64_t seed) :
+                uint64_t seed, std::optional<double> max_stretch,
+                const std::vector<std::vector<int>> &dual_dist) :
     result_channel(std::move(result_channel)),
     aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx),
-    rc(std::format("shot.{:x}", seed)) {
+    rc(std::format("shot.{:x}", seed)),
+    max_stretch(max_stretch), dual_dist(dual_dist) {
   }
 
   void Solve() {
@@ -387,24 +489,29 @@ struct ShotgunSolver {
         }
       }
 
-      if (Albrecht::IsNet(aug, unfolding)) {
+      // Check combinatorial constraints before starting expensive geometry checks
+      if (CheckTreeStretch(aug, unfolding, dual_dist, max_stretch) &&
+          Albrecht::IsNet(aug, unfolding)) {
         result_channel->Send(unfolding);
         return;
       }
     }
   }
-
 };
 
 static std::optional<BitString>
-MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
+MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx,
+           std::optional<double> max_stretch) {
   std::shared_ptr<ResultChannel> result_channel =
     std::make_shared<ResultChannel>();
+
+  // Precompute dual distances once for all threads
+  std::vector<std::vector<int>> dual_dist = ComputeDualDistances(poly);
 
   std::vector<std::unique_ptr<std::thread>> threads;
 
   threads.emplace_back(std::make_unique<std::thread>([&]{
-      RecSolver rec(result_channel, poly, face_idx, edge_idx);
+      RecSolver rec(result_channel, poly, face_idx, edge_idx, max_stretch, dual_dist);
       (void)rec.DoSearch();
     }));
 
@@ -414,7 +521,7 @@ MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
     uint64_t seed = Rand64(&rc);
     threads.emplace_back(std::make_unique<std::thread>([&, seed]{
         ShotgunSolver ss(result_channel, poly, face_idx, edge_idx,
-                         seed);
+                         seed, max_stretch, dual_dist);
         ss.Solve();
       }));
   }
@@ -436,8 +543,46 @@ MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
 std::optional<BitString> SolveLeaf::FindLeafUnfolding(
     const Albrecht::AugmentedPoly &aug,
     int face_idx,
-    int edge_idx) {
+    int edge_idx,
+    std::optional<double> max_stretch) {
 
-  return MultiSolve(aug, face_idx, edge_idx);
+  return MultiSolve(aug, face_idx, edge_idx, max_stretch);
 }
 
+BitString SolveLeaf::SampleFace(
+    ArcFour *rc,
+    const Albrecht::AugmentedPoly &aug,
+    int face_idx) {
+  const Faces &faces = *aug.poly.faces;
+  const int num_faces = faces.NumFaces();
+  const int num_edges = faces.NumEdges();
+
+  // Pick a random edge to connect the leaf face.
+  const auto &f_edges = aug.face_edges[face_idx];
+  int input_edge_idx = f_edges[RandTo(rc, f_edges.size())];
+
+  std::vector<int> edges;
+  edges.reserve(num_edges);
+  for (int e = 0; e < num_edges; e++) {
+    const Faces::Edge &edge = faces.edges[e];
+    if (edge.f0 != face_idx && edge.f1 != face_idx) {
+      edges.push_back(e);
+    }
+  }
+
+  Shuffle(rc, &edges);
+
+  BitString unfolding(num_edges, false);
+  unfolding.Set(input_edge_idx, true);
+
+  UnionFind uf(num_faces);
+  for (int i : edges) {
+    const Faces::Edge &edge = faces.edges[i];
+    if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
+      uf.Union(edge.f0, edge.f1);
+      unfolding.Set(i, true);
+    }
+  }
+
+  return unfolding;
+}

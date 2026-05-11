@@ -7,6 +7,7 @@
 
 static void WriteSTLs() {
   SaveAsSTL(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid.stl");
+  SaveAsSTL(Nasty::SquatSnail(), "squatsnail.stl");
   SaveAsSTL(Nasty::FlattenedIcosahedron(), "flattenedicosahedron.stl");
   SaveAsSTL(Nasty::LongTaperedPrism(), "longtaperedprism.stl");
   SaveAsSTL(Nasty::LongTaperedAntiprism(), "longtaperedantiprism.stl");
@@ -17,6 +18,7 @@ static void WriteSTLs() {
   SaveAsSTL(Nasty::Dome(), "dome.stl");
   SaveAsSTL(Nasty::Chisel(), "chisel.stl");
   SaveAsSTL(Nasty::Cigar(), "cigar.stl");
+  SaveAsSTL(Nasty::RubiksCube(), "rubikscube.stl");
 }
 
 

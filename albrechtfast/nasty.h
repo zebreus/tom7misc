@@ -12,6 +12,10 @@ struct Nasty {
   // tip not centered.
   static Polyhedron TiltedDecagonPyramid();
 
+  // Like the previous, but much more squat. This makes it
+  // possible for fans of the triangles to self-intersect.
+  static Polyhedron SquatSnail();
+
   // A regular icosahedron flattened 100:1 on the z axis.
   static Polyhedron FlattenedIcosahedron();
 
@@ -38,6 +42,10 @@ struct Nasty {
 
   // Long topological diameter between the top and bottom faces.
   static Polyhedron Cigar();
+
+  // A 3x3x3 "Rubik's cube", slighly distorted to make it
+  // strictly convex.
+  static Polyhedron RubiksCube();
 
   static std::optional<Polyhedron> ByName(std::string_view name);
 };

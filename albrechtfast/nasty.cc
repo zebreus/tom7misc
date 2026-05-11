@@ -28,7 +28,25 @@ Polyhedron Nasty::TiltedDecagonPyramid() {
   CHECK(opt.has_value());
 
   return std::move(opt.value());
+}
 
+Polyhedron Nasty::SquatSnail() {
+  std::vector<vec3> vertices;
+  vertices.reserve(11);
+
+  // Standard decagon base
+  for (int i = 0; i < 10; i++) {
+    double angle = i * (2.0 * pi / 10.0);
+    vertices.push_back(vec3{std::cos(angle), std::sin(angle), 0.0});
+  }
+
+  vertices.push_back(vec3{0.95, 0.0, 0.05});
+
+  std::optional<Polyhedron> opt =
+      PolyhedronFromConvexVertices(std::move(vertices), "squatsnail");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
 }
 
 Polyhedron Nasty::FlattenedIcosahedron() {
@@ -280,8 +298,53 @@ Polyhedron Nasty::Cigar() {
   return std::move(opt.value());
 }
 
+Polyhedron Nasty::RubiksCube() {
+  std::vector<vec3> vertices;
+  vertices.reserve(56);
+
+  // Distort the Rubik's cube to make it strictly convex. By using these
+  // specific values, the 4 vertices of each small face remain exactly
+  // coplanar, so the resulting polyhedron has exactly 54 faces.
+  for (int x = -3; x <= 3; x += 2) {
+    for (int y = -3; y <= 3; y += 2) {
+      for (int z = -3; z <= 3; z += 2) {
+        int num_large = (std::abs(x) == 3 ? 1 : 0) +
+                        (std::abs(y) == 3 ? 1 : 0) +
+                        (std::abs(z) == 3 ? 1 : 0);
+        if (num_large == 0) continue;
+
+        double l_val = 0.0, s_val = 0.0;
+        if (num_large == 1) {
+          l_val = 3.0;
+          s_val = 1.0;
+        } else if (num_large == 2) {
+          l_val = 2.95;
+          s_val = 1.05;
+        } else {
+          l_val = 61.0 / 21.0;
+        }
+
+        auto map_coord = [l_val, s_val](int c) {
+          double mag = (std::abs(c) == 3) ? l_val : s_val;
+          return c < 0 ? -mag : mag;
+        };
+
+        vertices.push_back(vec3{map_coord(x), map_coord(y), map_coord(z)});
+      }
+    }
+  }
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "rubikscube");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
+
+
 std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "tilteddecagonpyramid") return TiltedDecagonPyramid();
+  if (name == "squatsnail") return SquatSnail();
   if (name == "flattenedicosahedron") return FlattenedIcosahedron();
   if (name == "longtaperedprism") return LongTaperedPrism();
   if (name == "longtaperedantiprism") return LongTaperedAntiprism();
@@ -292,5 +355,6 @@ std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "dome") return Dome();
   if (name == "chisel") return Chisel();
   if (name == "cigar") return Cigar();
+  if (name == "rubikscube") return RubiksCube();
   return std::nullopt;
 }
