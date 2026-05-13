@@ -104,8 +104,11 @@ struct ConsoleData {
   // May become null if detached.
   Console *parent = nullptr;
 
-  // Current line (user hasn't pressed enter).
-  std::string current_line;
+  // Current line (user hasn't pressed enter). This is an array of
+  // Unicode codepoints, since we want to be able to quickly navigate
+  // and break on codepoints. We assume each one is a single screen
+  // glyph.
+  std::vector<uint32_t> current_line;
 
   // Lines that have already been committed by the user by
   // pressing enter (so we don't display them) but that
@@ -228,13 +231,12 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
           is_enter = true;
         } else if (cp == '\b' || cp == 0x7F) {
           input_dirty = true;
-          size_t len = UTF8::Length(data->current_line);
+          size_t len = data->current_line.size();
           if (len > 0) {
-            data->current_line =
-              UTF8::Truncate(data->current_line, len - 1);
+            data->current_line.resize(len - 1);
           }
         } else if (cp != UTF8::INVALID) {
-          data->current_line += UTF8::Encode(cp);
+          data->current_line.push_back(cp);
         }
       }
 
@@ -245,7 +247,7 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
       {
         std::unique_lock<std::mutex> ul(data->m);
         if (data->should_die) return;
-        data->current_line = std::move(input);
+        data->current_line = UTF8::Codepoints(input);
       }
       is_enter = true;
       input_dirty = true;
@@ -256,7 +258,8 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
       std::unique_lock<std::mutex> ul(data->m);
       if (data->should_die) return;
 
-      data->input_lines.push_back(std::move(data->current_line));
+      data->input_lines.push_back(
+          UTF8::EncodeVec(data->current_line));
       data->current_line.clear();
 
       data->cond.notify_all();
@@ -417,8 +420,10 @@ void Console::RedrawStatusWithLock(Location loc) {
   // input.
 
   // PERF: Cache this?
+  // PERF: We normally don't allow color in the input, so
+  // we could just split on the codepoints directly.
   std::vector<std::string> input_lines =
-    AnsiSplitLines(data->current_line, data->screen_cols);
+    AnsiSplitLines(UTF8::EncodeVec(data->current_line), data->screen_cols);
 
   const int ninput = input_lines.size();
   const int ntop = data->top_status.size();
@@ -444,7 +449,7 @@ void Console::Redraw() {
   data->screen_rows = new_rows;
 
   std::vector<std::string> input_lines =
-    AnsiSplitLines(data->current_line, new_cols);
+    AnsiSplitLines(UTF8::EncodeVec(data->current_line), new_cols);
 
   const int ninput = input_lines.size();
 
@@ -505,7 +510,7 @@ void Console::ReplaceCursorWithLock() {
   // PERF: Cache this
   // Restore the cursor to the input line so typing feels natural.
   std::vector<std::string> input_lines =
-    AnsiSplitLines(data->current_line, data->screen_cols);
+    AnsiSplitLines(UTF8::EncodeVec(data->current_line), data->screen_cols);
 
   // const int ninput = input_lines.size();
   const int nbot = data->bot_status.size();

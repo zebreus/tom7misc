@@ -33,17 +33,17 @@
 // So this attempts to get "however your terminal is configured
 // for bright red, but normal font weight."
 //
-// Note: These also turn everything else off (0;) which might
-// not be what we want (makes it hard to compose with background
+// Note: These also used to turn everything else off (0;) but I think
+// that's not what we want (makes it hard to compose with background
 // color).
-#define ANSI_RED "\x1B[0;91m"
-#define ANSI_GREY "\x1B[0;90m"
-#define ANSI_BLUE "\x1B[0;94m"
-#define ANSI_CYAN "\x1B[0;96m"
-#define ANSI_YELLOW "\x1B[0;93m"
-#define ANSI_GREEN "\x1B[0;92m"
-#define ANSI_WHITE "\x1B[0;97m"
-#define ANSI_PURPLE "\x1B[0;95m"
+#define ANSI_RED "\x1B[91m"
+#define ANSI_GREY "\x1B[90m"
+#define ANSI_BLUE "\x1B[94m"
+#define ANSI_CYAN "\x1B[96m"
+#define ANSI_YELLOW "\x1B[93m"
+#define ANSI_GREEN "\x1B[92m"
+#define ANSI_WHITE "\x1B[97m"
+#define ANSI_PURPLE "\x1B[95m"
 
 // These are "regular" foreground colors.
 // They explicitly set the non-bright fg state.
