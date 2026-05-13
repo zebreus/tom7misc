@@ -13,6 +13,7 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #ifdef _WIN32
@@ -32,9 +33,16 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "utf8.h"
+#include "util.h"
+// verbose only
+#include "hexdump.h"
+
+static constexpr bool VERBOSE = false;
 
 // Hot tip for mysterious crashes: Make sure you're not
 // calling Console::Print when you meant ::Print!
+
+namespace {
 
 #if defined(_WIN32)
 struct ScopedRawMode {
@@ -93,6 +101,127 @@ struct ScopedRawMode {
 
 using namespace std;
 
+enum class ControlCode {
+  INVALID,
+  LEFT_ARROW,
+  RIGHT_ARROW,
+  CTRL_LEFT,
+  CTRL_RIGHT,
+  BEGIN_LINE,
+  END_LINE,
+  ERASE_TO_END,
+  BACKSPACE,
+  DEL,
+  ENTER,
+  PGUP,
+  PGDN,
+};
+
+struct Control {
+  ControlCode cc = ControlCode::INVALID;
+};
+
+// Codepoints treated as normal input.
+struct Codepoint {
+  uint32_t cp = 0;
+};
+
+// Indicates incomplete input, like a short UTF-8 sequence
+// or two bytes of an ANSI control sequence.
+struct Incomplete { };
+
+using Input = std::variant<Incomplete, Control, Codepoint>;
+
+static Input GetCompletedInput(std::span<const uint8_t> input) {
+  if (input.empty()) return Incomplete{};
+
+  uint8_t first = input[0];
+
+  std::string_view esc((const char *)input.data(), input.size());
+  if (Util::TryStripPrefix("\x1b", &esc)) {
+    if (esc.empty()) return Incomplete{};
+
+    if (Util::TryStripPrefix("[", &esc)) { // CSI '['
+      if (esc.empty()) return Incomplete{};
+      switch (esc[0]) {
+      case 0x44: return Control{ControlCode::LEFT_ARROW};
+      case 0x43: return Control{ControlCode::RIGHT_ARROW};
+      case 0x48: return Control{ControlCode::BEGIN_LINE};
+      case 0x46: return Control{ControlCode::END_LINE};
+      default:
+        break;
+      }
+
+      if (esc == "1;5D") return Control{ControlCode::CTRL_LEFT};
+      if (esc == "1;5C") return Control{ControlCode::CTRL_RIGHT};
+
+      if (esc == "3~") return Control{ControlCode::DEL};
+      if (esc == "5~") return Control{ControlCode::PGUP};
+      if (esc == "6~") return Control{ControlCode::PGDN};
+
+      CHECK(!esc.empty());
+      // Wait for CSI sequence to complete. The final byte is
+      // in the range 0x40 ('@') to 0x7E ('~').
+      uint8_t last = esc.back();
+      if (last >= 0x40 && last <= 0x7e) {
+        return Control{ControlCode::INVALID};
+      }
+      return Incomplete{};
+
+    } else if (Util::TryStripPrefix("O", &esc)) {
+      if (esc.empty()) return Control{ControlCode::INVALID};
+      switch (esc[0]) {
+      case 0x44: return Control{ControlCode::LEFT_ARROW};
+      case 0x43: return Control{ControlCode::RIGHT_ARROW};
+      default: break;
+      }
+      return Control{ControlCode::INVALID};
+    }
+
+    // Other escape sequences: assume complete after 2 bytes.
+    return Control{ControlCode::INVALID};
+  }
+
+  if (first == '\r' || first == '\n') {
+    return Control{ControlCode::ENTER};
+  }
+
+  // \x7f is typically sent by modern terminals for Backspace.
+  if (first == '\b' || first == 0x7f) {
+    return Control{ControlCode::BACKSPACE};
+  }
+
+  // ctrl-a
+  if (first == '\x01') {
+    return Control{ControlCode::BEGIN_LINE};
+  }
+
+  // ctrl-e
+  if (first == '\x05') {
+    return Control{ControlCode::END_LINE};
+  }
+
+  // ctrl-k
+  if (first == '\x0b') {
+    return Control{ControlCode::ERASE_TO_END};
+  }
+
+
+  int enc_len = 1;
+  if ((first & 0xe0) == 0xc0) enc_len = 2;
+  else if ((first & 0xf0) == 0xe0) enc_len = 3;
+  else if ((first & 0xf8) == 0xf0) enc_len = 4;
+
+  if (input.size() < (size_t)enc_len) {
+    return Incomplete{};
+  }
+
+  auto [_, cp] = UTF8::ParsePrefix((const char *)input.data(), input.size());
+  return Codepoint{cp};
+}
+
+}  // namespace
+
 struct ConsoleData {
   std::mutex m;
   std::condition_variable cond;
@@ -109,6 +238,16 @@ struct ConsoleData {
   // and break on codepoints. We assume each one is a single screen
   // glyph.
   std::vector<uint32_t> current_line;
+  // The index of the codepoint where the cursor is positioned.
+  // Can be [0, current_line.size()] inclusive.
+  int current_offset = 0;
+
+  // This is an in-progress multi-byte code, like a UTF-8 sequence
+  // or an ANSI escape sequence (e.g. \x1b \x5b \x43 for right-arrow).
+  // We assume that we are fed reasonable byte sequences (i.e. once
+  // we start seeing an ANSI sequence it will complete) but we don't
+  // require them to all be delivered synchronously.
+  std::vector<uint8_t> partial_input;
 
   // Lines that have already been committed by the user by
   // pressing enter (so we don't display them) but that
@@ -177,13 +316,17 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
 
   for (;;) {
 
+    // TODO: Make this a variant?
     // Do we need to do something other than let the OS
     // echo the character where the cursor is?
     bool input_dirty = false;
     bool is_enter = false;
+    // If nonzero, it means we just need to print the codepoint
+    // at the current position (end of line).
+    uint32_t simple_codepoint = 0;
 
     if constexpr (ScopedRawMode::ASYNCHRONOUS) {
-      uint8_t first_byte = 0;
+      uint8_t read_byte;
       #if _WIN32
       {
         int c = std::cin.get();
@@ -191,11 +334,11 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
           // TODO: Should probably note EOF here..?
           return;
         }
-        first_byte = c;
+        read_byte = c;
       }
       #else
 
-      if (std::cin.readsome(&first_byte, 1) == 0) {
+      if (std::cin.readsome(&read_byte, 1) == 0) {
         {
           std::unique_lock<std::mutex> ul(data->m);
           if (data->should_die) return;
@@ -205,42 +348,153 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
       }
       #endif
 
-      uint8_t u_first = first_byte;
-      int enc_len = 1;
-      if ((u_first & 0xe0) == 0xc0) enc_len = 2;
-      else if ((u_first & 0xf0) == 0xe0) enc_len = 3;
-      else if ((u_first & 0xf8) == 0xf0) enc_len = 4;
-
-      char buffer[4];
-      buffer[0] = first_byte;
-      for (int i = 1; i < enc_len; ++i) {
-        buffer[i] = (char)std::cin.get();
-      }
-
-      auto [_, cp] = UTF8::ParsePrefix(buffer, enc_len);
-
-      ::Print("{}", UTF8::Encode(cp));
-      fflush(stdout);
-
       {
         std::unique_lock<std::mutex> ul(data->m);
         if (data->should_die) return;
 
-        if (cp == '\n' || cp == '\r') {
-          input_dirty = true;
-          is_enter = true;
-        } else if (cp == '\b' || cp == 0x7F) {
-          input_dirty = true;
-          size_t len = data->current_line.size();
-          if (len > 0) {
-            data->current_line.resize(len - 1);
+        data->partial_input.push_back(read_byte);
+
+        if (VERBOSE) {
+          Print(stderr,
+          "Read [{:02x}] partial input now:\n{}\n",
+          read_byte, HexDump::Color(data->partial_input));
+        }
+
+        Input input = GetCompletedInput(data->partial_input);
+        if (std::holds_alternative<Incomplete>(input))
+          continue;
+
+        data->partial_input.clear();
+
+        if (const Control *ctrl = std::get_if<Control>(&input)) {
+          if (VERBOSE) Print(stderr, "It's control code.\n");
+          switch (ctrl->cc) {
+          case ControlCode::INVALID:
+            // Ignore invalid control sequences.
+            break;
+          case ControlCode::ENTER: {
+            input_dirty = true;
+            is_enter = true;
+            break;
           }
-        } else if (cp != UTF8::INVALID) {
-          data->current_line.push_back(cp);
+
+          case ControlCode::PGDN:
+          case ControlCode::PGUP:
+            // TODO: Scroll the history buffer
+            break;
+
+          case ControlCode::CTRL_LEFT: {
+            if (data->current_offset > 0) {
+              // Always move at least one.
+              data->current_offset--;
+              input_dirty = true;
+
+              while (data->current_offset > 0 &&
+                     // XXX perhaps also hyphen, underscore
+                     data->current_line[data->current_offset - 1] != ' ') {
+                data->current_offset--;
+              }
+            }
+
+            break;
+          }
+
+          case ControlCode::CTRL_RIGHT: {
+            if (data->current_offset < (int)data->current_line.size()) {
+              // Always move at least one.
+              data->current_offset++;
+              input_dirty = true;
+
+              while (data->current_offset < (int)data->current_line.size() &&
+                     data->current_line[data->current_offset] != ' ') {
+                data->current_offset++;
+              }
+            }
+
+            break;
+          }
+
+          case ControlCode::BEGIN_LINE: {
+            if (data->current_offset > 0) {
+              data->current_offset = 0;
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::END_LINE: {
+            if (data->current_offset < (int)data->current_line.size()) {
+              data->current_offset = data->current_line.size();
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::LEFT_ARROW: {
+            if (data->current_offset > 0) {
+              data->current_offset--;
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::RIGHT_ARROW: {
+            if (data->current_offset < (int)data->current_line.size()) {
+              data->current_offset++;
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::BACKSPACE: {
+            if (data->current_offset > 0) {
+              data->current_line.erase(
+                  data->current_line.begin() + data->current_offset - 1);
+              data->current_offset--;
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::DEL: {
+            if (data->current_offset < (int)data->current_line.size()) {
+              data->current_line.erase(
+                  data->current_line.begin() + data->current_offset);
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::ERASE_TO_END: {
+            if (data->current_offset < (int)data->current_line.size()) {
+              data->current_line.resize(data->current_offset);
+              input_dirty = true;
+            }
+            break;
+          }
+
+          }
+        } else if (const Codepoint *code = std::get_if<Codepoint>(&input)) {
+          if (VERBOSE) Print(stderr, "It's codepoint {:04x}.\n", code->cp);
+
+          if (data->current_offset == (int)data->current_line.size()) {
+            data->current_line.push_back(code->cp);
+            data->current_offset++;
+
+            simple_codepoint = code->cp;
+          } else {
+            data->current_line.insert(
+                data->current_line.begin() + data->current_offset, code->cp);
+            data->current_offset++;
+            input_dirty = true;
+          }
+        } else {
+          LOG(FATAL) << "Bad variant? Incomplete is handled above.";
         }
       }
 
     } else {
+      // No asynchronous input available.
       // All we can do is wait for an entire line of input, then.
       std::string input;
       std::getline(cin, input);
@@ -261,14 +515,17 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
       data->input_lines.push_back(
           UTF8::EncodeVec(data->current_line));
       data->current_line.clear();
-
+      data->current_offset = 0;
       data->cond.notify_all();
     }
 
     // XXX this is not right because we might be detached!
     // but we don't want to be holding the mutex when we
     // call this...
-    if (input_dirty) {
+    if (simple_codepoint != 0) {
+      ::Print("{}", UTF8::Encode(simple_codepoint));
+      fflush(stdout);
+    } else if (input_dirty) {
       data->parent->Redraw();
     }
   }
@@ -515,10 +772,23 @@ void Console::ReplaceCursorWithLock() {
   // const int ninput = input_lines.size();
   const int nbot = data->bot_status.size();
 
-  int cursor_row = data->screen_rows - nbot - 1;
-  int cursor_col = ANSI::StringWidth(input_lines.back());
+  const int ninput = input_lines.size();
+  int cursor_row_offset = data->current_offset / data->screen_cols;
+  int cursor_col = data->current_offset % data->screen_cols;
+
+  // If the cursor is exactly at the end of a line that perfectly fills
+  // the screen width, it logically wraps to the next line. However,
+  // AnsiSplitLines won't add a new empty line until we actually
+  // type a character. So constrain the cursor to the end of the line.
+  if (cursor_row_offset >= ninput) {
+    cursor_row_offset = ninput - 1;
+    cursor_col = data->screen_cols;
+  }
+
+  int cursor_row = data->screen_rows - nbot - ninput + cursor_row_offset;
+
   ::Print(
-      // move to the end of the input
+      // move to the correct position in the input
       "\x1b[{};{}H"
       // and show cursor again
       "\x1b[?25h"
