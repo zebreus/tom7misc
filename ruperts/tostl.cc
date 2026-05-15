@@ -63,9 +63,9 @@ int main(int argc, char **argv) {
 
   if (file.empty()) {
     if (dualize) {
-      file = std::format("{}.stl", name);
-    } else {
       file = std::format("{}-dual.stl", name);
+    } else {
+      file = std::format("{}.stl", name);
     }
   }
 

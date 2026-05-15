@@ -1429,10 +1429,13 @@ int main(int argc, char **argv) {
   // Polyhedron target = PentagonalHexecontahedron();
   // Polyhedron target = DeltoidalHexecontahedron();
 
-  Polyhedron target = DualizePoly(Noperthedron());
+  // Polyhedron target = DualizePoly(Noperthedron());
+  SolutionDB db;
+  Polyhedron target = DualizePoly(
+      db.AnyPolyhedronByName("nopert_214"));
+  target.name = "onpert_214";
 
   // Call one of the solution procedures:
-
   SolveSimul(target, &status);
 
   printf("OK\n");
