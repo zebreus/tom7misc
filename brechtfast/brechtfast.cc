@@ -295,7 +295,7 @@ struct Brechtfast {
                   if (ov.has_value()) {
                     any = true;
                     const auto &[poly, method, numer, denom] = ov.value();
-                    db.AddHard(poly, method, numer, denom, {});
+                    db.AddHard(poly, {DB::Any{}}, method, numer, denom, {});
                     ctr_saved++;
                   }
                   ov = std::nullopt;

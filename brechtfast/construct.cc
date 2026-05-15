@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/stringprintf.h"
+#include "geom/hull-2d.h"
 #include "geom/hull-3d.h"
 #include "geom/polyhedra.h"
 #include "randutil.h"
@@ -330,40 +331,117 @@ void PartialPolyhedron::UpdateAABB(const vec3 &v) {
   max_vertex.z = std::max(max_vertex.z, v.z);
 }
 
-void PartialPolyhedron::Initialize() {
+// Creates the initial partial polyhedron. This consists of
+// two joined faces so that we can maintain the invariant that
+// the object has a non-degenerate boundary and volume.
+void PartialPolyhedron::Initialize(int face1_max_verts,
+                                   int face2_max_verts) {
+  CHECK(face1_max_verts >= 3 && face2_max_verts >= 3) << "precondition";
+
   // Generate random coordinates for the remaining vertices to avoid
   // degenerate shapes and ensure a valid dihedral angle.
-  double x2 = 0.2 + 0.6 * RandDouble(rc);
-  double y2 = 0.2 + 0.6 * RandDouble(rc);
+  auto GenerateConvexPoly = [&](int max_verts, bool positive_y) {
+    std::vector<vec2> pts;
+    pts.push_back(vec2{0.0, 0.0});
+    pts.push_back(vec2{1.0, 0.0});
+    for (int i = 0; i < max_verts - 2; ++i) {
+      double x = 0.2 + 0.6 * RandDouble(rc);
+      double y = 0.2 + 0.6 * RandDouble(rc);
+      if (!positive_y) y = -y;
+      pts.push_back(vec2{x, y});
+    }
 
-  double x3 = 0.2 + 0.6 * RandDouble(rc);
-  double y3 = -0.2 - 0.6 * RandDouble(rc);
-  double z3 = 0.2 + 0.6 * RandDouble(rc);
+    std::vector<int> hull_idx = Hull2D::GrahamScan(pts);
+    std::vector<vec2> hull;
 
-  // We always insert the origina, so this is
+    // Shift the hull so that (0,0) is the first vertex.
+    int zero_idx = 0;
+    for (int i = 0; i < (int)hull_idx.size(); ++i) {
+      if (hull_idx[i] == 0) {
+        zero_idx = i;
+        break;
+      }
+    }
+    for (int i = 0; i < (int)hull_idx.size(); ++i) {
+      hull.push_back(pts[hull_idx[(zero_idx + i) % hull_idx.size()]]);
+    }
+    return hull;
+  };
+
+  std::vector<vec2> U0 = GenerateConvexPoly(face1_max_verts, false);
+  std::vector<vec2> U1 = GenerateConvexPoly(face2_max_verts, true);
+
+  // We always insert the original, so this is
   // a safe initial value.
   min_vertex = max_vertex = vec3{0, 0, 0};
 
   auto AddVertex = [this](vec3 v) {
-      vertices.push_back(MeshVertex{v});
-      UpdateAABB(v);
-    };
+    vertices.push_back(MeshVertex{v});
+    UpdateAABB(v);
+  };
+
   AddVertex(vec3{0.0, 0.0, 0.0});
   AddVertex(vec3{1.0, 0.0, 0.0});
-  // Face 0 third vertex (in the z=0 plane)
-  AddVertex(vec3{x2, y2, 0.0});
-  // Face 1 third vertex (bending upwards into z > 0 for convexity)
-  AddVertex(vec3{x3, y3, z3});
 
-  // Create boundary and shared edges.
-  // The shared edge connects v0 and v1. By convention, left_face is
-  // the face that sees the edge going from v0 to v1.
-  edges.push_back(MeshEdge{0, 2, 0, -1});
-  edges.push_back(MeshEdge{2, 1, 0, -1});
-  // Shared edge: goes from 0 to 1 in Face 1, and 1 to 0 in Face 0.
-  edges.push_back(MeshEdge{0, 1, 1,  0});
-  edges.push_back(MeshEdge{1, 3, 1, -1});
-  edges.push_back(MeshEdge{3, 0, 1, -1});
+  // Face 0 vertices (in the z=0 plane, mirrored to preserve CCW exterior)
+  for (int i = 1; i < (int)U0.size() - 1; ++i) {
+    AddVertex(vec3{U0[i].x, -U0[i].y, 0.0});
+  }
+
+  int offset = (int)vertices.size();
+
+  // Face 1 bending upwards into z > 0 for convexity
+  double theta = std::numbers::pi * 0.75; // 135 degrees
+  double cos_t = std::cos(theta);
+  double sin_t = std::sin(theta);
+  for (int i = 2; i < (int)U1.size(); ++i) {
+    AddVertex(vec3{U1[i].x, U1[i].y * cos_t, U1[i].y * sin_t});
+  }
+
+  auto AddEdge = [&](int start, int end, int left_face, int right_face) {
+    int idx = (int)edges.size();
+    edges.push_back(MeshEdge{start, end, left_face, right_face});
+    return idx;
+  };
+
+  // The shared edge connects v0 and v1. Face 1 sees 0->1, Face 0 sees 1->0.
+  int shared_edge = AddEdge(0, 1, 1, 0);
+
+  std::vector<int> f0_verts;
+  f0_verts.push_back(0);
+  for (int i = 1; i < (int)U0.size() - 1; ++i) {
+    f0_verts.push_back(2 + i - 1);
+  }
+  f0_verts.push_back(1);
+
+  std::vector<int> f0_edges;
+  for (int j = 0; j < (int)f0_verts.size(); ++j) {
+    int start = f0_verts[j];
+    int end = f0_verts[(j + 1) % f0_verts.size()];
+    if (start == 1 && end == 0) {
+      f0_edges.push_back(shared_edge);
+    } else {
+      f0_edges.push_back(AddEdge(start, end, 0, -1));
+    }
+  }
+
+  std::vector<int> f1_verts;
+  f1_verts.push_back(0);
+  f1_verts.push_back(1);
+  for (int i = 2; i < (int)U1.size(); ++i) {
+    f1_verts.push_back(offset + i - 2);
+  }
+
+  std::vector<int> f1_edges;
+  for (int j = 0; j < (int)f1_verts.size(); ++j) {
+    int start = f1_verts[j];
+    int end = f1_verts[(j + 1) % f1_verts.size()];
+    if (start == 0 && end == 1) {
+      f1_edges.push_back(shared_edge);
+    } else {
+      f1_edges.push_back(AddEdge(start, end, 1, -1));
+    }
+  }
 
   auto ComputePlane = [&](const std::vector<int>& face_verts) {
     vec3 p0 = vertices[face_verts[0]].pos;
@@ -376,17 +454,17 @@ void PartialPolyhedron::Initialize() {
     return hs;
   };
 
-  // Setup Face 0
+  // Set up Face 0
   MeshFace f0;
-  f0.vertices = {0, 2, 1};
-  f0.edges = {0, 1, 2};
+  f0.vertices = f0_verts;
+  f0.edges = f0_edges;
   f0.plane = ComputePlane(f0.vertices);
   faces.push_back(f0);
 
-  // Setup Face 1
+  // Set up Face 1
   MeshFace f1;
-  f1.vertices = {0, 1, 3};
-  f1.edges = {2, 3, 4};
+  f1.vertices = f1_verts;
+  f1.edges = f1_edges;
   f1.plane = ComputePlane(f1.vertices);
   faces.push_back(f1);
 
@@ -397,16 +475,8 @@ void PartialPolyhedron::Initialize() {
   Unfolding unf;
   UnfoldedFace uf0, uf1;
 
-  // For Face 0, the 2D vertices are mirrored along the x-axis to ensure
-  // correct CCW winding (Area > 0) when viewed from the 3D exterior.
-  uf0.vertices.push_back(vec2{0.0, 0.0});
-  uf0.vertices.push_back(vec2{x2, -y2});
-  uf0.vertices.push_back(vec2{1.0, 0.0});
-
-  // For Face 1, we unfold it upward (y > 0).
-  uf1.vertices.push_back(vec2{0.0, 0.0});
-  uf1.vertices.push_back(vec2{1.0, 0.0});
-  uf1.vertices.push_back(vec2{x3, std::sqrt(y3 * y3 + z3 * z3)});
+  uf0.vertices = U0;
+  uf1.vertices = U1;
 
   unf.faces.push_back(uf0);
   unf.faces.push_back(uf1);

@@ -173,8 +173,8 @@ static constexpr int CELLSH = HEIGHT / CELL_SIZE;
 // Constants controlling complexity thresholds and insert placement
 static constexpr double COMPLEXITY_THRESHOLD = 15.0;
 static constexpr double INSERT_ZOOM_FACTOR = 3.0;
-static constexpr double OUTSIDE_PENALTY = 5000.0;
-static constexpr double NEARNESS_PENALTY = 10000.0;
+static constexpr double OUTSIDE_PENALTY = 1000.0;
+static constexpr double NEARNESS_PENALTY = 500.0;
 
 
 static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
@@ -344,9 +344,11 @@ static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
       auto [f_srcx, f_srcy] = plan.scaler.Scale(center);
 
       Print("FindEmptySpace with src={},{} {}x{}, out {}, near {}\n",
-            (int)f_srcx, (int)f_srcy, iw, ih, OUTSIDE_PENALTY, NEARNESS_PENALTY);
+            (int)f_srcx, (int)f_srcy, iw, ih,
+            OUTSIDE_PENALTY, NEARNESS_PENALTY);
       auto [px, py] = dirty->FindEmptySpace(
-          (int)f_srcx, (int)f_srcy, iw, ih, OUTSIDE_PENALTY, NEARNESS_PENALTY);
+          (int)f_srcx, (int)f_srcy, iw, ih,
+          OUTSIDE_PENALTY, NEARNESS_PENALTY);
       Print("Found at {},{}\n", px, py);
 
       Placed p;

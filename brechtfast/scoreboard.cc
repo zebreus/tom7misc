@@ -41,6 +41,7 @@ void Scoreboard() {
     double netness_pct = 0.0;
     int64_t numer = 0;
     int64_t denom = 0;
+    bool has_example = false;
   };
 
   std::map<int, std::vector<Entry>> by_faces;
@@ -65,6 +66,7 @@ void Scoreboard() {
       e.numer = h.netness_numer;
       e.denom = h.netness_denom;
       e.netness_pct = (h.netness_numer * 100.0) / h.netness_denom;
+      e.has_example = h.example_net.has_value();
       by_faces[nfaces].push_back(e);
     }
 
@@ -90,9 +92,11 @@ void Scoreboard() {
     int limit = std::min((int)entries.size(), 5);
     for (int i = 0; i < limit; i++) {
       const Entry &e = entries[i];
-      Print(" #" ACYAN("{}") "  " AYELLOW("{}/{} ({:.3f}%)")
+      Print(" #" ACYAN("{}") "{} " AYELLOW("{}/{} ({:.3f}%)")
             "  Method: " AGREEN("{}") "\n",
-            e.id, e.numer, e.denom, e.netness_pct,
+            e.id,
+            e.has_example ? " " : ARED("?"),
+            e.numer, e.denom, e.netness_pct,
             BriefMethodName(e.method));
     }
   }

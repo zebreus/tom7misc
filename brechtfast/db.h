@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "base/logging.h"
@@ -49,11 +50,33 @@ struct DB {
 
   void Init();
 
+  static constexpr int WHY_ANY = 0;
+  static constexpr int WHY_LEAF_IH = 1;
+
+  // Reason why it is hard.
+  struct Any {};
+
+  // Hard for the leaf IH, identifying the specific leaf.
+  struct LeafIH {
+    int edge_idx = 0;
+    int face_idx = 0;
+  };
+
+  using Why = std::variant<Any, LeafIH>;
+
   struct Hard {
     int id = 0;
     std::vector<vec3> poly_points;
+
+    // Database entries can be hard under different constraints.
+    // Results refer to the constrained problem.
+    Why why = Any{};
+
+    // Informational metadata about how/when we found it.
     int method = 0;
     int64_t createdate = 0;
+
+    // Results.
     int64_t netness_numer = 0;
     int64_t netness_denom = 0;
 
@@ -67,7 +90,9 @@ struct DB {
 
   void MarkValidity(int id, bool valid);
 
-  void AddHard(const Polyhedron &poly, int method,
+  void AddHard(const Polyhedron &poly,
+               const Why &why,
+               int method,
                int64_t netness_numer, int64_t netness_denom,
                std::optional<BitString> example_net);
 

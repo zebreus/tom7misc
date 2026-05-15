@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <format>
 #include <span>
 #include <string>
@@ -93,7 +94,7 @@ static void TestAddFace() {
 
       double subtended = max_angle - min_angle;
 
-      #if 0
+      #if 1
       // If there's not enough angular volume, skip this edge.
       if (subtended <= 1.0e-3)
         continue;
@@ -171,7 +172,11 @@ static void TestAddFace() {
         chooser.ConvertTo3D(new_poly);
 
       // Diagnostic assertions to isolate IsFeasible failure.
-      if (!pp.IsFeasible(edge_idx, new_face_pts)) {
+      // TODO: Now that this returns a message, we probably
+      // don't need this verbose version.
+      if (const char *problem =
+          pp.FeasibilityProblem(edge_idx, new_face_pts)) {
+        Print(stderr, "Got feasibility problem: {}\n", problem);
         bool found_edge = false;
         for (int i = 0; i < (int)new_face_pts.size(); ++i) {
           vec3 v_curr = new_face_pts[i];
@@ -256,7 +261,7 @@ static void TestAddFace() {
 
 
       // Sanity check before adding.
-      CHECK(pp.IsFeasible(edge_idx, new_face_pts))
+      CHECK(nullptr == pp.FeasibilityProblem(edge_idx, new_face_pts))
           << "Generated face must be feasible";
 
       // Add the face and validate the partial polyhedron.
@@ -383,8 +388,8 @@ static void TestReplenish() {
         chooser.ConvertTo3D(new_poly);
 
       // Sanity check before adding.
-      CHECK(pp.IsFeasible(edge_idx, new_face_pts))
-          << "Generated face must be feasible";
+      CHECK(nullptr == pp.FeasibilityProblem(edge_idx, new_face_pts))
+        << "Generated face must be feasible";
 
       pp.AddFace(edge_idx, new_face_pts);
       pp.ReplenishUnfoldings();

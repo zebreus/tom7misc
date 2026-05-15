@@ -3,6 +3,7 @@
 #include <cmath>
 #include <map>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "albrecht.h"
@@ -17,9 +18,7 @@
 
 static constexpr bool DRY_RUN = false;
 
-int main(int argc, char **argv) {
-  ANSI::Init();
-
+static void Tune() {
   StatusBar status(1);
   Periodically status_per(1);
 
@@ -31,6 +30,11 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < (int)hards.size(); i++) {
     DB::Hard &h = hards[i];
+    // XXX: This needs to be updated to filter for other
+    // types of hardness.
+    if (!std::holds_alternative<DB::Any>(h.why))
+      continue;
+
     int nfaces = 0;
     if (auto opoly = PolyhedronFromConvexVertices(h.poly_points)) {
       nfaces = opoly->faces->NumFaces();
@@ -109,7 +113,8 @@ int main(int argc, char **argv) {
     Albrecht::AugmentedPoly aug(*opoly);
 
     int num_samples = 1 << 17;
-    Netness::NetnessResult res = Netness::ComputeWithExample(task.h->id, aug, num_samples);
+    Netness::NetnessResult res =
+      Netness::ComputeWithExample(task.h->id, aug, num_samples);
 
     task.h->netness_numer += res.numer;
     task.h->netness_denom += res.denom;
@@ -131,7 +136,13 @@ int main(int argc, char **argv) {
   status.Remove();
   Print("Done! Kept {} instances. Deleted {} instances. Ran samples for {}.\n",
         kept_tasks.size(), deleted_count, samples_run);
+}
+
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  Tune();
 
   return 0;
 }
-

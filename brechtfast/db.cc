@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "base/logging.h"
@@ -92,6 +93,9 @@ void DB::Init() {
                       "id integer primary key, "
                       // as vec3s
                       "poly string not null, "
+                      "why integer not null default 0, "
+                      "why_face_idx integer not null default 0, "
+                      "why_edge_idx integer not null default 0, "
                       "method integer not null, "
                       "createdate integer not null, "
                       "netness_numer integer not null, "
@@ -114,31 +118,56 @@ static std::vector<DB::Hard> GetHardForQuery(
     std::optional<std::vector<vec3>> pts = Vec3sFromString(r->GetString(1));
     if (!pts.has_value()) continue;
     hard.poly_points = std::move(pts.value());
-    hard.method = r->GetInt(2);
-    hard.createdate = r->GetInt(3);
-    hard.netness_numer = r->GetInt(4);
-    hard.netness_denom = r->GetInt(5);
-    // This will produce nullopt for the empty string, which is how we represent no net.
-    hard.example_net = BitString::FromASCII(r->GetStringOpt(6).value_or(""));
+
+    const int why = r->GetInt(2);
+    const int edge_idx = r->GetInt(3);
+    const int face_idx = r->GetInt(4);
+    switch (why) {
+    case DB::WHY_ANY:
+      hard.why = DB::Any{};
+      break;
+    case DB::WHY_LEAF_IH:
+      hard.why = DB::LeafIH{
+        .edge_idx = edge_idx,
+        .face_idx = face_idx,
+      };
+      break;
+    default:
+      LOG(FATAL) << "Bad why value in database: " << why;
+    }
+
+    hard.method = r->GetInt(5);
+    hard.createdate = r->GetInt(6);
+    hard.netness_numer = r->GetInt(7);
+    hard.netness_denom = r->GetInt(8);
+    // This will produce nullopt for the empty string, which is how we
+    // represent no net.
+    hard.example_net = BitString::FromASCII(r->GetStringOpt(9).value_or(""));
     ret.push_back(std::move(hard));
   }
   return ret;
 }
 
+static constexpr std::string_view HARD_FIELDS =
+  "id, poly, "
+  "why, why_edge_idx, why_face_idx, "
+  "method, createdate, "
+  "netness_numer, netness_denom, example_net";
 
 Hard DB::GetHard(int id) {
   std::vector<Hard> sols = GetHardForQuery(
     db->ExecuteString(
         std::format(
-            "select "
-            "id, poly, method, createdate, netness_numer, netness_denom, example_net "
+            "select {} "
             "from hard "
-            "where id = {}", id)));
+            "where id = {}", HARD_FIELDS, id)));
   CHECK(sols.size() == 1) << "Hard " << id << " not found";
   return sols[0];
 }
 
-void DB::AddHard(const Polyhedron &poly, int method,
+void DB::AddHard(const Polyhedron &poly,
+                 const Why &why,
+                 int method,
                  int64_t netness_numer, int64_t netness_denom,
                  std::optional<BitString> example_net) {
   std::string polystring = StringFromVec3s(poly.vertices);
@@ -147,16 +176,40 @@ void DB::AddHard(const Polyhedron &poly, int method,
   const int faces = poly.faces->NumFaces();
   const int edges = poly.faces->NumEdges();
   const int vertices = poly.faces->NumVertices();
+
+  // Flattened in database.
+  int why_type = -1;
+  int why_edge_idx = 0;
+  int why_face_idx = 0;
+  if (const Any *any = std::get_if<Any>(&why)) {
+    (void)any;
+    why_type = WHY_ANY;
+  } else if (const LeafIH *leaf_ih = std::get_if<LeafIH>(&why)) {
+    why_type = WHY_LEAF_IH;
+    why_edge_idx = leaf_ih->edge_idx;
+    why_face_idx = leaf_ih->face_idx;
+  } else {
+    LOG(FATAL) << "bad variant?";
+  }
+
   db->ExecuteAndPrint(
       std::format(
           "insert into hard "
           "(poly, faces, edges, vertices, "
+          "why, why_edge_idx, why_face_idx, "
           "method, createdate, netness_numer, netness_denom, example_net) "
           "values ('{}', "
+          // faces, edges, vertices
           "{}, {}, {}, "
-          "{}, {}, {}, {}, '{}')",
+          // why
+          "{}, {}, {}, "
+          // method, time
+          "{}, {}, "
+          // netness, net
+          "{}, {}, '{}')",
           polystring,
           faces, edges, vertices,
+          why_type, why_edge_idx, why_face_idx,
           method,
           time(nullptr),
           netness_numer, netness_denom,
@@ -165,9 +218,8 @@ void DB::AddHard(const Polyhedron &poly, int method,
 
 std::vector<Hard> DB::AllHard(bool include_invalid) {
   std::string query =
-      "select "
-      "id, poly, method, createdate, netness_numer, netness_denom, example_net "
-      "from hard";
+    std::format("select {} "
+                "from hard", HARD_FIELDS);
   if (!include_invalid) {
     query += " where invalid = 0";
   }
@@ -194,10 +246,13 @@ void DB::Spreadsheet(std::string_view filename) {
     GetHardForQuery(
         db->ExecuteString(
             std::format(
-                "select "
-                "id, poly, method, createdate, netness_numer, netness_denom, example_net "
+                "select {} "
                 "from hard "
-                "where invalid = 0")));
+                "where invalid = 0 "
+                "and why = {}",
+                HARD_FIELDS,
+                // TODO: Dump others?
+                WHY_ANY)));
   for (int i = 0; i < (int)hards.size(); i++) {
     const Hard &h = hards[i];
 

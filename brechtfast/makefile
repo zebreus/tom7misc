@@ -1,4 +1,4 @@
-default : albrecht_test.exe brechtfast.exe query.exe export-sheet.exe tostl.exe inspect.exe
+default : albrecht_test.exe brechtfast.exe query.exe export-sheet.exe tostl.exe inspect.exe nasty_test.exe solve-leaf_test.exe scoreboard.exe validate.exe tune-db.exe
 
 # This assumes OpenCL is installed as a system library, which
 # is now the case for msys2 clang64. If it's not, you could
@@ -122,6 +122,10 @@ nasty_test.exe : nasty_test.o $(OBJECTS)
 	@echo -n "!"
 
 tune-db.exe : tune-db.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+grind.exe : grind.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

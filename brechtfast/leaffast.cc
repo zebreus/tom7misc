@@ -50,7 +50,7 @@ static constexpr ColorUtil::Gradient BLACKBODY{
   GradRGB(1.0f, 0xFFFFFF)
 };
 
-struct Brechtfast {
+struct Leaffast {
 
   static constexpr int METHOD =
     DB::METHOD_CONSTRUCT;
@@ -68,7 +68,7 @@ struct Brechtfast {
   }
 
   std::string HistoFile() {
-    return std::format("brechtfast-{}-{}.histo", METHOD, MAX_FACES);
+    return std::format("leaffast-{}-{}.histo", METHOD, MAX_FACES);
   }
 
   void SaveHisto() {
@@ -102,13 +102,16 @@ struct Brechtfast {
   double time_measure = 0.0;
 
   double best_netness = 1.0;
-  Brechtfast() : main_rc(std::format("brechtfast.{}", time(nullptr))) {
+  Leaffast() : main_rc(std::format("leaffast.{}", time(nullptr))) {
 
   }
 
-  ~Brechtfast() {
+  ~Leaffast() {
 
   }
+
+  // TODO: Get sample, loop over all face/edge pairs, but only
+  // keep it if we find a face/edge pair with zero numerator.
 
   OneSample Sample(ArcFour *rc, int method) {
     switch (METHOD) {
@@ -311,10 +314,10 @@ int main(int argc, char **argv) {
   fflush(stdout);
 
   {
-    Brechtfast brechtfast;
+    Leaffast leaffast;
     printf("Created...\n");
     fflush(stdout);
-    brechtfast.Run();
+    leaffast.Run();
   }
 
   return 0;

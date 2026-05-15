@@ -586,3 +586,42 @@ BitString SolveLeaf::SampleFace(
 
   return unfolding;
 }
+
+BitString SolveLeaf::SampleLeaf(
+    ArcFour *rc,
+    const Albrecht::AugmentedPoly &aug,
+    int face_idx,
+    int edge_idx) {
+  const Faces &faces = *aug.poly.faces;
+  const int num_faces = faces.NumFaces();
+  const int num_edges = faces.NumEdges();
+
+  CHECK(edge_idx >= 0 && edge_idx < num_edges);
+  const Faces::Edge &input_edge = faces.edges[edge_idx];
+  CHECK(input_edge.f0 == face_idx || input_edge.f1 == face_idx);
+
+  std::vector<int> edges;
+  edges.reserve(num_edges);
+  for (int e = 0; e < num_edges; e++) {
+    const Faces::Edge &edge = faces.edges[e];
+    if (edge.f0 != face_idx && edge.f1 != face_idx) {
+      edges.push_back(e);
+    }
+  }
+
+  Shuffle(rc, &edges);
+
+  BitString unfolding(num_edges, false);
+  unfolding.Set(edge_idx, true);
+
+  UnionFind uf(num_faces);
+  for (int i : edges) {
+    const Faces::Edge &edge = faces.edges[i];
+    if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
+      uf.Union(edge.f0, edge.f1);
+      unfolding.Set(i, true);
+    }
+  }
+
+  return unfolding;
+}

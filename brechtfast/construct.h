@@ -154,7 +154,10 @@ struct PartialPolyhedron {
     num_faces_left(num_faces),
     target_unfoldings(target_unfoldings) {
 
-    Initialize();
+    // XXX make this configurable
+    int f1v = 3 + RandTo(rc, 9);
+    int f2v = 3 + RandTo(rc, 3);
+    Initialize(f1v, f2v);
     ReplenishUnfoldings();
   }
 
@@ -256,7 +259,7 @@ struct PartialPolyhedron {
 
   // Initialize the state with two random faces connected by a dihedral
   // edge.
-  void Initialize();
+  void Initialize(int max_verts1, int max_verts2);
 
   // Random number generator; not owned.
   ArcFour *rc = nullptr;

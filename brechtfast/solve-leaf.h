@@ -26,6 +26,16 @@ struct SolveLeaf {
       ArcFour *rc,
       const Albrecht::AugmentedPoly &aug,
       int face_idx);
+
+  // Sample an unfolding that has face_idx as a leaf, connected via
+  // edge_idx (which must be on that face). It may or may not have
+  // overlap, but it will be a proper spanning tree with the indicated
+  // leaf.
+  static BitString SampleLeaf(
+      ArcFour *rc,
+      const Albrecht::AugmentedPoly &aug,
+      int face_idx,
+      int edge_idx);
 };
 
 #endif
