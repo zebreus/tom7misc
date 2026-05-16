@@ -12,8 +12,9 @@
 #include <utility>
 #include <vector>
 
-#include "sqlite3.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "sqlite3.h"
 
 using Row = Database::Row;
 using Query = Database::Query;
@@ -165,9 +166,9 @@ struct QueryImpl : public Database::Query {
     // We could relax this? But it would certainly be illegal to
     // access the row at this point.
     CHECK(ready) << "Must destroy row before destroying query.";
-    // printf("Destroy Query.\n");
+    // Print("Destroy Query.\n");
     if (stmt != nullptr) {
-      // printf("Query cleanup.\n");
+      // Print("Query cleanup.\n");
       sqlite3_finalize(stmt);
       stmt = nullptr;
     }
@@ -351,9 +352,9 @@ struct DatabaseImpl : public Database {
   void ExecuteAndPrint(const std::string &q) override {
     ExecuteAndCall(q, [](const std::vector<std::string> &row) {
         for (const std::string &c : row) {
-          printf("%s ", c.c_str());
+          Print("{} ", c);
         }
-        printf("\n");
+        Print("\n");
       });
   }
 
