@@ -489,7 +489,8 @@ struct ShotgunSolver {
         }
       }
 
-      // Check combinatorial constraints before starting expensive geometry checks
+      // Check combinatorial constraints before starting expensive
+      // geometry checks.
       if (CheckTreeStretch(aug, unfolding, dual_dist, max_stretch) &&
           Albrecht::IsNet(aug, unfolding)) {
         result_channel->Send(unfolding);

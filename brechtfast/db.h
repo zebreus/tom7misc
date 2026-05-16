@@ -63,10 +63,13 @@ struct DB {
   };
 
   using Why = std::variant<Any, LeafIH>;
+  static std::string WhyString(const Why &why);
 
   struct Hard {
     int id = 0;
     std::vector<vec3> poly_points;
+    // These are expected to match the poly points.
+    int num_faces = 0, num_edges = 0, num_verts = 0;
 
     // Database entries can be hard under different constraints.
     // Results refer to the constrained problem.

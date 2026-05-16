@@ -1,7 +1,6 @@
 
 #include "albrecht.h"
 
-#include <array>
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -19,9 +18,6 @@
 #include "bit-string.h"
 #include "db.h"
 #include "geom/polyhedra.h"
-#include "periodically.h"
-#include "randutil.h"
-#include "status-bar.h"
 #include "svg.h"
 #include "union-find.h"
 #include "util.h"

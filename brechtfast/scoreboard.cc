@@ -1,29 +1,23 @@
 
-#include "albrecht.h"
-
-#include <array>
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
 #include <format>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "bit-string.h"
+#include "base/print.h"
 #include "db.h"
-#include "geom/polyhedra.h"
+#include "periodically.h"
 #include "status-bar.h"
 #include "util.h"
-
-#include <algorithm>
-#include <map>
-
-#include "base/print.h"
-#include "periodically.h"
 
 static std::string BriefMethodName(int method) {
   std::string_view s = DB::MethodName(method);
@@ -31,9 +25,16 @@ static std::string BriefMethodName(int method) {
   return std::string(s);
 }
 
-void Scoreboard() {
+// This is a scoreboard showing the hardest instances
+// grouped by face for why=any (can we find ANY net?).
+static void Scoreboard() {
+  StatusBar status(1);
+  Periodically status_per(1, false);
+  status.Status("Read database...");
+
   DB db;
   std::vector<DB::Hard> hards = db.AllHard(false);
+
 
   struct Entry {
     int id = 0;
@@ -46,40 +47,25 @@ void Scoreboard() {
 
   std::map<int, std::vector<Entry>> by_faces;
 
-  StatusBar status(1);
-  Periodically status_per(1);
-
+  status.Status("Load entries...");
   for (int i = 0; i < (int)hards.size(); i++) {
     const DB::Hard &h = hards[i];
     if (h.netness_denom == 0) continue;
+    // Only any-type instances.
+    if (!std::holds_alternative<DB::Any>(h.why)) continue;
 
-    int nfaces = 0;
-    if (std::optional<Polyhedron> opoly =
-            PolyhedronFromConvexVertices(h.poly_points)) {
-      nfaces = opoly.value().faces->NumFaces();
-    }
-
-    if (nfaces > 0) {
-      Entry e;
-      e.id = h.id;
-      e.method = h.method;
-      e.numer = h.netness_numer;
-      e.denom = h.netness_denom;
-      e.netness_pct = (h.netness_numer * 100.0) / h.netness_denom;
-      e.has_example = h.example_net.has_value();
-      by_faces[nfaces].push_back(e);
-    }
-
-    status_per.RunIf([&] {
-      status.Progress(i + 1, hards.size(), "Evaluating");
-    });
+    Entry e;
+    e.id = h.id;
+    e.method = h.method;
+    e.numer = h.netness_numer;
+    e.denom = h.netness_denom;
+    e.netness_pct = (h.netness_numer * 100.0) / h.netness_denom;
+    e.has_example = h.example_net.has_value();
+    by_faces[h.num_faces].push_back(e);
   }
-  status.Remove();
 
-  for (auto &pair : by_faces) {
-    int nfaces = pair.first;
-    std::vector<Entry> &entries = pair.second;
-
+  status.Status("Sort...");
+  for (auto &[nfaces, entries] : by_faces) {
     std::sort(entries.begin(), entries.end(),
               [](const Entry &a, const Entry &b) {
                 if (a.netness_pct != b.netness_pct) {
@@ -87,6 +73,10 @@ void Scoreboard() {
                 }
                 return a.id < b.id;
               });
+  }
+
+  status.Remove();
+  for (const auto &[nfaces, entries] : by_faces) {
 
     Print("\n" AWHITE("--- {} Faces ---") "\n", nfaces);
     int limit = std::min((int)entries.size(), 5);

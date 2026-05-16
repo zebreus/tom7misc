@@ -23,9 +23,15 @@ struct Sampler {
     double sample_sec = 0.0, measure_sec = 0.0;
   };
 
+  static Polyhedron MakeConstruct(StatusBar *status,
+                                  ArcFour *rc,
+                                  int max_faces);
+
   static OneSample ConstructSample(StatusBar *status,
                                    ArcFour *rc,
                                    int max_faces);
+
+  static OneSample Sample(uint64_t seed, const Polyhedron &poly);
 
   // Sample using black-box optimizer.
   static OneSample OptSample(StatusBar *status,

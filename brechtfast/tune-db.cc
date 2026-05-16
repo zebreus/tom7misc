@@ -1,22 +1,65 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ctime>
+#include <format>
 #include <map>
 #include <optional>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "albrecht.h"
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "bit-string.h"
 #include "db.h"
 #include "geom/polyhedra.h"
 #include "netness.h"
 #include "periodically.h"
+#include "solve-leaf.h"
 #include "status-bar.h"
 
 static constexpr bool DRY_RUN = false;
+
+using NetnessResult = Netness::NetnessResult;
+
+static NetnessResult
+Resolve(ArcFour *rc, const DB::Hard &hard, int num_samples) {
+  auto opoly = PolyhedronFromConvexVertices(hard.poly_points);
+  CHECK(opoly.has_value());
+
+  Albrecht::AugmentedPoly aug(std::move(opoly.value()));
+
+  const int MAX_REPS = 8;
+
+  if (std::holds_alternative<DB::Any>(hard.why)) {
+    return Netness::ComputeWithExample(hard.id, aug, num_samples, MAX_REPS);
+
+  } else if (const DB::LeafIH *lih = std::get_if<DB::LeafIH>(&hard.why)) {
+    NetnessResult res;
+
+    for (int reps = 0; reps < MAX_REPS && res.numer == 0; reps++) {
+      for (int i = 0; i < num_samples; i++) {
+        BitString unfolding =
+          SolveLeaf::SampleLeaf(rc, aug, lih->face_idx, lih->edge_idx);
+        if (Albrecht::IsNet(aug, unfolding)) {
+          res.numer++;
+          if (!res.example.has_value()) {
+            res.example = {std::move(unfolding)};
+          }
+        }
+      }
+      res.denom += num_samples;
+    }
+
+    return res;
+  } else {
+    LOG(FATAL) << "Unsupported why-type!";
+  }
+}
 
 static void Tune() {
   StatusBar status(1);
@@ -26,20 +69,26 @@ static void Tune() {
   std::vector<DB::Hard> hards = db.AllHard(false);
   status.Print("Got {} hards.\n", hards.size());
 
-  std::map<int, std::vector<DB::Hard*>> by_faces;
+  std::map<int, std::vector<DB::Hard*>> any_by_faces;
+
+  // These are currently rare, so we just keep all of them.
+  std::vector<DB::Hard *> other;
 
   for (int i = 0; i < (int)hards.size(); i++) {
     DB::Hard &h = hards[i];
+
     // XXX: This needs to be updated to filter for other
     // types of hardness.
-    if (!std::holds_alternative<DB::Any>(h.why))
+    if (!std::holds_alternative<DB::Any>(h.why)) {
+      other.push_back(&h);
       continue;
+    }
 
     int nfaces = 0;
     if (auto opoly = PolyhedronFromConvexVertices(h.poly_points)) {
       nfaces = opoly->faces->NumFaces();
       CHECK(nfaces >= 4);
-      by_faces[nfaces].push_back(&h);
+      any_by_faces[nfaces].push_back(&h);
       status_per.RunIf([&] {
           status.Progress(i + 1, hards.size(), "Grouping by faces");
         });
@@ -47,13 +96,23 @@ static void Tune() {
   }
 
   struct Task {
-    DB::Hard *h;
-    bool needs_samples;
+    DB::Hard *h = nullptr;
+    bool needs_samples = false;
   };
   std::vector<Task> kept_tasks;
   int64_t deleted_count = 0;
 
-  for (auto &[nfaces, list] : by_faces) {
+  for (DB::Hard *h : other) {
+    if (h->netness_numer == 0 ||
+        !h->example_net.has_value()) {
+      kept_tasks.emplace_back(Task{
+          .h = h,
+          .needs_samples = true,
+        });
+    }
+  }
+
+  for (auto &[nfaces, list] : any_by_faces) {
     std::vector<DB::Hard*> zeroes;
     std::vector<DB::Hard*> nonzeros;
 
@@ -98,6 +157,8 @@ static void Tune() {
     }
   }
 
+  ArcFour rc(std::format("tune-db.{}", time(nullptr)));
+
   int samples_run = 0;
   for (size_t i = 0; i < kept_tasks.size(); i++) {
     Task &task = kept_tasks[i];
@@ -107,20 +168,20 @@ static void Tune() {
 
     if (!task.needs_samples) continue;
 
-    auto opoly = PolyhedronFromConvexVertices(task.h->poly_points);
-    if (!opoly) continue;
-
-    Albrecht::AugmentedPoly aug(*opoly);
-
-    int num_samples = 1 << 17;
-    Netness::NetnessResult res =
-      Netness::ComputeWithExample(task.h->id, aug, num_samples);
+    const int num_samples = 1 << 18;
+    Netness::NetnessResult res = Resolve(&rc, *task.h, num_samples);
 
     task.h->netness_numer += res.numer;
     task.h->netness_denom += res.denom;
 
     if (!task.h->example_net.has_value() && res.example.has_value()) {
+      status.Print("Solved #" ACYAN("{}") " ({}) for the first time!\n",
+                   task.h->id, DB::WhyString(task.h->why));
       task.h->example_net = res.example;
+    } else if (!task.h->example_net.has_value() &&
+               task.h->netness_numer == 0) {
+      status.Print("#" AORANGE("{}") " ({}) still has no solution\n",
+                   task.h->id, DB::WhyString(task.h->why));
     }
 
     if (!DRY_RUN) {

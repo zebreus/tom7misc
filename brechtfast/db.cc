@@ -27,6 +27,18 @@ using frame3 = DB::frame3;
 
 using Hard = DB::Hard;
 
+std::string DB::WhyString(const Why &why) {
+  if (std::holds_alternative<DB::Any>(why)) {
+    return "any";
+
+  } else if (const DB::LeafIH *lih = std::get_if<DB::LeafIH>(&why)) {
+    return std::format("leaf(f={},e={})", lih->face_idx, lih->edge_idx);
+
+  } else {
+    return "bad-why???";
+  }
+}
+
 DB::DB(const char *dbfile) {
   std::string f = dbfile;
   // XXX would be good if we could determine when this
@@ -108,20 +120,34 @@ void DB::Init() {
                       ")");
 }
 
-// Expects a specific column order; see below.
+static constexpr std::string_view HARD_FIELDS =
+  "id, poly, "
+  "faces, edges, vertices, "
+  "why, why_edge_idx, why_face_idx, "
+  "method, createdate, "
+  "netness_numer, netness_denom, example_net";
+
+// Expects the specific column order from HARD_FIELDS.
 static std::vector<DB::Hard> GetHardForQuery(
     std::unique_ptr<Database::Query> q) {
   std::vector<DB::Hard> ret;
   while (std::unique_ptr<Database::Row> r = q->NextRow()) {
     Hard hard;
-    hard.id = r->GetInt(0);
-    std::optional<std::vector<vec3>> pts = Vec3sFromString(r->GetString(1));
+
+    int col = 0;
+    hard.id = r->GetInt(col++);
+    std::optional<std::vector<vec3>> pts =
+      Vec3sFromString(r->GetString(col++));
     if (!pts.has_value()) continue;
     hard.poly_points = std::move(pts.value());
 
-    const int why = r->GetInt(2);
-    const int edge_idx = r->GetInt(3);
-    const int face_idx = r->GetInt(4);
+    hard.num_faces = r->GetInt(col++);
+    hard.num_edges = r->GetInt(col++);
+    hard.num_verts = r->GetInt(col++);
+
+    const int why = r->GetInt(col++);
+    const int edge_idx = r->GetInt(col++);
+    const int face_idx = r->GetInt(col++);
     switch (why) {
     case DB::WHY_ANY:
       hard.why = DB::Any{};
@@ -136,23 +162,18 @@ static std::vector<DB::Hard> GetHardForQuery(
       LOG(FATAL) << "Bad why value in database: " << why;
     }
 
-    hard.method = r->GetInt(5);
-    hard.createdate = r->GetInt(6);
-    hard.netness_numer = r->GetInt(7);
-    hard.netness_denom = r->GetInt(8);
+    hard.method = r->GetInt(col++);
+    hard.createdate = r->GetInt(col++);
+    hard.netness_numer = r->GetInt(col++);
+    hard.netness_denom = r->GetInt(col++);
     // This will produce nullopt for the empty string, which is how we
     // represent no net.
-    hard.example_net = BitString::FromASCII(r->GetStringOpt(9).value_or(""));
+    hard.example_net =
+      BitString::FromASCII(r->GetStringOpt(col++).value_or(""));
     ret.push_back(std::move(hard));
   }
   return ret;
 }
-
-static constexpr std::string_view HARD_FIELDS =
-  "id, poly, "
-  "why, why_edge_idx, why_face_idx, "
-  "method, createdate, "
-  "netness_numer, netness_denom, example_net";
 
 Hard DB::GetHard(int id) {
   std::vector<Hard> sols = GetHardForQuery(

@@ -58,7 +58,7 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   std::optional<double> max_stretch =
     {MAX_STRETCH_FACTOR * std::sqrt(num_faces)};
 
-  // Loop over all edges and run the strong solver.
+  // Loop over all edges and run the leaf solver.
   for (int e = 0; e < num_edges; e++) {
     const Faces::Edge &edge = poly.faces->edges[e];
     status_per.RunIf([&]{
@@ -75,7 +75,8 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
         LOG(FATAL) << "No solution found for " << name << " with "
                    << " face = " << f << " and edge = " << e
                    << (max_stretch.has_value() ?
-                       std::format(" and max_stretch = {}", max_stretch.value()) : "");
+                       std::format(" and max_stretch = {}",
+                                   max_stretch.value()) : "");
       }
 
       // Check that the net does indeed have the described property.

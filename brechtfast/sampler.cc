@@ -73,10 +73,11 @@ static std::optional<Polyhedron> CarefulPolyhedron(
 
 static constexpr bool TRIANGLES_ONLY = false;
 
-OneSample Sampler::ConstructSample(StatusBar *status,
-                                   ArcFour *rc,
-                                   int max_faces) {
-  Timer sample_timer;
+
+
+Polyhedron Sampler::MakeConstruct(StatusBar *status,
+                                  ArcFour *rc,
+                                  int max_faces) {
   for (;;) {
     const int target_faces = 12 + RandTo(rc, 29);
     PartialPolyhedron pp(rc, target_faces, 100);
@@ -187,7 +188,8 @@ OneSample Sampler::ConstructSample(StatusBar *status,
             poly.reserve(poly_indices.size());
             for (int idx : poly_indices) poly.push_back(pts[idx]);
 
-            // Ensure CCW winding so that the base edge is {0,0} -> {edge_len,0}.
+            // Ensure CCW winding so that the base edge is
+            // {0,0} -> {edge_len,0}.
             double area = 0.0;
             for (int i = 0; i < (int)poly.size(); i++) {
               vec2 pa = poly[i];
@@ -322,30 +324,37 @@ OneSample Sampler::ConstructSample(StatusBar *status,
       continue;
     }
 
-    const double sample_sec = sample_timer.Seconds();
-
-    Timer measure_timer;
-    Aug aug(std::move(opoly.value()));
-    auto [numer, denom] = Netness::Compute(Rand64(rc),
-                                           aug,
-                                           32768, 64, 1);
-
-    double measure_sec = measure_timer.Seconds();
-
-    OneSample sample{
-      .aug = std::move(aug),
-      .numer = numer,
-      .denom = denom,
-      .sample_sec = sample_sec,
-      .measure_sec = measure_sec,
-    };
-
-
-    return sample;
+    return std::move(opoly.value());
   }
 }
 
-  // from noperts. See discussion there.
+
+OneSample Sampler::ConstructSample(StatusBar *status,
+                                   ArcFour *rc,
+                                   int max_faces) {
+  Timer sample_timer;
+  Polyhedron poly = MakeConstruct(status, rc, max_faces);
+  const double sample_sec = sample_timer.Seconds();
+
+  Timer measure_timer;
+  Aug aug(std::move(poly));
+  auto [numer, denom] = Netness::Compute(Rand64(rc),
+                                         aug,
+                                         32768, 64, 1);
+
+  double measure_sec = measure_timer.Seconds();
+
+  return OneSample{
+    .aug = std::move(aug),
+    .numer = numer,
+    .denom = denom,
+    .sample_sec = sample_sec,
+    .measure_sec = measure_sec,
+  };
+}
+
+
+// from noperts. See discussion there.
 Polyhedron Sampler::RandomSymmetricPolyhedron(ArcFour *rc, int num_points,
                                               int max_faces) {
   static const SymmetryGroups *symmetry = new SymmetryGroups;

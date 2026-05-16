@@ -59,7 +59,8 @@ static Polyhedron GetPolyhedron(std::string_view name) {
   LOG(FATAL) << "Unknown polyhedron " << name;
 }
 
-static BitString Sample(ArcFour *rc, const Aug &aug, std::optional<int> face_idx,
+static BitString Sample(ArcFour *rc, const Aug &aug,
+                        std::optional<int> face_idx,
                         bool want_net, bool want_non_net) {
   const Faces &faces = *aug.poly.faces;
   int num_faces = faces.NumFaces();
@@ -136,6 +137,7 @@ static BitString Sample(ArcFour *rc, const Aug &aug, std::optional<int> face_idx
 
 static void Inspect(std::string_view poly_name,
                     std::optional<int> face_idx,
+                    std::optional<int> edge_idx,
                     std::string_view filename) {
   Polyhedron poly = GetPolyhedron(poly_name);
 
@@ -268,16 +270,27 @@ static void Inspect(std::string_view poly_name,
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  CHECK(argc == 2 || argc == 3) << "./inspect.exe name [face_idx]";
-
-  std::optional<int> face_idx;
-  if (argc == 3) {
-    std::optional<int64_t> of = Util::ParseDoubleOpt(argv[2]);
-    CHECK(of.has_value()) << "Face idx must be a number!";
-    face_idx = {of.value()};
+  std::string name;
+  std::optional<int> face_idx, edge_idx;
+  for (int i = 1; i < argc; i++) {
+    std::string_view arg = argv[i];
+    if (arg == "-face" || arg == "-edge") {
+      CHECK(i + 1 < argc) << "-face and -edge need arg.";
+      i++;
+      std::optional<int64_t> of = Util::ParseDoubleOpt(argv[i]);
+      CHECK(of.has_value()) << "-face and -edge must be a number!";
+      if (arg == "-face") face_idx = {of.value()};
+      else if (arg == "-edge") edge_idx = {of.value()};
+    } else {
+      CHECK(name.empty()) << "Just one name.";
+      name = arg;
+    }
   }
 
-  Inspect(argv[1], face_idx, std::format("inspect-{}.svg", argv[1]));
+  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] name";
+
+  Inspect(name, face_idx, edge_idx,
+          std::format("inspect-{}.svg", name));
 
   return 0;
 }
