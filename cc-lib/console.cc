@@ -110,6 +110,7 @@ enum class ControlCode {
   BEGIN_LINE,
   END_LINE,
   ERASE_TO_END,
+  ALT_BACKSPACE,
   BACKSPACE,
   DEL,
   ENTER,
@@ -176,6 +177,9 @@ static Input GetCompletedInput(std::span<const uint8_t> input) {
       default: break;
       }
       return Control{ControlCode::INVALID};
+    } else if (esc[0] == 0x7f) {
+
+      return Control{ControlCode::ALT_BACKSPACE};
     }
 
     // Other escape sequences: assume complete after 2 bytes.
@@ -191,8 +195,13 @@ static Input GetCompletedInput(std::span<const uint8_t> input) {
     return Control{ControlCode::BACKSPACE};
   }
 
+  // ctrl-d
+  if (first == 0x04) {
+    return Control{ControlCode::DEL};
+  }
+
   // ctrl-a
-  if (first == '\x01') {
+  if (first == 0x01) {
     return Control{ControlCode::BEGIN_LINE};
   }
 
@@ -366,6 +375,17 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
 
         data->partial_input.clear();
 
+        auto WordBoundary = [](uint32_t codepoint) {
+            switch (codepoint) {
+            case ' ':
+            case '-':
+            case '_':
+              return true;
+            default:
+              return false;
+            }
+          };
+
         if (const Control *ctrl = std::get_if<Control>(&input)) {
           if (VERBOSE) Print(stderr, "It's control code.\n");
           switch (ctrl->cc) {
@@ -390,8 +410,8 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
               input_dirty = true;
 
               while (data->current_offset > 0 &&
-                     // XXX perhaps also hyphen, underscore
-                     data->current_line[data->current_offset - 1] != ' ') {
+                     !WordBoundary(data->current_line[
+                                       data->current_offset - 1])) {
                 data->current_offset--;
               }
             }
@@ -406,7 +426,7 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
               input_dirty = true;
 
               while (data->current_offset < (int)data->current_line.size() &&
-                     data->current_line[data->current_offset] != ' ') {
+                     !WordBoundary(data->current_offset)) {
                 data->current_offset++;
               }
             }
@@ -441,6 +461,24 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
           case ControlCode::RIGHT_ARROW: {
             if (data->current_offset < (int)data->current_line.size()) {
               data->current_offset++;
+              input_dirty = true;
+            }
+            break;
+          }
+
+          case ControlCode::ALT_BACKSPACE: {
+            if (data->current_offset > 0) {
+              int pos = data->current_offset;
+              while (pos > 0 && WordBoundary(data->current_line[pos - 1])) {
+                pos--;
+              }
+              while (pos > 0 && !WordBoundary(data->current_line[pos - 1])) {
+                pos--;
+              }
+              data->current_line.erase(
+                  data->current_line.begin() + pos,
+                  data->current_line.begin() + data->current_offset);
+              data->current_offset = pos;
               input_dirty = true;
             }
             break;
@@ -697,6 +735,16 @@ void Console::RedrawStatusWithLock(Location loc) {
   }
 }
 
+void Console::SetInput(std::string_view s) {
+  std::vector<uint32_t> codepoints = UTF8::Codepoints(s);
+  {
+    std::unique_lock<std::mutex> ul(data->m);
+    data->current_line = std::move(codepoints);
+    data->current_offset = data->current_line.size();
+  }
+  Redraw();
+}
+
 void Console::Redraw() {
   const auto &[new_cols, new_rows] =
     ANSI::TerminalDimensions().value_or(std::make_pair(80, 24));
@@ -719,15 +767,9 @@ void Console::Redraw() {
   std::vector<std::string> hist_lines =
     GetHistoryLines(data->history, std::max(nhist, 0), new_cols);
 
-  // "\x1B[%dA" and "\x1B[%dG"
-
   // Don't show a flickering cursor while we're redrawing.
   // We restore this at the end.
   HideCursorWithLock();
-
-  // Move to the top-left of the screen.
-  // (Not necessary now because we move to each section.)
-  // ::Print(ANSI_HOME);
 
   RedrawStatusWithLock(Location::TOP);
 

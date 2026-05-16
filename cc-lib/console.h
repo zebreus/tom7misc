@@ -49,6 +49,11 @@ struct Console {
   // Remove it from the queue and return it.
   std::string WaitLine();
 
+  // Replace the current input with this string as though the
+  // cleared their current input and typed this. Does not process
+  // special characters. Should not have a newline.
+  void SetInput(std::string_view s);
+
   bool HasInput();
 
   // Redraw the whole screen, for example if you know that the terminal
