@@ -10,7 +10,6 @@
 ;;  - Show key commands in *EDITS* buffer
 ;;  - Show status (how many edits left) in edits buffer
 ;;  - Better diff display!
-;;  - colorization for *EDITS* buffer
 
 (require 'eprocs)
 
@@ -33,6 +32,26 @@
 
 (require 'cl-lib)
 (require 'diff-mode)
+
+(defface llm-edit-before-face
+  '((t :inherit diff-removed))
+  "Face for the before region lines in the edit buffer."
+  :group 'edit)
+
+(defface llm-edit-after-face
+  '((t :inherit diff-added))
+  "Face for the after region lines in the edit buffer."
+  :group 'edit)
+
+(defface llm-edit-delimiter-face
+  '((t :inherit diff-hunk-header))
+  "Face for the delimiter lines (<<<< BEFORE, etc.)."
+  :group 'edit)
+
+(defface llm-edit-file-face
+  '((t :inherit diff-file-header))
+  "Face for the filename in an edit block."
+  :group 'edit)
 
 (defvar-local llm-edit--active-overlay nil)
 (defvar-local llm-edit--last-block-state nil)
@@ -65,17 +84,30 @@
               (save-excursion
                 (goto-char (point-max))
                 (let ((inhibit-read-only t))
-                  (insert (propertize (format "File: %s\n" file)
-                                      'read-only t 'rear-nonsticky t))
-                  (insert (propertize (format "Comment: %s\n" comment)
-                                      'read-only t 'rear-nonsticky t))
+                  (insert (propertize "File: "
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'font-lock-keyword-face))
+                  (insert (propertize (format "%s\n" file)
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'llm-edit-file-face))
+                  (insert (propertize "Comment: "
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'font-lock-keyword-face))
+                  (insert (propertize (format "%s\n" comment)
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'font-lock-comment-face))
                   (insert (propertize "<<<< BEFORE\n"
-                                      'read-only t 'rear-nonsticky t))
-                  (insert before)
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'llm-edit-delimiter-face))
+                  (insert (propertize before 'font-lock-face 'llm-edit-before-face))
                   (insert (propertize "==== AFTER\n"
-                                      'read-only t 'rear-nonsticky t))
-                  (insert after)
-                  (insert (propertize ">>>>\n\n"
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'llm-edit-delimiter-face))
+                  (insert (propertize after 'font-lock-face 'llm-edit-after-face))
+                  (insert (propertize ">>>>\n"
+                                      'read-only t 'rear-nonsticky t
+                                      'font-lock-face 'llm-edit-delimiter-face))
+                  (insert (propertize "\n"
                                       'read-only t 'rear-nonsticky t))))))))
     (error (message "llm-edit JSON parse error: %s" err))))
 
@@ -145,6 +177,24 @@ whitespace-insensitive search if no exact matches are found."
             (push (cons (match-beginning 0) (match-end 0)) matches))))
       (nreverse matches))))
 
+
+;; Creates and returns an overlay that visually represents a proposed change
+;; inline in the current buffer.
+;;
+;; API:
+;; - START, END: The buffer positions of the text to be replaced.
+;; - BEFORE: The exact string currently present between START and END.
+;; - AFTER: The proposed replacement string.
+;;
+;; Returns an Emacs overlay object. The caller is responsible for deleting
+;; this overlay when it is no longer needed.
+(defun llm-edit--make-diff-overlay (start end before after)
+  "Create an overlay displaying the diff from BEFORE to AFTER at START/END."
+  (let ((ov (make-overlay start end)))
+    (overlay-put ov 'face 'diff-removed)
+    (overlay-put ov 'after-string (propertize after 'face 'diff-added))
+    ov))
+
 ;; Automatically shows a live preview of the edit block under point in its
 ;; target buffer. Intended to be bound to post-command-hook.
 ;;
@@ -186,12 +236,17 @@ whitespace-insensitive search if no exact matches are found."
                           (let ((win (window-in-direction 'above)))
                             (when win
                               (set-window-buffer win target-buf)
-                              (set-window-point win match-start)))
-                          (let ((ov (make-overlay match-start match-end)))
-                            (overlay-put ov 'face 'diff-removed)
-                            (let ((after-str
-                                   (propertize after 'face 'diff-added)))
-                              (overlay-put ov 'after-string after-str))
+                              (set-window-point win match-start)
+                              (with-selected-window win
+                                (let* ((diff-lines (+ (cl-count ?\n before)
+                                                      (cl-count ?\n after)))
+                                       (win-lines (window-body-height))
+                                       (fit-p (<= (+ diff-lines 4) win-lines)))
+                                  (recenter (if fit-p
+                                                (/ (- win-lines diff-lines) 2)
+                                              2))))))
+                          (let ((ov (llm-edit--make-diff-overlay
+                                     match-start match-end before after)))
                             (with-current-buffer (get-buffer "*EDITS*")
                               (setq llm-edit--active-overlay ov))))))))))))))))
 
@@ -290,10 +345,7 @@ whitespace-insensitive search if no exact matches are found."
 ;;
 ;; Saves all buffers beforehand to ensure the external process reads the
 ;; latest state from disk. Sets up a process pipeline that captures text
-;; within replacement tags and feeds it to the JSON processor. The tags are
-;; constructed dynamically (concatenating "<" and "REPLACEMENT>") to prevent
-;; the filter from accidentally matching its own source code when this specific
-;; file is being edited.
+;; within replacement tags and feeds it to the JSON processor.
 (defun llm-edit (prompt)
   "Invoke edit.exe to propose multi-file code replacements."
   (interactive
