@@ -9,6 +9,7 @@ var MINFRAMEMS = 9.0;
 var PHASE_TITLE = 1;
 var PHASE_CUTSCENE = 2;
 var PHASE_GAME = 3;
+var PHASE_WAIT = 4;
 // and end, ...
 
 var FONTW = 9;

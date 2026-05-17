@@ -1257,13 +1257,19 @@ function DrawTitle() {
 
 function Draw() {
   switch (window.phase) {
-    case PHASE_TITLE:
+  case PHASE_WAIT:
+    ClearScreen();
+    var msg = "Click to play...";
+    var msgw = msg.length * (FONTW - FONTOVERLAP);
+    window.font.Draw(ctx, (WIDTH - msgw) >> 1, (HEIGHT - FONTH) >> 1, msg);
+    break;
+  case PHASE_TITLE:
     DrawTitle();
     break;
     // case PHASE_CUTSCENE:
     // DrawCutscene();
     break;
-    case PHASE_GAME:
+  case PHASE_GAME:
     DrawGame();
     break;
   }
@@ -1876,25 +1882,25 @@ function InitAreas() {
       // the left edge touches the right edge of the other (or
       // symmetric cases) -- left edge can't touch left edge.
       if (a.x == b.x2) {
-	let y = Midpoint(a.y, b.y, a.y2, b.y2);
-	if (y != null) {
-	  AddEdge(a, b, a.x, y);
-	}
+	    let y = Midpoint(a.y, b.y, a.y2, b.y2);
+	    if (y != null) {
+	      AddEdge(a, b, a.x, y);
+	    }
       } else if (a.x2 == b.x) {
-	let y = Midpoint(a.y, b.y, a.y2, b.y2);
-	if (y != null) {
-	  AddEdge(b, a, b.x, y);
-	}
+	    let y = Midpoint(a.y, b.y, a.y2, b.y2);
+	    if (y != null) {
+	      AddEdge(b, a, b.x, y);
+	    }
       } else if (a.y == b.y2) {
-	let x = Midpoint(a.x, b.x, a.x2, b.x2);
-	if (x != null) {
-	  AddEdge(a, b, x, a.y);
-	}
+	    let x = Midpoint(a.x, b.x, a.x2, b.x2);
+	    if (x != null) {
+	      AddEdge(a, b, x, a.y);
+	    }
       } else if (a.y2 == b.y) {
-	let x = Midpoint(a.x, b.x, a.x2, b.x2);
-	if (x != null) {
-	  AddEdge(b, a, x, a.y2);
-	}
+	    let x = Midpoint(a.x, b.x, a.x2, b.x2);
+	    if (x != null) {
+	      AddEdge(b, a, x, a.y2);
+	    }
       }
     }
   }
@@ -1903,15 +1909,8 @@ function InitAreas() {
 
 function Start() {
   Init();
-  InitAreas();
-  InitGame();
-  InitStars();
   
-  window.phase = PHASE_TITLE;
-  StartSong(song_theme_maj);
-
-  // straight to game to start
-  // window.phase = PHASE_GAME;
+  window.phase = PHASE_WAIT;
 
   // For mouse control.
   bigcanvas.canvas.onmousemove = CanvasMove;
@@ -1967,22 +1966,22 @@ function CanvasMousedownGame(x, y) {
     // (could also do for OVI but I think this should be a little
     // puzzle?)
     if ((sentence.verb == VERB_USE ||
-	 sentence.verb == VERB_OVI) &&
-	sentence.obj1 == null) {
+	     sentence.verb == VERB_OVI) &&
+	    sentence.obj1 == null) {
       window.inventoryopen = true;
     }
 
     if (sentence.verb == VERB_USE &&
-	sentence.obj1 != null &&
-	sentence.obj2 == null) {
+	    sentence.obj1 != null &&
+	    sentence.obj2 == null) {
       window.inventoryopen = false;
     }
     
     // Help you figure this one out...
     if (sentence.verb == VERB_OVI &&
-	sentence.obj1 != null &&
-	sentence.obj2 == null &&
-	sentence.obj1.name == "EGG") {
+	    sentence.obj1 != null &&
+	    sentence.obj2 == null &&
+	    sentence.obj1.name == "EGG") {
       window.inventoryopen = false;
     }
     
@@ -2053,7 +2052,7 @@ function CanvasMousedownGame(x, y) {
     // (double-click to walk?!)
     sentence = null;
     let route = Route(player.worldx, player.worldy,
-		      globalx, y);
+		              globalx, y);
     if (route == null) {
       // or just be quiet?
       player.Say("I CAN'T GO THERE");
@@ -2078,10 +2077,21 @@ function CanvasMousedown(event) {
   var y = Math.floor((event.pageY - bcy) / PX);
 
   switch (window.phase) {
-    case PHASE_GAME:
+  case PHASE_WAIT:
+    // Since we have a click event, we can start the music!
+    if (typeof audioctx !== 'undefined' && audioctx && audioctx.resume) {
+      audioctx.resume();
+    }
+    InitAreas();
+    InitGame();
+    InitStars();
+    window.phase = PHASE_TITLE;
+    StartSong(song_theme_maj);
+    break;
+  case PHASE_GAME:
     return CanvasMousedownGame(x, y);
     break;
-    case PHASE_TITLE:
+  case PHASE_TITLE:
     ClearSong();
     window.phase = PHASE_GAME;
     break;
@@ -2096,10 +2106,11 @@ function CanvasMouseup(event) {
   var y = Math.floor((event.pageY - bcy) / PX);
 
   switch (window.phase) {
-    case PHASE_GAME:
+  case PHASE_GAME:
     return CanvasMouseupGame(x, y);
     break;
-    case PHASE_TITLE:
+  case PHASE_WAIT:
+  case PHASE_TITLE:
     // ignored
     break;
   }
