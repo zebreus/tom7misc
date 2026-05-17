@@ -1,6 +1,9 @@
 
 # Descriptions of commonly included directories:
 describe d:\tom\llm Style guides and instructions
+
+describe d:\tom\llm\cpp-style-guide.txt User's C++ Preferences
+
 describe ../cc-lib General C++ utilities
 describe ../cc-lib/opt C++ Black-box optimizer
 

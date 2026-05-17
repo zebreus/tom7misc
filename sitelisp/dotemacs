@@ -48,6 +48,7 @@
 ;; experimental
 (require 'eprocs)
 (require 'fill-in)
+(require 'edit)
 (require 'wtf)
 
 ;; On windows, "env GZIP= gzip -d" is not a good way to run
@@ -1551,7 +1552,7 @@
  '(comint-input-ignoredups t)
  '(delete-trailing-lines nil)
  '(echo-keystrokes 0.5)
- '(ediff-merge-split-window-function 'split-window-vertically)
+ '(ediff-split-window-function 'split-window-horizontally)
  '(ediff-window-setup-function 'ediff-setup-windows-plain)
  '(eglot-ignored-server-capabilities '(:documentOnTypeFormattingProvider :inlayHintProvider))
  '(flymake-error-bitmap '(tom7-diag-stripes compilation-error))

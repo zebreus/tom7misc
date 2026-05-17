@@ -34,10 +34,12 @@ static std::string_view InternalModelName(Model model) {
   switch (model) {
   default:
     LOG(FATAL) << "Bad model?";
-  case Model::GEMINI_BEST: return "gemini-3.1-pro-preview";
+  case Model::GEMINI_BEST: return "gemini-pro-latest";
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
-  case Model::GEMINI_FASTEST: return "gemini-3.1-flash-lite-preview";
-  case Model::GEMINI_CHEAPEST: return "gemini-flash-lite-latest";
+    // Careful: It doesn't work!
+  case Model::GEMINI_FASTEST: return "gemini-flash-lite-latest";
+  case Model::GEMINI_CHEAPEST: return "gemini-2.5-flash-lite";
+    // gemini-2.0-flash-lite is retired
     // case Model::GEMINI_FREE: return "gemma-4-31b-it";
   case Model::GEMINI_FREE: return "gemma-4-26b-a4b-it";
   }

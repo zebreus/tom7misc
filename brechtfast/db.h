@@ -31,7 +31,7 @@ struct DB {
   static constexpr int METHOD_CONSTRUCT = 4;
 
   static constexpr int FIRST_METHOD = 1;
-  static constexpr int LAST_METHOD = 1;
+  static constexpr int LAST_METHOD = 4;
 
   static const char *MethodName(int m) {
     switch (m) {
@@ -43,6 +43,9 @@ struct DB {
     default: return "UNKNOWN";
     }
   }
+
+  // More sightly for in user-facing output.
+  static std::string BriefMethodName(int method);
 
   // Also looks for the database in parent directories
   // before creating it.

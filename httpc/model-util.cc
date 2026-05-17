@@ -52,10 +52,10 @@ std::filesystem::path ModelUtil::NormalizePath(std::string_view p) {
       return std::string(p);
     }();
 
-  // 2. Pass to std::filesystem to handle normalization
+  // Pass to std::filesystem to handle normalization
   std::filesystem::path path(s);
 
-  // Make the path absolute based on the Current Working Directory.
+  // Make the path absolute based on the current working directory.
   // (If it's already absolute like C:\file, this does nothing).
   path = std::filesystem::absolute(path);
 
@@ -107,7 +107,7 @@ void ModelUtil::FileCollection::AddWildcard(std::filesystem::path dir,
     if (Util::MatchesWildcard(pattern, f)) {
       std::filesystem::path p = dir / f;
       if (std::filesystem::is_regular_file(p)) {
-        all.insert(p);
+        AddFile(p);
       }
     }
   }
@@ -137,8 +137,6 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
 
       std::filesystem::path cc = config_path / file;
       AddFile(cc);
-
-
 
     } else if (Util::TryStripPrefix("describe", &line)) {
       std::string_view dir = Util::Chop(&line);
@@ -238,12 +236,12 @@ ModelUtil::SvnList(std::filesystem::path dir) {
 
 void ModelUtil::FileCollection::AddSvnFiles(std::filesystem::path dir) {
   for (const std::filesystem::path &p : SvnList(dir)) {
-    all.insert(p);
+    AddFile(p);
   }
 }
 
 void ModelUtil::FileCollection::AddFile(std::filesystem::path file) {
-  all.insert(file);
+  all.insert(ModelUtil::NormalizePath(file.string()));
 }
 
 void ModelUtil::FileCollection::AddExcludePattern(std::string_view pat) {
@@ -359,8 +357,7 @@ ModelUtil::FileCollection::GetAvailable(std::filesystem::path pwd) const {
     }
   }
 
-  pwd = pwd.lexically_normal();
-  pwd.make_preferred();
+  pwd = ModelUtil::NormalizePath(pwd.string());
 
   // Find the minimal number of trailing segments that we need
   // for each directory to make it unique.
@@ -554,6 +551,13 @@ std::optional<std::string> ModelUtil::FindOneJSONObject(
   return std::nullopt;
 }
 
+std::string ModelUtil::EscapeJSON(std::string_view s) {
+  std::string esc = Util::EscapeJS(s);
+  esc = Util::Replace(esc, "<", "\\u003c");
+  esc = Util::Replace(esc, ">", "\\u003e");
+  return esc;
+}
+
 std::string ModelUtil::RescueJSON(std::string_view j) {
   std::string out;
   out.reserve(j.size());
@@ -617,6 +621,13 @@ std::string ModelUtil::GetAPIKey() {
       return Util::NormalizeWhitespace(key);
   }
 
+  {
+    Print("Try ~\n");
+    std::string key = Util::ReadFile("~/GEMINI_API_KEY");
+    if (!key.empty())
+      return Util::NormalizeWhitespace(key);
+  }
+
   std::string api_key =
     Util::NormalizeWhitespace(Util::ReadFile("d://tom//GEMINI_API_KEY"));
   CHECK(!api_key.empty());
@@ -672,6 +683,31 @@ std::set<std::string> ModelUtil::IncludeDirs(
   return dirs;
 }
 
+// Get the key for a specific file path; the same that would
+// be used in the textualized list and the files map. Linear time.
+std::optional<std::string> ModelUtil::AvailableFiles::Key(
+    std::filesystem::path p) const {
+  std::filesystem::path norm_p = ModelUtil::NormalizePath(p.string());
+  std::error_code ec;
+
+  for (const auto &[key, af] : files) {
+    // If both paths exist on disk, equivalent() robustly checks if they
+    // refer to the exact same physical file (handling hardlinks, etc).
+    if (std::filesystem::equivalent(norm_p, af.path, ec)) {
+      return {key};
+    }
+
+    // Fallback: if the file doesn't exist (e.g. a proposed new file),
+    // or equivalent() otherwise fails, compare the normalized paths.
+    if (norm_p == ModelUtil::NormalizePath(af.path.string())) {
+      return {key};
+    }
+  }
+
+  return std::nullopt;
+}
+
+
 std::string ModelUtil::TextualizeChosenFiles(
     const AvailableFiles &available,
     std::span<const std::string> to_include) {
@@ -688,3 +724,4 @@ std::string ModelUtil::TextualizeChosenFiles(
   }
   return text;
 }
+

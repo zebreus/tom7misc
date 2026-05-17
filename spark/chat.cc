@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
@@ -18,6 +19,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "console.h"
+#include "model-util.h"
 #include "net.h"
 #include "periodically.h"
 #include "spark-infer.h"
@@ -65,6 +67,39 @@ struct Conversation {
 
   std::set<std::string> user_participants = {"Tom"};
 
+  void ShowParticipants() {
+    std::string ppts = ANSI_BG(0, 0, 80);
+    bool first = true;
+    for (const std::string &s : user_participants) {
+      if (!first) AppendFormat(&ppts, ANSI_YELLOW " ⏹ ");
+      AppendFormat(&ppts, ANSI_WHITE "[" ANSI_CYAN "{}" ANSI_WHITE "]", s);
+      first = false;
+    }
+
+    for (const std::string &s : participants) {
+      if (!user_participants.contains(s)) {
+        if (!first) AppendFormat(&ppts, ANSI_YELLOW " ⏹ ");
+        AppendFormat(
+            &ppts,
+            ANSI_WHITE "[" ANSI_FG(200, 200, 200) "{}" ANSI_WHITE "]", s);
+        first = false;
+      }
+    }
+
+    console->SetStatus(Console::TOP, 0, "{}", ppts);
+  }
+
+  void SetMiddle(std::string_view message) {
+    console->SetStatus(Console::MID, 0,
+                       ANSI_FG(100, 100, 100)
+                       ANSI_BG(30, 30, 30)
+                       "────┤"
+                       " {} "
+                       ANSI_FG(100, 100, 100)
+                       ANSI_BG(30, 30, 30) "├──────────────────────────",
+                       message);
+  }
+
   void Load(std::string_view filename) {
     std::vector<std::string> lines = Util::ReadFileToLines(filename);
     if (lines.size() < 2) {
@@ -84,6 +119,7 @@ struct Conversation {
     for (int i = 1; i < ppts.size(); i++) {
       participants.insert(ppts[i]);
     }
+    ShowParticipants();
 
     // Next line is preamble.
     preamble = lines[1];
@@ -101,12 +137,74 @@ struct Conversation {
     console->Print(AGREEN("OK") "\n");
   }
 
-  void SetTop(std::string_view s) {
-    console->SetStatus(Console::TOP,
-                       0,
-                       ANSI_BG(0, 0, 80)
-                       ANSI_FG(255, 255, 255)
-                       "{}", s);
+  std::string CondensePreamble() {
+    ModelRequest req;
+
+    req.instructions =
+      "Task: Produce a condensed synopsis of a partial chat transcript. "
+      "Your synopsis should capture the entire conversation or story, some "
+      "of which occurred before or after this partial chat. Use the "
+      "existing synopsis, combined with the portion you see, to produce "
+      "an updated synopsis. The new synopsis should be no more than 1000 "
+      "words. "
+      "Include information that would be important for maintaining "
+      "continuity and tone.\n\n";
+
+    std::string input =
+      "The existing synopsis and transcript appears next:\n"
+      "<TRANSCRIPT>\n";
+
+    input.append(preamble);
+    input.push_back('\n');
+    for (const Message &msg : messages) {
+      AppendFormat(&input, "{}\n", MessageString(msg));
+    }
+    input.append("</TRANSCRIPT>\n");
+
+    input.append("\nNow, please provide a plain text, dense synopsis, "
+                 "of up to 1000 words:\n");
+
+    req.messages.emplace_back(ReqMessage{
+        .role = "user",
+        .content = input,
+      });
+
+    std::unique_ptr<SMR> res = spark.Stream(req, verbosity);
+
+    int64_t thought_bytes = 0;
+    Periodically status_per(0.250);
+
+    auto GotToken = [&](std::string_view what, std::string_view tok) {
+        thought_bytes += tok.size();
+        status_per.RunIf([&]{
+            SetMiddle(std::format("{}... {}", what, thought_bytes));
+          });
+      };
+
+    using namespace std::chrono_literals;
+    using SMR = Spark::StreamingModelResponse;
+
+    for (;;) {
+      auto p = res->Poll();
+      if (SMR::Thought *t = std::get_if<SMR::Thought>(&p)) {
+        GotToken("thinking", t->tok);
+      } else if (SMR::Content *c = std::get_if<SMR::Content>(&p)) {
+        GotToken("writing", c->tok);
+      } else if (SMR::Error *e = std::get_if<SMR::Error>(&p)) {
+        // Just print the error and give control back to the user.
+        console->Print(ARED("{}") "\n", e->msg);
+        return preamble;
+      } else if (std::holds_alternative<SMR::Wait>(p)) {
+        std::this_thread::sleep_for(100ms);
+      } else if (std::holds_alternative<SMR::Done>(p)) {
+        break;
+      }
+    }
+
+    std::string content = res->FullContent();
+    SetMiddle(ANSI_GREEN "READY");
+
+    return Util::NormalizeWhitespace(content);
   }
 
   // Get at least one continuation line, synchronously.
@@ -126,12 +224,13 @@ struct Conversation {
 
     std::string roles = Util::Join(robot_ppts, ", ");
     req.instructions = std::format(
-        "Think briefly. "
+        // "SPECIAL INSTRUCTION: Think silently. Thinking budget: 32 tokens\n"
         "Task: Continue the conversation in a natural way. "
         "Respond with one or two messages, using IRC syntax:\n"
         "<{}> A message spoken aloud\n"
         " * {} takes an action.\n"
-        "You play only the role{} of {}.\n",
+        "Both types of messages are seen by the chat room. "
+        "Respond only as the user{} {}.\n",
         example_speaker, example_speaker,
         robot_ppts.size() == 1 ? "" : "s",
         roles);
@@ -163,7 +262,7 @@ struct Conversation {
     auto ThoughtToken = [&](std::string_view tok) {
         thought_bytes += tok.size();
         status_per.RunIf([&]{
-            SetTop(std::format("Thinking... {}", thought_bytes));
+            SetMiddle(std::format("Thinking... {}", thought_bytes));
           });
       };
 
@@ -182,7 +281,7 @@ struct Conversation {
 
     auto ContentToken = [&](std::string_view tok) {
         status_per.RunIf([&]{
-            SetTop(ANSI_WHITE "...");
+            SetMiddle(ANSI_WHITE "...");
           });
         content.append(tok);
 
@@ -217,7 +316,7 @@ struct Conversation {
       }
     }
 
-    SetTop(ANSI_GREEN "READY");
+    SetMiddle(ANSI_GREEN "READY");
 
     // If it did not have a trailing newline, say.
     ConsumeLine(content);
@@ -270,6 +369,20 @@ struct Conversation {
     return std::nullopt;
   }
 
+  std::optional<std::string> GetOther() {
+    std::vector<std::string> robot_ppts;
+    for (const std::string &ppt : participants) {
+      if (!user_participants.contains(ppt)) {
+        robot_ppts.push_back(ppt);
+      }
+    }
+    if (robot_ppts.size() == 1) {
+      return {robot_ppts[0]};
+    } else {
+      return std::nullopt;
+    }
+  }
+
   void PrintMessage(const Message &msg) {
     if (msg.is_action) {
       console->Print(" " AYELLOW("*") " " ACYAN("{}") " {}\n",
@@ -313,11 +426,41 @@ struct Conversation {
       messages.push_back(std::move(msg));
       return true;
 
+    } else if (Util::TryStripPrefix("/you ", &input)) {
+      if (std::optional<std::string> other = GetOther()) {
+        Message msg{
+          .speaker = other.value(),
+          .text = std::string(input),
+          .is_action = true,
+        };
+        PrintMessage(msg);
+        messages.push_back(std::move(msg));
+      } else {
+        console->Print(AORANGE("/you") " only when exactly one other "
+                       "participant.\n");
+      }
+      return false;
+
+    } else if (Util::TryStripPrefix("/hear ", &input)) {
+      if (std::optional<std::string> other = GetOther()) {
+        Message msg{
+          .speaker = other.value(),
+          .text = std::string(input),
+          .is_action = false,
+        };
+        PrintMessage(msg);
+        messages.push_back(std::move(msg));
+      } else {
+        console->Print(AORANGE("/hear") " only when exactly one other "
+                       "participant.\n");
+      }
+      return false;
+
     } else if (Util::TryStripPrefix("/say ", &input)) {
       Message msg{
         .speaker = user,
         .text = std::string(input),
-        .is_action = false
+        .is_action = false,
       };
       PrintMessage(msg);
       messages.push_back(std::move(msg));
@@ -350,6 +493,19 @@ struct Conversation {
 
     } else if (Util::TryStripPrefix("/save ", &input)) {
       Util::RemoveOuterWhitespace(&input);
+      namespace fs = std::filesystem;
+      fs::path filename = ModelUtil::NormalizePath(input);
+      switch (fs::status(filename).type()) {
+      case fs::file_type::not_found:
+      case fs::file_type::regular:
+        // ok.
+        break;
+      default:
+        console->Print(AORANGE("{}") " exists and is not "
+                       "a regular file!\n", filename.string());
+        return false;
+      }
+
       std::string content;
       for (std::string_view up : user_participants) {
         if (!content.empty()) content.append(",");
@@ -367,8 +523,33 @@ struct Conversation {
         AppendFormat(&content, "{}\n", MessageString(msg));
       }
 
-      Util::WriteFile(input, content);
-      console->Print("\nWrote " AGREEN("{}") ".\n", input);
+      Util::WriteFile(filename.string(), content);
+      console->Print("\nWrote " AGREEN("{}") ".\n", filename.string());
+      return false;
+
+    } else if (Util::TryStripPrefix("/preamble", &input)) {
+      Util::RemoveOuterWhitespace(&input);
+      if (input.empty()) {
+        // If we have no input, this command means to
+        // edit the preamble, which we do by putting it
+        // back in the command.
+
+        console->SetInput(std::format("/preamble {}", preamble));
+      } else {
+        preamble = input;
+        console->Print("Preamble is now " AGREY("{}") "\n",
+                       preamble);
+      }
+      return false;
+
+    } else if (Util::TryStripPrefix("/condense", &input)) {
+      std::string new_preamble = CondensePreamble();
+      console->SetInput(std::format("/preamble {}", new_preamble));
+      // Keep only the last 50 messages.
+      constexpr int CONDENSE_TARGET = 50;
+      if (messages.size() > CONDENSE_TARGET) {
+        messages.erase(messages.begin(), messages.end() - CONDENSE_TARGET);
+      }
       return false;
 
     } else if (Util::TryStripPrefix("/pass", &input)) {
@@ -380,7 +561,31 @@ struct Conversation {
       verbosity = Util::ParseInt64(input, 1);
       return false;
 
-      // TODO /kick
+    } else if (Util::TryStripPrefix("/kick ", &input)) {
+      Util::RemoveOuterWhitespace(&input);
+      std::string target = std::string(input);
+
+      if (!participants.contains(target)) {
+        console->Print(AORANGE("Not here") ": {}\n", target);
+      } else if (participants.size() == 1) {
+        console->Print(AORANGE("Can't kick the last participant") ": {}\n",
+                       target);
+      } else {
+        participants.erase(target);
+        user_participants.erase(target);
+        messages.emplace_back(Message{
+            .speaker = target,
+            .text = "left.",
+            .is_action = true,
+          });
+        if (target == user) {
+          user = *participants.begin();
+        }
+      }
+
+      ShowParticipants();
+
+      return false;
 
     } else if (Util::TryStripPrefix("/invite ", &input)) {
       Util::RemoveOuterWhitespace(&input);
@@ -396,6 +601,8 @@ struct Conversation {
             .is_action = true,
           });
       }
+
+      ShowParticipants();
 
       return false;
 
@@ -420,6 +627,9 @@ struct Conversation {
           }
         }
       }
+
+      ShowParticipants();
+
       return false;
 
     } else if (Util::TryStripPrefix("/become ", &input)) {
@@ -434,6 +644,8 @@ struct Conversation {
       user = target;
       user_participants.clear();
       user_participants.insert(user);
+
+      ShowParticipants();
 
       // This doesn't imply passing.
       return false;
@@ -451,9 +663,7 @@ struct Conversation {
     console->SetStatus(Console::TOP, 0,
                        ANSI_BG(0, 0, 80) "Chat");
 
-    console->SetStatus(Console::MID, 0,
-                       ANSI_BG(30, 30, 30)
-                       "─────────────────────────────────────────");
+    SetMiddle("");
 
     console->Redraw();
 

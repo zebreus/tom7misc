@@ -28,21 +28,22 @@
 #include "union-find.h"
 #include "util.h"
 
+
 using Aug = Albrecht::AugmentedPoly;
 
-static Polyhedron GetPolyhedron(std::string_view name) {
+static std::pair<Polyhedron, std::optional<BitString>> GetPolyhedron(std::string_view name) {
   {
     std::string_view johnson = name;
     if (Util::TryStripPrefix("j", &johnson)) {
       int64_t i = Util::ParseInt64(johnson);
-      if (i >= 1 && i <= 92) return JohnsonSolid(i);
+      if (i >= 1 && i <= 92) return {JohnsonSolid(i), std::nullopt};
     }
   }
 
   if (auto opoly = Nasty::ByName(name)) {
-    return opoly.value();
+    return {opoly.value(), std::nullopt};
   } else if (auto opoly = PolyhedronByName(name)) {
-    return opoly.value();
+    return {opoly.value(), std::nullopt};
   } else {
     int64_t id = Util::ParseInt64(name);
     if (id > 0) {
@@ -52,7 +53,7 @@ static Polyhedron GetPolyhedron(std::string_view name) {
       std::optional<Polyhedron> opoly =
         PolyhedronFromConvexVertices(hard.poly_points);
       CHECK(opoly.has_value()) << name;
-      return opoly.value();
+      return {opoly.value(), hard.example_net};
     }
   }
 
@@ -139,7 +140,7 @@ static void Inspect(std::string_view poly_name,
                     std::optional<int> face_idx,
                     std::optional<int> edge_idx,
                     std::string_view filename) {
-  Polyhedron poly = GetPolyhedron(poly_name);
+  auto &[poly, example_net] = GetPolyhedron(poly_name);
 
   CHECK(IsWellConditioned(poly.vertices));
   CHECK(IsManifold(poly));
@@ -168,10 +169,15 @@ static void Inspect(std::string_view poly_name,
   StatusBar status(1);
   Periodically status_per(1.0);
   static constexpr int TARGET_NON_NETS = 3;
-  while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) && attempts < 500000) {
+  if (example_net.has_value()) {
+   nets.push_back(example_net.value());
+  }
+  while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) &&
+         attempts < 500000) {
     attempts++;
     BitString unfolding = Sample(&rc, aug, face_idx, nets.empty(),
                                  non_nets.size() < TARGET_NON_NETS);
+    }
 
     if (Albrecht::IsNet(aug, unfolding)) {
       if (nets.empty()) {

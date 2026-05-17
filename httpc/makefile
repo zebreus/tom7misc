@@ -1,5 +1,5 @@
 
-default : minget.exe sget.exe aget.exe fill-in.exe render-markdown.exe wtf.exe ask.exe
+default : minget.exe sget.exe aget.exe fill-in.exe render-markdown.exe wtf.exe ask.exe edit.exe
 
 all : minget.exe
 
@@ -84,6 +84,10 @@ fill-in.exe : fill-in.o $(HTTPV_OBJECTS) $(LIB)
 	@echo -n "!"
 
 ask.exe : ask.o $(HTTPV_OBJECTS) $(LIB)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+edit.exe : edit.o $(HTTPV_OBJECTS) $(LIB)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

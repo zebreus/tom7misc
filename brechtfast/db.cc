@@ -39,6 +39,12 @@ std::string DB::WhyString(const Why &why) {
   }
 }
 
+std::string DB::BriefMethodName(int method) {
+  std::string_view s = MethodName(method);
+  Util::TryStripPrefix("METHOD_", &s);
+  return std::string(s);
+}
+
 DB::DB(const char *dbfile) {
   std::string f = dbfile;
   // XXX would be good if we could determine when this

@@ -7,10 +7,10 @@
 ;; When the subprocess contains <REPLACEMENT>str</REPLACEMENT>, it
 ;; replaces the region with that string.
 ;;
-;; Since the process runs asynchronously, we probably want to
-;; replace the region with some kind of explicit marker, like
-;; ** XXX FILL-IN RESULT HERE **
-;; so that we can search-and-replace it when the callback is run.
+;; Since the process runs asynchronously, we leave an explicit
+;; marker in the buffer that gets replaced if the fill-in subprocess
+;; succeeds. This mode colors that text to make it obvious, but
+;; it's just a normal part of the buffer.
 
 (require 'eprocs)
 
@@ -22,11 +22,6 @@
 (defface fill-in-processing-face
   '((t :foreground "cyan" :background "#003366"))
   "Face for the active fill-in processing placeholder."
-  :group 'fill-in)
-
-(defface fill-in-error-face
-  '((t :inherit error :background "#003366"))
-  "Face for the fill-in failure placeholder."
   :group 'fill-in)
 
 (defcustom fill-in-exe "c:\\code\\sf_svn\\httpc\\fill-in.exe"
@@ -60,8 +55,7 @@
      nil
      ;; final t makes this override comment face
      '(("\\[\\[ \\.\\.\\. FILL-IN PROCESSING [0-9a-f]+ \\.\\.\\. \\]\\]"
-        0 'fill-in-processing-face t)
-       ("\\[\\[ FILL-IN FAILED.*?\\]\\]" 0 'fill-in-error-face t))
+        0 'fill-in-processing-face t))
      t)
     (setq fill-in--font-lock-set-up-p t)))
 

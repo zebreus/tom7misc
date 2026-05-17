@@ -2,7 +2,6 @@
 #define _SPARK_SPARK_INFER_H
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>

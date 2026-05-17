@@ -143,6 +143,21 @@ static void TestParseSloppy() {
   CHECK(!ModelUtil::ParseSloppy(UNRECOVERABLE1).has_value());
 }
 
+static void TestEscapeJSON() {
+  const std::string orig = "a <test> with \"quotes\" \n and \\ 'yes' ";
+  const std::string escaped = ModelUtil::EscapeJSON(orig);
+
+  CHECK(escaped.find('<') == std::string::npos);
+  CHECK(escaped.find('>') == std::string::npos);
+
+  std::string json = "{\"k\": \"" + escaped + "\"}";
+  rapidjson::Document doc = ModelUtil::ParseSloppyOrDie(json);
+
+  CHECK(doc.HasMember("k"));
+  CHECK(doc["k"].IsString());
+  CHECK(std::string(doc["k"].GetString()) == orig);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -150,6 +165,7 @@ int main(int argc, char **argv) {
   TestIsBalancedJSON();
   TestFindOneJSONObject();
 
+  TestEscapeJSON();
   TestRecoverJSON();
   TestParseSloppy();
 

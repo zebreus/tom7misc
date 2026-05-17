@@ -46,7 +46,7 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(
 # Objects that are plain portable C++
 HTTPV_OBJECTS=$(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
 
-HTTPC_OBJECTS=$(HTTPC)/net.o $(HTTPC)/tls-client.o
+HTTPC_OBJECTS=$(HTTPC)/net.o $(HTTPC)/tls-client.o $(HTTPC)/model-util.o
 
 OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV_OBJECTS) $(HTTPC_OBJECTS) spark-infer.o
 

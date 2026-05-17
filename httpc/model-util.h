@@ -39,6 +39,11 @@ struct ModelUtil {
   static std::optional<std::string> FindOneJSONObject(
       std::string_view response);
 
+  // Escapes a JSON string literal. This includes gratuitously escaping
+  // < and > characters so that we can safely use <TAGS> to enclose
+  // JSON without ambiguity.
+  static std::string EscapeJSON(std::string_view s);
+
   // If the model's JSON doesn't parse, sometimes we can recover
   // it by doing some transformations (e.g. escaping newlines that
   // incorrectly appear inside string values).
@@ -73,6 +78,10 @@ struct ModelUtil {
     // Textualize the list of files, using the chosen short names,
     // including sizes, and directory descriptions.
     std::string Textualize() const;
+
+    // Get the key for a specific file path; the same that would
+    // be used in the textualized list and the files map. Linear time.
+    std::optional<std::string> Key(std::filesystem::path p) const;
 
    private:
     friend struct FileCollection;

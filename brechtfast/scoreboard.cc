@@ -5,8 +5,6 @@
 #include <format>
 #include <map>
 #include <optional>
-#include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -17,13 +15,6 @@
 #include "db.h"
 #include "periodically.h"
 #include "status-bar.h"
-#include "util.h"
-
-static std::string BriefMethodName(int method) {
-  std::string_view s = DB::MethodName(method);
-  Util::TryStripPrefix("METHOD_", &s);
-  return std::string(s);
-}
 
 // This is a scoreboard showing the hardest instances
 // grouped by face for why=any (can we find ANY net?).
@@ -87,7 +78,7 @@ static void Scoreboard() {
             e.id,
             e.has_example ? " " : ARED("?"),
             e.numer, e.denom, e.netness_pct,
-            BriefMethodName(e.method));
+            DB::BriefMethodName(e.method));
     }
   }
 }
