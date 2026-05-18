@@ -129,7 +129,7 @@ void DB::Init() {
 static constexpr std::string_view HARD_FIELDS =
   "id, poly, "
   "faces, edges, vertices, "
-  "why, why_edge_idx, why_face_idx, "
+  "why, why_face_idx, why_edge_idx, "
   "method, createdate, "
   "netness_numer, netness_denom, example_net";
 
@@ -152,16 +152,16 @@ static std::vector<DB::Hard> GetHardForQuery(
     hard.num_verts = r->GetInt(col++);
 
     const int why = r->GetInt(col++);
-    const int edge_idx = r->GetInt(col++);
     const int face_idx = r->GetInt(col++);
+    const int edge_idx = r->GetInt(col++);
     switch (why) {
     case DB::WHY_ANY:
       hard.why = DB::Any{};
       break;
     case DB::WHY_LEAF_IH:
       hard.why = DB::LeafIH{
-        .edge_idx = edge_idx,
         .face_idx = face_idx,
+        .edge_idx = edge_idx,
       };
       break;
     default:
@@ -206,15 +206,15 @@ void DB::AddHard(const Polyhedron &poly,
 
   // Flattened in database.
   int why_type = -1;
-  int why_edge_idx = 0;
   int why_face_idx = 0;
+  int why_edge_idx = 0;
   if (const Any *any = std::get_if<Any>(&why)) {
     (void)any;
     why_type = WHY_ANY;
   } else if (const LeafIH *leaf_ih = std::get_if<LeafIH>(&why)) {
     why_type = WHY_LEAF_IH;
-    why_edge_idx = leaf_ih->edge_idx;
     why_face_idx = leaf_ih->face_idx;
+    why_edge_idx = leaf_ih->edge_idx;
   } else {
     LOG(FATAL) << "bad variant?";
   }
@@ -223,7 +223,7 @@ void DB::AddHard(const Polyhedron &poly,
       std::format(
           "insert into hard "
           "(poly, faces, edges, vertices, "
-          "why, why_edge_idx, why_face_idx, "
+          "why, why_face_idx, why_edge_idx, "
           "method, createdate, netness_numer, netness_denom, example_net) "
           "values ('{}', "
           // faces, edges, vertices
@@ -236,7 +236,7 @@ void DB::AddHard(const Polyhedron &poly,
           "{}, {}, '{}')",
           polystring,
           faces, edges, vertices,
-          why_type, why_edge_idx, why_face_idx,
+          why_type, why_face_idx, why_edge_idx,
           method,
           time(nullptr),
           netness_numer, netness_denom,

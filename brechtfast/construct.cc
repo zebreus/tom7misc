@@ -122,12 +122,17 @@ void PartialPolyhedron::CheckUnfoldings() const {
           connected_edges++;
           adj[f_left].push_back(f_right);
           adj[f_right].push_back(f_left);
+          CHECK(std::find(unf.tree_edges.begin(),
+                          unf.tree_edges.end(), e_idx) !=
+                unf.tree_edges.end()) <<
+            "Geometry connects edge not in tree_edges: " << e_idx;
         }
       }
     }
 
     // A spanning tree on N vertices has exactly N-1 edges.
     CHECK(connected_edges == NumFaces() - 1);
+    CHECK(unf.tree_edges.size() == connected_edges);
 
     // DFS to ensure all faces are reachable (connected).
     std::vector<bool> visited(NumFaces(), false);
@@ -181,7 +186,7 @@ void PartialPolyhedron::CheckBoundary() const {
 
   do {
     int e_idx = outgoing[curr_v];
-    CHECK(e_idx != -1); // Path must continue
+    CHECK(e_idx != -1) << "Path must continue";
     curr_v = edges[e_idx].v1;
     count++;
   } while (curr_v != start_v && count <= (int)b_edges.size());
@@ -391,7 +396,7 @@ void PartialPolyhedron::Initialize(int face1_max_verts,
   int offset = (int)vertices.size();
 
   // Face 1 bending upwards into z > 0 for convexity
-  double theta = std::numbers::pi * 0.75; // 135 degrees
+  double theta = std::numbers::pi * 0.75;
   double cos_t = std::cos(theta);
   double sin_t = std::sin(theta);
   for (int i = 2; i < (int)U1.size(); ++i) {
@@ -480,6 +485,7 @@ void PartialPolyhedron::Initialize(int face1_max_verts,
 
   unf.faces.push_back(uf0);
   unf.faces.push_back(uf1);
+  unf.tree_edges.push_back(shared_edge);
 
   unfoldings.push_back(unf);
 }
@@ -507,6 +513,28 @@ std::vector<int> PartialPolyhedron::GetBoundaryEdges() const {
 }
 
 bool PartialPolyhedron::IsUnfoldingValid(const Unfolding &unfolding) const {
+  if (leaf_constraint.has_value()) {
+    const auto &[fidx, eidx] = leaf_constraint.value();
+    int connected_count = 0;
+    bool target_connected = false;
+    for (int e : faces[fidx].edges) {
+      if (std::find(unfolding.tree_edges.begin(),
+                    unfolding.tree_edges.end(), e) !=
+          unfolding.tree_edges.end()) {
+        if (e == eidx) {
+          target_connected = true;
+        }
+        connected_count++;
+        if (connected_count > 1) {
+          return false;
+        }
+      }
+    }
+    if (!target_connected) {
+      return false;
+    }
+  }
+
   for (int i = 0; i < (int)unfolding.faces.size(); i++) {
     for (int j = i + 1; j < (int)unfolding.faces.size(); j++) {
       const std::vector<vec2> &f1 = unfolding.faces[i].vertices;
@@ -520,6 +548,16 @@ bool PartialPolyhedron::IsUnfoldingValid(const Unfolding &unfolding) const {
     }
   }
   return true;
+}
+
+void PartialPolyhedron::InvalidatePerLeafConstraint(int face_idx, int edge_idx) {
+  std::vector<Unfolding> valid;
+  for (Unfolding &unf : unfoldings) {
+    if (IsUnfoldingValid(unf)) {
+      valid.push_back(std::move(unf));
+    }
+  }
+  unfoldings = std::move(valid);
 }
 
 void PartialPolyhedron::ReplenishUnfoldings() {
@@ -556,39 +594,9 @@ void PartialPolyhedron::ReplenishUnfoldings() {
   // We uniquely identify an unfolding by its sorted set of tree edges.
   std::vector<std::vector<int>> existing_trees;
   for (const Unfolding &unf : unfoldings) {
-    std::vector<int> tree_edges;
-    for (int e_idx = 0; e_idx < NumEdges(); ++e_idx) {
-      const MeshEdge &edge = edges[e_idx];
-      if (edge.left_face != -1 && edge.right_face != -1) {
-        int f_left = edge.left_face;
-        int f_right = edge.right_face;
-
-        int left_idx = -1, right_idx = -1;
-        for (int k = 0; k < (int)faces[f_left].edges.size(); ++k) {
-          if (faces[f_left].edges[k] == e_idx) left_idx = k;
-        }
-        for (int k = 0; k < (int)faces[f_right].edges.size(); ++k) {
-          if (faces[f_right].edges[k] == e_idx) right_idx = k;
-        }
-
-        if (left_idx != -1 && right_idx != -1) {
-          vec2 l0 = unf.faces[f_left].vertices[left_idx];
-          int l_next = (left_idx + 1) % faces[f_left].vertices.size();
-          vec2 l1 = unf.faces[f_left].vertices[l_next];
-
-          vec2 r0 = unf.faces[f_right].vertices[right_idx];
-          int r_next = (right_idx + 1) % faces[f_right].vertices.size();
-          vec2 r1 = unf.faces[f_right].vertices[r_next];
-
-          if (yocto::length(l0 - r1) < 1e-4 &&
-              yocto::length(l1 - r0) < 1e-4) {
-            tree_edges.push_back(e_idx);
-          }
-        }
-      }
-    }
+    std::vector<int> tree_edges = unf.tree_edges;
     std::sort(tree_edges.begin(), tree_edges.end());
-    existing_trees.push_back(tree_edges);
+    existing_trees.push_back(std::move(tree_edges));
   }
 
   int consecutive_failures = 0;
@@ -599,7 +607,18 @@ void PartialPolyhedron::ReplenishUnfoldings() {
     // Generate a random spanning tree by assigning random weights.
     std::vector<std::pair<double, int>> edge_weights;
     for (int i = 0; i < (int)dual_edges.size(); ++i) {
-      edge_weights.push_back({RandDouble(rc), i});
+      double weight = RandDouble(rc);
+      // If constrained, place it at the front or back, which will
+      // essentially force the constraint to be true.
+      if (leaf_constraint.has_value()) {
+        const auto &[fidx, eidx] = leaf_constraint.value();
+        if (dual_edges[i].e_idx == eidx) {
+          weight = -999.0;
+        } else if (dual_edges[i].f1 == fidx || dual_edges[i].f2 == fidx) {
+          weight = 999.0;
+        }
+      }
+      edge_weights.push_back({weight, i});
     }
     std::sort(edge_weights.begin(), edge_weights.end());
 
@@ -655,6 +674,7 @@ void PartialPolyhedron::ReplenishUnfoldings() {
     // Unfold in 2D using the tree topology.
     Unfolding unf;
     unf.faces.resize(NumFaces());
+    unf.tree_edges = tree_edges;
     std::vector<bool> placed(NumFaces(), false);
 
     unf.faces[0].vertices = local_shapes[0];
@@ -1111,8 +1131,8 @@ void PartialPolyhedron::AddFace(int boundary_edge_idx,
   for (int i = 0; i < (int)unfoldings.size(); i++) {
     Unfolding unf = unfoldings[i];
     vec2 p_start = unf.faces[adj_face].vertices[idx_a];
-    vec2 p_end = unf.faces[adj_face].vertices[(idx_a + 1) %
-                                              faces[adj_face].vertices.size()];
+    vec2 p_end = unf.faces[adj_face].vertices[
+        (idx_a + 1) % faces[adj_face].vertices.size()];
 
     vec2 q_start = local_shape[idx_b];
     vec2 q_end = local_shape[(idx_b + 1) % local_shape.size()];
@@ -1138,6 +1158,7 @@ void PartialPolyhedron::AddFace(int boundary_edge_idx,
     }
 
     unf.faces.push_back(uf_new);
+    unf.tree_edges.push_back(boundary_edge_idx);
 
     // Keep valid unfoldings without overlapping.
     if (IsUnfoldingValid(unf)) {
@@ -1229,8 +1250,8 @@ double PartialPolyhedron::MeasureOverlapFraction(
   int overlap_count = 0;
   for (const Unfolding &unf : unfoldings) {
     vec2 p_start = unf.faces[adj_face].vertices[idx_a];
-    vec2 p_end = unf.faces[adj_face].vertices[(idx_a + 1) %
-                                              faces[adj_face].vertices.size()];
+    vec2 p_end = unf.faces[adj_face].vertices[
+        (idx_a + 1) % faces[adj_face].vertices.size()];
 
     vec2 q_start = poly[0];
     vec2 q_end = poly[1];
@@ -1259,7 +1280,8 @@ double PartialPolyhedron::MeasureOverlapFraction(
     bool overlap = false;
     for (int i = 0; i < (int)unf.faces.size(); i++) {
       const std::vector<vec2> &f = unf.faces[i].vertices;
-      // If neither polygon provides a separating axis, their interiors overlap.
+      // If neither polygon provides a separating axis, their
+      // interiors overlap.
       if (!HasSeparatingAxis(transformed_poly, f) &&
           !HasSeparatingAxis(f, transformed_poly)) {
         overlap = true;

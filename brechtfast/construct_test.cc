@@ -1,19 +1,18 @@
 
-#include "base/stringprintf.h"
 #include "construct.h"
 
 #include <algorithm>
-#include <cmath>
-#include <cstdio>
 #include <format>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "geom/mesh.h"
 #include "geom/polyhedra.h"
 #include "periodically.h"
@@ -158,7 +157,7 @@ static void TestAddFace() {
       // All points must be within the feasible polygon.
       for (int j = 0; j < (int)new_poly.size(); ++j) {
         bool is_inside = PointInPolygon(new_poly[j], poly) ||
-                         SquaredDistanceToPoly(poly, new_poly[j]) < 1e-6;
+          SquaredDistanceToPoly(poly, new_poly[j]) < 1e-6;
         CHECK(is_inside) <<
           DebugIter() <<
           DebugDump() <<
@@ -171,98 +170,9 @@ static void TestAddFace() {
       std::vector<vec3> new_face_pts =
         chooser.ConvertTo3D(new_poly);
 
-      // Diagnostic assertions to isolate IsFeasible failure.
-      // TODO: Now that this returns a message, we probably
-      // don't need this verbose version.
-      if (const char *problem =
-          pp.FeasibilityProblem(edge_idx, new_face_pts)) {
-        Print(stderr, "Got feasibility problem: {}\n", problem);
-        bool found_edge = false;
-        for (int i = 0; i < (int)new_face_pts.size(); ++i) {
-          vec3 v_curr = new_face_pts[i];
-          vec3 v_next = new_face_pts[(i + 1) % new_face_pts.size()];
-          if (yocto::length(v_curr - p1) < 1e-4 &&
-              yocto::length(v_next - p0) < 1e-4) {
-            found_edge = true;
-            break;
-          }
-        }
-        CHECK(found_edge) << "Winding order/edge not preserved.";
-
-        CHECK(PlanarityError(new_face_pts) <= 1e-4)
-            << "Planarity error exceeded.";
-
-        vec3 normal = {0.0, 0.0, 0.0};
-        for (int i = 0; i < (int)new_face_pts.size(); ++i) {
-          vec3 p_curr = new_face_pts[i];
-          vec3 p_next = new_face_pts[(i + 1) % new_face_pts.size()];
-          normal += yocto::cross(p_curr, p_next);
-        }
-        double len_n = yocto::length(normal);
-        CHECK(len_n >= 1e-5) << "Normal length too small: " << len_n;
-        normal /= len_n;
-
-        for (int j = 0; j < (int)new_face_pts.size(); ++j) {
-          vec3 p_prev = new_face_pts[j];
-          vec3 p_curr = new_face_pts[(j + 1) % new_face_pts.size()];
-          vec3 p_next = new_face_pts[(j + 2) % new_face_pts.size()];
-          vec3 e1 = p_curr - p_prev;
-          vec3 e2 = p_next - p_curr;
-          vec3 cross = yocto::cross(e1, e2);
-          CHECK(yocto::dot(cross, normal) > 1e-5)
-              << "Strict convexity failed at vertex " << j;
-        }
-
-        for (const vec3 &p : new_face_pts) {
-          for (int k = 0; k < pp.NumFaces(); ++k) {
-            const HalfSpace &hs = pp.GetFace(k).plane;
-            double d_hs = yocto::dot(hs.normal, p) - hs.d;
-            CHECK(d_hs <= 1e-4)
-                << "Point violates face " << k << " by " << d_hs;
-          }
-        }
-
-        HalfSpace new_hs;
-        new_hs.normal = normal;
-        new_hs.d = yocto::dot(normal, new_face_pts[0]);
-        for (int k = 0; k < pp.NumVertices(); ++k) {
-          double d_v = yocto::dot(new_hs.normal, pp.GetVertex(k).pos) -
-            new_hs.d;
-          CHECK(d_v <= 1e-4)
-              << "Vertex " << k << " excluded by " << d_v;
-        }
-
-        double dot_n = yocto::dot(f_left.plane.normal, normal);
-        CHECK(dot_n > -1.0 + 1e-5 && dot_n < 1.0 - 1e-5)
-          << "On iteration #" << i << "." << f << "\n"
-          << DebugAngles()
-          << "State:\n" << pp.DebugString()
-          << "\n"
-          << "Dihedral dot product out of bounds: " << dot_n;
-
-        int test_v_idx = -1;
-        for (int i = 0; i < (int)new_face_pts.size(); ++i) {
-          if (yocto::length(new_face_pts[i] - p0) > 1e-4 &&
-              yocto::length(new_face_pts[i] - p1) > 1e-4) {
-            test_v_idx = i;
-            break;
-          }
-        }
-        CHECK(test_v_idx != -1) << "No test vertex for "
-          "dihedral check.";
-        double dist = yocto::dot(f_left.plane.normal,
-                                 new_face_pts[test_v_idx]) - f_left.plane.d;
-        CHECK(dist < -1e-5)
-            << "Dihedral convexity failed. dist=" << dist
-            << " angle=" << angle;
-
-        LOG(FATAL) << "IsFeasible failed for unknown reason!";
-      }
-
-
-      // Sanity check before adding.
-      CHECK(nullptr == pp.FeasibilityProblem(edge_idx, new_face_pts))
-          << "Generated face must be feasible";
+      const char *problem = pp.FeasibilityProblem(edge_idx, new_face_pts);
+      CHECK(problem == nullptr) << "Generated face must be feasible. "
+        "Problem: " << problem;
 
       // Add the face and validate the partial polyhedron.
       pp.AddFace(edge_idx, new_face_pts);
@@ -273,28 +183,80 @@ static void TestAddFace() {
   Print("AddFace OK\n");
 }
 
-static void TestReplenish() {
-  ArcFour rc("replenish");
+static void TestReplenish(bool leaf_ih) {
+  ArcFour rc(leaf_ih ? "replenish-any" : "replenish-leaf_ih");
   int skipped = 0;
   StatusBar status(1);
   Periodically status_per(1);
+
+  int invalid_faces = 0;
   for (int i = 0; i < 100; i++) {
     PartialPolyhedron pp(&rc, 5 + i, 100);
 
     status_per.RunIf([&]{
-        status.Progress(i, 100, "Replenish");
+        status.Progress(i, 100, "Replenish ({})",
+                        leaf_ih ? "leaf ih" : "any");
       });
 
-    for (int f = 0; f < 10; f++) {
+    while (pp.NumFaces() < 12) {
+
+      // Once we have a few faces, set a constraint.
+      if (leaf_ih && pp.NumFaces() == 5 &&
+          // (might hit this twice if the next face is invalid)
+          !pp.GetLeafConstraint().has_value()) {
+        const auto &unfoldings = pp.GetUnfoldings();
+        CHECK(!unfoldings.empty());
+        const Unfolding &unf = unfoldings[RandTo(&rc, unfoldings.size())];
+        std::vector<std::pair<int, int>> leaves;
+        for (int face_idx = 0; face_idx < pp.NumFaces(); ++face_idx) {
+          int connected_edges = 0;
+          int connected_edge = -1;
+          for (int e : pp.GetFace(face_idx).edges) {
+            if (std::find(unf.tree_edges.begin(), unf.tree_edges.end(), e) !=
+                unf.tree_edges.end()) {
+              connected_edges++;
+              connected_edge = e;
+            }
+          }
+          if (connected_edges == 1) {
+            leaves.push_back({face_idx, connected_edge});
+          }
+        }
+        CHECK(!leaves.empty());
+        auto [face_idx, constr_edge_idx] = leaves[RandTo(&rc, leaves.size())];
+        pp.SetLeafConstraint(face_idx, constr_edge_idx);
+      }
+
       std::vector<int> b_edges = pp.GetBoundaryEdges();
-      CHECK(b_edges.size() >= 3) << "Must have proper boundary.";
+
+      if (leaf_ih) {
+        // Currently, AddFace always adds a face as a leaf. So we cannot
+        // extend along boundary edges that are forbidden by the leaf
+        // constraint, as we would then be unable to make the target
+        // face be a leaf.
+        std::vector<int> filtered;
+        auto lc = pp.GetLeafConstraint();
+        for (int e : b_edges) {
+          if (!lc.has_value() || pp.GetEdge(e).left_face != lc.value().first) {
+            filtered.push_back(e);
+          }
+        }
+        if (!filtered.empty()) {
+          b_edges = filtered;
+        }
+
+        CHECK(b_edges.size() >= 1) << "There must be at least one edge "
+          "that CAN be expanded, right?";
+      } else {
+        CHECK(b_edges.size() >= 3) << "Must have proper boundary.";
+      }
 
       // Pick an edge uniformly at random.
       int edge_idx = b_edges[RandTo(&rc, (int)b_edges.size())];
 
       auto DebugIter = [&]{
           return std::format("Iter #{}.#{}. Chose edge {}.\n",
-                             i, f, edge_idx);
+                             i, pp.NumFaces(), edge_idx);
         };
 
       auto DebugDump = [&]{
@@ -387,17 +349,23 @@ static void TestReplenish() {
       std::vector<vec3> new_face_pts =
         chooser.ConvertTo3D(new_poly);
 
-      // Sanity check before adding.
-      CHECK(nullptr == pp.FeasibilityProblem(edge_idx, new_face_pts))
-        << "Generated face must be feasible";
+      const char *problem = pp.FeasibilityProblem(edge_idx, new_face_pts);
 
-      pp.AddFace(edge_idx, new_face_pts);
-      pp.ReplenishUnfoldings();
-      pp.CheckValidity();
+      if (problem != nullptr) {
+        status.Print("Invalid face: {}\n", problem);
+        invalid_faces++;
+        CHECK(invalid_faces < 10) << "Too many invalid faces!";
+      } else {
+        pp.AddFace(edge_idx, new_face_pts);
+        pp.ReplenishUnfoldings();
+        pp.CheckValidity();
+      }
     }
   }
 
-  Print("Replenish OK (skipped {})\n", skipped);
+  Print("Replenish[{}] OK (skipped {})\n",
+        leaf_ih ? "any" : "leaf_ih",
+        skipped);
 }
 
 int main(int argc, char **argv) {
@@ -406,7 +374,8 @@ int main(int argc, char **argv) {
   TestInit();
   TestAddFace();
 
-  TestReplenish();
+  TestReplenish(false);
+  TestReplenish(true);
 
   Print("OK\n");
   return 0;

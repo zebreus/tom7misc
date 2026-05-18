@@ -142,6 +142,9 @@ struct UnfoldedFace {
 struct Unfolding {
   // Parallel to the 3D mesh's faces array.
   std::vector<UnfoldedFace> faces;
+
+  // The indices into the main edges array that form the face-spanning tree.
+  std::vector<int> tree_edges;
 };
 
 // Manages the state of the partially constructed polyhedron and its pool
@@ -215,6 +218,23 @@ struct PartialPolyhedron {
     return std::make_pair(min_vertex, max_vertex);
   }
 
+  // Sets the constraint for the Leaf IH, and removes any candidate
+  // unfoldings from the pool that are no longer relevant because
+  // they don't meet the constraint. Replenishes the pool.
+  void SetLeafConstraint(int face_idx, int edge_idx) {
+    CHECK(face_idx >= 0 && face_idx < NumFaces());
+    CHECK(edge_idx >= 0 && edge_idx < NumEdges());
+    const MeshEdge &edge = edges[edge_idx];
+    CHECK(edge.left_face == face_idx || edge.right_face == face_idx);
+    leaf_constraint = {std::make_pair(face_idx, edge_idx)};
+    InvalidatePerLeafConstraint(face_idx, edge_idx);
+    ReplenishUnfoldings();
+  }
+
+  std::optional<std::pair<int, int>> GetLeafConstraint() const {
+    return leaf_constraint;
+  }
+
   // -- Accessors --
 
   int NumFaces() const;
@@ -264,6 +284,11 @@ struct PartialPolyhedron {
   // Random number generator; not owned.
   ArcFour *rc = nullptr;
 
+  // The face idx and edge idx for the constrained "leaf ih" problem.
+  // The indices must be in bounds for the current mesh.
+  // When this is set, all of the unfoldings will have this constraint.
+  std::optional<std::pair<int, int>> leaf_constraint;
+
   // Number of faces left to add.
   int num_faces_left = 10;
   // The target size for the pool of candidate unfoldings.
@@ -284,9 +309,14 @@ struct PartialPolyhedron {
   // Pool of candidate non-overlapping 2D unfoldings.
   std::vector<Unfolding> unfoldings;
 
+  // Keeps only the candidate unfoldings that match the given
+  // "leaf IH" constraint.
+  void InvalidatePerLeafConstraint(int face_idx, int edge_idx);
+
   bool HasSeparatingAxis(const std::vector<vec2> &poly1,
                          const std::vector<vec2> &poly2) const;
   // Checks whether the 2D polygons in a candidate unfolding overlap.
+  // The unfolding must also admit the leaf_constraint if present.
   bool IsUnfoldingValid(const Unfolding &unfolding) const;
 };
 

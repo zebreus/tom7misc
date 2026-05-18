@@ -61,8 +61,8 @@ struct DB {
 
   // Hard for the leaf IH, identifying the specific leaf.
   struct LeafIH {
-    int edge_idx = 0;
     int face_idx = 0;
+    int edge_idx = 0;
   };
 
   using Why = std::variant<Any, LeafIH>;

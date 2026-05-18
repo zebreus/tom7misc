@@ -31,7 +31,8 @@
 
 using Aug = Albrecht::AugmentedPoly;
 
-static std::pair<Polyhedron, std::optional<BitString>> GetPolyhedron(std::string_view name) {
+static std::pair<Polyhedron, std::optional<BitString>>
+GetPolyhedron(std::string_view name) {
   {
     std::string_view johnson = name;
     if (Util::TryStripPrefix("j", &johnson)) {
@@ -140,7 +141,7 @@ static void Inspect(std::string_view poly_name,
                     std::optional<int> face_idx,
                     std::optional<int> edge_idx,
                     std::string_view filename) {
-  auto &[poly, example_net] = GetPolyhedron(poly_name);
+  auto [poly, example_net] = GetPolyhedron(poly_name);
 
   CHECK(IsWellConditioned(poly.vertices));
   CHECK(IsManifold(poly));
@@ -169,15 +170,16 @@ static void Inspect(std::string_view poly_name,
   StatusBar status(1);
   Periodically status_per(1.0);
   static constexpr int TARGET_NON_NETS = 3;
+
   if (example_net.has_value()) {
-   nets.push_back(example_net.value());
+    nets.push_back(Albrecht::DebugUnfolding(aug, example_net.value()));
   }
+
   while ((non_nets.size() < TARGET_NON_NETS || nets.empty()) &&
          attempts < 500000) {
     attempts++;
     BitString unfolding = Sample(&rc, aug, face_idx, nets.empty(),
                                  non_nets.size() < TARGET_NON_NETS);
-    }
 
     if (Albrecht::IsNet(aug, unfolding)) {
       if (nets.empty()) {

@@ -1,0 +1,89 @@
+
+#include <algorithm>
+#include <cstdlib>
+#include <ctime>
+#include <format>
+#include <map>
+#include <optional>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "db.h"
+#include "status-bar.h"
+
+// This is a scoreboard showing the hardest instances
+// grouped by face for why=LeafIH (can we find a net for a specific leaf?).
+static void Leafboard() {
+  StatusBar status(1);
+  status.Status("Read database...");
+
+  DB db;
+  std::vector<DB::Hard> hards = db.AllHard(false);
+
+  struct Entry {
+    int id = 0;
+    int method = 0;
+    double netness_pct = 0.0;
+    int64_t numer = 0;
+    int64_t denom = 0;
+    bool has_example = false;
+  };
+
+  std::map<int, std::vector<Entry>> by_faces;
+
+  status.Status("Load entries...");
+  for (int i = 0; i < (int)hards.size(); i++) {
+    const DB::Hard &h = hards[i];
+    if (h.netness_denom == 0) continue;
+    // Only Leaf IH instances.
+    if (!std::holds_alternative<DB::LeafIH>(h.why)) continue;
+
+    Entry e;
+    e.id = h.id;
+    e.method = h.method;
+    e.numer = h.netness_numer;
+    e.denom = h.netness_denom;
+    e.netness_pct = (h.netness_numer * 100.0) / h.netness_denom;
+    e.has_example = h.example_net.has_value();
+    by_faces[h.num_faces].push_back(e);
+  }
+
+  status.Status("Sort...");
+  for (auto &[nfaces, entries] : by_faces) {
+    std::sort(entries.begin(), entries.end(),
+              [](const Entry &a, const Entry &b) {
+                if (a.netness_pct != b.netness_pct) {
+                  return a.netness_pct < b.netness_pct;
+                }
+                return a.id < b.id;
+              });
+  }
+
+  status.Remove();
+  for (const auto &[nfaces, entries] : by_faces) {
+    Print("\n" AWHITE("--- {} Faces ---") "\n", nfaces);
+    int limit = std::min((int)entries.size(), 5);
+    for (int i = 0; i < limit; i++) {
+      const Entry &e = entries[i];
+      Print(" #" ACYAN("{}") "{} " AYELLOW("{}/{} ({:.3f}%)")
+            "  Method: " AGREEN("{}") "\n",
+            e.id,
+            e.has_example ? " " : ARED("?"),
+            e.numer, e.denom, e.netness_pct,
+            DB::BriefMethodName(e.method));
+    }
+  }
+}
+
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  Leafboard();
+
+  return 0;
+}
