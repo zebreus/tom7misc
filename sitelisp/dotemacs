@@ -51,6 +51,12 @@
 (require 'edit)
 (require 'wtf)
 
+(defun spacebar ()
+  "Opens up spacebar via tramp, using the path that's easy to
+   forget!"
+  (interactive "")
+  (find-file "/sshx:root@spacebar.org#77:/root"))
+
 ;; On windows, "env GZIP= gzip -d" is not a good way to run
 ;; gzip (there is no "env" command). So replace that with normal
 ;; gzip, which should be available in msys2 path. This works fine
@@ -1384,6 +1390,11 @@
 ;; new xml mode doesn't wrap lines, which is confusing
 (add-hook 'nxml-mode-hook (lambda ()
                             (setq truncate-lines nil)))
+
+;; don't color error functions red in elisp; they are not errors
+(font-lock-add-keywords
+ 'emacs-lisp-mode
+ '(("(\\_<\\(error\\|user-error\\)\\_>" 1 font-lock-function-name-face t)))
 
 (defun auto-recompile-elisp ()
   "Automatically byte-compile the current file on save, BUT

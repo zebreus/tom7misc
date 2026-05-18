@@ -7,9 +7,16 @@
 ; Pro-tip: Use M-x toggle-debug-on-error
 
 ;; TODO:
-;;  - Show key commands in *EDITS* buffer
-;;  - Show status (how many edits left) in edits buffer
 ;;  - Better diff display!
+;;  - Improve colors in header line
+;;  - Be smarter when we invoke llm-edit while there is already an
+;;    *EDITS* buffer with pending edits. We should add to this buffer,
+;;    but also handle the case that the source files are not in the
+;;    same default directory. Probably we should rewrite existing
+;;    File: lines so that they are correct for the new default directory;
+;;    this would keep the filenames short in the most common case that
+;;    we handle every edit before starting a new one.
+
 
 (require 'eprocs)
 
@@ -34,37 +41,87 @@
 (require 'diff-mode)
 
 (defface llm-edit-before-face
-  '((t :inherit diff-removed))
+  '((t (:extend t :background "#332222")))
   "Face for the before region lines in the edit buffer."
   :group 'edit)
 
 (defface llm-edit-after-face
-  '((t :inherit diff-added))
+  '((t (:extend t :background "#223322")))
   "Face for the after region lines in the edit buffer."
   :group 'edit)
 
 (defface llm-edit-delimiter-face
-  '((t :inherit diff-hunk-header))
+  '((t (:extend t :background "#222255" :foreground "#8dd")))
   "Face for the delimiter lines (<<<< BEFORE, etc.)."
   :group 'edit)
 
 (defface llm-edit-file-face
-  '((t :inherit diff-file-header))
+  '((t (:foreground "#8af")))
   "Face for the filename in an edit block."
   :group 'edit)
 
 (defvar-local llm-edit--active-overlay nil)
 (defvar-local llm-edit--last-block-state nil)
 
+(defun llm-edit--count-remaining ()
+  "Count the remaining edit blocks in the buffer."
+  (save-excursion
+    (save-match-data
+      (goto-char (point-min))
+      (let ((count 0))
+        (while (re-search-forward "^File: " nil t)
+          (setq count (1+ count)))
+        count))))
+
+;; Inserts a formatted diff block into the current buffer at point.
+;; Crucially, applies read-only and rear-nonsticky text properties to the
+;; structural delimiters (like "<<<< BEFORE"). This prevents the user from
+;; accidentally corrupting the boundaries while tweaking the proposed edits,
+;; ensuring the parser won't break later.
+(defun llm-edit--insert-diff (file comment before after)
+  "Format and insert the edit block into the current buffer at point."
+  (let ((inhibit-read-only t))
+    (insert
+     (propertize "File: "
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'font-lock-keyword-face))
+    (insert
+     (propertize (format "%s\n" file)
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'llm-edit-file-face))
+    (insert
+     (propertize "Comment: "
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'font-lock-keyword-face))
+    (insert
+     (propertize (format "%s\n" comment)
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'font-lock-comment-face))
+    (insert
+     (propertize "<<<< BEFORE\n"
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'llm-edit-delimiter-face))
+    (insert
+     (propertize before 'font-lock-face 'llm-edit-before-face))
+    (insert
+     (propertize "==== AFTER\n"
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'llm-edit-delimiter-face))
+    (insert
+     (propertize after 'font-lock-face 'llm-edit-after-face))
+    (insert
+     (propertize ">>>>\n"
+                 'read-only t 'rear-nonsticky t
+                 'font-lock-face 'llm-edit-delimiter-face))
+    (insert
+     (propertize "\n"
+                 'read-only t 'rear-nonsticky t))))
+
 ;; Processes a JSON payload received from the external edit process.
 ;; Extracts the file, comment, and before/after text blocks, formatting
 ;; them into a structured representation in the *EDITS* buffer.
 ;;
 ;; Normalizes CRLF to LF to prevent text-matching issues on Windows.
-;; Crucially, applies read-only and rear-nonsticky text properties to the
-;; structural delimiters (like "<<<< BEFORE"). This prevents the user from
-;; accidentally corrupting the boundaries while tweaking the proposed edits,
-;; ensuring the parser won't break later.
 (defun llm-edit--process-json (payload)
   "Parse the JSON payload and append formatted block to *EDITS*."
   (condition-case err
@@ -83,32 +140,7 @@
             (with-current-buffer (get-buffer "*EDITS*")
               (save-excursion
                 (goto-char (point-max))
-                (let ((inhibit-read-only t))
-                  (insert (propertize "File: "
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'font-lock-keyword-face))
-                  (insert (propertize (format "%s\n" file)
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'llm-edit-file-face))
-                  (insert (propertize "Comment: "
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'font-lock-keyword-face))
-                  (insert (propertize (format "%s\n" comment)
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'font-lock-comment-face))
-                  (insert (propertize "<<<< BEFORE\n"
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'llm-edit-delimiter-face))
-                  (insert (propertize before 'font-lock-face 'llm-edit-before-face))
-                  (insert (propertize "==== AFTER\n"
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'llm-edit-delimiter-face))
-                  (insert (propertize after 'font-lock-face 'llm-edit-after-face))
-                  (insert (propertize ">>>>\n"
-                                      'read-only t 'rear-nonsticky t
-                                      'font-lock-face 'llm-edit-delimiter-face))
-                  (insert (propertize "\n"
-                                      'read-only t 'rear-nonsticky t))))))))
+                (llm-edit--insert-diff file comment before after))))))
     (error (message "llm-edit JSON parse error: %s" err))))
 
 ;; Extracts the details of the edit block surrounding the current point
@@ -177,23 +209,89 @@ whitespace-insensitive search if no exact matches are found."
             (push (cons (match-beginning 0) (match-end 0)) matches))))
       (nreverse matches))))
 
+;; This is used to narrow the before/after text to just the lines
+;; that have changed. It is common for there to be context in the
+;; before text to make the match unambiguous, and for those same
+;; lines to be unchanged in the after text.
+(defun llm-edit--trim-common-lines (before after)
+  "Trim common lines from the beginning and end of BEFORE and AFTER.
+Returns a list (BEFORE-TRIMMED AFTER-TRIMMED PREFIX-LEN SUFFIX-LEN)."
+  (let* ((get-lines (lambda (str)
+                      (let ((start 0) (lines nil))
+                        (while (string-match "\n" str start)
+                          (push (substring str start (match-end 0)) lines)
+                          (setq start (match-end 0)))
+                        (when (< start (length str))
+                          (push (substring str start) lines))
+                        (nreverse lines))))
+         (b-lines (funcall get-lines before))
+         (a-lines (funcall get-lines after))
+         (prefix-len 0)
+         (suffix-len 0))
+    (while (and b-lines a-lines (equal (car b-lines) (car a-lines)))
+      (setq prefix-len (+ prefix-len (length (car b-lines))))
+      (setq b-lines (cdr b-lines))
+      (setq a-lines (cdr a-lines)))
+    (let ((b-tail (reverse b-lines))
+          (a-tail (reverse a-lines)))
+      (while (and b-tail a-tail (equal (car b-tail) (car a-tail)))
+        (setq suffix-len (+ suffix-len (length (car b-tail))))
+        (setq b-tail (cdr b-tail))
+        (setq a-tail (cdr a-tail)))
+      (list (apply #'concat (reverse b-tail))
+            (apply #'concat (reverse a-tail))
+            prefix-len
+            suffix-len))))
 
 ;; Creates and returns an overlay that visually represents a proposed change
-;; inline in the current buffer.
+;; in-line in the current buffer.
 ;;
-;; API:
 ;; - START, END: The buffer positions of the text to be replaced.
 ;; - BEFORE: The exact string currently present between START and END.
 ;; - AFTER: The proposed replacement string.
 ;;
-;; Returns an Emacs overlay object. The caller is responsible for deleting
+;; Returns an emacs overlay object. The caller is responsible for deleting
 ;; this overlay when it is no longer needed.
 (defun llm-edit--make-diff-overlay (start end before after)
   "Create an overlay displaying the diff from BEFORE to AFTER at START/END."
   (let ((ov (make-overlay start end)))
+    (message (format "Made overlay %d-%d"  start end))
     (overlay-put ov 'face 'diff-removed)
     (overlay-put ov 'after-string (propertize after 'face 'diff-added))
     ov))
+
+(defun llm-edit--display-match-preview (match before after)
+  "Trim common lines and display a diff preview of MATCH.
+MATCH is a cons (START . END) of the matched region for BEFORE.
+Centers the target buffer's window on the diff and returns the new overlay.
+Must be called within the target buffer."
+  (let* ((match-start (car match))
+         (match-end (cdr match))
+         (exact-p (string= (buffer-substring-no-properties
+                            match-start match-end)
+                           before)))
+    (message (format "Displaying match %d-%d" match-start match-end))
+    (cl-destructuring-bind (t-before t-after p-len s-len)
+        (if exact-p
+            (llm-edit--trim-common-lines before after)
+          (list before after 0 0))
+      (let ((m-start (+ match-start p-len))
+            (m-end (- match-end s-len))
+            (win (or (get-buffer-window (current-buffer))
+                     (window-in-direction 'above)
+                     (display-buffer (current-buffer)))))
+        (when win
+          (set-window-buffer win (current-buffer))
+          (set-window-point win m-start)
+          (with-selected-window win
+            (let* ((diff-lines (+ (cl-count ?\n t-before)
+                                  (cl-count ?\n t-after)))
+                   (win-lines (window-body-height))
+                   (fit-p (<= (+ diff-lines 4) win-lines)))
+              (recenter (if fit-p
+                            (/ (- win-lines diff-lines) 2)
+                          2)))))
+        (llm-edit--make-diff-overlay m-start m-end t-before t-after)))))
 
 ;; Automatically shows a live preview of the edit block under point in its
 ;; target buffer. Intended to be bound to post-command-hook.
@@ -206,49 +304,38 @@ whitespace-insensitive search if no exact matches are found."
 ;; of the target buffer.
 (defun llm-edit--preview ()
   "Preview the edit block under point."
-  (let ((block (llm-edit--parse-current-block)))
-    (if (not block)
-        (progn
-          (when llm-edit--active-overlay
-            (delete-overlay llm-edit--active-overlay)
-            (setq llm-edit--active-overlay nil))
-          (setq llm-edit--last-block-state nil))
-      (cl-destructuring-bind (file comment before after start end) block
-        (let ((state (cons start after)))
-          (unless (equal state llm-edit--last-block-state)
-            (setq llm-edit--last-block-state state)
-            (when llm-edit--active-overlay
-              (delete-overlay llm-edit--active-overlay)
-              (setq llm-edit--active-overlay nil))
-            (when (and file before)
-              (let ((target-buf (find-file-noselect file)))
-                (with-current-buffer target-buf
-                  (save-excursion
-                    (let* ((matches (llm-edit--find-matches before))
-                           (count (length matches)))
-                      (if (/= count 1)
-                          (with-current-buffer (get-buffer "*EDITS*")
-                            (message (if (= count 0) "Match Not Found"
-                                       "Ambiguous Match")))
-                        (let* ((match (car matches))
-                               (match-start (car match))
-                               (match-end (cdr match)))
-                          (let ((win (window-in-direction 'above)))
-                            (when win
-                              (set-window-buffer win target-buf)
-                              (set-window-point win match-start)
-                              (with-selected-window win
-                                (let* ((diff-lines (+ (cl-count ?\n before)
-                                                      (cl-count ?\n after)))
-                                       (win-lines (window-body-height))
-                                       (fit-p (<= (+ diff-lines 4) win-lines)))
-                                  (recenter (if fit-p
-                                                (/ (- win-lines diff-lines) 2)
-                                              2))))))
-                          (let ((ov (llm-edit--make-diff-overlay
-                                     match-start match-end before after)))
-                            (with-current-buffer (get-buffer "*EDITS*")
-                              (setq llm-edit--active-overlay ov))))))))))))))))
+  (condition-case err
+      (let ((block (llm-edit--parse-current-block))
+            (edits-buf (current-buffer)))
+        (if (not block)
+            (progn
+              (when llm-edit--active-overlay
+                (delete-overlay llm-edit--active-overlay)
+                (setq llm-edit--active-overlay nil))
+              (setq llm-edit--last-block-state nil))
+          (cl-destructuring-bind (file comment before after start end) block
+            (let ((state (list start before after)))
+              (unless (equal state llm-edit--last-block-state)
+                (setq llm-edit--last-block-state state)
+                (when llm-edit--active-overlay
+                  (delete-overlay llm-edit--active-overlay)
+                  (setq llm-edit--active-overlay nil))
+                (when (and file before)
+                  (let ((target-buf (find-file-noselect file)))
+                    (with-current-buffer target-buf
+                      (save-excursion
+                        (let* ((matches (llm-edit--find-matches before))
+                               (count (length matches)))
+                          (if (/= count 1)
+                              (with-current-buffer edits-buf
+                                (message (if (= count 0) "Match Not Found"
+                                           "Ambiguous Match")))
+                            (let ((ov (llm-edit--display-match-preview
+                                       (car matches) before after)))
+                              (with-current-buffer edits-buf
+                                (setq llm-edit--active-overlay ov))))))))))))))
+    (error
+     (message "llm-edit preview error: %S" err))))
 
 ;; Finishes the currently focused edit block, optionally applying it to
 ;; the target buffer.
@@ -297,6 +384,15 @@ whitespace-insensitive search if no exact matches are found."
   (interactive)
   (llm-edit--finish-block nil))
 
+(defun llm-edit-quit ()
+  "Kill the *EDITS* buffer and maximize the previous window.
+Also terminates the background edit process if it is still running."
+  (interactive)
+  (let ((proc (get-buffer-process (current-buffer))))
+    (when proc (delete-process proc)))
+  (quit-window t)
+  (delete-other-windows))
+
 (defun llm-edit-target-move-up (&optional n)
   "Scroll the target buffer to show earlier lines (like moving cursor up)."
   (interactive "p")
@@ -325,6 +421,7 @@ whitespace-insensitive search if no exact matches are found."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'llm-edit-apply)
     (define-key map (kbd "C-c C-r") #'llm-edit-reject)
+    (define-key map (kbd "C-c C-k") #'llm-edit-quit)
     (define-key map (kbd "M-<down>") #'llm-edit-target-move-down)
     (define-key map (kbd "M-<up>") #'llm-edit-target-move-up)
     map)
@@ -333,6 +430,19 @@ whitespace-insensitive search if no exact matches are found."
 (define-derived-mode llm-edits-mode text-mode "LLM Edits"
   "Major mode for reviewing LLM edits."
   (setq-local font-lock-defaults nil)
+  (setq-local header-line-format
+              '(:eval (concat
+                       (propertize (format "edits: %d | "
+                                           (llm-edit--count-remaining))
+                                   'face 'font-lock-keyword-face)
+                       (propertize "C-c + Apply: C-c   "
+                                   'face 'font-lock-comment-face)
+                       (propertize "Reject: C-r   "
+                                   'face 'font-lock-comment-face)
+                       (propertize "Quit: C-k   "
+                                   'face 'font-lock-comment-face)
+                       (propertize "Scroll: Alt-up/dn"
+                                   'face 'font-lock-comment-face))))
   (add-hook 'post-command-hook #'llm-edit--preview nil t)
   (add-hook 'kill-buffer-hook
             (lambda ()
@@ -357,6 +467,7 @@ whitespace-insensitive search if no exact matches are found."
            (read-string "LLM Task: "))))
   (save-some-buffers t)
   (let* ((filename (buffer-file-name))
+         (dir default-directory)
          (edit-command
           (append (list edit-exe filename)
                   (apply #'append
@@ -381,6 +492,7 @@ whitespace-insensitive search if no exact matches are found."
                  #'llm-edit--process-json)
                 #'eprocs-filter-ansi-colors))
     (with-current-buffer (get-buffer-create "*EDITS*")
+      (setq default-directory dir)
       (llm-edits-mode)
       (display-buffer (current-buffer)
                       '(display-buffer-at-bottom (window-height . 0.35))))))
