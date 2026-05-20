@@ -194,10 +194,10 @@ static PageInfo PageBit7Classic() {
     -1, -1, -1, -1,
 
     // Blank line
-    // "Black" (filled) suits (Spade, Heart, Club, Diamond)
+    // "Black" (filled) suits (Spade, Club, Heart, Diamond)
     0x2660, 0x2663, 0x2665, 0x2666,
-    // White (outlined) suits (Spade, Heart, Club, Diamond)
-    0x2664, 0x2661, 0x2667, 0x2662,
+    // White (outlined) suits (Spade, Club, Heart, Diamond)
+    0x2664, 0x2667, 0x2661, 0x2662,
     // (die faces?)
     -1, -1, -1, -1, -1, -1, -1, -1,
 
@@ -781,7 +781,12 @@ static PageInfo PageBit7Extended() {
     // Warning Sign
     0x26A0,
 
-    -1, -1, -1, -1, -1, -1, -1,
+    0x1f341,  // maple leaf
+    0x1F340,  // four-leaf clover
+    0x2618,   // shamrock (needs variant selector to show emoji)
+    0x1F4BE,  // floppy disk
+
+    -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
