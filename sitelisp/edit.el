@@ -18,6 +18,7 @@
 ;;    we handle every edit before starting a new one.
 
 
+
 (require 'eprocs)
 
 (defgroup edit nil
@@ -60,8 +61,24 @@
   "Face for the filename in an edit block."
   :group 'edit)
 
-(defvar-local llm-edit--active-overlay nil)
+(defvar-local llm-edit--active-clone-info nil
+  "Holds (CLONE-BUF TARGET-BUF) for the currently active diff preview.")
 (defvar-local llm-edit--last-block-state nil)
+
+(defun llm-edit--cleanup-preview ()
+  "Discard the clone and restore the target buffer in the preview window."
+  (when llm-edit--active-clone-info
+    (cl-destructuring-bind (clone-buf target-buf) llm-edit--active-clone-info
+      (let ((win (get-buffer-window clone-buf)))
+        (when (and win (buffer-live-p target-buf))
+          (let ((pt (window-point win))
+                (start (window-start win)))
+            (set-window-buffer win target-buf)
+            (set-window-point win pt)
+            (set-window-start win start))))
+      (when (buffer-live-p clone-buf)
+        (kill-buffer clone-buf)))
+    (setq llm-edit--active-clone-info nil)))
 
 (defun llm-edit--count-remaining ()
   "Count the remaining edit blocks in the buffer."
@@ -243,65 +260,80 @@ Returns a list (BEFORE-TRIMMED AFTER-TRIMMED PREFIX-LEN SUFFIX-LEN)."
             prefix-len
             suffix-len))))
 
-;; Creates and returns an overlay that visually represents a proposed change
-;; in-line in the current buffer.
-;;
-;; - START, END: The buffer positions of the text to be replaced.
-;; - BEFORE: The exact string currently present between START and END.
-;; - AFTER: The proposed replacement string.
-;;
-;; Returns an emacs overlay object. The caller is responsible for deleting
-;; this overlay when it is no longer needed.
-(defun llm-edit--make-diff-overlay (start end before after)
-  "Create an overlay displaying the diff from BEFORE to AFTER at START/END."
-  (let ((ov (make-overlay start end)))
-    (message (format "Made overlay %d-%d"  start end))
-    (overlay-put ov 'face 'diff-removed)
-    (overlay-put ov 'after-string (propertize after 'face 'diff-added))
-    ov))
+;; Computes the colorized diff text to be inserted into the preview.
+;; Extracted to allow for a fancier comparison algorithm in the future.
+(defun llm-edit--colorize-diff (before after)
+  "Return colorized text to insert, replacing the before text."
+  (concat
+   (when (> (length before) 0)
+     (propertize before
+                 'font-lock-face 'diff-removed
+                 'face 'diff-removed))
+   (when (> (length after) 0)
+     (propertize after
+                 'font-lock-face 'diff-added
+                 'face 'diff-added))))
 
-(defun llm-edit--display-match-preview (match before after)
-  "Trim common lines and display a diff preview of MATCH.
+;; Creates a temporary clone of the target buffer to safely preview
+;; the proposed changes. We apply the colored diff to the clone and
+;; display it in a window, recentering if necessary to ensure the
+;; changed lines are visible to the user.
+(defun llm-edit--display-match-preview (target-buf match before after)
+  "Create a clone of TARGET-BUF, apply the diff, and display it.
 MATCH is a cons (START . END) of the matched region for BEFORE.
-Centers the target buffer's window on the diff and returns the new overlay.
-Must be called within the target buffer."
+Returns (CLONE-BUF TARGET-BUF)."
   (let* ((match-start (car match))
          (match-end (cdr match))
-         (exact-p (string= (buffer-substring-no-properties
-                            match-start match-end)
-                           before)))
-    (message (format "Displaying match %d-%d" match-start match-end))
-    (cl-destructuring-bind (t-before t-after p-len s-len)
-        (if exact-p
-            (llm-edit--trim-common-lines before after)
-          (list before after 0 0))
-      (let ((m-start (+ match-start p-len))
-            (m-end (- match-end s-len))
-            (win (or (get-buffer-window (current-buffer))
-                     (window-in-direction 'above)
-                     (display-buffer (current-buffer)))))
-        (when win
-          (set-window-buffer win (current-buffer))
-          (set-window-point win m-start)
-          (with-selected-window win
-            (let* ((diff-lines (+ (cl-count ?\n t-before)
-                                  (cl-count ?\n t-after)))
-                   (win-lines (window-body-height))
-                   (fit-p (<= (+ diff-lines 4) win-lines)))
-              (recenter (if fit-p
-                            (/ (- win-lines diff-lines) 2)
-                          2)))))
-        (llm-edit--make-diff-overlay m-start m-end t-before t-after)))))
+         (exact-p (with-current-buffer target-buf
+                    (string= (buffer-substring-no-properties
+                              match-start match-end)
+                             before)))
+         (clone-buf (generate-new-buffer
+                     (format " *edit-clone: %s*" (buffer-name target-buf))))
+         (win (or (get-buffer-window target-buf)
+                  (window-in-direction 'above)
+                  (display-buffer target-buf))))
+    (with-current-buffer clone-buf
+      (insert-buffer-substring target-buf)
+      (let ((major (buffer-local-value 'major-mode target-buf)))
+        (when (fboundp major)
+          (ignore-errors (funcall major)))))
+    (with-current-buffer clone-buf
+      (cl-destructuring-bind (t-before t-after p-len s-len)
+          (if exact-p
+              (llm-edit--trim-common-lines before after)
+            (list before after 0 0))
+        (let* ((m-start (+ match-start p-len))
+               (m-end (- match-end s-len)))
+          (ignore-errors (font-lock-ensure))
+          (delete-region m-start m-end)
+          (goto-char m-start)
+          (insert (llm-edit--colorize-diff t-before t-after))
+          (let ((diff-end (point)))
+            (setq buffer-read-only t)
+            (when win
+              (set-window-buffer win clone-buf)
+              (set-window-point win m-start)
+              (with-selected-window win
+                (let* ((diff-lines (count-lines m-start diff-end))
+                       (win-lines (window-body-height))
+                       (fit-p (<= (+ diff-lines 4) win-lines)))
+                  (recenter (if fit-p
+                                (/ (- win-lines diff-lines) 2)
+                              2)))))))))
+    (list clone-buf target-buf)))
+
 
 ;; Automatically shows a live preview of the edit block under point in its
-;; target buffer. Intended to be bound to post-command-hook.
+;; target buffer.
+;; Intended to be bound to post-command-hook.
 ;;
 ;; Caches the current block's state to avoid thrashing and rebuilding
-;; overlays on every single cursor movement. Verifies the "before" text
+;; the preview on every single cursor movement. Verifies the "before" text
 ;; exists exactly once in the target file, warning the user if the match
-;; is missing or ambiguous. Visually renders the proposed change inline
-;; using an overlay with an after-string, avoiding any actual mutation
-;; of the target buffer.
+;; is missing or ambiguous. Visually renders the proposed change by creating
+;; a clone of the target buffer and applying the diff to the clone, avoiding
+;; any actual mutation of the target buffer.
 (defun llm-edit--preview ()
   "Preview the edit block under point."
   (condition-case err
@@ -309,17 +341,13 @@ Must be called within the target buffer."
             (edits-buf (current-buffer)))
         (if (not block)
             (progn
-              (when llm-edit--active-overlay
-                (delete-overlay llm-edit--active-overlay)
-                (setq llm-edit--active-overlay nil))
+              (llm-edit--cleanup-preview)
               (setq llm-edit--last-block-state nil))
           (cl-destructuring-bind (file comment before after start end) block
             (let ((state (list start before after)))
               (unless (equal state llm-edit--last-block-state)
                 (setq llm-edit--last-block-state state)
-                (when llm-edit--active-overlay
-                  (delete-overlay llm-edit--active-overlay)
-                  (setq llm-edit--active-overlay nil))
+                (llm-edit--cleanup-preview)
                 (when (and file before)
                   (let ((target-buf (find-file-noselect file)))
                     (with-current-buffer target-buf
@@ -330,10 +358,10 @@ Must be called within the target buffer."
                               (with-current-buffer edits-buf
                                 (message (if (= count 0) "Match Not Found"
                                            "Ambiguous Match")))
-                            (let ((ov (llm-edit--display-match-preview
-                                       (car matches) before after)))
+                            (let ((clone-info (llm-edit--display-match-preview
+                                               target-buf (car matches) before after)))
                               (with-current-buffer edits-buf
-                                (setq llm-edit--active-overlay ov))))))))))))))
+                                (setq llm-edit--active-clone-info clone-info))))))))))))))
     (error
      (message "llm-edit preview error: %S" err))))
 
@@ -342,7 +370,7 @@ Must be called within the target buffer."
 ;;
 ;; If applied, re-verifies that the exact "before" text exists strictly once
 ;; in the target buffer, failing safely if the file has changed in a way that
-;; makes the patch ambiguous. Cleans up the preview overlay and removes the
+;; makes the patch ambiguous. Cleans up the preview and removes the
 ;; block from the *EDITS* buffer.
 (defun llm-edit--finish-block (apply-p)
   "Finish the edit block at point, applying it if APPLY-P is non-nil."
@@ -365,9 +393,7 @@ Must be called within the target buffer."
                     (delete-region m-start m-end)
                     (goto-char m-start)
                     (insert after))))))))
-      (when llm-edit--active-overlay
-        (delete-overlay llm-edit--active-overlay)
-        (setq llm-edit--active-overlay nil))
+      (llm-edit--cleanup-preview)
       (setq llm-edit--last-block-state nil)
       (let ((inhibit-read-only t))
         (delete-region start end)
@@ -398,8 +424,11 @@ Also terminates the background edit process if it is still running."
   (interactive "p")
   (let* ((block (llm-edit--parse-current-block))
          (file (and block (car block)))
-         (buf (and file (find-file-noselect file)))
-         (win (and buf (get-buffer-window buf))))
+         (target-buf (and file (find-file-noselect file)))
+         (clone-buf (and llm-edit--active-clone-info
+                         (car llm-edit--active-clone-info)))
+         (win (or (and clone-buf (get-buffer-window clone-buf))
+                  (and target-buf (get-buffer-window target-buf)))))
     (if win
         (with-selected-window win
           (scroll-down-line n))
@@ -410,8 +439,11 @@ Also terminates the background edit process if it is still running."
   (interactive "p")
   (let* ((block (llm-edit--parse-current-block))
          (file (and block (car block)))
-         (buf (and file (find-file-noselect file)))
-         (win (and buf (get-buffer-window buf))))
+         (target-buf (and file (find-file-noselect file)))
+         (clone-buf (and llm-edit--active-clone-info
+                         (car llm-edit--active-clone-info)))
+         (win (or (and clone-buf (get-buffer-window clone-buf))
+                  (and target-buf (get-buffer-window target-buf)))))
     (if win
         (with-selected-window win
           (scroll-up-line n))
@@ -444,11 +476,7 @@ Also terminates the background edit process if it is still running."
                        (propertize "Scroll: Alt-up/dn"
                                    'face 'font-lock-comment-face))))
   (add-hook 'post-command-hook #'llm-edit--preview nil t)
-  (add-hook 'kill-buffer-hook
-            (lambda ()
-              (when llm-edit--active-overlay
-                (delete-overlay llm-edit--active-overlay)))
-            nil t))
+  (add-hook 'kill-buffer-hook #'llm-edit--cleanup-preview nil t))
 
 ;; The main interactive entry point. Gathers the task prompt from the active
 ;; region or the minibuffer, and spawns the asynchronous external process.
