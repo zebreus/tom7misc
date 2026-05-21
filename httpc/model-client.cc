@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -34,7 +35,9 @@ static std::string_view InternalModelName(Model model) {
   switch (model) {
   default:
     LOG(FATAL) << "Bad model?";
-  case Model::GEMINI_BEST: return "gemini-pro-latest";
+    // case Model::GEMINI_BEST: return "gemini-pro-latest";
+    // Supposedly the best until there's a 3.5 pro.
+  case Model::GEMINI_BEST: return "gemini-3.5-flash";
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
     // Careful: It doesn't work!
   case Model::GEMINI_FASTEST: return "gemini-flash-lite-latest";
@@ -612,63 +615,101 @@ struct ModelClientImpl : public ModelClient {
     return resp;
   }
 
-  std::string Infer(std::string_view prompt) override {
+  std::string Infer(std::string_view prompt, int num_attempts) override {
     std::unique_ptr<StatusBar> status;
 
     if (verbose > 0) {
       status.reset(new StatusBar(3));
     }
 
-    std::unique_ptr<ModelResponseImpl> resp =
-      RunInternal(prompt,
-                  [status = status.get()](std::string_view s) {
-                    if (status) {
-                      status->Emit(s);
-                    }
-                  });
+    std::optional<std::string> result;
 
-    #define PROMPT_COLOR ANSI_FG(138, 188, 242)
-    #define RESP_COLOR ANSI_FG(207, 138, 242)
-    #define MARK_COLOR ANSI_FG(30, 30, 35)
+    auto SaveDebug = [&](ModelResponseImpl *resp, int attempt) {
+        if (SAVE_HTTP) {
+          if (resp != nullptr && resp->conn.get()) {
+            std::string filename = std::format("http.{}.{}.txt",
+                                               time(nullptr), attempt);
+            Util::WriteFile(filename, resp->conn->http_content.StringView());
+            Print("Wrote http response to " AGREEN("{}") "\n", filename);
+          } else {
+            Print(ARED("No http response to save") "?\n");
+          }
+        }
+      };
 
-    std::string prompt_line =
-      std::format(PROMPT_COLOR "{}" ANSI_RESET,
-                  Util::Replace(UTF8::Truncate(prompt, 75),
-                                "\n", ANSI_GREY "¶" PROMPT_COLOR));
+    for (int attempt = 0;
+         !result.has_value() && attempt < num_attempts;
+         attempt++) {
 
-    std::string result = "ERROR";
-    for (;;) {
-      if (status.get() != nullptr && verbose > 2) {
-        status->Print("Start status loop.\n");
-      }
-      if (resp->Completed()) {
-        result = std::string(resp->Text());
-        break;
-      } else if (resp->Failed()) {
-        result = "ERROR";
-        break;
-      } else {
-        if (status.get() != nullptr) {
-          std::string stats =
-            std::format("TTF {} | {} prompt | {} total | {}",
-                        ANSI::Time(resp->SecToFirst()),
-                        resp->PromptTokens(),
-                        resp->TotalTokens(),
-                        ANSI::Time(resp->Sec()));
+      result = [&] -> std::optional<std::string> {
+        std::unique_ptr<ModelResponseImpl> resp =
+          RunInternal(prompt,
+                      [status = status.get()](std::string_view s) {
+                        if (status) {
+                          status->Emit(s);
+                        }
+                      });
 
+        #define PROMPT_COLOR ANSI_FG(138, 188, 242)
+        #define RESP_COLOR ANSI_FG(207, 138, 242)
+        #define MARK_COLOR ANSI_FG(30, 30, 35)
 
-          std::string r = UTF8::RTruncate(resp->Text(), 75);
+        std::string prompt_line =
+          std::format(PROMPT_COLOR "{}" ANSI_RESET,
+                      Util::Replace(UTF8::Truncate(prompt, 75),
+                                    "\n", ANSI_GREY "¶" PROMPT_COLOR));
 
-          std::string resp_line =
-            std::format(RESP_COLOR "{}" ANSI_RESET,
-                        Util::Replace(r,
-                                      "\n", MARK_COLOR "¶" RESP_COLOR));
+        for (;;) {
+          if (status.get() != nullptr && verbose > 2) {
+            status->Print("Start status loop.\n");
+          }
+          if (resp->Completed()) {
+            SaveDebug(resp.get(), attempt);
+            return {std::string(resp->Text())};
 
-          status->EmitStatus({stats, prompt_line, resp_line});
-          fflush(stdout);
+          } else if (resp->Failed()) {
+            SaveDebug(resp.get(), attempt);
+            return std::nullopt;
+
+          } else {
+            if (status.get() != nullptr) {
+              std::string stats =
+                std::format("TTF {} | {} prompt | {} total | {}",
+                            ANSI::Time(resp->SecToFirst()),
+                            resp->PromptTokens(),
+                            resp->TotalTokens(),
+                            ANSI::Time(resp->Sec()));
+
+              std::string r = UTF8::RTruncate(resp->Text(), 75);
+
+              std::string resp_line =
+                std::format(RESP_COLOR "{}" ANSI_RESET,
+                            Util::Replace(r,
+                                          "\n", MARK_COLOR "¶" RESP_COLOR));
+
+              status->EmitStatus({stats, prompt_line, resp_line});
+              fflush(stdout);
+            }
+
+            resp->ReadSome();
+          }
         }
 
-        resp->ReadSome();
+      }();
+
+      if (result.has_value())
+        break;
+
+      {
+        if (status.get() != nullptr) {
+          status->Print("Failed attempt {}/{}. Waiting to retry...\n",
+                        attempt + 1, num_attempts);
+        }
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(15s);
+        if (status.get() != nullptr) {
+          status->Print("Retry...\n");
+        }
       }
     }
 
@@ -676,18 +717,8 @@ struct ModelClientImpl : public ModelClient {
       status->Remove();
       fflush(stdout);
     }
-    if (SAVE_HTTP) {
-      if (resp.get() && resp->conn.get()) {
-        std::string filename = std::format("http.{}.txt",
-                                           time(nullptr));
-        Util::WriteFile(filename, resp->conn->http_content.StringView());
-        Print("Wrote http response to " AGREEN("{}") "\n", filename);
-      } else {
-        Print(ARED("No http response to save") "?\n");
-      }
-    }
 
-    return result;
+    return result.value_or("ERROR");
   }
 };
 

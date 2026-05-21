@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "ansi.h"
@@ -92,7 +93,7 @@ field.
 Your result is a JSON object that looks like this:
 
 {{ "notes": "My own notes from considering the problem. Do I already know how to do it without additional context? Why do I believe the contents of the files would be useful? How did I consider the file size?",
-  "files": ["file1.h", "file2.h", ...],
+  "files": ["file1.h", "path/file2.h", ...],
   "missing": "Optional. Information I believe might be missing even if I read these files. Examples would include documentation, files that seem to exist exist but are not in the list of available files, or context on the problem that is unlikely to be in a file. This will be shown to the user."
 }}
 
@@ -304,6 +305,10 @@ int main(int argc, char **argv) {
     request = "Can you add what's needed here?";
   }
 
+  if (verbose) {
+    Print("Request:\n{}\n", request);
+  }
+
   if (Util::ExistsFile(".model-config")) {
     files.AddConfig(".model-config");
   }
@@ -344,8 +349,8 @@ int main(int argc, char **argv) {
   Timer include_timer;
   std::vector<std::string> to_include = [&]() -> std::vector<std::string> {
       if (available.files.empty()) {
-        Print("No files available! Skipping that phase.\n");
-        return {};
+        LOG(FATAL) << "No files available, so we won't be able to perform "
+            "any edits!";
       }
 
       CHECK(!request.empty());
@@ -365,7 +370,8 @@ int main(int argc, char **argv) {
         Print(ARED("Unable to find a JSON object!") "\n"
               "\n"
               AGREY("{}\n"), raw);
-        return {};
+
+        LOG(FATAL) << "Failed to get list of files.";
       }
 
       std::unordered_set<std::string> included;
@@ -454,7 +460,7 @@ int main(int argc, char **argv) {
           AGREY("{}\n"), raw);
   } else {
     Print("\n\n" AWHITE("Raw json") ":\n"
-          AGREY("{}"), json);
+          AGREY("{}") "\n", json);
   }
   fflush(stdout);
 
@@ -474,8 +480,9 @@ int main(int argc, char **argv) {
 
     CHECK(document.IsObject());
     if (document.HasMember("notes") && verbose > 0) {
-      Print(AGREY("Notes: {}") "\n",
-                  document["notes"].GetString());
+      Print("\n"
+            AGREY("Notes: {}") "\n",
+            document["notes"].GetString());
     }
 
     if (document.HasMember("replacements") &&

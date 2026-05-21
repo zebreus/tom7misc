@@ -191,22 +191,6 @@ JSON:
 )", current_file, current_file_contents, request, filetext);
 }
 
-static bool Excluded(const std::vector<std::string> &exclude,
-                     std::string_view file) {
-  for (const std::string &wc : exclude) {
-    if (Util::MatchesWildcard(wc, file)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static size_t FileSize(std::string_view path) {
-  // PERF use stat! I must have this somewhere?
-  return Util::ReadFile(path).size();
-}
-
 int main(int argc, char **argv) {
   ANSI::Init();
   Net::Init();
@@ -279,6 +263,9 @@ int main(int argc, char **argv) {
     request = "Can you fill this part in?";
   }
 
+
+  // Use .model-config in the same directory as the target file
+  // to find explicitly allowlisted files (e.g. project.txt).
   if (Util::ExistsFile(".model-config")) {
     files.AddConfig(".model-config");
   }

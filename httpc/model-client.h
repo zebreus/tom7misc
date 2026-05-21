@@ -36,9 +36,12 @@ struct ModelClient {
   virtual void SetVerbose(int v) = 0;
 
   // Simple blocking inference call.
-  virtual std::string Infer(std::string_view prompt) = 0;
+  // Automatically retries when it detects a failure.
+  virtual std::string Infer(std::string_view prompt,
+                            int max_attempts = 2) = 0;
 
   // XXX allow extended setup
+  // No automatic retries with this one.
   virtual std::unique_ptr<ModelResponse> Run(std::string_view prompt) = 0;
 
   virtual ~ModelClient();

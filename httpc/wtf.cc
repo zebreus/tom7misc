@@ -153,8 +153,6 @@ int main(int argc, char **argv) {
 
   const std::string api_key = ModelUtil::GetAPIKey();
 
-  Model solve_model = Model::GEMINI_BEST;
-
   // pipe the output of a command (or paste on stdin)
   // and ask a question on the command line.
 
@@ -178,11 +176,17 @@ int main(int argc, char **argv) {
 
   // The current file we're looking at.
   std::string file_arg;
+  bool fast = false;
+
+  std::optional<Model> model_from_flags;
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
     if (arg == "-v") {
       verbose++;
+
+    } else if (arg == "-fast") {
+      fast = true;
 
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
@@ -204,9 +208,7 @@ int main(int argc, char **argv) {
 
     } else if (std::optional<Model> argmodel =
                ModelClient::IsModelFlag(arg)) {
-      solve_model = argmodel.value();
-      Print("Using " APURPLE("{}") " for solve phase.\n",
-            ModelClient::ModelName(solve_model));
+      model_from_flags = {argmodel};
 
     } else {
       CHECK(!question.has_value()) << "Quote the question on the "
@@ -214,6 +216,17 @@ int main(int argc, char **argv) {
       question = {std::string(arg)};
     }
   }
+
+  Model solve_model = Model::GEMINI_BEST;
+  if (model_from_flags.has_value()) {
+    solve_model = model_from_flags.value();
+  } else if (fast) {
+    solve_model = Model::GEMINI_MEDIUM;
+  }
+
+  Print("Using " APURPLE("{}") " for solve phase.\n",
+        ModelClient::ModelName(solve_model));
+
 
   if (!question.has_value()) {
     question = {"What's going on here? Can you fix it?"};
@@ -232,14 +245,22 @@ int main(int argc, char **argv) {
 
   std::string output = Util::ReadStdin();
 
-  // Probably should use paths here too.
-  for (const std::string &d : ModelUtil::IncludeDirs(file)) {
-    // Print("Via clangd: " AYELLOW("{}") "\n", d);
-    dirs.insert(d);
-  }
+  if (!fast) {
+    // Probably should use paths here too.
+    for (const std::string &d : ModelUtil::IncludeDirs(file)) {
+      // Print("Via clangd: " AYELLOW("{}") "\n", d);
+      dirs.insert(d);
+    }
 
-  for (const std::string &dir : dirs) {
-    files.AddSvnFiles(dir);
+    for (const std::string &dir : dirs) {
+      files.AddSvnFiles(dir);
+    }
+
+    // Use .model-config in the same directory as the target file
+    // to find explicitly allowlisted files (e.g. project.txt).
+    if (Util::ExistsFile(".model-config")) {
+      files.AddConfig(".model-config");
+    }
   }
 
   // The current file is always available, even if not checked in.
@@ -257,9 +278,14 @@ int main(int argc, char **argv) {
           f, af.path.string(), af.bytes);
   }
 
+  // TODO: If nothing was highlighted, include the file. But with
+  // a region highlighted, we could just skip the file?
+
   // Construct prompt to guess at files to include (cheap model).
   Timer include_timer;
-  std::vector<std::string> to_include = [&]{
+  std::vector<std::string> to_include = [&] -> std::vector<std::string> {
+      if (fast) return {file};
+
       CHECK(question.has_value());
       std::string includes_prompt =
         IncludesPrompt(file_arg, question.value(), output, available);
@@ -317,14 +343,17 @@ int main(int argc, char **argv) {
 
       return to_include;
     }();
-  if (verbose > 0) {
-    Print("Include phase done in {}\n", ANSI::Time(include_timer.Seconds()));
-  }
 
-  if (verbose > 0) {
-    Print(AWHITE("To include") ":\n");
-    for (const std::string &f : to_include) {
-      Print("  {}\n", f);
+  if (!fast) {
+    if (verbose > 0) {
+      Print("Include phase done in {}\n", ANSI::Time(include_timer.Seconds()));
+    }
+
+    if (verbose > 0) {
+      Print(AWHITE("To include") ":\n");
+      for (const std::string &f : to_include) {
+        Print("  {}\n", f);
+      }
     }
   }
 
