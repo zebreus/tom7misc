@@ -49,7 +49,7 @@ If the buffer visits a file, it is saved and passed on the command line."
     (deactivate-mark)
 
     (let* ((wtf-command
-            (append (list wtf-exe)
+            (append (list wtf-exe "-emacs")
                     (if buffer-file-name
                         (list "-file" buffer-file-name)
                       nil)
@@ -62,7 +62,8 @@ If the buffer visits a file, it is saved and passed on the command line."
        :buffer (format "*wtf-%s*" nonce)
        :command wtf-command
        :input input
-       :pipeline (list #'eprocs-filter-ansi-colors)))))
+       :pipeline (list #'eprocs-filter-ansi-colors
+                       (eprocs-make-delete-tag-filter "<STATUS>" "</STATUS>"))))))
 
 
 (provide 'wtf)

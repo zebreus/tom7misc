@@ -52,6 +52,10 @@
   "Makes a start/end tag filter that calls f."
   (apply-partially #'eprocs-internal-tag-filter open-tag close-tag f))
 
+(defun eprocs-make-delete-tag-filter (open-tag close-tag)
+  "Makes a start/end tag filter that deletes matched tags and their contents."
+  (eprocs-make-tag-filter open-tag close-tag #'ignore))
+
 (cl-defun eprocs-run (&key name buffer command input pipeline
                            on-success on-error)
   "Run an async process with a predefined text filtering pipeline.
@@ -101,14 +105,15 @@
                                (copy-marker
                                 (max (point-min)
                                      (- (point) eprocs-max-magic-size)))))
-                          (insert output)
-                          (set-marker end-marker (point))
-                          
-                          ;; Run the configured pipeline stages
-                          (dolist (filter-func pipeline)
-                            (funcall filter-func start-marker end-marker))
-                          
-                          (set-marker start-marker nil)))
+                          (unwind-protect
+                              (progn
+                                (insert output)
+                                (set-marker end-marker (point))
+
+                                ;; Run the configured pipeline stages
+                                (dolist (filter-func pipeline)
+                                  (funcall filter-func start-marker end-marker)))
+                            (set-marker start-marker nil))))
 
                       ;; Auto-scroll the windows
                       (dolist (win moving-windows)

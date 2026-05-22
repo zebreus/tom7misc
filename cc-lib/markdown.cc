@@ -282,7 +282,12 @@ Markdown::Document Markdown::Parse(std::string_view s) {
 
       if (had_whitespace) {
         EmitCur();
+        // Awful false-positive here with gcc. Try retiring this when gcc
+        // is improved. :(
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
         ret.push_back(Heading{.level = depth, .text = std::string(trimmed)});
+        #pragma GCC diagnostic pop
         continue;
       }
 
@@ -688,3 +693,4 @@ std::string Markdown::ToColorTerminal(const Document &doc,
 
   return ret;
 }
+

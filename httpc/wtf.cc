@@ -177,6 +177,8 @@ int main(int argc, char **argv) {
   // The current file we're looking at.
   std::string file_arg;
   bool fast = false;
+  // In emacs mode, ANSI colors work but not stuff like status bar.
+  bool emacs = false;
 
   std::optional<Model> model_from_flags;
 
@@ -187,6 +189,9 @@ int main(int argc, char **argv) {
 
     } else if (arg == "-fast") {
       fast = true;
+
+    } else if (arg == "-emacs") {
+      emacs = true;
 
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
@@ -296,7 +301,9 @@ int main(int argc, char **argv) {
       CHECK(cheap.get() != nullptr);
       cheap->SetVerbose(verbose);
 
+      if (emacs) Print("<STATUS>\n");
       std::string raw = cheap->Infer(includes_prompt);
+      if (emacs) Print("</STATUS>\n");
       std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
       if (json.empty()) {
         Print(ARED("Unable to find a JSON object!") "\n"
@@ -372,7 +379,9 @@ int main(int argc, char **argv) {
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);
 
+  if (emacs) Print("<STATUS>\n");
   std::string raw = best->Infer(solve_prompt);
+  if (emacs) Print("</STATUS>\n");
   Print("Solve phase done in {}\n", ANSI::Time(solve_timer.Seconds()));
   std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
   if (json.empty()) {
