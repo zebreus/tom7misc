@@ -82,6 +82,12 @@
 // generate replacement unfoldings to keep the candidate set the same
 // size. Repeat.
 
+// A 2D axis-aligned bounding box.
+struct AABB2 {
+  vec2 minv = {0.0, 0.0};
+  vec2 maxv = {0.0, 0.0};
+};
+
 // A 3D half-space. Points inside the feasible volume satisfy
 // dot(normal, p) <= d.
 struct HalfSpace {
@@ -119,11 +125,12 @@ struct MeshFace {
   HalfSpace plane;
 };
 
-// Represents the 2D position of a single face in a specific unfolding.
+// Represents a 2D position of a single face in a specific unfolding.
 struct UnfoldedFace {
   // The 2D coordinates of the face's vertices, in the same order as
   // MeshFace::vertices.
   std::vector<vec2> vertices;
+  AABB2 aabb;
 };
 
 // Represents a single, valid (non-overlapping) 2D unfolding of the
@@ -350,8 +357,10 @@ struct PartialPolyhedron {
   // "leaf IH" constraint.
   void InvalidatePerLeafConstraint(int face_idx, int edge_idx);
 
-  bool HasSeparatingAxis(const std::vector<vec2> &poly1,
-                         const std::vector<vec2> &poly2) const;
+  static bool UnfoldedFacesOverlap(const UnfoldedFace &f1,
+                                   const UnfoldedFace &f2);
+  static bool HasSeparatingAxis(std::span<const vec2> poly1,
+                                std::span<const vec2> poly2);
   // Checks whether the 2D polygons in a candidate unfolding overlap.
   // The unfolding must also admit the leaf_constraint if present.
   bool IsUnfoldingValid(const Unfolding &unfolding) const;

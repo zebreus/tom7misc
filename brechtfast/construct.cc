@@ -22,6 +22,26 @@
 #include "union-find.h"
 #include "yocto-math.h"
 
+static AABB2 ComputeAABB2(std::span<const vec2> vertices) {
+  if (vertices.empty()) {
+    return AABB2{{0.0, 0.0}, {0.0, 0.0}};
+  }
+  vec2 minv = vertices[0];
+  vec2 maxv = vertices[0];
+  for (size_t i = 1; i < vertices.size(); ++i) {
+    minv.x = std::min(minv.x, vertices[i].x);
+    minv.y = std::min(minv.y, vertices[i].y);
+    maxv.x = std::max(maxv.x, vertices[i].x);
+    maxv.y = std::max(maxv.y, vertices[i].y);
+  }
+  return AABB2{minv, maxv};
+}
+
+static bool AABBOverlap(const AABB2 &a, const AABB2 &b) {
+  return a.minv.x <= b.maxv.x && a.maxv.x >= b.minv.x &&
+         a.minv.y <= b.maxv.y && a.maxv.y >= b.minv.y;
+}
+
 void PartialPolyhedron::CheckValidity() const {
   CheckIndices();
   CheckHalfSpaces();
@@ -485,7 +505,9 @@ void PartialPolyhedron::Initialize(int face1_max_verts,
   UnfoldedFace uf0, uf1;
 
   uf0.vertices = U0;
+  uf0.aabb = ComputeAABB2(U0);
   uf1.vertices = U1;
+  uf1.aabb = ComputeAABB2(U1);
 
   unf.faces.push_back(uf0);
   unf.faces.push_back(uf1);
@@ -537,23 +559,15 @@ bool PartialPolyhedron::IsUnfoldingValid(const Unfolding &unfolding) const {
     if (!target_connected) {
       return false;
     }
-  }
-
-  for (int i = 0; i < (int)unfolding.faces.size(); i++) {
+  }  for (int i = 0; i < (int)unfolding.faces.size(); i++) {
     for (int j = i + 1; j < (int)unfolding.faces.size(); j++) {
-      const std::vector<vec2> &f1 = unfolding.faces[i].vertices;
-      const std::vector<vec2> &f2 = unfolding.faces[j].vertices;
-
-      // If neither polygon provides a separating axis, their
-      // interiors overlap.
-      if (!HasSeparatingAxis(f1, f2) && !HasSeparatingAxis(f2, f1)) {
+      if (UnfoldedFacesOverlap(unfolding.faces[i], unfolding.faces[j])) {
         return false;
       }
     }
   }
   return true;
 }
-
 void PartialPolyhedron::InvalidatePerLeafConstraint(int face_idx,
                                                     int edge_idx) {
   std::vector<Unfolding> valid;
@@ -635,8 +649,16 @@ void PartialPolyhedron::ReplenishUnfoldings() {
     existing_trees.insert(std::move(bs));
   }
 
+  // When there are a very small number of trees even possible,
+  // we want to make sure that we don't spin our wheels testing
+  // the same ones over and over -- regardless of whether they
+  // are valid or not.
+  std::unordered_set<uint64_t> seen_tree_hashes;
+
   int consecutive_failures = 0;
   int max_failures = 1000;
+  int consecutive_collisions = 0;
+  int max_collisions = 32;
 
   // If we don't have this many, then we try especially hard.
   int min_tolerable = std::min(target_unfoldings, 2);
@@ -645,6 +667,8 @@ void PartialPolyhedron::ReplenishUnfoldings() {
   auto KeepGoing = [&]() {
       // Stop if we have enough.
       if (unfoldings.size() >= target_unfoldings) return false;
+
+      if (consecutive_collisions > max_collisions) return false;
 
       // Try really hard if we don't have a minimal number of
       // unfoldings. We would essentially like to try "forever,"
@@ -692,22 +716,33 @@ void PartialPolyhedron::ReplenishUnfoldings() {
       }
     }
 
-    // TODO: When the polyhedron is small, there won't even
+    // When the polyhedron is small, there won't even
     // be that many distinct bit strings, let alone valid
-    // unfoldings! We could just exhaustively check them, or
-    // use a lower threshold in this case. A collision is
-    // itself a good statistical indication that there are
-    // not a lot of possible trees.
-    if (existing_trees.contains(tree_bits)) {
-      consecutive_failures++;
-      continue;
+    // unfoldings! It's hard to know when we should exhaustively
+    // check them, so what we do is check for repetition (with
+    // a hash code, which is approximate) until we have seen
+    // enough distinct trees that we believe it's safe to just
+    // sample.
+    if (seen_tree_hashes.size() < 4 * target_unfoldings) {
+      uint64_t tree_hash = tree_bits.HashCode();
+      if (seen_tree_hashes.contains(tree_hash)) {
+        consecutive_collisions++;
+        continue;
+      }
+
+      consecutive_collisions = 0;
+      seen_tree_hashes.insert(tree_hash);
     }
+
+    // Otherwise, we proceed optimistically, assuming this
+    // tree is actually new.
 
     // Unfold in 2D using the tree topology.
     temp_unf.tree_edges = tree_edges;
     placed.assign(NumFaces(), false);
 
     temp_unf.faces[0].vertices = local_shapes[0];
+    temp_unf.faces[0].aabb = ComputeAABB2(local_shapes[0]);
     placed[0] = true;
 
     q.clear();
@@ -734,8 +769,8 @@ void PartialPolyhedron::ReplenishUnfoldings() {
           }
 
           vec2 p_start = temp_unf.faces[curr].vertices[idx_a];
-          vec2 p_end = temp_unf.faces[curr].vertices[(idx_a + 1) %
-                                                     faces[curr].vertices.size()];
+          vec2 p_end = temp_unf.faces[curr].vertices[
+              (idx_a + 1) % faces[curr].vertices.size()];
 
           const auto &poly_b = local_shapes[neighbor];
           vec2 q_start = poly_b[idx_b];
@@ -760,13 +795,14 @@ void PartialPolyhedron::ReplenishUnfoldings() {
             rot_d.y = d.x * sin_theta + d.y * cos_theta;
             temp_unf.faces[neighbor].vertices.push_back(p_end + rot_d);
           }
+          temp_unf.faces[neighbor].aabb =
+              ComputeAABB2(temp_unf.faces[neighbor].vertices);
 
           // Check overlap immediately against all already placed
           // faces to early-abort.
           for (int already_placed : placed_order) {
-            const auto &f1 = temp_unf.faces[already_placed].vertices;
-            const auto &f2 = temp_unf.faces[neighbor].vertices;
-            if (!HasSeparatingAxis(f1, f2) && !HasSeparatingAxis(f2, f1)) {
+            if (UnfoldedFacesOverlap(temp_unf.faces[already_placed],
+                                     temp_unf.faces[neighbor])) {
               overlap_detected = true;
               break;
             }
@@ -782,12 +818,16 @@ void PartialPolyhedron::ReplenishUnfoldings() {
     }
 
     if (overlap_detected) {
-      existing_trees.insert(tree_bits);
       consecutive_failures++;
     } else {
-      unfoldings.push_back(temp_unf);
-      existing_trees.insert(tree_bits);
-      consecutive_failures = 0;
+      if (existing_trees.insert(tree_bits).second) {
+        unfoldings.push_back(temp_unf);
+        consecutive_failures = 0;
+      } else {
+        // Duplicate (too optimistic above). Should be rare because we
+        // know there are lots of trees possible.
+        consecutive_failures++;
+      }
     }
   }
 }
@@ -1362,6 +1402,7 @@ void PartialPolyhedron::AddFace(int boundary_edge_idx,
       rot_d.y = d.x * sin_theta + d.y * cos_theta;
       uf_new.vertices.push_back(p_end + rot_d);
     }
+    uf_new.aabb = ComputeAABB2(uf_new.vertices);
 
     unf.faces.push_back(uf_new);
     unf.tree_edges.push_back(boundary_edge_idx);
@@ -1388,9 +1429,18 @@ std::optional<Polyhedron> PartialPolyhedron::Close() const {
   return PolyhedronFromConvexVertices(Hull3D::ReduceToHull(pts));
 }
 
+bool PartialPolyhedron::UnfoldedFacesOverlap(const UnfoldedFace &f1,
+                                             const UnfoldedFace &f2) {
+  if (!AABBOverlap(f1.aabb, f2.aabb)) {
+    return false;
+  }
+  return !HasSeparatingAxis(f1.vertices, f2.vertices) &&
+         !HasSeparatingAxis(f2.vertices, f1.vertices);
+}
+
 bool PartialPolyhedron::HasSeparatingAxis(
-    const std::vector<vec2> &poly1,
-    const std::vector<vec2> &poly2) const {
+    std::span<const vec2> poly1,
+    std::span<const vec2> poly2) {
   for (int i = 0; i < (int)poly1.size(); i++) {
     vec2 a = poly1[i];
     vec2 b = poly1[(i + 1) % poly1.size()];
@@ -1475,23 +1525,20 @@ double PartialPolyhedron::MeasureOverlapFraction(
       sin_theta = (v_q.x * v_p.y - v_q.y * v_p.x) / length_sq;
     }
 
-    std::vector<vec2> transformed_poly;
-    transformed_poly.reserve(poly.size());
+    UnfoldedFace transformed_face;
+    transformed_face.vertices.reserve(poly.size());
     for (int j = 0; j < (int)poly.size(); j++) {
       vec2 d = poly[j] - q_start;
       vec2 rot_d;
       rot_d.x = d.x * cos_theta - d.y * sin_theta;
       rot_d.y = d.x * sin_theta + d.y * cos_theta;
-      transformed_poly.push_back(p_end + rot_d);
+      transformed_face.vertices.push_back(p_end + rot_d);
     }
+    transformed_face.aabb = ComputeAABB2(transformed_face.vertices);
 
     bool overlap = false;
     for (int i = 0; i < (int)unf.faces.size(); i++) {
-      const std::vector<vec2> &f = unf.faces[i].vertices;
-      // If neither polygon provides a separating axis, their
-      // interiors overlap.
-      if (!HasSeparatingAxis(transformed_poly, f) &&
-          !HasSeparatingAxis(f, transformed_poly)) {
+      if (UnfoldedFacesOverlap(transformed_face, unf.faces[i])) {
         overlap = true;
         break;
       }
@@ -1636,9 +1683,9 @@ FaceChooser::FaceChooser(
 
 JoinFaceChooser::JoinFaceChooser(
     const std::vector<vec2> &feasible_poly,
-    const vec3 &p0, const vec3 &p1, const vec3 &p2,
+    const vec3 &pp0, const vec3 &pp1, const vec3 &pp2,
     const vec3 &normal,
     double diameter)
-  : FaceChooser(feasible_poly, p0, p1, normal, diameter), p2(p2) {
+  : FaceChooser(feasible_poly, pp0, pp1, normal, diameter), p2(pp2) {
   p2_2d = {yocto::dot(p2 - origin, x_dir), yocto::dot(p2 - origin, y_dir)};
 }
