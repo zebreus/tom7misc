@@ -51,6 +51,11 @@
   "Face for the after region lines in the edit buffer."
   :group 'edit)
 
+(defface llm-edit-partial-match-face
+  '((t (:extend t :background "#553322")))
+  "Face for the longest matching partial prefix or suffix of the before text."
+  :group 'edit)
+
 (defface llm-edit-delimiter-face
   '((t (:extend t :background "#222255" :foreground "#8dd")))
   "Face for the delimiter lines (<<<< BEFORE, etc.)."
@@ -64,6 +69,8 @@
 (defvar-local llm-edit--active-clone-info nil
   "Holds (CLONE-BUF TARGET-BUF) for the currently active diff preview.")
 (defvar-local llm-edit--last-block-state nil)
+(defvar-local llm-edit--longest-match-overlay nil
+  "Overlay used to highlight the longest matching prefix/suffix in *EDITS*.")
 
 (defun llm-edit--cleanup-preview ()
   "Discard the clone and restore the target buffer in the preview window."
@@ -78,7 +85,14 @@
             (set-window-start win start))))
       (when (buffer-live-p clone-buf)
         (kill-buffer clone-buf)))
-    (setq llm-edit--active-clone-info nil)))
+    (setq llm-edit--active-clone-info nil))
+  ;; also delete any overlays in *EDITS*
+  (let ((edits-buf (get-buffer "*EDITS*")))
+    (when (and edits-buf (buffer-live-p edits-buf))
+      (with-current-buffer edits-buf
+        (when llm-edit--longest-match-overlay
+          (delete-overlay llm-edit--longest-match-overlay)
+          (setq llm-edit--longest-match-overlay nil))))))
 
 (defun llm-edit--count-remaining ()
   "Count the remaining edit blocks in the buffer."
@@ -90,49 +104,32 @@
           (setq count (1+ count)))
         count))))
 
+(defun llm-edit--insert-read-only (text &optional face)
+  "Insert read-only TEXT with optional FACE."
+  (insert (if face
+              (propertize text 'read-only t 'rear-nonsticky t 'font-lock-face face)
+            (propertize text 'read-only t 'rear-nonsticky t))))
+
 ;; Inserts a formatted diff block into the current buffer at point.
-;; Crucially, applies read-only and rear-nonsticky text properties to the
-;; structural delimiters (like "<<<< BEFORE"). This prevents the user from
-;; accidentally corrupting the boundaries while tweaking the proposed edits,
-;; ensuring the parser won't break later.
+;; Applies read-only and rear-nonsticky text properties to the
+;; structural delimiters (like "<<<< BEFORE"). This prevents the user
+;; from accidentally corrupting the boundaries while editing the
+;; contents.
 (defun llm-edit--insert-diff (file comment before after)
   "Format and insert the edit block into the current buffer at point."
   (let ((inhibit-read-only t))
-    (insert
-     (propertize "File: "
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'font-lock-keyword-face))
-    (insert
-     (propertize (format "%s\n" file)
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'llm-edit-file-face))
-    (insert
-     (propertize "Comment: "
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'font-lock-keyword-face))
-    (insert
-     (propertize (format "%s\n" comment)
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'font-lock-comment-face))
-    (insert
-     (propertize "<<<< BEFORE\n"
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'llm-edit-delimiter-face))
+    (llm-edit--insert-read-only "File: " 'font-lock-keyword-face)
+    (llm-edit--insert-read-only (format "%s\n" file) 'llm-edit-file-face)
+    (llm-edit--insert-read-only "Comment: " 'font-lock-keyword-face)
+    (llm-edit--insert-read-only (format "%s\n" comment) 'font-lock-comment-face)
+    (llm-edit--insert-read-only "<<<< BEFORE\n" 'llm-edit-delimiter-face)
     (insert
      (propertize before 'font-lock-face 'llm-edit-before-face))
-    (insert
-     (propertize "==== AFTER\n"
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'llm-edit-delimiter-face))
+    (llm-edit--insert-read-only "==== AFTER\n" 'llm-edit-delimiter-face)
     (insert
      (propertize after 'font-lock-face 'llm-edit-after-face))
-    (insert
-     (propertize ">>>>\n"
-                 'read-only t 'rear-nonsticky t
-                 'font-lock-face 'llm-edit-delimiter-face))
-    (insert
-     (propertize "\n"
-                 'read-only t 'rear-nonsticky t))))
+    (llm-edit--insert-read-only ">>>>\n" 'llm-edit-delimiter-face)
+    (llm-edit--insert-read-only "\n")))
 
 ;; Processes a JSON payload received from the external edit process.
 ;; Extracts the file, comment, and before/after text blocks, formatting
@@ -212,19 +209,74 @@
   "Find all occurrences of TEXT in the current buffer.
 Returns a list of (START . END) positions. Falls back to a
 whitespace-insensitive search if no exact matches are found."
-  (save-excursion
-    (goto-char (point-min))
-    (let ((matches nil))
-      (while (search-forward text nil t)
-        (push (cons (match-beginning 0) (match-end 0)) matches))
-      (when (null matches)
-        (goto-char (point-min))
-        (let ((ws-rx (replace-regexp-in-string
-                      "[ \t\n\r]+" "[ \t\n\r]+"
-                      (regexp-quote text) t t)))
-          (while (re-search-forward ws-rx nil t)
-            (push (cons (match-beginning 0) (match-end 0)) matches))))
-      (nreverse matches))))
+  ;; don't try on empty source text, as it will match repeatedly
+  ;; at the same spot
+  (unless (string-empty-p text)
+    (save-excursion
+      (goto-char (point-min))
+      (let ((matches nil))
+        (while (search-forward text nil t)
+          (push (cons (match-beginning 0) (match-end 0)) matches))
+        (when (null matches)
+          (goto-char (point-min))
+          (let ((ws-rx (replace-regexp-in-string
+                        "[ \t\n\r]+" "[ \t\n\r]+"
+                        (regexp-quote text) t t)))
+            (while (re-search-forward ws-rx nil t)
+              (push (cons (match-beginning 0) (match-end 0)) matches))))
+        (nreverse matches))))
+  )
+
+(defun llm-edit--binary-search-match (text len target-buf from-suffix-p)
+  "Binary search for the longest matching substring."
+  (let ((low 1) (high len) (match-len 0))
+    (while (<= low high)
+      (let* ((mid (/ (+ low high) 2))
+             (sub (if from-suffix-p
+                      (substring text (- len mid))
+                    (substring text 0 mid)))
+             (found (with-current-buffer target-buf
+                      (llm-edit--find-matches sub))))
+        (if found
+            (progn
+              (setq match-len mid)
+              (setq low (1+ mid)))
+          (setq high (1- mid)))))
+    match-len))
+
+(defun llm-edit--find-longest-partial-match (text target-buf)
+  "Find the longest prefix or suffix of TEXT that exists in TARGET-BUF.
+Returns a cons (IS-PREFIX . MATCH-LENGTH), or nil if no match is found."
+  (let ((len (length text)))
+    (if (= len 0)
+        nil
+      (let ((prefix-len (llm-edit--binary-search-match text len target-buf nil))
+            (suffix-len (llm-edit--binary-search-match text len target-buf t)))
+        (cond
+         ((and (= prefix-len 0) (= suffix-len 0))
+          nil)
+         ((>= prefix-len suffix-len)
+          (cons t prefix-len))
+         (t
+          (cons nil suffix-len)))))))
+
+(defun llm-edit--highlight-partial-match (before start end target-buf)
+  "Highlight the longest matching prefix/suffix of BEFORE in the *EDITS* buffer.
+START and END are the bounds of the current edit block."
+  (let ((match-info (llm-edit--find-longest-partial-match before target-buf)))
+    (when match-info
+      (save-excursion
+        (goto-char start)
+        (when (re-search-forward "^<<<< BEFORE\n" end t)
+          (let* ((b-start (point))
+                 (b-end (+ b-start (length before)))
+                 (is-prefix (car match-info))
+                 (match-len (cdr match-info))
+                 (o-start (if is-prefix b-start (+ b-start (- (length before) match-len))))
+                 (o-end (if is-prefix (+ b-start match-len) b-end)))
+            (when (and (>= o-start b-start) (<= o-end b-end) (< o-start o-end))
+              (setq llm-edit--longest-match-overlay (make-overlay o-start o-end))
+              (overlay-put llm-edit--longest-match-overlay 'face 'llm-edit-partial-match-face))))))))
 
 ;; This is used to narrow the before/after text to just the lines
 ;; that have changed. It is common for there to be context in the
@@ -336,35 +388,49 @@ Returns (CLONE-BUF TARGET-BUF)."
 ;; any actual mutation of the target buffer.
 (defun llm-edit--preview ()
   "Preview the edit block under point."
-  (condition-case err
-      (let ((block (llm-edit--parse-current-block))
-            (edits-buf (current-buffer)))
-        (if (not block)
-            (progn
-              (llm-edit--cleanup-preview)
-              (setq llm-edit--last-block-state nil))
-          (cl-destructuring-bind (file comment before after start end) block
-            (let ((state (list start before after)))
-              (unless (equal state llm-edit--last-block-state)
-                (setq llm-edit--last-block-state state)
-                (llm-edit--cleanup-preview)
-                (when (and file before)
-                  (let ((target-buf (find-file-noselect file)))
-                    (with-current-buffer target-buf
-                      (save-excursion
-                        (let* ((matches (llm-edit--find-matches before))
-                               (count (length matches)))
-                          (if (/= count 1)
-                              (with-current-buffer edits-buf
-                                (message (if (= count 0) "Match Not Found"
-                                           "Ambiguous Match")))
-                            (let ((clone-info (llm-edit--display-match-preview
-                                               target-buf (car matches) before after)))
-                              (with-current-buffer edits-buf
-                                (setq llm-edit--active-clone-info clone-info))))))))))))))
-    (error
-     (message "llm-edit preview error: %S" err))))
-
+  (save-match-data
+    (condition-case err
+        (let ((edits-buf (get-buffer "*EDITS*")))
+          (when (and edits-buf (buffer-live-p edits-buf))
+            (with-current-buffer edits-buf
+              (let ((block (and (eq (current-buffer)
+                                    (window-buffer (selected-window)))
+                                (llm-edit--parse-current-block))))
+                (if (not block)
+                    (progn
+                      (llm-edit--cleanup-preview)
+                      (setq llm-edit--last-block-state nil))
+                  (cl-destructuring-bind (file comment before after start end)
+                      block
+                    (let ((state (list start before after)))
+                      (unless (equal state llm-edit--last-block-state)
+                        (setq llm-edit--last-block-state state)
+                        (llm-edit--cleanup-preview)
+                        (when (and file before)
+                          (let ((target-buf (find-file-noselect file)))
+                            (with-current-buffer target-buf
+                              (save-excursion
+                                (let* ((matches (llm-edit--find-matches before))
+                                       (count (length matches)))
+                                  (if (/= count 1)
+                                      (with-current-buffer edits-buf
+                                        (message (if (= count 0)
+                                                     "Match Not Found"
+                                                   "Ambiguous Match"))
+                                        (when (= count 0)
+                                          (llm-edit--highlight-partial-match
+                                           before start end target-buf)))
+                                    (let ((clone-info
+                                           (llm-edit--display-match-preview
+                                            target-buf (car matches)
+                                            before after)))
+                                      (with-current-buffer edits-buf
+                                        (setq llm-edit--active-clone-info
+                                              clone-info)))))))))))))))))
+      (error
+       (message "llm-edit preview error: %S" err))))
+  )
+  
 ;; Finishes the currently focused edit block, optionally applying it to
 ;; the target buffer.
 ;;
@@ -419,16 +485,20 @@ Also terminates the background edit process if it is still running."
   (quit-window t)
   (delete-other-windows))
 
-(defun llm-edit-target-move-up (&optional n)
-  "Scroll the target buffer to show earlier lines (like moving cursor up)."
-  (interactive "p")
+(defun llm-edit--target-window ()
+  "Return the window displaying the target buffer or its clone."
   (let* ((block (llm-edit--parse-current-block))
          (file (and block (car block)))
          (target-buf (and file (find-file-noselect file)))
          (clone-buf (and llm-edit--active-clone-info
-                         (car llm-edit--active-clone-info)))
-         (win (or (and clone-buf (get-buffer-window clone-buf))
-                  (and target-buf (get-buffer-window target-buf)))))
+                         (car llm-edit--active-clone-info))))
+    (or (and clone-buf (get-buffer-window clone-buf))
+        (and target-buf (get-buffer-window target-buf)))))
+
+(defun llm-edit-target-move-up (&optional n)
+  "Scroll the target buffer to show earlier lines (like moving cursor up)."
+  (interactive "p")
+  (let ((win (llm-edit--target-window)))
     (if win
         (with-selected-window win
           (scroll-down-line n))
@@ -437,13 +507,7 @@ Also terminates the background edit process if it is still running."
 (defun llm-edit-target-move-down (&optional n)
   "Scroll the target buffer to show later lines (like moving cursor down)."
   (interactive "p")
-  (let* ((block (llm-edit--parse-current-block))
-         (file (and block (car block)))
-         (target-buf (and file (find-file-noselect file)))
-         (clone-buf (and llm-edit--active-clone-info
-                         (car llm-edit--active-clone-info)))
-         (win (or (and clone-buf (get-buffer-window clone-buf))
-                  (and target-buf (get-buffer-window target-buf)))))
+  (let ((win (llm-edit--target-window)))
     (if win
         (with-selected-window win
           (scroll-up-line n))
@@ -475,7 +539,7 @@ Also terminates the background edit process if it is still running."
                                    'face 'font-lock-comment-face)
                        (propertize "Scroll: Alt-up/dn"
                                    'face 'font-lock-comment-face))))
-  (add-hook 'post-command-hook #'llm-edit--preview nil t)
+  (add-hook 'post-command-hook #'llm-edit--preview)
   (add-hook 'kill-buffer-hook #'llm-edit--cleanup-preview nil t))
 
 ;; The main interactive entry point. Gathers the task prompt from the active
@@ -497,7 +561,7 @@ Also terminates the background edit process if it is still running."
   (let* ((filename (buffer-file-name))
          (dir default-directory)
          (edit-command
-          (append (list edit-exe filename)
+          (append (list edit-exe filename "-emacs")
                   (apply #'append
                          (mapcar (lambda (cfg) (list "-config" cfg))
                                  edit-configs))
@@ -518,6 +582,9 @@ Also terminates the background edit process if it is still running."
                  (concat "<" "REPLACEMENT>")
                  (concat "</" "REPLACEMENT>")
                  #'llm-edit--process-json)
+                (eprocs-make-delete-tag-filter
+                 (concat "<" "STATUS>")
+                 (concat "</" "STATUS>"))
                 #'eprocs-filter-ansi-colors))
     (with-current-buffer (get-buffer-create "*EDITS*")
       (setq default-directory dir)

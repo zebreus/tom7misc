@@ -35,21 +35,26 @@
   :type '(repeat file)
   :group 'wtf)
 
-(defun wtf (question beg end)
-  "Prompt the user for a QUESTION and send it to the wtf subprocess.
-If the buffer visits a file, it is saved and passed on the command line."
-  (interactive "sQuestion: \nr")
+(defun wtf-run-internal (question fast)
+  "Core helper to run the wtf tool, optionally with the `-fast` flag."
   ;; Grab the selected region before we do anything else, so that
   ;; something like a save hook doesn't wreck it.
-  (let ((input (buffer-substring-no-properties beg end))
+  (let ((input (if (use-region-p)
+                   (buffer-substring-no-properties
+                    (region-beginning)
+                    (region-end))
+                 ""))
         (nonce (format "%06x" (random #xffffff))))
-
+    
     (when buffer-file-name
       (save-buffer))
     (deactivate-mark)
 
     (let* ((wtf-command
             (append (list wtf-exe "-emacs")
+                    (if fast
+                        (list "-fast")
+                      nil)
                     (if buffer-file-name
                         (list "-file" buffer-file-name)
                       nil)
@@ -63,7 +68,21 @@ If the buffer visits a file, it is saved and passed on the command line."
        :command wtf-command
        :input input
        :pipeline (list #'eprocs-filter-ansi-colors
-                       (eprocs-make-delete-tag-filter "<STATUS>" "</STATUS>"))))))
+                       (eprocs-make-delete-tag-filter
+                        "<STATUS>" "</STATUS>"))))))
+
+(defun wtf (question)
+  "Prompt the user for a QUESTION and send it to the wtf subprocess.
+If the buffer visits a file, it is saved and passed on the command line."
+  (interactive "sQuestion: \n")
+  (wtf-run-internal question nil))
+
+(defun qq (question)
+  "Prompt the user for a QUESTION and send it to the wtf subprocess
+with `-fast`. If the buffer visits a file, it is saved and passed on
+the command line."
+  (interactive "sQuick question: \n")
+  (wtf-run-internal question t))
 
 
 (provide 'wtf)
