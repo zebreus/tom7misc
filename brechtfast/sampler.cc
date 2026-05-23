@@ -30,7 +30,9 @@
 
 DECLARE_COUNTERS(ctr_degenerate, ctr_too_big,
                  ctr_ill_conditioned, ctr_not_manifold, ctr_no_angle,
-                 ctr_no_feasible, ctr_face_not_feasible);
+                 ctr_no_feasible, ctr_face_not_feasible,
+                 ctr_boundary_closed);
+DECLARE_COUNTERS(ctr_no_close);
 
 using OneSample = Sampler::OneSample;
 
@@ -43,14 +45,17 @@ static vec3 RandomVec(ArcFour *rc) {
 
 std::string Sampler::SampleStats() {
   return std::format(
-      "{} ill, {} notman, {} degen, {} noθ, {} no∆, {}✘, {} big",
+      "{} ill, {} notman, {} degen, {} noθ, {} no∆, {}✘, {} big, "
+      "{}⋄, {} noclose",
       ctr_ill_conditioned.Read(),
       ctr_not_manifold.Read(),
       ctr_degenerate.Read(),
       ctr_no_angle.Read(),
       ctr_no_feasible.Read(),
       ctr_face_not_feasible.Read(),
-      ctr_too_big.Read());
+      ctr_too_big.Read(),
+      ctr_boundary_closed.Read(),
+      ctr_no_close.Read());
 }
 
 static std::optional<Polyhedron> CarefulPolyhedron(
@@ -150,6 +155,514 @@ static std::optional<std::pair<int, int>> MapConstraint(
   return std::make_pair(best_fidx, best_eidx);
 }
 
+// Returns true if the constraint was added.
+static bool AddLeafConstraint(ArcFour *rc, PartialPolyhedron *pp) {
+  CHECK(!pp->GetLeafConstraint().has_value()) << "Precondition";
+  int best_count = 999999;
+  std::vector<std::pair<int, int>> best_constraints;
+
+  for (int f = 0; f < pp->NumFaces(); f++) {
+    // To ensure f can be a leaf, check that removing f does not
+    // disconnect the dual graph. While a completed convex
+    // polyhedron's dual graph is 3-connected (so any face can
+    // be a leaf), this PartialPolyhedron's open patch can have
+    // cut vertices (e.g. if it's just a chain).
+    int start_face = (f == 0) ? 1 : 0;
+    std::vector<int> q = {start_face};
+    std::vector<bool> vis(pp->NumFaces(), false);
+    vis[f] = true;
+    vis[start_face] = true;
+    int reached = 1;
+    int head = 0;
+    while (head < (int)q.size()) {
+      int curr = q[head++];
+      for (int ce : pp->GetFace(curr).edges) {
+        const MeshEdge &edge = pp->GetEdge(ce);
+        int neighbor = (edge.left_face == curr) ? edge.right_face :
+                                                  edge.left_face;
+        if (neighbor != -1 && !vis[neighbor]) {
+          vis[neighbor] = true;
+          q.push_back(neighbor);
+          reached++;
+        }
+      }
+    }
+
+    if (reached < pp->NumFaces() - 1) continue;
+
+    for (int e : pp->GetFace(f).edges) {
+      // The tree uses internal edges, so boundary edges are not
+      // valid choices.
+      if (pp->GetEdge(e).right_face == -1) continue;
+
+      int count = 0;
+      for (const Unfolding &unf : pp->GetUnfoldings()) {
+        int connected_count = 0;
+        bool target_connected = false;
+        for (int fe : pp->GetFace(f).edges) {
+          if (std::find(unf.tree_edges.begin(),
+                        unf.tree_edges.end(), fe) !=
+              unf.tree_edges.end()) {
+            if (fe == e) target_connected = true;
+            connected_count++;
+          }
+        }
+        if (target_connected && connected_count == 1) {
+          count++;
+        }
+      }
+
+      if (count < best_count) {
+        best_count = count;
+        best_constraints.clear();
+        best_constraints.emplace_back(f, e);
+      } else if (count == best_count) {
+        best_constraints.emplace_back(f, e);
+      }
+    }
+  }
+
+  if (!best_constraints.empty()) {
+    auto [best_f, best_e] =
+        best_constraints[RandTo(rc, (int)best_constraints.size())];
+    pp->SetLeafConstraint(best_f, best_e);
+    return true;
+  } else {
+    // Could not find a valid constraint; retry next iteration.
+    return false;
+  }
+}
+
+namespace {
+struct FaceCandidate {
+  bool is_join = false;
+  int e1_idx = -1;
+  int e2_idx = -1;
+  std::vector<vec3> face3d;
+  double overlap = -1.0;
+};
+}
+
+// Check if a 2D polygon is strictly convex (all angles strictly positive/CCW, no short edges).
+// Preconditions: poly must have at least 3 vertices and have CCW winding.
+// Postconditions: Returns true if the polygon is strictly convex, false otherwise.
+static bool IsStrictlyConvex(const std::vector<vec2> &poly) {
+  for (int i = 0; i < (int)poly.size(); i++) {
+    vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+    vec2 p_curr = poly[i];
+    vec2 p_next = poly[(i + 1) % poly.size()];
+
+    vec2 e1 = p_curr - p_prev;
+    vec2 e2 = p_next - p_curr;
+
+    double len1 = yocto::length(e1);
+    double len2 = yocto::length(e2);
+
+    if (len1 < 1e-3 || len2 < 1e-3 ||
+        (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Ensures that the vertices of a polygon are in counter-clockwise (CCW) order.
+static void EnsureCCW(std::vector<vec2> &poly) {
+  double area = 0.0;
+  for (int i = 0; i < (int)poly.size(); i++) {
+    vec2 pa = poly[i];
+    vec2 pb = poly[(i + 1) % poly.size()];
+    area += pa.x * pb.y - pb.x * pa.y;
+  }
+  if (area < 0.0) {
+    std::reverse(poly.begin(), poly.end());
+  }
+}
+
+// Generates a random point within the convex hull of feasible_poly using
+// a Dirichlet distribution, and projects it to a maximum distance from the edge center.
+// Preconditions: feasible_poly is non-empty.
+// Postconditions: Returns a valid 2D point.
+static vec2 SampleDirichletPoint(ArcFour *rc,
+                                 const std::vector<vec2> &feasible_poly,
+                                 double edge_len,
+                                 double max_dist) {
+  vec2 pt = {0.0, 0.0};
+  double sum = 0.0;
+  for (const vec2 &fp : feasible_poly) {
+    // -log(U) gives exponential distribution for Dirichlet weights.
+    double w = -std::log(std::max(1.0e-9, RandDouble(rc)));
+    pt.x += w * fp.x;
+    pt.y += w * fp.y;
+    sum += w;
+  }
+  pt.x /= sum;
+  pt.y /= sum;
+
+  vec2 base_pt = {edge_len * 0.5, 0.0};
+  double dist = yocto::length(pt - base_pt);
+  if (dist > max_dist) {
+    pt = base_pt + (pt - base_pt) * (max_dist / dist);
+  }
+  return pt;
+}
+
+// Computes the best regular face candidate among the given boundary edges.
+// Preconditions:
+//  - pp is a valid PartialPolyhedron.
+//  - b_edges contains boundary edges of pp.
+//  - diameter is the current bounding sphere/box diameter of the partial polyhedron.
+// Postconditions:
+//  - Returns a FaceCandidate. If no valid candidate is found, returns one with overlap < 0.
+static FaceCandidate ComputeBestRegularFace(
+    const PartialPolyhedron &pp,
+    ArcFour *rc,
+    const std::vector<int> &b_edges,
+    double diameter) {
+  FaceCandidate best_regular;
+
+  for (int edge_idx : b_edges) {
+    auto [min_angle, max_angle] = pp.ComputeFeasibleAngles(edge_idx);
+    if (max_angle < min_angle + 1e-3) {
+      continue;
+    }
+
+    double subtended = max_angle - min_angle;
+    if (subtended < 1.0e-5) {
+      ctr_no_angle++;
+      continue;
+    }
+
+    double angle = min_angle + RandDouble(rc) * subtended;
+    std::vector<vec2> feasible_poly =
+        pp.ComputeFeasibleRegion(edge_idx, angle);
+
+    // Insist that we have a polygon with area and y
+    // extent; this is a precondition of FaceChooser.
+    {
+      double max_y = 0.0;
+      for (const vec2 &p : feasible_poly) {
+        max_y = std::max(max_y, p.y);
+      }
+
+      if (max_y < 1.0e-5) {
+        ctr_no_feasible++;
+        continue;
+      }
+    }
+
+    const MeshEdge &e = pp.GetEdge(edge_idx);
+    vec3 p0 = pp.GetVertex(e.v0).pos;
+    vec3 p1 = pp.GetVertex(e.v1).pos;
+    vec3 normal_left = pp.GetFace(e.left_face).plane.normal;
+
+    FaceChooser chooser(feasible_poly, p0, p1, normal_left,
+                        angle, diameter);
+
+    static constexpr int NUM_FACE_SAMPLES = 100;
+    std::optional<std::vector<vec2>> best_poly;
+    double best_overlap = -1.0;
+    if constexpr (TRIANGLES_ONLY) {
+      for (int sample = 0; sample < NUM_FACE_SAMPLES; ++sample) {
+        double u = RandDouble(rc);
+        double v = RandDouble(rc);
+        std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
+
+        std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+        if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
+
+        double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
+        if (overlap > best_overlap) {
+          best_overlap = overlap;
+          best_poly = {std::move(poly)};
+        }
+      }
+    } else {
+      for (int sample = 0; sample < NUM_FACE_SAMPLES; sample++) {
+        int num_extra = 1;
+        while (num_extra < 6 && rc->Byte() < 128) {
+          num_extra++;
+        }
+
+        std::vector<vec2> pts;
+        pts.reserve(num_extra + 2);
+        pts.push_back({0.0, 0.0});
+        pts.push_back({chooser.edge_len, 0.0});
+
+        for (int i = 0; i < num_extra; i++) {
+          pts.push_back(SampleDirichletPoint(rc, feasible_poly,
+                                             chooser.edge_len,
+                                             chooser.max_dist));
+        }
+
+        std::vector<int> poly_indices = Hull2D::GrahamScan(pts);
+        if (poly_indices.size() < 3) continue;
+
+        std::vector<vec2> poly;
+        poly.reserve(poly_indices.size());
+        for (int idx : poly_indices) poly.push_back(pts[idx]);
+
+        EnsureCCW(poly);
+
+        // Reorient the polygon to guarantee the attaching boundary edge
+        // is exactly the segment from {0, 0} to {edge_len, 0}.
+        int start_idx = -1;
+        for (int i = 0; i < (int)poly.size(); i++) {
+          vec2 p0_2d = poly[i];
+          vec2 p1_2d = poly[(i + 1) % poly.size()];
+          if (std::abs(p0_2d.x) < 1.0e-5 &&
+              std::abs(p0_2d.y) < 1.0e-5 &&
+              std::abs(p1_2d.x - chooser.edge_len) < 1.0e-5 &&
+              std::abs(p1_2d.y) < 1.0e-5) {
+            start_idx = i;
+            break;
+          }
+        }
+
+        if (start_idx < 0) continue;
+
+        if (start_idx != 0) {
+          std::vector<vec2> reordered;
+          reordered.reserve(poly.size());
+          for (int i = 0; i < (int)poly.size(); i++) {
+            reordered.push_back(poly[(start_idx + i) % poly.size()]);
+          }
+          poly = std::move(reordered);
+        }
+
+        // Clean up the polygon to ensure strictly convex vertices.
+        // If an angle is too flat, remove a vertex. We never remove
+        // the required base vertices at index 0 and 1.
+        bool changed = true;
+        while (changed && poly.size() > 3) {
+          changed = false;
+          for (int i = 0; i < (int)poly.size(); i++) {
+            vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+            vec2 p_curr = poly[i];
+            vec2 p_next = poly[(i + 1) % poly.size()];
+
+            vec2 e1 = p_curr - p_prev;
+            vec2 e2 = p_next - p_curr;
+
+            double len1 = yocto::length(e1);
+            double len2 = yocto::length(e2);
+
+            // Check for short edges or angles that are too flat
+            // (sin(θ) <= 1e-3)
+            if (len1 < 1e-3 || len2 < 1e-3 ||
+                (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
+              int remove_idx = i;
+              if (i == 0) remove_idx = (int)poly.size() - 1;
+              else if (i == 1) remove_idx = 2;
+
+              poly.erase(poly.begin() + remove_idx);
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        // Final strict convexity check (also catches poly.size() == 3)
+        if (!IsStrictlyConvex(poly)) continue;
+
+        std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+        if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
+
+        double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
+        if (overlap > best_overlap) {
+          best_overlap = overlap;
+          best_poly = {std::move(poly)};
+        }
+      }
+    }
+
+    if (best_poly.has_value() && best_overlap > best_regular.overlap) {
+      best_regular.is_join = false;
+      best_regular.e1_idx = edge_idx;
+      best_regular.face3d = chooser.ConvertTo3D(best_poly.value());
+      best_regular.overlap = best_overlap;
+    }
+  }
+
+  return best_regular;
+}
+
+// Computes the best join face candidate among adjacent boundary edge pairs.
+// join_pairs is a list of consecutive boundary edge index pairs.
+// diameter is the current approximate diameter of the pp.
+static std::optional<FaceCandidate> ComputeBestJoinFace(
+    const PartialPolyhedron &pp,
+    ArcFour *rc,
+    const std::vector<std::pair<int, int>> &join_pairs,
+    double diameter) {
+  FaceCandidate best_join;
+
+  for (const auto &[e1_idx, e2_idx] : join_pairs) {
+    auto opt_region = pp.ComputeJoinFeasibleRegion(e1_idx, e2_idx);
+    if (!opt_region.has_value()) {
+      continue;
+    }
+
+    const auto &[plane, feasible_poly] = opt_region.value();
+    double max_y = 0.0;
+    for (const vec2 &p : feasible_poly) {
+      max_y = std::max(max_y, p.y);
+    }
+
+    if (max_y < 1.0e-5) {
+      continue;
+    }
+
+    const MeshEdge &e1 = pp.GetEdge(e1_idx);
+    const MeshEdge &e2 = pp.GetEdge(e2_idx);
+    vec3 p0 = pp.GetVertex(e1.v0).pos;
+    vec3 p1 = pp.GetVertex(e1.v1).pos;
+    vec3 p2 = pp.GetVertex(e2.v1).pos;
+
+    JoinFaceChooser chooser(
+        feasible_poly, p0, p1, p2, plane.normal, diameter);
+
+    static constexpr int NUM_FACE_SAMPLES = 100;
+    std::optional<std::vector<vec2>> best_poly;
+    double best_overlap = -1.0;
+
+    if constexpr (TRIANGLES_ONLY) {
+      std::vector<vec2> poly = chooser.Triangular2DFace();
+      std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+      if (!pp.JoinFeasibilityProblem(e1_idx, e2_idx, face3d)) {
+        double overlap =
+          pp.MeasureJoinOverlapFraction(e1_idx, e2_idx, poly);
+        best_overlap = overlap;
+        best_poly = {std::move(poly)};
+      }
+    } else {
+      // Try the singular triangular joining face first.
+      {
+        std::vector<vec2> poly = chooser.Triangular2DFace();
+        std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+        if (!pp.JoinFeasibilityProblem(e1_idx, e2_idx, face3d)) {
+          double overlap =
+            pp.MeasureJoinOverlapFraction(e1_idx, e2_idx, poly);
+          best_overlap = overlap;
+          best_poly = {std::move(poly)};
+        }
+      }
+
+      for (int sample = 0; sample < NUM_FACE_SAMPLES; sample++) {
+        int num_extra = 1;
+        while (num_extra < 6 && (rc->Byte() & 1)) {
+          num_extra++;
+        }
+
+        std::vector<vec2> pts;
+        pts.reserve(num_extra + 3);
+        pts.push_back(chooser.p2_2d);
+        pts.push_back({0.0, 0.0});
+        pts.push_back({chooser.edge_len, 0.0});
+
+        for (int i = 0; i < num_extra; i++) {
+          pts.push_back(SampleDirichletPoint(rc, feasible_poly,
+                                             chooser.edge_len,
+                                             chooser.max_dist));
+        }
+
+        std::vector<int> poly_indices = Hull2D::GrahamScan(pts);
+        if (poly_indices.size() < 3) continue;
+
+        std::vector<vec2> poly;
+        poly.reserve(poly_indices.size());
+        for (int idx : poly_indices) poly.push_back(pts[idx]);
+
+        EnsureCCW(poly);
+
+        int start_idx = -1;
+        for (int i = 0; i < (int)poly.size(); i++) {
+          vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+          vec2 p_curr = poly[i];
+          vec2 p_next = poly[(i + 1) % poly.size()];
+          if (std::abs(p_curr.x) < 1.0e-5 && std::abs(p_curr.y) < 1.0e-5 &&
+              std::abs(p_next.x - chooser.edge_len) < 1.0e-5 &&
+              std::abs(p_next.y) < 1.0e-5 &&
+              std::abs(p_prev.x - chooser.p2_2d.x) < 1.0e-5 &&
+              std::abs(p_prev.y - chooser.p2_2d.y) < 1.0e-5) {
+            start_idx = i;
+            break;
+          }
+        }
+
+        if (start_idx < 0) continue;
+
+        int reorder_start = (start_idx + poly.size() - 1) % poly.size();
+        if (reorder_start != 0) {
+          std::vector<vec2> reordered;
+          reordered.reserve(poly.size());
+          for (int i = 0; i < (int)poly.size(); i++) {
+            reordered.push_back(poly[(reorder_start + i) % poly.size()]);
+          }
+          poly = std::move(reordered);
+        }
+
+        bool changed = true;
+        while (changed && poly.size() > 3) {
+          changed = false;
+          for (int i = 0; i < (int)poly.size(); i++) {
+            vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
+            vec2 p_curr = poly[i];
+            vec2 p_next = poly[(i + 1) % poly.size()];
+
+            vec2 e1 = p_curr - p_prev;
+            vec2 e2 = p_next - p_curr;
+
+            double len1 = yocto::length(e1);
+            double len2 = yocto::length(e2);
+
+            if (len1 < 1e-3 || len2 < 1e-3 ||
+                (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
+              int remove_idx = i;
+              if (i == 0) remove_idx = (int)poly.size() - 1;
+              else if (i == 1) remove_idx = (int)poly.size() - 1;
+              else if (i == 2) remove_idx = 3;
+
+              if (remove_idx == 0 || remove_idx == 1 || remove_idx == 2) {
+                continue;
+              }
+
+              poly.erase(poly.begin() + remove_idx);
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (!IsStrictlyConvex(poly)) continue;
+
+        std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+        if (pp.JoinFeasibilityProblem(e1_idx, e2_idx, face3d)) continue;
+
+        double overlap =
+          pp.MeasureJoinOverlapFraction(e1_idx, e2_idx, poly);
+        if (overlap > best_overlap) {
+          best_overlap = overlap;
+          best_poly = {std::move(poly)};
+        }
+      }
+    }
+
+    if (best_poly.has_value() && best_overlap > best_join.overlap) {
+      best_join.is_join = true;
+      best_join.e1_idx = e1_idx;
+      best_join.e2_idx = e2_idx;
+      best_join.face3d = chooser.ConvertTo3D(best_poly.value());
+      best_join.overlap = best_overlap;
+    }
+  }
+
+  if (best_join.overlap < 0.0) {
+    return std::nullopt;
+  } else {
+    return {best_join};
+  }
+}
 
 static std::pair<Polyhedron, std::optional<std::pair<int, int>>>
 MakeConstructInternal(StatusBar *status,
@@ -169,85 +682,25 @@ MakeConstructInternal(StatusBar *status,
         return std::clamp(r, 4, target_faces - 2);
       }();
 
-    while (pp.NumFaces() < target_faces) {
-      if (leaf_ih && pp.NumFaces() >= leaf_target &&
+
+    for (;;) {
+      const int num_faces = pp.NumFaces();
+      if (num_faces >= target_faces) {
+        // Done!
+        break;
+      }
+
+      if (leaf_ih && num_faces >= leaf_target &&
           !pp.GetLeafConstraint().has_value()) {
-        int best_count = 999999;
-        std::vector<std::pair<int, int>> best_constraints;
-
-        for (int f = 0; f < pp.NumFaces(); f++) {
-          // To ensure f can be a leaf, check that removing f does not
-          // disconnect the dual graph. While a completed convex
-          // polyhedron's dual graph is 3-connected (so any face can
-          // be a leaf), this PartialPolyhedron's open patch can have
-          // cut vertices (e.g. if it's just a chain).
-          int start_face = (f == 0) ? 1 : 0;
-          std::vector<int> q = {start_face};
-          std::vector<bool> vis(pp.NumFaces(), false);
-          vis[f] = true;
-          vis[start_face] = true;
-          int reached = 1;
-          int head = 0;
-          while (head < (int)q.size()) {
-            int curr = q[head++];
-            for (int ce : pp.GetFace(curr).edges) {
-              const MeshEdge &edge = pp.GetEdge(ce);
-              int neighbor = (edge.left_face == curr) ? edge.right_face :
-                                                        edge.left_face;
-              if (neighbor != -1 && !vis[neighbor]) {
-                vis[neighbor] = true;
-                q.push_back(neighbor);
-                reached++;
-              }
-            }
-          }
-
-          if (reached < pp.NumFaces() - 1) continue;
-
-          for (int e : pp.GetFace(f).edges) {
-            // The tree uses internal edges, so boundary edges are not
-            // valid choices.
-            if (pp.GetEdge(e).right_face == -1) continue;
-
-            int count = 0;
-            for (const Unfolding &unf : pp.GetUnfoldings()) {
-              int connected_count = 0;
-              bool target_connected = false;
-              for (int fe : pp.GetFace(f).edges) {
-                if (std::find(unf.tree_edges.begin(),
-                              unf.tree_edges.end(), fe) !=
-                    unf.tree_edges.end()) {
-                  if (fe == e) target_connected = true;
-                  connected_count++;
-                }
-              }
-              if (target_connected && connected_count == 1) {
-                count++;
-              }
-            }
-
-            if (count < best_count) {
-              best_count = count;
-              best_constraints.clear();
-              best_constraints.emplace_back(f, e);
-            } else if (count == best_count) {
-              best_constraints.emplace_back(f, e);
-            }
-          }
-        }
-
-        if (!best_constraints.empty()) {
-          auto [best_f, best_e] =
-              best_constraints[RandTo(rc, (int)best_constraints.size())];
-          pp.SetLeafConstraint(best_f, best_e);
-        } else {
-          // Could not find a valid constraint; retry next iteration.
+        if (!AddLeafConstraint(rc, &pp)) {
+          // Try again next round.
           leaf_target++;
         }
       }
 
       std::vector<int> b_edges = pp.GetBoundaryEdges();
       if (b_edges.empty()) {
+        ctr_boundary_closed++;
         break;
       }
 
@@ -274,225 +727,72 @@ MakeConstructInternal(StatusBar *status,
 
       auto [min_v, max_v] = pp.AABB();
       const double diameter = yocto::length(max_v - min_v);
-
       bool face_added = false;
-      for (int edge_idx : b_edges) {
-        auto [min_angle, max_angle] = pp.ComputeFeasibleAngles(edge_idx);
-        if (max_angle < min_angle + 1e-3) {
-          continue;
-        }
 
-        double subtended = max_angle - min_angle;
-        if (subtended < 1.0e-5) {
-          ctr_no_angle++;
-          continue;
-        }
-
-        double angle = min_angle + RandDouble(rc) * subtended;
-        std::vector<vec2> feasible_poly =
-            pp.ComputeFeasibleRegion(edge_idx, angle);
-
-        // Insist that we have a polygon with area and y
-        // extent; this is a precondition of FaceChooser.
-        {
-          double max_y = 0.0;
-          for (const vec2 &p : feasible_poly) {
-            max_y = std::max(max_y, p.y);
+      std::vector<std::pair<int, int>> join_pairs;
+      for (int e1 : b_edges) {
+        for (int e2 : b_edges) {
+          if (pp.GetEdge(e1).v1 == pp.GetEdge(e2).v0) {
+            join_pairs.push_back({e1, e2});
           }
-
-          if (max_y < 1.0e-5) {
-            ctr_no_feasible++;
-            continue;
-          }
-        }
-
-        const MeshEdge &e = pp.GetEdge(edge_idx);
-        vec3 p0 = pp.GetVertex(e.v0).pos;
-        vec3 p1 = pp.GetVertex(e.v1).pos;
-        vec3 normal_left = pp.GetFace(e.left_face).plane.normal;
-
-        FaceChooser chooser(feasible_poly, p0, p1, normal_left,
-                            angle, diameter);
-
-        static constexpr int NUM_FACE_SAMPLES = 100;
-        std::optional<std::vector<vec2>> best_poly;
-        if constexpr (TRIANGLES_ONLY) {
-          double best_overlap = -1.0;
-          for (int sample = 0; sample < NUM_FACE_SAMPLES; ++sample) {
-            double u = RandDouble(rc);
-            double v = RandDouble(rc);
-            std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
-
-            std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
-            if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
-
-            double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
-            if (overlap > best_overlap) {
-              best_overlap = overlap;
-              best_poly = {std::move(poly)};
-            }
-          }
-        } else {
-
-          double best_overlap = -1.0;
-          for (int sample = 0; sample < NUM_FACE_SAMPLES; sample++) {
-            int num_extra = 1;
-            while (num_extra < 6 && rc->Byte() < 128) {
-              num_extra++;
-            }
-
-            std::vector<vec2> pts;
-            pts.reserve(num_extra + 2);
-            pts.push_back({0.0, 0.0});
-            pts.push_back({chooser.edge_len, 0.0});
-
-            for (int i = 0; i < num_extra; i++) {
-              vec2 pt = {0.0, 0.0};
-              double sum = 0.0;
-              for (const vec2 &fp : feasible_poly) {
-                // -log(U) gives exponential distribution for Dirichlet weights.
-                double w = -std::log(std::max(1.0e-9, RandDouble(rc)));
-                pt.x += w * fp.x;
-                pt.y += w * fp.y;
-                sum += w;
-              }
-              pt.x /= sum;
-              pt.y /= sum;
-
-              vec2 base_pt = {chooser.edge_len * 0.5, 0.0};
-              double dist = yocto::length(pt - base_pt);
-              if (dist > chooser.max_dist) {
-                pt = base_pt + (pt - base_pt) * (chooser.max_dist / dist);
-              }
-              pts.push_back(pt);
-            }
-
-            std::vector<int> poly_indices = Hull2D::GrahamScan(pts);
-            if (poly_indices.size() < 3) continue;
-
-            std::vector<vec2> poly;
-            poly.reserve(poly_indices.size());
-            for (int idx : poly_indices) poly.push_back(pts[idx]);
-
-            // Ensure CCW winding so that the base edge is
-            // {0,0} -> {edge_len,0}.
-            double area = 0.0;
-            for (int i = 0; i < (int)poly.size(); i++) {
-              vec2 pa = poly[i];
-              vec2 pb = poly[(i + 1) % poly.size()];
-              area += pa.x * pb.y - pb.x * pa.y;
-            }
-            if (area < 0.0) {
-              std::reverse(poly.begin(), poly.end());
-            }
-
-            // Reorient the polygon to guarantee the attaching boundary edge
-            // is exactly the segment from {0,0} to {edge_len, 0}.
-            int start_idx = -1;
-            for (int i = 0; i < (int)poly.size(); i++) {
-              vec2 p0 = poly[i];
-              vec2 p1 = poly[(i + 1) % poly.size()];
-              if (std::abs(p0.x) < 1.0e-5 && std::abs(p0.y) < 1.0e-5 &&
-                  std::abs(p1.x - chooser.edge_len) < 1.0e-5 &&
-                  std::abs(p1.y) < 1.0e-5) {
-                start_idx = i;
-                break;
-              }
-            }
-
-            if (start_idx < 0) continue;
-
-            if (start_idx != 0) {
-              std::vector<vec2> reordered;
-              reordered.reserve(poly.size());
-              for (int i = 0; i < (int)poly.size(); i++) {
-                reordered.push_back(poly[(start_idx + i) % poly.size()]);
-              }
-              poly = std::move(reordered);
-            }
-
-            // Clean up the polygon to ensure strictly convex vertices.
-            // If an angle is too flat, remove a vertex. We never remove
-            // the required base vertices at index 0 and 1.
-            bool changed = true;
-            while (changed && poly.size() > 3) {
-              changed = false;
-              for (int i = 0; i < (int)poly.size(); i++) {
-                vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
-                vec2 p_curr = poly[i];
-                vec2 p_next = poly[(i + 1) % poly.size()];
-
-                vec2 e1 = p_curr - p_prev;
-                vec2 e2 = p_next - p_curr;
-
-                double len1 = yocto::length(e1);
-                double len2 = yocto::length(e2);
-
-                // Check for short edges or angles that are too flat
-                // (sin(θ) <= 1e-3)
-                if (len1 < 1e-3 || len2 < 1e-3 ||
-                    (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
-                  int remove_idx = i;
-                  if (i == 0) remove_idx = (int)poly.size() - 1;
-                  else if (i == 1) remove_idx = 2;
-
-                  poly.erase(poly.begin() + remove_idx);
-                  changed = true;
-                  break;
-                }
-              }
-            }
-
-            // Final strict convexity check (also catches poly.size() == 3)
-            bool strictly_convex = true;
-            for (int i = 0; i < (int)poly.size(); i++) {
-              vec2 p_prev = poly[(i + poly.size() - 1) % poly.size()];
-              vec2 p_curr = poly[i];
-              vec2 p_next = poly[(i + 1) % poly.size()];
-
-              vec2 e1 = p_curr - p_prev;
-              vec2 e2 = p_next - p_curr;
-
-              double len1 = yocto::length(e1);
-              double len2 = yocto::length(e2);
-
-              if (len1 < 1e-3 || len2 < 1e-3 ||
-                  (e1.x * e2.y - e1.y * e2.x) <= 1.0e-3 * len1 * len2) {
-                strictly_convex = false;
-                break;
-              }
-            }
-            if (!strictly_convex) continue;
-
-            std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
-            if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
-
-            double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
-            if (overlap > best_overlap) {
-              best_overlap = overlap;
-              best_poly = {std::move(poly)};
-            }
-          }
-
-
-        }
-
-        if (best_poly.has_value()) {
-          std::vector<vec3> best_face = chooser.ConvertTo3D(best_poly.value());
-          if (const char *problem =
-              pp.FeasibilityProblem(edge_idx, best_face)) {
-            status->Print("Not Feasible: " AGREY("{}") "\n", problem);
-            ctr_face_not_feasible++;
-            continue;
-          }
-
-          pp.AddFace(edge_idx, best_face);
-          pp.ReplenishUnfoldings();
-          face_added = true;
-          break;
         }
       }
 
+      FaceCandidate best_regular =
+        ComputeBestRegularFace(pp, rc, b_edges, diameter);
+
+      std::optional<FaceCandidate> best_join =
+        ComputeBestJoinFace(pp, rc, join_pairs, diameter);
+
+      if (b_edges.size() == 3 &&
+          best_join.has_value() &&
+          best_join.value().face3d.size() == 3) {
+        // This would close the polyhedron. Only allow it if
+        // it has perfect overlap, or we have reached our
+        // target faces anyway.
+        if (best_join.value().overlap >= 1.0 ||
+            num_faces >= target_faces - 1) {
+          // ok
+        } else {
+          ctr_no_close++;
+          best_join = std::nullopt;
+        }
+      }
+
+      FaceCandidate chosen;
+      if (best_join.has_value() &&
+          best_join.value().overlap >= 0.0 &&
+          best_join.value().overlap >= best_regular.overlap - 0.05) {
+        chosen = std::move(best_join.value());
+      } else if (best_regular.overlap >= 0.0) {
+        chosen = std::move(best_regular);
+      }
+
+      if (chosen.overlap >= 0.0) {
+        if (chosen.is_join) {
+          if (const char *problem =
+              pp.JoinFeasibilityProblem(chosen.e1_idx,
+                                        chosen.e2_idx,
+                                        chosen.face3d)) {
+            status->Print("Join Not Feasible: " AGREY("{}") "\n", problem);
+            ctr_face_not_feasible++;
+          } else {
+            pp.AddJoinFace(chosen.e1_idx, chosen.e2_idx, chosen.face3d);
+            pp.ReplenishUnfoldings();
+            face_added = true;
+          }
+        } else {
+          if (const char *problem =
+              pp.FeasibilityProblem(chosen.e1_idx, chosen.face3d)) {
+            status->Print("Not Feasible: " AGREY("{}") "\n", problem);
+            ctr_face_not_feasible++;
+          } else {
+            pp.AddFace(chosen.e1_idx, chosen.face3d);
+            pp.ReplenishUnfoldings();
+            face_added = true;
+          }
+        }
+      }
       if (!face_added) {
         break;
       }
@@ -512,7 +812,9 @@ MakeConstructInternal(StatusBar *status,
     if (opoly.value().faces->NumFaces() >= max_faces) {
       ctr_too_big++;
       continue;
-    }    std::optional<std::pair<int, int>> mapped_constraint =
+    }
+
+    std::optional<std::pair<int, int>> mapped_constraint =
         MapConstraint(pp, opoly.value());
 
     return std::make_pair(std::move(opoly.value()), mapped_constraint);

@@ -287,6 +287,8 @@ struct PartialPolyhedron {
   }
 
   // Returns indices of all edges that have right_face == -1.
+  // TODO: Maybe store the boundary explicitly and return this
+  // with a consistent winding order.
   std::vector<int> GetBoundaryEdges() const;
 
   const std::vector<Unfolding> &GetUnfoldings() const {
@@ -385,6 +387,12 @@ struct FaceChooser {
       // which we use to limit the sampled face's size.
       double diameter);
 
+  FaceChooser(
+      const std::vector<vec2> &feasible_poly,
+      const vec3 &p0, const vec3 &p1,
+      const vec3 &normal,
+      double diameter);
+
   // Generates a 2D triangular face given two continuous parameters in [0, 1].
   // u determines the base point along the boundary edge.
   // v determines the height of the new vertex towards the feasible top.
@@ -416,6 +424,22 @@ struct FaceChooser {
     return poly3d;
   }
 
+};
+
+// Sample a join face that connects two adjacent boundary edges.
+struct JoinFaceChooser : public FaceChooser {
+  vec3 p2 = {};
+  vec2 p2_2d = {};
+
+  JoinFaceChooser(
+      const std::vector<vec2> &feasible_poly,
+      const vec3 &p0, const vec3 &p1, const vec3 &p2,
+      const vec3 &normal,
+      double diameter);
+
+  std::vector<vec2> Triangular2DFace() const {
+    return {p2_2d, {0.0, 0.0}, {edge_len, 0.0}};
+  }
 };
 
 

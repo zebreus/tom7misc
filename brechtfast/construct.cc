@@ -692,6 +692,12 @@ void PartialPolyhedron::ReplenishUnfoldings() {
       }
     }
 
+    // TODO: When the polyhedron is small, there won't even
+    // be that many distinct bit strings, let alone valid
+    // unfoldings! We could just exhaustively check them, or
+    // use a lower threshold in this case. A collision is
+    // itself a good statistical indication that there are
+    // not a lot of possible trees.
     if (existing_trees.contains(tree_bits)) {
       consecutive_failures++;
       continue;
@@ -1595,6 +1601,26 @@ FaceChooser::FaceChooser(
   x_dir = yocto::normalize(p0 - p1);
   y_dir = yocto::cross(n_new, x_dir);
 
+  edge_len = yocto::length(p0 - p1);  v_top = {0.0, 0.0};
+  for (int j = 0; j < (int)feasible_poly.size(); j++) {
+    if (feasible_poly[j].y > v_top.y) {
+      v_top = feasible_poly[j];
+    }
+  }
+  CHECK(v_top.y > 1e-5) << "Polygon must have area in +y";
+
+  max_dist = std::max(edge_len, diameter * MAX_DIAMETER_RATIO);
+}
+
+FaceChooser::FaceChooser(
+    const std::vector<vec2> &feasible_poly,
+    const vec3 &p0, const vec3 &p1,
+    const vec3 &normal,
+    double diameter) : p0(p0), p1(p1) {
+  origin = p1;
+  x_dir = yocto::normalize(p0 - p1);
+  y_dir = yocto::cross(normal, x_dir);
+
   edge_len = yocto::length(p0 - p1);
 
   v_top = {0.0, 0.0};
@@ -1608,3 +1634,11 @@ FaceChooser::FaceChooser(
   max_dist = std::max(edge_len, diameter * MAX_DIAMETER_RATIO);
 }
 
+JoinFaceChooser::JoinFaceChooser(
+    const std::vector<vec2> &feasible_poly,
+    const vec3 &p0, const vec3 &p1, const vec3 &p2,
+    const vec3 &normal,
+    double diameter)
+  : FaceChooser(feasible_poly, p0, p1, normal, diameter), p2(p2) {
+  p2_2d = {yocto::dot(p2 - origin, x_dir), yocto::dot(p2 - origin, y_dir)};
+}

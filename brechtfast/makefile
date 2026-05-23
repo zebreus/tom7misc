@@ -34,9 +34,9 @@ MALLOC_LFLAGS=-lmimalloc
 
 # OPT=-O -g
 # For profiling (high optimization, debug symbols, frame pointers, no LTO):
-# OPT=-O3 -g -fno-omit-frame-pointer -gcodeview
+OPT=-O3 -g -fno-omit-frame-pointer -gcodeview
 
-OPT=-g -mtune=native -O3 -flto=thin
+# OPT=-g -mtune=native -O3 -flto=thin
 # ASAN=-g -fsanitize=address -fsanitize=undefined
 # OPT=-O
 
@@ -77,7 +77,7 @@ brechtfast.exe : brechtfast.o $(OBJECTS)
 	@echo -n "!"
 
 leaffast.exe : leaffast.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)  -Wl,--pdb=leaffast.pdb
 	@echo -n "!"
 
 query.exe : query.o $(OBJECTS)
