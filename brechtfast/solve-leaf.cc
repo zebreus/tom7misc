@@ -552,6 +552,15 @@ std::optional<BitString> SolveLeaf::FindLeafUnfolding(
     int face_idx,
     int edge_idx,
     std::optional<double> max_stretch) {
+  const Faces &faces = *aug.poly.faces;
+  if (face_idx < 0 || face_idx >= faces.NumFaces() ||
+      edge_idx < 0 || edge_idx >= faces.NumEdges()) {
+    return std::nullopt;
+  }
+  const Faces::Edge &edge = faces.edges[edge_idx];
+  if (edge.f0 != face_idx && edge.f1 != face_idx) {
+    return std::nullopt;
+  }
 
   return MultiSolve(aug, face_idx, edge_idx, max_stretch);
 }

@@ -359,8 +359,7 @@ struct PartialPolyhedron {
 
   static bool UnfoldedFacesOverlap(const UnfoldedFace &f1,
                                    const UnfoldedFace &f2);
-  static bool HasSeparatingAxis(std::span<const vec2> poly1,
-                                std::span<const vec2> poly2);
+
   // Checks whether the 2D polygons in a candidate unfolding overlap.
   // The unfolding must also admit the leaf_constraint if present.
   bool IsUnfoldingValid(const Unfolding &unfolding) const;

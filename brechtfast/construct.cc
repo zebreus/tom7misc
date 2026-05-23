@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "albrecht.h"
 #include "base/stringprintf.h"
 #include "bit-string.h"
 #include "geom/hull-2d.h"
@@ -1434,57 +1435,8 @@ bool PartialPolyhedron::UnfoldedFacesOverlap(const UnfoldedFace &f1,
   if (!AABBOverlap(f1.aabb, f2.aabb)) {
     return false;
   }
-  return !HasSeparatingAxis(f1.vertices, f2.vertices) &&
-         !HasSeparatingAxis(f2.vertices, f1.vertices);
-}
-
-bool PartialPolyhedron::HasSeparatingAxis(
-    std::span<const vec2> poly1,
-    std::span<const vec2> poly2) {
-  for (int i = 0; i < (int)poly1.size(); i++) {
-    vec2 a = poly1[i];
-    vec2 b = poly1[(i + 1) % poly1.size()];
-    vec2 edge = b - a;
-    double len = yocto::length(edge);
-    if (len < 1e-7) {
-      continue;
-    }
-
-    double cross_limit = 1e-5 * len;
-
-    // Determine which side of this edge is the interior of poly1
-    double interior_sign = 0.0;
-    for (int k = 0; k < (int)poly1.size(); k++) {
-      double cr = yocto::cross(edge, poly1[k] - a);
-      if (std::abs(cr) > cross_limit) {
-        interior_sign = cr;
-        break;
-      }
-    }
-
-    if (interior_sign == 0.0) {
-      continue;
-    }
-
-    // Check if poly2 is entirely on the outside (or on the boundary)
-    bool all_outside_or_on = true;
-    for (int k = 0; k < (int)poly2.size(); k++) {
-      vec2 v = poly2[k];
-      double cr = yocto::cross(edge, v - a);
-      if (interior_sign > 0.0 && cr > cross_limit) {
-        all_outside_or_on = false;
-        break;
-      } else if (interior_sign < 0.0 && cr < -cross_limit) {
-        all_outside_or_on = false;
-        break;
-      }
-    }
-
-    if (all_outside_or_on) {
-      return true;
-    }
-  }
-  return false;
+  return !Albrecht::HasSeparatingAxis(f1.vertices, f2.vertices) &&
+    !Albrecht::HasSeparatingAxis(f2.vertices, f1.vertices);
 }
 
 double PartialPolyhedron::MeasureOverlapFraction(
