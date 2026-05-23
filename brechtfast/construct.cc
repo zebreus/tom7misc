@@ -4,18 +4,22 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <numbers>
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "base/stringprintf.h"
+#include "bit-string.h"
 #include "geom/hull-2d.h"
 #include "geom/hull-3d.h"
 #include "geom/polyhedra.h"
 #include "randutil.h"
+#include "union-find.h"
 #include "yocto-math.h"
 
 void PartialPolyhedron::CheckValidity() const {
@@ -550,7 +554,8 @@ bool PartialPolyhedron::IsUnfoldingValid(const Unfolding &unfolding) const {
   return true;
 }
 
-void PartialPolyhedron::InvalidatePerLeafConstraint(int face_idx, int edge_idx) {
+void PartialPolyhedron::InvalidatePerLeafConstraint(int face_idx,
+                                                    int edge_idx) {
   std::vector<Unfolding> valid;
   for (Unfolding &unf : unfoldings) {
     if (IsUnfoldingValid(unf)) {
@@ -580,107 +585,131 @@ void PartialPolyhedron::ReplenishUnfoldings() {
     }
   }
 
-  // Find all dual edges to build spanning trees over the faces.
-  struct DualEdge {
-    int e_idx, f1, f2;
-  };
-  std::vector<DualEdge> dual_edges;
-  for (int i = 0; i < NumEdges(); ++i) {
-    if (edges[i].left_face != -1 && edges[i].right_face != -1) {
-      dual_edges.push_back({i, edges[i].left_face, edges[i].right_face});
-    }
+  // Prepare the edges once. We keep sorting it in place.
+  const int num_edges = NumEdges();
+  std::vector<int> shuffled_edges;
+  shuffled_edges.reserve(num_edges);
+
+  if (leaf_constraint.has_value()) {
+    const auto &[fidx, eidx] = leaf_constraint.value();
+    shuffled_edges.push_back(eidx);
   }
 
-  // We uniquely identify an unfolding by its sorted set of tree edges.
-  std::vector<std::vector<int>> existing_trees;
+  for (int i = 0; i < num_edges; i++) {
+    const MeshEdge &mesh_edge = edges[i];
+    // Skip boundary edges.
+    if (mesh_edge.left_face == -1 || mesh_edge.right_face == -1)
+      continue;
+
+    if (leaf_constraint.has_value()) {
+      const auto &[fidx, eidx] = leaf_constraint.value();
+
+      // Skip it if it's attached to the constrained face. Note that
+      // this includes eidx, but we added that above.
+      if (mesh_edge.left_face == fidx || mesh_edge.right_face == fidx) {
+        continue;
+      }
+    }
+
+    shuffled_edges.push_back(i);
+  }
+
+  auto ShuffleEdges = [&]{
+      std::span<int> shuffle_me(shuffled_edges);
+      if (leaf_constraint.has_value()) {
+        // Leave the forced edge in the first position.
+        Shuffle(rc, shuffle_me.subspan(1));
+      } else {
+        Shuffle(rc, shuffle_me);
+      }
+    };
+
+  // We uniquely identify an unfolding by its set of tree edges.
+  std::unordered_set<BitString, std::hash<BitString>, std::equal_to<>>
+    existing_trees;
   for (const Unfolding &unf : unfoldings) {
-    std::vector<int> tree_edges = unf.tree_edges;
-    std::sort(tree_edges.begin(), tree_edges.end());
-    existing_trees.push_back(std::move(tree_edges));
+    BitString bs(NumEdges());
+    for (int e : unf.tree_edges) {
+      bs.Set(e, true);
+    }
+    existing_trees.insert(std::move(bs));
   }
 
   int consecutive_failures = 0;
   int max_failures = 1000;
 
-  while ((int)unfoldings.size() < target_unfoldings &&
-         consecutive_failures < max_failures) {
-    // Generate a random spanning tree by assigning random weights.
-    std::vector<std::pair<double, int>> edge_weights;
-    for (int i = 0; i < (int)dual_edges.size(); ++i) {
-      double weight = RandDouble(rc);
-      // If constrained, place it at the front or back, which will
-      // essentially force the constraint to be true.
-      if (leaf_constraint.has_value()) {
-        const auto &[fidx, eidx] = leaf_constraint.value();
-        if (dual_edges[i].e_idx == eidx) {
-          weight = -999.0;
-        } else if (dual_edges[i].f1 == fidx || dual_edges[i].f2 == fidx) {
-          weight = 999.0;
-        }
-      }
-      edge_weights.push_back({weight, i});
-    }
-    std::sort(edge_weights.begin(), edge_weights.end());
+  // If we don't have this many, then we try especially hard.
+  int min_tolerable = std::min(target_unfoldings, 2);
+  int max_persistent_failures = 1000000;
 
-    std::vector<int> parent(NumFaces());
-    for (int i = 0; i < NumFaces(); ++i) parent[i] = i;
+  auto KeepGoing = [&]() {
+      // Stop if we have enough.
+      if (unfoldings.size() >= target_unfoldings) return false;
 
-    auto Find = [&](int i) {
-      int root = i;
-      while (root != parent[root]) root = parent[root];
-      int curr = i;
-      while (curr != root) {
-        int nxt = parent[curr];
-        parent[curr] = root;
-        curr = nxt;
+      // Try really hard if we don't have a minimal number of
+      // unfoldings. We would essentially like to try "forever,"
+      // but we don't actually want to get stuck if we find a
+      // real counterexample!
+      if (unfoldings.size() < min_tolerable) {
+        return consecutive_failures < max_persistent_failures;
       }
-      return root;
+
+      return consecutive_failures < max_failures;
     };
 
-    auto Union = [&](int i, int j) {
-      int root_i = Find(i);
-      int root_j = Find(j);
-      if (root_i != root_j) {
-        parent[root_i] = root_j;
-        return true;
-      }
-      return false;
-    };
+  // Declare reusable structures outside the loop to avoid allocations.
+  UnionFind uf(NumFaces());
+  BitString tree_bits(NumEdges());
+  std::vector<int> tree_edges;
+  tree_edges.reserve(NumFaces());
+  std::vector<std::vector<int>> adj(NumFaces());
+  Unfolding temp_unf;
+  temp_unf.faces.resize(NumFaces());
+  std::vector<bool> placed(NumFaces());
+  std::vector<int> q;
+  std::vector<int> placed_order;
 
-    std::vector<int> tree_edges;
-    std::vector<std::vector<int>> adj(NumFaces());
-    for (const auto &ew : edge_weights) {
-      const DualEdge &de = dual_edges[ew.second];
-      if (Union(de.f1, de.f2)) {
-        tree_edges.push_back(de.e_idx);
-        adj[de.f1].push_back(de.e_idx);
-        adj[de.f2].push_back(de.e_idx);
+  while (KeepGoing()) {
+    // Choose a random order in which to try to connected edges.
+    // If we have a leaf constraint, we exclude forbidden edges and
+    // put the required edge first.
+    ShuffleEdges();
+
+    uf.Reset();
+    tree_bits.Clear(false);
+    tree_edges.clear();
+    for (auto &list : adj) {
+      list.clear();
+    }
+
+    for (const int eidx : shuffled_edges) {
+      const MeshEdge &me = edges[eidx];
+      if (uf.Union(me.left_face, me.right_face)) {
+        tree_edges.push_back(eidx);
+        tree_bits.Set(eidx, true);
+        adj[me.left_face].push_back(eidx);
+        adj[me.right_face].push_back(eidx);
       }
     }
-    std::sort(tree_edges.begin(), tree_edges.end());
 
-    bool found = false;
-    for (const auto &ext : existing_trees) {
-      if (ext == tree_edges) {
-        found = true;
-        break;
-      }
-    }
-    if (found) {
+    if (existing_trees.contains(tree_bits)) {
       consecutive_failures++;
       continue;
     }
 
     // Unfold in 2D using the tree topology.
-    Unfolding unf;
-    unf.faces.resize(NumFaces());
-    unf.tree_edges = tree_edges;
-    std::vector<bool> placed(NumFaces(), false);
+    temp_unf.tree_edges = tree_edges;
+    placed.assign(NumFaces(), false);
 
-    unf.faces[0].vertices = local_shapes[0];
+    temp_unf.faces[0].vertices = local_shapes[0];
     placed[0] = true;
 
-    std::vector<int> q = {0};
+    q.clear();
+    q.push_back(0);
+    placed_order.clear();
+    placed_order.push_back(0);
+    bool overlap_detected = false;
+
     while (!q.empty()) {
       int curr = q.back();
       q.pop_back();
@@ -698,9 +727,9 @@ void PartialPolyhedron::ReplenishUnfoldings() {
             if (faces[neighbor].edges[k] == e_idx) idx_b = k;
           }
 
-          vec2 p_start = unf.faces[curr].vertices[idx_a];
-          vec2 p_end = unf.faces[curr].vertices[(idx_a + 1) %
-                                                faces[curr].vertices.size()];
+          vec2 p_start = temp_unf.faces[curr].vertices[idx_a];
+          vec2 p_end = temp_unf.faces[curr].vertices[(idx_a + 1) %
+                                                     faces[curr].vertices.size()];
 
           const auto &poly_b = local_shapes[neighbor];
           vec2 q_start = poly_b[idx_b];
@@ -717,27 +746,42 @@ void PartialPolyhedron::ReplenishUnfoldings() {
             sin_theta = (v_q.x * v_p.y - v_q.y * v_p.x) / length_sq;
           }
 
+          temp_unf.faces[neighbor].vertices.clear();
           for (const vec2 &q_pt : poly_b) {
             vec2 d = q_pt - q_start;
             vec2 rot_d;
             rot_d.x = d.x * cos_theta - d.y * sin_theta;
             rot_d.y = d.x * sin_theta + d.y * cos_theta;
-            unf.faces[neighbor].vertices.push_back(p_end + rot_d);
+            temp_unf.faces[neighbor].vertices.push_back(p_end + rot_d);
           }
 
+          // Check overlap immediately against all already placed
+          // faces to early-abort.
+          for (int already_placed : placed_order) {
+            const auto &f1 = temp_unf.faces[already_placed].vertices;
+            const auto &f2 = temp_unf.faces[neighbor].vertices;
+            if (!HasSeparatingAxis(f1, f2) && !HasSeparatingAxis(f2, f1)) {
+              overlap_detected = true;
+              break;
+            }
+          }
+          if (overlap_detected) break;
+
+          placed_order.push_back(neighbor);
           placed[neighbor] = true;
           q.push_back(neighbor);
         }
       }
+      if (overlap_detected) break;
     }
 
-    if (IsUnfoldingValid(unf)) {
-      unfoldings.push_back(unf);
-      existing_trees.push_back(tree_edges);
-      consecutive_failures = 0;
-    } else {
-      existing_trees.push_back(tree_edges);
+    if (overlap_detected) {
+      existing_trees.insert(tree_bits);
       consecutive_failures++;
+    } else {
+      unfoldings.push_back(temp_unf);
+      existing_trees.insert(tree_bits);
+      consecutive_failures = 0;
     }
   }
 }
@@ -859,6 +903,94 @@ PartialPolyhedron::ComputeFeasibleRegion(int edge_idx,
   }
 
   return poly;
+}
+
+std::optional<std::pair<HalfSpace, std::vector<vec2>>>
+PartialPolyhedron::ComputeJoinFeasibleRegion(int e1_idx, int e2_idx) const {
+  const MeshEdge &e1 = edges[e1_idx];
+  const MeshEdge &e2 = edges[e2_idx];
+  if (e1.left_face == -1 || e1.right_face != -1 ||
+      e2.left_face == -1 || e2.right_face != -1) {
+    return std::nullopt;
+  }
+  if (e1.v1 != e2.v0) return std::nullopt;
+
+  vec3 p0 = vertices[e1.v0].pos;
+  vec3 p1 = vertices[e1.v1].pos;
+  vec3 p2 = vertices[e2.v1].pos;
+
+  vec3 edge_a = p1 - p2;
+  vec3 edge_b = p0 - p1;
+  vec3 normal = yocto::cross(edge_a, edge_b);
+  double len = yocto::length(normal);
+  if (len < 1e-5) return std::nullopt;
+  normal /= len;
+
+  HalfSpace plane;
+  plane.normal = normal;
+  plane.d = yocto::dot(normal, p1);
+
+  auto CheckHinge = [&](int face_idx, const vec3 &pt,
+                        const vec3 &h0, const vec3 &h1) {
+      const MeshFace &f = faces[face_idx];
+      double dot_n = yocto::dot(f.plane.normal, normal);
+      if (dot_n <= -1.0 + 1e-5 || dot_n >= 1.0 - 1e-5) return false;
+      double dist = yocto::dot(f.plane.normal, pt) - f.plane.d;
+      double dist_to_hinge =
+          yocto::length(yocto::cross(pt - h0, yocto::normalize(h1 - h0)));
+      return dist < -1e-5 * dist_to_hinge;
+    };
+
+  if (!CheckHinge(e1.left_face, p2, p0, p1)) return std::nullopt;
+  if (!CheckHinge(e2.left_face, p0, p1, p2)) return std::nullopt;
+
+  // All existing points should be on the correct side of the new
+  // plane.
+  for (const MeshVertex &v : vertices) {
+    if (yocto::dot(plane.normal, v.pos) > plane.d + 1e-4) {
+      return std::nullopt;
+    }
+  }
+
+  vec3 origin = p1;
+  vec3 x = yocto::normalize(p0 - p1);
+  vec3 y = yocto::cross(normal, x);
+
+  // Clip a large bounding box using each of the half-spaces,
+  // giving the feasible region.
+  double r = 1.0e5;
+  std::vector<vec2> poly = {{-r, -r}, {r, -r}, {r, r}, {-r, r}};
+
+  for (const HalfSpace &hs : half_spaces) {
+    double a = yocto::dot(hs.normal, x);
+    double b = yocto::dot(hs.normal, y);
+    double c = hs.d - yocto::dot(hs.normal, origin);
+
+    std::vector<vec2> next_poly;
+    if (poly.empty()) break;
+
+    for (int i = 0; i < (int)poly.size(); ++i) {
+      vec2 v_curr = poly[i];
+      vec2 v_next = poly[(i + 1) % poly.size()];
+
+      double d_curr = a * v_curr.x + b * v_curr.y - c - 1e-7;
+      double d_next = a * v_next.x + b * v_next.y - c - 1e-7;
+
+      bool in_curr = (d_curr <= 0.0);
+      bool in_next = (d_next <= 0.0);
+
+      if (in_curr) {
+        next_poly.push_back(v_curr);
+      }
+      if (in_curr != in_next) {
+        double t = d_curr / (d_curr - d_next);
+        next_poly.push_back(v_curr + t * (v_next - v_curr));
+      }
+    }
+    poly = std::move(next_poly);
+  }
+
+  return std::make_pair(plane, poly);
 }
 
 const char *PartialPolyhedron::FeasibilityProblem(
@@ -1016,6 +1148,74 @@ const char *PartialPolyhedron::FeasibilityProblem(
   }
 
   // OK.
+  return nullptr;
+}
+
+const char *PartialPolyhedron::JoinFeasibilityProblem(
+    int e1_idx, int e2_idx, const std::vector<vec3> &new_face_pts) const {
+  if (e1_idx < 0 || e1_idx >= (int)edges.size() ||
+      e2_idx < 0 || e2_idx >= (int)edges.size()) {
+    return "edge out of bounds";
+  }
+
+  const MeshEdge &e1 = edges[e1_idx];
+  const MeshEdge &e2 = edges[e2_idx];
+  if (e1.v1 != e2.v0) return "edges e1 and e2 are not adjacent";
+  if (e2.left_face == -1 || e2.right_face != -1) return "e2 not on boundary";
+
+  const char *err = FeasibilityProblem(e1_idx, new_face_pts);
+  if (err) return err;
+
+  vec3 p1 = vertices[e2.v0].pos;
+  vec3 p2 = vertices[e2.v1].pos;
+
+  bool found_e2 = false;
+  for (int i = 0; i < (int)new_face_pts.size(); ++i) {
+    vec3 v_curr = new_face_pts[i];
+    vec3 v_next = new_face_pts[(i + 1) % new_face_pts.size()];
+    if (yocto::length(v_curr - p2) < 1e-4 &&
+        yocto::length(v_next - p1) < 1e-4) {
+      found_e2 = true;
+      break;
+    }
+  }
+  if (!found_e2) return "e2 not found in new face";
+
+  vec3 normal = {0.0, 0.0, 0.0};
+  for (int i = 0; i < (int)new_face_pts.size(); ++i) {
+    vec3 p_curr = new_face_pts[i];
+    vec3 p_next = new_face_pts[(i + 1) % new_face_pts.size()];
+    normal += yocto::cross(p_curr, p_next);
+  }
+  normal = yocto::normalize(normal);
+
+  const MeshFace &f2 = faces[e2.left_face];
+  double dot_n = yocto::dot(f2.plane.normal, normal);
+  if (dot_n <= -1.0 + 1e-5)
+      return "bad dihedral angle at e2: faces folded back";
+  if (dot_n >= 1.0 - 1e-5)
+      return "bad dihedral angle at e2: faces coplanar";
+
+  int test_v_idx = -1;
+  for (int i = 0; i < (int)new_face_pts.size(); ++i) {
+    if (yocto::length(new_face_pts[i] - p1) > 1e-4 &&
+        yocto::length(new_face_pts[i] - p2) > 1e-4) {
+      test_v_idx = i;
+      break;
+    }
+  }
+
+  if (test_v_idx != -1) {
+    vec3 pt = new_face_pts[test_v_idx];
+    double dist = yocto::dot(f2.plane.normal, pt) - f2.plane.d;
+    double dist_to_hinge = yocto::length(
+        yocto::cross(pt - p1, yocto::normalize(p2 - p1)));
+
+    if (dist >= -1e-5 * dist_to_hinge) {
+      return "dihedral angle at e2 is not strictly convex";
+    }
+  }
+
   return nullptr;
 }
 
@@ -1194,12 +1394,14 @@ bool PartialPolyhedron::HasSeparatingAxis(
       continue;
     }
 
+    double cross_limit = 1e-5 * len;
+
     // Determine which side of this edge is the interior of poly1
     double interior_sign = 0.0;
     for (int k = 0; k < (int)poly1.size(); k++) {
-      double dist = yocto::cross(edge, poly1[k] - a) / len;
-      if (std::abs(dist) > 1e-5) {
-        interior_sign = dist;
+      double cr = yocto::cross(edge, poly1[k] - a);
+      if (std::abs(cr) > cross_limit) {
+        interior_sign = cr;
         break;
       }
     }
@@ -1212,11 +1414,11 @@ bool PartialPolyhedron::HasSeparatingAxis(
     bool all_outside_or_on = true;
     for (int k = 0; k < (int)poly2.size(); k++) {
       vec2 v = poly2[k];
-      double dist = yocto::cross(edge, v - a) / len;
-      if (interior_sign > 0.0 && dist > 1e-5) {
+      double cr = yocto::cross(edge, v - a);
+      if (interior_sign > 0.0 && cr > cross_limit) {
         all_outside_or_on = false;
         break;
-      } else if (interior_sign < 0.0 && dist < -1e-5) {
+      } else if (interior_sign < 0.0 && cr < -cross_limit) {
         all_outside_or_on = false;
         break;
       }

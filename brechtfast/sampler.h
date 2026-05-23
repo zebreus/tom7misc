@@ -3,12 +3,16 @@
 #define _BRECHTFAST_SAMPLER_H
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "albrecht.h"
 #include "arcfour.h"
 #include "geom/polyhedra.h"
 #include "status-bar.h"
+
+struct PartialPolyhedron;
 
 struct Sampler {
   using Aug = Albrecht::AugmentedPoly;
@@ -23,13 +27,30 @@ struct Sampler {
     double sample_sec = 0.0, measure_sec = 0.0;
   };
 
+  // If leaf_ih is set, then we add a constraint to some edge/leaf
+  // for the pool of valid unfoldings. This makes the adversarial
+  // polyhedra less likely to have a leaf net for that choice, but
+  // probably more likely to have a net overall.
   static Polyhedron MakeConstruct(StatusBar *status,
                                   ArcFour *rc,
-                                  int max_faces);
+                                  int max_faces,
+                                  bool leaf_ih);
 
   static OneSample ConstructSample(StatusBar *status,
                                    ArcFour *rc,
                                    int max_faces);
+
+  struct LeafIHSample {
+    // A polyhedron specifically sampled to be hard under the
+    // constraint that the indicated face/edge is a leaf in
+    // the net.
+    Polyhedron poly;
+    int face_idx = 0;
+    int edge_idx = 0;
+  };
+  static LeafIHSample ConstructHardLeaf(StatusBar *status,
+                                        ArcFour *rc,
+                                        int max_faces);
 
   static OneSample Sample(uint64_t seed, const Polyhedron &poly);
 
@@ -42,7 +63,6 @@ struct Sampler {
                                               int max_faces);
 
   static std::string SampleStats();
-
 };
 
 

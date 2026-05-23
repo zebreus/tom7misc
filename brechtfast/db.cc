@@ -18,7 +18,9 @@
 #include "base/stringprintf.h"
 #include "bit-string.h"
 #include "database.h"
+#include "geom/johnson-solids.h"
 #include "geom/polyhedra.h"
+#include "nasty.h"
 #include "periodically.h"
 #include "status-bar.h"
 #include "util.h"
@@ -361,4 +363,34 @@ void DB::Fixup() {
       });
   }
   status.Remove();
+}
+
+std::pair<Polyhedron, std::optional<BitString>>
+DB::GetPolyhedron(std::string_view name) {
+  {
+    std::string_view johnson = name;
+    if (Util::TryStripPrefix("j", &johnson)) {
+      int64_t i = Util::ParseInt64(johnson);
+      if (i >= 1 && i <= 92) return {JohnsonSolid(i), std::nullopt};
+    }
+  }
+
+  if (auto opoly = Nasty::ByName(name)) {
+    return {opoly.value(), std::nullopt};
+  } else if (auto opoly = PolyhedronByName(name)) {
+    return {opoly.value(), std::nullopt};
+  } else {
+    int64_t id = Util::ParseInt64(name);
+    if (id > 0) {
+      DB db;
+      DB::Hard hard = db.GetHard(id);
+
+      std::optional<Polyhedron> opoly =
+        PolyhedronFromConvexVertices(hard.poly_points);
+      CHECK(opoly.has_value()) << name;
+      return {opoly.value(), hard.example_net};
+    }
+  }
+
+  LOG(FATAL) << "Unknown polyhedron " << name;
 }

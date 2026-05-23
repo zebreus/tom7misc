@@ -9,12 +9,14 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
+#include "auto-histo.h"
 #include "bit-string.h"
 #include "db.h"
 #include "geom/polyhedra.h"
@@ -60,7 +62,7 @@ static constexpr int MAX_FACES = 80;
 struct Leaffast {
 
   static constexpr int METHOD =
-    DB::METHOD_CONSTRUCT;
+    DB::METHOD_CONSTRUCT_LEAF;
   // DB::METHOD_RANDOM_SYMMETRIC;
 
   static constexpr int SAMPLES_PER_THREAD = 16384;
@@ -68,8 +70,12 @@ struct Leaffast {
 
   ArcFour main_rc;
 
-  static constexpr int SAMPLE_LINE = 0;
-  StatusBar status = StatusBar(3);
+  static constexpr int FACE_HISTO_LINE = 1;
+  static constexpr int EDGE_HISTO_LINE = 2;
+  static constexpr int VERT_HISTO_LINE = 3;
+  static constexpr int SAMPLE_LINE = 4;
+  static constexpr int OVERALL_LINE = 5;
+  StatusBar status = StatusBar(6);
 
   double time_sample = 0.0;
   double time_solve = 0.0;
@@ -82,30 +88,40 @@ struct Leaffast {
 
   }
 
-  // TODO: Get sample, loop over all face/edge pairs, but only
-  // keep it if we find a face/edge pair with zero numerator.
 
-  Polyhedron Sample(ArcFour *rc, int method) {
+  std::pair<Polyhedron, std::optional<std::pair<int, int>>>
+  Sample(ArcFour *rc, int method) {
     switch (METHOD) {
 
     case DB::METHOD_RANDOM_CYCLIC: {
       const int num_verts = 8 + RandTo(rc, 54);
-      return Sampler::RandomCyclicPolyhedron(rc, num_verts);
+      return std::make_pair(
+          Sampler::RandomCyclicPolyhedron(rc, num_verts),
+          std::nullopt);
     }
 
     case DB::METHOD_RANDOM_SYMMETRIC: {
       const int num_verts = 8 + RandTo(rc, 54);
-      return Sampler::RandomSymmetricPolyhedron(rc, num_verts, MAX_FACES);
+      return std::make_pair(
+          Sampler::RandomSymmetricPolyhedron(rc, num_verts, MAX_FACES),
+          std::nullopt);
     }
 
 #if 0
     case DB::METHOD_OPT: {
-      return Sampler::OptSample(&status, rc);
+      return {Sampler::OptSample(&status, rc), std::nullopt};
     }
 #endif
 
-    case DB::METHOD_CONSTRUCT: {
-      return Sampler::MakeConstruct(&status, rc, MAX_FACES);
+    case DB::METHOD_CONSTRUCT:
+      return std::make_pair(
+          Sampler::MakeConstruct(&status, rc, MAX_FACES, false),
+          std::nullopt);
+
+    case DB::METHOD_CONSTRUCT_LEAF: {
+      auto sample = Sampler::ConstructHardLeaf(&status, rc, MAX_FACES);
+      return std::make_pair(std::move(sample.poly),
+                            std::make_pair(sample.face_idx, sample.edge_idx));
     }
 
     default:
@@ -120,12 +136,13 @@ struct Leaffast {
 
     Periodically status_per(1.0);
     Periodically histo_per(10.0);
-    Periodically flush_per(59.0, false);
     Timer timer;
 
     const int64_t seed = Rand64(&main_rc);
 
     std::mutex m;
+    AutoHisto face_histo, edge_histo, vert_histo;
+
     status.Print("Begin parallel...\n");
     fflush(stdout);
     ParallelFan(
@@ -133,20 +150,25 @@ struct Leaffast {
         [&](int thread_idx) {
           ArcFour rc(std::format("{}.{}", seed, thread_idx));
           status.Print("Started thread {}.\n", thread_idx);
-          fflush(stdout);
-
-          for (;;) {
+          fflush(stdout);          for (;;) {
 
             Timer sample_timer;
-            Aug aug(Sample(&rc, METHOD));
+            auto [poly_val, constraint] = Sample(&rc, METHOD);
+            Aug aug(std::move(poly_val));
             ctr_poly++;
             const double sample_sec = sample_timer.Seconds();
 
             const Polyhedron &poly = aug.poly;
             const int num_faces = poly.faces->NumFaces();
             const int num_edges = poly.faces->NumEdges();
-            [[maybe_unused]]
             const int num_verts = poly.faces->NumVertices();
+
+            {
+              MutexLock ml(&m);
+              face_histo.Observe(num_faces);
+              edge_histo.Observe(num_edges);
+              vert_histo.Observe(num_verts);
+            }
 
             const int64_t already_denom = [&]{
                 MutexLock ml(&m);
@@ -155,9 +177,19 @@ struct Leaffast {
 
             // Try to find an edge/face pair that isn't solvable.
             Timer solve_timer;
-            for (int e = 0; e < num_edges; e++) {
-              const Faces::Edge &edge = poly.faces->edges[e];
-              for (int f : {edge.f0, edge.f1}) {
+            std::vector<std::pair<int, int>> candidates;
+            if (constraint.has_value()) {
+              candidates.push_back(constraint.value());
+            } else {
+              for (int e = 0; e < num_edges; e++) {
+                const Faces::Edge &edge = poly.faces->edges[e];
+                for (int f : {edge.f0, edge.f1}) {
+                  candidates.push_back({f, e});
+                }
+              }
+            }
+
+            for (const auto &[f, e] : candidates) {
 
                 // Require higher standard as we get a larger
                 // number of faces. Also require beating our previous
@@ -183,13 +215,18 @@ struct Leaffast {
                   }();
 
                 const double solve_sec = solve_timer.Seconds();
-                if (is_hard) {
+
+                {
+                  MutexLock ml(&m);
                   time_sample += sample_sec;
                   time_solve += solve_sec;
+                }
+
+                if (is_hard) {
                   // Write to database.
                   const DB::Why why = {DB::LeafIH{
-                      .edge_idx = e,
                       .face_idx = f,
+                      .edge_idx = e,
                     }};
                   // This approach inherently has netness 0, and
                   // no example.
@@ -199,32 +236,52 @@ struct Leaffast {
                   ctr_saved++;
                   goto next;
                 }
-              }
             }
 
             // Then we solved it for all!
-            ctr_satisfied_leaf++;
+            if (!constraint.has_value())
+              ctr_satisfied_leaf++;
 
           next:;
 
             status_per.RunIf([&]{
-                double total_time = timer.Seconds();
+                double wall_time = timer.Seconds();
+                double pps = ctr_poly.Read() / wall_time;
+                // Total over all threads. We assume all the time
+                // goes into these two.
+                double total_time = time_sample + time_solve;
                 double sample_pct = (time_sample * 100.0) / total_time;
                 double solve_pct = (time_solve * 100.0) / total_time;
 
-                // First line reserved for subprocess
-                status.LineStatus(1,
+                {
+                MutexLock ml(&m);
+
+                status.LineStatus(FACE_HISTO_LINE,
+                                  "F {}\n",
+                                  face_histo.OneLineANSI());
+                status.LineStatus(EDGE_HISTO_LINE,
+                                  "E {}\n",
+                                  edge_histo.OneLineANSI());
+                status.LineStatus(VERT_HISTO_LINE,
+                                  "V {}\n",
+                                  face_histo.OneLineANSI());
+                }
+
+                // Reserved for subprocess
+                status.LineStatus(SAMPLE_LINE,
                                   "{}\n",
                                   Sampler::SampleStats());
+
                 status.LineStatus(
-                    2,
-                    "{} polys, {} samples, {} leafy, {} saved. "
+                    OVERALL_LINE,
+                    "{} polys ({:.2f}/s), {} samples, {}☘, {}💾. "
                     "{} ({:.1f}% + {:.1f}%) \n",
                     FormatNum(ctr_poly.Read()),
+                    pps,
                     FormatNum(ctr_samples.Read()),
                     ctr_satisfied_leaf.Read(),
                     ctr_saved.Read(),
-                    ANSI::Time(total_time),
+                    ANSI::Time(wall_time),
                     sample_pct, solve_pct);
               });
           }

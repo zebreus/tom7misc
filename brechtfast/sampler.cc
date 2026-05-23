@@ -27,6 +27,7 @@
 #include "timer.h"
 #include "yocto-math.h"
 
+
 DECLARE_COUNTERS(ctr_degenerate, ctr_too_big,
                  ctr_ill_conditioned, ctr_not_manifold, ctr_no_angle,
                  ctr_no_feasible, ctr_face_not_feasible);
@@ -42,13 +43,14 @@ static vec3 RandomVec(ArcFour *rc) {
 
 std::string Sampler::SampleStats() {
   return std::format(
-      "{} ill, {} notman, {} degen, {} noθ, {} no∆, {}✘",
+      "{} ill, {} notman, {} degen, {} noθ, {} no∆, {}✘, {} big",
       ctr_ill_conditioned.Read(),
       ctr_not_manifold.Read(),
       ctr_degenerate.Read(),
       ctr_no_angle.Read(),
       ctr_no_feasible.Read(),
-      ctr_face_not_feasible.Read());
+      ctr_face_not_feasible.Read(),
+      ctr_too_big.Read());
 }
 
 static std::optional<Polyhedron> CarefulPolyhedron(
@@ -73,20 +75,201 @@ static std::optional<Polyhedron> CarefulPolyhedron(
 
 static constexpr bool TRIANGLES_ONLY = false;
 
+// Map the leaf constraint from the PP to the Polyhedron that results
+// from closing it (which reorders edges etc.).
+static std::optional<std::pair<int, int>> MapConstraint(
+    const PartialPolyhedron &pp,
+    const Polyhedron &poly) {
+  if (!pp.GetLeafConstraint().has_value()) {
+    return std::nullopt;
+  }
+
+  const auto [pp_fidx, pp_eidx] = pp.GetLeafConstraint().value();
+
+  vec3 pp_centroid = {0.0, 0.0, 0.0};
+  const auto &pp_face = pp.GetFace(pp_fidx);
+  for (int v : pp_face.vertices) {
+    pp_centroid += pp.GetVertex(v).pos;
+  }
+  pp_centroid /= pp_face.vertices.size();
+
+  int best_fidx = -1;
+  double best_f_dist = 1e18;
+  for (int f = 0; f < poly.faces->NumFaces(); ++f) {
+    vec3 op_centroid = {0.0, 0.0, 0.0};
+    for (int v : poly.faces->v[f]) {
+      op_centroid += poly.vertices[v];
+    }
+    op_centroid /= poly.faces->v[f].size();
+    double d = distance_squared(pp_centroid, op_centroid);
+    if (d < best_f_dist) {
+      best_f_dist = d;
+      best_fidx = f;
+    }
+  }
+
+  const auto &pp_edge = pp.GetEdge(pp_eidx);
+  vec3 p0 = pp.GetVertex(pp_edge.v0).pos;
+  vec3 p1 = pp.GetVertex(pp_edge.v1).pos;
+
+  int op_v0 = -1;
+  double best_v0_dist = 1e18;
+  int op_v1 = -1;
+  double best_v1_dist = 1e18;
+
+  for (int i = 0; i < (int)poly.vertices.size(); ++i) {
+    double d0 = distance_squared(poly.vertices[i], p0);
+    if (d0 < best_v0_dist) {
+      best_v0_dist = d0;
+      op_v0 = i;
+    }
+    double d1 = distance_squared(poly.vertices[i], p1);
+    if (d1 < best_v1_dist) {
+      best_v1_dist = d1;
+      op_v1 = i;
+    }
+  }
+
+  int best_eidx = -1;
+  for (int e = 0; e < poly.faces->NumEdges(); ++e) {
+    const auto &edge = poly.faces->edges[e];
+    if ((edge.v0 == op_v0 && edge.v1 == op_v1) ||
+        (edge.v0 == op_v1 && edge.v1 == op_v0)) {
+      best_eidx = e;
+      break;
+    }
+  }
+
+  // If we weren't able to match them up, just fail to produce
+  // a mapping.
+  if (best_f_dist > 1e-4) return std::nullopt;
+  if (best_v0_dist > 1e-4) return std::nullopt;
+  if (best_v1_dist > 1e-4) return std::nullopt;
+  if (best_fidx == -1 || best_eidx == -1) return std::nullopt;
+
+  return std::make_pair(best_fidx, best_eidx);
+}
 
 
-Polyhedron Sampler::MakeConstruct(StatusBar *status,
-                                  ArcFour *rc,
-                                  int max_faces) {
+static std::pair<Polyhedron, std::optional<std::pair<int, int>>>
+MakeConstructInternal(StatusBar *status,
+                      ArcFour *rc,
+                      int max_faces,
+                      bool leaf_ih) {
   for (;;) {
     const int target_faces = 12 + RandTo(rc, 29);
     PartialPolyhedron pp(rc, target_faces, 100);
 
+    // At a random point, we introduce a leaf constraint.
+    int leaf_target = [&]() {
+        if (!leaf_ih) return max_faces + 1;
+
+        int r = std::min(RandTo(rc, target_faces),
+                         RandTo(rc, target_faces));
+        return std::clamp(r, 4, target_faces - 2);
+      }();
+
     while (pp.NumFaces() < target_faces) {
+      if (leaf_ih && pp.NumFaces() >= leaf_target &&
+          !pp.GetLeafConstraint().has_value()) {
+        int best_count = 999999;
+        std::vector<std::pair<int, int>> best_constraints;
+
+        for (int f = 0; f < pp.NumFaces(); f++) {
+          // To ensure f can be a leaf, check that removing f does not
+          // disconnect the dual graph. While a completed convex
+          // polyhedron's dual graph is 3-connected (so any face can
+          // be a leaf), this PartialPolyhedron's open patch can have
+          // cut vertices (e.g. if it's just a chain).
+          int start_face = (f == 0) ? 1 : 0;
+          std::vector<int> q = {start_face};
+          std::vector<bool> vis(pp.NumFaces(), false);
+          vis[f] = true;
+          vis[start_face] = true;
+          int reached = 1;
+          int head = 0;
+          while (head < (int)q.size()) {
+            int curr = q[head++];
+            for (int ce : pp.GetFace(curr).edges) {
+              const MeshEdge &edge = pp.GetEdge(ce);
+              int neighbor = (edge.left_face == curr) ? edge.right_face :
+                                                        edge.left_face;
+              if (neighbor != -1 && !vis[neighbor]) {
+                vis[neighbor] = true;
+                q.push_back(neighbor);
+                reached++;
+              }
+            }
+          }
+
+          if (reached < pp.NumFaces() - 1) continue;
+
+          for (int e : pp.GetFace(f).edges) {
+            // The tree uses internal edges, so boundary edges are not
+            // valid choices.
+            if (pp.GetEdge(e).right_face == -1) continue;
+
+            int count = 0;
+            for (const Unfolding &unf : pp.GetUnfoldings()) {
+              int connected_count = 0;
+              bool target_connected = false;
+              for (int fe : pp.GetFace(f).edges) {
+                if (std::find(unf.tree_edges.begin(),
+                              unf.tree_edges.end(), fe) !=
+                    unf.tree_edges.end()) {
+                  if (fe == e) target_connected = true;
+                  connected_count++;
+                }
+              }
+              if (target_connected && connected_count == 1) {
+                count++;
+              }
+            }
+
+            if (count < best_count) {
+              best_count = count;
+              best_constraints.clear();
+              best_constraints.emplace_back(f, e);
+            } else if (count == best_count) {
+              best_constraints.emplace_back(f, e);
+            }
+          }
+        }
+
+        if (!best_constraints.empty()) {
+          auto [best_f, best_e] =
+              best_constraints[RandTo(rc, (int)best_constraints.size())];
+          pp.SetLeafConstraint(best_f, best_e);
+        } else {
+          // Could not find a valid constraint; retry next iteration.
+          leaf_target++;
+        }
+      }
+
       std::vector<int> b_edges = pp.GetBoundaryEdges();
       if (b_edges.empty()) {
         break;
       }
+
+      if (pp.GetLeafConstraint().has_value()) {
+        // To keep the constrained face as a leaf, we avoid adding new faces
+        // directly to its boundary. It will be closed when the hull is built.
+        int leaf_f = pp.GetLeafConstraint().value().first;
+        std::vector<int> filtered;
+        for (int e : b_edges) {
+          if (pp.GetEdge(e).left_face != leaf_f) {
+            filtered.push_back(e);
+          }
+        }
+        if (!filtered.empty()) {
+          b_edges = std::move(filtered);
+        } else {
+          // No edges left that can be expanded; fall back to the
+          // convex hull closure.
+          break;
+        }
+      }
+
       Shuffle(rc, &b_edges);
 
       auto [min_v, max_v] = pp.AABB();
@@ -139,6 +322,9 @@ Polyhedron Sampler::MakeConstruct(StatusBar *status,
             double u = RandDouble(rc);
             double v = RandDouble(rc);
             std::vector<vec2> poly = chooser.Triangular2DFace(u, v);
+
+            std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+            if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
 
             double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
             if (overlap > best_overlap) {
@@ -278,6 +464,9 @@ Polyhedron Sampler::MakeConstruct(StatusBar *status,
             }
             if (!strictly_convex) continue;
 
+            std::vector<vec3> face3d = chooser.ConvertTo3D(poly);
+            if (pp.FeasibilityProblem(edge_idx, face3d)) continue;
+
             double overlap = pp.MeasureOverlapFraction(edge_idx, poly);
             if (overlap > best_overlap) {
               best_overlap = overlap;
@@ -293,7 +482,8 @@ Polyhedron Sampler::MakeConstruct(StatusBar *status,
           if (const char *problem =
               pp.FeasibilityProblem(edge_idx, best_face)) {
             status->Print("Not Feasible: " AGREY("{}") "\n", problem);
-            break;
+            ctr_face_not_feasible++;
+            continue;
           }
 
           pp.AddFace(edge_idx, best_face);
@@ -322,18 +512,41 @@ Polyhedron Sampler::MakeConstruct(StatusBar *status,
     if (opoly.value().faces->NumFaces() >= max_faces) {
       ctr_too_big++;
       continue;
-    }
+    }    std::optional<std::pair<int, int>> mapped_constraint =
+        MapConstraint(pp, opoly.value());
 
-    return std::move(opoly.value());
+    return std::make_pair(std::move(opoly.value()), mapped_constraint);
   }
 }
+Polyhedron Sampler::MakeConstruct(StatusBar *status,
+                                  ArcFour *rc,
+                                  int max_faces,
+                                  bool leaf_ih) {
+  return MakeConstructInternal(status, rc, max_faces, leaf_ih).first;
+}
 
+Sampler::LeafIHSample Sampler::ConstructHardLeaf(StatusBar *status,
+                                                 ArcFour *rc,
+                                                 int max_faces) {
+  for (;;) {
+    auto [poly, constraint] =
+      MakeConstructInternal(status, rc, max_faces, true);
+    if (constraint.has_value()) {
+      const auto &[fidx, eidx] = constraint.value();
+      return LeafIHSample{
+        .poly = std::move(poly),
+        .face_idx = fidx,
+        .edge_idx = eidx,
+      };
+    }
+  }
+}
 
 OneSample Sampler::ConstructSample(StatusBar *status,
                                    ArcFour *rc,
                                    int max_faces) {
   Timer sample_timer;
-  Polyhedron poly = MakeConstruct(status, rc, max_faces);
+  Polyhedron poly = MakeConstruct(status, rc, max_faces, false);
   const double sample_sec = sample_timer.Seconds();
 
   Timer measure_timer;

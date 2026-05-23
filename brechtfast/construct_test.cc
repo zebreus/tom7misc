@@ -24,7 +24,7 @@ static void TestInit() {
   ArcFour rc("init");
 
   for (int i = 0; i < 10; i++) {
-    PartialPolyhedron pp(&rc, 5 + i * 5, 100);
+    PartialPolyhedron pp(&rc, 5 + i * 5, 20);
     pp.CheckValidity();
   }
 }
@@ -38,21 +38,29 @@ static std::string DebugPoly(std::span<const vec2> poly) {
   return ret;
 }
 
-static void TestAddFace() {
-  ArcFour rc("add-face");
+static void TestAddFace(bool include_join_faces) {
+  ArcFour rc(std::format("add-face.{}",
+                         include_join_faces ? "join" : "plain"));
   StatusBar status(1);
   Periodically status_per(1);
-  for (int i = 0; i < 1000; i++) {
-    PartialPolyhedron pp(&rc, 5 + i, 100);
+  int joined = 0;
+  static constexpr int ITERS = 1000;
+  for (int i = 0; i < ITERS; i++) {
+    PartialPolyhedron pp(&rc, 5 + i, 20);
 
     for (int f = 0; f < 3; f++) {
       // Print("Iter {}.{}:\n", i, f);
       status_per.RunIf([&]{
-          status.Progress(i, 1000, "AddFace");
+          if (include_join_faces) {
+            status.Progress(i, ITERS, "AddFace (Joined {})", joined);
+          } else {
+            status.Progress(i, ITERS, "AddFace");
+          }
         });
 
       std::vector<int> b_edges = pp.GetBoundaryEdges();
-      CHECK(b_edges.size() >= 3) << "Must have proper boundary.";
+      CHECK(b_edges.size() >= 3) << "Must have proper boundary. Edges: "
+                                 << b_edges.size();
 
       // Pick an edge uniformly at random.
       int edge_idx = b_edges[RandTo(&rc, (int)b_edges.size())];
@@ -87,6 +95,35 @@ static void TestAddFace() {
           SaveAsOBJ(mesh, {vertex_colors}, "construct_test.obj");
           return std::format("PP: {}\n", pp.DebugString());
         };
+
+      // We can join when there are three edges left, but this would
+      // close the polyhedron and then we can't keep testing.
+      bool can_join =
+        include_join_faces && b_edges.size() > 3;
+
+      if (can_join && (rc.Byte() & 1)) {
+        int e2_idx = -1;
+        for (int be : b_edges) {
+          if (pp.GetEdge(be).v0 == pp.GetEdge(edge_idx).v1) {
+            e2_idx = be;
+            break;
+          }
+        }
+        if (e2_idx != -1) {
+          std::vector<vec3> join_pts = {
+              pp.GetVertex(pp.GetEdge(e2_idx).v1).pos,
+              pp.GetVertex(pp.GetEdge(edge_idx).v1).pos,
+              pp.GetVertex(pp.GetEdge(edge_idx).v0).pos};
+          if (pp.JoinFeasibilityProblem(edge_idx, e2_idx, join_pts) ==
+              nullptr) {
+            pp.AddJoinFace(edge_idx, e2_idx, join_pts);
+            pp.CheckValidity();
+
+            joined++;
+            continue;
+          }
+        }
+      }
 
       // Compute and sample a feasible angle.
       const auto &[min_angle, max_angle] = pp.ComputeFeasibleAngles(edge_idx);
@@ -191,7 +228,7 @@ static void TestReplenish(bool leaf_ih) {
 
   int invalid_faces = 0;
   for (int i = 0; i < 100; i++) {
-    PartialPolyhedron pp(&rc, 5 + i, 100);
+    PartialPolyhedron pp(&rc, 5 + i, 20);
 
     status_per.RunIf([&]{
         status.Progress(i, 100, "Replenish ({})",
@@ -372,7 +409,8 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   TestInit();
-  TestAddFace();
+  TestAddFace(false);
+  TestAddFace(true);
 
   TestReplenish(false);
   TestReplenish(true);

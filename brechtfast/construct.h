@@ -2,20 +2,16 @@
 #ifndef _ALBRECHT_CONSTRUCT_H
 #define _ALBRECHT_CONSTRUCT_H
 
-#include <algorithm>
-#include <cmath>
 #include <optional>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "geom/polyhedra.h"
-#include "albrecht.h"
-#include "yocto-math.h"
 #include "arcfour.h"
+#include "geom/polyhedra.h"
 #include "randutil.h"
-
+#include "yocto-math.h"
 
 // Constructs the polyhedron by building them in tandem with
 // unfoldings that are crowded and hard to extend.
@@ -199,10 +195,49 @@ struct PartialPolyhedron {
       // poly[1] corresponds to its v0 vertex.
       const std::vector<vec2> &poly) const;
 
+  // Same as MeasureOverlapFraction, but provided for symmetry with
+  // AddJoinFace. Because the 2D face shape is attached to e1_idx in the
+  // unfolding tree, we only need to measure overlap relative to e1_idx.
+  double MeasureJoinOverlapFraction(int e1_idx, int e2_idx,
+                                    const std::vector<vec2> &poly) const {
+    return MeasureOverlapFraction(e1_idx, poly);
+  }
+
   // Add a new face to the partial polyhedron, attached at the specified
   // boundary edge. This updates the boundary, half-spaces, and the
   // pool of unfoldings. Invalidates unfoldings that overlap.
+  // To preserve CCW winding order across the shared edge, `new_face_pts`
+  // must contain the edge's vertices in reverse order (v1 followed by v0)
+  // consecutively.
   void AddFace(int boundary_edge_idx, const std::vector<vec3> &new_face_pts);
+
+  // Computes the valid plane and 2D feasible region for a face that joins
+  // two adjacent boundary edges (e1.v1 == e2.v0). Returns nullopt if the
+  // edges cannot be joined by a valid convex face.
+  // The 2D coordinate system of the returned region has origin at e1.v1,
+  // x-axis towards e1.v0.
+  // `e1_idx` and `e2_idx` must be consecutive boundary edges
+  // (e1.v1 == e2.v0).
+  std::optional<std::pair<HalfSpace, std::vector<vec2>>>
+  ComputeJoinFeasibleRegion(int e1_idx, int e2_idx) const;
+
+  // Validate a new face that attaches to TWO adjacent boundary edges.
+  // `e1_idx` and `e2_idx` must be consecutive boundary edges
+  // (e1.v1 == e2.v0). To preserve CCW winding order, `new_face_pts` must
+  // contain e2.v1, e1.v1 (which is e2.v0), and e1.v0 consecutively.
+  const char *JoinFeasibilityProblem(
+      int e1_idx, int e2_idx,
+      const std::vector<vec3> &new_face_pts) const;
+
+  // Add a face that joins two adjacent boundary edges.
+  // `e1_idx` and `e2_idx` must be consecutive boundary edges
+  // (e1.v1 == e2.v0). `new_face_pts` must contain e2.v1, e1.v1 (which is
+  // e2.v0), and e1.v0 consecutively.
+  void AddJoinFace(int e1_idx, int e2_idx,
+                   const std::vector<vec3> &new_face_pts) {
+    // AddFace actually already finds and connects shared boundary edges.
+    AddFace(e1_idx, new_face_pts);
+  }
 
   // Attempts to generate replacement unfoldings when some are invalidated
   // by a newly added face, aiming to reach target_unfoldings. Typically

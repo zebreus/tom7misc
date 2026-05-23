@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -29,9 +30,10 @@ struct DB {
   static constexpr int METHOD_RANDOM_SYMMETRIC = 2;
   static constexpr int METHOD_OPT = 3;
   static constexpr int METHOD_CONSTRUCT = 4;
+  static constexpr int METHOD_CONSTRUCT_LEAF = 5;
 
   static constexpr int FIRST_METHOD = 1;
-  static constexpr int LAST_METHOD = 4;
+  static constexpr int LAST_METHOD = 5;
 
   static const char *MethodName(int m) {
     switch (m) {
@@ -40,6 +42,7 @@ struct DB {
     case METHOD_RANDOM_SYMMETRIC: return "METHOD_RANDOM_SYMMETRIC";
     case METHOD_OPT: return "METHOD_OPT";
     case METHOD_CONSTRUCT: return "METHOD_CONSTRUCT";
+    case METHOD_CONSTRUCT_LEAF: return "METHOD_CONSTRUCT_LEAF";
     default: return "UNKNOWN";
     }
   }
@@ -116,6 +119,13 @@ struct DB {
 
   // Perform one-time fixes after schema updates.
   void Fixup();
+
+  // Accepts database ids ("27"), standard polyhedron names
+  // ("snubcube"), nasty polyhedron names ("sawblade") and johnson
+  // solid ids ("j89"). Aborts if the name isn't known. Returns a
+  // valid net if we have one (from the database).
+  static std::pair<Polyhedron, std::optional<BitString>>
+  GetPolyhedron(std::string_view name);
 
  private:
   std::unique_ptr<Database> db;

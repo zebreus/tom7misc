@@ -1,4 +1,4 @@
-default : albrecht_test.exe brechtfast.exe query.exe export-sheet.exe tostl.exe inspect.exe nasty_test.exe solve-leaf_test.exe scoreboard.exe validate.exe tune-db.exe
+default : albrecht_test.exe brechtfast.exe query.exe export-sheet.exe tostl.exe inspect.exe nasty_test.exe solve-leaf_test.exe scoreboard.exe validate.exe tune-db.exe leaffast.exe leafboard.exe construct_test.exe 
 
 # This assumes OpenCL is installed as a system library, which
 # is now the case for msys2 clang64. If it's not, you could
@@ -33,14 +33,17 @@ SQLITE=../sqlite
 MALLOC_LFLAGS=-lmimalloc
 
 # OPT=-O -g
-OPT=-O3 -flto=thin
+# For profiling (high optimization, debug symbols, frame pointers, no LTO):
+# OPT=-O3 -g -fno-omit-frame-pointer -gcodeview
+
+OPT=-g -mtune=native -O3 -flto=thin
 # ASAN=-g -fsanitize=address -fsanitize=undefined
 # OPT=-O
 
 # REMARKS=-Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize
 
 CXXFLAGS=$(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(CODEC) -I$(SQLITE) --std=c++23
-LFLAGS=$(ASAN) $(GMP_LFLAGS) -flto -lz $(MALLOC_LFLAGS)
+LFLAGS=$(ASAN) $(GMP_LFLAGS) -lz $(MALLOC_LFLAGS)
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/interval-cover.o $(CC_LIB)/interval-cover-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/textsvg.o $(CC_LIB)/hexdump.o $(CC_LIB)/integer-voronoi.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o $(CC_LIB)/nice.o $(CC_LIB)/png.o $(CC_LIB)/xml.o $(CC_LIB)/svg.o $(CC_LIB)/geom/mesh.o $(CC_LIB)/geom/hull-3d.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/geom/polyhedra.o $(CC_LIB)/geom/johnson-solids.o $(CC_LIB)/geom/symmetry-groups.o $(CC_LIB)/dirty.o
 
@@ -122,7 +125,7 @@ albrecht_test.exe : albrecht_test.o $(OBJECTS)
 	@echo -n "!"
 
 construct_test.exe : construct_test.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS) -Wl,--pdb=construct_test.pdb
 	@echo -n "!"
 
 nasty_test.exe : nasty_test.o $(OBJECTS)

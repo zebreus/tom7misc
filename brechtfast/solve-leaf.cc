@@ -52,7 +52,8 @@ struct SearchState {
   // num_edges in size.
   BitString forbidden_edges;
   std::vector<PlacedFace> placed_faces;
-  // tree_dist[i][j] is the distance between face i and face j in the current tree.
+  // tree_dist[i][j] is the distance between face i and face j in the
+  // current tree.
   std::vector<std::vector<int>> tree_dist;
   ArcFour rc;
 };
@@ -86,7 +87,8 @@ struct ResultChannel {
 // of faces in the 3D dual graph of the polyhedron.
 static std::vector<std::vector<int>> ComputeDualDistances(const AugmentedPoly &aug) {
   int num_faces = aug.poly.faces->NumFaces();
-  std::vector<std::vector<int>> dual_dist(num_faces, std::vector<int>(num_faces, -1));
+  std::vector<std::vector<int>> dual_dist(num_faces,
+                                          std::vector<int>(num_faces, -1));
   for (int start = 0; start < num_faces; ++start) {
     dual_dist[start][start] = 0;
     std::vector<int> q = {start};
@@ -320,7 +322,8 @@ struct RecSolver {
 
         // See if it fits.
         if (!CheckOverlap(state, v_idx, U)) {
-          // Record tree distances for U. Because U is a leaf attached only to V:
+          // Record tree distances for U. Because U is a leaf attached
+          // only to V:
           for (const PlacedFace &pf : state.placed_faces) {
             int w = pf.face_idx;
             state.tree_dist[u_idx][w] =
@@ -386,12 +389,14 @@ struct RecSolver {
       .visited_faces = BitString(num_faces, false),
       .forbidden_edges = BitString(num_edges, false),
       .placed_faces = {},
-      .tree_dist = std::vector<std::vector<int>>(num_faces, std::vector<int>(num_faces, 0)),
+      .tree_dist = std::vector<std::vector<int>>(
+          num_faces, std::vector<int>(num_faces, 0)),
       .rc = ArcFour("pseudorandom"),
     };
 
-    // To force input_face_idx to be a leaf attached solely via input_edge_idx,
-    // we explicitly forbid all of its other edges from being in the spanning tree.
+    // To force input_face_idx to be a leaf attached solely via
+    // input_edge_idx, we explicitly forbid all of its other edges
+    // from being in the spanning tree.
     for (int e_idx : aug.face_edges[input_face_idx]) {
       if (e_idx != input_edge_idx) {
         state.forbidden_edges.Set(e_idx, true);
@@ -512,7 +517,8 @@ MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx,
   std::vector<std::unique_ptr<std::thread>> threads;
 
   threads.emplace_back(std::make_unique<std::thread>([&]{
-      RecSolver rec(result_channel, poly, face_idx, edge_idx, max_stretch, dual_dist);
+      RecSolver rec(result_channel, poly, face_idx, edge_idx,
+                    max_stretch, dual_dist);
       (void)rec.DoSearch();
     }));
 
@@ -588,6 +594,12 @@ BitString SolveLeaf::SampleFace(
   return unfolding;
 }
 
+static std::string EdgeString(const Faces::Edge &edge) {
+  return std::format("v:{}-{}. f: {}, {}.",
+                     edge.v0, edge.v1,
+                     edge.f0, edge.f1);
+}
+
 BitString SolveLeaf::SampleLeaf(
     ArcFour *rc,
     const Albrecht::AugmentedPoly &aug,
@@ -598,8 +610,11 @@ BitString SolveLeaf::SampleLeaf(
   const int num_edges = faces.NumEdges();
 
   CHECK(edge_idx >= 0 && edge_idx < num_edges);
+  CHECK(face_idx >= 0 && face_idx < num_faces);
   const Faces::Edge &input_edge = faces.edges[edge_idx];
-  CHECK(input_edge.f0 == face_idx || input_edge.f1 == face_idx);
+  CHECK(input_edge.f0 == face_idx || input_edge.f1 == face_idx) <<
+    "Edge: " << EdgeString(input_edge) << "\n"
+    "Face: " << face_idx;
 
   std::vector<int> edges;
   edges.reserve(num_edges);
