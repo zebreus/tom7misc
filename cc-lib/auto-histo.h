@@ -371,7 +371,60 @@ struct AutoHisto {
 
   bool IsIntegral() const { return integral; }
 
-  // TODO: Simple one-line ANSI histo with colored bars.
+
+
+  // One-line ANSI histogram with color.
+  // The low and high buckets (only) are labeled at the beginning and
+  // end of the string.
+  std::string OneLineANSI(int max_width = 75) const {
+    if (Empty()) return "(empty)";
+
+    auto FormatLabel = [this](double v) {
+      return integral ?
+        std::format("{}", (int64_t)v) :
+        std::format("{:.1f}", v);
+    };
+
+    double minx = 0.0, maxx = 1.0;
+    if (Bucketed()) {
+      minx = Min();
+      maxx = Max();
+    } else {
+      minx = data[0];
+      maxx = data[0];
+      for (double x : data) {
+        minx = std::min(x, minx);
+        maxx = std::max(x, maxx);
+      }
+      if (maxx == minx) maxx = minx + 1;
+    }
+
+    int buckets = max_width - (int)FormatLabel(minx).size() -
+                  (int)FormatLabel(maxx).size() - 2;
+    if (buckets < 1) buckets = 1;
+
+    Histo histo = GetHisto(buckets);
+
+    int needed_buckets = max_width - (int)FormatLabel(histo.min).size() -
+                         (int)FormatLabel(histo.max).size() - 2;
+    if (needed_buckets < 1) needed_buckets = 1;
+    if (needed_buckets != buckets) {
+      buckets = needed_buckets;
+      histo = GetHisto(buckets);
+    }
+
+    std::string ret = FormatLabel(histo.min) + " ";
+    for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
+      const uint32_t bar_color = (bidx & 1) ? 0xc8c880FF : 0xbebe76FF;
+      ret.append(ANSI::ForegroundRGB32(bar_color));
+      ret.append(FilledColumnChar(histo.buckets[bidx] / histo.max_value));
+    }
+    ret += ANSI_RESET;
+    ret += " ";
+    ret += FormatLabel(histo.max);
+
+    return ret;
+  }
 
   // Probably should have the caller do printing.
   void PrintSimpleANSI(int buckets) const {

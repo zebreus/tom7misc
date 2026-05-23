@@ -2,10 +2,12 @@
 #include "bit-string.h"
 
 #include <cstdio>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <unordered_set>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -327,6 +329,41 @@ static void TestASCII() {
   }
 }
 
+static void TestHashSet() {
+  {
+    std::unordered_set<BitString> hs;
+    BitString x;
+    x.WriteBits(64, 0xCAFEBEEF5);
+    hs.insert(x);
+    BitString y;
+    y.WriteBits(64, 0xC0FFEEBEEF5);
+    CHECK(hs.contains(x));
+    CHECK(!hs.contains(y));
+  }
+
+  // For heterogeneous lookup.
+  std::unordered_set<BitString,
+                     std::hash<BitString>,
+                     std::equal_to<>> hs;
+
+  BitString bb1;
+  bb1.WriteBits(4, 0b1010);
+  hs.insert(bb1);
+
+  // Heterogeneous lookup with BitStringConstView
+  BitStringConstView view1 = bb1.View();
+  CHECK(hs.contains(view1));
+
+  BitString bb2;
+  bb2.WriteBits(4, 0b1100);
+  BitStringConstView view2 = bb2.View();
+  CHECK(!hs.contains(view2));
+
+  // Heterogeneous lookup with BitStringView
+  BitStringView mut_view1 = bb1.View();
+  CHECK(hs.contains(mut_view1));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -338,6 +375,7 @@ int main(int argc, char **argv) {
   TestConstructor();
   TestComparisons();
   TestASCII();
+  TestHashSet();
 
   printf("OK\n");
   return 0;

@@ -9,9 +9,15 @@ struct UnionFind {
 
   inline int Find(int a);
 
-  void Union(int a, int b) {
+  // Returns true if the elements were not already
+  // connected.
+  bool Union(int a, int b) {
     int fa = Find(a), fb = Find(b);
-    if (fa != fb) arr[fa] = fb;
+    if (fa != fb) {
+      arr[fa] = fb;
+      return true;
+    }
+    return false;
   }
 
   int Size() const { return arr.size(); }

@@ -23,18 +23,21 @@ static void TestUnion() {
   CHECK(uf.Find(0) != uf.Find(2));
 
   // Join 1 and 2 (transitive: 0, 1, 2 are together)
-  uf.Union(1, 2);
+  CHECK(uf.Union(1, 2));
   CHECK(uf.Find(0) == uf.Find(2));
   CHECK(uf.Find(1) == uf.Find(2));
 
   // Join 3 and 4
-  uf.Union(3, 4);
+  CHECK(uf.Union(3, 4));
   CHECK(uf.Find(3) == uf.Find(4));
   CHECK(uf.Find(0) != uf.Find(3));
+  CHECK(!uf.Union(3, 4));
+  CHECK(!uf.Union(1, 2));
 
   // Join the two sets
   uf.Union(2, 4);
   CHECK(uf.Find(0) == uf.Find(4));
+  CHECK(!uf.Union(1, 3));
 }
 
 static void TestReset() {

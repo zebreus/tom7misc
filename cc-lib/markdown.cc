@@ -284,10 +284,14 @@ Markdown::Document Markdown::Parse(std::string_view s) {
         EmitCur();
         // Awful false-positive here with gcc. Try retiring this when gcc
         // is improved. :(
+        #ifndef __clang__
         #pragma GCC diagnostic push
         #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+        #endif
         ret.push_back(Heading{.level = depth, .text = std::string(trimmed)});
+        #ifndef __clang__
         #pragma GCC diagnostic pop
+        #endif
         continue;
       }
 

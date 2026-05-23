@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <bit>
+#include <functional>
 
 #include "base/logging.h"
 
@@ -62,6 +64,8 @@ struct BitString {
   inline std::string ToASCII() const;
   static inline std::optional<BitString> FromASCII(std::string_view ascii);
 
+  inline size_t HashCode() const;
+
  private:
   friend struct BitStringView;
   friend struct BitStringConstView;
@@ -96,6 +100,8 @@ struct BitStringView {
   inline BitStringConstView Sub(size_t offset, size_t length = npos) const;
 
   inline std::string ToASCII() const;
+
+  inline size_t HashCode() const;
 
  private:
   friend struct BitString;
@@ -149,6 +155,7 @@ struct BitStringConstView {
     return true;
   }
 
+  inline size_t HashCode() const;
 
  private:
   friend struct BitString;
@@ -168,6 +175,7 @@ inline auto operator<=>(BitStringConstView a, BitStringConstView b) {
 inline bool operator==(BitStringConstView a, BitStringConstView b) {
   return BitStringConstView::Equal(a, b);
 }
+
 
 // Inline implementations follow.
 
@@ -425,5 +433,60 @@ inline std::optional<BitString> BitString::FromASCII(std::string_view s) {
 
   return bs;
 }
+
+inline size_t BitString::HashCode() const {
+  return View().HashCode();
+}
+
+inline size_t BitStringView::HashCode() const {
+  return BitStringConstView(*this).HashCode();
+}
+
+inline size_t BitStringConstView::HashCode() const {
+  // PERF: This extracts individual bits, because a view might
+  // point into the middle of a byte. But we should take care
+  // to be efficient when the start is aligned, since that is
+  // typical.
+  size_t h = 0x11223377 + Size();
+  for (size_t i = 0; i < Size(); i += 8) {
+    uint8_t byte = 0;
+    for (size_t b = 0; b < 8 && i + b < Size(); b++) {
+      if (Get(i + b)) {
+        byte |= (1 << (7 - b));
+      }
+    }
+    h = std::rotl(h, 13) + byte;
+  }
+  return h;
+}
+
+// Overload hash<> so that we can create unordered_set, etc.
+// For heterogeneous lookup, use:
+//  std::unordered_set<BitString, std::hash<BitString>, std::equal_to<>>
+namespace std {
+template <>
+struct hash<BitString> {
+  using is_transparent = void;
+  size_t operator()(BitStringConstView v) const {
+    return v.HashCode();
+  }
+};
+
+template <>
+struct hash<BitStringView> {
+  using is_transparent = void;
+  size_t operator()(BitStringConstView v) const {
+    return std::hash<BitString>{}(v);
+  }
+};
+
+template <>
+struct hash<BitStringConstView> {
+  using is_transparent = void;
+  size_t operator()(BitStringConstView v) const {
+    return std::hash<BitString>{}(v);
+  }
+};
+}  // namespace std
 
 #endif

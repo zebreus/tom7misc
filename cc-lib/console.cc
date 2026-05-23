@@ -229,6 +229,97 @@ static Input GetCompletedInput(std::span<const uint8_t> input) {
   return Codepoint{cp};
 }
 
+// Split the (ansi-colored) input string into lines of at most the
+// given number of columns. The result always has at least one
+// line, even if the input is empty.
+// TODO: Can this just use WrapInput?
+static std::vector<std::string> AnsiSplitLines(std::string_view in,
+                                               int cols) {
+  CHECK(cols > 0);
+  std::string line(in);
+  std::vector<std::string> line_parts;
+  while (ANSI::StringWidth(line) > cols) {
+    line_parts.push_back(ANSI::ColorSubstring(line, 0, cols));
+    line = ANSI::ColorSubstring(line, cols);
+  }
+
+  line_parts.push_back(std::move(line));
+  return line_parts;
+}
+
+struct WrappedInput {
+  std::vector<std::string> lines;
+  int cursor_row = 0;
+  int cursor_col = 0;
+};
+
+// Wrap input text (which may contain ANSI codes and newlines) to fit into 'cols'
+// columns. The 'cursor_offset' must be a plain codepoint offset in
+// 'formatted_input' (with all ANSI escape codes stripped).
+static WrappedInput WrapInput(std::string_view formatted_input,
+                              int cursor_offset,
+                              int cols) {
+  CHECK(cols > 0);
+  WrappedInput wi;
+
+  std::vector<std::string> chunks;
+  std::string_view s = formatted_input;
+  for (;;) {
+    size_t pos = s.find('\n');
+    if (pos == std::string_view::npos) {
+      chunks.push_back(std::string(s));
+      break;
+    }
+    chunks.push_back(std::string(s.substr(0, pos)));
+    s.remove_prefix(pos + 1);
+  }
+
+  int current_plain_offset = 0;
+  bool cursor_placed = false;
+
+  for (size_t i = 0; i < chunks.size(); i++) {
+    const std::string &chunk = chunks[i];
+    int chunk_plain_len = UTF8::Length(ANSI::StripCodes(chunk));
+
+    std::vector<std::string> wrapped_chunk = AnsiSplitLines(chunk, cols);
+    int chunk_start_row = wi.lines.size();
+
+    if (!cursor_placed &&
+        cursor_offset >= current_plain_offset &&
+        cursor_offset <= current_plain_offset + chunk_plain_len) {
+      int relative_cursor = cursor_offset - current_plain_offset;
+      for (size_t r = 0; r < wrapped_chunk.size(); r++) {
+        int line_len = UTF8::Length(ANSI::StripCodes(wrapped_chunk[r]));
+        if (relative_cursor < line_len) {
+          wi.cursor_row = chunk_start_row + r;
+          wi.cursor_col = relative_cursor;
+          cursor_placed = true;
+          break;
+        }
+        relative_cursor -= line_len;
+      }
+      if (!cursor_placed && !wrapped_chunk.empty()) {
+        wi.cursor_row = chunk_start_row + wrapped_chunk.size() - 1;
+        wi.cursor_col = UTF8::Length(ANSI::StripCodes(wrapped_chunk.back()));
+        cursor_placed = true;
+      }
+    }
+
+    for (auto &line : wrapped_chunk) {
+      wi.lines.push_back(std::move(line));
+    }
+
+    current_plain_offset += chunk_plain_len + 1;
+  }
+
+  if (!cursor_placed) {
+    wi.cursor_row = std::max(0, (int)wi.lines.size() - 1);
+    wi.cursor_col = wi.lines.empty() ? 0 : ANSI::StringWidth(wi.lines.back());
+  }
+
+  return wi;
+}
+
 }  // namespace
 
 struct ConsoleData {
@@ -276,6 +367,14 @@ struct ConsoleData {
   std::vector<std::string> mid_status;
   std::vector<std::string> bot_status;
 
+  Console::Formatter formatter;
+  // UTF-8, possibly with newlines, and possibly with ANSI
+  // color codes.
+  std::string cached_formatted_input = "";
+  // The cursor position in cached_formatted_input as a plain
+  // (ANSI codes stripped) codepoint offset.
+  int cached_cursor_offset = 0;
+
   ConsoleData(Console *parent,
               int top_status_lines,
               int max_history_lines,
@@ -306,6 +405,40 @@ void Console::AppendWithLock(std::string_view s) {
     history.back().append(s.substr(0, pos));
     history.push_back("");
     s.remove_prefix(pos + 1);
+  }
+}
+
+// Formats the raw input text using the current client-provided
+// Formatter callback (if any), and updates the thread-safe cached
+// formatted input and cached cursor offset in ConsoleData. This is
+// executed without holding the internal console mutex while invoking
+// the callback to prevent potential deadlocks or UI lag in
+// high-latency custom formatters.
+static void FormatAndUpdateCache(ConsoleData *data,
+                                 std::string_view raw_text,
+                                 int raw_cursor_offset) {
+  Console::Formatter fmt;
+  {
+    std::unique_lock<std::mutex> ul(data->m);
+    fmt = data->formatter;
+  }
+
+  std::string formatted_text;
+  int formatted_cursor = 0;
+
+  if (fmt) {
+    auto [f_text, f_cursor] = fmt(raw_text, raw_cursor_offset);
+    formatted_text = std::move(f_text);
+    formatted_cursor = f_cursor;
+  } else {
+    formatted_text = std::string(raw_text);
+    formatted_cursor = raw_cursor_offset;
+  }
+
+  {
+    std::unique_lock<std::mutex> ul(data->m);
+    data->cached_formatted_input = std::move(formatted_text);
+    data->cached_cursor_offset = formatted_cursor;
   }
 }
 
@@ -426,7 +559,7 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
               input_dirty = true;
 
               while (data->current_offset < (int)data->current_line.size() &&
-                     !WordBoundary(data->current_offset)) {
+                     !WordBoundary(data->current_line[data->current_offset])) {
                 data->current_offset++;
               }
             }
@@ -557,6 +690,29 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
       data->cond.notify_all();
     }
 
+    bool has_formatter = false;
+    {
+      std::unique_lock<std::mutex> ul(data->m);
+      if (data->formatter) has_formatter = true;
+    }
+    if (has_formatter && simple_codepoint != 0) {
+      input_dirty = true;
+      simple_codepoint = 0;
+    }
+
+    if (input_dirty || simple_codepoint != 0 || is_enter) {
+      std::string raw_text;
+      int raw_cursor = 0;
+
+      {
+        std::unique_lock<std::mutex> ul(data->m);
+        raw_text = UTF8::EncodeVec(data->current_line);
+        raw_cursor = data->current_offset;
+      }
+
+      FormatAndUpdateCache(data.get(), raw_text, raw_cursor);
+    }
+
     // XXX this is not right because we might be detached!
     // but we don't want to be holding the mutex when we
     // call this...
@@ -568,8 +724,6 @@ static void ReadThread(std::shared_ptr<ConsoleData> data) {
     }
   }
 }
-
-// TODO: Unbuffered IO.
 
 Console::Console(int top_status_lines,
                  int max_history_lines,
@@ -590,22 +744,6 @@ Console::~Console() {
   }
 
   read_thread.detach();
-}
-
-// Split the (ansi-colored) input string into lines of at most the
-// given number of columns. The result always has at least one
-// line, even if the input is empty.
-static std::vector<std::string> AnsiSplitLines(std::string_view in,
-                                               int cols) {
-  std::string line(in);
-  std::vector<std::string> line_parts;
-  while (ANSI::StringWidth(line) > cols) {
-    line_parts.push_back(ANSI::ColorSubstring(line, 0, cols));
-    line = ANSI::ColorSubstring(line, cols);
-  }
-
-  line_parts.push_back(std::move(line));
-  return line_parts;
 }
 
 // Get the part of the history that fits on the screen, wrapping
@@ -714,11 +852,10 @@ void Console::RedrawStatusWithLock(Location loc) {
   // Otherwise, the location depends on the size of the
   // input.
 
-  // PERF: Cache this?
-  // PERF: We normally don't allow color in the input, so
-  // we could just split on the codepoints directly.
-  std::vector<std::string> input_lines =
-    AnsiSplitLines(UTF8::EncodeVec(data->current_line), data->screen_cols);
+  WrappedInput wi = WrapInput(data->cached_formatted_input,
+                              data->cached_cursor_offset,
+                              data->screen_cols);
+  std::vector<std::string> input_lines = std::move(wi.lines);
 
   const int ninput = input_lines.size();
   const int ntop = data->top_status.size();
@@ -737,11 +874,31 @@ void Console::RedrawStatusWithLock(Location loc) {
 
 void Console::SetInput(std::string_view s) {
   std::vector<uint32_t> codepoints = UTF8::Codepoints(s);
+  // Implied that the cursor is at the end of the input.
+  int raw_cursor = codepoints.size();
   {
     std::unique_lock<std::mutex> ul(data->m);
     data->current_line = std::move(codepoints);
-    data->current_offset = data->current_line.size();
+    data->current_offset = raw_cursor;
   }
+
+  FormatAndUpdateCache(data.get(), s, raw_cursor);
+
+  Redraw();
+}
+
+void Console::SetFormatter(Formatter f) {
+  std::string raw_text;
+  int raw_cursor = 0;
+  {
+    std::unique_lock<std::mutex> ul(data->m);
+    data->formatter = f;
+    raw_text = UTF8::EncodeVec(data->current_line);
+    raw_cursor = data->current_offset;
+  }
+
+  FormatAndUpdateCache(data.get(), raw_text, raw_cursor);
+
   Redraw();
 }
 
@@ -753,8 +910,10 @@ void Console::Redraw() {
   data->screen_cols = new_cols;
   data->screen_rows = new_rows;
 
-  std::vector<std::string> input_lines =
-    AnsiSplitLines(UTF8::EncodeVec(data->current_line), new_cols);
+  WrappedInput wi = WrapInput(data->cached_formatted_input,
+                              data->cached_cursor_offset,
+                              new_cols);
+  std::vector<std::string> input_lines = std::move(wi.lines);
 
   const int ninput = input_lines.size();
 
@@ -806,28 +965,16 @@ void Console::HideCursorWithLock() {
 }
 
 void Console::ReplaceCursorWithLock() {
-  // PERF: Cache this
+  // TODO: why not cache the wrapped input?
   // Restore the cursor to the input line so typing feels natural.
-  std::vector<std::string> input_lines =
-    AnsiSplitLines(UTF8::EncodeVec(data->current_line), data->screen_cols);
+  WrappedInput wi = WrapInput(data->cached_formatted_input,
+                              data->cached_cursor_offset,
+                              data->screen_cols);
 
-  // const int ninput = input_lines.size();
   const int nbot = data->bot_status.size();
+  const int ninput = wi.lines.size();
 
-  const int ninput = input_lines.size();
-  int cursor_row_offset = data->current_offset / data->screen_cols;
-  int cursor_col = data->current_offset % data->screen_cols;
-
-  // If the cursor is exactly at the end of a line that perfectly fills
-  // the screen width, it logically wraps to the next line. However,
-  // AnsiSplitLines won't add a new empty line until we actually
-  // type a character. So constrain the cursor to the end of the line.
-  if (cursor_row_offset >= ninput) {
-    cursor_row_offset = ninput - 1;
-    cursor_col = data->screen_cols;
-  }
-
-  int cursor_row = data->screen_rows - nbot - ninput + cursor_row_offset;
+  int cursor_row = data->screen_rows - nbot - ninput + wi.cursor_row;
 
   ::Print(
       // move to the correct position in the input
@@ -835,7 +982,7 @@ void Console::ReplaceCursorWithLock() {
       // and show cursor again
       "\x1b[?25h"
       // and reset colors
-      ANSI_RESET, cursor_row + 1, cursor_col + 1);
+      ANSI_RESET, cursor_row + 1, wi.cursor_col + 1);
 
   fflush(stdout);
 }

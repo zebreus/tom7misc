@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <vector>
 #include <utility>
 #include <tuple>
@@ -178,17 +179,22 @@ inline uint32_t RandTo32(ArcFour *rc, uint32_t n) {
 // bit faster by only randomizing a prefix of the vector (note how
 // Shuffle only swaps in a triangular portion).
 
-// Permute the elements of the vector uniformly at random.
+// Permute the elements of the span uniformly at random.
 template<class T>
-static void Shuffle(ArcFour *rc, std::vector<T> *v) {
-  if (v->size() <= 1) return;
+static void Shuffle(ArcFour *rc, std::span<T> v) {
+  if (v.size() <= 1) return;
   // PERF: Use Rand32 for small vectors.
-  for (uint64_t i = v->size() - 1; i >= 1; i--) {
+  for (uint64_t i = v.size() - 1; i >= 1; i--) {
     uint64_t j = RandTo(rc, i + 1);
     if (i != j) {
-      std::swap((*v)[i], (*v)[j]);
+      std::swap(v[i], v[j]);
     }
   }
+}
+
+template<class T>
+static void Shuffle(ArcFour *rc, std::vector<T> *v) {
+  Shuffle(rc, std::span<T>(*v));
 }
 
 // Same, for an array.
