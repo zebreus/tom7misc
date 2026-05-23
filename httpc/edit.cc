@@ -208,22 +208,6 @@ JSON:
 )", current_file, request, filetext);
 }
 
-static bool Excluded(const std::vector<std::string> &exclude,
-                     std::string_view file) {
-  for (const std::string &wc : exclude) {
-    if (Util::MatchesWildcard(wc, file)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static size_t FileSize(std::string_view path) {
-  // PERF use stat! I must have this somewhere?
-  return Util::ReadFile(path).size();
-}
-
 int main(int argc, char **argv) {
   ANSI::Init();
   Net::Init();
@@ -250,6 +234,8 @@ int main(int argc, char **argv) {
   files.AddExcludePattern("*APACHE20.txt");
   files.AddExcludePattern("*CONTRIBUTORS");
 
+  bool emacs = false;
+
   if (verbose) {
     for (int i = 0; i < argc; i++) {
       Print("arg[{}] = \"{}\"\n", i, argv[i]);
@@ -266,6 +252,9 @@ int main(int argc, char **argv) {
       i++;
       Print("Read config " ABLUE("{}") "\n", argv[i]);
       files.AddConfig(argv[i]);
+
+    } else if (arg == "-emacs") {
+      emacs = true;
 
     } else if (arg == "-dir") {
       CHECK(i + 1 < argc);
@@ -364,7 +353,9 @@ int main(int argc, char **argv) {
       CHECK(cheap.get() != nullptr);
       cheap->SetVerbose(verbose);
 
+      if (emacs) Print("<" "STATUS>\n");
       std::string raw = cheap->Infer(includes_prompt);
+      if (emacs) Print("</" "STATUS>\n");
       std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
       if (json.empty()) {
         Print(ARED("Unable to find a JSON object!") "\n"
@@ -450,7 +441,9 @@ int main(int argc, char **argv) {
   CHECK(best.get() != nullptr);
   best->SetVerbose(verbose);
 
+  if (emacs) Print("<" "STATUS>\n");
   std::string raw = best->Infer(solve_prompt);
+  if (emacs) Print("</" "STATUS>\n");
   Print("Solve phase done in {}\n", ANSI::Time(solve_timer.Seconds()));
 
   std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");

@@ -110,6 +110,18 @@ static constexpr std::string_view BAD_JSON1 = R"(
 
 )";
 
+// TODO: Attempt to use bare double quotes in a string
+[[maybe_unused]]
+static constexpr std::string_view BAD_JSON2 = R"(
+{
+  "notes": "The user wants to modify the behavior of the `llm-edit` Emacs Lisp mode when zero matches are found for the 'before' text. Specifically, they want to highlight the longest maximal prefix or suffix match from the 'before' text in the `*EDITS*` buffer. This requires changes to the `llm-edit--preview` function, which currently handles the zero-match case by showing \"Match Not Found\". The new logic for finding and highlighting partial matches would likely need a new helper function, possibly within `edit.el` itself. The request also mentions applying a different background color, which implies the need to define or use existing faces. Since the current file `edit.el` already defines faces and contains the core logic for handling edits and previews, it's the primary file to consider for modifications. The `eprocs.el` file is relevant because `edit.el` uses `eprocs-run` to manage the external process and its pipeline, which might be indirectly affected if the way matches are processed changes significantly. However, the core logic for handling the "no match" scenario and displaying partial matches resides within `edit.el`.",
+  "files": [
+    "edit.el"
+  ]
+}
+)";
+
+
 static constexpr std::string_view UNRECOVERABLE1 = R"(
 } it ain\'t
 
@@ -119,14 +131,16 @@ even close‽\n
 {)";
 
 static void TestRecoverJSON() {
-  rapidjson::Document document;
-  CHECK(document.Parse(std::string(BAD_JSON1)).HasParseError()) << "This "
+  for (const std::string_view bad_json : {BAD_JSON1 /* , BAD_JSON2 */}) {
+    rapidjson::Document document;
+    CHECK(document.Parse(std::string(bad_json)).HasParseError()) << "This "
     "test wants an input that does not parse!";
 
-  std::string rescued(ModelUtil::RescueJSON(BAD_JSON1));
+    std::string rescued(ModelUtil::RescueJSON(bad_json));
 
-  CHECK(!document.Parse(rescued).HasParseError() &&
-        document.IsObject());
+    CHECK(!document.Parse(rescued).HasParseError() &&
+          document.IsObject());
+  }
 }
 
 static void TestParseSloppy() {
@@ -157,6 +171,8 @@ static void TestEscapeJSON() {
   CHECK(doc["k"].IsString());
   CHECK(std::string(doc["k"].GetString()) == orig);
 }
+
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
