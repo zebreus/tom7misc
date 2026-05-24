@@ -1,19 +1,19 @@
 
 #include "pactom.h"
 
-#include <string>
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
 
-#include "base/logging.h"
-#include "geom/latlon.h"
-#include "bounds.h"
-#include "image.h"
-#include "lines.h"
-#include "arcfour.h"
-#include "color-util.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "base/logging.h"
+#include "bounds.h"
+#include "color-util.h"
+#include "geom/latlon.h"
+#include "image.h"
 
 #include "pactom-util.h"
 

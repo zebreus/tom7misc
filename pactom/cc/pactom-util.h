@@ -2,14 +2,13 @@
 #ifndef _PACTOM_UTIL_H
 #define _PACTOM_UTIL_H
 
-
-#include <memory>
 #include <cstdint>
+#include <memory>
 
-#include "pactom.h"
 #include "arcfour.h"
-#include "lines.h"
 #include "image.h"
+#include "lines.h"
+#include "pactom.h"
 
 struct PacTomUtil {
   static std::unique_ptr<PacTom> Load(bool merge_dates);

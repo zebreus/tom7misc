@@ -5,10 +5,9 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <cstdint>
 
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
 #include "pactom-util.h"
 
 using namespace std;

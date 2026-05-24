@@ -1,27 +1,25 @@
 
 #include "pactom.h"
 
-#include <cmath>
-#include <cstdio>
-#include <unordered_set>
 #include <algorithm>
-#include <string>
-#include <vector>
-#include <memory>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <map>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "geom/latlon.h"
 #include "bounds.h"
-#include "image.h"
-#include "lines.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "color-util.h"
-#include "osm.h"
-#include "ansi.h"
+#include "geom/latlon.h"
+#include "image.h"
+#include "randutil.h"
 #include "threadutil.h"
 
 #include "pactom-util.h"

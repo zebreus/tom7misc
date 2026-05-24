@@ -1,13 +1,10 @@
 
 #include <vector>
 #include <string>
-#include <string_view>
-#include <memory>
 
-#include "wavesave.h"
-#include "util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
+#include "wavesave.h"
 
 using namespace std;
 
@@ -25,6 +22,6 @@ int main(int argc, char **argv) {
                            zero,
                            SAMPLES_PER_SEC));
 
-  printf("Wrote silence.wav\n");
+  Print("Wrote silence.wav\n");
   return 0;
 }

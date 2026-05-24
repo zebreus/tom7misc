@@ -21,8 +21,8 @@
 #include "osm.h"
 #include "pactom-util.h"
 #include "pactom.h"
+#include "yocto-math.h"
 #include "yocto_geometryt.h"
-#include "yocto_matht.h"
 
 struct ConvertUV {
   // uv coordinates here are given in terms of the earth
@@ -341,9 +341,9 @@ inline mat3d RotYaw(double a) {
   const double cosa = cos(a);
   const double sina = sin(a);
   return mat3d
-    {cosa, -sina, 0.0,
-     sina, cosa,  0.0,
-     0.0, 0.0,  1.0};
+    {{cosa, -sina, 0.0},
+     {sina, cosa,  0.0},
+     {0.0, 0.0,  1.0}};
 }
 
 inline mat3d RotPitch(double a) {
@@ -351,9 +351,9 @@ inline mat3d RotPitch(double a) {
   const double sina = sin(a);
 
   return mat3d
-    {cosa,  0.0, sina,
-     0.0,  1.0, 0.0,
-     -sina, 0.0, cosa};
+    {{cosa,  0.0, sina},
+     {0.0,  1.0, 0.0},
+     {-sina, 0.0, cosa}};
 }
 
 inline mat3d RotRoll(double a) {
@@ -361,9 +361,9 @@ inline mat3d RotRoll(double a) {
   const double sina = sin(a);
 
   return mat3d
-    {1.0, 0.0, 0.0,
-     0.0, cosa, -sina,
-     0.0, sina, cosa};
+    {{1.0, 0.0, 0.0},
+     {0.0, cosa, -sina},
+     {0.0, sina, cosa}};
 }
 
 inline mat3d Rot(double yaw, double pitch, double roll) {

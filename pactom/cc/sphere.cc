@@ -27,8 +27,8 @@
 #include "render.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "yocto-math.h"
 #include "yocto_geometryt.h"
-#include "yocto_matht.h"
 
 using namespace std;
 
@@ -156,6 +156,7 @@ double OptimizeMe(double a1, double a2, double a3, double distance) {
     SqDist(ux11, uy11, ux + uw, uy + uh);
 }
 
+[[maybe_unused]]
 static std::tuple<double, double, double, double> Optimize() {
   static constexpr double d = 2.801;
   auto [a1, a2, a3] =

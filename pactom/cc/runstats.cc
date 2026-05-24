@@ -2,19 +2,19 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <string>
-#include <cstdio>
 
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "bounds.h"
+#include "color-util.h"
 #include "image.h"
 #include "pactom-util.h"
 #include "pactom.h"
 #include "util.h"
-#include "base/stringprintf.h"
-#include "base/logging.h"
-#include "color-util.h"
 
 using namespace std;
 

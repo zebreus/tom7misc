@@ -3,21 +3,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
-#include <memory>
-#include <cstdint>
 
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "geom/latlon.h"
 #include "bounds.h"
+#include "geom/latlon.h"
 #include "image.h"
-#include "arcfour.h"
-#include "threadutil.h"
 #include "pactom-util.h"
+#include "threadutil.h"
 
 using namespace std;
 

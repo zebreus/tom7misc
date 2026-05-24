@@ -15,7 +15,6 @@
 #include "geom/latlon.h"
 #include "bounds.h"
 #include "image.h"
-#include "lines.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "color-util.h"

@@ -1,32 +1,38 @@
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
 #include <variant>
 #include <utility>
 #include <optional>
 #include <functional>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
-#include "yocto_matht.h"
-#include "yocto_geometryt.h"
-#include "threadutil.h"
-#include "image.h"
-#include "color-util.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "timer.h"
-#include "randutil.h"
-#include "arcfour.h"
-#include "opt/opt.h"
-#include "pactom.h"
-#include "lines.h"
+#include "color-util.h"
 #include "image-frgba.h"
+#include "image.h"
 #include "osm.h"
+#include "pactom.h"
+#include "randutil.h"
 #include "render.h"
 #include "textsvg.h"
+#include "threadutil.h"
+#include "timer.h"
 #include "util.h"
+#include "yocto-math.h"
+#include "yocto_geometryt.h"
+
+using string = std::string;
 
 static constexpr double PI = std::numbers::pi;
 
@@ -179,7 +185,7 @@ static double CubicBezierLength(vec3d start, vec3d c1, vec3d c2, vec3d end) {
   double total_length = 0.0;
   vec3d prev = start;
   for (int i = 0; i < SAMPLES; i++) {
-    const double t = (i + 1) / SAMPLES;
+    const double t = (i + 1.0) / SAMPLES;
     vec3d pt = EvaluateCubicBezier(start, c1, c2, end, t);
     total_length += length(pt - prev);
     prev = pt;
@@ -292,7 +298,7 @@ std::function<CameraPosition(double)> PathCamera(Path path) {
     };
 }
 
-
+[[maybe_unused]]
 static double EaseOutQuart(double f) {
   double sf = (1.0 - f) * (1.0 - f);
   return 1.0 - (sf * sf);
@@ -555,7 +561,7 @@ static ImageRGBA RenderFrame(
                 const auto [r, g, b] = ColorUtil::LinearGradient(
                     atm.gradient, frac);
 
-                uint32 color = ColorUtil::FloatsTo32(
+                uint32_t color = ColorUtil::FloatsTo32(
                     r, g, b, frac);
 
                 blend.push_back(color);
@@ -809,10 +815,10 @@ static void LoadTextures() {
 
 
   // Different underlying image types but all have Width, Height.
-#define SHOWSIZE(img) do { \
-  CHECK(img != nullptr) << #img; \
-  printf(#img " size %lld x %lld\n", \
-         (int64)img->Width(), (int64)img->Height()); \
+  #define SHOWSIZE(img) do {                             \
+      CHECK(img != nullptr) << #img;                     \
+      printf(#img " size %lld x %lld\n",                 \
+         (int64_t)img->Width(), (int64_t)img->Height()); \
   } while (0)
 
   SHOWSIZE(bluemarble);
@@ -847,10 +853,10 @@ int main(int argc, char **argv) {
 
   InParallel(
       [&](){
-        tile = new Tile;
+        tile = new Tile(pactom);
         if (pactom != nullptr) {
-          tile->DrawStreets(*pactom, osm);
-          tile->DrawHoods(pactom);
+          tile->DrawStreets(osm);
+          tile->DrawHoods();
         }
       },
       [](){

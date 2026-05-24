@@ -2,6 +2,11 @@
 #ifndef _PACTOM_OSM_H
 #define _PACTOM_OSM_H
 
+#include <cstdint>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "geom/latlon.h"
 
 struct OSM {
@@ -38,7 +43,7 @@ struct OSM {
 
   void AddFile(const std::string &filename);
 
-private:
+ private:
 
 };
 

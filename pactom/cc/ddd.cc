@@ -1,4 +1,8 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <string>
 #include <string_view>

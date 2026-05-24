@@ -1,18 +1,9 @@
 
-default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstats.exe elevation.exe silence.exe animhood.exe pac3pop.exe angletest.exe
+default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstats.exe elevation.exe silence.exe animhood.exe pac3pop.exe angletest.exe solar.exe shortest.exe ddd.exe
 
 CC_LIB=../../cc-lib
 
-# for 64 bits on windows
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-g++
 CXXFLAGS=-march=native -I$(CC_LIB) --std=c++23 -O3 -static -flto=auto
-
-# For linux, others...
-# CXX=g++
-# CC=gcc
-# CXXFLAGS=-I. --std=c++17 -O2 -DNDEBUG=1
-
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 

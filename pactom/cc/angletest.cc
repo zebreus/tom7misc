@@ -1,23 +1,17 @@
 
-#include "pactom.h"
-
-#include <string>
-#include <vector>
-#include <memory>
 #include <cstdint>
 #include <numbers>
+#include <optional>
+#include <utility>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "geom/latlon.h"
 #include "bounds.h"
 #include "image.h"
-#include "lines.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "color-util.h"
-#include "threadutil.h"
-#include "pactom-util.h"
 
 using namespace std;
 

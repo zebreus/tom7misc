@@ -16,8 +16,6 @@
 #include "opt/opt.h"
 #include "threadutil.h"
 
-static constexpr double PI = std::numbers::pi;
-
 static constexpr int THREADS = 16;
 
 static ImageRGBA *background = nullptr;

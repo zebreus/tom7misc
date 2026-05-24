@@ -1,7 +1,13 @@
 
 #include "pactom.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <memory>
+#include <mutex>
+#include <optional>
+#include <tuple>
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -9,6 +15,7 @@
 #include <utility>
 #include <cmath>
 
+#include "bounds.h"
 #include "xml.h"
 #include "geom/latlon.h"
 #include "geom/latlon-tree.h"
@@ -449,7 +456,7 @@ bool PacTom::LoadHoods(
     names->push_back(name);
 
     Bounds bounds;
-    for (const LatLon pos : poly) {
+    for (const LatLon &pos : poly) {
       const auto [y, x] = pos.ToDegs();
       bounds.Bound(x, y);
     }
