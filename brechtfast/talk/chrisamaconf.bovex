@@ -1,0 +1,168 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "font.bovex"
+  import "cite.bovex"
+  import "color.bovex"
+
+  import "talk-shared.bovex"
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel 1920.0,
+                    height = pixel 1080.0 }
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+  val slide = slide with BACKGROUND = "mushroombg.png"
+
+  fun just-crisp-image filename =
+    let
+      val img = image-scale-to { image = image-load filename,
+                                 width = SLIDE-WIDTH,
+                                 height = SLIDE-HEIGHT,
+                                 scaling = NEAREST-NEIGHBOR }
+    in
+      output-frame
+      (!current-page, !current-frame,
+       image-sticker { img = img, x = 0.0, y = 0.0, width = SLIDE-WIDTH });
+
+      next-slide()
+    end
+
+
+  fun bullet-reveal slide title bullets =
+    let
+      val n = list-length bullets
+    in
+      for 0 n
+      (fn len =>
+       combo-slide slide
+       (Title title ::
+        Bullets (list-take len bullets) ::
+        nil))
+    end
+
+  fun gradient-string ramp s =
+    let
+      val len = string-length s
+    in
+      layout-concat
+      (list-tabulate
+       (len,
+        (fn i =>
+         let
+           val t = int-to-float i /. int-to-float len
+           val c = codepoint-to-string (string-sub (s, i))
+           val rgba = color-linear-gradient (ramp, t)
+         in
+           color rgba (layout c)
+         end)))
+    end
+
+in
+  set-target-seconds (!current-page, 0);
+
+  title-slide (slide with BACKGROUND = "black.png") [Go to next slide] [by Tom 7] [CHRISAMACONF STL];
+
+  set-target-seconds (!current-page, 0);
+
+  title-slide slide (color 0xFFFFFFFF [Brechtfast of champions])
+  (color 0xc25e32ff [by Tom 7]) (gradient-string VISIBLE-SPECTRUM
+                                 "CHRISAMACONF STL");
+  (* "nothing but net" *)
+
+  (* just-video (slide with LOOP-VIDEO = true) "title-loop.mp4"; *)
+
+(*
+
+  title-slide slide (size (point 200.0) (color 0xFFFFFFFF [
+    “toxic max-security”
+]))
+  [ ] [ ];
+
+  title-slide slide (size (point 200.0) (color 0xFFFFFFFF
+                                         [HTTPV]))
+  [A [color 0xFFFF77FF [pre-paid]] self-own]
+  (size (point 100.0) [by Tom 7, Computer Science Idiot]);
+
+
+  just-crisp-image "httpv.png";
+
+  just-video (slide with VIDEO-AUDIO = true) "sick-burn.mp4";
+
+  (* great random numbers to prevent replay attacks
+
+     as you know it's very important to pick high quality
+     random numbers *)
+  just-crisp-image "handshake.png";
+
+  (* just-crisp-image "dictionary-attack.png"; *)
+
+  bullet-reveal slide (size 100.0 [Who has the best random numbers?])
+  ((size 200.0 [Banks]) :: nil);
+
+  just-video slide "cc-rng.mp4";
+
+  (* just-crisp-image "full-handshake.png"; *)
+  just-crisp-image "dictionary-attack.png";
+
+  just-crisp-image "rsa.png";
+
+  just-crisp-image "rsa-7.png";
+  just-crisp-image "rsa-31337.png";
+  just-crisp-image "rsa-31337-revoked.png";
+  just-crisp-image "rsa-16-factors.png";
+  just-crisp-image "baby-diaper-grade.png";
+
+  (* CBC mode *)
+
+  (* I only got five minutes here, so it's a good thing I'm talking
+     to a room full of geniuses who already know the details of
+     AES-256 in CBC mode. *)
+  just-crisp-image "cbc-mode.png";
+
+  (* or explain it? *)
+  just-crisp-image "cbc-xor.png";
+  just-crisp-image "cbc-record-size.png";
+
+  just-crisp-image "packet-capture.png";
+
+  (* Limitations *)
+  just-video slide "wget.mp4";
+
+  just-crisp-image "curling.png";
+
+  bullet-reveal slide [Toxic max-security begone!!]
+   ([There is no real security problem here. They are just
+     trying to [b (color 0xFF5555FF [shame me])] into compliance.] ::
+    [Perhaps we need to counterbalance this with some ...
+     VULNERABILITY‽ ] :: nil);
+
+  just-video (slide with VIDEO-AUDIO = true) "vulnerability.mp4";
+
+  combo-slide (slide with BACKGROUND = "applied.png")
+  (Title [In conclusion] :: nil);
+
+  bullet-reveal (slide
+                 with BACKGROUND = "unapplied.png") [In conclusion]
+  ([Join me in Unapplying cryptography] ::
+   [I welcome your submissions in the new field of
+    [b[gymnography]] (from the Greek [color 0xFFFF00FF (it [gγμvòσ])], naked)] ::
+   [Papers, please!] :: nil);
+
+  centered-text-slide slide [http://tom7.org/httpv/];
+
+  set-target-seconds (!current-page, 5 * 60);
+
+  centered-text-slide slide [ ];
+
+  just-video (slide with VIDEO-AUDIO = true) "hacker-crap.mp4";
+
+*)
+
+  ()
+
+end
