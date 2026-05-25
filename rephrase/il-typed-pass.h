@@ -524,7 +524,8 @@ struct TypedPass {
             Args... args) {
     const auto &[ee, tt] = DoExp(G, e, args...);
     // DCHECK(tt == record_type)
-    CHECK(tt->type == TypeType::RECORD);
+    CHECK(tt->type == TypeType::RECORD) << "Bug? Expected record, but got: "
+                                        << TypeString(tt);
     for (const auto &[l, t] : tt->Record()) {
       if (l == s) {
         return {

@@ -17,6 +17,7 @@
 
 do REQUIRE-STDLIB
 do REQUIRE-LAYOUT
+datatype provide-cite = REQUIRE-CITE
 
 val CITE-VERBOSE = false
 

@@ -297,6 +297,8 @@ fun string-find (big, small) =
 fun substr-rest (s, pos) =
   substr (s, pos, string-size s - pos)
 
+val string-length = string-size
+
 fun string-prefix (s, n) =
   if n >= string-size s then s
   else substr (s, 0, n)

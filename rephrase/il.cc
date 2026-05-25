@@ -840,10 +840,7 @@ std::string ProgramString(const Program &pgm) {
                  t,
                  e);
   }
-  Print("Body...\n");
-  fflush(stdout);
-  std::string ee = "BODY"; // ExpStringEx(pgm.body, MAX_DEPTH);
-  Print("body size {}\n", ee.size());
+  std::string ee = ExpStringEx(pgm.body, MAX_DEPTH);
   AppendFormat(&ret,
                "in\n"
                "  {}\n"

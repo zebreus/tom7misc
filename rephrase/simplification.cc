@@ -34,7 +34,7 @@
 #include "utf8.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 using ProgressRecorder = Progress<VERBOSE>;
 
@@ -2492,6 +2492,7 @@ Program Simplification::Simplify(const Program &program_in,
     program = decompose.DoProgram(program);
   }
 
+  int rounds = 0;
   do {
     progress.Reset();
     if (VERBOSE) Print(AWHITE("Peephole") ".\n");
@@ -2565,8 +2566,9 @@ Program Simplification::Simplify(const Program &program_in,
       program = global_inlining.Run(program);
     }
 
+    rounds++;
     if (VERBOSE) {
-      Print("\n" AYELLOW("After simplification:\n"));
+      Print("\n" AYELLOW("After simplification round {}:") "\n", rounds);
       Print("{}\n", ProgramString(program));
     }
 

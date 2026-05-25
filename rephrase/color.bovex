@@ -1,0 +1,139 @@
+do REQUIRE-STDLIB
+datatype provide-color = REQUIRE-COLOR
+
+(* Utilities for working with RGBA colors.
+
+   In BoVeX, colors are represented as 32-bit words,
+   in 0xRRGGBBAA format. For RGB colors, the convention
+   is to still use 0xRRGGBBAA and ignore the alpha
+   component (or set it to 0xFF). We use int to store
+   these values; ints outside the unsigned 32-bit range
+   are invalid colors. *)
+
+
+(* Note: This is also in stdlib as just 'rgba' *)
+fun color-pack (r, g, b, a) : int =
+  ((((r * 256) + g) * 256 + b) * 256) + a
+
+fun color-unpack (color : int) : int * int * int * int =
+  let
+    val a = color mod 256
+    val color = color div 256
+    val b = color mod 256
+    val color = color div 256
+    val g = color mod 256
+    val color = color div 256
+    val r = color mod 256
+  in
+    (r, g, b, a)
+  end
+
+fun color-clamp x = if x < 0 then 0 else if x > 255 then 255 else x
+fun color-pack-float (r : float, g : float, b : float, a : float) : int =
+  color-pack (color-clamp (round (r *. 255.0)),
+              color-clamp (round (g *. 255.0)),
+              color-clamp (round (b *. 255.0)),
+              color-clamp (round (a *. 255.0)))
+
+fun color-unpack-float (color : int) : float * float * float * float =
+  let val (r, g, b, a) = color-unpack color
+  in (int-to-float r /. 255.0,
+      int-to-float g /. 255.0,
+      int-to-float b /. 255.0,
+      int-to-float a /. 255.0)
+  end
+
+(* Linear interpolation between color1 and color2. Treats
+   alpha correctly. *)
+fun color-lerp (color1 : int, color2 : int, t : float) : int =
+  let
+    val (r1, g1, b1, a1) = color-unpack-float color1
+    val (r2, g2, b2, a2) = color-unpack-float color2
+  in
+    let
+      val u = 1.0 -. t
+      val a = a1 *. u +. a2 *. t
+    in
+      if a <=. 0.0 then
+        color-pack-float (0.0, 0.0, 0.0, 0.0)
+      else
+        let
+          val r = (r1 *. a1 *. u +. r2 *. a2 *. t) /. a
+          val g = (g1 *. a1 *. u +. g2 *. a2 *. t) /. a
+          val b = (b1 *. a1 *. u +. b2 *. a2 *. t) /. a
+        in
+          color-pack-float (r, g, b, a)
+        end
+    end
+  end
+
+(* A gradient is a list of color waypoints on the number line.
+   Most gradients range from 0.0 to 1.0, and most use alpha = 0xFF. *)
+datatype gradient = Gradient of (float * int) list
+
+(* Stylized black-body spectrum *)
+val HEATED-METAL =
+  Gradient((0.0, 0x000000FF) ::
+           (0.2, 0x7700BBFF) ::
+           (0.5, 0xFF0000FF) ::
+           (0.8, 0xFFFF00FF) ::
+           (1.0, 0xFFFFFFFF) ::
+           nil)
+
+(* Red for negative, black for 0, green for positive.
+   nominal range [-1, 1]. *)
+val NEG-POS =
+  Gradient((-1.0, 0xFF0000FF) ::
+           (0.0, 0x000000FF) ::
+           (1.0, 0x00FF00FF) ::
+           nil)
+
+(* Like heated metal, but for text on a black background,
+   where even the darkest text is still readable. *)
+val HEATED-TEXT =
+  Gradient((0.0, 0x222222FF) ::
+           (0.2, 0x7722BBFF) ::
+           (0.5, 0xFF2222FF) ::
+           (0.8, 0xFFFF22FF) ::
+           (1.0, 0xFFFFFFFF) ::
+           nil)
+
+(* ROYGBIV; always visible on black. *)
+val VISIBLE-SPECTRUM =
+  Gradient((0.0, 0xFF0000FF) ::
+           (0.25, 0xFFFF00FF) ::
+           (0.5, 0x00FF00FF) ::
+           (0.75, 0x0000FFFF) ::
+           (1.0, 0xFF00FFFF) ::
+           nil)
+
+(* for a probability with 0="bad" (red) and 1="good" (green). *)
+val PROBABILITY-TEXT =
+  Gradient((0.0, 0xDE2323FF) ::
+           (0.33, 0xDE8D23FF) ::
+           (0.66, 0xBCDE23FF) ::
+           (1.0, 0x63E65AFF) ::
+           nil)
+
+(* Linear interpolation. *)
+fun color-linear-gradient (Gradient ramp, t : float) =
+  let
+    fun clg (_, _, (_, color) :: nil) =
+      (* Past the final waypoint. *)
+      color
+      | clg (prev, prev-color, (waypoint, color) :: ramp) =
+      if t <. waypoint
+      then
+        let
+          val width = waypoint -. prev
+          val frac = (t -. prev) /. width
+        in
+          color-lerp (prev-color, color, frac)
+        end
+      else clg (waypoint, color, ramp)
+  in
+      case ramp of
+        nil => fail "invalid (empty) gradient!"
+      | (first, color) :: rest => if t <=. first then color
+                                  else clg (first, color, rest)
+  end
