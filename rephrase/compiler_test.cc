@@ -1,7 +1,6 @@
 
 #include "compiler.h"
 
-#include <cstdio>
 #include <variant>
 
 #include "ansi.h"
@@ -155,6 +154,37 @@ static void Regression5743() {
   }
 }
 
+static void Regression7000() {
+  Compiler compiler;
+  if (VERBOSE) {
+    compiler.SetVerbose(2);
+  }
+  // the VISIBLE-SPECTRUM declaration elaborates incorrectly
+  // (leaves a free type variable a$1) which then breaks
+  // during simplification.
+  bc::Program prog = compiler.CompileString(
+      "test", R"(
+      let
+        datatype (a) list = :: of a * list | nil
+
+        datatype gradient = Gradient of (float * int) list
+
+        val VISIBLE-SPECTRUM = Gradient((1.0, 12345) :: nil)
+
+        fun color-linear-gradient (Gradient ramp) =
+          let
+            fun clg (_, _ :: nil) = 0xAABBCCDD
+              | clg (_, (_, color) :: _) = color
+          in
+            clg (567890, ramp)
+          end
+
+        val cc = color-linear-gradient VISIBLE-SPECTRUM
+      in
+        layout (int-to-string cc)
+      end)");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -163,6 +193,7 @@ int main(int argc, char **argv) {
   Regression5580();
   Regression5668();
   Regression5743();
+  Regression7000();
 
   Print("OK\n");
   return 0;

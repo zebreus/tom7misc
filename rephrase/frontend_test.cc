@@ -1038,6 +1038,7 @@ static void Regression() {
     CHECK(body_rec[0].second->type == ExpType::VAR);
   }
 
+
 }
 
 static void TestEnums() {

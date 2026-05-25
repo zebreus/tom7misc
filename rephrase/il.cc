@@ -599,7 +599,7 @@ std::string ExpStringEx(const Exp *e, int depth) {
   }
 }
 
-static constexpr int MAX_DEPTH = 8;
+static constexpr int MAX_DEPTH = 16;
 
 std::string ExpString(const Exp *e) {
   return ExpStringEx(e, MAX_DEPTH);

@@ -10,25 +10,25 @@
 #include <format>
 #include <functional>
 #include <optional>
-#include <tuple>
-#include <utility>
 #include <string>
+#include <tuple>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/print.h"
-#include "inclusion.h"
 #include "context.h"
 #include "el.h"
-#include "il.h"
-#include "initial.h"
-#include "pattern-compilation.h"
 #include "il-util.h"
+#include "il.h"
+#include "inclusion.h"
+#include "initial.h"
+#include "inline-vector.h"
+#include "pattern-compilation.h"
 #include "primop.h"
 #include "unification.h"
 #include "util.h"
-#include "inline-vector.h"
-#include "ansi.h"
 
 // This code has to mention both el and il stuff with the same
 // name. But there are many things that are unambiguous.
@@ -1080,7 +1080,14 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       return std::make_pair(lambda, t);
 
     } else if (vi->ctor.has_value()) {
-      const auto &[mu_idx_, mu_type, sum_lab] = vi->ctor.value();
+      const auto &[mu_idx_, mu_type_orig, sum_lab] = vi->ctor.value();
+
+      // Type variables get instantiated in the constructor type
+      // as well.
+      const il::Type *mu_type = mu_type_orig;
+      for (int i = 0; i < (int)vi->tyvars.size(); i++) {
+        mu_type = pool->SubstType(tvs[i], vi->tyvars[i], mu_type);
+      }
 
       const auto &[mu_idx_2_, arms] = mu_type->Mu();
       CHECK(mu_idx_ == mu_idx_2_);

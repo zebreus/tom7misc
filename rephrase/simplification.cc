@@ -34,7 +34,7 @@
 #include "utf8.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 using ProgressRecorder = Progress<VERBOSE>;
 
@@ -2476,6 +2476,13 @@ Program Simplification::Simplify(const Program &program_in,
   RepresentEnumsPass represent_enums(opts, pool, &progress);
   CaseOfCasePass case_of_case(opts, pool, &progress);
   EraseUnitPass erase_unit(opts, pool, &progress);
+
+  if (VERBOSE) {
+    Print("----------------------------------------\n");
+    Print(AWHITE("Starting simplification. Program:")
+          "\n{}\n", ProgramString(program));
+    Print("----------------------------------------\n");
+  }
 
   // Optimizations that are disabled due to bugs, etc.
   constexpr uint64_t DISABLED_OPTIMIZATIONS = O_ERASE_UNIT;
