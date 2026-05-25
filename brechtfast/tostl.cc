@@ -9,7 +9,6 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "db.h"
-#include "geom/polyhedra.h"
 #include "poly-util.h"
 
 static void Export(std::string_view name, std::string_view filename) {

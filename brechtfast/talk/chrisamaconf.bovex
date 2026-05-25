@@ -65,41 +65,73 @@ let
 in
   set-target-seconds (!current-page, 0);
 
-  title-slide (slide with BACKGROUND = "black.png") [Go to next slide] [by Tom 7] [CHRISAMACONF STL];
+  title-slide (slide with BACKGROUND = "black.png") [Go to next slide] [ ] [ ];
 
   set-target-seconds (!current-page, 0);
 
   title-slide slide (color 0xFFFFFFFF [Brechtfast of champions])
   (color 0xc25e32ff [by Tom 7]) (gradient-string VISIBLE-SPECTRUM
-                                 "CHRISAMACONF STL");
+                                 "CHRISAMACONF.STL");
   (* "nothing but net" *)
 
-  (* just-video (slide with LOOP-VIDEO = true) "title-loop.mp4"; *)
+  combo-slide (slide with BACKGROUND = "3dprinting.jpg")
+  (Title [.STL = Stereolithography] :: nil);
+
+
+  combo-slide slide
+  (Title [2D Printing] ::
+   Bullets ([e.g. [color 0xFF00FFFF [.SVG]] files] ::
+            [use this to mail polyhedra to your friends at
+             discount flat-pack rates using the postal service] ::
+            [100% legal] ::
+            nil) ::
+   nil);
+
+  combo-slide slide
+  (Title [2D Printing] ::
+   Image { img = image-load-cache "dodecahedron-example.png",
+           x = pixel 100.0,
+           y = pixel 100.0,
+           scale = ORIGINAL } ::
+   nil);
+
+  (* Here's a thing I like about nets. *)
+  combo-slide slide
+  (Title [Cool] ::
+   Image { img = image-load-cache "parens.png",
+           x = pixel 100.0,
+           y = pixel 100.0,
+           scale = ORIGINAL } ::
+   nil);
+
+  combo-slide (slide with BACKGROUND = "durer.jpg"
+               with CONTENT-START-Y = 540.0
+               with TITLE-FONT-SIZE = 104.0)
+  (Title [Dead Albrecht Dürer (1471–1582)] ::
+   Bullets ([One-trick pony] ::
+            [Only cared about convex polyhedra] ::
+            [[it (color 0xFFFFCCFF [Call of Duty: Black Ops 6])]
+             “Prestige” level: [b (color 0xFF4444FF [Nothing. Zero Points. ] ^^
+                                   color 0xFF0000FF [A failure.])]] ::
+            nil) ::
+   nil);
+
+
+  attributed-quote-slide (slide with BACKGROUND = "durer.jpg"
+                          with QUOTE-FONT-SIZE = 80.0
+                          with CONTENT-WIDTH = 900.0)
+  [Dürer’s Conjecture]
+  [“Every convex polyhedron has a [color 0x99CCFFFF [net]].”]
+  [Dead Albrecht Dürer];
+
+
+
 
 (*
 
-  title-slide slide (size (point 200.0) (color 0xFFFFFFFF [
-    “toxic max-security”
-]))
-  [ ] [ ];
+  (* just-video (slide with LOOP-VIDEO = true) "title-loop.mp4"; *)
 
-  title-slide slide (size (point 200.0) (color 0xFFFFFFFF
-                                         [HTTPV]))
-  [A [color 0xFFFF77FF [pre-paid]] self-own]
-  (size (point 100.0) [by Tom 7, Computer Science Idiot]);
-
-
-  just-crisp-image "httpv.png";
-
-  just-video (slide with VIDEO-AUDIO = true) "sick-burn.mp4";
-
-  (* great random numbers to prevent replay attacks
-
-     as you know it's very important to pick high quality
-     random numbers *)
-  just-crisp-image "handshake.png";
-
-  (* just-crisp-image "dictionary-attack.png"; *)
+  (* just-crisp-image "httpv.png"; *)
 
   bullet-reveal slide (size 100.0 [Who has the best random numbers?])
   ((size 200.0 [Banks]) :: nil);

@@ -26,7 +26,10 @@ using Aug = Albrecht::AugmentedPoly;
 static void Inspect(std::string_view poly_name,
                     std::optional<int> face_idx,
                     std::optional<int> edge_idx,
-                    std::string_view filename) {
+                    std::string_view filename,
+                    bool inserts,
+                    bool face_labels,
+                    bool edge_labels) {
   auto [poly, example_net] = DB::GetPolyhedron(poly_name);
 
   CHECK(IsWellConditioned(poly.vertices));
@@ -47,13 +50,15 @@ static void Inspect(std::string_view poly_name,
 
   std::vector<SVG::Doc> quadrant_docs;
   for (size_t i = 0; i < examples.non_nets.size() && i < 3; ++i) {
-    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.non_nets[i]);
+    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.non_nets[i],
+                                     inserts, face_labels, edge_labels);
     SVG::RenameDefs(std::format("q{}-", i), &svg);
     quadrant_docs.push_back(std::move(svg));
   }
 
   if (!examples.nets.empty()) {
-    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.nets[0]);
+    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.nets[0],
+                                     inserts, face_labels, edge_labels);
     SVG::RenameDefs("q3-", &svg);
     quadrant_docs.push_back(std::move(svg));
   }
@@ -117,6 +122,9 @@ int main(int argc, char **argv) {
 
   std::string name;
   std::optional<int> face_idx, edge_idx;
+  bool inserts = true;
+  bool face_labels = true;
+  bool edge_labels = true;
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
     if (arg == "-face" || arg == "-edge") {
@@ -126,16 +134,25 @@ int main(int argc, char **argv) {
       CHECK(of.has_value()) << "-face and -edge must be a number!";
       if (arg == "-face") face_idx = {of.value()};
       else if (arg == "-edge") edge_idx = {of.value()};
+    } else if (arg == "-no-inserts") {
+      inserts = false;
+    } else if (arg == "-no-face-labels") {
+      face_labels = false;
+    } else if (arg == "-no-edge-labels") {
+      edge_labels = false;
     } else {
       CHECK(name.empty()) << "Just one name.";
       name = arg;
     }
   }
 
-  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] name";
+  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] "
+                          "[-no-inserts] [-no-face-labels] [-no-edge-labels] "
+                          "name";
 
   Inspect(name, face_idx, edge_idx,
-          std::format("inspect-{}.svg", name));
+          std::format("inspect-{}.svg", name),
+          inserts, face_labels, edge_labels);
 
   return 0;
 }

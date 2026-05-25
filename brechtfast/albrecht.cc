@@ -505,7 +505,8 @@ static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
 SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
                            const DebugResult &dr,
                            bool inserts,
-                           bool labels) {
+                           bool face_labels,
+                           bool edge_labels) {
   SVG::Doc doc;
 
   Bounds bounds;
@@ -519,7 +520,7 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
     return doc;
   }
 
-  LayoutPlan plan = MakePlan(aug, dr, inserts, labels);
+  LayoutPlan plan = MakePlan(aug, dr, inserts, face_labels || edge_labels);
   Print("Got LayoutPlan.\n");
 
   auto DrawMesh = [&](const Bounds::Scaler &scaler, int insert_idx,
@@ -660,7 +661,7 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
       }
       verts_group.children.push_back(SVG::Node{std::move(verts_path)});
 
-      if (labels) {
+      if (face_labels) {
         for (const Label &lbl : plan.poly_labels) {
           bool draw = false;
           if (insert_idx == -1) {
@@ -675,7 +676,9 @@ SVG::Doc Albrecht::MakeSVG(const AugmentedPoly &aug,
                     std::format("{}", lbl.id), scaled_fs);
           }
         }
+      }
 
+      if (edge_labels) {
         for (const Label &lbl : plan.edge_labels) {
           bool draw = false;
           if (insert_idx == -1) {

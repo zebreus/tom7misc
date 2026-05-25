@@ -212,7 +212,8 @@ struct Albrecht {
   static SVG::Doc MakeSVG(const AugmentedPoly &aug,
                           const DebugResult &debug_result,
                           bool inserts = true,
-                          bool labels = true);
+                          bool face_labels = true,
+                          bool edge_labels = true);
 
   // Determines whether the unfolding is a valid net without producing
   // any debug information. This can assume that the unfolding is a
