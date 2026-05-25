@@ -3,9 +3,7 @@
 #define _BRECHTFAST_SAMPLER_H
 
 #include <cstdint>
-#include <optional>
 #include <string>
-#include <utility>
 
 #include "albrecht.h"
 #include "arcfour.h"

@@ -181,6 +181,7 @@ struct Albrecht {
 
 
   struct DebugResult {
+    BitString unfolding;
     // True if the input is free from cycles.
     bool cycle_free = false;
     // If it has a cycle, an example cycle given as face indices.

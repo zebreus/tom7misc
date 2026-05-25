@@ -179,7 +179,13 @@ struct Leaffast {
             Timer solve_timer;
             std::vector<std::pair<int, int>> candidates;
             if (constraint.has_value()) {
-              candidates.push_back(constraint.value());
+              const auto &[f, e] = constraint.value();
+              if (f >= 0 && f < num_faces && e >= 0 && e < num_edges) {
+                const Faces::Edge &edge = poly.faces->edges[e];
+                if (edge.f0 == f || edge.f1 == f) {
+                  candidates.push_back(constraint.value());
+                }
+              }
             } else {
               for (int e = 0; e < num_edges; e++) {
                 const Faces::Edge &edge = poly.faces->edges[e];

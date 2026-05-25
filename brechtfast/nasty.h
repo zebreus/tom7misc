@@ -47,6 +47,16 @@ struct Nasty {
   // strictly convex.
   static Polyhedron RubiksCube();
 
+  // A 14-faced solid with no Hamiltonian path in its face-adjacency graph.
+  // Derived from truncating a 6-faced, 8-vertex "wedge" shape.
+  // Features 8 mutually disjoint triangles separated by 6 n-gons.
+  static Polyhedron TruncatedWedge();
+
+  // The deep-truncation equivalent of the above. It has 12 vertices
+  // (the midpoints of the original wedge) and 14 faces; also lacks
+  // a Hamiltonian path.
+  static Polyhedron RectifiedWedge();
+
   static std::optional<Polyhedron> ByName(std::string_view name);
 };
 

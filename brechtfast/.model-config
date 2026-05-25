@@ -4,5 +4,7 @@
 
 svn ../cc-lib/geom
 
+svn ../cc-lib/opt
+
 file project.txt
 describe project.txt Project description

@@ -341,6 +341,87 @@ Polyhedron Nasty::RubiksCube() {
   return std::move(opt.value());
 }
 
+Polyhedron Nasty::TruncatedWedge() {
+  // A "Base Wedge" with exactly 8 vertices and 6 perfectly planar faces.
+  // Formed by taking a right triangular prism and cleanly slicing off one tip.
+  std::vector<vec3> base_vertices = {
+    {0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {0.0, 2.0, 0.0}, {0.0, 0.0, 2.0},
+    {2.0, 0.0, 2.0}, {0.0, 2.0, 1.0}, {1.0, 1.0, 2.0}, {0.0, 1.0, 2.0},
+  };
+
+  int edges[12][2] = {
+    {0,1}, {0,2}, {0,3}, {1,2}, {1,4}, {2,5},
+    {3,4}, {3,7}, {4,6}, {5,6}, {5,7}, {6,7},
+  };
+
+  std::vector<vec3> vertices;
+  vertices.reserve(24);
+
+  // For a standard truncation, we create 24 vertices by sliding a small
+  // distance (20%) away from the corners along the 12 existing edges.
+  // Because these points sit exactly on the original coplanar edges,
+  // the original 6 faces remain strictly planar, while 8 isolated
+  // corner triangles are spawned.
+  for (int i = 0; i < 12; i++) {
+    vec3 v0 = base_vertices[edges[i][0]];
+    vec3 v1 = base_vertices[edges[i][1]];
+
+    // 20% from v0
+    vertices.push_back(vec3{
+        v0.x * 0.8 + v1.x * 0.2,
+        v0.y * 0.8 + v1.y * 0.2,
+        v0.z * 0.8 + v1.z * 0.2,
+    });
+
+    // 20% from v1
+    vertices.push_back(vec3{
+        v0.x * 0.2 + v1.x * 0.8,
+        v0.y * 0.2 + v1.y * 0.8,
+        v0.z * 0.2 + v1.z * 0.8,
+    });
+  }
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "truncatedwedge");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
+
+Polyhedron Nasty::RectifiedWedge() {
+  std::vector<vec3> base_vertices = {
+    {0.0, 0.0, 0.0}, {2.0, 0.0, 0.0}, {0.0, 2.0, 0.0}, {0.0, 0.0, 2.0},
+    {2.0, 0.0, 2.0}, {0.0, 2.0, 1.0}, {1.0, 1.0, 2.0}, {0.0, 1.0, 2.0},
+  };
+
+  int edges[12][2] = {
+    {0,1}, {0,2}, {0,3}, {1,2}, {1,4}, {2,5},
+    {3,4}, {3,7}, {4,6}, {5,6}, {5,7}, {6,7},
+  };
+
+  std::vector<vec3> vertices;
+  vertices.reserve(12);
+
+  // Rectification cuts exactly at the edge midpoints.
+  // This reduces the edges to singular vertices, yielding exactly 12
+  // vertices that perfectly bound 14 strictly convex faces.
+  for (int i = 0; i < 12; i++) {
+    vec3 v0 = base_vertices[edges[i][0]];
+    vec3 v1 = base_vertices[edges[i][1]];
+
+    vertices.push_back(vec3{
+        (v0.x + v1.x) * 0.5,
+        (v0.y + v1.y) * 0.5,
+        (v0.z + v1.z) * 0.5,
+    });
+  }
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "rectifiedwedge");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
 
 std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "tilteddecagonpyramid") return TiltedDecagonPyramid();
@@ -356,5 +437,7 @@ std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "chisel") return Chisel();
   if (name == "cigar") return Cigar();
   if (name == "rubikscube") return RubiksCube();
+  if (name == "truncatedwedge") return TruncatedWedge();
+  if (name == "rectifiedwedge") return RectifiedWedge();
   return std::nullopt;
 }

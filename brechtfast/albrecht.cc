@@ -34,6 +34,7 @@ Albrecht::DebugResult Albrecht::DebugUnfolding(
   const int num_faces = faces.NumFaces();
   CHECK(unfolding.Size() == faces.NumEdges());
   DebugResult result;
+  result.unfolding = unfolding;
 
   BitString visited_faces(num_faces, 0);
 
