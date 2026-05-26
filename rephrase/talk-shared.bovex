@@ -117,7 +117,8 @@ fun slide-props (s : obj) : slide-props =
     val BACKGROUND-IMAGE =
       case s of
         {(Slide) BACKGROUND = bg } =>
-          (if string-ends-with ".png" bg
+          (if string-ends-with ".png" bg orelse
+              string-ends-with ".jpg" bg
            then
              SOME (image-load-cache bg)
            else
@@ -490,6 +491,41 @@ fun quote-slide slide title lay =
 
     next-slide()
   end
+
+fun attributed-quote-slide slide title quote attribution =
+  let
+    val props = slide-props slide
+    open props : slide-props
+
+    val xpos = LEFT-MARGIN
+    val ypos = ref CONTENT-START-Y
+    val COLUMN-WIDTH = CONTENT-WIDTH
+
+    val body = span {(Span) font-size = QUOTE-FONT-SIZE,
+                     justification = "full",
+                     font-face = font-family PALATINO,
+                     font-color = BODY-FONT-COLOR,
+                     font-italic = true } quote ^^ hfill() ^^
+      break() ^^
+      hfill() ^^
+      span {(Span) font-size = QUOTE-FONT-SIZE,
+            font-face = font-family PALATINO,
+            font-color = BODY-FONT-COLOR,
+            font-italic = true } [— [attribution]]
+  in
+    add-background-image BACKGROUND-IMAGE;
+
+    add-title props title;
+
+    output-frame
+    (!current-page, !current-frame,
+     box-stick-at { x = xpos, y = !ypos }
+     (paragraph-to-box COLUMN-WIDTH
+      (layout-map-text normalize-whitespace body)));
+
+    next-slide()
+  end
+
 
 fun title-slide slide title author venue =
   let

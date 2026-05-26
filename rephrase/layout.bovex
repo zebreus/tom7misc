@@ -877,6 +877,38 @@ fun monospace-block-ext { left-indent, width,
        font name, not the family. *)
     val ff = font-regular FIXEDERSYS
 
+    (* In a monospace block, newlines are not ignored. We use
+       get-paragraphs to break the text (the main thing being
+       formatting that spans lines), so translate newlines into
+       \\ as expected by that function.
+
+       But before we do that, we isolate any backslashes into
+       their own layout nodes so that they can't interfere
+       with the \\ syntax. (For example, a line like "C:\" on
+       its own should not be translated into C:\\\, since
+       the first pair of backslashes will be the ones parsed!)
+
+       (Alas this trick didn't work; does something put the
+       nodes back together perhaps?)
+       *)
+(*
+    fun isolate-backslash str =
+      case string-chop "\\" str of
+        NONE => layout str
+      | SOME (before, after) =>
+          layout before ^^ [\] ^^ isolate-backslash after
+    val lay = layout-map-text-to-layout isolate-backslash lay
+*)
+
+    (* ... instead just put space before \\. Since this is the
+       end of the line, the space shouldn't affect the display. *)
+    fun expand-newline str =
+      string-replace "\n" " \\\\" str
+
+
+    val lay = layout-map-text expand-newline lay
+
+(*
     fun flat-text lay =
       case layoutcase lay of
         Text str => str
@@ -897,6 +929,22 @@ fun monospace-block-ext { left-indent, width,
                          attrs))
                    (layout s))) sl
       end
+*)
+
+    val paras = get-paragraphs (lay :: nil)
+    val lines =
+      list-map (fn (ParagraphItem { body, space-after, floats }) =>
+                let
+                  val line-lay = (size font-size (fixedersys body))
+                  val line-box = text-box line-lay
+                in
+                  case layoutcase line-box of
+                    Node (BOX, line-attrs, ch) =>
+                      box (obj-merge (line-attrs, attrs)
+                           with (Box) height = font-size +. line-spacing
+                           with (Box) width = width) (layout-concat ch)
+                  | _ => fail "Expected box from text-box"
+                end) paras
   in
     stick-vertically
     (left-indent,

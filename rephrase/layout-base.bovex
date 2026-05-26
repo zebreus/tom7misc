@@ -236,16 +236,22 @@ fun layoutcase (l : layout) =
       Node (display-type attrs, attrs, r 0)
     end
 
-fun layout-map-text (f : string -> string) (lay : layout) : layout =
+(* Call f on every text node, but it can transform the string
+   into any layout node. *)
+fun layout-map-text-to-layout (f : string -> layout) (lay : layout) : layout =
   let
     fun rec (l : layout) =
       case layoutcase l of
-        Text s => layout (f s)
+        Text s => f s
       | Node (_, attrs, ch : layout list) =>
           node attrs (layout-concat (list-map rec ch))
   in
     rec lay
   end
+
+(* As previous, but returning a plain string. *)
+fun layout-map-text (f : string -> string) (lay : layout) : layout =
+  layout-map-text-to-layout (fn s => layout (f s)) lay
 
 (* Converts the layout recursively to a string. Generally you should
    only be using this for something like debugging or testing. Ignores

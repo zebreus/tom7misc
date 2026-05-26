@@ -397,6 +397,19 @@ fun string-tokens pred str : string list =
     r ("", str)
   end
 
+fun string-replace src replacement str =
+  case string-size src of
+    0 => fail "string-replace cannot have an empty src string"
+  | _ =>
+      let
+        fun rep s =
+          case string-chop src s of
+            NONE => s
+          | SOME (a, b) => a ^ replacement ^ rep b
+      in
+        rep str
+      end
+
 (* Apply f to every element in the vector, writing that
    back in place. *)
 fun vec-app-update f v : unit =
