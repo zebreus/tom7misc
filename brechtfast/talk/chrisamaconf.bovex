@@ -65,7 +65,8 @@ let
 in
   set-target-seconds (!current-page, 0);
 
-  title-slide (slide with BACKGROUND = "black.png") [Go to next slide] [ ] [ ];
+  title-slide (slide with BACKGROUND = "registration-marks-bg.png")
+  [Go to next slide] [ ] [ ];
 
   set-target-seconds (!current-page, 0);
 
@@ -124,8 +125,65 @@ in
   [“Every convex polyhedron has a [color 0x99CCFFFF [net]].”]
   [Dead Albrecht Dürer];
 
+  (* compiler bug *)
+
+  monospace-slide (slide
+                   with BACKGROUND = "mushroombg.png"
+                   with MONOSPACE-FONT-SIZE = 64.0)
+  [Compiler büg]
+(color 0xAAAAAAFF [[color 0xFFFF99FF [Simplifying...]]
+[color 0xEEEECCFF [il-typed-pass.h:527]]:[color 0xFF8888FF [Check failed]]:
+tt->type == TypeType::RECORD
+Bug? Expected record, but got: a$314
+[color 0x777777FF [make: *** [layout "["]makefile:12: chrisamaconf/chrisamaconf.talk[layout "]"] Error 127]]]);
+
+  (* hours later... *)
+
+  (* When I'm feeling stressed out about the state of the world I
+     like to find an old very hard math problem and try to solve
+     it myself, without looking at any spoilers *)
 
 
+  bullet-reveal (slide with BACKGROUND = "durer.jpg"
+                 with CONTENT-START-Y = 540.0
+                 with TITLE-FONT-SIZE = 104.0)
+  [Albrecht Dürer's Conjecture]
+  ([It is very easy to find nets!] ::
+   [¬¬A] ::
+   nil);
+
+  combo-slide (slide with BACKGROUND = "cereal.png"
+               with BODY-FONT-SIZE = 240.0)
+  (TextBox { x = 80.0, y = 300.0,
+             width = 1920.0 *. 0.5 -. 80.0,
+             text = color 0x000000FF
+             [Does \\
+              [it [Brechtfast]] \\
+              exist?] } ::
+   nil);
+
+  just-image "hard307298.png";
+  just-image "hard251196.png";
+
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (Image { img = image-load-cache "have-cube.png",
+           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (Image { img = image-load-cache "remove-corners.png",
+           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (Image { img = image-load-cache "cuboctahedron.png",
+           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (Image { img = image-load-cache "cuboctahedron-parity.png",
+           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (Image { img = image-load-cache "ohno.png",
+           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
 
 (*
 
@@ -138,34 +196,6 @@ in
 
   just-video slide "cc-rng.mp4";
 
-  (* just-crisp-image "full-handshake.png"; *)
-  just-crisp-image "dictionary-attack.png";
-
-  just-crisp-image "rsa.png";
-
-  just-crisp-image "rsa-7.png";
-  just-crisp-image "rsa-31337.png";
-  just-crisp-image "rsa-31337-revoked.png";
-  just-crisp-image "rsa-16-factors.png";
-  just-crisp-image "baby-diaper-grade.png";
-
-  (* CBC mode *)
-
-  (* I only got five minutes here, so it's a good thing I'm talking
-     to a room full of geniuses who already know the details of
-     AES-256 in CBC mode. *)
-  just-crisp-image "cbc-mode.png";
-
-  (* or explain it? *)
-  just-crisp-image "cbc-xor.png";
-  just-crisp-image "cbc-record-size.png";
-
-  just-crisp-image "packet-capture.png";
-
-  (* Limitations *)
-  just-video slide "wget.mp4";
-
-  just-crisp-image "curling.png";
 
   bullet-reveal slide [Toxic max-security begone!!]
    ([There is no real security problem here. They are just
@@ -173,25 +203,9 @@ in
     [Perhaps we need to counterbalance this with some ...
      VULNERABILITY‽ ] :: nil);
 
-  just-video (slide with VIDEO-AUDIO = true) "vulnerability.mp4";
-
-  combo-slide (slide with BACKGROUND = "applied.png")
-  (Title [In conclusion] :: nil);
-
-  bullet-reveal (slide
-                 with BACKGROUND = "unapplied.png") [In conclusion]
-  ([Join me in Unapplying cryptography] ::
-   [I welcome your submissions in the new field of
-    [b[gymnography]] (from the Greek [color 0xFFFF00FF (it [gγμvòσ])], naked)] ::
-   [Papers, please!] :: nil);
-
-  centered-text-slide slide [http://tom7.org/httpv/];
-
-  set-target-seconds (!current-page, 5 * 60);
+  set-target-seconds (!current-page, 8 * 60);
 
   centered-text-slide slide [ ];
-
-  just-video (slide with VIDEO-AUDIO = true) "hacker-crap.mp4";
 
 *)
 
