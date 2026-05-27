@@ -16,8 +16,7 @@ struct SolveLeaf {
   static std::optional<BitString> FindLeafUnfolding(
       const Albrecht::AugmentedPoly &aug,
       int face_idx,
-      int edge_idx,
-      std::optional<double> max_stretch = {});
+      int edge_idx);
 
   // Sample an unfolding that has face_idx as a leaf. It may
   // or may not have overlap, but it will be a proper spanning
@@ -39,3 +38,4 @@ struct SolveLeaf {
 };
 
 #endif
+

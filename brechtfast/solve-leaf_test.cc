@@ -17,9 +17,6 @@
 #include "periodically.h"
 #include "status-bar.h"
 
-// 20 ok
-static constexpr double MAX_STRETCH_FACTOR = 10.0;
-
 static void TestSampleFace(const Albrecht::AugmentedPoly &aug,
                            std::string_view name) {
   ArcFour rc{name};
@@ -52,11 +49,8 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   StatusBar status(1);
   Periodically status_per(1);
 
-  const int num_edges = poly.faces->NumEdges();
-  const int num_faces = poly.faces->NumFaces();
-
-  std::optional<double> max_stretch =
-    {MAX_STRETCH_FACTOR * std::sqrt(num_faces)};
+  [[maybe_unused]] const int num_edges = poly.faces->NumEdges();
+  [[maybe_unused]] const int num_faces = poly.faces->NumFaces();
 
   // Loop over all edges and run the leaf solver.
   for (int e = 0; e < num_edges; e++) {
@@ -68,15 +62,12 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
     for (int f : {edge.f0, edge.f1}) {
 
       std::optional<BitString> res =
-        SolveLeaf::FindLeafUnfolding(aug, f, e, max_stretch);
+        SolveLeaf::FindLeafUnfolding(aug, f, e);
 
       // If we don't get a result, just abort so we can investigate!
       if (!res.has_value()) {
         LOG(FATAL) << "No solution found for " << name << " with "
-                   << " face = " << f << " and edge = " << e
-                   << (max_stretch.has_value() ?
-                       std::format(" and max_stretch = {}",
-                                   max_stretch.value()) : "");
+                   << " face = " << f << " and edge = " << e;
       }
 
       // Check that the net does indeed have the described property.
@@ -95,13 +86,6 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
 
       CHECK(res.value()[e]) << "Edge " << e << " is cut in the unfolding!";
       CHECK_EQ(uncut_count, 1) << "Face " << f << " is not a leaf!";
-
-      // And the stretch factor should be in bounds.
-      if (max_stretch.has_value()) {
-        Albrecht::Stretch stretch = Albrecht::StretchFactor(aug, res.value());
-        CHECK((stretch.unfolded_distance / (double)stretch.distance_3d) <
-              max_stretch.value());
-      }
     }
   }
 

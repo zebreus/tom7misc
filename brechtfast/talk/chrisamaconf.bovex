@@ -62,6 +62,14 @@ let
          end)))
     end
 
+  fun conjecture-bullets bull =
+    combo-slide (slide with BACKGROUND = "durer.jpg"
+                 with CONTENT-START-Y = 540.0
+                 with TITLE-FONT-SIZE = 104.0)
+    (Title [Albrecht Dürer's Conjecture] ::
+     Bullets bull ::
+     nil)
+
 in
   set-target-seconds (!current-page, 0);
 
@@ -143,14 +151,15 @@ Bug? Expected record, but got: a$314
      like to find an old very hard math problem and try to solve
      it myself, without looking at any spoilers *)
 
+  conjecture-bullets ([It is very easy to find nets!] :: nil);
 
-  bullet-reveal (slide with BACKGROUND = "durer.jpg"
-                 with CONTENT-START-Y = 540.0
-                 with TITLE-FONT-SIZE = 104.0)
-  [Albrecht Dürer's Conjecture]
-  ([It is very easy to find nets!] ::
-   [¬¬A] ::
-   nil);
+  just-image "hard307298.png";
+
+  (* Digging the hole from two sides... *)
+
+  conjecture-bullets ([It is very easy to find nets!] ::
+                      [¬¬A] ::
+                      nil);
 
   combo-slide (slide with BACKGROUND = "cereal.png"
                with BODY-FONT-SIZE = 240.0)
@@ -162,8 +171,14 @@ Bug? Expected record, but got: a$314
               exist?] } ::
    nil);
 
-  just-image "hard307298.png";
   just-image "hard251196.png";
+
+  conjecture-bullets ([It is very easy to find nets!] ::
+                      [¬¬A] ::
+                      [Maybe it’s so easy that there always
+                       exists a net of a special form? Like
+                       a line?] ::
+                      nil);
 
   combo-slide (slide with BACKGROUND = "mushroombg.png")
   (Image { img = image-load-cache "have-cube.png",
