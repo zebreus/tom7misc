@@ -18,18 +18,16 @@
 #include "db.h"
 #include "examples.h"
 #include "geom/polyhedra.h"
+#include "make-svg.h"
 #include "svg.h"
 #include "util.h"
 
 using Aug = Albrecht::AugmentedPoly;
 
 static void Inspect(std::string_view poly_name,
-                    std::optional<int> face_idx,
-                    std::optional<int> edge_idx,
+                    Constraint constraint,
                     std::string_view filename,
-                    bool inserts,
-                    bool face_labels,
-                    bool edge_labels) {
+                    SVGOptions svg_options) {
   auto [poly, example_net] = DB::GetPolyhedron(poly_name);
 
   CHECK(IsWellConditioned(poly.vertices));
@@ -44,21 +42,21 @@ static void Inspect(std::string_view poly_name,
   static constexpr int TARGET_NON_NETS = 3;
 
   Examples examples = GetSomeExamples(&rc, aug,
-                                      face_idx, edge_idx,
+                                      constraint,
                                       example_net,
                                       1, TARGET_NON_NETS, true);
 
   std::vector<SVG::Doc> quadrant_docs;
   for (size_t i = 0; i < examples.non_nets.size() && i < 3; ++i) {
-    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.non_nets[i],
-                                     inserts, face_labels, edge_labels);
+    SVG::Doc svg = MakeSVG::Make(aug, examples.non_nets[i],
+                                 svg_options);
     SVG::RenameDefs(std::format("q{}-", i), &svg);
     quadrant_docs.push_back(std::move(svg));
   }
 
   if (!examples.nets.empty()) {
-    SVG::Doc svg = Albrecht::MakeSVG(aug, examples.nets[0],
-                                     inserts, face_labels, edge_labels);
+    SVG::Doc svg = MakeSVG::Make(aug, examples.nets[0],
+                                 svg_options);
     SVG::RenameDefs("q3-", &svg);
     quadrant_docs.push_back(std::move(svg));
   }
@@ -122,6 +120,8 @@ int main(int argc, char **argv) {
 
   std::string name;
   std::optional<int> face_idx, edge_idx;
+  bool hull = false;
+  bool line = false;
   bool inserts = true;
   bool face_labels = true;
   bool edge_labels = true;
@@ -134,6 +134,10 @@ int main(int argc, char **argv) {
       CHECK(of.has_value()) << "-face and -edge must be a number!";
       if (arg == "-face") face_idx = {of.value()};
       else if (arg == "-edge") edge_idx = {of.value()};
+    } else if (arg == "-hull") {
+      hull = true;
+    } else if (arg == "-line") {
+      line = true;
     } else if (arg == "-no-inserts") {
       inserts = false;
     } else if (arg == "-no-face-labels") {
@@ -146,13 +150,33 @@ int main(int argc, char **argv) {
     }
   }
 
-  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] "
-                          "[-no-inserts] [-no-face-labels] [-no-edge-labels] "
-                          "name";
+  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] [-hull] "
+                          "[-line] [-no-inserts] [-no-face-labels] "
+                          "[-no-edge-labels] name";
 
-  Inspect(name, face_idx, edge_idx,
+  Constraint constraint = NoConstraint{};
+  if (line) {
+    constraint = LineConstraint{};
+  } else if (hull) {
+    CHECK(face_idx.has_value() && edge_idx.has_value())
+        << "-hull requires both -face and -edge.";
+    constraint = HullConstraint{face_idx.value(), edge_idx.value()};
+  } else if (face_idx.has_value() && edge_idx.has_value()) {
+    constraint = LeafConstraint{face_idx.value(), edge_idx.value()};
+  } else if (face_idx.has_value()) {
+    constraint = LeafFaceConstraint{face_idx.value()};
+  } else {
+    CHECK(!edge_idx.has_value()) << "-edge requires -face.";
+  }
+
+  SVGOptions svg_options;
+  svg_options.inserts = inserts;
+  svg_options.face_labels = face_labels;
+  svg_options.edge_labels = edge_labels;
+
+  Inspect(name, constraint,
           std::format("inspect-{}.svg", name),
-          inserts, face_labels, edge_labels);
+          svg_options);
 
   return 0;
 }

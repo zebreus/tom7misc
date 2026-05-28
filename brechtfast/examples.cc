@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "albrecht.h"
@@ -13,21 +14,35 @@
 #include "periodically.h"
 #include "randutil.h"
 #include "solve-leaf.h"
+#include "solve-line.h"
+#include "solve-strong.h"
 #include "status-bar.h"
 #include "union-find.h"
 
 using Aug = Albrecht::AugmentedPoly;
 
-static BitString Sample(ArcFour *rc, const Aug &aug,
-                        std::optional<int> face_idx,
-                        std::optional<int> edge_idx,
-                        bool want_net, bool want_non_net) {
+static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
+                                       const Constraint &constraint,
+                                       bool want_net, bool want_non_net) {
   const Faces &faces = *aug.poly.faces;
   int num_faces = faces.NumFaces();
   int num_edges = faces.NumEdges();
 
-  if (edge_idx.has_value()) {
-    CHECK(face_idx.has_value());
+  if (auto *c = std::get_if<HullConstraint>(&constraint)) {
+    // TODO: Use a "sampler" strategy here.
+    return SolveStrong::FindStrongUnfolding(aug, c->face_idx, c->edge_idx);
+  }
+  if (std::holds_alternative<LineConstraint>(constraint)) {
+    return SolveLine::SampleLine(rc, aug);
+  }
+
+  std::optional<int> face_idx;
+  std::optional<int> edge_idx;
+  if (auto *c = std::get_if<LeafFaceConstraint>(&constraint)) {
+    face_idx = c->face_idx;
+  } else if (auto *c = std::get_if<LeafConstraint>(&constraint)) {
+    face_idx = c->face_idx;
+    edge_idx = c->edge_idx;
   }
 
   if (want_non_net && rc->Byte() > 200) {
@@ -107,14 +122,9 @@ static BitString Sample(ArcFour *rc, const Aug &aug,
 Examples GetSomeExamples(
     ArcFour *rc,
     const Aug &aug,
-    std::optional<int> face_idx,
-    std::optional<int> edge_idx,
+    const Constraint constraint,
     const std::optional<BitString> &example_net,
     int num_nets, int num_non_nets, bool verbose) {
-
-  if (edge_idx.has_value()) {
-    CHECK(face_idx.has_value());
-  }
 
   std::unique_ptr<StatusBar> status;
   if (verbose) status = std::make_unique<StatusBar>(1);
@@ -137,13 +147,31 @@ Examples GetSomeExamples(
   }
 
   int64_t attempts = 0;
-  while ((examples.non_nets.size() < num_non_nets ||
-          examples.nets.empty()) &&
-         attempts < 500000) {
+  auto KeepGoing = [&]() {
+      // All done.
+      if (examples.non_nets.size() >= num_non_nets &&
+          examples.nets.size() >= num_nets)
+        return false;
+
+      // Many polyhedra have ONLY nets.
+      if (!examples.nets.empty() &&
+          attempts > 100000)
+        return true;
+
+      return attempts < 500000;
+    };
+
+  while (KeepGoing()) {
     attempts++;
-    BitString unfolding = Sample(rc, aug, face_idx, edge_idx,
-                                 examples.nets.empty(),
-                                 examples.non_nets.size() < num_non_nets);
+    std::optional<BitString> opt_unfolding =
+        Sample(rc, aug, constraint,
+               examples.nets.empty(),
+               examples.non_nets.size() < num_non_nets);
+
+    if (!opt_unfolding.has_value()) {
+      break;
+    }
+    BitString unfolding = std::move(opt_unfolding.value());
 
     if (Albrecht::IsNet(aug, unfolding)) {
       if (examples.nets.empty()) {
@@ -167,6 +195,11 @@ Examples GetSomeExamples(
                          attempts,
                          examples.nets.size(), examples.non_nets.size());
         });
+    }
+
+    if (std::holds_alternative<HullConstraint>(constraint)) {
+      // FindStrongUnfolding is deterministic, so don't loop on it.
+      break;
     }
   }
 

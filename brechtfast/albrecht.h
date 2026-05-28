@@ -14,7 +14,6 @@
 #include "geom/polyhedra.h"
 #include "hashing.h"
 #include "inline-vector.h"
-#include "svg.h"
 #include "yocto-math.h"
 
 // Some code for investigating Albrecht Dürer's conjecture that every
@@ -37,7 +36,6 @@
 // An even simpler way to think about this is that we order all
 // of the edges in the polyhedron, and then a net can just be
 // represented as the set of all edges that are unfolded.
-
 struct Albrecht {
 
   // Precomputations for a polyhedron that may make testing nets,
@@ -207,13 +205,6 @@ struct Albrecht {
 
   static DebugResult DebugUnfolding(const AugmentedPoly &aug,
                                     BitStringConstView unfolding);
-
-  // An SVG displaying the unfolded polyhedron.
-  static SVG::Doc MakeSVG(const AugmentedPoly &aug,
-                          const DebugResult &debug_result,
-                          bool inserts = true,
-                          bool face_labels = true,
-                          bool edge_labels = true);
 
   // Determines whether the unfolding is a valid net without producing
   // any debug information. This can assume that the unfolding is a

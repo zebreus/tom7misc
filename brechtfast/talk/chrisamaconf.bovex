@@ -173,12 +173,14 @@ Bug? Expected record, but got: a$314
 
   just-image "hard251196.png";
 
-  conjecture-bullets ([It is very easy to find nets!] ::
-                      [¬¬A] ::
+  (* The most definitive thing would be to find a counterexample, but
+     maybe counterexamples don't exist!
+     So I tried strengthening the conjecture... *)
+
                       [Maybe it’s so easy that there always
                        exists a net of a special form? Like
                        a line?] ::
-                      nil);
+
 
   combo-slide (slide with BACKGROUND = "mushroombg.png")
   (Image { img = image-load-cache "have-cube.png",
