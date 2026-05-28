@@ -423,6 +423,29 @@ Polyhedron Nasty::RectifiedWedge() {
   return std::move(opt.value());
 }
 
+Polyhedron Nasty::ChoppedCube() {
+  std::vector<vec3> verts;
+
+  // All normal vertices of a cube except for 1,1,1.
+  for (uint8_t b = 0; b < 0b1000; b++) {
+    if (b != 0b111) {
+      verts.emplace_back(b & 0b100 ? 1.0 : 0.0,
+                         b & 0b010 ? 1.0 : 0.0,
+                         b & 0b001 ? 1.0 : 0.0);
+    }
+  }
+
+  verts.emplace_back(0.1, 1.0, 1.0);
+  verts.emplace_back(1.0, 0.1, 1.0);
+  verts.emplace_back(1.0, 1.0, 0.1);
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(verts), "choppedcube");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
+
 std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "tilteddecagonpyramid") return TiltedDecagonPyramid();
   if (name == "squatsnail") return SquatSnail();
@@ -439,5 +462,6 @@ std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "rubikscube") return RubiksCube();
   if (name == "truncatedwedge") return TruncatedWedge();
   if (name == "rectifiedwedge") return RectifiedWedge();
+  if (name == "choppedcube") return ChoppedCube();
   return std::nullopt;
 }

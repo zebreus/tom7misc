@@ -46,9 +46,12 @@ struct IsToken {
 // separator (B) at the end (which typically means that the A parser
 // didn't succeed). Can only use safely use this when the grammar of
 // what follows cannot permit a B.
+//
+// TODO: Pass a suspension that can compute an error message with
+// position!
 template<class ParserA, class ParserB>
 auto SeparateGuarded(const ParserA &a, const ParserB &b,
-                   const char *failure_message) {
+                     const char *failure_message) {
   // .. we just try parsing B again at the end. Reparsing B
   // is not ideal, but it's usually just a single token.
   return (Separate(a, b) && Opt(b))

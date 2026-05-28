@@ -16,7 +16,8 @@ let
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true
 
-  val slide = slide with BACKGROUND = "mushroombg.png"
+  val slide = slide
+    with BACKGROUND = "mushroombg.png"
 
   fun just-crisp-image filename =
     let
@@ -52,9 +53,9 @@ let
             scale = ORIGINAL }
 
   fun bullet-reveal slide title bullets =
-    reveal slide ((Title title :: nil) ::
-                  (list-map Bullet bullets) ::
-                  nil)
+    reveal slide (list-map (fn e => e :: nil)
+                  (Title title ::
+                   list-map Bullet bullets))
 
   fun gradient-string ramp s =
     let
@@ -82,23 +83,23 @@ let
      nil)
 
   datatype status = Counterexample | Maybe
-  fun scorecard (entries : (layout * status) list) =
+  val results : (layout * status) list ref = ref nil
+  fun scorecard () =
     let
-      fun one-entry (name, Maybe) =
-        BulletExt { bullet = [x],
-                    bullet-color = 0xFF0000FF } name
-        | one-entry (name, Counterexample)
-        BulletExt { bullet = [?],
-                    bullet-color = 0x77FF00FF } name
+      fun one-entry (name, Counterexample) =
+        BulletExt ({(Bullet)
+                    bullet = [x],
+                    bullet-color = 0xFF0000FF }, name)
+        | one-entry (name, Maybe) =
+        BulletExt ({(Bullet)
+                    bullet = [?],
+                    bullet-color = 0x77FF00FF }, name)
 
-      val entries =
-        list-map one-entry entries
+      val entries = list-map one-entry (list-rev (!results))
     in
       combo-slide slide
       (Title [Results] :: entries)
     end
-
-  val results : (layout * status) list ref = ref nil
 
 in
   set-target-seconds (!current-page, 0);
@@ -222,6 +223,8 @@ Bug? Expected record, but got: a$314
    image-overlay-elt "j81-line.png" ::
    nil);
 
+  just-video slide "line-j81.mkv";
+
   combo-slide (slide with BACKGROUND = "mushroombg.png")
   (image-overlay-elt "have-cube.png" :: nil);
 
@@ -237,8 +240,8 @@ Bug? Expected record, but got: a$314
   combo-slide (slide with BACKGROUND = "mushroombg.png")
   (image-overlay-elt "ohno.png" :: nil);
 
-  results := (Counterexample, "Always a linear net") :: !results;
-  scorecard (!results);
+  results := ([Always a linear net], Counterexample) :: !results;
+  scorecard ();
 
   conjecture-bullets ([It is very easy to find nets!] ::
                       [¬¬A] ::
@@ -271,10 +274,81 @@ Bug? Expected record, but got: a$314
            whether they are nets] ::
    nil);
 
-  (* TODO: Maze example *)
+  for 1 6
+  (fn n =>
+   combo-slide (slide with BACKGROUND = "mushroombg.png")
+   (image-overlay-elt ("discovery" ^ int-to-string n ^ ".png") :: nil));
 
-  results := (Counterexample, "Always a bushy net") :: !results;
-  scorecard (!results);
+  just-video slide "rendered-rubikscube.mkv";
+
+  results := ([Always a (very) bushy net], Counterexample) :: !results;
+  scorecard ();
+
+  let
+    val proof-slide = slide
+      with TITLE-FONT-SIZE = 108.0
+      with QUOTE-FONT-SIZE = 90.0
+
+  in
+
+    combo-slide proof-slide
+    (Title [What might a proof look like?] ::
+     nil);
+
+    attributed-quote-slide (proof-slide
+                            with QUOTE-FONT-SIZE = 90.0)
+    [What might a proof look like?]
+    [“I love going in [color 0xFF00FFFF [Math Holes]].”]
+    [Tom 7, Convex Solid Idiot];
+
+    combo-slide proof-slide
+    (Title [Constructive Planar Geometry] ::
+     image-overlay-elt "construct1.png" ::
+     nil);
+
+    combo-slide proof-slide
+    (Title [Constructive Planar Geometry] ::
+     image-overlay-elt "construct2.png" ::
+     nil);
+
+    bullet-reveal proof-slide
+    [What might a proof look like?]
+    ([EZ: Many options for operations to construct solids.] ::
+     [Big problem: Tiny changes to the solid make huge
+      changes to the net (via “levers”).] ::
+     nil);
+
+    combo-slide proof-slide
+    (Title [The lever effect] ::
+     image-overlay-elt "lever-effect.png" ::
+     nil);
+
+    (* Open problems.. mushrooms *)
+
+    combo-slide proof-slide
+    (Title [What might a proof look like?] ::
+     Bullet [EZ: Many options for operations to construct solids.] ::
+     Bullet [Big problem: Tiny changes to the solid make huge
+             changes to the net (via “levers”).] ::
+     Bullet [What if we only made changes to the
+             [color 0xCCFFFFFF [outer edge]]?] ::
+     nil);
+
+    combo-slide (slide with BODY-FONT-FAMILY = font-family CAMBRIA)
+    (Title [Strengthened IH] ::
+     TextElt [“∀ convex polyhedra [color 0xFF9999FF [p]]. \\
+              ∀ oriented edge [color 0xFFCCFFFF [e]]. \\
+              ∃ a net [color 0x9999FFFF [n]] \\
+              such that [color 0xFFCCFFFF [e]] is on the
+              [color 0xCCFFFFFF (it [convex hull])] of
+              [color 0x9999FFFF [n]].”] ::
+     TextElt [—Tom 7] ::
+     ImageRHS { img = image-load-cache "convex-hull.png",
+                scale = ORIGINAL } ::
+     nil);
+
+    ()
+  end;
 
   ()
 

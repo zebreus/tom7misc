@@ -53,18 +53,24 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
 (* val BULLET-COLOR = 0x000066FF *)
 val BULLET-COLOR = 0xAAFFAAFF
 
+(* TODO: Add body font face here; use it by default for quote etc. *)
+
 object Slide of
   {
    BACKGROUND : string,
 
    TITLE-FONT-SIZE : float,
+   TITLE-FONT-COLOR: int,
    LEFT-MARGIN : float,
    TOP-MARGIN : float,
    CONTENT-START-Y : float,
    QUOTE-FONT-SIZE : float,
+   QUOTE-FONT-FAMILY : string,
    PARAGRAPH-VSPACE-BOTTOM : float,
 
    BODY-FONT-SIZE: float,
+   BODY-FONT-FAMILY : string,
+   BODY-FONT-COLOR: int,
    BULLET-FONT-SIZE : float,
    BULLET-LINE-GAP : float,
 
@@ -72,9 +78,6 @@ object Slide of
    (* generic space between e.g. columns *)
    GAP : float,
    MONOSPACE-FONT-SIZE : float,
-
-   TITLE-FONT-COLOR: int,
-   BODY-FONT-COLOR: int,
 
    LOOP-VIDEO: bool,
    VIDEO-AUDIO: bool
@@ -85,12 +88,16 @@ type slide-props =
    BACKGROUND-IMAGE : image-handle option,
 
    TITLE-FONT-SIZE : float,
+   TITLE-FONT-COLOR: int,
    LEFT-MARGIN : float,
    TOP-MARGIN : float,
    CONTENT-START-Y : float,
 
    BODY-FONT-SIZE : float,
+   BODY-FONT-FAMILY : string,
+   BODY-FONT-COLOR: int,
    QUOTE-FONT-SIZE : float,
+   QUOTE-FONT-FAMILY : string,
    PARAGRAPH-VSPACE-BOTTOM : float,
 
    BULLET-FONT-SIZE : float,
@@ -99,9 +106,6 @@ type slide-props =
    CONTENT-WIDTH: float,
    MONOSPACE-FONT-SIZE : float,
    GAP : float,
-
-   TITLE-FONT-COLOR: int,
-   BODY-FONT-COLOR: int,
 
    LOOP-VIDEO: bool,
    VIDEO-AUDIO: bool
@@ -143,16 +147,24 @@ fun slide-props (s : obj) : slide-props =
       case s of {(Slide) CONTENT-WIDTH = cw } => cw
         | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
 
+    val BODY-FONT-SIZE =
+      case s of {(Slide) BODY-FONT-SIZE = bfs } => bfs | _ => point 72.0
+    val BODY-FONT-FAMILY =
+      case s of {(Slide) BODY-FONT-FAMILY = bff } => bff
+      | _ => font-family PALATINO
+    val BODY-FONT-COLOR =
+      case s of {(Slide) BODY-FONT-COLOR = bfc } => bfc
+        | _ => 0xFFFFFFFF
+
     val QUOTE-FONT-SIZE =
       case s of {(Slide) QUOTE-FONT-SIZE = tm } => tm | _ => point 70.0
+    val QUOTE-FONT-FAMILY =
+      case s of {(Slide) QUOTE-FONT-FAMILY = qff } => qff
+      | _ => BODY-FONT-FAMILY
 
     val PARAGRAPH-VSPACE-BOTTOM =
       case s of {(Slide) PARAGRAPH-VSPACE-BOTTOM = pvb } => pvb
     | _ => point 36.0
-
-
-    val BODY-FONT-SIZE =
-      case s of {(Slide) BODY-FONT-SIZE = bfs } => bfs | _ => point 72.0
 
     val BULLET-FONT-SIZE =
       case s of {(Slide) BULLET-FONT-SIZE = bfs } => bfs | _ => point 72.0
@@ -167,10 +179,6 @@ fun slide-props (s : obj) : slide-props =
     val MONOSPACE-FONT-SIZE =
       case s of {(Slide) MONOSPACE-FONT-SIZE = mfs } => mfs
         | _ => point 32.0
-
-    val BODY-FONT-COLOR =
-      case s of {(Slide) BODY-FONT-COLOR = bfc } => bfc
-        | _ => 0xFFFFFFFF
 
     val TITLE-FONT-COLOR =
       case s of {(Slide) TITLE-FONT-COLOR = tfc } => tfc
@@ -191,15 +199,17 @@ fun slide-props (s : obj) : slide-props =
       TOP-MARGIN = TOP-MARGIN,
       CONTENT-START-Y = CONTENT-START-Y,
       QUOTE-FONT-SIZE = QUOTE-FONT-SIZE,
+      QUOTE-FONT-FAMILY = QUOTE-FONT-FAMILY,
       PARAGRAPH-VSPACE-BOTTOM = PARAGRAPH-VSPACE-BOTTOM,
       BODY-FONT-SIZE = BODY-FONT-SIZE,
+      BODY-FONT-FAMILY = BODY-FONT-FAMILY,
+      BODY-FONT-COLOR = BODY-FONT-COLOR,
       BULLET-FONT-SIZE = BULLET-FONT-SIZE,
       BULLET-LINE-GAP = BULLET-LINE-GAP,
       CONTENT-WIDTH = CONTENT-WIDTH,
       MONOSPACE-FONT-SIZE = MONOSPACE-FONT-SIZE,
       GAP = GAP,
       TITLE-FONT-COLOR = TITLE-FONT-COLOR,
-      BODY-FONT-COLOR = BODY-FONT-COLOR,
       LOOP-VIDEO = LOOP-VIDEO,
       VIDEO-AUDIO = VIDEO-AUDIO,
       } : slide-props
@@ -211,7 +221,7 @@ fun default-text lay =
   in
     (size BODY-FONT-SIZE
      (color BODY-FONT-COLOR
-       (palatino
+       (span {(Span) font-face = BODY-FONT-FAMILY}
         lay)))
   end
 
@@ -274,6 +284,7 @@ datatype element =
                  y : float,
                  width : float,
                  text : layout }
+  | TextElt of layout
   | StickerElt of layout
   (* TODO: This makes a video, but the frame's contents
      won't be rendered above it. We should render the
@@ -281,25 +292,18 @@ datatype element =
      and put it on top of the video. *)
   | VideoBackground of string
 
-fun add-textbox props { x : float,
-                        y : float,
-                        width : float,
-                        text : layout } =
+(* Returns new y position. *)
+fun add-raw-textbox props { x : float,
+                            y : float,
+                            width : float,
+                            text : layout } : float =
   let
     open props : slide-props
 
     val xpos = x
     val ypos = ref y
 
-    (* TODO: Should pass PARAGRAPH-VSPACE-BOTTOM as a text
-       property to get-paragraphs? *)
-    val lay =
-      span {(Span)
-            font-size = BODY-FONT-SIZE,
-            font-face = font-family PALATINO,
-            font-color = BODY-FONT-COLOR } text
-
-    val paras = get-paragraphs (lay :: nil)
+    val paras = get-paragraphs (text :: nil)
 
     fun add-para (ParagraphItem { body, space-after, floats = _ }) =
       let
@@ -316,7 +320,27 @@ fun add-textbox props { x : float,
         ypos := !ypos +. para-height +. space-after
       end
   in
-    list-app add-para paras
+    list-app add-para paras;
+    !ypos
+  end
+
+(* TODO: See if we can do this directly, but it overrides the font
+   to the body face/color, and we also want to use this for quotes. *)
+fun add-textbox props { x : float,
+                        y : float,
+                        width : float,
+                        text : layout } =
+  let
+    open props : slide-props
+    (* TODO: Should pass PARAGRAPH-VSPACE-BOTTOM as a text
+       property to get-paragraphs? *)
+    val lay =
+      span {(Span)
+            font-size = BODY-FONT-SIZE,
+            font-face = BODY-FONT-FAMILY,
+            font-color = BODY-FONT-COLOR } text
+  in
+    add-raw-textbox props { x = x, y = y, width = width, text = lay }
   end
 
 fun combo-slide slide (elts : element list) =
@@ -325,7 +349,7 @@ fun combo-slide slide (elts : element list) =
     open props
 
     val bullet-xpos = LEFT-MARGIN
-    val bullet-ypos = ref CONTENT-START-Y
+    val ypos = ref CONTENT-START-Y
 
     (* Get integer position of an RHS-aligned image on the slide. *)
     fun get-rhs-image-pos { img, scale } =
@@ -386,16 +410,18 @@ fun combo-slide slide (elts : element list) =
           | _ => 0.0
 
         val lay =
-          palatino
+          span {(Span) font-face = BODY-FONT-FAMILY}
           (size bullet-size
            (color BODY-FONT-COLOR
             (layout-map-text normalize-whitespace lay)))
         val boxes = get-boxes lay
-        do CONTENT-WIDTH >. 0.0 otherwise
+
+        val content-width = CONTENT-WIDTH -. bullet-xpos
+        do content-width >. 0.0 otherwise
           fail ("no width for content in combo-slide? " ^
-                float-to-string CONTENT-WIDTH)
+                float-to-string content-width)
         val (badness, lines : layout list) =
-          pack-boxes-horiz (BEST, LEFT-JUSTIFIED, CONTENT-WIDTH, boxes)
+          pack-boxes-horiz (BEST, LEFT-JUSTIFIED, content-width, boxes)
         do emit-badness badness
         val lines : layout list = list-map stick-horizontally lines
 
@@ -403,7 +429,7 @@ fun combo-slide slide (elts : element list) =
       in
         output-frame
         (!current-page, !current-frame,
-         box-stick-at { x = bullet-xpos +. offset, y = !bullet-ypos }
+         box-stick-at { x = bullet-xpos +. offset, y = !ypos }
          (stick-vertically (0.0, layout-concat lines)));
 
         (* output a bullet picture too *)
@@ -411,14 +437,27 @@ fun combo-slide slide (elts : element list) =
         (!current-page, !current-frame,
          sticker {(Sticker)
                   x = bullet-xpos -. 64.0 +. offset,
-                  y = !bullet-ypos +. 16.0,
+                  y = !ypos +. 16.0,
                   font-name = font-bold PALATINO,
                   font-size = bullet-size,
                   font-color = bullet-color } bullet-char);
 
-        bullet-ypos :=
-            !bullet-ypos +. bullet-size *. int-to-float num-lines +.
+        ypos :=
+            !ypos +. bullet-size *. int-to-float num-lines +.
             space-after;
+      end
+
+    (* TODO: Give this options like bullets; maybe unify these
+       two. *)
+    fun add-text text =
+      let
+        val new-y =
+          add-textbox props { x = LEFT-MARGIN, y = !ypos,
+                              width = CONTENT-WIDTH -. LEFT-MARGIN,
+                              text = text }
+      in
+        ypos := new-y;
+        ()
       end
 
     fun add-elt (Title title) =
@@ -459,7 +498,12 @@ fun combo-slide slide (elts : element list) =
                                       width = int-to-float w }))
      end
       | add-elt (TextBox { x, y, width, text }) =
-      add-textbox props { x = x, y = y, width = width, text = text }
+     let in
+       add-textbox props { x = x, y = y, width = width, text = text };
+       ()
+     end
+
+      | add-elt (TextElt text) = add-text text
       | add-elt (StickerElt lay) =
       output-frame
       (!current-page, !current-frame,
@@ -469,7 +513,6 @@ fun combo-slide slide (elts : element list) =
       (!current-page, !current-frame,
        fullscreen-video { loop = LOOP-VIDEO, audio = VIDEO-AUDIO,
                           src = src })
-
   in
     add-background-image BACKGROUND-IMAGE;
 
@@ -527,12 +570,8 @@ fun quote-slide slide title lay =
     val props = slide-props slide
     open props : slide-props
 
-    val xpos = LEFT-MARGIN
-    val ypos = ref CONTENT-START-Y
-    val COLUMN-WIDTH = CONTENT-WIDTH
-
     val body = span {(Span) font-size = QUOTE-FONT-SIZE,
-                     font-face = font-family PALATINO,
+                     font-face = QUOTE-FONT-FAMILY,
                      font-color = BODY-FONT-COLOR,
                      font-italic = true } lay
   in
@@ -540,11 +579,10 @@ fun quote-slide slide title lay =
 
     add-title props title;
 
-    output-frame
-    (!current-page, !current-frame,
-     box-stick-at { x = xpos, y = !ypos }
-     (paragraph-to-box COLUMN-WIDTH
-      (layout-map-text normalize-whitespace body)));
+    add-raw-textbox props { x = LEFT-MARGIN,
+                            y = CONTENT-START-Y,
+                            width = CONTENT-WIDTH,
+                            text = body };
 
     next-slide()
   end
@@ -554,31 +592,29 @@ fun attributed-quote-slide slide title quote attribution =
     val props = slide-props slide
     open props : slide-props
 
+    do print ("Font family: " ^ QUOTE-FONT-FAMILY ^ "\n")
+
     val xpos = LEFT-MARGIN
     val ypos = ref CONTENT-START-Y
     val COLUMN-WIDTH = CONTENT-WIDTH
 
-    val body = span {(Span) font-size = QUOTE-FONT-SIZE,
-                     justification = "full",
-                     font-face = font-family PALATINO,
-                     font-color = BODY-FONT-COLOR,
-                     font-italic = true } quote ^^ hfill() ^^
-      break() ^^
-      hfill() ^^
+    val body =
       span {(Span) font-size = QUOTE-FONT-SIZE,
-            font-face = font-family PALATINO,
+            font-face = QUOTE-FONT-FAMILY,
             font-color = BODY-FONT-COLOR,
-            font-italic = true } [— [attribution]]
+            font-italic = true }
+      (span {(Span) justification = "full"} quote ^^
+       hfill() ^^ break() ^^
+       hfill() ^^ [— [attribution]])
   in
     add-background-image BACKGROUND-IMAGE;
 
     add-title props title;
 
-    output-frame
-    (!current-page, !current-frame,
-     box-stick-at { x = xpos, y = !ypos }
-     (paragraph-to-box COLUMN-WIDTH
-      (layout-map-text normalize-whitespace body)));
+    add-raw-textbox props { x = LEFT-MARGIN,
+                            y = CONTENT-START-Y,
+                            width = CONTENT-WIDTH,
+                            text = body };
 
     next-slide()
   end

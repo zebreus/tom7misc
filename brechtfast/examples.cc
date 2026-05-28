@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -156,7 +157,7 @@ Examples GetSomeExamples(
       // Many polyhedra have ONLY nets.
       if (!examples.nets.empty() &&
           attempts > 100000)
-        return true;
+        return false;
 
       return attempts < 500000;
     };

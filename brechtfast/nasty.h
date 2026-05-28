@@ -57,6 +57,9 @@ struct Nasty {
   // a Hamiltonian path.
   static Polyhedron RectifiedWedge();
 
+  // Not nasty.
+  static Polyhedron ChoppedCube();
+
   static std::optional<Polyhedron> ByName(std::string_view name);
 };
 

@@ -74,7 +74,7 @@ fun font-load-family { name : string,
 
 fun get-font (FontFamily susp) = susp-get susp
 
-fun font-family (ff : font-family) =
+fun font-family (ff : font-family) : string =
   let val { family, regular, bold, italic, bold-italic } = get-font ff
   in family
   end
@@ -135,6 +135,7 @@ val PALATINO : font-family = font-load-family
     italic = SOME "palai.ttf",
     bold-italic = SOME "palabi.ttf" }
 
+(* Decent coverage for Unicode math. *)
 val CAMBRIA : font-family = font-load-family
   { name = "cambria",
     regular = SOME "cambria.ttf",
