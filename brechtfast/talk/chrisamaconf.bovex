@@ -32,18 +32,29 @@ let
       next-slide()
     end
 
-
-  fun bullet-reveal slide title bullets =
+  (* Creates n slides with each non-empty prefix of the stages,
+     like combo-slide would. *)
+  fun reveal slide (stages : element list list) =
     let
-      val n = list-length bullets
+      val n = list-length stages
     in
-      for 0 n
+      (* Include the first stage always. *)
+      for 1 n
       (fn len =>
        combo-slide slide
-       (Title title ::
-        Bullets (list-take len bullets) ::
-        nil))
+       (list-concat (list-take len stages)))
     end
+
+  fun image-overlay-elt filename =
+    Image { img = image-load-cache filename,
+            x = 0.0,
+            y = 0.0,
+            scale = ORIGINAL }
+
+  fun bullet-reveal slide title bullets =
+    reveal slide ((Title title :: nil) ::
+                  (list-map Bullet bullets) ::
+                  nil)
 
   fun gradient-string ramp s =
     let
@@ -78,6 +89,7 @@ in
 
   set-target-seconds (!current-page, 0);
 
+  (* XXX remove mushrooms here *)
   title-slide slide (color 0xFFFFFFFF [Brechtfast of champions])
   (color 0xc25e32ff [by Tom 7]) (gradient-string VISIBLE-SPECTRUM
                                  "CHRISAMACONF.STL");
@@ -162,10 +174,10 @@ Bug? Expected record, but got: a$314
                       nil);
 
   combo-slide (slide with BACKGROUND = "cereal.png"
-               with BODY-FONT-SIZE = 240.0)
+               with BODY-FONT-SIZE = 200.0)
   (TextBox { x = 80.0, y = 300.0,
              width = 1920.0 *. 0.5 -. 80.0,
-             text = color 0x000000FF
+             text = color 0xFFFFFFFF
              [Does \\
               [it [Brechtfast]] \\
               exist?] } ::
@@ -177,54 +189,61 @@ Bug? Expected record, but got: a$314
      maybe counterexamples don't exist!
      So I tried strengthening the conjecture... *)
 
+  conjecture-bullets ([It is very easy to find nets!] ::
+                      [¬¬A] ::
                       [Maybe it’s so easy that there always
                        exists a net of a special form? Like
                        a line?] ::
+                      nil);
 
-
-  combo-slide (slide with BACKGROUND = "mushroombg.png")
-  (Image { img = image-load-cache "have-cube.png",
-           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
-
-  combo-slide (slide with BACKGROUND = "mushroombg.png")
-  (Image { img = image-load-cache "remove-corners.png",
-           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
-
-  combo-slide (slide with BACKGROUND = "mushroombg.png")
-  (Image { img = image-load-cache "cuboctahedron.png",
-           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+  combo-slide (slide
+               with BACKGROUND = "mushroombg.png"
+               with TITLE-FONT-SIZE = 72.0)
+  (Title [Metabidiminished rhombicosidodecahedron] ::
+   image-overlay-elt "j81-line.png" ::
+   nil);
 
   combo-slide (slide with BACKGROUND = "mushroombg.png")
-  (Image { img = image-load-cache "cuboctahedron-parity.png",
-           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+  (image-overlay-elt "have-cube.png" :: nil);
 
   combo-slide (slide with BACKGROUND = "mushroombg.png")
-  (Image { img = image-load-cache "ohno.png",
-           x = 0.0, y = 0.0, scale = ORIGINAL } :: nil);
+  (image-overlay-elt "remove-corners.png" :: nil);
 
-(*
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (image-overlay-elt "cuboctahedron.png" :: nil);
 
-  (* just-video (slide with LOOP-VIDEO = true) "title-loop.mp4"; *)
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (image-overlay-elt "cuboctahedron-parity.png" :: nil);
 
-  (* just-crisp-image "httpv.png"; *)
+  combo-slide (slide with BACKGROUND = "mushroombg.png")
+  (image-overlay-elt "ohno.png" :: nil);
 
-  bullet-reveal slide (size 100.0 [Who has the best random numbers?])
-  ((size 200.0 [Banks]) :: nil);
+  (* TODO: result scorecard *)
 
-  just-video slide "cc-rng.mp4";
+  conjecture-bullets ([It is very easy to find nets!] ::
+                      [¬¬A] ::
+                      [Maybe it’s so easy that there always
+                       exists a net of a special form? Like
+                       a line?] ::
+                      [Maybe the opposite — like there’s
+                       always a “bushy” tree?] ::
+                      nil);
 
-
-  bullet-reveal slide [Toxic max-security begone!!]
-   ([There is no real security problem here. They are just
-     trying to [b (color 0xFF5555FF [shame me])] into compliance.] ::
-    [Perhaps we need to counterbalance this with some ...
-     VULNERABILITY‽ ] :: nil);
-
-  set-target-seconds (!current-page, 8 * 60);
-
-  centered-text-slide slide [ ];
-
-*)
+  reveal (slide
+          with BACKGROUND = "mushroombg.png")
+  ((Title [Random spanning trees] :: nil) ::
+   (Bullet [Randomly shuffle the edges] :: nil) ::
+   (Bullet [For each edge, if it would connect two disconnected
+            subgraphs, add it] :: nil) ::
+   (Bullet [You can use [color 0xFFFFCCFF [Union–Find]] to incrementally
+            test connectedness, which is great because it’s so
+            satisfyingly definitive!] :: nil) ::
+   (Bullet [Tends to produce graphs with low “diameter.” Bushy
+            graphs.] ::
+    ImageRHS { img = image-load-cache "bushy-example.png",
+               scale = ORIGINAL } ::
+    nil) ::
+   nil);
 
   ()
 

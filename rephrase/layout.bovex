@@ -198,6 +198,9 @@ fun vspace vdim =
 fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
                       width : float, content : layout) : (float * layout list) =
   let
+    do width >. 0.0 otherwise fail ("In pack-boxes-horiz, width must be " ^
+                                    "positive, but got: " ^
+                                    float-to-string width)
     val (badness, lines) = pack-boxes (algo, just, width, content)
     val lines = vec-to-list lines
 
@@ -710,6 +713,10 @@ fun centered-text-sticker { x, y, width } lay =
       | _ => fail "expected box containing the line's stickers"
 
   in
+    width >. 0.0 otherwise fail ("In centered-text-sticker, width " ^
+                                 "must be positive, but got: " ^
+                                 float-to-string width);
+
     case pack-boxes-horiz (BEST, CENTERED, width, boxes) of
       (badness-ignored, lines) =>
         let
@@ -1179,6 +1186,9 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
       | get-best (best, (loss, para) :: t) =
       let
         val boxes = get-boxes para
+        do column-width >. 0.0 otherwise
+          fail ("in pack-one-paragraph, column width must be positive, " ^
+                "but got: " ^ float-to-string column-width)
         val (badness : float, lines : layout list) =
           pack-boxes-horiz (BEST, just, column-width, boxes)
 
@@ -2026,7 +2036,8 @@ fun main-text lay =
                      | _ =>
                          let in
                            (* debug-print-doc line; *)
-                           fail "only expecting boxes with known height in place"
+                           fail ("only expecting boxes with " ^
+                                 "known height in place")
                          end)
                   end
 

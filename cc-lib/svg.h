@@ -76,8 +76,9 @@ struct SVG {
 
     // When the color is exactly COLOR_NONE, it should
     // be treated as fill="none" or stroke="none", etc.
-    // (If this color is specified explicitly, it will
-    // be silently changed to a nearby nonzero color.)
+    // (If this color is specified explicitly when parsing
+    // an SVG, it will be silently changed to a nearby
+    // nonzero color.)
     std::optional<uint32_t> fill_color;
     // Because this is specified separately in SVG, we
     // need to preserve it for correctly composing

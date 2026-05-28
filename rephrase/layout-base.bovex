@@ -294,6 +294,9 @@ fun pack-boxes (algo : packing-algorithm,
                 dimension : float, content : layout) :
   (float * layout vec) =
   let
+    do dimension >=. 0.0 otherwise fail ("In pack-boxes, dimension must " ^
+                                         "be positive, but got: " ^
+                                         float-to-string dimension)
     (* XXX assumes that the "width" dimension is constant. *)
     val dims = vec(1, dimension)
 

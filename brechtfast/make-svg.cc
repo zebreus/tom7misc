@@ -66,6 +66,28 @@ static constexpr double INSERT_ZOOM_FACTOR = 3.0;
 static constexpr double OUTSIDE_PENALTY = 1000.0;
 static constexpr double NEARNESS_PENALTY = 500.0;
 
+// Set the fill color, but translate alpha into fill opacity.
+// Illustrator doesn't really support alpha in the color channel.
+static void SetFillColor(SVG::Style *style, uint32_t color) {
+
+  switch (color & 0xFF) {
+  case 0x00:
+    style->fill_color = {SVG::COLOR_NONE};
+    // Meaningless when COLOR_NONE.
+    style->fill_opacity = std::nullopt;
+    break;
+
+  case 0xFF:
+    style->fill_color = {SVG::COLOR_NONE};
+    style->fill_opacity = {1.0};
+    break;
+
+  default:
+    style->fill_color = {color | 0xFF};
+    style->fill_opacity = {(color & 0xFF) / 255.0};
+    break;
+  }
+}
 
 static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
                            const Albrecht::DebugResult &dr,
@@ -426,7 +448,7 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
       SVG::G group;
 
       SVG::G poly_group;
-      poly_group.style.fill_color = options.face_rgba;
+      SetFillColor(&poly_group.style, options.face_rgba);
       poly_group.style.stroke_color = SVG::COLOR_NONE;
 
       SVG::G edges_group;
@@ -520,7 +542,8 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
 
         if (dr.face_overlap[f_idx] != -1) {
           SVG::G error_group;
-          error_group.style.fill_color = options.overlapping_face_rgba;
+          SetFillColor(&error_group.style, options.overlapping_face_rgba);
+
           error_group.children = {SVG::Node{std::move(path)}};
           poly_group.children.push_back(SVG::Node{std::move(error_group)});
         } else {

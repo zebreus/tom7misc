@@ -122,9 +122,7 @@ int main(int argc, char **argv) {
   std::optional<int> face_idx, edge_idx;
   bool hull = false;
   bool line = false;
-  bool inserts = true;
-  bool face_labels = true;
-  bool edge_labels = true;
+  SVGOptions svg_options;
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
     if (arg == "-face" || arg == "-edge") {
@@ -139,11 +137,29 @@ int main(int argc, char **argv) {
     } else if (arg == "-line") {
       line = true;
     } else if (arg == "-no-inserts") {
-      inserts = false;
+      svg_options.inserts = false;
     } else if (arg == "-no-face-labels") {
-      face_labels = false;
+      svg_options.face_labels = false;
     } else if (arg == "-no-edge-labels") {
-      edge_labels = false;
+      svg_options.edge_labels = false;
+    } else if (arg == "-face-color" || arg == "-edge-color") {
+      CHECK(i + 1 < argc) << arg << " needs an arg.";
+      i++;
+      auto c = Util::ParseHex(argv[i]);
+      CHECK(c.has_value()) << arg << " must be a hex string like FF0000FF!";
+      uint32_t cc = (uint32_t)c.value();
+      if (arg == "-face-color") {
+        svg_options.face_rgba = cc;
+      } else {
+        CHECK(arg == "-edge-color");
+        svg_options.edge_rgba = cc;
+      }
+    } else if (arg == "-edge-stroke") {
+      CHECK(i + 1 < argc) << arg << " needs an arg.";
+      i++;
+      auto w = Util::ParseDoubleOpt(argv[i]);
+      CHECK(w.has_value()) << arg << " must be a float!";
+      svg_options.edge_stroke = w.value();
     } else {
       CHECK(name.empty()) << "Just one name.";
       name = arg;
@@ -152,7 +168,8 @@ int main(int argc, char **argv) {
 
   CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] [-hull] "
                           "[-line] [-no-inserts] [-no-face-labels] "
-                          "[-no-edge-labels] name";
+                          "[-no-edge-labels] [-face-color hex] "
+                          "[-edge-color rgba] [-edge-stroke width] name";
 
   Constraint constraint = NoConstraint{};
   if (line) {
@@ -168,11 +185,6 @@ int main(int argc, char **argv) {
   } else {
     CHECK(!edge_idx.has_value()) << "-edge requires -face.";
   }
-
-  SVGOptions svg_options;
-  svg_options.inserts = inserts;
-  svg_options.face_labels = face_labels;
-  svg_options.edge_labels = edge_labels;
 
   Inspect(name, constraint,
           std::format("inspect-{}.svg", name),

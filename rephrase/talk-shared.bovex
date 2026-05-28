@@ -258,11 +258,18 @@ datatype element =
     Title of layout
   | Bullets of layout list
   | BulletsExt of obj * layout list
-  | Bullet of obj * layout
+  | BulletExt of obj * layout
+  | Bullet of layout
+  (* TODO: This is assumed to carve out space on the right (for bullets
+     etc.) so we should really make that explicit and derive the
+     position automatically, perhaps distinguishing a pure "overlay"
+     image. *)
   | Image of { img : image-handle,
                x : float,
                y : float,
                scale : image-scaling }
+  | ImageRHS of { img : image-handle,
+                  scale : image-scaling }
   | TextBox of { x : float,
                  y : float,
                  width : float,
@@ -284,31 +291,32 @@ fun add-textbox props { x : float,
     val xpos = x
     val ypos = ref y
 
-    fun add-text lay =
+    (* TODO: Should pass PARAGRAPH-VSPACE-BOTTOM as a text
+       property to get-paragraphs? *)
+    val lay =
+      span {(Span)
+            font-size = BODY-FONT-SIZE,
+            font-face = font-family PALATINO,
+            font-color = BODY-FONT-COLOR } text
+
+    val paras = get-paragraphs (lay :: nil)
+
+    fun add-para (ParagraphItem { body, space-after, floats = _ }) =
       let
-        val lay =
-          span {(Span) font-size = BODY-FONT-SIZE,
-                font-face = font-family PALATINO,
-                font-color = BODY-FONT-COLOR }
-          (layout-map-text normalize-whitespace lay)
-
-        val lines = pack-one-paragraph width lay
+        val lines = pack-one-paragraph width body
         val lines : layout list = list-map stick-horizontally lines
-        val num-lines = list-length lines
-
+        val packed-para = stick-vertically (0.0, layout-concat lines)
+        val para-height = box-height packed-para
       in
         output-frame
         (!current-page, !current-frame,
          box-stick-at { x = xpos, y = !ypos }
-         (stick-vertically (0.0, layout-concat lines)));
+         packed-para);
 
-        (* XXX *)
-        ypos := !ypos +. BODY-FONT-SIZE *. int-to-float num-lines +.
-        BULLET-LINE-GAP;
+        ypos := !ypos +. para-height +. space-after
       end
-
   in
-    add-text text
+    list-app add-para paras
   end
 
 fun combo-slide slide (elts : element list) =
@@ -319,9 +327,35 @@ fun combo-slide slide (elts : element list) =
     val bullet-xpos = LEFT-MARGIN
     val bullet-ypos = ref CONTENT-START-Y
 
+    (* Get integer position of an RHS-aligned image on the slide. *)
+    fun get-rhs-image-pos { img, scale } =
+      let
+       (* Pixel dimensions of image. *)
+       val { width, height } = image-size img
+       val aspect = width /. height
+       (* effective width and height (nearest integers) for positioning *)
+       val (w : int, h : int) =
+         case scale of
+           ORIGINAL => (round width, round height)
+         | WIDTH w => (round w, round (height /. aspect))
+         | SCALE s => (round (width *. s), round (height *. s))
+
+       val x = round SLIDE-WIDTH - w
+       val y = (round SLIDE-HEIGHT - h) div 2
+      in
+        (x, y, w, h)
+      end
+
+    (* XXX would be better to have a more generalized space-carving
+       approach here. When we do a reveal-slide, we probably want to
+       reserve space for stuff that will appear later, too. *)
     val CONTENT-WIDTH =
-      case list-find (fn Image _ => true | _ => false) elts of
-        SOME (Image {x, y, scale, img }) => (x -. GAP)
+      case list-find-partial (fn ImageRHS obj => SOME obj
+                                          | _ => NONE) elts of
+        SOME img =>
+          let val (x, y, w, h) = get-rhs-image-pos img
+          in (int-to-float x -. GAP)
+          end
       | NONE => CONTENT-WIDTH
 
     fun add-bullet (obj, lay) =
@@ -357,6 +391,9 @@ fun combo-slide slide (elts : element list) =
            (color BODY-FONT-COLOR
             (layout-map-text normalize-whitespace lay)))
         val boxes = get-boxes lay
+        do CONTENT-WIDTH >. 0.0 otherwise
+          fail ("no width for content in combo-slide? " ^
+                float-to-string CONTENT-WIDTH)
         val (badness, lines : layout list) =
           pack-boxes-horiz (BEST, LEFT-JUSTIFIED, CONTENT-WIDTH, boxes)
         do emit-badness badness
@@ -392,7 +429,8 @@ fun combo-slide slide (elts : element list) =
       end
       | add-elt (BulletsExt (obj, bulls)) =
       list-app (fn b => add-bullet (obj, b)) bulls
-      | add-elt (Bullet (obj, b)) = add-bullet (obj, b)
+      | add-elt (BulletExt (obj, b)) = add-bullet (obj, b)
+      | add-elt (Bullet b) = add-bullet ({(Bullet) }, b)
       | add-elt (Image { img, x, y, scale }) =
       output-frame
       (!current-page, !current-frame,
@@ -401,6 +439,25 @@ fun combo-slide slide (elts : element list) =
         | WIDTH w => image-sticker { img = img, x = x, y = y, width = w }
         | SCALE s => fail "XXX scale unimplemented"
             ))
+      | add-elt (ImageRHS { img, scale }) =
+     let
+       val (x, y, w, h) = get-rhs-image-pos { img = img, scale = scale }
+     in
+       output-frame
+       (!current-page, !current-frame,
+        (case scale of
+           ORIGINAL => exact-image-at { x = x, y = y, img = img }
+         (* Note no sub-pixel positioning here. *)
+         | WIDTH w => image-sticker { img = img,
+                                      x = int-to-float x,
+                                      y = int-to-float y,
+                                      width = w }
+         (* Note rounding to integer for width, which is probably fine *)
+         | SCALE s => image-sticker { img = img,
+                                      x = int-to-float x,
+                                      y = int-to-float y,
+                                      width = int-to-float w }))
+     end
       | add-elt (TextBox { x, y, width, text }) =
       add-textbox props { x = x, y = y, width = width, text = text }
       | add-elt (StickerElt lay) =

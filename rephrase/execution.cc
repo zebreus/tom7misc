@@ -289,8 +289,8 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
       const double *d = std::get_if<double>(&val->v);
       CHECK(d != nullptr) << Err() << "Expected a vector of doubles "
         "to pack-boxes lhs.";
-      CHECK(std::isfinite(*d) && *d >= 0.0) << "In pack-boxes, invalid "
-        "dimension value " << *d;
+      CHECK(std::isfinite(*d) && *d >= 0.0) << Err() << "In pack-boxes, "
+        "invalid dimension value " << *d;
       dims.push_back(*d);
     }
 
