@@ -81,6 +81,25 @@ let
      Bullets bull ::
      nil)
 
+  datatype status = Counterexample | Maybe
+  fun scorecard (entries : (layout * status) list) =
+    let
+      fun one-entry (name, Maybe) =
+        BulletExt { bullet = [x],
+                    bullet-color = 0xFF0000FF } name
+        | one-entry (name, Counterexample)
+        BulletExt { bullet = [?],
+                    bullet-color = 0x77FF00FF } name
+
+      val entries =
+        list-map one-entry entries
+    in
+      combo-slide slide
+      (Title [Results] :: entries)
+    end
+
+  val results : (layout * status) list ref = ref nil
+
 in
   set-target-seconds (!current-page, 0);
 
@@ -218,7 +237,8 @@ Bug? Expected record, but got: a$314
   combo-slide (slide with BACKGROUND = "mushroombg.png")
   (image-overlay-elt "ohno.png" :: nil);
 
-  (* TODO: result scorecard *)
+  results := (Counterexample, "Always a linear net") :: !results;
+  scorecard (!results);
 
   conjecture-bullets ([It is very easy to find nets!] ::
                       [¬¬A] ::
@@ -229,8 +249,7 @@ Bug? Expected record, but got: a$314
                        always a “bushy” tree?] ::
                       nil);
 
-  reveal (slide
-          with BACKGROUND = "mushroombg.png")
+  reveal slide
   ((Title [Random spanning trees] :: nil) ::
    (Bullet [Randomly shuffle the edges] :: nil) ::
    (Bullet [For each edge, if it would connect two disconnected
@@ -238,12 +257,24 @@ Bug? Expected record, but got: a$314
    (Bullet [You can use [color 0xFFFFCCFF [Union–Find]] to incrementally
             test connectedness, which is great because it’s so
             satisfyingly definitive!] :: nil) ::
-   (Bullet [Tends to produce graphs with low “diameter.” Bushy
-            graphs.] ::
+   (Bullet [Tends toward low “diameter” graphs.] ::
     ImageRHS { img = image-load-cache "bushy-example.png",
                scale = ORIGINAL } ::
     nil) ::
    nil);
+
+  combo-slide slide
+  (Title ["Bushy" nets] ::
+   Bullet [... define ...] ::
+   Bullet [No! You can construct shapes that force
+           unfoldings to be "long", regardless of
+           whether they are nets] ::
+   nil);
+
+  (* TODO: Maze example *)
+
+  results := (Counterexample, "Always a bushy net") :: !results;
+  scorecard (!results);
 
   ()
 
