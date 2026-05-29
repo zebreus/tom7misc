@@ -53,8 +53,6 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
 (* val BULLET-COLOR = 0x000066FF *)
 val BULLET-COLOR = 0xAAFFAAFF
 
-(* TODO: Add body font face here; use it by default for quote etc. *)
-
 object Slide of
   {
    BACKGROUND : string,

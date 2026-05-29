@@ -76,7 +76,8 @@ let
 
   fun conjecture-bullets bull =
     combo-slide (slide with BACKGROUND = "durer.jpg"
-                 with CONTENT-START-Y = 540.0
+                 with CONTENT-START-Y = 340.0
+                 with CONTENT-WIDTH = 1000.0
                  with TITLE-FONT-SIZE = 104.0)
     (Title [Albrecht Dürer's Conjecture] ::
      Bullets bull ::
@@ -107,7 +108,8 @@ in
   title-slide (slide with BACKGROUND = "registration-marks-bg.png")
   [Go to next slide] [ ] [ ];
 
-  set-target-seconds (!current-page, 600);
+  (* This means hide and reset timer. *)
+  set-target-seconds (!current-page, 0);
 
   (* XXX remove mushrooms here *)
   title-slide slide (color 0xFFFFFFFF [Brechtfast of champions])
@@ -146,7 +148,8 @@ in
    nil);
 
   combo-slide (slide with BACKGROUND = "durer.jpg"
-               with CONTENT-START-Y = 540.0
+               with CONTENT-START-Y = 340.0
+               with CONTENT-WIDTH = 1000.0
                with TITLE-FONT-SIZE = 104.0)
   (Title [Dead Albrecht Dürer (1471–1582)] ::
    Bullets ([One-trick pony] ::
@@ -252,7 +255,8 @@ Bug? Expected record, but got: a$314
                        always a “bushy” tree?] ::
                       nil);
 
-  reveal slide
+  reveal (slide with CONTENT-WIDTH = 1240.0
+          with BULLET-FONT-SIZE = 64.0)
   ((Title [Random spanning trees] :: nil) ::
    (Bullet [Randomly shuffle the edges] :: nil) ::
    (Bullet [For each edge, if it would connect two disconnected
@@ -266,12 +270,19 @@ Bug? Expected record, but got: a$314
     nil) ::
    nil);
 
-  combo-slide slide
-  (Title ["Bushy" nets] ::
-   Bullet [... define ...] ::
-   Bullet [No! You can construct shapes that force
-           unfoldings to be "long", regardless of
-           whether they are nets] ::
+  just-video slide "rendered-lens.mkv";
+
+  reveal slide
+  ((Title [“Bushy” nets] ::
+    ImageRHS { img = image-load-cache "star-unfolding.png",
+               scale = ORIGINAL } :: nil) ::
+   (Bullet [Could it be that graphs with low
+            [color 0xFF7777FF [diameter]],
+            like [color 0x77FF77FF [star unfoldings]],
+            always exist?] :: nil) ::
+   (Bullet [No! You can construct shapes that force
+            unfoldings to be “long,” regardless of
+            whether they are nets] :: nil) ::
    nil);
 
   for 1 6
@@ -315,7 +326,7 @@ Bug? Expected record, but got: a$314
     [What might a proof look like?]
     ([EZ: Many options for operations to construct solids.] ::
      [Big problem: Tiny changes to the solid make huge
-      changes to the net (via “levers”).] ::
+      changes to the net (via “[color 0xFF99FFFF [levers]]”).] ::
      nil);
 
     combo-slide proof-slide
@@ -329,14 +340,14 @@ Bug? Expected record, but got: a$314
     (Title [What might a proof look like?] ::
      Bullet [EZ: Many options for operations to construct solids.] ::
      Bullet [Big problem: Tiny changes to the solid make huge
-             changes to the net (via “levers”).] ::
+             changes to the net (via “[color 0xFF99FFFF [levers]]”).] ::
      Bullet [What if we only made changes to the
-             [color 0xCCFFFFFF [outer edge]]?] ::
+             [color 0x77FFFFFF [outer edge]]?] ::
      nil);
 
     combo-slide (proof-slide with BODY-FONT-FAMILY = font-family CAMBRIA)
     (Title [Strengthened IH] ::
-     TextElt [“∀ convex polyhedra [color 0xFF9999FF [p]]. \\
+     TextElt [“∀ convex polyhedron [color 0xFF9999FF [p]]. \\
               ∀ oriented edge [color 0xFF55FFFF [e]]. \\
               ∃ a net [color 0x9999FFFF [n]] \\
               such that [color 0xFF55FFFF [e]] is on the
@@ -363,7 +374,7 @@ Bug? Expected record, but got: a$314
   combo-slide (slide with BODY-FONT-FAMILY = font-family CAMBRIA
                with BODY-FONT-SIZE = 86.0)
   (Title [Weakened Strengthened IH] ::
-   TextElt [“∀ convex polyhedra [color 0xFF9999FF [p]]. \\
+   TextElt [“∀ convex polyhedron [color 0xFF9999FF [p]]. \\
             ∀ face [color 0xFFFF77FF [f]]. \\
             ∀ edge [color 0xFF55FFFF [e]] on [color 0xFFFF77FF [f]]. \\
             ∃ a net [color 0x9999FFFF [n]] \\
@@ -376,19 +387,40 @@ Bug? Expected record, but got: a$314
    nil);
 
   combo-slide slide
+  (Title [I think this is [color 0x44FF44FF [true]]!] ::
+   nil);
+
+  combo-slide slide
   (image-overlay-elt "cigar-leaves.png" :: nil);
 
   results := ([Can get chosen face/edge as a leaf], Maybe) :: !results;
   scorecard ();
 
+  combo-slide slide
+  (image-overlay-elt "snail.png" :: nil);
 
-  reveal slide
-  ((Title [This is where I need your help] :: nil) ::
-   (TextElt [What does any of this have to do with mushrooms?] :: nil) ::
-   nil);
+  combo-slide slide
+  (image-overlay-elt "snail-zoom.png" :: nil);
 
-  combo-slide (slide with BACKGROUND = "color-mushroombg.png")
-  nil;
+  results := ([Can get bushy net with chosen face/edge as a leaf],
+              Counterexample) :: !results;
+  scorecard ();
+
+  combo-slide (slide with TITLE-FONT-SIZE = 100.0)
+  (Title [This is where I need your help] :: nil);
+
+  combo-slide (slide with TITLE-FONT-SIZE = 100.0
+               (* with BACKGROUND = "color-mushroombg.png" *))
+   (Title [This is where I need your help] ::
+    TextElt [What does any of this have to do with mushrooms?] :: nil);
+
+  (* Finish in 10 minutes. This needs to be before a slide! *)
+  set-target-seconds (!current-page, 600);
+
+  title-slide (slide with BACKGROUND = "color-mushroombg.png")
+  (color 0xFFFF77FF [Brechtfast of champignons])
+  (color 0xc25e32ff [by Tom 7]) (gradient-string VISIBLE-SPECTRUM
+                                 "CHRISAMACONF.STL");
 
   ()
 

@@ -21,6 +21,7 @@ fun output (page, lay) =
 fun output-frame (page, frame, lay) =
   internal-output ({(OutputDest) page = page, frame = frame}, lay)
 
+(* TODO: This stuff should be in talk-document? *)
 object PageInfo of { duration : int, target : int, section : string }
 (* For slide output, add the duration (as a number of animation frames
    to hold for) of the page's frame. *)
@@ -29,7 +30,13 @@ fun set-frame-duration (page, frame, dur) =
                           {(PageInfo) duration = dur})
 
 (* For slide output, add metadata about the target number of seconds
-   for reaching this page. *)
+   for reaching this page.
+
+   TODO: I think countdown might be more intuitive here, since that
+   is what is displayed on screen.
+   TODO: Easy to mess up by doing this after the last slide; then
+   it is ignored!
+*)
 fun set-target-seconds (page, target) =
   internal-set-page-info ({(OutputDest) page = page, frame = 0 },
                           {(PageInfo) target = target})
