@@ -107,7 +107,7 @@ in
   title-slide (slide with BACKGROUND = "registration-marks-bg.png")
   [Go to next slide] [ ] [ ];
 
-  set-target-seconds (!current-page, 0);
+  set-target-seconds (!current-page, 600);
 
   (* XXX remove mushrooms here *)
   title-slide slide (color 0xFFFFFFFF [Brechtfast of champions])
@@ -334,21 +334,61 @@ Bug? Expected record, but got: a$314
              [color 0xCCFFFFFF [outer edge]]?] ::
      nil);
 
-    combo-slide (slide with BODY-FONT-FAMILY = font-family CAMBRIA)
+    combo-slide (proof-slide with BODY-FONT-FAMILY = font-family CAMBRIA)
     (Title [Strengthened IH] ::
      TextElt [“∀ convex polyhedra [color 0xFF9999FF [p]]. \\
-              ∀ oriented edge [color 0xFFCCFFFF [e]]. \\
+              ∀ oriented edge [color 0xFF55FFFF [e]]. \\
               ∃ a net [color 0x9999FFFF [n]] \\
-              such that [color 0xFFCCFFFF [e]] is on the
-              [color 0xCCFFFFFF (it [convex hull])] of
+              such that [color 0xFF55FFFF [e]] is on the
+              [color 0x77FFFFFF (it [convex hull])] of
               [color 0x9999FFFF [n]].”] ::
      TextElt [—Tom 7] ::
      ImageRHS { img = image-load-cache "convex-hull.png",
                 scale = ORIGINAL } ::
      nil);
 
+    combo-slide proof-slide
+    (Title [This is [color 0xFF4444FF [false]]!] ::
+     ImageRHS { img = image-load-cache "convex-hull-false.png",
+                scale = ORIGINAL } ::
+     nil);
+
     ()
   end;
+
+  results := ([Can put edge on convex hull], Counterexample) :: !results;
+  scorecard ();
+
+
+  combo-slide (slide with BODY-FONT-FAMILY = font-family CAMBRIA
+               with BODY-FONT-SIZE = 86.0)
+  (Title [Weakened Strengthened IH] ::
+   TextElt [“∀ convex polyhedra [color 0xFF9999FF [p]]. \\
+            ∀ face [color 0xFFFF77FF [f]]. \\
+            ∀ edge [color 0xFF55FFFF [e]] on [color 0xFFFF77FF [f]]. \\
+            ∃ a net [color 0x9999FFFF [n]] \\
+            such that [color 0xFFFF77FF [f]] is a
+            [color 0x55FF55FF (it [leaf])] \\
+            connected only by [color 0xFF55FFFF [e]].”] ::
+   TextElt [—Tom 7] ::
+   ImageRHS { img = image-load-cache "j10-leaf.png",
+              scale = ORIGINAL } ::
+   nil);
+
+  combo-slide slide
+  (image-overlay-elt "cigar-leaves.png" :: nil);
+
+  results := ([Can get chosen face/edge as a leaf], Maybe) :: !results;
+  scorecard ();
+
+
+  reveal slide
+  ((Title [This is where I need your help] :: nil) ::
+   (TextElt [What does any of this have to do with mushrooms?] :: nil) ::
+   nil);
+
+  combo-slide (slide with BACKGROUND = "color-mushroombg.png")
+  nil;
 
   ()
 

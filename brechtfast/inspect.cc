@@ -30,6 +30,11 @@ static void Inspect(std::string_view poly_name,
                     SVGOptions svg_options) {
   auto [poly, example_net] = DB::GetPolyhedron(poly_name);
 
+  Print("Polyhedron: {}\n", poly.name.empty() ? poly_name : poly.name);
+  Print("  Vertices: {}\n", poly.faces->NumVertices());
+  Print("  Edges:    {}\n", poly.faces->NumEdges());
+  Print("  Faces:    {}\n", poly.faces->NumFaces());
+
   CHECK(IsWellConditioned(poly.vertices));
   CHECK(IsManifold(poly));
 

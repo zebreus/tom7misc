@@ -14,6 +14,7 @@
 #include "base/print.h"
 #include "bit-string.h"
 #include "geom/polyhedra.h"
+#include "make-svg.h"
 #include "randutil.h"
 #include "svg.h"
 #include "union-find.h"
@@ -218,7 +219,7 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
   }
   Print("Is net: {}\n", dr.is_net ? AGREEN("true") : ARED("false"));
 
-  SVG::Doc svg = Albrecht::MakeSVG(aug, dr, true, true, true);
+  SVG::Doc svg = MakeSVG::Make(aug, dr);
 
   Util::WriteFile(std::format("test-{}.svg", name),
                   SVG::ToSVG(svg));
