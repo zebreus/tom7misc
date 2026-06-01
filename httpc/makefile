@@ -45,7 +45,7 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(
 # Objects that are plain portable C++
 HTTPV_OBJECTS=$(RE2_OBJECTS) $(CC_LIB_OBJECTS) $(HTTPV)/multi-rsa.o $(HTTPV)/rsa.o $(HTTPV)/asn1.o $(HTTPV)/pem.o $(HTTPV)/tls.o $(HTTPV)/csr.o
 
-LIB=net.o tls-client.o model-client.o model-util.o
+LIB=net.o tls-client.o model-client.o model-util.o model-tasks.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -96,6 +96,10 @@ test-status.exe : test-status.o $(HTTPV_OBJECTS) $(LIB)
 	@echo -n "!"
 
 model-util_test.exe : model-util_test.o $(HTTPV_OBJECTS) $(LIB) $(CC_LIB_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+model-tasks_test.exe : model-tasks_test.o $(HTTPV_OBJECTS) $(LIB) $(CC_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

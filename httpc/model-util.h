@@ -18,6 +18,9 @@
 // C++ Utilities for writing little LLM-based utilities.
 struct ModelUtil {
   // List the files that are tracked in the given directory.
+  // This will abort if the svn command isn't found, but just
+  // returns the empty vector if the directory doesn't exist
+  // or is untracked.
   static std::vector<std::filesystem::path> SvnList(
       std::filesystem::path dir);
 

@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
@@ -20,6 +21,7 @@
 #include "markdown.h"
 #include "model-client.h"
 #include "model-util.h"
+#include "model-tasks.h"
 #include "net.h"
 #include "rapidjson/document.h"
 #include "timer.h"
@@ -27,82 +29,6 @@
 
 #define PROMPT_COLOR ANSI_FG(138, 188, 242)
 #define RESP_COLOR ANSI_FG(207, 138, 242)
-
-static std::string IncludesPrompt(
-    std::string_view current_file,
-    std::string_view current_file_contents,
-    std::string_view request,
-    const ModelUtil::AvailableFiles &available) {
-  std::string filestring = available.Textualize();
-
-  return std::format(
-R"(Domain: AI programming assistance.
-
-In this task, you'll see a file that the user is currently looking
-at, with a part marked `** FILL IN ANSWER HERE **`. You'll also see
-a request or question from the user. Your task is not to answer the
-question directly, but to guess what additional files would be
-necessary to do a good job completing the task. For example, in the
-common case that the user's request is to write some code, you
-should try to determine what files would be needed as context
-in order to write that code correctly. For example, you might want
-to load the header file for a non-standard library that is related
-to the task. If the user's request is to write tests for some code,
-then we likely need to see both the header and implementation for
-that code in order to know how to test it well. Files that describe
-the project or contain a style guide for the current language are
-useful too. The "llm" directory contains style guides that apply
-to all projects.
-
-You may only choose from the list of available files. The available
-files will be given below, with their sizes. Your repsonse to the task
-will be in JSON format, and will consist of your notes about the
-thought process, and the list of files you would like to open.
-
-The file that the user is looking at is called `{}`, and it contains:
-```
-{}
-```
-
-The user's request or question is:
-```
-{}
-```
-
-Remember: You're not trying to perform the request yet; you should just
-select files that we might need to see to solve it.
-
-The available files are:
-{}
-
-Each file is listed with its byte size. The cost is directly
-proportional to the file size. The priority is to answer the question,
-but as a secondary concern, try to minimize the total size of files
-chosen. Large files (more than 50kb) should be rarely chosen unless
-they are clearly vital to the question. When looking at source code,
-header files are often sufficient to understand the interface to a
-library.
-
-Now it's time for your output. Given the user's request, what would be
-the most important files to read in order to provide the background
-information to accomplish it? Sometimes the question will be
-self-evident, or only require the context of the current file, so your
-answer might be the empty list. You may only name files from the list
-but can describe other missing information in an optional separate
-field.
-
-Your result is a JSON object that looks like this:
-
-{{ "notes": "My own notes from considering the problem. Do I already know how to do it without additional context? Why do I believe the contents of the files would be useful? How did I consider the file size?",
-  "files": ["file1.h", "file2.h", ...],
-  "missing": "Optional. Information I believe might be missing even if I read these files. Examples would include documentation, files that seem to exist exist but are not in the list of available files, or context on the problem that is unlikely to be in a file. This will be shown to the user."
-}}
-
-JSON:
-)",
-current_file, current_file_contents,
-request, filestring);
-}
 
 std::string GenerateFill(
     std::string_view current_file,
@@ -294,7 +220,6 @@ int main(int argc, char **argv) {
   fflush(stdout);
 
   // Construct prompt to guess at files to include (cheap model).
-
   Timer include_timer;
   std::vector<std::string> to_include = [&]() -> std::vector<std::string> {
       if (available.files.empty()) {
@@ -303,9 +228,6 @@ int main(int argc, char **argv) {
       }
 
       CHECK(!request.empty());
-      std::string includes_prompt =
-        IncludesPrompt(current_file, current_file_contents,
-                       request, available);
 
       std::unique_ptr<ModelClient> cheap =
         ModelClient::Create(Model::GEMINI_CHEAPEST, api_key);
@@ -313,53 +235,59 @@ int main(int argc, char **argv) {
       CHECK(cheap.get() != nullptr);
       cheap->SetVerbose(verbose);
 
-      std::string raw = cheap->Infer(includes_prompt);
-      std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
-      if (json.empty()) {
-        Print(ARED("Unable to find a JSON object!") "\n"
-              "\n"
-              AGREY("{}\n"), raw);
-        return {};
-      }
+      ModelTasks::ChooseFilesOptions opt;
+      opt.domain = "AI programming assistance";
+      opt.task_hints = "In this task, the file the user is looking at "
+        "has a part marked `** FILL IN ANSWER HERE **`. Later we "
+        "will use the files you choose now as context to fill that "
+        "part in.";
+      opt.current_filename = current_file;
+      opt.include_current_file = true;
+      opt.can_fail = true;
+      opt.can_answer = false;
+
+      ModelTasks::ChooseFilesResult result = ModelTasks::ChooseFiles(
+          cheap.get(), request, available, opt);
 
       std::vector<std::string> to_include;
 
-      {
-        using namespace rapidjson;
-        Document document = ModelUtil::ParseSloppyOrDie(json);
-
-        CHECK(document.IsObject());
-        CHECK(document.HasMember("notes"));
-        if (document.HasMember("files") && document["files"].IsArray()) {
-          for (const Value &v : document["files"].GetArray()) {
-            CHECK(v.IsString());
-            std::string file = v.GetString();
-            if (Util::StartsWith(file, "./")) {
-              file = file.substr(2);
-            }
-            if (available.files.contains(file)) {
-              to_include.push_back(file);
-            } else {
-              Print(AORANGE("Warning") ": Unavailable file chosen. {}\n",
-                    file);
-            }
+      if (auto* chosen = std::get_if<ModelTasks::ChosenFiles>(&result)) {
+        for (const std::string &file : chosen->files) {
+          std::string f = file;
+          if (Util::StartsWith(f, "./")) {
+            f = f.substr(2);
+          }
+          if (available.files.contains(f)) {
+            to_include.push_back(f);
+          } else {
+            Print(AORANGE("Warning") ": Unavailable file chosen. {}\n", f);
           }
         }
 
-        if (document.HasMember("missing")) {
-          CHECK(document["missing"].IsString());
-          std::string missing = document["missing"].GetString();
-          if (!missing.empty()) {
-            Print(AWHITE("Model thinks this is missing") ":\n"
-                  RESP_COLOR "{}" ANSI_RESET "\n",
-                  missing);
-            // Maybe prompt to continue in this case?
-          }
+        if (!chosen->message.empty()) {
+          Markdown::Document doc = Markdown::Parse(chosen->message);
+          Print(AWHITE("Include phase message") ":\n"
+                "{}\n", Markdown::ToColorTerminal(doc));
+
         }
+
+      } else if (auto* failure = std::get_if<ModelTasks::Failure>(&result)) {
+        Markdown::Document doc = Markdown::Parse(failure->message);
+        Print(ARED("Failed to choose files") ":\n"
+              "{}\n", Markdown::ToColorTerminal(doc));
+
+        LOG(FATAL) << "Include phase failed.";
+
+      } else if (auto* answer = std::get_if<ModelTasks::Answer>(&result)) {
+        Print(AWHITE("Model answered directly: {}") "\n", answer->message);
+
+        LOG(FATAL) << "This shouldn't happen because we didn't enable "
+          "answering!";
       }
 
       return to_include;
     }();
+
   if (verbose > 0) {
     Print("Include phase done in {}\n", ANSI::Time(include_timer.Seconds()));
     fflush(stdout);

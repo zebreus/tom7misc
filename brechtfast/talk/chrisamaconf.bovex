@@ -151,7 +151,7 @@ in
                with CONTENT-START-Y = 340.0
                with CONTENT-WIDTH = 1000.0
                with TITLE-FONT-SIZE = 104.0)
-  (Title [Dead Albrecht Dürer (1471–1582)] ::
+  (Title [Dead Albrecht Dürer (1471–1528)] ::
    Bullets ([One-trick pony] ::
             [Only cared about convex polyhedra] ::
             [[it (color 0xFFFFCCFF [Call of Duty: Black Ops 6])]
@@ -290,6 +290,13 @@ Bug? Expected record, but got: a$314
    combo-slide (slide with BACKGROUND = "mushroombg.png")
    (image-overlay-elt ("discovery" ^ int-to-string n ^ ".png") :: nil));
 
+  (* Or consider the rubiks cube. For the 3x3x3 you would have equator
+     n=12. (Diagonal is distance 7.) Whenever you unfold this, you are
+     guaranteed that the distance between two faces is bounded by the
+     manhattan distance in the plane. Since we have 6x9 = 54 total
+     squares, the square must exceed 7x7 = 49. So the longest diagonal
+     in manhattan distance is always 7+6 = 13! *)
+
   just-video slide "rendered-rubikscube.mkv";
 
   results := ([Always a (very) bushy net], Counterexample) :: !results;
@@ -299,7 +306,6 @@ Bug? Expected record, but got: a$314
     val proof-slide = slide
       with TITLE-FONT-SIZE = 108.0
       with QUOTE-FONT-SIZE = 90.0
-
   in
 
     combo-slide proof-slide

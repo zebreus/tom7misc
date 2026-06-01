@@ -1,4 +1,9 @@
 
+# Different locations for this on systems I use.
+# The svn directive will just ignore paths that don't exist.
+svn d:\tom\llm
+svn /root/tom/llm
+
 # Descriptions of commonly included directories:
 describe d:\tom\llm Style guides and instructions
 

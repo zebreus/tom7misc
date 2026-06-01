@@ -739,3 +739,58 @@ std::unique_ptr<ModelClient> ModelClient::Create(
   return std::unique_ptr<ModelClient>{new ModelClientImpl(model, api_key)};
 }
 
+namespace {
+
+struct TestModelResponseImpl : public ModelResponse {
+  explicit TestModelResponseImpl(std::string response) :
+    response(std::move(response)) {}
+  ~TestModelResponseImpl() override = default;
+
+  bool Completed() const override { return true; }
+  bool Failed() const override { return false; }
+
+  void ReadSome() override {}
+  void ReadAll() override {}
+
+  std::string_view Text() const override { return response; }
+
+  int64_t TotalTokens() const override { return 0; }
+  int64_t PromptTokens() const override { return 0; }
+
+  double SecToFirst() const override { return 0.0; }
+  double Sec() const override { return 0.0; }
+
+  std::string response;
+};
+
+struct TestModelClientImpl : public ModelClient {
+  explicit TestModelClientImpl(
+      std::function<std::string(std::string_view)> f) :
+    fn(std::move(f)) {}
+  ~TestModelClientImpl() override = default;
+
+  void SetVerbose(int v) override {
+    verbose = v;
+  }
+
+  std::string Infer(std::string_view prompt, int max_attempts) override {
+    return fn(prompt);
+  }
+
+  std::unique_ptr<ModelResponse> Run(std::string_view prompt) override {
+    return std::unique_ptr<ModelResponse>{
+      new TestModelResponseImpl(fn(prompt))};
+  }
+
+  std::function<std::string(std::string_view)> fn;
+  int verbose = 0;
+};
+
+}  // namespace
+
+std::unique_ptr<ModelClient> TestModelClient::Create(
+    std::function<std::string(std::string_view)> f) {
+  return std::unique_ptr<ModelClient>{
+    new TestModelClientImpl(std::move(f))};
+}
+

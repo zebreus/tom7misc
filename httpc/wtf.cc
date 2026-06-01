@@ -11,7 +11,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <cstdlib>
 
+#include "model-tasks.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
@@ -23,64 +25,6 @@
 #include "rapidjson/document.h"
 #include "timer.h"
 #include "util.h"
-
-static std::string IncludesPrompt(
-    std::string_view file,
-    std::string_view question,
-    std::string_view output,
-    const ModelUtil::AvailableFiles &available) {
-  std::string filestring = available.Textualize();
-
-  std::string context =
-    file.empty() ? "is this" :
-    std::format("comes from the file {}", file);
-
-  return std::format(
-R"(Domain: AI programming assistance.
-
-In this task, you'll see context (like computer code or an error
-message) and a question from a user. Your task is not to answer the
-question directly, but to guess what additional files would be
-necessary to answer the question. The list of available files will be
-given below, with their sizes. Your repsonse to the task will be in
-JSON format, and will consist of your notes about the thought process,
-and the list of files you would like to open.
-
-The context for the user's question {}:
-```
-{}
-```
-
-The user's question is: "{}"
-
-The available files are:
-{}
-
-Each file is listed with its byte size. The cost is directly proportional
-to the file size. The priority is to answer the question, but as a
-secondary concern, try to minimize the total size of files chosen.
-Large files (more than 50kb) should be rarely chosen unless they are
-clearly vital to the question. When looking at source code, header
-files are often sufficient to understand the interface to a library.
-
-Now it's time for your output. Given the user's question, what would
-be the most important files to read in order to provide the background
-information to answer it? Sometimes the question will be self-evident,
-so your answer might be the empty list. When the question needs more
-context, the current file should typically be included. You may only
-name files from the list but can describe other missing information in
-an optional separate field.
-
-Your result is a JSON object that looks like this:
-
-{{ "notes": "My own notes from considering the problem. Do I already know the answer? Why do I believe the contents of the files would be useful? How did I consider the file size?",
-  "files": ["file1.h", "file2.h", ...],
-  "missing": "Optional. Information I believe might be missing even if I read these files. Examples would include documentation, files that seem to exist exist but are not in the list of available files, or context on the problem that is unlikely to be in a file. This will be shown to the user."
-}}
-
-JSON:
-)", context, output, question, filestring);
-}
 
 static std::string SolvePrompt(std::string_view question,
                                std::string_view output,
@@ -290,62 +234,43 @@ int main(int argc, char **argv) {
   Timer include_timer;
   std::vector<std::string> to_include = [&] -> std::vector<std::string> {
       if (fast) return {file};
-
       CHECK(question.has_value());
-      std::string includes_prompt =
-        IncludesPrompt(file_arg, question.value(), output, available);
 
-      std::unique_ptr<ModelClient> cheap =
-        ModelClient::Create(Model::GEMINI_CHEAPEST, api_key);
+      std::unique_ptr<ModelClient> client =
+          ModelClient::Create(Model::GEMINI_MEDIUM, api_key);
+      client->SetVerbose(verbose);
 
-      CHECK(cheap.get() != nullptr);
-      cheap->SetVerbose(verbose);
+      ModelTasks::ChooseFilesOptions opt;
+      opt.current_filename = file;
+      opt.can_fail = true;
+      opt.can_answer = true;
 
-      if (emacs) Print("<STATUS>\n");
-      std::string raw = cheap->Infer(includes_prompt);
-      if (emacs) Print("</STATUS>\n");
-      std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
-      if (json.empty()) {
-        Print(ARED("Unable to find a JSON object!") "\n"
-              "\n"
-              AGREY("{}\n"), raw);
-        return std::vector<std::string>{};
-      }
+      ModelTasks::ChooseFilesResult result =
+          ModelTasks::ChooseFiles(client.get(), question.value(),
+                                  available, opt);
 
       std::vector<std::string> to_include;
-
-      {
-        using namespace rapidjson;
-        Document document = ModelUtil::ParseSloppyOrDie(json);
-
-        CHECK(document.IsObject());
-        CHECK(document.HasMember("notes"));
-        if (document.HasMember("files") && document["files"].IsArray()) {
-          for (const Value &v : document["files"].GetArray()) {
-            CHECK(v.IsString());
-            std::string file = v.GetString();
-            if (Util::StartsWith(file, "./")) {
-              file = file.substr(2);
-            }
-            if (available.files.contains(file)) {
-              to_include.push_back(file);
-            } else {
-              Print(AORANGE("Warning") ": Unavailable file chosen. {}\n",
-                    file);
-            }
-          }
+      if (std::holds_alternative<ModelTasks::ChosenFiles>(result)) {
+        const auto &cf = std::get<ModelTasks::ChosenFiles>(result);
+        to_include = cf.files;
+        if (!cf.message.empty()) {
+          Markdown::Document doc = Markdown::Parse(cf.message);
+          Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
-
-        if (document.HasMember("missing")) {
-          CHECK(document["missing"].IsString());
-          std::string missing = document["missing"].GetString();
-          if (!missing.empty()) {
-            Print(AWHITE("Model thinks this is missing") ":\n"
-                  RESP_COLOR "{}" ANSI_RESET "\n",
-                  missing);
-            // Maybe prompt to continue in this case?
-          }
+      } else if (std::holds_alternative<ModelTasks::Answer>(result)) {
+        const auto &ans = std::get<ModelTasks::Answer>(result);
+        if (!ans.message.empty()) {
+          Markdown::Document doc = Markdown::Parse(ans.message);
+          Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
+        exit(0);
+      } else if (std::holds_alternative<ModelTasks::Failure>(result)) {
+        const auto &fail = std::get<ModelTasks::Failure>(result);
+        if (!fail.message.empty()) {
+          Markdown::Document doc = Markdown::Parse(fail.message);
+          Print("\n{}\n", Markdown::ToColorTerminal(doc));
+        }
+        exit(1);
       }
 
       return to_include;

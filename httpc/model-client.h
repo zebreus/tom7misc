@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <functional>
 #include <string_view>
 
 struct ModelResponse;
@@ -89,6 +90,13 @@ struct ModelResponse {
 
  protected:
   ModelResponse();
+};
+
+struct TestModelClient {
+  // Create a fake model client that just calls the function
+  // to produce the text response.
+  static std::unique_ptr<ModelClient> Create(
+      std::function<std::string(std::string_view)> f);
 };
 
 #endif
