@@ -1,16 +1,17 @@
 
 #include "model-tasks.h"
 
-#include "gtest/gtest.h"
-
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "base/print.h"
+#include "ansi.h"
+#include "base/logging.h"
 #include "model-client.h"
 #include "model-util.h"
 
-TEST(ModelTasksTest, ChooseFilesSuccess) {
+static void ChooseFilesSuccess() {
   auto client = TestModelClient::Create([](std::string_view) {
     return R"({
       "notes": "Testing success case.",
@@ -25,16 +26,16 @@ TEST(ModelTasksTest, ChooseFilesSuccess) {
   ModelTasks::ChooseFilesResult result = ModelTasks::ChooseFiles(
       client.get(), "Help me", available, options);
 
-  ASSERT_TRUE(std::holds_alternative<ModelTasks::ChosenFiles>(result));
-  const ModelTasks::ChosenFiles &chosen =
-      std::get<ModelTasks::ChosenFiles>(result);
-  EXPECT_EQ(chosen.files.size(), 2);
-  EXPECT_EQ(chosen.files[0], "model-tasks_test.cc");
-  EXPECT_EQ(chosen.files[1], "model-tasks.h");
-  EXPECT_EQ(chosen.message, "Success message");
+  const ModelTasks::ChosenFiles *chosen =
+      std::get_if<ModelTasks::ChosenFiles>(&result);
+  CHECK(chosen != nullptr);
+  CHECK(chosen->files.size() == 2);
+  CHECK(chosen->files[0] == "model-tasks_test.cc");
+  CHECK(chosen->files[1] == "model-tasks.h");
+  CHECK(chosen->message == "Success message");
 }
 
-TEST(ModelTasksTest, ChooseFilesFailure) {
+static void ChooseFilesFailure() {
   auto client = TestModelClient::Create([](std::string_view) {
     return R"({
       "notes": "Testing failure case.",
@@ -50,13 +51,13 @@ TEST(ModelTasksTest, ChooseFilesFailure) {
   ModelTasks::ChooseFilesResult result = ModelTasks::ChooseFiles(
       client.get(), "Help me", available, options);
 
-  ASSERT_TRUE(std::holds_alternative<ModelTasks::Failure>(result));
+  CHECK(std::holds_alternative<ModelTasks::Failure>(result));
   const ModelTasks::Failure &failure =
       std::get<ModelTasks::Failure>(result);
-  EXPECT_EQ(failure.message, "Failure message");
+  CHECK(failure.message == "Failure message");
 }
 
-TEST(ModelTasksTest, ChooseFilesSolve) {
+static void ChooseFilesSolve() {
   auto client = TestModelClient::Create([](std::string_view) {
     return R"({
       "notes": "Testing solve case.",
@@ -72,9 +73,19 @@ TEST(ModelTasksTest, ChooseFilesSolve) {
   ModelTasks::ChooseFilesResult result = ModelTasks::ChooseFiles(
       client.get(), "Help me", available, options);
 
-  ASSERT_TRUE(std::holds_alternative<ModelTasks::Answer>(result));
+  CHECK(std::holds_alternative<ModelTasks::Answer>(result));
   const ModelTasks::Answer &answer =
       std::get<ModelTasks::Answer>(result);
-  EXPECT_EQ(answer.message, "Solve message");
+  CHECK(answer.message == "Solve message");
 }
 
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  ChooseFilesSuccess();
+  ChooseFilesFailure();
+  ChooseFilesSolve();
+
+  Print("OK\n");
+  return 0;
+}
