@@ -1,5 +1,5 @@
 
-#include "solve-leaf.h"
+#include "solve-dual-leaf.h"
 
 #include <algorithm>
 #include <condition_variable>
@@ -7,7 +7,6 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -42,15 +41,10 @@ struct PlacedFace {
 // Mutable state used during the backtracking search.
 struct SearchState {
   // The edges chosen so far to form the net.
-  // Representation invariant: This represents a tree rooted
-  // at the starting face.
-  // num_edges in size.
   BitString unfolding;
   // Faces currently in the spanning tree.
-  // num_faces in size.
   BitString visited_faces;
   // Edges we may not consider.
-  // num_edges in size.
   BitString forbidden_edges;
   std::vector<PlacedFace> placed_faces;
   ArcFour rc;
@@ -62,8 +56,7 @@ struct ResultChannel {
   std::condition_variable cv;
   bool should_die = false;
   std::optional<BitString> result;
-  // Send the result (only the first time this is called), and notify
-  // all threads that we're done.
+
   void Send(std::optional<BitString> r) {
     {
       MutexLock ml(&m);
@@ -74,7 +67,7 @@ struct ResultChannel {
     }
     cv.notify_all();
   }
-  // Check whether we succeeded in another thread.
+
   bool ShouldDie() {
     MutexLock ml(&m);
     return should_die;
@@ -85,17 +78,18 @@ struct ResultChannel {
 struct RecSolver {
   std::shared_ptr<ResultChannel> result_channel;
   const AugmentedPoly &aug;
-  const int input_face_idx;
   const int input_edge_idx;
+  int f0, f1;
 
   RecSolver(std::shared_ptr<ResultChannel> result_channel,
-            const AugmentedPoly &aug, int face_idx, int edge_idx) :
+            const AugmentedPoly &aug, int edge_idx) :
     result_channel(std::move(result_channel)),
-    aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx) {
+    aug(aug), input_edge_idx(edge_idx) {
+    const Faces::Edge &edge = aug.poly.faces->edges[edge_idx];
+    f0 = edge.f0;
+    f1 = edge.f1;
   }
 
-  // Checks if new_face overlaps with any face already in
-  // state.placed_faces.
   bool CheckOverlap(const SearchState &state,
                     int src_idx,
                     const PlacedFace &new_face) {
@@ -117,10 +111,6 @@ struct RecSolver {
     return false;
   }
 
-  // Pruning via reachability.
-  // Since we branch by either including or excluding an edge, we might
-  // exclude enough edges to disconnect the unvisited faces from the tree.
-  // A quick BFS/DFS here (ignoring forbidden_edges) can prune dead ends early.
   bool CanReachAllFaces(const SearchState &state) {
     int num_faces = aug.poly.faces->NumFaces();
     int reached_count = state.placed_faces.size();
@@ -130,7 +120,6 @@ struct RecSolver {
     std::vector<int> stack;
     stack.reserve(num_faces);
 
-    // Seed the search with all faces currently in our spanning tree.
     for (const PlacedFace &pf : state.placed_faces) {
       stack.push_back(pf.face_idx);
     }
@@ -158,24 +147,18 @@ struct RecSolver {
   }
 
   bool Search(SearchState &state, std::vector<int> &frontier) {
-    // Success?
     if (state.placed_faces.size() == aug.poly.faces->NumFaces()) {
       return true;
     }
 
-    // If no edges left but we haven't placed all faces, this branch
-    // fails.
     if (frontier.empty()) return false;
 
-    // Early pruning.
     if (!CanReachAllFaces(state)) {
       return false;
     }
 
-    // Other thread won?
     if (result_channel->ShouldDie()) return false;
 
-    // Pick a random edge.
     const int frontier_idx = RandTo(&state.rc, frontier.size());
     std::swap(frontier[frontier_idx], frontier.back());
     const int edge_idx = frontier.back();
@@ -187,8 +170,6 @@ struct RecSolver {
     bool f1_visited = state.visited_faces.Get(edge.f1);
 
     if (f0_visited && f1_visited) {
-      // Including this edge would form a cycle in our face tree,
-      // so we must not include it.
       state.forbidden_edges.Set(edge_idx, true);
       bool result = Search(state, frontier);
       state.forbidden_edges.Set(edge_idx, false);
@@ -197,13 +178,10 @@ struct RecSolver {
       return result;
     }
 
-    // Let V be the visited face, and U be the unvisited face.
     const int v_idx = f0_visited ? edge.f0 : edge.f1;
     const int u_idx = f0_visited ? edge.f1 : edge.f0;
 
     {
-      // Try taking the edge.
-      // Calculate U's frame2 using V's global_tf and the aug.edge_transforms.
       frame2 v_global_tf;
       for (const PlacedFace &pf : state.placed_faces) {
         if (pf.face_idx == v_idx) {
@@ -215,7 +193,6 @@ struct RecSolver {
       const auto &[f10, f01] = aug.edge_transforms[edge_idx];
       frame2 edge_tf = (edge.f0 == v_idx) ? f10 : f01;
 
-      // Compute what U would look like if placed.
       PlacedFace U;
       U.face_idx = u_idx;
       U.global_tf = v_global_tf * edge_tf;
@@ -230,7 +207,6 @@ struct RecSolver {
         U.max_b.y = std::max(U.max_b.y, tv.y);
       }
 
-      // See if it fits.
       if (!CheckOverlap(state, v_idx, U)) {
         state.placed_faces.push_back(U);
         state.visited_faces.Set(u_idx, 1);
@@ -254,7 +230,6 @@ struct RecSolver {
           return true;
         }
 
-        // Undo state changes.
         frontier.resize(old_frontier_size);
         state.unfolding.Set(edge_idx, false);
         state.visited_faces.Set(u_idx, false);
@@ -263,16 +238,13 @@ struct RecSolver {
     }
 
     {
-      // Try not taking the edge.
       state.forbidden_edges.Set(edge_idx, true);
       if (Search(state, frontier)) {
         return true;
       }
-
       state.forbidden_edges.Set(edge_idx, false);
     }
 
-    // Either way, return the edge to the frontier when we pop.
     frontier.push_back(edge_idx);
     std::swap(frontier[frontier_idx], frontier.back());
     return false;
@@ -282,68 +254,88 @@ struct RecSolver {
     int num_faces = aug.poly.faces->NumFaces();
     int num_edges = aug.poly.faces->NumEdges();
 
-    SearchState state{
-      .unfolding = BitString(num_edges, false),
-      .visited_faces = BitString(num_faces, false),
-      .forbidden_edges = BitString(num_edges, false),
-      .placed_faces = {},
-      .rc = ArcFour("pseudorandom"),
-    };
+    for (int e0 : aug.face_edges[f0]) {
+      if (e0 == input_edge_idx) continue;
+      const Faces::Edge &edge0 = aug.poly.faces->edges[e0];
+      if ((edge0.f0 == f0 && edge0.f1 == f1) ||
+          (edge0.f0 == f1 && edge0.f1 == f0)) continue;
 
-    // To force input_face_idx to be a leaf attached solely via
-    // input_edge_idx, we explicitly forbid all of its other edges
-    // from being in the spanning tree.
-    for (int e_idx : aug.face_edges[input_face_idx]) {
-      if (e_idx != input_edge_idx) {
-        state.forbidden_edges.Set(e_idx, true);
+      for (int e1 : aug.face_edges[f1]) {
+        if (e1 == input_edge_idx) continue;
+        const Faces::Edge &edge1 = aug.poly.faces->edges[e1];
+        if ((edge1.f0 == f0 && edge1.f1 == f1) ||
+            (edge1.f0 == f1 && edge1.f1 == f0)) continue;
+
+        if (result_channel->ShouldDie()) return;
+
+        SearchState state{
+          .unfolding = BitString(num_edges, false),
+          .visited_faces = BitString(num_faces, false),
+          .forbidden_edges = BitString(num_edges, false),
+          .placed_faces = {},
+          .rc = ArcFour("pseudorandom"),
+        };
+
+        state.forbidden_edges.Set(input_edge_idx, true);
+        for (int e_idx : aug.face_edges[f0]) {
+          if (e_idx != e0) {
+            state.forbidden_edges.Set(e_idx, true);
+          }
+        }
+        for (int e_idx : aug.face_edges[f1]) {
+          if (e_idx != e1) {
+            state.forbidden_edges.Set(e_idx, true);
+          }
+        }
+
+        PlacedFace initial_face;
+        initial_face.face_idx = f0;
+
+        initial_face.global_tf.x = {1.0, 0.0};
+        initial_face.global_tf.y = {0.0, 1.0};
+        initial_face.global_tf.o = {0.0, 0.0};
+
+        initial_face.vertices.reserve(aug.polygons[f0].size());
+        for (const vec2 &pt : aug.polygons[f0]) {
+          initial_face.vertices.push_back(pt);
+          initial_face.min_b.x = std::min(initial_face.min_b.x, pt.x);
+          initial_face.min_b.y = std::min(initial_face.min_b.y, pt.y);
+          initial_face.max_b.x = std::max(initial_face.max_b.x, pt.x);
+          initial_face.max_b.y = std::max(initial_face.max_b.y, pt.y);
+        }
+
+        state.placed_faces.push_back(std::move(initial_face));
+        state.visited_faces.Set(f0, true);
+
+        std::vector<int> frontier;
+        frontier.push_back(e0);
+
+        if (Search(state, frontier)) {
+          result_channel->Send(state.unfolding);
+          return;
+        }
       }
     }
-
-    PlacedFace initial_face;
-    initial_face.face_idx = input_face_idx;
-
-    // We do not require any convex hull conditions, so placing the initial
-    // face at the origin with the identity transform works fine.
-    initial_face.global_tf.x = {1.0, 0.0};
-    initial_face.global_tf.y = {0.0, 1.0};
-    initial_face.global_tf.o = {0.0, 0.0};
-
-    initial_face.vertices.reserve(aug.polygons[input_face_idx].size());
-    for (const vec2 &pt : aug.polygons[input_face_idx]) {
-      initial_face.vertices.push_back(pt);
-      initial_face.min_b.x = std::min(initial_face.min_b.x, pt.x);
-      initial_face.min_b.y = std::min(initial_face.min_b.y, pt.y);
-      initial_face.max_b.x = std::max(initial_face.max_b.x, pt.x);
-      initial_face.max_b.y = std::max(initial_face.max_b.y, pt.y);
-    }
-
-    state.placed_faces.push_back(std::move(initial_face));
-    state.visited_faces.Set(input_face_idx, true);
-
-    std::vector<int> frontier;
-    frontier.push_back(input_edge_idx);
-
-    if (Search(state, frontier)) {
-      result_channel->Send(state.unfolding);
-    } else {
-      result_channel->Send(std::nullopt);
-    }
+    result_channel->Send(std::nullopt);
   }
 };
 
 struct ShotgunSolver {
   std::shared_ptr<ResultChannel> result_channel;
   const AugmentedPoly &aug;
-  const int input_face_idx;
-  const int input_edge_idx;
+  const int input_edge_idx = -1;
+  int f0 = -1, f1 = -1;
   ArcFour rc;
 
   ShotgunSolver(std::shared_ptr<ResultChannel> result_channel,
-                const AugmentedPoly &aug, int face_idx, int edge_idx,
+                const AugmentedPoly &aug, int edge_idx,
                 uint64_t seed) :
     result_channel(std::move(result_channel)),
-    aug(aug), input_face_idx(face_idx), input_edge_idx(edge_idx),
+    aug(aug), input_edge_idx(edge_idx),
     rc(std::format("shot.{:x}", seed)) {
+    CHECK(edge_idx >= 0 && edge_idx < aug.poly.faces->NumEdges());
+    f0 = aug.poly.faces->edges[edge_idx].f0;
+    f1 = aug.poly.faces->edges[edge_idx].f1;
   }
 
   void Solve() {
@@ -352,31 +344,52 @@ struct ShotgunSolver {
     const int num_edges = faces.NumEdges();
     BitString unfolding(num_edges, false);
     UnionFind uf(num_faces);
-    // The randomly-ordered set of edges that we'll try connecting
-    // until we have a complete graph.
-    std::vector<int> edges;
-    for (int e = 0; e < num_edges; e++) {
-      // We always include the target edge, and always cut the
-      // other edges on the target face. So any edge on the
-      // target face is excluded from this vector and handled
-      // manually during initialization.
-      const Faces::Edge &edge = faces.edges[e];
-      if (edge.f0 != input_face_idx &&
-          edge.f1 != input_face_idx) {
-        edges.push_back(e);
+
+    std::vector<int> f0_edges;
+    for (int e : aug.face_edges[f0]) {
+      if (e != input_edge_idx) {
+        const Faces::Edge &edge = faces.edges[e];
+        if ((edge.f0 == f0 && edge.f1 == f1) ||
+            (edge.f0 == f1 && edge.f1 == f0)) continue;
+        f0_edges.push_back(e);
+      }
+    }
+    std::vector<int> f1_edges;
+    for (int e : aug.face_edges[f1]) {
+      if (e != input_edge_idx) {
+        const Faces::Edge &edge = faces.edges[e];
+        if ((edge.f0 == f0 && edge.f1 == f1) ||
+            (edge.f0 == f1 && edge.f1 == f0)) continue;
+        f1_edges.push_back(e);
       }
     }
 
+    if (f0_edges.empty() || f1_edges.empty()) {
+      return;
+    }
+
+    std::vector<int> edges;
+    for (int e = 0; e < num_edges; e++) {
+      const Faces::Edge &edge = faces.edges[e];
+      if (e == input_edge_idx) continue;
+      if (edge.f0 == f0 || edge.f1 == f0) continue;
+      if (edge.f0 == f1 || edge.f1 == f1) continue;
+      edges.push_back(e);
+    }
+
     while (!result_channel->ShouldDie()) {
-      // Reset state in place.
       uf.Reset();
       Shuffle(&rc, &edges);
 
+      int e0 = f0_edges[RandTo(&rc, f0_edges.size())];
+      int e1 = f1_edges[RandTo(&rc, f1_edges.size())];
+
       unfolding.Clear(false);
-      // The target edge must be included.
-      // The other edges on the face are not included, because
-      // they are not in the edges vector.
-      unfolding.Set(input_edge_idx, true);
+      unfolding.Set(e0, true);
+      unfolding.Set(e1, true);
+
+      uf.Union(faces.edges[e0].f0, faces.edges[e0].f1);
+      uf.Union(faces.edges[e1].f0, faces.edges[e1].f1);
 
       for (int i : edges) {
         const Faces::Edge &edge = faces.edges[i];
@@ -395,15 +408,15 @@ struct ShotgunSolver {
 };
 
 static std::optional<BitString>
-MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
+MultiSolve(const AugmentedPoly &poly, int edge_idx) {
   std::shared_ptr<ResultChannel> result_channel =
     std::make_shared<ResultChannel>();
 
   std::vector<std::unique_ptr<std::thread>> threads;
 
   threads.emplace_back(std::make_unique<std::thread>([&]{
-      RecSolver rec(result_channel, poly, face_idx, edge_idx);
-      (void)rec.DoSearch();
+      RecSolver rec(result_channel, poly, edge_idx);
+      rec.DoSearch();
     }));
 
   ArcFour rc("shot");
@@ -411,12 +424,10 @@ MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
   for (int i = 0; i < NUM_SHOTGUN_THREADS; i++) {
     uint64_t seed = Rand64(&rc);
     threads.emplace_back(std::make_unique<std::thread>([&, seed]{
-        ShotgunSolver ss(result_channel, poly, face_idx, edge_idx, seed);
+        ShotgunSolver ss(result_channel, poly, edge_idx, seed);
         ss.Solve();
       }));
   }
-
-  // Wait for one to finish.
 
   std::unique_lock<std::mutex> lock(result_channel->m);
   result_channel->cv.wait(lock, [&]{ return result_channel->should_die; });
@@ -430,98 +441,74 @@ MultiSolve(const AugmentedPoly &poly, int face_idx, int edge_idx) {
 
 }  // namespace
 
-std::optional<BitString> SolveLeaf::FindLeafUnfolding(
+std::optional<BitString> SolveDualLeaf::FindDualLeafUnfolding(
     const Albrecht::AugmentedPoly &aug,
-    int face_idx,
     int edge_idx) {
   const Faces &faces = *aug.poly.faces;
-  if (face_idx < 0 || face_idx >= faces.NumFaces() ||
-      edge_idx < 0 || edge_idx >= faces.NumEdges()) {
+  if (edge_idx < 0 || edge_idx >= faces.NumEdges()) {
     return std::nullopt;
   }
-  const Faces::Edge &edge = faces.edges[edge_idx];
-  if (edge.f0 != face_idx && edge.f1 != face_idx) {
-    return std::nullopt;
-  }
-
-  return MultiSolve(aug, face_idx, edge_idx);
+  return MultiSolve(aug, edge_idx);
 }
 
-BitString SolveLeaf::SampleFace(
+BitString SolveDualLeaf::SampleDualLeaf(
     ArcFour *rc,
     const Albrecht::AugmentedPoly &aug,
-    int face_idx) {
-  const Faces &faces = *aug.poly.faces;
-  const int num_faces = faces.NumFaces();
-  const int num_edges = faces.NumEdges();
-
-  // Pick a random edge to connect the leaf face.
-  const auto &f_edges = aug.face_edges[face_idx];
-  int input_edge_idx = f_edges[RandTo(rc, f_edges.size())];
-
-  std::vector<int> edges;
-  edges.reserve(num_edges);
-  for (int e = 0; e < num_edges; e++) {
-    const Faces::Edge &edge = faces.edges[e];
-    if (edge.f0 != face_idx && edge.f1 != face_idx) {
-      edges.push_back(e);
-    }
-  }
-
-  Shuffle(rc, &edges);
-
-  BitString unfolding(num_edges, false);
-  unfolding.Set(input_edge_idx, true);
-
-  UnionFind uf(num_faces);
-  for (int i : edges) {
-    const Faces::Edge &edge = faces.edges[i];
-    if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
-      uf.Union(edge.f0, edge.f1);
-      unfolding.Set(i, true);
-    }
-  }
-
-  return unfolding;
-}
-
-static std::string EdgeString(const Faces::Edge &edge) {
-  return std::format("v:{}-{}. f: {}, {}.",
-                     edge.v0, edge.v1,
-                     edge.f0, edge.f1);
-}
-
-BitString SolveLeaf::SampleLeaf(
-    ArcFour *rc,
-    const Albrecht::AugmentedPoly &aug,
-    int face_idx,
     int edge_idx) {
   const Faces &faces = *aug.poly.faces;
   const int num_faces = faces.NumFaces();
   const int num_edges = faces.NumEdges();
 
   CHECK(edge_idx >= 0 && edge_idx < num_edges);
-  CHECK(face_idx >= 0 && face_idx < num_faces);
   const Faces::Edge &input_edge = faces.edges[edge_idx];
-  CHECK(input_edge.f0 == face_idx || input_edge.f1 == face_idx) <<
-    "Edge: " << EdgeString(input_edge) << "\n"
-    "Face: " << face_idx;
+  int f0 = input_edge.f0;
+  int f1 = input_edge.f1;
+
+  std::vector<int> f0_edges;
+  for (int e : aug.face_edges[f0]) {
+    if (e != edge_idx) {
+      const Faces::Edge &edge = faces.edges[e];
+      // Exclude multiple edges directly between f0 and f1 if any exist.
+      if ((edge.f0 == f0 && edge.f1 == f1) ||
+          (edge.f0 == f1 && edge.f1 == f0)) continue;
+      f0_edges.push_back(e);
+    }
+  }
+  std::vector<int> f1_edges;
+  for (int e : aug.face_edges[f1]) {
+    if (e != edge_idx) {
+      const Faces::Edge &edge = faces.edges[e];
+      if ((edge.f0 == f0 && edge.f1 == f1) ||
+          (edge.f0 == f1 && edge.f1 == f0)) continue;
+      f1_edges.push_back(e);
+    }
+  }
+
+  CHECK(!f0_edges.empty() && !f1_edges.empty());
 
   std::vector<int> edges;
   edges.reserve(num_edges);
   for (int e = 0; e < num_edges; e++) {
     const Faces::Edge &edge = faces.edges[e];
-    if (edge.f0 != face_idx && edge.f1 != face_idx) {
-      edges.push_back(e);
-    }
+    if (e == edge_idx) continue;
+    if (edge.f0 == f0 || edge.f1 == f0) continue;
+    if (edge.f0 == f1 || edge.f1 == f1) continue;
+    edges.push_back(e);
   }
 
-  Shuffle(rc, &edges);
-
   BitString unfolding(num_edges, false);
-  unfolding.Set(edge_idx, true);
-
   UnionFind uf(num_faces);
+
+  int e0 = f0_edges[RandTo(rc, f0_edges.size())];
+  int e1 = f1_edges[RandTo(rc, f1_edges.size())];
+
+  unfolding.Set(e0, true);
+  unfolding.Set(e1, true);
+
+  uf.Union(faces.edges[e0].f0, faces.edges[e0].f1);
+  uf.Union(faces.edges[e1].f0, faces.edges[e1].f1);
+
+  Shuffle(rc, &edges);
   for (int i : edges) {
     const Faces::Edge &edge = faces.edges[i];
     if (uf.Find(edge.f0) != uf.Find(edge.f1)) {

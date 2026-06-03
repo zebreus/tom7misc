@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "ansi.h"
-#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "db.h"

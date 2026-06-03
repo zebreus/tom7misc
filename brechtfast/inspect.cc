@@ -123,34 +123,23 @@ static void Inspect(std::string_view poly_name,
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  std::vector<std::string> args(argv + 1, argv + argc);
+  const Constraint constraint = ParseConstraints(&args);
+
   std::string name;
-  std::optional<int> face_idx, edge_idx;
-  bool hull = false;
-  bool line = false;
   SVGOptions svg_options;
-  for (int i = 1; i < argc; i++) {
-    std::string_view arg = argv[i];
-    if (arg == "-face" || arg == "-edge") {
-      CHECK(i + 1 < argc) << "-face and -edge need arg.";
-      i++;
-      std::optional<int64_t> of = Util::ParseDoubleOpt(argv[i]);
-      CHECK(of.has_value()) << "-face and -edge must be a number!";
-      if (arg == "-face") face_idx = {of.value()};
-      else if (arg == "-edge") edge_idx = {of.value()};
-    } else if (arg == "-hull") {
-      hull = true;
-    } else if (arg == "-line") {
-      line = true;
-    } else if (arg == "-no-inserts") {
+  for (size_t i = 0; i < args.size(); i++) {
+    std::string_view arg = args[i];
+    if (arg == "-no-inserts") {
       svg_options.inserts = false;
     } else if (arg == "-no-face-labels") {
       svg_options.face_labels = false;
     } else if (arg == "-no-edge-labels") {
       svg_options.edge_labels = false;
     } else if (arg == "-face-color" || arg == "-edge-color") {
-      CHECK(i + 1 < argc) << arg << " needs an arg.";
+      CHECK(i + 1 < args.size()) << arg << " needs an arg.";
       i++;
-      auto c = Util::ParseHex(argv[i]);
+      auto c = Util::ParseHex(args[i]);
       CHECK(c.has_value()) << arg << " must be a hex string like FF0000FF!";
       uint32_t cc = (uint32_t)c.value();
       if (arg == "-face-color") {
@@ -160,9 +149,9 @@ int main(int argc, char **argv) {
         svg_options.edge_rgba = cc;
       }
     } else if (arg == "-edge-stroke") {
-      CHECK(i + 1 < argc) << arg << " needs an arg.";
+      CHECK(i + 1 < args.size()) << arg << " needs an arg.";
       i++;
-      auto w = Util::ParseDoubleOpt(argv[i]);
+      auto w = Util::ParseDoubleOpt(args[i]);
       CHECK(w.has_value()) << arg << " must be a float!";
       svg_options.edge_stroke = w.value();
     } else {
@@ -171,25 +160,11 @@ int main(int argc, char **argv) {
     }
   }
 
-  CHECK(!name.empty()) << "./inspect.exe [-face idx] [-edge idx] [-hull] "
-                          "[-line] [-no-inserts] [-no-face-labels] "
+  CHECK(!name.empty()) << "./inspect.exe [-hull f e] [-line] "
+                          "[-leaf f e] [-leaf-face f] [-dual-leaf e] "
+                          "[-no-inserts] [-no-face-labels] "
                           "[-no-edge-labels] [-face-color hex] "
                           "[-edge-color rgba] [-edge-stroke width] name";
-
-  Constraint constraint = NoConstraint{};
-  if (line) {
-    constraint = LineConstraint{};
-  } else if (hull) {
-    CHECK(face_idx.has_value() && edge_idx.has_value())
-        << "-hull requires both -face and -edge.";
-    constraint = HullConstraint{face_idx.value(), edge_idx.value()};
-  } else if (face_idx.has_value() && edge_idx.has_value()) {
-    constraint = LeafConstraint{face_idx.value(), edge_idx.value()};
-  } else if (face_idx.has_value()) {
-    constraint = LeafFaceConstraint{face_idx.value()};
-  } else {
-    CHECK(!edge_idx.has_value()) << "-edge requires -face.";
-  }
 
   Inspect(name, constraint,
           std::format("inspect-{}.svg", name),

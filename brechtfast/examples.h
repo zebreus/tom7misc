@@ -5,6 +5,7 @@
 #include "albrecht.h"
 
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -34,6 +35,12 @@ struct HullConstraint {
   int edge_idx = 0;
 };
 
+// This edge is cut, and the attached faces on each side of it
+// are leaves in the graph.
+struct DualLeafConstraint {
+  int edge_idx = 0;
+};
+
 // The unfolding must have a single path.
 struct LineConstraint { };
 
@@ -45,8 +52,13 @@ using Constraint = std::variant<
   NoConstraint,
   LeafFaceConstraint,
   LeafConstraint,
+  DualLeafConstraint,
   HullConstraint,
   LineConstraint>;
+
+// Parse command-line arguments to find a constraint (or return
+// NoConstraint), modifying the vector of arguments in place.
+Constraint ParseConstraints(std::vector<std::string> *args);
 
 // Generates up to the requested number of valid nets and non-nets for
 // the given polyhedron. If face_idx is specified, the face must be a

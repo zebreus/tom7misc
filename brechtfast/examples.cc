@@ -3,24 +3,84 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "albrecht.h"
 #include "arcfour.h"
+#include "base/logging.h"
 #include "base/print.h"
 #include "bit-string.h"
 #include "geom/polyhedra.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "solve-dual-leaf.h"
 #include "solve-leaf.h"
 #include "solve-line.h"
 #include "solve-strong.h"
 #include "status-bar.h"
 #include "union-find.h"
+#include "util.h"
 
 using Aug = Albrecht::AugmentedPoly;
+
+Constraint ParseConstraints(std::vector<std::string> *args) {
+  Constraint constraint = NoConstraint{};
+  std::vector<std::string> new_args;
+
+  for (size_t i = 0; i < args->size(); ) {
+    std::string &arg = (*args)[i];
+    if (arg == "-line") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      constraint = LineConstraint{};
+      i++;
+    } else if (arg == "-hull") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 3) << "-hull needs face_idx and edge_idx";
+      std::optional<int64_t> f = Util::ParseInt64Opt((*args)[i + 1]);
+      std::optional<int64_t> e = Util::ParseInt64Opt((*args)[i + 2]);
+      CHECK(f.has_value() && e.has_value()) << "-hull args must be numbers";
+      constraint = HullConstraint{(int)f.value(), (int)e.value()};
+      i += 3;
+    } else if (arg == "-leaf") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 3) << "-leaf needs face_idx and edge_idx";
+      std::optional<int64_t> f = Util::ParseInt64Opt((*args)[i + 1]);
+      std::optional<int64_t> e = Util::ParseInt64Opt((*args)[i + 2]);
+      CHECK(f.has_value() && e.has_value()) << "-leaf args must be numbers";
+      constraint = LeafConstraint{(int)f.value(), (int)e.value()};
+      i += 3;
+    } else if (arg == "-leaf-face") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 2) << "-leaf-face needs face_idx";
+      std::optional<int64_t> f = Util::ParseInt64Opt((*args)[i + 1]);
+      CHECK(f.has_value()) << "-leaf-face arg must be a number";
+      constraint = LeafFaceConstraint{(int)f.value()};
+      i += 2;
+    } else if (arg == "-dual-leaf") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 2) << "-dual-leaf needs edge_idx";
+      std::optional<int64_t> e = Util::ParseInt64Opt((*args)[i + 1]);
+      CHECK(e.has_value()) << "-dual-leaf arg must be a number";
+      constraint = DualLeafConstraint{(int)e.value()};
+      i += 2;
+    } else {
+      new_args.push_back(std::move(arg));
+      i++;
+    }
+  }
+
+  *args = std::move(new_args);
+  return constraint;
+}
+
 
 static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
                                        const Constraint &constraint,
@@ -29,12 +89,14 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
   int num_faces = faces.NumFaces();
   int num_edges = faces.NumEdges();
 
-  if (auto *c = std::get_if<HullConstraint>(&constraint)) {
+  if (const HullConstraint *c = std::get_if<HullConstraint>(&constraint)) {
     // TODO: Use a "sampler" strategy here.
     return SolveStrong::FindStrongUnfolding(aug, c->face_idx, c->edge_idx);
-  }
-  if (std::holds_alternative<LineConstraint>(constraint)) {
+  } else if (std::holds_alternative<LineConstraint>(constraint)) {
     return SolveLine::SampleLine(rc, aug);
+  } else if (const DualLeafConstraint *c =
+          std::get_if<DualLeafConstraint>(&constraint)) {
+    return SolveDualLeaf::SampleDualLeaf(rc, aug, c->edge_idx);
   }
 
   std::optional<int> face_idx;
