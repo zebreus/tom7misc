@@ -24,6 +24,8 @@
 
 using Aug = Albrecht::AugmentedPoly;
 
+static constexpr bool VERBOSE = false;
+
 static void Inspect(std::string_view poly_name,
                     Constraint constraint,
                     std::string_view filename,
@@ -34,6 +36,12 @@ static void Inspect(std::string_view poly_name,
   Print("  Vertices: {}\n", poly.faces->NumVertices());
   Print("  Edges:    {}\n", poly.faces->NumEdges());
   Print("  Faces:    {}\n", poly.faces->NumFaces());
+
+  if (VERBOSE) {
+    for (const vec3 &v : poly.vertices) {
+      Print("  {:.11g}, {:.11g}, {:.11g}\n", v.x, v.y, v.z);
+    }
+  }
 
   CHECK(IsWellConditioned(poly.vertices));
   CHECK(IsManifold(poly));
@@ -60,8 +68,18 @@ static void Inspect(std::string_view poly_name,
   }
 
   if (!examples.nets.empty()) {
-    SVG::Doc svg = MakeSVG::Make(aug, examples.nets[0],
-                                 svg_options);
+    if (VERBOSE) {
+      Print("The net's cut edges:");
+      const Albrecht::DebugResult &net = examples.nets[0];
+      for (int i = 0; i < net.unfolding.Size(); i++) {
+        if (!net.unfolding[i]) {
+          Print(" {}", i);
+        }
+      }
+      Print("\n");
+    }
+
+    SVG::Doc svg = MakeSVG::Make(aug, net, svg_options);
     SVG::RenameDefs("q3-", &svg);
     quadrant_docs.push_back(std::move(svg));
   }

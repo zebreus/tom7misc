@@ -55,8 +55,9 @@ static void TestSampleDualLeaf(const Albrecht::AugmentedPoly &aug,
   }
 }
 
-static void CheckOnePoly(StatusBar *status,
-                         const Polyhedron &poly, std::string_view name) {
+static StatusBar *status = nullptr;
+
+static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   Timer timer;
   Albrecht::AugmentedPoly aug(poly);
 
@@ -112,74 +113,88 @@ static void CheckOnePoly(StatusBar *status,
   status->Print("{} ok in {}\n", name, ANSI::Time(timer.Seconds()));
 }
 
+static constexpr bool VERY_SLOW = false;
+
 static void FindAndCheckAll() {
   StatusBar status(1);
 
-  CheckOnePoly(&status, Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
-  CheckOnePoly(&status, Nasty::SquatSnail(), "squatsnail");
-  CheckOnePoly(&status, Nasty::FlattenedIcosahedron(), "flattenedicosahedron");
-  CheckOnePoly(&status, Nasty::LongTaperedPrism(), "longtaperedprism");
-  CheckOnePoly(&status, Nasty::LongTaperedAntiprism(), "longtaperedantiprism");
+  // This one does succeed for the dual leaf IH, but it takes a
+  // long time (lots of faces).
+  if (VERY_SLOW) {
+    CheckOnePoly(Nasty::DrillBit(), "drillbit");
+  }
+
+  CheckOnePoly(Nasty::DrillBit(), "drillbit");
+
+  CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
+  CheckOnePoly(Nasty::SquatSnail(), "squatsnail");
+  CheckOnePoly(Nasty::FlattenedIcosahedron(), "flattenedicosahedron");
+  CheckOnePoly(Nasty::LongTaperedPrism(), "longtaperedprism");
+  CheckOnePoly(Nasty::LongTaperedAntiprism(), "longtaperedantiprism");
   // too big!
-  // CheckOnePoly(&status, Nasty::Lens(), "lens");
-  CheckOnePoly(&status, Nasty::LowPolyLens(), "lowpolylens");
-  CheckOnePoly(&status, Nasty::Coin(), "coin");
-  CheckOnePoly(&status, Nasty::Sawblade(), "sawblade");
-  CheckOnePoly(&status, Nasty::Dome(), "dome");
-  CheckOnePoly(&status, Nasty::Chisel(), "chisel");
+  // CheckOnePoly(Nasty::Lens(), "lens");
+  CheckOnePoly(Nasty::LowPolyLens(), "lowpolylens");
+  CheckOnePoly(Nasty::Coin(), "coin");
+  CheckOnePoly(Nasty::Sawblade(), "sawblade");
+  CheckOnePoly(Nasty::Dome(), "dome");
+  CheckOnePoly(Nasty::Chisel(), "chisel");
 
-  CheckOnePoly(&status, Icosahedron(), "icos");
-  CheckOnePoly(&status, Dodecahedron(), "dodec");
-  CheckOnePoly(&status, Cube(), "cube");
-  CheckOnePoly(&status, Octahedron(), "octahedron");
+  CheckOnePoly(Icosahedron(), "icos");
+  CheckOnePoly(Dodecahedron(), "dodec");
+  CheckOnePoly(Cube(), "cube");
+  CheckOnePoly(Octahedron(), "octahedron");
 
-  CheckOnePoly(&status, TruncatedCube(), "truncatedcube");
-  CheckOnePoly(&status, TruncatedTetrahedron(), "truncatedtetrahedron");
-  CheckOnePoly(&status, Cuboctahedron(), "cuboctahedron");
-  CheckOnePoly(&status, TruncatedOctahedron(), "truncatedoctahedron");
-  CheckOnePoly(&status, Rhombicuboctahedron(), "rhombicuboctahedron");
-  CheckOnePoly(&status, TruncatedCuboctahedron(), "truncatedcuboctahedron");
-  CheckOnePoly(&status, SnubCube(), "snubcube");
-  CheckOnePoly(&status, Icosidodecahedron(), "icosidodecahedron");
-  CheckOnePoly(&status, TruncatedDodecahedron(), "truncateddodecahedron");
-  CheckOnePoly(&status, TruncatedIcosahedron(), "truncatedicosahedron");
+  CheckOnePoly(TruncatedCube(), "truncatedcube");
+  CheckOnePoly(TruncatedTetrahedron(), "truncatedtetrahedron");
+  CheckOnePoly(Cuboctahedron(), "cuboctahedron");
+  CheckOnePoly(TruncatedOctahedron(), "truncatedoctahedron");
+  CheckOnePoly(Rhombicuboctahedron(), "rhombicuboctahedron");
+  CheckOnePoly(TruncatedCuboctahedron(), "truncatedcuboctahedron");
+  CheckOnePoly(SnubCube(), "snubcube");
+  CheckOnePoly(Icosidodecahedron(), "icosidodecahedron");
+  CheckOnePoly(TruncatedDodecahedron(), "truncateddodecahedron");
+  CheckOnePoly(TruncatedIcosahedron(), "truncatedicosahedron");
 
-  CheckOnePoly(&status, TriakisTetrahedron(), "triakistetrahedron");
-  CheckOnePoly(&status, RhombicDodecahedron(), "rhombicdodecahedron");
-  CheckOnePoly(&status, TriakisOctahedron(), "triakisoctahedron");
-  CheckOnePoly(&status, TetrakisHexahedron(), "tetrakishexahedron");
-  CheckOnePoly(&status, DeltoidalIcositetrahedron(),
+  CheckOnePoly(TriakisTetrahedron(), "triakistetrahedron");
+  CheckOnePoly(RhombicDodecahedron(), "rhombicdodecahedron");
+  CheckOnePoly(TriakisOctahedron(), "triakisoctahedron");
+  CheckOnePoly(TetrakisHexahedron(), "tetrakishexahedron");
+  CheckOnePoly(DeltoidalIcositetrahedron(),
                "deltoidalicositetrahedron");
-  CheckOnePoly(&status, DisdyakisDodecahedron(), "disdyakisdodecahedron");
-  CheckOnePoly(&status, PentagonalIcositetrahedron(),
+  CheckOnePoly(DisdyakisDodecahedron(), "disdyakisdodecahedron");
+  CheckOnePoly(PentagonalIcositetrahedron(),
                "pentagonalicositetrahedron");
-  CheckOnePoly(&status, RhombicTriacontahedron(), "rhombictriacontahedron");
-  CheckOnePoly(&status, TriakisIcosahedron(), "triakisicosahedron");
-  CheckOnePoly(&status, PentakisDodecahedron(), "pentakisdodecahedron");
-  CheckOnePoly(&status, PentagonalHexecontahedron(),
+  CheckOnePoly(RhombicTriacontahedron(), "rhombictriacontahedron");
+  CheckOnePoly(TriakisIcosahedron(), "triakisicosahedron");
+  CheckOnePoly(PentakisDodecahedron(), "pentakisdodecahedron");
+  CheckOnePoly(PentagonalHexecontahedron(),
                "pentagonalhexecontahedron");
 
   // Big, slow
-  CheckOnePoly(&status, Rhombicosidodecahedron(), "rhombicosidodecahedron");
-  CheckOnePoly(&status, TruncatedIcosidodecahedron(),
+  CheckOnePoly(Rhombicosidodecahedron(), "rhombicosidodecahedron");
+  CheckOnePoly(TruncatedIcosidodecahedron(),
                "truncatedicosidodecahedron");
-  CheckOnePoly(&status, SnubDodecahedron(), "snubdodecahedron");
+  CheckOnePoly(SnubDodecahedron(), "snubdodecahedron");
 
-  CheckOnePoly(&status, DeltoidalHexecontahedron(), "deltoidalhexecontahedron");
-  CheckOnePoly(&status, DisdyakisTriacontahedron(), "disdyakistriacontahedron");
+  CheckOnePoly(DeltoidalHexecontahedron(), "deltoidalhexecontahedron");
+  CheckOnePoly(DisdyakisTriacontahedron(), "disdyakistriacontahedron");
 
-  CheckOnePoly(&status, Noperthedron(), "nope");
-  CheckOnePoly(&status, Onperthedron(), "onpe");
+  CheckOnePoly(Noperthedron(), "nope");
+  CheckOnePoly(Onperthedron(), "onpe");
 
   for (int i = 1; i <= 92; i++) {
-    CheckOnePoly(&status, JohnsonSolid(i), JohnsonSolidName(i));
+    CheckOnePoly(JohnsonSolid(i), JohnsonSolidName(i));
   }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  status = new StatusBar(1);
+
   FindAndCheckAll();
+
+  status->Remove();
 
   Print("OK\n");
   return 0;

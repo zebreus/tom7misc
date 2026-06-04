@@ -44,6 +44,12 @@ struct DualLeafConstraint {
 // The unfolding must have a single path.
 struct LineConstraint { };
 
+// With the given edges cut. It must be possible to cut these
+// edges without disconnecting the graph.
+struct EdgesCutConstraint {
+  BitString cut;
+};
+
 // Anything.
 struct NoConstraint { };
 
@@ -54,7 +60,8 @@ using Constraint = std::variant<
   LeafConstraint,
   DualLeafConstraint,
   HullConstraint,
-  LineConstraint>;
+  LineConstraint,
+  EdgesCutConstraint>;
 
 // Parse command-line arguments to find a constraint (or return
 // NoConstraint), modifying the vector of arguments in place.

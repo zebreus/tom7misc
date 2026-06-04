@@ -8,6 +8,11 @@
 #include "geom/polyhedra.h"
 
 struct Nasty {
+
+  // A tetrahedron that has an unfolding (cut 1,4,5) that
+  // overlaps!
+  static Polyhedron GrunbaumTetra();
+
   // A very tall pyramid with a decagon for its base, and the
   // tip not centered.
   static Polyhedron TiltedDecagonPyramid();
@@ -56,6 +61,16 @@ struct Nasty {
   // (the midpoints of the original wedge) and 14 faces; also lacks
   // a Hamiltonian path.
   static Polyhedron RectifiedWedge();
+
+  // A tall slender tetrahedron.
+  static Polyhedron SliverTetra();
+
+  // Like the cigar but with a helical twist.
+  // Big!
+  static Polyhedron DrillBit();
+
+  // A very long antiprism.
+  static Polyhedron TriangularTube();
 
   // Not nasty.
   static Polyhedron ChoppedCube();

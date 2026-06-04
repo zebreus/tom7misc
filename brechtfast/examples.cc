@@ -1,6 +1,7 @@
 
 #include "examples.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +38,7 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
         "one constraint at a time!";
       constraint = LineConstraint{};
       i++;
+
     } else if (arg == "-hull") {
       CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
         "one constraint at a time!";
@@ -46,6 +48,7 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
       CHECK(f.has_value() && e.has_value()) << "-hull args must be numbers";
       constraint = HullConstraint{(int)f.value(), (int)e.value()};
       i += 3;
+
     } else if (arg == "-leaf") {
       CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
         "one constraint at a time!";
@@ -63,6 +66,7 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
       CHECK(f.has_value()) << "-leaf-face arg must be a number";
       constraint = LeafFaceConstraint{(int)f.value()};
       i += 2;
+
     } else if (arg == "-dual-leaf") {
       CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
         "one constraint at a time!";
@@ -71,6 +75,25 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
       CHECK(e.has_value()) << "-dual-leaf arg must be a number";
       constraint = DualLeafConstraint{(int)e.value()};
       i += 2;
+
+    } else if (arg == "-cut") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 2) << "-cut needs comma-separted edges";
+      std::vector<std::string> es = Util::Split((*args)[i + 1], ',');
+      std::vector<int> cuts;
+      int mx = 0;
+      for (const std::string &e : es) {
+        std::optional<int64_t> eo = Util::ParseInt64Opt(e);
+        CHECK(eo.has_value()) << "-cut arg must be comma-separated numbers";
+        mx = std::max((int)eo.value(), mx);
+        cuts.push_back((int)eo.value());
+      }
+      BitString c(mx + 1, false);
+      for (int e : cuts) c.Set(e, true);
+      constraint = EdgesCutConstraint{.cut = std::move(c)};
+      i += 2;
+
     } else {
       new_args.push_back(std::move(arg));
       i++;
@@ -89,6 +112,8 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
   int num_faces = faces.NumFaces();
   int num_edges = faces.NumEdges();
 
+  BitString forced_cut_edges(num_edges, false);
+
   if (const HullConstraint *c = std::get_if<HullConstraint>(&constraint)) {
     // TODO: Use a "sampler" strategy here.
     return SolveStrong::FindStrongUnfolding(aug, c->face_idx, c->edge_idx);
@@ -106,6 +131,12 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
   } else if (auto *c = std::get_if<LeafConstraint>(&constraint)) {
     face_idx = c->face_idx;
     edge_idx = c->edge_idx;
+  } else if (auto *c = std::get_if<EdgesCutConstraint>(&constraint)) {
+    CHECK(c->cut.Size() <= num_edges) << "edges cut constraint has edges "
+      "that are out of bounds!";
+    for (int i = 0; i < c->cut.Size(); i++) {
+      forced_cut_edges.Set(i, c->cut[i]);
+    }
   }
 
   if (want_non_net && rc->Byte() > 200) {
@@ -130,6 +161,7 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
         candidates = {edge_idx.value()};
       } else {
         for (int e : aug.face_edges[cur]) {
+          if (forced_cut_edges[e]) continue;
           int next_face =
             (faces.edges[e].f0 == cur) ? faces.edges[e].f1 : faces.edges[e].f0;
           if (!visited[next_face]) {
@@ -172,6 +204,7 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
 
   UnionFind uf(num_faces);
   for (int i : edges) {
+    if (forced_cut_edges[i]) continue;
     const Faces::Edge &edge = faces.edges[i];
     if (uf.Find(edge.f0) != uf.Find(edge.f1)) {
       uf.Union(edge.f0, edge.f1);

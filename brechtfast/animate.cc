@@ -830,9 +830,21 @@ static void Animate(std::string_view poly_name,
   CHECK(!(examples.nets.empty() &&
           examples.non_nets.empty()));
 
+  Print("Got {} nets and {} non-nets.\n",
+        examples.nets.size(),
+        examples.non_nets.size());
+
   const Albrecht::DebugResult debug_result =
     examples.nets.empty() ? examples.non_nets[0] :
     examples.nets[0];
+
+  Print("The cut edges:");
+  for (int i = 0; i < debug_result.unfolding.Size(); i++) {
+    if (!debug_result.unfolding[i]) {
+      Print(" {}", i);
+    }
+  }
+  Print("\n");
 
   StatusBar status(1);
   Periodically status_per(1.0);
@@ -864,50 +876,23 @@ static void Animate(std::string_view poly_name,
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  std::vector<std::string> args(argv + 1, argv + argc);
+  const Constraint constraint = ParseConstraints(&args);
+
   std::string name, filename;
-  std::optional<int> face_idx, edge_idx;
-  bool hull = false;
-  bool line = false;
-  for (int i = 1; i < argc; i++) {
-    std::string_view arg = argv[i];
-    if (arg == "-face" || arg == "-edge") {
-      CHECK(i + 1 < argc) << "-face and -edge need arg.";
-      i++;
-      std::optional<int64_t> of = Util::ParseDoubleOpt(argv[i]);
-      CHECK(of.has_value()) << "-face and -edge must be a number!";
-      if (arg == "-face") face_idx = {of.value()};
-      else if (arg == "-edge") edge_idx = {of.value()};
-    } else if (arg == "-hull") {
-      hull = true;
-    } else if (arg == "-line") {
-      line = true;
+  for (size_t i = 0; i < args.size(); i++) {
+    std::string_view arg = args[i];
+    if (name.empty()) {
+      name = arg;
     } else {
-      if (name.empty()) {
-        name = arg;
-      } else {
-        CHECK(filename.empty()) << "Too many args!";
-        filename = arg;
-      }
+      CHECK(filename.empty()) << "Too many args!";
+      filename = arg;
     }
   }
 
-  CHECK(!name.empty()) << "./animate.exe [-face idx] [-edge idx] "
-    "[-hull] [-line] name";
-
-  Constraint constraint = NoConstraint{};
-  if (line) {
-    constraint = LineConstraint{};
-  } else if (hull) {
-    CHECK(face_idx.has_value() && edge_idx.has_value())
-        << "-hull requires both -face and -edge.";
-    constraint = HullConstraint{face_idx.value(), edge_idx.value()};
-  } else if (face_idx.has_value() && edge_idx.has_value()) {
-    constraint = LeafConstraint{face_idx.value(), edge_idx.value()};
-  } else if (face_idx.has_value()) {
-    constraint = LeafFaceConstraint{face_idx.value()};
-  } else {
-    CHECK(!edge_idx.has_value()) << "-edge requires -face.";
-  }
+  CHECK(!name.empty()) << "./animate.exe [-hull f e] [-line] "
+                          "[-leaf f e] [-leaf-face f] [-dual-leaf e] "
+                          "name [filename]";
 
   if (filename.empty())
     filename = std::format("animate-{}.mov", name);

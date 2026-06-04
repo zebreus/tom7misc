@@ -41,12 +41,13 @@ static void TestSampleFace(const Albrecht::AugmentedPoly &aug,
   }
 }
 
+static StatusBar *status = nullptr;
+
 static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   Albrecht::AugmentedPoly aug(poly);
 
   TestSampleFace(aug, name);
 
-  StatusBar status(1);
   Periodically status_per(1);
 
   [[maybe_unused]] const int num_edges = poly.faces->NumEdges();
@@ -56,7 +57,7 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   for (int e = 0; e < num_edges; e++) {
     const Faces::Edge &edge = poly.faces->edges[e];
     status_per.RunIf([&]{
-        status.Progress(e, num_edges, "Checking {}", name);
+        status->Progress(e, num_edges, "Checking {}", name);
       });
 
     for (int f : {edge.f0, edge.f1}) {
@@ -89,12 +90,18 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
     }
   }
 
-  status.Remove();
-  Print("{} ok\n", name);
+  status->Print("{} ok\n", name);
 }
 
+static constexpr bool VERY_SLOW = false;
+
 static void FindAndCheckAll() {
-  // New ones first..
+
+  // This one does succeed for the leaf IH, but it takes a long time
+  // (lots of faces).
+  if (VERY_SLOW) {
+    CheckOnePoly(Nasty::DrillBit(), "drillbit");
+  }
 
   CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
   CheckOnePoly(Nasty::SquatSnail(), "squatsnail");
@@ -152,14 +159,17 @@ static void FindAndCheckAll() {
   for (int i = 1; i <= 92; i++) {
     CheckOnePoly(JohnsonSolid(i), JohnsonSolidName(i));
   }
-
 }
 
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  status = new StatusBar(1);
+
   FindAndCheckAll();
+
+  status->Remove();
 
   Print("OK");
   return 0;

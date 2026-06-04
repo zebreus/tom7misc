@@ -8,9 +8,31 @@
 #include <utility>
 #include <vector>
 
+#include "base/print.h"
 #include "geom/polyhedra.h"
+#include "yocto-math.h"
 
 static constexpr double pi = std::numbers::pi;
+
+// See:
+// https://people.inf.ethz.ch/fukudak/unfold_home/unfold_open.html
+// I recreated it in CAD and then used "fold.exe" to get the 3D
+// vertices.
+Polyhedron Nasty::GrunbaumTetra() {
+
+  std::vector<vec3> verts = {
+    {0, 0, 1.3864476432e-16},
+    {4.5016358, 0.9936677, 2.3670996958e-18},
+    {5.9299999972, 9.4057820976e-09, -5.0681655693e-09},
+    {2.2228836263, 0.55319043063, -0.29810845249},
+  };
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(verts), "grunbaumtetra");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
 
 Polyhedron Nasty::TiltedDecagonPyramid() {
   std::vector<vec3> vertices;
@@ -423,6 +445,75 @@ Polyhedron Nasty::RectifiedWedge() {
   return std::move(opt.value());
 }
 
+Polyhedron Nasty::SliverTetra() {
+  std::vector<vec3> verts = {
+    vec3{0.0, 0.0, 0.0},
+    vec3{10.0, 0.0, 0.0},
+    vec3{0.5, 2.0, 0.0},
+    vec3{0.5, 1.0, 0.1}
+  };
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(verts), "slivertetra");
+  CHECK(opt.has_value());
+
+  return std::move(opt.value());
+}
+
+Polyhedron Nasty::DrillBit() {
+  std::vector<vec3> vertices;
+  vertices.reserve(122);
+
+  vertices.push_back(vec3{0.0, 0.0, 10.0});  // Top pole
+  vertices.push_back(vec3{0.0, 0.0, -10.0}); // Bottom pole
+
+  const int num_layers = 12;
+  const int pts_per_layer = 10;
+
+  for (int i = 1; i < num_layers; i++) {
+    // Map i to a z between -10 and 10
+    double t = (double)i / (double)num_layers;
+    double z = 10.0 - 20.0 * t;
+
+    // Bulge in the middle for strict convexity
+    double r = 3.0 - 2.0 * (z * z / 100.0);
+
+    // Extreme helical twist
+    double twist = z * pi * 0.75;
+
+    for (int j = 0; j < pts_per_layer; j++) {
+      double angle = (j * 2.0 * pi / pts_per_layer) + twist;
+      vertices.push_back(vec3{r * std::cos(angle), r * std::sin(angle), z});
+    }
+  }
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "drillbit");
+  CHECK(opt.has_value());
+  return std::move(opt.value());
+}
+
+Polyhedron Nasty::TriangularTube() {
+  std::vector<vec3> vertices;
+  vertices.reserve(6);
+
+  // Top triangle (very high Z)
+  vertices.push_back(vec3{1.0, 0.0, 100.0});
+  vertices.push_back(vec3{-0.5, 0.866, 100.0});
+  vertices.push_back(vec3{-0.5, -0.866, 100.0});
+
+  // Bottom triangle (twisted by 60 degrees to form an antiprism)
+  vertices.push_back(vec3{-1.0, 0.0, 0.0});
+  vertices.push_back(vec3{0.5, 0.866, 0.0});
+  vertices.push_back(vec3{0.5, -0.866, 0.0});
+
+  std::optional<Polyhedron> opt = PolyhedronFromConvexVertices(
+      std::move(vertices), "triangulartube");
+  CHECK(opt.has_value());
+  return std::move(opt.value());
+}
+
+
 Polyhedron Nasty::ChoppedCube() {
   std::vector<vec3> verts;
 
@@ -447,6 +538,7 @@ Polyhedron Nasty::ChoppedCube() {
 }
 
 std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
+  if (name == "grunbaumtetra") return GrunbaumTetra();
   if (name == "tilteddecagonpyramid") return TiltedDecagonPyramid();
   if (name == "squatsnail") return SquatSnail();
   if (name == "flattenedicosahedron") return FlattenedIcosahedron();
@@ -462,6 +554,9 @@ std::optional<Polyhedron> Nasty::ByName(std::string_view name) {
   if (name == "rubikscube") return RubiksCube();
   if (name == "truncatedwedge") return TruncatedWedge();
   if (name == "rectifiedwedge") return RectifiedWedge();
+  if (name == "slivertetra") return SliverTetra();
+  if (name == "drillbit") return DrillBit();
+  if (name == "triangulartube") return TriangularTube();
   if (name == "choppedcube") return ChoppedCube();
   return std::nullopt;
 }
