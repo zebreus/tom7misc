@@ -2,26 +2,16 @@
 #include "albrecht.h"
 
 #include <algorithm>
-#include <array>
-#include <cmath>
-#include <format>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <span>
-#include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "base/print.h"
 #include "bit-string.h"
-#include "bounds.h"
-#include "dirty.h"
 #include "geom/polyhedra.h"
-#include "image.h"
-#include "svg.h"
 #include "yocto-math.h"
 
 using Aug = Albrecht::AugmentedPoly;
@@ -147,7 +137,7 @@ bool Albrecht::IsNet(const AugmentedPoly &aug,
   const Polyhedron &poly = aug.poly;
   const Faces &faces = *poly.faces;
   const int num_faces = faces.NumFaces();
-  if (num_faces <= 4) return true;
+  if (num_faces <= 3) return true;
 
   int total_vertices = 0;
   for (const auto &poly2d : aug.polygons) total_vertices += poly2d.size();
