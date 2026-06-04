@@ -20,22 +20,13 @@
 // convex polyhedron has a net.
 //
 // Given a polyhedron (which has its faces and vertices numbered), we
-// can represent a net as a tree. Each node corresponds to a face.
-// For a face with n edges, its node has n children; each child is
-// either empty (the edge is not unfolded) or a node containing
-// that adjacent face, unfolded.
+// can think of a net as a spanning tree (a subgraph of its "dual
+// graph"). Each node corresponds to a face, and its adjacent faces
+// are the ones attached by edges that aren't cut.
 //
-// Since the order of the children indicates the identity of the
-// faces (an edge connects the current face to one other face), the
-// children can be represented as simply a bit string. And since
-// every face appears in the net, we can also canonically represent
-// the entire net as a bit string: The 0th face is first, containing
-// a single bit for each of its children (in order). Then we have a
-// depth-first expansion of each child, in order, that is 1.
-//
-// An even simpler way to think about this is that we order all
-// of the edges in the polyhedron, and then a net can just be
-// represented as the set of all edges that are unfolded.
+// So to represent a net compactly (or any unfolding), we order the
+// edges of the polyhedron, and then just give the set of edge indices
+// that are not cut.
 struct Albrecht {
 
   // Precomputations for a polyhedron that may make testing nets,

@@ -211,7 +211,7 @@ static void Unfold(Polyhedron poly_in, std::string_view name) {
         dr.is_planar ? AGREEN("true") : ARED("false"));
   for (int f0 = 0; f0 < num_faces; f0++) {
     int f1 = dr.face_overlap[f0];
-    if (f0 != -1) {
+    if (f1 != -1) {
       Print("Overlapping: " ARED("{} {}") "\n", f0, f1);
       // Just print one.
       break;
