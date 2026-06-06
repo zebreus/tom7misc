@@ -36,10 +36,21 @@ std::string DB::WhyString(const Why &why) {
   } else if (const DB::LeafIH *lih = std::get_if<DB::LeafIH>(&why)) {
     return std::format("leaf(f={},e={})", lih->face_idx, lih->edge_idx);
 
+  } else if (const DB::VertexIH *vih = std::get_if<DB::VertexIH>(&why)) {
+    return std::format("vertex(v={})", vih->vertex_idx);
+
   } else {
     return "bad-why???";
   }
 }
+
+int DB::WhyType(const DB::Why &why) {
+  if (std::holds_alternative<DB::Any>(why)) return DB::WHY_ANY;
+  if (std::holds_alternative<DB::LeafIH>(why)) return DB::WHY_LEAF_IH;
+  if (std::holds_alternative<DB::VertexIH>(why)) return DB::WHY_VERTEX_IH;
+  return -1;
+}
+
 
 std::string DB::BriefMethodName(int method) {
   std::string_view s = MethodName(method);
@@ -116,6 +127,7 @@ void DB::Init() {
                       "why integer not null default 0, "
                       "why_face_idx integer not null default 0, "
                       "why_edge_idx integer not null default 0, "
+                      "why_vertex_idx integer not null default 0, "
                       "method integer not null, "
                       "createdate integer not null, "
                       "netness_numer integer not null, "
@@ -131,7 +143,7 @@ void DB::Init() {
 static constexpr std::string_view HARD_FIELDS =
   "id, poly, "
   "faces, edges, vertices, "
-  "why, why_face_idx, why_edge_idx, "
+  "why, why_face_idx, why_edge_idx, why_vertex_idx, "
   "method, createdate, "
   "netness_numer, netness_denom, example_net";
 
@@ -156,6 +168,7 @@ static std::vector<DB::Hard> GetHardForQuery(
     const int why = r->GetInt(col++);
     const int face_idx = r->GetInt(col++);
     const int edge_idx = r->GetInt(col++);
+    const int vertex_idx = r->GetInt(col++);
     switch (why) {
     case DB::WHY_ANY:
       hard.why = DB::Any{};
@@ -164,6 +177,11 @@ static std::vector<DB::Hard> GetHardForQuery(
       hard.why = DB::LeafIH{
         .face_idx = face_idx,
         .edge_idx = edge_idx,
+      };
+      break;
+    case DB::WHY_VERTEX_IH:
+      hard.why = DB::VertexIH{
+        .vertex_idx = vertex_idx,
       };
       break;
     default:
@@ -210,6 +228,7 @@ void DB::AddHard(const Polyhedron &poly,
   int why_type = -1;
   int why_face_idx = 0;
   int why_edge_idx = 0;
+  int why_vertex_idx = 0;
   if (const Any *any = std::get_if<Any>(&why)) {
     (void)any;
     why_type = WHY_ANY;
@@ -217,6 +236,9 @@ void DB::AddHard(const Polyhedron &poly,
     why_type = WHY_LEAF_IH;
     why_face_idx = leaf_ih->face_idx;
     why_edge_idx = leaf_ih->edge_idx;
+  } else if (const VertexIH *vert_ih = std::get_if<VertexIH>(&why)) {
+    why_type = WHY_VERTEX_IH;
+    why_vertex_idx = vert_ih->vertex_idx;
   } else {
     LOG(FATAL) << "bad variant?";
   }
@@ -225,20 +247,20 @@ void DB::AddHard(const Polyhedron &poly,
       std::format(
           "insert into hard "
           "(poly, faces, edges, vertices, "
-          "why, why_face_idx, why_edge_idx, "
+          "why, why_face_idx, why_edge_idx, why_vertex_idx, "
           "method, createdate, netness_numer, netness_denom, example_net) "
           "values ('{}', "
           // faces, edges, vertices
           "{}, {}, {}, "
           // why
-          "{}, {}, {}, "
+          "{}, {}, {}, {}, "
           // method, time
           "{}, {}, "
           // netness, net
           "{}, {}, '{}')",
           polystring,
           faces, edges, vertices,
-          why_type, why_face_idx, why_edge_idx,
+          why_type, why_face_idx, why_edge_idx, why_vertex_idx,
           method,
           time(nullptr),
           netness_numer, netness_denom,

@@ -50,6 +50,13 @@ struct EdgesCutConstraint {
   BitString cut;
 };
 
+// Every edge coincident to the given vertex is cut, so that each
+// occurrence of the vertex in the 2D unfolding has exactly two
+// incoming edges.
+struct VertexConstraint {
+  int vertex_idx = 0;
+};
+
 // Anything.
 struct NoConstraint { };
 
@@ -61,7 +68,8 @@ using Constraint = std::variant<
   DualLeafConstraint,
   HullConstraint,
   LineConstraint,
-  EdgesCutConstraint>;
+  EdgesCutConstraint,
+  VertexConstraint>;
 
 // Parse command-line arguments to find a constraint (or return
 // NoConstraint), modifying the vector of arguments in place.

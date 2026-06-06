@@ -47,7 +47,7 @@ struct DB {
     }
   }
 
-  // More sightly for in user-facing output.
+  // More sightly for user-facing output.
   static std::string BriefMethodName(int method);
 
   // Also looks for the database in parent directories
@@ -58,6 +58,7 @@ struct DB {
 
   static constexpr int WHY_ANY = 0;
   static constexpr int WHY_LEAF_IH = 1;
+  static constexpr int WHY_VERTEX_IH = 2;
 
   // Reason why it is hard.
   struct Any {};
@@ -68,8 +69,15 @@ struct DB {
     int edge_idx = 0;
   };
 
-  using Why = std::variant<Any, LeafIH>;
+  // Hard for the vertex IH (every edge connected to the
+  // given vertex is cut).
+  struct VertexIH {
+    int vertex_idx = 0;
+  };
+
+  using Why = std::variant<Any, LeafIH, VertexIH>;
   static std::string WhyString(const Why &why);
+  static int WhyType(const Why &why);
 
   struct Hard {
     int id = 0;

@@ -1,7 +1,6 @@
 
 #include "solve-dual-leaf.h"
 
-#include <cmath>
 #include <format>
 #include <optional>
 #include <string_view>
@@ -124,7 +123,7 @@ static void FindAndCheckAll() {
     CheckOnePoly(Nasty::DrillBit(), "drillbit");
   }
 
-  CheckOnePoly(Nasty::DrillBit(), "drillbit");
+  CheckOnePoly(Nasty::GrunbaumTetra(), "grunbaumtetra");
 
   CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
   CheckOnePoly(Nasty::SquatSnail(), "squatsnail");

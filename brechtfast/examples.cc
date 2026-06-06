@@ -58,6 +58,7 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
       CHECK(f.has_value() && e.has_value()) << "-leaf args must be numbers";
       constraint = LeafConstraint{(int)f.value(), (int)e.value()};
       i += 3;
+
     } else if (arg == "-leaf-face") {
       CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
         "one constraint at a time!";
@@ -92,6 +93,15 @@ Constraint ParseConstraints(std::vector<std::string> *args) {
       BitString c(mx + 1, false);
       for (int e : cuts) c.Set(e, true);
       constraint = EdgesCutConstraint{.cut = std::move(c)};
+      i += 2;
+
+    } else if (arg == "-vertex") {
+      CHECK(std::holds_alternative<NoConstraint>(constraint)) << "Just "
+        "one constraint at a time!";
+      CHECK(args->size() - i >= 2) << "-vertex needs vertex_idx";
+      std::optional<int64_t> v = Util::ParseInt64Opt((*args)[i + 1]);
+      CHECK(v.has_value()) << "-vertex arg must be a number";
+      constraint = VertexConstraint{(int)v.value()};
       i += 2;
 
     } else {
@@ -136,6 +146,13 @@ static std::optional<BitString> Sample(ArcFour *rc, const Aug &aug,
       "that are out of bounds!";
     for (int i = 0; i < c->cut.Size(); i++) {
       forced_cut_edges.Set(i, c->cut[i]);
+    }
+  } else if (auto *c = std::get_if<VertexConstraint>(&constraint)) {
+    for (int i = 0; i < num_edges; i++) {
+      if (faces.edges[i].v0 == c->vertex_idx ||
+          faces.edges[i].v1 == c->vertex_idx) {
+        forced_cut_edges.Set(i, true);
+      }
     }
   }
 

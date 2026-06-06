@@ -103,6 +103,8 @@ static void FindAndCheckAll() {
     CheckOnePoly(Nasty::DrillBit(), "drillbit");
   }
 
+  CheckOnePoly(Nasty::GrunbaumTetra(), "grunbaumtetra");
+
   CheckOnePoly(Nasty::TiltedDecagonPyramid(), "tilteddecagonpyramid");
   CheckOnePoly(Nasty::SquatSnail(), "squatsnail");
   CheckOnePoly(Nasty::FlattenedIcosahedron(), "flattenedicosahedron");

@@ -1,10 +1,6 @@
 
 #include "solve-vertex.h"
 
-#include "geom/polyhedra.h"
-#include "albrecht.h"
-#include "union-find.h"
-
 #include <algorithm>
 #include <condition_variable>
 #include <format>
@@ -16,10 +12,13 @@
 #include <utility>
 #include <vector>
 
+#include "albrecht.h"
 #include "arcfour.h"
 #include "bit-string.h"
+#include "geom/polyhedra.h"
 #include "randutil.h"
 #include "threadutil.h"
+#include "union-find.h"
 #include "yocto-math.h"
 
 using AugmentedPoly = Albrecht::AugmentedPoly;
@@ -379,10 +378,7 @@ MultiSolve(const AugmentedPoly &poly, int vertex_idx) {
 std::optional<BitString> SolveVertex::FindVertexUnfolding(
     const Albrecht::AugmentedPoly &aug,
     int vertex_idx) {
-  const Faces &faces = *aug.poly.faces;
-  if (vertex_idx < 0) {
-    return std::nullopt;
-  }
+  CHECK(vertex_idx >= 0 && vertex_idx < aug.poly.vertices.size());
   return MultiSolve(aug, vertex_idx);
 }
 
