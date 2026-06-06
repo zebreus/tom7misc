@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
@@ -54,23 +55,42 @@ static void Inspect(std::string_view poly_name,
 
   static constexpr int TARGET_NON_NETS = 3;
 
+
   Examples examples = GetSomeExamples(&rc, aug,
                                       constraint,
                                       example_net,
                                       1, TARGET_NON_NETS, true);
 
+  Highlights highlights;
+  if (const auto* c = std::get_if<VertexConstraint>(&constraint)) {
+    highlights.vertex_color[c->vertex_idx] = 0xFF0000FF;
+  } else if (const auto* c = std::get_if<LeafConstraint>(&constraint)) {
+    highlights.edge_color[c->edge_idx] = 0xFF0000FF;
+  } else if (const auto* c = std::get_if<HullConstraint>(&constraint)) {
+    highlights.edge_color[c->edge_idx] = 0xFF0000FF;
+  } else if (const auto* c = std::get_if<DualLeafConstraint>(&constraint)) {
+    highlights.edge_color[c->edge_idx] = 0xFF0000FF;
+  } else if (const auto* c = std::get_if<EdgesCutConstraint>(&constraint)) {
+    for (int i = 0; i < c->cut.Size(); i++) {
+      if (c->cut[i]) {
+        highlights.edge_color[i] = 0xFF0000FF;
+      }
+    }
+  }
+
   std::vector<SVG::Doc> quadrant_docs;
   for (size_t i = 0; i < examples.non_nets.size() && i < 3; ++i) {
     SVG::Doc svg = MakeSVG::Make(aug, examples.non_nets[i],
+                                 {highlights},
                                  svg_options);
     SVG::RenameDefs(std::format("q{}-", i), &svg);
     quadrant_docs.push_back(std::move(svg));
   }
 
   if (!examples.nets.empty()) {
+    const Albrecht::DebugResult &net = examples.nets[0];
     if (VERBOSE) {
       Print("The net's cut edges:");
-      const Albrecht::DebugResult &net = examples.nets[0];
       for (int i = 0; i < net.unfolding.Size(); i++) {
         if (!net.unfolding[i]) {
           Print(" {}", i);
@@ -79,7 +99,7 @@ static void Inspect(std::string_view poly_name,
       Print("\n");
     }
 
-    SVG::Doc svg = MakeSVG::Make(aug, net, svg_options);
+    SVG::Doc svg = MakeSVG::Make(aug, net, {highlights}, svg_options);
     SVG::RenameDefs("q3-", &svg);
     quadrant_docs.push_back(std::move(svg));
   }

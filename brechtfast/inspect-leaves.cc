@@ -45,8 +45,13 @@ static void Inspect(std::string_view poly_name,
     int edge_idx = aug.face_edges[i][0];
     auto net_opt = SolveLeaf::FindLeafUnfolding(aug, i, edge_idx);
     if (net_opt.has_value()) {
+      Highlights highlights;
+      highlights.edge_color[edge_idx] = 0xFF0000FF;
       SVG::Doc svg = MakeSVG::Make(
-          aug, Albrecht::DebugUnfolding(aug, net_opt.value()), svg_options);
+          aug,
+          Albrecht::DebugUnfolding(aug, net_opt.value()),
+          {highlights},
+          svg_options);
       SVG::RenameDefs(std::format("f{}-", i), &svg);
       face_docs.push_back(std::move(svg));
     } else {

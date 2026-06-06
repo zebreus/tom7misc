@@ -78,13 +78,33 @@ static void SetFillColor(SVG::Style *style, uint32_t color) {
     break;
 
   case 0xFF:
-    style->fill_color = {SVG::COLOR_NONE};
+    style->fill_color = {color};
     style->fill_opacity = {1.0};
     break;
 
   default:
     style->fill_color = {color | 0xFF};
     style->fill_opacity = {(color & 0xFF) / 255.0};
+    break;
+  }
+}
+
+static void SetStrokeColor(SVG::Style *style, uint32_t color) {
+
+  switch (color & 0xFF) {
+  case 0x00:
+    style->stroke_color = {SVG::COLOR_NONE};
+    style->stroke_opacity = std::nullopt;
+    break;
+
+  case 0xFF:
+    style->stroke_color = {color};
+    style->stroke_opacity = {1.0};
+    break;
+
+  default:
+    style->stroke_color = {color | 0xFF};
+    style->stroke_opacity = {(color & 0xFF) / 255.0};
     break;
   }
 }
@@ -415,6 +435,7 @@ static LayoutPlan MakePlan(const Albrecht::AugmentedPoly &aug,
 
 SVG::Doc MakeSVG::Make(const Aug &aug,
                        const DebugResult &dr,
+                       const std::optional<Highlights> &highlights,
                        const SVGOptions &options) {
   SVG::Doc doc;
 
@@ -500,6 +521,7 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
       };
 
       SVG::Path mesh_edges_path;
+      SVG::G hl_edges_group;
       for (size_t f_idx = 0; f_idx < dr.mesh.polygons.size(); ++f_idx) {
         const auto &pf = dr.mesh.polygons[f_idx];
         if (pf.v.empty()) continue;
@@ -535,8 +557,21 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
             path.data.push_back(SVG::LineTo{sx0, sy0});
           }
 
-          mesh_edges_path.data.push_back(SVG::MoveTo{sx0, sy0});
-          mesh_edges_path.data.push_back(SVG::LineTo{sx1, sy1});
+          int edge_idx = aug.face_edges[f_idx][i];
+          if (highlights && highlights->edge_color.count(edge_idx)) {
+            SVG::Path edge_path;
+            edge_path.data.push_back(SVG::MoveTo{sx0, sy0});
+            edge_path.data.push_back(SVG::LineTo{sx1, sy1});
+
+            SVG::G edge_g;
+            SetStrokeColor(&edge_g.style, highlights->edge_color.at(edge_idx));
+            edge_g.style.stroke_width = (options.edge_stroke * 3.0) / zoom;
+            edge_g.children.push_back(SVG::Node{std::move(edge_path)});
+            hl_edges_group.children.push_back(SVG::Node{std::move(edge_g)});
+          } else {
+            mesh_edges_path.data.push_back(SVG::MoveTo{sx0, sy0});
+            mesh_edges_path.data.push_back(SVG::LineTo{sx1, sy1});
+          }
         }
         path.data.push_back(SVG::ClosePath{});
 
@@ -551,27 +586,53 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
         }
       }
       edges_group.children.push_back(SVG::Node{std::move(mesh_edges_path)});
+      edges_group.children.push_back(SVG::Node{std::move(hl_edges_group)});
 
       SVG::Path verts_path;
+      SVG::G hl_verts_group;
       double r = 1.2 / zoom;
       double k = r * 0.5522847498;
-      for (const vec2 &v : dr.mesh.vertices) {
+      for (size_t v_idx = 0; v_idx < dr.mesh.vertices.size(); ++v_idx) {
+        const vec2 &v = dr.mesh.vertices[v_idx];
         const auto &[sx, sy] = scaler.Scale(v);
         if (sx < c_minx || sx > c_maxx || sy < c_miny || sy > c_maxy) {
           continue;
         }
-        verts_path.data.push_back(SVG::MoveTo{sx + r, sy});
-        verts_path.data.push_back(
-            SVG::CubicBezier{sx + r, sy + k, sx + k, sy + r, sx, sy + r});
-        verts_path.data.push_back(
-            SVG::CubicBezier{sx - k, sy + r, sx - r, sy + k, sx - r, sy});
-        verts_path.data.push_back(
-            SVG::CubicBezier{sx - r, sy - k, sx - k, sy - r, sx, sy - r});
-        verts_path.data.push_back(
-            SVG::CubicBezier{sx + k, sy - r, sx + r, sy - k, sx + r, sy});
-        verts_path.data.push_back(SVG::ClosePath{});
+
+        if (highlights && highlights->vertex_color.count(v_idx)) {
+          SVG::Path hl_path;
+          double hr = r * 2.5;
+          double hk = hr * 0.5522847498;
+          hl_path.data.push_back(SVG::MoveTo{sx + hr, sy});
+          hl_path.data.push_back(
+              SVG::CubicBezier{sx + hr, sy + hk, sx + hk, sy + hr, sx, sy + hr});
+          hl_path.data.push_back(
+              SVG::CubicBezier{sx - hk, sy + hr, sx - hr, sy + hk, sx - hr, sy});
+          hl_path.data.push_back(
+              SVG::CubicBezier{sx - hr, sy - hk, sx - hk, sy - hr, sx, sy - hr});
+          hl_path.data.push_back(
+              SVG::CubicBezier{sx + hk, sy - hr, sx + hr, sy - hk, sx + hr, sy});
+          hl_path.data.push_back(SVG::ClosePath{});
+
+          SVG::G hl_g;
+          SetFillColor(&hl_g.style, highlights->vertex_color.at(v_idx));
+          hl_g.children.push_back(SVG::Node{std::move(hl_path)});
+          hl_verts_group.children.push_back(SVG::Node{std::move(hl_g)});
+        } else {
+          verts_path.data.push_back(SVG::MoveTo{sx + r, sy});
+          verts_path.data.push_back(
+              SVG::CubicBezier{sx + r, sy + k, sx + k, sy + r, sx, sy + r});
+          verts_path.data.push_back(
+              SVG::CubicBezier{sx - k, sy + r, sx - r, sy + k, sx - r, sy});
+          verts_path.data.push_back(
+              SVG::CubicBezier{sx - r, sy - k, sx - k, sy - r, sx, sy - r});
+          verts_path.data.push_back(
+              SVG::CubicBezier{sx + k, sy - r, sx + r, sy - k, sx + r, sy});
+          verts_path.data.push_back(SVG::ClosePath{});
+        }
       }
       verts_group.children.push_back(SVG::Node{std::move(verts_path)});
+      verts_group.children.push_back(SVG::Node{std::move(hl_verts_group)});
 
       if (options.face_labels) {
         for (const Label &lbl : plan.poly_labels) {
