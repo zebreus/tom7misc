@@ -212,11 +212,11 @@ Hard DB::GetHard(int id) {
   return sols[0];
 }
 
-void DB::AddHard(const Polyhedron &poly,
-                 const Why &why,
-                 int method,
-                 int64_t netness_numer, int64_t netness_denom,
-                 std::optional<BitString> example_net) {
+int DB::AddHard(const Polyhedron &poly,
+                const Why &why,
+                int method,
+                int64_t netness_numer, int64_t netness_denom,
+                std::optional<BitString> example_net) {
   std::string polystring = StringFromVec3s(poly.vertices);
   std::string netstring;
   if (example_net.has_value()) netstring = example_net.value().ToASCII();
@@ -243,7 +243,7 @@ void DB::AddHard(const Polyhedron &poly,
     LOG(FATAL) << "bad variant?";
   }
 
-  db->ExecuteAndPrint(
+  std::unique_ptr<Database::Query> q = db->ExecuteString(
       std::format(
           "insert into hard "
           "(poly, faces, edges, vertices, "
@@ -257,7 +257,7 @@ void DB::AddHard(const Polyhedron &poly,
           // method, time
           "{}, {}, "
           // netness, net
-          "{}, {}, '{}')",
+          "{}, {}, '{}') returning id",
           polystring,
           faces, edges, vertices,
           why_type, why_face_idx, why_edge_idx, why_vertex_idx,
@@ -265,6 +265,10 @@ void DB::AddHard(const Polyhedron &poly,
           time(nullptr),
           netness_numer, netness_denom,
           netstring));
+
+  std::unique_ptr<Database::Row> r = q->NextRow();
+  CHECK(r != nullptr) << "Insert failed to return id";
+  return r->GetInt(0);
 }
 
 std::vector<Hard> DB::AllHard(bool include_invalid) {

@@ -8,3 +8,9 @@ svn ../cc-lib/opt
 
 file project.txt
 describe project.txt Project description
+
+describe albrecht.h General utilities and net checker
+describe db.h Database of hard instances
+describe nasty.h Collection of difficult polyhedra
+describe folding.h Re-folds 2d unfoldings into polyhedra
+

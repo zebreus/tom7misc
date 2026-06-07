@@ -31,6 +31,7 @@ struct DB {
   static constexpr int METHOD_OPT = 3;
   static constexpr int METHOD_CONSTRUCT = 4;
   static constexpr int METHOD_CONSTRUCT_LEAF = 5;
+  static constexpr int METHOD_IMPROVE = 6;
 
   static constexpr int FIRST_METHOD = 1;
   static constexpr int LAST_METHOD = 5;
@@ -43,6 +44,7 @@ struct DB {
     case METHOD_OPT: return "METHOD_OPT";
     case METHOD_CONSTRUCT: return "METHOD_CONSTRUCT";
     case METHOD_CONSTRUCT_LEAF: return "METHOD_CONSTRUCT_LEAF";
+    case METHOD_IMPROVE: return "METHOD_IMPROVE";
     default: return "UNKNOWN";
     }
   }
@@ -107,11 +109,12 @@ struct DB {
 
   void MarkValidity(int id, bool valid);
 
-  void AddHard(const Polyhedron &poly,
-               const Why &why,
-               int method,
-               int64_t netness_numer, int64_t netness_denom,
-               std::optional<BitString> example_net);
+  // Returns the id of the inserted instance.
+  int AddHard(const Polyhedron &poly,
+              const Why &why,
+              int method,
+              int64_t netness_numer, int64_t netness_denom,
+              std::optional<BitString> example_net);
 
   void ExecuteAndPrint(const std::string &s) {
     db->ExecuteAndPrint(s);

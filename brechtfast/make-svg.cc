@@ -5,25 +5,21 @@
 #include <array>
 #include <cmath>
 #include <format>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "albrecht.h"
 #include "base/print.h"
-#include "bit-string.h"
 #include "bounds.h"
 #include "dirty.h"
 #include "geom/polyhedra.h"
 #include "image.h"
 #include "svg.h"
-#include "yocto-math.h"
-#include "albrecht.h"
 
 using Aug = Albrecht::AugmentedPoly;
 using DebugResult = Albrecht::DebugResult;
@@ -599,7 +595,8 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
           continue;
         }
 
-        if (highlights && highlights->vertex_color.count(v_idx)) {
+        int orig_v_idx = dr.mesh.polyhedron_vertex[v_idx];
+        if (highlights && highlights->vertex_color.count(orig_v_idx)) {
           SVG::Path hl_path;
           double hr = r * 2.5;
           double hk = hr * 0.5522847498;
@@ -615,7 +612,7 @@ SVG::Doc MakeSVG::Make(const Aug &aug,
           hl_path.data.push_back(SVG::ClosePath{});
 
           SVG::G hl_g;
-          SetFillColor(&hl_g.style, highlights->vertex_color.at(v_idx));
+          SetFillColor(&hl_g.style, highlights->vertex_color.at(orig_v_idx));
           hl_g.children.push_back(SVG::Node{std::move(hl_path)});
           hl_verts_group.children.push_back(SVG::Node{std::move(hl_g)});
         } else {
