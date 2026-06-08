@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <variant>
@@ -254,6 +255,157 @@ static double EvaluateHardnessLoss(const DB::Why &why,
 // to consider an instance valid.
 static constexpr int REQUIRE_SAMPLES = 1'000'000;
 
+class Parameterization {
+ public:
+  virtual ~Parameterization() = default;
+
+  virtual void Prepare(const Polyhedron &poly, double delta) = 0;
+  virtual int NumParameters() const = 0;
+  virtual std::vector<std::pair<double, double>> Bounds() const = 0;
+  virtual Polyhedron Apply(std::span<const double> params) const = 0;
+};
+
+class SlideNonTriangular : public Parameterization {
+ private:
+  struct VertexParam {
+    int v_idx;
+    int num_constraints;
+    vec3 base_pos;
+    vec3 dir1, dir2;
+  };
+
+  Polyhedron base_poly_;
+  std::vector<VertexParam> vparams_;
+  std::vector<std::pair<double, double>> bounds_;
+
+ public:
+  void Prepare(const Polyhedron &poly, double delta) override {
+    base_poly_ = poly;
+    bounds_.clear();
+    vparams_.clear();
+
+    // Determine which faces are non-triangular. We fix the planes
+    // of all non-triangular faces and only allow vertices to slide
+    // along them, resolving "multiple constraints" by finding the
+    // intersection of the planes.
+    std::vector<bool> is_non_tri(poly.faces->NumFaces(), false);
+    for (int f = 0; f < poly.faces->NumFaces(); ++f) {
+      if (poly.faces->v[f].size() > 3) {
+        is_non_tri[f] = true;
+      }
+    }
+
+    for (int i = 0; i < poly.vertices.size(); ++i) {
+      std::vector<int> incident_non_tri;
+      for (int f = 0; f < poly.faces->NumFaces(); ++f) {
+        if (is_non_tri[f]) {
+          for (int v : poly.faces->v[f]) {
+            if (v == i) {
+              incident_non_tri.push_back(f);
+              break;
+            }
+          }
+        }
+      }
+
+      vec3 p = poly.vertices[i];
+      if (incident_non_tri.empty()) {
+        vparams_.push_back({i, 0, p, vec3{1, 0, 0}, vec3{0, 1, 0}});
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+
+      } else if (incident_non_tri.size() == 1) {
+        int f = incident_non_tri[0];
+        vec3 v0 = poly.vertices[poly.faces->v[f][0]];
+        vec3 normal = {0, 0, 0};
+        vec3 e1 = {0, 0, 0};
+        for (size_t k = 1; k < poly.faces->v[f].size(); k++) {
+          vec3 edge = poly.vertices[poly.faces->v[f][k]] - v0;
+          if (yocto::length_squared(edge) > yocto::length_squared(e1)) {
+            e1 = edge;
+          }
+          if (k + 1 < poly.faces->v[f].size()) {
+            vec3 edge2 = poly.vertices[poly.faces->v[f][k + 1]] - v0;
+            vec3 n = yocto::cross(edge, edge2);
+            if (yocto::length_squared(n) > yocto::length_squared(normal)) {
+              normal = n;
+            }
+          }
+        }
+        vec3 n = yocto::normalize(normal);
+        e1 = yocto::normalize(e1);
+        vec3 e2 = yocto::cross(n, e1);
+        vparams_.push_back({i, 1, p, e1, e2});
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+
+      } else if (incident_non_tri.size() == 2) {
+        auto normal_fn = [&](int f) {
+          vec3 v0 = poly.vertices[poly.faces->v[f][0]];
+          vec3 normal = {0, 0, 0};
+          for (size_t k = 1; k + 1 < poly.faces->v[f].size(); k++) {
+            vec3 e0 = poly.vertices[poly.faces->v[f][k]] - v0;
+            vec3 e1 = poly.vertices[poly.faces->v[f][k + 1]] - v0;
+            vec3 n = yocto::cross(e0, e1);
+            if (yocto::length_squared(n) > yocto::length_squared(normal)) {
+              normal = n;
+            }
+          }
+          return yocto::normalize(normal);
+        };
+        vec3 n1 = normal_fn(incident_non_tri[0]);
+        vec3 n2 = normal_fn(incident_non_tri[1]);
+        vec3 dir = yocto::cross(n1, n2);
+        if (yocto::length_squared(dir) > 1e-12) {
+          dir = yocto::normalize(dir);
+          vparams_.push_back({i, 2, p, dir, vec3{0, 0, 0}});
+          bounds_.push_back({-delta, delta});
+        } else {
+          vparams_.push_back({i, 3, p, vec3{0, 0, 0}, vec3{0, 0, 0}});
+        }
+
+      } else {
+        // 3 or more non-triangular faces fix the vertex completely.
+        vparams_.push_back({i, 3, p, vec3{0, 0, 0}, vec3{0, 0, 0}});
+      }
+    }
+  }
+
+  int NumParameters() const override {
+    return (int)bounds_.size();
+  }
+
+  std::vector<std::pair<double, double>> Bounds() const override {
+    return bounds_;
+  }
+
+  Polyhedron Apply(std::span<const double> params) const override {
+    std::vector<vec3> pts = base_poly_.vertices;
+    int arg_idx = 0;
+    for (const VertexParam &vp : vparams_) {
+      if (vp.num_constraints == 0) {
+        pts[vp.v_idx] = vp.base_pos +
+            vec3{params[arg_idx], params[arg_idx + 1], params[arg_idx + 2]};
+        arg_idx += 3;
+      } else if (vp.num_constraints == 1) {
+        pts[vp.v_idx] = vp.base_pos +
+            vp.dir1 * params[arg_idx] + vp.dir2 * params[arg_idx + 1];
+        arg_idx += 2;
+      } else if (vp.num_constraints == 2) {
+        pts[vp.v_idx] = vp.base_pos + vp.dir1 * params[arg_idx];
+        arg_idx += 1;
+      }
+    }
+
+    Polyhedron new_poly;
+    new_poly.vertices = std::move(pts);
+    new_poly.faces = base_poly_.faces;
+    new_poly.name = "improve";
+    return new_poly;
+  }
+};
+
 static void Improve(int id) {
   DB db;
   const DB::Hard hard = db.GetHard(id);
@@ -295,105 +447,14 @@ static void Improve(int id) {
 
     double diam = Diameter(aug.poly);
     double delta = 0.05 * diam;
-    std::vector<std::pair<double, double>> bounds;
 
-    // Determine which faces are non-triangular. We fix the planes
-    // of all non-triangular faces and only allow vertices to slide
-    // along them, resolving "multiple constraints" by finding the
-    // intersection of the planes.
-    std::vector<bool> is_non_tri(aug.poly.faces->NumFaces(), false);
-    for (int f = 0; f < aug.poly.faces->NumFaces(); ++f) {
-      if (aug.poly.faces->v[f].size() > 3) {
-        is_non_tri[f] = true;
-      }
-    }
-
-    struct VertexParam {
-      int v_idx;
-      int num_constraints;
-      vec3 base_pos;
-      vec3 dir1, dir2;
-    };
-    std::vector<VertexParam> vparams;
-
-    for (int i = 0; i < aug.poly.vertices.size(); ++i) {
-      std::vector<int> incident_non_tri;
-      for (int f = 0; f < aug.poly.faces->NumFaces(); ++f) {
-        if (is_non_tri[f]) {
-          for (int v : aug.poly.faces->v[f]) {
-            if (v == i) {
-              incident_non_tri.push_back(f);
-              break;
-            }
-          }
-        }
-      }
-
-      vec3 p = aug.poly.vertices[i];
-      if (incident_non_tri.empty()) {
-        vparams.push_back({i, 0, p, vec3{1,0,0}, vec3{0,1,0}});
-        bounds.push_back({-delta, delta});
-        bounds.push_back({-delta, delta});
-        bounds.push_back({-delta, delta});
-
-      } else if (incident_non_tri.size() == 1) {
-        int f = incident_non_tri[0];
-        vec3 v0 = aug.poly.vertices[aug.poly.faces->v[f][0]];
-        vec3 normal = {0, 0, 0};
-        vec3 e1 = {0, 0, 0};
-        for (size_t k = 1; k < aug.poly.faces->v[f].size(); k++) {
-          vec3 edge = aug.poly.vertices[aug.poly.faces->v[f][k]] - v0;
-          if (yocto::length_squared(edge) > yocto::length_squared(e1)) {
-            e1 = edge;
-          }
-          if (k + 1 < aug.poly.faces->v[f].size()) {
-            vec3 edge2 = aug.poly.vertices[aug.poly.faces->v[f][k+1]] - v0;
-            vec3 n = yocto::cross(edge, edge2);
-            if (yocto::length_squared(n) > yocto::length_squared(normal)) {
-              normal = n;
-            }
-          }
-        }
-        vec3 n = yocto::normalize(normal);
-        e1 = yocto::normalize(e1);
-        vec3 e2 = yocto::cross(n, e1);
-        vparams.push_back({i, 1, p, e1, e2});
-        bounds.push_back({-delta, delta});
-        bounds.push_back({-delta, delta});
-
-      } else if (incident_non_tri.size() == 2) {
-        auto normal_fn = [&](int f) {
-          vec3 v0 = aug.poly.vertices[aug.poly.faces->v[f][0]];
-          vec3 normal = {0, 0, 0};
-          for (size_t k = 1; k + 1 < aug.poly.faces->v[f].size(); k++) {
-            vec3 e0 = aug.poly.vertices[aug.poly.faces->v[f][k]] - v0;
-            vec3 e1 = aug.poly.vertices[aug.poly.faces->v[f][k+1]] - v0;
-            vec3 n = yocto::cross(e0, e1);
-            if (yocto::length_squared(n) > yocto::length_squared(normal)) {
-              normal = n;
-            }
-          }
-          return yocto::normalize(normal);
-        };
-        vec3 n1 = normal_fn(incident_non_tri[0]);
-        vec3 n2 = normal_fn(incident_non_tri[1]);
-        vec3 dir = yocto::cross(n1, n2);
-        if (yocto::length_squared(dir) > 1e-12) {
-          dir = yocto::normalize(dir);
-          vparams.push_back({i, 2, p, dir, vec3{0,0,0}});
-          bounds.push_back({-delta, delta});
-        } else {
-          vparams.push_back({i, 3, p, vec3{0,0,0}, vec3{0,0,0}});
-        }
-
-      } else {
-        // 3 or more non-triangular faces fix the vertex completely.
-        vparams.push_back({i, 3, p, vec3{0,0,0}, vec3{0,0,0}});
-      }
-    }
+    std::unique_ptr<Parameterization> param =
+        std::make_unique<SlideNonTriangular>();
+    param->Prepare(aug.poly, delta);
+    std::vector<std::pair<double, double>> bounds = param->Bounds();
 
     status.Print("Optimizing {} parameters across {} vertices.\n",
-                 bounds.size(), vparams.size());
+                 param->NumParameters(), aug.poly.vertices.size());
 
     std::unique_ptr<OptSeq> seq(new OptSeq(bounds, global_rc.Word64()));
     double best_shape_loss = input_shape_loss;
@@ -446,32 +507,13 @@ static void Improve(int id) {
       attempts++;
 
       // Produce the new vertex locations using the parameters.
-      std::vector<vec3> pts = aug.poly.vertices;
-      int arg_idx = 0;
-      for (const auto& vp : vparams) {
-        if (vp.num_constraints == 0) {
-          pts[vp.v_idx] = vp.base_pos +
-              vec3{arg[arg_idx], arg[arg_idx+1], arg[arg_idx+2]};
-          arg_idx += 3;
-        } else if (vp.num_constraints == 1) {
-          pts[vp.v_idx] = vp.base_pos +
-              vp.dir1 * arg[arg_idx] + vp.dir2 * arg[arg_idx+1];
-          arg_idx += 2;
-        } else if (vp.num_constraints == 2) {
-          pts[vp.v_idx] = vp.base_pos + vp.dir1 * arg[arg_idx];
-          arg_idx += 1;
-        }
-      }
+      Polyhedron new_poly = param->Apply(arg);
 
-      if (!IsWellConditioned(pts) || !CheckSameConnectivity(aug.poly, pts)) {
+      if (!IsWellConditioned(new_poly.vertices) ||
+          !CheckSameConnectivity(aug.poly, new_poly.vertices)) {
         seq->Result(1e9);
         continue;
       }
-
-      Polyhedron new_poly;
-      new_poly.vertices = std::move(pts);
-      new_poly.faces = aug.poly.faces;
-      new_poly.name = "improve";
 
       Aug new_aug(std::move(new_poly));
       double shape_loss = EvaluateShapeLoss(new_aug);
