@@ -17,6 +17,14 @@ struct SolveVertex {
       const Albrecht::AugmentedPoly &aug,
       int vertex_idx);
 
+  // Deterministic, single-threaded prover. Either returns nullopt
+  // if there is no solution, or an integer indicating how many
+  // steps it took us to find one, which is an approximate indication
+  // of how difficult the instance is.
+  static std::optional<int64_t> Prove(
+      const Albrecht::AugmentedPoly &aug,
+      int vertex_idx);
+
   // Sample an unfolding where all of the edges connected to the
   // vertex are cut. It may or may not have overlap, but it will be a
   // proper spanning tree with these cuts. Note that the vertex

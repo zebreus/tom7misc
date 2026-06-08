@@ -2,7 +2,6 @@
 #include "solve-vertex.h"
 
 #include <algorithm>
-#include <cmath>
 #include <format>
 #include <optional>
 #include <string_view>
@@ -64,6 +63,12 @@ static void CheckOnePoly(const Polyhedron &poly, std::string_view name) {
   for (int e = 0; e < num_edges; e++) {
     num_vertices = std::max(num_vertices, poly.faces->edges[e].v0 + 1);
     num_vertices = std::max(num_vertices, poly.faces->edges[e].v1 + 1);
+  }
+
+  // Small enough to do an exhaustive search.
+  if (num_edges < 25) {
+    CHECK(SolveVertex::Prove(aug, 0).has_value()) << "These all do have "
+      "solutions.";
   }
 
   // Loop over all vertices and run the vertex solver.

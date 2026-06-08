@@ -35,27 +35,6 @@ using OneSample = Sampler::OneSample;
 
 DECLARE_COUNTERS(ctr_poly, ctr_samples, ctr_satisfied_leaf, ctr_saved);
 
-static std::string FormatNum(uint64_t n) {
-  if (n > 1'000'000) {
-    double m = n / 1'000'000.0;
-    if (m >= 1'000'000.0) {
-      return std::format("{:.1f}T", m / 1'000'000.0);
-    } else if (m >= 1000.0) {
-      return std::format("{:.1f}B", m / 1000.0);
-    } else if (m >= 100.0) {
-      return std::format("{}M", (int)std::round(m));
-    } else if (m > 10.0) {
-      return std::format("{:.1f}M", m);
-    } else {
-      // TODO: Integer division. color decimal place and suffix.
-      return std::format("{:.2f}M", m);
-    }
-  } else {
-    return Util::UnsignedWithCommas(n);
-  }
-}
-
-
 // (actually an upper bound, not inclusive)
 static constexpr int MAX_FACES = 80;
 
@@ -282,9 +261,9 @@ struct Leaffast {
                     OVERALL_LINE,
                     "{} polys ({:.2f}/s), {} samples, {}☘, {}💾. "
                     "{} ({:.1f}% + {:.1f}%) \n",
-                    FormatNum(ctr_poly.Read()),
+                    Util::FormatNum(ctr_poly.Read()),
                     pps,
-                    FormatNum(ctr_samples.Read()),
+                    Util::FormatNum(ctr_samples.Read()),
                     ctr_satisfied_leaf.Read(),
                     ctr_saved.Read(),
                     ANSI::Time(wall_time),

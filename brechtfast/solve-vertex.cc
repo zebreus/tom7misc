@@ -66,14 +66,30 @@ struct ResultChannel {
   }
 };
 
+struct SingleThreadChannel {
+  bool should_die = false;
+  bool found_solution = false;
+
+  void Send(std::optional<BitString> r) {
+    if (!should_die) {
+      found_solution = r.has_value();
+    }
+    should_die = true;
+  }
+
+  bool ShouldDie() { return should_die; }
+};
+
+template <class Channel>
 struct RecSolver {
-  std::shared_ptr<ResultChannel> result_channel;
+  Channel *result_channel;
   const AugmentedPoly &aug;
   const int vertex_idx;
+  int64_t steps = 0;
 
-  RecSolver(std::shared_ptr<ResultChannel> result_channel,
+  RecSolver(Channel *result_channel,
             const AugmentedPoly &aug, int vertex_idx) :
-    result_channel(std::move(result_channel)),
+    result_channel(result_channel),
     aug(aug), vertex_idx(vertex_idx) {}
 
   bool CheckOverlap(const SearchState &state,
@@ -133,6 +149,7 @@ struct RecSolver {
   }
 
   bool Search(SearchState &state, std::vector<int> &frontier) {
+    steps++;
     if (state.placed_faces.size() == aug.poly.faces->NumFaces()) {
       return true;
     }
@@ -194,7 +211,7 @@ struct RecSolver {
       }
 
       if (!CheckOverlap(state, v_idx, U)) {
-        state.placed_faces.push_back(U);
+        state.placed_faces.push_back(std::move(U));
         state.visited_faces.Set(u_idx, 1);
         state.unfolding.Set(edge_idx, 1);
 
@@ -250,6 +267,7 @@ struct RecSolver {
       .placed_faces = {},
       .rc = ArcFour("pseudorandom"),
     };
+    state.placed_faces.reserve(num_faces);
 
     for (int e = 0; e < num_edges; ++e) {
       const auto &edge = faces.edges[e];
@@ -349,7 +367,7 @@ MultiSolve(const AugmentedPoly &poly, int vertex_idx) {
   std::vector<std::unique_ptr<std::thread>> threads;
 
   threads.emplace_back(std::make_unique<std::thread>([&]{
-      RecSolver rec(result_channel, poly, vertex_idx);
+      RecSolver<ResultChannel> rec(result_channel.get(), poly, vertex_idx);
       rec.DoSearch();
     }));
 
@@ -382,6 +400,19 @@ std::optional<BitString> SolveVertex::FindVertexUnfolding(
   return MultiSolve(aug, vertex_idx);
 }
 
+std::optional<int64_t> SolveVertex::Prove(
+    const Albrecht::AugmentedPoly &aug,
+    int vertex_idx) {
+  CHECK(vertex_idx >= 0 && vertex_idx < aug.poly.vertices.size());
+  SingleThreadChannel channel;
+  RecSolver<SingleThreadChannel> rec(&channel, aug, vertex_idx);
+  rec.DoSearch();
+  if (channel.found_solution) {
+    return rec.steps;
+  }
+  return std::nullopt;
+}
+
 BitString SolveVertex::SampleVertex(
     ArcFour *rc,
     const Albrecht::AugmentedPoly &aug,
@@ -412,5 +443,4 @@ BitString SolveVertex::SampleVertex(
 
   return unfolding;
 }
-
 

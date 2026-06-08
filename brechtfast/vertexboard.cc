@@ -14,6 +14,7 @@
 #include "base/print.h"
 #include "db.h"
 #include "status-bar.h"
+#include "util.h"
 
 // This is a scoreboard showing the hardest instances
 // grouped by face for why=VertexIH (can we find a net where a specific
@@ -29,6 +30,7 @@ static void Vertexboard() {
     int id = 0;
     int method = 0;
     int vertex = 0;
+    int num_edges = 0, num_vertices = 0;
     double netness_pct = 0.0;
     int64_t numer = 0;
     int64_t denom = 0;
@@ -49,6 +51,8 @@ static void Vertexboard() {
     e.id = h.id;
     e.method = h.method;
     e.vertex = vih->vertex_idx;
+    e.num_edges = h.num_edges;
+    e.num_vertices = h.num_verts;
     e.numer = h.netness_numer;
     e.denom = h.netness_denom;
     e.netness_pct = (h.netness_numer * 100.0) / h.netness_denom;
@@ -70,16 +74,21 @@ static void Vertexboard() {
   status.Remove();
   for (const auto &[nfaces, entries] : by_faces) {
     Print("\n" AWHITE("--- {} Faces ---") "\n", nfaces);
+    bool premium = nfaces < 20;
     int limit = std::min((int)entries.size(), 5);
-    for (int i = 0; i < limit; i++) {
+    for (int i = 0; i < entries.size() &&
+           ((i < limit) ||
+            (premium && entries[i].numer == 0)); i++) {
       const Entry &e = entries[i];
       Print(" #" ACYAN("{}") "{} " AGREY("@") AWHITE("{}")
+            " " APURPLE("{}") "e " AORANGE("{}") "v"
             " " AYELLOW("{}/{} ({:.3f}%)")
             "  Method: " AGREEN("{}") "\n",
             e.id,
             e.has_example ? " " : ARED("?"),
             e.vertex,
-            e.numer, e.denom, e.netness_pct,
+            e.num_edges, e.num_vertices,
+            Util::FormatNum(e.numer), Util::FormatNum(e.denom), e.netness_pct,
             DB::BriefMethodName(e.method));
     }
   }

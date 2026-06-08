@@ -2,6 +2,7 @@
 #include "albrecht.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -305,5 +306,43 @@ Albrecht::Stretch Albrecht::StretchFactor(const AugmentedPoly &aug,
   }
 
   return max_stretch;
+}
+
+
+double Albrecht::ShapePenalty(const Albrecht::AugmentedPoly &aug) {
+  double penalty = 0.0;
+  for (const std::vector<vec2> &poly2d : aug.polygons) {
+    double area = std::abs(SignedAreaOfConvexPoly(poly2d));
+    double perimeter = 0.0;
+    for (size_t i = 0; i < poly2d.size(); i++) {
+      vec2 p_prev = poly2d[(i + poly2d.size() - 1) % poly2d.size()];
+      vec2 p0 = poly2d[i];
+      vec2 p1 = poly2d[(i + 1) % poly2d.size()];
+
+      vec2 e1 = p0 - p_prev;
+      vec2 e2 = p1 - p0;
+      double len1 = yocto::length(e1);
+      double len2 = yocto::length(e2);
+
+      perimeter += len2;
+
+      if (len1 > 1e-9 && len2 > 1e-9) {
+        double cross = (e1.x * e2.y - e1.y * e2.x) / (len1 * len2);
+        double abs_sin = std::abs(cross);
+        // Cubic penalty as the angle approaches 0 or 180 degrees.
+        penalty += 1.0 / std::max(abs_sin * abs_sin * abs_sin, 1e-9);
+      } else {
+        penalty += 1e9;
+      }
+    }
+
+    if (area > 1e-9) {
+      penalty += (perimeter * perimeter) / area;
+    } else {
+      penalty += 1e9;
+    }
+  }
+
+  return penalty;
 }
 

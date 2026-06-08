@@ -261,6 +261,11 @@ struct Albrecht {
     return false;
   }
 
+  // Returns a higher value when the polyhedron has poor quality
+  // geometry (angles close to 0 or 180, or polygons with extreme
+  // aspect ratio).
+  static double ShapePenalty(const Albrecht::AugmentedPoly &aug);
+
 };
 
 
