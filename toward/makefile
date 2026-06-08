@@ -1,31 +1,30 @@
 
-# for mingw.
+all : test.exe
 
-# animate.exe
-# bddtest.exe
-# makebody.exe
-default : makebody.exe
+CC_LIB=../cc-lib
 
-SDLARCH=x86
-MLTON=/c/mlton/bin/mlton.bat
-MINGWGCC=/c/mlton/bin/gcc -std=c99 -O1 -fomit-frame-pointer -fno-strict-aliasing -w -fschedule-insns -fschedule-insns2 -malign-functions=5 -malign-jumps=2 -I SDL/include -I SDL_image/include -I/c/mlton/lib/mlton/include
+SDL_CFLAGS=`sdl2-config --cflags`
+SDL_LFLAGS=`sdl2-config --libs`
 
-%.o : ../sdlml/%.c
-	${MINGWGCC} -c $< -DWIN32 -o $@
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o
 
-%.o : %.c
-	${MINGWGCC} -c $< -o $@
+OPT=-O2 -flto
+CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) $(SDL_CFLAGS) --std=c++23
+LFLAGS=$(OPT) --std=c++23 $(SDL_LFLAGS) -lopengl32
 
-SMLS = prelude.sml images.sml real32.sml letter.sml maths.sml
+OBJECTS=rendering.o initialization.o inputs.o
 
-# sdlmix.o
+$(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
 
-# -const 'Exn.keepHistory true'
-makebody.exe : sdlml.o pngsave.o makebody.sml editing.sml ${SMLS} makebody.cm messagebox_fake.o makefile ../sdlml/*.sml ../sdlml/*.c ../sml-lib/bdd/*.sml ../sml-lib/data/*.sml ../sml-lib/util/*.sml
-	${MLTON} @MLton max-heap 500m -- -const 'Exn.keepHistory true' -default-ann 'warnUnused true' -default-ann 'sequenceNonUnit warn' -cc-opt "-I/usr/local/include" -link-opt "-LSDL/lib/${SDLARCH} -LSDL_image/lib/${SDLARCH} -lSDL -lSDL_image -ltiff-5 -lpng15-15 -ljpeg-8 -lzlib1" -output $@ -default-ann 'allowFFI true' makebody.cm sdlml.o pngsave.o messagebox_fake.o
+%.o : %.cc *.h makefile
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+	echo -n "."
 
-animate.exe : sdlml.o pngsave.o animate.sml ${SMLS} animate.cm messagebox_fake.o makefile ../sdlml/*.sml ../sdlml/*.c ../sml-lib/bdd/*.sml ../sml-lib/data/*.sml ../sml-lib/util/*.sml
-	${MLTON} @MLton max-heap 500m -- -const 'Exn.keepHistory true' -default-ann 'warnUnused true' -default-ann 'sequenceNonUnit warn' -cc-opt "-I/usr/local/include" -link-opt "-LSDL/lib/${SDLARCH} -LSDL_image/lib/${SDLARCH} -lSDL -lSDL_image -lpng -ljpeg -lz -lmad -lvorbisfile -lvorbis -logg" -output $@ -default-ann 'allowFFI true' animate.cm sdlml.o pngsave.o messagebox_fake.o
+test.exe : test.o $(OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+	@echo -n "!"
 
 clean :
-	rm -f *.o *.exe
+	rm -f *.o test.exe
