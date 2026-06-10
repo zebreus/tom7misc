@@ -9,10 +9,10 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
+#include "geom/hull-2d.h"
 #include "geom/mesh.h"
 #include "geom/polyhedra.h"
 #include "image.h"
-#include "ruperts-util.h"
 #include "textsvg.h"
 #include "util.h"
 #include "yocto-math.h"
@@ -113,7 +113,7 @@ static void SaveShadowSVG(std::string_view infile, std::string_view outfile) {
     v2d.emplace_back(v.x, v.y);
   }
 
-  std::vector<int> hull = QuickHull(v2d);
+  std::vector<int> hull = Hull2D::QuickHull(v2d);
 
   std::unordered_set<int> on_hull(hull.begin(), hull.end());
 

@@ -32,6 +32,7 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "util.h"
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(ctr_rounds, ctr_wrong_connectivity, ctr_evals, ctr_final_poly_bad);
@@ -140,6 +141,10 @@ static bool CheckSameConnectivity(const Polyhedron &orig,
 // Returns a smaller loss when faces have improved their shapes.
 static double EvaluateShapeLoss(const Albrecht::AugmentedPoly &aug) {
   double loss = 0.0;
+
+  // Add a planarity error term with a high coefficient to keep faces planar.
+  loss += PlanarityError(aug.poly) * 1e6;
+
   for (const std::vector<vec2> &poly2d : aug.polygons) {
     double area = std::abs(SignedAreaOfConvexPoly(poly2d));
     double perimeter = 0.0;
@@ -187,7 +192,8 @@ static double EvaluateHardnessLoss(const DB::Why &why,
 
   if (auto *v = std::get_if<DB::VertexIH>(&why)) {
     if (aug.poly.faces->NumEdges() < 25) {
-      std::optional<int64_t> difficulty = SolveVertex::Prove(aug, v->vertex_idx);
+      std::optional<int64_t> difficulty =
+        SolveVertex::Prove(aug, v->vertex_idx);
       // Impossible, as desired.
       if (!difficulty.has_value()) return 0;
       return 1'000'000'000 - difficulty.value();
@@ -406,6 +412,205 @@ class SlideNonTriangular : public Parameterization {
   }
 };
 
+class PerturbNonTriangular : public Parameterization {
+ private:
+  struct PlaneParam {
+    int face_idx;
+    vec3 base_normal;
+    vec3 base_center;
+    vec3 base_ex, base_ey;
+  };
+
+  struct VertexParam {
+    int v_idx;
+    std::vector<int> incident_planes;
+    vec3 base_pos;
+  };
+
+  Polyhedron base_poly_;
+  std::vector<PlaneParam> plane_params_;
+  std::vector<VertexParam> vparams_;
+  std::vector<std::pair<double, double>> bounds_;
+
+ public:
+  void Prepare(const Polyhedron &poly, double delta) override {
+    base_poly_ = poly;
+    bounds_.clear();
+    plane_params_.clear();
+    vparams_.clear();
+
+    double diam = Diameter(poly);
+    double rot_delta = diam > 1e-9 ? delta / diam : 0.05;
+
+    std::vector<int> face_to_plane(poly.faces->NumFaces(), -1);
+
+    for (int f = 0; f < poly.faces->NumFaces(); ++f) {
+      if (poly.faces->v[f].size() > 3) {
+        face_to_plane[f] = plane_params_.size();
+
+        vec3 v0 = poly.vertices[poly.faces->v[f][0]];
+        vec3 normal = {0, 0, 0};
+        vec3 e1 = {0, 0, 0};
+        vec3 center = {0, 0, 0};
+        for (int v_idx : poly.faces->v[f]) {
+          center += poly.vertices[v_idx];
+        }
+        center /= (double)poly.faces->v[f].size();
+
+        for (size_t k = 1; k < poly.faces->v[f].size(); k++) {
+          vec3 edge = poly.vertices[poly.faces->v[f][k]] - v0;
+          if (yocto::length_squared(edge) > yocto::length_squared(e1)) {
+            e1 = edge;
+          }
+          if (k + 1 < poly.faces->v[f].size()) {
+            vec3 edge2 = poly.vertices[poly.faces->v[f][k + 1]] - v0;
+            vec3 n = yocto::cross(edge, edge2);
+            if (yocto::length_squared(n) > yocto::length_squared(normal)) {
+              normal = n;
+            }
+          }
+        }
+        vec3 n = yocto::normalize(normal);
+        e1 = yocto::normalize(e1);
+        vec3 e2 = yocto::cross(n, e1);
+
+        plane_params_.push_back({f, n, center, e1, e2});
+
+        bounds_.push_back({-rot_delta, rot_delta});
+        bounds_.push_back({-rot_delta, rot_delta});
+        bounds_.push_back({-delta, delta});
+      }
+    }
+
+    for (int i = 0; i < poly.vertices.size(); ++i) {
+      std::vector<int> incident_planes;
+      for (int f = 0; f < poly.faces->NumFaces(); ++f) {
+        if (face_to_plane[f] != -1) {
+          for (int v : poly.faces->v[f]) {
+            if (v == i) {
+              incident_planes.push_back(face_to_plane[f]);
+              break;
+            }
+          }
+        }
+      }
+
+      vec3 p = poly.vertices[i];
+      vparams_.push_back({i, incident_planes, p});
+
+      if (incident_planes.empty()) {
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+      } else if (incident_planes.size() == 1) {
+        bounds_.push_back({-delta, delta});
+        bounds_.push_back({-delta, delta});
+      } else if (incident_planes.size() == 2) {
+        bounds_.push_back({-delta, delta});
+      }
+    }
+  }
+
+  int NumParameters() const override {
+    return (int)bounds_.size();
+  }
+
+  std::vector<std::pair<double, double>> Bounds() const override {
+    return bounds_;
+  }
+
+  Polyhedron Apply(std::span<const double> params) const override {
+    int arg_idx = 0;
+
+    struct PerturbedPlane {
+      vec3 n;
+      double d;
+      vec3 ex, ey;
+    };
+    std::vector<PerturbedPlane> pplanes(plane_params_.size());
+
+    for (size_t i = 0; i < plane_params_.size(); i++) {
+      const auto& pp = plane_params_[i];
+      double rot1 = params[arg_idx++];
+      double rot2 = params[arg_idx++];
+      double trans = params[arg_idx++];
+
+      vec3 n = yocto::normalize(pp.base_normal + pp.base_ex * rot1 + pp.base_ey * rot2);
+      vec3 ex = yocto::normalize(pp.base_ex - n * yocto::dot(pp.base_ex, n));
+      vec3 ey = yocto::cross(n, ex);
+
+      vec3 center = pp.base_center + n * trans;
+      double d = yocto::dot(n, center);
+
+      pplanes[i] = {n, d, ex, ey};
+    }
+
+    std::vector<vec3> pts = base_poly_.vertices;
+    for (const VertexParam &vp : vparams_) {
+      if (vp.incident_planes.empty()) {
+        pts[vp.v_idx] = vp.base_pos +
+            vec3{params[arg_idx], params[arg_idx + 1], params[arg_idx + 2]};
+        arg_idx += 3;
+      } else if (vp.incident_planes.size() == 1) {
+        const auto& pl = pplanes[vp.incident_planes[0]];
+        vec3 p = vp.base_pos;
+        double dist = yocto::dot(p, pl.n) - pl.d;
+        p -= pl.n * dist;
+        p += pl.ex * params[arg_idx] + pl.ey * params[arg_idx + 1];
+        pts[vp.v_idx] = p;
+        arg_idx += 2;
+      } else if (vp.incident_planes.size() == 2) {
+        const auto& pl1 = pplanes[vp.incident_planes[0]];
+        const auto& pl2 = pplanes[vp.incident_planes[1]];
+
+        vec3 dir = yocto::cross(pl1.n, pl2.n);
+        if (yocto::length_squared(dir) > 1e-12) {
+          dir = yocto::normalize(dir);
+          double n1n2 = yocto::dot(pl1.n, pl2.n);
+          double det = 1.0 - n1n2 * n1n2;
+          if (std::abs(det) > 1e-8) {
+            double r1 = pl1.d - yocto::dot(pl1.n, vp.base_pos);
+            double r2 = pl2.d - yocto::dot(pl2.n, vp.base_pos);
+            double c1 = (r1 - r2 * n1n2) / det;
+            double c2 = (r2 - r1 * n1n2) / det;
+            vec3 p = vp.base_pos + pl1.n * c1 + pl2.n * c2;
+            p += dir * params[arg_idx];
+            pts[vp.v_idx] = p;
+          } else {
+            pts[vp.v_idx] = vp.base_pos;
+          }
+        } else {
+          pts[vp.v_idx] = vp.base_pos;
+        }
+        arg_idx += 1;
+      } else {
+        const auto& pl1 = pplanes[vp.incident_planes[0]];
+        const auto& pl2 = pplanes[vp.incident_planes[1]];
+        const auto& pl3 = pplanes[vp.incident_planes[2]];
+
+        vec3 n1 = pl1.n, n2 = pl2.n, n3 = pl3.n;
+        double d1 = pl1.d, d2 = pl2.d, d3 = pl3.d;
+
+        double det = yocto::dot(n1, yocto::cross(n2, n3));
+        if (std::abs(det) > 1e-8) {
+          vec3 p = (yocto::cross(n2, n3) * d1 +
+                    yocto::cross(n3, n1) * d2 +
+                    yocto::cross(n1, n2) * d3) / det;
+          pts[vp.v_idx] = p;
+        } else {
+          pts[vp.v_idx] = vp.base_pos;
+        }
+      }
+    }
+
+    Polyhedron new_poly;
+    new_poly.vertices = std::move(pts);
+    new_poly.faces = base_poly_.faces;
+    new_poly.name = "improve";
+    return new_poly;
+  }
+};
+
 static void Improve(int id) {
   DB db;
   const DB::Hard hard = db.GetHard(id);
@@ -448,8 +653,12 @@ static void Improve(int id) {
     double diam = Diameter(aug.poly);
     double delta = 0.05 * diam;
 
-    std::unique_ptr<Parameterization> param =
-        std::make_unique<SlideNonTriangular>();
+    std::unique_ptr<Parameterization> param;
+    if (true || global_rc.Word64() & 1) {
+      param = std::make_unique<PerturbNonTriangular>();
+    } else {
+      param = std::make_unique<SlideNonTriangular>();
+    }
     param->Prepare(aug.poly, delta);
     std::vector<std::pair<double, double>> bounds = param->Bounds();
 
@@ -493,11 +702,11 @@ static void Improve(int id) {
                         ANSI::Time(timer.Seconds()),
                         ctr_evals.Read(),
                         ctr_final_poly_bad.Read(),
-                        ctr_wrong_connectivity.Read(),
-                        ctr_wrong_degenerate.Read(),
-                        ctr_wrong_coplanar.Read(),
-                        ctr_wrong_convex.Read(),
-                        ctr_wrong_halfspace.Read(),
+                        Util::FormatNum(ctr_wrong_connectivity.Read()),
+                        Util::FormatNum(ctr_wrong_degenerate.Read()),
+                        Util::FormatNum(ctr_wrong_coplanar.Read()),
+                        Util::FormatNum(ctr_wrong_convex.Read()),
+                        Util::FormatNum(ctr_wrong_halfspace.Read()),
                         input_shape_loss,
                         best_shape_loss,
                         save_in);

@@ -12,8 +12,6 @@
 // XXX
 #include "base/logging.h"
 
-
-#define STB_TRUETYPE_IMPLEMENTATION 1
 // #define STBTT_RASTERIZER_VERSION 1
 
 // This code was not written with these warnings in mind!
@@ -36,71 +34,70 @@
 ////   of C library functions used by stb_truetype, e.g. if you don't
 ////   link with the C runtime library.
 
-#ifdef STB_TRUETYPE_IMPLEMENTATION
-   // #define your own (u)stbtt_int8/16/32 before including to override this
-   #ifndef stbtt_uint8
-   typedef unsigned char   stbtt_uint8;
-   typedef signed   char   stbtt_int8;
-   typedef unsigned short  stbtt_uint16;
-   typedef signed   short  stbtt_int16;
-   typedef unsigned int    stbtt_uint32;
-   typedef signed   int    stbtt_int32;
-   #endif
 
-   typedef char stbtt__check_size32[sizeof(stbtt_int32)==4 ? 1 : -1];
-   typedef char stbtt__check_size16[sizeof(stbtt_int16)==2 ? 1 : -1];
+// #define your own (u)stbtt_int8/16/32 before including to override this
+#ifndef stbtt_uint8
+typedef unsigned char   stbtt_uint8;
+typedef signed   char   stbtt_int8;
+typedef unsigned short  stbtt_uint16;
+typedef signed   short  stbtt_int16;
+typedef unsigned int    stbtt_uint32;
+typedef signed   int    stbtt_int32;
+#endif
 
-   // e.g. #define your own STBTT_ifloor/STBTT_iceil() to avoid math.h
-   #ifndef STBTT_ifloor
-   #include <math.h>
-   #define STBTT_ifloor(x)   ((int) floor(x))
-   #define STBTT_iceil(x)    ((int) ceil(x))
-   #endif
+typedef char stbtt__check_size32[sizeof(stbtt_int32)==4 ? 1 : -1];
+typedef char stbtt__check_size16[sizeof(stbtt_int16)==2 ? 1 : -1];
 
-   #ifndef STBTT_sqrt
-   #include <math.h>
-   #define STBTT_sqrt(x)      sqrt(x)
-   #define STBTT_pow(x,y)     pow(x,y)
-   #endif
+// e.g. #define your own STBTT_ifloor/STBTT_iceil() to avoid math.h
+#ifndef STBTT_ifloor
+#include <math.h>
+#define STBTT_ifloor(x)   ((int) floor(x))
+#define STBTT_iceil(x)    ((int) ceil(x))
+#endif
 
-   #ifndef STBTT_fmod
-   #include <math.h>
-   #define STBTT_fmod(x,y)    fmod(x,y)
-   #endif
+#ifndef STBTT_sqrt
+#include <math.h>
+#define STBTT_sqrt(x)      sqrt(x)
+#define STBTT_pow(x,y)     pow(x,y)
+#endif
 
-   #ifndef STBTT_cos
-   #include <math.h>
-   #define STBTT_cos(x)       cos(x)
-   #define STBTT_acos(x)      acos(x)
-   #endif
+#ifndef STBTT_fmod
+#include <math.h>
+#define STBTT_fmod(x,y)    fmod(x,y)
+#endif
 
-   #ifndef STBTT_fabs
-   #include <math.h>
-   #define STBTT_fabs(x)      fabs(x)
-   #endif
+#ifndef STBTT_cos
+#include <math.h>
+#define STBTT_cos(x)       cos(x)
+#define STBTT_acos(x)      acos(x)
+#endif
 
-   // #define your own functions "STBTT_malloc" / "STBTT_free" to avoid malloc.h
-   #ifndef STBTT_malloc
-   #include <stdlib.h>
-   #define STBTT_malloc(x,u)  ((void)(u),malloc(x))
-   #define STBTT_free(x,u)    ((void)(u),free(x))
-   #endif
+#ifndef STBTT_fabs
+#include <math.h>
+#define STBTT_fabs(x)      fabs(x)
+#endif
 
-   #ifndef STBTT_assert
-   #include <assert.h>
-   #define STBTT_assert(x)    assert(x)
-   #endif
+// #define your own functions "STBTT_malloc" / "STBTT_free" to avoid malloc.h
+#ifndef STBTT_malloc
+#include <stdlib.h>
+#define STBTT_malloc(x,u)  ((void)(u),malloc(x))
+#define STBTT_free(x,u)    ((void)(u),free(x))
+#endif
 
-   #ifndef STBTT_strlen
-   #include <string.h>
-   #define STBTT_strlen(x)    strlen(x)
-   #endif
+#ifndef STBTT_assert
+#include <assert.h>
+#define STBTT_assert(x)    assert(x)
+#endif
 
-   #ifndef STBTT_memcpy
-   #include <string.h>
-   #define STBTT_memcpy       memcpy
-   #define STBTT_memset       memset
-   #endif
+#ifndef STBTT_strlen
+#include <string.h>
+#define STBTT_strlen(x)    strlen(x)
+#endif
+
+#ifndef STBTT_memcpy
+#include <string.h>
+#define STBTT_memcpy       memcpy
+#define STBTT_memset       memset
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -109,8 +106,6 @@
 ////   IMPLEMENTATION
 ////
 ////
-
-#ifdef STB_TRUETYPE_IMPLEMENTATION
 
 #ifndef STBTT_MAX_OVERSAMPLE
 #define STBTT_MAX_OVERSAMPLE   8
@@ -4320,9 +4315,6 @@ stbtt_GetAdditionalPDFMetrics(const stbtt_fontinfo *info) {
 
   return metrics;
 }
-
-#endif // STB_TRUETYPE_IMPLEMENTATION
-
 
 // FULL VERSION HISTORY
 //

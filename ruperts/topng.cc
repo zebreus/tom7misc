@@ -16,7 +16,7 @@
 #include "yocto-math.h"
 
 using frame3 = yocto::frame<double, 3>;
-
+using Mesh2D = PolyhedronMesh2D;
 using Solution = SolutionDB::Solution;
 
 static std::pair<frame3, frame3> GetSolution(std::string_view name) {

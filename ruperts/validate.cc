@@ -18,6 +18,8 @@
 #include "solutions.h"
 #include "yocto-math.h"
 
+using Mesh2D = PolyhedronMesh2D;
+
 // We use rational numbers with at least this many digits of
 // precision.
 static constexpr int DIGITS = 1000;

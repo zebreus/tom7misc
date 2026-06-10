@@ -1,5 +1,7 @@
 
+#include <cmath>
 #include <functional>
+#include <limits>
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
 #define _DARWIN_USE_64_BIT_INODE 1
@@ -1393,6 +1395,38 @@ string Util::UnsignedWithCommas(uint64_t u) {
     }
   }
   return out;
+}
+
+std::string Util::FormatNum(int64_t n) {
+  std::string_view neg = "";
+  if (n < 0) {
+    // Can't negate the most negative number. Since it will
+    // get rounded below anyway, the simplest thing is to treat
+    // this as the next closest.
+    if (n == std::numeric_limits<int64_t>::min()) [[unlikely]] {
+      n++;
+    }
+    n = -n;
+    neg = "-";
+  }
+
+  if (n > 1'000'000) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return std::format("{}{:.1f}T", neg, m / 1'000'000.0);
+    } else if (m >= 1000.0) {
+      return std::format("{}{:.1f}B", neg, m / 1000.0);
+    } else if (m >= 100.0) {
+      return std::format("{}{}M", neg, (int)std::round(m));
+    } else if (m > 10.0) {
+      return std::format("{}{:.1f}M", neg, m);
+    } else {
+      // TODO: Integer division. color decimal place and suffix.
+      return std::format("{}{:.2f}M", neg, m);
+    }
+  } else {
+    return std::format("{}{}", neg, UnsignedWithCommas(n));
+  }
 }
 
 bool Util::MatchSpec(std::string_view spec, char c) {

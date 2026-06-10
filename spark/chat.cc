@@ -23,6 +23,7 @@
 #include "net.h"
 #include "periodically.h"
 #include "spark-infer.h"
+#include "utf8.h"
 #include "util.h"
 
 static constexpr std::string_view HOST = "10.0.0.34";
@@ -33,9 +34,52 @@ using ModelRequest = Spark::ModelRequest;
 using ModelResponse = Spark::ModelResponse;
 using SMR = Spark::StreamingModelResponse;
 
+// Color input formatter for Console. Remember that cursor_pos
+// is a codepoint offset, not byte offset. The returned cursor
+// position ignores ANSI color codes.
+static std::pair<std::string, int> FormatInput(std::string_view input,
+                                               int cursor_pos) {
+  // Split on the \n escape.
+  std::vector<std::string> lines = Util::SplitWith(input, "\\n");
+
+  int new_cursor_pos = 0;
+  for (int i = 0; i < lines.size(); i++) {
+    // In codepoints.
+    int this_line = UTF8::Length(lines[i]);
+    if (cursor_pos <= this_line) {
+      new_cursor_pos += cursor_pos;
+      break;
+    }
+
+    // Otherwise, we're not on that line. The original cursor
+    // pos counted "\n", but we will just have an actual newline.
+    new_cursor_pos += (this_line + 1);
+    cursor_pos -= (this_line + 2);
+  }
+
+  // Colorize commands.
+  for (std::string &line : lines) {
+    if (line.empty()) continue;
+
+    if (line[0] == '/') {
+      size_t pos = line.find(' ');
+      if (pos != std::string::npos) {
+        line = std::format(ANSI_WHITE "{}" ANSI_RESET "{}",
+                           line.substr(0, pos),
+                           line.substr(pos));
+      } else {
+        line = std::format(ANSI_WHITE "{}" ANSI_RESET, line);
+      }
+    }
+  }
+
+  return std::make_pair(Util::Join(lines, "\n"), new_cursor_pos);
+}
+
 struct Conversation {
   Conversation() : spark(HOST, PORT) {
     console = std::make_unique<Console>(1, 1000, 1, 0);
+    console->SetFormatter(FormatInput);
   }
 
   struct Message {
@@ -64,8 +108,9 @@ struct Conversation {
 
   // All participants.
   std::set<std::string> participants = {"Tom", "Computer"};
-
   std::set<std::string> user_participants = {"Tom"};
+  // When we pass to a specific participant.
+  std::optional<std::string> forced_participant;
 
   void ShowParticipants() {
     std::string ppts = ANSI_BG(0, 0, 80);
@@ -207,23 +252,48 @@ struct Conversation {
     return Util::NormalizeWhitespace(content);
   }
 
-  // Get at least one continuation line, synchronously.
-  void Continue() {
-    ModelRequest req;
+  // TODO: This is now an asynchronous task. Clean 'er up!
+  struct ContinuationTask {
+    ContinuationTask(Conversation *parent,
+                     std::optional<std::string> forced_participant) :
+      parent(parent), forced_participant(std::move(forced_participant)) {}
 
-    std::vector<std::string> robot_ppts;
-    for (const std::string &ppt : participants) {
-      if (!user_participants.contains(ppt)) {
-        robot_ppts.push_back(ppt);
+    void Start() {
+      CHECK(parent != nullptr);
+      std::vector<std::string> robot_ppts;
+      if (forced_participant.has_value()) {
+        robot_ppts = {forced_participant.value()};
+      } else {
+        for (const std::string &ppt : parent->participants) {
+          if (!parent->user_participants.contains(ppt)) {
+            robot_ppts.push_back(ppt);
+          }
+        }
       }
-    }
 
-    std::string example_speaker = "Speaker";
-    if (robot_ppts.size() == 1)
-      example_speaker = robot_ppts[0];
+      std::string example_speaker = "Speaker";
+      std::string as_users;
+      if (robot_ppts.empty()) {
+        // Not much we could do here??
+        as_users = "Speaker";
+      } else if (robot_ppts.size() == 1) {
+        example_speaker = robot_ppts[0];
+        as_users = robot_ppts[0];
+      } else if (robot_ppts.size() == 2) {
+        as_users = std::format("{} or {}", robot_ppts[0], robot_ppts[1]);
+      } else {
+        // A, B, or C.
+        for (int i = 0; i < robot_ppts.size() - 1; i++) {
+          AppendFormat(&as_users, "{}, ", robot_ppts[i]);
+        }
 
-    std::string roles = Util::Join(robot_ppts, ", ");
-    req.instructions = std::format(
+        AppendFormat(&as_users, "or {}", robot_ppts.back());
+      }
+
+      transcript = parent->GetCurrentTranscript();
+
+      std::string roles = Util::Join(robot_ppts, ", ");
+      req.instructions = std::format(
         // "SPECIAL INSTRUCTION: Think silently. Thinking budget: 32 tokens\n"
         "Task: Continue the conversation in a natural way. "
         "Respond with one or two messages, using IRC syntax:\n"
@@ -235,94 +305,148 @@ struct Conversation {
         robot_ppts.size() == 1 ? "" : "s",
         roles);
 
+      req.messages.emplace_back(ReqMessage{
+          .role = "user",
+          .content = transcript,
+        });
+
+      std::string prompt =
+        std::format("Now just one or two messages as {}. Use IRC syntax:\n",
+                    as_users);
+      req.messages.emplace_back(ReqMessage{
+          .role = "user",
+          .content = prompt,
+        });
+
+      res = parent->spark.Stream(req, parent->verbosity);
+      CHECK(res.get() != nullptr);
+    }
+
+
+    // Returns false when done.
+    bool Step() {
+      if (busted) return false;
+
+      using namespace std::chrono_literals;
+      using SMR = Spark::StreamingModelResponse;
+
+      auto p = res->Poll();
+      if (SMR::Thought *t = std::get_if<SMR::Thought>(&p)) {
+        ThoughtToken(t->tok);
+        return true;
+      } else if (SMR::Content *c = std::get_if<SMR::Content>(&p)) {
+        ContentToken(c->tok);
+        return true;
+      } else if (SMR::Error *e = std::get_if<SMR::Error>(&p)) {
+        // Just print the error and give control back to the user.
+        parent->console->Print(ARED("{}") "\n", e->msg);
+        busted = true;
+        Finish();
+        return false;
+      } else if (std::holds_alternative<SMR::Wait>(p)) {
+        std::this_thread::sleep_for(10ms);
+        return true;
+      } else if (std::holds_alternative<SMR::Done>(p)) {
+        Finish();
+        return false;
+      } else {
+        LOG(FATAL) << "Bad variant";
+        busted = true;
+        return false;
+      }
+    }
+
+   private:
+    ModelRequest req;
+    std::unique_ptr<SMR> res;
+
+    Conversation *parent = nullptr;
+
+    std::optional<std::string> forced_participant;
+
+    int64_t thought_bytes = 0;
+    std::string content;
+    Periodically status_per = Periodically(0.250);
+
+    bool busted = false;
+    // To check whether we were interrupted.
+    std::string transcript;
+
+    void Finish() {
+      parent->SetMiddle(ANSI_GREEN "READY");
+      // If it did not have a trailing newline, say.
+      ConsumeLine(content);
+    }
+
+    void ThoughtToken(std::string_view tok) {
+      thought_bytes += tok.size();
+      status_per.RunIf([&]{
+          parent->SetMiddle(std::format("Thinking... {}", thought_bytes));
+        });
+    }
+
+    void ConsumeLine(std::string_view line) {
+      Util::RemoveLeadingWhitespace(&line);
+      Util::RemoveTrailingWhitespace(&line);
+      if (line.empty())
+        return;
+      if (std::optional<Message> omsg = ParseMessage(line, true)) {
+        if (transcript != parent->GetCurrentTranscript()) {
+          // Discard the messages, since something happened
+          // asynchronously and we're no longer up to date.
+          busted = true;
+          res->Abort();
+          return;
+        }
+
+        parent->PrintMessage(omsg.value());
+        parent->messages.push_back(std::move(omsg.value()));
+        transcript = parent->GetCurrentTranscript();
+      } else {
+        parent->console->Print(ARED("Unable to parse: ") "{}\n", line);
+      }
+    }
+
+    void ContentToken(std::string_view tok) {
+      status_per.RunIf([&] {
+          parent->SetMiddle(ANSI_WHITE "...");
+        });
+      content.append(tok);
+
+      for (;;) {
+        size_t pos = content.find('\n');
+        if (pos == std::string::npos)
+          return;
+
+        std::string line = content.substr(0, pos);
+        content = content.substr(pos + 1);
+        ConsumeLine(line);
+      }
+    }
+
+  };
+
+  std::string GetCurrentTranscript() const {
     std::string transcript = preamble;
     transcript.push_back('\n');
     for (const Message &msg : messages) {
       AppendFormat(&transcript, "{}\n", MessageString(msg));
     }
-
-    req.messages.emplace_back(ReqMessage{
-        .role = "user",
-        .content = transcript,
-      });
-
-    std::unique_ptr<SMR> res = spark.Stream(req, verbosity);
-
-    int64_t thought_bytes = 0;
-    std::string content;
-    Periodically status_per(0.250);
-      /*
-        could show this if verbose is on
-            if (!resp.reasoning_content.empty()) {
-      if (verbosity > 0) {
-        Print(AGREY("{}") "\n", resp.reasoning_content);
-      }
-      */
-
-    auto ThoughtToken = [&](std::string_view tok) {
-        thought_bytes += tok.size();
-        status_per.RunIf([&]{
-            SetMiddle(std::format("Thinking... {}", thought_bytes));
-          });
-      };
-
-    auto ConsumeLine = [&](std::string_view line) {
-        Util::RemoveLeadingWhitespace(&line);
-        Util::RemoveTrailingWhitespace(&line);
-        if (line.empty())
-          return;
-        if (std::optional<Message> omsg = ParseMessage(line, true)) {
-          PrintMessage(omsg.value());
-          messages.push_back(std::move(omsg.value()));
-        } else {
-          console->Print(ARED("Unable to parse: ") "{}\n", line);
-        }
-      };
-
-    auto ContentToken = [&](std::string_view tok) {
-        status_per.RunIf([&]{
-            SetMiddle(ANSI_WHITE "...");
-          });
-        content.append(tok);
-
-        for (;;) {
-          size_t pos = content.find('\n');
-          if (pos == std::string::npos)
-            return;
-
-          std::string line = content.substr(0, pos);
-          content = content.substr(pos + 1);
-          ConsumeLine(line);
-        }
-      };
-
-    using namespace std::chrono_literals;
-    using SMR = Spark::StreamingModelResponse;
-
-    for (;;) {
-      auto p = res->Poll();
-      if (SMR::Thought *t = std::get_if<SMR::Thought>(&p)) {
-        ThoughtToken(t->tok);
-      } else if (SMR::Content *c = std::get_if<SMR::Content>(&p)) {
-        ContentToken(c->tok);
-      } else if (SMR::Error *e = std::get_if<SMR::Error>(&p)) {
-        // Just print the error and give control back to the user.
-        console->Print(ARED("{}") "\n", e->msg);
-        return;
-      } else if (std::holds_alternative<SMR::Wait>(p)) {
-        std::this_thread::sleep_for(100ms);
-      } else if (std::holds_alternative<SMR::Done>(p)) {
-        break;
-      }
-    }
-
-    SetMiddle(ANSI_GREEN "READY");
-
-    // If it did not have a trailing newline, say.
-    ConsumeLine(content);
+    return transcript;
   }
 
-  std::optional<Message> ParseMessage(std::string_view sv, bool sloppy) {
+  std::unique_ptr<ContinuationTask> Continue() {
+    std::unique_ptr<ContinuationTask> task =
+      std::make_unique<ContinuationTask>(this, forced_participant);
+    task->Start();
+    forced_participant = std::nullopt;
+    return task;
+  }
+
+  std::unique_ptr<ContinuationTask> continuation_task;
+
+  static std::optional<Message> ParseMessage(
+      std::string_view sv, bool sloppy) {
     Util::RemoveOuterWhitespace(&sv);
     if (sv.empty()) return std::nullopt;
 
@@ -348,7 +472,7 @@ struct Conversation {
       if (rangle != std::string_view::npos) {
         msg.speaker = std::string(sv.substr(0, rangle));
         sv.remove_prefix(rangle + 1);
-        Util::RemoveLeadingWhitespace(&sv);
+        Util::RemoveOuterWhitespace(&sv);
 
         if (sloppy) {
           // Allow <Tom> *wrings his hands*
@@ -357,6 +481,12 @@ struct Conversation {
             msg.is_action = true;
             sv.remove_prefix(1);
             sv.remove_suffix(1);
+          }
+
+          // Allow <Tom> * Tom wrings his hands
+          if (sv.starts_with("* " + msg.speaker + " ")) {
+            sv.remove_prefix(2 + msg.speaker.size() + 1);
+            msg.is_action = true;
           }
         }
         msg.text = std::string(sv);
@@ -462,6 +592,7 @@ struct Conversation {
         .text = std::string(input),
         .is_action = false,
       };
+
       PrintMessage(msg);
       messages.push_back(std::move(msg));
       return true;
@@ -551,6 +682,44 @@ struct Conversation {
         messages.erase(messages.begin(), messages.end() - CONDENSE_TARGET);
       }
       return false;
+
+    } else if (Util::TryStripPrefix("/edit", &input)) {
+      // Takes a number (1 = previous message, 2 = message before
+      // that, etc.) and a raw replacement (like /raw). If the
+      // message is empty, this puts the contents of the message
+      // from that position in the input so that it can be edited,
+      // like /preamble does.
+      Util::RemoveOuterWhitespace(&input);
+      int64_t index = 1;
+      if (std::optional<int64_t> parsed =
+          Util::ParseInt64Opt(Util::Chop(&input))) {
+        index = parsed.value();
+      } else {
+        index = 1;
+      }
+
+      if (index <= 0 || index > (int64_t)messages.size()) {
+        console->Print(AORANGE("Invalid message index: ") "{}\n", index);
+        return false;
+      }
+
+      size_t msg_idx = messages.size() - index;
+
+      if (input.empty()) {
+        console->SetInput(
+            std::format("/edit {} {}", index,
+                        MessageString(messages[msg_idx])));
+        return false;
+      } else {
+        if (std::optional<Message> omsg = ParseMessage(input, false)) {
+          messages[msg_idx] = std::move(omsg.value());
+          PrintRecent(index + 2);
+          return true;
+        } else {
+          console->Print(ARED("Unable to parse message: ") "{}\n", input);
+          return false;
+        }
+      }
 
     } else if (Util::TryStripPrefix("/pass", &input)) {
       // XXX take explicit participant
@@ -671,37 +840,49 @@ struct Conversation {
       // Print(AWHITE(":") AGREEN("> "));
       // fflush(stdout);
 
-      // True if we have a message (like /say) that implies
-      // passing.
-      bool pass = false;
-
-      std::string input_line = console->WaitLine();
-
-      std::vector<std::string> raw_inputs =
-        Util::SplitWith(input_line, "\\n");
-      CHECK(!raw_inputs.empty());
-
-      std::vector<std::string> inputs;
-      for (int i = 0; i < raw_inputs.size(); i++) {
-        std::string_view input = raw_inputs[i];
-        Util::RemoveOuterWhitespace(&input);
-        if (input.empty()) {
-          continue;
-        }
-
-        if (input[0] == '/') {
-          inputs.emplace_back(input);
-        } else {
-          inputs.emplace_back(std::format("/say {}", input));
+      if (continuation_task.get() != nullptr) {
+        if (!continuation_task->Step()) {
+          // console->Print(AGREY("Continuation task step Finished") "\n");
+          continuation_task.reset();
         }
       }
 
-      for (std::string_view input : inputs) {
-        pass = DoOneUserInput(input) || pass;
-      }
+      if (console->HasInput()) {
+        std::string input_line = console->WaitLine();
 
-      if (pass) {
-        Continue();
+        std::vector<std::string> raw_inputs =
+          Util::SplitWith(input_line, "\\n");
+        CHECK(!raw_inputs.empty());
+
+        std::vector<std::string> inputs;
+        for (int i = 0; i < raw_inputs.size(); i++) {
+          std::string_view input = raw_inputs[i];
+          Util::RemoveOuterWhitespace(&input);
+          if (input.empty()) {
+            continue;
+          }
+
+          if (input[0] == '/') {
+            inputs.emplace_back(input);
+          } else {
+            inputs.emplace_back(std::format("/say {}", input));
+          }
+        }
+
+        // True if we have a message (like /say) that implies
+        // passing.
+        bool pass = false;
+        for (std::string_view input : inputs) {
+          pass = DoOneUserInput(input) || pass;
+        }
+
+        if (pass) {
+          if (continuation_task.get() != nullptr) {
+            console->Print(AGREY("OVERWRITING task.") "\n");
+          }
+          continuation_task = Continue();
+        }
+
       }
     }
   }

@@ -22,6 +22,7 @@
 #include "yocto-math.h"
 
 using frame3 = yocto::frame<double, 3>;
+using Mesh2D = PolyhedronMesh2D;
 
 using Solution = SolutionDB::Solution;
 

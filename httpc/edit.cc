@@ -10,7 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
-#include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
@@ -18,12 +18,12 @@
 #include "base/print.h"
 #include "markdown.h"
 #include "model-client.h"
+#include "model-tasks.h"
 #include "model-util.h"
 #include "net.h"
 #include "rapidjson/document.h"
 #include "timer.h"
 #include "util.h"
-#include "model-tasks.h"
 
 #define PROMPT_COLOR ANSI_FG(138, 188, 242)
 #define RESP_COLOR ANSI_FG(207, 138, 242)

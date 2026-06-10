@@ -1,7 +1,7 @@
 
 // Code for working with polyhedra (especially convex polyhedra)
 // and projections of them to 2D. From the ruperts project, but
-// "cleaned up."
+// "cleaned up." It should be "cleaned up" more!
 
 #ifndef _CC_LIB_GEOM_POLYHEDRA_H
 #define _CC_LIB_GEOM_POLYHEDRA_H
@@ -105,7 +105,7 @@ struct Polyhedron {
 // A polyhedron projected to 2D. This generally creates
 // overlapping polygons, possibly also with coincident
 // vertices.
-struct Mesh2D {
+struct PolyhedronMesh2D {
   // As above.
   std::vector<vec2> vertices;
   // e.g. shared with the Polyhedron.
@@ -254,14 +254,14 @@ inline Polyhedron Rotate(const Polyhedron &p, const quat4 &quat) {
 Polyhedron DualizePoly(const Polyhedron &p);
 
 // Shadow(Rotate(frame, p))
-Mesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p);
+PolyhedronMesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p);
 
 // Reflect the polyhedron across the XY plane.
 // Shares faces with the argument (but they will be inside-out).
 Polyhedron ReflectXY(const Polyhedron &p);
 
-inline Mesh2D Translate(const Mesh2D &m, const vec2 &t) {
-  Mesh2D ret = m;
+inline PolyhedronMesh2D Translate(const PolyhedronMesh2D &m, const vec2 &t) {
+  PolyhedronMesh2D ret = m;
   for (vec2 &v : ret.vertices) {
     v += t;
   }
@@ -290,7 +290,7 @@ Polyhedron Recenter(const Polyhedron &p);
 Polyhedron Scale(const Polyhedron &p, double s);
 
 // Create the shadow of the polyhedron on the x-y plane.
-Mesh2D Shadow(const Polyhedron &p);
+PolyhedronMesh2D Shadow(const Polyhedron &p);
 
 // Non-negative distance to hull.
 double DistanceToHull(
@@ -306,7 +306,7 @@ std::pair<vec2, double> ClosestPointOnHull(
     const std::vector<vec2> &points, const std::vector<int> &hull,
     const vec2 &pt);
 
-double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
+double DistanceToMesh(const PolyhedronMesh2D &mesh, const vec2 &pt);
 
 
 // Faces of a polyhedron must be planar. This computes the
@@ -340,7 +340,7 @@ bool PointInPolygon(const vec2 &point,
 bool InTriangle(const vec2 &a, const vec2 &b, const vec2 &c,
                 const vec2 &pt);
 
-inline bool InMesh(const Mesh2D &mesh, const vec2 &pt) {
+inline bool InMesh(const PolyhedronMesh2D &mesh, const vec2 &pt) {
   for (const std::vector<int> &face : mesh.faces->v)
     if (PointInPolygon(pt, mesh.vertices, face))
       return true;
@@ -348,7 +348,7 @@ inline bool InMesh(const Mesh2D &mesh, const vec2 &pt) {
   return false;
 }
 
-inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
+inline bool InHull(const PolyhedronMesh2D &mesh, const std::vector<int> &hull,
                    const vec2 &pt) {
   return PointInPolygon(pt, mesh.vertices, hull);
 }
@@ -363,15 +363,6 @@ void SaveAsJSON(const Polyhedron &poly, std::string_view filename);
 // True if the faces are very close to parallel. The face indices
 // must be in bounds!
 bool FacesParallel(const Polyhedron &poly, int face1, int face2);
-
-// A regular n-gon, extruded to the given depth. Centered at
-// the origin. num_points is n, the number of points on the
-// top and bottom faces; this will have 2n vertices.
-Polyhedron NPrism(int64_t num_points, double depth);
-
-// Like NPrism, but an anti-prism has triangular side faces, and the
-// bottom and top faces have their vertices interleaved.
-Polyhedron NAntiPrism(int64_t num_points, double depth);
 
 // Takes ownership of the vertices, which should be a convex hull.
 // Creates faces as all planes where all the other points are on one
@@ -405,6 +396,15 @@ bool IsWellConditioned(std::span<const vec3> vs,
 // some kind of search (e.g. a polynomial-time convex hull
 // calculation) to find the connectivity. You should reuse the base
 // shape rather than than repeatedly generating new ones.
+
+// A regular n-gon, extruded to the given depth. Centered at
+// the origin. num_points is n, the number of points on the
+// top and bottom faces; this will have 2n vertices.
+Polyhedron NPrism(int64_t num_points, double depth);
+
+// Like NPrism, but an anti-prism has triangular side faces, and the
+// bottom and top faces have their vertices interleaved.
+Polyhedron NAntiPrism(int64_t num_points, double depth);
 
 // Platonic
 Polyhedron Tetrahedron();
@@ -449,5 +449,6 @@ Polyhedron Onperthedron();
 
 // all lowercase, no spaces.
 std::optional<Polyhedron> PolyhedronByName(std::string_view name);
+Polyhedron PolyhedronByNameOrDie(std::string_view name);
 
 #endif

@@ -3,12 +3,12 @@
 #define _HTTPC_MODEL_TASKS_H
 
 #include <string>
-#include <vector>
-#include <variant>
 #include <string_view>
+#include <variant>
+#include <vector>
 
-#include "model-util.h"
 #include "model-client.h"
+#include "model-util.h"
 
 // Utilities that use the LLM.
 struct ModelTasks {

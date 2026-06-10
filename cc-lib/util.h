@@ -221,6 +221,10 @@ struct Util {
   // like 1,000,000.
   static string UnsignedWithCommas(uint64_t u);
 
+  // Render a number in a brief, human-readable format. Might produce
+  // "-4.2B" for example.
+  static std::string FormatNum(int64_t n);
+
   // False on failure.
   static bool ChangeDir(std::string_view s);
 

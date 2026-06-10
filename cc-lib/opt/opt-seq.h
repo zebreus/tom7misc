@@ -17,7 +17,8 @@
 
 struct OptSeq {
   // Pair of [low, high] bounds for each parameter.
-  OptSeq(const std::vector<std::pair<double, double>> &bounds);
+  OptSeq(const std::vector<std::pair<double, double>> &bounds,
+         uint64_t seed = 0xCAFE);
   ~OptSeq();
   // TODO: Save/Load
 
@@ -40,6 +41,7 @@ struct OptSeq {
   double Eval(std::span<const double> args);
 
   std::mutex m;
+  const uint64_t start_seed = 0;
   std::condition_variable c;
   std::unique_ptr<std::thread> th;
 

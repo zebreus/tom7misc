@@ -110,6 +110,16 @@
               (propertize text 'read-only t 'rear-nonsticky t 'font-lock-face face)
             (propertize text 'read-only t 'rear-nonsticky t))))
 
+(defun llm-edit--ensure-one-blank-line ()
+  "Ensure there is exactly one blank line at the end of the buffer.
+If the buffer is empty, do nothing."
+  (unless (bobp)
+    (let ((inhibit-read-only t))
+      (goto-char (point-max))
+      (while (eq (char-before) ?\n)
+        (delete-char -1))
+      (llm-edit--insert-read-only "\n\n"))))
+
 ;; Inserts a formatted diff block into the current buffer at point.
 ;; Applies read-only and rear-nonsticky text properties to the
 ;; structural delimiters (like "<<<< BEFORE"). This prevents the user
@@ -154,6 +164,7 @@
             (with-current-buffer (get-buffer "*EDITS*")
               (save-excursion
                 (goto-char (point-max))
+                (llm-edit--ensure-one-blank-line)
                 (llm-edit--insert-diff file comment before after))))))
     (error (message "llm-edit JSON parse error: %s" err))))
 
@@ -462,9 +473,14 @@ Returns (CLONE-BUF TARGET-BUF)."
       (llm-edit--cleanup-preview)
       (setq llm-edit--last-block-state nil)
       (let ((inhibit-read-only t))
+        (goto-char start)
         (delete-region start end)
-        (when (eq (char-after) ?\n)
-          (delete-char 1))))))
+        (while (eq (char-before) ?\n)
+          (delete-char -1))
+        (while (eq (char-after) ?\n)
+          (delete-char 1))
+        (unless (bobp)
+          (llm-edit--insert-read-only "\n\n"))))))
 
 (defun llm-edit-apply ()
   "Apply the edit block under point and remove it."
@@ -512,6 +528,18 @@ Also terminates the background edit process if it is still running."
         (with-selected-window win
           (scroll-up-line n))
       (user-error "Target buffer is not visible"))))
+
+(defun llm-edit--one-blank-line (_start end)
+  (save-excursion
+    (goto-char end)
+    (when (< (point) (point-max))
+      (let ((inhibit-read-only t))
+        (while (eq (char-before) ?\n)
+          (delete-char -1))
+        (while (eq (char-after) ?\n)
+          (delete-char 1))
+        (unless (bobp)
+          (llm-edit--insert-read-only "\n\n"))))))
 
 (defvar llm-edits-mode-map
   (let ((map (make-sparse-keymap)))
@@ -576,15 +604,16 @@ Also terminates the background edit process if it is still running."
      :command edit-command
      :input prompt
      :pipeline (list
+                (eprocs-make-delete-tag-filter
+                 (concat "<" "STATUS>")
+                 (concat "</" "STATUS>"))
                 (eprocs-make-tag-filter
                  ;; Avoid having the replacement marker literally
                  ;; in the mode's source file.
                  (concat "<" "REPLACEMENT>")
                  (concat "</" "REPLACEMENT>")
                  #'llm-edit--process-json)
-                (eprocs-make-delete-tag-filter
-                 (concat "<" "STATUS>")
-                 (concat "</" "STATUS>"))
+                #'llm-edit--one-blank-line
                 #'eprocs-filter-ansi-colors))
     (with-current-buffer (get-buffer-create "*EDITS*")
       (setq default-directory dir)

@@ -100,7 +100,13 @@ static void PrintTable(const std::unordered_set<std::string> &filter) {
     if (Util::StartsWith(name, "nopert_"))
       continue;
 
-    Polyhedron poly = PolyhedronByName(name);
+    // We have some named polyhedra in here that have solutions,
+    // like the "onperhedron," but which aren't in the paper
+    // (due to anachronism).
+    if (name == "onperthedron")
+      continue;
+
+    Polyhedron poly = PolyhedronByNameOrDie(name);
 
     if (filter.empty() || filter.contains(name)) {
 

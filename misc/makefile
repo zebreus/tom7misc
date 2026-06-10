@@ -117,6 +117,9 @@ lightness.exe : lightness.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 qrimage.exe : qrimage.o $(CC_LIB)/qr-code.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+uncolor.exe : uncolor.o $(CC_LIB)/ansi.o  $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB_ZIP) $(CC_LIB_UNICODE) $(RE2_OBJECTS)
 

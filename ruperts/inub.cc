@@ -73,6 +73,7 @@ static constexpr int SCUBE_DIGITS = 24;
 static constexpr int NUM_WORK_THREADS = 14;
 
 using vec2 = yocto::vec<double, 2>;
+using Mesh2D = PolyhedronMesh2D;
 
 static StatusBar status = StatusBar(16);
 

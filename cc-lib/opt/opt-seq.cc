@@ -10,16 +10,18 @@
 #include <utility>
 #include <vector>
 
-#include "opt/opt.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "opt/opt.h"
 
 static constexpr bool VERBOSE = false;
 
 OptSeq::OptSeq(
-    const std::vector<std::pair<double, double>> &bounds) :
-  bounds(bounds), arg(bounds.size()) {
+    const std::vector<std::pair<double, double>> &bounds,
+    uint64_t seed) :
+  start_seed(seed), bounds(bounds), arg(bounds.size()) {
   if (VERBOSE) {
-    printf("spawn...\n");
+    Print("spawn...\n");
   }
 
   th.reset(new std::thread(&OptSeq::OptThread, this));
@@ -46,7 +48,7 @@ void OptSeq::OptThread() {
         // Always use the same random seed so that we can
         // replay previous samples. But if we make more than
         // one loop, use a different seed.
-        0xCAFE + offset);
+        start_seed + offset);
 
     {
       std::unique_lock<std::mutex> ml(m);
@@ -57,9 +59,9 @@ void OptSeq::OptThread() {
 
 double OptSeq::Eval(std::span<const double> args) {
   if (VERBOSE) {
-    printf("Called:");
-    for (double d : args) printf(" %.4f", d);
-    printf("\n");
+    Print("Called:");
+    for (double d : args) Print(" {:.4f}", d);
+    Print("\n");
   }
 
   {
@@ -67,7 +69,7 @@ double OptSeq::Eval(std::span<const double> args) {
     // When dying, just keep returning immediately to the optimizer.
     if (should_die) {
       if (VERBOSE) {
-        printf("Shutting down!\n");
+        Print("Shutting down!\n");
       }
       return 0.0;
     }

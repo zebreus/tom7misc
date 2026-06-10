@@ -1,16 +1,20 @@
 #include "large-optimizer.h"
 
-#include <cinttypes>
-#include <utility>
+#include <algorithm>
+#include <cmath>
+#include <numbers>
 #include <optional>
+#include <utility>
 #include <vector>
 
-#include "opt.h"
-#include "base/logging.h"
-#include "timer.h"
-#include "periodically.h"
+#include "ansi.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "opt.h"
+#include "periodically.h"
 #include "randutil.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -19,7 +23,7 @@ static std::pair<double, bool> OnlyIntegers(
   CHECK(args.size() == 1);
   double d = args[0];
 
-  CHECK(d == round(d)) << "Should only be called on integers";
+  CHECK(d == std::round(d)) << "Should only be called on integers";
 
   switch ((int)d) {
   case 0: return make_pair(-1, true);
@@ -38,12 +42,6 @@ static std::pair<double, bool> OnlyIntegers(
 // be low. Best solution is all zeroes.
 
 static std::pair<double, bool> F1(const std::vector<double> &args) {
-#if 0
-  printf("Call F1:");
-  for (double d : args) printf(" %.3f", d);
-  printf("\n");
-#endif
-
   for (double d : args) {
     CHECK(std::isfinite(d));
     CHECK(d >= -100.0 && d <= 100.0) << d;
@@ -58,9 +56,6 @@ static std::pair<double, bool> F1(const std::vector<double> &args) {
     neighbors += sqrt(d * d);
   }
 
-#if 0
-  printf("Got %.5f + %.5f\n", sum, neighbors);
-#endif
   return make_pair(sum + neighbors, true);
 }
 
@@ -80,7 +75,7 @@ static void SelfOptimize(int n) {
             const std::vector<double> v) {
             total_calls++;
             if (spam_per.ShouldRun()) {
-              printf("%" PRIi64 " calls\n", total_calls);
+              Print("{} calls\n", total_calls);
             }
             return F1(v);
           }, n, 0);
@@ -115,12 +110,12 @@ static void SelfOptimize(int n) {
 
         // Otherwise, faster wall-time is better.
         double sec = run_timer.Seconds();
-        printf("With ppp=%d, %.3fs\n", (int)round(ppp), sec);
-        return run_timer.Seconds();
+        Print("With ppp={}, {}\n", (int)round(ppp), ANSI::Time(sec));
+        return sec;
       },
       1.0, std::max(1.0, std::min(1000.0, (double)n)), 10);
 
-  printf("Best is %.3f taking %.3fs\n", arg, score);
+  Print("Best is {:.3f} taking {:.3f}s\n", arg, score);
 }
 
 template<bool CACHE = true>
@@ -149,24 +144,24 @@ static void OptF1(int n) {
   CHECK(besto.has_value());
   const auto &v = besto.value().first;
   CHECK((int)v.size() == n) << v.size() << " vs " << n;
-  printf("Best (score %.3f):", besto.value().second);
+  Print("Best (score {:.3f}):", besto.value().second);
   for (int i = 0; i < (int)v.size(); i++) {
     if (i < 20) {
       double d = v[i];
-      printf(" %.3f", d);
+      Print(" {:.3f}", d);
     } else {
-      printf(" ...");
+      Print(" ...");
       break;
     }
   }
-  printf("\n");
+  Print("\n");
 
   for (int i = 0; i < (int)v.size(); i++) {
     double d = v[i];
     CHECK(d >= -0.01 && d <= 0.01) << "#" << i << ": " << d;
   }
-  printf("OK with %d param(s) in %.3fs\n",
-         n, run_timer.Seconds());
+  Print("OK with {} param(s) in {}\n",
+        n, ANSI::Time(run_timer.Seconds()));
 }
 
 template<bool CACHE>
@@ -212,8 +207,7 @@ static void OptDoubles() {
   {
     Optimizer opt([](const std::vector<double> &v) {
         CHECK(v.size() == 3);
-        // printf("%.3f %.3f %.3f\n", v[0], v[1], v[2]);
-        return std::make_pair(abs(v[1] - 3.141592653589), true);
+        return std::make_pair(abs(v[1] - std::numbers::pi), true);
       }, 3, 0);
     std::vector<typename Optimizer::arginfo> arginfos = {
       Optimizer::Double(-100, -90),
@@ -228,7 +222,7 @@ static void OptDoubles() {
     CHECK(besto.has_value());
     CHECK(besto.value().first.size() == 3);
     const double res = besto.value().first[1];
-    const double diff = res - 3.141592653589;
+    const double diff = res - std::numbers::pi;
     CHECK(abs(diff) < 0.001) << res << " " << diff;
   }
 }
@@ -323,6 +317,7 @@ static void JitterInt() {
 }
 
 int main(int argc, char **argv) {
+  ANSI::Init();
 
   OptIntegers<false>();
   OptIntegers<true>();
@@ -356,5 +351,6 @@ int main(int argc, char **argv) {
   // Best is 21.
   // SelfOptimize(1000);
 
+  Print("OK\n");
   return 0;
 }

@@ -59,5 +59,8 @@ convert-johnson.exe : convert-johnson.o $(CC_LIB_OBJECTS)
 johnson-solids_test.exe : johnson-solids.o johnson-solids_test.o polyhedra.o hull-3d.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+polygonization_test.exe : polygonization_test.o polygonization.o polyhedra.o hull-3d.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe $(CC_LIB_OBJECTS)

@@ -17,6 +17,8 @@
 #include "timer.h"
 #include "yocto-math.h"
 
+using Mesh2D = PolyhedronMesh2D;
+
 [[maybe_unused]]
 static double Sample(const Polyhedron &poly, ArcFour *rc) {
   const frame3 outer_frame = yocto::rotation_frame(RandomQuaternion(rc));

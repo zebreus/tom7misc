@@ -71,6 +71,8 @@ struct Spark {
 
     virtual PollResult Poll() = 0;
 
+    virtual void Abort() = 0;
+
     virtual ~StreamingModelResponse() = 0;
   };
 

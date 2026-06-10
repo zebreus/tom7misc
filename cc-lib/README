@@ -65,6 +65,9 @@ are available under that license. See geom/marching.cc.
 geom/hilbert-curve.h is based on code from Wikipedia, which is
 cc-by-sa. See geom/hilbert-curve.h.
 
+geom/polygonization.* is based on poly2tri, with my additions
+avaiable under the same permissive license. See the .cc file.
+
 factorize is based on GNU coreutils's factor.c, which is GPL.
 See COPYING.
 
@@ -213,7 +216,8 @@ opt:
   Black-box function optimization.
 geom:
   Utitlities for geometry and computer graphics: Marching cubes
-  algorithm, Earth latitude-longitude routines, Hilbert curves.
+  algorithm, Earth latitude-longitude routines, Hilbert curves,
+  polyhedra, triangulation and polygonization, meshes.
 stb_image_*:
   Lower-level image reading and writing. I usually use the
   higher-level image.h.

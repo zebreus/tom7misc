@@ -27,6 +27,8 @@
 
 static constexpr int DIGITS = 24;
 
+using Mesh2D = PolyhedronMesh2D;
+
 // Visualize a patch under its parameterization. This is
 // using doubles and samples.
 static void PlotPatch(const Boundaries &boundaries,

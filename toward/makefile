@@ -7,7 +7,7 @@ BOX2D=../../box2d
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LFLAGS=`sdl2-config --libs`
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/fonts
 
 OPT=-O2 -flto
 CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) $(SDL_CFLAGS) -I$(BOX2D)/include/box2d --std=c++23

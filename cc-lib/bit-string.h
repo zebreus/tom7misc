@@ -27,6 +27,8 @@ struct BitString {
   BitString() { }
   inline BitString(size_t bits, bool bit = false);
 
+  inline BitString(BitStringConstView other);
+
   // Hint that we will want to store this many bits.
   inline void Reserve(size_t bits);
   // Set all the bits to the same value.
@@ -178,6 +180,27 @@ inline bool operator==(BitStringConstView a, BitStringConstView b) {
 
 
 // Inline implementations follow.
+BitString::BitString(BitStringConstView other) {
+  ResizeUninitialized(other.Size());
+  if (other.Size() == 0) return;
+
+  // Use memcpy in the common case that the data are aligned.
+  if ((other.offset & 7) == 0) {
+    std::memcpy(bytes.data(),
+                other.parent->bytes.data() + (other.offset >> 3),
+                bytes.size());
+    if (num_bits & 7) {
+      bytes.back() &= (0xFF << (8 - (num_bits & 7)));
+    }
+  } else {
+    for (size_t i = 0; i < other.Size(); i++) {
+      if (other.Get(i)) {
+        Set(i, true);
+      }
+    }
+  }
+}
+
 
 BitString::BitString(size_t bits, bool bit) {
   // PERF: Faster to create the vector with the

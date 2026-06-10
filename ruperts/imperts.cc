@@ -65,6 +65,7 @@ using vec4 = yocto::vec<double, 4>;
 using mat4 = yocto::mat<double, 4>;
 using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
+using Mesh2D = PolyhedronMesh2D;
 
 using Solution = SolutionDB::Solution;
 using Attempt = SolutionDB::Attempt;

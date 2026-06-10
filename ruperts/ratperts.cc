@@ -129,8 +129,8 @@ struct BigSolver {
 
     Polyhedron outer = Rotate(poly, outer_frame);
     Polyhedron inner = Rotate(poly, inner_frame);
-    Mesh2D souter = Shadow(outer);
-    Mesh2D sinner = Shadow(inner);
+    PolyhedronMesh2D souter = Shadow(outer);
+    PolyhedronMesh2D sinner = Shadow(inner);
 
     Rendering rendering(poly, 3840, 2160);
     rendering.RenderTriangulation(souter, 0xAA0000FF);

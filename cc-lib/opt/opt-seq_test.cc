@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 static void CreateAndDestroy() {
   OptSeq seq({{-1.0, +1.0}});
@@ -16,7 +17,7 @@ static void SimpleMinimize() {
   for (int i = 0; i < 100; i++) {
     std::vector<double> arg = seq.Next();
     CHECK(arg.size() == 1);
-    // printf("%.11g\n", arg[0]);
+    // Print("{:.11g}\n", arg[0]);
 
     const double x = arg[0];
 
@@ -35,7 +36,7 @@ static void SimpleMinimize() {
   CHECK(best_x > -0.755 && best_x < -0.754) << best_x;
   CHECK(best_y > -0.671 && best_y < -0.669) << best_y;
 
-  printf("Minimize: Destructor.\n");
+  Print("Minimize: Destructor.\n");
 }
 
 int main(int argc, char **argv) {
@@ -43,6 +44,6 @@ int main(int argc, char **argv) {
 
   SimpleMinimize();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

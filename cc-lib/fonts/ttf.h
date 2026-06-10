@@ -8,6 +8,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <string_view>
@@ -149,7 +150,7 @@ struct TTF {
   // its points. This picks the point closest to the given origin.
   // Doesn't change winding orders.
   //
-  // Requires that the last path end exactly on the start point. This will
+  // Requires that the last path ends exactly on the start point. This will
   // be the case for Contours that come from GetContours.
   static std::vector<Contour> NormalizeOrder(
       const std::vector<Contour> &contours,
@@ -215,9 +216,7 @@ struct TTF {
     // Not to be confused with SDF! This is the text file format for
     // FontForge. Extremely simple subset with many fields hackily
     // hard-coded. Name is the font name (spaces are stripped to
-    // produce the internal name; avoid weird characters) and
-    // copyright is a free-form line of text which seems to be the
-    // standard place to put something like a URL, too.
+    // produce the internal name; avoid weird characters).
     std::string ToSFD(const std::string &name) const;
   };
 
@@ -245,16 +244,10 @@ struct TTF {
     int x0, y0, x1, y1;
     stbtt_GetFontBoundingBox(&font, &x0, &y0, &x1, &y1);
 
-    printf("x0: %d, y0: %d, x1: %d, y1: %d\n",
-           x0, y0, x1, y1);
-
     // Note maxness of y coordinate is swapped since we use
     // a flipped coordinate system.
     const auto &[xmin, ymax] = Norm(x0, y0);
     const auto &[xmax, ymin] = Norm(x1, y1);
-
-    printf("x0: %.2f, y0: %.2f, x1: %.2f, y1: %.2f\n",
-           xmin, ymin, xmax, ymax);
 
     return std::make_tuple(xmin, ymin, xmax, ymax);
   }
@@ -320,7 +313,7 @@ struct TTF {
 
   float Baseline() const { return baseline; }
 
-private:
+ private:
 
   // font uses "y positive up" coordinates.
   // ascent is the coordinate above the baseline (typically positive) and

@@ -131,10 +131,10 @@ even close‽\n
 {)";
 
 static void TestRecoverJSON() {
-  for (const std::string_view bad_json : {BAD_JSON1 /* , BAD_JSON2 */}) {
+  for (const std::string_view bad_json : {BAD_JSON1, BAD_JSON2}) {
     rapidjson::Document document;
     CHECK(document.Parse(std::string(bad_json)).HasParseError()) << "This "
-    "test wants an input that does not parse!";
+      "test wants an input that does not initially parse!";
 
     std::string rescued(ModelUtil::RescueJSON(bad_json));
 

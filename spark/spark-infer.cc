@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cctype>
+#include <condition_variable>
 #include <format>
 #include <memory>
 #include <mutex>
@@ -257,8 +258,6 @@ event: response.completed
 
 */
 
-#include <condition_variable>
-
 Spark::StreamingModelResponse::~StreamingModelResponse() {}
 
 namespace {
@@ -285,6 +284,18 @@ struct SMRImpl : public Spark::StreamingModelResponse {
     if (worker.joinable()) {
       worker.detach();
     }
+  }
+
+  void Abort() override {
+    {
+      MutexLock ml(&shared->mu);
+      shared->should_die.store(true);
+      if (shared->state != State::ERROR) {
+        shared->error = "Aborted";
+        shared->state = State::ERROR;
+      }
+    }
+    shared->cv.notify_all();
   }
 
   State GetState() override {
@@ -418,7 +429,9 @@ Spark::Stream(const ModelRequest &req, int verbose) {
     std::string sse_buffer;
 
     enum class ParseState {
-      HEADERS, CHUNK_HEADER, CHUNK_DATA, BODY_STREAM, DONE
+      HEADERS, CHUNK_HEADER, CHUNK_DATA, BODY_STREAM,
+      // (Includes errors.)
+      DONE
     };
     ParseState parse_state = ParseState::HEADERS;
     size_t chunk_left = 0;
@@ -426,12 +439,18 @@ Spark::Stream(const ModelRequest &req, int verbose) {
     Net::Socket socks[1] = {sock};
     std::string_view req_remaining = http_req;
 
-    auto SetError = [&](std::string err) {
-      MutexLock ml(&shared->mu);
-      shared->error = err;
-      shared->state = SMRImpl::State::ERROR;
-      shared->cv.notify_all();
-    };
+    auto SetError = [&](std::string_view err) {
+        {
+          MutexLock ml(&shared->mu);
+          // Avoid overwriting an Abort message from another
+          // thread.
+          if (!shared->should_die.load()) {
+            shared->error = err;
+            shared->state = SMRImpl::State::ERROR;
+          }
+        }
+        shared->cv.notify_all();
+      };
 
     while (!resp_done &&
            (open_time.Seconds() - last_activity < MAX_SECONDS)) {
@@ -462,6 +481,7 @@ Spark::Stream(const ModelRequest &req, int verbose) {
             req_remaining.remove_prefix(*bytes);
           }
         }
+
       } else {
         if (!ready.readable.empty()) {
           uint8_t buf[8192];
@@ -524,6 +544,8 @@ Spark::Stream(const ModelRequest &req, int verbose) {
                   progress = true;
                 } catch (...) {
                   SetError("Invalid chunk size");
+                  parse_state = ParseState::DONE;
+                  resp_done = true;
                   break;
                 }
               }
@@ -543,7 +565,7 @@ Spark::Stream(const ModelRequest &req, int verbose) {
             }
           }
 
-          while (true) {
+          for (;;) {
             size_t end = sse_buffer.find("\n\n");
             size_t skip = 2;
             size_t rn_end = sse_buffer.find("\r\n\r\n");
@@ -592,9 +614,13 @@ Spark::Stream(const ModelRequest &req, int verbose) {
                   shared->full_content += delta;
 
                 } else if (type == "response.completed") {
-                  MutexLock ml(&shared->mu);
-                  shared->state = SMRImpl::State::DONE;
-                  resp_done = true;
+                  {
+                    MutexLock ml(&shared->mu);
+                    if (shared->state != SMRImpl::State::ERROR) {
+                      shared->state = SMRImpl::State::DONE;
+                    }
+                    resp_done = true;
+                  }
                   shared->cv.notify_all();
                 }
               }
@@ -606,21 +632,20 @@ Spark::Stream(const ModelRequest &req, int verbose) {
 
     Net::Close(&sock);
 
-    MutexLock ml(&shared->mu);
-    if (!resp_done && !shared->should_die.load() &&
-        (open_time.Seconds() - last_activity >= MAX_SECONDS)) {
-      shared->error = "Operation timed out";
-      shared->state = SMRImpl::State::ERROR;
-    } else if (shared->state != SMRImpl::State::ERROR &&
-               shared->state != SMRImpl::State::DONE) {
-      shared->state = SMRImpl::State::DONE;
+    {
+      MutexLock ml(&shared->mu);
+      if (!resp_done && !shared->should_die.load() &&
+          (open_time.Seconds() - last_activity >= MAX_SECONDS)) {
+        shared->error = "Operation timed out";
+        shared->state = SMRImpl::State::ERROR;
+      } else if (shared->state != SMRImpl::State::ERROR &&
+                 shared->state != SMRImpl::State::DONE) {
+        shared->state = SMRImpl::State::DONE;
+      }
     }
     shared->cv.notify_all();
   });
 
   return res;
 }
-
-
-
 

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -792,6 +793,18 @@ static void TestCommas() {
             Util::UnsignedWithCommas(7'111'222'333'444ULL));
 }
 
+static void TestFormatNum() {
+  int64_t neg = (int64_t)~uint64_t{0};
+  std::string negs = Util::FormatNum(neg);
+  CHECK(negs.starts_with("-")) << negs;
+
+  CHECK(!Util::FormatNum(0).starts_with("-"));
+  CHECK(!Util::FormatNum(1).starts_with("-"));
+  CHECK(!Util::FormatNum(
+            std::numeric_limits<int64_t>::max()).starts_with("-"));
+  CHECK(Util::FormatNum(2) != Util::FormatNum(3));
+}
+
 static void TestMemMem() {
   const char *s1 = "the quick brown quack foxed";
   const uint8_t *s2 = Util::MemMem((const uint8_t*)s1, strlen(s1),
@@ -1087,6 +1100,7 @@ int main(int argc, char **argv) {
   TestHexString();
   TestReplace();
   TestCommas();
+  TestFormatNum();
   TestNormalizeLines();
   TestMemMem();
   TestCase();

@@ -3,23 +3,23 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <format>
-#include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
-#include <cstdlib>
 
-#include "model-tasks.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "color-util.h"
 #include "markdown.h"
 #include "model-client.h"
+#include "model-tasks.h"
 #include "model-util.h"
 #include "net.h"
 #include "rapidjson/document.h"
@@ -49,11 +49,11 @@ The user's question is: "{}"
 {}
 </FILES>
 
-Now, please solve the user's question as best you can. Your output
-is shown on the user's command-line terminal, so please be brief.
-You may use markdown to set off code and command blocks, and to
-bold phrases in the prose. Avoid bullet points, tables, and other
-advanced markup. Unicode symbols are acceptable.
+Now, please solve the user's question as best you can. Your output is
+shown on the user's command-line terminal, so please be brief. You may
+use markdown (inside the JSON string literals) to set off code and
+command blocks, and to bold phrases in the prose. Avoid bullet points,
+tables, and other advanced markup. Unicode symbols are acceptable.
 
 It is good to include code that directly solves the user's problem,
 such as a correction to a typo found in the input files. Infer
@@ -250,24 +250,24 @@ int main(int argc, char **argv) {
                                   available, opt);
 
       std::vector<std::string> to_include;
-      if (std::holds_alternative<ModelTasks::ChosenFiles>(result)) {
-        const auto &cf = std::get<ModelTasks::ChosenFiles>(result);
-        to_include = cf.files;
-        if (!cf.message.empty()) {
-          Markdown::Document doc = Markdown::Parse(cf.message);
+      if (const ModelTasks::ChosenFiles *cf =
+              std::get_if<ModelTasks::ChosenFiles>(&result)) {
+        to_include = cf->files;
+        if (!cf->message.empty()) {
+          Markdown::Document doc = Markdown::Parse(cf->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
-      } else if (std::holds_alternative<ModelTasks::Answer>(result)) {
-        const auto &ans = std::get<ModelTasks::Answer>(result);
-        if (!ans.message.empty()) {
-          Markdown::Document doc = Markdown::Parse(ans.message);
+      } else if (const ModelTasks::Answer *ans =
+                     std::get_if<ModelTasks::Answer>(&result)) {
+        if (!ans->message.empty()) {
+          Markdown::Document doc = Markdown::Parse(ans->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
         exit(0);
-      } else if (std::holds_alternative<ModelTasks::Failure>(result)) {
-        const auto &fail = std::get<ModelTasks::Failure>(result);
-        if (!fail.message.empty()) {
-          Markdown::Document doc = Markdown::Parse(fail.message);
+      } else if (const ModelTasks::Failure *fail =
+                     std::get_if<ModelTasks::Failure>(&result)) {
+        if (!fail->message.empty()) {
+          Markdown::Document doc = Markdown::Parse(fail->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
         exit(1);

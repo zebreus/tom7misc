@@ -464,7 +464,7 @@ Polyhedron SmallPoly(const BigPoly &big) {
   };
 }
 
-Mesh2D SmallMesh(const BigMesh2D &big) {
+PolyhedronMesh2D SmallMesh(const BigMesh2D &big) {
   std::vector<vec2> vertices;
   vertices.reserve(big.vertices.size());
   for (int i = 0; i < big.vertices.size(); i++) {
@@ -475,7 +475,7 @@ Mesh2D SmallMesh(const BigMesh2D &big) {
       });
   }
 
-  return Mesh2D{
+  return PolyhedronMesh2D{
     .vertices = std::move(vertices),
     .faces = big.faces,
   };

@@ -1036,7 +1036,7 @@ static PageInfo PageBit7Extended() {
 static PageInfo PageBit7Extended2() {
   PageInfo info;
   info.sections = {
-    {0, 16 * 3 - 4},
+    {0, 16 * 3 - 6},
     {16 * 3, 5 * 16},
     {16 * 8, 16 * 8},
   };

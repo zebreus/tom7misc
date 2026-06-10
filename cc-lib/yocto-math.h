@@ -7,6 +7,8 @@
 //
 // Local changes for cc-lib:
 //  - IIRC I fixed a pretty serious bug in quaternion multiplication?
+//  - Deleted some deprecated stuff
+//  - Cleaned up some potentially invasive declarations that I don't use
 //
 // License at the bottom.
 
@@ -23,16 +25,6 @@
 #include <cstdint>
 #include <limits>
 #include <utility>
-
-// -----------------------------------------------------------------------------
-// USING DIRECTIVES
-// -----------------------------------------------------------------------------
-namespace yocto {
-
-// using directives
-using std::pair;
-
-}  // namespace yocto
 
 // -----------------------------------------------------------------------------
 // MATH CONSTANTS AND FUNCTIONS
@@ -681,7 +673,7 @@ inline mat<T, 4> perspective_mat(T fovy, T aspect, T near);
 
 // Rotation conversions.
 template <typename T>
-inline pair<vec<T, 3>, T> rotation_axisangle(const vec<T, 4>& quat);
+inline std::pair<vec<T, 3>, T> rotation_axisangle(const vec<T, 4>& quat);
 template <typename T>
 inline vec<T, 4> rotation_quat(const vec<T, 3>& axis, T angle);
 template <typename T>
@@ -702,18 +694,19 @@ inline vec<I, 2> image_coords(const vec<T, 2>& mouse_pos,
 
 // Center image and autofit. Returns center and scale.
 template <typename T, typename I>
-inline pair<vec<T, 2>, T> camera_imview(const vec<T, 2>& center, T scale,
+inline std::pair<vec<T, 2>, T> camera_imview(const vec<T, 2>& center, T scale,
     const vec<I, 2>& imsize, const vec<I, 2>& winsize, bool zoom_to_fit);
 
 // Turntable for UI navigation. Returns from and to.
 template <typename T>
-inline pair<vec<T, 3>, vec<T, 3>> camera_turntable(const vec<T, 3>& from,
+inline std::pair<vec<T, 3>, vec<T, 3>> camera_turntable(const vec<T, 3>& from,
     const vec<T, 3>& to, const vec<T, 3>& up, const vec<T, 2>& rotate, T dolly,
     const vec<T, 2>& pan);
 
 // Turntable for UI navigation. Returns frame and focus.
 template <typename T>
-inline pair<frame<T, 3>, T> camera_turntable(const frame<T, 3>& frame, T focus,
+inline std::pair<frame<T, 3>, T> camera_turntable(
+    const frame<T, 3>& frame, T focus,
     const vec<T, 2>& rotate, T dolly, const vec<T, 2>& pan);
 
 // FPS camera for UI navigation for a frame parametrization. Returns frame.
@@ -2242,7 +2235,7 @@ inline mat<T, 4> perspective_mat(T fovy, T aspect, T near) {
 
 // Rotation conversions.
 template <typename T>
-inline pair<vec<T, 3>, T> rotation_axisangle(const vec<T, 4>& quat) {
+inline std::pair<vec<T, 3>, T> rotation_axisangle(const vec<T, 4>& quat) {
   return {normalize(vec<T, 3>{quat.x, quat.y, quat.z}), 2 * acos(quat.w)};
 }
 template <typename T>
@@ -2277,7 +2270,7 @@ inline vec<I, 2> image_coords(const vec<T, 2>& mouse_pos,
 
 // Center image and autofit. Returns center and scale.
 template <typename T, typename I>
-inline pair<vec<T, 2>, T> camera_imview(const vec<T, 2>& center, T scale,
+inline std::pair<vec<T, 2>, T> camera_imview(const vec<T, 2>& center, T scale,
     const vec<I, 2>& imsize, const vec<I, 2>& winsize, bool zoom_to_fit) {
   if (zoom_to_fit) {
     return {{(T)winsize.x / 2, (T)winsize.y / 2},
@@ -2291,7 +2284,7 @@ inline pair<vec<T, 2>, T> camera_imview(const vec<T, 2>& center, T scale,
 
 // Turntable for UI navigation. Returns from and to.
 template <typename T>
-inline pair<vec<T, 3>, vec<T, 3>> camera_turntable(const vec<T, 3>& from_,
+inline std::pair<vec<T, 3>, vec<T, 3>> camera_turntable(const vec<T, 3>& from_,
     const vec<T, 3>& to_, const vec<T, 3>& up, const vec<T, 2>& rotate, T dolly,
     const vec<T, 2>& pan) {
   // copy values
@@ -2334,7 +2327,8 @@ inline pair<vec<T, 3>, vec<T, 3>> camera_turntable(const vec<T, 3>& from_,
 
 // Turntable for UI navigation. Returns frame and focus.
 template <typename T>
-inline pair<frame<T, 3>, T> camera_turntable(const frame<T, 3>& frame_, T focus,
+inline std::pair<frame<T, 3>, T> camera_turntable(
+    const frame<T, 3>& frame_, T focus,
     const vec<T, 2>& rotate, T dolly, const vec<T, 2>& pan) {
   // copy values
   auto frame = frame_;
@@ -2556,7 +2550,9 @@ constexpr auto enumerate(const Sequence& sequence, T start) {
       ++index;
       ++iterator;
     }
-    pair<const T&, Reference> operator*() const { return {index, *iterator}; }
+    std::pair<const T&, Reference> operator*() const {
+      return {index, *iterator};
+    }
   };
   struct enumerate_helper {
     const Sequence& sequence;
@@ -2582,7 +2578,9 @@ constexpr auto enumerate(Sequence& sequence, T start) {
       ++index;
       ++iterator;
     }
-    pair<T&, Reference> operator*() const { return {index, *iterator}; }
+    std::pair<T&, Reference> operator*() const {
+      return {index, *iterator};
+    }
   };
   struct enumerate_helper {
     Sequence& sequence;
@@ -2610,7 +2608,7 @@ constexpr auto zip(const Sequence1& sequence1, const Sequence2& sequence2) {
       ++iterator1;
       ++iterator2;
     }
-    pair<Reference1, Reference2> operator*() const {
+    std::pair<Reference1, Reference2> operator*() const {
       return {*iterator1, *iterator2};
     }
   };
@@ -2644,7 +2642,7 @@ constexpr auto zip(Sequence1& sequence1, Sequence2& sequence2) {
       ++iterator1;
       ++iterator2;
     }
-    pair<Reference1, Reference2> operator*() const {
+    std::pair<Reference1, Reference2> operator*() const {
       return {*iterator1, *iterator2};
     }
   };
@@ -2678,7 +2676,7 @@ constexpr auto zip(const Sequence1& sequence1, Sequence2& sequence2) {
       ++iterator1;
       ++iterator2;
     }
-    pair<Reference1, Reference2> operator*() const {
+    std::pair<Reference1, Reference2> operator*() const {
       return {*iterator1, *iterator2};
     }
   };
@@ -2712,7 +2710,7 @@ constexpr auto zip(Sequence1& sequence1, const Sequence2& sequence2) {
       ++iterator1;
       ++iterator2;
     }
-    pair<Reference1, Reference2> operator*() const {
+    std::pair<Reference1, Reference2> operator*() const {
       return {*iterator1, *iterator2};
     }
   };
@@ -2740,38 +2738,6 @@ template <typename T>
 inline std::ptrdiff_t ssize(const T& container) {
   return (std::ptrdiff_t)std::size(container);
 }
-
-}  // namespace yocto
-
-// -----------------------------------------------------------------------------
-// BACKWARD COMPATIBILITY
-// -----------------------------------------------------------------------------
-namespace yocto {
-
-// Zero vector constants.
-[[deprecated]] constexpr auto zero1f = vec1f{0};
-[[deprecated]] constexpr auto zero2f = vec2f{0, 0};
-[[deprecated]] constexpr auto zero3f = vec3f{0, 0, 0};
-[[deprecated]] constexpr auto zero4f = vec4f{0, 0, 0, 0};
-[[deprecated]] constexpr auto zero2i = vec2i{0, 0};
-[[deprecated]] constexpr auto zero3i = vec3i{0, 0, 0};
-[[deprecated]] constexpr auto zero4i = vec4i{0, 0, 0, 0};
-[[deprecated]] constexpr auto zero4b = vec4b{0, 0, 0, 0};
-
-// Indentity frames.
-[[deprecated]] constexpr auto identity2x3f = frame2f{{1, 0}, {0, 1}, {0, 0}};
-[[deprecated]] constexpr auto identity3x4f = frame3f{
-    {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}};
-
-// Identity matrices constants.
-[[deprecated]] constexpr auto identity2x2f = mat2f{{1, 0}, {0, 1}};
-[[deprecated]] constexpr auto identity3x3f = mat3f{
-    {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-[[deprecated]] constexpr auto identity4x4f = mat4f{
-    {1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}};
-
-// Constants
-[[deprecated]] constexpr auto identity_quat4f = quat4f{0, 0, 0, 1};
 
 }  // namespace yocto
 

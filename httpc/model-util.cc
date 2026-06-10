@@ -558,7 +558,7 @@ std::string ModelUtil::EscapeJSON(std::string_view s) {
   return esc;
 }
 
-std::string ModelUtil::RescueJSON(std::string_view j) {
+static std::string RescueJSONNewlines(std::string_view j) {
   std::string out;
   out.reserve(j.size());
   bool in_str = false;
@@ -575,7 +575,75 @@ std::string ModelUtil::RescueJSON(std::string_view j) {
     else if (in_str && c == '\r') out += "\\r";
     else out.push_back(c);
   }
+
   return out;
+}
+
+static std::optional<std::string> RescueJSONLine(std::string_view line) {
+  std::string_view remaining = line;
+
+  size_t q1 = remaining.find('"');
+  if (q1 == std::string_view::npos) return std::nullopt;
+  remaining.remove_prefix(q1 + 1);
+
+  size_t q2 = remaining.find('"');
+  if (q2 == std::string_view::npos) return std::nullopt;
+  remaining.remove_prefix(q2 + 1);
+
+  ConsumeWS(&remaining);
+  if (remaining.empty() || remaining[0] != ':') return std::nullopt;
+  remaining.remove_prefix(1);
+
+  ConsumeWS(&remaining);
+  if (remaining.empty() || remaining[0] != '"') return std::nullopt;
+
+  size_t prefix_len = line.size() - remaining.size() + 1;
+  std::string_view prefix = line.substr(0, prefix_len);
+  remaining.remove_prefix(1);
+
+  size_t last_quote = remaining.rfind('"');
+  if (last_quote == std::string_view::npos) return std::nullopt;
+
+  std::string_view inside = remaining.substr(0, last_quote);
+  std::string_view suffix = remaining.substr(last_quote);
+
+  std::string new_val;
+  new_val.reserve(inside.size() + 16);
+  for (size_t i = 0; i < inside.size(); i++) {
+    if (inside[i] == '"') {
+      size_t b = 0;
+      while (i > b && inside[i - b - 1] == '\\') b++;
+      if (b % 2 == 0) {
+        new_val += '\\';
+      }
+    }
+    new_val += inside[i];
+  }
+
+  return {std::string(prefix) + new_val + std::string(suffix)};
+}
+
+static std::string RescueJSONQuotes(std::string_view j) {
+  std::vector<std::string> lines = Util::SplitToLines(j);
+  for (std::string &line : lines) {
+    std::optional<std::string> s = RescueJSONLine(line);
+    if (s.has_value()) {
+      line = s.value();
+    }
+  }
+
+  return Util::Join(lines, "\n");
+}
+
+std::string ModelUtil::RescueJSON(std::string_view j) {
+  std::string rj = RescueJSONNewlines(j);
+  rapidjson::Document doc;
+  if (!doc.Parse(rj.data(), rj.size()).HasParseError()) {
+    return rj;
+  }
+
+  // Then try also fixing unescaped double-quotes.
+  return RescueJSONQuotes(rj);
 }
 
 std::optional<rapidjson::Document> ModelUtil::ParseSloppy(

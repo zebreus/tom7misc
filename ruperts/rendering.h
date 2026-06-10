@@ -14,6 +14,8 @@
 struct Rendering {
   using vec2 = yocto::vec<double, 2>;
 
+  using Mesh2D = PolyhedronMesh2D;
+
   Rendering(const Polyhedron &p, int width, int height);
   void ClearToAlpha();
 

@@ -2,17 +2,18 @@
 #include "model-tasks.h"
 
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
-#include "base/print.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "model-client.h"
 #include "model-util.h"
 
 static void ChooseFilesSuccess() {
-  auto client = TestModelClient::Create([](std::string_view) {
+  auto client = TestModelClient::Create([](std::string_view prompt) {
     return R"({
       "notes": "Testing success case.",
       "files": ["model-tasks_test.cc", "model-tasks.h"],

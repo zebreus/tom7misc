@@ -30,6 +30,8 @@
 
 DECLARE_COUNTERS(iters, attempts);
 
+using Mesh2D = PolyhedronMesh2D;
+
 // A complex is a solid composed of multiple convex solids in
 // a rupert configuration. Rupert configuration means that one
 // solid can pass cleanly through another. rupert(outer, inner)

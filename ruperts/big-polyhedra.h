@@ -59,6 +59,7 @@ struct BigPoly {
   std::string name;
 };
 
+// (big version of PolyhedronMesh2D)
 struct BigMesh2D {
   std::vector<BigVec2> vertices;
   std::shared_ptr<const Faces> faces;
@@ -360,7 +361,7 @@ BigMesh2D Translate(const BigVec2 &t, const BigMesh2D &m);
 BigMesh2D RotateAndProject(const BigFrame &f, const BigPoly &poly);
 
 Polyhedron SmallPoly(const BigPoly &big);
-Mesh2D SmallMesh(const BigMesh2D &big);
+PolyhedronMesh2D SmallMesh(const BigMesh2D &big);
 
 // Positive if clockwise winding order; negative for ccw.
 BigRat SignedAreaOfHull(const BigMesh2D &mesh, const std::vector<int> &hull);

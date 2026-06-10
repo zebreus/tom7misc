@@ -28,6 +28,8 @@
 
 static CL *cl = nullptr;
 
+using Mesh2D = PolyhedronMesh2D;
+
 // TODO: Use database.
 
 struct RupertGPU {

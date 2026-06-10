@@ -1,7 +1,7 @@
 
 default : opt_test.exe optimizer_test.exe opt-seq_test.exe large-optimizer_test.exe
 
-BASE=../base/logging.o ../base/stringprintf.o ../arcfour.o
+BASE=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -45,7 +45,7 @@ optimizer_test.o : optimizer_test.cc opt.h optimizer.h
 optimizer_test.exe : opt.o optimizer_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-large-optimizer_test.exe : opt.o large-optimizer_test.o $(BASE)
+large-optimizer_test.exe : opt.o large-optimizer_test.o large-optimizer.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 opt-seq_test.exe : opt-seq_test.o opt-seq.o opt.o $(BASE)

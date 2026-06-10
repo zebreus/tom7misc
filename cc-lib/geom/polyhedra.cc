@@ -668,8 +668,8 @@ double PointLineDistance(
 }
 
 // Create the shadow of the polyhedron on the x-y plane.
-Mesh2D Shadow(const Polyhedron &p) {
-  Mesh2D mesh;
+PolyhedronMesh2D Shadow(const Polyhedron &p) {
+  PolyhedronMesh2D mesh;
   mesh.vertices.resize(p.vertices.size());
   for (int i = 0; i < (int)p.vertices.size(); i++) {
     const vec3 &v = p.vertices[i];
@@ -737,7 +737,7 @@ std::pair<vec2, double> ClosestPointOnHull(
 }
 
 
-double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
+double DistanceToMesh(const PolyhedronMesh2D &mesh, const vec2 &pt) {
   std::optional<double> best_sqdist;
   for (const std::vector<int> &polygon : mesh.faces->v) {
     double sqdist = SquaredDistanceToHull(mesh.vertices, polygon, pt);
@@ -1084,13 +1084,13 @@ inline vec2 TransformAndProjectPoint(const frame3 &f, const vec3 &v) {
   return fx + fy + fz + o;
 }
 
-Mesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p) {
+PolyhedronMesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p) {
   std::vector<vec2> vertices;
   vertices.reserve(p.vertices.size());
   for (const vec3 &v : p.vertices) {
     vertices.push_back(TransformAndProjectPoint(frame, v));
   }
-  return Mesh2D{.vertices = std::move(vertices), .faces = p.faces};
+  return PolyhedronMesh2D{.vertices = std::move(vertices), .faces = p.faces};
 }
 
 void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
@@ -3112,4 +3112,13 @@ std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
   if (name == "onperthedron") return Onperthedron();
 
   return std::nullopt;
+}
+
+Polyhedron PolyhedronByNameOrDie(std::string_view name) {
+  if (std::optional<Polyhedron> opoly = PolyhedronByName(name)) {
+    return std::move(opoly.value());
+  } else {
+    LOG(FATAL) << "Unknown polyhedron (by name): " << name;
+    return {};
+  }
 }

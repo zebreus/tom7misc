@@ -30,6 +30,8 @@
 
 DECLARE_COUNTERS(iters, attempts);
 
+using Mesh2D = PolyhedronMesh2D;
+
 // Try to find a configuration of three cubes,
 // outer
 // middle

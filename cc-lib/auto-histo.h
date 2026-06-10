@@ -372,7 +372,6 @@ struct AutoHisto {
   bool IsIntegral() const { return integral; }
 
 
-
   // One-line ANSI histogram with color.
   // The low and high buckets (only) are labeled at the beginning and
   // end of the string.
@@ -399,29 +398,54 @@ struct AutoHisto {
       if (maxx == minx) maxx = minx + 1;
     }
 
-    int buckets = max_width - (int)FormatLabel(minx).size() -
-                  (int)FormatLabel(maxx).size() - 2;
-    if (buckets < 1) buckets = 1;
+    int max_buckets = max_width - (int)FormatLabel(minx).size() -
+                      (int)FormatLabel(maxx).size() - 2;
+    if (max_buckets < 1) max_buckets = 1;
+
+    int buckets = max_buckets;
+    if (integral && maxx - minx > 0) {
+      buckets = std::min<int>(buckets, static_cast<int>(maxx - minx));
+    }
 
     Histo histo = GetHisto(buckets);
 
     int needed_buckets = max_width - (int)FormatLabel(histo.min).size() -
                          (int)FormatLabel(histo.max).size() - 2;
     if (needed_buckets < 1) needed_buckets = 1;
+    if (integral && maxx - minx > 0) {
+      needed_buckets = std::min<int>(needed_buckets,
+                                     static_cast<int>(maxx - minx));
+    }
     if (needed_buckets != buckets) {
       buckets = needed_buckets;
       histo = GetHisto(buckets);
     }
 
-    std::string ret = FormatLabel(histo.min) + " ";
+    std::string min_str = FormatLabel(histo.min);
+    std::string max_str = FormatLabel(histo.max);
+
+    int avail_width = max_width - (int)min_str.size() - (int)max_str.size() - 2;
+    int chars_per_bucket = std::max(1, avail_width / buckets);
+
+    std::string ret = min_str + "|";
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const uint32_t bar_color = (bidx & 1) ? 0xc8c880FF : 0xbebe76FF;
       ret.append(ANSI::ForegroundRGB32(bar_color));
-      ret.append(FilledColumnChar(histo.buckets[bidx] / histo.max_value));
+      std::string char_str =
+        FilledColumnChar(histo.buckets[bidx] / histo.max_value);
+      for (int i = 0; i < chars_per_bucket; i++) {
+        ret.append(char_str);
+      }
     }
     ret += ANSI_RESET;
-    ret += " ";
-    ret += FormatLabel(histo.max);
+    ret += "|";
+    ret += max_str;
+
+    int total_codepoints = (int)min_str.size() + 1 +
+      (buckets * chars_per_bucket) + 1 + (int)max_str.size();
+    if (total_codepoints < max_width) {
+      ret.append(max_width - total_codepoints, ' ');
+    }
 
     return ret;
   }

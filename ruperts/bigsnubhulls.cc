@@ -31,6 +31,7 @@
 #include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
+using Mesh2D = PolyhedronMesh2D;
 
 DECLARE_COUNTERS(too_close);
 
