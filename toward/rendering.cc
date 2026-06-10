@@ -143,10 +143,10 @@ void main() {
   gl_Position = vec4(ndc, 0.0, 1.0);
 
   uint c = t.rgba;
-  float r = float(c & 0xFFu) / 255.0;
-  float g = float((c >> 8u) & 0xFFu) / 255.0;
-  float b = float((c >> 16u) & 0xFFu) / 255.0;
-  float a = float((c >> 24u) & 0xFFu) / 255.0;
+  float r = float((c >> 24u) & 0xFFu) / 255.0;
+  float g = float((c >> 16u) & 0xFFu) / 255.0;
+  float b = float((c >> 8u) & 0xFFu) / 255.0;
+  float a = float(c & 0xFFu) / 255.0;
   v_color = vec4(r, g, b, a);
 }
 )";
