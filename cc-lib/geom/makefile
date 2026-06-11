@@ -1,5 +1,5 @@
 
-default : latlon_test.exe latlon-tree_test.exe bezier_test.exe hilbert-curve_test.exe tree-2d_test.exe tree-3d_test.exe tree-nd_test.exe mesh_test.exe hull-3d_test.exe polyhedra_test.exe point-map_test.exe
+default : latlon_test.exe latlon-tree_test.exe bezier_test.exe hilbert-curve_test.exe tree-2d_test.exe tree-3d_test.exe tree-nd_test.exe mesh_test.exe hull-3d_test.exe polygons_test.exe polyhedra_test.exe point-map_test.exe polygonization_test.exe
 
 CC_LIB=..
 
@@ -44,7 +44,10 @@ hull-2d_test.exe : hull-2d.o hull-2d_test.o $(CC_LIB_OBJECTS)
 hull-3d_test.exe : hull-3d.o hull-3d_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-polyhedra_test.exe : polyhedra.o hull-3d.o polyhedra_test.o $(CC_LIB_OBJECTS)
+polygons_test.exe : polygons_test.o polygons.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+polyhedra_test.exe : polyhedra.o polygons.o hull-3d.o polyhedra_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 point-map_test.exe : point-map_test.o $(CC_LIB_OBJECTS)
@@ -59,7 +62,7 @@ convert-johnson.exe : convert-johnson.o $(CC_LIB_OBJECTS)
 johnson-solids_test.exe : johnson-solids.o johnson-solids_test.o polyhedra.o hull-3d.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-polygonization_test.exe : polygonization_test.o polygonization.o polyhedra.o hull-3d.o $(CC_LIB_OBJECTS)
+polygonization_test.exe : polygonization_test.o polygonization.o polygons.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

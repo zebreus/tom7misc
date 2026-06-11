@@ -1,4 +1,5 @@
 
+#include "geom/polygons.h"
 #include "ruperts-util.h"
 
 #include <cmath>
@@ -49,7 +50,7 @@ static void TestCircle() {
     }
 
     std::vector<int> hull = Hull2D::QuickHull(points);
-    if (!PointInPolygon(vec2{0.0, 0.0}, points, hull)) {
+    if (!PointInPolygon(points, hull, vec2{0.0, 0.0})) {
       // This is a precondition, so try again.
       iters--;
       continue;
@@ -66,11 +67,11 @@ static void TestCircle() {
       };
 
       if (circumscribed.DefinitelyOutside(pt)) {
-        CHECK(!PointInPolygon(pt, points, hull)) << VecString(pt);
+        CHECK(!PointInPolygon(points, hull, pt)) << VecString(pt);
       }
 
       if (inscribed.DefinitelyInside(pt)) {
-        CHECK(PointInPolygon(pt, points, hull)) << VecString(pt);
+        CHECK(PointInPolygon(points, hull, pt)) << VecString(pt);
       }
     }
   }

@@ -211,7 +211,7 @@ struct Threeperts {
                 if (false && outer_circle.DefinitelyInside(iv))
                   continue;
 
-                if (!PointInPolygon(iv, outer_vertices, outer_hull)) {
+                if (!PointInPolygon(outer_vertices, outer_hull, iv)) {
                   error += DistanceToHull(outer_vertices, outer_hull, iv);
                   errors++;
                 }

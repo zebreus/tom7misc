@@ -395,13 +395,13 @@ bool ValidateSolution(const BigPoly &poly,
 
 // Point-in-polygon test using the winding number algorithm.
 // Takes a vertex buffer and indices into that set.
-bool PointInPolygon(const BigVec2 &point,
-                    const std::vector<BigVec2> &vertices,
-                    const std::vector<int> &polygon);
+bool PointInPolygon(const std::vector<BigVec2> &vertices,
+                    const std::vector<int> &polygon,
+                    const BigVec2 &point);
 
 // Takes the polygon directly as vertices.
-bool PointInPolygon(const BigVec2 &point,
-                    const std::vector<BigVec2> &polygon);
+bool PointInPolygon(const std::vector<BigVec2> &polygon,
+                    const BigVec2 &point);
 
 // Is pt strictly within the triangle a-b-c? Exact. Works with both
 // winding orders.

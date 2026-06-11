@@ -63,7 +63,7 @@
 #include <variant>
 #include <vector>
 
-#include "geom/polyhedra.h"
+#include "geom/polygons.h"
 #include "yocto-math.h"
 
 namespace {
@@ -1974,40 +1974,41 @@ class CDT {
 // TODO: Add Steiner points!
 Polygonization::TriangulateResult Polygonization::Triangulate(
     const Shape &shape) {
-  if (shape.points.empty()) {
+  if (shape.polys.empty()) {
     return TriangularMesh{};
   }
 
-  int num_paths = (int)shape.points.size();
-  std::vector<int> depth(num_paths, 0);
-  std::vector<int> parent(num_paths, -1);
+  int num_polys = (int)shape.polys.size();
+  std::vector<int> depth(num_polys, 0);
+  std::vector<int> parent(num_polys, -1);
 
-  for (int i = 0; i < num_paths; i++) {
-    const std::vector<vec2> &path = shape.points[i];
+  for (int i = 0; i < num_polys; i++) {
+    const Polygon &path = shape.polys[i];
     if (path.empty()) {
       continue;
     }
     vec2 pt = path[0];
-    for (int j = 0; j < num_paths; j++) {
-      if (i == j || shape.points[j].empty()) {
+    for (int j = 0; j < num_polys; j++) {
+      if (i == j || shape.polys[j].empty()) {
         continue;
       }
-      if (PointInPolygon(pt, shape.points[j])) {
+      if (PointInPolygon(shape.polys[j], pt)) {
         depth[i]++;
       }
     }
   }
 
-  for (int i = 0; i < num_paths; i++) {
-    if (depth[i] == 0 || shape.points[i].empty()) {
+  for (int i = 0; i < num_polys; i++) {
+    if (depth[i] == 0 || shape.polys[i].empty()) {
       continue;
     }
-    vec2 pt = shape.points[i][0];
-    for (int j = 0; j < num_paths; j++) {
-      if (i == j || shape.points[j].empty()) {
+    vec2 pt = shape.polys[i][0];
+    for (int j = 0; j < num_polys; j++) {
+      if (i == j || shape.polys[j].empty()) {
         continue;
       }
-      if (depth[j] == depth[i] - 1 && PointInPolygon(pt, shape.points[j])) {
+      if (depth[j] == depth[i] - 1 &&
+          PointInPolygon(shape.polys[j], pt)) {
         parent[i] = j;
         break;
       }
@@ -2042,20 +2043,21 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
     return path;
   };
 
-  std::vector<std::vector<vec2>> cleaned_paths(num_paths);
-  for (int i = 0; i < num_paths; i++) {
-    cleaned_paths[i] = CleanPath(shape.points[i], depth[i] % 2 == 0);
+  std::vector<std::vector<vec2>> cleaned_paths(num_polys);
+  for (int i = 0; i < num_polys; i++) {
+    cleaned_paths[i] = CleanPath(shape.polys[i],
+                                 depth[i] % 2 == 0);
   }
 
   TriangularMesh mesh;
 
-  for (int i = 0; i < num_paths; i++) {
+  for (int i = 0; i < num_polys; i++) {
     if (depth[i] % 2 != 0 || cleaned_paths[i].size() < 3) {
       continue;
     }
 
     int num_pts = (int)cleaned_paths[i].size();
-    for (int j = 0; j < num_paths; j++) {
+    for (int j = 0; j < num_polys; j++) {
       if (parent[j] == i && cleaned_paths[j].size() >= 3) {
         num_pts += (int)cleaned_paths[j].size();
       }
@@ -2082,7 +2084,7 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
 
     CDT cdt(polyline);
 
-    for (int j = 0; j < num_paths; j++) {
+    for (int j = 0; j < num_polys; j++) {
       if (parent[j] == i && cleaned_paths[j].size() >= 3) {
         std::vector<Point *> hole;
         for (int k = 0; k < (int)cleaned_paths[j].size(); k++) {

@@ -33,7 +33,7 @@ static Polygonization::Shape GenerateShape(int i, ArcFour *rc) {
     double r = 400.0 + RandDouble(rc) * 50.0;
     boundary.push_back({cx + r * std::cos(angle), cy + r * std::sin(angle)});
   }
-  shape.points.push_back(boundary);
+  shape.polys.push_back(boundary);
 
   for (int j = 0; j < i; j++) {
     std::vector<vec2> hole;
@@ -45,7 +45,7 @@ static Polygonization::Shape GenerateShape(int i, ArcFour *rc) {
       double r = 30.0 + RandDouble(rc) * 10.0;
       hole.push_back({hx + r * std::cos(angle), hy + r * std::sin(angle)});
     }
-    shape.points.push_back(hole);
+    shape.polys.push_back(hole);
   }
 
   if (i > 5) {
@@ -60,7 +60,7 @@ static Polygonization::Shape GenerateShape(int i, ArcFour *rc) {
           .y = cy2 + r * std::sin(angle),
         });
     }
-    shape.points.push_back(boundary2);
+    shape.polys.push_back(boundary2);
 
     std::vector<vec2> hole2;
     for (int k = 0; k < 10; k++) {
@@ -71,7 +71,7 @@ static Polygonization::Shape GenerateShape(int i, ArcFour *rc) {
           .y = cy2 + r * std::sin(angle),
         });
     }
-    shape.points.push_back(hole2);
+    shape.polys.push_back(hole2);
   }
 
   return shape;
@@ -120,7 +120,7 @@ static void DebugDrawTriangulate() {
       }
     }
 
-    for (const auto &path : shape.points) {
+    for (const auto &path : shape.polys) {
       for (int j = 0; j < (int)path.size(); j++) {
         int next = (j + 1) % path.size();
         const auto &v1 = path[j];
@@ -162,7 +162,7 @@ static void DebugDrawPolygonize() {
         }
       }
 
-      for (const auto &path : shape.points) {
+      for (const auto &path : shape.polys) {
         for (int j = 0; j < (int)path.size(); j++) {
           int next = (j + 1) % path.size();
           const auto &v1 = path[j];

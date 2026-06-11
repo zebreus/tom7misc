@@ -338,9 +338,9 @@ BigPoly Rotate(const BigQuat &q, const BigPoly &poly) {
 }
 
 template<class GetPt>
-inline static bool PointInPolygonT(const BigVec2 &point,
-                                   int size,
-                                   const GetPt &get_pt) {
+inline static bool PointInPolygonT(int size,
+                                   const GetPt &get_pt,
+                                   const BigVec2 &point) {
   int winding_number = 0;
   for (int i = 0; i < size; i++) {
     const BigVec2 p0 = get_pt(i);
@@ -365,21 +365,23 @@ inline static bool PointInPolygonT(const BigVec2 &point,
   return !!(winding_number & 1);
 }
 
-bool PointInPolygon(const BigVec2 &point,
-                    const std::vector<BigVec2> &vertices,
-                    const std::vector<int> &polygon) {
-  return PointInPolygonT(point, polygon.size(),
+bool PointInPolygon(const std::vector<BigVec2> &vertices,
+                    const std::vector<int> &polygon,
+                    const BigVec2 &point) {
+  return PointInPolygonT(polygon.size(),
                          [&](int idx) {
                            return vertices[polygon[idx]];
-                         });
+                         },
+                         point);
 }
 
-bool PointInPolygon(const BigVec2 &point,
-                    const std::vector<BigVec2> &polygon) {
-  return PointInPolygonT(point, polygon.size(),
+bool PointInPolygon(const std::vector<BigVec2> &polygon,
+                    const BigVec2 &point) {
+  return PointInPolygonT(polygon.size(),
                          [&](int idx) {
                            return polygon[idx];
-                         });
+                         },
+                         point);
 }
 
 

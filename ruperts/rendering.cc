@@ -15,6 +15,7 @@
 #include "base/logging.h"
 #include "color-util.h"
 #include "geom/hull-2d.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "image.h"
 #include "yocto-math.h"
@@ -153,7 +154,7 @@ void Rendering::RenderMesh(const Mesh2D &mesh, float thickness) {
     for (int sx = 0; sx < width; sx++) {
       const vec2 pt = ToWorld(sx, sy);
       for (int i = 0; i < mesh.faces->v.size(); i++) {
-        if (PointInPolygon(pt, mesh.vertices, mesh.faces->v[i])) {
+        if (PointInPolygon(mesh.vertices, mesh.faces->v[i], pt)) {
           img.BlendPixel32(sx, sy, Color(i) & 0xFFFFFF22);
         }
       }

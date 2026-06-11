@@ -1,0 +1,307 @@
+
+#include "arcfour.h"
+#include "polygons.h"
+
+#include <algorithm>
+#include <cstdlib>
+#include <format>
+#include <numbers>
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
+#include "image.h"
+#include "randutil.h"
+#include "timer.h"
+#include "yocto-math.h"
+
+using vec2 = yocto::vec<double, 2>;
+
+#define CHECK_NEAR(f, g) do {                                           \
+  const double fv = (f);                                                \
+  const double gv = (g);                                                \
+  const double e = std::abs(fv - gv);                                   \
+  CHECK(e < 0.0000001) << "Expected " << #f << " and " << #g <<         \
+    " to be close, but got: " <<                                        \
+    std::format("{:.17g} and {:.17g}, with err {:.17g}", fv, gv, e);   \
+  } while (0)
+
+// Red for negative, black for 0, green for positive.
+// nominal range [-1, 1].
+static constexpr ColorUtil::Gradient DISTANCE{
+  GradRGB(-2.0f, 0xFFFF88),
+  GradRGB(-1.0f, 0xFFFF00),
+  GradRGB(-0.5f, 0xFF0000),
+  GradRGB( 0.0f, 0x440044),
+  GradRGB( 0.5f, 0x00FF00),
+  GradRGB(+1.0f, 0x00FFFF),
+  GradRGB(+2.0f, 0x88FFFF),
+};
+
+
+static void TestInTriangle() {
+  vec2 a{0.0, 0.0};
+  vec2 b{10.0, 0.0};
+  vec2 c{0.0, 10.0};
+
+  CHECK(InTriangle(a, b, c, vec2{1.0, 1.0}));
+  CHECK(InTriangle(a, b, c, vec2{2.0, 5.0}));
+
+  // Outside
+  CHECK(!InTriangle(a, b, c, vec2{-1.0, 1.0}));
+  CHECK(!InTriangle(a, b, c, vec2{1.0, -1.0}));
+  CHECK(!InTriangle(a, b, c, vec2{6.0, 6.0}));
+
+  // Both winding orders
+  CHECK(InTriangle(a, c, b, vec2{1.0, 1.0}));
+  CHECK(!InTriangle(a, c, b, vec2{-1.0, 1.0}));
+}
+
+static void TestPointInPolygon() {
+  std::vector<vec2> poly = {
+    vec2{0.0, 0.0},
+    vec2{10.0, 0.0},
+    vec2{10.0, 10.0},
+    vec2{5.0, 5.0},
+    vec2{0.0, 10.0},
+  };
+
+  CHECK(PointInPolygon(poly, vec2{5.0, 2.0}));
+  CHECK(!PointInPolygon(poly, vec2{5.0, 8.0}));
+  CHECK(!PointInPolygon(poly, vec2{-1.0, 5.0}));
+}
+
+static void TestSignedDistance() {
+  constexpr int width = 1920;
+  constexpr int height = 1080;
+
+  constexpr double scale = (double)std::min(width, height);
+
+  auto ToWorld = [](int sx, int sy) -> vec2 {
+      // Center of screen should be 0,0.
+      double cy = sy - height / 2.0;
+      double cx = sx - width / 2.0;
+      return vec2{.x = cx / scale, .y = cy / scale};
+    };
+
+  auto ToScreen = [](const vec2 &pt) -> std::pair<int, int> {
+    double cx = pt.x * scale;
+    double cy = pt.y * scale;
+    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
+  };
+
+  // The triangle
+  vec2 pt0(0.15, 0.2);
+  vec2 pt1(0.35, -0.15);
+  vec2 pt2(-0.05, 0.25);
+
+  ImageRGBA img(width, height);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      vec2 pt = ToWorld(x, y);
+      double dist = TriangleSignedDistance(pt0, pt1, pt2, pt);
+      img.BlendPixel32(x, y, ColorUtil::LinearGradient32(DISTANCE, dist));
+    }
+  }
+
+  auto DrawLine = [&](vec2 a, vec2 b) {
+      const auto &[x0, y0] = ToScreen(a);
+      const auto &[x1, y1] = ToScreen(b);
+      img.BlendLineAA32(x0, y0, x1, y1, 0xFFFFFF44);
+    };
+
+  DrawLine(pt0, pt1);
+  DrawLine(pt1, pt2);
+  DrawLine(pt2, pt0);
+
+  img.Save("triangle.png");
+  Print("Wrote " AGREEN("triangle.png") "\n");
+}
+
+
+static void TestPointLineDistance() {
+  //
+  //        *           f
+  //    *---+---------* e
+  //    0 1 2 3 4 5 6 7 8
+  vec2 linea{0,0};
+  vec2 lineb{7,0};
+  vec2 side_pt{2, 3};
+  vec2 e_pt{8.25, 0};
+  vec2 f_pt{7 + std::numbers::sqrt2, std::numbers::sqrt2};
+
+  ArcFour rc("test");
+  Timer timer;
+  static constexpr int64_t ITERS = 100000;
+  for (int i = 0; i < ITERS; i++) {
+    // Random point like side point, but on the other side.
+    double oside_dist = RandDouble(&rc) * 10.0 + 0.125;
+    vec2 oside_pt = {
+      RandDouble(&rc) * 7.0,
+      oside_dist,
+    };
+
+    double theta = RandDouble(&rc) * 2.0 * std::numbers::pi;
+    frame2 frame = rotation_frame2(theta);
+    frame.o.x = RandDouble(&rc) * 5 - 2.5;
+    frame.o.y = RandDouble(&rc) * 5 - 2.5;
+
+    vec2 rlinea = transform_point(frame, linea);
+    vec2 rlineb = transform_point(frame, lineb);
+    vec2 rside_pt = transform_point(frame, side_pt);
+    vec2 re_pt = transform_point(frame, e_pt);
+    vec2 rf_pt = transform_point(frame, f_pt);
+
+    vec2 roside_pt = transform_point(frame, oside_pt);
+
+    // In both orientations.
+    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rside_pt), 3.0);
+    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rside_pt), 3.0);
+
+    CHECK_NEAR(PointLineDistance(rlinea, rlineb, re_pt), 1.25);
+    CHECK_NEAR(PointLineDistance(rlineb, rlinea, re_pt), 1.25);
+
+    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rf_pt), 2.0);
+    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rf_pt), 2.0);
+
+    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rlinea), 0.0);
+    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rlinea), 0.0);
+
+    CHECK_NEAR(PointLineDistance(rlinea, rlineb, roside_pt), oside_dist);
+    CHECK_NEAR(PointLineDistance(rlineb, rlinea, roside_pt), oside_dist);
+  }
+
+  double spi = timer.Seconds() / ITERS;
+  Print("PointLineDistance time: {}\n", ANSI::Time(spi));
+}
+
+static void TestPolyTester1() {
+  std::vector<vec2> poly = {
+    vec2{0.0, 6.0},
+    vec2{-2.0, 5.0},
+    vec2{-5.0, -4.0},
+    vec2{3.5, 2.0},
+    vec2{4.0, 7.0},
+  };
+  CHECK(IsPolyConvex(poly));
+  CHECK(SignedAreaOfConvexPoly(poly) > 0.0);
+  CHECK(IsConvexAndScreenClockwise(poly));
+
+  PolyTester2D tester(poly);
+
+  CHECK(tester.IsInside(vec2{0.0, 0.0}));
+  CHECK(tester.IsInside(vec2{0.0, 0.01}));
+  CHECK(tester.IsInside(vec2{0.01, 0.0}));
+  CHECK(tester.IsInside(vec2{0.01, 0.01}));
+  CHECK(tester.IsInside(vec2{-1.0, 5.5}));
+
+  ArcFour rc("deterministic");
+
+  for (int i = 0; i < 10000; i++) {
+    double x = RandDouble(&rc) * 12.0 - 6.0;
+    double y = RandDouble(&rc) * 12.0 - 6.0;
+    vec2 v{x, y};
+
+    std::optional<double> odist =
+      tester.SquaredDistanceOutside(v);
+
+    // Should agree with the standalone functions.
+    if (odist.has_value()) {
+      CHECK_NEAR(
+          SquaredDistanceToPoly(poly, v),
+          odist.value());
+    } else {
+      CHECK(PointInPolygon(poly, v)) << "\n" <<
+        std::format("point #{}: ({:.17g}, {:.17g})\n",
+                    i, x, y);
+    }
+  }
+}
+
+static void TestPolyTester2() {
+  std::vector<vec2> square = {
+    vec2{-1, -1},
+    vec2{1, -1},
+    vec2{1, 1},
+    vec2{-1, 1},
+  };
+  CHECK(IsPolyConvex(square));
+  CHECK(IsConvexAndScreenClockwise(square));
+  CHECK(SignedAreaOfConvexPoly(square) > 0.0);
+
+  PolyTester2D tester(square);
+
+  CHECK(tester.IsInside(vec2{0.0, 0.0}));
+  CHECK(tester.IsInside(vec2{0.0, 0.01}));
+  CHECK(tester.IsInside(vec2{0.01, 0.0}));
+  CHECK(tester.IsInside(vec2{0.01, 0.01}));
+  CHECK(!tester.IsInside(vec2{-3.0, -1}));
+  CHECK(!tester.IsInside(vec2{-3.0, 0}));
+  CHECK(!tester.IsInside(vec2{-3.0, 1}));
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{-3.0, -1.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{-3.0, -0.8}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{3.0, 0.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{0.0, 3.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{1.0, 3.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{-1.0, 3.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{1.0, -3.0}).value_or(999.0),
+      2.0 * 2.0);
+
+  CHECK_NEAR(
+      tester.SquaredDistanceOutside(vec2{-1.0, -3.0}).value_or(999.0),
+      2.0 * 2.0);
+}
+
+static void TestSignedDistanceToEdgeEndpoints() {
+  vec2 v0{0.0, 0.0};
+  vec2 v1{10.0, 0.0};
+
+  // The distance to the infinite line is 4.0.
+  // The distance to the segment is the distance to v0, which is 5.0.
+  double dist = SignedDistanceToEdge(v0, v1, vec2{-3.0, 4.0});
+
+  CHECK_NEAR(dist, 5.0);
+}
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+  Print("\n");
+
+  TestInTriangle();
+  TestPointInPolygon();
+
+  TestSignedDistance();
+  TestPointLineDistance();
+
+  TestPolyTester1();
+  TestPolyTester2();
+
+  TestSignedDistanceToEdgeEndpoints();
+
+  Print("OK\n");
+  return 0;
+}

@@ -20,6 +20,7 @@
 #include "color-util.h"
 #include "db.h"
 #include "examples.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "image.h"
 #include "mov-recorder.h"
@@ -269,7 +270,7 @@ static void BlendFilledPoly(ImageRGBA &img,
 
   for (int y = y0; y <= y1; ++y) {
     for (int x = x0; x <= x1; ++x) {
-      if (PointInPolygon(vec2{(double)x, (double)y}, poly)) {
+      if (PointInPolygon(poly, vec2{(double)x, (double)y})) {
         img.BlendPixel32(x, y, color);
       }
     }

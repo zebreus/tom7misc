@@ -2672,7 +2672,7 @@ struct Hypersolver {
     // Of course convex hull should be convex.
     CHECK(Hull2D::IsHullConvex(mesh.vertices, hull));
     // Must contain the origin.
-    CHECK(PointInPolygon(vec2{0, 0}, mesh.vertices, hull));
+    CHECK(PointInPolygon(mesh.vertices, hull, vec2{0, 0}));
   }
 
   // For each triangle in the triangle fan (using the vertices at

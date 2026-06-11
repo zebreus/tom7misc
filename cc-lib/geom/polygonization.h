@@ -8,20 +8,19 @@
 #include <vector>
 
 #include "yocto-math.h"
+#include "polygons.h"
 
 // Creates a high-quality polygonization (using convex polygons up
 // to some limit in vertices) of a shape.
 struct Polygonization {
   using vec2 = yocto::vec<double, 2>;
 
-  using Path = std::vector<vec2>;
-
   // The paths may not be self-intersecting. Since the paths must be
   // closed, we use the even/odd rule to define the shape. Winding
   // order can therefore be CW or CCW, or even a mix within the same
   // shape.
   struct Shape {
-    std::vector<Path> points;
+    std::vector<Polygon> polys;
   };
 
   struct Mesh {

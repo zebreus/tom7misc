@@ -14,6 +14,7 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "geom/mesh.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "periodically.h"
 #include "randutil.h"
@@ -193,7 +194,7 @@ static void TestAddFace(bool include_join_faces) {
 
       // All points must be within the feasible polygon.
       for (int j = 0; j < (int)new_poly.size(); ++j) {
-        bool is_inside = PointInPolygon(new_poly[j], poly) ||
+        bool is_inside = PointInPolygon(poly, new_poly[j]) ||
           SquaredDistanceToPoly(poly, new_poly[j]) < 1e-6;
         CHECK(is_inside) <<
           DebugIter() <<

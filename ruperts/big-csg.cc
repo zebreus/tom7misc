@@ -652,7 +652,7 @@ struct BigHoleMaker {
 
       int count = 0;
       for (const BigVec2 &v : {v0, v1, v2}) {
-        count += PointInPolygon(v, polygon) ? 1 : 0;
+        count += PointInPolygon(polygon, v) ? 1 : 0;
       }
 
       if (count == 3) {
@@ -1273,7 +1273,7 @@ struct BigHoleMaker {
         bool on_hole = hole_vertices.contains(v);
         if (!on_hole) on = false;
         if (!on_hole &&
-            PointInPolygon(Two(points[v]), input_polygon)) {
+            PointInPolygon(input_polygon, Two(points[v]))) {
           inside = true;
         }
       }
