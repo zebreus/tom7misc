@@ -22,8 +22,8 @@
 #include "collision.h"
 #include "initialization.h"
 #include "inputs.h"
+#include "letters.h"
 #include "rendering.h"
-
 
 using vec2f = yocto::vec2f;
 
@@ -35,11 +35,11 @@ struct Scene {
 
   static constexpr float MARGIN = 0.1f;
 
-  // Pentagons composed of 3 triangles.
   struct Obj {
     uint32_t rgba = 0xFFFFFFFF;
     b2BodyId body_id = {};
     float r = 0.1f;
+    std::vector<Rendering::Triangle> mesh;
   };
 
   b2WorldId world_id = {};
@@ -132,10 +132,20 @@ struct Scene {
       b2CreatePolygonShape(body_id, &shape_def, &poly);
       #endif
 
+      std::vector<Rendering::Triangle> mesh;
+      Rendering::vec2f v[5];
+      for (int j = 0; j < 5; j++) {
+        v[j] = {pts[j].x, pts[j].y};
+      }
+      mesh.push_back({v[0], v[1], v[2], color, 0});
+      mesh.push_back({v[0], v[2], v[3], color, 0});
+      mesh.push_back({v[0], v[3], v[4], color, 0});
+
       objects.push_back(Obj{
         .rgba = color,
         .body_id = body_id,
         .r = r,
+        .mesh = mesh,
       });
     }
   }
@@ -163,29 +173,34 @@ struct Scene {
   // Get the scene, using Cartesian coordinates.
   std::vector<Rendering::Triangle> GetScene() {
     std::vector<Rendering::Triangle> scene;
-    scene.reserve(objects.size() * 3);
+    size_t num_triangles = 0;
+    for (const Obj &obj : objects) {
+      num_triangles += obj.mesh.size();
+    }
+    scene.reserve(num_triangles);
 
     for (const Obj &obj : objects) {
       b2Vec2 pos = b2Body_GetPosition(obj.body_id);
       b2Rot rot = b2Body_GetRotation(obj.body_id);
 
-      Rendering::vec2f v[5];
-      for (int i = 0; i < 5; i++) {
-        float theta = i * 2.0f * std::numbers::pi / 5.0f;
-        float cx = obj.r * std::cos(theta);
-        float cy = obj.r * std::sin(theta);
-        float rx = rot.c * cx - rot.s * cy;
-        float ry = rot.s * cx + rot.c * cy;
-
-        v[i] = {
+      auto transform = [&](const Rendering::vec2f &v) -> Rendering::vec2f {
+        float rx = rot.c * v.x - rot.s * v.y;
+        float ry = rot.s * v.x + rot.c * v.y;
+        return {
           .x = pos.x + rx,
           .y = HEIGHT - (pos.y + ry),
         };
+      };
+
+      for (const Rendering::Triangle &tri : obj.mesh) {
+        scene.push_back({
+          transform(tri.a),
+          transform(tri.b),
+          transform(tri.c),
+          tri.rgba,
+          tri.reserved
+        });
       }
-      // Fan triangulation from v[0]
-      scene.push_back({v[0], v[1], v[2], obj.rgba, 0});
-      scene.push_back({v[0], v[2], v[3], obj.rgba, 0});
-      scene.push_back({v[0], v[3], v[4], obj.rgba, 0});
     }
 
     return scene;
@@ -194,7 +209,6 @@ struct Scene {
 };
 
 void Simulate() {
-
   Scene scene;
 
   std::unique_ptr<Inputs> inputs =
