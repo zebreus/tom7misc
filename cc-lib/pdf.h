@@ -201,7 +201,8 @@ private:
     //
     // Note that built-in fonts have no kerning tables, but you could
     // make your own.
-    std::optional<double> GetKerning(int codepoint1, int codepoint2) const;
+    std::optional<double> GetKerning(uint32_t codepoint1,
+                                     uint32_t codepoint2) const;
 
     // Kerns a single line of text.
     SpacedLine KernText(std::string_view text) const;
@@ -250,8 +251,8 @@ private:
 
     // Map from a pair of codepoints to the additional space.
     // This space is scaled to "1pt".
-    std::unordered_map<std::pair<int, int>, double,
-      Hashing<std::pair<int, int>>> kerning;
+    std::unordered_map<std::pair<uint32_t, uint32_t>, double,
+      Hashing<std::pair<uint32_t, uint32_t>>> kerning;
   };
 
   // A drawing operation within a path.

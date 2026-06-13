@@ -52,8 +52,8 @@ bool InTriangle(const vec2 &a, const vec2 &b, const vec2 &c,
 
 // Returns a frame representing rotation by angle around the origin.
 inline frame2 rotation_frame2(double angle) {
-  auto s = std::sin(angle);
-  auto c = std::cos(angle);
+  double s = std::sin(angle);
+  double c = std::cos(angle);
   return {{c, s}, {-s, c}, {0.0, 0.0}};
 }
 
@@ -76,29 +76,8 @@ double SquaredPointLineDistance(
 // Note: This cannot be used to find the signed distance to
 // a polygon, because of ambiguity when the closest point is
 // one of the vertices.
-inline double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
-                                   const vec2 &p) {
-  vec2 edge = v1 - v0;
-  vec2 p_edge = p - v0;
-
-  double cx = yocto::cross(edge, p_edge);
-
-  double dotprod = yocto::dot(p_edge, edge);
-  double sqlen = yocto::dot(edge, edge);
-
-  const bool neg = cx < 0.0;
-  if (dotprod <= 0.0) {
-    const double len = yocto::length(p_edge);
-    return neg ? -len : len;
-  } else if (dotprod >= sqlen) {
-    const double len = yocto::length(p - v1);
-    return len ? -len : len;
-  }
-
-  // Signed. Negative means on the left.
-  return cx / yocto::length(edge);
-}
-
+double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
+                            const vec2 &p);
 
 // Signed distance to the triangle from the point p. Vertex order
 // does not matter. Negative sign means the interior of the triangle.
@@ -116,8 +95,9 @@ struct PolyTester2D {
   static constexpr bool SELF_CHECK = false;
 
   // The polygon must be convex, screen clockwise, and must include
-  // the origin. These conditions are not checked.
-  PolyTester2D(std::span<const vec2> poly);
+  // the origin. These conditions are not checked. The polygon must
+  // outlive this instance.
+  PolyTester2D(PolygonConstView poly);
 
   // Returns nullopt if the point is inside. Otherwise, minimum squared
   // distance to the polygon.

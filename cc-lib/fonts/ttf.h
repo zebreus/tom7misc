@@ -13,9 +13,9 @@
 #include <vector>
 #include <string_view>
 
+#include "image.h"
 #include "stb_truetype.h"
 #include "utf8.h"
-#include "image.h"
 
 // "Simplified" interface to TrueType fonts (based on stb_truetype),
 // with utilities, including an extremely basic export to FontForge
@@ -33,31 +33,10 @@ struct TTF {
 
   explicit TTF(std::string_view filename);
 
-  // Normalizes an input coordinate (which is usually int16) to be
-  // *nominally* in the unit rectangle.
-  std::pair<float, float> Norm(float x, float y) const {
-    // x coordinate is easy; just scale by the same factor.
-    x = norm * x;
-    // y is flipped (want +y downward) and offset (want ascent to be 0.0).
-
-    // flip around baseline
-    y = -y;
-    // baseline (0) becomes ascent
-    y += native_ascent;
-    y = norm * y;
-    return {x, y};
-  }
-
-  // amount to advance from one line of text to the next. This would be +1.0 by
-  // definition except that we also take into account the "line gap".
-  float NormLineHeight() const {
-    // Note: Lots of fonts have an incorrect descent (i.e., positive
-    // when it should be negative). Maybe it's worth just
-    // heuristically taking +abs(native_descent)?
-    int native = (native_ascent - native_descent) + native_linegap;
-    // ( = native / (native_ascent - native_descent)
-    return native * norm;
-  }
+  // amount to advance from one line of text to the next. This would
+  // be +1.0 by definition except that we also take into account the
+  // "line gap".
+  float NormLineHeight() const;
 
   // Not cached, so this does a lot more allocation than you probably want.
   ImageA GetChar(int codepoint, int size);
@@ -229,28 +208,14 @@ struct TTF {
 
 
   // c2 may be 0 for no kerning.
-  float NormKernAdvance(char c1, char c2) {
-    int advance = 0;
-    stbtt_GetCodepointHMetrics(&font, c1, &advance, nullptr);
-    if (c2 != 0) {
-      advance += stbtt_GetCodepointKernAdvance(&font, c1, c2);
-    }
-    return Norm(advance, 1.0f).first;
-  }
+  float NormKernAdvance(char c1, char c2) const;
 
   // Returns (minx, miny, maxx, maxy) in normalized coordinates.
-  std::tuple<float, float, float, float>
-  BoundingBox() const {
-    int x0, y0, x1, y1;
-    stbtt_GetFontBoundingBox(&font, &x0, &y0, &x1, &y1);
+  std::tuple<float, float, float, float> BoundingBox() const;
 
-    // Note maxness of y coordinate is swapped since we use
-    // a flipped coordinate system.
-    const auto &[xmin, ymax] = Norm(x0, y0);
-    const auto &[xmax, ymin] = Norm(x1, y1);
-
-    return std::make_tuple(xmin, ymin, xmax, ymax);
-  }
+  // Normalizes an input coordinate (which is usually int16) to be
+  // *nominally* in the unit rectangle.
+  std::pair<float, float> Norm(float x, float y) const;
 
   // Get SDF for the character. This is tuned for ML applications, not
   // graphics.

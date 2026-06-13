@@ -84,6 +84,51 @@ TTF::TTF(std::string_view filename) {
   #endif
 }
 
+std::pair<float, float> TTF::Norm(float x, float y) const {
+  // x coordinate is easy; just scale by the same factor.
+  x = norm * x;
+  // y is flipped (want +y downward) and offset (want ascent to be 0.0).
+
+  // flip around baseline
+  y = -y;
+  // baseline (0) becomes ascent
+  y += native_ascent;
+  y = norm * y;
+  return {x, y};
+}
+
+float TTF::NormLineHeight() const {
+  // Note: Lots of fonts have an incorrect descent (i.e., positive
+  // when it should be negative). Maybe it's worth just
+  // heuristically taking +abs(native_descent)?
+  int native = (native_ascent - native_descent) + native_linegap;
+  // ( = native / (native_ascent - native_descent)
+  return native * norm;
+}
+
+
+float TTF::NormKernAdvance(char c1, char c2) const {
+  int advance = 0;
+  stbtt_GetCodepointHMetrics(&font, c1, &advance, nullptr);
+  if (c2 != 0) {
+    advance += stbtt_GetCodepointKernAdvance(&font, c1, c2);
+  }
+  return Norm(advance, 1.0f).first;
+}
+
+std::tuple<float, float, float, float>
+TTF::BoundingBox() const {
+  int x0, y0, x1, y1;
+  stbtt_GetFontBoundingBox(&font, &x0, &y0, &x1, &y1);
+
+  // Note maxness of y coordinate is swapped since we use
+  // a flipped coordinate system.
+  const auto &[xmin, ymax] = Norm(x0, y0);
+  const auto &[xmax, ymin] = Norm(x1, y1);
+
+  return std::make_tuple(xmin, ymin, xmax, ymax);
+}
+
 
 std::pair<int, int>
 TTF::MeasureString(std::string_view text, int size_px, bool subpixel) const {

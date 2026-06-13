@@ -74,7 +74,7 @@ struct Edge;
 
 struct Point {
 
-  double x = 0.0, y = .0;
+  double x = 0.0, y = 0.0;
 
   Point() {}
 
@@ -170,12 +170,12 @@ class Triangle {
   /// Flags to determine if an edge is a Delauney edge
   bool delaunay_edge[3];
 
-  Point *GetPoint(int index);
+  Point *GetPoint(int index) { return points_[index]; }
   Point *PointCW(const Point &point);
   Point *PointCCW(const Point &point);
   Point *OppositePoint(Triangle &t, const Point &p);
 
-  Triangle *GetNeighbor(int index);
+  Triangle *GetNeighbor(int index) { return neighbors_[index]; }
   void MarkNeighbor(Point *p1, Point *p2, Triangle *t);
   void MarkNeighbor(Triangle &t);
 
@@ -215,9 +215,18 @@ class Triangle {
   void SetDelunayEdgeCCW(const Point &p, bool e);
   void SetDelunayEdgeCW(const Point &p, bool e);
 
-  bool Contains(const Point *p);
-  bool Contains(const Edge &e);
-  bool Contains(const Point *p, const Point *q);
+  bool Contains(const Point *p) {
+    return p == points_[0] || p == points_[1] || p == points_[2];
+  }
+
+  bool Contains(const Edge &e) {
+    return Contains(e.p) && Contains(e.q);
+  }
+
+  bool Contains(const Point *p, const Point *q) {
+    return Contains(p) && Contains(q);
+  }
+
   void Legalize(Point &point);
   void Legalize(Point &opoint, Point &npoint);
   /**
@@ -310,22 +319,6 @@ inline bool operator==(const Point &a, const Point &b) {
   return a.x == b.x && a.y == b.y;
 }
 
-inline Point *Triangle::GetPoint(int index) { return points_[index]; }
-
-inline Triangle *Triangle::GetNeighbor(int index) { return neighbors_[index]; }
-
-inline bool Triangle::Contains(const Point *p) {
-  return p == points_[0] || p == points_[1] || p == points_[2];
-}
-
-inline bool Triangle::Contains(const Edge &e) {
-  return Contains(e.p) && Contains(e.q);
-}
-
-inline bool Triangle::Contains(const Point *p, const Point *q) {
-  return Contains(p) && Contains(q);
-}
-
 Triangle::Triangle(Point &a, Point &b, Point &c) {
   points_[0] = &a;
   points_[1] = &b;
@@ -404,14 +397,14 @@ Point *Triangle::OppositePoint(Triangle &t, const Point &p) {
   return PointCW(*cw);
 }
 
-// Legalized triangle by rotating clockwise around point(0)
+// Legalize triangle by rotating clockwise around point(0)
 void Triangle::Legalize(Point &point) {
   points_[1] = points_[0];
   points_[0] = points_[2];
   points_[2] = &point;
 }
 
-// Legalize triagnle by rotating clockwise around oPoint
+// Legalize triangle by rotating clockwise around opoint
 void Triangle::Legalize(Point &opoint, Point &npoint) {
   if (&opoint == points_[0]) {
     points_[1] = points_[0];
@@ -1942,7 +1935,7 @@ class CDT {
     sweep_context_->AddHole(polyline);
   }
 
-  // Add a steiner point.
+  // Add a Steiner point.
   void AddPoint(Point *point) {
     sweep_context_->AddPoint(point);
   }

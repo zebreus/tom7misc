@@ -4394,73 +4394,41 @@ std::string PDF::AddTTF(std::string_view filename,
   // Load the Kerning table. The same glyph can be used for multiple
   // codepoints. Note we store it for each codepoint pair, which means
   // it could be quadratic size.
-  std::unordered_map<std::pair<int, int>, double,
-    Hashing<std::pair<int, int>>> kerning;
+  std::unordered_map<std::pair<uint32_t, uint32_t>, double,
+    Hashing<std::pair<uint32_t, uint32_t>>> kerning;
 
   // The interal kerning map uses normalized units.
   double kerning_scale = scale_pdf / 1000.0;
 
-  static constexpr bool KERNING_TABLE_ONLY = false;
-  if constexpr (KERNING_TABLE_ONLY) {
-    // TODO: This is only the first kerning table.
-    const int table_size = stbtt_GetKerningTableLength(&ttf);
-    if (VERBOSE) {
-      Print("TTF kerning table: {}.\n", table_size);
-    }
-    std::vector<stbtt_kerningentry> table;
-    table.resize(table_size);
-    CHECK(table_size ==
-          stbtt_GetKerningTable(&ttf, table.data(), table_size));
-    // The kerning table is given using glyphs. Convert to
-    // codepoints.
-    for (const stbtt_kerningentry &kern : table) {
-      double advance = kerning_scale * kern.advance;
-      auto cit1 = codepoint_from_glyph.find(kern.glyph1);
-      auto cit2 = codepoint_from_glyph.find(kern.glyph2);
-      if (cit1 != codepoint_from_glyph.end() &&
-          cit2 != codepoint_from_glyph.end()) {
-        for (uint32_t c1 : cit1->second) {
-          for (uint32_t c2 : cit2->second) {
-            kerning[std::make_pair(c1, c2)] = advance;
-            if (VERBOSE) {
-              Print("'{:c}' '{:c}': {} (= {:.5f})\n",
-                    c1, c2, kern.advance, advance);
-            }
-          }
-        }
-      }
-    }
-  } else {
-    // This approach accesses both the kerning table and GPOS data, which
-    // is used in a lot of more modern fonts.
-    //
-    // TODO PERF: It would be better if stb_truetype gave us access to the GPOS
-    // table directly. In addition to this being an n^2 loop over glyph pairs
-    // (even in the common situation that a character has no kerning data),
-    // the call is looping over the table internally to find the glyphs.
-    for (int g1 : all_glyphs) {
-      for (int g2 : all_glyphs) {
-        int kern = stbtt_GetGlyphKernAdvance(&ttf, g1, g2);
+  // This approach accesses both the kerning table and GPOS data, which
+  // is used in a lot of more modern fonts.
+  //
+  // TODO PERF: It would be better if stb_truetype gave us access to the GPOS
+  // table directly. In addition to this being an n^2 loop over glyph pairs
+  // (even in the common situation that a character has no kerning data),
+  // the call is looping over the table internally to find the glyphs.
+  for (int g1 : all_glyphs) {
+    for (int g2 : all_glyphs) {
+      int kern = stbtt_GetGlyphKernAdvance(&ttf, g1, g2);
 
-        // In principle there could be a kerning entry with 0, but we treat
-        // this as no kerning entry.
-        if (kern != 0) {
-          double advance = kerning_scale * kern;
-          // XXX just loop over the glyph -> codepoint mapping?
-          auto cit1 = codepoint_from_glyph.find(g1);
-          auto cit2 = codepoint_from_glyph.find(g2);
-          if (cit1 != codepoint_from_glyph.end() &&
-              cit2 != codepoint_from_glyph.end()) {
-            for (uint32_t c1 : cit1->second) {
-              for (uint32_t c2 : cit2->second) {
-                kerning[std::make_pair(c1, c2)] = advance;
-                if (VERBOSE) {
-                  Print("U+{:04x} U+{:04x} = '{}' '{}': {} (= {:.5f})\n",
-                        c1, c2,
-                        UTF8::Encode(c1),
-                        UTF8::Encode(c2),
-                        kern, advance);
-                }
+      // In principle there could be a kerning entry with 0, but we treat
+      // this as no kerning entry.
+      if (kern != 0) {
+        double advance = kerning_scale * kern;
+        // XXX just loop over the glyph -> codepoint mapping?
+        auto cit1 = codepoint_from_glyph.find(g1);
+        auto cit2 = codepoint_from_glyph.find(g2);
+        if (cit1 != codepoint_from_glyph.end() &&
+            cit2 != codepoint_from_glyph.end()) {
+          for (uint32_t c1 : cit1->second) {
+            for (uint32_t c2 : cit2->second) {
+              kerning[std::make_pair(c1, c2)] = advance;
+              if (VERBOSE) {
+                Print("U+{:04x} U+{:04x} = '{}' '{}': {} (= {:.5f})\n",
+                      c1, c2,
+                      UTF8::Encode(c1),
+                      UTF8::Encode(c2),
+                      kern, advance);
               }
             }
           }
@@ -4643,7 +4611,7 @@ std::string PDF::AddTTF(std::string_view filename,
 }
 
 std::optional<double>
-PDF::Font::GetKerning(int codepoint1, int codepoint2) const {
+PDF::Font::GetKerning(uint32_t codepoint1, uint32_t codepoint2) const {
   const auto it = kerning.find(std::make_pair(codepoint1, codepoint2));
   if (it == kerning.end()) return std::nullopt;
   return it->second;

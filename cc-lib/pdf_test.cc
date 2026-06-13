@@ -492,7 +492,9 @@ static void MakeSimplePDF() {
               "WELCOME TO THE WWW INTERNET. One of the finest interns of all "
               "time: E.T.. It is illicitly lilliputian. "
               "'lillili.' "
-              "@WASTE@ #NOT#. &WANT& !NOT!. ,FONT, \u2014NAUGHT\u2014. "
+              "@WASTE@ #NOT#. &WANT& !NOT!. ,FONT, NAUGHT. "
+              // em dash; dfx pasement does not have it
+              "Missingno. [\u2014] "
               "!@#$%^&*()-=  ♥♥ok",
               18,
               36, 72 * 3,

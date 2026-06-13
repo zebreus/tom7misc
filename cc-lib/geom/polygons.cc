@@ -15,6 +15,29 @@ inline int sgn(T val) {
   return (T(0) < val) - (val < T(0));
 }
 
+double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
+                            const vec2 &p) {
+  vec2 edge = v1 - v0;
+  vec2 p_edge = p - v0;
+
+  double cx = yocto::cross(edge, p_edge);
+
+  double dotprod = yocto::dot(p_edge, edge);
+  double sqlen = yocto::dot(edge, edge);
+
+  const bool neg = cx < 0.0;
+  if (dotprod <= 0.0) {
+    const double len = yocto::length(p_edge);
+    return neg ? -len : len;
+  } else if (dotprod >= sqlen) {
+    const double len = yocto::length(p - v1);
+    return len ? -len : len;
+  }
+
+  // Signed. Negative means on the left.
+  return cx / yocto::length(edge);
+}
+
 double TriangleSignedDistance(vec2 p0, vec2 p1, vec2 p2, vec2 p) {
   // This function only:
   // Derived from code by Inigo Quilez; MIT license. See LICENSES.
@@ -236,7 +259,7 @@ double SquaredDistanceToPoly(PolygonConstView poly,
   return best_sqdist;
 }
 
-PolyTester2D::PolyTester2D(std::span<const vec2> poly) : poly(poly) {
+PolyTester2D::PolyTester2D(PolygonConstView poly) : poly(poly) {
   if (SELF_CHECK) {
     CHECK(SignedAreaOfConvexPoly(poly) > 0.0);
     CHECK(IsConvexAndScreenClockwise(poly));
