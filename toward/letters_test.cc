@@ -97,7 +97,7 @@ static void MakeFontSheet(std::string_view font_filename,
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  MakeFontSheet("helvetica.ttf", "helvetica.png");
+  MakeFontSheet("helveticab.ttf", "helvetica.png");
 
   Print("OK\n");
   return 0;
