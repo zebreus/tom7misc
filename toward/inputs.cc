@@ -1,6 +1,7 @@
 
 #include "inputs.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 
@@ -12,6 +13,21 @@
 namespace {
 
 struct SDLInputs : public Inputs {
+  static constexpr std::array<uint8_t, 128> SHIFT_KEY = []{
+      std::array<uint8_t, 128> ret;
+      // By default, map to self.
+      for (int i = 0; i < 128; i++) ret[i] = i;
+      for (int i = 'a'; i <= 'z'; i++) ret[i] = i - 32;
+
+      static constexpr char S[] = "`1234567890-=[]\\;',./";
+      static constexpr char D[] = "~!@#$%^&*()_+{}|:\"<>?";
+      static_assert(sizeof (S) == sizeof (D));
+      for (int i = 0; i < sizeof (S); i++) {
+        ret[S[i]] = D[i];
+      }
+      return ret;
+    }();
+
   Input GetInput() override {
     SDL_Event e = {};
     while (SDL_PollEvent(&e)) {
@@ -26,12 +42,12 @@ struct SDLInputs : public Inputs {
         if (e.key.keysym.mod & KMOD_SHIFT) mods |= MOD_SHIFT;
 
         uint32_t sym = (uint32_t)e.key.keysym.sym;
-        if ((mods & MOD_SHIFT) && sym >= 'a' && sym <= 'z') {
-          sym -= 32;
+        if (mods & MOD_SHIFT && sym < sizeof(SHIFT_KEY)) {
+          sym = SHIFT_KEY[sym];
         }
 
         if (e.type == SDL_KEYDOWN) {
-          return KeyDown{(uint8_t)sym, mods};
+          return KeyDown{sym, mods};
         }
         return KeyUp{sym, mods};
       }

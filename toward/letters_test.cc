@@ -2,6 +2,8 @@
 #include "letters.h"
 
 #include <algorithm>
+#include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -15,9 +17,8 @@
 
 static void MakeFontSheet(std::string_view font_filename,
                           std::string_view image_filename) {
-  std::optional<Letters> oletters = Letters::LoadFont(font_filename);
-  CHECK(oletters.has_value()) << font_filename;
-  const Letters &letters = oletters.value();
+  std::unique_ptr<Letters> letters = Letters::LoadFont(font_filename);
+  CHECK(letters.get() != nullptr) << font_filename;
 
   ImageRGBA sheet(3840, 2160);
   sheet.Clear32(0x000000FF);
@@ -33,8 +34,8 @@ static void MakeFontSheet(std::string_view font_filename,
   double margin_y = (cell_h - scale) / 2.0;
 
   for (char c = 'A'; c <= 'Z'; ++c) {
-    auto it = letters.letter.find(c);
-    if (it == letters.letter.end()) continue;
+    auto it = letters->letter.find(c);
+    if (it == letters->letter.end()) continue;
 
     const Letter& letter = it->second;
     int idx = c - 'A';
@@ -45,10 +46,11 @@ static void MakeFontSheet(std::string_view font_filename,
     double py = row * cell_h + margin_y;
 
     // Optional label for the cell
-    std::string label = std::string(1, c) + " (" + std::to_string(letter.mesh.polygons.size()) + ")";
+    std::string label =
+      std::format("{:c} ({})", c, letter.mesh.polygons.size());
     sheet.BlendText2x32(px, py - 24, 0x888888FF, label);
 
-    for (const auto& poly : letter.mesh.polygons) {
+    for (const auto &poly : letter.mesh.polygons) {
       // Draw filled convex polygon (triangle fan from poly[0])
       for (size_t i = 1; i + 1 < poly.size(); ++i) {
         auto [x0, y0] = letter.mesh.vertices[poly[0]];
@@ -81,8 +83,7 @@ static void MakeFontSheet(std::string_view font_filename,
     }
 
     // Draw red points at mesh vertices
-    for (const auto& pt : letter.mesh.vertices) {
-      auto [x, y] = pt;
+    for (const auto &[x, y] : letter.mesh.vertices) {
       int vx = px + x * scale;
       int vy = py + y * scale;
       sheet.SetPixel32(vx, vy, 0xFF0000FF);

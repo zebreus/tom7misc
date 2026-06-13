@@ -11,6 +11,8 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "color-util.h"
+#include "geom/polygonization.h"
+#include "geom/polygons.h"
 #include "id.h"
 #include "math_functions.h"
 #include "randutil.h"
@@ -35,10 +37,12 @@ struct Scene {
 
   static constexpr float MARGIN = 0.1f;
 
+  static constexpr float ARENA_WIDTH = WIDTH - 2.0f * MARGIN;
+  static constexpr float ARENA_HEIGHT = HEIGHT - 2.0f * MARGIN;
+
   struct Obj {
     uint32_t rgba = 0xFFFFFFFF;
     b2BodyId body_id = {};
-    float r = 0.1f;
     std::vector<Rendering::Triangle> mesh;
   };
 
@@ -71,7 +75,17 @@ struct Scene {
     b2Segment right_wall = {{WIDTH - MARGIN, MARGIN},
                             {WIDTH - MARGIN, HEIGHT - MARGIN}};
     b2CreateSegmentShape(ground_id, &wall_shape_def, &right_wall);
+  }
 
+  ~Scene() {
+    b2DestroyWorld(world_id);
+  }
+
+  void Update() {
+    b2World_Step(world_id, 1.0f / 120.0f, 8);
+  }
+
+  void AddDirt() {
     for (int i = 0; i < 1000; i++) {
       float r = 0.02f + RandDouble(&rc) * 0.2f;
       float rmargin = MARGIN + r;
@@ -83,79 +97,76 @@ struct Scene {
             RandDouble(&rc), 0.5 + RandDouble(&rc) * 0.5,
             0.25 + RandDouble(&rc) * 0.5, 0.8);
 
-      b2BodyDef body_def = b2DefaultBodyDef();
-      body_def.type = b2_dynamicBody;
-      body_def.position = {(float)RandDouble(&rc) * w + rmargin,
-                           (float)RandDouble(&rc) * h + rmargin};
-
+      float x = (float)RandDouble(&rc) * w + rmargin;
+      float y = (float)RandDouble(&rc) * h + rmargin;
       float vx = ((float)RandDouble(&rc) * 2.0f - 1.0f) * 6.0f;
       float vy = ((float)RandDouble(&rc) * 2.0f - 1.0f) * 6.0f;
-      body_def.linearVelocity = {vx, vy};
 
-      // body_def.angularDamping = 0.01f;
-      // body_def.enableSleep = false;
-
-      b2BodyId body_id = b2CreateBody(world_id, &body_def);
-
-      b2ShapeDef shape_def = b2DefaultShapeDef();
-      shape_def.density = 1.0f;
-      shape_def.material.restitution = 0.8f;
-      shape_def.material.friction = 0.2f;
-
-      b2Vec2 pts[5];
+      Polygonization::Mesh mesh;
+      std::vector<int> poly;
       for (int j = 0; j < 5; j++) {
         float theta = j * 2.0f * std::numbers::pi / 5.0f;
-        pts[j] = { r * std::cos(theta), r * std::sin(theta) };
+        mesh.vertices.push_back({r * std::cos(theta), r * std::sin(theta)});
+        poly.push_back(j);
       }
+      mesh.polygons.push_back(poly);
 
-      #if 0
-      // Link three triangles to form the pentagon body
-      b2Vec2 t1[3] = {pts[0], pts[1], pts[2]};
-      b2Hull hull1 = b2ComputeHull(t1, 3);
-      b2Polygon poly1 = b2MakePolygon(&hull1, 0.0f);
-      b2CreatePolygonShape(body_id, &shape_def, &poly1);
-
-      b2Vec2 t2[3] = {pts[0], pts[2], pts[3]};
-      b2Hull hull2 = b2ComputeHull(t2, 3);
-      b2Polygon poly2 = b2MakePolygon(&hull2, 0.0f);
-      b2CreatePolygonShape(body_id, &shape_def, &poly2);
-
-      b2Vec2 t3[3] = {pts[0], pts[3], pts[4]};
-      b2Hull hull3 = b2ComputeHull(t3, 3);
-      b2Polygon poly3 = b2MakePolygon(&hull3, 0.0f);
-      b2CreatePolygonShape(body_id, &shape_def, &poly3);
-      #else
-
-      // Using a single polygon.
-      b2Hull hull = b2ComputeHull(pts, 5);
-      b2Polygon poly = b2MakePolygon(&hull, 0.0f);
-      b2CreatePolygonShape(body_id, &shape_def, &poly);
-      #endif
-
-      std::vector<Rendering::Triangle> mesh;
-      Rendering::vec2f v[5];
-      for (int j = 0; j < 5; j++) {
-        v[j] = {pts[j].x, pts[j].y};
-      }
-      mesh.push_back({v[0], v[1], v[2], color, 0});
-      mesh.push_back({v[0], v[2], v[3], color, 0});
-      mesh.push_back({v[0], v[3], v[4], color, 0});
-
-      objects.push_back(Obj{
-        .rgba = color,
-        .body_id = body_id,
-        .r = r,
-        .mesh = mesh,
-      });
+      AddObject(mesh, color, x, y, vx, vy);
     }
   }
 
-  ~Scene() {
-    b2DestroyWorld(world_id);
-  }
+  void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
+                 float x, float y, float vx, float vy,
+                 float restitution = 0.7f) {
+    b2BodyDef body_def = b2DefaultBodyDef();
+    body_def.type = b2_dynamicBody;
+    body_def.position = {x, y};
+    body_def.linearVelocity = {vx, vy};
 
-  void Update() {
-    b2World_Step(world_id, 1.0f / 120.0f, 8);
+    b2BodyId body_id = b2CreateBody(world_id, &body_def);
+
+    b2ShapeDef shape_def = b2DefaultShapeDef();
+    shape_def.density = 1.0f;
+    shape_def.material.restitution = restitution;
+    shape_def.material.friction = 0.2f;
+
+    std::vector<Rendering::Triangle> render_mesh;
+
+    for (const auto &poly : mesh.polygons) {
+      if (poly.size() < 3) continue;
+
+      std::vector<b2Vec2> pts;
+      pts.reserve(poly.size());
+      for (int idx : poly) {
+        auto [px, py] = mesh.vertices[idx];
+        pts.push_back({(float)px, (float)py});
+      }
+
+      for (size_t i = 1; i + 1 < poly.size(); i++) {
+        auto [x0, y0] = mesh.vertices[poly[0]];
+        auto [x1, y1] = mesh.vertices[poly[i]];
+        auto [x2, y2] = mesh.vertices[poly[i + 1]];
+
+        render_mesh.push_back({
+          {(float)x0, (float)y0},
+          {(float)x1, (float)y1},
+          {(float)x2, (float)y2},
+          color, 0
+        });
+      }
+
+      b2Hull hull = b2ComputeHull(pts.data(), pts.size());
+      if (hull.count < 3) continue;
+
+      b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
+      b2CreatePolygonShape(body_id, &shape_def, &b2_poly);
+    }
+
+    objects.push_back(Obj{
+      .rgba = color,
+      .body_id = body_id,
+      .mesh = render_mesh,
+    });
   }
 
   void ApplyRandomImpulse() {
@@ -208,8 +219,59 @@ struct Scene {
 
 };
 
+struct Game {
+  Game() {
+    letters = Letters::LoadFont("helvetica.ttf");
+    CHECK(letters.get() != nullptr);
+    scene = std::make_unique<Scene>();
+  }
+
+  static constexpr float LETTER_SCALE = 2.0f;
+
+  uint32_t prev_codepoint = 0;
+  float letter_x = Scene::MARGIN + 0.01 * Scene::ARENA_WIDTH;
+  float letter_y =
+    Scene::HEIGHT - Scene::MARGIN - 0.01 * Scene::ARENA_HEIGHT -
+    LETTER_SCALE;
+
+  void AddLetter(uint32_t codepoint) {
+    auto it = letters->letter.find(codepoint);
+    if (it == letters->letter.end()) return;
+
+    const Letter &letter = it->second;
+    if (letter.mesh.polygons.empty()) return;
+
+    Polygonization::Mesh scaled_mesh;
+    scaled_mesh.vertices.reserve(letter.mesh.vertices.size());
+    for (const vec2 &v : letter.mesh.vertices) {
+      scaled_mesh.vertices.push_back(LETTER_SCALE * v);
+    }
+    scaled_mesh.polygons = letter.mesh.polygons;
+
+    uint32_t color = ColorUtil::HSVAToRGBA32(
+        RandDouble(&scene->rc), 0.5 + RandDouble(&scene->rc) * 0.5,
+        0.25 + RandDouble(&scene->rc) * 0.5, 0.8);
+
+    letter_x += letters->GetKerning(prev_codepoint, codepoint) * LETTER_SCALE;
+    if (letter_x + LETTER_SCALE > Scene::WIDTH - Scene::MARGIN) {
+      letter_x = Scene::MARGIN + 0.01 * Scene::ARENA_WIDTH;
+      prev_codepoint = 0;
+    } else {
+      prev_codepoint = codepoint;
+    }
+
+    constexpr float RESTITUTION = 0.05;
+    scene->AddObject(scaled_mesh, color, letter_x, letter_y,
+                     0.0, 0.0, RESTITUTION);
+  }
+
+  std::unique_ptr<Letters> letters;
+  std::unique_ptr<Scene> scene;
+};
+
 void Simulate() {
-  Scene scene;
+  Game game;
+  bool paused = false;
 
   std::unique_ptr<Inputs> inputs =
     Inputs::CreateSDL();
@@ -229,7 +291,7 @@ void Simulate() {
 
       if (const Inputs::KeyDown *kdown = std::get_if<Inputs::KeyDown>(&input)) {
         if (kdown->codepoint == ' ') {
-          scene.ApplyRandomImpulse();
+          paused = !paused;
         }
       }
 
@@ -241,13 +303,19 @@ void Simulate() {
 
         Print("KeyUp: {}\n", UTF8::Encode(kup->codepoint));
         fflush(stdout);
+
+        if (kup->codepoint >= 32 && kup->codepoint < 127) {
+          game.AddLetter(kup->codepoint);
+        }
       }
     }
 
-    scene.Update();
+    if (!paused) {
+      game.scene->Update();
+    }
     rendering->RenderScene(vec2f{0.0f, 0.0f},
                            vec2f{Scene::WIDTH, Scene::HEIGHT},
-                           scene.GetScene());
+                           game.scene->GetScene());
   }
 
 }
