@@ -4,14 +4,13 @@ Diagnostics:
     FastCheckFilter: Strict
   MissingIncludes: Strict
   Includes:
-    IgnoreHeader: base/logging.h
-    IgnoreHeader: <cstdint>
-    IgnoreHeader: <cstddef>
+    IgnoreHeader: [base/logging.h, cstdint, cstddef, __chrono/duration.h]
 
 # I'm not showing these, so disable them in the hopes of saving
 # time.
 InlayHints:
   Enabled: No
 
+# -DBIG_USE_GMP=1,
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -I../fontdb, -Ic:/code/SDL/include]
+  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib]

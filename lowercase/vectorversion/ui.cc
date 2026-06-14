@@ -35,7 +35,7 @@
 
 #include "../ttfops.h"
 
-#include "../fontdb.h"
+#include "font-db.h"
 #include "../font-problem.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */

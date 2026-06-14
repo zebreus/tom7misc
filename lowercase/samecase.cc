@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <mutex>
 #include <stdio.h>
 #include <string>

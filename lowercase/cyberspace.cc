@@ -1,26 +1,20 @@
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <algorithm>
-#include <cstdint>
-#include <memory>
 
-#include "timer.h"
-#include "font-problem.h"
-
-#include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
-#include "randutil.h"
+#include "base/stringprintf.h"
 #include "gtl/top_n.h"
+#include "image.h"
+#include "randutil.h"
 
 using namespace std;
-
-static constexpr FontProblem::SDFConfig SDF_CONFIG = {};
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;

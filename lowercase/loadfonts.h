@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-#include "fontdb.h"
+#include "font-db.h"
 #include "fonts/ttf.h"
 #include "image.h"
 #include "font-problem.h"
@@ -42,7 +42,7 @@ struct VectorLoadFonts {
   // The font pointers are owned by this object.
   std::vector<TTF *> fonts;
 
-private:
+ private:
   void Init();
 
   const int max_parallelism;

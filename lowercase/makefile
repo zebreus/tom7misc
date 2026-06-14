@@ -1,13 +1,11 @@
 
-default: ui.exe cleandb.exe samecase.exe train.exe collate-errors.exe vacuum.exe widen.exe get-modelinfo.exe font-problem_test.exe vector-eval.exe sdf-eval.exe vector-info.exe sdf-info.exe area.exe get-layerweights.exe makefeatures.exe plot.exe bitmap-sdf.exe trace-sdf.exe vector-makefont.exe bitmap-makefont.exe makefont.exe hallucinate.exe sdf-figure.exe findloop.exe renderloop.exe renderstring.exe makestegfont.exe font-template.exe template-makefont.exe resequence.exe recut.exe cyberspace.exe middlecase.exe
+default: ui.exe samecase.exe train.exe collate-errors.exe vacuum.exe widen.exe get-modelinfo.exe font-problem_test.exe vector-eval.exe sdf-eval.exe vector-info.exe sdf-info.exe area.exe get-layerweights.exe makefeatures.exe plot.exe bitmap-sdf.exe trace-sdf.exe vector-makefont.exe bitmap-makefont.exe makefont.exe hallucinate.exe sdf-figure.exe findloop.exe renderloop.exe renderstring.exe makestegfont.exe font-template.exe template-makefont.exe resequence.exe recut.exe cyberspace.exe middlecase.exe
 
 modelinfos: modelinfo0.png modelinfo1.png
 layerweights: weights0-layer0.png weights1-layer0.png
 
 CC_LIB=../cc-lib
-
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-gcc
+FONTDB=../fontdb
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
@@ -26,7 +24,7 @@ SDLOPATH=$(SDLSDK)/build
 SDLINCLUDES=-I$(SDLSDK)/include
 
 # -I/usr/local/include -I/usr/include
-CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-sign-compare  $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++23
+CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-sign-compare  $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(FONTDB) -std=c++23
 OPT=-O2
 
 SDLARCH=x64
@@ -48,7 +46,9 @@ CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDE
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) ttfops.o fontdb.o network.o font-problem.o error-history.o modelinfo.o
+FONTDB_OBJECTS=$(FONTDB)/font-db.o $(FONTDB)/ttfarchive.o
+
+OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) $(FONTDB_OBJECTS) ttfops.o network.o font-problem.o error-history.o modelinfo.o
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
@@ -81,41 +81,49 @@ deepen.exe : $(OBJECTS) deepen.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-cleandb.exe : cleandb.o ttfarchive.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
-
 samecase.exe : samecase.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 area.exe : area.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 vector-info.exe : vector-info.o $(OBJECTS) loadfonts.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 sdf-info.exe : sdf-info.o $(OBJECTS) loadfonts.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 vector-eval.exe : $(OBJECTS) vector-eval.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 sdf-eval.exe : $(OBJECTS) sdf-eval.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 get-modelinfo.exe : $(OBJECTS) get-modelinfo.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 get-layerweights.exe : $(OBJECTS) get-layerweights.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 plot.exe : $(OBJECTS) plot.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 font-problem_test.exe : font-problem.o font-problem_test.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 ptxtest.exe : $(OBJECTS) ptxtest.o clutil.o
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 modelinfo%.png : net%.val get-modelinfo.exe
 	./get-modelinfo.exe $< $@
@@ -124,61 +132,80 @@ weights%-layer0.png : net%.val get-layerweights.exe
 	./get-layerweights.exe $< weights$*
 
 collate-errors.exe : collate-errors.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 bitmap-sdf.exe : bitmap-sdf.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 sdf-figure.exe : sdf-figure.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 trace-sdf.exe : trace-sdf.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 makefont.exe : makefont.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 vector-makefont.exe : vector-makefont.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 bitmap-makefont.exe : bitmap-makefont.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 hallucinate.exe : hallucinate.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 findloop.exe : findloop.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 renderloop.exe : renderloop.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 renderstring.exe : renderstring.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 makestegfont.exe : makestegfont.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 font-template.exe : font-template.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 template-makefont.exe : template-makefont.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 resequence.exe : resequence.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 recut.exe : recut.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 cyberspace.exe : cyberspace.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 middlecase.exe : middlecase.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 prcurve.exe : prcurve.o $(OBJECTS)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(CHESS_OBJECTS) $(RE2_OBJECTS) *.exe

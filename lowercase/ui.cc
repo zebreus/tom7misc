@@ -28,9 +28,10 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
+#include "font-db.h"
 #include "font-problem.h"
-#include "fontdb.h"
 #include "fonts/ttf.h"
 #include "geom/bezier.h"
 #include "image.h"
@@ -2164,13 +2165,13 @@ void UI::Draw() {
 
     string name = FontDB::GetBaseFilename(ff);
     font2x->draw(3, 3, name);
-    printf("%s\n", name.c_str());
+    Print("{}\n", name);
     fflush(stdout);
 
     font2x->draw(3, font2x->height + 3,
-                 StringPrintf("scale ^5%.2f^1x^5%.2f  ^0off ^6%.2f %.2f",
-                              current_xscale, current_yscale,
-                              current_xoff, current_yoff));
+                 std::format("scale ^5{:.2f}^1x^5{:.2f}  ^0off ^6{:.2f} {:.2f}",
+                             current_xscale, current_yscale,
+                             current_xoff, current_yoff));
 
     TTF *ttf = GetFont(cur);
     CHECK(ttf != nullptr);

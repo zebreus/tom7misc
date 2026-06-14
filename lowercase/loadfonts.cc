@@ -21,7 +21,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 
-#include "fontdb.h"
+#include "font-db.h"
 #include "font-problem.h"
 #include "timer.h"
 
