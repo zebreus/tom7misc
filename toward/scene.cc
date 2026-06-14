@@ -2,8 +2,12 @@
 #include "scene.h"
 
 #include <cmath>
+#include <mutex>
 #include <numbers>
 #include <cstdint>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "arcfour.h"
 #include "geom/polygonization.h"
@@ -11,22 +15,26 @@
 #include "math_functions.h"
 #include "randutil.h"
 #include "color-util.h"
-
+#include "threadutil.h"
 #include "box2d.h"
-#include "collision.h"
 #include "initialization.h"
-#include "inputs.h"
-#include "letters.h"
 #include "rendering.h"
-#include <optional>
-#include <utility>
-#include <vector>
 
+// In Box2D, the global worlds structure is thread hostile.
+// But it seems like aside from world creation/destruction,
+// you can use them in parallel.
+static std::mutex world_mutex;
 
 Scene::Scene() {
   b2WorldDef world_def = b2DefaultWorldDef();
+  // XXX... necessary for parallelism?
+  world_def.workerCount = 0;
   world_def.gravity = {0.0f, 9.8f};
-  world_id = b2CreateWorld(&world_def);
+
+  {
+    MutexLock ml(&world_mutex);
+    world_id = b2CreateWorld(&world_def);
+  }
 
   b2BodyDef wall_body_def = b2DefaultBodyDef();
   b2BodyId ground_id = b2CreateBody(world_id, &wall_body_def);
@@ -51,6 +59,7 @@ Scene::Scene() {
 }
 
 Scene::~Scene() {
+  MutexLock ml(&world_mutex);
   b2DestroyWorld(world_id);
 }
 
@@ -84,16 +93,16 @@ void Scene::AddDirt(ArcFour *rc) {
     }
     mesh.polygons.push_back(poly);
 
-    AddObject(mesh, color, x, y, vx, vy);
+    AddObject(mesh, color, {x, y}, {vx, vy});
   }
 }
 
 
-std::optional<std::pair<float, float>> Scene::RejectObject(
-    const Polygonization::Mesh &mesh, float x, float y,
+std::optional<vec2f> Scene::RejectObject(
+    const Polygonization::Mesh &mesh, vec2f pos,
     vec2f reject_dir) {
-  float cx = x;
-  float cy = y;
+  float cx = pos.x;
+  float cy = pos.y;
 
   auto [rx, ry] = reject_dir;
   float dir_len = std::sqrt(rx * rx + ry * ry);
@@ -196,7 +205,7 @@ std::optional<std::pair<float, float>> Scene::RejectObject(
 
   for (int i = 0; i < max_steps; i++) {
     if (!HasOverlap(cx, cy)) {
-      return std::make_pair(cx, cy);
+      return {vec2f{cx, cy}};
     }
 
     auto [dx, dy] = dir;
@@ -207,12 +216,12 @@ std::optional<std::pair<float, float>> Scene::RejectObject(
   return std::nullopt;
 }
 
-void Scene::AddObject(const Polygonization::Mesh &mesh, uint32_t color, float x,
-                      float y, float vx, float vy, float restitution) {
+void Scene::AddObject(const Polygonization::Mesh &mesh, uint32_t color, vec2f pos,
+                      vec2f vel, float restitution) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
-  body_def.position = {x, y};
-  body_def.linearVelocity = {vx, vy};
+  body_def.position = {pos.x, pos.y};
+  body_def.linearVelocity = {vel.x, vel.y};
 
   b2BodyId body_id = b2CreateBody(world_id, &body_def);
 

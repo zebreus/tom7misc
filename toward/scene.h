@@ -3,15 +3,13 @@
 
 #include <cstdint>
 #include <optional>
-#include <utility>
 #include <vector>
 
-#include "yocto-math.h"
-
+#include "arcfour.h"
 #include "box2d.h"
 #include "geom/polygonization.h"
 #include "rendering.h"
-#include "arcfour.h"
+#include "yocto-math.h"
 
 using vec2f = yocto::vec2f;
 
@@ -44,23 +42,29 @@ struct Scene {
 
   void AddDirt(ArcFour *rc);
 
-  // Attempt to place the mesh at (x, y), but then move it in the
+  // Attempt to place the mesh at pos, but then move it in the
   // reject_dir while it overlapping an existing object. If it exits
   // the arena (overlapping a wall) while we try to resolve (or some
   // unresolvable conflict occurs, then returns nullopt. Otherwise,
   // returns the deconflicted position.
-  std::optional<std::pair<float, float>> RejectObject(
-      const Polygonization::Mesh &mesh, float x, float y,
+  std::optional<vec2f> RejectObject(
+      const Polygonization::Mesh &mesh, vec2f pos,
       vec2f reject_dir);
 
   void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
-                 float x, float y, float vx, float vy,
+                 vec2f pos, vec2f vel,
                  float restitution = 0.7f);
 
   void ApplyImpulse(vec2f v);
 
   // Get the triangles for rendering, using Cartesian coordinates.
   std::vector<Rendering::Triangle> GetScene();
+
+  // Move-only.
+  Scene(const Scene&) = delete;
+  Scene& operator=(const Scene&) = delete;
+  Scene(Scene&& other) noexcept;
+  Scene& operator=(Scene&& other) noexcept;
 };
 
 

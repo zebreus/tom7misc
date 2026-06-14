@@ -76,30 +76,32 @@ struct Game {
     }
 
     // First reject from the previous character ("typing").
-    std::optional<std::pair<float, float>> ro_right =
-      scene->RejectObject(scaled_mesh, letter_x, letter_y,
-                          vec2f{1.0, 0.0});
+    std::optional<vec2f> ro_right =
+      scene->RejectObject(scaled_mesh, vec2f{letter_x, letter_y},
+                          vec2f{1.0f, 0.0f});
 
     if (!ro_right.has_value()) {
       Print("Couldn't place (1)!\n");
       return;
     } else {
-      Print("Now try place at {},{}\n", ro_right.value().first,
+      Print("Now try place at {},{}\n", ro_right.value().x,
             Scene::HEIGHT - Scene::MARGIN);
     }
 
     // Now place on the ground.
-    if (std::optional<std::pair<float, float>> ro_up =
+    if (std::optional<vec2f> ro_up =
         scene->RejectObject(scaled_mesh,
-                            ro_right.value().first,
-                            // At the bottom.
-                            Scene::HEIGHT - Scene::MARGIN,
-                            vec2f{0.0, -1.0})) {
+                            vec2f{
+                              .x = ro_right.value().x,
+                              // At the bottom.
+                              .y = Scene::HEIGHT - Scene::MARGIN,
+                            },
+                            vec2f{0.0f, -1.0f})) {
       const auto &[x, y] = ro_up.value();
       letter_x = x;
       constexpr float RESTITUTION = 0.05;
-      scene->AddObject(scaled_mesh, color, x, y,
-                       0.0, 0.0, RESTITUTION);
+      scene->AddObject(scaled_mesh, color, vec2f{x, y},
+                       vec2f{0.0, 0.0}, RESTITUTION);
     } else {
       Print("Couldn't place (2)!\n");
       return;

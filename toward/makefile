@@ -9,7 +9,8 @@ SDL_LIBS=`sdl2-config --libs`
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o
 
-OPT=-O2 -flto
+# OPT=-O2 -flto
+OPT=-fsanitize=address -O
 
 CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(BOX2D)/include/box2d --std=c++23
 
@@ -21,7 +22,7 @@ SDL_OBJECTS=rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o
 
 # all (library) objects
-OBJECTS=scene.o letters.o $(SDL_OBJECTS)
+LIB_OBJECTS=scene.o letters.o eval.o
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -37,11 +38,15 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-test.exe : test.o $(OBJECTS) $(CC_LIB_OBJECTS)
+test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS) $(CC_LIB_OBJECTS)
 	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
-letters_test.exe : letters_test.o letters.o $(CC_LIB_OBJECTS)
+letters_test.exe : letters_test.o $(LIB_OBJECTS) $(CC_LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+evaluate.exe : evaluate.o $(LIB_OBJECTS) $(CC_LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
