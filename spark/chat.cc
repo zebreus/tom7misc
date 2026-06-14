@@ -209,10 +209,7 @@ struct Conversation {
     input.append("\nNow, please provide a plain text, dense synopsis, "
                  "of up to 1000 words:\n");
 
-    req.messages.emplace_back(ReqMessage{
-        .role = "user",
-        .content = input,
-      });
+    req.messages.push_back(Spark::TextMessage(input));
 
     std::unique_ptr<SMR> res = spark.Stream(req, verbosity);
 
@@ -305,18 +302,12 @@ struct Conversation {
         robot_ppts.size() == 1 ? "" : "s",
         roles);
 
-      req.messages.emplace_back(ReqMessage{
-          .role = "user",
-          .content = transcript,
-        });
+      req.messages.emplace_back(Spark::TextMessage(transcript));
 
       std::string prompt =
         std::format("Now just one or two messages as {}. Use IRC syntax:\n",
                     as_users);
-      req.messages.emplace_back(ReqMessage{
-          .role = "user",
-          .content = prompt,
-        });
+      req.messages.emplace_back(Spark::TextMessage(prompt));
 
       res = parent->spark.Stream(req, parent->verbosity);
       CHECK(res.get() != nullptr);

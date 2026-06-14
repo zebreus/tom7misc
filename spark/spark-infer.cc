@@ -18,6 +18,7 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base64.h"
 #include "net.h"
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -37,12 +38,43 @@ Spark::ModelResponse Spark::Infer(const ModelRequest &req, int verbose) {
       writer.StartObject();
       writer.Key("messages");
       writer.StartArray();
+      if (!req.instructions.empty()) {
+        writer.StartObject();
+        writer.Key("role");
+        writer.String("system");
+        writer.Key("content");
+        writer.String(req.instructions.c_str());
+        writer.EndObject();
+      }
       for (const ReqMessage &msg : req.messages) {
         writer.StartObject();
         writer.Key("role");
         writer.String(msg.role.c_str());
         writer.Key("content");
-        writer.String(msg.content.c_str());
+        writer.StartArray();
+        for (const Chunk &chunk : msg.content) {
+          if (const TextChunk *tc = std::get_if<TextChunk>(&chunk)) {
+            writer.StartObject();
+            writer.Key("type");
+            writer.String("text");
+            writer.Key("text");
+            writer.String(tc->text.c_str());
+            writer.EndObject();
+          } else if (const ImageChunk *ic = std::get_if<ImageChunk>(&chunk)) {
+            writer.StartObject();
+            writer.Key("type");
+            writer.String("image_url");
+            writer.Key("image_url");
+            writer.StartObject();
+            writer.Key("url");
+            std::string url = "data:image/png;base64," +
+                              Base64::EncodeV(ic->img.SaveToVec());
+            writer.String(url.c_str());
+            writer.EndObject();
+            writer.EndObject();
+          }
+        }
+        writer.EndArray();
         writer.EndObject();
       }
       writer.EndArray();
@@ -373,7 +405,30 @@ Spark::Stream(const ModelRequest &req, int verbose) {
         writer.Key("role");
         writer.String(msg.role.c_str());
         writer.Key("content");
-        writer.String(msg.content.c_str());
+        writer.StartArray();
+        for (const Chunk &chunk : msg.content) {
+          if (const TextChunk *tc = std::get_if<TextChunk>(&chunk)) {
+            writer.StartObject();
+            writer.Key("type");
+            writer.String("input_text");
+            writer.Key("text");
+            writer.String(tc->text.c_str());
+            writer.EndObject();
+          } else if (const ImageChunk *ic = std::get_if<ImageChunk>(&chunk)) {
+            writer.StartObject();
+            writer.Key("type");
+            writer.String("input_image");
+            writer.Key("image_url");
+            writer.StartObject();
+            writer.Key("url");
+            std::string url = "data:image/png;base64," +
+                              Base64::EncodeV(ic->img.SaveToVec());
+            writer.String(url.c_str());
+            writer.EndObject();
+            writer.EndObject();
+          }
+        }
+        writer.EndArray();
         writer.EndObject();
       }
       writer.EndArray();

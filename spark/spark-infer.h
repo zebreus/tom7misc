@@ -7,11 +7,31 @@
 #include <variant>
 #include <vector>
 
+#include "image.h"
+
 struct Spark {
+
+  struct TextChunk {
+    std::string text;
+  };
+
+  struct ImageChunk {
+    ImageRGBA img;
+  };
+
+  using Chunk = std::variant<TextChunk, ImageChunk>;
+
   struct ReqMessage {
     std::string role;
-    std::string content;
+    std::vector<Chunk> content;
   };
+
+  static ReqMessage TextMessage(std::string_view text) {
+    return ReqMessage{
+      .role = "user",
+      .content = {TextChunk{.text = std::string(text)}},
+    };
+  }
 
   struct ModelRequest {
     // Prefer to use this field; it will be converted into
@@ -22,6 +42,7 @@ struct Spark {
 
   struct ModelResponse {
     // The model's response.
+    // Text-only for now.
     std::string content;
     // Optional thinking content.
     std::string reasoning_content;

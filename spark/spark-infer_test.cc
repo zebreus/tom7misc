@@ -1,4 +1,5 @@
 
+#include "image.h"
 #include "spark-infer.h"
 
 #include <memory>
@@ -26,11 +27,9 @@ static void TestSpark() {
     req.instructions = "This is an easy one. Don't think; just "
       "answer.\n";
     req.messages = {
-      Spark::ReqMessage{
-        .role = "user",
-        .content = "What's the next integer in the sequence? Just respond "
-        "with the integer please. 1 1 2 3 5 8 13 21 ...",
-      },
+      Spark::TextMessage(
+          "What's the next integer in the sequence? Just respond "
+          "with the integer please. 1 1 2 3 5 8 13 21 ..."),
     };
 
     Spark::ModelResponse res = spark.Infer(req, 1);
@@ -38,15 +37,14 @@ static void TestSpark() {
     Print("Result: " APURPLE("{}") "\n", res.content);
   }
 
-  {
+  static constexpr bool SLOW_TEST = true;
+  if (SLOW_TEST) {
     Spark::ModelRequest req;
-    req.instructions = "Think carefull, but be brief in your response.";
+    req.instructions = "Think carefullly, but be brief in your response.";
     req.messages = {
-      Spark::ReqMessage{
-        .role = "user",
-        .content = "What's one paragraph of useful advice that's not "
-        "obvious or trite, but once you hear it, is self-evident?",
-      },
+      Spark::TextMessage(
+          "What's one paragraph of useful advice that's not "
+          "obvious or trite, but once you hear it, is self-evident?"),
     };
 
     std::unique_ptr<Spark::StreamingModelResponse> res =
@@ -85,6 +83,35 @@ static void TestSpark() {
     Print("\n" AGREEN("Done") ".\n");
     CHECK(res->FullThought() == assembled_thought);
     CHECK(res->FullContent() == assembled_content);
+  }
+
+  {
+    ImageRGBA img(256, 256);
+    img.Clear32(0xFFFFFFFF);
+    img.BlendFilledCircle32(128, 128, 80, 0xFF0000FF);
+    img.BlendThickCircle32(128, 128, 80, 6, 0x000000FF);
+
+    Spark::ModelRequest req;
+    req.instructions = "This is an easy one. Don't think; just "
+      "answer.\n";
+    req.messages = {
+      Spark::ReqMessage{
+        .role = "user",
+        .content = {
+          Spark::TextChunk{
+            .text = "Can you describe this image? Include both colors "
+            "and shapes that you see.",
+          },
+          Spark::ImageChunk{
+            .img = img,
+          },
+        }
+      },
+    };
+
+    Spark::ModelResponse res = spark.Infer(req, 1);
+    CHECK(res.error.empty()) << res.error;
+    Print("Result: " APURPLE("{}") "\n", res.content);
   }
 
 }
