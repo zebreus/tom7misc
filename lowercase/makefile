@@ -177,5 +177,8 @@ cyberspace.exe : cyberspace.o $(OBJECTS)
 middlecase.exe : middlecase.o $(OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+prcurve.exe : prcurve.o $(OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(CHESS_OBJECTS) $(RE2_OBJECTS) *.exe

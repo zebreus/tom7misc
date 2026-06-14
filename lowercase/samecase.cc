@@ -3,27 +3,19 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <mutex>
+#include <stdio.h>
 #include <string>
+#include <string_view>
+#include <unistd.h>
 #include <utility>
 #include <vector>
-#include <stdio.h>
-#include <unistd.h>
-#include <string_view>
-#include <unordered_set>
-#include <mutex>
-#include <unordered_map>
 
-#include "util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
-#include "threadutil.h"
-#include "city/city.h"
-
 #include "fonts/ttf.h"
-#include "stb_truetype.h"
+#include "threadutil.h"
 #include "ttfops.h"
+#include "util.h"
 
 using namespace std;
 
@@ -123,7 +115,8 @@ int main(int argc, char **argv) {
   vector<string> outlines;
   outlines.reserve(results.size());
   for (const auto &p : results) {
-    outlines.push_back(StringPrintf("%.5f       %s", p.first, p.second.c_str()));
+    outlines.push_back(std::format("{:.5f}       {}",
+                                   p.first, p.second));
   }
 
   CHECK(Util::WriteLinesToFile("bitmap_diffs.txt", outlines));
