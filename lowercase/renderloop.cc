@@ -81,7 +81,7 @@ constexpr bool LOWER = false;
 */
 
 int main(int argc, char **argv) {
-  TTF helvetica("helvetica.ttf");
+  std::unique_ptr<TTF> helvetica = TTF::Load("helvetica.ttf");
 
   std::unique_ptr<Network> make_lowercase, make_uppercase;
   make_lowercase.reset(Network::ReadNetworkBinary("net0.val"));
@@ -98,11 +98,11 @@ int main(int argc, char **argv) {
   Timer timer;
   {
     std::optional<ImageA> sdfo =
-      helvetica.GetSDF(THE_CHAR, SDF_CONFIG.sdf_size,
-                       SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                       SDF_CONFIG.pad_left,
-                       SDF_CONFIG.onedge_value,
-                       SDF_CONFIG.falloff_per_pixel);
+      helvetica->GetSDF(THE_CHAR, SDF_CONFIG.sdf_size,
+                        SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                        SDF_CONFIG.pad_left,
+                        SDF_CONFIG.onedge_value,
+                        SDF_CONFIG.falloff_per_pixel);
     CHECK(sdfo.has_value());
     ImageF sdf(sdfo.value());
 

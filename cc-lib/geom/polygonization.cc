@@ -43,6 +43,7 @@
   - Remove some unused stuff.
   - Added the actual triangulation and polygonization routines at
     the bottom.
+  - Many geometry errors cause it to return an error instead of aborting.
 */
 
 #include "polygonization.h"
@@ -719,6 +720,8 @@ constexpr double kAlpha = 0.3;
 
 class SweepContext {
  public:
+  const char* error_message = nullptr;
+
   explicit SweepContext(std::vector<Point *> polyline);
   ~SweepContext() {}
 
@@ -1067,7 +1070,7 @@ class Sweep {
   void FillLeftConvexEdgeEvent(SweepContext &tcx, Edge *edge, Node &node);
 
   void FlipEdgeEvent(SweepContext &tcx, Point &ep, Point &eq, Triangle *t,
-                     Point &p);
+                     Point &p, int depth = 0);
 
   // After a flip we have two triangles and know that only one will still be
   // intersecting the edge. So decide which to contiune with and legalize the
@@ -1084,7 +1087,7 @@ class Sweep {
   // When we need to traverse from one triangle to the next we need
   // the point in current triangle that is the opposite point to the next
   // triangle.
-  Point& NextFlipPoint(Point& ep, Point& eq, Triangle& ot, Point& op);
+  Point* NextFlipPoint(SweepContext &tcx, Point& ep, Point& eq, Triangle& ot, Point& op);
 
   // Scan part of the FlipScan algorithm.
   // When a triangle pair isn't flippable we will scan for the next
@@ -1094,7 +1097,8 @@ class Sweep {
   //  eq - first point on the edge we are traversing
   //  flipTriangle - the current triangle sharing the point eq with edge
   void FlipScanEdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
-                         Triangle &flip_triangle, Triangle &t, Point &p);
+                         Triangle &flip_triangle, Triangle &t, Point &p,
+                         int depth = 0);
 
   void FinalizationPolygon(SweepContext& tcx);
 
@@ -1106,6 +1110,7 @@ void Sweep::Triangulate(SweepContext &tcx) {
   tcx.CreateAdvancingFront();
   // Sweep points; build mesh
   SweepPoints(tcx);
+  if (tcx.error_message) return;
   // Clean up
   FinalizationPolygon(tcx);
 }
@@ -1114,8 +1119,10 @@ void Sweep::SweepPoints(SweepContext &tcx) {
   for (size_t i = 1; i < tcx.point_count(); i++) {
     Point &point = *tcx.GetPoint(i);
     Node *node = &PointEvent(tcx, point);
+    if (tcx.error_message) return;
     for (auto &j : point.edge_list) {
       EdgeEvent(tcx, j, node);
+      if (tcx.error_message) return;
     }
   }
 }
@@ -1138,7 +1145,8 @@ Node &Sweep::PointEvent(SweepContext &tcx, Point &point) {
   Node *node_ptr = tcx.LocateNode(point);
   if (!node_ptr || !node_ptr->point || !node_ptr->next ||
       !node_ptr->next->point) {
-    LOG(FATAL) << "PointEvent - null node";
+    tcx.error_message = "PointEvent - null node";
+    return *tcx.af_head_;
   }
 
   Node &node = *node_ptr;
@@ -1174,8 +1182,10 @@ void Sweep::EdgeEvent(SweepContext &tcx, Edge *edge, Node *node) {
 
 void Sweep::EdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
                       Triangle *triangle, Point &point) {
+  if (tcx.error_message) return;
   if (triangle == nullptr) {
-    LOG(FATAL) << "EdgeEvent - null triangle";
+    tcx.error_message = "EdgeEvent - null triangle";
+    return;
   }
   if (IsEdgeSideOfTriangle(*triangle, ep, eq)) {
     return;
@@ -1193,7 +1203,7 @@ void Sweep::EdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
       triangle = triangle->NeighborAcross(point);
       EdgeEvent(tcx, ep, *p1, triangle, *p1);
     } else {
-      LOG(FATAL) << "EdgeEvent - colinear points not supported";
+      tcx.error_message = "EdgeEvent - colinear points not supported";
     }
     return;
   }
@@ -1210,7 +1220,7 @@ void Sweep::EdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
       triangle = triangle->NeighborAcross(point);
       EdgeEvent(tcx, ep, *p2, triangle, *p2);
     } else {
-      LOG(FATAL) << "EdgeEvent - colinear points not supported";
+      tcx.error_message = "EdgeEvent - colinear points not supported";
     }
     return;
   }
@@ -1815,11 +1825,17 @@ void Sweep::FillLeftConcaveEdgeEvent(SweepContext &tcx, Edge *edge,
 }
 
 void Sweep::FlipEdgeEvent(SweepContext &tcx, Point &ep, Point &eq, Triangle *t,
-                          Point &p) {
+                          Point &p, int depth) {
+  if (tcx.error_message) return;
+  if (depth > 1000) {
+    tcx.error_message = "FlipEdgeEvent - stack overflow (bad geometry?)";
+    return;
+  }
   CHECK(t != nullptr);
   Triangle *ot_ptr = t->NeighborAcross(p);
   if (ot_ptr == nullptr) {
-    LOG(FATAL) << "FlipEdgeEvent - null neighbor across";
+    tcx.error_message = "FlipEdgeEvent - null neighbor across";
+    return;
   }
   Triangle &ot = *ot_ptr;
   Point &op = *ot.OppositePoint(*t, p);
@@ -1843,11 +1859,12 @@ void Sweep::FlipEdgeEvent(SweepContext &tcx, Point &ep, Point &eq, Triangle *t,
     } else {
       Orientation o = Orient2d(eq, op, ep);
       t = &NextFlipTriangle(tcx, (int)o, *t, ot, p, op);
-      FlipEdgeEvent(tcx, ep, eq, t, p);
+      FlipEdgeEvent(tcx, ep, eq, t, p, depth + 1);
     }
   } else {
-    Point &newP = NextFlipPoint(ep, eq, ot, op);
-    FlipScanEdgeEvent(tcx, ep, eq, *t, ot, newP);
+    Point *newP = NextFlipPoint(tcx, ep, eq, ot, op);
+    if (newP == nullptr) return;
+    FlipScanEdgeEvent(tcx, ep, eq, *t, ot, *newP, depth + 1);
     EdgeEvent(tcx, ep, eq, t, p);
   }
 }
@@ -1872,34 +1889,44 @@ Triangle &Sweep::NextFlipTriangle(SweepContext &tcx, int o, Triangle &t,
   return ot;
 }
 
-Point &Sweep::NextFlipPoint(Point &ep, Point &eq, Triangle &ot, Point &op) {
+Point *Sweep::NextFlipPoint(SweepContext &tcx, Point &ep, Point &eq, Triangle &ot, Point &op) {
   Orientation o2d = Orient2d(eq, op, ep);
   if (o2d == CW) {
     // Right
-    return *ot.PointCCW(op);
+    return ot.PointCCW(op);
   } else if (o2d == CCW) {
     // Left
-    return *ot.PointCW(op);
+    return ot.PointCW(op);
   }
-  LOG(FATAL) << "[Unsupported] Opposing point on constrained edge";
+  tcx.error_message = "[Unsupported] Opposing point on constrained edge";
+  return nullptr;
 }
 
 void Sweep::FlipScanEdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
-                              Triangle &flip_triangle, Triangle &t, Point &p) {
+                              Triangle &flip_triangle, Triangle &t, Point &p,
+                              int depth) {
+  if (tcx.error_message) return;
+  if (depth > 1000) {
+    tcx.error_message = "FlipScanEdgeEvent - stack overflow (bad geometry?)";
+    return;
+  }
   Triangle *ot_ptr = t.NeighborAcross(p);
   if (ot_ptr == nullptr) {
-    LOG(FATAL) << "FlipScanEdgeEvent - null neighbor across";
+    tcx.error_message = "FlipScanEdgeEvent - null neighbor across";
+    return;
   }
 
   Point *op_ptr = ot_ptr->OppositePoint(t, p);
   if (op_ptr == nullptr) {
-    LOG(FATAL) << "FlipScanEdgeEvent - null opposing point";
+    tcx.error_message = "FlipScanEdgeEvent - null opposing point";
+    return;
   }
 
   Point *p1 = flip_triangle.PointCCW(eq);
   Point *p2 = flip_triangle.PointCW(eq);
   if (p1 == nullptr || p2 == nullptr) {
-    LOG(FATAL) << "FlipScanEdgeEvent - null on either of points";
+    tcx.error_message = "FlipScanEdgeEvent - null on either of points";
+    return;
   }
 
   Triangle &ot = *ot_ptr;
@@ -1907,7 +1934,7 @@ void Sweep::FlipScanEdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
 
   if (InScanArea(eq, *p1, *p2, op)) {
     // flip with new edge op->eq
-    FlipEdgeEvent(tcx, eq, op, &ot, op);
+    FlipEdgeEvent(tcx, eq, op, &ot, op, depth + 1);
     // TODO: Actually I just figured out that it should be possible to
     //       improve this by getting the next ot and op before the the above
     //       flip and continue the flipScanEdgeEvent here
@@ -1916,8 +1943,9 @@ void Sweep::FlipScanEdgeEvent(SweepContext &tcx, Point &ep, Point &eq,
     // Turns out at first glance that this is somewhat complicated
     // so it will have to wait.
   } else {
-    Point &newP = NextFlipPoint(ep, eq, ot, op);
-    FlipScanEdgeEvent(tcx, ep, eq, flip_triangle, ot, newP);
+    Point *newP = NextFlipPoint(tcx, ep, eq, ot, op);
+    if (newP == nullptr) return;
+    FlipScanEdgeEvent(tcx, ep, eq, flip_triangle, ot, *newP, depth + 1);
   }
 }
 
@@ -1944,6 +1972,10 @@ class CDT {
   // Steiner points.
   void Triangulate() {
     sweep_->Triangulate(*sweep_context_);
+  }
+
+  const char* GetError() const {
+    return sweep_context_->error_message;
   }
 
   // Get CDT triangles.
@@ -2062,7 +2094,7 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
     std::vector<std::pair<const Point *, int>> pt_map;
     pt_map.reserve(num_pts);
 
-    auto add_pt = [&](const vec2 &v) {
+    auto AddPt = [&](const vec2 &v) {
       pts.push_back(Point(v.x, v.y));
       Point *p = &pts.back();
       mesh.vertices.push_back(v);
@@ -2072,7 +2104,7 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
 
     std::vector<Point *> polyline;
     for (int k = 0; k < (int)cleaned_paths[i].size(); k++) {
-      polyline.push_back(add_pt(cleaned_paths[i][k]));
+      polyline.push_back(AddPt(cleaned_paths[i][k]));
     }
 
     CDT cdt(polyline);
@@ -2081,13 +2113,16 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
       if (parent[j] == i && cleaned_paths[j].size() >= 3) {
         std::vector<Point *> hole;
         for (int k = 0; k < (int)cleaned_paths[j].size(); k++) {
-          hole.push_back(add_pt(cleaned_paths[j][k]));
+          hole.push_back(AddPt(cleaned_paths[j][k]));
         }
         cdt.AddHole(hole);
       }
     }
 
     cdt.Triangulate();
+    if (const char *err = cdt.GetError()) {
+      return {std::string_view(err)};
+    }
 
     std::sort(pt_map.begin(), pt_map.end(),
               [](const std::pair<const Point *, int> &a,
@@ -2095,15 +2130,20 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
                 return a.first < b.first;
               });
 
-    auto GetIdx = [&](const Point *p) {
+    // Or -1 if not found.
+    auto GetIdx = [&](const Point *p) -> int {
       auto it = std::lower_bound(
           pt_map.begin(), pt_map.end(), std::make_pair(p, 0),
           [](const std::pair<const Point *, int> &a,
              const std::pair<const Point *, int> &b) {
             return a.first < b.first;
           });
+      if (it == pt_map.end() || it->first != p) {
+        return -1;
+      }
       return it->second;
     };
+
 
     const std::vector<Triangle *> &triangles = cdt.GetTriangles();
     int num_triangles = (int)triangles.size();
@@ -2111,7 +2151,11 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
       Triangle *t = triangles[t_idx];
       std::array<int, 3> poly;
       for (int k = 0; k < 3; k++) {
-        poly[k] = GetIdx(t->GetPoint(k));
+        int idx = GetIdx(t->GetPoint(k));
+        if (idx == -1) {
+          return { "Triangulation failed (bad geometry)" };
+        }
+        poly[k] = idx;
       }
       // Reverse from Poly2Tri Cartesian CCW to Mesh Cartesian CW.
       mesh.triangles.emplace_back(poly[2], poly[1], poly[0]);
@@ -2185,6 +2229,8 @@ Polygonization::PolygonizeResult Polygonization::Polygonize(
             edge_to_poly.find(MakeEdge(v, u));
 
         if (it1 != edge_to_poly.end() && it2 != edge_to_poly.end()) {
+          CHECK(u < mesh.vertices.size()) << u << " " << mesh.vertices.size();
+          CHECK(v < mesh.vertices.size()) << v << " " << mesh.vertices.size();
           int p1 = it1->second;
           int p2 = it2->second;
           vec2 diff = mesh.vertices[u] - mesh.vertices[v];

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -19,16 +20,26 @@
 
 using namespace std;
 
-TTF::TTF(std::string_view filename) {
-  ttf_bytes = Util::ReadFileBytes(filename);
-  CHECK(!ttf_bytes.empty()) << filename;
+TTF::TTF() {}
 
-  int offset = stbtt_GetFontOffsetForIndex(ttf_bytes.data(), 0);
-  CHECK(offset != -1);
-  CHECK(stbtt_InitFont(&font, ttf_bytes.data(), ttf_bytes.size(), offset)) <<
-    "Failed to load " << filename;
+std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
+  std::unique_ptr<TTF> ret(new TTF);
+  ret->ttf_bytes = Util::ReadFileBytes(filename);
+  if (ret->ttf_bytes.empty()) return {nullptr};
+
+  int offset = stbtt_GetFontOffsetForIndex(ret->ttf_bytes.data(), 0);
+  if (offset == -1)
+    return {nullptr};
+
+  if (0 == stbtt_InitFont(&ret->font,
+                          ret->ttf_bytes.data(),
+                          ret->ttf_bytes.size(), offset)) {
+    return {nullptr};
+  }
+
   stbtt_GetFontVMetrics(
-      &font, &native_ascent, &native_descent, &native_linegap);
+      &ret->font,
+      &ret->native_ascent, &ret->native_descent, &ret->native_linegap);
 
   // We use a normalized representation like this:
   //
@@ -65,9 +76,9 @@ TTF::TTF(std::string_view filename) {
   // Note that native_descent is frequently wrong in fonts (it is positive).
   // I don't try to fix that here.
 
-  int height = native_ascent - native_descent;
-  norm = 1.0f / height;
-  baseline = native_ascent * norm;
+  int height = ret->native_ascent - ret->native_descent;
+  ret->norm = 1.0f / height;
+  ret->baseline = ret->native_ascent * ret->norm;
 
   /*
   printf("native ascent %d descent %d linegap %d.\n"
@@ -82,6 +93,36 @@ TTF::TTF(std::string_view filename) {
     printf("OS/2 versions: %d %d %d\n", os2ascent, os2descent, os2lg);
   }
   #endif
+
+  // We don't support cubic splines in this representation, so
+  // fail if any glyph has one.
+  {
+    std::unordered_map<uint16_t, std::vector<uint32_t>> all_glyphs =
+      stbtt_GetGlyphs(&ret->font);
+
+    for (const auto &[glyph, _] : all_glyphs) {
+      stbtt_vertex *vertices = nullptr;
+      const int n = stbtt_GetGlyphShape(&ret->font, glyph, &vertices);
+      if (n == 0) continue;
+      CHECK(vertices != nullptr);
+
+      CHECK(vertices[0].type == STBTT_vmove) <<
+        "All shapes should start with a moveto?";
+      for (int i = 0; i < n; i++) {
+        const stbtt_vertex &v = vertices[i];
+        switch (v.type) {
+        case STBTT_vmove: break;
+        case STBTT_vline: break;
+        case STBTT_vcurve: break;
+        case STBTT_vcubic: return {nullptr};
+        }
+      }
+
+      stbtt_FreeShape(&ret->font, vertices);
+    }
+  }
+
+  return ret;
 }
 
 std::pair<float, float> TTF::Norm(float x, float y) const {
@@ -107,7 +148,7 @@ float TTF::NormLineHeight() const {
 }
 
 
-float TTF::NormKernAdvance(char c1, char c2) const {
+float TTF::NormKernAdvance(uint32_t c1, uint32_t c2) const {
   int advance = 0;
   stbtt_GetCodepointHMetrics(&font, c1, &advance, nullptr);
   if (c2 != 0) {

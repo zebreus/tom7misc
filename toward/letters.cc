@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -16,14 +15,14 @@
 std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
   std::unique_ptr<Letters> result = std::make_unique<Letters>();
 
-  TTF ttf(filename);
-  if (!ttf.FontInfo() || ttf.FontInfo()->numGlyphs == 0) {
+  std::unique_ptr<TTF> ttf = TTF::Load(filename);
+  if (ttf.get() == nullptr || ttf->FontInfo()->numGlyphs == 0) {
     return {nullptr};
   }
 
   // Printable ascii for now.
   for (uint32_t codepoint = 32; codepoint < 127; codepoint++) {
-    std::vector<TTF::Contour> contours = ttf.GetContours(codepoint);
+    std::vector<TTF::Contour> contours = ttf->GetContours(codepoint);
 
     if (contours.empty()) {
       // Space or missing character. We still want an entry for it.
@@ -70,7 +69,8 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
       letter.mesh = std::get<Polygonization::Mesh>(std::move(poly_result));
       result->letter[codepoint] = std::move(letter);
     } else {
-      LOG(FATAL) << std::get<std::string_view>(poly_result);
+      // error in std::get<std::string_view>(poly_result);
+      return {nullptr};
     }
   }
 
@@ -78,7 +78,7 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
     uint32_t c1 = kv1.first;
     for (const auto& kv2 : result->letter) {
       uint32_t c2 = kv2.first;
-      result->kerning[KernKey(c1, c2)] = ttf.NormKernAdvance(c1, c2);
+      result->kerning[KernKey(c1, c2)] = ttf->NormKernAdvance(c1, c2);
     }
   }
 

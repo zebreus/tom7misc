@@ -172,7 +172,7 @@ Config PlusNewRoman() {
 static void GenerateOne(const Network &make_lowercase,
                         const Network &make_uppercase,
                         Config cfg) {
-  TTF ttf(cfg.input_font);
+  std::unique_ptr<TTF> ttf = TTF::Load(cfg.input_font);
 
   std::mutex out_m;
 
@@ -181,10 +181,10 @@ static void GenerateOne(const Network &make_lowercase,
         cfg.letters,
         [&](Op op) {
           std::optional<ImageA> sdfo =
-            ttf.GetSDF(op.input_char, SDF_CONFIG.sdf_size,
-                       SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                       SDF_CONFIG.pad_left,
-                       SDF_CONFIG.onedge_value, SDF_CONFIG.falloff_per_pixel);
+            ttf->GetSDF(op.input_char, SDF_CONFIG.sdf_size,
+                        SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                        SDF_CONFIG.pad_left,
+                        SDF_CONFIG.onedge_value, SDF_CONFIG.falloff_per_pixel);
 
           if (sdfo.has_value()) {
             ImageA input_sdf = sdfo.value();

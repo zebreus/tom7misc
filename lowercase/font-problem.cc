@@ -9,6 +9,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -181,7 +182,8 @@ void FontProblem::RenderVector(const string &font_filename,
 
   static constexpr int NUM_ITERS = 12;
 
-  TTF ttf{font_filename};
+  std::unique_ptr<TTF> ttf = TTF::Load(font_filename);
+  CHECK(ttf.get() != nullptr) << font_filename;
   ImageRGBA img{WIDTH, HEIGHT};
 
   img.Clear32(0x000000FF);
@@ -193,10 +195,10 @@ void FontProblem::RenderVector(const string &font_filename,
     const int codepoint = 'A' + letter;
     Stimulation stim{net};
     // We assume the given font fits for evaluation!
-    if (!FillVector(&ttf, codepoint, row_max_points,
+    if (!FillVector(ttf.get(), codepoint, row_max_points,
                     stim.values[0].data())) {
       const std::vector<Contour> contours =
-        TTF::MakeOnlyBezier(ttf.GetContours(codepoint));
+        TTF::MakeOnlyBezier(ttf->GetContours(codepoint));
 
       for (const TTF::Contour &contour : contours) {
         printf("FAIL: contour length %d\n", (int)contour.paths.size());
@@ -392,7 +394,8 @@ void FontProblem::RenderSDF(
 
   static constexpr int NUM_ITERS = 12;
 
-  TTF ttf{font_filename};
+  std::unique_ptr<TTF> ttf = TTF::Load(font_filename);
+  CHECK(ttf.get() != nullptr) << font_filename;
 
   static constexpr char CHARS[] =
     "abcdefghijklmnopqrstuvwxyz"
@@ -405,9 +408,9 @@ void FontProblem::RenderSDF(
                  int c = CHARS[idx];
                  CHECK(c != 0);
                  std::optional<ImageA> sdf =
-                   ttf.GetSDF(c, config.sdf_size,
-                              config.pad_top, config.pad_bot, config.pad_left,
-                              config.onedge_value, config.falloff_per_pixel);
+                   ttf->GetSDF(c, config.sdf_size,
+                               config.pad_top, config.pad_bot, config.pad_left,
+                               config.onedge_value, config.falloff_per_pixel);
                  CHECK(sdf.has_value()) << font_filename << "char " << (char)c;
                  letters[idx] = std::move(sdf.value());
                }, 13);

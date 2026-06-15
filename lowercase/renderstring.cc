@@ -58,17 +58,17 @@ constexpr bool LOWER = false;
 
 int main(int argc, char **argv) {
   Timer timer;
-  TTF helvetica("helvetica.ttf");
+  std::unique_ptr<TTF> helvetica = TTF::Load("helvetica.ttf");
 
   vector<ImageF> cycle;
   string phrase = "LMNOP";
   for (char ch : phrase) {
     std::optional<ImageA> sdfo =
-      helvetica.GetSDF(ch, SDF_CONFIG.sdf_size,
-                       SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                       SDF_CONFIG.pad_left,
-                       SDF_CONFIG.onedge_value,
-                       SDF_CONFIG.falloff_per_pixel);
+      helvetica->GetSDF(ch, SDF_CONFIG.sdf_size,
+                        SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                        SDF_CONFIG.pad_left,
+                        SDF_CONFIG.onedge_value,
+                        SDF_CONFIG.falloff_per_pixel);
     CHECK(sdfo.has_value());
     cycle.emplace_back(sdfo.value());
   }

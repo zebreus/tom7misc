@@ -8,17 +8,13 @@
 #include <cstdint>
 #include <memory>
 
-#include "fonts/ttf.h"
-#include "util.h"
-#include "timer.h"
+#include "base/print.h"
 #include "font-problem.h"
-
-#include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
+#include "fonts/ttf.h"
 #include "network.h"
 #include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 using namespace std;
 
@@ -164,7 +160,7 @@ Config FirstSans() {
 
 // Vector version just has one network, because I only trained one direction.
 static void GenerateOne(const Network &net, Config cfg) {
-  TTF ttf(cfg.input_font);
+  std::unique_ptr<TTF> ttf = TTF::Load(cfg.input_font);
 
   std::mutex out_m;
 
@@ -176,7 +172,7 @@ static void GenerateOne(const Network &net, Config cfg) {
                   Stimulation stim{net};
                   // XXX could just skip if it's not a letter?
                   if (FontProblem::FillVector(
-                          &ttf, codepoint, cfg.row_max_points,
+                          ttf.get(), codepoint, cfg.row_max_points,
                           stim.values[0].data())) {
                   net.RunForward(&stim);
                   TTF::Char ch;
@@ -194,9 +190,9 @@ static void GenerateOne(const Network &net, Config cfg) {
                   } else {
                     {
                       MutexLock ml(&out_m);
-                      printf("%s [%c] Input font does not fit\n",
-                             cfg.font_name.c_str(),
-                             op.input_char);
+                      Print("{} [{:c}] Input font does not fit\n",
+                            cfg.font_name,
+                            op.input_char);
                     }
 
                     CHECK(!IsLetter(op.input_char)) <<
@@ -215,14 +211,14 @@ static void GenerateOne(const Network &net, Config cfg) {
                }, 13);
 
   TTF::Font font;
-  font.baseline = ttf.Baseline();
+  font.baseline = ttf->Baseline();
   font.linegap = cfg.linegap;
   font.extra_scale = cfg.extra_scale;
   font.copyright = cfg.copyright;
   for (const auto &[c, ch] : chars) font.chars[c] = ch;
 
   Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name));
-  printf("Wrote %s\n", cfg.filename.c_str());
+  Print("Wrote {}\n", cfg.filename);
 }
 
 int main(int argc, char **argv) {

@@ -1,6 +1,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -29,7 +30,7 @@ int main(int argc, char **argv) {
   // 2nd and 3rd contour have fewer points allocated...
 
   fprintf(f, "# contours\tmax p 0\tmax p 1\t max p 2\n");
-  for (TTF *ttf : loadfonts.fonts) {
+  for (std::unique_ptr<TTF> &ttf : loadfonts.fonts) {
     int mc = 0;
     // If we sort the contours by length, max of the largest,
     // second largest, third largest.

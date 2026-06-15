@@ -81,11 +81,11 @@ int main(int argc, char **argv) {
 
   ImageA vector_sdf;
   {
-    TTF ttf("times.ttf");
+    std::unique_ptr<TTF> ttf = TTF::Load("times.ttf");
     std::optional<ImageA> sdf =
-      ttf.GetSDF('O', config.sdf_size,
-                 config.pad_top, config.pad_bot, config.pad_left,
-                 config.onedge_value, config.falloff_per_pixel);
+      ttf->GetSDF('O', config.sdf_size,
+                  config.pad_top, config.pad_bot, config.pad_left,
+                  config.onedge_value, config.falloff_per_pixel);
     CHECK(sdf.has_value());
     vector_sdf = sdf.value();
     const int BSIZE = 800;

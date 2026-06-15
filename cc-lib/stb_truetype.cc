@@ -1081,7 +1081,11 @@ static int stbtt__GetGlyphShapeTT(const stbtt_fontinfo *info, int glyph_index, s
          }
          else {
             // @TODO handle matching point
-            STBTT_assert(0);
+           // STBTT_assert(0);
+           // tom7 treats this as a "graceful" failure
+           if (vertices) STBTT_free(vertices, info->userdata);
+           if (comp_verts) STBTT_free(comp_verts, info->userdata);
+           return 0;
          }
          if (flags & (1<<3)) { // WE_HAVE_A_SCALE
             mtx[0] = mtx[3] = ttSHORT(comp)/16384.0f; comp+=2;

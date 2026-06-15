@@ -40,7 +40,7 @@ struct VectorLoadFonts {
   std::shared_mutex fonts_m;
   // Protected by fonts_m.
   // The font pointers are owned by this object.
-  std::vector<TTF *> fonts;
+  std::vector<std::unique_ptr<TTF>> fonts;
 
  private:
   void Init();

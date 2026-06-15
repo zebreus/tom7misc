@@ -1,6 +1,9 @@
 
+#include <array>
 #include <ctime>
 #include <format>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -13,6 +16,7 @@
 #include "atomic-util.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "font-db.h"
 #include "fonts/ttf.h"
 #include "image.h"
@@ -30,37 +34,44 @@ DECLARE_COUNTERS(ctr_bad_response, ctr_done_here);
 static constexpr std::string_view HOST = "10.0.0.34";
 static constexpr int PORT = 8080;
 
+static constexpr int NUM_THREADS = 16;
 static constexpr int SHEET_WIDTH = 900;
 static constexpr int SHEET_HEIGHT = 300;
 
 static StatusBar *status = nullptr;
 static Asynchronously *async = nullptr;
 
+static std::mutex action_mutex;
+static std::array<std::string, NUM_THREADS> actions;
+
 static void SetAction(int thread_idx, std::string_view action) {
-  status->LineStatus(0, ANSI_BG(0, 0, 80)
-                     ANSI_WHITE
-                     "══╡ " ANSI_GREEN "{}"
-                     ANSI_WHITE " ╞══════════════════════════════"
-                     "═══════════════════════════════════════════"
-                     "═══════════════"
-                     ANSI_RESET,
-                     action);
+  MutexLock ml(&action_mutex);
+  actions[thread_idx] = action;
+  std::string line = ANSI_BG(0, 0, 80) ANSI_WHITE "══╡ ";
+  for (int i = 0; i < NUM_THREADS; i++) {
+    if (i != 0) line += ANSI_WHITE " | ";
+    AppendFormat(&line, ANSI_GREEN "{}", actions[i]);
+  }
+  line += ANSI_WHITE " ╞══════════════════════════════"
+    "═══════════════════════════════════════════" ANSI_RESET;
+
+  status->LineStatus(0, "{}", line);
 }
 
 std::optional<ImageRGBA> FontSheet(std::string_view fontname) {
-  TTF ttf(fontname);
-  if (!ttf.FontInfo() || ttf.FontInfo()->numGlyphs == 0) {
+  std::unique_ptr<TTF> ttf = TTF::Load(fontname);
+  if (ttf.get() == nullptr || ttf->FontInfo()->numGlyphs == 0) {
     return std::nullopt;
   }
 
   ImageRGBA img(SHEET_WIDTH, SHEET_HEIGHT);
   img.Clear32(0xFFFFFFFF);
 
-  ttf.BlitStringFloat(25.0f, SHEET_HEIGHT - 100.0f,
-                      SHEET_HEIGHT - 125.0f, "ABCabc",
-                      [&img](int x, int y, uint8_t v) {
-                        img.BlendPixel32(x, y, 0x00000000 | v);
-                      }, true);
+  ttf->BlitStringFloat(25.0f, SHEET_HEIGHT - 100.0f,
+                       SHEET_HEIGHT - 125.0f, "ABCabc",
+                       [&img](int x, int y, uint8_t v) {
+                         img.BlendPixel32(x, y, 0x00000000 | v);
+                       }, true);
 
   return img;
 }
@@ -224,11 +235,11 @@ static FontDB::Type Classify(int thread_idx, std::string_view fontname) {
 static void ClassifyMany() {
   ArcFour rc(std::format("classify.{}", time(nullptr)));
   SetAction(0, "Load DB");
-  FontDB db;
+  std::unique_ptr<FontDB> db = FontDB::Create();
 
   int64_t already = 0;
 
-  const std::unordered_map<std::string, FontDB::Info> &files = db.Files();
+  const std::unordered_map<std::string, FontDB::Info> &files = db->Files();
 
   std::vector<std::string> todo;
   for (const auto &[name, info] : files) {
@@ -244,36 +255,57 @@ static void ClassifyMany() {
   status->Print("{} already done. {} left to do.\n",
                 already, todo.size());
 
+  std::mutex m;
+  size_t next_idx = 0;
   Timer timer;
   Periodically save_per(60.0, false);
   Periodically status_per(1.0);
-  for (const std::string &filename : todo) {
-    FontDB::Type type = Classify(0, filename);
-    db.AssignType(filename, type);
-    db.SetFlag(filename, FontDB::Flag::GEMMA_LABEL, true);
-    ctr_done_here++;
+  ParallelFan(
+      NUM_THREADS,
+      [&](int thread_idx) {
+        for (;;) {
+          std::string filename;
+          {
+            MutexLock ml(&m);
+            if (next_idx >= todo.size()) {
+              SetAction(thread_idx, "Done");
+              return;
+            }
 
-    save_per.RunIf([&]{
-        SetAction("Saving");
-        db.Save(false);
-        status->Print(AYELLOW("Saved") ".\n");
+            filename = todo[next_idx];
+            next_idx++;
+          }
+
+          FontDB::Type type = Classify(thread_idx, filename);
+          db->AssignType(filename, type);
+          db->SetFlag(filename, FontDB::Flag::GEMMA_LABEL, true);
+          ctr_done_here++;
+
+          save_per.RunIf([&]{
+              SetAction(thread_idx, "Saving");
+              db->Save(false);
+              status->Print(AYELLOW("Saved") ".\n");
+            });
+
+          status_per.RunIf([&]{
+              int64_t done_here = ctr_done_here.Read();
+              double total_time = timer.Seconds();
+              double time_each = total_time / done_here;
+              status->LineStatus(
+                  1, "{} done here, {} already, "
+                  "{} left ({}; {} ea.) "
+                  "{:2.2f}% inference",
+                  done_here, already, todo.size() - done_here,
+                  ANSI::Time(total_time),
+                  ANSI::Time(time_each),
+                  (infer_seconds * 100.0) / total_time);
+            });
+        }
       });
 
-    status_per.RunIf([&]{
-        int64_t done_here = ctr_done_here.Read();
-        double total_time = timer.Seconds();
-        double time_each = total_time / done_here;
-        status->LineStatus(
-            1, "{} done here, {} already, {} left ({}; {} ea.) "
-            "{:2.2f}% inference",
-            done_here, already, todo.size() - done_here,
-            ANSI::Time(total_time),
-            ANSI::Time(time_each),
-            (infer_seconds * 100.0) / total_time);
-      });
-  }
-
+  status->Print("All done.\n");
 }
+
 
 
 int main(int argc, char **argv) {
@@ -281,7 +313,7 @@ int main(int argc, char **argv) {
   Net::Init();
 
   status = new StatusBar(2);
-  async = new Asynchronously(4);
+  async = new Asynchronously(NUM_THREADS + 2);
 
   ClassifyMany();
 

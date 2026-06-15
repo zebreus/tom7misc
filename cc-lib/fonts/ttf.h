@@ -6,12 +6,13 @@
 #include <cmath>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <string_view>
 
 #include "image.h"
 #include "stb_truetype.h"
@@ -31,7 +32,8 @@
 struct TTF {
   const stbtt_fontinfo *FontInfo() const { return &font; }
 
-  explicit TTF(std::string_view filename);
+  // Or nullptr if something is wrong.
+  static std::unique_ptr<TTF> Load(std::string_view filename);
 
   // amount to advance from one line of text to the next. This would
   // be +1.0 by definition except that we also take into account the
@@ -207,8 +209,11 @@ struct TTF {
   static void MapCoords(F f, Char *ch);
 
 
+  // This gives the amount to advance after codepoint c1, when
+  // followed by c2. It includes the normal width of c1 and the
+  // kerning between c1 and c2.
   // c2 may be 0 for no kerning.
-  float NormKernAdvance(char c1, char c2) const;
+  float NormKernAdvance(uint32_t c1, uint32_t c2) const;
 
   // Returns (minx, miny, maxx, maxy) in normalized coordinates.
   std::tuple<float, float, float, float> BoundingBox() const;
@@ -279,6 +284,8 @@ struct TTF {
   float Baseline() const { return baseline; }
 
  private:
+  // Use factory method.
+  TTF();
 
   // font uses "y positive up" coordinates.
   // ascent is the coordinate above the baseline (typically positive) and

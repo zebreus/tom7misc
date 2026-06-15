@@ -4,9 +4,11 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -17,8 +19,11 @@
 // Separately, we can record flags.
 struct FontDB {
   static constexpr const char *DATABASE_FILENAME = "font-db.txt";
+  // Or nullptr if not found / error.
+  static std::unique_ptr<FontDB> Create(
+      std::string_view filename = DATABASE_FILENAME);
+
   using int64 = int64_t;
-  using string = std::string;
 
   enum class Type {
     // good clean fonts. These should have "normal-looking"
@@ -63,9 +68,9 @@ struct FontDB {
   };
 
 
-  static string GetBaseFilename(const string &ff) {
+  static std::string GetBaseFilename(const std::string &ff) {
     size_t slash = ff.rfind("\\");
-    return slash == string::npos ? ff : ff.substr(slash + 1, string::npos);
+    return slash == std::string::npos ? ff : ff.substr(slash + 1, std::string::npos);
   }
 
   // Returns the true state, false state.
@@ -119,19 +124,17 @@ struct FontDB {
     float bitmap_diffs = -1.0f;
   };
 
-  FontDB();
-
   // Has the data changed, and the database needs to be saved?
   bool Dirty();
 
   // XXX can probably assume success, fail if not
-  std::optional<Info> Lookup(const string &s);
+  std::optional<Info> Lookup(const std::string &s);
 
-  void SetBitmapDiffs(const string &s, float bitmap_diffs = -1.0f);
+  void SetBitmapDiffs(const std::string &s, float bitmap_diffs = -1.0f);
 
-  void AssignType(const string &s, Type t);
+  void AssignType(const std::string &s, Type t);
 
-  void SetFlag(const string &s, Flag flag, bool on);
+  void SetFlag(const std::string &s, Flag flag, bool on);
 
   int64 NumSorted();
 
@@ -140,15 +143,18 @@ struct FontDB {
   int64 Size();
 
   // Aliases the map, so this is not thread safe!
-  const std::unordered_map<string, Info> &Files() const {
+  const std::unordered_map<std::string, Info> &Files() const {
     return files;
   }
 
 
  private:
-  static string FlagString(const std::map<Flag, bool> &flags) {
+  // Use factory method.
+  FontDB();
+
+  static std::string FlagString(const std::map<Flag, bool> &flags) {
     if (flags.empty()) return "_";
-    string ret;
+    std::string ret;
     for (const auto [flag, val] : flags) {
       const auto [tc, fc] = FlagChar(flag);
       ret.push_back(val ? tc : fc);
@@ -158,7 +164,7 @@ struct FontDB {
 
   std::mutex mu;
   int64 num_sorted = 0;
-  std::unordered_map<string, Info> files;
+  std::unordered_map<std::string, Info> files;
   bool dirty = false;
 };
 

@@ -13,4 +13,4 @@ InlayHints:
 
 # -DBIG_USE_GMP=1,
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -IC:/msys64/clang64/include/SDL2, -IC:/code/box2d/include/box2d]
+  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -I../fontdb, -IC:/msys64/clang64/include/SDL2, -IC:/code/box2d/include/box2d]

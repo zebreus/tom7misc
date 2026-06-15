@@ -43,7 +43,7 @@ vector<bool> Threshold(const ImageF &a) {
 }
 
 static void FindOneLoop(bool lower, char ch) {
-  TTF helvetica("helvetica.ttf");
+  std::unique_ptr<TTF> helvetica = TTF::Load("helvetica.ttf");
 
   std::unique_ptr<Network> make_lowercase, make_uppercase;
   make_lowercase.reset(Network::ReadNetworkBinary("net0.val"));
@@ -59,11 +59,11 @@ static void FindOneLoop(bool lower, char ch) {
     lower ? make_lowercase.get() : make_uppercase.get();
 
   std::optional<ImageA> sdfo =
-    helvetica.GetSDF(ch, SDF_CONFIG.sdf_size,
-                     SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                     SDF_CONFIG.pad_left,
-                     SDF_CONFIG.onedge_value,
-                     SDF_CONFIG.falloff_per_pixel);
+    helvetica->GetSDF(ch, SDF_CONFIG.sdf_size,
+                      SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                      SDF_CONFIG.pad_left,
+                      SDF_CONFIG.onedge_value,
+                      SDF_CONFIG.falloff_per_pixel);
   CHECK(sdfo.has_value());
   ImageF sdf(sdfo.value());
   // seen[sdf] = 0;
@@ -102,7 +102,7 @@ static void FindOneLoop(bool lower, char ch) {
 
 [[maybe_unused]]
 static void FindAllLoops(bool lower) {
-  TTF helvetica("helvetica.ttf");
+  std::unique_ptr<TTF> helvetica = TTF::Load("helvetica.ttf");
   constexpr float SCALE = 2.0;
 
   std::unique_ptr<Network> make_lowercase, make_uppercase;
@@ -127,11 +127,11 @@ static void FindAllLoops(bool lower) {
   int64 max_depth = 0;
   for (char ch : src) {
     std::optional<ImageA> sdfo =
-      helvetica.GetSDF(ch, SDF_CONFIG.sdf_size,
-                       SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                       SDF_CONFIG.pad_left,
-                       SDF_CONFIG.onedge_value,
-                       SDF_CONFIG.falloff_per_pixel);
+      helvetica->GetSDF(ch, SDF_CONFIG.sdf_size,
+                        SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                        SDF_CONFIG.pad_left,
+                        SDF_CONFIG.onedge_value,
+                        SDF_CONFIG.falloff_per_pixel);
     CHECK(sdfo.has_value());
     ImageF sdf(sdfo.value());
 

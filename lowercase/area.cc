@@ -1,6 +1,8 @@
 // This was a bug report for stb_truetype, which sean has
 // fixed!
 
+#include <cstdint>
+#include <memory>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -18,8 +20,8 @@ using int64 = int64_t;
 int main(int argc, char **argv) {
 
   // TTF ttf{"laser-italic.ttf"};
-  TTF ttf{"exedoreli.ttf"};
-  const stbtt_fontinfo *info = ttf.FontInfo();
+  std::unique_ptr<TTF> ttf = TTF::Load("exedoreli.ttf");
+  const stbtt_fontinfo *info = ttf->FontInfo();
 
   [[maybe_unused]]
   float stb_scale = stbtt_ScaleForPixelHeight(info, 200.0f);

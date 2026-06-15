@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <stdio.h>
 #include <string>
@@ -90,10 +91,10 @@ int main(int argc, char **argv) {
                    fflush(stdout);
                  }
 
-                 TTF ttf{filename};
+                 std::unique_ptr<TTF> ttf = TTF::Load(filename);
 
                  double diff =
-                   TTFOps::TotalAlphabetDifference(ttf,
+                   TTFOps::TotalAlphabetDifference(*ttf,
                                                    200.0f,
                                                    1000,
                                                    26.0f * 0.15f);

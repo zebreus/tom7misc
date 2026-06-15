@@ -3,6 +3,7 @@
 // drawing fonts as pixel bitmaps, then fed back to (upcoming
 // program) to generate vector format.
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <cstdint>
@@ -21,10 +22,6 @@ using int64 = int64_t;
 
 static constexpr FontProblem::SDFConfig SDF_CONFIG = {};
 
-static bool IsLetter(char c) {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
 static ImageF GetSDF(const TTF &ttf, char ch) {
   std::optional<ImageA> sdfo =
     ttf.GetSDF(ch, SDF_CONFIG.sdf_size,
@@ -35,7 +32,7 @@ static ImageF GetSDF(const TTF &ttf, char ch) {
 }
 
 int main(int argc, char **argv) {
-  TTF ttf("helvetica.ttf");
+  std::unique_ptr<TTF> ttf = TTF::Load("helvetica.ttf");
 
   // string chars = "abcdefghijklmnopqrstuvwxyz";
   // string chars = "1234567890!@#$%^&*()";
@@ -57,8 +54,8 @@ int main(int argc, char **argv) {
       // Your choice! x-height?
       'x';
 
-    ImageF sdfl = GetSDF(ttf, chl);
-    ImageF sdfu = GetSDF(ttf, chu);
+    ImageF sdfl = GetSDF(*ttf, chl);
+    ImageF sdfu = GetSDF(*ttf, chu);
 
     ImageRGBA tpl(BSIZE, BSIZE);
     tpl.Clear32(0x000000FF);

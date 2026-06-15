@@ -1,11 +1,10 @@
 
-#include <cstdio>
-#include <optional>
-#include <vector>
-#include <string>
-#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "base/stringprintf.h"
 #include "font-problem.h"
@@ -246,11 +245,11 @@ int main(int argc, char **argv) {
   printf("Took %.3f sec\n", sdf_timer.MS() / 1000.0);
 
 
-  TTF ttf("helvetica.ttf");
+  std::unique_ptr<TTF> ttf = TTF::Load("helvetica.ttf");
   std::optional<ImageA> sdf =
-    ttf.GetSDF('E', SDF_CONFIG.sdf_size,
-               SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot, SDF_CONFIG.pad_left,
-               SDF_CONFIG.onedge_value, SDF_CONFIG.falloff_per_pixel);
+    ttf->GetSDF('E', SDF_CONFIG.sdf_size,
+                SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot, SDF_CONFIG.pad_left,
+                SDF_CONFIG.onedge_value, SDF_CONFIG.falloff_per_pixel);
   CHECK(sdf.has_value());
   ImageA vector_sdf = sdf.value();
 

@@ -175,7 +175,7 @@ struct UI {
   // quit confirmations.
   int confirmations = 0;
 
-  FontDB fontdb;
+  std::unique_ptr<FontDB> fontdb;
 
   // All the fonts we want to look at in this instance.
   vector<string> cur_filenames;
@@ -217,7 +217,7 @@ struct UI {
 
   // Parallel to cur_filenames, but not usually
   // as long. Use GetFont(idx).
-  vector<TTF *> fonts;
+  vector<std::unique_ptr<TTF>> fonts;
 
   void ResultThread();
 
@@ -230,10 +230,10 @@ struct UI {
     if (fonts[idx] == nullptr) {
       printf("Load %s...\n", cur_filenames[idx].c_str());
       fflush(stdout);
-      fonts[idx] = new TTF(cur_filenames[idx]);
+      fonts[idx] = TTF::Load(cur_filenames[idx]);
     }
 
-    return fonts[idx];
+    return fonts[idx].get();
   }
 
   int current_scale = 100;
@@ -248,8 +248,8 @@ struct UI {
   char current_char = 'a';
   float current_xscale = 1.0, current_yscale = 1.0;
   float current_xoff = 0.0, current_yoff = 0.0;
-  TTF times{"times.ttf"};
-  TTF helvetica{"helvetica.ttf"};
+  std::unique_ptr<TTF> times = TTF::Load("times.ttf");
+  std::unique_ptr<TTF> helvetica = TTF::Load("helvetica.ttf");
 
   SDL_Surface *drawmode_bg = nullptr;
 
@@ -594,6 +594,7 @@ double BitmapDifference(const TTF &ttf,
 
 
 UI::UI() {
+  fontdb = FontDB::Create("../fontdb/font-db.txt");
   drawmode_bg = sdlutil::LoadImageFile("drawmode.png");
   CHECK(drawmode_bg != nullptr);
 
@@ -609,7 +610,7 @@ UI::UI() {
 
   RE2 required = ".*";
 
-  for (const auto &[filename, info] : fontdb.Files()) {
+  for (const auto &[filename, info] : fontdb->Files()) {
     if (info.type == Type::UNKNOWN) {
       unsorted++;
     } else {
@@ -661,7 +662,7 @@ UI::UI() {
          "Unsorted fonts: %lld\n"
          "Case marked: %lld\n"
          "Case unmarked: %lld\n",
-         (int64_t)fontdb.Size(),
+         (int64_t)fontdb->Size(),
          sorted,
          unsorted,
          case_marked,
@@ -689,7 +690,7 @@ void UI::ClearDrawing() {
 
 void UI::SetType(Type t) {
   if (mode == Mode::SORTITION) {
-    fontdb.AssignType(cur_filenames[cur], t);
+    fontdb->AssignType(cur_filenames[cur], t);
     if (cur < cur_filenames.size() - 1) {
       cur++;
     }
@@ -699,7 +700,7 @@ void UI::SetType(Type t) {
 
 void UI::SetFlag(Flag f, bool on) {
   if (mode == Mode::SORTITION) {
-    fontdb.SetFlag(cur_filenames[cur], f, on);
+    fontdb->SetFlag(cur_filenames[cur], f, on);
     if (cur < cur_filenames.size() - 1) {
       cur++;
     }
@@ -1051,11 +1052,11 @@ void UI::Loop() {
           if (sym >= 'a' && sym <= 'z') {
             // XXX allow shift for uppercase too
             std::optional<ImageA> sdfo =
-              helvetica.GetSDF(sym, SDF_CONFIG.sdf_size,
-                               SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
-                               SDF_CONFIG.pad_left,
-                               SDF_CONFIG.onedge_value,
-                               SDF_CONFIG.falloff_per_pixel);
+              helvetica->GetSDF(sym, SDF_CONFIG.sdf_size,
+                                SDF_CONFIG.pad_top, SDF_CONFIG.pad_bot,
+                                SDF_CONFIG.pad_left,
+                                SDF_CONFIG.onedge_value,
+                                SDF_CONFIG.falloff_per_pixel);
             if (sdfo.has_value()) {
               zoom_iters = 0;
               zoom_sdf = ImageF(*sdfo);
@@ -1071,7 +1072,7 @@ void UI::Loop() {
         switch (event.key.keysym.sym) {
         case SDLK_ESCAPE:
           printf("ESCAPE.\n");
-          if (fontdb.Dirty()) {
+          if (fontdb->Dirty()) {
             SetDirty();
             confirmations++;
             if (confirmations >= 5)
@@ -1369,7 +1370,7 @@ void UI::Loop() {
           break;
 
         case SDLK_v:
-          fontdb.Save();
+          fontdb->Save();
           SetDirty();
           break;
 
@@ -1519,7 +1520,7 @@ void UI::DrawSortition() {
                "[^6O^<]ther "
                "[^6B^<]roken");
 
-  if (fontdb.Dirty()) {
+  if (fontdb->Dirty()) {
     font2x->draw(SCREENW - font2x->width * 8, 4, "(Sa[^6V^<]e?)");
   }
   if (confirmations > 0) {
@@ -1529,7 +1530,7 @@ void UI::DrawSortition() {
   }
 
   {
-    double pct = (100.0 * fontdb.NumSorted()) / (double)fontdb.Size();
+    double pct = (100.0 * fontdb->NumSorted()) / (double)fontdb->Size();
     string progress = std::format("^6{:.2f}^4%^<  {}^4/^<{}",
                                    pct, cur, cur_filenames.size());
     font2x->draw(SCREENW - font2x->sizex(progress) - 8,
@@ -1552,7 +1553,7 @@ void UI::DrawSortition() {
       float scale = current_scale * scalescale;
 
       const string &ff = cur_filenames[i];
-      std::optional<FontDB::Info> info = fontdb.Lookup(ff);
+      std::optional<FontDB::Info> info = fontdb->Lookup(ff);
 
       string dest = "";
       string cstring = "";
@@ -2092,7 +2093,7 @@ void UI::Draw() {
 
   case Mode::BITMAP: {
 
-    vector<TTF::Contour> contours = times.GetContours(current_char);
+    vector<TTF::Contour> contours = times->GetContours(current_char);
     if (only_bezier) contours = TTF::MakeOnlyBezier(contours);
     if (normalize) contours = TTF::NormalizeOrder(contours,
                                                   0.0f, 0.0f);

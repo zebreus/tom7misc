@@ -103,6 +103,13 @@ void ModelUtil::FileCollection::DescribeFile(std::filesystem::path file,
 // Can call this multiple times for the same directory, though.
 void ModelUtil::FileCollection::AddWildcard(std::filesystem::path dir,
                                             std::string_view pattern) {
+  // If it's not actually a wildcard, just add it without the scan
+  // over files.
+  if (pattern.find_first_of("*?") == std::string_view::npos) {
+    AddFile(dir / pattern);
+    return;
+  }
+
   for (std::string_view f : Util::ListFiles(dir.string())) {
     if (Util::MatchesWildcard(pattern, f)) {
       std::filesystem::path p = dir / f;
@@ -135,8 +142,13 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
       std::string_view file = Util::Chop(&line);
       Util::RemoveLeadingWhitespace(&line);
 
-      std::filesystem::path cc = config_path / file;
-      AddFile(cc);
+      // Always add as a wildcard, even if it's just a
+      // plain path.
+      std::string dir = Util::PathOf(file);
+      std::string pattern = Util::FileOf(file);
+      AddWildcard(config_path / dir, pattern);
+
+      // Could use description here...
 
     } else if (Util::TryStripPrefix("describe", &line)) {
       std::string_view dir = Util::Chop(&line);

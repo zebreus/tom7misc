@@ -1,7 +1,9 @@
 #include "font-db.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <format>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -15,7 +17,11 @@
 
 using namespace std;
 
-FontDB::FontDB() {
+FontDB::FontDB() {}
+
+std::unique_ptr<FontDB> FontDB::Create(std::string_view filename) {
+  std::unique_ptr<FontDB> db(new FontDB);
+
   std::unordered_map<string, Type> string_type;
   for (const Type t : {Type::SANS, Type::SERIF, Type::FANCY,
         Type::TECHNO, Type::DECORATIVE,
@@ -24,31 +30,42 @@ FontDB::FontDB() {
     string_type[TypeString(t)] = t;
   }
 
-  for (string line : Util::ReadFileToLines(DATABASE_FILENAME)) {
+  std::vector<std::string> lines = Util::ReadFileToLines(filename);
+  // Non-existent (or empty).
+  if (lines.empty()) return {nullptr};
+
+  for (std::string line : lines) {
     const string flagstring = Util::chop(line);
     const double diffscore = Util::ParseDouble(Util::chop(line), -1.0);
     const string typestring = Util::chop(line);
     const string filename = Util::LoseWhiteL(line);
 
     auto it = string_type.find(typestring);
-    CHECK(it != string_type.end()) << "Unknown type " << typestring;
+    if (it == string_type.end()) {
+      Print(stderr, "Unknown type: {}\n", typestring);
+      return {nullptr};
+    }
+
     const Type type = it->second;
-    CHECK(files.find(filename) == files.end()) <<
-      "Duplicate in fontdb: " << filename;
+    if (db->files.find(filename) != db->files.end()) {
+      Print(stderr, "Duplicate in fontdb: {}\n", filename);
+      return {nullptr};
+    }
 
     Info info;
     info.type = type;
-    if (type != Type::UNKNOWN) num_sorted++;
+    if (type != Type::UNKNOWN) db->num_sorted++;
     info.bitmap_diffs = diffscore;
     for (char c : flagstring) {
       if (c == '_') continue;
       auto [flag, on] = CharFlag(c);
       info.flags[flag] = on;
     }
-    files[filename] = info;
+    db->files[filename] = info;
   }
 
-  Print("Total in FontDB: {}\n", files.size());
+  // Print("Total in FontDB: {}\n", db->files.size());
+  return db;
 }
 
 int64_t FontDB::Size() {
@@ -98,6 +115,7 @@ int64_t FontDB::NumSorted() {
 
 
 void FontDB::Save(bool verbose) {
+  MutexLock ml(&mu);
   {
     vector<string> lines;
     for (const auto &[filename, info] : MapToSortedVec(files)) {
@@ -117,3 +135,4 @@ void FontDB::Save(bool verbose) {
 
   dirty = false;
 }
+

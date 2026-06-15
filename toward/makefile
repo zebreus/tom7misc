@@ -3,16 +3,19 @@ all : test.exe letters_test.exe
 
 CC_LIB=../cc-lib
 BOX2D=../../box2d
+FONTDB=../fontdb
 
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o
 
-# OPT=-O2 -flto
-OPT=-fsanitize=address -O
+FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
-CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(BOX2D)/include/box2d --std=c++23
+OPT=-O2 -flto -g
+# OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
+
+CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(BOX2D)/include/box2d --std=c++23
 
 LFLAGS=$(OPT) --std=c++23
 SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
@@ -22,7 +25,7 @@ SDL_OBJECTS=rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o
 
 # all (library) objects
-LIB_OBJECTS=scene.o letters.o eval.o
+LIB_OBJECTS=scene.o letters.o eval.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -38,15 +41,15 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS) $(CC_LIB_OBJECTS)
+test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
-letters_test.exe : letters_test.o $(LIB_OBJECTS) $(CC_LIB_OBJECTS)
+letters_test.exe : letters_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
-evaluate.exe : evaluate.o $(LIB_OBJECTS) $(CC_LIB_OBJECTS)
+evaluate.exe : evaluate.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

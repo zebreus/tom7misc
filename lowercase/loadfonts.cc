@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 
 #include "fonts/ttf.h"
@@ -64,7 +65,7 @@ static bool CaseOK(const FontDB::Info &info) {
 }
 
 void VectorLoadFonts::Init() {
-  font_db = std::make_unique<FontDB>();
+  font_db = FontDB::Create("../fontdb/font-db.txt");
 
   vector<string> filenames_todo;
   for (const auto &[filename, info] : font_db->Files()) {
@@ -77,7 +78,7 @@ void VectorLoadFonts::Init() {
     }
   }
 
-  printf("%lld eligible fonts\n", (int64)filenames_todo.size());
+  Print("{} eligible fonts\n", filenames_todo.size());
   ParallelApp(filenames_todo,
               [this](const string &filename) {
                 if (ExitEarly()) return;
@@ -87,7 +88,7 @@ void VectorLoadFonts::Init() {
                     return;
                 }
 
-                TTF *ttf = new TTF{filename};
+                std::unique_ptr<TTF> ttf = TTF::Load(filename);
 
                 vector<float> v;
                 v.resize(
@@ -97,11 +98,10 @@ void VectorLoadFonts::Init() {
                 for (int c = 0; c < 26; c++) {
                   int upper = 'A' + c;
                   int lower = 'a' + c;
-                  if (!FontProblem::FillVector(ttf, upper, row_max_points,
-                                               v.data()) ||
-                      !FontProblem::FillVector(ttf, lower, row_max_points,
-                                               v.data())) {
-                    delete ttf;
+                  if (!FontProblem::FillVector(
+                          ttf.get(), upper, row_max_points, v.data()) ||
+                      !FontProblem::FillVector(
+                          ttf.get(), lower, row_max_points, v.data())) {
                     return;
                   }
                 }
@@ -109,7 +109,7 @@ void VectorLoadFonts::Init() {
                 // XXX other filters
                 {
                   WriteMutexLock ml(&fonts_m);
-                  fonts.push_back(ttf);
+                  fonts.push_back(std::move(ttf));
                 }
               }, max_parallelism);
 
@@ -126,9 +126,6 @@ VectorLoadFonts::~VectorLoadFonts() {
   if (init_thread != nullptr) {
     init_thread->join();
     init_thread.reset();
-  }
-  for (TTF *ttf : fonts) {
-    delete ttf;
   }
   fonts.clear();
 }
@@ -149,7 +146,7 @@ SDFLoadFonts::SDFLoadFonts(
 }
 
 void SDFLoadFonts::Init() {
-  font_db = std::make_unique<FontDB>();
+  font_db = FontDB::Create("../fontdb/font-db.txt");
 
   vector<string> filenames_todo;
   for (const auto &[filename, info] : font_db->Files()) {
@@ -189,7 +186,7 @@ void SDFLoadFonts::Init() {
                     return;
                 }
 
-                std::unique_ptr<TTF> ttf{new TTF{filename}};
+                std::unique_ptr<TTF> ttf = TTF::Load(filename);
 
                 Font font;
 
@@ -229,20 +226,21 @@ void SDFLoadFonts::Init() {
                   if (fonts.size() % 100 == 0) {
                     double ms = timer.MS();
                     double s_per_item = (ms / 1000.0) / fonts.size();
-                    printf("Loaded %d, %lld failed in %.2fs (%.2fs/font; %.2fs remain)..\n",
-                           (int)fonts.size(),
-                           num_failed,
-                           ms / 1000.0,
-                           s_per_item,
-                           s_per_item * (filenames_todo.size() - fonts.size()));
+                    Print("Loaded {}, {} failed in {:.2f}s ({:.2f}s/font; "
+                          "{:.2f}s remain)..\n",
+                          fonts.size(),
+                          num_failed,
+                          ms / 1000.0,
+                          s_per_item,
+                          s_per_item * (filenames_todo.size() - fonts.size()));
                   }
                 }
               }, max_parallelism);
 
   {
     ReadMutexLock ml(&fonts_m);
-    printf("Done loading %lld fonts (%lld failed)\n",
-           (int64)fonts.size(), num_failed);
+    Print("Done loading {} fonts ({} failed)\n",
+          fonts.size(), num_failed);
   }
 }
 
