@@ -55,16 +55,25 @@ struct Scene {
                  vec2f pos, vec2f vel,
                  float restitution = 0.7f);
 
+  void AddFixedObject(const Polygonization::Mesh &mesh, uint32_t color,
+                      vec2f pos, float friction = 0.2);
+
   void ApplyImpulse(vec2f v);
 
   // Get the triangles for rendering, using Cartesian coordinates.
   std::vector<Rendering::Triangle> GetScene();
 
+  Scene(Scene &&other) noexcept = default;
+  Scene &operator=(Scene &&other) noexcept = default;
+
+ private:
+  void Attach(b2BodyId body_id, b2ShapeDef shape_def,
+              const Polygonization::Mesh &mesh,
+              uint32_t color);
+
   // Move-only.
-  Scene(const Scene&) = delete;
-  Scene& operator=(const Scene&) = delete;
-  Scene(Scene&& other) noexcept;
-  Scene& operator=(Scene&& other) noexcept;
+  Scene(const Scene &) = delete;
+  Scene &operator=(const Scene &) = delete;
 };
 
 

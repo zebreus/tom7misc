@@ -216,7 +216,8 @@ std::optional<vec2f> Scene::RejectObject(
   return std::nullopt;
 }
 
-void Scene::AddObject(const Polygonization::Mesh &mesh, uint32_t color, vec2f pos,
+void Scene::AddObject(const Polygonization::Mesh &mesh,
+                      uint32_t color, vec2f pos,
                       vec2f vel, float restitution) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
@@ -230,6 +231,30 @@ void Scene::AddObject(const Polygonization::Mesh &mesh, uint32_t color, vec2f po
   shape_def.material.restitution = restitution;
   shape_def.material.friction = 0.2f;
 
+  Attach(body_id, shape_def, mesh, color);
+}
+
+void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
+                           uint32_t color, vec2f pos,
+                           float friction) {
+  b2BodyDef body_def = b2DefaultBodyDef();
+  body_def.type = b2_staticBody;
+  body_def.position = {pos.x, pos.y};
+
+  b2BodyId body_id = b2CreateBody(world_id, &body_def);
+
+  b2ShapeDef shape_def = b2DefaultShapeDef();
+  shape_def.density = 1.0f;
+  shape_def.material.restitution = 0.0;
+  shape_def.material.friction = friction;
+
+  Attach(body_id, shape_def, mesh, color);
+}
+
+void Scene::Attach(b2BodyId body_id,
+                   b2ShapeDef shape_def,
+                   const Polygonization::Mesh &mesh,
+                   uint32_t color) {
   std::vector<Rendering::Triangle> render_mesh;
 
   for (const auto &poly : mesh.polygons) {
@@ -269,7 +294,6 @@ void Scene::AddObject(const Polygonization::Mesh &mesh, uint32_t color, vec2f po
       .mesh = render_mesh,
   });
 }
-
 
 void Scene::ApplyImpulse(vec2f v) {
   for (const Obj &obj : objects) {

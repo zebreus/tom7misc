@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "fonts/ttf.h"
+#include "geom/bezier.h"
 #include "geom/polygonization.h"
-#include "lines.h"
 
 std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
   std::unique_ptr<Letters> result = std::make_unique<Letters>();
@@ -48,7 +48,7 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
         } else if (p.type == TTF::PathType::BEZIER) {
           // Nominally the glyphs are in the unit square.
           static constexpr double MAX_ERR_SQUARED = 0.001 * 0.001;
-          auto points = TesselateQuadraticBezier<double>(
+          auto points = TesselateQuadBezier<double>(
               cur_x, cur_y, p.cx, p.cy, p.x, p.y, MAX_ERR_SQUARED);
           for (const auto &pt : points) {
             pts.push_back({pt.first, pt.second});

@@ -23,7 +23,7 @@
 #include "timer.h"
 #include "atomic-util.h"
 
-DECLARE_COUNTERS(ctr_invalid);
+DECLARE_COUNTERS(ctr_invalid, ctr_discarded);
 
 static constexpr int NUM_THREADS = 8;
 
@@ -46,6 +46,13 @@ struct Evaluated {
   double avg = 0.0;
   bool valid = true;
 };
+
+static bool HasFailure(const Evaluated &e) {
+  for (double v : e.stabs) {
+    if (v >= 1000.0) return true;
+  }
+  return false;
+}
 
 static StatusBar *status = nullptr;
 
@@ -140,8 +147,13 @@ static void EvaluateAll() {
                              thread_idx, fontname);
           Evaluated e = Evaluate(fontname);
           if (e.valid) {
-            MutexLock ml(&m);
-            evaled.push_back(std::move(e));
+            if (HasFailure(e)) {
+              status->Print("Discarded: {}\n", fontname);
+              ctr_discarded++;
+            } else {
+              MutexLock ml(&m);
+              evaled.push_back(std::move(e));
+            }
           } else {
             status->Print("Invalid: {}\n", fontname);
             ctr_invalid++;
@@ -153,8 +165,10 @@ static void EvaluateAll() {
                 ANSI::ProgressBar(next_idx, files.size(),
                                   std::format(
                                       ARED("{}") " invalid, "
+                                      AORANGE("{}") " discarded, "
                                       AGREEN("{}") " evaluated",
                                       ctr_invalid.Read(),
+                                      ctr_discarded.Read(),
                                       evaled.size()),
                                   timer.Seconds());
               status->LineStatus(NUM_THREADS, "{}", bar);

@@ -8,7 +8,7 @@ FONTDB=../fontdb
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o $(CC_LIB)/bounds.o $(CC_LIB)/svg.o $(CC_LIB)/xml.o
 
 FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
@@ -22,7 +22,7 @@ SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
 
 # objects to compile with SDL flags
 SDL_OBJECTS=rendering.o initialization.o inputs.o
-SDL_ENTRYPOINT_OBJECTS=test.o
+SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
 LIB_OBJECTS=scene.o letters.o eval.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
@@ -45,11 +45,19 @@ test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+editor.exe : editor.o $(LIB_OBJECTS) $(SDL_OBJECTS)
+	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 letters_test.exe : letters_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
 evaluate.exe : evaluate.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+debug-evaluate.exe : debug-evaluate.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
