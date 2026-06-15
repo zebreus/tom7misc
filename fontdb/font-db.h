@@ -2,16 +2,17 @@
 #ifndef _LOWERCASE_FONTDB_H
 #define _LOWERCASE_FONTDB_H
 
-#include <string>
 #include <cstdint>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
-#include <optional>
-#include <map>
 
 #include "base/logging.h"
 
-// Keeps track of properties of fonts.
+// Keeps track of properties of fonts. Mostly thread-safe.
 // Fonts have at most one type.
 // Separately, we can record flags.
 struct FontDB {
@@ -25,7 +26,7 @@ struct FontDB {
     // different weights and obliques/italics are ok.
     SANS,
     SERIF,
-    // Including cursive, blackletter, caligraphic
+    // Including cursive, blackletter, calligraphic
     FANCY,
 
     // Cyber-fonts, pixel outlines, etc.
@@ -58,11 +59,12 @@ struct FontDB {
   // Each flag can be true, false, unknown.
   enum class Flag {
     SAME_CASE,
+    GEMMA_LABEL,
   };
 
 
   static string GetBaseFilename(const string &ff) {
-    int slash = ff.rfind("\\");
+    size_t slash = ff.rfind("\\");
     return slash == string::npos ? ff : ff.substr(slash + 1, string::npos);
   }
 
@@ -72,6 +74,8 @@ struct FontDB {
     switch (f) {
     case Flag::SAME_CASE:
       return {'C', 'c'};
+    case Flag::GEMMA_LABEL:
+      return {'G', 'g'};
     default:
       LOG(FATAL) << "Bad flag?";
       return {'X', 'x'};
@@ -85,6 +89,8 @@ struct FontDB {
       // Fallthrough to suppress warnings.
     case 'C': return {Flag::SAME_CASE, true};
     case 'c': return {Flag::SAME_CASE, false};
+    case 'G': return {Flag::GEMMA_LABEL, true};
+    case 'g': return {Flag::GEMMA_LABEL, false};
     }
   }
 
@@ -115,44 +121,25 @@ struct FontDB {
 
   FontDB();
 
-  bool Dirty() const {
-    return dirty;
-  }
+  // Has the data changed, and the database needs to be saved?
+  bool Dirty();
 
   // XXX can probably assume success, fail if not
-  std::optional<Info> Lookup(const string &s) const {
-    auto it = files.find(s);
-    if (it == files.end()) return {};
-    else return {it->second};
-  }
+  std::optional<Info> Lookup(const string &s);
 
-  void SetBitmapDiffs(const string &s, float bitmap_diffs = -1.0f) {
-    files[s].bitmap_diffs = bitmap_diffs;
-    dirty = true;
-  }
+  void SetBitmapDiffs(const string &s, float bitmap_diffs = -1.0f);
 
-  void AssignType(const string &s, Type t) {
-    if (files[s].type != Type::UNKNOWN) num_sorted--;
-    files[s].type = t;
-    if (files[s].type != Type::UNKNOWN) num_sorted++;
-    dirty = true;
-  }
+  void AssignType(const string &s, Type t);
 
-  void SetFlag(const string &s, Flag flag, bool on) {
-    files[s].flags[flag] = on;
-    dirty = true;
-  }
+  void SetFlag(const string &s, Flag flag, bool on);
 
-  int64 NumSorted() const {
-    return num_sorted;
-  }
+  int64 NumSorted();
 
-  void Save();
+  void Save(bool verbose = true);
 
-  int64 Size() const {
-    return files.size();
-  }
+  int64 Size();
 
+  // Aliases the map, so this is not thread safe!
   const std::unordered_map<string, Info> &Files() const {
     return files;
   }
@@ -169,6 +156,7 @@ struct FontDB {
     return ret;
   }
 
+  std::mutex mu;
   int64 num_sorted = 0;
   std::unordered_map<string, Info> files;
   bool dirty = false;

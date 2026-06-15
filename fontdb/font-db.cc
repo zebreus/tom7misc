@@ -2,10 +2,15 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 
 #include "base/print.h"
+#include "map-util.h"
+#include "threadutil.h"
 #include "util.h"
 
 using namespace std;
@@ -46,11 +51,56 @@ FontDB::FontDB() {
   Print("Total in FontDB: {}\n", files.size());
 }
 
-void FontDB::Save() {
+int64_t FontDB::Size() {
+  MutexLock ml(&mu);
+  return files.size();
+}
+
+
+bool FontDB::Dirty() {
+  MutexLock ml(&mu);
+  return dirty;
+}
+
+// XXX can probably assume success, fail if not
+std::optional<FontDB::Info> FontDB::Lookup(const string &s) {
+  MutexLock ml(&mu);
+  auto it = files.find(s);
+  if (it == files.end()) return {};
+  else return {it->second};
+}
+
+void FontDB::SetBitmapDiffs(const std::string &s,
+                            float bitmap_diffs) {
+  MutexLock ml(&mu);
+  files[s].bitmap_diffs = bitmap_diffs;
+  dirty = true;
+}
+
+void FontDB::AssignType(const string &s, Type t) {
+  MutexLock ml(&mu);
+  if (files[s].type != Type::UNKNOWN) num_sorted--;
+  files[s].type = t;
+  if (files[s].type != Type::UNKNOWN) num_sorted++;
+  dirty = true;
+}
+
+void FontDB::SetFlag(const string &s, Flag flag, bool on) {
+  MutexLock ml(&mu);
+  files[s].flags[flag] = on;
+  dirty = true;
+}
+
+int64_t FontDB::NumSorted() {
+  MutexLock ml(&mu);
+  return num_sorted;
+}
+
+
+void FontDB::Save(bool verbose) {
   {
     vector<string> lines;
-    // XXX sort by filename
-    for (const auto &[filename, info] : files) {
+    for (const auto &[filename, info] : MapToSortedVec(files)) {
       lines.push_back(std::format("{} {:.5f} {} {}",
                                   FlagString(info.flags),
                                   info.bitmap_diffs,
@@ -58,75 +108,11 @@ void FontDB::Save() {
                                   filename));
     }
     Util::WriteLinesToFile(DATABASE_FILENAME, lines);
-    Print("Wrote {} entries to {}\n",
-           (int64)lines.size(),
-           DATABASE_FILENAME);
-  }
-
-  {
-    // Temporary? P/R curve export
-    struct Labeled {
-      // "0" = more likely to be same case, 1 = least likely.
-      float score = 0.0;
-      bool same_case = false;
-      Labeled(float score, bool same_case) :
-        score(score), same_case(same_case) {}
-    };
-
-    vector<Labeled> labs;
-    for (const auto &[filename, info] : files) {
-      if (info.bitmap_diffs >= 0.0 && info.bitmap_diffs <= 1.0) {
-        auto it = info.flags.find(Flag::SAME_CASE);
-        if (it != info.flags.end()) {
-          labs.emplace_back(info.bitmap_diffs, it->second);
-        }
-      }
+    if (verbose) {
+      Print("Wrote {} entries to {}\n",
+            (int64)lines.size(),
+            DATABASE_FILENAME);
     }
-
-    std::sort(labs.begin(), labs.end(),
-              [](const Labeled &a, const Labeled &b) {
-                return a.score < b.score;
-              });
-
-    // "Positive" here means same case (this is a low score).
-    //
-    // As we go, assuming the threshold is set to the current value,
-    // what would our P/R be? This means calling everything we've
-    // already seen a positive and everything else a negative. So
-    // first, a parallel array giving the number of true positives
-    // for the rest of the array (strictly higher scores).
-    vector<int64> remaining_positives(labs.size(), 0);
-    int64 total_positives = 0;
-    {
-      int64 pos_above = 0;
-      for (int64 i = labs.size() - 1; i >= 0; i--) {
-        remaining_positives[i] = pos_above;
-        if (labs[i].same_case) {
-          total_positives++;
-          pos_above++;
-        }
-      }
-    }
-
-    // Now compute precision at each threshold. Every item up to the
-    // threshold being considered is predicted positive.
-    int64 positives_so_far = 0;
-    std::vector<string> lines;
-    lines.reserve(labs.size() + 1);
-    lines.push_back("threshold\t"
-                    "recall\t"
-                    "precision");
-    for (int64 i = 0; i < labs.size(); i++) {
-      if (labs[i].same_case) positives_so_far++;
-      double precision = (double)positives_so_far / (i + 1);
-      lines.push_back(
-          std::format("{:.5f}\t{:.5f}\t{:.5f}",
-                      labs[i].score,
-                      (total_positives - remaining_positives[i]) /
-                      (double)total_positives,
-                      precision));
-    }
-    Util::WriteLinesToFile("pr-curve.tsv", lines);
   }
 
   dirty = false;
