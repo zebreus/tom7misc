@@ -2,45 +2,46 @@
 #include "lines.h"
 
 #include <cmath>
-#include <cstdio>
 #include <optional>
 #include <utility>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "randutil.h"
 
 using namespace std;
 
-#define CHECK_ALMOST_EQ(a, b) do { \
-  auto aa = (a); \
-  auto bb = (b); \
-  CHECK(fabs(aa - bb) < EPSILON) << aa << " vs " << bb << " in " \
-                                 << #a << " =~= " << #b ; \
- } while(0)
+#define CHECK_ALMOST_EQ(a, b) do {                                  \
+    auto aa = (a);                                                  \
+    auto bb = (b);                                                  \
+    CHECK(fabs(aa - bb) < EPSILON) << aa << " vs " << bb << " in "  \
+                                   << #a << " =~= " << #b ;         \
+  } while(0)
 
 static void TestBresenham() {
-  printf("Bresenham:\n");
+  Print("Bresenham:\n");
   for (const std::pair<int, int> point : Line<int>{0, 0, 5, 5}) {
-    printf("%d,%d  ", point.first, point.second);
+    Print("{},{}  ", point.first, point.second);
   }
 
-  printf("\n--\n");
+  Print("\n--\n");
   for (const std::pair<int, int> point : Line<int>{5, 5, 0, 0}) {
-    printf("%d,%d  ", point.first, point.second);
+    Print("{},{}  ", point.first, point.second);
   }
 
-  printf("\n--\n");
+  Print("\n--\n");
   for (const std::pair<int, int> point : Line<int>{5, 4, 0, 0}) {
-    printf("%d,%d  ", point.first, point.second);
+    Print("{},{}  ", point.first, point.second);
   }
 
-  printf("\n--\n");
+  Print("\n--\n");
   for (auto [x, y] : Line<int>{4, 5, 0, 0}) {
-    printf("%d,%d  ", x, y);
+    Print("{},{}  ", x, y);
   }
 
-  printf("\n--\n");
+  Print("\n--\n");
 }
 
 static void TestEmpty() {
@@ -51,12 +52,12 @@ static void TestEmpty() {
 }
 
 static void TestWu() {
-  printf("Wu:\n");
+  Print("Wu:\n");
   auto Plot = [](int x, int y, float f) {
-      printf("%d,%d %.2f  ", x, y, f);
+      Print("{},{} {:.2f}  ", x, y, f);
     };
   LineAA::Draw<int>(0.5f, 4.0f, 2.5f, 3.0f, Plot);
-  printf("\n---\n");
+  Print("\n---\n");
 }
 
 // TODO: This could certainly be more comprehensive!
@@ -167,68 +168,6 @@ static void TestReflect() {
   }
 
 }
-
-#if 0
-// TODO: FIXME
-static void TestClipBresenham() {
-  ArcFour rc("clip");
-
-  for (int i = 0; i < 100; i++) {
-    std::unordered_set<std::pair<int, int>,
-                       Hashing<std::pair<int, int>>> expected;
-    std::unordered_set<std::pair<int, int>,
-                       Hashing<std::pair<int, int>>> actual;
-
-    int x0 = RandTo(&rc, 10);
-    int y0 = RandTo(&rc, 10);
-    int x1 = RandTo(&rc, 10);
-    int y1 = RandTo(&rc, 10);
-
-    int xcmin = 2;
-    int ycmin = 3;
-    int xcmax = 8;
-    int ycmax = 7;
-
-    printf("Test clip: (%d,%d) to (%d,%d), clipped in box (%d,%d) to (%d,%d)\n",
-           x0, y0, x1, y1, xcmin, ycmin, xcmax, ycmax);
-
-    for (const auto &[x, y] : Line<int>(x0, y0, x1, y1)) {
-      if (x >= xcmin && y >= ycmin &&
-          x <= xcmax && y <= ycmax) {
-        expected.insert(std::make_pair(x, y));
-      }
-    }
-
-    printf("Done expected\n");
-
-    for (const auto &[x, y] : Line<int>::ClippedLine(x0, y0, x1, y1,
-                                                     xcmin, ycmin,
-                                                     xcmax, ycmax)) {
-      actual.insert(std::make_pair(x, y));
-      CHECK(x >= 0 && y >= 0 && x <= 10 && y <= 10);
-    }
-
-    printf("Done actual\n");
-
-    if (expected != actual) {
-      printf("Expected:");
-      for (const auto &[a, b] : SetToSortedVec(expected)) {
-        printf(" (%d,%d)", a, b);
-      }
-
-      printf("\nActual:");
-      for (const auto &[a, b] : SetToSortedVec(actual)) {
-        printf(" (%d,%d)", a, b);
-      }
-      printf("\n");
-
-      LOG(FATAL) << "Did not get expected points.\n";
-    }
-    printf("OK\n");
-  }
-  printf("ClippedLine OK\n");
-}
-#endif
 
 // Check entire clipped line.
 #define CHECK_CLIPPED(clipped_arg, ex0, ey0, ex1, ey1) do {        \
@@ -351,6 +290,7 @@ static void TestClipRectangle() {
 }
 
 int main() {
+  ANSI::Init();
 
   TestBresenham();
   // TestClipBresenham();
@@ -363,7 +303,7 @@ int main() {
 
   // TODO: Test point-line distance stuff.
 
-  printf("OK, but need to manually check the Bresenham and Wu results\n");
+  Print("OK, but need to manually check the Bresenham and Wu results\n");
 
   return 0;
 }

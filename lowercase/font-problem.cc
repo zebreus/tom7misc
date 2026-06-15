@@ -21,17 +21,16 @@
 
 #include "network.h"
 
-#include "image.h"
-#include "fonts/ttf.h"
-#include "fonts/island-finder.h"
-#include "threadutil.h"
-#include "lines.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "geom/bezier.h"
-#include "timer.h"
-#include "opt/opt.h"
 #include "base/stringprintf.h"
+#include "fonts/island-finder.h"
+#include "fonts/ttf.h"
+#include "geom/bezier.h"
+#include "image.h"
+#include "opt/opt.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
 
 #include "network-util.h"
 
@@ -92,7 +91,7 @@ static void DrawFloats(const vector<int> &row_max_points,
         float dy = values[idx + 2 + i * 4 + 3];
 
         for (const auto &[xx, yy] :
-               TesselateQuadraticBezier<double>(
+               TesselateQuadBezier<double>(
                    x, y, cx, cy, dx, dy, sqerr)) {
           Line(x, y, xx, yy);
           x = xx;

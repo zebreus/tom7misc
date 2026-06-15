@@ -1,6 +1,8 @@
 // Generate lines using some classic graphics algorithms.
 // Templated on integer/float types since sometimes it is helpful
 // to use lower-precision types in embedded applications.
+//
+// Note: Tesselation of beziers moved to geom/bezier.h.
 
 #ifndef _CC_LIB_LINES_H
 #define _CC_LIB_LINES_H
@@ -11,9 +13,7 @@
 #include <utility>
 #include <cmath>
 #include <type_traits>
-#include <vector>
 #include <optional>
-#include <functional>
 
 // Generate lines with Bresenham's algorithm. Use like this:
 //
@@ -140,24 +140,6 @@ std::pair<Num, Num> ReflectPointAboutLine(
     Num x1, Num y1,
     // Point to reflect
     Num x, Num y);
-
-// Return a vector of endpoints, not including the start point (but
-// including the end), to draw as individual line segments in order to
-// approximate the given quadratic Bezier curve.
-//
-// Num should work as integral (then all math is integral) or
-// floating-point types.
-template<class Num = float>
-inline std::vector<std::pair<Num, Num>> TesselateQuadraticBezier(
-    // starting vertex
-    Num x0, Num y0,
-    // control point
-    Num x1, Num y1,
-    // end point
-    Num x2, Num y2,
-    Num max_error_squared = Num(2),
-    int max_depth = 16);
-
 
 template<class Num = float>
 inline std::optional<std::tuple<Num, Num, Num, Num>>
@@ -311,267 +293,6 @@ void Line<Int>::iterator::operator ++() {
     frac += parent.dx;
   }
 }
-
-// FIXME: This is buggy :(
-// Inclusive clip rectangle.
-#if 0
-template<class Int>
-Line<Int>::Line<Int> Line<Int>::ClippedLine(Int x0, Int y0, Int x1, Int y1,
-                                            Int clip_xmin, Int clip_ymin,
-                                            Int clip_xmax, Int clip_ymax) {
-  auto floor_div = [](int a, int b) {
-      const int d = a / b;
-      const int r = a % b;
-      return r ? (d - ((a < 0) ^ (b < 0))) : d;
-    };
-
-  // Vertical line
-  if (x0 == x1) {
-    // TODO: Return empty line for cases where we miss the clip
-    // window completely.
-    if (x0 < clip_xmin || x0 > clip_xmax)
-      return Empty();
-
-    if (y0 <= y1) {
-      if (y1 < clip_ymin || y0 > clip_ymax)
-        return Empty();
-      y0 = std::max(y0, clip_ymin);
-      y1 = std::min(y1, clip_ymax);
-      return Line(x0, y0, x1, y1);
-    } else {
-      if (y0 < clip_ymin || y1 > clip_ymax)
-        return Empty();
-      y1 = std::max(y1, clip_ymin);
-      y0 = std::min(y0, clip_ymax);
-      return Line(x0, y0, x1, y1);
-    }
-  }
-
-  // Horizontal line
-  if (y0 == y1) {
-    if (y0 < clip_ymin || y0 > clip_ymax)
-      return Empty();
-
-    if (x0 <= x1) {
-      if (x1 < clip_xmin || x0 > clip_xmax)
-        return Empty();
-      x0 = std::max(x0, clip_xmin);
-      x1 = std::min(x1, clip_xmax);
-      return Line(x0, y0, x1, y1);
-    } else {
-      if (x0 < clip_xmin || x1 > clip_xmax)
-        return Empty();
-      x1 = std::max(x1, clip_xmin);
-      x0 = std::min(x0, clip_xmax);
-      return Line(x0, y0, x1, y1);
-    }
-  }
-
-  // General case. Flip signs as needed.
-  int sign_x = 0, sign_y = 0;
-
-  if (x0 < x1) {
-    if (x0 > clip_xmax || x1 < clip_xmin)
-      return Empty();
-    sign_x = 1;
-  } else {
-    if (x1 > clip_xmax || x0 < clip_xmin)
-      return Empty();
-    sign_x = -1;
-    x0 = -x0;
-    x1 = -x1;
-    clip_xmax = -clip_xmax;
-    clip_xmin = -clip_xmin;
-    std::swap(clip_xmax, clip_xmin);
-  }
-
-  if (y0 < y1) {
-    if (y0 > clip_ymax || y1 < clip_ymin)
-      return Empty();
-    sign_y = 1;
-  } else {
-    if (y1 > clip_ymax || y0 < clip_ymin)
-      return Empty();
-    sign_y = -1;
-
-    y0 = -y0;
-    y1 = -y1;
-    clip_ymax = -clip_ymax;
-    clip_ymin = -clip_ymin;
-    std::swap(clip_ymax, clip_ymin);
-  }
-
-  int delta_x = x1 - x0;
-  int delta_y = y1 - y0;
-
-  int delta_x_step = 2 * delta_x;
-  int delta_y_step = 2 * delta_y;
-
-  // Plotting values
-  int x_pos = x0;
-  int y_pos = y0;
-
-  if (delta_x >= delta_y) {
-    int error = delta_y_step - delta_x;
-    bool set_exit = false;
-
-    // Line starts below the clip window.
-    if (y0 < clip_ymin) {
-      int temp = (2 * (clip_ymin - y0) - 1) * delta_x;
-      int msd = floor_div(temp, delta_y_step);
-      x_pos += msd;
-
-      // Line misses the clip window entirely.
-      if (x_pos > clip_xmax)
-        return Empty();
-
-      // Line starts.
-      if (x_pos >= clip_xmin) {
-        int rem = temp - msd * delta_y_step;
-
-        y_pos = clip_ymin;
-        error -= rem + delta_x;
-
-        if (rem > 0) {
-          x_pos += 1;
-          error += delta_y_step;
-        }
-        set_exit = true;
-      }
-    }
-
-    // Line starts left of the clip window.
-    if (!set_exit && x0 < clip_xmin) {
-      int temp = delta_y_step * (clip_xmin - x0);
-      int msd = floor_div(temp, delta_x_step);
-      y_pos += msd;
-      int rem = temp % delta_x_step;
-
-      // Line misses clip window entirely.
-      if (y_pos > clip_ymax || (y_pos == clip_ymax && rem >= delta_x)) {
-        return Empty();
-      }
-
-      x_pos = clip_xmin;
-      error += rem;
-
-      if (rem >= delta_x) {
-        y_pos += 1;
-        error -= delta_x_step;
-      }
-    }
-
-    int x_pos_end = x1;
-
-    if (y1 > clip_ymax) {
-      int temp = delta_x_step * (clip_ymax - y0) + delta_x;
-      int msd = floor_div(temp, delta_y_step);
-      x_pos_end = x0 + msd;
-
-      if ((temp - msd * delta_y_step) == 0) {
-        x_pos_end--;
-      }
-    }
-
-    x_pos_end = std::min(x_pos_end, clip_xmax);
-
-    if (sign_y == -1) {
-      y_pos = -y_pos;
-    }
-    if (sign_x == -1) {
-      x_pos = -x_pos;
-      x_pos_end = -x_pos_end;
-    }
-    delta_x_step -= delta_y_step;
-
-    // Now do loop.
-    return Line(x_pos, y_pos, x_pos_end, 0,
-                delta_x_step, delta_y_step, sign_x, sign_y,
-                error);
-
-   } else {
-    // Line is steep '/' (delta_x < delta_y).
-    // Same as previous block of code with swapped x/y axis.
-
-    int error = delta_x_step - delta_y;
-    bool set_exit = false;
-
-    // Line starts left of the clip window.
-    if (x0 < clip_xmin) {
-      int temp = (2 * (clip_xmin - x0) - 1) * delta_y;
-      int msd = floor_div(temp, delta_x_step);
-      y_pos += msd;
-
-        // Line misses the clip window entirely.
-      if (y_pos > clip_ymax) {
-        return Empty();
-      }
-
-      // Line starts.
-      if (y_pos >= clip_ymin) {
-        int rem = temp - msd * delta_x_step;
-
-        x_pos = clip_xmin;
-        error -= rem + delta_y;
-
-        if (rem > 0) {
-          y_pos += 1;
-          error += delta_x_step;
-        }
-        set_exit = true;
-      }
-    }
-
-    // Line starts below the clip window.
-    if (!set_exit && y0 < clip_ymin) {
-      int temp = delta_x_step * (clip_ymin - y0);
-      int msd = floor_div(temp, delta_y_step);
-      x_pos += msd;
-      int rem = temp % delta_y_step;
-
-      // Line misses clip window entirely.
-      if (x_pos > clip_xmax || (x_pos == clip_xmax && rem >= delta_y)) {
-        return Empty();
-      }
-
-      y_pos = clip_ymin;
-      error += rem;
-
-      if (rem >= delta_y) {
-        x_pos++;
-        error -= delta_y_step;
-      }
-    }
-
-    int y_pos_end = y1;
-
-    if (x1 > clip_xmax) {
-      int temp = delta_y_step * (clip_xmax - x0) + delta_y;
-      int msd = floor_div(temp, delta_x_step);
-      y_pos_end = y0 + msd;
-
-      if ((temp - msd * delta_x_step) == 0) {
-        y_pos_end--;
-      }
-    }
-
-    y_pos_end = std::min(y_pos_end, clip_ymax);
-
-    if (sign_x == -1) {
-      x_pos = -x_pos;
-    }
-    if (sign_y == -1) {
-      y_pos = -y_pos;
-      y_pos_end = -y_pos_end;
-    }
-    delta_y_step -= delta_x_step;
-
-    return Line(x_pos, y_pos, 0, y_pos_end,
-                delta_x_step, delta_y_step, sign_x, sign_y,
-                error);
-  }
-}
-#endif
 
 // TODO: There may be some problem with the endpoint drawing;
 // there seem to be discontinuities when drawing a polyline.
@@ -792,61 +513,6 @@ std::pair<Num, Num> ReflectPointAboutLine(
   Num y2  = b * (x - x0) - a * (y - y0) + y0;
 
   return std::make_pair(x2, y2);
-}
-
-
-template<class Num>
-inline std::vector<std::pair<Num, Num>> TesselateQuadraticBezier(
-    // starting vertex
-    Num x0, Num y0,
-    // control point
-    Num x1, Num y1,
-    // end point
-    Num x2, Num y2,
-    Num max_error_squared,
-    int max_depth) {
-
-  static_assert(std::is_arithmetic<Num>::value,
-                "TesselateQuadraticBezier needs an integral or floating-point "
-                "template argument.");
-
-  std::vector<std::pair<Num, Num>> out;
-  std::function<void(Num, Num, Num, Num, Num, Num, int)> Rec =
-    [&out, max_error_squared, &Rec](Num x0, Num y0,
-                                    Num x1, Num y1,
-                                    Num x2, Num y2,
-                                    int max_depth) {
-      // This is based on public-domain code from stb_truetype; thanks!
-
-      // Midpoint of the curve.
-      // ("Midpoint" here likely means t/2, not the geometric midpoint?
-      // So this might be overly conservative, in that we might have
-      // a good approximation to a line but not pass near the line's
-      // midpoint at the curve's midpoint. (Consider the case where the
-      // control point is on the line, near one of the endpoints.))
-      const Num mx = (x0 + (x1 * 2) + x2) / 4;
-      const Num my = (y0 + (y1 * 2) + y2) / 4;
-
-      // Midpoint of a straight line.
-      const Num lx = (x0 + x2) / 2;
-      const Num ly = (y0 + y2) / 2;
-
-      // Error.
-      const Num dx = lx - mx;
-      const Num dy = ly - my;
-      const Num error = (dx * dx) + (dy * dy);
-
-      if (error > max_error_squared && max_depth > 0) {
-        Rec(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2, mx, my, max_depth - 1);
-        Rec(mx, my, (x1 + x2) / 2, (y1 + y2) / 2, x2, y2, max_depth - 1);
-      } else {
-        // Otherwise, emit a straight line.
-        out.emplace_back(x2, y2);
-      }
-    };
-
-  Rec(x0, y0, x1, y1, x2, y2, max_depth);
-  return out;
 }
 
 

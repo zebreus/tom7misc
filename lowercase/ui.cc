@@ -1437,8 +1437,8 @@ int UI::DrawChar(TTF *ttf, int sx, int sy, float scale, char c, char nc) {
       }
       case TTF::PathType::BEZIER: {
         for (const auto &[xx, yy] :
-               TesselateQuadraticBezier<double>(x, y, p.cx, p.cy, p.x, p.y,
-                                                sqerr)) {
+               TesselateQuadBezier<double>(x, y, p.cx, p.cy, p.x, p.y,
+                                           sqerr)) {
           Line(x, y, xx, yy, 0xFF0000FF);
           x = xx;
           y = yy;

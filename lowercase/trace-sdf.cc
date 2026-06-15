@@ -9,6 +9,7 @@
 #include "base/stringprintf.h"
 #include "font-problem.h"
 #include "fonts/ttf.h"
+#include "geom/bezier.h"
 #include "image.h"
 #include "lines.h"
 #include "timer.h"
@@ -68,8 +69,8 @@ static void DrawChar(const std::vector<TTF::Contour> &contours,
       }
       case TTF::PathType::BEZIER: {
         for (const auto [xx, yy] :
-               TesselateQuadraticBezier<double>(x, y, p.cx, p.cy, p.x, p.y,
-                                                sqerr)) {
+               TesselateQuadBezier<double>(x, y, p.cx, p.cy, p.x, p.y,
+                                           sqerr)) {
           ScaledLine(x, y, xx, yy, cw);
           x = xx;
           y = yy;
