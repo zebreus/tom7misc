@@ -6,7 +6,6 @@
 #define _TOWARD_RENDERING_H
 
 #include <memory>
-#include <mutex>
 #include <span>
 
 #include "yocto-math.h"
@@ -25,6 +24,8 @@ struct Rendering {
     // Could be used for effects in the future.
     uint32_t reserved;
   };
+
+  // TODO: Some way to get absolute positioning for UI elements?
 
   // Render the scene right now to the display.
   virtual void RenderScene(

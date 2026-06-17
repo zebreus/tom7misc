@@ -158,7 +158,7 @@ void Simulate(std::string_view fontfile) {
     }
     rendering->RenderScene(vec2f{0.0f, 0.0f},
                            vec2f{Scene::WIDTH, Scene::HEIGHT},
-                           game.scene->GetScene());
+                           game.scene->GetTriangles());
   }
 
 }

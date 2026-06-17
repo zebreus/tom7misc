@@ -25,7 +25,7 @@
 // you can use them in parallel.
 static std::mutex world_mutex;
 
-Scene::Scene() {
+Scene::Scene(bool walls) {
   b2WorldDef world_def = b2DefaultWorldDef();
   // XXX... necessary for parallelism?
   world_def.workerCount = 0;
@@ -36,26 +36,28 @@ Scene::Scene() {
     world_id = b2CreateWorld(&world_def);
   }
 
-  b2BodyDef wall_body_def = b2DefaultBodyDef();
-  b2BodyId ground_id = b2CreateBody(world_id, &wall_body_def);
+  if (walls) {
+    b2BodyDef wall_body_def = b2DefaultBodyDef();
+    b2BodyId ground_id = b2CreateBody(world_id, &wall_body_def);
 
-  b2ShapeDef wall_shape_def = b2DefaultShapeDef();
-  wall_shape_def.material.restitution = 0.8f;
-  wall_shape_def.material.friction = 0.2f;
+    b2ShapeDef wall_shape_def = b2DefaultShapeDef();
+    wall_shape_def.material.restitution = 0.8f;
+    wall_shape_def.material.friction = 0.2f;
 
-  b2Segment top_wall = {{MARGIN, MARGIN}, {WIDTH - MARGIN, MARGIN}};
-  b2CreateSegmentShape(ground_id, &wall_shape_def, &top_wall);
+    b2Segment top_wall = {{MARGIN, MARGIN}, {WIDTH - MARGIN, MARGIN}};
+    b2CreateSegmentShape(ground_id, &wall_shape_def, &top_wall);
 
-  b2Segment bottom_wall = {{MARGIN, HEIGHT - MARGIN},
-                           {WIDTH - MARGIN, HEIGHT - MARGIN}};
-  b2CreateSegmentShape(ground_id, &wall_shape_def, &bottom_wall);
+    b2Segment bottom_wall = {{MARGIN, HEIGHT - MARGIN},
+                             {WIDTH - MARGIN, HEIGHT - MARGIN}};
+    b2CreateSegmentShape(ground_id, &wall_shape_def, &bottom_wall);
 
-  b2Segment left_wall = {{MARGIN, MARGIN}, {MARGIN, HEIGHT - MARGIN}};
-  b2CreateSegmentShape(ground_id, &wall_shape_def, &left_wall);
+    b2Segment left_wall = {{MARGIN, MARGIN}, {MARGIN, HEIGHT - MARGIN}};
+    b2CreateSegmentShape(ground_id, &wall_shape_def, &left_wall);
 
-  b2Segment right_wall = {{WIDTH - MARGIN, MARGIN},
-                          {WIDTH - MARGIN, HEIGHT - MARGIN}};
-  b2CreateSegmentShape(ground_id, &wall_shape_def, &right_wall);
+    b2Segment right_wall = {{WIDTH - MARGIN, MARGIN},
+                            {WIDTH - MARGIN, HEIGHT - MARGIN}};
+    b2CreateSegmentShape(ground_id, &wall_shape_def, &right_wall);
+  }
 }
 
 Scene::~Scene() {
@@ -305,7 +307,7 @@ void Scene::ApplyImpulse(vec2f v) {
 }
 
 // Get the scene, using Cartesian coordinates.
-std::vector<Rendering::Triangle> Scene::GetScene() {
+std::vector<Rendering::Triangle> Scene::GetTriangles() {
   std::vector<Rendering::Triangle> scene;
   size_t num_triangles = 0;
   for (const Obj &obj : objects) {

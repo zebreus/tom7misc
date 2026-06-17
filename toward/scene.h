@@ -34,7 +34,7 @@ struct Scene {
   b2WorldId world_id = {};
   std::vector<Obj> objects;
 
-  Scene();
+  Scene(bool walls = true);
 
   ~Scene();
 
@@ -61,7 +61,7 @@ struct Scene {
   void ApplyImpulse(vec2f v);
 
   // Get the triangles for rendering, using Cartesian coordinates.
-  std::vector<Rendering::Triangle> GetScene();
+  std::vector<Rendering::Triangle> GetTriangles();
 
   Scene(Scene &&other) noexcept = default;
   Scene &operator=(Scene &&other) noexcept = default;

@@ -8,7 +8,7 @@ FONTDB=../fontdb
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o $(CC_LIB)/bounds.o $(CC_LIB)/svg.o $(CC_LIB)/xml.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o $(CC_LIB)/bounds.o $(CC_LIB)/svg.o $(CC_LIB)/xml.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o
 
 FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
@@ -25,7 +25,7 @@ SDL_OBJECTS=rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
-LIB_OBJECTS=scene.o letters.o eval.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
+LIB_OBJECTS=scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -54,6 +54,10 @@ letters_test.exe : letters_test.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 evaluate.exe : evaluate.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+separator.exe : separator.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

@@ -1,9 +1,13 @@
 
 svn ../cc-lib/geom
 svn ../cc-lib/fonts
+svn ../cc-lib/opt
+
+describe ../cc-lib/opt Black-box optimization
 
 file ../../box2d/include/box2d/*.h
 file ../../box2d/src/*.c
 file ../../box2d/src/*.h
 describe ../../box2d/include/box2d/box2d.h Box2D header
 
+describe toward-util.h General declarations and constants for this project
