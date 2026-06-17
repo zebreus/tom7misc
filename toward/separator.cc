@@ -4,6 +4,7 @@
 #include <format>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "box2d.h"
 #include "geom/polygonization.h"
 #include "geom/polygons.h"
@@ -30,6 +32,9 @@
 #include "toward-util.h"
 #include "util.h"
 #include "yocto-math.h"
+#include "atomic-util.h"
+
+DECLARE_COUNTERS(ctr_total_evals);
 
 // The input region is an empty 5x5 block spot.
 static constexpr int IN_X = 20;
@@ -97,7 +102,7 @@ static LevelBody BitBody(bool b) {
 }
 
 // Construct level geometry from the arguments.
-static constexpr int NUM_TRIANGLES = 8;
+static constexpr int NUM_TRIANGLES = 5;
 static std::vector<LevelBody> ApplyArgs(std::span<const double> args) {
   std::vector<LevelBody> bodies;
   CHECK(args.size() == 6 * NUM_TRIANGLES);
@@ -229,65 +234,127 @@ static double Score(std::span<const double> args) {
 
 StatusBar *status = nullptr;
 
-static void Optimize() {
-  std::vector<std::pair<double, double>> bounds;
+static std::vector<double> StartRoot() {
+  std::vector<std::string> lines =
+    Util::ReadFileToLines("best-separator.txt");
+  std::vector<double> ret;
+  if (lines.empty()) {
+    // If we don't have a best one so far, just make up something
+    // randomly.
+    for (int i = 0; i < NUM_TRIANGLES; i++) {
+      for (int v = 0; v < 3; v++) {
+        ret.push_back(Levels::BLOCK_SIZE +
+                      RandDouble(rc) * Levels::BLOCKS_ACROSS *
+                      (Levels::BLOCK_SIZE - 2));
+        ret.push_back(Levels::BLOCK_SIZE +
+                      RandDouble(rc) * Levels::BLOCKS_DOWN *
+                      (Levels::BLOCK_SIZE - 2));
+      }
+    }
 
-  Periodically status_per(1);
-  Periodically flush_per(60);
-
-  for (int i = 0; i < NUM_TRIANGLES; i++) {
-    for (int v = 0; v < 3; v++) {
-      // x bounds
-      bounds.push_back({0.0, Levels::BLOCKS_ACROSS * Levels::BLOCK_SIZE});
-      // y bounds
-      bounds.push_back({0.0, Levels::BLOCKS_DOWN * Levels::BLOCK_SIZE});
+  } else {
+    for (const std::string &line : lines) {
+      std::optional<double> od = Util::ParseDoubleOpt(line);
+      CHECK(od.has_value()) << line;
+      ret.push_back(od.value());
     }
   }
 
-  Print("Starting optimization...\n");
-  OptSeq seq(bounds);
+  CHECK(ret.size() == NUM_TRIANGLES * 6);
+  return ret;
+}
 
-  double best_score = 1e100;
-  std::vector<double> best_arg;
+static constexpr int MAX_ITERS_PER_ROUND = 1000;
+static void Optimize() {
+  Periodically status_per(1);
+  Periodically flush_per(60);
   Timer timer;
-  for (int iter = 0; ; iter++) {
-    std::vector<double> arg = seq.Next();
-    double score = Score(arg);
-    seq.Result(score);
 
-    if (score < best_score) {
-      best_score = score;
-      best_arg = arg;
-      status->Print("Iteration {}: New best score: {}\n", iter, best_score);
+  std::vector<double> root = StartRoot();
+  double best_score = Score(root);
+  std::vector<double> best_values = root;
+  bool best_dirty = false;
+  status->Print("Initial root score: {}\n", best_score);
+
+  for (;;) {
+    std::vector<std::pair<double, double>> bounds;
+    int idx = 0;
+    for (int i = 0; i < NUM_TRIANGLES; i++) {
+      for (int v = 0; v < 3; v++) {
+        // x bounds
+        bounds.push_back(
+            {-root[idx],
+             Levels::BLOCKS_ACROSS * Levels::BLOCK_SIZE - root[idx]});
+        idx++;
+        // y bounds
+        bounds.push_back(
+            {-root[idx],
+             Levels::BLOCKS_DOWN * Levels::BLOCK_SIZE - root[idx]});
+        idx++;
+      }
     }
-    flush_per.RunIf([&]{
-        if (!best_arg.empty()) {
-          Level level;
-          level.bodies = InitialBodies();
-          for (LevelBody &body : ApplyArgs(best_arg)) {
-            level.bodies.emplace_back(std::move(body));
+
+    status->Print("Starting optimization round...\n");
+    OptSeq seq(bounds);
+
+    for (int iter = 0; iter < MAX_ITERS_PER_ROUND; iter++) {
+      std::vector<double> arg = seq.Next();
+      for (size_t i = 0; i < arg.size(); i++) {
+        arg[i] += root[i];
+      }
+      double score = Score(arg);
+      seq.Result(score);
+      ctr_total_evals++;
+
+      if (score < best_score) {
+        best_score = score;
+        best_values = arg;
+        best_dirty = true;
+        status->Print("Iteration {}: New best score: {}\n", iter, best_score);
+      }
+
+      flush_per.RunIf([&]{
+          if (best_dirty) {
+            Level level;
+            level.bodies = InitialBodies();
+            for (LevelBody &body : ApplyArgs(best_values)) {
+              level.bodies.emplace_back(std::move(body));
+            }
+
+            std::string file = std::format("best-separator-{}.svg",
+                                           time(nullptr));
+            Levels::SaveSVG(level, file);
+
+            std::string bestfile;
+            for (double d : best_values) {
+              AppendFormat(&bestfile, "{:.17g}\n", d);
+            }
+            Util::WriteFile("best-separator.txt", bestfile);
+
+            status->Print("Wrote " AGREEN("{}") " and "
+                          ACYAN("best-separator.txt") "\n", file);
+            best_dirty = false;
           }
+        });
 
-          std::string file = std::format("best-separator-{}.svg",
-                                         time(nullptr));
-          Levels::SaveSVG(level, file);
-          status->Print("Wrote " AGREEN("{}") "\n", file);
-          best_arg.clear();
-        }
-      });
+      status_per.RunIf([&]{
+          std::string save;
+          if (best_dirty) {
+            save = std::format(" save in {}",
+                               ANSI::Time(flush_per.SecondsLeft()));
+          }
+          int64_t total = ctr_total_evals.Read();
+          double each = timer.Seconds() / total;
+          status->Status(AGREY("----------------------------") "\n"
+                         "{} iters ({} total), {} best score, {} ea.{}",
+                         iter, total, best_score,
+                         ANSI::Time(each), save);
+        });
+    }
 
-    status_per.RunIf([&]{
-        std::string save;
-        if (!best_arg.empty()) {
-          save = std::format(" save in {}",
-                             ANSI::Time(flush_per.SecondsLeft()));
-        }
-        double each = timer.Seconds() / iter;
-        status->Status(AGREY("----------------------------") "\n"
-                       "{} iters, {} best score, {} ea.{}",
-                       iter, best_score,
-                       ANSI::Time(each), save);
-      });
+    if (!best_values.empty()) {
+      root = best_values;
+    }
   }
 }
 
@@ -295,13 +362,10 @@ static void Optimize() {
 int main(int argc, char* argv[]) {
   ANSI::Init();
 
-  // Initialization::Initialize();
-
   status = new StatusBar(2);
   rc = new ArcFour(std::format("separator.{}", time(nullptr)));
 
   Optimize();
 
-  // Initialization::Exit();
   return 0;
 }

@@ -9,10 +9,9 @@
 #include <cstdint>
 
 #include "geom/polygonization.h"
+#include "scene.h"
 #include "svg.h"
 #include "toward-util.h"
-
-struct Scene;
 
 struct LevelBody {
   Polygonization::Mesh mesh;
@@ -36,6 +35,9 @@ struct Levels {
   // position and color.
   static LevelBody One();
   static LevelBody Zero();
+
+  static constexpr float WIDTH = Scene::WIDTH;
+  static constexpr float HEIGHT = Scene::HEIGHT;
 
   static constexpr int BLOCKS_ACROSS = 80;
   static constexpr int BLOCKS_DOWN = 54;
