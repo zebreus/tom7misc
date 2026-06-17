@@ -27,7 +27,12 @@ struct Inputs {
   struct KeyDown { uint32_t codepoint; uint8_t modifiers; };
   struct KeyUp { uint32_t codepoint; uint8_t modifiers; };
 
-  using Input = std::variant<None, Exit, KeyDown, KeyUp>;
+  static constexpr uint8_t MOUSE_LEFT = 0x00;
+  static constexpr uint8_t MOUSE_RIGHT = 0x01;
+  static constexpr uint8_t MOUSE_MIDDLE = 0x02;
+  struct MouseClick { int x; int y; uint8_t button; };
+
+  using Input = std::variant<None, Exit, KeyDown, KeyUp, MouseClick>;
 
   virtual Input GetInput() = 0;
   virtual ~Inputs();

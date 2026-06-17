@@ -8,6 +8,7 @@
 #include "SDL.h"
 #include "SDL_events.h"
 #include "SDL_keycode.h"
+#include "SDL_mouse.h"
 
 
 namespace {
@@ -33,6 +34,21 @@ struct SDLInputs : public Inputs {
     while (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT) {
         return Exit{};
+      }
+
+      if (e.type == SDL_MOUSEBUTTONDOWN) {
+        uint8_t button = MOUSE_LEFT;
+        if (e.button.button == SDL_BUTTON_LEFT) {
+          button = MOUSE_LEFT;
+        } else if (e.button.button == SDL_BUTTON_RIGHT) {
+          button = MOUSE_RIGHT;
+        } else if (e.button.button == SDL_BUTTON_MIDDLE) {
+          button = MOUSE_MIDDLE;
+        } else {
+          // XXX support other buttons as generic events?
+          continue;
+        }
+        return MouseClick{e.button.x, e.button.y, button};
       }
 
       if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {

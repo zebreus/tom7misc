@@ -31,7 +31,13 @@ struct Rendering {
   virtual void RenderScene(
       vec2f viewport_min,
       vec2f viewport_max,
-      std::span<const Triangle> scene);
+      std::span<const Triangle> scene) = 0;
+
+  // Where in rendering space (Cartesian) is this pixel (screen)?
+  // e.g. For a mouse click on the screen.
+  virtual vec2f CartesianPixel(vec2f viewport_min,
+                               vec2f viewport_max,
+                               int x, int y) = 0;
 
   virtual ~Rendering();
 };

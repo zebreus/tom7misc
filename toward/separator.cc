@@ -234,6 +234,28 @@ static double Score(std::span<const double> args) {
 
 StatusBar *status = nullptr;
 
+static std::vector<double> FromSVG(std::string_view filename) {
+  std::unique_ptr<Level> level = Levels::LoadSVG(filename);
+  std::vector<double> ret;
+  for (const LevelBody &body : level->bodies) {
+    if (body.color == 0x0000AAFF) {
+      for (const std::vector<int> &poly : body.mesh.polygons) {
+        CHECK(poly.size() == 3) << "Expected blue shapes to be triangles";
+        for (int v : poly) {
+          ret.push_back(body.pos.x + body.mesh.vertices[v].x);
+          ret.push_back(body.pos.y + body.mesh.vertices[v].y);
+        }
+      }
+    }
+  }
+
+  CHECK(ret.size() == NUM_TRIANGLES * 6)
+      << "Found " << (ret.size() / 6) << " blue triangles, but expected "
+      << NUM_TRIANGLES;
+
+  return ret;
+}
+
 static std::vector<double> StartRoot() {
   std::vector<std::string> lines =
     Util::ReadFileToLines("best-separator.txt");
@@ -265,12 +287,12 @@ static std::vector<double> StartRoot() {
 }
 
 static constexpr int MAX_ITERS_PER_ROUND = 1000;
-static void Optimize() {
+static void Optimize(std::vector<double> start_root) {
   Periodically status_per(1);
   Periodically flush_per(60);
   Timer timer;
 
-  std::vector<double> root = StartRoot();
+  std::vector<double> root = std::move(start_root);
   double best_score = Score(root);
   std::vector<double> best_values = root;
   bool best_dirty = false;
@@ -365,7 +387,13 @@ int main(int argc, char* argv[]) {
   status = new StatusBar(2);
   rc = new ArcFour(std::format("separator.{}", time(nullptr)));
 
-  Optimize();
+  std::vector<double> root;
+  if (argc == 2) {
+    root = FromSVG(argv[1]);
+  } else {
+    root = StartRoot();
+  }
+  Optimize(root);
 
   return 0;
 }

@@ -321,7 +321,9 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
 
 void Levels::SaveSVG(const Level &level, std::string_view filename) {
   SVG::Doc doc;
-  doc.view_box = std::array<double, 4>{0.0, 0.0, 1920.0, 1080.0};
+  doc.view_box = std::array<double, 4>{
+    0.0, 0.0, WIDTH * SVG_SCALE, HEIGHT * SVG_SCALE,
+  };
 
   SVG::G root_g;
 
@@ -366,23 +368,29 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
       << "Failed to write " << filename;
 }
 
+void Levels::AddBodyToScene(Scene *scene, const LevelBody &body) {
+  /*
+  Print("[{}⏹" ANSI_RESET "]Body at {:.2f},{:.2f}\n",
+        ANSI::ForegroundRGB32(body.color),
+        body.pos.x, body.pos.y);
+  */
+  if (body.dynamic) {
+    scene->AddObject(body.mesh, body.color, body.pos,
+                     vec2f{0.0f, 0.0f},
+                     body.restitution,
+                     body.friction);
+  } else {
+    scene->AddFixedObject(body.mesh, body.color, body.pos,
+                          body.restitution,
+                          body.friction);
+  }
+}
+
 std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {
   std::unique_ptr<Scene> scene =
     std::make_unique<Scene>(level.scene_walls);
-  for (const LevelBody &body : level.bodies) {
-    /*
-    Print("[{}⏹" ANSI_RESET "]Body at {:.2f},{:.2f}\n",
-          ANSI::ForegroundRGB32(body.color),
-          body.pos.x, body.pos.y);
-    */
-    if (body.dynamic) {
-      scene->AddObject(body.mesh, body.color, body.pos,
-                       vec2f{0.0f, 0.0f},
-                       0.05f);
-    } else {
-      scene->AddFixedObject(body.mesh, body.color, body.pos,
-                            0.1f);
-    }
+  for (const LevelBody &level_body : level.bodies) {
+    AddBodyToScene(scene.get(), level_body);
   }
   return scene;
 }

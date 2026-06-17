@@ -53,10 +53,13 @@ struct Scene {
 
   void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
                  vec2f pos, vec2f vel,
-                 float restitution = 0.7f);
+                 float restitution,
+                 float friction);
 
   void AddFixedObject(const Polygonization::Mesh &mesh, uint32_t color,
-                      vec2f pos, float friction = 0.2);
+                      vec2f pos,
+                      float restitution,
+                      float friction);
 
   void ApplyImpulse(vec2f v);
 

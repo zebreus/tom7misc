@@ -162,6 +162,9 @@ void main() {
 
 struct SDLGLRendering : public Rendering {
 
+  static constexpr int SCREEN_WIDTH = 1920;
+  static constexpr int SCREEN_HEIGHT = 1080;
+
   SDL_Window *window = nullptr;
   SDL_GLContext context = {};
 
@@ -184,7 +187,8 @@ struct SDLGLRendering : public Rendering {
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
     window = SDL_CreateWindow("Toward", SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED, 1920, 1080,
+                              SDL_WINDOWPOS_CENTERED,
+                              SCREEN_WIDTH, SCREEN_HEIGHT,
                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) {
       std::string err = std::format("Failed to create window: {}",
@@ -273,6 +277,22 @@ struct SDLGLRendering : public Rendering {
     glDrawArrays(GL_TRIANGLES, 0, (GLsizei)(scene.size() * 3));
 
     SDL_GL_SwapWindow(window);
+  }
+
+  vec2f CartesianPixel(vec2f viewport_min,
+                       vec2f viewport_max,
+                       int x, int y) override {
+    // There is also...
+    // SDL_GetWindowSize(window, &w, &h);
+
+    float tx = x / (float)SCREEN_WIDTH;
+    float ty = y / (float)SCREEN_HEIGHT;
+
+    // Flip y coordinate.
+    return vec2f{
+      viewport_min.x + tx * (viewport_max.x - viewport_min.x),
+      viewport_max.y - ty * (viewport_max.y - viewport_min.y),
+    };
   }
 
   ~SDLGLRendering() override {

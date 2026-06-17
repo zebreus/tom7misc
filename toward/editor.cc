@@ -30,6 +30,9 @@
 #include "util.h"
 #include "yocto-math.h"
 
+static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
+static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
+
 void Simulate(std::string_view level_file) {
   std::unique_ptr<Level> level = Levels::LoadSVG(level_file);
   std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
@@ -41,6 +44,8 @@ void Simulate(std::string_view level_file) {
 
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
+
+  bool bit = true;
 
   for (;;) {
     for (;;) {
@@ -57,10 +62,14 @@ void Simulate(std::string_view level_file) {
         } else if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
           level = Levels::LoadSVG(level_file);
           scene = Levels::CreateScene(*level);
+        } else if (kdown->codepoint == '1') {
+          bit = true;
+        } else if (kdown->codepoint == '0') {
+          bit = false;
         }
-      }
 
-      if (const Inputs::KeyUp *kup = std::get_if<Inputs::KeyUp>(&input)) {
+      } else if (const Inputs::KeyUp *kup =
+                 std::get_if<Inputs::KeyUp>(&input)) {
         if (kup->codepoint == 0x1b) {
           // Escape
           return;
@@ -68,7 +77,22 @@ void Simulate(std::string_view level_file) {
 
         Print("KeyUp: {}\n", UTF8::Encode(kup->codepoint));
         fflush(stdout);
+      } else if (const Inputs::MouseClick *mc =
+                 std::get_if<Inputs::MouseClick>(&input)) {
+        if (mc->button == Inputs::MOUSE_LEFT) {
+          vec2f pos = rendering->CartesianPixel(
+              VIEW_MIN, VIEW_MAX, mc->x, mc->y);
+          // XXX ugh
+          pos.y = VIEW_MAX.y - pos.y;
+
+          LevelBody body = bit ? Levels::One() : Levels::Zero();
+          body.pos = pos;
+          body.color = 0xFF00FFFF;
+          level->bodies.push_back(body);
+          Levels::AddBodyToScene(scene.get(), body);
+        }
       }
+
     }
 
     if (!paused) {
@@ -76,9 +100,7 @@ void Simulate(std::string_view level_file) {
     }
     std::vector<Rendering::Triangle> tri = scene->GetTriangles();
 
-    rendering->RenderScene(vec2f{0.0f, 0.0f},
-                           vec2f{Scene::WIDTH, Scene::HEIGHT},
-                           tri);
+    rendering->RenderScene(VIEW_MIN, VIEW_MAX, tri);
   }
 
 }

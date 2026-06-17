@@ -17,6 +17,8 @@ struct LevelBody {
   Polygonization::Mesh mesh;
   uint32_t color = 0xFFFFFFFF;
   vec2f pos = {0.0, 0.0};
+  float restitution = 0.01f;
+  float friction = 0.01f;
   // If true, then it is moved by physics. If false,
   // bodies can collide with it, but this body
   // never moves.
@@ -53,6 +55,10 @@ struct Levels {
   static void SaveSVG(const Level &level, std::string_view filename);
 
   static std::unique_ptr<Scene> CreateScene(const Level &level);
+
+  // For interactive editing, with an existing scene. Usually you just
+  // want to use CreateScene from a static Level.
+  static void AddBodyToScene(Scene *scene, const LevelBody &level_body);
 
   // Recognize a "1" symbol in the SVG data. This is a simple 1x4
   // block rectangle.

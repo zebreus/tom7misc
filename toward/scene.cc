@@ -95,7 +95,7 @@ void Scene::AddDirt(ArcFour *rc) {
     }
     mesh.polygons.push_back(poly);
 
-    AddObject(mesh, color, {x, y}, {vx, vy});
+    AddObject(mesh, color, {x, y}, {vx, vy}, 0.7f, 0.2f);
   }
 }
 
@@ -220,7 +220,9 @@ std::optional<vec2f> Scene::RejectObject(
 
 void Scene::AddObject(const Polygonization::Mesh &mesh,
                       uint32_t color, vec2f pos,
-                      vec2f vel, float restitution) {
+                      vec2f vel,
+                      float restitution,
+                      float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
   body_def.position = {pos.x, pos.y};
@@ -231,13 +233,14 @@ void Scene::AddObject(const Polygonization::Mesh &mesh,
   b2ShapeDef shape_def = b2DefaultShapeDef();
   shape_def.density = 1.0f;
   shape_def.material.restitution = restitution;
-  shape_def.material.friction = 0.2f;
+  shape_def.material.friction = friction;
 
   Attach(body_id, shape_def, mesh, color);
 }
 
 void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
                            uint32_t color, vec2f pos,
+                           float restitution,
                            float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_staticBody;
@@ -247,7 +250,7 @@ void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
 
   b2ShapeDef shape_def = b2DefaultShapeDef();
   shape_def.density = 1.0f;
-  shape_def.material.restitution = 0.0;
+  shape_def.material.restitution = restitution;
   shape_def.material.friction = friction;
 
   Attach(body_id, shape_def, mesh, color);

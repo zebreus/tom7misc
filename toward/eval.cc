@@ -18,6 +18,10 @@
 
 using vec2f = yocto::vec2f;
 
+// Pretty high!
+static constexpr float RESTITUTION = 0.7f;
+static constexpr float FRICTION = 0.2f;
+
 double Eval::Stability(const Letter &letter) {
   Scene scene;
 
@@ -47,7 +51,9 @@ double Eval::Stability(const Letter &letter) {
   auto pos = scene.RejectObject(scaled_mesh, {start_x, start_y}, {0.0f, -1.0f});
   if (!pos) return 1000.0;
 
-  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f});
+  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f},
+                  RESTITUTION, FRICTION);
+
   if (scene.objects.empty()) return 1000.0;
 
   b2BodyId body_id = scene.objects.front().body_id;
@@ -189,7 +195,8 @@ ImageRGBA Eval::DebugStability(const Letter &letter) {
   }
 
   auto [px, py] = *pos;
-  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f});
+  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f},
+                  RESTITUTION, FRICTION);
   if (scene.objects.empty()) {
     LogText("Failed: scene.objects is empty (penalty 1000.0)");
     DrawBounds();
