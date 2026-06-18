@@ -15,6 +15,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
+#include "scope-exit.h"
 #include "stb_truetype.h"
 #include "util.h"
 
@@ -22,8 +23,9 @@ using namespace std;
 
 TTF::TTF() {}
 
-std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
+std::unique_ptr<TTF> TTF::LoadFast(std::string_view filename) {
   std::unique_ptr<TTF> ret(new TTF);
+  ret->original_filename = std::string(filename);
   ret->ttf_bytes = Util::ReadFileBytes(filename);
   if (ret->ttf_bytes.empty()) return {nullptr};
 
@@ -94,11 +96,23 @@ std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
   }
   #endif
 
+  return ret;
+}
+
+std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
+  std::unique_ptr<TTF> ret = LoadFast(filename);
+
   // We don't support cubic splines in this representation, so
   // fail if any glyph has one.
+
+  // Also fail on empty contours, since NativeContour/Contour
+  // can't represent these. (TODO: We could probably just ignore
+  // them later...)
   {
     std::unordered_map<uint16_t, std::vector<uint32_t>> all_glyphs =
       stbtt_GetGlyphs(&ret->font);
+
+
 
     for (const auto &[glyph, _] : all_glyphs) {
       stbtt_vertex *vertices = nullptr;
@@ -106,19 +120,33 @@ std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
       if (n == 0) continue;
       CHECK(vertices != nullptr);
 
+      // Free the shape on all paths.
+      ScopeExit cleanup([&]{ stbtt_FreeShape(&ret->font, vertices); });
+
       CHECK(vertices[0].type == STBTT_vmove) <<
         "All shapes should start with a moveto?";
+      int contour_length = 0;
       for (int i = 0; i < n; i++) {
         const stbtt_vertex &v = vertices[i];
         switch (v.type) {
-        case STBTT_vmove: break;
-        case STBTT_vline: break;
-        case STBTT_vcurve: break;
-        case STBTT_vcubic: return {nullptr};
+        case STBTT_vmove:
+          if (i > 0 && contour_length == 0) {
+            // e.g., two moves in a row.
+            return {nullptr};
+          }
+          contour_length = 0;
+          break;
+        case STBTT_vline:
+        case STBTT_vcurve:
+          contour_length++;
+          break;
+        case STBTT_vcubic:
+          return {nullptr};
         }
       }
-
-      stbtt_FreeShape(&ret->font, vertices);
+      if (contour_length == 0) {
+        return {nullptr};
+      }
     }
   }
 
@@ -224,6 +252,7 @@ std::vector<TTF::Contour> TTF::GetContours(int codepoint) const {
     }
 
     const auto [sx, sy] = Norm(nc.StartX(), nc.StartY());
+    // HERE: These are the tests that can fail.
     CHECK_EQ(c.StartX(), sx);
     CHECK_EQ(c.StartY(), sy);
     out.emplace_back(std::move(c));

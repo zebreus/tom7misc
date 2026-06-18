@@ -34,6 +34,8 @@ struct TTF {
 
   // Or nullptr if something is wrong.
   static std::unique_ptr<TTF> Load(std::string_view filename);
+  // Doesn't perform validation; can crash later.
+  static std::unique_ptr<TTF> LoadFast(std::string_view filename);
 
   // amount to advance from one line of text to the next. This would
   // be +1.0 by definition except that we also take into account the
@@ -325,6 +327,8 @@ struct TTF {
 
   std::vector<uint8_t> ttf_bytes;
   stbtt_fontinfo font;
+  // For error messages.
+  std::string original_filename;
 
   TTF(const TTF &other) = delete;
   TTF &operator =(const TTF &other) = delete;

@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 #include "ansi.h"
@@ -19,32 +20,32 @@
   } while (false)
 
 static void CreateAndDestroy() {
-  TTF ttf("DFXPasement9px.ttf");
+  std::unique_ptr<TTF> ttf = TTF::LoadFast("DFXPasement9px.ttf");
 }
 
 static void TestMetrics() {
-  TTF ttf("DFXPasement9px.ttf");
-  CHECK(ttf.FontInfo() != nullptr);
+  std::unique_ptr<TTF> ttf = TTF::Load("DFXPasement9px.ttf");
+  CHECK(ttf->FontInfo() != nullptr);
 
-  float line_height = ttf.NormLineHeight();
-  float baseline = ttf.Baseline();
+  float line_height = ttf->NormLineHeight();
+  float baseline = ttf->Baseline();
   CHECK_NEAR(line_height, 1.1111);
   CHECK_NEAR(baseline, 0.7776);
 
-  auto [w, h] = ttf.MeasureString("Hello, world!", 9);
+  auto [w, h] = ttf->MeasureString("Hello, world!", 9);
   CHECK_NEAR(w, 83);
   CHECK_NEAR(h, 4551);
 
-  auto [minx, miny, maxx, maxy] = ttf.BoundingBox();
+  auto [minx, miny, maxx, maxy] = ttf->BoundingBox();
   CHECK_NEAR(minx, 0);
   CHECK_NEAR(miny, 0);
   CHECK_NEAR(maxx, 1);
   CHECK_NEAR(maxy, 1);
 
-  float kern_av = ttf.NormKernAdvance('A', 'V');
+  float kern_av = ttf->NormKernAdvance('A', 'V');
   CHECK_NEAR(kern_av, 0.7778);
 
-  std::vector<TTF::Contour> contours = ttf.GetContours('A');
+  std::vector<TTF::Contour> contours = ttf->GetContours('A');
   CHECK(contours.size() == 2);
   CHECK(contours[0].paths.size() == 12);
   CHECK(contours[1].paths.size() == 4);
