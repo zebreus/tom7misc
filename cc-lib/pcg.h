@@ -21,6 +21,13 @@ struct PCG32 {
   inline uint32_t Rand32();
   inline uint8_t Byte();
 
+  // Uniform samples in [0, 1).
+  // Note that Float only has 24 bits of precision in this
+  // interval, so you may want to use Double even if you
+  // are ultimately computing a float.
+  inline float Float();
+  inline double Double();
+
   // For serialization, rewinding, etc.
   inline uint64_t GetState() const { return state; }
   // Recreate the stream from the state. Recommended to
@@ -38,8 +45,7 @@ struct PCG32 {
   PCG32 &operator =(const PCG32 &other) = default;
   PCG32 &operator =(PCG32 &&other) = default;
 
-private:
-
+ private:
   uint64_t state = 0;
 };
 
@@ -73,6 +79,20 @@ uint64_t PCG32::Rand64() {
 
 uint8_t PCG32::Byte() {
   return Rand32() & 0xFF;
+}
+
+float PCG32::Float() {
+  // 24 bits of precision in [0, 1).
+  uint32_t bits = Rand32() >> 8;
+  // exactly 1.0 / 2^24.
+  return bits * 0x1.0p-24f;
+}
+
+double PCG32::Double() {
+  // 53 bits of precision in [0, 1).
+  uint64_t bits = Rand64() >> 11;
+  // exactly 1.0 / 2^53.
+  return bits * 0x1.0p-53;
 }
 
 PCG32 PCG32::FromState(uint64_t state) {

@@ -186,6 +186,7 @@ struct SVG {
                                            const SVG::PathCommand &cmd);
 
   // Concrete graphics state, which results from applying style.
+  // TODO: Additional style in here (line dashes, text, etc.)
   struct GraphicsState {
     Transform transform =
       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
@@ -213,6 +214,8 @@ struct SVG {
   // this returns false.
   static bool IsDefault(const Style &style);
 
+  // Given the graphics state and style (i.e., applied to a subtree),
+  // return a new GraphicsState with the style applied.
   static GraphicsState UpdateState(const GraphicsState &state,
                                    const Style &style);
 
@@ -234,5 +237,7 @@ struct SVG {
   static std::optional<std::array<double, 6>> ParseTransformList(
       std::string_view s);
 };
+
+
 
 #endif

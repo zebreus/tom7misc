@@ -358,6 +358,16 @@ static void TestParseText() {
   CHECK(!SVG::ToSVG(doc).empty());
 }
 
+static void TestColors() {
+  SVG::Doc doc = PARSE_OR_DIE(
+      "<svg><path fill=\"cornflowerblue\" d=\"M0 0\"/></svg>");
+
+  const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+  CHECK(g != nullptr);
+  CHECK(g->style.fill_color.has_value());
+  CHECK(g->style.fill_color.value() == 0x6495EDFF);
+}
+
 static void TestText() {
   {
     SVG::Doc doc = PARSE_OR_DIE(
@@ -463,6 +473,7 @@ int main() {
   TestParseTransform();
   TestParseCheck();
   TestDashes();
+  TestColors();
   TestText();
 
   TestParseText();
