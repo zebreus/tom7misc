@@ -85,3 +85,5 @@ make -j || exit -1
 ./yocto-math_test.exe
 # ./console_test.exe
 ./union-find_test.exe
+./simpledxf_test.exe
+./scope-exit_test.exe

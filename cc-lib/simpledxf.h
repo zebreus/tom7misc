@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 
@@ -38,9 +39,10 @@ struct SimpleDXF {
     Field(int code, Value value) : code(code), value(value) {}
   };
 
-  // Read the fields from the file. The values are parsed according to
-  // to the code's expected type, but not interpreted further.
-  static std::vector<Field> GetFields(const std::string &contents);
+  // Read the fields from the DXF file's contents. The values are
+  // parsed according to to the code's expected type, but not
+  // interpreted further.
+  static std::vector<Field> GetFields(std::string_view contents);
 
   // Represents the full precision of finite doubles.
   static std::string ValueString(const Value &value);
@@ -58,5 +60,5 @@ struct SimpleDXF {
   // interpretation.
   static std::vector<Entity> GetEntities(
       const std::vector<Field> &fields);
-  
+
 };

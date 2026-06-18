@@ -1,7 +1,5 @@
 
-default : heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bit-string_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe parser-combinators_test.exe functional-map_test.exe boxes-and-glue_test.exe qr-code_test.exe image-resize_test.exe integer-voronoi_test.exe status-bar_test.exe top_n_test.exe map-util_test.exe interval-cover-util_test.exe array-util_test.exe sorting-network_test.exe ansi-image_test.exe base_test.exe auto-histo_test.exe nice_test.exe byte-set_test.exe byte-set_bench.exe small-int-set_test.exe wikipedia_test.exe symmetric-matrix_test.exe utf8_test.exe zip_test.exe png_test.exe string-table_test.exe unicode-data_test.exe html-entities_test.exe fix-encoding_test.exe inline-vector_test.exe contiguous-buffer_test.exe wav_test.exe packet-writer_test.exe packet-parser_test.exe markdown_test.exe yocto-math_test.exe console_test.exe union-find_test.exe
-
-TESTCOMPILE=stb_image_write.o stb_image.o dr_wav.o bounds.o simpledxf.o
+default : heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bit-string_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe parser-combinators_test.exe functional-map_test.exe boxes-and-glue_test.exe qr-code_test.exe image-resize_test.exe integer-voronoi_test.exe status-bar_test.exe top_n_test.exe map-util_test.exe interval-cover-util_test.exe array-util_test.exe sorting-network_test.exe ansi-image_test.exe base_test.exe auto-histo_test.exe nice_test.exe byte-set_test.exe byte-set_bench.exe small-int-set_test.exe wikipedia_test.exe symmetric-matrix_test.exe utf8_test.exe zip_test.exe png_test.exe string-table_test.exe unicode-data_test.exe html-entities_test.exe fix-encoding_test.exe inline-vector_test.exe contiguous-buffer_test.exe wav_test.exe packet-writer_test.exe packet-parser_test.exe markdown_test.exe yocto-math_test.exe console_test.exe union-find_test.exe simpledxf_test.exe scope-exit_test.exe
 
 BASE=base/logging.o base/stringprintf.o
 
@@ -51,31 +49,19 @@ stb_truetype_test.exe : stb_truetype.o stb_truetype_test.o hexdump.o $(BASE) $(T
 stb_image_bench.o : stb_image_bench.cc
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-stb_image_bench.exe : stb_image.o stb_image_write.o stb_image_bench.o image.o arcfour.o $(BASE)
+stb_image_bench.exe : stb_image.o stb_image_write.o stb_image_bench.o image.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
-
-heap_test.o : heap_test.cc heap.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 heap_test.exe : heap_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-list-util_test.o : list-util_test.cc list-util.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
 list-util_test.exe : list-util_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
-
-tuple-util_test.o : tuple-util_test.cc tuple-util.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 tuple-util_test.exe : tuple-util_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-rle_test.o : rle_test.cc rle.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-rle_test.exe : rle_test.o rle.o $(BASE) $(TEST_UTIL) arcfour.o hexdump.o status-bar.o
+rle_test.exe : rle_test.o rle.o $(BASE) $(TEST_UTIL) status-bar.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 arcfour_test.exe : arcfour_test.o arcfour.o $(BASE)
@@ -84,20 +70,14 @@ arcfour_test.exe : arcfour_test.o arcfour.o $(BASE)
 arcfour_bench.exe : arcfour_bench.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-lastn-buffer_test.o : lastn-buffer_test.cc lastn-buffer.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
 lastn-buffer_test.exe : lastn-buffer_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 interval-tree_test.exe : interval-tree_test.o $(BASE) arcfour.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-simpledxf.o : simpledxf.cc simpledxf.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-threadutil_test.exe : threadutil.h threadutil_test.o $(TEST_UTIL) $(BASE)
-	$(CXX) $(CXXFLAGS) threadutil_test.o $(TEST_UTIL) $(BASE) -o $@ -lpthread
+threadutil_test.exe : threadutil_test.o $(TEST_UTIL) $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@ -lpthread
 
 color-util_test.exe : color-util.o color-util_test.o stb_image.o image.o stb_image_write.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
@@ -105,10 +85,10 @@ color-util_test.exe : color-util.o color-util_test.o stb_image.o image.o stb_ima
 textsvg_test.exe : textsvg.o textsvg_test.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-lines_test.exe : lines_test.o arcfour.o $(BASE)
+lines_test.exe : lines_test.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-image_test.exe : image_test.o arcfour.o image.o stb_image.o stb_image_write.o ansi.o ansi-image.o $(BASE)
+image_test.exe : image_test.o image.o stb_image.o stb_image_write.o ansi-image.o $(BASE) $(TEST_UTIL)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 util_test.exe : util_test.o util.o arcfour.o $(BASE)
@@ -117,11 +97,11 @@ util_test.exe : util_test.o util.o arcfour.o $(BASE)
 base64_test.exe : base64.o base64_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-randutil_test.exe : randutil.h randutil_test.o arcfour.o $(BASE)
-	$(CXX) $(CXXFLAGS) randutil_test.o arcfour.o $(BASE) -o $@
+randutil_test.exe : randutil_test.o $(BASE) $(TEST_UTIL)
+	$(CXX) $(CXXFLAGS) $^ $(BASE) -o $@
 
 json_test.exe : json_test.o $(BASE)
-	$(CXX) $(CXXFLAGS) json_test.o $(BASE) -o $@
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 edit-distance_test.exe : edit-distance_test.o edit-distance.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
@@ -219,6 +199,9 @@ work-queue_test.exe : work-queue_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 csv_test.exe : csv.o csv_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+simpledxf_test.exe : simpledxf_test.o simpledxf.o $(BASE) $(TEST_UTIL) $(RE2_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 pdf_test.exe : pdf.o pdf_test.o image.o stb_image.o stb_image_write.o stb_truetype.o qr-code.o svg.o xml.o miniz.o zip.o $(TEST_UTIL) $(BASE)
@@ -370,6 +353,10 @@ console_test.exe : console_test.o console.o $(BASE) $(TEST_UTIL)
 	@echo -n "!"
 
 union-find_test.exe : union-find_test.o $(BASE) $(TEST_UTIL)
+	@$(CXX) $(CXXFLAGS) $^ -o $@
+	@echo -n "!"
+
+scope-exit_test.exe : scope-exit_test.o $(BASE) $(TEST_UTIL)
 	@$(CXX) $(CXXFLAGS) $^ -o $@
 	@echo -n "!"
 

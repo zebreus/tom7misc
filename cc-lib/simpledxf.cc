@@ -62,7 +62,7 @@ SimpleDXF::ValueType SimpleDXF::CodeType(int code) {
 
 #define SPACE_RE "[ \\t]"
 
-vector<SimpleDXF::Field> SimpleDXF::GetFields(const string &contents) {
+vector<SimpleDXF::Field> SimpleDXF::GetFields(std::string_view contents) {
   RE2 code_re{SPACE_RE "*(-?[0-9]+)" SPACE_RE "*"};
   RE2 integer_re = {SPACE_RE "*(-?[0-9]+)" SPACE_RE "*"};
   RE2 float_re = {SPACE_RE "*(-?[0-9.]+)" SPACE_RE "*"};
