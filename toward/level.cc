@@ -1,6 +1,7 @@
 
 #include "level.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -120,26 +121,21 @@ LevelBody Levels::Zero() {
   return body;
 }
 
-
-
-// Example:
-/*
-  FIXME This is out of date -- I scaled them down.
-  <g fill="none" stroke="#ff00ff">
-  <path d="M 400.0000 160.0000L 440.0000 160.0000L 440.0000 320.0000L 400.0000 320.0000L 400.0000 160.0000Z" />
-  </g>
-*/
-std::optional<vec2f> Levels::IsSVGOne(const SVG::GraphicsState &outer_state,
-                                      const SVG::Node &node) {
+static std::optional<vec2f> IsSVGRectangle(
+    const SVG::GraphicsState &outer_state,
+    const SVG::Node &node,
+    bool stroke,
+    uint32_t expected_color,
+    int block_width,
+    int block_height) {
   const SVG::G *g = std::get_if<SVG::G>(&node.v);
   if (g == nullptr || g->children.size() != 1) return std::nullopt;
 
   SVG::GraphicsState state = SVG::UpdateState(outer_state, g->style);
 
-  // Check for magenta (#ff00ff) stroke.
-  // This covers standard 32-bit color layouts (RGBA, ARGB, RGB).
-  uint32_t c = state.stroke_color;
-  if (c != 0xFF00FFFF) return std::nullopt;
+  if ((stroke ? state.stroke_color : state.fill_color) != expected_color) {
+    return std::nullopt;
+  }
 
   const SVG::Path *path = std::get_if<SVG::Path>(&g->children[0].v);
   if (!path) return std::nullopt;
@@ -180,12 +176,33 @@ std::optional<vec2f> Levels::IsSVGOne(const SVG::GraphicsState &outer_state,
   float width = max_x - min_x;
   float height = max_y - min_y;
 
+  float expected_width = block_width * Levels::BLOCK_SIZE * Levels::SVG_SCALE;
+  float expected_height = block_height * Levels::BLOCK_SIZE * Levels::SVG_SCALE;
+  constexpr float epsilon = 0.1f;
+
   // Allow a small epsilon for floating-point inaccuracies.
-  if (width > 39.9f && width < 40.1f && height > 159.9f && height < 160.1f) {
+  if (std::abs(width - expected_width) < epsilon &&
+      std::abs(height - expected_height) < epsilon) {
     return vec2f{(min_x + max_x) / 2.0f, (min_y + max_y) / 2.0f};
   }
 
   return std::nullopt;
+}
+
+std::optional<vec2f> Levels::IsSVGOne(const SVG::GraphicsState &outer_state,
+                                      const SVG::Node &node) {
+  // Must have magenta stroke.
+  return IsSVGRectangle(outer_state, node, true, 0xFF00FFFF, 1, 4);
+}
+
+std::optional<vec2f> Levels::IsInput(const SVG::GraphicsState &outer_state,
+                                     const SVG::Node &node) {
+  return IsSVGRectangle(outer_state, node, false, INPUT_COLOR, 5, 5);
+}
+
+std::optional<vec2f> Levels::IsOutput(const SVG::GraphicsState &outer_state,
+                                      const SVG::Node &node) {
+  return IsSVGRectangle(outer_state, node, false, OUTPUT_COLOR, 5, 7);
 }
 
 void Levels::AddNodesToLevel(const SVG::Node &node,
@@ -194,6 +211,18 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
     Print("Got One at {},{}\n", oone.value().x, oone.value().y);
     // return;
+  }
+
+  if (std::optional<vec2f> in = IsInput(state, node)) {
+    Print("Got input at {},{}\n", in->x, in->y);
+    level->inputs.push_back(in.value() / SVG_SCALE);
+    return;
+  }
+
+  if (std::optional<vec2f> out = IsOutput(state, node)) {
+    Print("Got output at {},{}\n", out->x, out->y);
+    level->outputs.push_back(out.value() / SVG_SCALE);
+    return;
   }
 
   if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
@@ -310,11 +339,16 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
 
   SVG::Doc doc = SVG::ParseOrDie(contents);
   auto level = std::make_unique<Level>();
+  level->scene_walls = false;
 
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
   AddNodesToLevel(doc.root, state, level.get());
+
+  auto CmpX = [](const vec2f &a, const vec2f &b) { return a.x < b.x; };
+  std::sort(level->inputs.begin(), level->inputs.end(), CmpX);
+  std::sort(level->outputs.begin(), level->outputs.end(), CmpX);
 
   return level;
 }
@@ -326,6 +360,40 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
   };
 
   SVG::G root_g;
+
+  auto AddRect = [&root_g](vec2f pos, int blocks_w, int blocks_h,
+                           uint32_t color) {
+    SVG::Path path;
+    float hw = blocks_w * BLOCK_SIZE * SVG_SCALE / 2.0f;
+    float hh = blocks_h * BLOCK_SIZE * SVG_SCALE / 2.0f;
+    float cx = pos.x * SVG_SCALE;
+    float cy = pos.y * SVG_SCALE;
+
+    path.data.push_back(SVG::MoveTo{cx - hw, cy - hh});
+    path.data.push_back(SVG::LineTo{cx + hw, cy - hh});
+    path.data.push_back(SVG::LineTo{cx + hw, cy + hh});
+    path.data.push_back(SVG::LineTo{cx - hw, cy + hh});
+    path.data.push_back(SVG::ClosePath{});
+
+    SVG::Node path_node;
+    path_node.v = std::move(path);
+
+    SVG::G g;
+    g.style.fill_color = color;
+    g.style.stroke_color = SVG::COLOR_NONE;
+    g.children.push_back(std::move(path_node));
+
+    SVG::Node node;
+    node.v = std::move(g);
+    root_g.children.push_back(std::move(node));
+  };
+
+  for (const vec2f &pos : level.inputs) {
+    AddRect(pos, 5, 5, INPUT_COLOR);
+  }
+  for (const vec2f &pos : level.outputs) {
+    AddRect(pos, 5, 7, OUTPUT_COLOR);
+  }
 
   for (const LevelBody &body : level.bodies) {
     SVG::Path path;
@@ -376,7 +444,7 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body) {
   */
   if (body.dynamic) {
     scene->AddObject(body.mesh, body.color, body.pos,
-                     vec2f{0.0f, 0.0f},
+                     body.vel, body.avel,
                      body.restitution,
                      body.friction);
   } else {

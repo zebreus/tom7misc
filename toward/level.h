@@ -16,7 +16,10 @@
 struct LevelBody {
   Polygonization::Mesh mesh;
   uint32_t color = 0xFFFFFFFF;
-  vec2f pos = {0.0, 0.0};
+  vec2f pos = {0.0f, 0.0f};
+  // linear and angular velocity. Unused for dynamic bodies.
+  vec2f vel = {0.0f, 0.0f};
+  float avel = 0.0f;
   float restitution = 0.01f;
   float friction = 0.01f;
   // If true, then it is moved by physics. If false,
@@ -28,10 +31,19 @@ struct LevelBody {
 // The starting state of the level.
 struct Level {
   std::vector<LevelBody> bodies;
+  // The locations (centers) of inputs, sorted by x coordinate.
+  std::vector<vec2f> inputs;
+  // The locations (centers) of outputs, sorted by x coordinate.
+  std::vector<vec2f> outputs;
   bool scene_walls = true;
 };
 
 struct Levels {
+
+  // Color of an input rectangle.
+  static constexpr uint32_t INPUT_COLOR = 0xAAFFFFFF;
+  // Color of an output rectangle.
+  static constexpr uint32_t OUTPUT_COLOR = 0xFFAAAAFF;
 
   // Create a one or zero object. You need to set the
   // position and color.
@@ -59,6 +71,16 @@ struct Levels {
   // For interactive editing, with an existing scene. Usually you just
   // want to use CreateScene from a static Level.
   static void AddBodyToScene(Scene *scene, const LevelBody &level_body);
+
+  // Recognize an input. This a rectangle 5x5 blocks in size, with
+  // color INPUT_COLOR. It does not become a body.
+  static std::optional<vec2f> IsInput(const SVG::GraphicsState &outer_state,
+                                      const SVG::Node &node);
+
+  // Recognize an output. This a rectangle 5x7 blocks in size, with
+  // color OUTPUT_COLOR.It does not become a body.
+  static std::optional<vec2f> IsOutput(const SVG::GraphicsState &outer_state,
+                                       const SVG::Node &node);
 
   // Recognize a "1" symbol in the SVG data. This is a simple 1x4
   // block rectangle.

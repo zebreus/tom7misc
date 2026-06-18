@@ -102,7 +102,8 @@ struct Game {
       constexpr float RESTITUTION = 0.05;
       constexpr float FRICTION = 0.05;
       scene->AddObject(scaled_mesh, color, vec2f{x, y},
-                       vec2f{0.0, 0.0}, RESTITUTION, FRICTION);
+                       vec2f{0.0, 0.0}, 0.0f,
+                       RESTITUTION, FRICTION);
     } else {
       Print("Couldn't place (2)!\n");
       return;

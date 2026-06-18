@@ -52,7 +52,7 @@ struct Scene {
       vec2f reject_dir);
 
   void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
-                 vec2f pos, vec2f vel,
+                 vec2f pos, vec2f vel, float avel,
                  float restitution,
                  float friction);
 

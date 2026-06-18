@@ -34,13 +34,15 @@ static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
 static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
 
 void Simulate(std::string_view level_file) {
+  ArcFour rc("sim");
+
   std::unique_ptr<Level> level = Levels::LoadSVG(level_file);
   std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
 
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
   std::unique_ptr<Rendering> rendering = Rendering::CreateSDLGL();
 
-  bool paused = true;
+  bool paused = false;
 
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
@@ -88,6 +90,10 @@ void Simulate(std::string_view level_file) {
           LevelBody body = bit ? Levels::One() : Levels::Zero();
           body.pos = pos;
           body.color = 0xFF00FFFF;
+          body.vel = vec2f(RandDouble(&rc) * 2 - 1, RandDouble(&rc) * 2 - 1);
+          // between -1 and +1 radians per second.
+          body.avel = RandDouble(&rc) * 2 - 1;
+
           level->bodies.push_back(body);
           Levels::AddBodyToScene(scene.get(), body);
         }

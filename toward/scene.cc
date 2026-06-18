@@ -95,7 +95,7 @@ void Scene::AddDirt(ArcFour *rc) {
     }
     mesh.polygons.push_back(poly);
 
-    AddObject(mesh, color, {x, y}, {vx, vy}, 0.7f, 0.2f);
+    AddObject(mesh, color, {x, y}, {vx, vy}, 0.0f, 0.7f, 0.2f);
   }
 }
 
@@ -220,13 +220,14 @@ std::optional<vec2f> Scene::RejectObject(
 
 void Scene::AddObject(const Polygonization::Mesh &mesh,
                       uint32_t color, vec2f pos,
-                      vec2f vel,
+                      vec2f vel, float avel,
                       float restitution,
                       float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
   body_def.position = {pos.x, pos.y};
   body_def.linearVelocity = {vel.x, vel.y};
+  body_def.angularVelocity = avel;
 
   b2BodyId body_id = b2CreateBody(world_id, &body_def);
 
