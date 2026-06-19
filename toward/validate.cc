@@ -14,7 +14,6 @@
 #include "level.h"
 #include "pcg.h"
 #include "periodically.h"
-#include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
 #include "status-bar.h"
@@ -106,6 +105,24 @@ struct SeparatorValidation : public ValidationInstance {
 
     // Separated bits out.
     ret.valid_outputs = {{SeparatedZero(a), SeparatedOne(a)}};
+    return ret;
+  }
+};
+
+struct NotValidation : public ValidationInstance {
+  std::string_view Filename() const override { return "not2.svg"; }
+  int ExpectedInputs() const override { return 1; }
+  int ExpectedOutputs() const override { return 1; }
+
+  bool AddInputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b01);
+
+    // Mixed bits in/out.
+    ValidationSample ret;
+    ret.input_values.push_back(a ? ChuteValue::ONE : ChuteValue::ZERO);
+    ret.valid_outputs = {{a ? ChuteValue::ZERO : ChuteValue::ONE}};
     return ret;
   }
 };
@@ -320,16 +337,24 @@ static void Validate(const ValidationInstance &inst) {
 
 [[maybe_unused]]
 static void ValidateAll() {
-  std::unique_ptr<ValidationInstance> instance =
-    std::make_unique<AndValidation>();
-  Validate(*instance);
+  {
+    std::unique_ptr<ValidationInstance> instance =
+      std::make_unique<AndValidation>();
+    Validate(*instance);
+  }
+
+  {
+    std::unique_ptr<ValidationInstance> instance =
+      std::make_unique<SeparatorValidation>();
+    Validate(*instance);
+  }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   std::unique_ptr<ValidationInstance> instance =
-    std::make_unique<SeparatorValidation>();
+    std::make_unique<NotValidation>();
   Validate(*instance);
 
   return 0;

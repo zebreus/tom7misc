@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="895" height="1000" version="1.1" viewBox="0 0 895 1000">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <polygon points="340 725 580 790 580 780 610 780 655 830 0 655 250 540 340 725" fill="#00a"/>
+  <rect x="775" width="100" height="100" fill="#aff"/>
+  <rect x="655" y="860" width="100" height="140" fill="#faa"/>
+  <rect x="755" y="410" width="20" height="590" fill="#c00"/>
+  <rect x="635" y="835" width="20" height="165" fill="#c00"/>
+  <rect x="355" y="535" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
+  <path d="M595,701c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M595,761c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M595,700c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM595,760c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <polygon points="355 615 375 615 655 675.882 655 695 385 675 350 660 355 615" fill="#0057ee"/>
+  <path d="M875,390v-205l-497.636,115-52.364,120,550-30Z" fill="#00a"/>
+  <path d="M155,355v175l100,15-25-170-75-20h0Z" fill="#00a"/>
+  <polygon points="350 555 335 510 335 415 400 415 395 530 355 530 350 555" fill="#00b7cc"/>
+  <rect x="155" y="80" width="20" height="290" fill="#c7dd00"/>
+  <text transform="translate(70 120)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">10</tspan></text>
+  <text transform="translate(795 915)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">01</tspan></text>
+  <rect x="175" y="80" width="580" height="20" fill="#c7dd00"/>
+  <rect x="875" y="100" width="20" height="195" fill="#c7dd00"/>
+</svg>

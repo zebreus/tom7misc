@@ -322,6 +322,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
     Print("Got One at {},{}\n", oone.value().x, oone.value().y);
     LevelBody one_body = Levels::One();
+    one_body.color = 0x00FF00FF;
     one_body.pos = oone.value() / SVG_SCALE;
     level->bodies.push_back(std::move(one_body));
     return;
@@ -330,6 +331,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   if (std::optional<vec2f> ozero = IsSVGZero(state, node)) {
     Print("Got Zero at {},{}\n", ozero.value().x, ozero.value().y);
     LevelBody zero_body = Levels::Zero();
+    zero_body.color = 0xFF0000FF;
     zero_body.pos = ozero.value() / SVG_SCALE;
     level->bodies.push_back(std::move(zero_body));
     return;
