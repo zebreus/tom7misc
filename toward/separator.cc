@@ -193,7 +193,8 @@ static Score ComputeScore(
         body.vel = vec2f(pcg.Double() * 2 - 1, pcg.Double() * 2 - 1);
         // between -1 and +1 radians per second.
         body.avel = pcg.Double() * 2 - 1;
-        // XXX randomize angle
+        // XXX randomize angle. This changes the width for 1-bits,
+        // though, so we have to be careful.
 
         float bitw = bit ? Levels::BLOCK_SIZE : 4.0 * Levels::BLOCK_SIZE;
         constexpr float bith = 4.0 * Levels::BLOCK_SIZE;
@@ -203,7 +204,7 @@ static Score ComputeScore(
           0.02f + bitw * 0.5f +
           pcg.Double() * sample_width;
 
-        float sample_height = ((IN_SIZE * Levels::BLOCK_SIZE) - bith) * 0.098;
+        float sample_height = ((IN_SIZE * Levels::BLOCK_SIZE) - bith) * 0.98;
         float yoff =
           0.02f + bith * 0.5f +
           pcg.Double() * sample_height;

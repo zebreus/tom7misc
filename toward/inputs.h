@@ -30,9 +30,16 @@ struct Inputs {
   static constexpr uint8_t MOUSE_LEFT = 0x00;
   static constexpr uint8_t MOUSE_RIGHT = 0x01;
   static constexpr uint8_t MOUSE_MIDDLE = 0x02;
+  // Simple click detection.
   struct MouseClick { int x; int y; uint8_t button; };
 
-  using Input = std::variant<None, Exit, KeyDown, KeyUp, MouseClick>;
+  // TODO: For dragging, etc.
+  // struct MouseChange { int x; int y; uint8_t button; };
+
+  struct MouseWheel { bool up; };
+
+  using Input = std::variant<None, Exit, KeyDown, KeyUp,
+                             MouseClick, MouseWheel>;
 
   virtual Input GetInput() = 0;
   virtual ~Inputs();

@@ -4,8 +4,9 @@
 #include <string>
 #include <format>
 
-#include "base/logging.h"
 #include "SDL.h"
+#include "SDL_error.h"
+#include "base/logging.h"
 
 void Initialization::Initialize() {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {

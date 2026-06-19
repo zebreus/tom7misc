@@ -13,10 +13,16 @@
 #include "svg.h"
 #include "toward-util.h"
 
+enum class LevelItem {
+  ONE,
+  ZERO,
+};
+
 struct LevelBody {
   Polygonization::Mesh mesh;
   uint32_t color = 0xFFFFFFFF;
   vec2f pos = {0.0f, 0.0f};
+  float angle = 0.0f;
   // linear and angular velocity. Unused for dynamic bodies.
   vec2f vel = {0.0f, 0.0f};
   float avel = 0.0f;
@@ -26,6 +32,9 @@ struct LevelBody {
   // bodies can collide with it, but this body
   // never moves.
   bool dynamic = false;
+  // Some bodies are instances of a special thing, e.g. a
+  // '0' or '1'.
+  std::optional<LevelItem> item;
 };
 
 // The starting state of the level.
@@ -45,6 +54,11 @@ struct Levels {
   // Color of an output rectangle.
   static constexpr uint32_t OUTPUT_COLOR = 0xFFAAAAFF;
 
+  static constexpr int IN_WIDTH = 5;
+  static constexpr int IN_HEIGHT = 5;
+  static constexpr int OUT_WIDTH = 5;
+  static constexpr int OUT_HEIGHT = 7;
+
   // Create a one or zero object. You need to set the
   // position and color.
   static LevelBody One();
@@ -53,7 +67,7 @@ struct Levels {
   static constexpr float WIDTH = Scene::WIDTH;
   static constexpr float HEIGHT = Scene::HEIGHT;
 
-  static constexpr int BLOCKS_ACROSS = 80;
+  static constexpr int BLOCKS_ACROSS = 96;
   static constexpr int BLOCKS_DOWN = 54;
 
   // Size of a unit block in the level. About 8 inches in the scene.
@@ -66,11 +80,13 @@ struct Levels {
 
   static void SaveSVG(const Level &level, std::string_view filename);
 
+  // user_data will be the index of the body in the level.
   static std::unique_ptr<Scene> CreateScene(const Level &level);
 
   // For interactive editing, with an existing scene. Usually you just
   // want to use CreateScene from a static Level.
-  static void AddBodyToScene(Scene *scene, const LevelBody &level_body);
+  static void AddBodyToScene(Scene *scene, const LevelBody &level_body,
+                             std::optional<uint64_t> user_data = {});
 
   // Recognize an input. This a rectangle 5x5 blocks in size, with
   // color INPUT_COLOR. It does not become a body.
@@ -86,6 +102,11 @@ struct Levels {
   // block rectangle.
   static std::optional<vec2f> IsSVGOne(const SVG::GraphicsState &outer_state,
                                        const SVG::Node &node);
+
+  // Recognize a "0" symbol in the SVG Data. This is a radius 2 circle
+  // with a radius 1 circle cut out of it.
+  static std::optional<vec2f> IsSVGZero(const SVG::GraphicsState &outer_state,
+                                        const SVG::Node &node);
 
   // Mostly for internal use.
   static void AddNodesToLevel(const SVG::Node &node,

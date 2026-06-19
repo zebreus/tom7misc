@@ -35,6 +35,9 @@ const std::unordered_set<std::string> &Banned() {
     "d:\\temp\\fonts2020\\Google_Fonts_2017\\ofl\\rajdhani\\Rajdhani-SemiBold.ttf",
     "d:\\temp\\fonts2020\\Fonts\\R\\TrueType\\Rodchenko Regular.ttf",
     "d:\\temp\\fonts2020\\Google_Fonts_2017\\ofl\\rajdhani\\Rajdhani-Medium.ttf",
+    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico.ttf",
+    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico Italic.ttf",
+    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico(1).ttf",
   };
 
   return *BANNED;

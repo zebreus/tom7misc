@@ -1,6 +1,7 @@
 
 // Video output. All the system-specific display stuff goes in here,
 // and we should use only portable types to communicate the scene.
+// See sdl-rendering for a concrete instance.
 
 #ifndef _TOWARD_RENDERING_H
 #define _TOWARD_RENDERING_H
@@ -11,8 +12,6 @@
 #include "yocto-math.h"
 
 struct Rendering {
-  static std::unique_ptr<Rendering> CreateSDLGL();
-
   using vec2f = yocto::vec2f;
 
   struct Triangle {

@@ -21,11 +21,11 @@ LFLAGS=$(OPT) --std=c++23
 SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
 
 # objects to compile with SDL flags
-SDL_OBJECTS=rendering.o initialization.o inputs.o
+SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
-LIB_OBJECTS=scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
+LIB_OBJECTS=rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -62,6 +62,10 @@ separator.exe : separator.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 debug-evaluate.exe : debug-evaluate.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+validate.exe : validate.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

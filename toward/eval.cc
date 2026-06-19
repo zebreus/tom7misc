@@ -51,7 +51,11 @@ double Eval::Stability(const Letter &letter) {
   auto pos = scene.RejectObject(scaled_mesh, {start_x, start_y}, {0.0f, -1.0f});
   if (!pos) return 1000.0;
 
-  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f}, 0.0f,
+  vec2f vel = {0.0f, 0.0f};
+  float avel = 0.0f;
+  scene.AddObject(scaled_mesh, 0xFFFFFFFF,
+                  *pos, 0.0f,
+                  vel, avel,
                   RESTITUTION, FRICTION);
 
   if (scene.objects.empty()) return 1000.0;
@@ -195,7 +199,11 @@ ImageRGBA Eval::DebugStability(const Letter &letter) {
   }
 
   auto [px, py] = *pos;
-  scene.AddObject(scaled_mesh, 0xFFFFFFFF, *pos, {0.0f, 0.0f}, 0.0f,
+  vec2f vel = {0.0f, 0.0f};
+  float avel = 0.0f;
+  scene.AddObject(scaled_mesh, 0xFFFFFFFF,
+                  *pos, 0.0f,
+                  vel, avel,
                   RESTITUTION, FRICTION);
   if (scene.objects.empty()) {
     LogText("Failed: scene.objects is empty (penalty 1000.0)");

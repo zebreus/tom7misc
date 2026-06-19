@@ -13,7 +13,6 @@
 #include <variant>
 #include <vector>
 
-#include "ansi.h"
 #include "base/print.h"
 #include "geom/bezier.h"
 #include "geom/polygonization.h"
@@ -22,6 +21,7 @@
 #include "svg.h"
 #include "toward-util.h"
 #include "util.h"
+#include "yocto-math.h"
 
 // 4x1 block, vertical.
 LevelBody Levels::One() {
@@ -38,6 +38,7 @@ LevelBody Levels::One() {
   };
   body.dynamic = true;
   body.color = 0xFF00FFFF;
+  body.item = LevelItem::ONE;
 
   return body;
 }
@@ -117,6 +118,7 @@ LevelBody Levels::Zero() {
   body.mesh.polygons = std::move(polys);
   body.dynamic = true;
   body.color = 0xFF00FFFF;
+  body.item = LevelItem::ZERO;
 
   return body;
 }
@@ -180,7 +182,6 @@ static std::optional<vec2f> IsSVGRectangle(
   float expected_height = block_height * Levels::BLOCK_SIZE * Levels::SVG_SCALE;
   constexpr float epsilon = 0.1f;
 
-  // Allow a small epsilon for floating-point inaccuracies.
   if (std::abs(width - expected_width) < epsilon &&
       std::abs(height - expected_height) < epsilon) {
     return vec2f{(min_x + max_x) / 2.0f, (min_y + max_y) / 2.0f};
@@ -197,20 +198,120 @@ std::optional<vec2f> Levels::IsSVGOne(const SVG::GraphicsState &outer_state,
 
 std::optional<vec2f> Levels::IsInput(const SVG::GraphicsState &outer_state,
                                      const SVG::Node &node) {
-  return IsSVGRectangle(outer_state, node, false, INPUT_COLOR, 5, 5);
+  return IsSVGRectangle(outer_state, node, false, INPUT_COLOR,
+                        IN_WIDTH, IN_HEIGHT);
 }
 
 std::optional<vec2f> Levels::IsOutput(const SVG::GraphicsState &outer_state,
                                       const SVG::Node &node) {
-  return IsSVGRectangle(outer_state, node, false, OUTPUT_COLOR, 5, 7);
+  return IsSVGRectangle(outer_state, node, false, OUTPUT_COLOR,
+                        OUT_WIDTH, OUT_HEIGHT);
 }
+
+/*
+  Since svg.h will normalize circles into beziers, we need to recognize
+  a series of curves that draw the concentric discs.
+  Example:
+    <g fill="#ff00ff">
+      <path d="M 80.0000 1.5000C 101.5050 1.5000 119.0000 18.9950 119.0000 40.5000C 119.0000 62.0050 101.5050 79.5000 80.0000 79.5000C 58.4950 79.5000 41.0000 62.0050 41.0000 40.5000C 41.0000 18.9950 58.4950 1.5000 80.0000 1.5000M 80.0000 61.5000C 91.5790 61.5000 101.0000 52.0790 101.0000 40.5000C 101.0000 28.9210 91.5790 19.5000 80.0000 19.5000C 68.4210 19.5000 59.0000 28.9210 59.0000 40.5000C 59.0000 52.0790 68.4210 61.5000 80.0000 61.5000M 80.0000 0.5000C 57.9090 0.5000 40.0000 18.4090 40.0000 40.5000C 40.0000 62.5910 57.9090 80.5000 80.0000 80.5000C 102.0910 80.5000 120.0000 62.5910 120.0000 40.5000C 120.0000 18.4090 102.0910 0.5000 80.0000 0.5000L 80.0000 0.5000ZM 80.0000 60.5000C 68.9540 60.5000 60.0000 51.5460 60.0000 40.5000C 60.0000 29.4540 68.9540 20.5000 80.0000 20.5000C 91.0460 20.5000 100.0000 29.4540 100.0000 40.5000C 100.0000 51.5460 91.0460 60.5000 80.0000 60.5000L 80.0000 60.5000Z" />
+    </g>
+  */
+std::optional<vec2f> Levels::IsSVGZero(const SVG::GraphicsState &outer_state,
+                                       const SVG::Node &node) {
+  const SVG::G *g = std::get_if<SVG::G>(&node.v);
+  if (g == nullptr || g->children.size() != 1) return std::nullopt;
+
+  SVG::GraphicsState state = SVG::UpdateState(outer_state, g->style);
+
+  if (state.fill_color != 0xFF00FFFF && state.stroke_color != 0xFF00FFFF) {
+    return std::nullopt;
+  }
+
+  const SVG::Path *path = std::get_if<SVG::Path>(&g->children[0].v);
+  if (!path) return std::nullopt;
+
+  bool first = true;
+  vec2f min_pt = {0.0f, 0.0f};
+  vec2f max_pt = {0.0f, 0.0f};
+
+  std::vector<vec2f> endpoints;
+
+  for (const SVG::PathCommand &cmd : path->data) {
+    vec2f pt = {0.0f, 0.0f};
+    if (const SVG::MoveTo *m = std::get_if<SVG::MoveTo>(&cmd)) {
+      pt = {(float)m->x, (float)m->y};
+    } else if (const SVG::LineTo *l = std::get_if<SVG::LineTo>(&cmd)) {
+      pt = {(float)l->x, (float)l->y};
+    } else if (const SVG::CubicBezier *c =
+                  std::get_if<SVG::CubicBezier>(&cmd)) {
+      pt = {(float)c->x, (float)c->y};
+    } else if (std::holds_alternative<SVG::ClosePath>(cmd)) {
+      continue;
+    } else {
+      return std::nullopt;
+    }
+
+    if (first) {
+      min_pt = max_pt = pt;
+      first = false;
+    } else {
+      min_pt = min(min_pt, pt);
+      max_pt = max(max_pt, pt);
+    }
+    endpoints.push_back(pt);
+  }
+
+  if (endpoints.size() < 4) return std::nullopt;
+
+  vec2f center = (min_pt + max_pt) / 2.0f;
+
+  float expected_r_outer = 2.0f * Levels::BLOCK_SIZE * Levels::SVG_SCALE;
+  float expected_r_inner = 1.0f * Levels::BLOCK_SIZE * Levels::SVG_SCALE;
+  constexpr float epsilon = 5.0f; // Allow some deviation
+
+  bool has_inner = false;
+  bool has_outer = false;
+
+  for (const vec2f &pt : endpoints) {
+    float dist = distance(pt, center);
+
+    bool near_inner = std::abs(dist - expected_r_inner) < epsilon;
+    bool near_outer = std::abs(dist - expected_r_outer) < epsilon;
+
+    if (near_inner) has_inner = true;
+    if (near_outer) has_outer = true;
+
+    if (!near_inner && !near_outer) {
+      // Endpoint is neither near inner nor outer circle
+      return std::nullopt;
+    }
+  }
+
+  if (has_inner && has_outer) {
+    return center;
+  }
+
+  return std::nullopt;
+}
+
 
 void Levels::AddNodesToLevel(const SVG::Node &node,
                              const SVG::GraphicsState &state,
                              Level *level) {
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
     Print("Got One at {},{}\n", oone.value().x, oone.value().y);
-    // return;
+    LevelBody one_body = Levels::One();
+    one_body.pos = oone.value() / SVG_SCALE;
+    level->bodies.push_back(std::move(one_body));
+    return;
+  }
+
+  if (std::optional<vec2f> ozero = IsSVGZero(state, node)) {
+    Print("Got Zero at {},{}\n", ozero.value().x, ozero.value().y);
+    LevelBody zero_body = Levels::Zero();
+    zero_body.pos = ozero.value() / SVG_SCALE;
+    level->bodies.push_back(std::move(zero_body));
+    return;
   }
 
   if (std::optional<vec2f> in = IsInput(state, node)) {
@@ -389,10 +490,10 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
   };
 
   for (const vec2f &pos : level.inputs) {
-    AddRect(pos, 5, 5, INPUT_COLOR);
+    AddRect(pos, IN_WIDTH, IN_HEIGHT, INPUT_COLOR);
   }
   for (const vec2f &pos : level.outputs) {
-    AddRect(pos, 5, 7, OUTPUT_COLOR);
+    AddRect(pos, OUT_WIDTH, OUT_HEIGHT, OUTPUT_COLOR);
   }
 
   for (const LevelBody &body : level.bodies) {
@@ -436,14 +537,16 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
       << "Failed to write " << filename;
 }
 
-void Levels::AddBodyToScene(Scene *scene, const LevelBody &body) {
+void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
+                            std::optional<uint64_t> user_data) {
   /*
   Print("[{}⏹" ANSI_RESET "]Body at {:.2f},{:.2f}\n",
         ANSI::ForegroundRGB32(body.color),
         body.pos.x, body.pos.y);
   */
   if (body.dynamic) {
-    scene->AddObject(body.mesh, body.color, body.pos,
+    scene->AddObject(body.mesh, body.color,
+                     body.pos, body.angle,
                      body.vel, body.avel,
                      body.restitution,
                      body.friction);
@@ -452,13 +555,15 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body) {
                           body.restitution,
                           body.friction);
   }
+  scene->objects.back().user_data = user_data;
 }
 
 std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {
   std::unique_ptr<Scene> scene =
     std::make_unique<Scene>(level.scene_walls);
-  for (const LevelBody &level_body : level.bodies) {
-    AddBodyToScene(scene.get(), level_body);
+
+  for (size_t i = 0; i < level.bodies.size(); i++) {
+    AddBodyToScene(scene.get(), level.bodies[i], {i});
   }
   return scene;
 }

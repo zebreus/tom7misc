@@ -22,6 +22,7 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
+#include "sdl-rendering.h"
 #include "utf8.h"
 #include "yocto-math.h"
 
@@ -101,7 +102,8 @@ struct Game {
       letter_x = x;
       constexpr float RESTITUTION = 0.05;
       constexpr float FRICTION = 0.05;
-      scene->AddObject(scaled_mesh, color, vec2f{x, y},
+      scene->AddObject(scaled_mesh, color,
+                       vec2f{x, y}, 0.0f,
                        vec2f{0.0, 0.0}, 0.0f,
                        RESTITUTION, FRICTION);
     } else {
@@ -118,10 +120,8 @@ void Simulate(std::string_view fontfile) {
   Game game(fontfile);
   bool paused = false;
 
-  std::unique_ptr<Inputs> inputs =
-    Inputs::CreateSDL();
-  std::unique_ptr<Rendering> rendering =
-    Rendering::CreateSDLGL();
+  std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
+  std::unique_ptr<Rendering> rendering = CreateSDLGLRendering();
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
 

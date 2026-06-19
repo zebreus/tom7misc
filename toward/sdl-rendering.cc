@@ -1,5 +1,5 @@
 
-#include "rendering.h"
+#include "sdl-rendering.h"
 
 #include <cstdio>
 #include <format>
@@ -15,6 +15,7 @@
 #include "SDL_video.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "rendering.h"
 
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
@@ -315,9 +316,7 @@ struct SDLGLRendering : public Rendering {
 
 }  // namespace
 
-Rendering::~Rendering() {}
-
-std::unique_ptr<Rendering> Rendering::CreateSDLGL() {
+std::unique_ptr<Rendering> CreateSDLGLRendering() {
   auto ret = std::make_unique<SDLGLRendering>();
   ret->Initialize();
   return ret;

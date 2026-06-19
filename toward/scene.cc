@@ -69,6 +69,15 @@ void Scene::Update() {
   b2World_Step(world_id, 1.0f / 120.0f, 8);
 }
 
+bool Scene::AllAsleep() {
+  for (const Scene::Obj &obj : objects) {
+    if (b2Body_IsAwake(obj.body_id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void Scene::AddDirt(ArcFour *rc) {
   for (int i = 0; i < 1000; i++) {
     float r = 0.02f + RandDouble(rc) * 0.2f;
@@ -95,7 +104,10 @@ void Scene::AddDirt(ArcFour *rc) {
     }
     mesh.polygons.push_back(poly);
 
-    AddObject(mesh, color, {x, y}, {vx, vy}, 0.0f, 0.7f, 0.2f);
+    const float angle = 0.0f;
+    const float avel = 0.0f;
+    AddObject(mesh, color, {x, y}, angle,
+              {vx, vy}, avel, 0.7f, 0.2f);
   }
 }
 
@@ -219,13 +231,14 @@ std::optional<vec2f> Scene::RejectObject(
 }
 
 void Scene::AddObject(const Polygonization::Mesh &mesh,
-                      uint32_t color, vec2f pos,
+                      uint32_t color, vec2f pos, float angle,
                       vec2f vel, float avel,
                       float restitution,
                       float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
   body_def.position = {pos.x, pos.y};
+  body_def.rotation = b2MakeRot(angle);
   body_def.linearVelocity = {vel.x, vel.y};
   body_def.angularVelocity = avel;
 

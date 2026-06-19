@@ -29,6 +29,11 @@ struct Scene {
     uint32_t rgba = 0xFFFFFFFF;
     b2BodyId body_id = {};
     std::vector<Rendering::Triangle> mesh;
+    // Can be used to attach application-specific info by the
+    // client.
+    // Otherwise, the Scene data structures should be free from
+    // application logic.
+    std::optional<uint64_t> user_data;
   };
 
   b2WorldId world_id = {};
@@ -42,6 +47,11 @@ struct Scene {
 
   void AddDirt(ArcFour *rc);
 
+  // True if every object is asleep, so the simulation is
+  // quiescent. Note that this may be more conservative than
+  // you want, if for example an object has fallen out of the arena.
+  bool AllAsleep();
+
   // Attempt to place the mesh at pos, but then move it in the
   // reject_dir while it overlapping an existing object. If it exits
   // the arena (overlapping a wall) while we try to resolve (or some
@@ -52,7 +62,12 @@ struct Scene {
       vec2f reject_dir);
 
   void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
-                 vec2f pos, vec2f vel, float avel,
+                 // Initial position and angle. The angle is in
+                 // radians and rotation happens around the local
+                 // origin, which is not necessarily the center of mass.
+                 vec2f pos, float angle,
+                 // Velocity and angular velocity.
+                 vec2f vel, float avel,
                  float restitution,
                  float friction);
 

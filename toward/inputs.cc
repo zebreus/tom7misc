@@ -51,6 +51,17 @@ struct SDLInputs : public Inputs {
         return MouseClick{e.button.x, e.button.y, button};
       }
 
+      if (e.type == SDL_MOUSEWHEEL) {
+        if (e.wheel.y != 0) {
+          // This incorporates "natural scrolling," but we aren't scrolling.
+          bool scroll_up = e.wheel.y > 0;
+
+          return MouseWheel{
+            .up = scroll_up != (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED),
+          };
+        }
+      }
+
       if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
         uint8_t mods = 0;
         if (e.key.keysym.mod & KMOD_CTRL) mods |= MOD_CTRL;

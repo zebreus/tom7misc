@@ -24,6 +24,7 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
+#include "sdl-rendering.h"
 #include "svg.h"
 #include "toward-util.h"
 #include "utf8.h"
@@ -40,7 +41,7 @@ void Simulate(std::string_view level_file) {
   std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
 
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
-  std::unique_ptr<Rendering> rendering = Rendering::CreateSDLGL();
+  std::unique_ptr<Rendering> rendering = CreateSDLGLRendering();
 
   bool paused = false;
 
@@ -79,6 +80,7 @@ void Simulate(std::string_view level_file) {
 
         Print("KeyUp: {}\n", UTF8::Encode(kup->codepoint));
         fflush(stdout);
+
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
         if (mc->button == Inputs::MOUSE_LEFT) {
@@ -91,12 +93,16 @@ void Simulate(std::string_view level_file) {
           body.pos = pos;
           body.color = 0xFF00FFFF;
           body.vel = vec2f(RandDouble(&rc) * 2 - 1, RandDouble(&rc) * 2 - 1);
-          // between -1 and +1 radians per second.
-          body.avel = RandDouble(&rc) * 2 - 1;
+          // between -2 and +2 radians per second.
+          body.avel = RandDouble(&rc) * 4 - 2;
 
           level->bodies.push_back(body);
           Levels::AddBodyToScene(scene.get(), body);
         }
+
+      } else if (const Inputs::MouseWheel *mw =
+                 std::get_if<Inputs::MouseWheel>(&input)) {
+        Print("Wheel {}\n", mw->up ? "up" : "dn");
       }
 
     }
