@@ -189,6 +189,8 @@ int main(int argc, char **argv) {
     request = "Can you fill this part in?";
   }
 
+  // Current file is always available, even if not tracked by svn etc.
+  files.AddFile(current_file);
 
   // Use .model-config in the same directory as the target file
   // to find explicitly allowlisted files (e.g. project.txt).

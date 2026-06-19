@@ -40,24 +40,25 @@ static std::string ChooseFilesPrompt(
   }
 
   ret +=
-R"(In this task, you'll see a file that the user is currently looking at.
-You'll also see a request or question from the user, which is likely
-to involve making edits to this file and/or related files. Your task
-is not to answer the question directly, but to guess what additional
-files would be necessary to do a good job completing the task. For
-example, in the common case that the user's request is to write some
-code, you should try to determine what source files would need to be
-edited, as well as files that would be needed purely for context in
-order to write that code correctly. To understand or edit code,
-you might want to load the header file for a non-standard library that
-is related to the request. If the user's request is to write tests for
-some code, then we likely need to see both the header and
-implementation for that code in order to know how to test it well.
-A file that describes the current project (e.g. project.txt) is
-often useful for background when the request has any subtlety.
-When writing code, especially new code, a style guide for the
-current language is useful. The "llm" directory contains style guides
-that apply to all projects.)";
+R"(In this task, you'll see a file that the user is currently looking
+at. You'll also see a request or question from the user, which is
+likely to involve making edits to this file and/or related files. Your
+task is not to answer the question directly, but to guess what
+additional files would be necessary to do a good job completing the
+task. For example, in the common case that the user's request is to
+write some code, you should try to determine what source files would
+need to be edited, as well as files that would be needed purely for
+context in order to write that code correctly. To understand or edit
+code, you might want to load the header file for a non-standard
+library that is related to the request. If the user's request is to
+write tests for some code, then we likely need to see both the header
+and implementation for that code in order to know how to test it well.
+If the request from the user mentions specific files, you should
+usually include those files. A file that describes the current project
+(e.g. project.txt) is often useful for background when the request has
+any subtlety. When writing code, especially new code, a style guide
+for the current language is useful. The "llm" directory contains style
+guides that apply to all projects.)";
   if (!opt.task_hints.empty())
     AppendFormat(&ret, " {}", opt.task_hints);
 
@@ -136,8 +137,9 @@ edit in order to accomplish the task? Sometimes the task will be
 self-evident, or only require the context of the current file, so your
 answer might be the empty list. You may only name files from the list
 but can describe other missing information in an optional separate
-field. Use the path from the list to name a file, even if it is
-referred to with a shorter name elsewhere.)";
+field. Use the exact path from the list to name a file, including
+any listed subdirectories. Use the exact path even if the file is
+referred to with a different name (e.g. without the path) elsewhere.)";
 
  ret += "\n\n";
  ret += "Your result is a JSON object. It begins with a \"notes\"\n"
