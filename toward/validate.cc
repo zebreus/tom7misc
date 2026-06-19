@@ -18,115 +18,7 @@
 #include "scene.h"
 #include "status-bar.h"
 #include "threadutil.h"
-
-// A validation instance is a spec with an implementation.
-// The spec consists of:
-//   - A way of sampling inputs
-//   - The expected output
-
-// A chute can have nothing, a zero or one bit, or garbage.
-enum class ChuteValue {
-  NOTHING,
-  ZERO,
-  ONE,
-  GARBAGE,
-};
-
-struct ValidationSample {
-  // Must match expected_inputs.
-  std::vector<ChuteValue> input_values;
-
-  // The expected output. There is typically one, but it is allowed
-  // for there to be more than one valid output, e.g. we might
-  // allow one chute to contain garbage conditional on another's
-  // value.
-  std::vector<std::vector<ChuteValue>> valid_outputs;
-};
-
-// For separated inputs, we have either the given bit, or nothing.
-// SeparatedZero gives the contents of the "zero" chute when the
-// bit value is b.
-static ChuteValue SeparatedZero(bool b) {
-  return b ? ChuteValue::NOTHING : ChuteValue::ZERO;
-}
-static ChuteValue SeparatedOne(bool b) {
-  return b ? ChuteValue::ONE : ChuteValue::NOTHING;
-}
-
-struct ValidationInstance {
-  virtual std::string_view Filename() const = 0;
-  virtual int ExpectedInputs() const = 0;
-  virtual int ExpectedOutputs() const = 0;
-
-  virtual bool AddInputWalls() const { return false; }
-
-  virtual ValidationSample OneSample(uint64_t seed) const = 0;
-  virtual ~ValidationInstance() {}
-};
-
-
-struct AndValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "and8.svg"; }
-  int ExpectedInputs() const override { return 4; }
-  int ExpectedOutputs() const override { return 1; }
-
-  bool AddInputWalls() const override { return true; }
-
-  ValidationSample OneSample(uint64_t seed) const override {
-    bool a = !!(seed & 0b01);
-    bool b = !!(seed & 0b10);
-
-    ValidationSample ret;
-    // AND has its inputs already separated: 0110.
-    ret.input_values.push_back(SeparatedZero(a));
-    ret.input_values.push_back(SeparatedOne(a));
-    ret.input_values.push_back(SeparatedOne(b));
-    ret.input_values.push_back(SeparatedZero(b));
-
-    // Want a single clean bit out.
-    ChuteValue expected = (a && b) ? ChuteValue::ONE : ChuteValue::ZERO;
-    ret.valid_outputs = {{expected}};
-    return ret;
-  }
-};
-
-struct SeparatorValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "separator.svg"; }
-  int ExpectedInputs() const override { return 1; }
-  int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-
-  ValidationSample OneSample(uint64_t seed) const override {
-    bool a = !!(seed & 0b01);
-
-    ValidationSample ret;
-    ret.input_values.push_back(a ? ChuteValue::ONE : ChuteValue::ZERO);
-
-    // Separated bits out.
-    ret.valid_outputs = {{SeparatedZero(a), SeparatedOne(a)}};
-    return ret;
-  }
-};
-
-struct NotValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "not2.svg"; }
-  int ExpectedInputs() const override { return 1; }
-  int ExpectedOutputs() const override { return 1; }
-
-  bool AddInputWalls() const override { return true; }
-
-  ValidationSample OneSample(uint64_t seed) const override {
-    bool a = !!(seed & 0b01);
-
-    // Mixed bits in/out.
-    ValidationSample ret;
-    ret.input_values.push_back(a ? ChuteValue::ONE : ChuteValue::ZERO);
-    ret.valid_outputs = {{a ? ChuteValue::ZERO : ChuteValue::ONE}};
-    return ret;
-  }
-};
-
+#include "validation.h"
 
 static bool IsValidOutput(const ValidationSample &sample,
                           std::span<const ChuteValue> actual) {
@@ -145,40 +37,6 @@ static bool IsValidOutput(const ValidationSample &sample,
   }
 
   return false;
-}
-
-// TODO: This should also sample the one bit at different angles,
-// but we need to account for the fact that this changes the valid
-// x positions.
-static LevelBody SampleInput(uint64_t seed, vec2f input_pos, bool bit) {
-  PCG32 pcg(seed);
-  LevelBody body = bit ? Levels::One() : Levels::Zero();
-  body.color = bit ? 0x00FF00FF : 0xFF0000FF;
-  body.dynamic = true;
-  body.vel = vec2f(pcg.Double() * 2.0f - 1.0f, pcg.Double() * 2.0f - 1.0f);
-  body.avel = pcg.Double() * 2.0f - 1.0f;
-
-  float bitw = bit ? Levels::BLOCK_SIZE : 4.0f * Levels::BLOCK_SIZE;
-  constexpr float bith = 4.0f * Levels::BLOCK_SIZE;
-
-  constexpr float in_width = Levels::IN_WIDTH * Levels::BLOCK_SIZE;
-  constexpr float in_height = Levels::IN_HEIGHT * Levels::BLOCK_SIZE;
-
-  float sample_width = (in_width - bitw) * 0.98f;
-  float sample_height = (in_height - bith) * 0.98f;
-  vec2f offset = {
-    .x = (float)(0.02f + bitw * 0.5f + pcg.Double() * sample_width),
-    .y = (float)(0.02f + bith * 0.5f + pcg.Double() * sample_height),
-  };
-
-  vec2f in_topleft = {
-    .x = input_pos.x - in_width / 2.0f,
-    .y = input_pos.y - in_height / 2.0f,
-  };
-
-  body.pos = in_topleft + offset;
-
-  return body;
 }
 
 static void Validate(const ValidationInstance &inst) {
@@ -252,7 +110,8 @@ static void Validate(const ValidationInstance &inst) {
 
           bool bit = (v == ChuteValue::ONE);
 
-          LevelBody body = SampleInput(pcg.Rand64(), level.inputs[i], bit);
+          LevelBody body = Validation::SampleInput(
+              pcg.Rand64(), level.inputs[i], bit);
 
           level.bodies.emplace_back(std::move(body));
         }
@@ -337,25 +196,15 @@ static void Validate(const ValidationInstance &inst) {
 
 [[maybe_unused]]
 static void ValidateAll() {
-  {
-    std::unique_ptr<ValidationInstance> instance =
-      std::make_unique<AndValidation>();
-    Validate(*instance);
-  }
-
-  {
-    std::unique_ptr<ValidationInstance> instance =
-      std::make_unique<SeparatorValidation>();
-    Validate(*instance);
-  }
+  Validate(*Validation::And());
+  Validate(*Validation::Separator());
+  Validate(*Validation::Not());
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  std::unique_ptr<ValidationInstance> instance =
-    std::make_unique<NotValidation>();
-  Validate(*instance);
+  Validate(*Validation::Not());
 
   return 0;
 }

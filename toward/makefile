@@ -25,7 +25,7 @@ SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
-LIB_OBJECTS=rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
+LIB_OBJECTS=validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
