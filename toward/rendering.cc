@@ -9,7 +9,9 @@
 
 #include "SDL.h"
 #include "SDL_error.h"
+#include "SDL_hints.h"
 #include "SDL_opengl.h"
+#include "SDL_stdinc.h"
 #include "SDL_video.h"
 #include "base/logging.h"
 #include "base/print.h"
@@ -186,6 +188,9 @@ struct SDLGLRendering : public Rendering {
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
+    // Attempt to get SDL to put the window in the foreground.
+    SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
+
     window = SDL_CreateWindow("Toward", SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
                               SCREEN_WIDTH, SCREEN_HEIGHT,
@@ -195,6 +200,11 @@ struct SDLGLRendering : public Rendering {
                                     SDL_GetError());
       LOG(FATAL) << "Couldn't initialize SDL.\n" << err;
     }
+
+    // Trick to try to get the window in the foreground.
+    SDL_SetWindowAlwaysOnTop(window, SDL_TRUE);
+    SDL_SetWindowAlwaysOnTop(window, SDL_FALSE);
+    SDL_RaiseWindow(window);
 
     context = SDL_GL_CreateContext(window);
     if (!context) {
