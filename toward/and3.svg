@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1875" height="1080" version="1.1" viewBox="0 0 1875 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <path d="M320,0h100v100h-100V0Z" fill="#aff"/>
+  <path d="M60,0h100v100H60V0Z" fill="#aff"/>
+  <path d="M1235,0h100v100h-100V0Z" fill="#aff"/>
+  <path d="M1595,0h100v100h-100V0Z" fill="#aff"/>
+  <g>
+    <path d="M420,340V120l-120,275,120-55Z" fill="#00a"/>
+    <path d="M180,330v175l100,15-25-170-75-20Z" fill="#00a"/>
+  </g>
+  <rect x="160" y="120" width="20" height="220" fill="#00a"/>
+  <rect x="160" y="100" width="140" height="20" fill="#00a"/>
+  <text transform="translate(280 65)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">1</tspan></text>
+  <text transform="translate(0 42.5)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0</tspan></text>
+  <text transform="translate(985 70)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">and</tspan></text>
+  <text transform="translate(1165.0004 64.9999)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">1</tspan></text>
+  <text transform="translate(1539.9995 59.9999)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0</tspan></text>
+  <polygon points="275 520 260 520 260 740 280 740 280 535 275 520" fill="#00a"/>
+  <polygon points="310 392.5 325 392.5 325 570 305 570 305 412.5 310 392.5" fill="#00a"/>
+  <g>
+    <path d="M1335,340V120l-120,275,120-55Z" fill="#00a"/>
+    <path d="M1095,330v175l100,15-25-170-75-20Z" fill="#00a"/>
+  </g>
+  <rect x="1075" y="120" width="20" height="220" fill="#00a"/>
+  <polygon points="1225 395 1240 395 1240 600 1220 600 1220 415 1225 395" fill="#00a"/>
+  <polygon points="305 607.5 315 607.5 430 627.5 430 632.5 305 632.5 305 607.5" fill="#00d"/>
+  <circle cx="310.5" cy="590.25" r="15.5" fill="none" stroke="#91a10a" stroke-miterlimit="10"/>
+  <polygon points="305 667.5 315 667.5 430 687.5 430 692.5 305 692.5 305 667.5" fill="#00d"/>
+  <circle cx="310.5" cy="650.25" r="15.5" fill="none" stroke="#91a10a" stroke-miterlimit="10"/>
+  <rect x="1075" y="100" width="140" height="20" fill="#00a"/>
+  <polygon points="1190 520 1175 520 1175 600 1195 600 1195 523.939 1190 520" fill="#00a"/>
+  <rect x="1575" width="20" height="740" fill="#00a"/>
+  <rect x="1695" width="20" height="745" fill="#00a"/>
+  <polygon points="1160 640 430 632.5 430 627.5 1160 635 1160 640" fill="#00a"/>
+  <polygon points="1190 735 430 692.5 430 687.5 1190 730 1190 735" fill="#00a"/>
+  <rect x="1160" y="940" width="100" height="140" fill="#faa"/>
+  <rect x="1155" y="605" width="110" height="25" fill="none" stroke="#0c2" stroke-miterlimit="10"/>
+  <rect x="1185" y="635" width="5" height="5" fill="#00a"/>
+  <rect x="1225" y="635" width="5" height="5" fill="#00a"/>
+  <rect x="1350" y="605" width="5" height="35" fill="#00a"/>
+  <polygon points="1550 780 1235 755 1235 750 1550 775 1550 780" fill="#00a"/>
+  <polygon points="1795 770 1550 770 1550 750 1795 745 1795 770" fill="none" stroke="#0c2" stroke-miterlimit="10"/>
+  <rect x="1590" y="775" width="5" height="5" fill="#00a"/>
+  <rect x="1715" y="740" width="160" height="5" fill="#00a"/>
+  <polygon points="1695 870 1270 935 1275 960 1695 910 1695 870" fill="#00a"/>
+  <polygon points="1715 785 1695 775 1695 912.5 1715 912.5 1715 785" fill="#00a"/>
+  <rect x="1235" y="745" width="5" height="5" fill="#00a"/>
+  <rect x="1220" y="600" width="135" height="5" fill="#00a"/>
+  <rect x="1550" y="775" width="10" height="5" fill="#00a"/>
+  <polygon points="60 0 60 820 1155 940 1155 960 40 840 40 0 60 0" fill="#00a"/>
+  <rect x="260" y="740" width="65" height="20" fill="#00a"/>
+  <rect x="1140" y="945" width="20" height="135" fill="#00a"/>
+  <rect x="1260" y="945" width="20" height="135" fill="#00a"/>
+  <rect x="420" width="20" height="220" fill="#00a"/>
+  <rect x="300" width="20" height="120" fill="#00a"/>
+  <rect x="1335" width="20" height="225" fill="#00a"/>
+  <rect x="1215" width="20" height="120" fill="#00a"/>
+  <polygon points="1250 640 1345 650 1350 645 1355 645 1350 655 1250 645 1250 640" fill="#00a"/>
+</svg>

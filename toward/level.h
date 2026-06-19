@@ -59,11 +59,6 @@ struct Levels {
   static constexpr int OUT_WIDTH = 5;
   static constexpr int OUT_HEIGHT = 7;
 
-  // Create a one or zero object. You need to set the
-  // position and color.
-  static LevelBody One();
-  static LevelBody Zero();
-
   static constexpr float WIDTH = Scene::WIDTH;
   static constexpr float HEIGHT = Scene::HEIGHT;
 
@@ -87,6 +82,13 @@ struct Levels {
   // want to use CreateScene from a static Level.
   static void AddBodyToScene(Scene *scene, const LevelBody &level_body,
                              std::optional<uint64_t> user_data = {});
+
+  // Create a one or zero object. You need to set the
+  // position and color.
+  static LevelBody One();
+  static LevelBody Zero();
+  // Create a fixed rectangular body.
+  static LevelBody WallRect(vec2f center, int blockwidth, int blockheight);
 
   // Recognize an input. This a rectangle 5x5 blocks in size, with
   // color INPUT_COLOR. It does not become a body.

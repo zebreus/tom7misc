@@ -15,6 +15,7 @@
 #include "pcg.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "rendering.h"
 #include "scene.h"
 #include "status-bar.h"
 #include "threadutil.h"
@@ -58,15 +59,19 @@ struct ValidationInstance {
   virtual int ExpectedInputs() const = 0;
   virtual int ExpectedOutputs() const = 0;
 
+  virtual bool AddInputWalls() const { return false; }
+
   virtual ValidationSample OneSample(uint64_t seed) const = 0;
   virtual ~ValidationInstance() {}
 };
 
 
 struct AndValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "and3.svg"; }
+  std::string_view Filename() const override { return "and8.svg"; }
   int ExpectedInputs() const override { return 4; }
   int ExpectedOutputs() const override { return 1; }
+
+  bool AddInputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -85,6 +90,26 @@ struct AndValidation : public ValidationInstance {
     return ret;
   }
 };
+
+struct SeparatorValidation : public ValidationInstance {
+  std::string_view Filename() const override { return "separator.svg"; }
+  int ExpectedInputs() const override { return 1; }
+  int ExpectedOutputs() const override { return 2; }
+
+  bool AddInputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b01);
+
+    ValidationSample ret;
+    ret.input_values.push_back(a ? ChuteValue::ONE : ChuteValue::ZERO);
+
+    // Separated bits out.
+    ret.valid_outputs = {{SeparatedZero(a), SeparatedOne(a)}};
+    return ret;
+  }
+};
+
 
 static bool IsValidOutput(const ValidationSample &sample,
                           std::span<const ChuteValue> actual) {
@@ -148,12 +173,52 @@ static void Validate(const ValidationInstance &inst) {
   CHECK(base_level->inputs.size() == (size_t)inst.ExpectedInputs() &&
         base_level->outputs.size() == (size_t)inst.ExpectedOutputs());
 
+  if (inst.AddInputWalls()) {
+    // Add vertical walls on the sides of the inputs. Perhaps these
+    // should be modeled in the level?
+    for (const vec2f inpos : base_level->inputs) {
+      int blockheight = Levels::IN_HEIGHT;
+      for (float s : { -1.0f, +1.0f }) {
+        vec2f pos = {
+          .x = inpos.x + s * (Levels::IN_WIDTH * Levels::BLOCK_SIZE * 0.5f +
+                              // wall itself
+                              Levels::BLOCK_SIZE * 0.5f),
+          .y = inpos.y,
+        };
+        LevelBody wall = Levels::WallRect(pos, 1, blockheight);
+        wall.color = 0x888888FF;
+        base_level->bodies.push_back(std::move(wall));
+      }
+    }
+  }
+
+  // We need to stop objects from leaving the bottom of the output cup.
+  // The levels have rails modeled on the left and right sides, but
+  // we add an artificial bottom piece during validation.
+  for (const vec2f outpos : base_level->outputs) {
+    int blockwidth = Levels::OUT_WIDTH + 2;
+    vec2f pos = {
+      .x = outpos.x,
+      .y = outpos.y + (Levels::OUT_HEIGHT * Levels::BLOCK_SIZE) / 2.0f +
+      Levels::BLOCK_SIZE / 2.0f
+    };
+    LevelBody cup_bottom = Levels::WallRect(pos, blockwidth, 1);
+    cup_bottom.color = 0x888888FF;
+    base_level->bodies.push_back(std::move(cup_bottom));
+  }
+
   std::mutex m;
   int correct_count = 0, done = 0;
   uint64_t base_seed = rc.Word64();
-  static constexpr int NUM_EVAL_THREADS = 8;
+  static constexpr int NUM_EVAL_THREADS = 16;
   Periodically status_per(1.0);
   StatusBar status(1);
+
+  std::unique_ptr<Rendering> debug_rendering =
+    CreateImageRendering("validate-debug");
+  std::unique_ptr<Rendering> wrong_rendering =
+    CreateImageRendering("validate-debug-wrong");
+
 
   ParallelComp(
       NUM_TRIALS,
@@ -177,7 +242,7 @@ static void Validate(const ValidationInstance &inst) {
 
         std::unique_ptr<Scene> scene = Levels::CreateScene(level);
 
-        static constexpr int MAX_SIMULATE_STEPS = 1000;
+        static constexpr int MAX_SIMULATE_STEPS = 2000;
         for (int step = 0; step < MAX_SIMULATE_STEPS; step++) {
           scene->Update();
           if (scene->AllAsleep()) break;
@@ -220,6 +285,19 @@ static void Validate(const ValidationInstance &inst) {
         }
 
         bool correct = IsValidOutput(sample, actual_outputs);
+
+        if (!correct) {
+          std::vector<Rendering::Triangle> tris = scene->GetTriangles();
+          MutexLock ml(&m);
+          wrong_rendering->RenderScene(
+              vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
+        } else if (trial % 500 == 0) {
+          std::vector<Rendering::Triangle> tris = scene->GetTriangles();
+          MutexLock ml(&m);
+          debug_rendering->RenderScene(
+              vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
+        }
+
         {
           MutexLock ml(&m);
           if (correct) correct_count++;
@@ -228,22 +306,30 @@ static void Validate(const ValidationInstance &inst) {
 
         status_per.RunIf([&]{
             MutexLock ml(&m);
-            status.Progress(done, NUM_TRIALS, "{}/{} correct",
-                            correct_count, done);
+            status.Progress(done, NUM_TRIALS, "{}/{} correct = {:.2f}%",
+                            correct_count, done,
+                            (correct_count * 100.0) / done);
           });
       }, NUM_EVAL_THREADS);
 
-  Print("Validation of {}: {} / {} correct\n",
-        (int)inst.Filename().size(), inst.Filename().data(),
-        correct_count, NUM_TRIALS);
+  Print("Validation of {}: {} / {} correct = {:.2f}%\n",
+        inst.Filename(),
+        correct_count, NUM_TRIALS,
+        (correct_count * 100.0) / done);
 }
 
+[[maybe_unused]]
+static void ValidateAll() {
+  std::unique_ptr<ValidationInstance> instance =
+    std::make_unique<AndValidation>();
+  Validate(*instance);
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   std::unique_ptr<ValidationInstance> instance =
-    std::make_unique<AndValidation>();
+    std::make_unique<SeparatorValidation>();
   Validate(*instance);
 
   return 0;

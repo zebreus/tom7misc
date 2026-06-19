@@ -208,6 +208,27 @@ std::optional<vec2f> Levels::IsOutput(const SVG::GraphicsState &outer_state,
                         OUT_WIDTH, OUT_HEIGHT);
 }
 
+LevelBody Levels::WallRect(vec2f center,
+                           int blockwidth, int blockheight) {
+  LevelBody wall;
+  wall.dynamic = false;
+  wall.color = 0x888888FF;
+
+  float rect_w = blockwidth * BLOCK_SIZE;
+  float rect_h = blockheight * BLOCK_SIZE;
+
+  wall.mesh.vertices = {
+    {-rect_w / 2.0f, -rect_h / 2.0f},
+    { rect_w / 2.0f, -rect_h / 2.0f},
+    { rect_w / 2.0f,  rect_h / 2.0f},
+    {-rect_w / 2.0f,  rect_h / 2.0f}
+  };
+  wall.mesh.polygons = {{0, 1, 2, 3}};
+  wall.dynamic = false;
+  wall.pos = center;
+  return wall;
+}
+
 /*
   Since svg.h will normalize circles into beziers, we need to recognize
   a series of curves that draw the concentric discs.

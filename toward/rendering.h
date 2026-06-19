@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 
 #include "yocto-math.h"
 
@@ -40,5 +41,10 @@ struct Rendering {
 
   virtual ~Rendering();
 };
+
+// For headless use (debugging). Each time we call RenderScene,
+// it writes another PNG file based on the argument filename.
+std::unique_ptr<Rendering> CreateImageRendering(
+    std::string_view base_filename);
 
 #endif

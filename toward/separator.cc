@@ -267,8 +267,6 @@ static Score ComputeScore(
 
       }, NUM_EVAL_THREADS);
 
-  // TODO: Occasionally draw the result.
-
   // Lower is better.
   return score;
 }
