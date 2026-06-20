@@ -69,5 +69,9 @@ validate.exe : validate.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+tweak.exe : tweak.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe

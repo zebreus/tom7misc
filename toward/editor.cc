@@ -38,6 +38,7 @@ void Simulate(std::string_view level_file) {
   ArcFour rc("sim");
 
   std::unique_ptr<Level> level = Levels::LoadSVG(level_file);
+  Print("There are {} bodies in the level.\n", level->bodies.size());
   std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
 
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();

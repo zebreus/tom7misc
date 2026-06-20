@@ -13,6 +13,7 @@
 #include <variant>
 #include <vector>
 
+#include "ansi.h"
 #include "base/print.h"
 #include "geom/bezier.h"
 #include "geom/polygonization.h"
@@ -398,6 +399,8 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
       }
     }
 
+    Print("Adding poly with color {:08x}\n", state.fill_color);
+
     if (poly.size() >= 3) {
       poly_shape.polys.push_back(std::move(poly));
     }
@@ -415,6 +418,19 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
       return;
     }
 
+    if (mesh->polygons.empty()) {
+      Print("MAX_POLYGON_VERTICES: {}\n", MAX_POLYGON_VERTICES);
+      for (size_t i = 0; i < poly_shape.polys.size(); i++) {
+        Print("Poly {}:\n", i);
+        for (const auto &pt : poly_shape.polys[i]) {
+          Print("  {:.17g}, {:.17g}\n", pt.x, pt.y);
+        }
+      }
+
+      LOG(FATAL) << "Empty mesh??";
+      return;
+    }
+
     Polygonization::vec2 center{0.0, 0.0};
     if (!mesh->vertices.empty()) {
       for (const auto& v : mesh->vertices) {
@@ -429,6 +445,8 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
       }
     }
     vec2f pos = {(float)center.x, (float)center.y};
+
+    const size_t idx = level->bodies.size();
 
     // If the shape has fill, it should be a static body.
     if (has_fill) {
@@ -450,7 +468,8 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
     }
     CHECK(!level->bodies.empty());
     const LevelBody &body = level->bodies.back();
-    Print("Add {} body at {},{} with color {:08x}\n",
+    Print("[{}] Add {} body at {},{} with color {:08x}\n",
+          idx,
           body.dynamic ? "dynamic" : "static",
           body.pos.x, body.pos.y,
           body.color);
@@ -462,6 +481,9 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
   CHECK(!contents.empty()) << filename;
 
   SVG::Doc doc = SVG::ParseOrDie(contents);
+
+  // Print("\n{}\n", SVG::ToSVG(doc));
+
   auto level = std::make_unique<Level>();
   level->scene_walls = false;
 

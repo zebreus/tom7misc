@@ -20,7 +20,6 @@
 #include "box2d.h"
 #include "geom/polygonization.h"
 #include "geom/polygons.h"
-#include "initialization.h"
 #include "level.h"
 #include "opt/opt-seq.h"
 #include "pcg.h"

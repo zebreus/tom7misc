@@ -10,15 +10,15 @@
 #include <vector>
 
 #include "arcfour.h"
+#include "base/print.h"
+#include "box2d.h"
+#include "color-util.h"
 #include "geom/polygonization.h"
 #include "geom/polygons.h"
 #include "math_functions.h"
 #include "randutil.h"
-#include "color-util.h"
-#include "threadutil.h"
-#include "box2d.h"
-#include "initialization.h"
 #include "rendering.h"
+#include "threadutil.h"
 
 // In Box2D, the global worlds structure is thread hostile.
 // But it seems like aside from world creation/destruction,
@@ -276,6 +276,7 @@ void Scene::Attach(b2BodyId body_id,
                    uint32_t color) {
   std::vector<Rendering::Triangle> render_mesh;
 
+  bool has_shapes = false;
   for (const auto &poly : mesh.polygons) {
     if (poly.size() < 3)
       continue;
@@ -305,6 +306,23 @@ void Scene::Attach(b2BodyId body_id,
 
     b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
     b2CreatePolygonShape(body_id, &shape_def, &b2_poly);
+    has_shapes = true;
+  }
+
+  if (!has_shapes) {
+    Print("Object of color {:08x} with no shapes ({} v {} p)!\n",
+          color, mesh.vertices.size(), mesh.polygons.size());
+    for (size_t i = 0; i < mesh.vertices.size(); i++) {
+      auto [x, y] = mesh.vertices[i];
+      Print("  v[{}] = {}, {}\n", i, x, y);
+    }
+    for (size_t i = 0; i < mesh.polygons.size(); i++) {
+      Print("  poly[{}]:", i);
+      for (int idx : mesh.polygons[i]) {
+        Print(" {}", idx);
+      }
+      Print("\n");
+    }
   }
 
   objects.push_back(Obj{

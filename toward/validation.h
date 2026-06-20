@@ -3,6 +3,8 @@
 #define _TOWARD_VALIDATION_H
 
 #include <memory>
+#include <span>
+#include <utility>
 #include <vector>
 #include <string_view>
 
@@ -60,9 +62,29 @@ struct Validation {
     return b ? ChuteValue::ONE : ChuteValue::NOTHING;
   }
 
+  // Load the level, check that it's structurally OK, and add
+  // walls if needed.
+  static std::unique_ptr<Level> Load(const ValidationInstance &inst);
+
+  // True if the actual output counts as correct for the sample.
+  static bool IsValidOutput(const ValidationSample &sample,
+                            std::span<const ChuteValue> actual);
+
   // Sample a 1 or 0 input (with random position/velocity/etc.) in a
   // standard input region.
   static LevelBody SampleInput(uint64_t seed, vec2f input_pos, bool bit);
+
+  // Clone the level. Sample the input
+  static std::pair<ValidationSample, Level>
+  LevelWithInputs(const Level &level,
+                  const ValidationInstance &inst,
+                  uint64_t seed);
+
+  // The inputs must match!
+  static std::vector<ChuteValue> ReadOutputs(
+      const ValidationInstance &inst,
+      const Level &level,
+      const Scene &scene);
 };
 
 #endif
