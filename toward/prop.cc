@@ -1,23 +1,13 @@
 
-#include <vector>
-#include <string>
+#include "prop.h"
 
-struct World {
-  // Just for input/output. A variable is uniquely
-  // identified by its index.
-  std::vector<std::string> symbol_names;
+#include <cstdint>
+#include <format>
+#include <string_view>
+#include <utility>
+
+#include "base/logging.h"
 
 
-};
-
-struct Prop;
-
-struct Var {
-  int id = 0;
-};
-
-// This is recursive, so we need
-struct Prop {
-  std::variant<Var, Binop, Unop> p;
-};
+// TODO: Macros, simplifications, etc.
 

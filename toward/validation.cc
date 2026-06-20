@@ -77,6 +77,91 @@ struct NotValidation : public ValidationInstance {
     return ret;
   }
 };
+
+struct DupSepValidation : public ValidationInstance {
+  std::string_view Filename() const override { return "dupsep2.svg"; }
+  int ExpectedInputs() const override { return 1; }
+  int ExpectedOutputs() const override { return 4; }
+
+  bool AddInputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b01);
+
+    ValidationSample ret;
+    ret.input_values.push_back(a ? ChuteValue::ONE : ChuteValue::ZERO);
+
+    // Separated and duplicated bits: 0011
+    ret.valid_outputs = {
+      {Validation::SeparatedZero(a),
+       Validation::SeparatedZero(a),
+       Validation::SeparatedOne(a),
+       Validation::SeparatedOne(a)},
+    };
+    return ret;
+  }
+};
+
+
+struct XchgValidation : public ValidationInstance {
+  std::string_view Filename() const override { return "xchg1.svg"; }
+  int ExpectedInputs() const override { return 2; }
+  int ExpectedOutputs() const override { return 2; }
+
+  bool AddInputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b01);
+    bool b = !!(seed & 0b10);
+
+    ChuteValue av = a ? ChuteValue::ONE : ChuteValue::ZERO;
+    ChuteValue bv = b ? ChuteValue::ONE : ChuteValue::ZERO;
+
+    ValidationSample ret;
+    ret.input_values.push_back(av);
+    ret.input_values.push_back(bv);
+
+    // Swapped.
+    ret.valid_outputs = {{bv, av}};
+    return ret;
+  }
+};
+
+struct SepXchgValidation : public ValidationInstance {
+  std::string_view Filename() const override { return "sepxchg1.svg"; }
+  int ExpectedInputs() const override { return 2; }
+  int ExpectedOutputs() const override { return 2; }
+
+  bool AddInputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool chirality = !!(seed & 0b01);
+    bool a = !!(seed & 0b10);
+
+    // Two cases here. The left input can be a separated one or zero;
+    // the right input must be its separated negation.
+
+    ValidationSample ret;
+    if (chirality) {
+      ChuteValue l = Validation::SeparatedZero(a);
+      ChuteValue r = Validation::SeparatedOne(a);
+      ret.input_values.push_back(l);
+      ret.input_values.push_back(r);
+      ret.valid_outputs = {{r, l}};
+
+    } else {
+      ChuteValue l = Validation::SeparatedZero(a);
+      ChuteValue r = Validation::SeparatedOne(a);
+      ret.input_values.push_back(l);
+      ret.input_values.push_back(r);
+      ret.valid_outputs = {{r, l}};
+    }
+
+    return ret;
+  }
+};
+
+
 }  // namespace
 
 std::unique_ptr<ValidationInstance> Validation::And() {
@@ -89,6 +174,18 @@ std::unique_ptr<ValidationInstance> Validation::Separator() {
 
 std::unique_ptr<ValidationInstance> Validation::Not() {
   return std::make_unique<NotValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::DupSep() {
+  return std::make_unique<DupSepValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::Xchg() {
+  return std::make_unique<XchgValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::SepXchg() {
+  return std::make_unique<SepXchgValidation>();
 }
 
 

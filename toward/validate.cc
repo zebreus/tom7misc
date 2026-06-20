@@ -3,22 +3,23 @@
 #include <memory>
 #include <mutex>
 #include <span>
-#include <utility>
-#include <vector>
 #include <string_view>
+#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/print.h"
-#include "box2d.h"
 #include "level.h"
-#include "pcg.h"
 #include "periodically.h"
 #include "rendering.h"
 #include "scene.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "validation.h"
+
+// TODO: We should really test the possibility that one input
+// arrives way before the other. Initial velocities mostly
+// cover the cases of interference coincidences, I think?
 
 static void Validate(const ValidationInstance &inst) {
   static constexpr int NUM_TRIALS = 10000;
@@ -94,12 +95,15 @@ static void ValidateAll() {
   Validate(*Validation::And());
   Validate(*Validation::Separator());
   Validate(*Validation::Not());
+  Validate(*Validation::DupSep());
+  // Validate(*Validation::Xchg());
+  Validate(*Validation::SepXchg());
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Validate(*Validation::Not());
+  Validate(*Validation::SepXchg());
 
   return 0;
 }

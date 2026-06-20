@@ -50,7 +50,12 @@ struct Validation {
   static std::unique_ptr<ValidationInstance> And();
   static std::unique_ptr<ValidationInstance> Separator();
   static std::unique_ptr<ValidationInstance> Not();
-
+  // Separates and duplicates its one input.
+  static std::unique_ptr<ValidationInstance> DupSep();
+  // XXX: This doesn't work because the bodies can collide.
+  static std::unique_ptr<ValidationInstance> Xchg();
+  // Exchanges separated A and ¬A.
+  static std::unique_ptr<ValidationInstance> SepXchg();
 
   // For separated inputs, we have either the given bit, or nothing.
   // SeparatedZero gives the contents of the "zero" chute when the

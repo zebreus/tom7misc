@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1575" height="1060" version="1.1" viewBox="0 0 1575 1060">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <polygon points="1565 159.96 635.689 320 1575 219.96 1565 159.96" fill="#00a"/>
+  <polygon points="0 227.754 875.689 485 0 332.754 0 227.754" fill="#00a"/>
+  <polygon points="947.487 439.017 1157.992 419.744 1157.024 469.744 947.487 439.017" fill="#00a"/>
+  <rect x="1335" width="100" height="100" fill="#aff"/>
+  <rect x="635.689" y="920" width="100" height="140" fill="#faa"/>
+  <rect x="1375.689" y="920" width="100" height="140" fill="#faa"/>
+  <rect x="1355.689" y="920" width="20" height="140" fill="#0c2"/>
+  <rect x="1475.689" y="540" width="20" height="520" fill="#0c2"/>
+  <rect x="615.689" y="700" width="20" height="360" fill="#c00"/>
+  <rect x="735.689" y="680" width="20" height="380" fill="#c00"/>
+  <rect x="455.689" y="920" width="100" height="140" fill="#faa"/>
+  <rect x="435.689" y="620" width="20" height="440" fill="#c00"/>
+  <rect x="555.689" y="700" width="20" height="360" fill="#c00"/>
+  <path d="M615.689,601c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M615.689,661c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M615.689,600c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM615.689,660c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <polygon points="975.689 560 735.689 660 735.689 680 995.689 680 995.689 560 975.689 560" fill="#ee2800"/>
+  <polygon points="555.689 700 635.689 700 635.689 680 595.689 680 555.689 700" fill="#ee2800"/>
+  <rect x="1195.689" y="920" width="100" height="140" fill="#faa"/>
+  <rect x="1175.689" y="740" width="20" height="320" fill="#0c2"/>
+  <rect x="1295.689" y="780" width="20" height="280" fill="#0c2"/>
+  <rect x="1295.689" y="700" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
+  <polygon points="1375.689 915 1335.689 800 1315.689 800 1355.689 915 1375.689 915" fill="#0c2"/>
+  <polygon points="1020.689 560 1225.689 720 1215.689 740 995.689 560 1020.689 560" fill="#0c2"/>
+  <text transform="translate(1455.689 45)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">01</tspan></text>
+  <text transform="translate(400.689 1020)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0</tspan></text>
+  <text transform="translate(765.6891 1024.9998)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0</tspan></text>
+  <text transform="translate(1140.689 1020)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">1</tspan></text>
+  <text transform="translate(1505.6891 1034.9998)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">1</tspan></text>
+</svg>
