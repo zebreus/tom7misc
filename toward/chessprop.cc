@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <format>
+#include <functional>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -167,6 +168,10 @@ inline Prop IsCapturable(int r, int c) {
             HasContents(r, c, BLACK_KING));
 }
 
+inline bool OnBoard(int r, int c) {
+  return r >= 0 && c >= 0 && r < 8 && c < 8;
+}
+
 // For the Attacked checks, it is convenient to check outside
 // the board as well; we know that this is false at "compilation"
 // time.
@@ -174,6 +179,7 @@ inline Prop OnBoardAndHasContents(int r, int c, int t) {
   if (r < 0 || c < 0 || r >= 8 || c >= 8) return False();
   return HasContents(r, c, t);
 }
+
 
 // True if the square is attacked by a black piece.
 // (Can't castle out of check, etc.)
@@ -203,13 +209,47 @@ Prop Attacked(int r, int c) {
     OnBoardAndHasContents(r - 1, c - 1, BLACK_PAWN) |
     OnBoardAndHasContents(r - 1, c + 1, BLACK_PAWN);
 
-  // TODO: Rook, Bishop, Queen, Pawn
-  // Probably queen is included with the rook/bishop tests
-  Prop rook = False();
-  Prop bishop = False();
+  // Trace out from the square to find a rook, bishop, or queen.
+  Prop traced = False();
 
-  // TODO
-  return Or(pawn, knight, bishop, rook, king);
+  for (int dr : {-1, 0, +1}) {
+    for (int dc : {-1, 0, +1}) {
+
+      // Most natural to build this from the bottom up.
+      std::function<Prop(int, int)> TraceRec{[&](int r, int c) {
+          // Base case.
+          if (!OnBoard(r, c)) return False();
+
+          Prop trace_rest = TraceRec(r + dr, c + dc);
+
+          Prop attacked_from_here = False();
+
+          if (dr == 0 || dc == 0) {
+            // Rook (and queen).
+            attacked_from_here =
+              HasContents(r, c, BLACK_QUEEN) |
+              HasContents(r, c, BLACK_ROOK);
+
+          } else if (dr != 0 && dc != 0) {
+            // Bishop (and queen).
+            attacked_from_here =
+              HasContents(r, c, BLACK_QUEEN) |
+              HasContents(r, c, BLACK_ROOK);
+
+          } else {
+            LOG(FATAL) << "Invalid trace direction.";
+          }
+
+          return attacked_from_here |
+            (IsEmpty(r, c) & trace_rest);
+        }
+      };
+
+      traced = traced | TraceRec(r + dr, c + dc);
+    }
+  }
+
+  return Or(pawn, knight, traced, king);
 }
 
 // Is it legal to move the white pawn at srcr, srcc to
@@ -367,8 +407,27 @@ Prop KingLegal(int srcr, int srcc, int dstr, int dstc) {
   Prop normal_move =
     normal ? (IsCapturable(dstr, dstc) | IsEmpty(dstr, dstc)) : False();
 
-  // TODO: Castling.
   Prop castling_move = False();
+  if (castling) {
+    bool kingside = dstc == 6;
+
+    CHECK(srcr == 7);
+    CHECK(srcc == 4);
+    castling_move =
+      // Appropriate castling privileges must still exist.
+      Castling(true, kingside) &
+      // Can't castle out of check.
+      -Attacked(7, 4);
+
+    // Also: Squares in between can't be attacked.
+    if (kingside) {
+      castling_move = castling_move &
+        -Attacked(7, 5) & -Attacked(7, 6);
+    } else {
+      castling_move = castling_move &
+        -Attacked(7, 3) & -Attacked(7, 2) & -Attacked(7, 1);
+    }
+  }
 
   // Here, checking for moving into check is much more straightforward,
   // because we know where the king will be, and moving the rooks
@@ -389,12 +448,14 @@ Prop IsLegal(int srcr, int srcc,
   CHECK(dstc >= 0 && dstc < 8);
 
   // PERF: Many pairs of squares can never have a legal move!
-  // We should compute an expression equivalent to False for
-  // them below.
+  // The code below should already compute an expression equivalent
+  // to false for them, but we should make sure it optimizes
+  // away.
 
   // PERF: These generally all need to check that the destination
   // is empty and/or capturable. So we should compute those
-  // expressions up front and factor them out.
+  // expressions up front and factor them out, or make sure that
+  // optimization can do this.
 
   // Self-moves are never legal.
   if (srcr == dstr && srcc == dstc) return False();
@@ -420,9 +481,8 @@ Prop IsLegal(int srcr, int srcc,
       HasContents(srcr, srcc, WHITE_KNIGHT) &
       KnightLegal(srcr, srcc, dstr, dstc),
 
-      // TODO: King move
-
-      False());
+      HasContents(srcr, srcc, WHITE_KING) &
+      KingLegal(srcr, srcc, dstr, dstc));
 }
 
 
