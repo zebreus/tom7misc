@@ -100,7 +100,11 @@ inline Prop And() {
 
 template <typename... Args>
 inline Prop And(Prop first, Args... args) {
-  return (std::move(first) | ... | std::move(args));
+  return (std::move(first) & ... & std::move(args));
 }
+
+bool EvaluateProp(const World &world,
+                  const std::vector<bool> &assignments,
+                  const Prop &prop);
 
 #endif

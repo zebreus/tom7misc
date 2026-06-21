@@ -4,6 +4,7 @@ all : test.exe letters_test.exe
 CC_LIB=../cc-lib
 BOX2D=../../box2d
 FONTDB=../fontdb
+CHESS=../chess
 
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
@@ -12,10 +13,12 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/log
 
 FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
+CHESS_OBJECTS=$(CHESS)/chess.o
+
 OPT=-O2 -flto -g
 # OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
 
-CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(BOX2D)/include/box2d --std=c++23
+CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(CHESS) -I$(BOX2D)/include/box2d --std=c++23
 
 LFLAGS=$(OPT) --std=c++23
 SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
@@ -25,7 +28,7 @@ SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
-LIB_OBJECTS=prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS)
+LIB_OBJECTS=prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -70,6 +73,14 @@ validate.exe : validate.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 tweak.exe : tweak.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+prop_test.exe : prop_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+chessprop_test.exe : chessprop_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

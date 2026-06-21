@@ -1,5 +1,5 @@
 
-#include "prop.h"
+#include "chessprop.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -8,26 +8,17 @@
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
+#include "chess.h"
+#include "prop.h"
 
-enum Type : uint8_t {
-  BLACK_PAWN = 0,
-  BLACK_KNIGHT = 1,
-  BLACK_BISHOP = 2,
-  BLACK_ROOK = 3,
-  BLACK_QUEEN = 4,
-  BLACK_KING = 5,
-  WHITE_PAWN = 6,
-  WHITE_KNIGHT = 7,
-  WHITE_BISHOP = 8,
-  WHITE_ROOK = 9,
-  WHITE_QUEEN = 10,
-  WHITE_KING = 11,
-  EMPTY = 12,
-};
+using Board = ChessProp::Board;
+using enum ChessProp::Type;
 
-static constexpr int NUM_TYPES = 13;
+static constexpr bool VERBOSE = false;
 
 static constexpr uint8_t PAWN = 0;
 static constexpr uint8_t KNIGHT = 1;
@@ -38,9 +29,9 @@ static constexpr uint8_t KING = 5;
 
 // such that BLACK_START + PIECE = BLACK_PIECE.
 static constexpr uint8_t BLACK_START = 0;
-static constexpr uint8_t WHITE_START = 0;
+static constexpr uint8_t WHITE_START = 6;
 
-static std::string_view ShortType(uint8_t t) {
+std::string_view ChessProp::ShortType(uint8_t t) {
   switch (t) {
   case BLACK_PAWN: return "p";
   case BLACK_KNIGHT: return "n";
@@ -61,47 +52,15 @@ static std::string_view ShortType(uint8_t t) {
   }
 }
 
-// Following chess.h:
-// Row 0 is the top row of the board, black's back
-// rank, aka. rank 8. We try to use "row" to mean
-// this zero-based top-to-bottom notion. "rank"
-// would be the 1-based bottom-to-top version from
-// standard chess notation, which we avoid.
-
-// The bit that indicates whether the square at r,c contains
-// the specific type.
-int HasContentsIdx(int r, int c, uint8_t type) {
-  // To simplify matters, we have a regular bit structure
-  // even if it's impossible (e.g. pawns in back row).
-  int idx = r * 8 + c;
-  return idx * NUM_TYPES + type;
-}
-
-int EnPassantColIdx(int c) {
-  return 8 * 8 * NUM_TYPES + c;
-}
-
-int CastlingIdx(bool white, bool kingside) {
-  int off = (white ? 0b10 : 0b00) | (kingside ? 0b01 : 0b01);
-  return 8 * 8 * NUM_TYPES + 8 + off;
-}
-
-static constexpr int WORLD_SYMS =
-  // board contents
-  8 * 8 * NUM_TYPES +
-  // en passant columns
-  8 +
-  // castling flags
-  4;
-
-// A chessboard. Following chess.h, we always represent
-// the board as though it's white's turn to move.
-World BoardWorld() {
-  World world;
-  world.symbol_names.resize(WORLD_SYMS);
-  auto SetSym = [&world](int idx, std::string_view s) {
-      CHECK(world.symbol_names[idx].empty());
-      world.symbol_names[idx] = std::move(s);
+Board ChessProp::NewBoard(World *world) {
+  size_t start = world->symbol_names.size();
+  world->symbol_names.resize(start + NUM_BOARD_PROPS);
+  Board board;
+  board.props.resize(NUM_BOARD_PROPS);
+  auto SetSym = [start, world, &board](int idx, std::string_view s) {
+      CHECK(world->symbol_names[start + idx].empty());
+      world->symbol_names[start + idx] = std::move(s);
+      board.props[idx] = {Var{.id = (int)start + idx}};
     };
 
   for (int row = 0; row < 8; row++) {
@@ -134,38 +93,38 @@ World BoardWorld() {
     }
   }
 
-  return world;
+  return board;
 }
 
-inline Prop HasContents(int r, int c, int t) {
+inline Prop HasContents(const Board &board, int r, int c, int t) {
   CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
-  return {Var{.id = HasContentsIdx(r, c, t)}};
+  return board.props[ChessProp::HasContentsIdx(r, c, t)];
 }
 
-inline Prop EnPassantCol(int c) {
+inline Prop EnPassantCol(const Board &board, int c) {
   CHECK(c >= 0 && c < 8);
-  return {Var{.id = EnPassantColIdx(c)}};
+  return board.props[ChessProp::EnPassantColIdx(c)];
 }
 
-inline Prop Castling(bool w, bool k) {
-  return {Var{.id = CastlingIdx(w, k)}};
+inline Prop Castling(const Board &board, bool w, bool k) {
+  return board.props[ChessProp::CastlingIdx(w, k)];
 }
 
-inline Prop IsEmpty(int r, int c) {
+inline Prop IsEmpty(const Board &board, int r, int c) {
   CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
-  return HasContents(r, c, EMPTY);
+  return HasContents(board, r, c, EMPTY);
 }
 
 // Is there a black piece at r,c that can be captured? We don't
 // include the king because no legal move would pose such a
 // question, and it simplifes the expression.
-inline Prop IsCapturable(int r, int c) {
-  return Or(HasContents(r, c, BLACK_PAWN),
-            HasContents(r, c, BLACK_KNIGHT),
-            HasContents(r, c, BLACK_BISHOP),
-            HasContents(r, c, BLACK_ROOK),
-            HasContents(r, c, BLACK_QUEEN),
-            HasContents(r, c, BLACK_KING));
+inline Prop IsCapturable(const Board &board, int r, int c) {
+  return Or(HasContents(board, r, c, BLACK_PAWN),
+            HasContents(board, r, c, BLACK_KNIGHT),
+            HasContents(board, r, c, BLACK_BISHOP),
+            HasContents(board, r, c, BLACK_ROOK),
+            HasContents(board, r, c, BLACK_QUEEN),
+            HasContents(board, r, c, BLACK_KING));
 }
 
 inline bool OnBoard(int r, int c) {
@@ -175,15 +134,16 @@ inline bool OnBoard(int r, int c) {
 // For the Attacked checks, it is convenient to check outside
 // the board as well; we know that this is false at "compilation"
 // time.
-inline Prop OnBoardAndHasContents(int r, int c, int t) {
+inline Prop OnBoardAndHasContents(const Board &board,
+                                  int r, int c, int t) {
   if (r < 0 || c < 0 || r >= 8 || c >= 8) return False();
-  return HasContents(r, c, t);
+  return HasContents(board, r, c, t);
 }
 
 
 // True if the square is attacked by a black piece.
 // (Can't castle out of check, etc.)
-Prop Attacked(int r, int c) {
+Prop Attacked(const Board &board, int r, int c) {
   Prop knight = False();
   Prop king = False();
   for (int dr = -2; dr <= +2; dr++) {
@@ -195,19 +155,21 @@ Prop Attacked(int r, int c) {
       // Must be an L-shaped move.
       if ((distr == 2 && distc == 1) ||
           (distr == 1 && distc == 2)) {
-        knight = knight | OnBoardAndHasContents(r + dr, c + dc, BLACK_KNIGHT);
+        knight = knight |
+          OnBoardAndHasContents(board, r + dr, c + dc, BLACK_KNIGHT);
       }
 
       if (distr == 1 || distc == 1) {
-        king = king | OnBoardAndHasContents(r + dr, c + dc, BLACK_KING);
+        king = king |
+          OnBoardAndHasContents(board, r + dr, c + dc, BLACK_KING);
       }
     }
   }
 
   // Two specific squares attack a square with a pawn.
   Prop pawn =
-    OnBoardAndHasContents(r - 1, c - 1, BLACK_PAWN) |
-    OnBoardAndHasContents(r - 1, c + 1, BLACK_PAWN);
+    OnBoardAndHasContents(board, r - 1, c - 1, BLACK_PAWN) |
+    OnBoardAndHasContents(board, r - 1, c + 1, BLACK_PAWN);
 
   // Trace out from the square to find a rook, bishop, or queen.
   Prop traced = False();
@@ -227,25 +189,28 @@ Prop Attacked(int r, int c) {
           if (dr == 0 || dc == 0) {
             // Rook (and queen).
             attacked_from_here =
-              HasContents(r, c, BLACK_QUEEN) |
-              HasContents(r, c, BLACK_ROOK);
+              HasContents(board, r, c, BLACK_QUEEN) |
+              HasContents(board, r, c, BLACK_ROOK);
 
           } else if (dr != 0 && dc != 0) {
             // Bishop (and queen).
             attacked_from_here =
-              HasContents(r, c, BLACK_QUEEN) |
-              HasContents(r, c, BLACK_ROOK);
+              HasContents(board, r, c, BLACK_QUEEN) |
+              HasContents(board, r, c, BLACK_ROOK);
 
           } else {
             LOG(FATAL) << "Invalid trace direction.";
           }
 
           return attacked_from_here |
-            (IsEmpty(r, c) & trace_rest);
+            (IsEmpty(board, r, c) & trace_rest);
         }
       };
 
-      traced = traced | TraceRec(r + dr, c + dc);
+      // All 8 directions are needed here, but not the zero vector.
+      if (dr != 0 || dc != 0) {
+        traced = traced | TraceRec(r + dr, c + dc);
+      }
     }
   }
 
@@ -278,7 +243,11 @@ Prop Attacked(int r, int c) {
 // So rather than a fully different board, we could just
 // OR the standard one with a check for this one kind of
 // configuration along just that row.
-Prop KingAttackedAfter(int srcr, int srcc, int dstr, int dstc) {
+Prop KingAttackedAfter(const Board &board_before,
+                       int srcr, int srcc, int dstr, int dstc) {
+
+  // FIXME
+  const Board &board = board_before;
 
   Prop any_attacked = False();
 
@@ -295,7 +264,7 @@ Prop KingAttackedAfter(int srcr, int srcc, int dstr, int dstc) {
 
       // ... XXX but in the modified board ...
       any_attacked = any_attacked |
-        (HasContents(kr, kc, WHITE_KING) & Attacked(kr, kc));
+        (HasContents(board, kr, kc, WHITE_KING) & Attacked(board, kr, kc));
     }
   }
 
@@ -305,7 +274,7 @@ Prop KingAttackedAfter(int srcr, int srcc, int dstr, int dstc) {
 // Is it legal to move the white pawn at srcr, srcc to
 // dstr, dstc? This includes promotions (where we assume a
 // promotion to queen).
-Prop PawnLegal(int srcr, int srcc, int dstr, int dstc) {
+Prop PawnLegal(const Board &board, int srcr, int srcc, int dstr, int dstc) {
   // Can't move into bottom two rows.
   if (dstr >= 6) return False();
 
@@ -325,25 +294,25 @@ Prop PawnLegal(int srcr, int srcc, int dstr, int dstc) {
   // Double move.
   Prop legal_double =
     dist == -2 ?
-    IsEmpty(srcr - 1, srcc) & IsEmpty(srcr - 2, srcc) :
+    IsEmpty(board, srcr - 1, srcc) & IsEmpty(board, srcr - 2, srcc) :
     False();
 
   // Normal capture.
   Prop legal_capture =
-    (dist == -1 && diagonal) ? IsCapturable(dstr, dstc) : False();
+    (dist == -1 && diagonal) ? IsCapturable(board, dstr, dstc) : False();
 
   // En passant capture.
   Prop legal_en_passant =
     (dist == -1 && diagonal && srcr == 3) ?
     // En passant column also implies the destination is empty,
     // and there's a pawn to be captured.
-    EnPassantCol(dstc) :
+    EnPassantCol(board, dstc) :
     False();
 
   // Regular push.
   Prop legal_single =
     (dist == -1 && vertical) ?
-    IsEmpty(srcr - 1, srcc) :
+    IsEmpty(board, srcr - 1, srcc) :
     False();
 
   // Nothing special to do for promotion: If it's legal
@@ -380,7 +349,9 @@ GetDir(int srcr, int srcc, int dstr, int dstc) {
 }
 
 // Normal rook moves; castling is represented by moving the king.
-Prop RookLegal(int srcr, int srcc, int dstr, int dstc) {
+Prop RookLegal(const Board &board,
+               int srcr, int srcc, int dstr, int dstc) {
+
   bool horiz = srcc != dstc;
   bool vert = srcr != dstr;
 
@@ -393,18 +364,28 @@ Prop RookLegal(int srcr, int srcc, int dstr, int dstc) {
   // All squares in between must be empty.
   Prop clear = True();
   const auto &[dr, dc] = dir.value();
-  for (int r = srcr + dr, c = srcc + dc; r != dstr && c != dstc; ) {
-    clear = clear & IsEmpty(r, c);
+
+  if (VERBOSE) {
+    Print("Rook legal? {},{} to {},{} | {}{} | d {},{}\n",
+          srcr, srcc, dstr, dstc,
+          horiz ? "h" : "", vert ? "v" : "",
+          dr, dc);
+  }
+
+  for (int r = srcr + dr, c = srcc + dc; !(r == dstr && c == dstc); ) {
+    clear = clear & IsEmpty(board, r, c);
     r += dr;
     c += dc;
     CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
   }
 
   // TODO: Not moving into check.
-  return clear & (IsCapturable(dstr, dstc) | IsEmpty(dstr, dstc));
+  return clear & (IsCapturable(board, dstr, dstc) |
+                  IsEmpty(board, dstr, dstc));
 }
 
-Prop BishopLegal(int srcr, int srcc, int dstr, int dstc) {
+Prop BishopLegal(const Board &board,
+                 int srcr, int srcc, int dstr, int dstc) {
   const auto dir = GetDir(srcr, srcc, dstr, dstc);
   if (!dir.has_value()) return False();
   const auto &[dr, dc] = dir.value();
@@ -415,17 +396,19 @@ Prop BishopLegal(int srcr, int srcc, int dstr, int dstc) {
   // All squares in between must be empty.
   Prop clear = True();
   for (int r = srcr + dr, c = srcc + dc; r != dstr && c != dstc; ) {
-    clear = clear & IsEmpty(r, c);
+    clear = clear & IsEmpty(board, r, c);
     r += dr;
     c += dc;
     CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
   }
 
   // TODO: Not moving into check.
-  return clear & (IsCapturable(dstr, dstc) | IsEmpty(dstr, dstc));
+  return clear & (IsCapturable(board, dstr, dstc) |
+                  IsEmpty(board, dstr, dstc));
 }
 
-Prop KnightLegal(int srcr, int srcc, int dstr, int dstc) {
+Prop KnightLegal(const Board &board,
+                 int srcr, int srcc, int dstr, int dstc) {
 
   // This is simpler than the above because we don't need to
   // check anything in between.
@@ -437,10 +420,11 @@ Prop KnightLegal(int srcr, int srcc, int dstr, int dstc) {
         (distr == 1 && distc == 2))) return False();
 
   // TODO: No moving into check.
-  return IsCapturable(dstr, dstc) | IsEmpty(dstr, dstc);
+  return IsCapturable(board, dstr, dstc) | IsEmpty(board, dstr, dstc);
 }
 
-Prop KingLegal(int srcr, int srcc, int dstr, int dstc) {
+Prop KingLegal(const Board &board,
+               int srcr, int srcc, int dstr, int dstc) {
 
   int dr = dstr - srcr;
   int dc = dstc - srcc;
@@ -449,13 +433,14 @@ Prop KingLegal(int srcr, int srcc, int dstr, int dstc) {
   int distc = std::abs(dc);
 
   // Must move to one of the 8-connected neighbors.
-  bool normal = (distr > 1 || distc > 1 || (dr == 0 && dc == 0));
+  bool normal = (distr <= 1 && distc <= 1 && (dr != 0 || dc != 0));
 
   bool castling = srcr == 7 && srcc == 4 && dstr == 7 &&
-    (dstc == 0 || dstc == 7);
+    (dstc == 2 || dstc == 6);
 
   Prop normal_move =
-    normal ? (IsCapturable(dstr, dstc) | IsEmpty(dstr, dstc)) : False();
+    normal ? (IsCapturable(board, dstr, dstc) |
+              IsEmpty(board, dstr, dstc)) : False();
 
   Prop castling_move = False();
   if (castling) {
@@ -465,17 +450,26 @@ Prop KingLegal(int srcr, int srcc, int dstr, int dstc) {
     CHECK(srcc == 4);
     castling_move =
       // Appropriate castling privileges must still exist.
-      Castling(true, kingside) &
+      // (Which implies a rook in the corner.)
+      Castling(board, true, kingside) &
       // Can't castle out of check.
-      -Attacked(7, 4);
+      -Attacked(board, 7, 4);
 
     // Also: Squares in between can't be attacked.
     if (kingside) {
       castling_move = castling_move &
-        -Attacked(7, 5) & -Attacked(7, 6);
+        IsEmpty(board, 7, 5) &
+        IsEmpty(board, 7, 6) &
+        -Attacked(board, 7, 5) &
+        -Attacked(board, 7, 6);
     } else {
       castling_move = castling_move &
-        -Attacked(7, 3) & -Attacked(7, 2) & -Attacked(7, 1);
+        IsEmpty(board, 7, 1) &
+        IsEmpty(board, 7, 2) &
+        IsEmpty(board, 7, 3) &
+        -Attacked(board, 7, 1) &
+        -Attacked(board, 7, 2) &
+        -Attacked(board, 7, 3);
     }
   }
 
@@ -484,14 +478,15 @@ Prop KingLegal(int srcr, int srcc, int dstr, int dstc) {
   // cannot cause a discovered check (on white). (Note that this would
   // be possible in Chess960.)
   return And(Or(normal_move, castling_move),
-             -(Attacked(dstr, dstc)));
+             -(Attacked(board, dstr, dstc)));
 }
 
 
 // Is it legal for white to move their piece from srcr,srcc
 // to dstr,dstc?
-Prop IsLegal(int srcr, int srcc,
-             int dstr, int dstc) {
+Prop ChessProp::IsLegal(const Board &board,
+                        int srcr, int srcc,
+                        int dstr, int dstc) {
   CHECK(srcr >= 0 && srcr < 8);
   CHECK(srcc >= 0 && srcc < 8);
   CHECK(dstr >= 0 && dstr < 8);
@@ -515,24 +510,72 @@ Prop IsLegal(int srcr, int srcc,
   // just OR all of the cases together.
 
   return Or(
-      HasContents(srcr, srcc, WHITE_PAWN) &
-      PawnLegal(srcr, srcc, dstr, dstc),
+      HasContents(board, srcr, srcc, WHITE_PAWN) &
+      PawnLegal(board, srcr, srcc, dstr, dstc),
 
       // To reduce expression size, we treat the queen as both a
       // rook and bishop.
-      (HasContents(srcr, srcc, WHITE_ROOK) |
-       HasContents(srcr, srcc, WHITE_QUEEN)) &
-      RookLegal(srcr, srcc, dstr, dstc),
+      (HasContents(board, srcr, srcc, WHITE_ROOK) |
+       HasContents(board, srcr, srcc, WHITE_QUEEN)) &
+      RookLegal(board, srcr, srcc, dstr, dstc),
 
-      (HasContents(srcr, srcc, WHITE_BISHOP) |
-       HasContents(srcr, srcc, WHITE_QUEEN)) &
-      BishopLegal(srcr, srcc, dstr, dstc),
+      (HasContents(board, srcr, srcc, WHITE_BISHOP) |
+       HasContents(board, srcr, srcc, WHITE_QUEEN)) &
+      BishopLegal(board, srcr, srcc, dstr, dstc),
 
-      HasContents(srcr, srcc, WHITE_KNIGHT) &
-      KnightLegal(srcr, srcc, dstr, dstc),
+      HasContents(board, srcr, srcc, WHITE_KNIGHT) &
+      KnightLegal(board, srcr, srcc, dstr, dstc),
 
-      HasContents(srcr, srcc, WHITE_KING) &
-      KingLegal(srcr, srcc, dstr, dstc));
+      HasContents(board, srcr, srcc, WHITE_KING) &
+      KingLegal(board, srcr, srcc, dstr, dstc));
 }
 
+Board ChessProp::BoardFromPosition(const Position &pos) {
+  Board board{
+    .props = std::vector<Prop>(NUM_BOARD_PROPS, False()),
+  };
 
+  CHECK(!pos.BlackMove()) << "Can only represent positions "
+    "where it's white's move.";
+
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 8; c++) {
+      uint8_t cp = pos.SimplePieceAt(r, c);
+      uint8_t ct = cp & Position::TYPE_MASK;
+      bool cblack = (cp & Position::COLOR_MASK) == Position::BLACK;
+
+      int t = EMPTY;
+      if (cp != Position::EMPTY) {
+        t = cblack ? BLACK_START : WHITE_START;
+        switch (ct) {
+        case Position::PAWN: t += PAWN; break;
+        case Position::KNIGHT: t += KNIGHT; break;
+        case Position::BISHOP: t += BISHOP; break;
+        case Position::ROOK: [[fallthrough]];
+        case Position::C_ROOK: t += ROOK; break;
+        case Position::QUEEN: t += QUEEN; break;
+        case Position::KING: t += KING; break;
+        default:
+          LOG(FATAL) << std::format("Invalid piece? {:02x}", cp);
+        }
+      }
+
+      // The rest remain false.
+      board.props[HasContentsIdx(r, c, t)] = True();
+    }
+  }
+
+  for (bool white : {false, true}) {
+    for (bool kingside : {false, true}) {
+      if (pos.CanStillCastle(white, kingside)) {
+        board.props[CastlingIdx(white, kingside)] = True();
+      }
+    }
+  }
+
+  if (std::optional<uint8_t> oep = pos.EnPassantColumn()) {
+    board.props[EnPassantColIdx(oep.value())] = True();
+  }
+
+  return board;
+}
