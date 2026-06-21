@@ -18,6 +18,12 @@ CHESS_OBJECTS=$(CHESS)/chess.o
 OPT=-O2 -flto -g
 # OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
 
+# OPT=-O -g -fprofile-instr-generate -fcoverage-mapping
+# Coverage report:
+# ./test.exe
+# llvm-profdata merge -sparse default.profraw -o default.profdata
+# llvm-cov show ./test.exe -instr-profile=default.profdata -format=html -output-dir=coverage_report
+
 CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(CHESS) -I$(BOX2D)/include/box2d --std=c++23
 
 LFLAGS=$(OPT) --std=c++23

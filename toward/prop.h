@@ -103,8 +103,14 @@ inline Prop And(Prop first, Args... args) {
   return (std::move(first) & ... & std::move(args));
 }
 
+size_t PropSize(const Prop &prop);
+
 bool EvaluateProp(const World &world,
                   const std::vector<bool> &assignments,
                   const Prop &prop);
+
+// Conservative simplifications, especially with constant
+// values.
+Prop SimplifyProp(const Prop &prop);
 
 #endif

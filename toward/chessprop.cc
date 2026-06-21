@@ -58,7 +58,9 @@ Board ChessProp::NewBoard(World *world) {
   Board board;
   board.props.resize(NUM_BOARD_PROPS);
   auto SetSym = [start, world, &board](int idx, std::string_view s) {
-      CHECK(world->symbol_names[start + idx].empty());
+      CHECK(world->symbol_names[start + idx].empty()) <<
+        start << " + " << idx << "... already has " <<
+        world->symbol_names[start + idx];
       world->symbol_names[start + idx] = std::move(s);
       board.props[idx] = {Var{.id = (int)start + idx}};
     };

@@ -5,11 +5,12 @@
 #include <string>
 #include <vector>
 
+#include "ansi.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "chess.h"
 #include "prop.h"
-#include "ansi.h"
 
 static void CheckAttacked(const Position &pos) {
   CHECK(!pos.BlackMove());
@@ -118,6 +119,27 @@ static void TestOutOfCheck() {
   CheckAllMovesAgree(pos);
 }
 
+static void PropSizeHisto() {
+  AutoHisto hist(10000);
+  World world;
+  ChessProp::Board board = ChessProp::NewBoard(&world);
+  CHECK(world.symbol_names.size() == ChessProp::NUM_BOARD_PROPS);
+
+  for (int srcr = 0; srcr < 8; srcr++) {
+    for (int srcc = 0; srcc < 8; srcc++) {
+      for (int dstr = 0; dstr < 8; dstr++) {
+        for (int dstc = 0; dstc < 8; dstc++) {
+          Prop prop =
+            SimplifyProp(ChessProp::IsLegal(board, srcr, srcc, dstr, dstc));
+          hist.Observe(PropSize(prop));
+        }
+      }
+    }
+  }
+
+  Print("{}", hist.SimpleANSI(40));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -125,6 +147,8 @@ int main(int argc, char **argv) {
   TestEnPassant();
   TestCastling();
   TestOutOfCheck();
+
+  PropSizeHisto();
 
   Print("OK\n");
   return 0;

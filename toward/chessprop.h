@@ -76,7 +76,7 @@ struct ChessProp {
   }
 
   static int CastlingIdx(bool white, bool kingside) {
-    int off = (white ? 0b10 : 0b00) | (kingside ? 0b01 : 0b01);
+    int off = (white ? 0b10 : 0b00) | (kingside ? 0b01 : 0b00);
     return 8 * 8 * NUM_TYPES + 8 + off;
   }
 
