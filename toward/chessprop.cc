@@ -252,6 +252,56 @@ Prop Attacked(int r, int c) {
   return Or(pawn, knight, traced, king);
 }
 
+// True if the king is attacked in the resulting state.
+// We should take a modified board. This will only be
+// used for non-king and non-ep moves, so we can assume that the
+// src is vacated by the move and the dst is populated
+// by a white piece/pawn (not king).
+//
+// Castling is a king move and moving into check is already
+// handled by king movement code.
+//
+// en passant captures are an annoying corner case. Here the
+// modified board doesn't just move the src to the dst; we
+// also need to vacate the captured pawn. (Consider "K1Pp1r"
+// where white captures its adjacent pawn en passant,
+// revealing a discovered attack from the rook on the king.)
+// Fortunately there are only 14 distinct en passant
+// captures, so we don't get a huge combinatorial blow-up.
+// Some clever optimization may be possible here; I think
+// that a discovered attack through the captured pawn can
+// only come from a rook or queen on the same file. It can't
+// be along the vertical (the white pawn is now in the way)
+// or the diagonal (we know black's last move was a double
+// pawn move, but then white would have already been in
+// check along that diagonal; this situation is impossible!).
+// So rather than a fully different board, we could just
+// OR the standard one with a check for this one kind of
+// configuration along just that row.
+Prop KingAttackedAfter(int srcr, int srcc, int dstr, int dstc) {
+
+  Prop any_attacked = False();
+
+  // Loop over all possible king positions.
+  for (int kr = 0; kr < 8; kr++) {
+    for (int kc = 0; kc < 8; kc++) {
+      // Since we know this is not a king move (and we can assume it
+      // is otherwise valid) we do not need to include the
+      // src and dst.
+      if ((kr == srcr && kc == srcc) ||
+          (kr == dstr && kc == dstc)) {
+        continue;
+      }
+
+      // ... XXX but in the modified board ...
+      any_attacked = any_attacked |
+        (HasContents(kr, kc, WHITE_KING) & Attacked(kr, kc));
+    }
+  }
+
+  return any_attacked;
+}
+
 // Is it legal to move the white pawn at srcr, srcc to
 // dstr, dstc? This includes promotions (where we assume a
 // promotion to queen).
