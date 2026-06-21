@@ -1,17 +1,42 @@
 
 #include "chessprop.h"
 
+#include <format>
+#include <string>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/print.h"
 #include "chess.h"
 #include "prop.h"
 #include "ansi.h"
-#include <format>
-#include <string>
-#include <vector>
 
-static void CheckAllMovesAgrees(const Position &pos) {
+static void CheckAttacked(const Position &pos) {
+  CHECK(!pos.BlackMove());
+  ChessProp::Board board = ChessProp::BoardFromPosition(pos);
+  World empty_world;
+  std::vector<bool> empty_assignments;
+
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 8; c++) {
+      bool expected = pos.Attacked(r, c);
+
+      Prop attacked = ChessProp::Attacked(board, r, c);
+      bool actual = EvaluateProp(empty_world, empty_assignments, attacked);
+
+      if (expected != actual) {
+        Print("FEN: {}\n", pos.ToFEN(0, 1));
+        Print("At r={}, c={}\n", r, c);
+        Print("Actual: {}, Expected: {}\n",
+              actual ? "attacked" : "safe",
+              expected ? "attacked" : "safe");
+        LOG(FATAL) << "Failed";
+      }
+    }
+  }
+}
+
+static void CheckAllMovesAgree(const Position &pos) {
   CHECK(!pos.BlackMove());
   ChessProp::Board board = ChessProp::BoardFromPosition(pos);
   World empty_world;
@@ -63,7 +88,8 @@ static void CheckAllMovesAgrees(const Position &pos) {
 
 static void TestStartingPosition() {
   Position pos;
-  CheckAllMovesAgrees(pos);
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
 }
 
 static void TestEnPassant() {
@@ -71,13 +97,25 @@ static void TestEnPassant() {
   CHECK(Position::ParseFEN(
             "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR "
             "w KQkq d6 0 2", &pos));
-  CheckAllMovesAgrees(pos);
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
 }
 
 static void TestCastling() {
   Position pos;
   CHECK(Position::ParseFEN("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", &pos));
-  CheckAllMovesAgrees(pos);
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+}
+
+static void TestOutOfCheck() {
+  Position pos;
+  // White in check; lots of options to block or escape.
+  CHECK(Position::ParseFEN(
+            "rnb1kbnr/pppp1ppp/1B6/q2Np3/8/8/1PP1P1PP/RNBQK2R "
+            "w KQkq - 0 1", &pos));
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
 }
 
 int main(int argc, char **argv) {
@@ -86,6 +124,7 @@ int main(int argc, char **argv) {
   TestStartingPosition();
   TestEnPassant();
   TestCastling();
+  TestOutOfCheck();
 
   Print("OK\n");
   return 0;

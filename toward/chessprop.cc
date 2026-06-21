@@ -143,7 +143,7 @@ inline Prop OnBoardAndHasContents(const Board &board,
 
 // True if the square is attacked by a black piece.
 // (Can't castle out of check, etc.)
-Prop Attacked(const Board &board, int r, int c) {
+Prop ChessProp::Attacked(const Board &board, int r, int c) {
   Prop knight = False();
   Prop king = False();
   for (int dr = -2; dr <= +2; dr++) {
@@ -159,7 +159,8 @@ Prop Attacked(const Board &board, int r, int c) {
           OnBoardAndHasContents(board, r + dr, c + dc, BLACK_KNIGHT);
       }
 
-      if (distr == 1 || distc == 1) {
+      if (distr <= 1 && distc <= 1 &&
+          (distr == 1 || distc == 1)) {
         king = king |
           OnBoardAndHasContents(board, r + dr, c + dc, BLACK_KING);
       }
@@ -196,7 +197,7 @@ Prop Attacked(const Board &board, int r, int c) {
             // Bishop (and queen).
             attacked_from_here =
               HasContents(board, r, c, BLACK_QUEEN) |
-              HasContents(board, r, c, BLACK_ROOK);
+              HasContents(board, r, c, BLACK_BISHOP);
 
           } else {
             LOG(FATAL) << "Invalid trace direction.";
@@ -246,8 +247,29 @@ Prop Attacked(const Board &board, int r, int c) {
 Prop KingAttackedAfter(const Board &board_before,
                        int srcr, int srcc, int dstr, int dstc) {
 
-  // FIXME
-  const Board &board = board_before;
+  Board board = board_before;
+  // The source is empty.
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    if (t == EMPTY) {
+      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = True();
+    } else {
+      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = False();
+    }
+  }
+
+  // And the destination has the source piece.
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] =
+      board_before.props[ChessProp::HasContentsIdx(srcr, srcc, t)];
+  }
+  // But as an optimization, we can actually assume it now contains a
+  // white piece (and not the King). All legal moves do this. This
+  // helps interrupt traces unconditionally (not empty, not an attacking
+  // piece).
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    if (t == EMPTY || ChessProp::IsBlackPiece(t) || t == WHITE_KING)
+      board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] = False();
+  }
 
   Prop any_attacked = False();
 
@@ -262,18 +284,36 @@ Prop KingAttackedAfter(const Board &board_before,
         continue;
       }
 
-      // ... XXX but in the modified board ...
       any_attacked = any_attacked |
-        (HasContents(board, kr, kc, WHITE_KING) & Attacked(board, kr, kc));
+        (HasContents(board, kr, kc, WHITE_KING) &
+         ChessProp::Attacked(board, kr, kc));
     }
   }
 
   return any_attacked;
 }
 
+Prop EnPassantLegal(const Board &board,
+                    int srcr, int srcc, int dstr, int dstc) {
+  int dc = dstc - srcc;
+
+  // Only on this specific row.
+  if (srcr != 3 || dstr != 2 || !(dc == -1 || dc == 1))
+    return False();
+
+  // En passant column also implies the destination is empty,
+  // and there's a pawn to be captured.
+  Prop legal = EnPassantCol(board, dstc);
+
+  // TODO: Not moving into check.
+  // This requires some special logic to remove the captured piece!
+  return legal;
+}
+
 // Is it legal to move the white pawn at srcr, srcc to
 // dstr, dstc? This includes promotions (where we assume a
-// promotion to queen).
+// promotion to queen) but NOT en passant captures.
+// Assumes the source piece is a pawn, and not moving into check.
 Prop PawnLegal(const Board &board, int srcr, int srcc, int dstr, int dstc) {
   // Can't move into bottom two rows.
   if (dstr >= 6) return False();
@@ -301,14 +341,6 @@ Prop PawnLegal(const Board &board, int srcr, int srcc, int dstr, int dstc) {
   Prop legal_capture =
     (dist == -1 && diagonal) ? IsCapturable(board, dstr, dstc) : False();
 
-  // En passant capture.
-  Prop legal_en_passant =
-    (dist == -1 && diagonal && srcr == 3) ?
-    // En passant column also implies the destination is empty,
-    // and there's a pawn to be captured.
-    EnPassantCol(board, dstc) :
-    False();
-
   // Regular push.
   Prop legal_single =
     (dist == -1 && vertical) ?
@@ -319,8 +351,7 @@ Prop PawnLegal(const Board &board, int srcr, int srcc, int dstr, int dstc) {
   // to move into the square, it's legal to promote to
   // queen, which is the assumption.
 
-  // TODO: Not moving into check.
-  return Or(legal_single, legal_double, legal_capture, legal_en_passant);
+  return Or(legal_single, legal_double, legal_capture);
 }
 
 // Return the step (-1, 0, or 1) in the row and column directions for
@@ -349,6 +380,8 @@ GetDir(int srcr, int srcc, int dstr, int dstc) {
 }
 
 // Normal rook moves; castling is represented by moving the king.
+// Assumes source piece is a rook or queen, and is not moving into
+// check.
 Prop RookLegal(const Board &board,
                int srcr, int srcc, int dstr, int dstc) {
 
@@ -384,6 +417,8 @@ Prop RookLegal(const Board &board,
                   IsEmpty(board, dstr, dstc));
 }
 
+// Assumes source piece is a bishop or queen, and is not moving into
+// check.
 Prop BishopLegal(const Board &board,
                  int srcr, int srcc, int dstr, int dstc) {
   const auto dir = GetDir(srcr, srcc, dstr, dstc);
@@ -402,14 +437,13 @@ Prop BishopLegal(const Board &board,
     CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
   }
 
-  // TODO: Not moving into check.
   return clear & (IsCapturable(board, dstr, dstc) |
                   IsEmpty(board, dstr, dstc));
 }
 
+// Assumes source piece is a knight, and is not moving into check.
 Prop KnightLegal(const Board &board,
                  int srcr, int srcc, int dstr, int dstc) {
-
   // This is simpler than the above because we don't need to
   // check anything in between.
   int distr = std::abs(dstr - srcr);
@@ -419,10 +453,10 @@ Prop KnightLegal(const Board &board,
   if (!((distr == 2 && distc == 1) ||
         (distr == 1 && distc == 2))) return False();
 
-  // TODO: No moving into check.
   return IsCapturable(board, dstr, dstc) | IsEmpty(board, dstr, dstc);
 }
 
+// Must do its own move-into-check logic.
 Prop KingLegal(const Board &board,
                int srcr, int srcc, int dstr, int dstc) {
 
@@ -453,23 +487,23 @@ Prop KingLegal(const Board &board,
       // (Which implies a rook in the corner.)
       Castling(board, true, kingside) &
       // Can't castle out of check.
-      -Attacked(board, 7, 4);
+      -ChessProp::Attacked(board, 7, 4);
 
     // Also: Squares in between can't be attacked.
     if (kingside) {
       castling_move = castling_move &
         IsEmpty(board, 7, 5) &
         IsEmpty(board, 7, 6) &
-        -Attacked(board, 7, 5) &
-        -Attacked(board, 7, 6);
+        -ChessProp::Attacked(board, 7, 5) &
+        -ChessProp::Attacked(board, 7, 6);
     } else {
       castling_move = castling_move &
         IsEmpty(board, 7, 1) &
         IsEmpty(board, 7, 2) &
         IsEmpty(board, 7, 3) &
-        -Attacked(board, 7, 1) &
-        -Attacked(board, 7, 2) &
-        -Attacked(board, 7, 3);
+        -ChessProp::Attacked(board, 7, 1) &
+        -ChessProp::Attacked(board, 7, 2) &
+        -ChessProp::Attacked(board, 7, 3);
     }
   }
 
@@ -478,7 +512,7 @@ Prop KingLegal(const Board &board,
   // cannot cause a discovered check (on white). (Note that this would
   // be possible in Chess960.)
   return And(Or(normal_move, castling_move),
-             -(Attacked(board, dstr, dstc)));
+             -(ChessProp::Attacked(board, dstr, dstc)));
 }
 
 
@@ -505,29 +539,42 @@ Prop ChessProp::IsLegal(const Board &board,
   // Self-moves are never legal.
   if (srcr == dstr && srcc == dstc) return False();
 
-  // Now this is structured as a case analysis. We know that
-  // the contents props are mutually disjoint, so we can
-  // just OR all of the cases together.
+  // Most piece moves test that the king is not in check the same
+  // way: They remove the source piece and overwrite the destination.
+  Prop simple_not_into_check =
+    -KingAttackedAfter(board, srcr, srcc, dstr, dstc);
 
-  return Or(
-      HasContents(board, srcr, srcc, WHITE_PAWN) &
-      PawnLegal(board, srcr, srcc, dstr, dstc),
+  Prop simple_piece_move =
+    simple_not_into_check &
+    Or(HasContents(board, srcr, srcc, WHITE_PAWN) &
+       PawnLegal(board, srcr, srcc, dstr, dstc),
 
-      // To reduce expression size, we treat the queen as both a
-      // rook and bishop.
-      (HasContents(board, srcr, srcc, WHITE_ROOK) |
-       HasContents(board, srcr, srcc, WHITE_QUEEN)) &
-      RookLegal(board, srcr, srcc, dstr, dstc),
+       // To reduce expression size, we treat the queen as both a
+       // rook and bishop.
+       (HasContents(board, srcr, srcc, WHITE_ROOK) |
+        HasContents(board, srcr, srcc, WHITE_QUEEN)) &
+       RookLegal(board, srcr, srcc, dstr, dstc),
 
-      (HasContents(board, srcr, srcc, WHITE_BISHOP) |
-       HasContents(board, srcr, srcc, WHITE_QUEEN)) &
-      BishopLegal(board, srcr, srcc, dstr, dstc),
+       (HasContents(board, srcr, srcc, WHITE_BISHOP) |
+        HasContents(board, srcr, srcc, WHITE_QUEEN)) &
+       BishopLegal(board, srcr, srcc, dstr, dstc),
 
-      HasContents(board, srcr, srcc, WHITE_KNIGHT) &
-      KnightLegal(board, srcr, srcc, dstr, dstc),
+       HasContents(board, srcr, srcc, WHITE_KNIGHT) &
+       KnightLegal(board, srcr, srcc, dstr, dstc));
 
-      HasContents(board, srcr, srcc, WHITE_KING) &
-      KingLegal(board, srcr, srcc, dstr, dstc));
+  // But king moves test check directly.
+  Prop king_move =
+    HasContents(board, srcr, srcc, WHITE_KING) &
+    KingLegal(board, srcr, srcc, dstr, dstc);
+
+  // ... and en passant has a rare corner case to deal with.
+  Prop en_passant_move =
+    HasContents(board, srcr, srcc, WHITE_PAWN) &
+    EnPassantLegal(board, srcr, srcc, dstr, dstc);
+
+  return Or(simple_piece_move,
+            king_move,
+            en_passant_move);
 }
 
 Board ChessProp::BoardFromPosition(const Position &pos) {

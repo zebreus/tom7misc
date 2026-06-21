@@ -30,6 +30,14 @@ struct ChessProp {
   static constexpr int NUM_TYPES = 13;
   static std::string_view ShortType(uint8_t t);
 
+  static bool IsBlackPiece(uint8_t t) {
+    return t >= BLACK_PAWN && t <= BLACK_KING;
+  }
+
+  static bool IsWhitePiece(uint8_t t) {
+    return t >= WHITE_PAWN && t <= WHITE_KING;
+  }
+
   static constexpr int NUM_BOARD_PROPS =
     // board contents
     8 * 8 * NUM_TYPES +
@@ -84,6 +92,8 @@ struct ChessProp {
   // just useful for testing. Must be white's move.
   static Board BoardFromPosition(const Position &pos);
 
+  // Mainly exposed for testing.
+  static Prop Attacked(const Board &board, int r, int c);
 };
 
 #endif
