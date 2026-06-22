@@ -498,15 +498,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
     const size_t idx = level->bodies.size();
 
-    // If the shape has fill, it should be a static body.
-    if (has_fill) {
-      LevelBody body;
-      body.mesh = std::move(*mesh);
-      body.color = state.fill_color;
-      body.pos = pos;
-      body.dynamic = false;
-      level->bodies.push_back(std::move(body));
-    } else if (has_stroke) {
+    if (has_stroke) {
       // If it is outlined, it should be a dynamic body.
       LevelBody body;
       // Move the mesh if we're done with it, else copy.
@@ -515,7 +507,18 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
       body.pos = pos;
       body.dynamic = true;
       level->bodies.push_back(std::move(body));
+    } else if (has_fill) {
+      // Static bodies.
+      LevelBody body;
+      body.mesh = std::move(*mesh);
+      body.color = state.fill_color;
+      body.pos = pos;
+      body.dynamic = false;
+      level->bodies.push_back(std::move(body));
+    } else {
+      LOG(FATAL) << "Checked above.";
     }
+
     CHECK(!level->bodies.empty());
     const LevelBody &body = level->bodies.back();
     Print("[{}] Add {} body at {},{} with color {:08x}\n",

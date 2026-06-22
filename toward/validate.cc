@@ -98,13 +98,15 @@ static void ValidateAll() {
   Validate(*Validation::DupSep());
   // Validate(*Validation::Xchg());
   Validate(*Validation::SepXchg());
+  Validate(*Validation::Sep00Xchg());
+  Validate(*Validation::Sep01Xchg());
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   // Validate(*Validation::SepXchg());
-  Validate(*Validation::SepXchg());
+  Validate(*Validation::Sep01Xchg());
 
   return 0;
 }

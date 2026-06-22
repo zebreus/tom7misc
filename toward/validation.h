@@ -58,6 +58,10 @@ struct Validation {
   static std::unique_ptr<ValidationInstance> Xchg();
   // Exchanges separated A and ¬A.
   static std::unique_ptr<ValidationInstance> SepXchg();
+  // Exchanges two separated zeroes.
+  static std::unique_ptr<ValidationInstance> Sep00Xchg();
+  // A separated 0 and a separated 1.
+  static std::unique_ptr<ValidationInstance> Sep01Xchg();
 
   // For separated inputs, we have either the given bit, or nothing.
   // SeparatedZero gives the contents of the "zero" chute when the

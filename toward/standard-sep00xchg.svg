@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <g opacity=".05">
+    <rect width="1920" height="1080" fill="#fff"/>
+  </g>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <rect x="1460" width="100" height="100" fill="#aff"/>
+  <rect x="1500" y="960" width="100" height="120" fill="#faa"/>
+  <text transform="translate(1315.689 45)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">sep 0 A</tspan></text>
+  <text transform="translate(1360.0001 1034.9998)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0 A</tspan></text>
+  <rect x="260" y="960" width="100" height="120" fill="#faa"/>
+  <text transform="translate(405.0001 1034.9998)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0 B</tspan></text>
+  <rect x="260" width="100" height="100" fill="#aff"/>
+  <text transform="translate(381.378 45)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">sep 0 A</tspan></text>
+  <text transform="translate(725 125)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">Exchange separated 0</tspan><tspan x="0" y="57.6">with a separated 0</tspan></text>
+  <polygon points="260 100 260 200 740 500 740 525 240 220 240 100 260 100" fill="#123456"/>
+  <path d="M1370,641c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M1370,701c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M1370,640c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM1370,700c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <polygon points="1400 720 1340 720 1480 840 1500 840 1400 720" fill="#dd2500"/>
+  <rect x="1600" y="485" width="20" height="475" fill="#dd2500"/>
+  <rect x="1480" y="840" width="20" height="120" fill="#dd2500"/>
+  <polyline points="460 605 360 920 360 960 380 960 380 935 500 630 500 605" fill="#6b00ee"/>
+  <polyline points="1530 240 1560 100 1580 100 1555 250 1160 580 1160 550" fill="#6b00ee"/>
+  <rect x="240" y="400" width="20" height="560" fill="#6b00ee"/>
+  <path d="M480,526c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M480,586c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M480,525c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM480,585c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <polygon points="1140 580 525 580 525 560 1120 560 1120 440 1140 440 1140 580" fill="none" stroke="#0c2" stroke-miterlimit="10"/>
+  <rect x="550" y="580" width="10" height="20" fill="#6b00ee"/>
+  <rect x="1080" y="580" width="10" height="20" fill="#6b00ee"/>
+  <rect x="810" y="580" width="10" height="20" fill="#6b00ee"/>
+  <rect x="550" y="540" width="10" height="20" fill="#6b00ee"/>
+  <rect x="1080" y="540" width="10" height="20" fill="#6b00ee"/>
+  <rect x="810" y="540" width="10" height="20" fill="#6b00ee"/>
+  <rect x="1240" y="700" width="10" height="20" fill="#6b00ee"/>
+  <rect x="1240" y="660" width="10" height="20" fill="#6b00ee"/>
+  <rect x="840" y="700" width="10" height="20" fill="#6b00ee"/>
+  <rect x="840" y="660" width="10" height="20" fill="#6b00ee"/>
+  <rect x="380" y="940" width="1100" height="20" fill="#c9cc00"/>
+  <path d="M780,560h-20v-140h20v140ZM760,700h560v-20h-540v-100h-20v120Z" fill="none" stroke="#d00" stroke-miterlimit="10"/>
+</svg>
