@@ -90,5 +90,9 @@ chessprop_test.exe : chessprop_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+circuit_test.exe : circuit_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe
