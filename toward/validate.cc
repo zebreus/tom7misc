@@ -3,6 +3,7 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -16,12 +17,31 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "validation.h"
+#include "util.h"
 
 // TODO: We should really test the possibility that one input
 // arrives way before the other. Initial velocities mostly
 // cover the cases of interference coincidences, I think?
 
-static void Validate(const ValidationInstance &inst) {
+static void RemoveValidationImages() {
+  // So lifetime is simple for async.
+  std::vector<std::string> files = Util::ListFiles(".");
+  int deleted = 0;
+  {
+    Asynchronously async(8);
+    for (const std::string &f : files) {
+      if (Util::MatchesWildcard("validate-*.png", f)) {
+        deleted++;
+        async.Run([&]{ (void)Util::RemoveFile(f); });
+      }
+    }
+  }
+  Print("Deleted {} image files.\n", deleted);
+}
+
+static bool Validate(const ValidationInstance &inst) {
+  RemoveValidationImages();
+
   static constexpr int NUM_TRIALS = 10000;
   ArcFour rc("validate");
   std::unique_ptr<Level> base_level = Validation::Load(inst);
@@ -88,25 +108,41 @@ static void Validate(const ValidationInstance &inst) {
         inst.Filename(),
         correct_count, NUM_TRIALS,
         (correct_count * 100.0) / done);
+
+  return correct_count == NUM_TRIALS;
 }
 
 [[maybe_unused]]
 static void ValidateAll() {
-  Validate(*Validation::And());
-  Validate(*Validation::Separator());
-  Validate(*Validation::Not());
-  Validate(*Validation::DupSep());
-  // Validate(*Validation::Xchg());
-  Validate(*Validation::SepXchg());
-  Validate(*Validation::Sep00Xchg());
-  Validate(*Validation::Sep01Xchg());
+  CHECK(Validate(*Validation::And()));
+  CHECK(Validate(*Validation::Separator()));
+  CHECK(Validate(*Validation::Not()));
+  CHECK(Validate(*Validation::DupSep()));
+  CHECK(Validate(*Validation::SepXchg()));
+  CHECK(Validate(*Validation::Sep00Xchg()));
+  CHECK(Validate(*Validation::Sep01Xchg()));
+  CHECK(Validate(*Validation::Sep10Xchg()));
+  CHECK(Validate(*Validation::Sep11Xchg()));
+}
+
+static void ValidateWires() {
+  CHECK(Validate(*Validation::WireA0()));
+  CHECK(Validate(*Validation::WireAN1()));
+  CHECK(Validate(*Validation::WireAN2()));
+  CHECK(Validate(*Validation::WireAN4()));
+  CHECK(Validate(*Validation::WireAN8()));
+  CHECK(Validate(*Validation::WireAN16()));
+  CHECK(Validate(*Validation::WireAN32()));
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
+
   // Validate(*Validation::SepXchg());
-  Validate(*Validation::Sep01Xchg());
+  // Validate(*Validation::Sep11Xchg());
+
+  CHECK(Validate(*Validation::WireAN32()));
 
   return 0;
 }

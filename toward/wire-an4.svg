@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <g opacity=".05">
+    <rect width="1920" height="1080" fill="#fff"/>
+  </g>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <rect x="40" y="960" width="100" height="120" fill="#faa"/>
+  <text transform="translate(185 1034.9998)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">A</tspan></text>
+  <rect x="120" width="100" height="100" fill="#aff"/>
+  <text transform="translate(75 55)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">A</tspan></text>
+  <polygon points="100 100 120 100 45 200 85 620 140 700 40 840 40 960 20 960 20 180 100 100" fill="#b36a16"/>
+  <polygon points="240 100 155 275 165 525 255 580 260 805 140 940 140 960 160 960 280 825 280 120 260 100 240 100" fill="#b36a16"/>
+</svg>

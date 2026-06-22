@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -116,8 +117,7 @@ struct DupSepValidation : public ValidationInstance {
   }
 };
 
-
-struct XchgValidation : public ValidationInstance {
+struct [[maybe_unused]] XchgValidation : public ValidationInstance {
   std::string_view Filename() const override { return "xchg1.svg"; }
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
@@ -230,6 +230,93 @@ struct Sep01XchgValidation : public ValidationInstance {
   }
 };
 
+// We should also be able to do something like this by
+// flipping along the x-axis.
+struct Sep10XchgValidation : public ValidationInstance {
+  std::string_view Filename() const override {
+    return "standard-sep01xchg.svg";
+  }
+  int ExpectedInputs() const override { return 2; }
+  int ExpectedOutputs() const override { return 2; }
+
+  bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b10);
+    bool b = !!(seed & 0b01);
+
+    ChuteValue sep_a = Validation::SeparatedOne(a);
+    ChuteValue sep_b = Validation::SeparatedZero(b);
+
+    ValidationSample ret;
+    ret.input_values.push_back(sep_a);
+    ret.input_values.push_back(sep_b);
+
+    ret.valid_outputs = {{sep_b, sep_a}};
+    return ret;
+  }
+};
+
+struct Sep11XchgValidation : public ValidationInstance {
+  std::string_view Filename() const override {
+    return "standard-sep11xchg.svg";
+  }
+  int ExpectedInputs() const override { return 2; }
+  int ExpectedOutputs() const override { return 2; }
+
+  bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    bool a = !!(seed & 0b10);
+    bool b = !!(seed & 0b01);
+
+    ChuteValue sep_a = Validation::SeparatedOne(a);
+    ChuteValue sep_b = Validation::SeparatedOne(b);
+
+    ValidationSample ret;
+    ret.input_values.push_back(sep_a);
+    ret.input_values.push_back(sep_b);
+
+    ret.valid_outputs = {{sep_b, sep_a}};
+    return ret;
+  }
+};
+
+// All wires have the same behavior, just different geometry.
+struct WireValidation : public ValidationInstance {
+  WireValidation(std::string_view file) : filename(file) {}
+  std::string_view Filename() const override {
+    return filename;
+  }
+  int ExpectedInputs() const override { return 1; }
+  int ExpectedOutputs() const override { return 1; }
+
+  bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+
+    // This should work for 0, 1, and nothing.
+    // Since nothing is generally trivial (no dynamic bodies)
+    // we do this rarely.
+    ChuteValue v = ChuteValue::NOTHING;
+    if (((seed >> 32) & 127) != 0) {
+      bool a = !!(seed & 0b01);
+      v = a ? ChuteValue::ONE : ChuteValue::ZERO;
+    }
+
+    ValidationSample ret;
+    ret.input_values.push_back(v);
+
+    ret.valid_outputs = {{v}};
+    return ret;
+  }
+
+ private:
+  std::string filename;
+};
 
 
 }  // namespace
@@ -250,10 +337,6 @@ std::unique_ptr<ValidationInstance> Validation::DupSep() {
   return std::make_unique<DupSepValidation>();
 }
 
-std::unique_ptr<ValidationInstance> Validation::Xchg() {
-  return std::make_unique<XchgValidation>();
-}
-
 std::unique_ptr<ValidationInstance> Validation::SepXchg() {
   return std::make_unique<SepXchgValidation>();
 }
@@ -264,6 +347,42 @@ std::unique_ptr<ValidationInstance> Validation::Sep00Xchg() {
 
 std::unique_ptr<ValidationInstance> Validation::Sep01Xchg() {
   return std::make_unique<Sep01XchgValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::Sep10Xchg() {
+  return std::make_unique<Sep01XchgValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::Sep11Xchg() {
+  return std::make_unique<Sep11XchgValidation>();
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireA0() {
+  return std::make_unique<WireValidation>("wire-a0.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN1() {
+  return std::make_unique<WireValidation>("wire-an1.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN2() {
+  return std::make_unique<WireValidation>("wire-an2.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN4() {
+  return std::make_unique<WireValidation>("wire-an4.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN8() {
+  return std::make_unique<WireValidation>("wire-an8.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN16() {
+  return std::make_unique<WireValidation>("wire-an16.svg");
+}
+
+std::unique_ptr<ValidationInstance> Validation::WireAN32() {
+  return std::make_unique<WireValidation>("wire-an32.svg");
 }
 
 
