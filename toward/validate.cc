@@ -103,6 +103,7 @@ static void ValidateAll() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  // Validate(*Validation::SepXchg());
   Validate(*Validation::SepXchg());
 
   return 0;

@@ -91,6 +91,7 @@ static void TestStartingPosition() {
   Position pos;
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
+  Print("Starting position OK.\n");
 }
 
 static void TestEnPassant() {
@@ -100,13 +101,26 @@ static void TestEnPassant() {
             "w KQkq d6 0 2", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
+  Print("En passant OK.\n");
 }
 
 static void TestCastling() {
   Position pos;
-  CHECK(Position::ParseFEN("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", &pos));
+  CHECK(Position::ParseFEN(
+            // White can castle on both sides.
+            "qr2k2r/8/8/8/8/8/8/R3K2R w KQk - 0 1", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
+  Print("Castling OK.\n");
+}
+
+static void TestKingMoving() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "k3r3/8/8/8/4K3/8/8/8 w - - 0 1", &pos));
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+  Print("King Moving OK.\n");
 }
 
 static void TestOutOfCheck() {
@@ -117,6 +131,7 @@ static void TestOutOfCheck() {
             "w KQkq - 0 1", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
+  Print("Out of Check OK.\n");
 }
 
 static void PropSizeHisto() {
@@ -143,10 +158,15 @@ static void PropSizeHisto() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  Print("\nTest Attacked / IsLegal...\n");
+
   TestStartingPosition();
   TestEnPassant();
   TestCastling();
   TestOutOfCheck();
+  TestKingMoving();
+
+  Print("Prop size histo:\n");
 
   PropSizeHisto();
 

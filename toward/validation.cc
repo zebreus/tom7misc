@@ -15,11 +15,14 @@
 
 namespace {
 struct AndValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "and8.svg"; }
+  std::string_view Filename() const override {
+    return "standard-and.svg";
+  }
   int ExpectedInputs() const override { return 4; }
   int ExpectedOutputs() const override { return 1; }
 
   bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -40,11 +43,14 @@ struct AndValidation : public ValidationInstance {
 };
 
 struct SeparatorValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "separator.svg"; }
+  std::string_view Filename() const override {
+    return "standard-separator.svg";
+  }
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 2; }
 
   bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -60,12 +66,17 @@ struct SeparatorValidation : public ValidationInstance {
   }
 };
 
+// I think this is still not 100% because the 1 can bonk the
+// 1 on the way down.
 struct NotValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "not8.svg"; }
+  std::string_view Filename() const override {
+    return "standard-not.svg";
+  }
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 1; }
 
   bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -79,11 +90,14 @@ struct NotValidation : public ValidationInstance {
 };
 
 struct DupSepValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "dupsep2.svg"; }
+  std::string_view Filename() const override {
+    return "standard-dupsep.svg";
+  }
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 4; }
 
   bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -128,11 +142,14 @@ struct XchgValidation : public ValidationInstance {
 };
 
 struct SepXchgValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "sepxchg1.svg"; }
+  std::string_view Filename() const override {
+    return "standard-sepxchg.svg";
+  }
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
 
   bool AddInputWalls() const override { return true; }
+  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool chirality = !!(seed & 0b01);
@@ -211,7 +228,7 @@ bool Validation::IsValidOutput(const ValidationSample &sample,
 // TODO: This should also sample the one bit at different angles,
 // but we need to account for the fact that this changes the valid
 // x positions.
-LevelBody Validation::SampleInput(uint64_t seed, vec2f input_pos, bool bit) {
+LevelBody Validation::SampleInput(uint64_t seed, int input_left, bool bit) {
   PCG32 pcg(seed);
   LevelBody body = bit ? Levels::One() : Levels::Zero();
   body.color = bit ? 0x00FF00FF : 0xFF0000FF;
@@ -233,8 +250,8 @@ LevelBody Validation::SampleInput(uint64_t seed, vec2f input_pos, bool bit) {
   };
 
   vec2f in_topleft = {
-    .x = input_pos.x - in_width / 2.0f,
-    .y = input_pos.y - in_height / 2.0f,
+    .x = input_left * Levels::BLOCK_SIZE,
+    .y = Levels::IN_Y * Levels::BLOCK_SIZE,
   };
 
   body.pos = in_topleft + offset;
@@ -250,16 +267,29 @@ std::unique_ptr<Level> Validation::Load(const ValidationInstance &inst) {
         level->outputs.size() == (size_t)inst.ExpectedOutputs());
 
   if (inst.AddInputWalls()) {
-    // Add vertical walls on the sides of the inputs. Perhaps these
-    // should be modeled in the level?
-    for (const vec2f inpos : level->inputs) {
+    // Add vertical walls on the sides of the inputs.
+    for (int in_left : level->inputs) {
       int blockheight = Levels::IN_HEIGHT;
-      for (float s : { -1.0f, +1.0f }) {
+      for (int s : { -1, Levels::IN_WIDTH }) {
         vec2f pos = {
-          .x = inpos.x + s * (Levels::IN_WIDTH * Levels::BLOCK_SIZE * 0.5f +
-                              // wall itself
-                              Levels::BLOCK_SIZE * 0.5f),
-          .y = inpos.y,
+          .x = (in_left + s + 0.5f) * Levels::BLOCK_SIZE,
+          .y = (Levels::IN_Y + Levels::IN_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
+        };
+        LevelBody wall = Levels::WallRect(pos, 1, blockheight);
+        wall.color = 0x888888FF;
+        level->bodies.push_back(std::move(wall));
+      }
+    }
+  }
+
+  if (inst.AddOutputWalls()) {
+    // Add vertical walls on the sides of the outputs.
+    for (int out_left : level->outputs) {
+      int blockheight = Levels::OUT_HEIGHT;
+      for (int s : { -1, Levels::OUT_WIDTH }) {
+        vec2f pos = {
+          .x = (out_left + s + 0.5f) * Levels::BLOCK_SIZE,
+          .y = (Levels::OUT_Y + Levels::OUT_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
         };
         LevelBody wall = Levels::WallRect(pos, 1, blockheight);
         wall.color = 0x888888FF;
@@ -271,12 +301,11 @@ std::unique_ptr<Level> Validation::Load(const ValidationInstance &inst) {
   // We need to stop objects from leaving the bottom of the output cup.
   // The levels have rails modeled on the left and right sides, but
   // we add an artificial bottom piece during validation.
-  for (const vec2f outpos : level->outputs) {
+  for (int out_left : level->outputs) {
     int blockwidth = Levels::OUT_WIDTH + 2;
     vec2f pos = {
-      .x = outpos.x,
-      .y = outpos.y + (Levels::OUT_HEIGHT * Levels::BLOCK_SIZE) / 2.0f +
-      Levels::BLOCK_SIZE / 2.0f
+      .x = (out_left + Levels::OUT_WIDTH / 2.0f) * Levels::BLOCK_SIZE,
+      .y = (Levels::OUT_Y + Levels::OUT_HEIGHT + 0.5f) * Levels::BLOCK_SIZE,
     };
     LevelBody cup_bottom = Levels::WallRect(pos, blockwidth, 1);
     cup_bottom.color = 0x888888FF;
@@ -338,8 +367,8 @@ std::vector<ChuteValue> Validation::ReadOutputs(
     constexpr float out_width = Levels::OUT_WIDTH * Levels::BLOCK_SIZE;
     constexpr float out_height = Levels::OUT_HEIGHT * Levels::BLOCK_SIZE;
     for (int out_idx = 0; out_idx < inst.ExpectedOutputs(); out_idx++) {
-      float out_left = level.outputs[out_idx].x - out_width / 2.0f;
-      float out_top = level.outputs[out_idx].y - out_height / 2.0f;
+      float out_left = level.outputs[out_idx] * Levels::BLOCK_SIZE;
+      float out_top = Levels::OUT_Y * Levels::BLOCK_SIZE;
 
       if (pos.x >= out_left && pos.x <= out_left + out_width &&
           pos.y >= out_top && pos.y <= out_top + out_height) {

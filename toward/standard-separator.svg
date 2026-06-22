@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <g opacity=".05">
+    <rect width="1920" height="1080" fill="#fff"/>
+  </g>
+  <g isolation="isolate">
+    <g isolation="isolate">
+      <text transform="translate(1364.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+    </g>
+  </g>
+  <path d="M1540,930" fill="#00a"/>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <polygon points="1575 210 769.723 475.662 1585 270 1575 210" fill="#00a"/>
+  <polygon points="10 535 985 795 10 640 10 535" fill="#00a"/>
+  <polygon points="1078.296 763.821 1240 740 1239.032 790 1078.296 763.821" fill="#00a"/>
+  <rect x="1340" width="100" height="100" fill="#aff"/>
+  <rect x="980" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="1140" y="960" width="100" height="120" fill="#faa"/>
+  <polygon points="42.242 213.702 45.457 638.563 5.689 207.97 42.242 213.702" fill="#00a"/>
+  <rect x="1240" y="740" width="20" height="220" fill="#0c2"/>
+  <rect x="960" y="805" width="20" height="155" fill="#c00"/>
+  <polygon points="1080 890 1100 880 1100 960 1080 960 1080 890" fill="#c00"/>
+  <text transform="translate(1285 60)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">01</tspan></text>
+  <text transform="translate(910 1040)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">0</tspan></text>
+  <text transform="translate(1270 1030)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">1</tspan></text>
+</svg>

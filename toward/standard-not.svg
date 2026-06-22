@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <g opacity=".05">
+    <rect width="1920" height="1080" fill="#fff"/>
+  </g>
+  <path d="M1537.315,930" fill="#00a"/>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <text transform="translate(820 65)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">01</tspan></text>
+  <text transform="translate(470 1040)" font-family="MyriadPro-Regular, &apos;Myriad Pro&apos;" font-size="48"><tspan x="0" y="0">01</tspan></text>
+  <path d="M680.363,0h100v100h-100V0Z" fill="#aff"/>
+  <path d="M560.363,960h100v120h-100v-120Z" fill="#faa"/>
+  <path d="M680.363,960V430h-20v530h20Z" fill="#c00"/>
+  <path d="M240.363,555v80h20v-80h-20Z" fill="none" stroke="#f0f" stroke-width="2"/>
+  <polygon points="260.363 635 240.363 635 240.363 725 290.363 725 540.363 725 540.363 695.882 260.363 635" fill="#0057ee"/>
+  <path d="M60.363,420h20V100h-20v320Z" fill="#c7dd00"/>
+  <path d="M80.363,120h580v-20H80.363v20Z" fill="#c7dd00"/>
+  <path d="M780.363,315h20V100h-20v215Z" fill="#c7dd00"/>
+  <polygon points="405 915 385 915 385 935 404.637 960 560 960 540 930 405 915" fill="#0c2"/>
+  <path d="M180.363,822.5v117.5h20v-102.5l-5-15h-15Z" fill="#00a"/>
+  <path d="M225.363,715v145h20l12.5-220h-15l-17.5,75Z" fill="#00a"/>
+  <path d="M225.363,920h125v-5l-115-20h-10v25Z" fill="#00d"/>
+  <path d="M180.363,960h65v-20h-65v20Z" fill="#00a"/>
+  <path d="M360.363,920l-5.363-5h-4.637v5h10Z" fill="#00d"/>
+  <path d="M125.897,404.322l-85.897-4.322,60.9,70.413,98.157,349.587-73.16-415.678Z" fill="#00b7cc"/>
+  <polygon points="887.315 319.346 779.058 214.212 381.112 301.434 225.284 480.299 286.318 539.052 365.849 505.454 280.775 502.57 887.315 319.346" fill="#00b7cc"/>
+  <path d="M395,836c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M395,896c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M395,835c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM395,895c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <circle cx="230.363" cy="880" r="15.5" fill="none" stroke="#91a10a" stroke-miterlimit="10"/>
+  <polygon points="250 860 350 875 350 870 250 855 250 860" fill="#00d"/>
+</svg>

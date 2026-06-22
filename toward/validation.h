@@ -40,7 +40,9 @@ struct ValidationInstance {
   virtual int ExpectedInputs() const = 0;
   virtual int ExpectedOutputs() const = 0;
 
+  // XXX: Standardize this.
   virtual bool AddInputWalls() const { return false; }
+  virtual bool AddOutputWalls() const { return false; }
 
   virtual ValidationSample OneSample(uint64_t seed) const = 0;
   virtual ~ValidationInstance() {}
@@ -77,7 +79,7 @@ struct Validation {
 
   // Sample a 1 or 0 input (with random position/velocity/etc.) in a
   // standard input region.
-  static LevelBody SampleInput(uint64_t seed, vec2f input_pos, bool bit);
+  static LevelBody SampleInput(uint64_t seed, int input_pos, bool bit);
 
   // Clone the level. Sample the input
   static std::pair<ValidationSample, Level>

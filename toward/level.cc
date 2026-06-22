@@ -203,10 +203,60 @@ std::optional<vec2f> Levels::IsInput(const SVG::GraphicsState &outer_state,
                         IN_WIDTH, IN_HEIGHT);
 }
 
+static constexpr float IO_EPSILON = Levels::BLOCK_SIZE * (1.0f/32.0f);
+
+std::optional<int> Levels::IsStandardInput(
+    const SVG::GraphicsState &outer_state,
+    const SVG::Node &node) {
+  if (std::optional<vec2f> i = IsInput(outer_state, node)) {
+    float cx_blocks = i->x / (BLOCK_SIZE * SVG_SCALE);
+    float cy_blocks = i->y / (BLOCK_SIZE * SVG_SCALE);
+
+    float expected_cy_blocks = IN_Y + IN_HEIGHT / 2.0f;
+    float left_x_blocks = cx_blocks - IN_WIDTH / 2.0f;
+    int x_int = static_cast<int>(std::round(left_x_blocks));
+
+    float epsilon_blocks = IO_EPSILON / BLOCK_SIZE;
+
+    if (std::abs(cy_blocks - expected_cy_blocks) > epsilon_blocks ||
+        std::abs(left_x_blocks - x_int) > epsilon_blocks) {
+      Print(ARED("Warning: Saw input but it's not at a "
+                 "standard location!") "\n");
+      return std::nullopt;
+    }
+    return x_int;
+  }
+  return std::nullopt;
+}
+
 std::optional<vec2f> Levels::IsOutput(const SVG::GraphicsState &outer_state,
                                       const SVG::Node &node) {
   return IsSVGRectangle(outer_state, node, false, OUTPUT_COLOR,
                         OUT_WIDTH, OUT_HEIGHT);
+}
+
+std::optional<int> Levels::IsStandardOutput(
+    const SVG::GraphicsState &outer_state,
+    const SVG::Node &node) {
+  if (std::optional<vec2f> o = IsOutput(outer_state, node)) {
+    float cx_blocks = o->x / (BLOCK_SIZE * SVG_SCALE);
+    float cy_blocks = o->y / (BLOCK_SIZE * SVG_SCALE);
+
+    float expected_cy_blocks = OUT_Y + OUT_HEIGHT / 2.0f;
+    float left_x_blocks = cx_blocks - OUT_WIDTH / 2.0f;
+    int x_int = static_cast<int>(std::round(left_x_blocks));
+
+    float epsilon_blocks = IO_EPSILON / BLOCK_SIZE;
+
+    if (std::abs(cy_blocks - expected_cy_blocks) > epsilon_blocks ||
+        std::abs(left_x_blocks - x_int) > epsilon_blocks) {
+      Print(ARED("Warning: Saw output but it's not at a "
+                 "standard location!") "\n");
+      return std::nullopt;
+    }
+    return x_int;
+  }
+  return std::nullopt;
 }
 
 LevelBody Levels::WallRect(vec2f center,
@@ -338,15 +388,15 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
     return;
   }
 
-  if (std::optional<vec2f> in = IsInput(state, node)) {
-    Print("Got input at {},{}\n", in->x, in->y);
-    level->inputs.push_back(in.value() / SVG_SCALE);
+  if (std::optional<int> in_x = IsStandardInput(state, node)) {
+    Print("Got input at {}\n", *in_x);
+    level->inputs.push_back(*in_x);
     return;
   }
 
-  if (std::optional<vec2f> out = IsOutput(state, node)) {
-    Print("Got output at {},{}\n", out->x, out->y);
-    level->outputs.push_back(out.value() / SVG_SCALE);
+  if (std::optional<int> out_x = IsStandardOutput(state, node)) {
+    Print("Got output at {}\n", *out_x);
+    level->outputs.push_back(*out_x);
     return;
   }
 
@@ -492,9 +542,8 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
   state.transform[3] = 1.0f / SVG_SCALE;
   AddNodesToLevel(doc.root, state, level.get());
 
-  auto CmpX = [](const vec2f &a, const vec2f &b) { return a.x < b.x; };
-  std::sort(level->inputs.begin(), level->inputs.end(), CmpX);
-  std::sort(level->outputs.begin(), level->outputs.end(), CmpX);
+  std::sort(level->inputs.begin(), level->inputs.end());
+  std::sort(level->outputs.begin(), level->outputs.end());
 
   return level;
 }
@@ -534,10 +583,18 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
     root_g.children.push_back(std::move(node));
   };
 
-  for (const vec2f &pos : level.inputs) {
+  for (int x : level.inputs) {
+    vec2f pos = {
+      (x + IN_WIDTH / 2.0f) * BLOCK_SIZE,
+      (IN_Y + IN_HEIGHT / 2.0f) * BLOCK_SIZE
+    };
     AddRect(pos, IN_WIDTH, IN_HEIGHT, INPUT_COLOR);
   }
-  for (const vec2f &pos : level.outputs) {
+  for (int x : level.outputs) {
+    vec2f pos = {
+      (x + OUT_WIDTH / 2.0f) * BLOCK_SIZE,
+      (OUT_Y + OUT_HEIGHT / 2.0f) * BLOCK_SIZE
+    };
     AddRect(pos, OUT_WIDTH, OUT_HEIGHT, OUTPUT_COLOR);
   }
 

@@ -125,8 +125,7 @@ inline Prop IsCapturable(const Board &board, int r, int c) {
             HasContents(board, r, c, BLACK_KNIGHT),
             HasContents(board, r, c, BLACK_BISHOP),
             HasContents(board, r, c, BLACK_ROOK),
-            HasContents(board, r, c, BLACK_QUEEN),
-            HasContents(board, r, c, BLACK_KING));
+            HasContents(board, r, c, BLACK_QUEEN));
 }
 
 inline bool OnBoard(int r, int c) {
@@ -308,7 +307,7 @@ Prop EnPassantLegal(const Board &board,
   Prop legal = EnPassantCol(board, dstc);
 
   // TODO: Not moving into check.
-  // This requires some special logic to remove the captured piece!
+  // This requires some special logic to remove the captured pawn!
   return legal;
 }
 
@@ -414,7 +413,6 @@ Prop RookLegal(const Board &board,
     CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
   }
 
-  // TODO: Not moving into check.
   return clear & (IsCapturable(board, dstr, dstc) |
                   IsEmpty(board, dstr, dstc));
 }
@@ -503,7 +501,6 @@ Prop KingLegal(const Board &board,
         IsEmpty(board, 7, 1) &
         IsEmpty(board, 7, 2) &
         IsEmpty(board, 7, 3) &
-        -ChessProp::Attacked(board, 7, 1) &
         -ChessProp::Attacked(board, 7, 2) &
         -ChessProp::Attacked(board, 7, 3);
     }
