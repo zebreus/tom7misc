@@ -105,12 +105,19 @@ inline Prop And(Prop first, Args... args) {
 
 size_t PropSize(const Prop &prop);
 
-bool EvaluateProp(const World &world,
-                  const std::vector<bool> &assignments,
+bool EvaluateProp(const std::vector<bool> &assignments,
                   const Prop &prop);
 
 // Conservative simplifications, especially with constant
 // values.
 Prop SimplifyProp(const Prop &prop);
+
+// Return all the distinct variable indices that appear in the
+// proposition in ascending order.
+std::vector<int> PropVars(const Prop &a);
+
+// Used in tests. Semantic equality of propositions in the same world.
+// Computed by bit-blasting free variables. Not fast.
+bool PropEq(const Prop &a, const Prop &b);
 
 #endif

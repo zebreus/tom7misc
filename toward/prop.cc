@@ -1,26 +1,24 @@
 
 #include "prop.h"
 
+#include <unordered_set>
+#include <algorithm>
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <iterator>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "base/logging.h"
-
+#include "set-util.h"
 
 // TODO: Macros, simplifications, etc.
 
-bool EvaluateProp(const World &world,
-                  const std::vector<bool> &assignments,
+bool EvaluateProp(const std::vector<bool> &assignments,
                   const Prop &prop) {
-  // This is just used for error messages, but something is wrong
-  // if they're not the same size.
-  CHECK(assignments.size() == world.symbol_names.size());
-
   std::function<bool(const Prop&)> EvalRec = [&](const Prop &p) -> bool {
       if (const Value *v = std::get_if<Value>(&p.p)) {
         return v->value;
@@ -149,3 +147,63 @@ Prop SimplifyProp(const Prop &prop) {
   return SimpRec(prop);
 }
 
+// Return all the variable indices that appear in the proposition.
+std::vector<int> PropVars(const Prop &a) {
+  std::unordered_set<int> var_set;
+
+  std::function<void(const Prop&)> GetRec = [&](const Prop &p) {
+      if (std::holds_alternative<Value>(p.p)) {
+        return;
+      } else if (const Var *v = std::get_if<Var>(&p.p)) {
+        var_set.insert(v->id);
+      } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+        GetRec(*u->a);
+      } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+        GetRec(*b->a);
+        GetRec(*b->b);
+      } else {
+        LOG(FATAL) << "Bad variant?";
+      }
+    };
+
+  GetRec(a);
+
+  return SetToSortedVec(var_set);
+}
+
+
+bool PropEq(const Prop &a_in, const Prop &b_in) {
+  const Prop a = SimplifyProp(a_in);
+  const Prop b = SimplifyProp(b_in);
+
+  std::vector<int> avars = PropVars(a);
+  std::vector<int> bvars = PropVars(b);
+
+  std::vector<int> allvars;
+  // Must be at least this big. Typically we will have the same set of
+  // vars.
+  allvars.reserve(std::max(avars.size(), bvars.size()));
+
+  std::set_union(avars.begin(), avars.end(),
+                 bvars.begin(), bvars.end(),
+                 std::back_inserter(allvars));
+
+  int max_var = allvars.empty() ? -1 : allvars.back();
+
+  CHECK(allvars.size() <= 32) << "This is exponential time!";
+  uint64_t powset_size = uint64_t{1} << allvars.size();
+
+  std::vector<bool> assignments(max_var + 1, false);
+  for (uint64_t bitmask = 0; bitmask < powset_size; bitmask++) {
+    for (int i = 0; i < allvars.size(); i++) {
+      bool value = !!(bitmask & (uint64_t{1} << i));
+      assignments[allvars[i]] = value;
+    }
+    if (EvaluateProp(assignments, a) != EvaluateProp(assignments, b)) {
+      return false;
+    }
+  }
+
+  // True for any possible assignment, so they are equivalent.
+  return true;
+}

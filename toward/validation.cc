@@ -17,7 +17,7 @@
 namespace {
 struct AndValidation : public ValidationInstance {
   std::string_view Filename() const override {
-    return "standard-and.svg";
+    return "standard-and0110.svg";
   }
   int ExpectedInputs() const override { return 4; }
   int ExpectedOutputs() const override { return 1; }

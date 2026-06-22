@@ -1,5 +1,5 @@
 
-#include "layout.h"
+#include "circuit.h"
 
 #include <utility>
 #include <cstdint>
@@ -49,11 +49,11 @@ std::pair<int, int> LayerSize(const Layer &layer) {
 }
 
 std::vector<Func> TransformCell(const Cell &cell,
-                                std::span<const Func> &in) {
+                                std::span<const Func> in) {
   const auto &[num_in, num_out] = GateSize(cell.gate);
   CHECK(in.size() == num_in);
   std::vector<Func> out;
-  out.reserve(num_out);
+  out.resize(num_out);
 
   auto InputIdx = [&](int idx) {
       if (cell.flip) {
@@ -78,7 +78,24 @@ std::vector<Func> TransformCell(const Cell &cell,
   }
 
   case AND0110: {
-    LOG(FATAL) << "Unimplemented";
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    const Func &fc = in[InputIdx(2)];
+    const Func &fd = in[InputIdx(3)];
+
+    // We can assume fa.prop = -fb.prop,
+    // fc.prop = -fd.prop.
+
+    CHECK(fa.type == CType::ZERO);
+    CHECK(fb.type == CType::ONE);
+    CHECK(fc.type == CType::ONE);
+    CHECK(fd.type == CType::ZERO);
+
+    out[OutputIdx(0)] = Func{
+      .prop = fa.prop & fc.prop,
+      .type = CType::MIXED,
+    };
+
     break;
   }
 
@@ -90,8 +107,10 @@ std::vector<Func> TransformCell(const Cell &cell,
   }
 
   case SEPARATOR: {
-    // XXX Check order of outputs.
-    LOG(FATAL) << "Unimplemented";
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::MIXED);
+    out[OutputIdx(0)] = Func{.prop = f.prop, .type = CType::ZERO};
+    out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ONE};
     break;
   }
 
@@ -187,8 +206,15 @@ std::vector<Func> Transform(const Layer &layer,
   int in_idx = 0;
   int out_idx = 0;
   for (const Cell &cell : layer) {
-    // TODO
+    const auto &[cell_num_in, cell_num_out] = GateSize(cell.gate);
 
+    std::span<const Func> cell_in(in.data() + in_idx, cell_num_in);
+    std::vector<Func> cell_out = TransformCell(cell, cell_in);
+    out.insert(out.end(), cell_out.begin(), cell_out.end());
+
+    in_idx += cell_num_in;
+    out_idx += cell_num_out;
+    CHECK(out_idx == out.size());
   }
 
   CHECK(out.size() == num_outputs);
