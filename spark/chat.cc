@@ -292,8 +292,8 @@ struct Conversation {
       std::string roles = Util::Join(robot_ppts, ", ");
       req.instructions = std::format(
         // "SPECIAL INSTRUCTION: Think silently. Thinking budget: 32 tokens\n"
-        "Task: Continue the conversation in a natural way. "
-        "Respond with one or two messages, using IRC syntax:\n"
+        "Task: Continue the conversation in a natural way. Avoid repetitive "
+        "phrases. Respond with one or two messages, using IRC syntax:\n"
         "<{}> A message spoken aloud\n"
         " * {} takes an action.\n"
         "Both types of messages are seen by the chat room. "

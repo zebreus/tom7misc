@@ -2,8 +2,9 @@
 #ifndef _CC_LIB_SPAN_UTIL_H
 #define _CC_LIB_SPAN_UTIL_H
 
-#include <span>
 #include <cstddef>
+#include <initializer_list>
+#include <span>
 
 template<class CA, class CB>
 constexpr inline bool SpanEq(const CA &a, const CB &b) {
@@ -21,7 +22,7 @@ constexpr inline bool SpanEq(const CA &a, const CB &b) {
 //    return Primop(INT_PLUS, {e1, e2});
 // which works if Primop takes a std::vector<const Exp*>
 // but not if it takes a span. This class lets you write
-//    return Primop(INT_PLUS, S{e1, e2});
+//    return Primop(INT_PLUS, Span{e1, e2});
 // which forces it to construct an initializer_list and
 // pass a span viewing that. Of course you need to be
 // careful about lifetime, but the initializer_list will

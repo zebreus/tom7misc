@@ -33,10 +33,10 @@
 #ifndef _CC_LIB_BIGNUM_BIG_INTERVAL_H
 #define _CC_LIB_BIGNUM_BIG_INTERVAL_H
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
-#include <cstdint>
 
 #include "base/logging.h"
 #include "bignum/big-numbers.h"

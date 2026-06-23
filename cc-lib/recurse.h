@@ -16,8 +16,9 @@
 
 // Use like this (for an example with two args):
 //
-// auto Rec = Recursive<Ret, Arg1, Arg2>([&](const std::function<Ret(Arg1, Arg2)> &self,
-//                                           Arg1 arg1, Arg2 Arg2) {
+// auto Rec = Recursive<Ret, Arg1, Arg2>(
+//       [&](const std::function<Ret(Arg1, Arg2)> &self,
+//       Arg1 arg1, Arg2 Arg2) {
 //    ... self(b1, b2) ...
 // });
 //

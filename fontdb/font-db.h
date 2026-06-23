@@ -70,7 +70,8 @@ struct FontDB {
 
   static std::string GetBaseFilename(const std::string &ff) {
     size_t slash = ff.rfind("\\");
-    return slash == std::string::npos ? ff : ff.substr(slash + 1, std::string::npos);
+    return slash == std::string::npos ? ff :
+      ff.substr(slash + 1, std::string::npos);
   }
 
   // Returns the true state, false state.

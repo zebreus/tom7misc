@@ -1,5 +1,5 @@
-#ifndef _NUMBERS_H
-#define _NUMBERS_H
+#ifndef _CC_LIB_NUMBERS_H
+#define _CC_LIB_NUMBERS_H
 
 #include <cmath>
 #include <cstdlib>

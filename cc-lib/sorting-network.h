@@ -20,6 +20,9 @@
 // times it just makes a huge series of branches. We should see
 // if there ways to coax the compiler.
 
+#ifndef _CC_LIB_SORTING_NETWORK_H
+#define _CC_LIB_SORTING_NETWORK_H
+
 #include <cstddef>
 #include <tuple>
 #include <utility>
@@ -339,3 +342,5 @@ void FixedSort(Cont *c) {
 }
 
 inline constexpr size_t MAX_FIXED_SORT_SUPPORTED = 16;
+
+#endif

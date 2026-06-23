@@ -2,6 +2,7 @@
 #ifndef _TOWARD_LAYOUT_H
 #define _TOWARD_LAYOUT_H
 
+#include <utility>
 #include <vector>
 
 #include "prop.h"
@@ -26,33 +27,14 @@ enum class CType {
   MIXED,
 };
 
-struct CellIO {
-  // Offset of the input/output pad within the cell.
-  int xblock = 0;
-  CType type = CType::MIXED;
-};
-
-struct CellDef {
-  // Width of the cell in blocks. It's assumed that there
-  // is no geometry outside of this (including implied IO rails).
-  // All cells are the same height (48 including input, but not
-  // including output).
-  int width = 0;
-
-  // The function computed is not specified, but we do know the
-  // types of the inputs and outputs.
-  std::vector<CellIO> inputs;
-  std::vector<CellIO> outputs;
-};
-
 enum Gate : uint8_t {
   SPACER,
   AND0110,
   NOT,
   SEPARATOR,
-  // TODO: The type of a wire is special; it propagates
-  // from its input.
-  WIRE,
+  SELFXCHG,
+  WIREA,
+  WIREB,
   XCHG00,
   XCHG01,
   XCHG10,
@@ -66,6 +48,7 @@ enum Gate : uint8_t {
 struct Cell {
   Gate gate = Gate::SPACER;
   // Gates like spacers and wires are parameterized.
+  // This has unspecified meaning.
   int v = 0;
   // Flip horizontally.
   bool flip = false;

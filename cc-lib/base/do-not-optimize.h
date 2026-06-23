@@ -1,6 +1,6 @@
 
-#ifndef _BASE_DO_NOT_OPTIMIZE_H
-#define _BASE_DO_NOT_OPTIMIZE_H
+#ifndef _CC_LIB_BASE_DO_NOT_OPTIMIZE_H
+#define _CC_LIB_BASE_DO_NOT_OPTIMIZE_H
 
 // This mess of macros just defines
 //    DoNotOptimize(exp);

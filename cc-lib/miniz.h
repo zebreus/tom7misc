@@ -5,6 +5,7 @@
 // It uses a BSD-style license which I've added at the bottom
 // of this file.
 // The intent is that this is used internally by my wrappers.
+// (See for example zip.h)
 //
 // Local changes:
 //  - removed the multiple "once" pragmas in this file. I think

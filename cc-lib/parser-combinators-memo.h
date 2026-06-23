@@ -1,15 +1,21 @@
 /* Parser combinators by Tom 7.
-   I got fed up! */
+   I got fed up!
 
-#ifndef _CC_LIB_PARSE_H
-#define _CC_LIB_PARSE_H
+   I think this version is obsolete? There is a MemoizeParser
+   wrapper in parser-combinators.h.
+*/
+
+#ifndef _CC_LIB_PARSER_COMBINATORS_MEMO_H
+#define _CC_LIB_PARSER_COMBINATORS_MEMO_H
 
 #include <optional>
 #include <functional>
 #include <concepts>
+#include <string>
 #include <utility>
 #include <deque>
 #include <bit>
+#include <vector>
 
 #include "base/logging.h"
 

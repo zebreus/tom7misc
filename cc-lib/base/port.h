@@ -8,8 +8,8 @@
 // TODO(tom7): Lots of stuff in here can be replaced with standard
 // C++ now. Also, lots of it is just not used (it was Google-specific).
 
-#ifndef BASE_PORT_H_
-#define BASE_PORT_H_
+#ifndef _CC_LIB_BASE_PORT_H_
+#define _CC_LIB_BASE_PORT_H_
 
 #include <limits>
 #include <cstring>
@@ -96,7 +96,7 @@
 
 #endif
 
-// The following guarenty declaration of the byte swap functions, and
+// The following guarantee declaration of the byte swap functions, and
 // define __BYTE_ORDER for MSVC
 #ifdef COMPILER_MSVC
   #include <stdlib.h>
@@ -327,10 +327,6 @@
 // See http://people.redhat.com/drepper/tls.pdf for the gory details.
 #define ATTRIBUTE_INITIAL_EXEC __attribute__ ((tls_model ("initial-exec")))
 
-//
-// Tell the compiler that a given function never returns
-//
-#define ATTRIBUTE_NORETURN __attribute__((noreturn))
 
 // For deprecated functions, variables, and types.
 // gcc 3.1.1 and later provide this attribute.
@@ -717,12 +713,6 @@ extern inline void prefetch(const char *) {}
   #define gethostbyname gethostbyname_is_not_thread_safe_DO_NOT_USE
 #endif
 
-
-// Our STL-like classes use __STD.
-#if defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX) || defined(COMPILER_MSVC)
-  #define __STD std
-#endif
-
 #if defined COMPILER_GCC3 || defined COMPILER_ICC
   #define STREAM_SET(s, bit) (s).setstate(ios_base::bit)
   #define STREAM_SETF(s, flag) (s).setf(ios_base::flag)
@@ -793,38 +783,5 @@ extern inline void prefetch(const char *) {}
   #define UNALIGNED_LOADW(_p) UNALIGNED_LOAD32(_p)
   #define UNALIGNED_STOREW(_p, _val) UNALIGNED_STORE32(_p, _val)
 #endif
-
-// printf macros for size_t, in the style of inttypes.h
-#ifdef _LP64
-  #define __PRIS_PREFIX "z"
-#else
-  #define __PRIS_PREFIX
-#endif
-
-// Use these macros after a % in a printf format string
-// to get correct 32/64 bit behavior, like this:
-// size_t size = records.size();
-// printf("%"PRIuS"\n", size);
-
-#define PRIdS __PRIS_PREFIX "d"
-#define PRIxS __PRIS_PREFIX "x"
-#define PRIuS __PRIS_PREFIX "u"
-#define PRIXS __PRIS_PREFIX "X"
-#define PRIoS __PRIS_PREFIX "o"
-
-#define GPRIuPTHREAD "lu"
-#define GPRIxPTHREAD "lx"
-#ifdef OS_CYGWIN
-  #define PRINTABLE_PTHREAD(pthreadt) reinterpret_cast<uintptr_t>(pthreadt)
-#else
-  #define PRINTABLE_PTHREAD(pthreadt) pthreadt
-#endif
-
-#define SIZEOF_MEMBER(t, f)   sizeof(((t*) 4096)->f)
-
-#define OFFSETOF_MEMBER(t, f)         \
-  (reinterpret_cast<char*>(           \
-     &reinterpret_cast<t*>(16)->f) -  \
-   reinterpret_cast<char*>(16))
 
 #endif  // BASE_PORT_H_

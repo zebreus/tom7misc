@@ -26,9 +26,9 @@ With msys2-clang64, which is what I recommend in 2026, it worked
 great with just -lgmp after installing the package. See makefile.
 
 Include big-overloads.h for custom literal support (write 12345_b) and
-some operator overloads. I don't recommend the custom literals if you
-care about performance, because it is easy to accidentally write code
-that repeatedly parses!
+some operator overloads. The operator overloads are handy, but I don't
+recommend the custom literals if you care about performance; it is
+easy to accidentally write code that repeatedly parses!
 
 There are also some utilities for working with big numbers in here:
 

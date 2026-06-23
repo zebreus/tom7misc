@@ -5,6 +5,9 @@
 // Format reference:
 // images.autodesk.com/adsk/files/autocad_2012_pdf_dxf-reference_enu.pdf
 
+#ifndef _CC_LIB_SIMPLEDXF_H
+#define _CC_LIB_SIMPLEDXF_H
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -62,3 +65,5 @@ struct SimpleDXF {
       const std::vector<Field> &fields);
 
 };
+
+#endif

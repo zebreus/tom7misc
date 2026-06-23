@@ -1,6 +1,6 @@
 
-#ifndef _POLYNOMIAL_H
-#define _POLYNOMIAL_H
+#ifndef _CC_LIB_BIGNUM_POLYNOMIAL_H
+#define _CC_LIB_BIGNUM_POLYNOMIAL_H
 
 #include <string>
 #include <map>

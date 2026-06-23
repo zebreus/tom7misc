@@ -1,5 +1,5 @@
-#ifndef _MONTGOMERY64_H
-#define _MONTGOMERY64_H
+#ifndef _CC_LIB_MONTGOMERY64_H
+#define _CC_LIB_MONTGOMERY64_H
 
 #include <array>
 #include <cstdint>

@@ -1025,6 +1025,9 @@ bool Position::IsLegal(Move m) {
           IFDEBUG printf("en passant capture..\n");
           // NotIntoCheck moves the capturing pawn to the destination
           // square, but we also need to remove the captured pawn.
+          // (Consider "K1Pp1r" where white captures its adjacent
+          // pawn en passant, revealing a discovered attack from the
+          // rook on the king.)
           return SetExcursion(m.dst_row - dr, m.dst_col, EMPTY,
                               [&]() { return NotIntoCheck(m); });
         } else {

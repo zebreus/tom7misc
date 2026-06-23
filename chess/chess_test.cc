@@ -553,6 +553,29 @@ static void TestEp() {
   CHECK(!pos.EnPassantColumn().has_value());
 }
 
+// Very unusual corner case where an en passant capture is not legal
+// because it would expose the king to check.
+static void TestNoEpIntoCheck() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "1nbqkbnr/pppp1ppp/8/1K1Pp1r1/8/8/PPP1PPPP/RNBQ1BNR w k e6 0 1",
+            &pos));
+
+  std::optional<uint8> epc = pos.EnPassantColumn();
+  CHECK(epc.has_value());
+  CHECK(epc.value() == 4) << (int)epc.value();
+
+  Move ep{
+    .src_row = 3,
+    .src_col = 3,
+    .dst_row = 2,
+    .dst_col = 4,
+  };
+
+  CHECK(!pos.IsLegal(ep));
+  CHECK(pos.HasLegalMoves());
+}
+
 static void TestParseMoves() {
   std::vector<PGN::Move> moves;
   CHECK(PGN::ParseMoves("1. d4 d5 2. Nf3", &moves));
@@ -633,6 +656,7 @@ int main(int argc, char **argv) {
   TestCastleMate();
 
   TestEp();
+  TestNoEpIntoCheck();
 
   TestShortMove();
 

@@ -1,10 +1,9 @@
 
-#ifndef _STATS_H
-#define _STATS_H
+#ifndef _CC_LIB_STATS_H
+#define _CC_LIB_STATS_H
 
 #include <cmath>
-#include <vector>
-
+#include <span>
 
 struct Stats {
 
@@ -21,18 +20,21 @@ struct Stats {
     inline double PlusMinus95() const;
     inline double PlusMinus99() const;
   };
-  static inline Gaussian EstimateGaussian(const std::vector<double> &samples);
+  static inline Gaussian EstimateGaussian(std::span<const double> samples);
 
   // TODO: Incremental update to Gaussian.
 
   // Returns true if all the values in the vector are small. In this
   // case routines like EstimateGaussian will not predivide them
   // (can lead to underflow).
-  static inline bool IsSmall(const std::vector<double> &samples);
+  static inline bool IsSmall(std::span<const double> samples);
 
 };
 
-inline bool Stats::IsSmall(const std::vector<double> &samples) {
+
+// Inline implementations follow.
+
+inline bool Stats::IsSmall(std::span<const double> samples) {
   for (double v : samples) {
     if (v > 1.0 || v < 1.0) return false;
   }
@@ -40,7 +42,7 @@ inline bool Stats::IsSmall(const std::vector<double> &samples) {
 }
 
 inline Stats::Gaussian Stats::EstimateGaussian(
-    const std::vector<double> &samples) {
+    std::span<const double> samples) {
   double mean = 0.0;
 
   if (IsSmall(samples)) {

@@ -1,6 +1,6 @@
 
-#ifndef _CC_LIB_SDLUTIL_CHARS_H
-#define _CC_LIB_SDLUTIL_CHARS_H
+#ifndef _CC_LIB_SDL_CHARS_H
+#define _CC_LIB_SDL_CHARS_H
 
 // This describes the font in font.png, which is used in many of my
 // projects.

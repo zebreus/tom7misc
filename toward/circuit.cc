@@ -23,7 +23,8 @@ std::pair<int, int> GateSize(Gate g) {
   case AND0110: return {4, 1};
   case NOT: return {1, 1};
   case SEPARATOR: return {1, 2};
-  case WIRE: return {1, 1};
+  case WIREA:
+  case WIREB: return {1, 1};
   case XCHG00:
   case XCHG01:
   case XCHG10:
@@ -114,7 +115,8 @@ std::vector<Func> TransformCell(const Cell &cell,
     break;
   }
 
-  case WIRE: {
+  case WIREA:
+  case WIREB: {
     out[OutputIdx(0)] = in[InputIdx(0)];
     break;
   }

@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <type_traits>
 #include <vector>
-#include <span>
 
 template<class A, class F>
 static auto VectorMap(const std::vector<A> &vec, const F &f) ->

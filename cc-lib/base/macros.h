@@ -6,8 +6,8 @@
 // platforms like Windows, Mac, and embedded systems.  Before making
 // any changes here, make sure that you're not breaking any platforms.
 
-#ifndef BASE_MACROS_H_
-#define BASE_MACROS_H_
+#ifndef _CC_LIB_BASE_MACROS_H
+#define _CC_LIB_BASE_MACROS_H
 
 #include <cstddef>
 

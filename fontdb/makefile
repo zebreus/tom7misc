@@ -36,5 +36,8 @@ cleandb.exe : cleandb.o ttfarchive.o $(OBJECTS)
 classify.exe : classify.o $(OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+reclassify.exe : reclassify.o $(OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS) *.exe

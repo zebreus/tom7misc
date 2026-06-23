@@ -283,7 +283,8 @@ struct Position {
   template<class F>
   auto MoveExcursion(Move m, const F &f) -> decltype(f()) {
     // Blindly copy/restore, but only the part of the state that may
-    // be affected.
+    // be affected. Note that the pawn captured en passant is always
+    // in the *source* row, so it is covered by this logic.
     const uint32 old_src_row = rows[m.src_row];
     const uint32 old_dst_row = rows[m.dst_row];
     const uint8 old_bits = bits;
@@ -350,7 +351,10 @@ struct Position {
 
   // Generates a random legal position according to an unspecified
   // distribution. The position is legal, but likely will not make
-  // sense, and may be unreachable in normal games.
+  // sense, and may be unreachable in normal games (e.g. it could
+  // include triple checks, or simultaneous check and en passant).
+  // If your application relies on subtle reasoning, it's probably
+  // better to just sample random moves.
   static Position RandomLegalPos(uint64_t seed);
 
  private:
@@ -454,142 +458,5 @@ struct PositionHash {
     return res;
   }
 };
-
-#if 0
-// As in ApplyMove, but maintaining the ability to undo the move.
-// TODO: Maybe possible to make this a template so that the
-// 'undo' capability is compiled away, but both this and ApplyMove
-// are very important for performance.
-// This complicated version seems slower than the simpler approaches
-// inlined above, which is probably for the best.
-template<class F>
-auto Position::MoveExcursion(Move m, const F &f) -> decltype(f()) {
-  const uint8 old_bits = bits;
-  bits &= ~(DOUBLE | PAWN_COL);
-
-  // Our "undo buffer" tells us what to write where in order to
-  // undo the work. Each consists of an index into the board
-  // (r << 3 | c) << 8 and the raw piece byte to write.
-  using UndoEntry = uint16_t;
-  // Usually just the source and destination squares. When
-  // en passant capturing, additionally the pawn captured.
-  // When castling, the rook moves as well. When moving the
-  // king, the castling state of the rooks is invalidated.
-  UndoEntry undos[6];
-  int num_undos = 0;
-
-  const uint8 old_src = PieceAt(m.src_row, m.src_col);
-  const uint8 old_dst = PieceAt(m.dst_row, m.dst_col);
-
-# define MAKEUNDO(r, c, p) ((((r) << 3 | (c)) << 8) | (p))
-  undos[num_undos++] = MAKEUNDO(m.src_row, m.src_col, old_src);
-  undos[num_undos++] = MAKEUNDO(m.dst_row, m.dst_col, old_dst);
-
-  uint8 source_piece = old_src;
-  // If moving the king (this includes castling), remove the ability
-  // to castle.
-  if ((source_piece & TYPE_MASK) == KING) {
-    const bool blackmove = !!(bits & BLACK_MOVE);
-    if (blackmove) {
-      if (PieceAt(0, 0) == (BLACK | C_ROOK)) {
-        SetPiece(0, 0, BLACK | ROOK);
-        undos[num_undos++] = MAKEUNDO(0, 0, BLACK | C_ROOK);
-      }
-      if (PieceAt(0, 7) == (BLACK | C_ROOK)) {
-        SetPiece(0, 7, BLACK | ROOK);
-        undos[num_undos++] = MAKEUNDO(0, 7, BLACK | C_ROOK);
-      }
-    } else {
-      if (PieceAt(7, 0) == (WHITE | C_ROOK)) {
-        SetPiece(7, 0, WHITE | ROOK);
-        undos[num_undos++] = MAKEUNDO(7, 0, WHITE | C_ROOK);
-      }
-      if (PieceAt(7, 7) == (WHITE | C_ROOK)) {
-        SetPiece(7, 7, WHITE | ROOK);
-        undos[num_undos++] = MAKEUNDO(7, 7, WHITE | C_ROOK);
-      }
-    }
-  }
-
-  // If moving a castleable rook, it becomes a regular rook.
-  if ((source_piece & TYPE_MASK) == C_ROOK)
-    source_piece = (COLOR_MASK & source_piece) | ROOK;
-
-
-  // And speaking of which, test for the strange en passant
-  // case first.
-  if ((source_piece & TYPE_MASK) == PAWN &&
-      m.src_col != m.dst_col &&
-      PieceAt(m.dst_row, m.dst_col) == EMPTY) {
-    // Pawn move, not vertical, and into empty space. If it is
-    // legal then it is en passant.
-    // Here the source row is where the captured piece resided
-    // (next to the capturing pawn, in the destination column).
-    SetPiece(m.src_row, m.dst_col, EMPTY);
-    if ((source_piece & COLOR_MASK) == WHITE) {
-      undos[num_undos++] = MAKEUNDO(m.src_row, m.dst_col, BLACK | PAWN);
-    } else {
-      undos[num_undos++] = MAKEUNDO(m.src_row, m.dst_col, WHITE | PAWN);
-    }
-
-    // If a double pawn move, set the en passant state...
-  } else if ((source_piece & TYPE_MASK) == PAWN &&
-             ((m.src_row == 1 && m.dst_row == 3) ||
-              (m.src_row == 6 && m.dst_row == 4))) {
-
-    bits |= (DOUBLE | m.dst_col);
-
-    // And then for castling...
-  } else if ((source_piece & TYPE_MASK) == KING &&
-             m.src_col == 4 &&
-             (m.dst_col == 6 || m.dst_col == 2)) {
-    // ... move the rook as well.
-    if (m.dst_col == 6) {
-      // King-side.
-      SetPiece(m.dst_row, 7, EMPTY);
-      SetPiece(m.dst_row, 5, ROOK | (COLOR_MASK & source_piece));
-      undos[num_undos++] =
-        MAKEUNDO(m.dst_row, 7, C_ROOK | (COLOR_MASK & source_piece));
-      undos[num_undos++] = MAKEUNDO(m.dst_row, 5, EMPTY);
-    } else {
-      // Queen-side.
-      SetPiece(m.dst_row, 0, EMPTY);
-      SetPiece(m.dst_row, 3, ROOK | (COLOR_MASK & source_piece));
-      undos[num_undos++] =
-        MAKEUNDO(m.dst_row, 0, C_ROOK | (COLOR_MASK & source_piece));
-      undos[num_undos++] = MAKEUNDO(m.dst_row, 3, EMPTY);
-    }
-  }
-
-  if (m.promote_to != 0) {
-    // This has the color already present.
-    source_piece = m.promote_to;
-  }
-
-  // All moves clear the source square and populate the destination.
-  SetPiece(m.src_row, m.src_col, EMPTY);
-  // Note: This updates the position of the king if source_piece is
-  // one of the two kings (and we are using king indexing).
-  SetPiece(m.dst_row, m.dst_col, source_piece);
-
-  // And pass to the other player.
-  bits ^= BLACK_MOVE;
-
-  auto ret = f();
-
-  // PERF manually unroll?
-  for (int i = 0; i < num_undos; i++) {
-    UndoEntry ue = undos[i];
-    uint8 rc = (ue >> 8);
-    uint8 r = rc >> 3;
-    uint8 c = rc & 7;
-    uint8 p = ue & 255;
-    SetPiece(r, c, p);
-  }
-
-  bits = old_bits;
-  return ret;
-}
-#endif
 
 #endif

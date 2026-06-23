@@ -1,5 +1,5 @@
-#ifndef _AUTO_HISTO_H
-#define _AUTO_HISTO_H
+#ifndef _CC_LIB_AUTO_HISTO_H
+#define _CC_LIB_AUTO_HISTO_H
 
 #include <algorithm>
 #include <cmath>

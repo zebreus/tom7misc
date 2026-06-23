@@ -405,6 +405,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
     for (const auto &child : g->children) {
       AddNodesToLevel(child, next_state, level);
     }
+
   } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
     if (state.opacity < 0.2) return;
 

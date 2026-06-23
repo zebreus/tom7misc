@@ -34,8 +34,8 @@
 // TODO:
 //   - nice if we had uint128 % uint64 returning uint64...
 
-#ifndef ABSL_NUMERIC_INT128_H_
-#define ABSL_NUMERIC_INT128_H_
+#ifndef _CC_LIB_BASE_INT128_H_
+#define _CC_LIB_BASE_INT128_H_
 
 #include <cassert>
 #include <cmath>
@@ -1185,4 +1185,4 @@ constexpr int64_t BitCastToSigned(uint64_t v) {
 using uint128_t = uint128;
 using int128_t = int128;
 
-#endif  // ABSL_NUMERIC_INT128_H_
+#endif

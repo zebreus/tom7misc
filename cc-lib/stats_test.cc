@@ -6,12 +6,13 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "span-util.h"
 
 using Gaussian = Stats::Gaussian;
 
 static void TestGaussian() {
   {
-    Gaussian g = Stats::EstimateGaussian({});
+    Gaussian g = Stats::EstimateGaussian(Span<double>{});
     CHECK(std::isnan(g.mean));
     CHECK(std::isnan(g.variance));
     CHECK(std::isnan(g.stddev));
@@ -19,7 +20,7 @@ static void TestGaussian() {
   }
 
   {
-    Gaussian g = Stats::EstimateGaussian({7.0});
+    Gaussian g = Stats::EstimateGaussian(Span<double>{7.0});
     CHECK(7.0 == g.mean);
     CHECK(std::isnan(g.variance));
     CHECK(std::isnan(g.stddev));
@@ -27,7 +28,7 @@ static void TestGaussian() {
   }
 
   {
-    Gaussian g = Stats::EstimateGaussian({7.0, 7.0});
+    Gaussian g = Stats::EstimateGaussian(Span<double>{7.0, 7.0});
     CHECK(7.0 == g.mean);
     CHECK(g.variance < 0.000000001) << g.variance;
     CHECK(g.stddev < 0.0000000001);
@@ -35,7 +36,7 @@ static void TestGaussian() {
   }
 
   {
-    Gaussian g = Stats::EstimateGaussian({-7.0, 7.0});
+    Gaussian g = Stats::EstimateGaussian(Span<double>{-7.0, 7.0});
     CHECK(g.mean < 0.000000001);
     CHECK(g.variance > 1.0);
     CHECK(g.stddev > 1.0);
@@ -43,7 +44,7 @@ static void TestGaussian() {
   }
 
   {
-    Gaussian g = Stats::EstimateGaussian({-0.7, 0.7});
+    Gaussian g = Stats::EstimateGaussian(Span<double>{-0.7, 0.7});
     CHECK(g.mean < 0.000000001);
     CHECK(g.variance < 1.0);
     CHECK(g.stddev < 1.0);

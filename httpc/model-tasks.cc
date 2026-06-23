@@ -54,11 +54,12 @@ library that is related to the request. If the user's request is to
 write tests for some code, then we likely need to see both the header
 and implementation for that code in order to know how to test it well.
 If the request from the user mentions specific files, you should
-usually include those files. A file that describes the current project
-(e.g. project.txt) is often useful for background when the request has
-any subtlety. When writing code, especially new code, a style guide
-for the current language is useful. The "llm" directory contains style
-guides that apply to all projects.)";
+usually include those files (using the path from the file list). A
+file that describes the current project (e.g. project.txt) is often
+useful for background when the request has any subtlety. When writing
+code, especially new code, a style guide for the current language is
+useful. The "llm" directory contains style guides that apply to all
+projects.)";
   if (!opt.task_hints.empty())
     AppendFormat(&ret, " {}", opt.task_hints);
 
