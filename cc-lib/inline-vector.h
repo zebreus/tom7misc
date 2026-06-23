@@ -5,13 +5,14 @@
 #define _CC_LIB_INLINE_VECTOR_H
 
 #include <algorithm>
-#include <memory>
-#include <cstdlib>
 #include <array>
+#include <cstdlib>
 #include <cstring>
+#include <initializer_list>
+#include <memory>
 #include <span>
-#include <utility>
 #include <type_traits>
+#include <utility>
 
 #include "base/logging.h"
 
@@ -51,6 +52,7 @@ struct InlineVector {
   // Value semantics.
   inline InlineVector();
   inline InlineVector(size_t n, T init = T());
+  inline InlineVector(std::initializer_list<T> init);
   inline InlineVector(const InlineVector &other);
   inline InlineVector &operator=(const InlineVector &other);
   inline InlineVector(InlineVector &&other);
@@ -251,7 +253,10 @@ struct InlineVector {
 
   // The size field must be the same for each member.
   // Its high bit is 1 if we have an allocation.
-  union {
+  union Rep {
+    // Don't require initialization. We want to avoid zeroing out
+    // the part of the container that is reserved but not used.
+    Rep() {}
     AllocRep ar;
     InlineRep ir;
   } u;
@@ -261,7 +266,7 @@ struct InlineVector {
 // Template implementations follow.
 
 template<class T>
-InlineVector<T>::InlineVector() : u{.ar = {0, 0, nullptr}} {
+InlineVector<T>::InlineVector() {
   #ifndef NDEBUG
   memset((void*)&u, 0, sizeof (u));
   #endif
@@ -269,8 +274,7 @@ InlineVector<T>::InlineVector() : u{.ar = {0, 0, nullptr}} {
 }
 
 template<class T>
-InlineVector<T>::InlineVector(size_t n, T init) :
-  InlineVector() {
+InlineVector<T>::InlineVector(size_t n, T init) : InlineVector() {
   EnsureAlloc(n);
   SetSize(n);
   T *d = data();
@@ -278,6 +282,14 @@ InlineVector<T>::InlineVector(size_t n, T init) :
     // d[i] = init;
     std::construct_at(d + i, init);
   }
+}
+
+template<class T>
+InlineVector<T>::InlineVector(std::initializer_list<T> init) : InlineVector() {
+  const size_t n = init.size();
+  EnsureAlloc(n);
+  SetSize(n);
+  std::uninitialized_copy(init.begin(), init.end(), data());
 }
 
 template<class T>
