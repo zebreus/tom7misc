@@ -19,6 +19,7 @@
 #include "yocto-math.h"
 
 using vec2 = Polygonization::vec2;
+using Mesh = Polygonization::Mesh;
 
 static constexpr int kWidth = 1200;
 static constexpr int kHeight = 1200;
@@ -148,9 +149,9 @@ static void DebugDrawPolygonize() {
       if (const std::string_view *err = std::get_if<std::string_view>(&res)) {
         LOG(FATAL) << *err;
       }
-      CHECK(std::holds_alternative<Polygonization::Mesh>(res));
-      const Polygonization::Mesh &mesh =
-        std::get<Polygonization::Mesh>(res);
+      CHECK(std::holds_alternative<Mesh>(res));
+      const Mesh &mesh =
+        std::get<Mesh>(res);
 
       for (const auto &poly : mesh.polygons) {
         for (int j = 0; j < (int)poly.size(); j++) {
@@ -177,8 +178,32 @@ static void DebugDrawPolygonize() {
   }
 }
 
+// This polygon has a near-duplicate final point. The library should
+// either give an error or deal with it anyway. It should not produce
+// an invalid (empty) polygonization.
+static void Regression1() {
+  Polygonization::Shape shape{
+    .polys = {{
+        vec2{4.4454199006371198, 4.4031999015808108},
+        vec2{5.7866998706571753, 7.9999998211860657},
+        vec2{5.0545498870220031, 3.8432099140975629},
+        vec2{4.2999999038875094, 3.6207799190692609},
+        vec2{4.4454199006371189, 4.4031999015808108},
+      }},
+  };
+
+  Polygonization::PolygonizeResult res =
+    Polygonization::Polygonize(shape, 8);
+
+  if (const Mesh *mesh = std::get_if<Mesh>(&res)) {
+    CHECK(!mesh->polygons.empty());
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  Regression1();
 
   DebugDrawTriangulate();
   DebugDrawPolygonize();

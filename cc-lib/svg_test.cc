@@ -193,7 +193,7 @@ static void TestDashes() {
   static constexpr std::string_view LINE_SVG = R"(
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 432 432">
-<line x1="62.9594" y1="4.611" x2="62.9594" y2="324.6078" fill="none" stroke="#e0e0e0" stroke-dasharray="4 5.1" stroke-miterlimit="4" stroke-width="1"/>
+<line x1="62.9594" y1="4.611" x2="62.9594" y2="324.6078" fill="none" stroke="#e0e0e0" stroke-dasharray="4 5.1" stroke-dashoffset="10.5" stroke-miterlimit="4" stroke-width="1"/>
 </svg>
 )";
 
@@ -206,6 +206,16 @@ static void TestDashes() {
   CHECK(da.size() == 2);
   CHECK_FEQ(da[0], 4.0);
   CHECK_FEQ(da[1], 5.1);
+
+  CHECK(g->style.stroke_dashoffset.has_value());
+  CHECK_FEQ(g->style.stroke_dashoffset.value(), 10.5);
+
+  SVG::GraphicsState state;
+  state = SVG::UpdateState(state, g->style);
+  CHECK(state.stroke_dasharray.size() == 2);
+  CHECK_FEQ(state.stroke_dasharray[0], 4.0);
+  CHECK_FEQ(state.stroke_dasharray[1], 5.1);
+  CHECK_FEQ(state.stroke_dashoffset, 10.5);
 }
 
 static void TestPathInterpreter() {

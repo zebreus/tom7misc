@@ -186,7 +186,7 @@ struct SVG {
                                            const SVG::PathCommand &cmd);
 
   // Concrete graphics state, which results from applying style.
-  // TODO: Additional style in here (line dashes, text, etc.)
+  // TODO: Additional style in here (text, etc.)
   struct GraphicsState {
     Transform transform =
       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
@@ -200,6 +200,9 @@ struct SVG {
     LineCap line_cap = LineCap::BUTT;
     LineJoin line_join = LineJoin::MITER;
     double miter_limit = 4.0;
+
+    std::vector<double> stroke_dasharray;
+    double stroke_dashoffset = 0.0;
 
     bool use_even_odd_rule = false;
 

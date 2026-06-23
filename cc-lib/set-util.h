@@ -9,15 +9,15 @@
 
 // e.g.
 // std::unordered_set<int64_t> s;
-// std::vector<int64_t> v = ToSortedVec(s);
+// std::vector<int64_t> v = SetToSortedVec(s);
 //
 // or provide a custom comparator:
 //
 // std::unordered_set<std::string> s;
 // std::vector<std::string> v =
-//   ToSortedVec(s, [](const auto &a, const auto &b) {
-//                     return a.size() < b.size();
-//                  });
+//   SetToSortedVec(s, [](const auto &a, const auto &b) {
+//                       return a.size() < b.size();
+//                    });
 template<class S>
 auto SetToSortedVec(const S &s,
                     const std::function<

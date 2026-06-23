@@ -2042,14 +2042,16 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
 
   auto CleanPath = [&](std::span<const vec2> original, bool ccw) {
     std::vector<vec2> path;
+    auto IsSame = [](const vec2 &a, const vec2 &b) {
+      return std::abs(a.x - b.x) <= 1e-12 && std::abs(a.y - b.y) <= 1e-12;
+    };
     for (int i = 0; i < (int)original.size(); i++) {
       const vec2 &v = original[i];
-      if (path.empty() || path.back().x != v.x || path.back().y != v.y) {
+      if (path.empty() || !IsSame(path.back(), v)) {
         path.push_back(v);
       }
     }
-    while (path.size() > 1 && path.front().x == path.back().x &&
-           path.front().y == path.back().y) {
+    while (path.size() > 1 && IsSame(path.front(), path.back())) {
       path.pop_back();
     }
     if (path.size() < 3) {
@@ -2122,6 +2124,10 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
     cdt.Triangulate();
     if (const char *err = cdt.GetError()) {
       return {std::string_view(err)};
+    }
+
+    if (cdt.GetTriangles().empty()) {
+      return {"Triangulation failed (no interior triangles found)"};
     }
 
     std::sort(pt_map.begin(), pt_map.end(),
@@ -2229,8 +2235,10 @@ Polygonization::PolygonizeResult Polygonization::Polygonize(
             edge_to_poly.find(MakeEdge(v, u));
 
         if (it1 != edge_to_poly.end() && it2 != edge_to_poly.end()) {
-          CHECK(u < mesh.vertices.size()) << u << " " << mesh.vertices.size();
-          CHECK(v < mesh.vertices.size()) << v << " " << mesh.vertices.size();
+          CHECK(u < (int)mesh.vertices.size()) <<
+            u << " " << mesh.vertices.size();
+          CHECK(v < (int)mesh.vertices.size()) <<
+            v << " " << mesh.vertices.size();
           int p1 = it1->second;
           int p2 = it2->second;
           vec2 diff = mesh.vertices[u] - mesh.vertices[v];

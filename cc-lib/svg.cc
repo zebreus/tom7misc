@@ -66,11 +66,15 @@ inline static SVG::CubicBezier QuadraticBezier(
 bool SVG::IsDefault(const Style &style) {
   return !(style.transform.has_value() ||
            style.fill_color.has_value() ||
+           style.fill_opacity.has_value() ||
            style.stroke_color.has_value() ||
+           style.stroke_opacity.has_value() ||
            style.stroke_width.has_value() ||
            style.line_cap.has_value() ||
            style.line_join.has_value() ||
            style.miter_limit.has_value() ||
+           style.stroke_dasharray.has_value() ||
+           style.stroke_dashoffset.has_value() ||
            style.use_even_odd_rule.has_value() ||
            style.opacity.has_value() ||
            style.clip_path.has_value() ||
@@ -898,7 +902,7 @@ struct Converter {
     if (auto so = GetStripAttribute("stroke-dashoffset")) {
       had_style = true;
       if (auto co = ParseLength(so.value())) {
-        style.stroke_width = co;
+        style.stroke_dashoffset = co;
       } else {
         error = "Invalid length in stroke-offset";
         return {};
@@ -2110,6 +2114,10 @@ SVG::GraphicsState SVG::UpdateState(const GraphicsState &state,
     next.line_join = style.line_join.value();
   if (style.miter_limit.has_value())
     next.miter_limit = style.miter_limit.value();
+  if (style.stroke_dasharray.has_value())
+    next.stroke_dasharray = style.stroke_dasharray.value();
+  if (style.stroke_dashoffset.has_value())
+    next.stroke_dashoffset = style.stroke_dashoffset.value();
   if (style.use_even_odd_rule.has_value())
     next.use_even_odd_rule = style.use_even_odd_rule.value();
   if (style.opacity.has_value())

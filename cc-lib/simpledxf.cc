@@ -2,7 +2,6 @@
 #include "simpledxf.h"
 
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <string>
 #include <string_view>
