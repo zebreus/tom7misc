@@ -140,6 +140,8 @@ static std::optional<vec2f> IsSVGRectangle(
     return std::nullopt;
   }
 
+  if (!state.stroke_dasharray.empty()) return std::nullopt;
+
   const SVG::Path *path = std::get_if<SVG::Path>(&g->children[0].v);
   if (!path) return std::nullopt;
 
@@ -299,6 +301,8 @@ std::optional<vec2f> Levels::IsSVGZero(const SVG::GraphicsState &outer_state,
     return std::nullopt;
   }
 
+  if (!state.stroke_dasharray.empty()) return std::nullopt;
+
   const SVG::Path *path = std::get_if<SVG::Path>(&g->children[0].v);
   if (!path) return std::nullopt;
 
@@ -408,6 +412,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
   } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
     if (state.opacity < 0.2) return;
+    if (!state.stroke_dasharray.empty()) return;
 
     bool has_fill = state.fill_color != SVG::COLOR_NONE;
     bool has_stroke = state.stroke_color != SVG::COLOR_NONE;

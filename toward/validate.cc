@@ -105,7 +105,7 @@ static bool Validate(const ValidationInstance &inst) {
       }, NUM_EVAL_THREADS);
 
   Print("Validation of {}: {} / {} correct = {:.2f}%\n",
-        inst.Filename(),
+        inst.Name(),
         correct_count, NUM_TRIALS,
         (correct_count * 100.0) / done);
 

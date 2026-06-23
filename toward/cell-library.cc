@@ -190,6 +190,49 @@ struct CellLibraryImpl {
     return result;
   }
 
+  std::unique_ptr<Level> GetLevel(const Cell &cell) const {
+    if (cell.gate == Gate::SPACER) {
+      // Default instance is empty, like we want.
+      return std::make_unique<Level>();
+    }
+
+    Cell base = cell;
+    base.flip = false;
+    auto it = info.find(base);
+    CHECK(it != info.end()) << "Cell not found in library";
+
+    auto result = std::make_unique<Level>(*it->second.level);
+
+    if (cell.flip) {
+      int bw = it->second.block_width;
+
+      for (int &in : result->inputs) {
+        in = bw - Levels::IN_WIDTH - in;
+      }
+      std::reverse(result->inputs.begin(), result->inputs.end());
+
+      for (int &out : result->outputs) {
+        out = bw - Levels::OUT_WIDTH - out;
+      }
+      std::reverse(result->outputs.begin(), result->outputs.end());
+
+      float total_width = bw * Levels::BLOCK_SIZE;
+      for (LevelBody &body : result->bodies) {
+        body.pos.x = total_width - body.pos.x;
+        body.vel.x = -body.vel.x;
+        body.angle = -body.angle;
+        body.avel = -body.avel;
+        for (auto &v : body.mesh.vertices) {
+          v.x = -v.x;
+        }
+        // Reverse vertices to maintain winding order
+        std::reverse(body.mesh.vertices.begin(), body.mesh.vertices.end());
+      }
+    }
+
+    return result;
+  }
+
 };
 
 
@@ -216,4 +259,8 @@ CellLibrary::~CellLibrary() {}
 
 CellLibrary::Info CellLibrary::GetInfo(const Cell &cell) const {
   return impl->GetInfo(cell);
+}
+
+std::unique_ptr<Level> CellLibrary::GetLevel(const Cell &cell) const {
+  return impl->GetLevel(cell);
 }

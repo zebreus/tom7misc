@@ -2,6 +2,7 @@
 #ifndef _TOWARD_LAYOUT_H
 #define _TOWARD_LAYOUT_H
 
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -80,5 +81,9 @@ struct Func {
 // the positions of the inputs/outputs (keeping only the order) and
 // aborts on length mismatch. Use DRC.
 std::vector<Func> Transform(const Layer &layer, const std::vector<Func> &funcs);
+
+// Transform just the one cell. Assumes the input is the correct size.
+std::vector<Func> TransformCell(const Cell &cell,
+                                std::span<const Func> in);
 
 #endif

@@ -3,7 +3,6 @@
 #define _TOWARD_CELL_LIBRARY_H
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "circuit.h"
@@ -32,6 +31,10 @@ struct CellLibrary {
   };
 
   Info GetInfo(const Cell &cell) const;
+
+  // A new copy of the level geometry that implements the
+  // cell, in its starting configuration.
+  std::unique_ptr<Level> GetLevel(const Cell &cell) const;
 
   // Access to parameterized cells.
   // These will abort on invalid arguments.

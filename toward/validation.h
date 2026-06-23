@@ -9,7 +9,9 @@
 #include <string_view>
 
 #include "level.h"
+#include "prop.h"
 #include "scene.h"
+#include "circuit.h"
 
 // A validation instance is a spec with an implementation.
 // The spec consists of:
@@ -36,13 +38,10 @@ struct ValidationSample {
 };
 
 struct ValidationInstance {
-  virtual std::string_view Filename() const = 0;
+  virtual std::string_view Name() const = 0;
+  virtual Level InitialLevel() const = 0;
   virtual int ExpectedInputs() const = 0;
   virtual int ExpectedOutputs() const = 0;
-
-  // XXX: Standardize this.
-  virtual bool AddInputWalls() const { return false; }
-  virtual bool AddOutputWalls() const { return false; }
 
   virtual ValidationSample OneSample(uint64_t seed) const = 0;
   virtual ~ValidationInstance() {}
@@ -54,8 +53,6 @@ struct Validation {
   static std::unique_ptr<ValidationInstance> Not();
   // Separates and duplicates its one input.
   static std::unique_ptr<ValidationInstance> DupSep();
-  // XXX: This doesn't work because the bodies can collide.
-  // static std::unique_ptr<ValidationInstance> Xchg();
   // Exchanges separated A and ¬A.
   static std::unique_ptr<ValidationInstance> SepXchg();
   // Exchanges two separated zeroes.
@@ -75,6 +72,18 @@ struct Validation {
   static std::unique_ptr<ValidationInstance> WireAN8();
   static std::unique_ptr<ValidationInstance> WireAN16();
   static std::unique_ptr<ValidationInstance> WireAN32();
+
+  // TODO:
+  // Create a validation instance that tests a standard cell,
+  // verifying that it matches its logical behavior (Transform).
+  // The args must match the input size for the cell. Most of
+  // the time, these will just be distinct variables, and the
+  // instance will sample from any assignment to them. Some
+  // cells have a requirement on the inputs (e.g. SELFXCHG must
+  // take separated A and ¬A) which we express by having
+  // more constrained propositions.
+  static std::unique_ptr<ValidationInstance>
+  ValidateCell(const Cell &cell, std::span<const Prop> args);
 
   // For separated inputs, we have either the given bit, or nothing.
   // SeparatedZero gives the contents of the "zero" chute when the

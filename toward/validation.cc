@@ -13,17 +13,19 @@
 #include "pcg.h"
 #include "scene.h"
 #include "validation.h"
+#include "base/logging.h"
 
 namespace {
 struct AndValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-and0110.svg";
+  std::string_view Name() const override { return "cell-and0110"; }
+  AndValidation() {
+    level = Levels::LoadSVG("cell-and0110.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 4; }
   int ExpectedOutputs() const override { return 1; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -44,14 +46,15 @@ struct AndValidation : public ValidationInstance {
 };
 
 struct SeparatorValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-separator.svg";
+  std::string_view Name() const override { return "cell-separator"; }
+  SeparatorValidation() {
+    level = Levels::LoadSVG("cell-separator.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -70,14 +73,15 @@ struct SeparatorValidation : public ValidationInstance {
 // I think this is still not 100% because the 1 can bonk the
 // 1 on the way down.
 struct NotValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-not.svg";
+  std::string_view Name() const override { return "cell-not"; }
+  NotValidation() {
+    level = Levels::LoadSVG("cell-not.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 1; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -91,14 +95,15 @@ struct NotValidation : public ValidationInstance {
 };
 
 struct DupSepValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-dupsep.svg";
+  std::string_view Name() const override { return "cell-dupsep"; }
+  DupSepValidation() {
+    level = Levels::LoadSVG("cell-dupsep.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 4; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b01);
@@ -117,39 +122,16 @@ struct DupSepValidation : public ValidationInstance {
   }
 };
 
-struct [[maybe_unused]] XchgValidation : public ValidationInstance {
-  std::string_view Filename() const override { return "xchg1.svg"; }
-  int ExpectedInputs() const override { return 2; }
-  int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-
-  ValidationSample OneSample(uint64_t seed) const override {
-    bool a = !!(seed & 0b01);
-    bool b = !!(seed & 0b10);
-
-    ChuteValue av = a ? ChuteValue::ONE : ChuteValue::ZERO;
-    ChuteValue bv = b ? ChuteValue::ONE : ChuteValue::ZERO;
-
-    ValidationSample ret;
-    ret.input_values.push_back(av);
-    ret.input_values.push_back(bv);
-
-    // Swapped.
-    ret.valid_outputs = {{bv, av}};
-    return ret;
-  }
-};
-
 struct SepXchgValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-sepxchg.svg";
+  std::string_view Name() const override { return "cell-sepxchg"; }
+  SepXchgValidation() {
+    level = Levels::LoadSVG("cell-sepxchg.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool chirality = !!(seed & 0b01);
@@ -179,14 +161,15 @@ struct SepXchgValidation : public ValidationInstance {
 };
 
 struct Sep00XchgValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-sep00xchg.svg";
+  std::string_view Name() const override { return "cell-sep00xchg"; }
+  Sep00XchgValidation() {
+    level = Levels::LoadSVG("cell-sep00xchg.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b10);
@@ -205,14 +188,15 @@ struct Sep00XchgValidation : public ValidationInstance {
 };
 
 struct Sep01XchgValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-sep01xchg.svg";
+  std::string_view Name() const override { return "cell-sep01xchg"; }
+  Sep01XchgValidation() {
+    level = Levels::LoadSVG("cell-sep01xchg.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b10);
@@ -233,14 +217,15 @@ struct Sep01XchgValidation : public ValidationInstance {
 // We should also be able to do something like this by
 // flipping along the x-axis.
 struct Sep10XchgValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-sep01xchg.svg";
+  std::string_view Name() const override { return "cell-sep10xchg"; }
+  Sep10XchgValidation() {
+    level = Levels::LoadSVG("cell-sep01xchg.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b10);
@@ -259,14 +244,15 @@ struct Sep10XchgValidation : public ValidationInstance {
 };
 
 struct Sep11XchgValidation : public ValidationInstance {
-  std::string_view Filename() const override {
-    return "standard-sep11xchg.svg";
+  std::string_view Name() const override { return "cell-sep11xchg"; }
+  Sep11XchgValidation() {
+    level = Levels::LoadSVG("cell-sep11xchg.svg");
+    CHECK(level.get() != nullptr) << Name();
   }
+  Level InitialLevel() const override { return *level; }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 2; }
   int ExpectedOutputs() const override { return 2; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
     bool a = !!(seed & 0b10);
@@ -286,15 +272,21 @@ struct Sep11XchgValidation : public ValidationInstance {
 
 // All wires have the same behavior, just different geometry.
 struct WireValidation : public ValidationInstance {
-  WireValidation(std::string_view file) : filename(file) {}
-  std::string_view Filename() const override {
-    return filename;
+  WireValidation(std::string_view file) : name(file) {
+    if (name.ends_with(".svg")) {
+      name.resize(name.size() - 4);
+    }
+    level = Levels::LoadSVG(file);
+    CHECK(level.get() != nullptr) << Name();
   }
+  std::string_view Name() const override { return name; }
+  std::string name;
+  Level InitialLevel() const override {
+    return *level;
+  }
+  std::unique_ptr<Level> level;
   int ExpectedInputs() const override { return 1; }
   int ExpectedOutputs() const override { return 1; }
-
-  bool AddInputWalls() const override { return true; }
-  bool AddOutputWalls() const override { return true; }
 
   ValidationSample OneSample(uint64_t seed) const override {
 
@@ -313,11 +305,7 @@ struct WireValidation : public ValidationInstance {
     ret.valid_outputs = {{v}};
     return ret;
   }
-
- private:
-  std::string filename;
 };
-
 
 }  // namespace
 
@@ -358,31 +346,31 @@ std::unique_ptr<ValidationInstance> Validation::Sep11Xchg() {
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireA0() {
-  return std::make_unique<WireValidation>("wire-a0.svg");
+  return std::make_unique<WireValidation>("cell-wirea0.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN1() {
-  return std::make_unique<WireValidation>("wire-an1.svg");
+  return std::make_unique<WireValidation>("cell-wirean1.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN2() {
-  return std::make_unique<WireValidation>("wire-an2.svg");
+  return std::make_unique<WireValidation>("cell-wirean2.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN4() {
-  return std::make_unique<WireValidation>("wire-an4.svg");
+  return std::make_unique<WireValidation>("cell-wirean4.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN8() {
-  return std::make_unique<WireValidation>("wire-an8.svg");
+  return std::make_unique<WireValidation>("cell-wirean8.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN16() {
-  return std::make_unique<WireValidation>("wire-an16.svg");
+  return std::make_unique<WireValidation>("cell-wirean16.svg");
 }
 
 std::unique_ptr<ValidationInstance> Validation::WireAN32() {
-  return std::make_unique<WireValidation>("wire-an32.svg");
+  return std::make_unique<WireValidation>("cell-wirean32.svg");
 }
 
 
@@ -440,47 +428,43 @@ LevelBody Validation::SampleInput(uint64_t seed, int input_left, bool bit) {
 }
 
 std::unique_ptr<Level> Validation::Load(const ValidationInstance &inst) {
-  std::unique_ptr<Level> level = Levels::LoadSVG(inst.Filename());
-  CHECK(level.get() != nullptr) << inst.Filename();
+  std::unique_ptr<Level> level = std::make_unique<Level>(inst.InitialLevel());
 
   CHECK(level->inputs.size() == (size_t)inst.ExpectedInputs() &&
         level->outputs.size() == (size_t)inst.ExpectedOutputs());
 
-  if (inst.AddInputWalls()) {
-    // Add vertical walls on the sides of the inputs.
-    for (int in_left : level->inputs) {
-      int blockheight = Levels::IN_HEIGHT;
-      for (int s : { -1, Levels::IN_WIDTH }) {
-        vec2f pos = {
-          .x = (in_left + s + 0.5f) * Levels::BLOCK_SIZE,
-          .y = (Levels::IN_Y + Levels::IN_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
-        };
-        LevelBody wall = Levels::WallRect(pos, 1, blockheight);
-        wall.color = 0x888888FF;
-        level->bodies.push_back(std::move(wall));
-      }
+  // Add vertical walls on the sides of the inputs.
+  for (int in_left : level->inputs) {
+    int blockheight = Levels::IN_HEIGHT;
+    for (int s : { -1, Levels::IN_WIDTH }) {
+      vec2f pos = {
+        .x = (in_left + s + 0.5f) * Levels::BLOCK_SIZE,
+        .y = (Levels::IN_Y + Levels::IN_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
+      };
+      LevelBody wall = Levels::WallRect(pos, 1, blockheight);
+      wall.color = 0x888888FF;
+      level->bodies.push_back(std::move(wall));
     }
   }
 
-  if (inst.AddOutputWalls()) {
-    // Add vertical walls on the sides of the outputs.
-    for (int out_left : level->outputs) {
-      int blockheight = Levels::OUT_HEIGHT;
-      for (int s : { -1, Levels::OUT_WIDTH }) {
-        vec2f pos = {
-          .x = (out_left + s + 0.5f) * Levels::BLOCK_SIZE,
-          .y = (Levels::OUT_Y + Levels::OUT_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
-        };
-        LevelBody wall = Levels::WallRect(pos, 1, blockheight);
-        wall.color = 0x888888FF;
-        level->bodies.push_back(std::move(wall));
-      }
+  // Add vertical walls on the sides of the outputs.
+  for (int out_left : level->outputs) {
+    int blockheight = Levels::OUT_HEIGHT;
+    for (int s : { -1, Levels::OUT_WIDTH }) {
+      vec2f pos = {
+        .x = (out_left + s + 0.5f) * Levels::BLOCK_SIZE,
+        .y = (Levels::OUT_Y + Levels::OUT_HEIGHT / 2.0f) * Levels::BLOCK_SIZE,
+      };
+      LevelBody wall = Levels::WallRect(pos, 1, blockheight);
+      wall.color = 0x888888FF;
+      level->bodies.push_back(std::move(wall));
     }
   }
 
-  // We need to stop objects from leaving the bottom of the output cup.
-  // The levels have rails modeled on the left and right sides, but
-  // we add an artificial bottom piece during validation.
+  // The addition of the side walls for inputs and outputs above is
+  // standard, but when validating we additionally need to stop
+  // objects from leaving the bottom of the output cup. We add an
+  // artificial bottom piece.
   for (int out_left : level->outputs) {
     int blockwidth = Levels::OUT_WIDTH + 2;
     vec2f pos = {
