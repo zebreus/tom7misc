@@ -4,14 +4,15 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
-#include <string_view>
 
+#include "cell-library.h"
+#include "circuit.h"
 #include "level.h"
 #include "prop.h"
 #include "scene.h"
-#include "circuit.h"
 
 // A validation instance is a spec with an implementation.
 // The spec consists of:
@@ -83,7 +84,8 @@ struct Validation {
   // take separated A and ¬A) which we express by having
   // more constrained propositions.
   static std::unique_ptr<ValidationInstance>
-  ValidateCell(const Cell &cell, std::span<const Prop> args);
+  ValidateCell(const CellLibrary &library,
+               const Cell &cell, std::span<const Prop> args);
 
   // For separated inputs, we have either the given bit, or nothing.
   // SeparatedZero gives the contents of the "zero" chute when the

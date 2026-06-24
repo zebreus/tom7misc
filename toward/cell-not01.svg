@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <g opacity=".05">
+    <rect y="0" width="1920" height="1080" fill="#fff"/>
+  </g>
+  <path d="M797.315,930" fill="#00a"/>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <g isolation="isolate">
+    <text transform="translate(680 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+  </g>
+  <g isolation="isolate">
+    <text transform="translate(330 1040)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+  </g>
+  <path d="M540,0h100v100h-100V0Z" fill="#aff"/>
+  <path d="M420,960h100v120h-100v-120Z" fill="#faa"/>
+  <path d="M180,555v80h20v-80h-20Z" fill="none" stroke="#f0f" stroke-width="2"/>
+  <polygon points="200 635 180 635 180 740 230 740 420 740 420 710 200 635" fill="#0057ee"/>
+  <polygon points="20 100 0 100 0 420 20 420 20 120 520 120 520 100 20 100" fill="#c7dd00"/>
+  <path d="M640,640h20V100h-20v540Z" fill="#c7dd00"/>
+  <path d="M65.897,404.322L0,365v155l139.057,300-73.16-415.678Z" fill="#00b7cc"/>
+  <polygon points="640 215 321.112 301.434 165.284 480.299 226.318 539.052 640 315 640 215" fill="#00b7cc"/>
+  <g isolation="isolate">
+    <text transform="translate(1305 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+  </g>
+  <path d="M1160,0h100v100h-100V0Z" fill="#aff"/>
+  <path d="M760.363,120h385v-20h-385v20Z" fill="#c7dd00"/>
+  <path d="M1260.942,315h20V100h-20v215Z" fill="#c7dd00"/>
+  <polygon points="900 480 915 680 890 690 880 660 840 660 745 690 520 960 555 960 1080 680 1080 555 900 480" fill="#0c2"/>
+  <polyline points="1260.942 315 1260 214.212 1065.828 305 895 475 955 535 1260.942 315" fill="#00b7cc"/>
+  <path d="M845,581c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M845,641c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M845,580c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM845,640c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <path d="M817.893,431.219l22.107,138.781,35,15-75-385-20,20,37.893,211.219Z" fill="#00a"/>
+  <path d="M400,960h20v-220h-20v220Z" fill="#c7dd00"/>
+</svg>

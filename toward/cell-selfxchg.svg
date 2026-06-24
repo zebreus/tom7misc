@@ -6,12 +6,12 @@
   </g>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <polygon points="1450 159.96 780.689 440 1460 219.96 1450 159.96" fill="#00a"/>
+  <polygon points="1360 220 780.689 440 1360 325 1360 220" fill="#00a"/>
   <polygon points="20 220 540.689 440 20 300 20 220" fill="#00a"/>
   <rect x="1220" width="100" height="100" fill="#aff"/>
   <rect x="1260" y="960" width="100" height="120" fill="#faa"/>
   <rect x="1240" y="920" width="20" height="40" fill="#0c2"/>
-  <rect x="1360" y="360" width="20" height="600" fill="#0c2"/>
+  <rect x="1360" y="100" width="20" height="860" fill="#0c2"/>
   <g isolation="isolate">
     <text transform="translate(1055 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep -A</tspan></text>
   </g>
@@ -28,8 +28,8 @@
   <g isolation="isolate">
     <text transform="translate(145 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep A</tspan></text>
   </g>
-  <polygon points="780 660 780 680 1260 920 1260 895 780 660" fill="#00a"/>
-  <polygon points="560 680 120 920 120 900 560 660 560 680" fill="#00a"/>
+  <polygon points="720 660 720 680 1260 920 1260 895 720 660" fill="#00a"/>
+  <polygon points="620 680 120 920 120 900 620 660 620 680" fill="#00a"/>
   <rect x="140" y="935" width="1100" height="25" fill="#9eaa00"/>
   <g isolation="isolate">
     <text transform="translate(390 90)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">Separated bits. At most one</tspan></text>

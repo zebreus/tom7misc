@@ -3,6 +3,8 @@
 #define _TOWARD_LAYOUT_H
 
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,8 +34,10 @@ enum Gate : uint8_t {
   SPACER,
   AND0110,
   NOT,
+  NOT01,
   SEPARATOR,
-  SELFXCHG,
+  SELFXCHG01,
+  SELFXCHG10,
   WIREA,
   WIREB,
   XCHG00,
@@ -64,7 +68,8 @@ struct Circuit {
 std::pair<int, int> GateSize(Gate gate);
 std::pair<int, int> LayerSize(const Layer &layer);
 
-int CellWidth(const Cell &cell);
+std::string_view GateString(Gate g);
+std::string CellString(const Cell &cell);
 
 // Check that inputs are lined up with outputs, and that
 // their types match.

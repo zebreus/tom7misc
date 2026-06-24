@@ -10,8 +10,11 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/print.h"
+#include "cell-library.h"
+#include "circuit.h"
 #include "level.h"
 #include "periodically.h"
+#include "prop.h"
 #include "rendering.h"
 #include "scene.h"
 #include "status-bar.h"
@@ -48,6 +51,7 @@ static bool Validate(const ValidationInstance &inst) {
 
   std::mutex m;
   int correct_count = 0, done = 0;
+  int images_left = 100;
   uint64_t base_seed = rc.Word64();
   static constexpr int NUM_EVAL_THREADS = 16;
   Periodically status_per(1.0);
@@ -78,16 +82,26 @@ static bool Validate(const ValidationInstance &inst) {
 
         bool correct = Validation::IsValidOutput(sample, actual_outputs);
 
-        if (!correct) {
-          std::vector<Rendering::Triangle> tris = scene->GetTriangles();
+        bool write_images = false;
+        {
           MutexLock ml(&m);
-          wrong_rendering->RenderScene(
-              vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
-        } else if (trial % 500 == 0) {
-          std::vector<Rendering::Triangle> tris = scene->GetTriangles();
-          MutexLock ml(&m);
-          debug_rendering->RenderScene(
-              vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
+          if (images_left > 0) write_images = true;
+        }
+
+        if (write_images) {
+          if (!correct) {
+            std::vector<Rendering::Triangle> tris = scene->GetTriangles();
+            MutexLock ml(&m);
+            wrong_rendering->RenderScene(
+                vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
+            images_left--;
+          } else if (trial % 500 == 0) {
+            std::vector<Rendering::Triangle> tris = scene->GetTriangles();
+            MutexLock ml(&m);
+            debug_rendering->RenderScene(
+                vec2f{0.0f, 0.0f}, vec2f{Scene::WIDTH, Scene::HEIGHT}, tris);
+            images_left--;
+          }
         }
 
         {
@@ -98,7 +112,10 @@ static bool Validate(const ValidationInstance &inst) {
 
         status_per.RunIf([&]{
             MutexLock ml(&m);
-            status.Progress(done, NUM_TRIALS, "{}/{} correct = {:.2f}%",
+            status.Progress(done, NUM_TRIALS,
+                            "[" AYELLOW("{}") "]"
+                            " {}/{} correct = {:.2f}%",
+                            inst.Name(),
                             correct_count, done,
                             (correct_count * 100.0) / done);
           });
@@ -135,6 +152,70 @@ static void ValidateWires() {
   CHECK(Validate(*Validation::WireAN32()));
 }
 
+static void ValidateLibrary() {
+  CellLibrary library;
+
+  // SPACER,
+  // WIREA,
+  // WIREB,
+
+  for (Gate g : {
+      Gate::SELFXCHG01,
+      Gate::SELFXCHG10,
+      Gate::XCHG00,
+      Gate::XCHG01,
+      Gate::XCHG10,
+      Gate::XCHG11,
+      Gate::DUPSEP0011,
+      Gate::SINK,
+      Gate::CONST0,
+      Gate::CONST1,
+      Gate::NOT01,
+      Gate::AND0110,
+      Gate::NOT,
+      Gate::SEPARATOR,
+    }) {
+    for (bool f : {false, true}) {
+      // XXX skip known problematic
+      // if (f && g == Gate::AND0110) continue;
+      if (f) continue;
+      if (g == Gate::NOT) continue;
+
+      Cell cell{.gate = g, .flip = f};
+      std::vector<Prop> args;
+      CellLibrary::Info info = library.GetInfo(cell);
+      if (g == Gate::SELFXCHG01 ||
+          g == Gate::SELFXCHG10) {
+        CHECK(info.inputs.size() == 2);
+        args = {Prop{Var{.id = 0}}, Prop{Var{.id = 0}}};
+
+      } else if (g == Gate::NOT01) {
+        CHECK(info.inputs.size() == 2);
+        args = {Prop{Var{.id = 0}}, Prop{Var{.id = 0}}};
+
+      } else if (g == Gate::AND0110) {
+        CHECK(info.inputs.size() == 4);
+        args = {
+          Prop{Var{.id = 0}},
+          Prop{Var{.id = 0}},
+          Prop{Var{.id = 1}},
+          Prop{Var{.id = 1}},
+        };
+
+      } else {
+        // Unconstrained.
+        for (int i = 0; i < info.inputs.size(); i++) {
+          args.push_back(Prop{Var{.id = i}});
+        }
+      }
+
+      std::unique_ptr<ValidationInstance> cv =
+        Validation::ValidateCell(library, cell, args);
+      CHECK(Validate(*cv)) << cv->Name();
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -142,7 +223,9 @@ int main(int argc, char **argv) {
   // Validate(*Validation::SepXchg());
   // Validate(*Validation::Sep11Xchg());
 
-  CHECK(Validate(*Validation::WireAN32()));
+  // CHECK(Validate(*Validation::WireAN32()));
+
+  ValidateLibrary();
 
   return 0;
 }

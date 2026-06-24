@@ -1,6 +1,7 @@
 
 #include "validation.h"
 
+#include <algorithm>
 #include <memory>
 #include <span>
 #include <string>
@@ -8,12 +9,14 @@
 #include <utility>
 #include <vector>
 
+#include "base/logging.h"
 #include "box2d.h"
+#include "cell-library.h"
+#include "circuit.h"
 #include "level.h"
 #include "pcg.h"
+#include "prop.h"
 #include "scene.h"
-#include "validation.h"
-#include "base/logging.h"
 
 namespace {
 struct AndValidation : public ValidationInstance {
@@ -149,8 +152,8 @@ struct SepXchgValidation : public ValidationInstance {
       ret.valid_outputs = {{r, l}};
 
     } else {
-      ChuteValue l = Validation::SeparatedZero(a);
-      ChuteValue r = Validation::SeparatedOne(a);
+      ChuteValue l = Validation::SeparatedOne(a);
+      ChuteValue r = Validation::SeparatedZero(a);
       ret.input_values.push_back(l);
       ret.input_values.push_back(r);
       ret.valid_outputs = {{r, l}};
@@ -219,7 +222,7 @@ struct Sep01XchgValidation : public ValidationInstance {
 struct Sep10XchgValidation : public ValidationInstance {
   std::string_view Name() const override { return "cell-sep10xchg"; }
   Sep10XchgValidation() {
-    level = Levels::LoadSVG("cell-sep01xchg.svg");
+    level = Levels::LoadSVG("cell-sep10xchg.svg");
     CHECK(level.get() != nullptr) << Name();
   }
   Level InitialLevel() const override { return *level; }
@@ -266,6 +269,81 @@ struct Sep11XchgValidation : public ValidationInstance {
     ret.input_values.push_back(sep_b);
 
     ret.valid_outputs = {{sep_b, sep_a}};
+    return ret;
+  }
+};
+
+struct GenericCellValidation : public ValidationInstance {
+  std::string name;
+  std::unique_ptr<Level> level;
+  std::vector<Func> in_funcs;
+  std::vector<Func> out_funcs;
+  int max_var = -1;
+
+  GenericCellValidation(const CellLibrary &library,
+                        const Cell &cell, std::span<const Prop> args) {
+    CellLibrary::Info info = library.GetInfo(cell);
+    level = library.GetLevel(cell);
+    CHECK(level.get() != nullptr);
+    CHECK(args.size() == info.inputs.size());
+
+    for (size_t i = 0; i < args.size(); i++) {
+      in_funcs.push_back(Func{
+          .prop = args[i],
+          .type = info.inputs[i].type,
+        });
+      for (int v : PropVars(args[i])) {
+        max_var = std::max(max_var, v);
+      }
+    }
+
+    out_funcs = TransformCell(cell, in_funcs);
+    CHECK(out_funcs.size() == info.outputs.size());
+
+    name = CellString(cell);
+  }
+
+  std::string_view Name() const override { return name; }
+  Level InitialLevel() const override { return *level; }
+  int ExpectedInputs() const override { return (int)in_funcs.size(); }
+  int ExpectedOutputs() const override { return (int)out_funcs.size(); }
+
+  ValidationSample OneSample(uint64_t seed) const override {
+    PCG32 pcg(seed);
+    uint64_t bits = pcg.Rand64();
+
+    CHECK(max_var < 60) << "This is designed for a small number of "
+      "variables!";
+    std::vector<bool> assignments(max_var + 1, false);
+    for (int i = 0; i <= max_var; i++) {
+      assignments[i] = !!((bits >> i) & 1);
+    }
+
+    ValidationSample ret;
+    for (size_t i = 0; i < in_funcs.size(); i++) {
+      bool val = EvaluateProp(assignments, in_funcs[i].prop);
+      if (in_funcs[i].type == CType::MIXED) {
+        ret.input_values.push_back(val ? ChuteValue::ONE : ChuteValue::ZERO);
+      } else if (in_funcs[i].type == CType::ZERO) {
+        ret.input_values.push_back(Validation::SeparatedZero(val));
+      } else if (in_funcs[i].type == CType::ONE) {
+        ret.input_values.push_back(Validation::SeparatedOne(val));
+      }
+    }
+
+    std::vector<ChuteValue> expected;
+    for (size_t i = 0; i < out_funcs.size(); i++) {
+      bool val = EvaluateProp(assignments, out_funcs[i].prop);
+      if (out_funcs[i].type == CType::MIXED) {
+        expected.push_back(val ? ChuteValue::ONE : ChuteValue::ZERO);
+      } else if (out_funcs[i].type == CType::ZERO) {
+        expected.push_back(Validation::SeparatedZero(val));
+      } else if (out_funcs[i].type == CType::ONE) {
+        expected.push_back(Validation::SeparatedOne(val));
+      }
+    }
+    ret.valid_outputs.push_back(std::move(expected));
+
     return ret;
   }
 };
@@ -338,7 +416,7 @@ std::unique_ptr<ValidationInstance> Validation::Sep01Xchg() {
 }
 
 std::unique_ptr<ValidationInstance> Validation::Sep10Xchg() {
-  return std::make_unique<Sep01XchgValidation>();
+  return std::make_unique<Sep10XchgValidation>();
 }
 
 std::unique_ptr<ValidationInstance> Validation::Sep11Xchg() {
@@ -373,9 +451,14 @@ std::unique_ptr<ValidationInstance> Validation::WireAN32() {
   return std::make_unique<WireValidation>("cell-wirean32.svg");
 }
 
+std::unique_ptr<ValidationInstance>
+Validation::ValidateCell(const CellLibrary &library,
+                         const Cell &cell, std::span<const Prop> args) {
+  return std::make_unique<GenericCellValidation>(library, cell, args);
+}
 
 bool Validation::IsValidOutput(const ValidationSample &sample,
-                               std::span<const ChuteValue> actual) {
+std::span<const ChuteValue> actual) {
   for (const auto &valid : sample.valid_outputs) {
     CHECK(valid.size() == actual.size());
     for (size_t out_idx = 0; out_idx < valid.size(); out_idx++) {

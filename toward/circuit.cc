@@ -1,20 +1,53 @@
 
 #include "circuit.h"
 
+#include <string>
+#include <string_view>
 #include <utility>
 #include <cstdint>
 #include <span>
 #include <vector>
 
-#include "prop.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "prop.h"
 
+std::string_view GateString(Gate g) {
+  switch (g) {
+  case SPACER: return "SPACER";
+  case AND0110: return "AND0110";
+  case NOT: return "NOT";
+  case NOT01: return "NOT01";
+  case SEPARATOR: return "SEPARATOR";
+  case SELFXCHG01: return "SELFXCHG01";
+  case SELFXCHG10: return "SELFXCHG10";
+  case WIREA: return "WIREA";
+  case WIREB: return "WIREB";
+  case XCHG00: return "XCHG00";
+  case XCHG01: return "XCHG01";
+  case XCHG10: return "XCHG10";
+  case XCHG11: return "XCHG11";
+  case DUPSEP0011: return "DUPSEP0011";
+  case SINK: return "SINK";
+  case CONST0: return "CONST0";
+  case CONST1: return "CONST1";
+  default: return "???BAD GATE???";
+  }
+}
 
-int CellWidth() {
-  // TODO: Need catalog of inputs from SVG files; derive widths.
+std::string CellString(const Cell &cell) {
+  std::string ret(GateString(cell.gate));
+  if (cell.gate == SPACER ||
+      cell.gate == WIREA ||
+      cell.gate == WIREB) {
+    AppendFormat(&ret, "({})", cell.v);
+  }
 
-  LOG(FATAL) << "Unimplemented";
-  return 0;
+  if (cell.flip) {
+    ret += ".FLIP";
+  }
+
+  return ret;
 }
 
 std::pair<int, int> GateSize(Gate g) {
@@ -22,7 +55,10 @@ std::pair<int, int> GateSize(Gate g) {
   case SPACER: return {0, 0};
   case AND0110: return {4, 1};
   case NOT: return {1, 1};
+  case NOT01: return {2, 1};
   case SEPARATOR: return {1, 2};
+  case SELFXCHG01: return {2, 2};
+  case SELFXCHG10: return {2, 2};
   case WIREA:
   case WIREB: return {1, 1};
   case XCHG00:
@@ -34,7 +70,8 @@ std::pair<int, int> GateSize(Gate g) {
   case CONST0:
   case CONST1: return {0, 1};
   default:
-    LOG(FATAL) << "Unimplemented gate in GateSize?";
+    LOG(FATAL) << "Unimplemented gate in GateSize? "
+               << GateString(g);
     return {0, 0};
   }
 }
@@ -52,7 +89,9 @@ std::pair<int, int> LayerSize(const Layer &layer) {
 std::vector<Func> TransformCell(const Cell &cell,
                                 std::span<const Func> in) {
   const auto &[num_in, num_out] = GateSize(cell.gate);
-  CHECK(in.size() == num_in);
+  CHECK(in.size() == num_in) << CellString(cell)
+                             << " in.size: " << in.size()
+                             << " num_in: " << num_in;
   std::vector<Func> out;
   out.resize(num_out);
 
@@ -84,8 +123,8 @@ std::vector<Func> TransformCell(const Cell &cell,
     const Func &fc = in[InputIdx(2)];
     const Func &fd = in[InputIdx(3)];
 
-    // We can assume fa.prop = -fb.prop,
-    // fc.prop = -fd.prop.
+    // We can assume fa.prop = fb.prop,
+    // fc.prop = fd.prop.
 
     CHECK(fa.type == CType::ZERO);
     CHECK(fb.type == CType::ONE);
@@ -100,10 +139,59 @@ std::vector<Func> TransformCell(const Cell &cell,
     break;
   }
 
+  case SELFXCHG01: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    // Assume fa.prop = fb.prop.
+
+    CHECK(fa.type == CType::ZERO);
+    CHECK(fb.type == CType::ONE);
+    out[OutputIdx(0)] = Func{
+      .prop = fa.prop,
+      .type = CType::ONE,
+    };
+    out[OutputIdx(1)] = Func{
+      .prop = fa.prop,
+      .type = CType::ZERO,
+    };
+
+    break;
+  }
+
+  case SELFXCHG10: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    // Assume fa.prop = fb.prop.
+
+    CHECK(fa.type == CType::ONE);
+    CHECK(fb.type == CType::ZERO);
+    out[OutputIdx(0)] = Func{
+      .prop = fa.prop,
+      .type = CType::ZERO,
+    };
+    out[OutputIdx(1)] = Func{
+      .prop = fa.prop,
+      .type = CType::ONE,
+    };
+
+    break;
+  }
+
   case NOT: {
     const Func &f = in[InputIdx(0)];
     CHECK(f.type == CType::MIXED);
     out[OutputIdx(0)] = Func{.prop = -f.prop, .type = CType::MIXED};
+    break;
+  }
+
+  case NOT01: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    // fa = fb
+
+    CHECK(fa.type == CType::ZERO);
+    CHECK(fb.type == CType::ONE);
+    out[OutputIdx(0)] = Func{.prop = -fa.prop, .type = CType::MIXED};
     break;
   }
 
@@ -191,7 +279,8 @@ std::vector<Func> TransformCell(const Cell &cell,
   }
 
   default:
-    LOG(FATAL) << "Unimplemented gate in TransformCell?";
+    LOG(FATAL) << "Unimplemented gate in TransformCell? "
+               << CellString(cell);
   }
 
   CHECK(out.size() == num_out);

@@ -9,11 +9,11 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/print.h"
 #include "circuit.h"
-#include "hashing.h"
+#include "inline-vector.h"
 #include "level.h"
-#include "ansi.h"
 
 namespace {
 struct HashCell {
@@ -33,6 +33,38 @@ struct EqCell {
   }
 };
 }  // namespace
+
+// Get the input/output types for the gate (unflipped).
+static std::pair<InlineVector<CType>, InlineVector<CType>>
+GetType(Gate g) {
+  switch (g) {
+  case SPACER: return {{}, {}};
+  case AND0110:
+    return {{CType::ZERO, CType::ONE, CType::ONE, CType::ZERO},
+            {CType::MIXED}};
+  case NOT: return {{CType::MIXED}, {CType::MIXED}};
+  case NOT01: return {{CType::ZERO, CType::ONE}, {CType::MIXED}};
+  case SEPARATOR: return {{CType::MIXED}, {CType::ZERO, CType::ONE}};
+  case SELFXCHG01:
+    return {{CType::ZERO, CType::ONE}, {CType::ONE, CType::ZERO}};
+  case SELFXCHG10:
+    return {{CType::ONE, CType::ZERO}, {CType::ZERO, CType::ONE}};
+  case WIREA:
+  case WIREB: return {{CType::MIXED}, {CType::MIXED}};
+  case XCHG00: return {{CType::ZERO, CType::ZERO}, {CType::ZERO, CType::ZERO}};
+  case XCHG01: return {{CType::ZERO, CType::ONE}, {CType::ONE, CType::ZERO}};
+  case XCHG10: return {{CType::ONE, CType::ZERO}, {CType::ZERO, CType::ONE}};
+  case XCHG11: return {{CType::ONE, CType::ONE}, {CType::ONE, CType::ONE}};
+  case DUPSEP0011:
+    return {{CType::MIXED},
+            {CType::ZERO, CType::ZERO, CType::ONE, CType::ONE}};
+  case SINK: return {{CType::MIXED}, {}};
+  case CONST0:
+  case CONST1: return {{}, {CType::MIXED}};
+  default: return {{}, {}};
+  }
+}
+
 
 struct CellLibraryImpl {
 
@@ -63,14 +95,23 @@ struct CellLibraryImpl {
 
     InternalInfo entry;
 
-    for (int ix : level->inputs) {
+    auto [in_types, out_types] = GetType(gate);
+
+    for (size_t i = 0; i < level->inputs.size(); i++) {
       CellLibrary::IO io;
-      io.xblock = ix;
+      io.xblock = level->inputs[i];
+      if (i < in_types.size()) {
+        io.type = in_types[i];
+      }
+      // Should maybe also have props here?
       entry.inputs.push_back(io);
     }
-    for (int ox : level->outputs) {
+    for (size_t i = 0; i < level->outputs.size(); i++) {
       CellLibrary::IO io;
-      io.xblock = ox;
+      io.xblock = level->outputs[i];
+      if (i < out_types.size()) {
+        io.type = out_types[i];
+      }
       entry.outputs.push_back(io);
     }
 
@@ -123,11 +164,15 @@ struct CellLibraryImpl {
 
   CellLibraryImpl() {
     Load("cell-not.svg", Gate::NOT, 0);
+    Load("cell-not01.svg", Gate::NOT01, 0);
     Load("cell-dupsep0011.svg", Gate::DUPSEP0011, 0);
     Load("cell-and0110.svg", Gate::AND0110, 0);
     Load("cell-separator.svg", Gate::SEPARATOR, 0);
     Load("cell-sink.svg", Gate::SINK, 0);
-    Load("cell-selfxchg.svg", Gate::SELFXCHG, 0);
+    // Same level works for both. We just need to
+    // be able to give two types.
+    Load("cell-selfxchg.svg", Gate::SELFXCHG01, 0);
+    Load("cell-selfxchg.svg", Gate::SELFXCHG10, 0);
     Load("cell-xchg00.svg", Gate::XCHG00, 0);
     Load("cell-xchg01.svg", Gate::XCHG01, 0);
     Load("cell-xchg10.svg", Gate::XCHG10, 0);
