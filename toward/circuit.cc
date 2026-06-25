@@ -23,6 +23,10 @@ std::string_view GateString(Gate g) {
   case SELFXCHG10: return "SELFXCHG10";
   case WIREA: return "WIREA";
   case WIREB: return "WIREB";
+  case WIRE0A: return "WIRE0A";
+  case WIRE0B: return "WIRE0B";
+  case WIRE1A: return "WIRE1A";
+  case WIRE1B: return "WIRE1B";
   case XCHG00: return "XCHG00";
   case XCHG01: return "XCHG01";
   case XCHG10: return "XCHG10";
@@ -35,11 +39,23 @@ std::string_view GateString(Gate g) {
   }
 }
 
+bool IsWire(Gate gate) {
+  switch (gate) {
+  case WIREA:
+  case WIREB:
+  case WIRE0A:
+  case WIRE0B:
+  case WIRE1A:
+  case WIRE1B:
+    return true;
+  default:
+    return false;
+  }
+}
+
 std::string CellString(const Cell &cell) {
   std::string ret(GateString(cell.gate));
-  if (cell.gate == SPACER ||
-      cell.gate == WIREA ||
-      cell.gate == WIREB) {
+  if (cell.gate == SPACER || IsWire(cell.gate)) {
     AppendFormat(&ret, "({})", cell.v);
   }
 
@@ -60,7 +76,12 @@ std::pair<int, int> GateArity(Gate g) {
   case SELFXCHG01: return {2, 2};
   case SELFXCHG10: return {2, 2};
   case WIREA:
-  case WIREB: return {1, 1};
+  case WIREB:
+  case WIRE0A:
+  case WIRE0B:
+  case WIRE1A:
+  case WIRE1B:
+    return {1, 1};
   case XCHG00:
   case XCHG01:
   case XCHG10:
@@ -205,7 +226,50 @@ std::vector<Func> TransformCell(const Cell &cell,
 
   case WIREA:
   case WIREB: {
-    out[OutputIdx(0)] = in[InputIdx(0)];
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::MIXED);
+
+    out[OutputIdx(0)] = f;
+    break;
+  }
+
+  case WIRE0A:
+  case WIRE0B: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ZERO);
+
+    out[OutputIdx(0)] = f;
+    break;
+  }
+
+  case WIRE1A:
+  case WIRE1B: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ONE);
+
+    out[OutputIdx(0)] = f;
+    break;
+  }
+
+  case COMBINE01: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    // fa = fb
+    CHECK(fa.type == CType::ZERO);
+    CHECK(fb.type == CType::ONE);
+
+    out[OutputIdx(0)] = Func{.prop = fa.prop, .type = CType::MIXED};
+    break;
+  }
+
+  case COMBINE10: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    // fa = fb
+    CHECK(fa.type == CType::ONE);
+    CHECK(fb.type == CType::ZERO);
+
+    out[OutputIdx(0)] = Func{.prop = fa.prop, .type = CType::MIXED};
     break;
   }
 

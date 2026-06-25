@@ -46,12 +46,12 @@ struct CellLibrary {
   //  Input is at x=1
   //  Output is at x=1 - offset
   //     for offset in (0, 1, 2, 4, 8, 16, 32, 64).
-  static Cell WireA(int k);
+  static Cell WireA(int k, CType type = CType::MIXED);
   // Wire B:
   // Input is at x=6
   // Output is at x=6 + offset
   //     for offset in (0, 1, 2, 4, 8, 16, 32, 64).
-  static Cell WireB(int k);
+  static Cell WireB(int k, CType type = CType::MIXED);
 
  private:
   // Private implementation.

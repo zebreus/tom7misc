@@ -2,6 +2,7 @@
 #ifndef _TOWARD_CIRCUIT_H
 #define _TOWARD_CIRCUIT_H
 
+#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,8 +39,18 @@ enum Gate : uint8_t {
   SEPARATOR,
   SELFXCHG01,
   SELFXCHG10,
+  // Maybe better to not distinguish wire variants A/B at the gate
+  // level? This could be a parameter in the cell.
+  // WIRE and WIRE0 are semantically different because they have
+  // different input types (even though they have the same geometry).
   WIREA,
   WIREB,
+  WIRE0A,
+  WIRE0B,
+  WIRE1A,
+  WIRE1B,
+  COMBINE01,
+  COMBINE10,
   XCHG00,
   XCHG01,
   XCHG10,
@@ -51,6 +62,13 @@ enum Gate : uint8_t {
   // perhaps also const empty?
 };
 
+inline constexpr std::array ALL_GATES = {
+  SPACER, AND0110, NOT, NOT01, SEPARATOR, SELFXCHG01, SELFXCHG10,
+  WIREA, WIREB, WIRE0A, WIRE0B, WIRE1A, WIRE1B,
+  COMBINE01, COMBINE10,
+  XCHG00, XCHG01, XCHG10, XCHG11, DUPSEP0011, SINK, CONST0, CONST1,
+};
+
 struct Cell {
   Gate gate = Gate::SPACER;
   // Gates like spacers and wires are parameterized.
@@ -58,6 +76,7 @@ struct Cell {
   int v = 0;
   // Flip horizontally.
   bool flip = false;
+  explicit Cell(Gate g) : gate(g) {}
 };
 
 using Layer = std::vector<Cell>;
@@ -86,7 +105,8 @@ struct Func {
 // Compose the layer with the functions to get new ones. This ignores
 // the positions of the inputs/outputs (keeping only the order) and
 // aborts on length mismatch. Use DRC.
-std::vector<Func> Transform(const Layer &layer, const std::vector<Func> &funcs);
+std::vector<Func> Transform(const Layer &layer,
+                            const std::vector<Func> &funcs);
 
 // Transform just the one cell. Assumes the input is the correct size.
 std::vector<Func> TransformCell(const Cell &cell,

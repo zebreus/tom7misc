@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -51,6 +52,12 @@ GetType(Gate g) {
     return {{CType::ONE, CType::ZERO}, {CType::ZERO, CType::ONE}};
   case WIREA:
   case WIREB: return {{CType::MIXED}, {CType::MIXED}};
+  case WIRE0A:
+  case WIRE0B: return {{CType::ZERO}, {CType::ZERO}};
+  case WIRE1A:
+  case WIRE1B: return {{CType::ONE}, {CType::ONE}};
+  case COMBINE01: return {{CType::ZERO, CType::ONE}, {CType::MIXED}};
+  case COMBINE10: return {{CType::ONE, CType::ZERO}, {CType::MIXED}};
   case XCHG00: return {{CType::ZERO, CType::ZERO}, {CType::ZERO, CType::ZERO}};
   case XCHG01: return {{CType::ZERO, CType::ONE}, {CType::ONE, CType::ZERO}};
   case XCHG10: return {{CType::ONE, CType::ZERO}, {CType::ZERO, CType::ONE}};
@@ -89,7 +96,10 @@ struct CellLibraryImpl {
   // vertices on the boundary. We should Print a warning
   // if there is space on the left edge (of one block or
   // more).
-  void Load(std::string_view filename, Gate gate, int v) {
+  void LoadWithCache(
+      // Used during initialization and cleared after. Can be empty.
+      std::unordered_map<std::string, std::unique_ptr<Level>> svg_cache,
+      std::string_view filename, Gate gate, int v) {
     std::unique_ptr<Level> level = Levels::LoadSVG(filename);
     CHECK(level.get() != nullptr) << "Missing/invalid: " << filename;
 
@@ -151,7 +161,7 @@ struct CellLibraryImpl {
     entry.block_width = (int)std::ceil(max_x / Levels::BLOCK_SIZE - 0.01f);
     if (entry.block_width < 0) entry.block_width = 0;
 
-    entry.level = std::move(level);
+    entry.level = std::make_unique<Level>(*level);
 
     Cell key{
       .gate = gate,
@@ -163,6 +173,12 @@ struct CellLibraryImpl {
   }
 
   CellLibraryImpl() {
+    // Some SVGs are used multiple times.
+    std::unordered_map<std::string, std::unique_ptr<Level>> svg_cache;
+    auto Load = [&](std::string_view s, Gate g, int v) {
+        return LoadWithCache(svg_cache, s, g, v);
+      };
+
     Load("cell-not.svg", Gate::NOT, 0);
     Load("cell-not01.svg", Gate::NOT01, 0);
     Load("cell-dupsep0011.svg", Gate::DUPSEP0011, 0);
@@ -180,23 +196,40 @@ struct CellLibraryImpl {
     Load("cell-xchg10.svg", Gate::XCHG10, 0);
     Load("cell-xchg11.svg", Gate::XCHG11, 0);
 
-    Load("cell-wirea0.svg", Gate::WIREA, 0);
-    Load("cell-wirean1.svg", Gate::WIREA, -1);
-    Load("cell-wirean2.svg", Gate::WIREA, -2);
-    Load("cell-wirean4.svg", Gate::WIREA, -4);
-    Load("cell-wirean8.svg", Gate::WIREA, -8);
-    Load("cell-wirean16.svg", Gate::WIREA, -16);
-    Load("cell-wirean32.svg", Gate::WIREA, -32);
-    Load("cell-wirean64.svg", Gate::WIREA, -64);
+    // Same level works for both. We just need to
+    // be able to give two types.
+    Load("cell-combine.svg", Gate::COMBINE01, 0);
+    Load("cell-combine.svg", Gate::COMBINE10, 0);
 
-    Load("cell-wireb0.svg", Gate::WIREB, 0);
-    Load("cell-wirebp1.svg", Gate::WIREB, 1);
-    Load("cell-wirebp2.svg", Gate::WIREB, 2);
-    Load("cell-wirebp4.svg", Gate::WIREB, 4);
-    Load("cell-wirebp8.svg", Gate::WIREB, 8);
-    Load("cell-wirebp16.svg", Gate::WIREB, 16);
-    Load("cell-wirebp32.svg", Gate::WIREB, 32);
-    Load("cell-wirebp64.svg", Gate::WIREB, 64);
+    for (CType t : { CType::MIXED, CType::ZERO, CType::ONE }) {
+      Gate g =
+        (t == CType::MIXED) ? Gate::WIREA :
+        (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
+
+      Load("cell-wirea0.svg", g, 0);
+      Load("cell-wirean1.svg", g, -1);
+      Load("cell-wirean2.svg", g, -2);
+      Load("cell-wirean4.svg", g, -4);
+      Load("cell-wirean8.svg", g, -8);
+      Load("cell-wirean16.svg", g, -16);
+      Load("cell-wirean32.svg", g, -32);
+      Load("cell-wirean64.svg", g, -64);
+    }
+
+    for (CType t : { CType::MIXED, CType::ZERO, CType::ONE }) {
+      Gate g =
+        (t == CType::MIXED) ? Gate::WIREB :
+        (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
+
+      Load("cell-wireb0.svg", g, 0);
+      Load("cell-wirebp1.svg", g, 1);
+      Load("cell-wirebp2.svg", g, 2);
+      Load("cell-wirebp4.svg", g, 4);
+      Load("cell-wirebp8.svg", g, 8);
+      Load("cell-wirebp16.svg", g, 16);
+      Load("cell-wirebp32.svg", g, 32);
+      Load("cell-wirebp64.svg", g, 64);
+    }
 
     // Spacer is an empty level and can exist at any
     // width; we create it dynamically.
@@ -292,16 +325,22 @@ Cell CellLibrary::Spacer(int width) {
   return Cell{.gate = Gate::SPACER, .v = width, .flip = false};
 }
 
-Cell CellLibrary::WireA(int k) {
+Cell CellLibrary::WireA(int k, CType t) {
   CHECK(k == 0 || k == 1 || k == 2 || k == 4 || k == 8 || k == 16 ||
         k == 32 || k == 64) << "Invalid offset for WireA: " << k;
-  return Cell{.gate = Gate::WIREA, .v = -k, .flip = false};
+  Gate g =
+    (t == CType::MIXED) ? Gate::WIREA :
+    (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
+  return Cell{.gate = g, .v = -k, .flip = false};
 }
 
-Cell CellLibrary::WireB(int k) {
+Cell CellLibrary::WireB(int k, CType t) {
   CHECK(k == 0 || k == 1 || k == 2 || k == 4 || k == 8 || k == 16 ||
         k == 32 || k == 64) << "Invalid offset for WireB: " << k;
-  return Cell{.gate = Gate::WIREB, .v = k, .flip = false};
+  Gate g =
+    (t == CType::MIXED) ? Gate::WIREB :
+    (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
+  return Cell{.gate = g, .v = k, .flip = false};
 }
 
 CellLibrary::CellLibrary() : impl(new CellLibraryImpl) {}

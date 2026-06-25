@@ -6,11 +6,12 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "circuit.h"
 #include "level.h"
 
 static void Simple() {
   // Simply creating the library validates that nothing is seriously
-  // wrong with the SVG files.a
+  // wrong with the SVG files.
   CellLibrary library;
 
   {
@@ -35,10 +36,49 @@ static void Simple() {
 }
 
 
+static void VerifyFlippedWidths() {
+  CellLibrary library;
+
+  auto check_cell = [&library](Cell cell) {
+    cell.flip = false;
+    int normal_width = library.GetInfo(cell).block_width;
+    cell.flip = true;
+    int flipped_width = library.GetInfo(cell).block_width;
+    CHECK(normal_width == flipped_width)
+        << "Width mismatch for " << CellString(cell);
+  };
+
+  for (int g = 0; g <= CONST1; g++) {
+    Gate gate = static_cast<Gate>(g);
+    if (gate == SPACER || gate == WIREA || gate == WIREB) continue;
+    check_cell(Cell{gate, 0, false});
+  }
+
+  check_cell(CellLibrary::Spacer(1));
+  check_cell(CellLibrary::Spacer(5));
+  check_cell(CellLibrary::WireA(1));
+  check_cell(CellLibrary::WireA(8));
+  check_cell(CellLibrary::WireB(2));
+  check_cell(CellLibrary::WireB(16));
+}
+
+static void PrintWidths() {
+  CellLibrary library;
+  Print("Non-parameterized cell widths:\n");
+  for (Gate gate : ALL_GATES) {
+    if (gate == SPACER || gate == WIREA || gate == WIREB) continue;
+    Cell cell{gate, 0, false};
+    int width = library.GetInfo(cell).block_width;
+    Print("  {}: {}\n", GateString(gate), width);
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   Simple();
+  VerifyFlippedWidths();
+  PrintWidths();
 
   Print("OK\n");
   return 0;
