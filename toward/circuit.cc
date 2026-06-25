@@ -50,7 +50,7 @@ std::string CellString(const Cell &cell) {
   return ret;
 }
 
-std::pair<int, int> GateSize(Gate g) {
+std::pair<int, int> GateArity(Gate g) {
   switch (g) {
   case SPACER: return {0, 0};
   case AND0110: return {4, 1};
@@ -76,10 +76,10 @@ std::pair<int, int> GateSize(Gate g) {
   }
 }
 
-std::pair<int, int> LayerSize(const Layer &layer) {
+std::pair<int, int> LayerArity(const Layer &layer) {
   int inputs = 0, outputs = 0;
   for (const Cell &c : layer) {
-    const auto &[i, o] = GateSize(c.gate);
+    const auto &[i, o] = GateArity(c.gate);
     inputs += i;
     outputs += o;
   }
@@ -88,7 +88,7 @@ std::pair<int, int> LayerSize(const Layer &layer) {
 
 std::vector<Func> TransformCell(const Cell &cell,
                                 std::span<const Func> in) {
-  const auto &[num_in, num_out] = GateSize(cell.gate);
+  const auto &[num_in, num_out] = GateArity(cell.gate);
   CHECK(in.size() == num_in) << CellString(cell)
                              << " in.size: " << in.size()
                              << " num_in: " << num_in;
@@ -289,7 +289,7 @@ std::vector<Func> TransformCell(const Cell &cell,
 
 std::vector<Func> Transform(const Layer &layer,
                             const std::vector<Func> &in) {
-  const auto &[num_inputs, num_outputs] = LayerSize(layer);
+  const auto &[num_inputs, num_outputs] = LayerArity(layer);
   CHECK(num_inputs == in.size());
   std::vector<Func> out;
   out.reserve(num_outputs);
@@ -297,7 +297,7 @@ std::vector<Func> Transform(const Layer &layer,
   int in_idx = 0;
   int out_idx = 0;
   for (const Cell &cell : layer) {
-    const auto &[cell_num_in, cell_num_out] = GateSize(cell.gate);
+    const auto &[cell_num_in, cell_num_out] = GateArity(cell.gate);
 
     std::span<const Func> cell_in(in.data() + in_idx, cell_num_in);
     std::vector<Func> cell_out = TransformCell(cell, cell_in);

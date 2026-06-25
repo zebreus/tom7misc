@@ -1,6 +1,6 @@
 
-#ifndef _TOWARD_LAYOUT_H
-#define _TOWARD_LAYOUT_H
+#ifndef _TOWARD_CIRCUIT_H
+#define _TOWARD_CIRCUIT_H
 
 #include <span>
 #include <string>
@@ -48,6 +48,7 @@ enum Gate : uint8_t {
   SINK,
   CONST0,
   CONST1,
+  // perhaps also const empty?
 };
 
 struct Cell {
@@ -65,8 +66,8 @@ struct Circuit {
 };
 
 // number of inputs, outputs
-std::pair<int, int> GateSize(Gate gate);
-std::pair<int, int> LayerSize(const Layer &layer);
+std::pair<int, int> GateArity(Gate gate);
+std::pair<int, int> LayerArity(const Layer &layer);
 
 std::string_view GateString(Gate g);
 std::string CellString(const Cell &cell);

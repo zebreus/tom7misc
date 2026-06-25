@@ -160,6 +160,8 @@ static void ValidateLibrary() {
   // WIREB,
 
   for (Gate g : {
+      Gate::CONST0,
+      Gate::CONST1,
       Gate::SELFXCHG01,
       Gate::SELFXCHG10,
       Gate::XCHG00,
@@ -168,8 +170,6 @@ static void ValidateLibrary() {
       Gate::XCHG11,
       Gate::DUPSEP0011,
       Gate::SINK,
-      Gate::CONST0,
-      Gate::CONST1,
       Gate::NOT01,
       Gate::AND0110,
       Gate::NOT,

@@ -169,6 +169,8 @@ struct CellLibraryImpl {
     Load("cell-and0110.svg", Gate::AND0110, 0);
     Load("cell-separator.svg", Gate::SEPARATOR, 0);
     Load("cell-sink.svg", Gate::SINK, 0);
+    Load("cell-const0.svg", Gate::CONST0, 0);
+    Load("cell-const1.svg", Gate::CONST1, 0);
     // Same level works for both. We just need to
     // be able to give two types.
     Load("cell-selfxchg.svg", Gate::SELFXCHG01, 0);
@@ -202,14 +204,17 @@ struct CellLibraryImpl {
 
   CellLibrary::Info GetInfo(const Cell &cell) const {
     if (cell.gate == Gate::SPACER) {
-      CHECK(cell.v > 0) << "Spacers must be positive width.";
+      CHECK(cell.v > 0) << "Spacers must be positive width: "
+                        << CellString(cell);
       return CellLibrary::Info{.block_width = cell.v};
     }
 
     Cell base = cell;
     base.flip = false;
     auto it = info.find(base);
-    CHECK(it != info.end()) << "Cell not found in library";
+    CHECK(it != info.end()) << "Cell not found in library: "
+                            << CellString(cell);
+
 
     CellLibrary::Info result;
     result.block_width = it->second.block_width;
@@ -244,7 +249,8 @@ struct CellLibraryImpl {
     Cell base = cell;
     base.flip = false;
     auto it = info.find(base);
-    CHECK(it != info.end()) << "Cell not found in library";
+    CHECK(it != info.end()) << "Cell not found in library: "
+                            << CellString(cell);
 
     auto result = std::make_unique<Level>(*it->second.level);
 
@@ -282,7 +288,7 @@ struct CellLibraryImpl {
 
 
 Cell CellLibrary::Spacer(int width) {
-  CHECK(width > 0) << "Spacer width must be positive";
+  CHECK(width > 0) << "Spacer width must be positive: " << width;
   return Cell{.gate = Gate::SPACER, .v = width, .flip = false};
 }
 
