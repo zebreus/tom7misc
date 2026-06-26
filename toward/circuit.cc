@@ -205,6 +205,20 @@ std::vector<Func> TransformCell(const Cell &cell,
     break;
   }
 
+  case NOT0: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ZERO);
+    out[OutputIdx(0)] = Func{.prop = -f.prop, .type = CType::ONE};
+    break;
+  }
+
+  case NOT1: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ONE);
+    out[OutputIdx(0)] = Func{.prop = -f.prop, .type = CType::ZERO};
+    break;
+  }
+
   case NOT01: {
     const Func &fa = in[InputIdx(0)];
     const Func &fb = in[InputIdx(1)];

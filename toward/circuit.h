@@ -35,6 +35,8 @@ enum Gate : uint8_t {
   SPACER,
   AND0110,
   NOT,
+  NOT0,
+  NOT1,
   NOT01,
   SEPARATOR,
   SELFXCHG01,
@@ -63,7 +65,8 @@ enum Gate : uint8_t {
 };
 
 inline constexpr std::array ALL_GATES = {
-  SPACER, AND0110, NOT, NOT01, SEPARATOR, SELFXCHG01, SELFXCHG10,
+  SPACER, AND0110, NOT, NOT0, NOT1, NOT01,
+  SEPARATOR, SELFXCHG01, SELFXCHG10,
   WIREA, WIREB, WIRE0A, WIRE0B, WIRE1A, WIRE1B,
   COMBINE01, COMBINE10,
   XCHG00, XCHG01, XCHG10, XCHG11, DUPSEP0011, SINK, CONST0, CONST1,
@@ -76,7 +79,8 @@ struct Cell {
   int v = 0;
   // Flip horizontally.
   bool flip = false;
-  explicit Cell(Gate g) : gate(g) {}
+  explicit Cell(Gate g, int v = 0, bool flip = false) :
+    gate(g), v(v), flip(flip) {}
 };
 
 using Layer = std::vector<Cell>;

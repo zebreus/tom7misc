@@ -1,6 +1,7 @@
 
 #include "prop.h"
 
+#include <string>
 #include <unordered_set>
 #include <algorithm>
 #include <cstdint>
@@ -206,4 +207,88 @@ bool PropEq(const Prop &a_in, const Prop &b_in) {
 
   // True for any possible assignment, so they are equivalent.
   return true;
+}
+
+std::string PropAtom(const Prop &prop) {
+  if (const Binop *b = std::get_if<Binop>(&prop.p)) {
+    std::string lhs = PropAtom(*b->a);
+    std::string rhs = PropAtom(*b->b);
+    switch (b->op) {
+    case BinopOp::AND: return std::format("({} ⋀ {})", lhs, rhs);
+    case BinopOp::OR: return std::format("({} ⋁ {})", lhs, rhs);
+    case BinopOp::XOR: return std::format("({} ⊕ {})", lhs, rhs);
+    default:
+      LOG(FATAL) << "Unknown binop?";
+    }
+  } else if (const Value *v = std::get_if<Value>(&prop.p)) {
+    return v->value ? "⟙" : "⟘";
+  } else if (const Var *v = std::get_if<Var>(&prop.p)) {
+    return std::format("v{}", v->id);
+  } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
+    CHECK(u->op == UnopOp::NOT);
+    return std::format("¬{}", PropAtom(*u->a));
+  } else {
+    LOG(FATAL) << "Bad variant?";
+  }
+}
+
+std::string PropString(const Prop &prop) {
+  if (const Binop *b = std::get_if<Binop>(&prop.p)) {
+    std::string lhs = PropAtom(*b->a);
+    std::string rhs = PropAtom(*b->b);
+    switch (b->op) {
+    case BinopOp::AND: return std::format("{} ⋀ {}", lhs, rhs);
+    case BinopOp::OR: return std::format("{} ⋁ {}", lhs, rhs);
+    case BinopOp::XOR: return std::format("{} ⊕ {}", lhs, rhs);
+    default:
+      LOG(FATAL) << "Unknown binop?";
+    }
+  } else {
+    return PropAtom(prop);
+  }
+}
+
+// Negation but with peephole simplification.
+static Prop N(const Prop &prop) {
+  if (const Unop *u = std::get_if<Unop>(&prop.p)) {
+    CHECK(u->op == UnopOp::NOT);
+    return *u->a;
+  } else if (const Value *v = std::get_if<Value>(&prop.p)) {
+    return {Value{.value = !v->value}};
+  } else {
+    return -prop;
+  }
+}
+
+// Normalize to only AND/NOT operators.
+Prop NormalizeToAnd(const Prop &prop) {
+  std::function<Prop(const Prop&)> NormRec = [&](const Prop &p) -> Prop {
+      if (std::holds_alternative<Value>(p.p) ||
+          std::holds_alternative<Var>(p.p)) {
+        return p;
+      } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+        CHECK(u->op == UnopOp::NOT);
+        return N(NormRec(*u->a));
+      } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+        Prop lhs = NormRec(*b->a);
+        Prop rhs = NormRec(*b->b);
+        switch (b->op) {
+        case BinopOp::AND:
+          return lhs & rhs;
+        case BinopOp::OR:
+          return -(N(lhs) & N(rhs));
+        case BinopOp::XOR:
+          // Note the proposition duplication! We should
+          // probably add LET since we'll benefit from this
+          // elsewhere.
+          return -(N(lhs) & N(rhs)) & -(lhs & rhs);
+        default:
+          LOG(FATAL) << "Unknown binop?";
+        }
+      } else {
+        LOG(FATAL) << "Bad variant?";
+      }
+    };
+
+  return NormRec(prop);
 }

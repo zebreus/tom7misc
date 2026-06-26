@@ -44,6 +44,8 @@ GetType(Gate g) {
     return {{CType::ZERO, CType::ONE, CType::ONE, CType::ZERO},
             {CType::MIXED}};
   case NOT: return {{CType::MIXED}, {CType::MIXED}};
+  case NOT0: return {{CType::ZERO}, {CType::ONE}};
+  case NOT1: return {{CType::ONE}, {CType::ZERO}};
   case NOT01: return {{CType::ZERO, CType::ONE}, {CType::MIXED}};
   case SEPARATOR: return {{CType::MIXED}, {CType::ZERO, CType::ONE}};
   case SELFXCHG01:
@@ -98,10 +100,20 @@ struct CellLibraryImpl {
   // more).
   void LoadWithCache(
       // Used during initialization and cleared after. Can be empty.
-      std::unordered_map<std::string, std::unique_ptr<Level>> svg_cache,
+      std::unordered_map<std::string, std::unique_ptr<Level>> *svg_cache,
       std::string_view filename, Gate gate, int v) {
-    std::unique_ptr<Level> level = Levels::LoadSVG(filename);
-    CHECK(level.get() != nullptr) << "Missing/invalid: " << filename;
+    std::unique_ptr<Level> level = [&]{
+        std::string f(filename);
+        auto it = svg_cache->find(f);
+        if (it == svg_cache->end()) {
+          std::unique_ptr<Level> level = Levels::LoadSVG(filename);
+          CHECK(level.get() != nullptr) << "Missing/invalid: " << filename;
+          (*svg_cache)[f] = std::make_unique<Level>(*level);
+          return level;
+        } else {
+          return std::make_unique<Level>(*it->second);
+        }
+      }();
 
     InternalInfo entry;
 
@@ -163,11 +175,7 @@ struct CellLibraryImpl {
 
     entry.level = std::make_unique<Level>(*level);
 
-    Cell key{
-      .gate = gate,
-      .v = v,
-      .flip = false,
-    };
+    Cell key(gate, v);
 
     info[key] = std::move(entry);
   }
@@ -176,10 +184,12 @@ struct CellLibraryImpl {
     // Some SVGs are used multiple times.
     std::unordered_map<std::string, std::unique_ptr<Level>> svg_cache;
     auto Load = [&](std::string_view s, Gate g, int v) {
-        return LoadWithCache(svg_cache, s, g, v);
+        return LoadWithCache(&svg_cache, s, g, v);
       };
 
     Load("cell-not.svg", Gate::NOT, 0);
+    Load("cell-not0.svg", Gate::NOT0, 0);
+    Load("cell-not1.svg", Gate::NOT1, 0);
     Load("cell-not01.svg", Gate::NOT01, 0);
     Load("cell-dupsep0011.svg", Gate::DUPSEP0011, 0);
     Load("cell-and0110.svg", Gate::AND0110, 0);
@@ -322,7 +332,7 @@ struct CellLibraryImpl {
 
 Cell CellLibrary::Spacer(int width) {
   CHECK(width > 0) << "Spacer width must be positive: " << width;
-  return Cell{.gate = Gate::SPACER, .v = width, .flip = false};
+  return Cell(Gate::SPACER, width);
 }
 
 Cell CellLibrary::WireA(int k, CType t) {
@@ -331,7 +341,7 @@ Cell CellLibrary::WireA(int k, CType t) {
   Gate g =
     (t == CType::MIXED) ? Gate::WIREA :
     (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
-  return Cell{.gate = g, .v = -k, .flip = false};
+  return Cell(g, -k);
 }
 
 Cell CellLibrary::WireB(int k, CType t) {
@@ -340,7 +350,7 @@ Cell CellLibrary::WireB(int k, CType t) {
   Gate g =
     (t == CType::MIXED) ? Gate::WIREB :
     (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
-  return Cell{.gate = g, .v = k, .flip = false};
+  return Cell(g, k);
 }
 
 CellLibrary::CellLibrary() : impl(new CellLibraryImpl) {}

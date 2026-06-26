@@ -2,11 +2,11 @@
 #ifndef _TOWARD_PROP_H
 #define _TOWARD_PROP_H
 
+#include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <string>
-#include <memory>
 
 struct World {
   // Just for input/output. A variable is uniquely
@@ -33,7 +33,6 @@ enum class BinopOp {
 enum class UnopOp {
   NOT,
 };
-
 
 struct Binop {
   BinopOp op = BinopOp::AND;
@@ -103,6 +102,9 @@ inline Prop And(Prop first, Args... args) {
   return (std::move(first) & ... & std::move(args));
 }
 
+// Just using integers for variables.
+std::string PropString(const Prop &prop);
+
 size_t PropSize(const Prop &prop);
 
 bool EvaluateProp(const std::vector<bool> &assignments,
@@ -119,5 +121,8 @@ std::vector<int> PropVars(const Prop &a);
 // Used in tests. Semantic equality of propositions in the same world.
 // Computed by bit-blasting free variables. Not fast.
 bool PropEq(const Prop &a, const Prop &b);
+
+// Normalize to only AND/NOT operators.
+Prop NormalizeToAnd(const Prop &prop);
 
 #endif

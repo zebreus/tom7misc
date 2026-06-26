@@ -1,6 +1,7 @@
 
 #include "prop.h"
 
+#include <variant>
 #include <vector>
 
 #include "ansi.h"
@@ -164,6 +165,54 @@ static void TestPropEq() {
   CHECK(!PropEq(b, p10));
 }
 
+static bool IsAndNormalForm(const Prop &prop) {
+  std::vector<const Prop *> v = {&prop};
+  while (!v.empty()) {
+    const Prop *p = v.back();
+    v.pop_back();
+
+    if (std::holds_alternative<Value>(p->p) ||
+        std::holds_alternative<Var>(p->p)) {
+      continue;
+    } else if (const Unop *u = std::get_if<Unop>(&p->p)) {
+      CHECK(u->op == UnopOp::NOT);
+      v.push_back(u->a.get());
+    } else if (const Binop *b = std::get_if<Binop>(&p->p)) {
+      if (b->op != BinopOp::AND) return false;
+      v.push_back(b->a.get());
+      v.push_back(b->b.get());
+    } else {
+      LOG(FATAL) << "Bad variant?";
+    }
+  }
+  return true;
+}
+
+static void TestNormalizeToAnd() {
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+  Prop p2 = Prop{.p = Var{.id = 2}};
+
+  std::vector<Prop> props = {
+    True(),
+    False(),
+    p0,
+    -p0,
+    p0 | p1,
+    p0 & p1,
+    p0 ^ p1,
+    (p0 | p1) ^ p2,
+    -(p0 | (p1 & p2)),
+  };
+
+  for (const Prop &p : props) {
+    Prop norm = NormalizeToAnd(p);
+    CHECK(PropEq(p, norm)) << PropString(p) << "\n" << PropString(norm);
+    CHECK(IsAndNormalForm(norm)) << PropString(p) << "\n"
+                                 << PropString(norm);
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -175,6 +224,7 @@ int main(int argc, char **argv) {
   TestVariadicAnd();
   TestPropVars();
   TestPropEq();
+  TestNormalizeToAnd();
 
   Print("OK\n");
   return 0;

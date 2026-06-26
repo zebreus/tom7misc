@@ -13,6 +13,7 @@
 #include "circuit.h"
 #include "image.h"
 #include "prop.h"
+#include "vector-util.h"
 
 // Layout cell is a working representation, where we have
 // a Cell (or perhaps an abstract cell) and the vector of
@@ -94,6 +95,7 @@ struct LayoutEngine {
         int input_pos = pos + io.xblock;
 
         if (const Var *v = std::get_if<Var>(&prop.p)) {
+          (void)v;
           if (io.type == CType::MIXED) {
             // This is what we ultimately want on the input
             // layer. So we just want to continue wiring it
@@ -117,7 +119,9 @@ struct LayoutEngine {
           } else {
 
             // TODO: Tricky case. We need the separated 0 and
-            // 1 to be next to each other.
+            // 1 to be next to each other in order to use
+            // the separator (or dupsep).
+
 
           }
 
@@ -131,7 +135,41 @@ struct LayoutEngine {
                 .inprops = {},
                 .cell = cell,
               });
+
+        } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
+          CHECK(u->op == UnopOp::NOT);
+
+          if (io.type == CType::MIXED) {
+            // Use NOT01 for this, as it is more reliable.
+            Cell cell(NOT01);
+            int xout = ItsOutputPos(cell);
+
+            desired.emplace_back(
+                input_pos - xout,
+                LC{
+                  .inprops = {*u->a, *u->a},
+                  .cell = cell,
+                });
+
+          } else {
+            // Otherwise an arity-1 cell.
+            Cell cell((io.type == CType::ONE) ? NOT1 : NOT0);
+            int xout = ItsOutputPos(cell);
+            desired.emplace_back(
+                input_pos - xout,
+                LC{
+                  .inprops = {*u->a},
+                  .cell = cell,
+                });
+          }
+
+        } else if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
+          CHECK(bop->op == BinopOp::AND) << "Should have transformed "
+            "this already to remove OR and XOR. We could have native "
+            "support for those gates in the future, though.";
+
         }
+
 
       }
 
@@ -153,7 +191,11 @@ struct LayoutEngine {
 
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
-  Layout Run(std::span<const Prop> props) {
+  Layout Run(std::span<const Prop> props_in) {
+    // I only support the AND binary gate today, so normalize to
+    // a form that removes OR, XOR, etc.
+    std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
+
     // All the layers, annotated with props. We'll add to the front
     // of this.
     std::deque<std::vector<LC>> layers;
