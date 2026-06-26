@@ -103,7 +103,7 @@ struct LayoutEngine {
 
             // (But I think we should not do this for internal
             // wires, since we can only do crossovers for
-            // separated wires. If they interior, we should
+            // separated wires. If they are interior, we should
             // split them?)
 
             Cell wire = CellLibrary::WireB(0, CType::MIXED);
@@ -168,6 +168,41 @@ struct LayoutEngine {
             "this already to remove OR and XOR. We could have native "
             "support for those gates in the future, though.";
 
+          if (io.type == CType::MIXED) {
+            Cell cell(AND0110);
+            int xout = ItsOutputPos(cell);
+            desired.emplace_back(
+                input_pos - xout,
+                LC{
+                  .inprops = {*bop->a, *bop->a, *bop->b, *bop->b},
+                  .cell = cell,
+                });
+          } else {
+            // Maybe we should be handling this as a general pass
+            // earlier? Or we can have versions that only output
+            // the particular bit.
+
+            // We can do this by using a separator and sending the
+            // other output to a sink, but in most situations we would
+            // have the other separated half needed somewhere else in
+            // the next layer. So we should avoid duplicating
+            // propositions like that. Should we have an earlier pass
+            // that puts equal props next to one another, and merges
+            // them with separators/dups/etc.?
+
+
+            // For now we defer; something else needs to separate
+            // for us without wasting half of the proposition.
+            Cell wire = CellLibrary::WireB(0, io.type);
+            int xout = ItsOutputPos(wire);
+
+            desired.emplace_back(
+                input_pos - xout,
+                LC{
+                  .inprops = {prop},
+                  .cell = wire,
+                });
+          }
         }
 
 
