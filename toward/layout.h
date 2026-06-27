@@ -7,6 +7,7 @@
 #include <span>
 #include <vector>
 
+#include "cell-library.h"
 #include "circuit.h"
 #include "prop.h"
 
@@ -18,7 +19,8 @@ struct Layout {
 };
 
 // Props must all be in the same world.
-Layout DoLayout(const World &world, std::span<const Prop> props);
-
+Layout DoLayout(const CellLibrary &library,
+                const World &world,
+                std::span<const Prop> props);
 
 #endif

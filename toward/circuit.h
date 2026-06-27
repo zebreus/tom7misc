@@ -95,12 +95,9 @@ struct Circuit {
 std::pair<int, int> GateArity(Gate gate);
 std::pair<int, int> LayerArity(const Layer &layer);
 
+std::string_view TypeString(CType t);
 std::string_view GateString(Gate g);
 std::string CellString(const Cell &cell);
-
-// Check that inputs are lined up with outputs, and that
-// their types match.
-void DRC(const Circuit &circuit);
 
 // All chutes are boolean functions (some proposition)
 // but could be represented different ways.

@@ -12,6 +12,15 @@
 #include "base/stringprintf.h"
 #include "prop.h"
 
+std::string_view TypeString(CType t) {
+  switch (t) {
+  case CType::ONE: return "ONE";
+  case CType::ZERO: return "ZERO";
+  case CType::MIXED: return "MIXED";
+  default: return "?? BAD CTYPE ??";
+  }
+}
+
 std::string_view GateString(Gate g) {
   switch (g) {
   case SPACER: return "SPACER";

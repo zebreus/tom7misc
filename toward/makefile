@@ -98,5 +98,9 @@ cell-library_test.exe : cell-library_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+layout_test.exe : layout_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe

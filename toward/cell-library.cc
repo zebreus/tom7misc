@@ -12,6 +12,7 @@
 
 #include "ansi.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "circuit.h"
 #include "inline-vector.h"
 #include "level.h"
@@ -369,4 +370,99 @@ CellLibrary::Info CellLibrary::GetInfo(const Cell &cell) const {
 
 std::unique_ptr<Level> CellLibrary::GetLevel(const Cell &cell) const {
   return impl->GetLevel(cell);
+}
+
+std::string CellLibrary::DebugString(const Circuit &circuit) const {
+  std::string out;
+
+  for (size_t i = 0; i < circuit.layers.size(); i++) {
+    AppendFormat(&out, "Layer {}:\n", i);
+    const Layer &layer = circuit.layers[i];
+    int current_x = 0;
+
+    for (const Cell &cell : layer) {
+      CellLibrary::Info info = GetInfo(cell);
+      AppendFormat(&out, "  {} (width: {})\n",
+                   CellString(cell).c_str(), info.block_width);
+
+      for (const CellLibrary::IO &in : info.inputs) {
+        AppendFormat(&out, "    Input at x={} (type {})\n",
+                     current_x + in.xblock, TypeString(in.type));
+      }
+      for (const CellLibrary::IO &out_io : info.outputs) {
+        AppendFormat(&out, "    Output at x={} (type {})\n",
+                     current_x + out_io.xblock, TypeString(out_io.type));
+      }
+
+      current_x += info.block_width;
+    }
+  }
+
+  return out;
+}
+
+void CellLibrary::DRC(const Circuit &circuit) const {
+  struct Chute {
+    int xpos;
+    CType type;
+  };
+
+  std::vector<Chute> prev_outputs;
+
+  Print("\n" AYELLOW("DRC on circuit") ":\n\n{}\n",
+        DebugString(circuit));
+
+  for (size_t i = 0; i < circuit.layers.size(); i++) {
+    const Layer &layer = circuit.layers[i];
+    int current_x = 0;
+    std::vector<Chute> current_inputs;
+    std::vector<Chute> current_outputs;
+
+    for (const Cell &cell : layer) {
+      Info info = GetInfo(cell);
+
+      for (const IO &in : info.inputs) {
+        CHECK(in.xblock >= 0 &&
+              in.xblock + Levels::IN_WIDTH <= info.block_width)
+            << "Input out of bounds in " << CellString(cell);
+        current_inputs.push_back({current_x + in.xblock, in.type});
+      }
+      for (const IO &out : info.outputs) {
+        CHECK(out.xblock >= 0 &&
+              out.xblock + Levels::OUT_WIDTH <= info.block_width)
+            << "Output out of bounds in " << CellString(cell);
+        current_outputs.push_back({current_x + out.xblock, out.type});
+      }
+
+      current_x += info.block_width;
+    }
+
+    for (size_t j = 1; j < current_inputs.size(); j++) {
+      CHECK(current_inputs[j - 1].xpos + Levels::IN_WIDTH <=
+            current_inputs[j].xpos)
+          << "Overlapping or out-of-order inputs in layer " << i;
+    }
+    for (size_t j = 1; j < current_outputs.size(); j++) {
+      CHECK(current_outputs[j - 1].xpos + Levels::OUT_WIDTH <=
+            current_outputs[j].xpos)
+          << "Overlapping or out-of-order outputs in layer " << i;
+    }
+
+    if (i > 0) {
+      CHECK(prev_outputs.size() == current_inputs.size())
+          << "Layer " << i << " input count mismatch: expected "
+          << prev_outputs.size() << ", got " << current_inputs.size();
+      for (size_t j = 0; j < prev_outputs.size(); j++) {
+        CHECK(prev_outputs[j].xpos == current_inputs[j].xpos)
+            << "Layer " << i << " input " << j << " x mismatch: expected "
+            << prev_outputs[j].xpos << ", got " << current_inputs[j].xpos;
+        CHECK(prev_outputs[j].type == current_inputs[j].type)
+            << "Layer " << i << " input " << j << " type mismatch: expected "
+            << TypeString(prev_outputs[j].type) << ", got "
+            << TypeString(current_inputs[j].type);
+      }
+    }
+
+    prev_outputs = std::move(current_outputs);
+  }
 }
