@@ -67,6 +67,10 @@ GetType(Gate g) {
   case DUPSEP0011:
     return {{CType::MIXED},
             {CType::ZERO, CType::ZERO, CType::ONE, CType::ONE}};
+  case DUP0:
+    return {{CType::ZERO}, {CType::ZERO, CType::ZERO}};
+  case DUP1:
+    return {{CType::ONE}, {CType::ONE, CType::ONE}};
   case SINK: return {{CType::MIXED}, {}};
   case CONST0:
   case CONST1: return {{}, {CType::MIXED}};
@@ -192,6 +196,8 @@ struct CellLibraryImpl {
     Load("cell-not1.svg", Gate::NOT1, 0);
     Load("cell-not01.svg", Gate::NOT01, 0);
     Load("cell-dupsep0011.svg", Gate::DUPSEP0011, 0);
+    Load("cell-dup0.svg", Gate::DUP0, 0);
+    Load("cell-dup1.svg", Gate::DUP1, 0);
     Load("cell-and0110.svg", Gate::AND0110, 0);
     Load("cell-separator.svg", Gate::SEPARATOR, 0);
     Load("cell-sink.svg", Gate::SINK, 0);

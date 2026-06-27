@@ -1,6 +1,7 @@
 
 #include "prop.h"
 
+#include <compare>
 #include <string>
 #include <unordered_set>
 #include <algorithm>
@@ -147,6 +148,38 @@ Prop SimplifyProp(const Prop &prop) {
 
   return SimpRec(prop);
 }
+
+std::strong_ordering operator<=>(const Prop &a, const Prop &b) {
+  if (auto cmp = a.p.index() <=> b.p.index(); cmp != 0) {
+    return cmp;
+  }
+
+  if (const Value *v_a = std::get_if<Value>(&a.p)) {
+    const Value *v_b = std::get_if<Value>(&b.p);
+    return v_a->value <=> v_b->value;
+  } else if (const Var *v_a = std::get_if<Var>(&a.p)) {
+    const Var *v_b = std::get_if<Var>(&b.p);
+    return v_a->id <=> v_b->id;
+  } else if (const Unop *u_a = std::get_if<Unop>(&a.p)) {
+    const Unop *u_b = std::get_if<Unop>(&b.p);
+    if (auto cmp = u_a->op <=> u_b->op; cmp != 0) {
+      return cmp;
+    }
+    return *u_a->a <=> *u_b->a;
+  } else if (const Binop *b_a = std::get_if<Binop>(&a.p)) {
+    const Binop *b_b = std::get_if<Binop>(&b.p);
+    if (auto cmp = b_a->op <=> b_b->op; cmp != 0) {
+      return cmp;
+    }
+    if (auto cmp = *b_a->a <=> *b_b->a; cmp != 0) {
+      return cmp;
+    }
+    return *b_a->b <=> *b_b->b;
+  }
+
+  return std::strong_ordering::equal;
+}
+
 
 // Return all the variable indices that appear in the proposition.
 std::vector<int> PropVars(const Prop &a) {

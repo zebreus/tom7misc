@@ -18,6 +18,8 @@ std::string_view GateString(Gate g) {
   case AND0110: return "AND0110";
   case NOT: return "NOT";
   case NOT01: return "NOT01";
+  case NOT0: return "NOT0";
+  case NOT1: return "NOT1";
   case SEPARATOR: return "SEPARATOR";
   case SELFXCHG01: return "SELFXCHG01";
   case SELFXCHG10: return "SELFXCHG10";
@@ -32,6 +34,8 @@ std::string_view GateString(Gate g) {
   case XCHG10: return "XCHG10";
   case XCHG11: return "XCHG11";
   case DUPSEP0011: return "DUPSEP0011";
+  case DUP0: return "DUP0";
+  case DUP1: return "DUP1";
   case SINK: return "SINK";
   case CONST0: return "CONST0";
   case CONST1: return "CONST1";
@@ -71,6 +75,8 @@ std::pair<int, int> GateArity(Gate g) {
   case SPACER: return {0, 0};
   case AND0110: return {4, 1};
   case NOT: return {1, 1};
+  case NOT0:
+  case NOT1: return {1, 1};
   case NOT01: return {2, 1};
   case SEPARATOR: return {1, 2};
   case SELFXCHG01: return {2, 2};
@@ -87,6 +93,8 @@ std::pair<int, int> GateArity(Gate g) {
   case XCHG10:
   case XCHG11: return {2, 2};
   case DUPSEP0011: return {1, 4};
+  case DUP0:
+  case DUP1: return {1, 2};
   case SINK: return {1, 0};
   case CONST0:
   case CONST1: return {0, 1};
@@ -338,6 +346,22 @@ std::vector<Func> TransformCell(const Cell &cell,
     out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ZERO};
     out[OutputIdx(2)] = Func{.prop = f.prop, .type = CType::ONE};
     out[OutputIdx(3)] = Func{.prop = f.prop, .type = CType::ONE};
+    break;
+  }
+
+  case DUP0: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ZERO);
+    out[OutputIdx(0)] = Func{.prop = f.prop, .type = CType::ZERO};
+    out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ZERO};
+    break;
+  }
+
+  case DUP1: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::ONE);
+    out[OutputIdx(0)] = Func{.prop = f.prop, .type = CType::ONE};
+    out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ONE};
     break;
   }
 

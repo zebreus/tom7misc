@@ -160,6 +160,8 @@ static void ValidateLibrary() {
   // WIREB,
 
   for (Gate g : {
+      Gate::DUP1,
+      Gate::DUP0,
       Gate::CONST0,
       Gate::CONST1,
       Gate::SELFXCHG01,
@@ -181,7 +183,7 @@ static void ValidateLibrary() {
       if (f) continue;
       if (g == Gate::NOT) continue;
 
-      Cell cell{.gate = g, .flip = f};
+      Cell cell(g, f);
       std::vector<Prop> args;
       CellLibrary::Info info = library.GetInfo(cell);
       if (g == Gate::SELFXCHG01 ||

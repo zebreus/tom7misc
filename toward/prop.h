@@ -7,6 +7,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <compare>
 
 struct World {
   // Just for input/output. A variable is uniquely
@@ -109,6 +110,13 @@ size_t PropSize(const Prop &prop);
 
 bool EvaluateProp(const std::vector<bool> &assignments,
                   const Prop &prop);
+
+// Arbitrary total order on props (structural).
+std::strong_ordering operator<=>(const Prop &a, const Prop &b);
+
+inline bool operator==(const Prop &a, const Prop &b) {
+  return (a <=> b) == std::strong_ordering::equal;
+}
 
 // Conservative simplifications, especially with constant
 // values.

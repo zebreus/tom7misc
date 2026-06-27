@@ -26,7 +26,7 @@
     <text transform="translate(400 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">Exchange separated 1</tspan></text>
     <text transform="translate(400 102.6)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">with a separated 1</tspan></text>
   </g>
-  <polygon points="20 100 20 200 500 500 500 525 0 220 0 100 20 100" fill="#123456"/>
+  <polygon points="20 100 20 200 510 512.5 510 537.5 0 220 0 100 20 100" fill="#123456"/>
   <rect x="1280" y="485" width="20" height="475" fill="#dd2500"/>
   <polygon points="1040 720 1020 720 1160 840 1160 960 1180 960 1180 840 1040 720" fill="#dd2500"/>
   <polygon points="250 610 180 700 120 920 120 960 140 960 140 935 270 635 270 610 250 610" fill="#6b00ee"/>
@@ -48,5 +48,5 @@
   <rect x="250" y="530" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
   <polygon points="770 600 770 580 760 580 760 600 760 620 840 620 840 600 770 600" fill="#6b00ee"/>
   <polygon points="1105 100 805 400 820 420 1140 100 1105 100" fill="#123456"/>
-  <polygon points="140 100 515 355 530 330 180 100 140 100" fill="#123456"/>
+  <polygon points="140 100 520 407.5 535 385 180 100 140 100" fill="#123456"/>
 </svg>
