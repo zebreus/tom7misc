@@ -2,6 +2,7 @@
 #include "circuit.h"
 #include "layout.h"
 
+#include <string_view>
 #include <vector>
 
 #include "ansi.h"
@@ -9,6 +10,10 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "prop.h"
+
+static void StartTest(std::string_view name) {
+  Print("\n\n" ABGCOLOR(0, 0, 160, "== {} ==") "\n", name);
+}
 
 static void Verify(const Layout &layout, const std::vector<Prop> &props) {
   std::vector<Func> funcs;
@@ -36,7 +41,7 @@ static void Empty(const CellLibrary &library) {
 }
 
 static void Consts(const CellLibrary &library) {
-  Print("Consts...\n");
+  StartTest("Consts");
   World world;
   std::vector<Prop> output = {True(), False()};
   Layout layout = DoLayout(library, world, output);
@@ -45,7 +50,7 @@ static void Consts(const CellLibrary &library) {
 }
 
 static void SingleVar(const CellLibrary &library) {
-  Print("Single Var...\n");
+  StartTest("Single Var");
   World world{.symbol_names = {"a"}};
   Prop a{Var{.id = 0}};
 
@@ -56,7 +61,7 @@ static void SingleVar(const CellLibrary &library) {
 }
 
 static void NotVar(const CellLibrary &library) {
-  Print("Not Var ...\n");
+  StartTest("Not Var ");
   World world{.symbol_names = {"a"}};
   Prop a{Var{.id = 0}};
 
@@ -67,7 +72,7 @@ static void NotVar(const CellLibrary &library) {
 }
 
 static void AndVars(const CellLibrary &library) {
-  Print("And Vars ...\n");
+  StartTest("And Vars ");
   World world{.symbol_names = {"a", "b", "c", "d"}};
   Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}}, d{Var{.id = 3}};
 
@@ -78,7 +83,7 @@ static void AndVars(const CellLibrary &library) {
 }
 
 static void OrVars(const CellLibrary &library) {
-  Print("Or Vars ...\n");
+  StartTest("Or Vars");
   World world{.symbol_names = {"a", "b"}};
   Prop a{Var{.id = 0}}, b{Var{.id = 1}};
 
@@ -89,7 +94,7 @@ static void OrVars(const CellLibrary &library) {
 }
 
 static void XorVars(const CellLibrary &library) {
-  Print("Xor Vars ...\n");
+  StartTest("Xor Vars");
   World world{.symbol_names = {"a", "b"}};
   Prop a{Var{.id = 0}}, b{Var{.id = 1}};
 
@@ -100,7 +105,7 @@ static void XorVars(const CellLibrary &library) {
 }
 
 static void MultiOutput(const CellLibrary &library) {
-  Print("Multi Output ...\n");
+  StartTest("Multi Output");
   World world{.symbol_names = {"a", "b", "c"}};
   Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}};
 
@@ -119,12 +124,11 @@ int main(int argc, char **argv) {
   Consts(library);
   SingleVar(library);
   NotVar(library);
-  /*
   AndVars(library);
   OrVars(library);
   XorVars(library);
   MultiOutput(library);
-  */
+
   Print("OK\n");
   return 0;
 }

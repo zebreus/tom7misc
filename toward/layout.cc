@@ -6,6 +6,7 @@
 #include <deque>
 #include <functional>
 #include <initializer_list>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -73,12 +74,16 @@ struct LayoutEngine {
   const CellLibrary &library;
 
   static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
-  // The minimum clearance that we need to the left and right of an
-  // input (not including the width of the input itself) in order to
-  // ensure that we can at least propagate that input upward with a
-  // wire. We use this to check that we don't completely block a
-  // nearby input when we assign cells greedily.
-  const int min_clearance = 0;
+  // Wires are asymmetric (even "vertical" wires have internal slopes
+  // to prevent the objects from getting too fast). This is the very
+  // minimum "close side" and "far side" clearance that we need in
+  // order to guarantee that we can place some wire on an input.
+  // Clearance does not include the width of the input itself. We use
+  // this to check that we don't completely block a nearby input when
+  // we place a cell. (We want to at least be able to propagate the
+  // input upward with a wire.)
+  int min_clearance_close = 0;
+  int min_clearance_far = 0;
 
   // Returns the flattened vector of variable ids if all
   // of the inputs are variables; nullopt otherwise.
@@ -104,12 +109,18 @@ struct LayoutEngine {
 
 
   // Compute the minimum clearance to guarantee we can attach a wire;
-  // initializes min_clearance. (This could probably just look at the
-  // small-valued wires, but we might as well just be comprehensive.)
-  int ComputeMinClearance() const {
-    int max_min_clearance = 0;
+  // initializes the close and far min_clearance values. (This could
+  // probably just look at the small-valued wires, but we might as
+  // well just be comprehensive.)
+  void ComputeMinClearance() {
+    int max_close = 0;
+    int max_far = 0;
+
+    // XXX Wire geometry doesn't really differ by type. We should
+    // probably check this though?
     for (CType type : {CType::MIXED, CType::ZERO, CType::ONE}) {
-      int min_req = 1e9;
+      int best_close = 1e9;
+      int best_far = 1e9;
       for (int k : {0, 1, 2, 4, 8, 16, 32, 64}) {
         for (int w = 0; w < 2; w++) {
           for (bool flip : {false, true}) {
@@ -122,20 +133,29 @@ struct LayoutEngine {
             int out_x = info.outputs[0].xblock;
             int left_clearance = out_x;
             int right_clearance = info.block_width - out_x - Levels::OUT_WIDTH;
-            int req = left_clearance > right_clearance ?
-              left_clearance : right_clearance;
 
-            if (req < min_req) {
-              min_req = req;
+            int close = std::min(left_clearance, right_clearance);
+            int far = std::max(left_clearance, right_clearance);
+
+            // Find the wire requiring the smallest close clearance.
+            // If tied, pick the one with the smallest far clearance.
+            if (close < best_close || (close == best_close && far < best_far)) {
+              best_close = close;
+              best_far = far;
             }
           }
         }
       }
-      if (min_req > max_min_clearance) {
-        max_min_clearance = min_req;
+      if (best_close > max_close) {
+        max_close = best_close;
+      }
+      if (best_far > max_far) {
+        max_far = best_far;
       }
     }
-    return max_min_clearance;
+
+    min_clearance_close = max_close;
+    min_clearance_far = max_far;
   }
 
   int ItsOutputPos(const Cell &cell) const {
@@ -163,6 +183,9 @@ struct LayoutEngine {
     // The chute is in order, and should flow to a relative offset
     // of its current position (number of blocks, in desire_val).
     FLOW,
+    // The chute is basically where we want it, but it can move out
+    // of the way to avoid conflicts.
+    QUIESCE,
   };
 
   static std::string_view DesireTypeString(DesireType dt) {
@@ -175,6 +198,7 @@ struct LayoutEngine {
     case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
     case EXCHANGE_RIGHT: return "EXCHANGE_RIGHT";
     case FLOW: return "FLOW";
+    case QUIESCE: return "QUIESCE";
     default: return "??BAD DESIRETYPE??";
     }
   }
@@ -230,7 +254,10 @@ struct LayoutEngine {
   //  - It does not overlap anything already in that layer
   //  - It does not block off any chutes on the top layer
   //    (this does not include the chutes that match up
-  //    to the cell's output, though!)
+  //    to the cell's output, though!). Being blocked off
+  //    is a non-trivial property, since we can get close
+  //    to an input as long as we have a lot of space on
+  //    the other side.
   bool CanPlaceCell(std::span<const Chute> top,
                     const std::vector<bool> &assigned,
                     std::span<const PC> next,
@@ -245,30 +272,120 @@ struct LayoutEngine {
       int pc_left = pc.xpos;
       int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
       if (cell_left < pc_right && cell_right > pc_left) {
+        Print("Can't place {} at {}: Would overlap cell at x={}\n",
+              CellString(cell), xpos, pc.xpos);
         return false;
       }
     }
 
-    // Blocking a chute from the top layer?
+    // Did we consume this chute with the hypothetical cell?
+    // If so we don't need to check that it's blocked below.
+    auto MatchedHere = [&](const Chute &chute) {
+        for (const CellLibrary::IO &out : info.outputs) {
+          if (xpos + out.xblock == chute.pos) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+    // Memo tables for below. Is it known that we can place on this
+    // smallest wire that's biased to the left?
+    std::vector<std::optional<bool>> ok_left(top.size(), std::nullopt);
+    // And symmetrically for the right.
+    std::vector<std::optional<bool>> ok_right(top.size(), std::nullopt);
+
+    // Check whether the chute still has space for a left-biased or
+    // right-biased wire (assuming the hypothetical cell placed).
+    std::function<bool(int, bool)> ChuteStillHasSpace =
+      [&](int cidx, bool look_left) -> bool {
+          std::optional<bool> &memo =
+            look_left ? ok_left[cidx] : ok_right[cidx];
+          if (memo.has_value()) return memo.value();
+
+          // Break cycles by assuming true while evaluating. This is sound
+          // because a cycle indicates self-consistent constraints, bounded
+          // eventually by the fixed obstacles checked below.
+          memo = true;
+
+          int req_left = look_left ? min_clearance_close : min_clearance_far;
+          int req_right = look_left ? min_clearance_far : min_clearance_close;
+          const Chute &chute = top[cidx];
+
+          int c_left = chute.pos - req_left;
+          int c_right = chute.pos + Levels::OUT_WIDTH + req_right;
+
+          // Check the hypothetical cell.
+          if (cell_left < c_right && cell_right > c_left) {
+            memo = {false};
+            return false;
+          }
+
+          // Check already placed cells.
+          for (const PC &pc : next) {
+            int pc_left = pc.xpos;
+            int pc_right = pc.xpos + library.GetInfo(pc.cell).block_width;
+            if (pc_left < c_right && pc_right > c_left) {
+              memo = {false};
+              return false;
+            }
+          }
+
+          {
+            // Check left neighbor.
+            int lidx = cidx - 1;
+            if (lidx >= 0 && !assigned[lidx] && !MatchedHere(top[lidx])) {
+              const Chute &p_chute = top[lidx];
+              int dist = chute.pos - (p_chute.pos + Levels::OUT_WIDTH);
+              bool can_left = (dist >= req_left + min_clearance_far) &&
+                ChuteStillHasSpace(lidx, true);
+              bool can_right = (dist >= req_left + min_clearance_close) &&
+                ChuteStillHasSpace(lidx, false);
+              if (!can_left && !can_right) {
+                memo = {false};
+                return false;
+              }
+            }
+          }
+
+          {
+            // Check right neighbor.
+            int ridx = cidx + 1;
+            if (ridx < (int)top.size() &&
+                !assigned[ridx] &&
+                !MatchedHere(top[ridx])) {
+              const Chute &n_chute = top[ridx];
+              int dist = n_chute.pos - (chute.pos + Levels::OUT_WIDTH);
+              bool can_left = (dist >= req_right + min_clearance_close) &&
+                ChuteStillHasSpace(ridx, true);
+              bool can_right = (dist >= req_right + min_clearance_far) &&
+                ChuteStillHasSpace(ridx, false);
+              if (!can_left && !can_right) {
+                memo = {false};
+                return false;
+              }
+            }
+          }
+
+          memo = {true};
+          return true;
+        };
+
+    // Are we blocking a chute from the top layer?
     for (size_t i = 0; i < top.size(); i++) {
       if (!assigned[i]) {
         const Chute &chute = top[i];
-        // XXX: Matched might be redundant with assigned?
-        bool matched = false;
-        for (const CellLibrary::IO &out : info.outputs) {
-          if (xpos + out.xblock == chute.pos) {
-            matched = true;
-            break;
-          }
+        if (MatchedHere(chute))
+          continue;
+
+        if (!ChuteStillHasSpace(i, true) &&
+            !ChuteStillHasSpace(i, false)) {
+          Print("Can't place {} at {}: "
+                "Cell {} would be blocked.\n",
+                CellString(cell), xpos, i);
+          return false;
         }
 
-        if (!matched) {
-          int chute_left = chute.pos - min_clearance;
-          int chute_right = chute.pos + INPUT_WIDTH + min_clearance;
-          if (cell_left < chute_right && cell_right > chute_left) {
-            return false;
-          }
-        }
       }
     }
 
@@ -360,7 +477,7 @@ struct LayoutEngine {
           chute.type == CType::MIXED) {
         // Still on the exterior.
         done[c] = true;
-        chute.desire = DesireType::FLOW;
+        chute.desire = DesireType::QUIESCE;
         // TODO: Adjust this later down once we know better how much
         // space we need.
         chute.desire_val = -8;
@@ -379,7 +496,7 @@ struct LayoutEngine {
           chute.type == CType::MIXED) {
         // Still on the exterior.
         done[c] = true;
-        chute.desire = DesireType::FLOW;
+        chute.desire = DesireType::QUIESCE;
         chute.desire_val = +8;
       } else {
         break;
@@ -399,10 +516,6 @@ struct LayoutEngine {
         chute.desire = UNCOMBINE;
       }
     }
-
-    // chute indices (the first one) that we want to
-    // undup.
-    std::vector<int> undup_pairs;
 
     // TODO: We should UNDUP propositions that are equal and
     // already next to one another. We want to do this before
@@ -428,7 +541,6 @@ struct LayoutEngine {
         // propositions, the last one will be passed
         // through and be in the correct position to
         // undup on the next layer.
-        undup_pairs.push_back(c);
       }
     }
 
@@ -437,23 +549,39 @@ struct LayoutEngine {
     for (int c = 0; c < (int)chutes.size() - 1; c++) {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
+
       if (!done[c] && !done[c + 1] &&
           chute1.desire == UNSPECIFIED &&
           chute2.desire == UNSPECIFIED &&
           chute1.type != CType::MIXED &&
           chute2.type != CType::MIXED &&
           chute1.type != chute2.type &&
-          chute1.prop == chute2.prop &&
-          std::holds_alternative<Var>(chute1.prop.p)) {
+          chute1.prop == chute2.prop) {
 
-        // TODO: We should allow unseparating multiple
-        // pairs in the same layer.
-        const bool left_exterior = c == 0 || done[c - 1];
+        // Props are equal.
+        const Prop &prop = chute1.prop;
 
-        const bool right_exterior =
-          c + 2 >= chutes.size() || done[c + 2];
+        // For variables, we only want to unseparate them
+        // if they are exterior, since otherwise they will
+        // become obstacles that prevent us from exchanging
+        // across.
+        if (std::holds_alternative<Var>(prop.p)) {
+          // TODO: We should allow unseparating multiple
+          // pairs in the same layer.
+          const bool left_exterior = c == 0 || done[c - 1];
+          const bool right_exterior =
+            c + 2 >= chutes.size() || done[c + 2];
 
-        if (left_exterior || right_exterior) {
+          if (left_exterior || right_exterior) {
+            chute1.desire = UNSEPARATE;
+            chute2.desire = UNSEPARATE;
+          }
+
+        } else if (std::holds_alternative<Binop>(prop.p)) {
+
+          // Our binops all target mixed outputs, so we need
+          // to unseparate wherever this is. On the next
+          // layer we should be able to decompose.
           chute1.desire = UNSEPARATE;
           chute2.desire = UNSEPARATE;
         }
@@ -537,13 +665,13 @@ struct LayoutEngine {
       }
     }
 
-    // If no desire yet (e.g. already in order), just stay put.
+    // If no desire yet (e.g. already in order), just quiesce.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       if (done[c]) {
         CHECK(chute.desire != DesireType::UNSPECIFIED);
       } else if (chute.desire == DesireType::UNSPECIFIED) {
-        chute.desire = DesireType::FLOW;
+        chute.desire = DesireType::QUIESCE;
       }
     }
 
@@ -557,6 +685,18 @@ struct LayoutEngine {
 
     std::vector<PC> next_cells;
     std::vector<bool> assigned(chutes.size(), false);
+
+    static constexpr int FLEE_AMOUNT = 16;
+    // As we try placing, we note weighted conflicts at chute
+    // locations. This helps us with heuristic direction of
+    // flow.
+    std::vector<int> conflict_weight(chutes.size(), 0);
+    // In order to ensure we make progress, the first goal in
+    // priority order that is in the right position but doesn't
+    // have space is allowed to anchor itself and just propagate
+    // upward its chutes with zero displacement. Others will
+    // move away from the anchor.
+    std::optional<int> anchor;
 
     // Try to place the specified gate so its single output aligns
     // with this chute (also trying its flipped version). The
@@ -592,6 +732,8 @@ struct LayoutEngine {
             return true;
           }
         }
+
+        conflict_weight[chute_idx]++;
 
         return false;
       };
@@ -631,6 +773,7 @@ struct LayoutEngine {
 
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
+            // Correct relative position, but will the cell fit?
             if (CanPlaceCell(chutes, assigned, next_cells, cell, cell_pos)) {
               assigned[chute_idx] = true;
               assigned[chute_idx + 1] = true;
@@ -660,6 +803,13 @@ struct LayoutEngine {
                   .inprops = std::move(inprops),
                 });
               return;
+            } else {
+              // Couldn't place a binary gate even though the inputs
+              // are already in the right spot. We treat this as a
+              // more serious conflict, since these gates are harder
+              // to set up.
+              conflict_weight[chute_idx] += 2;
+              conflict_weight[chute_idx + 1] += 2;
             }
           }
         }
@@ -677,18 +827,39 @@ struct LayoutEngine {
               chute_idx, GateString(gate), GateString(flipped_gate),
               current_dist, target_dist);
 
-        if (current_dist > target_dist) {
-          chute1.desire = DesireType::FLOW;
-          chute1.desire_val = 0;
-          chute2.desire = DesireType::FLOW;
-          chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
-                               info.outputs[1].xblock) - chute2.pos;
-        } else {
+        if (current_dist == target_dist) {
+          if (!anchor.has_value()) {
+            anchor = {chute_idx};
+            // Propagate upward.
+            chute1.desire = DesireType::FLOW;
+            chute1.desire_val = 0;
+            chute2.desire = DesireType::FLOW;
+            chute2.desire_val = 0;
+          } else {
+            // Propagate in tandem away from the
+            // anchor.
+            int disp =
+              (chute_idx < anchor.value()) ?
+              -FLEE_AMOUNT : FLEE_AMOUNT;
+
+            chute1.desire = DesireType::QUIESCE;
+            chute1.desire_val = disp;
+            chute2.desire = DesireType::QUIESCE;
+            chute2.desire_val = disp;
+          }
+
+        } else if (current_dist > target_dist) {
           chute2.desire = DesireType::FLOW;
           chute2.desire_val = 0;
           chute1.desire = DesireType::FLOW;
           chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
                                info.outputs[0].xblock) - chute1.pos;
+        } else {
+          chute1.desire = DesireType::FLOW;
+          chute1.desire_val = 0;
+          chute2.desire = DesireType::FLOW;
+          chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
+                               info.outputs[1].xblock) - chute2.pos;
         }
       };
 
@@ -742,13 +913,13 @@ struct LayoutEngine {
         }
 
         if (chute.type == CType::MIXED) {
-          if (const Value* v = std::get_if<Value>(&chute.prop.p)) {
+          if (const Value *v = std::get_if<Value>(&chute.prop.p)) {
             Gate g = v->value ? CONST1 : CONST0;
             if (PlaceAlignedUnary(c, g, {})) {
               return;
             }
           } else {
-            const Binop* b = std::get_if<Binop>(&chute.prop.p);
+            const Binop *b = std::get_if<Binop>(&chute.prop.p);
             CHECK(b && b->op == BinopOp::AND);
             if (PlaceAlignedUnary(c, AND0110,
                                   Span{*b->a, *b->a, *b->b, *b->b})) {
@@ -767,7 +938,7 @@ struct LayoutEngine {
           }
         }
 
-        chute.desire = DesireType::FLOW;
+        chute.desire = DesireType::QUIESCE;
         chute.desire_val = 0;
       };
 
@@ -782,7 +953,7 @@ struct LayoutEngine {
           return;
         }
 
-        chute.desire = DesireType::FLOW;
+        chute.desire = DesireType::QUIESCE;
         chute.desire_val = 0;
       };
 
@@ -845,53 +1016,60 @@ struct LayoutEngine {
     auto DoFlow = [&](int c) {
         Chute &chute = chutes[c];
 
-        CHECK(chute.desire == DesireType::FLOW) << "Bug: " <<
+        CHECK(chute.desire == DesireType::FLOW ||
+              chute.desire == DesireType::QUIESCE) << "Bug: " <<
           DesireTypeString(chute.desire) << " should be handled "
           "above, perhaps by turning it into FLOW!";
 
-        if (chute.desire_val > 0) {
-          int displacement = chute.desire_val;
-          // A gates have their output to the left of their input,
-          // so they are positive when working bottom-up.
-          Gate ga = chute.type == CType::MIXED ? WIREA :
-            chute.type == CType::ZERO ? WIRE0A : WIRE1A;
-          Gate gb = chute.type == CType::MIXED ? WIREB :
-            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+        Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
+              c, DesireTypeString(chute.desire), chute.desire_val);
 
-          for (int exponent = CellLibrary::MAX_WIRE_EXP;
-               exponent >= 0;
-               exponent--) {
-            int amount = 1 << exponent;
-            if (amount <= displacement) {
-              if (PlaceAlignedUnary(
-                      c, ga, Span{chute.prop}, -amount, {false})) {
-                return;
-              }
-              if (PlaceAlignedUnary(
-                      c, gb, Span{chute.prop}, amount, {true})) {
-                return;
-              }
-            }
+        // PERF: We could compute this cumulative sum outside. But
+        // we probably want it to be weighted somehow.
+        if (chute.desire == DesireType::QUIESCE) {
+          // If quiesce, move "outward" from conflict.
+          int left_conflicts = 0;
+          for (int i = 0; i < c; i++) {
+            left_conflicts += conflict_weight[i];
           }
 
-        } else if (chute.desire_val < 0) {
-          int displacement = -chute.desire_val;
+          int right_conflicts = 0;
+          for (int i = c + 1; i < (int)chutes.size(); i++) {
+            right_conflicts += conflict_weight[i];
+          }
 
-          Gate gb = chute.type == CType::MIXED ? WIREB :
-            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+          if (left_conflicts > right_conflicts) {
+            chute.desire_val = FLEE_AMOUNT;
+          } else if (right_conflicts > left_conflicts) {
+            chute.desire_val = -FLEE_AMOUNT;
+          }
+        }
+
+        if (chute.desire_val != 0) {
+          bool flip = chute.desire_val > 0;
+          int displacement = flip ? chute.desire_val : -chute.desire_val;
+
+          // Both A and B wires slant down to the right (like a backslash;
+          // the output is to the right of the input). If we want the
+          // opposite slant we do that by flipping. The way they differ
+          // is in their bias (is the larger side of the cell to the right,
+          // or to the left?).
           Gate ga = chute.type == CType::MIXED ? WIREA :
             chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+          Gate gb = chute.type == CType::MIXED ? WIREB :
+            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+
           for (int exponent = CellLibrary::MAX_WIRE_EXP;
                exponent >= 0;
                exponent--) {
             int amount = 1 << exponent;
             if (amount <= displacement) {
               if (PlaceAlignedUnary(
-                      c, gb, Span{chute.prop}, amount, {false})) {
+                      c, ga, Span{chute.prop}, amount, {flip})) {
                 return;
               }
               if (PlaceAlignedUnary(
-                      c, ga, Span{chute.prop}, -amount, {true})) {
+                      c, gb, Span{chute.prop}, amount, {flip})) {
                 return;
               }
             }
@@ -1043,6 +1221,34 @@ struct LayoutEngine {
       // Otherwise, compute a new top layer.
       auto [next, start_pos] = AddLayer(last);
 
+      // True if the layers are effectively the same, ignoring leading
+      // spacers (i.e. they can have different starting offsets). If
+      // we have two such layers in a row, then we will just get in
+      // an infinite loop, so we should abort.
+      auto SameLayer = [](const std::vector<LC>& a,
+                          const std::vector<LC>& b) {
+        auto ita = a.begin(), itb = b.begin();
+        while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
+        while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;
+        while (true) {
+          if (ita == a.end() && itb == b.end()) return true;
+          if (ita == a.end() || itb == b.end()) return false;
+          if (ita->cell.gate != itb->cell.gate ||
+              ita->cell.v != itb->cell.v ||
+              ita->cell.flip != itb->cell.flip ||
+              ita->inprops != itb->inprops) {
+            return false;
+          }
+          ita++;
+          itb++;
+        }
+      };
+
+      if (SameLayer(last, next)) {
+        LOG(FATAL) << "Layout made no progress! New layer is identical\n"
+          "to the previous one.";
+      }
+
       // We might need to shift over this layer, or
       // shift over all the remaining ones, to align.
       if (start_pos > 0) {
@@ -1065,8 +1271,10 @@ struct LayoutEngine {
 
   // Args must outlast the engine.
   LayoutEngine(const World &world, const CellLibrary &library) :
-    world(world), library(library), min_clearance(ComputeMinClearance()) {
-    Print("Min clearance: {}\n", min_clearance);
+    world(world), library(library) {
+    ComputeMinClearance();
+    Print("Min clearance: close={}, far={}\n", min_clearance_close,
+          min_clearance_far);
   }
 };
 

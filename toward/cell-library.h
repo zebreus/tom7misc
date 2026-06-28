@@ -56,15 +56,21 @@ struct CellLibrary {
   // 2^6 = 64
   static constexpr int MAX_WIRE_EXP = 6;
 
-  // Wire A:
-  //  Input is at x=1
-  //  Output is at x=1 - offset
-  //     for offset in (0, 1, 2, 4, 8, 16, 32, 64).
+  // Wires are not necessarily symmetric; we have internal slopes so
+  // that the pieces don't get too fast as they drop. This means that
+  // for narrow wires, the cell will stick out on one side. The wires
+  // all natively slope down and to the right like a backslash;
+  // for the reverse slope, flip these.
+
+  // Wire A has its input at x=1 and output at x=1+offset.
+  // It has tight clearance on the left (we say it is "right biased").
+  // offset in (0, 1, 2, 4, 8, 16, 32, 64).
   static Cell WireA(int offset, CType type = CType::MIXED);
-  // Wire B:
+
+  // Wire B (left biased).
   // Input is at x=6
   // Output is at x=6 + offset
-  //     for offset in (0, 1, 2, 4, 8, 16, 32, 64).
+  // offset in (0, 1, 2, 4, 8, 16, 32, 64).
   static Cell WireB(int offset, CType type = CType::MIXED);
 
  private:

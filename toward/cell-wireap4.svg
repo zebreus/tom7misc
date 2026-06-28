@@ -6,18 +6,18 @@
   </g>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <rect x="20" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="100" y="960" width="100" height="120" fill="#faa"/>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(165 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+      <text transform="translate(245 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
     </g>
   </g>
+  <rect x="20" width="100" height="100" fill="#aff"/>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(610 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+      <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
     </g>
   </g>
-  <polygon points="780 100 780 335 180 460 320 580 320 805 120 940 120 960 140 960 800 680 800 100 780 100" fill="#b36a16"/>
-  <rect x="660" width="100" height="100" fill="#aff"/>
-  <polygon points="280 100 0 180 0 960 20 960 20 840 165 700 110 620 25 200 280 120 640 120 640 100 280 100" fill="#b36a16"/>
+  <polygon points="0 100 20 100 40 200 120 380 180 760 100 840 100 960 0 960 0 180 0 100" fill="#b36a16"/>
+  <polygon points="120 100 300 140 300 820 200 940 200 960 220 960 320 840 320 100 120 100" fill="#b36a16"/>
 </svg>

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -220,34 +221,23 @@ struct CellLibraryImpl {
     Load("cell-combine.svg", Gate::COMBINE01, 0);
     Load("cell-combine.svg", Gate::COMBINE10, 0);
 
+    // PERF: Once we get to about offset 8, we no longer need
+    // to distinguish the left/right biased levels.
     for (CType t : { CType::MIXED, CType::ZERO, CType::ONE }) {
-      Gate g =
+      Gate ga =
         (t == CType::MIXED) ? Gate::WIREA :
         (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
-
-      Load("cell-wirea0.svg", g, 0);
-      Load("cell-wirean1.svg", g, -1);
-      Load("cell-wirean2.svg", g, -2);
-      Load("cell-wirean4.svg", g, -4);
-      Load("cell-wirean8.svg", g, -8);
-      Load("cell-wirean16.svg", g, -16);
-      Load("cell-wirean32.svg", g, -32);
-      Load("cell-wirean64.svg", g, -64);
-    }
-
-    for (CType t : { CType::MIXED, CType::ZERO, CType::ONE }) {
-      Gate g =
+      Gate gb =
         (t == CType::MIXED) ? Gate::WIREB :
         (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
 
-      Load("cell-wireb0.svg", g, 0);
-      Load("cell-wirebp1.svg", g, 1);
-      Load("cell-wirebp2.svg", g, 2);
-      Load("cell-wirebp4.svg", g, 4);
-      Load("cell-wirebp8.svg", g, 8);
-      Load("cell-wirebp16.svg", g, 16);
-      Load("cell-wirebp32.svg", g, 32);
-      Load("cell-wirebp64.svg", g, 64);
+      Load("cell-wirea0.svg", ga, 0);
+      Load("cell-wireb0.svg", gb, 0);
+
+      for (int offset : {1, 2, 4, 8, 16, 32, 64}) {
+        Load(std::format("cell-wireap{}.svg", offset), ga, offset);
+        Load(std::format("cell-wirebp{}.svg", offset), gb, offset);
+      }
     }
 
     // Spacer is an empty level and can exist at any
@@ -350,7 +340,7 @@ Cell CellLibrary::WireA(int k, CType t) {
   Gate g =
     (t == CType::MIXED) ? Gate::WIREA :
     (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
-  return Cell(g, -k);
+  return Cell(g, k);
 }
 
 Cell CellLibrary::WireB(int k, CType t) {
