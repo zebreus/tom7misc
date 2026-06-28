@@ -6,7 +6,7 @@
 #include <deque>
 #include <functional>
 #include <initializer_list>
-#include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -61,19 +61,72 @@
 //   simulate the marbles (1s and 0s) rolling through it.
 // ----------------------------------------------------------------------
 
-// Layout cell is a working representation, where we have
-// a Cell (or perhaps an abstract cell) and the vector of
-// input propositions for it.
-struct LC {
-  std::vector<Prop> inprops;
-  Cell cell;
-};
+using LC = LayoutEngine::LC;
+using PC = LayoutEngine::PC;
+using Chute = LayoutEngine::Chute;
+using DesireType = LayoutEngine::DesireType;
+using enum LayoutEngine::DesireType;
 
-struct LayoutEngine {
+std::string_view LayoutEngine::DesireTypeString(DesireType dt) {
+  switch (dt) {
+  case UNSPECIFIED: return "UNSPECIFIED";
+  case DECOMPOSE: return "DECOMPOSE";
+  case UNCOMBINE: return "UNCOMBINE";
+  case UNDUP: return "UNDUP";
+  case UNSEPARATE: return "UNSEPARATE";
+  case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
+  case EXCHANGE_RIGHT: return "EXCHANGE_RIGHT";
+  case FLOW: return "FLOW";
+  case QUIESCE: return "QUIESCE";
+  default: return "??BAD DESIRETYPE??";
+  }
+}
+
+std::string LayoutEngine::ChuteString(const Chute &chute) {
+  std::string s;
+  AppendFormat(&s, "Chute(pos={}, prop={}, type={}, desire={}, val={})",
+               chute.pos,
+               PropString(chute.prop),
+               TypeString(chute.type),
+               DesireTypeString(chute.desire),
+               chute.desire_val);
+  return s;
+}
+
+
+
+// The hard part is the physical routing. Some gates like AND0110
+// need separated inputs in a specific form. Since we are working
+// bottom-up, the AND gate itself is not bad (we just place it
+// wherever we need a mixed A & B prop). But satisfying the
+// separated 0 A, 1 A, 1 B, and 0 B inputs of that then becomes
+// tricky.
+
+// |0A| |1A|  |1B| |0B|
+//   \           /
+//    \         /
+//     \       /
+//       |A&B|
+
+// It's possible to work directly with separated wires: We have
+// NOT0, NOT1 and these are simple and efficient. We could also
+// create a separated gate like AND0110_0, but we almost always
+// need a matching AND0110_1 (e.g. to satisfy the 0A and 1A inputs
+// of an AND gate itself), and so we would end up duplicating
+// input propositions.
+
+// So, a high priority is to put pairs of separated wires
+// next to each other so that we can join them with a separator.
+// (But we only need to do this when they represent binary
+// propositions; we can directly strip ¬,create constants,
+// and postpone variables until the end.) The tricky thing about
+// *this* is that we can only reorder inputs when they are separated.
+
+namespace {
+struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
-  static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
   // Wires are asymmetric (even "vertical" wires have internal slopes
   // to prevent the objects from getting too fast). This is the very
   // minimum "close side" and "far side" clearance that we need in
@@ -84,6 +137,9 @@ struct LayoutEngine {
   // input upward with a wire.)
   int min_clearance_close = 0;
   int min_clearance_far = 0;
+
+  int MinClearanceClose() const override { return min_clearance_close; }
+  int MinClearanceFar() const override { return min_clearance_far; }
 
   // Returns the flattened vector of variable ids if all
   // of the inputs are variables; nullopt otherwise.
@@ -164,80 +220,13 @@ struct LayoutEngine {
     return info.outputs[0].xblock;
   }
 
-  // What we want to do with a chute. This is thinking about the
-  // bottom-up direction; "permute left" means a wire would slope
-  // like a backslash.
-  enum DesireType {
-    UNSPECIFIED,
-    // Apply a gate to decompose the proposition.
-    DECOMPOSE,
-    // Apply a combiner so that we have separated inputs.
-    UNCOMBINE,
-    // Unduplicate adjacent identical propositions.
-    UNDUP,
-    UNSEPARATE,
-    // The chute is out of order and should swap to its left.
-    EXCHANGE_LEFT,
-    // ... or right.
-    EXCHANGE_RIGHT,
-    // The chute is in order, and should flow to a relative offset
-    // of its current position (number of blocks, in desire_val).
-    FLOW,
-    // The chute is basically where we want it, but it can move out
-    // of the way to avoid conflicts.
-    QUIESCE,
-  };
-
-  static std::string_view DesireTypeString(DesireType dt) {
-    switch (dt) {
-    case UNSPECIFIED: return "UNSPECIFIED";
-    case DECOMPOSE: return "DECOMPOSE";
-    case UNCOMBINE: return "UNCOMBINE";
-    case UNDUP: return "UNDUP";
-    case UNSEPARATE: return "UNSEPARATE";
-    case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
-    case EXCHANGE_RIGHT: return "EXCHANGE_RIGHT";
-    case FLOW: return "FLOW";
-    case QUIESCE: return "QUIESCE";
-    default: return "??BAD DESIRETYPE??";
-    }
-  }
-
-  // Location and type of the transition between layers where
-  // an input and output meet.
-  struct Chute {
-    int pos = 0;
-    Prop prop = False();
-    CType type = CType::MIXED;
-
-    DesireType desire = DesireType::UNSPECIFIED;
-    int desire_val = 0;
-  };
-
-  // A placed cell.
-  struct PC {
-    int xpos = 0;
-    Cell cell;
-    std::vector<Prop> inprops;
-  };
-
-  std::string ChuteString(const Chute &chute) const {
-    std::string s;
-    AppendFormat(&s, "Chute(pos={}, prop={}, type={}, desire={}, val={})",
-                 chute.pos,
-                 PropString(chute.prop),
-                 TypeString(chute.type),
-                 DesireTypeString(chute.desire),
-                 chute.desire_val);
-    return s;
-  }
-
   std::string DebugLayerState(std::span<const Chute> chutes,
                               std::span<const PC> next_cells) const {
     std::string s;
     AppendFormat(&s, "--- Chutes ---\n");
     for (int i = 0; i < (int)chutes.size(); i++) {
-      AppendFormat(&s, " [{}] {}\n", i, ChuteString(chutes[i]));
+      AppendFormat(&s, " [{}] {}\n", i,
+                   LayoutEngine::ChuteString(chutes[i]));
     }
     AppendFormat(&s, "--- Next Cells ---\n");
     for (int i = 0; i < (int)next_cells.size(); i++) {
@@ -255,14 +244,15 @@ struct LayoutEngine {
   //  - It does not block off any chutes on the top layer
   //    (this does not include the chutes that match up
   //    to the cell's output, though!). Being blocked off
-  //    is a non-trivial property, since we can get close
+  //    is a non-trivial property: We can get close
   //    to an input as long as we have a lot of space on
-  //    the other side.
+  //    the other side, and that space can be populated
+  //    without blocking further cells!
   bool CanPlaceCell(std::span<const Chute> top,
                     const std::vector<bool> &assigned,
                     std::span<const PC> next,
                     const Cell &cell,
-                    int xpos) const {
+                    int xpos) const override {
     CellLibrary::Info info = library.GetInfo(cell);
     int cell_left = xpos;
     int cell_right = xpos + info.block_width;
@@ -337,11 +327,10 @@ struct LayoutEngine {
             if (lidx >= 0 && !assigned[lidx] && !MatchedHere(top[lidx])) {
               const Chute &p_chute = top[lidx];
               int dist = chute.pos - (p_chute.pos + Levels::OUT_WIDTH);
-              bool can_left = (dist >= req_left + min_clearance_far) &&
-                ChuteStillHasSpace(lidx, true);
-              bool can_right = (dist >= req_left + min_clearance_close) &&
-                ChuteStillHasSpace(lidx, false);
-              if (!can_left && !can_right) {
+              bool left_safe = (dist >= req_left + min_clearance_far) ||
+                ((dist >= req_left + min_clearance_close) &&
+                 ChuteStillHasSpace(lidx, false));
+              if (!left_safe) {
                 memo = {false};
                 return false;
               }
@@ -356,11 +345,10 @@ struct LayoutEngine {
                 !MatchedHere(top[ridx])) {
               const Chute &n_chute = top[ridx];
               int dist = n_chute.pos - (chute.pos + Levels::OUT_WIDTH);
-              bool can_left = (dist >= req_right + min_clearance_close) &&
-                ChuteStillHasSpace(ridx, true);
-              bool can_right = (dist >= req_right + min_clearance_far) &&
-                ChuteStillHasSpace(ridx, false);
-              if (!can_left && !can_right) {
+              bool right_safe = (dist >= req_right + min_clearance_far) ||
+                ((dist >= req_right + min_clearance_close) &&
+                 ChuteStillHasSpace(ridx, true));
+              if (!right_safe) {
                 memo = {false};
                 return false;
               }
@@ -422,61 +410,24 @@ struct LayoutEngine {
     return chutes;
   }
 
-  // Given a top layer (annotated with the propositions it takes as
-  // inputs), create a new layer that produces those layers and is
-  // simpler. (Simpler as in some unspecified well-founded ordering
-  // so that this process terminates.) The input and output layers
-  // should start at x=0.
-  std::pair<std::vector<LC>, int> AddLayer(std::span<const LC> top) {
-    CHECK(!top.empty()) << "Precondition.";
+  // Generate the desired action for each chute by updating its
+  // desire (and desire_val) fields in place.
+  void SetChuteDesires(std::vector<Chute> &chutes) {
 
-    // The hard part is the physical routing. Some gates like AND0110
-    // need separated inputs in a specific form. Since we are working
-    // bottom-up, the AND gate itself is not bad (we just place it
-    // wherever we need a mixed A & B prop). But satisfying the
-    // separated 0 A, 1 A, 1 B, and 0 B inputs of that then becomes
-    // tricky.
+    // We often will need to reorder chutes. But we only need
+    // to do this within the "interior," because contiguous
+    // sequenes of mixed variables on the left and right side
+    // are already done (the input layer can take variables in
+    // any order). So start by identifying and marking chutes
+    // that are done.
 
-    // |0A| |1A|  |1B| |0B|
-    //   \           /
-    //    \         /
-    //     \       /
-    //       |A&B|
-
-    // It's possible to work directly with separated wires: We have
-    // NOT0, NOT1 and these are simple and efficient. We could also
-    // create a separated gate like AND0110_0, but we almost always
-    // need a matching AND0110_1 (e.g. to satisfy the 0A and 1A inputs
-    // of an AND gate itself), and so we would end up duplicating
-    // input propositions.
-
-    // So, a high priority is to put pairs of separated wires
-    // next to each other so that we can join them with a separator.
-    // (But we only need to do this when they represent binary
-    // propositions; we can directly strip ¬,create constants,
-    // and postpone variables until the end.) The tricky thing about
-    // *this* is that we can only reorder inputs when they are separated.
-
-    // First we flatten all of the inputs we need to satisfy on the
-    // top layer, with their positions. These are just fixed and
-    // independent since we aren't going to try to move them around.
-
-    std::vector<Chute> chutes = FlattenInputs(top);
-    CHECK(!chutes.empty());
-
-    // Now set the desires for each.
-    // The first thing we need to do is deal with the order of the
-    // chutes.
-
-    // Exterior chutes that hold variables are done.
-    std::vector<bool> done(chutes.size(), false);
-
+    // Left side.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       if (std::holds_alternative<Var>(chute.prop.p) &&
           chute.type == CType::MIXED) {
         // Still on the exterior.
-        done[c] = true;
+        chute.done = true;
         chute.desire = DesireType::QUIESCE;
         // TODO: Adjust this later down once we know better how much
         // space we need.
@@ -486,7 +437,7 @@ struct LayoutEngine {
       }
     }
 
-    CHECK(!done.back()) << "Precondition: The top layer is already "
+    CHECK(!chutes.back().done) << "Precondition: The top layer is already "
       "complete!";
 
     // Also the right side.
@@ -495,7 +446,7 @@ struct LayoutEngine {
       if (std::holds_alternative<Var>(chute.prop.p) &&
           chute.type == CType::MIXED) {
         // Still on the exterior.
-        done[c] = true;
+        chute.done = true;
         chute.desire = DesireType::QUIESCE;
         chute.desire_val = +8;
       } else {
@@ -503,13 +454,12 @@ struct LayoutEngine {
       }
     }
 
-    // Now any internal mixed variable is going to be problematic,
-    // because we will need to cross over it to attain the order
-    // we want. So unseparate those.
-
+    // Now a mixed variable that is not "done" is going to be
+    // problematic, because we will likely need to cross over it to
+    // attain the order we want. So uncombine those.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (!done[c] &&
+      if (!chute.done &&
           chute.type == CType::MIXED &&
           std::holds_alternative<Var>(chute.prop.p)) {
         CHECK(chute.desire == DesireType::UNSPECIFIED);
@@ -526,7 +476,8 @@ struct LayoutEngine {
       Chute &chute2 = chutes[c + 1];
       // When we have two separated inputs for the same
       // proposition in a row, we should UNDUP them.
-      if (!done[c] &&
+      if (!chute1.done &&
+          !chute2.done &&
           // Not if it already has a desire.
           chute1.desire == UNSPECIFIED &&
           chute2.desire == UNSPECIFIED &&
@@ -537,10 +488,9 @@ struct LayoutEngine {
           chute1.prop == chute2.prop) {
         chute1.desire = UNDUP;
         chute2.desire = UNDUP;
-        // Note that if we have an odd number of equal
-        // propositions, the last one will be passed
-        // through and be in the correct position to
-        // undup on the next layer.
+        // Note that if we have an odd number of equal propositions,
+        // the last one will be passed through and be in the correct
+        // position to undup on the next layer.
       }
     }
 
@@ -550,7 +500,7 @@ struct LayoutEngine {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
 
-      if (!done[c] && !done[c + 1] &&
+      if (!chute1.done && !chute2.done &&
           chute1.desire == UNSPECIFIED &&
           chute2.desire == UNSPECIFIED &&
           chute1.type != CType::MIXED &&
@@ -561,16 +511,15 @@ struct LayoutEngine {
         // Props are equal.
         const Prop &prop = chute1.prop;
 
-        // For variables, we only want to unseparate them
-        // if they are exterior, since otherwise they will
-        // become obstacles that prevent us from exchanging
-        // across.
+        // For variables, we only want to unseparate them if they are
+        // exterior, so they will become done. Unseparating prematurely
+        // creates obstacles that prevent us from exchanging across.
         if (std::holds_alternative<Var>(prop.p)) {
           // TODO: We should allow unseparating multiple
           // pairs in the same layer.
-          const bool left_exterior = c == 0 || done[c - 1];
+          const bool left_exterior = c == 0 || chutes[c - 1].done;
           const bool right_exterior =
-            c + 2 >= chutes.size() || done[c + 2];
+            c + 2 >= chutes.size() || chutes[c + 2].done;
 
           if (left_exterior || right_exterior) {
             chute1.desire = UNSEPARATE;
@@ -592,7 +541,7 @@ struct LayoutEngine {
     // separated inputs (which we want) as well as simplifying.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (!done[c] &&
+      if (!chute.done &&
           chute.type == CType::MIXED &&
           (std::holds_alternative<Binop>(chute.prop.p) ||
            std::holds_alternative<Value>(chute.prop.p))) {
@@ -608,7 +557,7 @@ struct LayoutEngine {
     // don't have a way of dealing with them.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (!done[c] &&
+      if (!chute.done &&
           chute.type == CType::MIXED &&
           chute.desire == DesireType::UNSPECIFIED) {
         chute.desire = UNCOMBINE;
@@ -624,7 +573,7 @@ struct LayoutEngine {
     // particularly add complexity.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (!done[c] &&
+      if (!chute.done &&
           chute.type != CType::MIXED &&
           chute.desire == DesireType::UNSPECIFIED &&
           std::holds_alternative<Unop>(chute.prop.p)) {
@@ -637,7 +586,8 @@ struct LayoutEngine {
     for (int c = 0; c < (int)chutes.size() - 1; c++) {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
-      if (!done[c] &&
+      if (!chute1.done &&
+          !chute2.done &&
           chute1.desire == DesireType::UNSPECIFIED &&
           chute2.desire == DesireType::UNSPECIFIED) {
         // We should have dealt with this above!
@@ -668,7 +618,7 @@ struct LayoutEngine {
     // If no desire yet (e.g. already in order), just quiesce.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (done[c]) {
+      if (chute.done) {
         CHECK(chute.desire != DesireType::UNSPECIFIED);
       } else if (chute.desire == DesireType::UNSPECIFIED) {
         chute.desire = DesireType::QUIESCE;
@@ -680,6 +630,25 @@ struct LayoutEngine {
     // the middle (could be negative even). For now they just flow
     // outward, making more and more space (which is probably fine
     // but untidy).
+  }
+
+
+  // Given a top layer (annotated with the propositions it takes as
+  // inputs), create a new layer that produces those layers and is
+  // simpler. (Simpler as in some unspecified well-founded ordering
+  // so that this process terminates.) The input and output layers
+  // should start at x=0.
+  std::pair<std::vector<LC>, int> AddLayer(std::span<const LC> top) {
+    CHECK(!top.empty()) << "Precondition.";
+
+    // First we flatten all of the inputs we need to satisfy on the
+    // top layer, with their positions. These are just fixed and
+    // independent since we aren't going to try to move them around.
+    std::vector<Chute> chutes = FlattenInputs(top);
+    CHECK(!chutes.empty());
+
+    // Now set the desires for each.
+    SetChuteDesires(chutes);
 
     // Now greedily place, without blocking anything off.
 
@@ -849,15 +818,15 @@ struct LayoutEngine {
           }
 
         } else if (current_dist > target_dist) {
-          chute2.desire = DesireType::FLOW;
+          chute2.desire = DesireType::QUIESCE;
           chute2.desire_val = 0;
-          chute1.desire = DesireType::FLOW;
+          chute1.desire = DesireType::QUIESCE;
           chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
                                info.outputs[0].xblock) - chute1.pos;
         } else {
-          chute1.desire = DesireType::FLOW;
+          chute1.desire = DesireType::QUIESCE;
           chute1.desire_val = 0;
-          chute2.desire = DesireType::FLOW;
+          chute2.desire = DesireType::QUIESCE;
           chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
                                info.outputs[1].xblock) - chute2.pos;
         }
@@ -1018,11 +987,12 @@ struct LayoutEngine {
 
         CHECK(chute.desire == DesireType::FLOW ||
               chute.desire == DesireType::QUIESCE) << "Bug: " <<
-          DesireTypeString(chute.desire) << " should be handled "
-          "above, perhaps by turning it into FLOW!";
+          LayoutEngine::DesireTypeString(chute.desire) << " should be "
+          "handled above, perhaps by turning it into FLOW!";
 
         Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-              c, DesireTypeString(chute.desire), chute.desire_val);
+              c, LayoutEngine::DesireTypeString(chute.desire),
+              chute.desire_val);
 
         // PERF: We could compute this cumulative sum outside. But
         // we probably want it to be weighted somehow.
@@ -1170,7 +1140,7 @@ struct LayoutEngine {
 
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
-  Layout Run(std::span<const Prop> props_in) {
+  Layout DoLayout(std::span<const Prop> props_in) override {
     // I only support the AND binary gate today, so normalize to
     // a form that removes OR, XOR, etc.
     std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
@@ -1270,7 +1240,7 @@ struct LayoutEngine {
   }
 
   // Args must outlast the engine.
-  LayoutEngine(const World &world, const CellLibrary &library) :
+  LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
     ComputeMinClearance();
     Print("Min clearance: close={}, far={}\n", min_clearance_close,
@@ -1278,10 +1248,14 @@ struct LayoutEngine {
   }
 };
 
-Layout DoLayout(const CellLibrary &library,
-                const World &world,
-                std::span<const Prop> props) {
-  LayoutEngine engine(world, library);
-  return engine.Run(props);
+}  // namespace
+
+std::unique_ptr<LayoutEngine> LayoutEngine::Create(
+    const CellLibrary &library, const World &world) {
+  return std::make_unique<LayoutEngineImpl>(library, world);
 }
+
+LayoutEngine::LayoutEngine() {}
+LayoutEngine::~LayoutEngine() {}
+
 
