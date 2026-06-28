@@ -15,8 +15,8 @@ FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
 CHESS_OBJECTS=$(CHESS)/chess.o
 
-OPT=-O2 -flto -g
-# OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
+# OPT=-O2 -flto -g
+OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
 
 # OPT=-O -g -fprofile-instr-generate -fcoverage-mapping
 # Coverage report:

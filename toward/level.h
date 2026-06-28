@@ -97,7 +97,8 @@ struct Levels {
   // SVG is nominally 1920x1080. Scene is 19.2x10.8.
   static constexpr float SVG_SCALE = 100.0f;
 
-  static std::unique_ptr<Level> LoadSVG(std::string_view filename);
+  static std::unique_ptr<Level> LoadSVG(std::string_view filename,
+                                        bool verbose = true);
 
   static void SaveSVG(const Level &level, std::string_view filename);
 
@@ -145,7 +146,8 @@ struct Levels {
   // Mostly for internal use.
   static void AddNodesToLevel(const SVG::Node &node,
                               const SVG::GraphicsState &state,
-                              Level *level);
+                              Level *level,
+                              bool verbose);
 };
 
 #endif

@@ -38,7 +38,8 @@ enum Gate : uint8_t {
   NOT0,
   NOT1,
   NOT01,
-  SEPARATOR,
+  SEPARATOR01,
+  SEPARATOR10,
   SELFXCHG01,
   SELFXCHG10,
   // Maybe better to not distinguish wire variants A/B at the gate
@@ -68,7 +69,7 @@ enum Gate : uint8_t {
 
 inline constexpr std::array ALL_GATES = {
   SPACER, AND0110, NOT, NOT0, NOT1, NOT01,
-  SEPARATOR, SELFXCHG01, SELFXCHG10,
+  SEPARATOR01, SEPARATOR10, SELFXCHG01, SELFXCHG10,
   WIREA, WIREB, WIRE0A, WIRE0B, WIRE1A, WIRE1B,
   COMBINE01, COMBINE10,
   DUPSEP0011, DUP0, DUP1,

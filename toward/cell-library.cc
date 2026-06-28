@@ -48,7 +48,8 @@ GetType(Gate g) {
   case NOT0: return {{CType::ZERO}, {CType::ONE}};
   case NOT1: return {{CType::ONE}, {CType::ZERO}};
   case NOT01: return {{CType::ZERO, CType::ONE}, {CType::MIXED}};
-  case SEPARATOR: return {{CType::MIXED}, {CType::ZERO, CType::ONE}};
+  case SEPARATOR01: return {{CType::MIXED}, {CType::ZERO, CType::ONE}};
+  case SEPARATOR10: return {{CType::MIXED}, {CType::ONE, CType::ZERO}};
   case SELFXCHG01:
     return {{CType::ZERO, CType::ONE}, {CType::ONE, CType::ZERO}};
   case SELFXCHG10:
@@ -111,7 +112,7 @@ struct CellLibraryImpl {
         std::string f(filename);
         auto it = svg_cache->find(f);
         if (it == svg_cache->end()) {
-          std::unique_ptr<Level> level = Levels::LoadSVG(filename);
+          std::unique_ptr<Level> level = Levels::LoadSVG(filename, false);
           CHECK(level.get() != nullptr) << "Missing/invalid: " << filename;
           (*svg_cache)[f] = std::make_unique<Level>(*level);
           return level;
@@ -200,7 +201,8 @@ struct CellLibraryImpl {
     Load("cell-dup0.svg", Gate::DUP0, 0);
     Load("cell-dup1.svg", Gate::DUP1, 0);
     Load("cell-and0110.svg", Gate::AND0110, 0);
-    Load("cell-separator.svg", Gate::SEPARATOR, 0);
+    Load("cell-separator01.svg", Gate::SEPARATOR01, 0);
+    Load("cell-separator10.svg", Gate::SEPARATOR10, 0);
     Load("cell-sink.svg", Gate::SINK, 0);
     Load("cell-const0.svg", Gate::CONST0, 0);
     Load("cell-const1.svg", Gate::CONST1, 0);
@@ -383,7 +385,7 @@ std::string CellLibrary::DebugString(const Circuit &circuit) const {
     for (const Cell &cell : layer) {
       CellLibrary::Info info = GetInfo(cell);
       AppendFormat(&out, "  {} (width: {})\n",
-                   CellString(cell).c_str(), info.block_width);
+                   CellString(cell), info.block_width);
 
       for (const CellLibrary::IO &in : info.inputs) {
         AppendFormat(&out, "    Input at x={} (type {})\n",
@@ -465,4 +467,21 @@ void CellLibrary::DRC(const Circuit &circuit) const {
 
     prev_outputs = std::move(current_outputs);
   }
+}
+
+std::string CellLibrary::InfoString(const Info &info) {
+  std::string s;
+  AppendFormat(&s, "Cell with width {}:\n",
+               info.block_width);
+
+  for (const CellLibrary::IO &in : info.inputs) {
+    AppendFormat(&s, "  Input at x={} (type {})\n",
+                 in.xblock, TypeString(in.type));
+  }
+  for (const CellLibrary::IO &out : info.outputs) {
+    AppendFormat(&s, "  Output at x={} (type {})\n",
+                 out.xblock, TypeString(out.type));
+  }
+
+  return s;
 }

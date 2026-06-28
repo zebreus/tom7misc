@@ -29,7 +29,8 @@ std::string_view GateString(Gate g) {
   case NOT01: return "NOT01";
   case NOT0: return "NOT0";
   case NOT1: return "NOT1";
-  case SEPARATOR: return "SEPARATOR";
+  case SEPARATOR01: return "SEPARATOR01";
+  case SEPARATOR10: return "SEPARATOR10";
   case SELFXCHG01: return "SELFXCHG01";
   case SELFXCHG10: return "SELFXCHG10";
   case WIREA: return "WIREA";
@@ -38,6 +39,8 @@ std::string_view GateString(Gate g) {
   case WIRE0B: return "WIRE0B";
   case WIRE1A: return "WIRE1A";
   case WIRE1B: return "WIRE1B";
+  case COMBINE01: return "COMBINE01";
+  case COMBINE10: return "COMBINE10";
   case XCHG00: return "XCHG00";
   case XCHG01: return "XCHG01";
   case XCHG10: return "XCHG10";
@@ -87,7 +90,8 @@ std::pair<int, int> GateArity(Gate g) {
   case NOT0:
   case NOT1: return {1, 1};
   case NOT01: return {2, 1};
-  case SEPARATOR: return {1, 2};
+  case SEPARATOR01: return {1, 2};
+  case SEPARATOR10: return {1, 2};
   case SELFXCHG01: return {2, 2};
   case SELFXCHG10: return {2, 2};
   case WIREA:
@@ -97,6 +101,8 @@ std::pair<int, int> GateArity(Gate g) {
   case WIRE1A:
   case WIRE1B:
     return {1, 1};
+  case COMBINE01:
+  case COMBINE10: return {2, 1};
   case XCHG00:
   case XCHG01:
   case XCHG10:
@@ -247,11 +253,19 @@ std::vector<Func> TransformCell(const Cell &cell,
     break;
   }
 
-  case SEPARATOR: {
+  case SEPARATOR01: {
     const Func &f = in[InputIdx(0)];
     CHECK(f.type == CType::MIXED);
     out[OutputIdx(0)] = Func{.prop = f.prop, .type = CType::ZERO};
     out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ONE};
+    break;
+  }
+
+  case SEPARATOR10: {
+    const Func &f = in[InputIdx(0)];
+    CHECK(f.type == CType::MIXED);
+    out[OutputIdx(0)] = Func{.prop = f.prop, .type = CType::ONE};
+    out[OutputIdx(1)] = Func{.prop = f.prop, .type = CType::ZERO};
     break;
   }
 

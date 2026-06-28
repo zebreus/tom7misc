@@ -373,9 +373,10 @@ std::optional<vec2f> Levels::IsSVGZero(const SVG::GraphicsState &outer_state,
 
 void Levels::AddNodesToLevel(const SVG::Node &node,
                              const SVG::GraphicsState &state,
-                             Level *level) {
+                             Level *level,
+                             bool verbose) {
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
-    Print("Got One at {},{}\n", oone.value().x, oone.value().y);
+    if (verbose) Print("Got One at {},{}\n", oone.value().x, oone.value().y);
     LevelBody one_body = Levels::One();
     one_body.color = 0x00FF00FF;
     one_body.pos = oone.value() / SVG_SCALE;
@@ -384,7 +385,8 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   }
 
   if (std::optional<vec2f> ozero = IsSVGZero(state, node)) {
-    Print("Got Zero at {},{}\n", ozero.value().x, ozero.value().y);
+    if (verbose) Print("Got Zero at {},{}\n",
+                       ozero.value().x, ozero.value().y);
     LevelBody zero_body = Levels::Zero();
     zero_body.color = 0xFF0000FF;
     zero_body.pos = ozero.value() / SVG_SCALE;
@@ -393,13 +395,13 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   }
 
   if (std::optional<int> in_x = IsStandardInput(state, node)) {
-    Print("Got input at {}\n", *in_x);
+    if (verbose) Print("Got input at {}\n", *in_x);
     level->inputs.push_back(*in_x);
     return;
   }
 
   if (std::optional<int> out_x = IsStandardOutput(state, node)) {
-    Print("Got output at {}\n", *out_x);
+    if (verbose) Print("Got output at {}\n", *out_x);
     level->outputs.push_back(*out_x);
     return;
   }
@@ -407,7 +409,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
   if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
     SVG::GraphicsState next_state = SVG::UpdateState(state, g->style);
     for (const auto &child : g->children) {
-      AddNodesToLevel(child, next_state, level);
+      AddNodesToLevel(child, next_state, level, verbose);
     }
 
   } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
@@ -455,7 +457,8 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
       }
     }
 
-    Print("Adding poly with color {:08x}\n", state.fill_color);
+    if (verbose)
+      Print("Adding poly with color {:08x}\n", state.fill_color);
 
     if (poly.size() >= 3) {
       poly_shape.polys.push_back(std::move(poly));
@@ -469,7 +472,7 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
     if (mesh == nullptr) {
       if (const std::string_view *err = std::get_if<std::string_view>(&res)) {
-        Print("Polygonization failed: {}\n", *err);
+        Print(AORANGE("Polygonization failed") ": {}\n", *err);
       }
       return;
     }
@@ -527,15 +530,17 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
     CHECK(!level->bodies.empty());
     const LevelBody &body = level->bodies.back();
-    Print("[{}] Add {} body at {},{} with color {:08x}\n",
-          idx,
-          body.dynamic ? "dynamic" : "static",
-          body.pos.x, body.pos.y,
-          body.color);
+    if (verbose)
+      Print("[{}] Add {} body at {},{} with color {:08x}\n",
+            idx,
+            body.dynamic ? "dynamic" : "static",
+            body.pos.x, body.pos.y,
+            body.color);
   }
 }
 
-std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
+std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename,
+                                       bool verbose) {
   std::string contents = Util::ReadFile(filename);
   CHECK(!contents.empty()) << filename;
 
@@ -549,7 +554,7 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename) {
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
-  AddNodesToLevel(doc.root, state, level.get());
+  AddNodesToLevel(doc.root, state, level.get(), verbose);
 
   std::sort(level->inputs.begin(), level->inputs.end());
   std::sort(level->outputs.begin(), level->outputs.end());

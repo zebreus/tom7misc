@@ -160,6 +160,8 @@ static void ValidateLibrary() {
   // WIREB,
 
   for (Gate g : {
+      Gate::SEPARATOR01,
+      Gate::SEPARATOR10,
       Gate::DUP1,
       Gate::DUP0,
       Gate::CONST0,
@@ -175,7 +177,6 @@ static void ValidateLibrary() {
       Gate::NOT01,
       Gate::AND0110,
       Gate::NOT,
-      Gate::SEPARATOR,
     }) {
     for (bool f : {false, true}) {
       // XXX skip known problematic

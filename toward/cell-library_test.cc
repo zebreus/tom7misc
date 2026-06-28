@@ -1,7 +1,9 @@
 
+#include "base/stringprintf.h"
 #include "cell-library.h"
 
 #include <memory>
+#include <string>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -73,11 +75,44 @@ static void PrintWidths() {
   }
 }
 
+static std::string IOString(const CellLibrary::Info &info) {
+  std::string s;
+  for (const CellLibrary::IO &in : info.inputs) {
+    AppendFormat(&s, "  Input at x={}\n", in.xblock);
+  }
+  for (const CellLibrary::IO &out : info.outputs) {
+    AppendFormat(&s, "  Output at x={}\n", out.xblock);
+  }
+  return s;
+}
+
+static void PrintWireLib() {
+  CellLibrary library;
+  Print("Available wires:\n");
+  for (int e = CellLibrary::MAX_WIRE_EXP; e >= 0; e--) {
+    int offset = 1 << e;
+    Cell wa = CellLibrary::WireA(offset, CType::MIXED);
+    CellLibrary::Info ainfo = library.GetInfo(wa);
+    Cell wb = CellLibrary::WireB(offset, CType::MIXED);
+    CellLibrary::Info binfo = library.GetInfo(wb);
+    Print("Offset {}:\n"
+          "Wire A({}), width {}:\n{}\n"
+          "Wire B({}), width {}:\n{}\n",
+          offset,
+          wa.v, ainfo.block_width,
+          IOString(ainfo),
+          wb.v, binfo.block_width,
+          IOString(binfo));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   Simple();
   VerifyFlippedWidths();
+  Print("\n");
+  PrintWireLib();
   PrintWidths();
 
   Print("OK\n");

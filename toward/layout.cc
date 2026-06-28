@@ -8,12 +8,16 @@
 #include <initializer_list>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "base/stringprintf.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
@@ -64,23 +68,6 @@ struct LC {
   Cell cell;
 };
 
-// Returns the flattened vector of variable ids if all
-// of the inputs are variables; nullopt otherwise.
-static std::optional<std::vector<int>>
-AllVars(std::span<const LC> lcs) {
-  std::vector<int> vars;
-  for (const LC &lc : lcs) {
-    for (const Prop &p : lc.inprops) {
-      if (const Var *v = std::get_if<Var>(&p.p)) {
-        vars.push_back(v->id);
-      } else {
-        return std::nullopt;
-      }
-    }
-  }
-  return {vars};
-}
-
 struct LayoutEngine {
   const World &world;
   const CellLibrary &library;
@@ -92,6 +79,29 @@ struct LayoutEngine {
   // wire. We use this to check that we don't completely block a
   // nearby input when we assign cells greedily.
   const int min_clearance = 0;
+
+  // Returns the flattened vector of variable ids if all
+  // of the inputs are variables; nullopt otherwise.
+  std::optional<std::vector<int>>
+  AllVars(std::span<const LC> lcs) {
+    std::vector<int> vars;
+    for (const LC &lc : lcs) {
+      CellLibrary::Info info = library.GetInfo(lc.cell);
+      for (size_t i = 0; i < lc.inprops.size(); i++) {
+        if (info.inputs[i].type != CType::MIXED) {
+          return std::nullopt;
+        }
+        const Prop &p = lc.inprops[i];
+        if (const Var *v = std::get_if<Var>(&p.p)) {
+          vars.push_back(v->id);
+        } else {
+          return std::nullopt;
+        }
+      }
+    }
+    return vars;
+  }
+
 
   // Compute the minimum clearance to guarantee we can attach a wire;
   // initializes min_clearance. (This could probably just look at the
@@ -145,6 +155,7 @@ struct LayoutEngine {
     UNCOMBINE,
     // Unduplicate adjacent identical propositions.
     UNDUP,
+    UNSEPARATE,
     // The chute is out of order and should swap to its left.
     EXCHANGE_LEFT,
     // ... or right.
@@ -160,6 +171,7 @@ struct LayoutEngine {
     case DECOMPOSE: return "DECOMPOSE";
     case UNCOMBINE: return "UNCOMBINE";
     case UNDUP: return "UNDUP";
+    case UNSEPARATE: return "UNSEPARATE";
     case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
     case EXCHANGE_RIGHT: return "EXCHANGE_RIGHT";
     case FLOW: return "FLOW";
@@ -185,6 +197,32 @@ struct LayoutEngine {
     std::vector<Prop> inprops;
   };
 
+  std::string ChuteString(const Chute &chute) const {
+    std::string s;
+    AppendFormat(&s, "Chute(pos={}, prop={}, type={}, desire={}, val={})",
+                 chute.pos,
+                 PropString(chute.prop),
+                 TypeString(chute.type),
+                 DesireTypeString(chute.desire),
+                 chute.desire_val);
+    return s;
+  }
+
+  std::string DebugLayerState(std::span<const Chute> chutes,
+                              std::span<const PC> next_cells) const {
+    std::string s;
+    AppendFormat(&s, "--- Chutes ---\n");
+    for (int i = 0; i < (int)chutes.size(); i++) {
+      AppendFormat(&s, " [{}] {}\n", i, ChuteString(chutes[i]));
+    }
+    AppendFormat(&s, "--- Next Cells ---\n");
+    for (int i = 0; i < (int)next_cells.size(); i++) {
+      AppendFormat(&s, " [{}] xpos={} cell={}\n", i, next_cells[i].xpos,
+                   CellString(next_cells[i].cell));
+    }
+    return s;
+  }
+
   // Given the input chutes for the complete top layer,
   // and the in-progress next layer (next), is it possible
   // to place the cell in the next layer with its left edge
@@ -194,6 +232,7 @@ struct LayoutEngine {
   //    (this does not include the chutes that match up
   //    to the cell's output, though!)
   bool CanPlaceCell(std::span<const Chute> top,
+                    const std::vector<bool> &assigned,
                     std::span<const PC> next,
                     const Cell &cell,
                     int xpos) const {
@@ -211,26 +250,31 @@ struct LayoutEngine {
     }
 
     // Blocking a chute from the top layer?
-    for (const Chute &chute : top) {
-      bool matched = false;
-      for (const CellLibrary::IO &out : info.outputs) {
-        if (xpos + out.xblock == chute.pos) {
-          matched = true;
-          break;
+    for (size_t i = 0; i < top.size(); i++) {
+      if (!assigned[i]) {
+        const Chute &chute = top[i];
+        // XXX: Matched might be redundant with assigned?
+        bool matched = false;
+        for (const CellLibrary::IO &out : info.outputs) {
+          if (xpos + out.xblock == chute.pos) {
+            matched = true;
+            break;
+          }
         }
-      }
 
-      if (!matched) {
-        int chute_left = chute.pos - min_clearance;
-        int chute_right = chute.pos + INPUT_WIDTH + min_clearance;
-        if (cell_left < chute_right && cell_right > chute_left) {
-          return false;
+        if (!matched) {
+          int chute_left = chute.pos - min_clearance;
+          int chute_right = chute.pos + INPUT_WIDTH + min_clearance;
+          if (cell_left < chute_right && cell_right > chute_left) {
+            return false;
+          }
         }
       }
     }
 
     return true;
   }
+
 
   // Flatten the inputs. Desires are not yet specified.
   std::vector<Chute> FlattenInputs(std::span<const LC> top) {
@@ -342,9 +386,6 @@ struct LayoutEngine {
       }
     }
 
-    // TODO: exterior combined pairs of variables should get
-    // unseparated!
-
     // Now any internal mixed variable is going to be problematic,
     // because we will need to cross over it to attain the order
     // we want. So unseparate those.
@@ -391,6 +432,33 @@ struct LayoutEngine {
       }
     }
 
+    // Unseparate exterior pairs of separated variables. We do this
+    // after UNDUP so that UNDUP has higher priority.
+    for (int c = 0; c < (int)chutes.size() - 1; c++) {
+      Chute &chute1 = chutes[c];
+      Chute &chute2 = chutes[c + 1];
+      if (!done[c] && !done[c + 1] &&
+          chute1.desire == UNSPECIFIED &&
+          chute2.desire == UNSPECIFIED &&
+          chute1.type != CType::MIXED &&
+          chute2.type != CType::MIXED &&
+          chute1.type != chute2.type &&
+          chute1.prop == chute2.prop &&
+          std::holds_alternative<Var>(chute1.prop.p)) {
+
+        // TODO: We should allow unseparating multiple
+        // pairs in the same layer.
+        const bool left_exterior = c == 0 || done[c - 1];
+
+        const bool right_exterior =
+          c + 2 >= chutes.size() || done[c + 2];
+
+        if (left_exterior || right_exterior) {
+          chute1.desire = UNSEPARATE;
+          chute2.desire = UNSEPARATE;
+        }
+      }
+    }
 
     // Similarly, decomposing a mixed binary proposition gets us
     // separated inputs (which we want) as well as simplifying.
@@ -398,7 +466,8 @@ struct LayoutEngine {
       Chute &chute = chutes[c];
       if (!done[c] &&
           chute.type == CType::MIXED &&
-          std::holds_alternative<Binop>(chute.prop.p)) {
+          (std::holds_alternative<Binop>(chute.prop.p) ||
+           std::holds_alternative<Value>(chute.prop.p))) {
         CHECK(chute.desire == DesireType::UNSPECIFIED);
         chute.desire = DECOMPOSE;
       }
@@ -499,16 +568,17 @@ struct LayoutEngine {
       [&](int chute_idx,
           Gate g,
           std::span<const Prop> inprops,
-          int cell_val = 0) -> bool {
+          int cell_val = 0,
+          std::initializer_list<bool> allow_flips = {false, true}) -> bool {
         CHECK(!assigned[chute_idx]);
         Chute &chute = chutes[chute_idx];
 
-        for (bool flip : {false, true}) {
+        for (bool flip : allow_flips) {
           Cell cell(g, cell_val, flip);
           int xout = ItsOutputPos(cell);
 
           int cell_pos = chute.pos - xout;
-          if (CanPlaceCell(chutes, next_cells, cell, cell_pos)) {
+          if (CanPlaceCell(chutes, assigned, next_cells, cell, cell_pos)) {
             assigned[chute_idx] = true;
             std::vector<Prop> ip(inprops.begin(), inprops.end());
             if (flip) {
@@ -549,31 +619,40 @@ struct LayoutEngine {
           Gate g = flip ? flipped_gate : gate;
           Cell cell(g, 0, flip);
           CellLibrary::Info info = library.GetInfo(cell);
-          CHECK(info.outputs.size() == 2);
+          CHECK(info.outputs.size() == 2) << CellString(cell)
+                                          << "\nGot\n"
+                                          << CellLibrary::InfoString(info);
 
           int out0 = info.outputs[0].xblock;
           int out1 = info.outputs[1].xblock;
 
+          CHECK(info.outputs[0].type == chute1.type &&
+                info.outputs[1].type == chute2.type);
+
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
-            if (CanPlaceCell(chutes, next_cells, cell, cell_pos)) {
+            if (CanPlaceCell(chutes, assigned, next_cells, cell, cell_pos)) {
               assigned[chute_idx] = true;
               assigned[chute_idx + 1] = true;
 
               // XXX Maybe would be cleaner to pass this?
               std::vector<Prop> inprops;
-              if (g == DUP0 || g == DUP1 || g == SEPARATOR) {
+              if (g == DUP0 || g == DUP1 ||
+                  g == SEPARATOR01 || g == SEPARATOR10) {
                 inprops = {chute1.prop};
-              } else {
-                CHECK(g == SELFXCHG01 ||
-                      g == SELFXCHG10 ||
-                      g == XCHG00 ||
-                      g == XCHG01 ||
-                      g == XCHG10 ||
-                      g == XCHG11);
+              } else if (g == SELFXCHG01 ||
+                         g == SELFXCHG10 ||
+                         g == XCHG00 ||
+                         g == XCHG01 ||
+                         g == XCHG10 ||
+                         g == XCHG11) {
 
                 // All exchange gates swap their inputs.
                 inprops = {chute2.prop, chute1.prop};
+
+              } else {
+                LOG(FATAL) << "Unhandled gate in PlaceBinary: "
+                           << GateString(g);
               }
               next_cells.push_back(PC{
                   .xpos = cell_pos,
@@ -589,12 +668,28 @@ struct LayoutEngine {
         CellLibrary::Info info = library.GetInfo(cell_unflipped);
         CHECK(info.outputs.size() == 2);
 
-        chute1.desire = DesireType::FLOW;
-        chute1.desire_val = 0;
+        int current_dist = chute2.pos - chute1.pos;
+        int target_dist = info.outputs[1].xblock - info.outputs[0].xblock;
 
-        chute2.desire = DesireType::FLOW;
-        chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
-                             info.outputs[1].xblock) - chute2.pos;
+        Print("Chute {}: "
+              "PlaceBinary ({}/{}) fallback.\n"
+              "Current dist {}, target dist {}.\n",
+              chute_idx, GateString(gate), GateString(flipped_gate),
+              current_dist, target_dist);
+
+        if (current_dist > target_dist) {
+          chute1.desire = DesireType::FLOW;
+          chute1.desire_val = 0;
+          chute2.desire = DesireType::FLOW;
+          chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
+                               info.outputs[1].xblock) - chute2.pos;
+        } else {
+          chute2.desire = DesireType::FLOW;
+          chute2.desire_val = 0;
+          chute1.desire = DesireType::FLOW;
+          chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
+                               info.outputs[0].xblock) - chute1.pos;
+        }
       };
 
 
@@ -619,6 +714,27 @@ struct LayoutEngine {
         }
       };
 
+    auto DoUnseparate = [&](int c) {
+        // On the left one of a pair.
+        if (c + 1 >= chutes.size()) return;
+        if (assigned[c] || assigned[c + 1]) return;
+
+        Chute &chute1 = chutes[c];
+        Chute &chute2 = chutes[c + 1];
+
+        if (chute1.desire != DesireType::UNSEPARATE ||
+            chute2.desire != DesireType::UNSEPARATE)
+          return;
+
+        CHECK(chute1.type != chute2.type);
+
+        // Here, 0 and 1 refer to the output types.
+        Gate g = SEPARATOR01, ginv = SEPARATOR10;
+        if (chute1.type == CType::ONE) std::swap(g, ginv);
+
+        PlaceBinaryOrFallback(c, g, ginv);
+      };
+
     auto DoDecompose = [&](int c) {
         Chute &chute = chutes[c];
         if (chute.desire != DesireType::DECOMPOSE) {
@@ -626,11 +742,18 @@ struct LayoutEngine {
         }
 
         if (chute.type == CType::MIXED) {
-          const Binop* b = std::get_if<Binop>(&chute.prop.p);
-          CHECK(b && b->op == BinopOp::AND);
-          if (PlaceAlignedUnary(c, AND0110,
-                                Span{*b->a, *b->a, *b->b, *b->b})) {
-            return;
+          if (const Value* v = std::get_if<Value>(&chute.prop.p)) {
+            Gate g = v->value ? CONST1 : CONST0;
+            if (PlaceAlignedUnary(c, g, {})) {
+              return;
+            }
+          } else {
+            const Binop* b = std::get_if<Binop>(&chute.prop.p);
+            CHECK(b && b->op == BinopOp::AND);
+            if (PlaceAlignedUnary(c, AND0110,
+                                  Span{*b->a, *b->a, *b->b, *b->b})) {
+              return;
+            }
           }
 
         } else {
@@ -661,7 +784,6 @@ struct LayoutEngine {
 
         chute.desire = DesireType::FLOW;
         chute.desire_val = 0;
-
       };
 
     auto DoExchange = [&](int c) {
@@ -731,15 +853,22 @@ struct LayoutEngine {
           int displacement = chute.desire_val;
           // A gates have their output to the left of their input,
           // so they are positive when working bottom-up.
-          Gate g = chute.type == CType::MIXED ? WIREA :
+          Gate ga = chute.type == CType::MIXED ? WIREA :
             chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+          Gate gb = chute.type == CType::MIXED ? WIREB :
+            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
           for (int exponent = CellLibrary::MAX_WIRE_EXP;
                exponent >= 0;
                exponent--) {
             int amount = 1 << exponent;
             if (amount <= displacement) {
-              if (PlaceAlignedUnary(c, g, Span{chute.prop}, -amount)) {
+              if (PlaceAlignedUnary(
+                      c, ga, Span{chute.prop}, -amount, {false})) {
+                return;
+              }
+              if (PlaceAlignedUnary(
+                      c, gb, Span{chute.prop}, amount, {true})) {
                 return;
               }
             }
@@ -748,33 +877,56 @@ struct LayoutEngine {
         } else if (chute.desire_val < 0) {
           int displacement = -chute.desire_val;
 
-          Gate g = chute.type == CType::MIXED ? WIREB :
+          Gate gb = chute.type == CType::MIXED ? WIREB :
             chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+          Gate ga = chute.type == CType::MIXED ? WIREA :
+            chute.type == CType::ZERO ? WIRE0A : WIRE1A;
           for (int exponent = CellLibrary::MAX_WIRE_EXP;
                exponent >= 0;
                exponent--) {
             int amount = 1 << exponent;
             if (amount <= displacement) {
-              if (PlaceAlignedUnary(c, g, Span{chute.prop}, amount)) {
+              if (PlaceAlignedUnary(
+                      c, gb, Span{chute.prop}, amount, {false})) {
+                return;
+              }
+              if (PlaceAlignedUnary(
+                      c, ga, Span{chute.prop}, -amount, {true})) {
                 return;
               }
             }
           }
         }
 
+        // Either the desired displacement was zero or we
+        // weren't able to get any displacement in the correct
+        // direction (e.g. because it's too crowded). Make a
+        // vertical wire.
+        int displacement = 0;
+
         // Fall through so that we try all wire types
         // for zero displacement.
         Gate ga = chute.type == CType::MIXED ? WIREA :
-            chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+          chute.type == CType::ZERO ? WIRE0A : WIRE1A;
         Gate gb = chute.type == CType::MIXED ? WIREB :
           chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
-        CHECK(chute.desire_val == 0);
-        if (PlaceAlignedUnary(c, ga, Span{chute.prop}, 0))
+        if (chute.desire_val != 0) {
+          Print("Chute {} " AORANGE("fell back")
+                " to displacement 0 wire (wanted {})!\n",
+                c, chute.desire_val);
+        }
+
+        if (PlaceAlignedUnary(c, ga, Span{chute.prop}, displacement))
           return;
-        CHECK(PlaceAlignedUnary(c, gb, Span{chute.prop}, 0)) <<
+        if (PlaceAlignedUnary(c, gb, Span{chute.prop}, displacement))
+          return;
+
+        LOG(FATAL) <<
           "We should always have space remaining to place a "
-          "0-displacement wire.";
+          "0-displacement wire. (Originally wanted " <<
+          chute.desire_val << ").\nState:\n" <<
+          DebugLayerState(chutes, next_cells);
       };
 
     // Now do the passes above in priority order.
@@ -785,8 +937,9 @@ struct LayoutEngine {
             f(c);
       };
 
-    // These make clear progress to to the final state.
+    // These make clear progress to the final state.
     ForAllRemaining(DoUndup);
+    ForAllRemaining(DoUnseparate);
     ForAllRemaining(DoDecompose);
 
     // Changes desires locally by introducing new separated
@@ -798,6 +951,9 @@ struct LayoutEngine {
     // of the above. This needs to be last since earlier
     // passes will change the desire into flow.
     ForAllRemaining(DoFlow);
+
+    Print(AWHITE("Layer state at end") ":\n"
+          "{}\n", DebugLayerState(chutes, next_cells));
 
     // Now convert the placed cells into a flattened vector
     // of LC and a starting offset (might be negative).
@@ -909,7 +1065,9 @@ struct LayoutEngine {
 
   // Args must outlast the engine.
   LayoutEngine(const World &world, const CellLibrary &library) :
-    world(world), library(library), min_clearance(ComputeMinClearance()) {}
+    world(world), library(library), min_clearance(ComputeMinClearance()) {
+    Print("Min clearance: {}\n", min_clearance);
+  }
 };
 
 Layout DoLayout(const CellLibrary &library,
