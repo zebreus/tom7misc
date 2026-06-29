@@ -83,14 +83,15 @@ struct Cell {
   int v = 0;
   // Flip horizontally.
   bool flip = false;
-  explicit Cell(Gate g, int v = 0, bool flip = false) :
-    gate(g), v(v), flip(flip) {}
+  explicit Cell(Gate g, int v = 0, bool flip = false);
 };
 
 using Layer = std::vector<Cell>;
 struct Circuit {
   std::vector<Layer> layers;
 };
+
+bool IsWire(Gate gate);
 
 // number of inputs, outputs
 std::pair<int, int> GateArity(Gate gate);

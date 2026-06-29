@@ -2,6 +2,8 @@
 #include "prop.h"
 
 #include <compare>
+#include <limits>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <algorithm>
@@ -242,10 +244,11 @@ bool PropEq(const Prop &a_in, const Prop &b_in) {
   return true;
 }
 
-std::string PropAtom(const Prop &prop) {
+static std::string PropAtom(const Prop &prop, int max_depth) {
+  if (max_depth == 0) return "…";
   if (const Binop *b = std::get_if<Binop>(&prop.p)) {
-    std::string lhs = PropAtom(*b->a);
-    std::string rhs = PropAtom(*b->b);
+    std::string lhs = PropAtom(*b->a, max_depth - 1);
+    std::string rhs = PropAtom(*b->b, max_depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("({} ⋀ {})", lhs, rhs);
     case BinopOp::OR: return std::format("({} ⋁ {})", lhs, rhs);
@@ -259,16 +262,17 @@ std::string PropAtom(const Prop &prop) {
     return std::format("v{}", v->id);
   } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
     CHECK(u->op == UnopOp::NOT);
-    return std::format("¬{}", PropAtom(*u->a));
+    return std::format("¬{}", PropAtom(*u->a, max_depth - 1));
   } else {
     LOG(FATAL) << "Bad variant?";
   }
 }
 
-std::string PropString(const Prop &prop) {
+std::string PropString(const Prop &prop, std::optional<int> max_depth) {
+  int depth = max_depth.value_or(std::numeric_limits<int>::max());
   if (const Binop *b = std::get_if<Binop>(&prop.p)) {
-    std::string lhs = PropAtom(*b->a);
-    std::string rhs = PropAtom(*b->b);
+    std::string lhs = PropAtom(*b->a, depth - 1);
+    std::string rhs = PropAtom(*b->b, depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("{} ⋀ {}", lhs, rhs);
     case BinopOp::OR: return std::format("{} ⋁ {}", lhs, rhs);
@@ -277,7 +281,7 @@ std::string PropString(const Prop &prop) {
       LOG(FATAL) << "Unknown binop?";
     }
   } else {
-    return PropAtom(prop);
+    return PropAtom(prop, depth);
   }
 }
 

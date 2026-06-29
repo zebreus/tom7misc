@@ -12,6 +12,13 @@
 #include "base/stringprintf.h"
 #include "prop.h"
 
+Cell::Cell(Gate g, int v, bool flip) :
+  gate(g), v(v), flip(flip) {
+  CHECK(v >= 0) << "Currently, cell values are always non-negative, "
+    "even for flipped wires.";
+}
+
+
 std::string_view TypeString(CType t) {
   switch (t) {
   case CType::ONE: return "ONE";
@@ -237,7 +244,7 @@ std::vector<Func> TransformCell(const Cell &cell,
 
   case NOT1: {
     const Func &f = in[InputIdx(0)];
-    CHECK(f.type == CType::ONE);
+    CHECK(f.type == CType::ONE) << TypeString(f.type);
     out[OutputIdx(0)] = Func{.prop = -f.prop, .type = CType::ZERO};
     break;
   }

@@ -106,5 +106,9 @@ render-circuit_test.exe : render-circuit_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+chessdemo.exe : chessdemo.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe

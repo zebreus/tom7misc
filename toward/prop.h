@@ -3,6 +3,7 @@
 #define _TOWARD_PROP_H
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -104,7 +105,7 @@ inline Prop And(Prop first, Args... args) {
 }
 
 // Just using integers for variables.
-std::string PropString(const Prop &prop);
+std::string PropString(const Prop &prop, std::optional<int> max_depth = {});
 
 size_t PropSize(const Prop &prop);
 

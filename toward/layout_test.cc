@@ -19,8 +19,8 @@ static void StartTest(std::string_view name) {
 
 static void Verify(const Layout &layout, const std::vector<Prop> &props) {
   std::vector<Func> funcs;
-  for (int v : layout.input_vars) {
-    funcs.push_back(Func{.prop = Prop{Var{.id = v}}, .type = CType::MIXED});
+  for (auto [v, t] : layout.input_vars) {
+    funcs.push_back(Func{.prop = Prop{Var{.id = v}}, .type = t});
   }
   for (const Layer &layer : layout.circuit.layers) {
     funcs = Transform(layer, funcs);
@@ -119,6 +119,7 @@ static void MultiOutput(const CellLibrary &library) {
 
   std::vector<Prop> output = {a & b, b | c, c ^ a, -a};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  le->SetVerbose(2);
   Layout layout = le->DoLayout(output);
   library.DRC(layout.circuit);
   Verify(layout, output);
@@ -149,13 +150,17 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     };
 
     // Left overlap
-    CHECK(!le->CanPlaceCell(top, assigned, next, const0, 100 - const0_w + 1));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next,
+                            const0, 100 - const0_w + 1));
     // Exact left
-    CHECK(le->CanPlaceCell(top, assigned, next, const0, 100 - const0_w));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next,
+                           const0, 100 - const0_w));
     // Right overlap
-    CHECK(!le->CanPlaceCell(top, assigned, next, const0, 100 + const0_w - 1));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next,
+                            const0, 100 + const0_w - 1));
     // Exact right
-    CHECK(le->CanPlaceCell(top, assigned, next, const0, 100 + const0_w));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next,
+                           const0, 100 + const0_w));
   }
 
   // Exact match of a cell's output to a single unassigned chute.
@@ -169,11 +174,12 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     std::vector<LayoutEngine::PC> next;
 
     int exact_x = 200 - and_out_x;
-    CHECK(le->CanPlaceCell(top, assigned, next, and_cell, exact_x));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next,
+                           and_cell, exact_x));
 
     // If slightly misaligned, it will block the chute.
-    CHECK(!le->CanPlaceCell(top, assigned, next, and_cell, exact_x + 1));
-    CHECK(!le->CanPlaceCell(top, assigned, next, and_cell, exact_x - 1));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next, and_cell, exact_x + 1));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next, and_cell, exact_x - 1));
   }
 
   // Trapping an unassigned chute with a wide spacer.
@@ -185,11 +191,11 @@ static void TestCanPlaceCell(const CellLibrary &library) {
 
     Cell wide_spacer = CellLibrary::Spacer(100);
     // Centering the spacer around the chute at 300 (xpos=250 to 350).
-    CHECK(!le->CanPlaceCell(top, assigned, next, wide_spacer, 250));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 250));
 
     // Placing the spacer far away should be fine.
-    CHECK(le->CanPlaceCell(top, assigned, next, wide_spacer, 500));
-    CHECK(le->CanPlaceCell(top, assigned, next, wide_spacer, -500));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 500));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, -500));
   }
 
   // Assigned chutes do not need clearance and can be blocked.
@@ -203,8 +209,8 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     // it would prohibit putting something there. But if it is already
     // assigned, we have no obligation to stay clear of it.
     Cell wide_spacer = CellLibrary::Spacer(100);
-    CHECK(le->CanPlaceCell(top, assigned, next, wide_spacer, 300));
-    CHECK(le->CanPlaceCell(top, assigned, next, wide_spacer,
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 300));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer,
                            400 + INPUT_WIDTH));
   }
 
@@ -221,6 +227,8 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     // Enough room for a series of wires.
     int stride = mcc + mcf + INPUT_WIDTH + 1;
 
+    Print("{} < {} < {}. Stride: {}\n", mcc, mid, mcf, stride);
+
     std::vector<LayoutEngine::Chute> top = {
       {.pos = 500, .prop = True(), .type = CType::MIXED},
       {.pos = 500 + stride, .prop = True(), .type = CType::MIXED},
@@ -234,16 +242,16 @@ static void TestCanPlaceCell(const CellLibrary &library) {
 
     // Try to place a spacer on the right side, squeezing the chutes.
     Cell block_right = CellLibrary::Spacer(100);
-    CHECK(!le->CanPlaceCell(top, assigned, next, block_right,
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next, block_right,
                             500 + 2 * stride + INPUT_WIDTH + mid));
 
     // Placing it farther right leaves enough room for all three to route
     // (to the right).
-    CHECK(le->CanPlaceCell(top, assigned, next, block_right,
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, block_right,
                            500 + 3 * stride));
 
     // Or way to the left.
-    CHECK(le->CanPlaceCell(top, assigned, next, block_right, 0));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, block_right, 0));
   }
 
   // Cell with multiple outputs matching multiple chutes.
@@ -262,11 +270,11 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     std::vector<LayoutEngine::PC> next;
 
     int exact_x = 600 - out0_x;
-    CHECK(le->CanPlaceCell(top, assigned, next, sep_cell, exact_x));
+    CHECK(le->CanPlaceCell(-1, top, assigned, next, sep_cell, exact_x));
 
     // A small offset means it no longer satisfies the chutes, and
     // since it's wide, it will overlap and trap them instead.
-    CHECK(!le->CanPlaceCell(top, assigned, next, sep_cell, exact_x + 1));
+    CHECK(!le->CanPlaceCell(-1, top, assigned, next, sep_cell, exact_x + 1));
   }
 
   // Inputs of newly placed cells must have enough clearance from
@@ -291,8 +299,10 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     int cell1_right = 1000 + info.block_width;
 
     if (xpos_too_close >= cell1_right) {
-      CHECK(!le->CanPlaceCell(top, assigned, next, cell, xpos_too_close));
-      CHECK(le->CanPlaceCell(top, assigned, next, cell, xpos_too_close + 1));
+      CHECK(!le->CanPlaceCell(-1, top, assigned, next,
+                              cell, xpos_too_close));
+      CHECK(le->CanPlaceCell(-1, top, assigned, next,
+                             cell, xpos_too_close + 1));
     }
   }
 }

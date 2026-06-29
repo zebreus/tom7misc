@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "cell-library.h"
@@ -16,8 +17,9 @@
 
 struct Layout {
   // The topmost layer needs variables as inputs.
+  // A future version might guarantee that CType is mixed.
   // This will match the input arity of the first layer.
-  std::vector<int> input_vars;
+  std::vector<std::pair<int, CType>> input_vars;
   Circuit circuit;
 };
 
@@ -89,7 +91,8 @@ struct LayoutEngine {
   virtual int MinClearanceClose() const = 0;
   virtual int MinClearanceFar() const = 0;
 
-  virtual bool CanPlaceCell(std::span<const Chute> top,
+  virtual bool CanPlaceCell(int for_chute_ctx,
+                            std::span<const Chute> top,
                             const std::vector<bool> &assigned,
                             std::span<const PC> next,
                             const Cell &cell,
