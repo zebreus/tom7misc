@@ -2,8 +2,10 @@
 #include "circuit.h"
 #include "layout.h"
 
+#include <deque>
 #include <memory>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -307,10 +309,87 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   }
 }
 
+static void TestLoop1() {
+  CellLibrary library;
+  World world;
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  le->SetVerbose(2);
+
+  /*
+ [40] Chute(pos=1542, prop=v733, type=ONE)
+ [41] Chute(pos=1563, prop=v733, type=ZERO)
+ [42] Chute(pos=3070, prop=¬v629 ⋀ ¬v655, type=ONE)
+ [43] Chute(pos=3091, prop=¬v629 ⋀ ¬v655, type=ZERO)
+ [44] Chute(pos=3105, prop=v752, type=ZERO)
+ [45] Chute(pos=5935, prop=v746, type=ONE)
+ [46] Chute(pos=5969, prop=v752, type=ONE)
+  */
+
+  Prop v629{Var{.id = 629}};
+  Prop v655{Var{.id = 655}};
+  Prop v733{Var{.id = 733}};
+  Prop v746{Var{.id = 746}};
+  Prop v752{Var{.id = 752}};
+
+  struct ChuteDesc {
+    int pos;
+    Prop prop;
+    CType type;
+  };
+
+  std::vector<ChuteDesc> chutes = {
+      {1542, v733, CType::ONE},
+      {1563, v733, CType::ZERO},
+      {3070, -v629 & -v655, CType::ONE},
+      {3091, -v629 & -v655, CType::ZERO},
+      {3105, v752, CType::ZERO},
+      {5935, v746, CType::ONE},
+      {5969, v752, CType::ONE},
+  };
+
+  std::vector<LayoutEngine::LC> top_layer;
+  int current_x = 0;
+
+  for (const ChuteDesc &desc : chutes) {
+    Cell cell = CellLibrary::WireA(0, desc.type);
+    int in_x = library.GetInfo(cell).inputs[0].xblock;
+    int cell_x = desc.pos - in_x;
+
+    if (cell_x > current_x) {
+      top_layer.push_back(LayoutEngine::LC{
+          .inprops = {},
+          .cell = CellLibrary::Spacer(cell_x - current_x),
+      });
+      current_x = cell_x;
+    }
+    CHECK(cell_x == current_x) << "Overlap in test case construction!";
+    top_layer.push_back(LayoutEngine::LC{
+        .inprops = {desc.prop},
+        .cell = cell,
+    });
+    current_x += library.GetInfo(cell).block_width;
+  }
+
+  std::deque<std::vector<LayoutEngine::LC>> layers;
+  layers.push_back(std::move(top_layer));
+
+  for (int i = 0; i < 16; i++) {
+    CHECK(!layers.empty());
+    if (le->AllVars(layers.front()).has_value()) {
+      Print("Got all vars!\n");
+      break;
+    }
+    le->DoAddLayer(&layers);
+  }
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   CellLibrary library;
+
+  TestLoop1();
 
   // Tests of helpers.
   TestCanPlaceCell(library);

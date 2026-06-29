@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
@@ -28,6 +29,7 @@
 #include "prop.h"
 #include "render-circuit.h"
 #include "span-util.h"
+#include "status-bar.h"
 #include "timer.h"
 #include "vector-util.h"
 
@@ -90,12 +92,16 @@ std::string_view LayoutEngine::DesireTypeString(DesireType dt) {
 
 std::string LayoutEngine::ChuteString(const Chute &chute) {
   std::string s;
-  AppendFormat(&s, "Chute(pos={}, prop={}, type={}, desire={}, val={})",
+  std::string ds, dv;
+  if (chute.desire != UNSPECIFIED)
+    ds = std::format(", desire={}", DesireTypeString(chute.desire));
+  if (chute.desire_val != 0)
+    dv = std::format(", val={}", chute.desire_val);
+  AppendFormat(&s, "Chute(pos={}, prop={}, type={}{}{})",
                chute.pos,
                PropString(chute.prop, 6),
                TypeString(chute.type),
-               DesireTypeString(chute.desire),
-               chute.desire_val);
+               ds, dv);
   return s;
 }
 
@@ -133,6 +139,15 @@ struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
+  // The amount of space we try to keep between the done region
+  // (chutes on the far left and right that contain MIXED vars)
+  // and the interior.
+  static constexpr int DONE_GAP = 256;
+
+  std::unique_ptr<StatusBar> status;
+
+  int num_spaced_layers = 0;
+
   int verbose = 1;
 
   void SetVerbose(int v) override { verbose = v; }
@@ -162,7 +177,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Returns the flattened vector of variable ids if all
   // of the inputs are variables; nullopt otherwise.
   std::optional<std::vector<std::pair<int, CType>>>
-  AllVars(std::span<const LC> lcs) {
+  AllVars(std::span<const LC> lcs) override {
     std::vector<std::pair<int, CType>> vars;
     for (const LC &lc : lcs) {
       CellLibrary::Info info = library.GetInfo(lc.cell);
@@ -224,8 +239,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     min_output_distance = min_dist.value();
 
     if (verbose > 0) {
-      Print("Minimum output dist is for {}: {}\n",
-            GateString(min_gate), min_output_distance);
+      status->Print("Minimum output dist is for {}: {}\n",
+                    GateString(min_gate), min_output_distance);
     }
   }
 
@@ -306,7 +321,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     AppendFormat(&s, "--- Chutes ---\n");
     for (int i = 0; i < (int)chutes.size(); i++) {
       std::string_view anch = (anchor.has_value() && anchor.value() == i) ?
-        " (ANCHOR)" : "";
+        AGREEN(" (ANCHOR)") : "";
       AppendFormat(&s, " [{}] {}{}\n", i,
                    LayoutEngine::ChuteString(chutes[i]), anch);
     }
@@ -348,9 +363,10 @@ struct LayoutEngineImpl : public LayoutEngine {
       int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
       if (cell_left < pc_right && cell_right > pc_left) {
         if (verbose > 1) {
-          Print("[{}] Can't place {} at {}: Would overlap cell at x={}\n",
-                chute_context,
-                CellString(cell), xpos, pc.xpos);
+          status->Print(
+              "[{}] Can't place {} at {}: Would overlap cell at x={}\n",
+              chute_context,
+              CellString(cell), xpos, pc.xpos);
         }
         return false;
       }
@@ -368,9 +384,10 @@ struct LayoutEngineImpl : public LayoutEngine {
           int pc_in_pos = pc.xpos + pc_in.xblock;
           if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
             if (verbose > 1) {
-              Print("Can't place {} at {}: "
-                    "Input at {} is too close to already placed input at {}.\n",
-                    CellString(cell), xpos, in_pos, pc_in_pos);
+              status->Print(
+                  "Can't place {} at {}: "
+                  "Input at {} is too close to already placed input at {}.\n",
+                  CellString(cell), xpos, in_pos, pc_in_pos);
             }
             return false;
           }
@@ -479,9 +496,9 @@ struct LayoutEngineImpl : public LayoutEngine {
         if (!ChuteStillHasSpace(i, true) &&
             !ChuteStillHasSpace(i, false)) {
           if (verbose > 1) {
-            Print("Can't place {} at {}: "
-                  "Cell {} would be blocked.\n",
-                  CellString(cell), xpos, i);
+            status->Print("Can't place {} at {}: "
+                          "Cell {} would be blocked.\n",
+                          CellString(cell), xpos, i);
           }
           return false;
         }
@@ -528,41 +545,67 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // We often will need to reorder chutes. But we only need
     // to do this within the "interior," because contiguous
-    // sequenes of mixed variables on the left and right side
+    // sequences of mixed variables on the left and right side
     // are already done (the input layer can take variables in
     // any order). So start by identifying and marking chutes
     // that are done.
 
+    int first_interior_chute = -1;
+    int last_interior_chute = 0;
     // Left side.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
-      if (std::holds_alternative<Var>(chute.prop.p) &&
-          chute.type == CType::MIXED) {
-        // Still on the exterior.
-        chute.done = true;
-        chute.desire = DesireType::QUIESCE;
-        // TODO: Adjust this later down once we know better how much
-        // space we need.
-        chute.desire_val = -8;
-      } else {
+      if (!std::holds_alternative<Var>(chute.prop.p) ||
+          chute.type != CType::MIXED) {
+        first_interior_chute = c;
         break;
       }
     }
 
-    CHECK(!chutes.back().done) << "Precondition: The top layer is already "
-      "complete!";
-
     // Also the right side.
     for (int c = (int)chutes.size() - 1; c >= 0; c--) {
       Chute &chute = chutes[c];
-      if (std::holds_alternative<Var>(chute.prop.p) &&
-          chute.type == CType::MIXED) {
+      if (!std::holds_alternative<Var>(chute.prop.p) ||
+          chute.type != CType::MIXED) {
+        last_interior_chute = c;
+        break;
+      }
+    }
+
+    CHECK(first_interior_chute >= 0 &&
+          last_interior_chute >= 0) << "Precondition is that we're "
+      "not already done!";
+
+
+    // We want to move the exterior away from the action, but not
+    // indefinitely; it's just sloppy to have really big wings.
+
+    // XXX: This bakes in an assumption about small wires.
+    if (first_interior_chute > 0) {
+      int left_gap = chutes[first_interior_chute].pos -
+        chutes[first_interior_chute - 1].pos;
+
+      // The displacement for the last exterior chute.
+      int disp = std::clamp(left_gap - DONE_GAP, -64, 64);
+      for (int c = 0; c < first_interior_chute; c++) {
+        Chute &chute = chutes[c];
         // Still on the exterior.
         chute.done = true;
         chute.desire = DesireType::QUIESCE;
-        chute.desire_val = +8;
-      } else {
-        break;
+        chute.desire_val = disp;
+      }
+    }
+
+    if (last_interior_chute < (int)chutes.size() - 1) {
+      int right_gap = chutes[last_interior_chute + 1].pos -
+        chutes[last_interior_chute].pos;
+
+      int disp = std::clamp(DONE_GAP - right_gap, -64, 64);
+      for (int c = last_interior_chute + 1; c < chutes.size(); c++) {
+        Chute &chute = chutes[c];
+        chute.done = true;
+        chute.desire = DesireType::QUIESCE;
+        chute.desire_val = disp;
       }
     }
 
@@ -744,35 +787,16 @@ struct LayoutEngineImpl : public LayoutEngine {
     // but untidy).
   }
 
-  // The code below tries to work on chutes in parallel, but it can
-  // get stuck when the chutes are overconstrained by being too close.
-  // If there are any that are too close, we prioritize a wire-only
-  // layer that spaces them out more.
-  std::optional<std::pair<std::vector<LC>, int>>
-  SpaceLayerIfNeeded(std::span<const Chute> chutes) {
-    CHECK(!chutes.empty()) << "Precondition";
-
-    // Do we need to do this phase?
-    auto Needed = [&]() {
-        for (int i = 0; i < (int)chutes.size() - 1; i++) {
-          int gap = chutes[i + 1].pos - (chutes[i].pos + Levels::OUT_WIDTH);
-          CHECK(gap >= 0) << "Bad chutes?";
-          if (gap < min_output_distance) return true;
-        }
-        return false;
-      };
-
-    if (!Needed()) return std::nullopt;
-
+  // An island is a contiguous sequence of chutes that might interfere
+  // on this layer. We separate the chutes into islands that are far
+  // enough apart that we can deal with them independently.
+  struct Island {
+    int start = 0;
+    int size = 0;
+  };
+  std::vector<Island> GetIslands(std::span<const Chute> chutes) {
     const int ISLAND_GAP = 2 * max_cell_width;
 
-    // An island is a contiguous sequence of chutes. We separate
-    // the input into islands that are far enough apart that we
-    // can deal with them independently.
-    struct Island {
-      int start = 0;
-      int size = 0;
-    };
     std::vector<Island> islands;
 
     int current_start = 0;
@@ -792,15 +816,48 @@ struct LayoutEngineImpl : public LayoutEngine {
       });
 
     CHECK(!islands.empty());
+    return islands;
+  }
 
-    if (verbose > 0) {
-      Print(AWHITE("SpaceLayerIfNeeded") " chutes and islands:\n");
+  // The code below tries to work on chutes in parallel, but it can
+  // get stuck when the chutes are overconstrained by being too close.
+  // If there are any that are too close, we prioritize a wire-only
+  // layer that spaces them out more.
+  std::optional<std::pair<std::vector<LC>, int>>
+  SpaceLayerIfNeeded(std::span<const Chute> chutes,
+                     std::span<const Island> islands) {
+    CHECK(!chutes.empty()) << "Precondition";
+
+    // Do we need to do this phase?
+    auto Needed = [&]() {
+        for (int i = 0; i < (int)chutes.size() - 1; i++) {
+          int gap = chutes[i + 1].pos - (chutes[i].pos + Levels::OUT_WIDTH);
+          CHECK(gap >= 0) << "Bad chutes?";
+          if (gap < min_output_distance) return true;
+        }
+        return false;
+      };
+
+    if (!Needed()) return std::nullopt;
+
+    if (verbose > 1) {
+      status->Print(AWHITE("SpaceLayer") " needed. Chutes and islands:\n");
       for (int i = 0; i < (int)chutes.size(); i++) {
-        Print(" [{}] {}\n", i, LayoutEngine::ChuteString(chutes[i]));
+        std::string warn = "";
+        if (i < (int)chutes.size() - 1) {
+          int gap = chutes[i + 1].pos - (chutes[i].pos + Levels::OUT_WIDTH);
+          if (gap < min_output_distance) {
+            warn = std::format(" " ARED("GAP {}"), gap);
+          }
+        }
+
+        status->Print(" [{}] {}{}\n", i,
+                      LayoutEngine::ChuteString(chutes[i]), warn);
       }
+
       for (size_t i = 0; i < islands.size(); i++) {
-        Print(" Island {}: start={}, size={}\n",
-              i, islands[i].start, islands[i].size);
+        status->Print(" Island {}: start={}, size={}\n",
+                      i, islands[i].start, islands[i].size);
       }
     }
 
@@ -827,7 +884,9 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
 
       if (!oviolation.has_value()) {
-        Print("Island has no violations.\n");
+        if (verbose > 1) {
+          status->Print("Island has no violations.\n");
+        }
         // This island is already OK. Just propagate everything
         // directly up.
         for (int i = 0; i < island.size; i++) {
@@ -851,11 +910,11 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       const auto &[violation_idx, violation_size] = oviolation.value();
 
-      if (verbose > 0) {
-        Print("Processing island @{}; "
-              "violation at idx {} ({} < {})\n",
-              island.start, violation_idx,
-              violation_size, min_output_distance);
+      if (verbose > 1) {
+        status->Print("Processing island @{}; "
+                      "violation at idx {} ({} < {})\n",
+                      island.start, violation_idx,
+                      violation_size, min_output_distance);
       }
 
       CHECK(violation_size > 0 && violation_size < min_output_distance);
@@ -918,8 +977,10 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    Print(AWHITE("Spaced layer result") ":\n{}\n",
-          DebugLayerState(std::nullopt, chutes, out));
+    if (verbose > 1) {
+      status->Print(AWHITE("Spaced layer result") ":\n{}\n",
+                    DebugLayerState(std::nullopt, chutes, out));
+    }
 
     return {ConvertPC(std::move(out))};
   }
@@ -929,7 +990,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   // simpler. (Simpler as in some unspecified well-founded ordering
   // so that this process terminates.) The input and output layers
   // should start at x=0.
-  std::pair<std::vector<LC>, int> AddLayer(std::span<const LC> top) {
+  std::pair<std::vector<LC>, int>
+  AddLayer(std::span<const LC> top) override {
     CHECK(!top.empty()) << "Precondition.";
 
     // First we flatten all of the inputs we need to satisfy on the
@@ -938,28 +1000,33 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<Chute> chutes = FlattenInputs(top);
     CHECK(!chutes.empty());
 
-    Print("Addlayer start:\n{}\n",
-          DebugLayerState(std::nullopt, chutes, {}));
-
-    if (std::optional<std::pair<std::vector<LC>, int>> ores =
-            SpaceLayerIfNeeded(chutes)) {
-      Print(AYELLOW("Spaced layer")
-            " because some chutes were too close.\n");
-      return std::move(ores.value());
+    if (verbose > 1) {
+      status->Print("Addlayer start:\n{}\n",
+                    DebugLayerState(std::nullopt, chutes, {}));
     }
 
-    Print("Set chute desires...\n");
+    std::vector<Island> islands = GetIslands(chutes);
+
+    if (std::optional<std::pair<std::vector<LC>, int>> ores =
+        SpaceLayerIfNeeded(chutes, islands)) {
+      num_spaced_layers++;
+      if (verbose > 1) {
+        status->Print(AYELLOW("Spaced layer")
+                      " because some chutes were too close.\n");
+      }
+      return std::move(ores.value());
+    }
 
     // Now set the desires for each.
     SetChuteDesires(chutes);
 
     if (verbose > 1) {
-      Print(AWHITE("Chute desires") " before placement:\n");
+      status->Print(AWHITE("Chute desires") " before placement:\n");
       for (int i = 0; i < (int)chutes.size(); i++) {
-        Print(" [{}] {}\n", i,
-              LayoutEngine::ChuteString(chutes[i]));
+        status->Print(" [{}] {}\n", i,
+                      LayoutEngine::ChuteString(chutes[i]));
       }
-      Print("\n");
+      status->Print("\n");
     }
 
 
@@ -990,12 +1057,14 @@ struct LayoutEngineImpl : public LayoutEngine {
     // locations. This helps us with heuristic direction of
     // flow.
     std::vector<int> conflict_weight(chutes.size(), 0);
+
     // In order to ensure we make progress, the first goal in
     // priority order that is in the right position but doesn't
     // have space is allowed to anchor itself and just propagate
     // upward its chutes with zero displacement. Others will
     // move away from the anchor.
-    std::optional<int> anchor;
+    // TODO: One of these per island?
+    std::optional<int> anchor = std::nullopt;
 
     // Try to place the specified gate so its single output aligns
     // with this chute (also trying its flipped version). The
@@ -1123,17 +1192,17 @@ struct LayoutEngineImpl : public LayoutEngine {
         int target_dist = info.outputs[1].xblock - info.outputs[0].xblock;
 
         if (verbose > 1) {
-          Print("Chute {}: "
-                "PlaceBinary ({}/{}) fallback.\n"
-                "Current dist {}, target dist {}.\n",
-                chute_idx, GateString(gate), GateString(flipped_gate),
-                current_dist, target_dist);
+          status->Print("Chute {}: "
+                        "PlaceBinary ({}/{}) fallback.\n"
+                        "Current dist {}, target dist {}.\n",
+                        chute_idx, GateString(gate), GateString(flipped_gate),
+                        current_dist, target_dist);
         }
 
         if (current_dist == target_dist) {
           if (!anchor.has_value()) {
             if (verbose > 1) {
-              Print("Took anchor @{}\n", chute_idx);
+              status->Print("Took anchor @{}\n", chute_idx);
             }
             anchor = {chute_idx};
             // Propagate upward.
@@ -1149,23 +1218,23 @@ struct LayoutEngineImpl : public LayoutEngine {
               (chute_idx < anchor.value()) ?
               -FLEE_AMOUNT : FLEE_AMOUNT;
 
-            chute1.desire = DesireType::QUIESCE;
+            chute1.desire = DesireType::FLOW;
             chute1.desire_val = disp;
-            chute2.desire = DesireType::QUIESCE;
+            chute2.desire = DesireType::FLOW;
             chute2.desire_val = disp;
           }
 
         } else if (current_dist > target_dist) {
-          chute2.desire = DesireType::QUIESCE;
+          chute2.desire = DesireType::FLOW;
           chute2.desire_val = 0;
-          chute1.desire = DesireType::QUIESCE;
+          chute1.desire = DesireType::FLOW;
           chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
                                info.outputs[0].xblock) - chute1.pos;
 
         } else {
-          chute1.desire = DesireType::QUIESCE;
+          chute1.desire = DesireType::FLOW;
           chute1.desire_val = 0;
-          chute2.desire = DesireType::QUIESCE;
+          chute2.desire = DesireType::FLOW;
           chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
                                info.outputs[1].xblock) - chute2.pos;
         }
@@ -1330,9 +1399,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           "handled above, perhaps by turning it into FLOW!";
 
         if (verbose > 1) {
-          Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-                c, LayoutEngine::DesireTypeString(chute.desire),
-                chute.desire_val);
+          status->Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
+                        c, LayoutEngine::DesireTypeString(chute.desire),
+                        chute.desire_val);
         }
 
         // PERF: We could compute this cumulative sum outside. But
@@ -1402,9 +1471,9 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         if (chute.desire_val != 0) {
           if (verbose > 0) {
-            Print("Chute {} " AORANGE("fell back")
-                  " to displacement 0 wire (wanted {})!\n",
-                  c, chute.desire_val);
+            status->Print("Chute {} " AORANGE("fell back")
+                          " to displacement 0 wire (wanted {})!\n",
+                          c, chute.desire_val);
           }
         }
 
@@ -1444,9 +1513,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     ForAllRemaining(DoFlow);
 
     if (verbose > 1) {
-      Print(AWHITE("Layer state at end") ":\n"
-            "{}\n",
-            DebugLayerState(anchor, chutes, next_cells));
+      status->Print(AWHITE("Layer state at end") ":\n"
+                    "{}\n",
+                    DebugLayerState(anchor, chutes, next_cells));
     }
 
     return ConvertPC(std::move(next_cells));
@@ -1501,6 +1570,139 @@ struct LayoutEngineImpl : public LayoutEngine {
     img.Save(filename);
   }
 
+  void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
+    const std::vector<LC> &last = layers->front();
+
+    if (verbose > 0) {
+      AutoHisto histo(1000);
+      size_t max_prop_size = 0;
+      size_t total_prop_size = 0;
+      for (const LC &lc : last) {
+        for (const Prop &p : lc.inprops) {
+          size_t ps = PropSize(p);
+          max_prop_size = std::max(ps, max_prop_size);
+          total_prop_size += ps;
+          histo.Observe(ps);
+        }
+      }
+
+      // Number of pairs of separated chutes that are out of order
+      // (using the global <=> ordering), so they will need to be
+      // exchanged in order to be combined. A mixed chute does not
+      // count as out of order.
+      int inversions = 0;
+      std::vector<std::pair<Prop, CType>> flat_inputs;
+      for (const LC &lc : last) {
+        CellLibrary::Info info = library.GetInfo(lc.cell);
+        for (size_t i = 0; i < lc.inprops.size(); i++) {
+          flat_inputs.emplace_back(lc.inprops[i], info.inputs[i].type);
+        }
+      }
+
+      for (size_t i = 0; i < flat_inputs.size(); i++) {
+        if (flat_inputs[i].second == CType::MIXED) continue;
+        for (size_t j = i + 1; j < flat_inputs.size(); j++) {
+          if (flat_inputs[j].second == CType::MIXED) continue;
+          auto ord = flat_inputs[i].first <=> flat_inputs[j].first;
+          if (ord == std::strong_ordering::greater ||
+              (ord == std::strong_ordering::equal &&
+               flat_inputs[i].second == CType::ONE &&
+               flat_inputs[j].second == CType::ZERO)) {
+            inversions++;
+          }
+        }
+      }
+
+      // Block width of the top layer, not including exterior spacers.
+      int top_layer_width = 0;
+      int first_non_spacer = -1;
+      int last_non_spacer = -1;
+      for (int i = 0; i < (int)last.size(); i++) {
+        if (last[i].cell.gate != Gate::SPACER) {
+          if (first_non_spacer == -1) first_non_spacer = i;
+          last_non_spacer = i;
+        }
+      }
+      if (first_non_spacer != -1) {
+        for (int i = first_non_spacer; i <= last_non_spacer; i++) {
+          top_layer_width += library.GetInfo(last[i].cell).block_width;
+        }
+      }
+
+      if (status) {
+        status->Status("{}\n"
+                       "Layer {}: {} max prop, {} total. {} inv. {} sp. "
+                       "Width: {}.\n",
+                       histo.OneLineANSI(75),
+                       layers->size(), max_prop_size, total_prop_size,
+                       inversions,
+                       num_spaced_layers,
+                       top_layer_width);
+      }
+    }
+
+    if (WRITE_IMAGES /* || (num_layers % 100) == 0 */) {
+      DebugRender(*layers);
+    }
+
+    // Otherwise, compute a new top layer.
+    auto [next, start_pos] = AddLayer(last);
+
+    // True if the layers are effectively the same, ignoring leading
+    // spacers (i.e. they can have different starting offsets). If
+    // we have two such layers in a row, then we will just get in
+    // an infinite loop, so we should abort.
+    auto SameLayer = [](const std::vector<LC>& a,
+                        const std::vector<LC>& b) {
+      auto ita = a.begin(), itb = b.begin();
+      while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
+      while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;
+      while (true) {
+        if (ita == a.end() && itb == b.end()) return true;
+        if (ita == a.end() || itb == b.end()) return false;
+        if (ita->cell.gate != itb->cell.gate ||
+            ita->cell.v != itb->cell.v ||
+            ita->cell.flip != itb->cell.flip ||
+            ita->inprops != itb->inprops) {
+          return false;
+        }
+        ita++;
+        itb++;
+      }
+    };
+
+    if (SameLayer(last, next)) {
+      LOG(FATAL) << "Layout made no progress! New layer is identical\n"
+        "to the previous one.";
+    }
+
+    // We might need to shift over this layer, or
+    // shift over all the remaining ones, to align.
+    auto AddLeftSpacer = [](std::vector<LC> &layer, int pad) {
+      if (pad == 0) return;
+      CHECK(pad > 0);
+      if (!layer.empty() && layer.front().cell.gate == Gate::SPACER) {
+        layer.front().cell.v += pad;
+      } else {
+        layer.insert(layer.begin(), LC{
+            .inprops = {},
+            .cell = CellLibrary::Spacer(pad),
+        });
+      }
+    };
+
+    if (start_pos > 0) {
+      AddLeftSpacer(next, start_pos);
+    } else if (start_pos < 0) {
+      int pad = -start_pos;
+      for (std::vector<LC> &layer : *layers) {
+        AddLeftSpacer(layer, pad);
+      }
+    }
+
+    layers->push_front(std::move(next));
+  }
+
 
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
@@ -1532,6 +1734,13 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // Repeatedly take the front of the layers, and simplify.
     for (int num_layers = 1; true; num_layers++) {
+      (void)num_layers;
+
+      /*
+      if (num_layers > 1000) verbose = 2;
+      CHECK(num_layers < 1004);
+      */
+
       CHECK(!layers.empty());
       const std::vector<LC> &last = layers.front();
 
@@ -1542,79 +1751,7 @@ struct LayoutEngineImpl : public LayoutEngine {
                         std::move(ovars.value()));
       }
 
-      if (verbose > 0) {
-        size_t max_prop_size = 0;
-        size_t total_prop_size = 0;
-        for (const LC &lc : last) {
-          for (const Prop &p : lc.inprops) {
-            size_t ps = PropSize(p);
-            max_prop_size = std::max(ps, max_prop_size);
-            total_prop_size += ps;
-          }
-        }
-        Print("Layer {}: {} max prop, {} total\n",
-              num_layers, max_prop_size, total_prop_size);
-      }
-
-      if (WRITE_IMAGES) {
-        DebugRender(layers);
-      }
-
-      // Otherwise, compute a new top layer.
-      auto [next, start_pos] = AddLayer(last);
-
-      // True if the layers are effectively the same, ignoring leading
-      // spacers (i.e. they can have different starting offsets). If
-      // we have two such layers in a row, then we will just get in
-      // an infinite loop, so we should abort.
-      auto SameLayer = [](const std::vector<LC>& a,
-                          const std::vector<LC>& b) {
-        auto ita = a.begin(), itb = b.begin();
-        while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
-        while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;
-        while (true) {
-          if (ita == a.end() && itb == b.end()) return true;
-          if (ita == a.end() || itb == b.end()) return false;
-          if (ita->cell.gate != itb->cell.gate ||
-              ita->cell.v != itb->cell.v ||
-              ita->cell.flip != itb->cell.flip ||
-              ita->inprops != itb->inprops) {
-            return false;
-          }
-          ita++;
-          itb++;
-        }
-      };
-
-      if (SameLayer(last, next)) {
-        LOG(FATAL) << "Layout made no progress! New layer is identical\n"
-          "to the previous one.";
-      }
-
-      // We might need to shift over this layer, or
-      // shift over all the remaining ones, to align.
-      auto AddLeftSpacer = [](std::vector<LC> &layer, int pad) {
-        if (pad == 0) return;
-        CHECK(pad > 0);
-        if (!layer.empty() && layer.front().cell.gate == Gate::SPACER) {
-          layer.front().cell.v += pad;
-        } else {
-          layer.insert(layer.begin(), LC{
-              .inprops = {},
-              .cell = CellLibrary::Spacer(pad),
-          });
-        }
-      };
-
-      if (start_pos > 0) {
-        AddLeftSpacer(next, start_pos);
-      } else if (start_pos < 0) {
-        int pad = -start_pos;
-        for (std::vector<LC> &layer : layers) {
-          AddLeftSpacer(layer, pad);
-        }
-      }
-      layers.push_front(std::move(next));
+      DoAddLayer(&layers);
     }
   }
 
@@ -1672,21 +1809,21 @@ struct LayoutEngineImpl : public LayoutEngine {
   Layout DoLayout(std::span<const Prop> props_in) override {
     Timer timer;
     if (verbose > 0) {
-      Print("Min clearance: close={}, far={}\n"
-            "Min output distance: {}\n"
-            "Max cell width: {}\n",
-            min_clearance_close, min_clearance_far,
-            min_output_distance,
-            max_cell_width);
+      status->Print("Min clearance: close={}, far={}\n"
+                    "Min output distance: {}\n"
+                    "Max cell width: {}\n",
+                    min_clearance_close, min_clearance_far,
+                    min_output_distance,
+                    max_cell_width);
     }
 
     Layout lay = DoLayoutInternal(props_in);
 
     if (verbose > 0) {
-      Print("Got {} inputs; {} layers.\n",
-            lay.input_vars.size(),
-            lay.circuit.layers.size());
-      Print("Finished layout in {}\n", ANSI::Time(timer.Seconds()));
+      status->Print("Got {} inputs; {} layers.\n",
+                    lay.input_vars.size(),
+                    lay.circuit.layers.size());
+      status->Print("Finished layout in {}\n", ANSI::Time(timer.Seconds()));
     }
 
     return lay;
@@ -1695,6 +1832,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
+    status.reset(new StatusBar(2));
+
     ComputeMinClearance();
     ComputeMinOutputDistance();
     ComputeMaxCellWidth();

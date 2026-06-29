@@ -4,6 +4,7 @@
 #ifndef _TOWARD_LAYOUT_H
 #define _TOWARD_LAYOUT_H
 
+#include <deque>
 #include <memory>
 #include <span>
 #include <string>
@@ -100,6 +101,16 @@ struct LayoutEngine {
 
   static std::string_view DesireTypeString(DesireType dt);
   static std::string ChuteString(const Chute &chute);
+
+  virtual std::pair<std::vector<LC>, int>
+  AddLayer(std::span<const LC> top) = 0;
+
+  virtual std::optional<std::vector<std::pair<int, CType>>>
+  AllVars(std::span<const LC> lcs) = 0;
+
+  // Add a layer to the top. The input may not be empty, and must
+  // not be done (all variables).
+  virtual void DoAddLayer(std::deque<std::vector<LC>> *layers) = 0;
 
  protected:
   LayoutEngine();

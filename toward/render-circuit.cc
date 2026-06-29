@@ -27,6 +27,12 @@ static constexpr uint32_t CELL_BORDER_COLOR = 0x333333FF;
 
 static constexpr uint32_t SPACER_COLOR = 0x000022FF;
 
+static constexpr uint32_t PAD_WARNING_COLOR = 0xFF00FFFF;
+
+// If two pads on the same layer are closer than this, draw
+// a magenta line between them.
+static constexpr int WARN_PAD_THRESHOLD = 16;
+
 static uint32_t GetInputColor(CType type) {
   switch (type) {
     case CType::ZERO: return ZERO_INPUT;
@@ -74,6 +80,7 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
   int cy = 0;
   for (const Layer &layer : circuit.layers) {
     int cx = 0;
+    int prev_input_x = -1;
     for (const Cell &cell : layer) {
       CellLibrary::Info info = library.GetInfo(cell);
       int bw = info.block_width;
@@ -90,13 +97,24 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
           }
 
           for (const CellLibrary::IO &io : info.inputs) {
-            img.FillRect32(cx + io.xblock, cy, PAD_WIDTH, pad_height,
+            int px = cx + io.xblock;
+            img.FillRect32(px, cy, PAD_WIDTH, pad_height,
                            GetInputColor(io.type));
+            if (prev_input_x >= 0) {
+              int dist = px - (prev_input_x + PAD_WIDTH);
+              if (dist > 0 && dist < WARN_PAD_THRESHOLD) {
+                img.FillRect32(prev_input_x + PAD_WIDTH, cy, dist, 3,
+                               PAD_WARNING_COLOR);
+              }
+            }
+            prev_input_x = px;
           }
 
           for (const CellLibrary::IO &io : info.outputs) {
-            img.FillRect32(cx + io.xblock, cy + layer_height - pad_height,
-                           PAD_WIDTH, pad_height, GetOutputColor(io.type));
+            int px = cx + io.xblock;
+            int py = cy + layer_height - pad_height;
+            img.FillRect32(px, py, PAD_WIDTH, pad_height,
+                           GetOutputColor(io.type));
           }
 
           std::string_view name = GateString(cell.gate);
