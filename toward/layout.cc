@@ -1215,7 +1215,6 @@ struct LayoutEngineImpl : public LayoutEngine {
       layers.push_front(std::move(final_layer));
     }
 
-    // HERE.
     // Repeatedly take the front of the layers, and simplify.
     for (;;) {
       CHECK(!layers.empty());
@@ -1223,18 +1222,8 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       // If it's all variables, then we are done!
       if (std::optional<std::vector<int>> ovars = AllVars(last)) {
-        Layout ret;
-        ret.input_vars = std::move(ovars.value());
-        ret.circuit.layers.reserve(layers.size());
-        for (std::vector<LC> &layout_layer : layers) {
-          std::vector<Cell> layer;
-          layer.reserve(layout_layer.size());
-          for (LC &lc : layout_layer) {
-            layer.push_back(std::move(lc.cell));
-          }
-          ret.circuit.layers.push_back(std::move(layer));
-        }
-        return ret;
+        return Finalize(std::move(layers),
+                        std::move(ovars.value()));
       }
 
       // Otherwise, compute a new top layer.
@@ -1270,22 +1259,80 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       // We might need to shift over this layer, or
       // shift over all the remaining ones, to align.
-      if (start_pos > 0) {
-        next.insert(next.begin(), LC{
-            .inprops = {},
-            .cell = CellLibrary::Spacer(start_pos),
-        });
-      } else if (start_pos < 0) {
-        int pad = -start_pos;
-        for (std::vector<LC> &layer : layers) {
+      auto AddLeftSpacer = [](std::vector<LC> &layer, int pad) {
+        if (pad == 0) return;
+        CHECK(pad > 0);
+        if (!layer.empty() && layer.front().cell.gate == Gate::SPACER) {
+          layer.front().cell.v += pad;
+        } else {
           layer.insert(layer.begin(), LC{
               .inprops = {},
               .cell = CellLibrary::Spacer(pad),
           });
         }
+      };
+
+      if (start_pos > 0) {
+        AddLeftSpacer(next, start_pos);
+      } else if (start_pos < 0) {
+        int pad = -start_pos;
+        for (std::vector<LC> &layer : layers) {
+          AddLeftSpacer(layer, pad);
+        }
       }
       layers.push_front(std::move(next));
     }
+  }
+
+  // Delete unnecessary left/right padding, and convert to the Layout
+  // format.
+  Layout Finalize(std::deque<std::vector<LC>> layers,
+                  std::vector<int> vars) {
+    int min_left = 0;
+    int min_right = 0;
+    for (const std::vector<LC> &layer : layers) {
+      int left = (!layer.empty() && layer.front().cell.gate == Gate::SPACER)
+        ? layer.front().cell.v : 0;
+      min_left = std::min(min_left, left);
+
+      int right = (layer.size() > 1 && layer.back().cell.gate == Gate::SPACER)
+        ? layer.back().cell.v : 0;
+      min_right = std::min(min_right, right);
+    }
+
+    if (min_left > 0) {
+      for (std::vector<LC> &layer : layers) {
+        layer.front().cell.v -= min_left;
+        if (layer.front().cell.v == 0) {
+          layer.erase(layer.begin());
+        }
+      }
+    }
+
+    if (min_right > 0) {
+      for (std::vector<LC> &layer : layers) {
+        if (!layer.empty()) {
+          layer.back().cell.v -= min_right;
+          if (layer.back().cell.v == 0) {
+            layer.pop_back();
+          }
+        }
+      }
+    }
+
+    Layout ret;
+    ret.input_vars = std::move(vars);
+    ret.circuit.layers.reserve(layers.size());
+    for (std::vector<LC> &layout_layer : layers) {
+      std::vector<Cell> layer;
+      layer.reserve(layout_layer.size());
+      for (LC &lc : layout_layer) {
+        layer.push_back(std::move(lc.cell));
+      }
+      ret.circuit.layers.push_back(std::move(layer));
+    }
+
+    return ret;
   }
 
   // Args must outlast the engine.
