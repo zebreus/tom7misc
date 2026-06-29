@@ -5,6 +5,7 @@
 #include <compare>
 #include <cstdlib>
 #include <deque>
+#include <format>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -221,13 +222,17 @@ struct LayoutEngineImpl : public LayoutEngine {
     return info.outputs[0].xblock;
   }
 
-  std::string DebugLayerState(std::span<const Chute> chutes,
-                              std::span<const PC> next_cells) const {
+  std::string DebugLayerState(
+      std::optional<int> anchor,
+      std::span<const Chute> chutes,
+      std::span<const PC> next_cells) const {
     std::string s;
     AppendFormat(&s, "--- Chutes ---\n");
     for (int i = 0; i < (int)chutes.size(); i++) {
-      AppendFormat(&s, " [{}] {}\n", i,
-                   LayoutEngine::ChuteString(chutes[i]));
+      std::string_view anch = (anchor.has_value() && anchor.value() == i) ?
+        " (ANCHOR)" : "";
+      AppendFormat(&s, " [{}] {}{}\n", i,
+                   LayoutEngine::ChuteString(chutes[i]), anch);
     }
     AppendFormat(&s, "--- Next Cells ---\n");
     for (int i = 0; i < (int)next_cells.size(); i++) {
@@ -272,8 +277,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // Check if the inputs of the hypothetical cell are too close to the
     // inputs of already placed cells. If so, they would become stuck chutes
     // on the next layer.
-    int min_input_dist =
-        Levels::OUT_WIDTH + min_clearance_close + min_clearance_far;
+    int min_input_dist = Levels::OUT_WIDTH + 2 * min_clearance_close;
     for (const CellLibrary::IO &in : info.inputs) {
       int in_pos = xpos + in.xblock;
       for (const PC &pc : next) {
@@ -672,6 +676,14 @@ struct LayoutEngineImpl : public LayoutEngine {
     // Now set the desires for each.
     SetChuteDesires(chutes);
 
+    Print(AWHITE("Chute desires") " before placement:\n");
+    for (int i = 0; i < (int)chutes.size(); i++) {
+      Print(" [{}] {}\n", i,
+            LayoutEngine::ChuteString(chutes[i]));
+    }
+    Print("\n");
+
+
     // Now greedily place, without blocking anything off.
 
     std::vector<PC> next_cells;
@@ -686,7 +698,8 @@ struct LayoutEngineImpl : public LayoutEngine {
                         CellLibrary::Spacer(1),
                         clear_pos)) {
         LOG(FATAL) << "Input chutes are already in a state where "
-          "we're stuck!\n" << DebugLayerState(chutes, next_cells);
+          "we're stuck!\n" <<
+          DebugLayerState(std::nullopt, chutes, next_cells);
       }
     }
 
@@ -1109,7 +1122,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           "We should always have space remaining to place a "
           "0-displacement wire. (Originally wanted " <<
           chute.desire_val << ").\nState:\n" <<
-          DebugLayerState(chutes, next_cells);
+          DebugLayerState(anchor, chutes, next_cells);
       };
 
     // Now do the passes above in priority order.
@@ -1136,7 +1149,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     ForAllRemaining(DoFlow);
 
     Print(AWHITE("Layer state at end") ":\n"
-          "{}\n", DebugLayerState(chutes, next_cells));
+          "{}\n",
+          DebugLayerState(anchor, chutes, next_cells));
 
     // Now convert the placed cells into a flattened vector
     // of LC and a starting offset (might be negative).
