@@ -401,9 +401,6 @@ void CellLibrary::DRC(const Circuit &circuit) const {
 
   std::vector<Chute> prev_outputs;
 
-  Print("\n" AYELLOW("DRC on circuit") ":\n\n{}\n",
-        DebugString(circuit));
-
   for (size_t i = 0; i < circuit.layers.size(); i++) {
     const Layer &layer = circuit.layers[i];
     int current_x = 0;

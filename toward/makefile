@@ -1,5 +1,5 @@
 
-all : test.exe letters_test.exe
+all : test.exe editor.exe validate.exe letters_test.exe prop_test.exe circuit_test.exe cell-library_test.exe layout_test.exe render-circuit_test.exe
 
 CC_LIB=../cc-lib
 BOX2D=../../box2d
@@ -15,8 +15,8 @@ FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
 CHESS_OBJECTS=$(CHESS)/chess.o
 
-# OPT=-O2 -flto -g
-OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
+OPT=-O2 -flto -g
+# OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
 
 # OPT=-O -g -fprofile-instr-generate -fcoverage-mapping
 # Coverage report:
@@ -34,7 +34,7 @@ SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o
 
 # all (library) objects
-LIB_OBJECTS=layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -99,6 +99,10 @@ cell-library_test.exe : cell-library_test.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 layout_test.exe : layout_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+render-circuit_test.exe : render-circuit_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

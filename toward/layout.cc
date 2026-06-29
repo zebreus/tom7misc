@@ -27,6 +27,7 @@
 #include "level.h"
 #include "prop.h"
 #include "span-util.h"
+#include "timer.h"
 #include "vector-util.h"
 
 // ----------------------------------------------------------------------
@@ -128,6 +129,10 @@ namespace {
 struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
+
+  int verbose = 1;
+
+  void SetVerbose(int v) override { verbose = v; }
 
   // Wires are asymmetric (even "vertical" wires have internal slopes
   // to prevent the objects from getting too fast). This is the very
@@ -268,8 +273,10 @@ struct LayoutEngineImpl : public LayoutEngine {
       int pc_left = pc.xpos;
       int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
       if (cell_left < pc_right && cell_right > pc_left) {
-        Print("Can't place {} at {}: Would overlap cell at x={}\n",
-              CellString(cell), xpos, pc.xpos);
+        if (verbose > 1) {
+          Print("Can't place {} at {}: Would overlap cell at x={}\n",
+                CellString(cell), xpos, pc.xpos);
+        }
         return false;
       }
     }
@@ -285,9 +292,11 @@ struct LayoutEngineImpl : public LayoutEngine {
         for (const CellLibrary::IO &pc_in : pc_info.inputs) {
           int pc_in_pos = pc.xpos + pc_in.xblock;
           if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
-            Print("Can't place {} at {}: "
-                  "Input at {} is too close to already placed input at {}.\n",
-                  CellString(cell), xpos, in_pos, pc_in_pos);
+            if (verbose > 1) {
+              Print("Can't place {} at {}: "
+                    "Input at {} is too close to already placed input at {}.\n",
+                    CellString(cell), xpos, in_pos, pc_in_pos);
+            }
             return false;
           }
         }
@@ -394,9 +403,11 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         if (!ChuteStillHasSpace(i, true) &&
             !ChuteStillHasSpace(i, false)) {
-          Print("Can't place {} at {}: "
-                "Cell {} would be blocked.\n",
-                CellString(cell), xpos, i);
+          if (verbose > 1) {
+            Print("Can't place {} at {}: "
+                  "Cell {} would be blocked.\n",
+                  CellString(cell), xpos, i);
+          }
           return false;
         }
 
@@ -676,12 +687,14 @@ struct LayoutEngineImpl : public LayoutEngine {
     // Now set the desires for each.
     SetChuteDesires(chutes);
 
-    Print(AWHITE("Chute desires") " before placement:\n");
-    for (int i = 0; i < (int)chutes.size(); i++) {
-      Print(" [{}] {}\n", i,
-            LayoutEngine::ChuteString(chutes[i]));
+    if (verbose > 1) {
+      Print(AWHITE("Chute desires") " before placement:\n");
+      for (int i = 0; i < (int)chutes.size(); i++) {
+        Print(" [{}] {}\n", i,
+              LayoutEngine::ChuteString(chutes[i]));
+      }
+      Print("\n");
     }
-    Print("\n");
 
 
     // Now greedily place, without blocking anything off.
@@ -838,11 +851,13 @@ struct LayoutEngineImpl : public LayoutEngine {
         int current_dist = chute2.pos - chute1.pos;
         int target_dist = info.outputs[1].xblock - info.outputs[0].xblock;
 
-        Print("Chute {}: "
-              "PlaceBinary ({}/{}) fallback.\n"
-              "Current dist {}, target dist {}.\n",
-              chute_idx, GateString(gate), GateString(flipped_gate),
-              current_dist, target_dist);
+        if (verbose > 1) {
+          Print("Chute {}: "
+                "PlaceBinary ({}/{}) fallback.\n"
+                "Current dist {}, target dist {}.\n",
+                chute_idx, GateString(gate), GateString(flipped_gate),
+                current_dist, target_dist);
+        }
 
         if (current_dist == target_dist) {
           if (!anchor.has_value()) {
@@ -1038,9 +1053,11 @@ struct LayoutEngineImpl : public LayoutEngine {
           LayoutEngine::DesireTypeString(chute.desire) << " should be "
           "handled above, perhaps by turning it into FLOW!";
 
-        Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-              c, LayoutEngine::DesireTypeString(chute.desire),
-              chute.desire_val);
+        if (verbose > 1) {
+          Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
+                c, LayoutEngine::DesireTypeString(chute.desire),
+                chute.desire_val);
+        }
 
         // PERF: We could compute this cumulative sum outside. But
         // we probably want it to be weighted somehow.
@@ -1108,9 +1125,11 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
         if (chute.desire_val != 0) {
-          Print("Chute {} " AORANGE("fell back")
-                " to displacement 0 wire (wanted {})!\n",
-                c, chute.desire_val);
+          if (verbose > 0) {
+            Print("Chute {} " AORANGE("fell back")
+                  " to displacement 0 wire (wanted {})!\n",
+                  c, chute.desire_val);
+          }
         }
 
         if (PlaceAlignedUnary(c, ga, Span{chute.prop}, displacement))
@@ -1148,9 +1167,11 @@ struct LayoutEngineImpl : public LayoutEngine {
     // passes will change the desire into flow.
     ForAllRemaining(DoFlow);
 
-    Print(AWHITE("Layer state at end") ":\n"
-          "{}\n",
-          DebugLayerState(anchor, chutes, next_cells));
+    if (verbose > 1) {
+      Print(AWHITE("Layer state at end") ":\n"
+            "{}\n",
+            DebugLayerState(anchor, chutes, next_cells));
+    }
 
     // Now convert the placed cells into a flattened vector
     // of LC and a starting offset (might be negative).
@@ -1189,7 +1210,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
-  Layout DoLayout(std::span<const Prop> props_in) override {
+  Layout DoLayoutInternal(std::span<const Prop> props_in) {
     // I only support the AND binary gate today, so normalize to
     // a form that removes OR, XOR, etc.
     std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
@@ -1335,12 +1356,29 @@ struct LayoutEngineImpl : public LayoutEngine {
     return ret;
   }
 
+  Layout DoLayout(std::span<const Prop> props_in) override {
+    Timer timer;
+    if (verbose > 0) {
+      Print("Min clearance: close={}, far={}\n", min_clearance_close,
+            min_clearance_far);
+    }
+
+    Layout lay = DoLayoutInternal(props_in);
+
+    if (verbose > 0) {
+      Print("Got {} inputs; {} layers.\n",
+            lay.input_vars.size(),
+            lay.circuit.layers.size());
+      Print("Finished layout in {}\n", ANSI::Time(timer.Seconds()));
+    }
+
+    return lay;
+  }
+
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
     ComputeMinClearance();
-    Print("Min clearance: close={}, far={}\n", min_clearance_close,
-          min_clearance_far);
   }
 };
 
