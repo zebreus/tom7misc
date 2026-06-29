@@ -6,21 +6,27 @@
   </g>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <rect x="280" width="100" height="100" fill="#aff"/>
-  <rect x="380" y="100" width="20" height="860" fill="#0c2"/>
+  <rect x="440" width="100" height="100" fill="#aff"/>
+  <rect x="540" y="100" width="20" height="860" fill="#0c2"/>
   <g isolation="isolate">
-    <text transform="translate(395 60)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep -A</tspan></text>
+    <g isolation="isolate">
+      <text transform="translate(555 60)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep -A</tspan></text>
+    </g>
   </g>
   <rect x="20" y="960" width="100" height="120" fill="#faa"/>
   <rect y="100" width="20" height="860" fill="#0c2"/>
   <g isolation="isolate">
-    <text transform="translate(140.0001 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+    <g isolation="isolate">
+      <text transform="translate(140.0001 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+    </g>
   </g>
   <rect x="20" width="100" height="100" fill="#aff"/>
   <g isolation="isolate">
-    <text transform="translate(125 55)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep A</tspan></text>
+    <g isolation="isolate">
+      <text transform="translate(125 55)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep A</tspan></text>
+    </g>
   </g>
-  <polygon points="120 960 380 600 380 960 120 960" fill="#00bdcc"/>
-  <polygon points="20 290 260 480 20 680 20 290" fill="#00bdcc"/>
-  <rect x="140" y="100" width="120" height="20" fill="#f3ff00"/>
+  <polygon points="120 960 540 600 540 960 120 960" fill="#00bdcc"/>
+  <polygon points="20 290 420 480 20 680 20 290" fill="#00bdcc"/>
+  <rect x="140" y="100" width="280" height="20" fill="#f3ff00"/>
 </svg>

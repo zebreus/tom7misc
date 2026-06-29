@@ -268,6 +268,33 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     // since it's wide, it will overlap and trap them instead.
     CHECK(!le->CanPlaceCell(top, assigned, next, sep_cell, exact_x + 1));
   }
+
+  // Inputs of newly placed cells must have enough clearance from
+  // inputs of already placed cells.
+  {
+    std::vector<LayoutEngine::Chute> top;
+    std::vector<bool> assigned;
+
+    Cell cell(NOT0);
+    CellLibrary::Info info = library.GetInfo(cell);
+
+    std::vector<LayoutEngine::PC> next = {
+      {.xpos = 1000, .cell = cell},
+    };
+
+    int min_dist =
+      Levels::OUT_WIDTH + le->MinClearanceClose() + le->MinClearanceFar();
+    int last_in1 = 1000 + info.inputs.back().xblock;
+
+    int xpos_too_close = last_in1 + min_dist - 1 -
+      info.inputs.front().xblock;
+    int cell1_right = 1000 + info.block_width;
+
+    if (xpos_too_close >= cell1_right) {
+      CHECK(!le->CanPlaceCell(top, assigned, next, cell, xpos_too_close));
+      CHECK(le->CanPlaceCell(top, assigned, next, cell, xpos_too_close + 1));
+    }
+  }
 }
 
 int main(int argc, char **argv) {

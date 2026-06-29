@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <compare>
+#include <cstdlib>
 #include <deque>
 #include <functional>
 #include <initializer_list>
@@ -265,6 +266,27 @@ struct LayoutEngineImpl : public LayoutEngine {
         Print("Can't place {} at {}: Would overlap cell at x={}\n",
               CellString(cell), xpos, pc.xpos);
         return false;
+      }
+    }
+
+    // Check if the inputs of the hypothetical cell are too close to the
+    // inputs of already placed cells. If so, they would become stuck chutes
+    // on the next layer.
+    int min_input_dist =
+        Levels::OUT_WIDTH + min_clearance_close + min_clearance_far;
+    for (const CellLibrary::IO &in : info.inputs) {
+      int in_pos = xpos + in.xblock;
+      for (const PC &pc : next) {
+        CellLibrary::Info pc_info = library.GetInfo(pc.cell);
+        for (const CellLibrary::IO &pc_in : pc_info.inputs) {
+          int pc_in_pos = pc.xpos + pc_in.xblock;
+          if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
+            Print("Can't place {} at {}: "
+                  "Input at {} is too close to already placed input at {}.\n",
+                  CellString(cell), xpos, in_pos, pc_in_pos);
+            return false;
+          }
+        }
       }
     }
 
@@ -654,6 +676,19 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     std::vector<PC> next_cells;
     std::vector<bool> assigned(chutes.size(), false);
+
+    // Sanity check: Ensure the input chutes are not already stuck before
+    // we even place anything.
+    {
+      const int clear_pos = chutes.back().pos +
+        Levels::IN_WIDTH + 2 * min_clearance_far + 1;
+      if (!CanPlaceCell(chutes, assigned, next_cells,
+                        CellLibrary::Spacer(1),
+                        clear_pos)) {
+        LOG(FATAL) << "Input chutes are already in a state where "
+          "we're stuck!\n" << DebugLayerState(chutes, next_cells);
+      }
+    }
 
     static constexpr int FLEE_AMOUNT = 16;
     // As we try placing, we note weighted conflicts at chute

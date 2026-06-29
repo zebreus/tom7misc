@@ -2,8 +2,14 @@
 #include "base/stringprintf.h"
 #include "cell-library.h"
 
+#include <algorithm>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -64,14 +70,61 @@ static void VerifyFlippedWidths() {
   check_cell(CellLibrary::WireB(16));
 }
 
-static void PrintWidths() {
+static void PrintLibrary() {
   CellLibrary library;
-  Print("Non-parameterized cell widths:\n");
+  static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
+
+  std::optional<std::pair<Cell, int>> min_in;
+  std::optional<std::pair<Cell, int>> min_out;
+
+  auto ProcessPads =
+    [&](const Cell &cell,
+        std::span<const CellLibrary::IO> pads,
+        std::optional<std::pair<Cell, int>> &overall_min,
+        std::string_view pad_name) {
+      if (pads.size() > 1) {
+        std::vector<int> xblocks;
+        xblocks.reserve(pads.size());
+        for (const auto &pad : pads) xblocks.push_back(pad.xblock);
+        std::sort(xblocks.begin(), xblocks.end());
+
+        int local_min = xblocks[1] - xblocks[0] - INPUT_WIDTH;
+        for (size_t i = 2; i < xblocks.size(); i++) {
+          local_min = std::min(local_min,
+                               xblocks[i] - xblocks[i-1] - INPUT_WIDTH);
+        }
+        Print("  min {} distance: {}\n", pad_name, local_min);
+        if (!overall_min.has_value() ||
+            local_min < overall_min.value().second) {
+          overall_min = std::make_pair(cell, local_min);
+        }
+      }
+    };
+
+  Print("Non-parameterized cells in standard orientation:\n");
   for (Gate gate : ALL_GATES) {
     if (gate == SPACER || gate == WIREA || gate == WIREB) continue;
     Cell cell{gate, 0, false};
-    int width = library.GetInfo(cell).block_width;
-    Print("  {}: {}\n", GateString(gate), width);
+    CellLibrary::Info info = library.GetInfo(cell);
+    Print("{}: width {}\n", GateString(gate), info.block_width);
+    for (const CellLibrary::IO &in : info.inputs) {
+      Print("  Input at x={}\n", in.xblock);
+    }
+    ProcessPads(cell, info.inputs, min_in, "input");
+
+    for (const CellLibrary::IO &out : info.outputs) {
+      Print("  Output at x={}\n", out.xblock);
+    }
+    ProcessPads(cell, info.outputs, min_out, "output");
+  }
+
+  if (min_in.has_value()) {
+    const auto &[cell, v] = min_in.value();
+    Print("Overall min input distance: {} ({})\n", v, CellString(cell));
+  }
+  if (min_out.has_value()) {
+    const auto &[cell, v] = min_out.value();
+    Print("Overall min output distance: {} ({})\n", v, CellString(cell));
   }
 }
 
@@ -113,7 +166,7 @@ int main(int argc, char **argv) {
   VerifyFlippedWidths();
   Print("\n");
   PrintWireLib();
-  PrintWidths();
+  PrintLibrary();
 
   Print("OK\n");
   return 0;

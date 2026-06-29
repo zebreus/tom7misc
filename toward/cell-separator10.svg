@@ -2,36 +2,42 @@
 <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
   <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
   <g opacity=".05">
-    <rect x="0" width="1920" height="1080" fill="#fff"/>
+    <rect width="1920" height="1080" fill="#fff"/>
   </g>
-  <path d="M20.689,930" fill="#00a"/>
-  <line x1="0" y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <line x1="0" y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <path d="M20.689,570" fill="#00a"/>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
   <polygon points="10 270 790 475 10 215 10 270" fill="#00a"/>
-  <polygon points="1300 780 575 795 1300 600 1300 780" fill="#00a"/>
-  <polygon points="320 800 319.837 740 480 765 320 800" fill="#00a"/>
-  <rect x="300" y="740" width="20" height="220" transform="translate(620 1700) rotate(-180)" fill="#0c2"/>
-  <rect x="580" y="805" width="20" height="155" transform="translate(1180 1765) rotate(-180)" fill="#c00"/>
-  <polygon points="480 960 460 960 460 880 480 890 480 960" fill="#c00"/>
-  <polygon points="20 100 110 100 110 120 20 120 20 960 0 960 0 100 20 100" fill="#006ebb"/>
-  <polygon points="460 880 460 960 420 960 460 880" fill="#0c2"/>
+  <polygon points="1280 645 575 660 1280 465 1280 645" fill="#00a"/>
+  <polygon points="200.163 665 200 605 480 630 200.163 665" fill="#00a"/>
+  <rect x="180" y="605" width="20" height="355" fill="#0c2"/>
+  <rect x="720" y="670" width="20" height="290" fill="#c00"/>
+  <polygon points="620 960 460 960 460 745 620 880 620 960" fill="#c00"/>
+  <polygon points="20 100 110 100 110 120 20 120 20 600 0 600 0 100 20 100" fill="#006ebb"/>
+  <polygon points="460 745 460 960 300 960 460 745" fill="#0c2"/>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(234.311 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(234.311 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+      </g>
     </g>
   </g>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(594.9998 1029.9997)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(734.9998 1029.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+      </g>
     </g>
   </g>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(284.9999 1024.9997)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(164.9999 1024.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      </g>
     </g>
   </g>
-  <polygon points="230 100 230 120 1260 120 1260 625 1280 625 1280 120 1280 100 230 100" fill="#006ebb"/>
+  <polygon points="230 100 230 120 1260 120 1260 490 1280 490 1280 120 1280 100 230 100" fill="#006ebb"/>
   <rect x="120" width="100" height="100" fill="#aff"/>
-  <rect x="320" y="960" width="100" height="120" fill="#faa"/>
-  <rect x="480" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="200" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="620" y="960" width="100" height="120" fill="#faa"/>
 </svg>

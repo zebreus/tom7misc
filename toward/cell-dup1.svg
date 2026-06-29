@@ -12,26 +12,33 @@
   <rect x="940" width="100" height="100" fill="#aff"/>
   <rect x="980" y="960" width="100" height="120" fill="#faa"/>
   <rect x="1080" y="245" width="20" height="715" fill="#0c2"/>
-  <rect x="800" y="960" width="100" height="120" fill="#faa"/>
-  <rect x="780" y="760" width="20" height="200" fill="#0c2"/>
+  <rect x="560" y="960" width="100" height="120" fill="#faa"/>
   <rect x="900" y="720" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
   <polygon points="940 820 920 800 900 800 900 960 920 960 980 960 940 820" fill="#0c2"/>
   <polygon points="625 580 830 740 820 760 600 580 625 580" fill="#0c2"/>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(1069.3105 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(1069.3105 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      </g>
     </g>
   </g>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(745 1040)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(505 1040)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      </g>
     </g>
   </g>
   <g isolation="isolate">
     <g isolation="isolate">
-      <text transform="translate(1110.0001 1054.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      <g isolation="isolate">
+        <text transform="translate(1100.0001 1039.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+      </g>
     </g>
   </g>
   <rect x="1060" y="100" width="20" height="120" fill="aqua"/>
   <polygon points="20 100 20 0 0 0 0 960 20 960 20 120 920 120 920 100 20 100" fill="aqua"/>
+  <polygon points="660 940 900 820 900 960 660 960 660 940" fill="#0c2"/>
+  <polygon points="540 740 540 760 540 960 560 960 560 760 800 760 800 740 540 740" fill="#0c2"/>
 </svg>
