@@ -11,6 +11,6 @@ file ../../box2d/src/*.h
 describe ../../box2d/include/box2d/box2d.h Box2D header
 describe ../../box2d/src Box2D source code
 
-
+file cell-library.txt Sizes and I/O offsets for actual circuit cells
 
 describe toward-util.h General declarations and constants for this project

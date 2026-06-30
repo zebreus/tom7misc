@@ -98,6 +98,14 @@ cell-library_test.exe : cell-library_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+output-library.exe : output-library.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+cell-library.txt : output-library.exe
+	@./output-library.exe > $@
+	@echo -n '/'
+
 layout_test.exe : layout_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"

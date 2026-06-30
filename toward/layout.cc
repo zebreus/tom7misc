@@ -392,8 +392,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           int pc_in_pos = pc.xpos + pc_in.xblock;
           if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
             if (verbose > 1) {
-              Print("Can't place {} at {}: "
+              Print("[{}] Can't place {} at {}: "
                     "Input at {} is too close to already placed input at {}.\n",
+                    chute_context,
                     CellString(cell), xpos, in_pos, pc_in_pos);
             }
             return false;
@@ -503,8 +504,9 @@ struct LayoutEngineImpl : public LayoutEngine {
         if (!ChuteStillHasSpace(i, true) &&
             !ChuteStillHasSpace(i, false)) {
           if (verbose > 1) {
-            Print("Can't place {} at {}: "
+            Print("[{}] Can't place {} at {}: "
                   "Cell {} would be blocked.\n",
+                  chute_context,
                   CellString(cell), xpos, i);
           }
           return false;
@@ -879,83 +881,125 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<bool> assigned(chutes.size(), false);
 
     for (const Island &island : islands) {
-      // Find the leftmost violation (gap that's too small).
+      // Find the leftmost violation (gap that's too small) and
+      // the rightmost one.
+      //
       // Since we build the circuit bottom-up, the inputs to this new
       // layer are geometrically below the outputs. To increase the gap
       // between the inputs, we slant wires away from the violation.
       //
       // This gets the violation index and its size, if any.
-      std::optional<std::pair<int, int>> oviolation = std::nullopt;
+      std::optional<std::pair<int, int>> lviolation = std::nullopt;
+      std::optional<std::pair<int, int>> rviolation = std::nullopt;
       for (int i = 0; i < island.size - 1; i++) {
         int cidx = island.start + i;
         int gap = chutes[cidx + 1].pos - (chutes[cidx].pos + Levels::OUT_WIDTH);
         if (gap < min_output_distance) {
-          oviolation = {{i, gap}};
-          break;
+          // violation here. Take the first one as the left.
+          if (!lviolation.has_value()) {
+            lviolation = {{i, gap}};
+          }
+
+          // and keep overwriting the right one so we get the last.
+          rviolation = {{i, gap}};
         }
       }
 
-      if (!oviolation.has_value()) {
+      if (!lviolation.has_value()) {
         if (verbose > 1) {
           Print("Island has no violations.\n");
         }
         // This island is already OK. Just propagate everything
-        // directly up.
+        // directly up. (PERF: Do some greedy decomposition, etc. here)
         for (int i = 0; i < island.size; i++) {
           int cidx = island.start + i;
           const Chute &chute = chutes[cidx];
-          Cell wire = CellLibrary::WireA(0, chute.type);
-          int xpos = chute.pos - ItsOutputPos(wire);
-          CHECK(CanPlaceCell(cidx, chutes, assigned, out,
-                             wire, xpos)) << "We already verified that "
-            "there is enough space!";
 
-          assigned[cidx] = true;
-          out.push_back(PC{
-              .xpos = xpos,
-              .cell = wire,
-              .inprops = {chute.prop},
-            });
+          Gate ga = chute.type == CType::MIXED ? WIREA :
+            chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+          Gate gb = chute.type == CType::MIXED ? WIREB :
+            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+
+          auto TryPlace = [&](Gate g) -> bool {
+              Cell cell(g, 0, false);
+              int xpos = chute.pos - ItsOutputPos(cell);
+              if (CanPlaceCell(cidx, chutes, assigned, out, cell, xpos)) {
+                assigned[cidx] = true;
+                out.push_back(PC{
+                    .xpos = xpos,
+                    .cell = cell,
+                    .inprops = {chute.prop},
+                  });
+                return true;
+              }
+              return false;
+            };
+
+          CHECK(TryPlace(ga) || TryPlace(gb)) << "We already verified that "
+            "there is enough space!";
         }
         continue;
       }
 
-      const auto &[violation_idx, violation_size] = oviolation.value();
+      CHECK(rviolation.has_value()) << "If there is a leftmost "
+        "violation, then there is a rightmost one too!";
+
+      const auto &[vleft_idx, vleft_size] = lviolation.value();
+      const auto &[vright_idx, vright_size] = rviolation.value();
 
       if (verbose > 1) {
         Print("Processing island @{}; "
-              "violation at idx {} ({} < {})\n",
-              island.start, violation_idx,
-              violation_size, min_output_distance);
+              "violation at idx {} ({} < {}) and {} ({} < {})\n",
+              island.start,
+              vleft_idx, vleft_size, min_output_distance,
+              vright_idx, vright_size, min_output_distance);
       }
 
-      CHECK(violation_size > 0 && violation_size < min_output_distance);
-      int make_space = min_output_distance - violation_size;
+      CHECK(vleft_size > 0 && vleft_size < min_output_distance);
+      CHECK(vright_size > 0 && vright_size < min_output_distance);
+      int left_space = min_output_distance - vleft_size;
+      // Careful: This might be the same quantity if there is one
+      // violation, since then left = right. We need to reduce
+      // it by the amount we end up slanting left if so.
+      int right_space = min_output_distance - vright_size;
 
       for (int iidx = 0; iidx < island.size; iidx++) {
         bool ok = false;
         int cidx = island.start + iidx;
 
-        // Thinking bottom up: Should we slant left (positive displacement)
-        // to move away from the violation?
-        const bool slant_left = iidx <= violation_idx;
+        enum Slant {
+          LEFT,
+          UP,
+          RIGHT,
+        };
 
-        // Try to move up to make_space away.
+        // Thinking bottom up: Should we slant left (positive displacement)
+        // to move away from the violation? Between the two violations
+        // we just go straight up so that we don't get ourselves stuck.
+        const Slant slant =
+          iidx <= vleft_idx ? LEFT :
+          iidx > vright_idx ? RIGHT :
+          UP;
 
         const Chute &chute = chutes[cidx];
+
         Gate ga = chute.type == CType::MIXED ? WIREA :
           chute.type == CType::ZERO ? WIRE0A : WIRE1A;
         Gate gb = chute.type == CType::MIXED ? WIREB :
           chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
+        int space = (slant == LEFT) ? left_space :
+                    (slant == RIGHT) ? right_space : 0;
+        bool flip = slant == RIGHT;
+
         for (int exp = CellLibrary::MAX_WIRE_EXP; exp >= -1; exp--) {
           int amount = exp == -1 ? 0 : (1 << exp);
 
           // Don't move more than we need.
-          if (amount > make_space) continue;
+          if (amount > space) continue;
 
           auto TryPlace = [&](Gate g) -> bool {
-              Cell cell(g, amount, !slant_left);
+              Cell cell(g, amount, flip);
               int xout = ItsOutputPos(cell);
               int cell_pos = chute.pos - xout;
 
@@ -973,11 +1017,12 @@ struct LayoutEngineImpl : public LayoutEngine {
             };
 
           if (TryPlace(ga) || TryPlace(gb)) {
-            // If this is the last gate to the left of the gap,
-            // then we are reducing the shortfall by the amount
-            // we slant left.
-            if (iidx == violation_idx) {
-              make_space -= amount;
+            // If this is the last gate to the left of the gap, and
+            // there is just one violation, then we are reducing the
+            // shortfall by the amount we slanted left. Otherwise
+            // the space is independent.
+            if (iidx == vleft_idx && iidx == vright_idx) {
+              right_space -= amount;
             }
             ok = true;
             break;
