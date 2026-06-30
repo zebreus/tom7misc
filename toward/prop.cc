@@ -411,3 +411,35 @@ Prop NormalizeToAnd(const Prop &prop) {
 
   return NormRec(prop);
 }
+
+Prop NormalizeRemoveXor(const Prop &prop) {
+  std::function<Prop(const Prop&)> NormRec = [&](const Prop &p) -> Prop {
+      if (std::holds_alternative<Value>(p.p) ||
+          std::holds_alternative<Var>(p.p)) {
+        return p;
+      } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+        CHECK(u->op == UnopOp::NOT);
+        return N(NormRec(*u->a));
+      } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+        Prop lhs = NormRec(*b->a);
+        Prop rhs = NormRec(*b->b);
+        switch (b->op) {
+        case BinopOp::AND:
+          return lhs & rhs;
+        case BinopOp::OR:
+          return lhs | rhs;
+        case BinopOp::XOR:
+          // Note the proposition duplication! We should
+          // probably add LET since we'll benefit from this
+          // elsewhere.
+          return (lhs | rhs) & -(lhs & rhs);
+        default:
+          LOG(FATAL) << "Unknown binop?";
+        }
+      } else {
+        LOG(FATAL) << "Bad variant?";
+      }
+    };
+
+  return NormRec(prop);
+}

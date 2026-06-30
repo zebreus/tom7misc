@@ -70,6 +70,19 @@ static void VerifyFlippedWidths() {
   check_cell(CellLibrary::WireB(16));
 }
 
+static std::string IOString(const CellLibrary::Info &info) {
+  std::string s;
+  for (const CellLibrary::IO &in : info.inputs) {
+    AppendFormat(&s, "  Input at x={} t={}\n", in.xblock,
+                 TypeString(in.type));
+  }
+  for (const CellLibrary::IO &out : info.outputs) {
+    AppendFormat(&s, "  Output at x={} t={}\n", out.xblock,
+                 TypeString(out.type));
+  }
+  return s;
+}
+
 static void PrintLibrary() {
   CellLibrary library;
   static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
@@ -108,12 +121,12 @@ static void PrintLibrary() {
     CellLibrary::Info info = library.GetInfo(cell);
     Print("{}: width {}\n", GateString(gate), info.block_width);
     for (const CellLibrary::IO &in : info.inputs) {
-      Print("  Input at x={}\n", in.xblock);
+      Print("  Input at x={} t={}\n", in.xblock, TypeString(in.type));
     }
     ProcessPads(cell, info.inputs, min_in, "input");
 
     for (const CellLibrary::IO &out : info.outputs) {
-      Print("  Output at x={}\n", out.xblock);
+      Print("  Output at x={} t={}\n", out.xblock, TypeString(out.type));
     }
     ProcessPads(cell, info.outputs, min_out, "output");
   }
@@ -126,17 +139,6 @@ static void PrintLibrary() {
     const auto &[cell, v] = min_out.value();
     Print("Overall min output distance: {} ({})\n", v, CellString(cell));
   }
-}
-
-static std::string IOString(const CellLibrary::Info &info) {
-  std::string s;
-  for (const CellLibrary::IO &in : info.inputs) {
-    AppendFormat(&s, "  Input at x={}\n", in.xblock);
-  }
-  for (const CellLibrary::IO &out : info.outputs) {
-    AppendFormat(&s, "  Output at x={}\n", out.xblock);
-  }
-  return s;
 }
 
 static void PrintWireLib() {

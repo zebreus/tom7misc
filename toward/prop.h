@@ -138,4 +138,7 @@ bool PropEq(const Prop &a, const Prop &b);
 // Normalize to only AND/NOT operators.
 Prop NormalizeToAnd(const Prop &prop);
 
+// Normalize to AND/OR/NOT.
+Prop NormalizeRemoveXor(const Prop &prop);
+
 #endif

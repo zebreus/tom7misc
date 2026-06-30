@@ -117,15 +117,17 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
                            GetOutputColor(io.type));
           }
 
-          std::string_view name = GateString(cell.gate);
-          int max_chars = bw / char_width;
-          if (max_chars > 0) {
-            if ((int)name.size() > max_chars) {
-              name = name.substr(0, max_chars);
+          if (!IsWire(cell.gate)) {
+            std::string_view name = GateString(cell.gate);
+            int max_chars = bw / char_width;
+            if (max_chars > 0) {
+              if ((int)name.size() > max_chars) {
+                name = name.substr(0, max_chars);
+              }
+              int text_x = cx + (bw - (int)name.size() * char_width) / 2;
+              int text_y = cy + (layer_height - char_height) / 2;
+              img.BlendText32(text_x, text_y, 0xFFFFFFFF, name);
             }
-            int text_x = cx + (bw - (int)name.size() * char_width) / 2;
-            int text_y = cy + (layer_height - char_height) / 2;
-            img.BlendText32(text_x, text_y, 0xFFFFFFFF, name);
           }
         }
       }

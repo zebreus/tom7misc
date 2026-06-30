@@ -14,6 +14,7 @@
 #include "cell-library.h"
 #include "level.h"
 #include "prop.h"
+#include "render-circuit.h"
 
 static void StartTest(std::string_view name) {
   Print("\n\n" ABGCOLOR(0, 0, 160, "== {} ==") "\n", name);
@@ -401,6 +402,7 @@ static void Modest(const CellLibrary &library) {
   };
   le->SetVerbose(2);
   Layout layout = le->DoLayout(output);
+  RenderCircuit(library, layout.circuit).Save("modest.png");
   library.DRC(layout.circuit);
   Verify(layout, output);
 }

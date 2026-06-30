@@ -34,6 +34,7 @@ enum class CType {
 enum Gate : uint8_t {
   SPACER,
   AND0110,
+  OR1100,
   NOT,
   NOT0,
   NOT1,
@@ -68,7 +69,7 @@ enum Gate : uint8_t {
 };
 
 inline constexpr std::array ALL_GATES = {
-  SPACER, AND0110, NOT, NOT0, NOT1, NOT01,
+  SPACER, AND0110, OR1100, NOT, NOT0, NOT1, NOT01,
   SEPARATOR01, SEPARATOR10, SELFXCHG01, SELFXCHG10,
   WIREA, WIREB, WIRE0A, WIRE0B, WIRE1A, WIRE1B,
   COMBINE01, COMBINE10,

@@ -160,6 +160,7 @@ static void ValidateLibrary() {
   // WIREB,
 
   for (Gate g : {
+      Gate::OR1100,
       Gate::SEPARATOR01,
       Gate::SEPARATOR10,
       Gate::DUP1,
@@ -202,6 +203,15 @@ static void ValidateLibrary() {
           Prop{Var{.id = 0}},
           Prop{Var{.id = 0}},
           Prop{Var{.id = 1}},
+          Prop{Var{.id = 1}},
+        };
+
+      } else if (g == Gate::OR1100) {
+        CHECK(info.inputs.size() == 4);
+        args = {
+          Prop{Var{.id = 0}},
+          Prop{Var{.id = 1}},
+          Prop{Var{.id = 0}},
           Prop{Var{.id = 1}},
         };
 

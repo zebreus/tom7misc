@@ -174,6 +174,15 @@ struct LayoutEngineImpl : public LayoutEngine {
   int MinClearanceClose() const override { return min_clearance_close; }
   int MinClearanceFar() const override { return min_clearance_far; }
 
+  template<typename... Args>
+  inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
+    if (status.get() != nullptr) {
+      status->Print(fmt, std::forward<Args>(args)...);
+    } else {
+      ::Print(fmt, std::forward<Args>(args)...);
+    }
+  }
+
   // Returns the flattened vector of variable ids if all
   // of the inputs are variables; nullopt otherwise.
   std::optional<std::vector<std::pair<int, CType>>>
@@ -239,8 +248,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     min_output_distance = min_dist.value();
 
     if (verbose > 0) {
-      status->Print("Minimum output dist is for {}: {}\n",
-                    GateString(min_gate), min_output_distance);
+      Print("Minimum output dist is for {}: {}\n",
+            GateString(min_gate), min_output_distance);
     }
   }
 
@@ -363,10 +372,9 @@ struct LayoutEngineImpl : public LayoutEngine {
       int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
       if (cell_left < pc_right && cell_right > pc_left) {
         if (verbose > 1) {
-          status->Print(
-              "[{}] Can't place {} at {}: Would overlap cell at x={}\n",
-              chute_context,
-              CellString(cell), xpos, pc.xpos);
+          Print("[{}] Can't place {} at {}: Would overlap cell at x={}\n",
+                chute_context,
+                CellString(cell), xpos, pc.xpos);
         }
         return false;
       }
@@ -384,10 +392,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           int pc_in_pos = pc.xpos + pc_in.xblock;
           if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
             if (verbose > 1) {
-              status->Print(
-                  "Can't place {} at {}: "
-                  "Input at {} is too close to already placed input at {}.\n",
-                  CellString(cell), xpos, in_pos, pc_in_pos);
+              Print("Can't place {} at {}: "
+                    "Input at {} is too close to already placed input at {}.\n",
+                    CellString(cell), xpos, in_pos, pc_in_pos);
             }
             return false;
           }
@@ -496,9 +503,9 @@ struct LayoutEngineImpl : public LayoutEngine {
         if (!ChuteStillHasSpace(i, true) &&
             !ChuteStillHasSpace(i, false)) {
           if (verbose > 1) {
-            status->Print("Can't place {} at {}: "
-                          "Cell {} would be blocked.\n",
-                          CellString(cell), xpos, i);
+            Print("Can't place {} at {}: "
+                  "Cell {} would be blocked.\n",
+                  CellString(cell), xpos, i);
           }
           return false;
         }
@@ -846,7 +853,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     if (!Needed()) return std::nullopt;
 
     if (verbose > 1) {
-      status->Print(AWHITE("SpaceLayer") " needed. Chutes and islands:\n");
+      Print(AWHITE("SpaceLayer") " needed. Chutes and islands:\n");
       for (int i = 0; i < (int)chutes.size(); i++) {
         std::string warn = "";
         if (i < (int)chutes.size() - 1) {
@@ -856,13 +863,13 @@ struct LayoutEngineImpl : public LayoutEngine {
           }
         }
 
-        status->Print(" [{}] {}{}\n", i,
-                      LayoutEngine::ChuteString(chutes[i]), warn);
+        Print(" [{}] {}{}\n", i,
+              LayoutEngine::ChuteString(chutes[i]), warn);
       }
 
       for (size_t i = 0; i < islands.size(); i++) {
-        status->Print(" Island {}: start={}, size={}\n",
-                      i, islands[i].start, islands[i].size);
+        Print(" Island {}: start={}, size={}\n",
+              i, islands[i].start, islands[i].size);
       }
     }
 
@@ -890,7 +897,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       if (!oviolation.has_value()) {
         if (verbose > 1) {
-          status->Print("Island has no violations.\n");
+          Print("Island has no violations.\n");
         }
         // This island is already OK. Just propagate everything
         // directly up.
@@ -916,17 +923,17 @@ struct LayoutEngineImpl : public LayoutEngine {
       const auto &[violation_idx, violation_size] = oviolation.value();
 
       if (verbose > 1) {
-        status->Print("Processing island @{}; "
-                      "violation at idx {} ({} < {})\n",
-                      island.start, violation_idx,
-                      violation_size, min_output_distance);
+        Print("Processing island @{}; "
+              "violation at idx {} ({} < {})\n",
+              island.start, violation_idx,
+              violation_size, min_output_distance);
       }
 
       CHECK(violation_size > 0 && violation_size < min_output_distance);
       int make_space = min_output_distance - violation_size;
 
-      bool ok = false;
       for (int iidx = 0; iidx < island.size; iidx++) {
+        bool ok = false;
         int cidx = island.start + iidx;
 
         // Thinking bottom up: Should we slant left (positive displacement)
@@ -983,8 +990,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     if (verbose > 1) {
-      status->Print(AWHITE("Spaced layer result") ":\n{}\n",
-                    DebugLayerState(std::nullopt, chutes, out));
+      Print(AWHITE("Spaced layer result") ":\n{}\n",
+            DebugLayerState(std::nullopt, chutes, out));
     }
 
     return {ConvertPC(std::move(out))};
@@ -1006,8 +1013,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     CHECK(!chutes.empty());
 
     if (verbose > 1) {
-      status->Print("Addlayer start:\n{}\n",
-                    DebugLayerState(std::nullopt, chutes, {}));
+      Print("Addlayer start:\n{}\n",
+            DebugLayerState(std::nullopt, chutes, {}));
     }
 
     std::vector<Island> islands = GetIslands(chutes);
@@ -1016,8 +1023,8 @@ struct LayoutEngineImpl : public LayoutEngine {
         SpaceLayerIfNeeded(chutes, islands)) {
       num_spaced_layers++;
       if (verbose > 1) {
-        status->Print(AYELLOW("Spaced layer")
-                      " because some chutes were too close.\n");
+        Print(AYELLOW("Spaced layer")
+              " because some chutes were too close.\n");
       }
       return std::move(ores.value());
     }
@@ -1026,12 +1033,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     SetChuteDesires(chutes);
 
     if (verbose > 1) {
-      status->Print(AWHITE("Chute desires") " before placement:\n");
+      Print(AWHITE("Chute desires") " before placement:\n");
       for (int i = 0; i < (int)chutes.size(); i++) {
-        status->Print(" [{}] {}\n", i,
-                      LayoutEngine::ChuteString(chutes[i]));
+        Print(" [{}] {}\n", i,
+              LayoutEngine::ChuteString(chutes[i]));
       }
-      status->Print("\n");
+      Print("\n");
     }
 
 
@@ -1197,17 +1204,17 @@ struct LayoutEngineImpl : public LayoutEngine {
         int target_dist = info.outputs[1].xblock - info.outputs[0].xblock;
 
         if (verbose > 1) {
-          status->Print("Chute {}: "
-                        "PlaceBinary ({}/{}) fallback.\n"
-                        "Current dist {}, target dist {}.\n",
-                        chute_idx, GateString(gate), GateString(flipped_gate),
-                        current_dist, target_dist);
+          Print("Chute {}: "
+                "PlaceBinary ({}/{}) fallback.\n"
+                "Current dist {}, target dist {}.\n",
+                chute_idx, GateString(gate), GateString(flipped_gate),
+                current_dist, target_dist);
         }
 
         if (current_dist == target_dist) {
           if (!anchor.has_value()) {
             if (verbose > 1) {
-              status->Print("Took anchor @{}\n", chute_idx);
+              Print("Took anchor @{}\n", chute_idx);
             }
             anchor = {chute_idx};
             // Propagate upward.
@@ -1302,10 +1309,20 @@ struct LayoutEngineImpl : public LayoutEngine {
             }
           } else {
             const Binop *b = std::get_if<Binop>(&chute.prop.p);
-            CHECK(b && b->op == BinopOp::AND);
-            if (PlaceAlignedUnary(c, AND0110,
-                                  Span{*b->a, *b->a, *b->b, *b->b})) {
-              return;
+            CHECK(b != nullptr);
+            if (b->op == BinopOp::AND) {
+              if (PlaceAlignedUnary(c, AND0110,
+                                    Span{*b->a, *b->a, *b->b, *b->b})) {
+                return;
+              }
+            } else if (b->op == BinopOp::OR) {
+              if (PlaceAlignedUnary(c, OR1100,
+                                    Span{*b->a, *b->b, *b->a, *b->b})) {
+                return;
+              }
+
+            } else {
+              LOG(FATAL) << "Unexpected binop?";
             }
           }
 
@@ -1404,9 +1421,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           "handled above, perhaps by turning it into FLOW!";
 
         if (verbose > 1) {
-          status->Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-                        c, LayoutEngine::DesireTypeString(chute.desire),
-                        chute.desire_val);
+          Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
+                c, LayoutEngine::DesireTypeString(chute.desire),
+                chute.desire_val);
         }
 
         // PERF: We could compute this cumulative sum outside. But
@@ -1476,9 +1493,9 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         if (chute.desire_val != 0) {
           if (verbose > 0) {
-            status->Print("Chute {} " AORANGE("fell back")
-                          " to displacement 0 wire (wanted {})!\n",
-                          c, chute.desire_val);
+            Print("Chute {} " AORANGE("fell back")
+                  " to displacement 0 wire (wanted {})!\n",
+                  c, chute.desire_val);
           }
         }
 
@@ -1518,9 +1535,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     ForAllRemaining(DoFlow);
 
     if (verbose > 1) {
-      status->Print(AWHITE("Layer state at end") ":\n"
-                    "{}\n",
-                    DebugLayerState(anchor, chutes, next_cells));
+      Print(AWHITE("Layer state at end") ":\n"
+            "{}\n",
+            DebugLayerState(anchor, chutes, next_cells));
     }
 
     return ConvertPC(std::move(next_cells));
@@ -1681,6 +1698,24 @@ struct LayoutEngineImpl : public LayoutEngine {
         "to the previous one.";
     }
 
+    size_t num_next_outputs = 0;
+    for (const LC &lc : next) {
+      num_next_outputs += library.GetInfo(lc.cell).outputs.size();
+    }
+
+    size_t num_last_inputs = 0;
+    for (const LC &lc : last) {
+      num_last_inputs += lc.inprops.size();
+    }
+
+    if (num_next_outputs != num_last_inputs) {
+
+      LOG(FATAL)
+        << "Error after " << layers->size() << "layers:\n"
+        << "Bad Layer! New outputs (" << num_next_outputs
+        << ") != top layer inputs (" << num_last_inputs << ").";
+    }
+
     // We might need to shift over this layer, or
     // shift over all the remaining ones, to align.
     auto AddLeftSpacer = [](std::vector<LC> &layer, int pad) {
@@ -1712,9 +1747,10 @@ struct LayoutEngineImpl : public LayoutEngine {
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
   Layout DoLayoutInternal(std::span<const Prop> props_in) {
-    // I only support the AND binary gate today, so normalize to
-    // a form that removes OR, XOR, etc.
-    std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
+    // std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
+
+    // We support AND, OR, NOT.
+    std::vector<Prop> props = VectorMap(props_in, NormalizeRemoveXor);
 
     // All the layers, annotated with props. We'll add to the front
     // of this.
@@ -1814,21 +1850,21 @@ struct LayoutEngineImpl : public LayoutEngine {
   Layout DoLayout(std::span<const Prop> props_in) override {
     Timer timer;
     if (verbose > 0) {
-      status->Print("Min clearance: close={}, far={}\n"
-                    "Min output distance: {}\n"
-                    "Max cell width: {}\n",
-                    min_clearance_close, min_clearance_far,
-                    min_output_distance,
-                    max_cell_width);
+      Print("Min clearance: close={}, far={}\n"
+            "Min output distance: {}\n"
+            "Max cell width: {}\n",
+            min_clearance_close, min_clearance_far,
+            min_output_distance,
+            max_cell_width);
     }
 
     Layout lay = DoLayoutInternal(props_in);
 
     if (verbose > 0) {
-      status->Print("Got {} inputs; {} layers.\n",
-                    lay.input_vars.size(),
-                    lay.circuit.layers.size());
-      status->Print("Finished layout in {}\n", ANSI::Time(timer.Seconds()));
+      Print("Got {} inputs; {} layers.\n",
+            lay.input_vars.size(),
+            lay.circuit.layers.size());
+      Print("Finished layout in {}\n", ANSI::Time(timer.Seconds()));
     }
 
     return lay;
