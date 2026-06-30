@@ -188,12 +188,13 @@ static bool IsAndNormalForm(const Prop &prop) {
   return true;
 }
 
-static void TestNormalizeToAnd() {
+static std::vector<Prop> InterestingProps() {
   Prop p0 = Prop{.p = Var{.id = 0}};
   Prop p1 = Prop{.p = Var{.id = 1}};
   Prop p2 = Prop{.p = Var{.id = 2}};
+  Prop p3 = Prop{.p = Var{.id = 3}};
 
-  std::vector<Prop> props = {
+  return {
     True(),
     False(),
     p0,
@@ -203,9 +204,33 @@ static void TestNormalizeToAnd() {
     p0 ^ p1,
     (p0 | p1) ^ p2,
     -(p0 | (p1 & p2)),
+    p0 & p1 & p2 & p3,
+    p0 | p1 | p2 | p3,
+    p0 ^ p1 ^ p2 ^ p3,
+    (p0 & p1) | (p2 & p3),
+    p0 | False(),
+    p0 & True(),
+    p0 ^ p0,
+    -(-p0),
   };
+}
 
-  for (const Prop &p : props) {
+static void TestSimplifyProp() {
+  for (const Prop &p : InterestingProps()) {
+    Prop simp = SimplifyProp(p);
+    CHECK(PropEq(p, simp)) << PropString(p) << "\n" << PropString(simp);
+  }
+}
+
+static void TestBalanceProp() {
+  for (const Prop &p : InterestingProps()) {
+    Prop bal = BalanceProp(p);
+    CHECK(PropEq(p, bal)) << PropString(p) << "\n" << PropString(bal);
+  }
+}
+
+static void TestNormalizeToAnd() {
+  for (const Prop &p : InterestingProps()) {
     Prop norm = NormalizeToAnd(p);
     CHECK(PropEq(p, norm)) << PropString(p) << "\n" << PropString(norm);
     CHECK(IsAndNormalForm(norm)) << PropString(p) << "\n"
@@ -224,6 +249,8 @@ int main(int argc, char **argv) {
   TestVariadicAnd();
   TestPropVars();
   TestPropEq();
+  TestSimplifyProp();
+  TestBalanceProp();
   TestNormalizeToAnd();
 
   Print("OK\n");

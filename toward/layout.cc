@@ -581,15 +581,19 @@ struct LayoutEngineImpl : public LayoutEngine {
     // indefinitely; it's just sloppy to have really big wings.
 
     // XXX: This bakes in an assumption about small wires.
+    constexpr int DONE_SPACING = 32;
     if (first_interior_chute > 0) {
-      int left_gap = chutes[first_interior_chute].pos -
-        chutes[first_interior_chute - 1].pos;
+      int interior_pos = chutes[first_interior_chute].pos;
 
-      // The displacement for the last exterior chute.
-      int disp = std::clamp(left_gap - DONE_GAP, -64, 64);
       for (int c = 0; c < first_interior_chute; c++) {
+        // How far into the exterior we are.
+        int count = first_interior_chute - c;
+        // The displacement for the last exterior chute.
+        int target_pos = interior_pos - DONE_GAP -
+          DONE_SPACING * count;
+
+        int disp = target_pos - chutes[c].pos;
         Chute &chute = chutes[c];
-        // Still on the exterior.
         chute.done = true;
         chute.desire = DesireType::QUIESCE;
         chute.desire_val = disp;
@@ -597,11 +601,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     if (last_interior_chute < (int)chutes.size() - 1) {
-      int right_gap = chutes[last_interior_chute + 1].pos -
-        chutes[last_interior_chute].pos;
-
-      int disp = std::clamp(DONE_GAP - right_gap, -64, 64);
+      int interior_pos = chutes[last_interior_chute].pos;
       for (int c = last_interior_chute + 1; c < chutes.size(); c++) {
+        int count = c - last_interior_chute;
+        int target_pos = interior_pos + DONE_GAP + DONE_SPACING * count;
+
+        int disp = target_pos - chutes[c].pos;
         Chute &chute = chutes[c];
         chute.done = true;
         chute.desire = DesireType::QUIESCE;

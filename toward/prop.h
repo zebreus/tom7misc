@@ -123,6 +123,10 @@ inline bool operator==(const Prop &a, const Prop &b) {
 // values.
 Prop SimplifyProp(const Prop &prop);
 
+// Rewrite n-ary chains of AND/OR into equivalent expressions that
+// are more balanced (in terms of height of the subtrees).
+Prop BalanceProp(const Prop &prop);
+
 // Return all the distinct variable indices that appear in the
 // proposition in ascending order.
 std::vector<int> PropVars(const Prop &a);

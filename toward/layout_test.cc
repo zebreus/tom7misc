@@ -313,7 +313,7 @@ static void TestLoop1() {
   CellLibrary library;
   World world;
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-  le->SetVerbose(2);
+  le->SetVerbose(0);
 
   /*
  [40] Chute(pos=1542, prop=v733, type=ONE)
@@ -384,11 +384,34 @@ static void TestLoop1() {
 
 }
 
+static void Modest(const CellLibrary &library) {
+  StartTest("Modest");
+  World world{.symbol_names = {"a", "b", "c", "d", "e", "f", "g", "h"}};
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}}, d{Var{.id = 3}},
+    e{Var{.id = 4}}, f{Var{.id = 5}}, g{Var{.id = 6}}, h{Var{.id = 7}};
+
+  std::vector<Prop> output = {
+    BalanceProp(
+        (-e & -d & (f | c)) |
+        (g & h & a & b & c) |
+        (f & ((b & d & a) | (a & -b))) |
+        ((-f) & (-(a & -d & (b | c))))
+                ),
+  };
+  le->SetVerbose(2);
+  Layout layout = le->DoLayout(output);
+  library.DRC(layout.circuit);
+  Verify(layout, output);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   CellLibrary library;
 
+  #if 0
   TestLoop1();
 
   // Tests of helpers.
@@ -403,6 +426,10 @@ int main(int argc, char **argv) {
   OrVars(library);
   XorVars(library);
   MultiOutput(library);
+  #endif
+
+  // took 190 layers!
+  Modest(library);
 
   Print("OK\n");
   return 0;

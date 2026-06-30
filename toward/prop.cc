@@ -3,6 +3,7 @@
 
 #include <compare>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -83,8 +84,89 @@ static bool IsFalse(const Prop &prop) {
   return false;
 }
 
-Prop SimplifyProp(const Prop &prop) {
+static std::pair<Prop, int> BalancePropInternal(const Prop &p);
 
+static std::vector<std::pair<Prop, int>> GatherBin(const Binop *b) {
+  BinopOp op = b->op;
+  std::vector<std::pair<Prop, int>> flat;
+
+  // Everything in here should be joined with op, but also
+  // flattened if it is also an op.
+  std::vector<Prop> todo = {*b->a, *b->b};
+
+  while (!todo.empty()) {
+    Prop p = std::move(todo.back());
+    todo.pop_back();
+
+    if (const Binop *child = std::get_if<Binop>(&p.p)) {
+      if (child->op == op) {
+        todo.push_back(*child->a);
+        todo.push_back(*child->b);
+      } else {
+        flat.push_back(BalancePropInternal(p));
+      }
+    } else {
+      flat.push_back(BalancePropInternal(p));
+    }
+  }
+
+  return flat;
+}
+
+// Return the new prop and the depth of the subtree.
+static std::pair<Prop, int> BalancePropInternal(const Prop &p) {
+  if (std::holds_alternative<Value>(p.p) ||
+      std::holds_alternative<Var>(p.p)) {
+    return {p, 1};
+
+  } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+    CHECK(u->op == UnopOp::NOT);
+    auto [a, d] = BalancePropInternal(*u->a);
+    return {-std::move(a), d + 1};
+
+  } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+    // Gather into a flat vector. The subtrees have already
+    // been balanced.
+    std::vector<std::pair<Prop, int>> flat = GatherBin(b);
+
+    auto Cmp = [](const std::pair<Prop, int> &x,
+                  const std::pair<Prop, int> &y) {
+      return x.second > y.second;
+    };
+    std::make_heap(flat.begin(), flat.end(), Cmp);
+
+    while (flat.size() > 1) {
+      std::pop_heap(flat.begin(), flat.end(), Cmp);
+      std::pair<Prop, int> p1 = std::move(flat.back());
+      flat.pop_back();
+
+      std::pop_heap(flat.begin(), flat.end(), Cmp);
+      std::pair<Prop, int> p2 = std::move(flat.back());
+      flat.pop_back();
+
+      Prop combined = Prop{
+        .p = Binop{
+          .op = b->op,
+          .a = std::make_shared<Prop>(std::move(p1.first)),
+          .b = std::make_shared<Prop>(std::move(p2.first)),
+        }};
+      int depth = std::max(p1.second, p2.second) + 1;
+
+      flat.emplace_back(std::move(combined), depth);
+      std::push_heap(flat.begin(), flat.end(), Cmp);
+    }
+
+    return std::move(flat.front());
+  }
+
+  LOG(FATAL) << "Bad variant?";
+}
+
+Prop BalanceProp(const Prop &prop) {
+  return BalancePropInternal(prop).first;
+}
+
+Prop SimplifyProp(const Prop &prop) {
   std::function<Prop(const Prop&)> SimpRec = [&](const Prop &p) -> Prop {
       if (std::holds_alternative<Value>(p.p) ||
           std::holds_alternative<Var>(p.p)) {
