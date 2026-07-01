@@ -3,7 +3,7 @@
 # nb: This does not work for files with spaces in them
 # like "svn st", but gets only the tracked files in the current directory.
 function svntracked() {
-  TRACKED=`svn status -vq --depth=files | grep -v ? | grep -v \>`
+  TRACKED=`svn status -vq --depth=files | grep -v \>`
 
   for file in $(echo "$TRACKED" | sed 's/.*[[:space:]]//'); do
       if [ -f "$file" ]; then

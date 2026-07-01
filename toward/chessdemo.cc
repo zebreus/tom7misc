@@ -29,6 +29,11 @@ static void RenderOne() {
 
   Print("Simplified: {} -> {}\n", before, after);
 
+  is_legal = SimplifyProp(BalanceProp(is_legal));
+
+  size_t after2 = PropSize(is_legal);
+  Print("Balanced: {} -> {}\n", after, after2);
+
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   le->SetVerbose(1);
   Layout layout = le->DoLayout(Span{is_legal});

@@ -58,6 +58,8 @@
 //   the CellLibrary to find a Cell's block width and the exact x-offsets
 //   and types of its inputs/outputs. This is necessary to align the outputs
 //   of one layer with the inputs of the next without overlapping components.
+//   The generated file cell-library.txt has the actual dimensions and
+//   I/O locations for the cells.
 //
 // level.h (Levels):
 //   Defines the 2D physics geometry (Level, LevelBody, polygon meshes).
@@ -73,7 +75,7 @@ using Chute = LayoutEngine::Chute;
 using DesireType = LayoutEngine::DesireType;
 using enum LayoutEngine::DesireType;
 
-static constexpr bool WRITE_IMAGES = true;
+static constexpr bool WRITE_IMAGES = false;
 
 std::string_view LayoutEngine::DesireTypeString(DesireType dt) {
   switch (dt) {
@@ -143,6 +145,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   // (chutes on the far left and right that contain MIXED vars)
   // and the interior.
   static constexpr int DONE_GAP = 256;
+
+  int num_and = 0, num_xchg = 0, num_or = 0, num_wire = 0;
+  int num_sep = 0, num_dup = 0, num_comb = 0;
 
   std::unique_ptr<StatusBar> status;
 
@@ -1109,7 +1114,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    static constexpr int FLEE_AMOUNT = 16;
+    static constexpr int FLEE_AMOUNT = 32;
     // As we try placing, we note weighted conflicts at chute
     // locations. This helps us with heuristic direction of
     // flow.
@@ -1155,6 +1160,17 @@ struct LayoutEngineImpl : public LayoutEngine {
                 .cell = cell,
                 .inprops = std::move(ip),
               });
+
+            switch (cell.gate) {
+            case AND0110: num_and++; break;
+            case OR1100: num_or++; break;
+            case COMBINE01:
+            case COMBINE10: num_comb++; break;
+              // TODO also NOT!
+            default:
+              if (IsWire(cell.gate)) num_wire++;
+            }
+
             return true;
           }
         }
@@ -1164,9 +1180,11 @@ struct LayoutEngineImpl : public LayoutEngine {
         return false;
       };
 
-    // Try placing a cell with two outputs atop chute_idx and chute_idx+1.
-    // Since when we flip a binary gate we may modify its meaning, we
-    // take a gate and a flipped_gate.
+    // Try placing a cell with two outputs atop chute_idx and
+    // chute_idx+1. The output types are forced by the chutes we're
+    // connecting to. Since when we flip a binary gate we may modify
+    // its meaning, we take a gate and a flipped_gate. This might give
+    // us two variants of the geometry to try.
     //
     // If neither the gate or its flipped version fit, then we modify
     // the desire field for the chutes to be FLOW, and pick relative
@@ -1229,6 +1247,27 @@ struct LayoutEngineImpl : public LayoutEngine {
                   .cell = cell,
                   .inprops = std::move(inprops),
                 });
+
+              switch (cell.gate) {
+              case SEPARATOR01:
+              case SEPARATOR10:
+                num_sep++;
+                break;
+              case SELFXCHG01:
+              case SELFXCHG10:
+              case XCHG00:
+              case XCHG01:
+              case XCHG10:
+              case XCHG11:
+                num_xchg++;
+                break;
+              case DUP0:
+              case DUP1:
+                num_dup++;
+                break;
+              default:;
+              }
+
               return;
             } else {
               // Couldn't place a binary gate even though the inputs
@@ -1288,12 +1327,20 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
                                info.outputs[0].xblock) - chute1.pos;
 
+          conflict_weight[chute_idx]++;
+          conflict_weight[chute_idx + 1]++;
+
         } else {
+          CHECK(current_dist < target_dist);
+
           chute1.desire = DesireType::FLOW;
           chute1.desire_val = 0;
           chute2.desire = DesireType::FLOW;
           chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
                                info.outputs[1].xblock) - chute2.pos;
+
+          conflict_weight[chute_idx]++;
+          conflict_weight[chute_idx + 1]++;
         }
       };
 
@@ -1471,6 +1518,10 @@ struct LayoutEngineImpl : public LayoutEngine {
                 chute.desire_val);
         }
 
+        // XXX when searching for conflict, we should only
+        // do this within the current island, I think. No need
+        // to push everything away!
+        //
         // PERF: We could compute this cumulative sum outside. But
         // we probably want it to be weighted somehow.
         if (chute.desire == DesireType::QUIESCE) {
@@ -1698,9 +1749,12 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       if (status) {
         status->Status("{}\n"
+                       "{} and {} xchg {} or {} wire {} sep {} dup {} comb\n"
                        "Layer {}: {} max prop, {} total. {} inv. {} sp. "
                        "Width: {}.\n",
                        histo.OneLineANSI(75),
+                       num_and, num_xchg, num_or, num_wire, num_sep,
+                       num_dup, num_comb,
                        layers->size(), max_prop_size, total_prop_size,
                        inversions,
                        num_spaced_layers,
@@ -1822,6 +1876,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     for (int num_layers = 1; true; num_layers++) {
       (void)num_layers;
 
+      // CHECK(num_layers < 8);
+
       /*
       if (num_layers > 1000) verbose = 2;
       CHECK(num_layers < 1004);
@@ -1918,7 +1974,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
-    status.reset(new StatusBar(2));
+    status.reset(new StatusBar(3));
 
     ComputeMinClearance();
     ComputeMinOutputDistance();

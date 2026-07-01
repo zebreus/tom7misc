@@ -1,10 +1,8 @@
 
 #include <cstdio>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -13,23 +11,15 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "color-util.h"
-#include "geom/bezier.h"
-#include "geom/polygonization.h"
-#include "geom/polygons.h"
 #include "initialization.h"
 #include "inputs.h"
-#include "letters.h"
 #include "level.h"
 #include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
 #include "sdl-rendering.h"
-#include "svg.h"
 #include "toward-util.h"
 #include "utf8.h"
-#include "util.h"
-#include "yocto-math.h"
 
 static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
 static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
@@ -37,7 +27,10 @@ static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
 void Simulate(std::string_view level_file) {
   ArcFour rc("sim");
 
-  std::unique_ptr<Level> level = Levels::LoadSVG(level_file);
+  Levels::Options opt;
+  opt.include_text = true;
+
+  std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, level_file);
   Print("There are {} bodies in the level.\n", level->bodies.size());
   std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
 
@@ -64,7 +57,7 @@ void Simulate(std::string_view level_file) {
         if (kdown->codepoint == '\r') {
           paused = !paused;
         } else if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
-          level = Levels::LoadSVG(level_file);
+          level = Levels::LoadSVGExt(opt, level_file);
           scene = Levels::CreateScene(*level);
         } else if (kdown->codepoint == '1') {
           bit = true;

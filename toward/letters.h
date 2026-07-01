@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -13,7 +14,18 @@
 
 struct Letter {
   // A mesh of convex polygons.
+  // Coordinates are computer graphics style (y-down). Note that
+  // the origin is at the top left of the glyph, however, not the
+  // baseline.
   Polygonization::Mesh mesh;
+
+  // The y-coordinate of the baseline in the same coordinate system.
+  double baseline_y = 0.0;
+
+  // The nominal horizontal advance (width) of this letter. See also
+  // the kerning table below.
+  double width = 0.0;
+
   // TODO: center of mass, moment, AABB, etc.
 };
 
@@ -23,13 +35,15 @@ struct Letters {
   // Keyed by codepoint.
   std::unordered_map<uint32_t, Letter> letter;
 
-  double GetKerning(uint32_t c1, uint32_t c2) {
-    uint64_t k = KernKey(c1, c2);
-    auto it = kerning.find(k);
-    if (it != kerning.end()) return it->second;
-    // XXX use k1's nominal width?
-    return 1.0;
-  }
+  // The nominal distance between baselines of consecutive lines of text.
+  double line_height = 1.0;
+
+  // Multiply mesh coordinates (and baseline, width, etc.) by this
+  // in order to go from the unit scale to the original font metrics.
+  // Everything else is using the normalized unit scale.
+  double scale = 1.0;
+
+  double GetKerning(uint32_t c1, uint32_t c2) const;
 
  private:
   // The kerning table gives the distance to advance (i.e. including

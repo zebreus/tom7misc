@@ -19,6 +19,8 @@ enum class LevelItem {
 };
 
 struct LevelBody {
+  // Polygon mesh for the body.
+  // Coordinates are in Level space, which is y-down.
   Polygonization::Mesh mesh;
   uint32_t color = 0xFFFFFFFF;
   vec2f pos = {0.0f, 0.0f};
@@ -100,6 +102,17 @@ struct Levels {
   static std::unique_ptr<Level> LoadSVG(std::string_view filename,
                                         bool verbose = true);
 
+  struct Options {
+    bool include_text = false;
+    // Text is dynamic even if the paths are filled.
+    // If false, the text must be outlines (like with paths).
+    bool all_text_dynamic = true;
+  };
+
+  static std::unique_ptr<Level> LoadSVGExt(const Options &options,
+                                           std::string_view filename,
+                                           bool verbose = true);
+
   static void SaveSVG(const Level &level, std::string_view filename);
 
   // user_data will be the index of the body in the level.
@@ -144,7 +157,8 @@ struct Levels {
                                         const SVG::Node &node);
 
   // Mostly for internal use.
-  static void AddNodesToLevel(const SVG::Node &node,
+  static void AddNodesToLevel(const Options &options,
+                              const SVG::Node &node,
                               const SVG::GraphicsState &state,
                               Level *level,
                               bool verbose);

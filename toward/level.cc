@@ -15,14 +15,19 @@
 
 #include "ansi.h"
 #include "base/print.h"
+#include "font-cache.h"
 #include "geom/bezier.h"
 #include "geom/polygonization.h"
 #include "geom/polygons.h"
+#include "letters.h"
 #include "scene.h"
 #include "svg.h"
 #include "toward-util.h"
+#include "utf8.h"
 #include "util.h"
 #include "yocto-math.h"
+
+using vec2 = Polygonization::vec2;
 
 // 4x1 block, vertical.
 LevelBody Levels::One() {
@@ -371,7 +376,8 @@ std::optional<vec2f> Levels::IsSVGZero(const SVG::GraphicsState &outer_state,
 }
 
 
-void Levels::AddNodesToLevel(const SVG::Node &node,
+void Levels::AddNodesToLevel(const Options &options,
+                             const SVG::Node &node,
                              const SVG::GraphicsState &state,
                              Level *level,
                              bool verbose) {
@@ -408,8 +414,89 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
   if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
     SVG::GraphicsState next_state = SVG::UpdateState(state, g->style);
+
     for (const auto &child : g->children) {
-      AddNodesToLevel(child, next_state, level, verbose);
+      AddNodesToLevel(options, child, next_state, level, verbose);
+    }
+
+  } else if (const SVG::Text *text = std::get_if<SVG::Text>(&node.v)) {
+    if (!options.include_text || state.opacity < 0.2) return;
+
+    const Letters *letters = nullptr;
+    for (const std::string &ff : state.font_family) {
+      letters = FontCache::Get(ff);
+      if (letters) break;
+    }
+    if (!letters) {
+      letters = FontCache::Get("Helvetica-Bold");
+    }
+    if (!letters) return;
+
+    double font_size = state.font_size;
+
+    std::vector<uint32_t> codepoints = UTF8::Codepoints(text->content);
+
+    double total_width = 0.0;
+    if (state.text_anchor != SVG::TextAnchor::START) {
+      for (size_t i = 0; i < codepoints.size(); i++) {
+        uint32_t c1 = codepoints[i];
+        uint32_t c2 = (i + 1 < codepoints.size()) ? codepoints[i+1] : 0;
+        total_width += const_cast<Letters*>(letters)->GetKerning(c1, c2);
+      }
+    }
+
+    double cursor_x = 0.0;
+    if (state.text_anchor == SVG::TextAnchor::MIDDLE) {
+      cursor_x = -total_width / 2.0;
+    } else if (state.text_anchor == SVG::TextAnchor::END) {
+      cursor_x = -total_width;
+    }
+
+    uint32_t body_color =
+      (state.fill_color != SVG::COLOR_NONE) ?
+      state.fill_color :
+      (state.stroke_color != SVG::COLOR_NONE) ?
+      state.stroke_color :
+      0xFFFFFFFF;
+
+    for (size_t i = 0; i < codepoints.size(); i++) {
+      uint32_t c = codepoints[i];
+      uint32_t next_c = (i + 1 < codepoints.size()) ? codepoints[i + 1] : 0;
+      double advance = const_cast<Letters*>(letters)->GetKerning(c, next_c);
+
+      if (c != ' ') {
+        auto it = letters->letter.find(c);
+        if (it != letters->letter.end()) {
+          const Letter &letter = it->second;
+          LevelBody body;
+          body.dynamic = options.all_text_dynamic;
+          body.color = body_color;
+
+          vec2 center = {0.0, 0.0};
+          body.mesh.polygons = letter.mesh.polygons;
+          double render_scale = font_size * letters->scale;
+          for (const auto &v : letter.mesh.vertices) {
+            vec2 local = (v + vec2{cursor_x, -letter.baseline_y}) * render_scale;
+            vec2 t = {
+              state.transform[0] * local.x +
+                state.transform[2] * local.y + state.transform[4],
+              state.transform[1] * local.x +
+                state.transform[3] * local.y + state.transform[5]
+            };
+            body.mesh.vertices.push_back(t);
+            center += t;
+          }
+          if (!body.mesh.vertices.empty()) {
+            center /= (double)body.mesh.vertices.size();
+            for (auto &v : body.mesh.vertices) {
+              v -= center;
+            }
+            body.pos = {(float)center.x, (float)center.y};
+            level->bodies.push_back(std::move(body));
+          }
+        }
+      }
+      cursor_x += advance;
     }
 
   } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
@@ -541,6 +628,13 @@ void Levels::AddNodesToLevel(const SVG::Node &node,
 
 std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename,
                                        bool verbose) {
+  return LoadSVGExt(Options{}, filename, verbose);
+}
+
+std::unique_ptr<Level> Levels::LoadSVGExt(
+    const Options &options,
+    std::string_view filename,
+    bool verbose) {
   std::string contents = Util::ReadFile(filename);
   CHECK(!contents.empty()) << filename;
 
@@ -554,7 +648,7 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename,
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
-  AddNodesToLevel(doc.root, state, level.get(), verbose);
+  AddNodesToLevel(options, doc.root, state, level.get(), verbose);
 
   std::sort(level->inputs.begin(), level->inputs.end());
   std::sort(level->outputs.begin(), level->outputs.end());
