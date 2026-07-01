@@ -476,7 +476,8 @@ void Levels::AddNodesToLevel(const Options &options,
           body.mesh.polygons = letter.mesh.polygons;
           double render_scale = font_size * letters->scale;
           for (const auto &v : letter.mesh.vertices) {
-            vec2 local = (v + vec2{cursor_x, -letter.baseline_y}) * render_scale;
+            vec2 local = (v + vec2{cursor_x, -letter.baseline_y}) *
+              render_scale;
             vec2 t = {
               state.transform[0] * local.x +
                 state.transform[2] * local.y + state.transform[4],

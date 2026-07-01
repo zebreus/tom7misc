@@ -24,6 +24,7 @@ const Letters *FontCache::Get(std::string_view font_name) {
     {"papyrus-regular", "papyrus-icg.ttf"},
     {"papyrus", "papyrus-icg.ttf"},
     {"comicsansms", "comic-sans-ms.ttf"},
+    {"timesnewromanps-boldmt", "timesb.ttf"},
   };
 
   auto fit = fontfiles.find(Util::lcase(font_name));

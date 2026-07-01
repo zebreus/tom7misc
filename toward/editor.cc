@@ -29,6 +29,8 @@ void Simulate(std::string_view level_file) {
 
   Levels::Options opt;
   opt.include_text = true;
+  if (level_file.find("cell-") != std::string_view::npos)
+    opt.include_text = false;
 
   std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, level_file);
   Print("There are {} bodies in the level.\n", level->bodies.size());

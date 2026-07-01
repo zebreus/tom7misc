@@ -245,11 +245,17 @@ void Scene::AddObject(const Polygonization::Mesh &mesh,
   b2BodyId body_id = b2CreateBody(world_id, &body_def);
 
   b2ShapeDef shape_def = b2DefaultShapeDef();
-  shape_def.density = 1.0f;
+  // Since all the objects have the same density, it actually
+  // doesn't matter what constant we use!
+  // 6.25 is chosen so that the 1x4 block has a mass of 1kg.
+  // shape_def.density = 1.0f;
+  shape_def.density = 6.25f;
   shape_def.material.restitution = restitution;
   shape_def.material.friction = friction;
 
   Attach(body_id, shape_def, mesh, color);
+
+  // Print("Object has mass of {:.4f}kg\n", b2Body_GetMass(body_id));
 }
 
 void Scene::AddFixedObject(const Polygonization::Mesh &mesh,

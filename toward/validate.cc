@@ -114,13 +114,16 @@ static bool Validate(const ValidationInstance &inst) {
             MutexLock ml(&m);
             status.Progress(done, NUM_TRIALS,
                             "[" AYELLOW("{}") "]"
-                            " {}/{} correct = {:.2f}%",
+                            " {}/{} correct = {}{:.2f}%",
                             inst.Name(),
                             correct_count, done,
+                            correct_count == done ?
+                            ANSI_GREEN : ANSI_RED,
                             (correct_count * 100.0) / done);
           });
       }, NUM_EVAL_THREADS);
 
+  status.Remove();
   Print("Validation of {}: {} / {} correct = {:.2f}%\n",
         inst.Name(),
         correct_count, NUM_TRIALS,
@@ -159,7 +162,13 @@ static void ValidateLibrary() {
   // WIREA,
   // WIREB,
 
+  // Not used; problematic:
+  // Gate::NOT,
+
+  // TODO: Test flipped versions too.
   for (Gate g : {
+      Gate::NOT0,
+      Gate::NOT1,
       Gate::XCHG00,
       Gate::XCHG01,
       Gate::XCHG10,
@@ -177,7 +186,6 @@ static void ValidateLibrary() {
       Gate::SINK,
       Gate::NOT01,
       Gate::AND0110,
-      Gate::NOT,
     }) {
     for (bool f : {false, true}) {
       // XXX skip known problematic

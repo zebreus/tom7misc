@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
-  <!-- Generator: Adobe Illustrator 30.5.1, SVG Export Plug-In . SVG Version: 2.1.4 Build 3)  -->
+  <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
   <g opacity=".05">
     <rect width="1920" height="1080" fill="#fff"/>
   </g>
@@ -8,19 +8,23 @@
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
   <g isolation="isolate">
-    <text transform="translate(450 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+    <g isolation="isolate">
+      <text transform="translate(450 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+    </g>
   </g>
   <g isolation="isolate">
-    <text transform="translate(455 1035)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+    <g isolation="isolate">
+      <text transform="translate(455 1035)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+    </g>
   </g>
   <path d="M500,0h100v100h-100V0Z" fill="#aff"/>
   <path d="M500,960h100v120h-100v-120Z" fill="#faa"/>
   <path d="M140,555v80h20v-80h-20Z" fill="none" stroke="#f0f" stroke-width="2"/>
-  <polygon points="160 635 140 635 140 740 190 740 380 740 380 710 160 635" fill="#0057ee"/>
+  <polygon points="160 635 140 635 140 740 190 740 380 790.04 380 760.04 160 635" fill="#0057ee"/>
   <path d="M600,960h20V100h-20v860Z" fill="#c7dd00"/>
   <path d="M25.897,404.322L0,370v155l99.057,295L25.897,404.322Z" fill="#00b7cc"/>
   <polygon points="600 215 281.112 301.434 125.284 480.299 186.318 539.052 600 315 600 215" fill="#00b7cc"/>
   <path d="M0,410h20V100H0v310Z" fill="#c7dd00"/>
-  <path d="M480,120v-20H20s0,20,0,20h460Z" fill="#c7dd00"/>
-  <polygon points="380 710 500 960 380 960 380 710" fill="#00b7cc"/>
+  <path d="M480,120v-20H20v20h460Z" fill="#c7dd00"/>
+  <polygon points="380 780.056 500 960 380 960 380 780.056" fill="#00b7cc"/>
 </svg>
