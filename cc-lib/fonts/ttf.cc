@@ -82,6 +82,9 @@ std::unique_ptr<TTF> TTF::LoadFast(std::string_view filename) {
   ret->norm = 1.0f / height;
   ret->baseline = ret->native_ascent * ret->norm;
 
+  ret->em_scale =
+    stbtt_ScaleForMappingEmToPixels(&ret->font, 1.0f) * height;
+
   /*
   printf("native ascent %d descent %d linegap %d.\n"
          "norm = %.5f  baseline = %.5f   lineheight %.5f\n",

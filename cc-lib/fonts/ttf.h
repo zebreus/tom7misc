@@ -285,6 +285,12 @@ struct TTF {
 
   float Baseline() const { return baseline; }
 
+  // Multiply normalized coordinates (and widths, baseline, etc.) by
+  // this scale factor to convert from the normalized representation
+  // (unit height) back to the standard SVG "font-size" unit, which
+  // corresponds to the EM square.
+  float Scale() const { return em_scale; }
+
  private:
   // Use factory method.
   TTF();
@@ -297,6 +303,8 @@ struct TTF {
   float norm = 0.0;
   float baseline = 0.0f;
   // By definition: ascent = 0.0, descent = 0.0
+
+  float em_scale = 1.0f;
 
   struct NativePath {
     PathType type = PathType::LINE;

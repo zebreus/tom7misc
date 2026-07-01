@@ -10,9 +10,10 @@
 #include <cstdint>
 #include <type_traits>
 #include <vector>
+#include <span>
 
 template<class A, class F>
-static auto VectorMap(const std::vector<A> &vec, const F &f) ->
+static auto VectorMap(std::span<const A> vec, const F &f) ->
   std::vector<decltype(f(vec[0]))> {
   using B = decltype(f(vec[0]));
   std::vector<B> ret;
@@ -25,7 +26,7 @@ static auto VectorMap(const std::vector<A> &vec, const F &f) ->
 
 // Apply the function to each element in the vector.
 template<class A, class F>
-static void VectorApp(const std::vector<A> &vec, const F &f) {
+static void VectorApp(std::span<const A> vec, const F &f) {
   for (const auto &elt : vec) f(elt);
 }
 

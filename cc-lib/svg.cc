@@ -2123,6 +2123,13 @@ SVG::GraphicsState SVG::UpdateState(const GraphicsState &state,
   if (style.opacity.has_value())
     next.opacity *= style.opacity.value();
 
+  if (style.font_family.has_value())
+    next.font_family = style.font_family.value();
+  if (style.font_size.has_value())
+    next.font_size = style.font_size.value();
+  if (style.text_anchor.has_value())
+    next.text_anchor = style.text_anchor.value();
+
   if (style.clip_path.has_value()) {
     next.clip_stack.push_back({next.transform, style.clip_path.value()});
   }

@@ -186,7 +186,6 @@ struct SVG {
                                            const SVG::PathCommand &cmd);
 
   // Concrete graphics state, which results from applying style.
-  // TODO: Additional style in here (text, etc.)
   struct GraphicsState {
     Transform transform =
       {1.0, 0.0, 0.0, 1.0, 0.0, 0.0};
@@ -211,6 +210,10 @@ struct SVG {
     // ids from doc.defs, with the transform active at the time it is
     // used. Usually at most one of these.
     std::vector<std::pair<Transform, std::string>> clip_stack;
+
+    std::vector<std::string> font_family;
+    double font_size = 16.0;
+    TextAnchor text_anchor = TextAnchor::START;
   };
 
   // True if nothing is set. If explicitly set to a default value,
