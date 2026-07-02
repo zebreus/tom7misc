@@ -67,14 +67,12 @@ void LayoutCanvas::UpdateSpring(Spring *spring,
 
   spring->min_dist = std::max(spring->min_dist, min_dist);
 
-  // XXX would probably be better if these were weighted averages.
-  // But today we only ever have 1 or 2.
   if (fresh) {
     spring->compress = compress;
     spring->expand = expand;
   } else {
-    spring->compress = (spring->compress + compress) * 0.5f;
-    spring->expand = (spring->expand + expand) * 0.5f;
+    spring->compress = std::max(spring->compress, compress);
+    spring->expand = std::max(spring->expand, expand);
   }
 }
 
@@ -336,10 +334,10 @@ LayoutCanvas::ConvertToLayer() {
 
 
 std::vector<double> LayoutCanvas::SolveSprings() {
-  constexpr float ANCHOR_WEIGHT = 1.0f;
+  constexpr float ANCHOR_WEIGHT = 0.01f;
 
   // Perhaps depend on the number of chutes?
-  constexpr int MAX_ITERS = 50;
+  constexpr int MAX_ITERS = 500;
 
   // Desired left edge, initialized to the current location.
   std::vector<double> xpos(chutes.size());
