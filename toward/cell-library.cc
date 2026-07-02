@@ -99,6 +99,9 @@ struct CellLibraryImpl {
 
   std::unordered_map<Cell, InternalInfo, HashCell, EqCell> info;
 
+  int min_clearance_close = 0;
+  int min_clearance_far = 0;
+
   // Load the geometry from the SVG file. This is the
   // unflipped version. v is usually zero unless the
   // gate is parameterized (spacer and wires).
@@ -246,7 +249,60 @@ struct CellLibraryImpl {
 
     // Spacer is an empty level and can exist at any
     // width; we create it dynamically.
+
+    ComputeMinClearance();
   }
+
+  // Compute the minimum clearance to guarantee we can attach a wire;
+  // initializes the close and far min_clearance values. (This could
+  // probably just look at the small-valued wires, but we might as
+  // well just be comprehensive.)
+  void ComputeMinClearance() {
+    int max_close = 0;
+    int max_far = 0;
+
+    // XXX Wire geometry doesn't really differ by type. We should
+    // probably check this though?
+    for (CType type : {CType::MIXED, CType::ZERO, CType::ONE}) {
+      int best_close = 1e9;
+      int best_far = 1e9;
+      for (int k : {0, 1, 2, 4, 8, 16, 32, 64}) {
+        for (int w = 0; w < 2; w++) {
+          for (bool flip : {false, true}) {
+            Cell cell = (w == 0) ? CellLibrary::WireA(k, type)
+                                 : CellLibrary::WireB(k, type);
+            cell.flip = flip;
+            CellLibrary::Info info = GetInfo(cell);
+            CHECK(info.outputs.size() == 1);
+
+            int out_x = info.outputs[0].xblock;
+            int left_clearance = out_x;
+            int right_clearance = info.block_width - out_x - Levels::OUT_WIDTH;
+
+            int close = std::min(left_clearance, right_clearance);
+            int far = std::max(left_clearance, right_clearance);
+
+            // Find the wire requiring the smallest close clearance.
+            // If tied, pick the one with the smallest far clearance.
+            if (close < best_close || (close == best_close && far < best_far)) {
+              best_close = close;
+              best_far = far;
+            }
+          }
+        }
+      }
+      if (best_close > max_close) {
+        max_close = best_close;
+      }
+      if (best_far > max_far) {
+        max_far = best_far;
+      }
+    }
+
+    min_clearance_close = max_close;
+    min_clearance_far = max_far;
+  }
+
 
   CellLibrary::Info GetInfo(const Cell &cell) const {
     if (cell.gate == Gate::SPACER) {
@@ -476,3 +532,12 @@ std::string CellLibrary::InfoString(const Info &info) {
 
   return s;
 }
+
+int CellLibrary::MinClearanceClose() const {
+  return impl->min_clearance_close;
+}
+
+int CellLibrary::MinClearanceFar() const {
+  return impl->min_clearance_far;
+}
+

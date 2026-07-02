@@ -6,7 +6,6 @@
 #include <cstdlib>
 #include <deque>
 #include <format>
-#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -25,6 +24,7 @@
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
+#include "layout-canvas.h"
 #include "level.h"
 #include "prop.h"
 #include "render-circuit.h"
@@ -67,47 +67,19 @@
 //   loads the underlying Level geometry from SVGs. The final Circuit is
 //   ultimately composed into a large Level for the physics engine to
 //   simulate the marbles (1s and 0s) rolling through it.
+//
+// layout-canvas.h:
+//   Data structure and utilities for managing the top of the circuit
+//   and the in-progress next layer, used during this layout algorithm.
 // ----------------------------------------------------------------------
 
-using LC = LayoutEngine::LC;
-using PC = LayoutEngine::PC;
-using Chute = LayoutEngine::Chute;
-using DesireType = LayoutEngine::DesireType;
-using enum LayoutEngine::DesireType;
+using LC = LayoutCanvas::LC;
+using PC = LayoutCanvas::PC;
+using Chute = LayoutCanvas::Chute;
+using DesireType = LayoutCanvas::DesireType;
+using enum LayoutCanvas::DesireType;
 
 static constexpr bool WRITE_IMAGES = false;
-
-std::string_view LayoutEngine::DesireTypeString(DesireType dt) {
-  switch (dt) {
-  case UNSPECIFIED: return "UNSPECIFIED";
-  case DECOMPOSE: return "DECOMPOSE";
-  case UNCOMBINE: return "UNCOMBINE";
-  case UNDUP: return "UNDUP";
-  case UNSEPARATE: return "UNSEPARATE";
-  case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
-  case EXCHANGE_RIGHT: return "EXCHANGE_RIGHT";
-  case FLOW: return "FLOW";
-  case QUIESCE: return "QUIESCE";
-  default: return "??BAD DESIRETYPE??";
-  }
-}
-
-std::string LayoutEngine::ChuteString(const Chute &chute) {
-  std::string s;
-  std::string ds, dv;
-  if (chute.desire != UNSPECIFIED)
-    ds = std::format(", desire={}", DesireTypeString(chute.desire));
-  if (chute.desire_val != 0)
-    dv = std::format(", val={}", chute.desire_val);
-  AppendFormat(&s, "Chute(pos={}, prop={}, type={}{}{})",
-               chute.pos,
-               PropString(chute.prop, 6),
-               TypeString(chute.type),
-               ds, dv);
-  return s;
-}
-
-
 
 // The hard part is the physical routing. Some gates like AND0110
 // need separated inputs in a specific form. Since we are working
@@ -157,17 +129,6 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   void SetVerbose(int v) override { verbose = v; }
 
-  // Wires are asymmetric (even "vertical" wires have internal slopes
-  // to prevent the objects from getting too fast). This is the very
-  // minimum "close side" and "far side" clearance that we need in
-  // order to guarantee that we can place some wire on an input.
-  // Clearance does not include the width of the input itself. We use
-  // this to check that we don't completely block a nearby input when
-  // we place a cell. (We want to at least be able to propagate the
-  // input upward with a wire.)
-  int min_clearance_close = 0;
-  int min_clearance_far = 0;
-
   // The closest we ever need outputs to be for a single cell (blocks
   // between right edge and left edge). There's no reason for chutes
   // to be closer than this, so we push them apart to avoid getting
@@ -175,9 +136,6 @@ struct LayoutEngineImpl : public LayoutEngine {
   int min_output_distance = 0;
   // The largest cell width (not including wires).
   int max_cell_width = 0;
-
-  int MinClearanceClose() const override { return min_clearance_close; }
-  int MinClearanceFar() const override { return min_clearance_far; }
 
   template<typename... Args>
   inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
@@ -270,57 +228,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
-
-  // Compute the minimum clearance to guarantee we can attach a wire;
-  // initializes the close and far min_clearance values. (This could
-  // probably just look at the small-valued wires, but we might as
-  // well just be comprehensive.)
-  void ComputeMinClearance() {
-    int max_close = 0;
-    int max_far = 0;
-
-    // XXX Wire geometry doesn't really differ by type. We should
-    // probably check this though?
-    for (CType type : {CType::MIXED, CType::ZERO, CType::ONE}) {
-      int best_close = 1e9;
-      int best_far = 1e9;
-      for (int k : {0, 1, 2, 4, 8, 16, 32, 64}) {
-        for (int w = 0; w < 2; w++) {
-          for (bool flip : {false, true}) {
-            Cell cell = (w == 0) ? CellLibrary::WireA(k, type)
-                                 : CellLibrary::WireB(k, type);
-            cell.flip = flip;
-            CellLibrary::Info info = library.GetInfo(cell);
-            CHECK(info.outputs.size() == 1);
-
-            int out_x = info.outputs[0].xblock;
-            int left_clearance = out_x;
-            int right_clearance = info.block_width - out_x - Levels::OUT_WIDTH;
-
-            int close = std::min(left_clearance, right_clearance);
-            int far = std::max(left_clearance, right_clearance);
-
-            // Find the wire requiring the smallest close clearance.
-            // If tied, pick the one with the smallest far clearance.
-            if (close < best_close || (close == best_close && far < best_far)) {
-              best_close = close;
-              best_far = far;
-            }
-          }
-        }
-      }
-      if (best_close > max_close) {
-        max_close = best_close;
-      }
-      if (best_far > max_far) {
-        max_far = best_far;
-      }
-    }
-
-    min_clearance_close = max_close;
-    min_clearance_far = max_far;
-  }
-
   int ItsOutputPos(const Cell &cell) const {
     const CellLibrary::Info info = library.GetInfo(cell);
     CHECK(info.outputs.size() == 1);
@@ -337,7 +244,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       std::string_view anch = (anchor.has_value() && anchor.value() == i) ?
         AGREEN(" (ANCHOR)") : "";
       AppendFormat(&s, " [{}] {}{}\n", i,
-                   LayoutEngine::ChuteString(chutes[i]), anch);
+                   LayoutCanvas::ChuteString(chutes[i]), anch);
     }
     AppendFormat(&s, "--- Next Cells ---\n");
     for (int i = 0; i < (int)next_cells.size(); i++) {
@@ -345,212 +252,6 @@ struct LayoutEngineImpl : public LayoutEngine {
                    CellString(next_cells[i].cell));
     }
     return s;
-  }
-
-  // Given the input chutes for the complete top layer,
-  // and the in-progress next layer (next), is it possible
-  // to place the cell in the next layer with its left edge
-  // at xpos? Needs to check:
-  //  - It does not overlap anything already in that layer
-  //  - It does not block off any chutes on the top layer
-  //    (this does not include the chutes that match up
-  //    to the cell's output, though!). Being blocked off
-  //    is a non-trivial property: We can get close
-  //    to an input as long as we have a lot of space on
-  //    the other side, and that space can be populated
-  //    without blocking further cells!
-  bool CanPlaceCell(
-      // The chute idx requesting this (just used for debug output).
-      int chute_context,
-      std::span<const Chute> top,
-      const std::vector<bool> &assigned,
-      std::span<const PC> next,
-      const Cell &cell,
-      int xpos) const override {
-    CellLibrary::Info info = library.GetInfo(cell);
-    int cell_left = xpos;
-    int cell_right = xpos + info.block_width;
-
-    // Overlapping something already placed in the next layer?
-    for (const PC &pc : next) {
-      int pc_left = pc.xpos;
-      int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
-      if (cell_left < pc_right && cell_right > pc_left) {
-        if (verbose > 1) {
-          Print("[{}] Can't place {} at {}: Would overlap cell at x={}\n",
-                chute_context,
-                CellString(cell), xpos, pc.xpos);
-        }
-        return false;
-      }
-    }
-
-    // Check if the inputs of the hypothetical cell are too close to the
-    // inputs of already placed cells. If so, they would become stuck chutes
-    // on the next layer.
-    int min_input_dist = Levels::OUT_WIDTH + 2 * min_clearance_close;
-    for (const CellLibrary::IO &in : info.inputs) {
-      int in_pos = xpos + in.xblock;
-      for (const PC &pc : next) {
-        CellLibrary::Info pc_info = library.GetInfo(pc.cell);
-        for (const CellLibrary::IO &pc_in : pc_info.inputs) {
-          int pc_in_pos = pc.xpos + pc_in.xblock;
-          if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
-            if (verbose > 1) {
-              Print("[{}] Can't place {} at {}: "
-                    "Input at {} is too close to already placed input at {}.\n",
-                    chute_context,
-                    CellString(cell), xpos, in_pos, pc_in_pos);
-            }
-            return false;
-          }
-        }
-      }
-    }
-
-    // Did we consume this chute with the hypothetical cell?
-    // If so we don't need to check that it's blocked below.
-    auto MatchedHere = [&](const Chute &chute) {
-        for (const CellLibrary::IO &out : info.outputs) {
-          if (xpos + out.xblock == chute.pos) {
-            return true;
-          }
-        }
-        return false;
-      };
-
-    // Memo tables for below. Is it known that we can place on this
-    // smallest wire that's biased to the left?
-    std::vector<std::optional<bool>> ok_left(top.size(), std::nullopt);
-    // And symmetrically for the right.
-    std::vector<std::optional<bool>> ok_right(top.size(), std::nullopt);
-
-    // Check whether the chute still has space for a left-biased or
-    // right-biased wire (assuming the hypothetical cell placed).
-    std::function<bool(int, bool)> ChuteStillHasSpace =
-      [&](int cidx, bool look_left) -> bool {
-          std::optional<bool> &memo =
-            look_left ? ok_left[cidx] : ok_right[cidx];
-          if (memo.has_value()) return memo.value();
-
-          // Break cycles by assuming true while evaluating. This is sound
-          // because a cycle indicates self-consistent constraints, bounded
-          // eventually by the fixed obstacles checked below.
-          memo = true;
-
-          int req_left = look_left ? min_clearance_close : min_clearance_far;
-          int req_right = look_left ? min_clearance_far : min_clearance_close;
-          const Chute &chute = top[cidx];
-
-          int c_left = chute.pos - req_left;
-          int c_right = chute.pos + Levels::OUT_WIDTH + req_right;
-
-          // Check the hypothetical cell.
-          if (cell_left < c_right && cell_right > c_left) {
-            memo = {false};
-            return false;
-          }
-
-          // Check already placed cells.
-          for (const PC &pc : next) {
-            int pc_left = pc.xpos;
-            int pc_right = pc.xpos + library.GetInfo(pc.cell).block_width;
-            if (pc_left < c_right && pc_right > c_left) {
-              memo = {false};
-              return false;
-            }
-          }
-
-          {
-            // Check left neighbor.
-            int lidx = cidx - 1;
-            if (lidx >= 0 && !assigned[lidx] && !MatchedHere(top[lidx])) {
-              const Chute &p_chute = top[lidx];
-              int dist = chute.pos - (p_chute.pos + Levels::OUT_WIDTH);
-              bool left_safe = (dist >= req_left + min_clearance_far) ||
-                ((dist >= req_left + min_clearance_close) &&
-                 ChuteStillHasSpace(lidx, false));
-              if (!left_safe) {
-                memo = {false};
-                return false;
-              }
-            }
-          }
-
-          {
-            // Check right neighbor.
-            int ridx = cidx + 1;
-            if (ridx < (int)top.size() &&
-                !assigned[ridx] &&
-                !MatchedHere(top[ridx])) {
-              const Chute &n_chute = top[ridx];
-              int dist = n_chute.pos - (chute.pos + Levels::OUT_WIDTH);
-              bool right_safe = (dist >= req_right + min_clearance_far) ||
-                ((dist >= req_right + min_clearance_close) &&
-                 ChuteStillHasSpace(ridx, true));
-              if (!right_safe) {
-                memo = {false};
-                return false;
-              }
-            }
-          }
-
-          memo = {true};
-          return true;
-        };
-
-    // Are we blocking a chute from the top layer?
-    for (size_t i = 0; i < top.size(); i++) {
-      if (!assigned[i]) {
-        const Chute &chute = top[i];
-        if (MatchedHere(chute))
-          continue;
-
-        if (!ChuteStillHasSpace(i, true) &&
-            !ChuteStillHasSpace(i, false)) {
-          if (verbose > 1) {
-            Print("[{}] Can't place {} at {}: "
-                  "Cell {} would be blocked.\n",
-                  chute_context,
-                  CellString(cell), xpos, i);
-          }
-          return false;
-        }
-
-      }
-    }
-
-    return true;
-  }
-
-
-  // Flatten the inputs. Desires are not yet specified.
-  std::vector<Chute> FlattenInputs(std::span<const LC> top) {
-    std::vector<Chute> chutes;
-    // Current position (left edge of the next cell in the top layer,
-    // in blocks).
-    int pos = 0;
-    for (const LC &lc : top) {
-      CellLibrary::Info info = library.GetInfo(lc.cell);
-      CHECK(info.inputs.size() == lc.inprops.size());
-
-      for (int i = 0; i < lc.inprops.size(); i++) {
-        const Prop &prop = lc.inprops[i];
-        const CellLibrary::IO &io = info.inputs[i];
-
-        int input_pos = pos + io.xblock;
-        chutes.emplace_back(Chute{
-            .pos = input_pos,
-            .prop = prop,
-            .type = io.type,
-            .desire = DesireType::UNSPECIFIED,
-            .desire_val = 0,
-          });
-      }
-      pos += info.block_width;
-    }
-
-    return chutes;
   }
 
   // Generate the desired action for each chute by updating its
@@ -843,8 +544,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   // If there are any that are too close, we prioritize a wire-only
   // layer that spaces them out more.
   std::optional<std::pair<std::vector<LC>, int>>
-  SpaceLayerIfNeeded(std::span<const Chute> chutes,
+  SpaceLayerIfNeeded(LayoutCanvas &canvas,
                      std::span<const Island> islands) {
+    std::span<const Chute> chutes = canvas.chutes;
     CHECK(!chutes.empty()) << "Precondition";
 
     // Do we need to do this phase?
@@ -871,7 +573,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
 
         Print(" [{}] {}{}\n", i,
-              LayoutEngine::ChuteString(chutes[i]), warn);
+              LayoutCanvas::ChuteString(chutes[i]), warn);
       }
 
       for (size_t i = 0; i < islands.size(); i++) {
@@ -879,11 +581,6 @@ struct LayoutEngineImpl : public LayoutEngine {
               i, islands[i].start, islands[i].size);
       }
     }
-
-    // The output will one wire for every chute.
-    std::vector<PC> out;
-    out.reserve(chutes.size());
-    std::vector<bool> assigned(chutes.size(), false);
 
     for (const Island &island : islands) {
       // Find the leftmost violation (gap that's too small) and
@@ -925,12 +622,12 @@ struct LayoutEngineImpl : public LayoutEngine {
           Gate gb = chute.type == CType::MIXED ? WIREB :
             chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
-          auto TryPlace = [&](Gate g) -> bool {
-              Cell cell(g, 0, false);
+          auto TryPlace = [&](Gate g, bool flip) -> bool {
+              Cell cell(g, 0, flip);
               int xpos = chute.pos - ItsOutputPos(cell);
-              if (CanPlaceCell(cidx, chutes, assigned, out, cell, xpos)) {
-                assigned[cidx] = true;
-                out.push_back(PC{
+              if (canvas.CanPlaceCell(cidx, cell, xpos)) {
+                canvas.assigned[cidx] = true;
+                canvas.next.push_back(PC{
                     .xpos = xpos,
                     .cell = cell,
                     .inprops = {chute.prop},
@@ -940,8 +637,9 @@ struct LayoutEngineImpl : public LayoutEngine {
               return false;
             };
 
-          CHECK(TryPlace(ga) || TryPlace(gb)) << "We already verified that "
-            "there is enough space!";
+          CHECK(TryPlace(ga, false) || TryPlace(gb, false) ||
+                TryPlace(ga, true) || TryPlace(gb, true)) <<
+            "We already verified that there is enough space!";
         }
         continue;
       }
@@ -995,7 +693,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         int space = (slant == LEFT) ? left_space :
                     (slant == RIGHT) ? right_space : 0;
-        bool flip = slant == RIGHT;
+        bool default_flip = slant == RIGHT;
 
         for (int exp = CellLibrary::MAX_WIRE_EXP; exp >= -1; exp--) {
           int amount = exp == -1 ? 0 : (1 << exp);
@@ -1003,14 +701,14 @@ struct LayoutEngineImpl : public LayoutEngine {
           // Don't move more than we need.
           if (amount > space) continue;
 
-          auto TryPlace = [&](Gate g) -> bool {
+          auto TryPlace = [&](Gate g, bool flip) -> bool {
               Cell cell(g, amount, flip);
               int xout = ItsOutputPos(cell);
               int cell_pos = chute.pos - xout;
 
-              if (CanPlaceCell(cidx, chutes, assigned, out, cell, cell_pos)) {
-                assigned[cidx] = true;
-                out.push_back(PC{
+              if (canvas.CanPlaceCell(cidx, cell, cell_pos)) {
+                canvas.assigned[cidx] = true;
+                canvas.next.push_back(PC{
                     .xpos = cell_pos,
                     .cell = cell,
                     .inprops = {chute.prop},
@@ -1021,7 +719,9 @@ struct LayoutEngineImpl : public LayoutEngine {
               return false;
             };
 
-          if (TryPlace(ga) || TryPlace(gb)) {
+          if (TryPlace(ga, default_flip) || TryPlace(gb, default_flip) ||
+              (amount == 0 && (TryPlace(ga, !default_flip) ||
+                               TryPlace(gb, !default_flip)))) {
             // If this is the last gate to the left of the gap, and
             // there is just one violation, then we are reducing the
             // shortfall by the amount we slanted left. Otherwise
@@ -1035,16 +735,16 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
 
         CHECK(ok) << "Could not space out chute " << cidx << ":\n"
-                  << DebugLayerState(std::nullopt, chutes, out);
+                  << DebugLayerState(std::nullopt, canvas.chutes, canvas.next);
       }
     }
 
     if (verbose > 1) {
       Print(AWHITE("Spaced layer result") ":\n{}\n",
-            DebugLayerState(std::nullopt, chutes, out));
+            DebugLayerState(std::nullopt, canvas.chutes, canvas.next));
     }
 
-    return {ConvertPC(std::move(out))};
+    return {canvas.ConvertToLayer()};
   }
 
   // Given a top layer (annotated with the propositions it takes as
@@ -1059,7 +759,13 @@ struct LayoutEngineImpl : public LayoutEngine {
     // First we flatten all of the inputs we need to satisfy on the
     // top layer, with their positions. These are just fixed and
     // independent since we aren't going to try to move them around.
-    std::vector<Chute> chutes = FlattenInputs(top);
+    //
+    // The canvas represents the
+    LayoutCanvas canvas(library);
+    canvas.Reset(canvas.FlattenInputs(top));
+    canvas.SetVerbose(verbose);
+    std::vector<Chute> &chutes = canvas.chutes;
+
     CHECK(!chutes.empty());
 
     if (verbose > 1) {
@@ -1070,7 +776,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<Island> islands = GetIslands(chutes);
 
     if (std::optional<std::pair<std::vector<LC>, int>> ores =
-        SpaceLayerIfNeeded(chutes, islands)) {
+        SpaceLayerIfNeeded(canvas, islands)) {
       num_spaced_layers++;
       if (verbose > 1) {
         Print(AYELLOW("Spaced layer")
@@ -1086,7 +792,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       Print(AWHITE("Chute desires") " before placement:\n");
       for (int i = 0; i < (int)chutes.size(); i++) {
         Print(" [{}] {}\n", i,
-              LayoutEngine::ChuteString(chutes[i]));
+              LayoutCanvas::ChuteString(chutes[i]));
       }
       Print("\n");
     }
@@ -1094,18 +800,17 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // Now greedily place, without blocking anything off.
 
-    std::vector<PC> next_cells;
-    std::vector<bool> assigned(chutes.size(), false);
+    std::vector<PC> &next_cells = canvas.next;
+    std::vector<bool> &assigned = canvas.assigned;
 
     // Sanity check: Ensure the input chutes are not already stuck before
     // we even place anything.
     {
       const int clear_pos = chutes.back().pos +
-        Levels::IN_WIDTH + 2 * min_clearance_far + 1;
-      if (!CanPlaceCell(
+        Levels::IN_WIDTH + 2 * library.MinClearanceFar() + 1;
+      if (!canvas.CanPlaceCell(
               // Not a real chute
               -1,
-              chutes, assigned, next_cells,
               CellLibrary::Spacer(1),
               clear_pos)) {
         LOG(FATAL) << "Input chutes are already in a state where "
@@ -1148,8 +853,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           int xout = ItsOutputPos(cell);
 
           int cell_pos = chute.pos - xout;
-          if (CanPlaceCell(chute_idx, chutes, assigned, next_cells,
-                           cell, cell_pos)) {
+          if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
             assigned[chute_idx] = true;
             std::vector<Prop> ip(inprops.begin(), inprops.end());
             if (flip) {
@@ -1218,8 +922,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
             // Correct relative position, but will the cell fit?
-            if (CanPlaceCell(chute_idx, chutes, assigned, next_cells,
-                             cell, cell_pos)) {
+            if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
               assigned[chute_idx] = true;
               assigned[chute_idx + 1] = true;
 
@@ -1509,12 +1212,12 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         CHECK(chute.desire == DesireType::FLOW ||
               chute.desire == DesireType::QUIESCE) << "Bug: " <<
-          LayoutEngine::DesireTypeString(chute.desire) << " should be "
+          LayoutCanvas::DesireTypeString(chute.desire) << " should be "
           "handled above, perhaps by turning it into FLOW!";
 
         if (verbose > 1) {
           Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-                c, LayoutEngine::DesireTypeString(chute.desire),
+                c, LayoutCanvas::DesireTypeString(chute.desire),
                 chute.desire_val);
         }
 
@@ -1636,40 +1339,8 @@ struct LayoutEngineImpl : public LayoutEngine {
             DebugLayerState(anchor, chutes, next_cells));
     }
 
-    return ConvertPC(std::move(next_cells));
+    return canvas.ConvertToLayer();
   }
-
-  // Convert a collection of placed cells into the layer.
-  std::pair<std::vector<LC>, int>
-  ConvertPC(std::vector<PC> next_cells) {
-    // Now convert the placed cells into a flattened vector
-    // of LC and a starting offset (might be negative).
-    std::sort(next_cells.begin(), next_cells.end(),
-              [](const PC &a, const PC &b) {
-                return a.xpos < b.xpos;
-              });
-
-    std::vector<LC> next_layer;
-    int start_pos = next_cells.empty() ? 0 : next_cells[0].xpos;
-    int current_x = start_pos;
-
-    for (PC &pc : next_cells) {
-      if (pc.xpos > current_x) {
-        next_layer.push_back(LC{
-            .inprops = {},
-            .cell = CellLibrary::Spacer(pc.xpos - current_x),
-        });
-      }
-      current_x = pc.xpos + library.GetInfo(pc.cell).block_width;
-      next_layer.push_back(LC{
-          .inprops = std::move(pc.inprops),
-          .cell = pc.cell,
-      });
-    }
-
-    return {std::move(next_layer), start_pos};
-  }
-
 
   void DebugRender(const std::deque<std::vector<LC>> &layers) {
     std::string filename = std::format("debug-render-{}.png", layers.size());
@@ -1951,10 +1622,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   Layout DoLayout(std::span<const Prop> props_in) override {
     Timer timer;
     if (verbose > 0) {
-      Print("Min clearance: close={}, far={}\n"
-            "Min output distance: {}\n"
+      Print("Min output distance: {}\n"
             "Max cell width: {}\n",
-            min_clearance_close, min_clearance_far,
             min_output_distance,
             max_cell_width);
     }
@@ -1976,7 +1645,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     world(world), library(library) {
     status.reset(new StatusBar(3));
 
-    ComputeMinClearance();
     ComputeMinOutputDistance();
     ComputeMaxCellWidth();
   }
@@ -1991,5 +1659,4 @@ std::unique_ptr<LayoutEngine> LayoutEngine::Create(
 
 LayoutEngine::LayoutEngine() {}
 LayoutEngine::~LayoutEngine() {}
-
 

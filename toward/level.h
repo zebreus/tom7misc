@@ -28,7 +28,11 @@ struct LevelBody {
   // linear and angular velocity. Unused for dynamic bodies.
   vec2f vel = {0.0f, 0.0f};
   float avel = 0.0f;
+  // This would be similar to a dead-blow hammer. Plain PTFE
+  // would have restitution more like 0.3 (hard to get a good
+  // figure).
   float restitution = 0.01f;
+  // Realistic for PTFE.
   float friction = 0.04f;
   // If true, then it is moved by physics. If false,
   // bodies can collide with it, but this body

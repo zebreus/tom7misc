@@ -47,6 +47,17 @@ struct CellLibrary {
 
   std::string DebugString(const Circuit &circuit) const;
 
+  // Wires are asymmetric (even "vertical" wires have internal slopes
+  // to prevent the objects from getting too fast). This is the very
+  // minimum "close side" and "far side" clearance that we need in
+  // order to guarantee that we can place some wire on an input.
+  // Clearance does not include the width of the input itself. We use
+  // this to check that we don't completely block a nearby input when
+  // we place a cell. (We want to at least be able to propagate the
+  // input upward with a wire.)
+  int MinClearanceClose() const;
+  int MinClearanceFar() const;
+
   // Access to parameterized cells.
   // These will abort on invalid arguments.
 

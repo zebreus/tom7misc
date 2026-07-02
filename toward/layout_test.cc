@@ -1,5 +1,4 @@
 
-#include "circuit.h"
 #include "layout.h"
 
 #include <deque>
@@ -12,7 +11,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "cell-library.h"
-#include "level.h"
+#include "circuit.h"
 #include "prop.h"
 #include "render-circuit.h"
 
@@ -128,188 +127,6 @@ static void MultiOutput(const CellLibrary &library) {
   Verify(layout, output);
 }
 
-static void TestCanPlaceCell(const CellLibrary &library) {
-  StartTest("CanPlaceCell");
-  static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
-
-  World world;
-  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-
-  Cell const0(CONST0);
-  int const0_w = library.GetInfo(const0).block_width;
-
-  Cell and_cell(AND0110);
-  CellLibrary::Info and_info = library.GetInfo(and_cell);
-  int and_out_x = and_info.outputs[0].xblock;
-
-  // Basic overlap with already placed cells.
-  {
-    // Empty chutes.
-    std::vector<LayoutEngine::Chute> top;
-    std::vector<bool> assigned;
-    // But a placed cell.
-    std::vector<LayoutEngine::PC> next = {
-      {.xpos = 100, .cell = const0},
-    };
-
-    // Left overlap
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next,
-                            const0, 100 - const0_w + 1));
-    // Exact left
-    CHECK(le->CanPlaceCell(-1, top, assigned, next,
-                           const0, 100 - const0_w));
-    // Right overlap
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next,
-                            const0, 100 + const0_w - 1));
-    // Exact right
-    CHECK(le->CanPlaceCell(-1, top, assigned, next,
-                           const0, 100 + const0_w));
-  }
-
-  // Exact match of a cell's output to a single unassigned chute.
-  {
-    std::vector<LayoutEngine::Chute> top;
-    top.push_back({.pos = 200,
-        .prop = True() & True(),
-        .type = CType::MIXED,
-      });
-    std::vector<bool> assigned = {false};
-    std::vector<LayoutEngine::PC> next;
-
-    int exact_x = 200 - and_out_x;
-    CHECK(le->CanPlaceCell(-1, top, assigned, next,
-                           and_cell, exact_x));
-
-    // If slightly misaligned, it will block the chute.
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next, and_cell, exact_x + 1));
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next, and_cell, exact_x - 1));
-  }
-
-  // Trapping an unassigned chute with a wide spacer.
-  {
-    std::vector<LayoutEngine::Chute> top;
-    top.push_back({.pos = 300, .prop = True(), .type = CType::MIXED});
-    std::vector<bool> assigned = {false};
-    std::vector<LayoutEngine::PC> next;
-
-    Cell wide_spacer = CellLibrary::Spacer(100);
-    // Centering the spacer around the chute at 300 (xpos=250 to 350).
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 250));
-
-    // Placing the spacer far away should be fine.
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 500));
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, -500));
-  }
-
-  // Assigned chutes do not need clearance and can be blocked.
-  {
-    std::vector<LayoutEngine::Chute> top;
-    top.push_back({.pos = 400, .prop = True(), .type = CType::MIXED});
-    std::vector<bool> assigned = {true};
-    std::vector<LayoutEngine::PC> next;
-
-    // Normally, running right up against a chute would fail because
-    // it would prohibit putting something there. But if it is already
-    // assigned, we have no obligation to stay clear of it.
-    Cell wide_spacer = CellLibrary::Spacer(100);
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer, 300));
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, wide_spacer,
-                           400 + INPUT_WIDTH));
-  }
-
-  // Chain of dependent chutes.
-  {
-    const int mcc = le->MinClearanceClose();
-    const int mcf = le->MinClearanceFar();
-    // Need something in between the two bounds: Too close for the
-    // large side, but far enough for the small side. This means that
-    // the wires can only fit when leaning to the right.
-    const int mid = (mcc + mcf) / 2;
-    CHECK(mcc < mid && mid < mcf) << mcc << " " << mid << " " << mcf;
-
-    // Enough room for a series of wires.
-    int stride = mcc + mcf + INPUT_WIDTH + 1;
-
-    Print("{} < {} < {}. Stride: {}\n", mcc, mid, mcf, stride);
-
-    std::vector<LayoutEngine::Chute> top = {
-      {.pos = 500, .prop = True(), .type = CType::MIXED},
-      {.pos = 500 + stride, .prop = True(), .type = CType::MIXED},
-      {.pos = 500 + 2 * stride, .prop = True(), .type = CType::MIXED},
-    };
-    std::vector<bool> assigned = {false, false, false};
-    std::vector<LayoutEngine::PC> next = {
-      // Left side is blocked.
-      {.xpos = 400, .cell = CellLibrary::Spacer(100 - mid)},
-    };
-
-    // Try to place a spacer on the right side, squeezing the chutes.
-    Cell block_right = CellLibrary::Spacer(100);
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next, block_right,
-                            500 + 2 * stride + INPUT_WIDTH + mid));
-
-    // Placing it farther right leaves enough room for all three to route
-    // (to the right).
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, block_right,
-                           500 + 3 * stride));
-
-    // Or way to the left.
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, block_right, 0));
-  }
-
-  // Cell with multiple outputs matching multiple chutes.
-  {
-    Cell sep_cell(SEPARATOR01);
-    CellLibrary::Info sep_info = library.GetInfo(sep_cell);
-    int out0_x = sep_info.outputs[0].xblock;
-    int out1_x = sep_info.outputs[1].xblock;
-
-    std::vector<LayoutEngine::Chute> top {
-      {.pos = 600, .prop = True(), .type = sep_info.outputs[0].type},
-      {.pos = 600 - out0_x + out1_x, .prop = True(),
-       .type = sep_info.outputs[1].type},
-    };
-    std::vector<bool> assigned = {false, false};
-    std::vector<LayoutEngine::PC> next;
-
-    int exact_x = 600 - out0_x;
-    CHECK(le->CanPlaceCell(-1, top, assigned, next, sep_cell, exact_x));
-
-    // A small offset means it no longer satisfies the chutes, and
-    // since it's wide, it will overlap and trap them instead.
-    CHECK(!le->CanPlaceCell(-1, top, assigned, next, sep_cell, exact_x + 1));
-  }
-
-  // Inputs of newly placed cells must have enough clearance from
-  // inputs of already placed cells.
-  {
-    std::vector<LayoutEngine::Chute> top;
-    std::vector<bool> assigned;
-
-    Cell cell(NOT0);
-    CellLibrary::Info info = library.GetInfo(cell);
-
-    std::vector<LayoutEngine::PC> next = {
-      {.xpos = 1000, .cell = cell},
-    };
-
-    int min_dist =
-      Levels::OUT_WIDTH + le->MinClearanceClose() + le->MinClearanceFar();
-    int last_in1 = 1000 + info.inputs.back().xblock;
-
-    int xpos_too_close = last_in1 + min_dist - 1 -
-      info.inputs.front().xblock;
-    int cell1_right = 1000 + info.block_width;
-
-    if (xpos_too_close >= cell1_right) {
-      CHECK(!le->CanPlaceCell(-1, top, assigned, next,
-                              cell, xpos_too_close));
-      CHECK(le->CanPlaceCell(-1, top, assigned, next,
-                             cell, xpos_too_close + 1));
-    }
-  }
-}
-
 static void TestLoop1() {
   CellLibrary library;
   World world;
@@ -413,11 +230,7 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
-  #if 0
   TestLoop1();
-
-  // Tests of helpers.
-  TestCanPlaceCell(library);
 
   // Tests of the full layout algorithm.
   Empty(library);
@@ -428,7 +241,6 @@ int main(int argc, char **argv) {
   OrVars(library);
   XorVars(library);
   MultiOutput(library);
-  #endif
 
   // took 190 layers!
   Modest(library);
