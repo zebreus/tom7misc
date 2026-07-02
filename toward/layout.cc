@@ -79,7 +79,7 @@ using Chute = LayoutCanvas::Chute;
 using DesireType = LayoutCanvas::DesireType;
 using enum LayoutCanvas::DesireType;
 
-static constexpr bool WRITE_IMAGES = false;
+static constexpr bool WRITE_IMAGES = true;
 
 // The hard part is the physical routing. Some gates like AND0110
 // need separated inputs in a specific form. Since we are working
@@ -118,12 +118,12 @@ struct LayoutEngineImpl : public LayoutEngine {
   // and the interior.
   static constexpr int DONE_GAP = 256;
 
+  // Just stats for reporting.
   int num_and = 0, num_xchg = 0, num_or = 0, num_wire = 0;
   int num_sep = 0, num_dup = 0, num_comb = 0;
+  int num_spaced_layers = 0;
 
   std::unique_ptr<StatusBar> status;
-
-  int num_spaced_layers = 0;
 
   int verbose = 1;
 
@@ -514,14 +514,15 @@ struct LayoutEngineImpl : public LayoutEngine {
     int start = 0;
     int size = 0;
   };
-  std::vector<Island> GetIslands(std::span<const Chute> chutes) {
+  std::vector<Island> GetIslands(const LayoutCanvas &canvas) {
     const int ISLAND_GAP = 2 * max_cell_width;
 
     std::vector<Island> islands;
 
     int current_start = 0;
-    for (int i = 1; i < (int)chutes.size(); i++) {
-      int gap = chutes[i].pos - (chutes[i - 1].pos + Levels::OUT_WIDTH);
+    for (int i = 1; i < (int)canvas.chutes.size(); i++) {
+      int gap = canvas.chutes[i].pos -
+        (canvas.chutes[i - 1].pos + Levels::OUT_WIDTH);
       if (gap >= ISLAND_GAP) {
         islands.push_back(Island{
             .start = current_start,
@@ -532,7 +533,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
     islands.push_back(Island{
         .start = current_start,
-        .size = (int)chutes.size() - current_start,
+        .size = (int)canvas.chutes.size() - current_start,
       });
 
     CHECK(!islands.empty());
@@ -626,7 +627,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               Cell cell(g, 0, flip);
               int xpos = chute.pos - ItsOutputPos(cell);
               if (canvas.CanPlaceCell(cidx, cell, xpos)) {
-                canvas.assigned[cidx] = true;
+                canvas.Assign(cidx);
                 canvas.next.push_back(PC{
                     .xpos = xpos,
                     .cell = cell,
@@ -707,7 +708,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               int cell_pos = chute.pos - xout;
 
               if (canvas.CanPlaceCell(cidx, cell, cell_pos)) {
-                canvas.assigned[cidx] = true;
+                canvas.Assign(cidx);
                 canvas.next.push_back(PC{
                     .xpos = cell_pos,
                     .cell = cell,
@@ -764,16 +765,14 @@ struct LayoutEngineImpl : public LayoutEngine {
     LayoutCanvas canvas(library);
     canvas.Reset(canvas.FlattenInputs(top));
     canvas.SetVerbose(verbose);
-    std::vector<Chute> &chutes = canvas.chutes;
-
-    CHECK(!chutes.empty());
+    CHECK(!canvas.chutes.empty());
 
     if (verbose > 1) {
       Print("Addlayer start:\n{}\n",
-            DebugLayerState(std::nullopt, chutes, {}));
+            DebugLayerState(std::nullopt, canvas.chutes, {}));
     }
 
-    std::vector<Island> islands = GetIslands(chutes);
+    std::vector<Island> islands = GetIslands(canvas);
 
     if (std::optional<std::pair<std::vector<LC>, int>> ores =
         SpaceLayerIfNeeded(canvas, islands)) {
@@ -786,27 +785,27 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     // Now set the desires for each.
-    SetChuteDesires(chutes);
+    SetChuteDesires(canvas.chutes);
 
     if (verbose > 1) {
       Print(AWHITE("Chute desires") " before placement:\n");
-      for (int i = 0; i < (int)chutes.size(); i++) {
+      for (int i = 0; i < (int)canvas.chutes.size(); i++) {
         Print(" [{}] {}\n", i,
-              LayoutCanvas::ChuteString(chutes[i]));
+              LayoutCanvas::ChuteString(canvas.chutes[i]));
       }
       Print("\n");
     }
 
 
-    // Now greedily place, without blocking anything off.
-
-    std::vector<PC> &next_cells = canvas.next;
-    std::vector<bool> &assigned = canvas.assigned;
+    // Now we do a greedy pass. If we can place a desired cell
+    // (without creating a dead end) we do so, because this makes
+    // definite progress.
 
     // Sanity check: Ensure the input chutes are not already stuck before
     // we even place anything.
     {
-      const int clear_pos = chutes.back().pos +
+      // Some location that can't interfere with anything.
+      const int clear_pos = canvas.chutes.back().pos +
         Levels::IN_WIDTH + 2 * library.MinClearanceFar() + 1;
       if (!canvas.CanPlaceCell(
               // Not a real chute
@@ -815,7 +814,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               clear_pos)) {
         LOG(FATAL) << "Input chutes are already in a state where "
           "we're stuck!\n" <<
-          DebugLayerState(std::nullopt, chutes, next_cells);
+          DebugLayerState(std::nullopt, canvas.chutes, canvas.next);
       }
     }
 
@@ -823,7 +822,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // As we try placing, we note weighted conflicts at chute
     // locations. This helps us with heuristic direction of
     // flow.
-    std::vector<int> conflict_weight(chutes.size(), 0);
+    std::vector<int> conflict_weight(canvas.chutes.size(), 0);
 
     // In order to ensure we make progress, the first goal in
     // priority order that is in the right position but doesn't
@@ -837,7 +836,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // with this chute (also trying its flipped version). The
     // inprops should reflect the input propositions for that cell
     // in its unflipped orientation.
-    // Updates next_cells and assigned if successful and returns
+    // Updates canvas.next and assigned if successful and returns
     // true. Otherwise, makes no change and returns false.
     auto PlaceAlignedUnary =
       [&](int chute_idx,
@@ -845,8 +844,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           std::span<const Prop> inprops,
           int cell_val = 0,
           std::initializer_list<bool> allow_flips = {false, true}) -> bool {
-        CHECK(!assigned[chute_idx]);
-        Chute &chute = chutes[chute_idx];
+        CHECK(!canvas.Assigned(chute_idx));
+        Chute &chute = canvas.chutes[chute_idx];
 
         for (bool flip : allow_flips) {
           Cell cell(g, cell_val, flip);
@@ -854,12 +853,12 @@ struct LayoutEngineImpl : public LayoutEngine {
 
           int cell_pos = chute.pos - xout;
           if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
-            assigned[chute_idx] = true;
+            canvas.Assign(chute_idx);
             std::vector<Prop> ip(inprops.begin(), inprops.end());
             if (flip) {
               VectorReverse(&ip);
             }
-            next_cells.push_back(PC{
+            canvas.next.push_back(PC{
                 .xpos = cell_pos,
                 .cell = cell,
                 .inprops = std::move(ip),
@@ -898,12 +897,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     // 0 offset for the left chute.)
     auto PlaceBinaryOrFallback = [&](int chute_idx,
                                      Gate gate, Gate flipped_gate) {
-        CHECK(chute_idx < chutes.size() - 1);
-        CHECK(!assigned[chute_idx]);
-        CHECK(!assigned[chute_idx + 1]);
+        CHECK(chute_idx < canvas.chutes.size() - 1);
+        CHECK(!canvas.Assigned(chute_idx));
+        CHECK(!canvas.Assigned(chute_idx + 1));
 
-        Chute &chute1 = chutes[chute_idx];
-        Chute &chute2 = chutes[chute_idx + 1];
+        Chute &chute1 = canvas.chutes[chute_idx];
+        Chute &chute2 = canvas.chutes[chute_idx + 1];
 
         for (bool flip : {false, true}) {
           Gate g = flip ? flipped_gate : gate;
@@ -923,8 +922,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           if (cell_pos + out1 == chute2.pos) {
             // Correct relative position, but will the cell fit?
             if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
-              assigned[chute_idx] = true;
-              assigned[chute_idx + 1] = true;
+              canvas.Assign(chute_idx);
+              canvas.Assign(chute_idx + 1);
 
               // XXX Maybe would be cleaner to pass this?
               std::vector<Prop> inprops;
@@ -945,7 +944,7 @@ struct LayoutEngineImpl : public LayoutEngine {
                 LOG(FATAL) << "Unhandled gate in PlaceBinary: "
                            << GateString(g);
               }
-              next_cells.push_back(PC{
+              canvas.next.push_back(PC{
                   .xpos = cell_pos,
                   .cell = cell,
                   .inprops = std::move(inprops),
@@ -1050,12 +1049,12 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     auto DoUndup = [&](int c) {
         // On the left one of a pair.
-        if (c + 1 >= chutes.size())
+        if (c + 1 >= canvas.chutes.size())
           return;
-        if (assigned[c] || assigned[c + 1]) return;
+        if (canvas.Assigned(c) || canvas.Assigned(c + 1)) return;
 
-        Chute &chute1 = chutes[c];
-        Chute &chute2 = chutes[c + 1];
+        Chute &chute1 = canvas.chutes[c];
+        Chute &chute2 = canvas.chutes[c + 1];
 
         if (chute1.desire != DesireType::UNDUP ||
             chute2.desire != DesireType::UNDUP)
@@ -1071,11 +1070,11 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     auto DoUnseparate = [&](int c) {
         // On the left one of a pair.
-        if (c + 1 >= chutes.size()) return;
-        if (assigned[c] || assigned[c + 1]) return;
+        if (c + 1 >= canvas.chutes.size()) return;
+        if (canvas.Assigned(c) || canvas.Assigned(c + 1)) return;
 
-        Chute &chute1 = chutes[c];
-        Chute &chute2 = chutes[c + 1];
+        Chute &chute1 = canvas.chutes[c];
+        Chute &chute2 = canvas.chutes[c + 1];
 
         if (chute1.desire != DesireType::UNSEPARATE ||
             chute2.desire != DesireType::UNSEPARATE)
@@ -1091,7 +1090,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     auto DoDecompose = [&](int c) {
-        Chute &chute = chutes[c];
+        Chute &chute = canvas.chutes[c];
         if (chute.desire != DesireType::DECOMPOSE) {
           return;
         }
@@ -1137,7 +1136,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     auto DoUncombine = [&](int c) {
-        Chute &chute = chutes[c];
+        Chute &chute = canvas.chutes[c];
         if (chute.desire != DesireType::UNCOMBINE) {
           return;
         }
@@ -1153,12 +1152,12 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     auto DoExchange = [&](int c) {
         // On the left one of a pair.
-        if (c + 1 >= chutes.size())
+        if (c + 1 >= canvas.chutes.size())
           return;
-        if (assigned[c] || assigned[c + 1]) return;
+        if (canvas.Assigned(c) || canvas.Assigned(c + 1)) return;
 
-        Chute &chute1 = chutes[c];
-        Chute &chute2 = chutes[c + 1];
+        Chute &chute1 = canvas.chutes[c];
+        Chute &chute2 = canvas.chutes[c + 1];
 
         if (chute1.desire != DesireType::EXCHANGE_RIGHT ||
             chute2.desire != DesireType::EXCHANGE_LEFT)
@@ -1208,7 +1207,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     auto DoFlow = [&](int c) {
-        Chute &chute = chutes[c];
+        Chute &chute = canvas.chutes[c];
 
         CHECK(chute.desire == DesireType::FLOW ||
               chute.desire == DesireType::QUIESCE) << "Bug: " <<
@@ -1235,7 +1234,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           }
 
           int right_conflicts = 0;
-          for (int i = c + 1; i < (int)chutes.size(); i++) {
+          for (int i = c + 1; i < (int)canvas.chutes.size(); i++) {
             right_conflicts += conflict_weight[i];
           }
 
@@ -1307,14 +1306,14 @@ struct LayoutEngineImpl : public LayoutEngine {
           "We should always have space remaining to place a "
           "0-displacement wire. (Originally wanted " <<
           chute.desire_val << ").\nState:\n" <<
-          DebugLayerState(anchor, chutes, next_cells);
+          DebugLayerState(anchor, canvas.chutes, canvas.next);
       };
 
     // Now do the passes above in priority order.
 
     auto ForAllRemaining = [&](auto f) {
-        for (int c = 0; c < chutes.size(); c++)
-          if (!assigned[c])
+        for (int c = 0; c < canvas.chutes.size(); c++)
+          if (!canvas.Assigned(c))
             f(c);
       };
 
@@ -1336,7 +1335,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     if (verbose > 1) {
       Print(AWHITE("Layer state at end") ":\n"
             "{}\n",
-            DebugLayerState(anchor, chutes, next_cells));
+            DebugLayerState(anchor, canvas.chutes, canvas.next));
     }
 
     return canvas.ConvertToLayer();

@@ -85,8 +85,11 @@ struct LayoutCanvas {
 
   // The chutes on the top of the circuit.
   std::vector<Chute> chutes;
-  // Whether a given chute from chutes has been assigned.
-  std::vector<bool> assigned;
+
+  // Is the chute already assigned to an output on the new layer?
+  bool Assigned(int chute_idx);
+  // Mark a chute as assigned (only once).
+  void Assign(int chute_idx);
 
   // The next layer, under construction. These should output
   // to the chutes.
@@ -119,6 +122,8 @@ struct LayoutCanvas {
  private:
   const CellLibrary &library;
   int verbose = 0;
+  // Whether a given chute from chutes has been assigned.
+  std::vector<bool> assigned;
 };
 
 #endif

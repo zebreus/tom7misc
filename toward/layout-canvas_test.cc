@@ -84,7 +84,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     canvas.Reset({
       {.pos = 400, .prop = True(), .type = CType::MIXED}
     });
-    canvas.assigned[0] = true;
+    canvas.Assign(0);
 
     // Normally, running right up against a chute would fail because
     // it would prohibit putting something there. But if it is already

@@ -66,6 +66,18 @@ void LayoutCanvas::Reset(std::vector<Chute> chutes_in) {
 
 void LayoutCanvas::SetVerbose(int v) { verbose = v; }
 
+// Is the chute already assigned to an output on the new layer?
+bool LayoutCanvas::Assigned(int chute_idx) {
+  CHECK(chute_idx >= 0 && chute_idx < assigned.size());
+  return assigned[chute_idx];
+}
+
+// Mark a chute as assigned (only once).
+void LayoutCanvas::Assign(int chute_idx) {
+  CHECK(chute_idx >= 0 && chute_idx < assigned.size() && !assigned[chute_idx]);
+  assigned[chute_idx] = true;
+}
+
   // Flatten the inputs. Desires are not yet specified.
 std::vector<Chute> LayoutCanvas::FlattenInputs(
     std::span<const LC> top) const {
