@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
-  #if 1
+  #if 0
   TestLoop1();
 
   // Tests of the full layout algorithm.
@@ -241,8 +241,9 @@ int main(int argc, char **argv) {
   AndVars(library);
   OrVars(library);
   XorVars(library);
-  MultiOutput(library);
   #endif
+
+  MultiOutput(library);
 
   // took 190 layers!
   Modest(library);

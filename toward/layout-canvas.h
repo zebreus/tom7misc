@@ -36,31 +36,36 @@ struct LayoutCanvas {
     UNCOMBINE,
     // Unduplicate adjacent identical propositions.
     UNDUP,
-    UNSEPARATE,
+    // A matched pair that should be unseparated.
+    UNSEPARATE_LHS,
+    UNSEPARATE_RHS,
     // The chute is out of order and should swap to its left.
     EXCHANGE_LEFT,
     // ... or right.
     EXCHANGE_RIGHT,
-    // The chute is in order, and should flow to a relative offset
-    // of its current position (number of blocks, in desire_val).
-    FLOW,
-    // The chute is basically where we want it, but it can move out
-    // of the way to avoid conflicts.
+    // The chute is in the right order, but needs to propagate
+    // up or left/right to accommodate others.
     QUIESCE,
   };
 
   // Location and type of the transition between layers where
-  // an input and output meet.
+  // an input and output meet, plus working information during
+  // the layout algorithm.
   struct Chute {
     int pos = 0;
     Prop prop = False();
     CType type = CType::MIXED;
 
     DesireType desire = DesireType::UNSPECIFIED;
-    int desire_val = 0;
 
     // Exterior chutes that hold variables are done.
     bool done = false;
+    // True if we've assigned something on the next layer.
+    bool assigned = false;
+    // True when we do not allow the chute to move during
+    // spring solving. This is automatically set true when
+    // we assign a chute, for example.
+    bool anchored = false;
   };
 
   // A placed cell.
@@ -69,6 +74,37 @@ struct LayoutCanvas {
     Cell cell;
     std::vector<Prop> inprops;
   };
+
+  // Springs come between chutes, so there are #chutes - 1 of them.
+  struct Spring {
+    // The edge-to-edge distance that we want the chutes to be
+    // (not including the width of the chutes themselves).
+    // This must be set!
+    int target_dist = -1;
+    // Hard limit on the distance.
+    int min_dist = 0;
+    // Stiffness (penalties) for compressing or expanding.
+    float compress = 1.0f;
+    float expand = 1.0f;
+  };
+
+  std::vector<Spring> springs;
+
+  // Update a spring in place with additional constraints.
+  // The target distances are added (unless the current value
+  // is -1, which means it was not set yet), and we take the max
+  // min distance.
+  static void UpdateSpring(Spring *spring,
+                           int target_dist,
+                           int min_dist,
+                           float compress,
+                           float expand);
+
+  // Returns a desired position for each chute (left edge).
+  // The position needs to be quantized and checked for feasibility,
+  // naturally...
+  std::vector<double> SolveSprings();
+
 
   LayoutCanvas(const CellLibrary &library);
 
@@ -87,9 +123,11 @@ struct LayoutCanvas {
   std::vector<Chute> chutes;
 
   // Is the chute already assigned to an output on the new layer?
-  bool Assigned(int chute_idx);
+  bool Assigned(int chute_idx) const;
   // Mark a chute as assigned (only once).
   void Assign(int chute_idx);
+
+  void Anchor(int chute_idx) { chutes[chute_idx].anchored = true; }
 
   // The next layer, under construction. These should output
   // to the chutes.
@@ -122,8 +160,6 @@ struct LayoutCanvas {
  private:
   const CellLibrary &library;
   int verbose = 0;
-  // Whether a given chute from chutes has been assigned.
-  std::vector<bool> assigned;
 };
 
 #endif

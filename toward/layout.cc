@@ -2,6 +2,7 @@
 #include "layout.h"
 
 #include <algorithm>
+#include <cmath>
 #include <compare>
 #include <cstdlib>
 #include <deque>
@@ -77,6 +78,7 @@ using LC = LayoutCanvas::LC;
 using PC = LayoutCanvas::PC;
 using Chute = LayoutCanvas::Chute;
 using DesireType = LayoutCanvas::DesireType;
+using Spring = LayoutCanvas::Spring;
 using enum LayoutCanvas::DesireType;
 
 static constexpr bool WRITE_IMAGES = true;
@@ -117,10 +119,12 @@ struct LayoutEngineImpl : public LayoutEngine {
   // (chutes on the far left and right that contain MIXED vars)
   // and the interior.
   static constexpr int DONE_GAP = 256;
+  // And the spacing between chutes in the done region.
+  static constexpr int EXTERIOR_SPACING = 32;
 
   // Just stats for reporting.
   int num_and = 0, num_xchg = 0, num_or = 0, num_wire = 0;
-  int num_sep = 0, num_dup = 0, num_comb = 0;
+  int num_sep = 0, num_dup = 0, num_comb = 0, num_not = 0;
   int num_spaced_layers = 0;
 
   std::unique_ptr<StatusBar> status;
@@ -235,16 +239,13 @@ struct LayoutEngineImpl : public LayoutEngine {
   }
 
   std::string DebugLayerState(
-      std::optional<int> anchor,
       std::span<const Chute> chutes,
       std::span<const PC> next_cells) const {
     std::string s;
     AppendFormat(&s, "--- Chutes ---\n");
     for (int i = 0; i < (int)chutes.size(); i++) {
-      std::string_view anch = (anchor.has_value() && anchor.value() == i) ?
-        AGREEN(" (ANCHOR)") : "";
-      AppendFormat(&s, " [{}] {}{}\n", i,
-                   LayoutCanvas::ChuteString(chutes[i]), anch);
+      AppendFormat(&s, " [{}] {}\n", i,
+                   LayoutCanvas::ChuteString(chutes[i]));
     }
     AppendFormat(&s, "--- Next Cells ---\n");
     for (int i = 0; i < (int)next_cells.size(); i++) {
@@ -254,16 +255,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     return s;
   }
 
-  // Generate the desired action for each chute by updating its
-  // desire (and desire_val) fields in place.
-  void SetChuteDesires(std::vector<Chute> &chutes) {
-
-    // We often will need to reorder chutes. But we only need
-    // to do this within the "interior," because contiguous
-    // sequences of mixed variables on the left and right side
-    // are already done (the input layer can take variables in
-    // any order). So start by identifying and marking chutes
-    // that are done.
+  // Set the desires and springs for "done" chutes on the exterior.
+  void SetExterior(LayoutCanvas *canvas) {
+    std::vector<Chute> &chutes = canvas->chutes;
 
     int first_interior_chute = -1;
     int last_interior_chute = 0;
@@ -291,47 +285,41 @@ struct LayoutEngineImpl : public LayoutEngine {
           last_interior_chute >= 0) << "Precondition is that we're "
       "not already done!";
 
+    constexpr float EXT_WEIGHT = 0.01f;
 
-    // We want to move the exterior away from the action, but not
-    // indefinitely; it's just sloppy to have really big wings.
-
-    // XXX: This bakes in an assumption about small wires.
-    constexpr int DONE_SPACING = 32;
     if (first_interior_chute > 0) {
-      int interior_pos = chutes[first_interior_chute].pos;
-
       for (int c = 0; c < first_interior_chute; c++) {
-        // How far into the exterior we are.
-        int count = first_interior_chute - c;
-        // The displacement for the last exterior chute.
-        int target_pos = interior_pos - DONE_GAP -
-          DONE_SPACING * count;
-
-        int disp = target_pos - chutes[c].pos;
-        Chute &chute = chutes[c];
-        chute.done = true;
-        chute.desire = DesireType::QUIESCE;
-        chute.desire_val = disp;
+        chutes[c].done = true;
+        chutes[c].desire = DesireType::QUIESCE;
+        int dist = (c == first_interior_chute - 1) ?
+          DONE_GAP : EXTERIOR_SPACING;
+        LayoutCanvas::UpdateSpring(&canvas->springs[c], dist,
+                                   library.MinClearanceClose(),
+                                   EXT_WEIGHT, EXT_WEIGHT);
       }
     }
 
     if (last_interior_chute < (int)chutes.size() - 1) {
-      int interior_pos = chutes[last_interior_chute].pos;
       for (int c = last_interior_chute + 1; c < chutes.size(); c++) {
-        int count = c - last_interior_chute;
-        int target_pos = interior_pos + DONE_GAP + DONE_SPACING * count;
-
-        int disp = target_pos - chutes[c].pos;
-        Chute &chute = chutes[c];
-        chute.done = true;
-        chute.desire = DesireType::QUIESCE;
-        chute.desire_val = disp;
+        chutes[c].done = true;
+        chutes[c].desire = DesireType::QUIESCE;
+        int dist = (c == last_interior_chute + 1) ?
+          DONE_GAP : EXTERIOR_SPACING;
+        LayoutCanvas::UpdateSpring(&canvas->springs[c - 1], dist,
+                                   library.MinClearanceClose(),
+                                   EXT_WEIGHT, EXT_WEIGHT);
       }
     }
+  }
 
-    // Now a mixed variable that is not "done" is going to be
-    // problematic, because we will likely need to cross over it to
-    // attain the order we want. So uncombine those.
+  // Generate the desired action for each chute by updating its
+  // desire field in place.
+  void SetChuteDesires(std::vector<Chute> &chutes) {
+
+    // After dealing with the exterior, a mixed variable that is not
+    // "done" is going to be problematic, because we will likely need
+    // to cross over it to attain the order we want. So uncombine
+    // those.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       if (!chute.done &&
@@ -342,10 +330,11 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    // TODO: We should UNDUP propositions that are equal and
-    // already next to one another. We want to do this before
-    // crossing over, because reducing the number of total
-    // chutes is a big efficiency win.
+    // We attempt to UNDUP propositions that are equal and already
+    // next to one another. We want to do this before crossing over,
+    // because reducing the number of total chutes is a big efficiency
+    // win. (TODO: We might want to prioritize this proportional to
+    // the prop size!)
     for (int c = 0; c < (int)chutes.size() - 1; c++) {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
@@ -397,8 +386,8 @@ struct LayoutEngineImpl : public LayoutEngine {
             c + 2 >= chutes.size() || chutes[c + 2].done;
 
           if (left_exterior || right_exterior) {
-            chute1.desire = UNSEPARATE;
-            chute2.desire = UNSEPARATE;
+            chute1.desire = UNSEPARATE_LHS;
+            chute2.desire = UNSEPARATE_RHS;
           }
 
         } else if (std::holds_alternative<Binop>(prop.p)) {
@@ -406,8 +395,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           // Our binops all target mixed outputs, so we need
           // to unseparate wherever this is. On the next
           // layer we should be able to decompose.
-          chute1.desire = UNSEPARATE;
-          chute2.desire = UNSEPARATE;
+          chute1.desire = UNSEPARATE_LHS;
+          chute2.desire = UNSEPARATE_RHS;
         }
       }
     }
@@ -439,12 +428,11 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    // Strip NOT from separated propositions, which is easy
-    // to do locally. It would often be better to swap
-    // and dedup first if possible (because when we swap
-    // with some non-negated proposition, we are at least
-    // helping that other one get to the right place!). But
-    // these are basically just wires so they don't
+    // Strip NOT from separated propositions, which is easy to do
+    // locally. It would often be better to swap and dedup first if
+    // possible (because when we swap with some non-negated
+    // proposition, we are at least helping that other one get to the
+    // right place!). But these are basically just wires so they don't
     // particularly add complexity.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
@@ -499,12 +487,6 @@ struct LayoutEngineImpl : public LayoutEngine {
         chute.desire = DesireType::QUIESCE;
       }
     }
-
-    // PERF: Adjust the amount of flow for the exterior, with the
-    // delta according to some estimate of how much space we need in
-    // the middle (could be negative even). For now they just flow
-    // outward, making more and more space (which is probably fine
-    // but untidy).
   }
 
   // An island is a contiguous sequence of chutes that might interfere
@@ -736,13 +718,13 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
 
         CHECK(ok) << "Could not space out chute " << cidx << ":\n"
-                  << DebugLayerState(std::nullopt, canvas.chutes, canvas.next);
+                  << DebugLayerState(canvas.chutes, canvas.next);
       }
     }
 
     if (verbose > 1) {
       Print(AWHITE("Spaced layer result") ":\n{}\n",
-            DebugLayerState(std::nullopt, canvas.chutes, canvas.next));
+            DebugLayerState(canvas.chutes, canvas.next));
     }
 
     return {canvas.ConvertToLayer()};
@@ -761,17 +743,21 @@ struct LayoutEngineImpl : public LayoutEngine {
     // top layer, with their positions. These are just fixed and
     // independent since we aren't going to try to move them around.
     //
-    // The canvas represents the
+    // The canvas represents the top of the existing circuit and
+    // our in-progress new layer.
     LayoutCanvas canvas(library);
     canvas.Reset(canvas.FlattenInputs(top));
     canvas.SetVerbose(verbose);
     CHECK(!canvas.chutes.empty());
 
     if (verbose > 1) {
-      Print("Addlayer start:\n{}\n",
-            DebugLayerState(std::nullopt, canvas.chutes, {}));
+      Print("\n" AYELLOW("=========== AddLayer start") ":\n{}\n",
+            DebugLayerState(canvas.chutes, {}));
     }
 
+    // This is disabled, in the hopes that springs alone will
+    // take care of spacing.
+    if (false) {
     std::vector<Island> islands = GetIslands(canvas);
 
     if (std::optional<std::pair<std::vector<LC>, int>> ores =
@@ -783,6 +769,12 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
       return std::move(ores.value());
     }
+    }
+
+    // First, identify the already-completed portions of the
+    // circuit and create springs for them. We don't want to
+    // involve these in the gate-placement code below.
+    SetExterior(&canvas);
 
     // Now set the desires for each.
     SetChuteDesires(canvas.chutes);
@@ -814,23 +806,16 @@ struct LayoutEngineImpl : public LayoutEngine {
               clear_pos)) {
         LOG(FATAL) << "Input chutes are already in a state where "
           "we're stuck!\n" <<
-          DebugLayerState(std::nullopt, canvas.chutes, canvas.next);
+          DebugLayerState(canvas.chutes, canvas.next);
       }
     }
-
-    static constexpr int FLEE_AMOUNT = 32;
-    // As we try placing, we note weighted conflicts at chute
-    // locations. This helps us with heuristic direction of
-    // flow.
-    std::vector<int> conflict_weight(canvas.chutes.size(), 0);
 
     // In order to ensure we make progress, the first goal in
     // priority order that is in the right position but doesn't
     // have space is allowed to anchor itself and just propagate
     // upward its chutes with zero displacement. Others will
     // move away from the anchor.
-    // TODO: One of these per island?
-    std::optional<int> anchor = std::nullopt;
+    bool took_anchor = false;
 
     // Try to place the specified gate so its single output aligns
     // with this chute (also trying its flipped version). The
@@ -869,7 +854,8 @@ struct LayoutEngineImpl : public LayoutEngine {
             case OR1100: num_or++; break;
             case COMBINE01:
             case COMBINE10: num_comb++; break;
-              // TODO also NOT!
+            case NOT0:
+            case NOT1: num_not++; break;
             default:
               if (IsWire(cell.gate)) num_wire++;
             }
@@ -878,23 +864,80 @@ struct LayoutEngineImpl : public LayoutEngine {
           }
         }
 
-        conflict_weight[chute_idx]++;
-
         return false;
+      };
+
+    // Updates the springs to the left and right of the given chute(s)
+    // to ensure we have enough space to place the gate (unflipped).
+    // The chute_idx should be the index of the leftmost chute used
+    // by the gate.
+    auto AcquireClearance = [&](int chute_idx, Gate gate) {
+        Cell cell_unflipped(gate, 0, false);
+        CellLibrary::Info info = library.GetInfo(cell_unflipped);
+
+        int out0 = info.outputs.front().xblock;
+        int out_last = info.outputs.back().xblock;
+
+        // Since we don't actually know where the next
+        // chute would be relative to its cell's right edge, we should
+        int additional_clearance =
+          library.MinClearanceFar() * 2;
+
+        // Compute the desired left clearance.
+        // This measures the distance from the left edge of the left
+        // output to the next chute's right edge such that cell_unflipped
+        // would fit here.
+        int left_clearance = out0 + additional_clearance;
+
+        // Same, symmetrically, for the right clearance.
+        int right_clearance =
+          info.block_width - (out_last + Levels::IN_WIDTH) +
+          additional_clearance;
+
+        if (status) {
+          Print("[{}] acquire clearance for {}. L: {}, R: {}\n",
+                chute_idx, GateString(gate),
+                left_clearance, right_clearance);
+        }
+
+        // (No spring to the left of the first chute.)
+        if (chute_idx > 0) {
+          Spring *left = &canvas.springs[chute_idx - 1];
+          LayoutCanvas::UpdateSpring(
+              left,
+              left_clearance,
+              library.MinClearanceFar(),
+              // Compressing would mean we're still unable to
+              // place.
+              100.0f,
+              // Happy to have expansion here.
+              0.01f);
+        }
+
+        // (No spring to the right of the last chute.)
+        int last_chute_idx = chute_idx + info.outputs.size() - 1;
+        if (last_chute_idx < (int)canvas.chutes.size() - 1) {
+          Spring *right = &canvas.springs[last_chute_idx];
+          LayoutCanvas::UpdateSpring(
+              right,
+              right_clearance,
+              library.MinClearanceFar(),
+              100.0f,
+              0.01f);
+        }
       };
 
     // Try placing a cell with two outputs atop chute_idx and
     // chute_idx+1. The output types are forced by the chutes we're
     // connecting to. Since when we flip a binary gate we may modify
     // its meaning, we take a gate and a flipped_gate. This might give
-    // us two variants of the geometry to try.
+    // us two variants of the geometry to try. If we succeed, the
+    // spring becomes rigid.
     //
-    // If neither the gate or its flipped version fit, then we modify
-    // the desire field for the chutes to be FLOW, and pick relative
-    // offsets that would align the chutes with this gate's output.
-    // The DoFlow pass will then use wires. (There are multiple
-    // choices for offsets here. Target the unflipped gate, and use a
-    // 0 offset for the left chute.)
+    // If neither the gate or its flipped version fit, we don't place
+    // anything, but use springs to try to achieve the right distance.
+    // This also might anchor the chutes if this is the first such
+    // failure.
     auto PlaceBinaryOrFallback = [&](int chute_idx,
                                      Gate gate, Gate flipped_gate) {
         CHECK(chute_idx < canvas.chutes.size() - 1);
@@ -903,6 +946,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         Chute &chute1 = canvas.chutes[chute_idx];
         Chute &chute2 = canvas.chutes[chute_idx + 1];
+        Spring &spring = canvas.springs[chute_idx];
 
         for (bool flip : {false, true}) {
           Gate g = flip ? flipped_gate : gate;
@@ -924,8 +968,19 @@ struct LayoutEngineImpl : public LayoutEngine {
             if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
               canvas.Assign(chute_idx);
               canvas.Assign(chute_idx + 1);
+              canvas.Anchor(chute_idx);
+              canvas.Anchor(chute_idx + 1);
 
-              // XXX Maybe would be cleaner to pass this?
+              int dist = out1 - (out0 + Levels::IN_WIDTH);
+              CHECK(dist >= 0);
+              spring.target_dist = spring.min_dist = dist;
+              // These parameters don't matter anyway, since
+              // we marked both chutes as anchored.
+              spring.compress = 1000.0f;
+              spring.expand = 1000.0f;
+
+              // XXX Maybe would be cleaner to pass this at
+              // the call site?
               std::vector<Prop> inprops;
               if (g == DUP0 || g == DUP1 ||
                   g == SEPARATOR01 || g == SEPARATOR10) {
@@ -970,82 +1025,54 @@ struct LayoutEngineImpl : public LayoutEngine {
               default:;
               }
 
+              Print("[{}] Did place {}\n", chute_idx,
+                    CellString(cell));
+
               return;
-            } else {
-              // Couldn't place a binary gate even though the inputs
-              // are already in the right spot. We treat this as a
-              // more serious conflict, since these gates are harder
-              // to set up.
-              conflict_weight[chute_idx] += 2;
-              conflict_weight[chute_idx + 1] += 2;
             }
+            Print("[{}] could not place {}\n", chute_idx,
+                  CellString(cell));
+
           }
         }
 
+        // We need the chutes to have the correct output distance (which
+        // will be the same in each orientation).
         Cell cell_unflipped(gate, 0, false);
         CellLibrary::Info info = library.GetInfo(cell_unflipped);
         CHECK(info.outputs.size() == 2);
+        int out0 = info.outputs[0].xblock;
+        int out1 = info.outputs[1].xblock;
 
-        int current_dist = chute2.pos - chute1.pos;
-        int target_dist = info.outputs[1].xblock - info.outputs[0].xblock;
-
-        if (verbose > 1) {
-          Print("Chute {}: "
-                "PlaceBinary ({}/{}) fallback.\n"
-                "Current dist {}, target dist {}.\n",
-                chute_idx, GateString(gate), GateString(flipped_gate),
-                current_dist, target_dist);
+        int dist = out1 - (out0 + Levels::IN_WIDTH);
+        int current_dist = chute2.pos - (chute1.pos + Levels::IN_WIDTH);
+        Print("[{}] {}: Have dist {} want dist {}\n",
+              chute_idx, CellString(cell_unflipped), current_dist, dist);
+        if (dist == current_dist && !took_anchor) {
+          // The first time (since we do these in a heuristic priority order)
+          // that we have the right distance (but presumably could not fit
+          // the cell itself) we anchor these so that we will eventually
+          // make progress as things are pushed away from it.
+          took_anchor = true;
+          chute1.anchored = true;
+          chute2.anchored = true;
         }
 
-        if (current_dist == target_dist) {
-          if (!anchor.has_value()) {
-            if (verbose > 1) {
-              Print("Took anchor @{}\n", chute_idx);
-            }
-            anchor = {chute_idx};
-            // Propagate upward.
-            chute1.desire = DesireType::FLOW;
-            chute1.desire_val = 0;
-            chute2.desire = DesireType::FLOW;
-            chute2.desire_val = 0;
-          } else {
-            // Propagate in tandem away from the
-            // anchor.
-            CHECK(chute_idx != anchor.value());
-            int disp =
-              (chute_idx < anchor.value()) ?
-              -FLEE_AMOUNT : FLEE_AMOUNT;
+        CHECK(dist >= 0);
+        spring.target_dist = dist;
+        // Very counterproductive to compress or expand when
+        // we're already at the right distance.
+        spring.compress = 1000.0f;
+        spring.expand = 1000.0f;
 
-            chute1.desire = DesireType::FLOW;
-            chute1.desire_val = disp;
-            chute2.desire = DesireType::FLOW;
-            chute2.desire_val = disp;
-          }
+        // Unclear what the correct absolute minimum is, but any
+        // closer than this and we will definitely get stuck.
+        spring.min_dist = library.MinClearanceClose();
 
-        } else if (current_dist > target_dist) {
-          chute2.desire = DesireType::FLOW;
-          chute2.desire_val = 0;
-          chute1.desire = DesireType::FLOW;
-          chute1.desire_val = (chute2.pos - info.outputs[1].xblock +
-                               info.outputs[0].xblock) - chute1.pos;
-
-          conflict_weight[chute_idx]++;
-          conflict_weight[chute_idx + 1]++;
-
-        } else {
-          CHECK(current_dist < target_dist);
-
-          chute1.desire = DesireType::FLOW;
-          chute1.desire_val = 0;
-          chute2.desire = DesireType::FLOW;
-          chute2.desire_val = (chute1.pos - info.outputs[0].xblock +
-                               info.outputs[1].xblock) - chute2.pos;
-
-          conflict_weight[chute_idx]++;
-          conflict_weight[chute_idx + 1]++;
-        }
+        // We also want to make space on each side of the chute for
+        // the gate itself.
+        AcquireClearance(chute_idx, gate);
       };
-
 
     auto DoUndup = [&](int c) {
         // On the left one of a pair.
@@ -1076,11 +1103,17 @@ struct LayoutEngineImpl : public LayoutEngine {
         Chute &chute1 = canvas.chutes[c];
         Chute &chute2 = canvas.chutes[c + 1];
 
-        if (chute1.desire != DesireType::UNSEPARATE ||
-            chute2.desire != DesireType::UNSEPARATE)
+        if (chute1.desire != DesireType::UNSEPARATE_LHS ||
+            chute2.desire != DesireType::UNSEPARATE_RHS)
           return;
 
-        CHECK(chute1.type != chute2.type);
+        // Must have same prop and opposite separated bits.
+        CHECK(chute1.prop == chute2.prop &&
+              chute1.type != CType::MIXED &&
+              chute2.type != CType::MIXED &&
+              chute1.type != chute2.type) << "\nchute1:\n" <<
+          LayoutCanvas::ChuteString(chute1) << "\nchute2:\n" <<
+          LayoutCanvas::ChuteString(chute2);
 
         // Here, 0 and 1 refer to the output types.
         Gate g = SEPARATOR01, ginv = SEPARATOR10;
@@ -1101,6 +1134,8 @@ struct LayoutEngineImpl : public LayoutEngine {
             if (PlaceAlignedUnary(c, g, {})) {
               return;
             }
+            AcquireClearance(c, g);
+
           } else {
             const Binop *b = std::get_if<Binop>(&chute.prop.p);
             CHECK(b != nullptr);
@@ -1109,11 +1144,14 @@ struct LayoutEngineImpl : public LayoutEngine {
                                     Span{*b->a, *b->a, *b->b, *b->b})) {
                 return;
               }
+              AcquireClearance(c, AND0110);
+
             } else if (b->op == BinopOp::OR) {
               if (PlaceAlignedUnary(c, OR1100,
                                     Span{*b->a, *b->b, *b->a, *b->b})) {
                 return;
               }
+              AcquireClearance(c, OR1100);
 
             } else {
               LOG(FATAL) << "Unexpected binop?";
@@ -1124,15 +1162,15 @@ struct LayoutEngineImpl : public LayoutEngine {
           // NOT0 takes a separated 0 as input, and outputs a separated 1.
           // So note we are switching on the output type here.
           Gate g = chute.type == CType::ZERO ? NOT1 : NOT0;
-          const Unop* u = std::get_if<Unop>(&chute.prop.p);
+          const Unop *u = std::get_if<Unop>(&chute.prop.p);
           CHECK(u && u->op == UnopOp::NOT);
           if (PlaceAlignedUnary(c, g, Span{*u->a})) {
             return;
           }
+          AcquireClearance(c, g);
         }
 
         chute.desire = DesireType::QUIESCE;
-        chute.desire_val = 0;
       };
 
     auto DoUncombine = [&](int c) {
@@ -1147,7 +1185,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
 
         chute.desire = DesireType::QUIESCE;
-        chute.desire_val = 0;
+        AcquireClearance(c, COMBINE01);
       };
 
     auto DoExchange = [&](int c) {
@@ -1206,109 +1244,6 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
       };
 
-    auto DoFlow = [&](int c) {
-        Chute &chute = canvas.chutes[c];
-
-        CHECK(chute.desire == DesireType::FLOW ||
-              chute.desire == DesireType::QUIESCE) << "Bug: " <<
-          LayoutCanvas::DesireTypeString(chute.desire) << " should be "
-          "handled above, perhaps by turning it into FLOW!";
-
-        if (verbose > 1) {
-          Print("Chute {} ({}) DoFlow: desire_val is {}.\n",
-                c, LayoutCanvas::DesireTypeString(chute.desire),
-                chute.desire_val);
-        }
-
-        // XXX when searching for conflict, we should only
-        // do this within the current island, I think. No need
-        // to push everything away!
-        //
-        // PERF: We could compute this cumulative sum outside. But
-        // we probably want it to be weighted somehow.
-        if (chute.desire == DesireType::QUIESCE) {
-          // If quiesce, move "outward" from conflict.
-          int left_conflicts = 0;
-          for (int i = 0; i < c; i++) {
-            left_conflicts += conflict_weight[i];
-          }
-
-          int right_conflicts = 0;
-          for (int i = c + 1; i < (int)canvas.chutes.size(); i++) {
-            right_conflicts += conflict_weight[i];
-          }
-
-          if (left_conflicts > right_conflicts) {
-            chute.desire_val = FLEE_AMOUNT;
-          } else if (right_conflicts > left_conflicts) {
-            chute.desire_val = -FLEE_AMOUNT;
-          }
-        }
-
-        if (chute.desire_val != 0) {
-          bool flip = chute.desire_val > 0;
-          int displacement = flip ? chute.desire_val : -chute.desire_val;
-
-          // Both A and B wires slant down to the right (like a backslash;
-          // the output is to the right of the input). If we want the
-          // opposite slant we do that by flipping. The way they differ
-          // is in their bias (is the larger side of the cell to the right,
-          // or to the left?).
-          Gate ga = chute.type == CType::MIXED ? WIREA :
-            chute.type == CType::ZERO ? WIRE0A : WIRE1A;
-          Gate gb = chute.type == CType::MIXED ? WIREB :
-            chute.type == CType::ZERO ? WIRE0B : WIRE1B;
-
-          for (int exponent = CellLibrary::MAX_WIRE_EXP;
-               exponent >= 0;
-               exponent--) {
-            int amount = 1 << exponent;
-            if (amount <= displacement) {
-              if (PlaceAlignedUnary(
-                      c, ga, Span{chute.prop}, amount, {flip})) {
-                return;
-              }
-              if (PlaceAlignedUnary(
-                      c, gb, Span{chute.prop}, amount, {flip})) {
-                return;
-              }
-            }
-          }
-        }
-
-        // Either the desired displacement was zero or we
-        // weren't able to get any displacement in the correct
-        // direction (e.g. because it's too crowded). Make a
-        // vertical wire.
-        int displacement = 0;
-
-        // Fall through so that we try all wire types
-        // for zero displacement.
-        Gate ga = chute.type == CType::MIXED ? WIREA :
-          chute.type == CType::ZERO ? WIRE0A : WIRE1A;
-        Gate gb = chute.type == CType::MIXED ? WIREB :
-          chute.type == CType::ZERO ? WIRE0B : WIRE1B;
-
-        if (chute.desire_val != 0) {
-          if (verbose > 0) {
-            Print("Chute {} " AORANGE("fell back")
-                  " to displacement 0 wire (wanted {})!\n",
-                  c, chute.desire_val);
-          }
-        }
-
-        if (PlaceAlignedUnary(c, ga, Span{chute.prop}, displacement))
-          return;
-        if (PlaceAlignedUnary(c, gb, Span{chute.prop}, displacement))
-          return;
-
-        LOG(FATAL) <<
-          "We should always have space remaining to place a "
-          "0-displacement wire. (Originally wanted " <<
-          chute.desire_val << ").\nState:\n" <<
-          DebugLayerState(anchor, canvas.chutes, canvas.next);
-      };
-
     // Now do the passes above in priority order.
 
     auto ForAllRemaining = [&](auto f) {
@@ -1327,15 +1262,123 @@ struct LayoutEngineImpl : public LayoutEngine {
     ForAllRemaining(DoUncombine);
     // Progress towards the above possibilities.
     ForAllRemaining(DoExchange);
-    // Fallback, or at best setting up the positions for one
-    // of the above. This needs to be last since earlier
-    // passes will change the desire into flow.
-    ForAllRemaining(DoFlow);
+
+    // Default target distance for any remaining springs.
+    for (int i = 0; i < (int)canvas.springs.size(); i++) {
+      if (canvas.springs[i].target_dist < 0) {
+        /*
+        int current_dist = canvas.chutes[i + 1].pos -
+                           (canvas.chutes[i].pos + Levels::IN_WIDTH);
+        */
+        LayoutCanvas::UpdateSpring(&canvas.springs[i],
+                                   min_output_distance,
+                                   library.MinClearanceClose(),
+                                   1.0f, 0.1f);
+      }
+    }
+
+    if (status) {
+      status->Print("--- Springs ---\n");
+      for (int i = 0; i < (int)canvas.springs.size(); i++) {
+        const Spring &s = canvas.springs[i];
+        status->Print(
+            " [{}] target_dist={} min_dist={} compress={:.4f} expand={:.4f}\n",
+            i, s.target_dist, s.min_dist, s.compress, s.expand);
+      }
+    }
+
+    // Now we usually have a lot of chutes leftover that we need
+    // to move around with wires. First we get the ideal positions
+    // for them by solving the springs.
+    std::vector<double> ideal_pos = canvas.SolveSprings();
+    CHECK(ideal_pos.size() == canvas.chutes.size());
+
+    // Displacement here is talking about the way we want the
+    // chute to move as we go bottom up. Positive displacement
+    // means that we want the gate on the next layer to be to the
+    // right of where it currently is.
+    std::vector<int> ideal_disp(canvas.chutes.size(), 0);
+    for (int i = 0; i < canvas.chutes.size(); i++) {
+      ideal_disp[i] = (int)std::round(ideal_pos[i]) - canvas.chutes[i].pos;
+      if (status) {
+        if (canvas.Assigned(i)) {
+          status->Print("[{}] is assigned.\n", i);
+        } else {
+          status->Print("[{}] should move {} from {} to {:.2f}\n",
+                        i, ideal_disp[i], canvas.chutes[i].pos, ideal_pos[i]);
+        }
+      }
+    }
+
+    // Place the wire at chute index c.
+    auto PlaceWire = [&](int c) {
+        if (canvas.Assigned(c)) return;
+
+        Chute &chute = canvas.chutes[c];
+        int displacement = ideal_disp[c];
+        // An unflipped wire has its output to the right of its input,
+        // which corresponds to negative displacement when thinking
+        // bottom-up.
+        bool flip = displacement > 0;
+        int abs_disp = std::abs(displacement);
+
+        Gate ga = chute.type == CType::MIXED ?
+          WIREA : chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+        Gate gb = chute.type == CType::MIXED ?
+          WIREB : chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+
+        // Find the largest valid power of 2 wire that fits
+        for (int exp = CellLibrary::MAX_WIRE_EXP; exp >= 0; exp--) {
+          int amount = 1 << exp;
+          if (amount <= abs_disp) {
+            if (PlaceAlignedUnary(c, ga, Span{chute.prop}, amount, {flip}) ||
+                PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip})) {
+              return;
+            }
+          }
+        }
+      };
+
+    // If we didn't place anything, just propagate upward. We should
+    // always have space for this. We do this last since it doesn't
+    // accomplish anything; we don't want it to prevent a delicate
+    // movement because we chose the wrong bias, for example.
+    auto PlaceUnaryWire = [&](int c) {
+        if (canvas.Assigned(c)) return;
+        Chute &chute = canvas.chutes[c];
+
+        Gate ga = chute.type == CType::MIXED ?
+          WIREA : chute.type == CType::ZERO ? WIRE0A : WIRE1A;
+        Gate gb = chute.type == CType::MIXED ?
+          WIREB : chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+
+        if (!PlaceAlignedUnary(c, ga, Span{chute.prop}, 0) &&
+            !PlaceAlignedUnary(c, gb, Span{chute.prop}, 0)) {
+          LOG(FATAL) << "Could not even place a 0-displacement wire "
+            "for chute " << c;
+        }
+      };
+
+    // We want to assign the wires in a smart order so that
+    // we don't step on our own toes, since wires take space.
+
+    // First place the ones that are going strictly left in
+    // left-to-right order, then the reverse.
+    for (int c = 0; c < canvas.chutes.size(); c++)
+      if (ideal_disp[c] < 0)
+        PlaceWire(c);
+
+    for (int c = canvas.chutes.size() - 1; c >= 0; c--)
+      if (ideal_disp[c] > 0)
+        PlaceWire(c);
+
+    for (int c = 0; c < canvas.chutes.size(); c++)
+      PlaceUnaryWire(c);
 
     if (verbose > 1) {
       Print(AWHITE("Layer state at end") ":\n"
             "{}\n",
-            DebugLayerState(anchor, canvas.chutes, canvas.next));
+            DebugLayerState(canvas.chutes, canvas.next));
     }
 
     return canvas.ConvertToLayer();
@@ -1443,8 +1486,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     // spacers (i.e. they can have different starting offsets). If
     // we have two such layers in a row, then we will just get in
     // an infinite loop, so we should abort.
-    auto SameLayer = [](const std::vector<LC>& a,
-                        const std::vector<LC>& b) {
+    auto SameLayer = [](const std::vector<LC> &a,
+                        const std::vector<LC> &b) {
       auto ita = a.begin(), itb = b.begin();
       while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
       while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;

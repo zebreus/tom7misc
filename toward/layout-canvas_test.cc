@@ -1,6 +1,7 @@
 
 #include "layout-canvas.h"
 
+#include <cmath>
 #include <string_view>
 #include <vector>
 
@@ -16,9 +17,20 @@ static void StartTest(std::string_view name) {
   Print("\n\n" ABGCOLOR(0, 0, 160, "== {} ==") "\n", name);
 }
 
+using Chute = LayoutCanvas::Chute;
+
 static void TestCanPlaceCell(const CellLibrary &library) {
   StartTest("CanPlaceCell");
   static constexpr int INPUT_WIDTH = Levels::IN_WIDTH;
+
+  // Layers can't be empty.
+  const Chute DISTANT_CHUTE =
+    Chute{
+    .pos = 90000,
+    .prop = True(),
+    .type = CType::MIXED,
+  };
+
 
   Cell const0(CONST0);
   int const0_w = library.GetInfo(const0).block_width;
@@ -30,7 +42,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   // Basic overlap with already placed cells.
   {
     LayoutCanvas canvas(library);
-    canvas.Reset({});
+    canvas.Reset({DISTANT_CHUTE});
     canvas.next = {
       {.xpos = 100, .cell = const0},
     };
@@ -161,7 +173,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   // inputs of already placed cells.
   {
     LayoutCanvas canvas(library);
-    canvas.Reset({});
+    canvas.Reset({DISTANT_CHUTE});
 
     Cell cell(NOT0);
     CellLibrary::Info info = library.GetInfo(cell);
@@ -186,10 +198,117 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   }
 }
 
+static void TestSolveSprings(const CellLibrary &library) {
+  StartTest("SolveSprings");
+
+  // Easy case: already perfectly spaced, no tension.
+  {
+    LayoutCanvas canvas(library);
+    int target_dist = 100;
+    int spacing = target_dist + Levels::IN_WIDTH;
+    canvas.Reset({
+      {.pos = 0, .prop = True(), .type = CType::MIXED,
+       .anchored = false},
+      {.pos = spacing, .prop = True(), .type = CType::MIXED,
+       .anchored = false},
+      {.pos = 2 * spacing, .prop = True(), .type = CType::MIXED,
+       .anchored = false},
+    });
+
+    canvas.springs[0] = {.target_dist = target_dist, .min_dist = 10};
+    canvas.springs[1] = {.target_dist = target_dist, .min_dist = 10};
+
+    std::vector<double> xpos = canvas.SolveSprings();
+    CHECK(xpos.size() == 3);
+    CHECK(std::abs(xpos[0] - 0.0) < 1e-4);
+    CHECK(std::abs(xpos[1] - spacing) < 1e-4);
+    CHECK(std::abs(xpos[2] - 2 * spacing) < 1e-4);
+  }
+
+  // Solves tension to a predictable equilibrium.
+  {
+    LayoutCanvas canvas(library);
+    int target_dist = 100;
+    int spacing = target_dist + Levels::IN_WIDTH;
+    canvas.Reset({
+      {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = true},
+      // Displaced by 30 units
+      {.pos = spacing + 30, .prop = True(), .type = CType::MIXED, .anchored = false},
+      {.pos = 2 * spacing, .prop = True(), .type = CType::MIXED, .anchored = true},
+    });
+
+    canvas.springs[0] = {.target_dist = target_dist, .min_dist = 10};
+    canvas.springs[1] = {.target_dist = target_dist, .min_dist = 10};
+
+    std::vector<double> xpos = canvas.SolveSprings();
+    CHECK(xpos.size() == 3);
+    CHECK(xpos[0] == 0.0);
+    // The center chute has 1.0 weight for its current position (spacing + 30),
+    // 1.0 weight from left spring pushing to `spacing`,
+    // 1.0 weight from right spring pushing to `spacing`.
+    // It converges in 1 iteration to (spacing + 30 + 2*spacing) / 3 =
+    // spacing + 10.
+    CHECK(std::abs(xpos[1] - (spacing + 10.0)) < 1e-4);
+    CHECK(xpos[2] == 2.0 * spacing);
+  }
+
+  // Overconstrained case: Anchored ends are too close for the min_distance.
+  {
+    LayoutCanvas canvas(library);
+    canvas.Reset({
+      {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = true},
+      {.pos = 10, .prop = True(), .type = CType::MIXED, .anchored = false},
+      {.pos = 100, .prop = True(), .type = CType::MIXED, .anchored = true},
+    });
+
+    // Min distance of 80 each means we need 160 space (plus 2x IN_WIDTH),
+    // but we only have 100 between the anchored chutes.
+    canvas.springs[0] = {.target_dist = 100, .min_dist = 80};
+    canvas.springs[1] = {.target_dist = 100, .min_dist = 80};
+
+    std::vector<double> xpos = canvas.SolveSprings();
+    CHECK(xpos.size() == 3);
+    CHECK(xpos[0] == 0.0);
+    // Should be placed exactly at the midpoint to balance the impossible
+    // min_distance constraints.
+    CHECK(std::abs(xpos[1] - 50.0) < 1e-4);
+    CHECK(xpos[2] == 100.0);
+  }
+
+  // Min distance enforcement pushing a chute.
+  {
+    LayoutCanvas canvas(library);
+    canvas.Reset({
+      {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = true},
+      {.pos = 5, .prop = True(), .type = CType::MIXED, .anchored = false},
+    });
+    int min_dist = 50;
+    // Target is smaller than min_dist, so spring alone would violate
+    // it. The chute's original position (5) also pulls it to the left
+    // of the min_dist.
+    canvas.springs[0] = {.target_dist = 20, .min_dist = min_dist};
+
+    std::vector<double> xpos = canvas.SolveSprings();
+    CHECK(xpos.size() == 2);
+    CHECK(xpos[0] == 0.0);
+    // Forced exactly to the min distance.
+    double expected = 0.0 + Levels::IN_WIDTH + min_dist;
+    CHECK(std::abs(xpos[1] - expected) < 1e-4);
+  }
+}
+
 static void TestFlattenInputs(const CellLibrary &library) {
   StartTest("FlattenInputs");
+
+  const Chute DISTANT_CHUTE =
+    Chute{
+    .pos = 90000,
+    .prop = True(),
+    .type = CType::MIXED,
+  };
+
   LayoutCanvas canvas(library);
-  canvas.Reset({});
+  canvas.Reset({DISTANT_CHUTE});
 
   Cell and_cell(AND0110);
   Cell const_cell(CONST0);
@@ -239,6 +358,7 @@ int main(int argc, char **argv) {
 
   TestCanPlaceCell(library);
   TestFlattenInputs(library);
+  TestSolveSprings(library);
 
   Print("OK\n");
   return 0;
