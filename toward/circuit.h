@@ -3,6 +3,7 @@
 #define _TOWARD_CIRCUIT_H
 
 #include <array>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -101,6 +102,9 @@ std::pair<int, int> LayerArity(const Layer &layer);
 std::string_view TypeString(CType t);
 std::string_view GateString(Gate g);
 std::string CellString(const Cell &cell);
+
+std::string SerializeCircuit(const Circuit &circuit);
+std::optional<Circuit> ParseCircuit(std::string_view s);
 
 // All chutes are boolean functions (some proposition)
 // but could be represented different ways.

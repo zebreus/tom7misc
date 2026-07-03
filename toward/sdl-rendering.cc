@@ -150,7 +150,8 @@ void main() {
   float g = float((c >> 16u) & 0xFFu) / 255.0;
   float b = float((c >> 8u) & 0xFFu) / 255.0;
   float a = float(c & 0xFFu) / 255.0;
-  v_color = vec4(r, g, b, a);
+  // Using premultiplied alpha.
+  v_color = vec4(r * a, g * a, b * a, a);
 }
 )";
 
@@ -251,7 +252,8 @@ struct SDLGLRendering : public Rendering {
 
     glEnable(GL_MULTISAMPLE);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // Premultiplied alpha.
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   }
 
   void RenderScene(vec2f viewport_min,

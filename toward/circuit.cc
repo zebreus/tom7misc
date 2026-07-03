@@ -1,6 +1,8 @@
 
 #include "circuit.h"
 
+#include <array>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -10,6 +12,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "util.h"
 #include "prop.h"
 
 Cell::Cell(Gate g, int v, bool flip) :
@@ -467,3 +470,50 @@ std::vector<Func> Transform(const Layer &layer,
   CHECK(out.size() == num_outputs);
   return out;
 }
+
+static constexpr char GateToLetter(Gate g) {
+  switch (g) {
+  case AND0110:     return 'a';
+  case OR1100:      return 'b';
+  case NOT:         return 'c';
+  case NOT0:        return 'd';
+  case NOT1:        return 'e';
+  case NOT01:       return 'f';
+  case SEPARATOR01: return 'g';
+  case SEPARATOR10: return 'h';
+  case SELFXCHG01:  return 'i';
+  case SELFXCHG10:  return 'j';
+  case COMBINE01:   return 'k';
+  case COMBINE10:   return 'l';
+  case XCHG00:      return 'm';
+  case XCHG01:      return 'n';
+  case XCHG10:      return 'o';
+  case XCHG11:      return 'p';
+  case DUPSEP0011:  return 'q';
+  case DUP0:        return 'r';
+  case DUP1:        return 's';
+  case SINK:        return 't';
+  case CONST0:      return 'u';
+  case CONST1:      return 'v';
+  default:          return '?';
+  }
+}
+
+// Inverse of the above.
+static std::optional<Gate> LetterToGate(uint8_t c) {
+  static constexpr std::array<std::optional<Gate>, 128> TABLE = []{
+      std::array<std::optional<Gate>, 128> table;
+      for (auto &e : table) e = std::nullopt;
+      for (Gate g : ALL_GATES) {
+        char c = GateToLetter(g);
+        if (c != '?') {
+          table[c] = g;
+        }
+      }
+      return table;
+    }();
+  if (c >= 128) return std::nullopt;
+  return TABLE[c];
+}
+
+

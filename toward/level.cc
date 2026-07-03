@@ -375,6 +375,26 @@ std::optional<vec2f> Levels::IsSVGZero(const SVG::GraphicsState &outer_state,
   return std::nullopt;
 }
 
+static uint32_t ApplyOpacity(uint32_t color, double opacity) {
+  if (color == SVG::COLOR_NONE) return color;
+  uint32_t rgb = color & 0xFFFFFF00;
+  uint32_t a = color & 0xFF;
+  a = std::clamp(static_cast<int>(std::round(a * opacity)), 0, 255);
+  return rgb | a;
+}
+
+// We only use fill colors here; stroke/fill is used to indicate
+// dynamic physics objects. But we do need to incorporate the fill
+// opacity if we want alpha!
+static uint32_t GetBodyColor(const SVG::GraphicsState &state) {
+  return
+  (state.fill_color != SVG::COLOR_NONE) ?
+    ApplyOpacity(state.fill_color, state.opacity * state.fill_opacity) :
+    (state.stroke_color != SVG::COLOR_NONE) ?
+    ApplyOpacity(state.stroke_color, state.opacity * state.stroke_opacity) :
+    ApplyOpacity(0xFFFFFFFF, state.opacity);
+}
+
 
 void Levels::AddNodesToLevel(const Options &options,
                              const SVG::Node &node,
@@ -453,12 +473,7 @@ void Levels::AddNodesToLevel(const Options &options,
       cursor_x = -total_width;
     }
 
-    uint32_t body_color =
-      (state.fill_color != SVG::COLOR_NONE) ?
-      state.fill_color :
-      (state.stroke_color != SVG::COLOR_NONE) ?
-      state.stroke_color :
-      0xFFFFFFFF;
+    uint32_t body_color = GetBodyColor(state);
 
     for (size_t i = 0; i < codepoints.size(); i++) {
       uint32_t c = codepoints[i];
@@ -597,37 +612,29 @@ void Levels::AddNodesToLevel(const Options &options,
 
     const size_t idx = level->bodies.size();
 
-    if (has_stroke) {
-      // If it is outlined, it should be a dynamic body.
-      LevelBody body;
-      // Move the mesh if we're done with it, else copy.
-      body.mesh = std::move(*mesh);
-      body.color = state.stroke_color;
-      body.pos = pos;
-      body.dynamic = true;
-      body.layer = layer;
-      level->bodies.push_back(std::move(body));
-    } else if (has_fill) {
-      // Static bodies.
-      LevelBody body;
-      body.mesh = std::move(*mesh);
-      body.color = state.fill_color;
-      body.pos = pos;
-      body.dynamic = false;
-      body.layer = layer;
-      level->bodies.push_back(std::move(body));
-    } else {
-      LOG(FATAL) << "Checked above.";
-    }
+    uint32_t color = GetBodyColor(state);
 
-    CHECK(!level->bodies.empty());
-    const LevelBody &body = level->bodies.back();
-    if (verbose)
-      Print("[{}] Add {} body at {},{} with color {:08x}\n",
+    LevelBody body;
+    body.mesh = std::move(*mesh);
+    body.color = color;
+    body.pos = pos;
+    // If it is outlined, it should be a dynamic body.
+    body.dynamic = has_stroke;
+    body.layer = layer;
+    level->bodies.push_back(std::move(body));
+
+    if (verbose) {
+      CHECK(!level->bodies.empty());
+      const LevelBody &body = level->bodies.back();
+      std::string ls;
+      if (layer == LevelLayer::FOREGROUND) ls = " (FG)";
+      if (layer == LevelLayer::BACKGROUND) ls = " (BG)";
+      Print("[{}] Add {} body at {},{} with color {:08x}{}\n",
             idx,
             body.dynamic ? "dynamic" : "static",
             body.pos.x, body.pos.y,
-            body.color);
+            body.color, ls);
+    }
   }
 }
 
