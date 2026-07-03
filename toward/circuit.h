@@ -93,6 +93,10 @@ struct Circuit {
   std::vector<Layer> layers;
 };
 
+inline bool operator==(const Cell &a, const Cell &b) {
+  return a.gate == b.gate && a.v == b.v && a.flip == b.flip;
+}
+
 bool IsWire(Gate gate);
 
 // number of inputs, outputs

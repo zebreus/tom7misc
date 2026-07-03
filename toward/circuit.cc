@@ -2,6 +2,7 @@
 #include "circuit.h"
 
 #include <array>
+#include <charconv>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -471,49 +472,146 @@ std::vector<Func> Transform(const Layer &layer,
   return out;
 }
 
-static constexpr char GateToLetter(Gate g) {
+static constexpr std::string_view GateToCode(Gate g) {
   switch (g) {
-  case AND0110:     return 'a';
-  case OR1100:      return 'b';
-  case NOT:         return 'c';
-  case NOT0:        return 'd';
-  case NOT1:        return 'e';
-  case NOT01:       return 'f';
-  case SEPARATOR01: return 'g';
-  case SEPARATOR10: return 'h';
-  case SELFXCHG01:  return 'i';
-  case SELFXCHG10:  return 'j';
-  case COMBINE01:   return 'k';
-  case COMBINE10:   return 'l';
-  case XCHG00:      return 'm';
-  case XCHG01:      return 'n';
-  case XCHG10:      return 'o';
-  case XCHG11:      return 'p';
-  case DUPSEP0011:  return 'q';
-  case DUP0:        return 'r';
-  case DUP1:        return 's';
-  case SINK:        return 't';
-  case CONST0:      return 'u';
-  case CONST1:      return 'v';
-  default:          return '?';
+  case AND0110:     return "aa";
+  case OR1100:      return "or";
+  case NOT:         return "no";
+  case NOT0:        return "n0";
+  case NOT1:        return "n1";
+  case NOT01:       return "nx";
+  case SEPARATOR01: return "s0";
+  case SEPARATOR10: return "s1";
+  case SELFXCHG01:  return "x0";
+  case SELFXCHG10:  return "x1";
+  case WIREA:       return "wa";
+  case WIREB:       return "wb";
+  case WIRE0A:      return "wc";
+  case WIRE0B:      return "wd";
+  case WIRE1A:      return "we";
+  case WIRE1B:      return "wf";
+  case COMBINE01:   return "c0";
+  case COMBINE10:   return "c1";
+  case XCHG00:      return "e0";
+  case XCHG01:      return "e1";
+  case XCHG10:      return "e2";
+  case XCHG11:      return "e3";
+  case DUPSEP0011:  return "ds";
+  case DUP0:        return "d0";
+  case DUP1:        return "d1";
+  case SINK:        return "si";
+  case CONST0:      return "k0";
+  case CONST1:      return "k1";
+  default:          return "??";
   }
 }
 
-// Inverse of the above.
-static std::optional<Gate> LetterToGate(uint8_t c) {
-  static constexpr std::array<std::optional<Gate>, 128> TABLE = []{
-      std::array<std::optional<Gate>, 128> table;
-      for (auto &e : table) e = std::nullopt;
-      for (Gate g : ALL_GATES) {
-        char c = GateToLetter(g);
-        if (c != '?') {
-          table[c] = g;
+static std::optional<Gate> CodeToGate(std::string_view s) {
+  for (Gate g : ALL_GATES) {
+    if (g != SPACER && GateToCode(g) == s) {
+      return g;
+    }
+  }
+  return std::nullopt;
+}
+
+std::string SerializeCircuit(const Circuit &circuit) {
+  std::string out;
+  for (const Layer &layer : circuit.layers) {
+    int spacer = 0;
+    bool first = true;
+    for (const Cell &cell : layer) {
+      if (cell.gate == SPACER) {
+        spacer += cell.v;
+      } else {
+        if (!first) out += " ";
+        AppendFormat(&out, "{} ", spacer);
+        std::string code(GateToCode(cell.gate));
+        if (cell.flip && code[0] >= 'a' && code[0] <= 'z') {
+          code[0] = code[0] - 'a' + 'A';
         }
+        out += code;
+        if (cell.v != 0) {
+          AppendFormat(&out, "{}", cell.v);
+        }
+        spacer = 0;
+        first = false;
       }
-      return table;
-    }();
-  if (c >= 128) return std::nullopt;
-  return TABLE[c];
+    }
+    if (spacer > 0 || first) {
+      if (!first) out += " ";
+      AppendFormat(&out, "{}", spacer);
+    }
+    out += "\n";
+  }
+  return out;
+}
+
+std::optional<Circuit> ParseCircuit(std::string_view s) {
+  Circuit circuit;
+  while (!s.empty()) {
+    size_t pos = s.find('\n');
+    std::string_view line = s.substr(0, pos);
+    if (pos == std::string_view::npos) {
+      s = "";
+    } else {
+      s.remove_prefix(pos + 1);
+    }
+    if (line.empty() && s.empty()) {
+      break;
+    }
+
+    Layer layer;
+    auto SkipWS = [&]() {
+      Util::ConsumePrefixMatching([](char c) { return c == ' '; }, &line);
+    };
+
+    while (!line.empty()) {
+      SkipWS();
+      if (line.empty()) break;
+
+      int spacer = 0;
+      std::string_view digits = Util::ConsumePrefixMatching(
+          [](char c) { return c >= '0' && c <= '9'; },
+          &line);
+      if (digits.empty()) {
+        return std::nullopt;
+      }
+      std::from_chars(digits.data(), digits.data() + digits.size(), spacer);
+
+      if (spacer > 0) {
+        layer.push_back(Cell(SPACER, spacer));
+      }
+
+      SkipWS();
+      if (line.empty()) break;
+
+      if (line.size() < 2) return std::nullopt;
+      std::string_view code = line.substr(0, 2);
+      line.remove_prefix(2);
+
+      bool flip = false;
+      std::string lower_code(code);
+      if (lower_code[0] >= 'A' && lower_code[0] <= 'Z') {
+        flip = true;
+        lower_code[0] = lower_code[0] - 'A' + 'a';
+      }
+
+      std::optional<Gate> gate = CodeToGate(lower_code);
+      if (!gate.has_value()) return std::nullopt;
+
+      int v = 0;
+      digits = Util::ConsumePrefixMatching(
+          [](char c) { return c >= '0' && c <= '9'; }, &line);
+      if (!digits.empty()) {
+        std::from_chars(digits.data(), digits.data() + digits.size(), v);
+      }
+
+      layer.push_back(Cell(gate.value(), v, flip));
+    }
+    circuit.layers.push_back(std::move(layer));
+  }
+  return circuit;
 }
 
 

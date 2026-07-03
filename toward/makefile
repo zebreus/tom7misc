@@ -1,5 +1,7 @@
 
-all : test.exe editor.exe validate.exe letters_test.exe prop_test.exe circuit_test.exe cell-library_test.exe layout_test.exe render-circuit_test.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe
+
+fixme : separator.exe
 
 CC_LIB=../cc-lib
 BOX2D=../../box2d

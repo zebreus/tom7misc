@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -14,6 +15,8 @@
 #include "prop.h"
 #include "render-circuit.h"
 #include "span-util.h"
+#include "threadutil.h"
+#include "util.h"
 
 static std::string Square(int row, int col) {
   return std::format("{:c}{:c}", 'a' + row, '1' + (7 - col));
@@ -81,7 +84,7 @@ struct ChessDemo {
   }
 
 
-  void RenderOne(std::string_view name, const Prop &prop_in) {
+  Layout RenderOne(std::string_view name, const Prop &prop_in) {
     size_t before = PropSize(prop_in);
     Prop prop = SimplifyProp(prop_in);
     size_t after = PropSize(prop);
@@ -102,12 +105,12 @@ struct ChessDemo {
     Print("Got layout!\n");
     library.DRC(layout.circuit);
     Print("DRC ok!\n");
-
-    ImageRGBA img = RenderCircuit(library, layout.circuit);
-    img.Save(std::format("legal-{}.png", name));
+    return layout;
   }
 
   void RenderAll() {
+    Asynchronously async(8);
+
     int trivial = 0, normal = 0;
     for (int srcr = 0; srcr < 8; srcr++) {
       for (int srcc = 0; srcc < 8; srcc++) {
@@ -129,7 +132,15 @@ struct ChessDemo {
             } else {
               normal++;
 
-              RenderOne(move, prop);
+              Layout lay = RenderOne(move, prop);
+              async.Run([this, lay = std::move(lay), move = std::move(move)]{
+                  ImageRGBA img = RenderCircuit(library, lay.circuit);
+                  img.Save(std::format("legal-{}.png", move));
+                  Util::WriteFile(
+                      std::format("legal-{}.circ", move),
+                      SerializeCircuit(lay.circuit));
+                });
+
             }
           }
         }
@@ -139,19 +150,16 @@ struct ChessDemo {
     Print("Did {} normal and skipped {} trivial.\n",
           normal, trivial);
   }
-
 };
 
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   ChessDemo demo;
   demo.RenderAll();
-  */
 
-  RenderParallel();
+  // RenderParallel();
 
   return 0;
 }

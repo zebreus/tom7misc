@@ -1,6 +1,8 @@
 
 #include "circuit.h"
 
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "ansi.h"
@@ -9,7 +11,7 @@
 #include "prop.h"
 
 static void TestTransformConst() {
-  Layer layer = {Cell{.gate = CONST0}, Cell{.gate = CONST1}};
+  Layer layer = {Cell(CONST0), Cell(CONST1)};
   std::vector<Func> in = {};
   std::vector<Func> out = Transform(layer, in);
   CHECK(out.size() == 2);
@@ -27,11 +29,11 @@ static void TestTransform1() {
   Prop p3 = Prop{.p = Var{.id = 3}};
 
   Layer layer = {
-    Cell{.gate = SPACER, .v = 24},
-    Cell{.gate = SINK},
-    Cell{.gate = WIRE, .v = -8},
-    Cell{.gate = SEPARATOR, .v = 15},
-    Cell{.gate = NOT}
+    Cell(SPACER, 24),
+    Cell(SINK),
+    Cell(WIREA, 8, true),
+    Cell(SEPARATOR01, 15),
+    Cell(NOT),
   };
   std::vector<Func> in = {
     // Sink
@@ -62,8 +64,8 @@ static void TestTransform2() {
   Prop pc = Prop{.p = Var{.id = 2}};
 
   Layer layer = {
-    Cell{.gate = AND0110},
-    Cell{.gate = DUPSEP0011},
+    Cell(AND0110),
+    Cell(DUPSEP0011),
   };
   std::vector<Func> in = {
     Func{.prop = pa, .type = CType::ZERO},
@@ -97,10 +99,11 @@ static void TestTransformXchg() {
   Prop p7 = Prop{.p = Var{.id = 7}};
 
   Layer layer = {
-    Cell{.gate = XCHG00},
-    Cell{.gate = XCHG01},
-    Cell{.gate = XCHG10},
-    Cell{.gate = XCHG11}};
+    Cell(XCHG00),
+    Cell(XCHG01),
+    Cell(XCHG10),
+    Cell(XCHG11),
+  };
   std::vector<Func> in = {
     Func{.prop = p0, .type = CType::ZERO},
     Func{.prop = p1, .type = CType::ZERO},
@@ -142,8 +145,8 @@ static void TestTransformFlip() {
   Prop p1 = Prop{.p = Var{.id = 1}};
 
   Layer layer = {
-    Cell{.gate = SEPARATOR, .flip = true},
-    Cell{.gate = DUPSEP0011, .flip = true},
+    Cell(SEPARATOR01, 0, true),
+    Cell(DUPSEP0011, 0, true),
   };
   std::vector<Func> in = {
     Func{.prop = p0, .type = CType::MIXED},
@@ -165,6 +168,49 @@ static void TestTransformFlip() {
   }
 }
 
+static void TestSerialization() {
+  Circuit circuit;
+  circuit.layers.push_back({
+      Cell(SPACER, 24),
+      Cell(SINK),
+      Cell(SPACER, 3),
+      Cell(WIREA, 8, true),
+      Cell(SEPARATOR01, 15),
+      Cell(NOT),
+    });
+  circuit.layers.push_back({
+      Cell(AND0110),
+      Cell(SPACER, 1),
+      Cell(DUPSEP0011, 0, true),
+      Cell(SPACER, 5),
+    });
+  circuit.layers.push_back({
+      Cell(XCHG00),
+      Cell(XCHG01),
+      Cell(XCHG10),
+      Cell(XCHG11),
+    });
+
+  std::string s = SerializeCircuit(circuit);
+  std::optional<Circuit> parsed = ParseCircuit(s);
+  CHECK(parsed.has_value());
+
+  auto CircuitEq = [](const Circuit &a, const Circuit &b) {
+    if (a.layers.size() != b.layers.size()) return false;
+    for (size_t i = 0; i < a.layers.size(); i++) {
+      if (a.layers[i].size() != b.layers[i].size()) return false;
+      for (size_t j = 0; j < a.layers[i].size(); j++) {
+        const Cell &ca = a.layers[i][j];
+        const Cell &cb = b.layers[i][j];
+        CHECK(ca == cb);
+      }
+    }
+    return true;
+  };
+
+  CHECK(CircuitEq(circuit, parsed.value()));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -173,6 +219,7 @@ int main(int argc, char **argv) {
   TestTransform2();
   TestTransformXchg();
   TestTransformFlip();
+  TestSerialization();
 
   Print("OK\n");
   return 0;
