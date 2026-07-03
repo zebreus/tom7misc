@@ -127,7 +127,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   int num_spaced_layers = 0;
 
   Periodically status_per = Periodically(1.0);
-  std::unique_ptr<StatusBar> status;
+  std::unique_ptr<StatusBar> status_owned;
+  StatusBar *status = nullptr;
 
   std::vector<int> wire_sizes_descending;
 
@@ -136,6 +137,10 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   void SetVerbose(int v) override { verbose = v; }
   void SetWriteImages(bool b) override { write_images = b; }
+  void SetStatusBar(StatusBar *s) override {
+    // Not owned.
+    status = s;
+  }
 
   // The closest we ever need outputs to be for a single cell (blocks
   // between right edge and left edge). There's no reason for chutes
@@ -147,7 +152,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   template<typename... Args>
   inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
-    if (status.get() != nullptr) {
+    if (status != nullptr) {
       status->Print(fmt, std::forward<Args>(args)...);
     } else {
       ::Print(fmt, std::forward<Args>(args)...);
@@ -1470,7 +1475,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
-    status.reset(new StatusBar(3));
+    status_owned.reset(new StatusBar(3));
+    status = status_owned.get();
 
     ComputeMinOutputDistance();
     ComputeMaxCellWidth();

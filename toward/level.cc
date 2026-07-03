@@ -380,7 +380,8 @@ void Levels::AddNodesToLevel(const Options &options,
                              const SVG::Node &node,
                              const SVG::GraphicsState &state,
                              Level *level,
-                             bool verbose) {
+                             bool verbose,
+                             LevelLayer layer) {
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
     if (verbose) Print("Got One at {},{}\n", oone.value().x, oone.value().y);
     LevelBody one_body = Levels::One();
@@ -416,7 +417,7 @@ void Levels::AddNodesToLevel(const Options &options,
     SVG::GraphicsState next_state = SVG::UpdateState(state, g->style);
 
     for (const auto &child : g->children) {
-      AddNodesToLevel(options, child, next_state, level, verbose);
+      AddNodesToLevel(options, child, next_state, level, verbose, layer);
     }
 
   } else if (const SVG::Text *text = std::get_if<SVG::Text>(&node.v)) {
@@ -471,6 +472,7 @@ void Levels::AddNodesToLevel(const Options &options,
           LevelBody body;
           body.dynamic = options.all_text_dynamic;
           body.color = body_color;
+          body.layer = layer;
 
           vec2 center = {0.0, 0.0};
           body.mesh.polygons = letter.mesh.polygons;
@@ -603,6 +605,7 @@ void Levels::AddNodesToLevel(const Options &options,
       body.color = state.stroke_color;
       body.pos = pos;
       body.dynamic = true;
+      body.layer = layer;
       level->bodies.push_back(std::move(body));
     } else if (has_fill) {
       // Static bodies.
@@ -611,6 +614,7 @@ void Levels::AddNodesToLevel(const Options &options,
       body.color = state.fill_color;
       body.pos = pos;
       body.dynamic = false;
+      body.layer = layer;
       level->bodies.push_back(std::move(body));
     } else {
       LOG(FATAL) << "Checked above.";
@@ -639,7 +643,7 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   std::string contents = Util::ReadFile(filename);
   CHECK(!contents.empty()) << filename;
 
-  SVG::Doc doc = SVG::ParseOrDie(contents);
+  SVG::LayeredDoc doc = SVG::ParseLayersOrDie(contents);
 
   // Print("\n{}\n", SVG::ToSVG(doc));
 
@@ -649,7 +653,14 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
-  AddNodesToLevel(options, doc.root, state, level.get(), verbose);
+  for (const auto [name, root] : doc.layers) {
+    bool background = Util::StartsWith(Util::lcase(name), "back");
+    bool foreground = Util::StartsWith(Util::lcase(name), "fore");
+    LevelLayer layer = background ? LevelLayer::BACKGROUND :
+      foreground ? LevelLayer::FOREGROUND :
+      LevelLayer::PHYSICAL;
+    AddNodesToLevel(options, root, state, level.get(), verbose, layer);
+  }
 
   std::sort(level->inputs.begin(), level->inputs.end());
   std::sort(level->outputs.begin(), level->outputs.end());
@@ -657,6 +668,7 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   return level;
 }
 
+// TODO: This should support background and foreground layers
 void Levels::SaveSVG(const Level &level, std::string_view filename) {
   SVG::Doc doc;
   doc.view_box = std::array<double, 4>{
@@ -755,18 +767,27 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
         ANSI::ForegroundRGB32(body.color),
         body.pos.x, body.pos.y);
   */
-  if (body.dynamic) {
-    scene->AddObject(body.mesh, body.color,
-                     body.pos, body.angle,
-                     body.vel, body.avel,
-                     body.restitution,
-                     body.friction);
-  } else {
-    scene->AddFixedObject(body.mesh, body.color, body.pos,
-                          body.restitution,
-                          body.friction);
+  switch (body.layer) {
+  case LevelLayer::BACKGROUND:
+    scene->AddGraphics(body.mesh, body.color, body.pos, false);
+    break;
+  case LevelLayer::FOREGROUND:
+    scene->AddGraphics(body.mesh, body.color, body.pos, true);
+    break;
+  case LevelLayer::PHYSICAL:
+    if (body.dynamic) {
+      scene->AddObject(body.mesh, body.color,
+                       body.pos, body.angle,
+                       body.vel, body.avel,
+                       body.restitution,
+                       body.friction);
+    } else {
+      scene->AddFixedObject(body.mesh, body.color, body.pos,
+                            body.restitution,
+                            body.friction);
+    }
+    break;
   }
-  scene->objects.back().user_data = user_data;
 }
 
 std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {

@@ -37,7 +37,13 @@ struct Scene {
   };
 
   b2WorldId world_id = {};
+
+  // Not simulated, but drawn behind the objects.
+  std::vector<Obj> bg_objects;
+  // Simulated.
   std::vector<Obj> objects;
+  // Not simulated, but drawn on top of the objects.
+  std::vector<Obj> fg_objects;
 
   Scene(bool walls = true);
 
@@ -75,6 +81,9 @@ struct Scene {
                       vec2f pos,
                       float restitution,
                       float friction);
+
+  void AddGraphics(const Polygonization::Mesh &mesh, uint32_t color,
+                   vec2f pos, bool foreground);
 
   void ApplyImpulse(vec2f v);
 

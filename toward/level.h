@@ -18,6 +18,12 @@ enum class LevelItem {
   ZERO,
 };
 
+enum class LevelLayer {
+  BACKGROUND,
+  PHYSICAL,
+  FOREGROUND,
+};
+
 struct LevelBody {
   // Polygon mesh for the body.
   // Coordinates are in Level space, which is y-down.
@@ -41,6 +47,10 @@ struct LevelBody {
   // Some bodies are instances of a special thing, e.g. a
   // '0' or '1'.
   std::optional<LevelItem> item;
+
+  // If false, then this object is rendered but not simulated.
+  // The physics fields above become meaningless.
+  LevelLayer layer = LevelLayer::PHYSICAL;
 };
 
 // The starting state of the level.
@@ -165,7 +175,8 @@ struct Levels {
                               const SVG::Node &node,
                               const SVG::GraphicsState &state,
                               Level *level,
-                              bool verbose);
+                              bool verbose,
+                              LevelLayer layer);
 };
 
 #endif

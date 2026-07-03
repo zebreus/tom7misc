@@ -16,6 +16,8 @@
 #include "layout-canvas.h"
 #include "prop.h"
 
+struct StatusBar;
+
 struct Layout {
   // The topmost layer needs variables as inputs.
   // A future version might guarantee that CType is mixed.
@@ -35,6 +37,7 @@ struct LayoutEngine {
   virtual void SetVerbose(int v) = 0;
   virtual void SetWriteImages(bool yes) = 0;
 
+
   // This stuff is just exposed for testing and visualization.
 
   using LC = LayoutCanvas::LC;
@@ -50,6 +53,10 @@ struct LayoutEngine {
   // Add a layer to the top. The input may not be empty, and must
   // not be done (all variables).
   virtual void DoAddLayer(std::deque<std::vector<LC>> *layers) = 0;
+
+  // Advanced!
+  // Must have 3 lines.
+  virtual void SetStatusBar(StatusBar *s) = 0;
 
  protected:
   LayoutEngine();

@@ -6,6 +6,7 @@
 #include <numbers>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -276,12 +277,65 @@ void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
   Attach(body_id, shape_def, mesh, color);
 }
 
+static std::vector<Rendering::Triangle> MakeTriangles(
+    const Polygonization::Mesh &mesh,
+    uint32_t color) {
+  std::vector<Rendering::Triangle> render_mesh;
+
+  for (const auto &poly : mesh.polygons) {
+    if (poly.size() < 3)
+      continue;
+
+    std::vector<b2Vec2> pts;
+    pts.reserve(poly.size());
+    for (int idx : poly) {
+      auto [px, py] = mesh.vertices[idx];
+      pts.push_back({(float)px, (float)py});
+    }
+
+    for (size_t i = 1; i + 1 < poly.size(); i++) {
+      auto [x0, y0] = mesh.vertices[poly[0]];
+      auto [x1, y1] = mesh.vertices[poly[i]];
+      auto [x2, y2] = mesh.vertices[poly[i + 1]];
+
+      render_mesh.push_back({{(float)x0, (float)y0},
+                             {(float)x1, (float)y1},
+                             {(float)x2, (float)y2},
+                             color,
+                             0});
+    }
+  }
+
+  return render_mesh;
+}
+
+void Scene::AddGraphics(const Polygonization::Mesh &mesh, uint32_t color,
+                        vec2f pos, bool foreground) {
+  Obj obj;
+  obj.mesh = MakeTriangles(mesh, color);
+
+  // Transform the mesh to put it at pos, since we won't have a box2d
+  // position to derive.
+  for (Rendering::Triangle &t : obj.mesh) {
+    t.a += pos;
+    t.b += pos;
+    t.c += pos;
+  }
+
+  if (foreground) {
+    fg_objects.push_back(std::move(obj));
+  } else {
+    bg_objects.push_back(std::move(obj));
+  }
+}
+
 void Scene::Attach(b2BodyId body_id,
                    b2ShapeDef shape_def,
                    const Polygonization::Mesh &mesh,
                    uint32_t color) {
   std::vector<Rendering::Triangle> render_mesh;
 
+  // TODO: This can use MakeTriangles I think
   bool has_shapes = false;
   for (const auto &poly : mesh.polygons) {
     if (poly.size() < 3)
@@ -351,34 +405,65 @@ void Scene::ApplyImpulse(vec2f v) {
 std::vector<Rendering::Triangle> Scene::GetTriangles() {
   std::vector<Rendering::Triangle> scene;
   size_t num_triangles = 0;
-  for (const Obj &obj : objects) {
-    num_triangles += obj.mesh.size();
+
+  std::vector<std::span<const Obj>> layers = {
+    bg_objects, objects, fg_objects,
+  };
+
+  for (auto layer : layers) {
+    for (const Obj &obj : layer) {
+      num_triangles += obj.mesh.size();
+    }
   }
   scene.reserve(num_triangles);
+
+  auto AddRenderLayer = [&scene](std::span<const Obj> layer) {
+      for (const Obj &obj : layer) {
+        for (const Rendering::Triangle &tri : obj.mesh) {
+          auto Transform = [](vec2f p) -> vec2f {
+              return vec2f{
+                .x = p.x,
+                .y = HEIGHT - p.y,
+              };
+            };
+          scene.push_back({
+              Transform(tri.a),
+              Transform(tri.b),
+              Transform(tri.c),
+              tri.rgba,
+              tri.reserved,
+            });
+        }
+      }
+    };
+
+  AddRenderLayer(bg_objects);
 
   for (const Obj &obj : objects) {
     b2Vec2 pos = b2Body_GetPosition(obj.body_id);
     b2Rot rot = b2Body_GetRotation(obj.body_id);
 
-    auto transform = [&](const Rendering::vec2f &v) -> Rendering::vec2f {
-      float rx = rot.c * v.x - rot.s * v.y;
-      float ry = rot.s * v.x + rot.c * v.y;
-      return {
-        .x = pos.x + rx,
-        .y = HEIGHT - (pos.y + ry),
+    auto Transform = [&](const Rendering::vec2f &v) -> Rendering::vec2f {
+        float rx = rot.c * v.x - rot.s * v.y;
+        float ry = rot.s * v.x + rot.c * v.y;
+        return {
+          .x = pos.x + rx,
+          .y = HEIGHT - (pos.y + ry),
+        };
       };
-    };
 
     for (const Rendering::Triangle &tri : obj.mesh) {
       scene.push_back({
-        transform(tri.a),
-        transform(tri.b),
-        transform(tri.c),
-        tri.rgba,
-        tri.reserved
-      });
+          Transform(tri.a),
+          Transform(tri.b),
+          Transform(tri.c),
+          tri.rgba,
+          tri.reserved,
+        });
     }
   }
+
+  AddRenderLayer(fg_objects);
 
   return scene;
 }
