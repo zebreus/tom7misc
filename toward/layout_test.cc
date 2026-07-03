@@ -3,6 +3,8 @@
 
 #include <deque>
 #include <memory>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -225,11 +227,49 @@ static void Modest(const CellLibrary &library) {
   Verify(layout, output);
 }
 
+static void TestSerialization() {
+  StartTest("Serialization");
+
+  {
+    Layout layout;
+    layout.input_vars = {
+      {10, CType::MIXED},
+      {20, CType::ZERO},
+      {30, CType::ONE},
+    };
+    // Add a dummy layer to make sure it doesn't break basic circuit
+    // serialization.
+    layout.circuit.layers.push_back({
+        Cell(SPACER, 42),
+        Cell(WIRE0A, 8, true),
+      });
+
+    std::string s = LayoutEngine::Serialize(layout);
+    std::optional<Layout> parsed = LayoutEngine::Parse(s);
+
+    CHECK(parsed.has_value());
+    CHECK(parsed->input_vars == layout.input_vars);
+    CHECK(parsed->circuit.layers == layout.circuit.layers);
+  }
+
+  {
+    Layout layout;
+    std::string s = LayoutEngine::Serialize(layout);
+    std::optional<Layout> parsed = LayoutEngine::Parse(s);
+
+    CHECK(parsed.has_value());
+    CHECK(parsed->input_vars.empty());
+    CHECK(parsed->circuit.layers.empty());
+  }
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   CellLibrary library;
+
+  TestSerialization();
 
   TestLoop1();
 

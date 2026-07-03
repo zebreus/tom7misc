@@ -8,6 +8,8 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -57,6 +59,9 @@ struct LayoutEngine {
   // Advanced!
   // Must have 3 lines.
   virtual void SetStatusBar(StatusBar *s) = 0;
+
+  static std::string Serialize(const Layout &layout);
+  static std::optional<Layout> Parse(std::string_view content);
 
  protected:
   LayoutEngine();

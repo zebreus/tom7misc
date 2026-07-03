@@ -2,6 +2,7 @@
 #include "layout.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <compare>
 #include <cstdlib>
@@ -1500,4 +1501,73 @@ std::unique_ptr<LayoutEngine> LayoutEngine::Create(
 
 LayoutEngine::LayoutEngine() {}
 LayoutEngine::~LayoutEngine() {}
+
+
+std::string LayoutEngine::Serialize(const Layout &layout) {
+  std::string out;
+  bool first = true;
+  for (const auto &[var, ctype] : layout.input_vars) {
+    if (!first) out += " ";
+    char c = '?';
+    switch (ctype) {
+    case CType::ZERO: c = 'O'; break;
+    case CType::ONE: c = 'I'; break;
+    case CType::MIXED: c = 'M'; break;
+    }
+    out += std::to_string(var) + c;
+    first = false;
+  }
+  out += "\n";
+  out += SerializeCircuit(layout.circuit);
+  return out;
+}
+
+std::optional<Layout> LayoutEngine::Parse(std::string_view content) {
+  size_t pos = content.find('\n');
+  if (pos == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  std::string_view vars_line = content.substr(0, pos);
+  if (!vars_line.empty() && vars_line.back() == '\r') {
+    vars_line.remove_suffix(1);
+  }
+  std::string_view circuit_content = content.substr(pos + 1);
+
+  Layout layout;
+  while (!vars_line.empty()) {
+    Util::ConsumePrefixMatching([](char c) { return c == ' '; }, &vars_line);
+    if (vars_line.empty()) break;
+
+    std::string_view digits = Util::ConsumePrefixMatching(
+        [](char c) { return c >= '0' && c <= '9'; }, &vars_line);
+    if (digits.empty()) return std::nullopt;
+
+    int var = 0;
+    std::from_chars(digits.data(), digits.data() + digits.size(), var);
+
+    if (vars_line.empty()) return std::nullopt;
+    char c = vars_line[0];
+    vars_line.remove_prefix(1);
+
+    CType ctype;
+    if (c == 'O') {
+      ctype = CType::ZERO;
+    } else if (c == 'I') {
+      ctype = CType::ONE;
+    } else if (c == 'M') {
+      ctype = CType::MIXED;
+    } else {
+      return std::nullopt;
+    }
+
+    layout.input_vars.emplace_back(var, ctype);
+  }
+
+  std::optional<Circuit> circuit = ParseCircuit(circuit_content);
+  if (!circuit.has_value()) return std::nullopt;
+
+  layout.circuit = std::move(circuit.value());
+  return layout;
+}
 
