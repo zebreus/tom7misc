@@ -50,6 +50,9 @@ struct ImageRGBA {
   static ImageRGBA *LoadFromMemory(const char *data, size_t size);
 
   // Saves in RGBA PNG format. Returns true if successful.
+  // Note that these will crash on files whose total number of
+  // pixels (or maybe color channels) exceeds 31 bits.
+  // PNG::EncodeInMemory can probably handle it.
   bool Save(std::string_view filename) const;
   std::vector<uint8> SaveToVec() const;
   std::string SaveToString() const;
@@ -482,7 +485,7 @@ struct Image1 {
 
   // The number of 64-bit words we need to represent the given
   // number of pixels.
-  static int NumWords(int pixels);
+  static size_t NumWords(size_t pixels);
   // If any bits outside of the image region were modified, call this
   // to restore the representation invariant by zeroing them.
   void CanonicalMask();

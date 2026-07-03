@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "color-util.h"
 #include "crypt/lfsr.h"
 #include "image.h"
@@ -161,6 +162,15 @@ static void TestEncode16() {
   CheckRoundTrip(img);
 }
 
+static void TestGigantic() {
+  Print("Make gigantic image...\n");
+  ImageRGBA img(36700, 21200);
+  img.Clear32(0x000000FF);
+
+  std::vector<uint8_t> png = PNG::EncodeInMemory(img, 4);
+  Print("Compresses to {} bytes\n", png.size());
+}
+
 
 int main(int argc, char **argv) {
   TestCRC();
@@ -169,6 +179,8 @@ int main(int argc, char **argv) {
   TestEncode16();
   TestEncode4();
   TestEncode2();
+
+  TestGigantic();
 
   printf("OK");
   return 0;

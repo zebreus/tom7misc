@@ -153,12 +153,12 @@ static inline std::string VecToString(const std::vector<uint8_t> &v) {
 ImageRGBA::ImageRGBA(std::span<const uint32_t> rgba32,
                      int width, int height) :
   width(width), height(height), rgba(rgba32.begin(), rgba32.end()) {
-  CHECK((int)rgba.size() == width * height);
+  CHECK(rgba.size() == (size_t)width * (size_t)height);
 }
 
 ImageRGBA::ImageRGBA(std::vector<uint32> &&rgba, int width, int height) :
   width(width), height(height), rgba(std::move(rgba)) {
-  CHECK((int)this->rgba.size() == width * height);
+  CHECK(this->rgba.size() == (size_t)width * (size_t)height);
 }
 
 // static
@@ -169,7 +169,7 @@ ImageRGBA *ImageRGBA::Load(std::string_view filename) {
   uint8 *stb_rgba = stbi_load(filename_string.c_str(),
                               &width, &height, &bpp_unused, 4);
   if (stb_rgba == nullptr) return nullptr;
-  const int bytes = width * height * 4;
+  const size_t bytes = (size_t)width * height * 4;
   ret.resize(bytes);
   // TODO: Is this portable (or even correct) wrt to endianness?
   memcpy(ret.data(), stb_rgba, bytes);
@@ -184,7 +184,7 @@ ImageRGBA *ImageRGBA::LoadFromMemory(const char *data, size_t size) {
       (const stbi_uc*)data, size,
       &width, &height, &bpp_unused, 4);
   if (stb_rgba == nullptr) return nullptr;
-  const int bytes = width * height * 4;
+  const size_t bytes = (size_t)width * height * 4;
   ret.resize(bytes);
   // TODO: Is this portable (or even correct) wrt to endianness?
   memcpy(ret.data(), stb_rgba, bytes);
@@ -198,9 +198,9 @@ ImageRGBA *ImageRGBA::LoadFromMemory(span<const uint8_t> filebytes) {
 
 ImageRGBA::ImageRGBA(span<const uint8> rgba8, int width, int height)
   : width(width), height(height) {
-  CHECK((int)rgba8.size() == width * height * 4);
-  rgba.resize(width * height);
-  for (int i = 0; i < width * height; i++) {
+  CHECK(rgba8.size() == (size_t)width * height * 4);
+  rgba.resize((size_t)width * height);
+  for (size_t i = 0; i < (size_t)width * height; i++) {
     uint8 r = rgba8[i * 4 + 0];
     uint8 g = rgba8[i * 4 + 1];
     uint8 b = rgba8[i * 4 + 2];
@@ -210,16 +210,16 @@ ImageRGBA::ImageRGBA(span<const uint8> rgba8, int width, int height)
 }
 
 ImageRGBA::ImageRGBA(int width, int height)
-  : width(width), height(height), rgba(width * height) {
+  : width(width), height(height), rgba((size_t)width * height) {
   Clear32(0x00000000);
 }
 
 std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
-  std::vector<uint8_t> ret(width * height * 4);
-  for (int i = 0; i < width * height; i++) {
-    CHECK(i < (int)rgba.size());
+  std::vector<uint8_t> ret((size_t)width * height * 4);
+  for (size_t i = 0; i < (size_t)width * height; i++) {
+    CHECK(i < rgba.size());
     const auto &[r, g, b, a] = Unpack32(rgba[i]);
-    CHECK(i * 4 + 3 < (int)ret.size()) << i << " " << ret.size();
+    CHECK(i * 4 + 3 < ret.size()) << i << " " << ret.size();
     ret[i * 4 + 0] = r;
     ret[i * 4 + 1] = g;
     ret[i * 4 + 2] = b;
@@ -239,14 +239,14 @@ std::span<uint32_t> ImageRGBA::data() {
 bool ImageRGBA::Save(std::string_view filename) const {
   std::string filename_string = std::string(filename);
   std::vector<uint8> buffer = ToBuffer8();
-  CHECK((int)buffer.size() == width * height * 4);
+  CHECK(buffer.size() == (size_t)width * height * 4);
   return !!stbi_write_png(filename_string.c_str(),
                           width, height, 4, buffer.data(), 4 * width);
 }
 
 vector<uint8> ImageRGBA::SaveToVec() const {
   std::vector<uint8> buffer = ToBuffer8();
-  CHECK((int)buffer.size() == width * height * 4);
+  CHECK(buffer.size() == (size_t)width * height * 4);
   return stbi_make_png_rgba(width, height, buffer.data());
 }
 
@@ -257,7 +257,7 @@ string ImageRGBA::SaveToString() const {
 bool ImageRGBA::SaveJPG(std::string_view filename, int quality) const {
   std::string filename_string = std::string(filename);
   std::vector<uint8> buffer = ToBuffer8();
-  CHECK((int)buffer.size() == width * height * 4);
+  CHECK(buffer.size() == (size_t)width * height * 4);
   CHECK(quality >= 0 && quality <= 100) << quality;
   return !!stbi_write_jpg(filename_string.c_str(),
                           width, height, 4, buffer.data(), quality);
@@ -274,7 +274,7 @@ bool ImageRGBA::operator==(const ImageRGBA &other) const {
 }
 
 std::size_t ImageRGBA::Hash() const {
-  uint64_t h = width * 31337;
+  uint64_t h = (uint64_t)width * 31337;
   for (uint32_t v : rgba) {
     h = (h << 13) | (h >> (64 - 13));
     h ^= v;
@@ -357,7 +357,7 @@ ImageRGBA ImageRGBA::ScaleDownBy(int scale) const {
         rr /= aa;
         gg /= aa;
         bb /= aa;
-        aa /= scale * scale;
+        aa /= (size_t)scale * scale;
       }
       ret.SetPixel(x, y, (uint8)rr, (uint8)gg, (uint8)bb, (uint8)aa);
     }
@@ -383,7 +383,7 @@ void ImageRGBA::BlendPixel(int x, int y,
 
   using word = uint16_t;
 
-  const int i = (y * width + x);
+  const size_t i = ((size_t)y * width + x);
   const auto &[old_r, old_g, old_b, old_a] = Unpack32(rgba[i]);
   // TODO: Figure out how to blend when dest is also transparent.
 
@@ -1227,8 +1227,8 @@ static void CopyImageRectUnclipped(
     const int syy = srcy + yy;
     const int dyy = dsty + yy;
 
-    memcpy(dest + (dyy * destwidth) + dstx,
-           source + (syy * sourcewidth) + srcx,
+    memcpy(dest + ((size_t)dyy * destwidth) + dstx,
+           source + ((size_t)syy * sourcewidth) + srcx,
            srcw * sizeof (uint32_t));
   }
 }
@@ -1396,9 +1396,9 @@ ImageRGBA ImageRGBA::FromChannels(const ImageA &red,
 }
 
 ImageRGB ImageRGBA::IgnoreAlpha() const {
-  const int size = width * height;
+  const size_t size = (size_t)width * height;
   std::vector<uint8_t> rgb(size * 3, 0);
-  for (int i = 0; i < size; i++) {
+  for (size_t i = 0; i < size; i++) {
     uint32_t c = rgba[i];
 
     const auto &[r, g, b, a_] = Unpack32(c);
@@ -1480,11 +1480,11 @@ ImageRGBA::SampleBilinear(float x, float y) const {
 
 ImageRGB::ImageRGB(vector<uint8> rgb_in, int width, int height) :
   width(width), height(height), rgb(std::move(rgb_in)) {
-  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(rgb.size() == (size_t)width * height * 3);
 }
 
 ImageRGB::ImageRGB(int width, int height) : width(width), height(height),
-                                            rgb(width * height * 3, 0) {
+                                            rgb((size_t)width * height * 3, 0) {
 }
 
 bool ImageRGB::operator==(const ImageRGB &other) const {
@@ -1505,7 +1505,7 @@ std::size_t ImageRGB::Hash() const {
 }
 
 void ImageRGB::Clear(uint8 r, uint8 g, uint8 b) {
-  for (int i = 0; i < width * height; i++) {
+  for (size_t i = 0; i < (size_t)width * height; i++) {
     rgb[i * 3 + 0] = r;
     rgb[i * 3 + 1] = g;
     rgb[i * 3 + 2] = b;
@@ -1518,9 +1518,9 @@ void ImageRGB::Clear32(uint32_t rgba) {
 }
 
 ImageRGBA ImageRGB::AddAlpha(uint8_t a) const {
-  const int size = width * height;
+  const size_t size = (size_t)width * height;
   std::vector<uint32_t> rgba(size, 0);
-  for (int i = 0; i < size; i++) {
+  for (size_t i = 0; i < size; i++) {
     uint8_t r = rgb[i * 3 + 0];
     uint8_t g = rgb[i * 3 + 1];
     uint8_t b = rgb[i * 3 + 2];
@@ -1531,13 +1531,13 @@ ImageRGBA ImageRGB::AddAlpha(uint8_t a) const {
 }
 
 bool ImageRGB::SavePNG(const std::string &filename) const {
-  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(rgb.size() == (size_t)width * height * 3);
   return !!stbi_write_png(filename.c_str(),
                           width, height, 3, rgb.data(), 3 * width);
 }
 
 vector<uint8> ImageRGB::SavePNGToVec() const {
-  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(rgb.size() == (size_t)width * height * 3);
   return stbi_make_png_rgb(width, height, rgb.data());
 }
 
@@ -1550,14 +1550,14 @@ string ImageRGB::SavePNGToString() const {
 }
 
 bool ImageRGB::SaveJPG(const std::string &filename, int quality) const {
-  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(rgb.size() == (size_t)width * height * 3);
   CHECK(quality >= 0 && quality <= 100) << quality;
   return !!stbi_write_jpg(filename.c_str(),
                           width, height, 3, rgb.data(), quality);
 }
 
 vector<uint8> ImageRGB::SaveJPGToVec(int quality) const {
-  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(rgb.size() == (size_t)width * height * 3);
   return stbi_make_jpg_rgb(width, height, rgb.data(), quality);
 }
 
@@ -1626,11 +1626,11 @@ void ImageRGB::BlendImage(int x, int y, const ImageRGBA &other) {
 
 ImageA::ImageA(vector<uint8> alpha_in, int width, int height)
   : width(width), height(height), alpha(std::move(alpha_in)) {
-  CHECK((int)alpha.size() == width * height);
+  CHECK(alpha.size() == (size_t)width * height);
 }
 
 ImageA::ImageA(int width, int height) : width(width), height(height),
-                                        alpha(width * height, 0) {
+                                        alpha((size_t)width * height, 0) {
 }
 
 ImageA *ImageA::Copy() const {
@@ -1644,7 +1644,7 @@ bool ImageA::operator==(const ImageA &other) const {
 }
 
 std::size_t ImageA::Hash() const {
-  uint64_t h = width * 31337;
+  uint64_t h = (uint64_t)width * 31337;
   for (uint8 v : alpha) {
     // PERF: Work on 64 bits at a time...
     h = (h << 13) | (h >> (64 - 13));
@@ -1793,8 +1793,8 @@ static void CopyImageARectUnclipped(
     const int syy = srcy + yy;
     const int dyy = dsty + yy;
 
-    memcpy(dest + (dyy * destwidth) + dstx,
-           source + (syy * sourcewidth) + srcx,
+    memcpy(dest + ((size_t)dyy * destwidth) + dstx,
+           source + ((size_t)syy * sourcewidth) + srcx,
            srcw * sizeof (uint8_t));
   }
 }
@@ -1873,19 +1873,19 @@ ImageRGBA ImageA::AlphaMaskRGBA(uint8 r, uint8 g, uint8 b) const {
 
 ImageF::ImageF(std::span<const float> alpha, int width, int height)
   : width(width), height(height), alpha(alpha.begin(), alpha.end()) {
-  CHECK((int)alpha.size() == width * height);
+  CHECK(alpha.size() == (size_t)width * height);
 }
 
 ImageF::ImageF(int width, int height) : width(width), height(height),
-                                        alpha(width * height, 0.0f) {
+                                        alpha((size_t)width * height, 0.0f) {
 }
 
 ImageF::ImageF(const ImageA &other) : width(other.Width()),
                                       height(other.Height()) {
-  alpha.resize(width * height);
+  alpha.resize((size_t)width * height);
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      alpha[y * width + x] =
+      alpha[(size_t)y * width + x] =
         other.GetPixel(x, y) * (1.0f / 255.0f);
     }
   }
@@ -2034,14 +2034,14 @@ Image1 ImageA::Threshold(uint8_t min_one) const {
   return out;
 }
 
-int Image1::NumWords(int pixels) {
+size_t Image1::NumWords(size_t pixels) {
   return (pixels >> 6) + ((pixels & 63) ? 1 : 0);
 }
 
 Image1::Image1(const std::vector<bool> &alpha, int width, int height) :
   Image1(width, height) {
-  CHECK((int)alpha.size() == width * height);
-  int idx = 0;
+  CHECK(alpha.size() == (size_t)width * height);
+  size_t idx = 0;
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
       SetPixel(x, y, alpha[idx]);
@@ -2051,7 +2051,7 @@ Image1::Image1(const std::vector<bool> &alpha, int width, int height) :
 }
 
 Image1::Image1(int width, int height) : width(width), height(height),
-                                        bits(NumWords(width * height), 0) {
+                                        bits(NumWords((size_t)width * height), 0) {
   // printf("%d x %d stored in %d words\n", width, height, (int)bits.size());
 }
 
@@ -2074,7 +2074,7 @@ Image1 Image1::Inverse() const {
 }
 
 void Image1::CanonicalMask() {
-  const int num_bits = width * height;
+  const size_t num_bits = (size_t)width * height;
   const int trailing_bits = num_bits & 63;
   if (trailing_bits) {
     // Then we need to mask the last word. Since there are nonzero
@@ -2101,7 +2101,7 @@ bool Image1::operator ==(const Image1 &other) const {
 }
 
 std::size_t Image1::Hash() const {
-  uint64_t h = width * 0xCAFE0031337;
+  uint64_t h = (uint64_t)width * 0xCAFE0031337;
   for (uint64_t w : bits) {
     h = std::rotr<uint64_t>(h, 49);
     h ^= w;
@@ -2116,7 +2116,7 @@ ImageRGBA Image1::MonoRGBA(uint32_t one, uint32_t zero) const {
   // if we have to do bounds checking with SetPixel32 anyway.
   for (int y = 0; y < Height(); y++) {
     for (int x = 0; x < Width(); x++) {
-      uint32_t c = Sub(y * width + x) ? one : zero;
+      uint32_t c = Sub((size_t)y * width + x) ? one : zero;
       out.SetPixel32(x, y, c);
     }
   }
@@ -2128,7 +2128,7 @@ ImageA Image1::MonoA(uint8_t one, uint8_t zero) const {
   // PERF: As above.
   for (int y = 0; y < Height(); y++) {
     for (int x = 0; x < Width(); x++) {
-      uint8_t v = Sub(y * width + x) ? one : zero;
+      uint8_t v = Sub((size_t)y * width + x) ? one : zero;
       out.SetPixel(x, y, v);
     }
   }
@@ -2179,7 +2179,7 @@ void Image1::SetRect(int x, int y, int w, int h, bool value) {
 
   for (int yy = y; yy < y + h; yy++) {
     for (int xx = x; xx < x + w; xx++) {
-      Set(yy * width + xx, value);
+      Set((size_t)yy * width + xx, value);
     }
   }
 }

@@ -12,6 +12,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -290,7 +291,7 @@ static void TestCopyImage() {
     for (int y = 0; y < 9; y++) {                    \
       for (int x = 0; x < 10; x++) {                 \
         uint32_t c = canvas.GetPixel32(x, y);        \
-        if (0) printf("%08x %d,%d\n", c, x, y);      \
+        if (0) Print("{:08x} {},{}\n", c, x, y);      \
         if (y == 0 && x == 0) {                      \
           CHECK(c == 0x0000FFFF);                    \
         } else if (y == 8 && x == 9) {               \
@@ -421,6 +422,12 @@ static void TestTriangle() {
   CHECK(img.GetPixel32(125, 127) == 0x000000FF);
 }
 
+static void TestGigantic() {
+  Print("Make gigantic image...\n");
+  ImageRGBA img(36700, 21200);
+  img.Clear32(0x000000FF);
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -442,10 +449,12 @@ int main(int argc, char **argv) {
   TestConvertRGB();
   TestSaveRGB();
 
+  TestGigantic();
+
   // TODO: Test SaveToVec / LoadFromMemory round trip
 
   // TODO: More image tests!
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
