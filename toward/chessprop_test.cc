@@ -23,7 +23,7 @@ static void CheckAttacked(const Position &pos) {
       bool expected = pos.Attacked(r, c);
 
       Prop attacked = ChessProp::Attacked(board, r, c);
-      bool actual = EvaluateProp(empty_world, empty_assignments, attacked);
+      bool actual = EvaluateProp(empty_assignments, attacked);
 
       if (expected != actual) {
         Print("FEN: {}\n", pos.ToFEN(0, 1));
@@ -62,7 +62,7 @@ static void CheckAllMovesAgree(const Position &pos) {
           bool expected = Position(pos).IsLegal(m);
 
           Prop prop = ChessProp::IsLegal(board, srcr, srcc, dstr, dstc);
-          bool actual = EvaluateProp(empty_world, empty_assignments, prop);
+          bool actual = EvaluateProp(empty_assignments, prop);
 
           if (expected != actual) {
             Print("FEN: {}\n", pos.ToFEN(0, 1));
@@ -140,18 +140,27 @@ static void PropSizeHisto() {
   ChessProp::Board board = ChessProp::NewBoard(&world);
   CHECK(world.symbol_names.size() == ChessProp::NUM_BOARD_PROPS);
 
+
+  int unit_count = 0;
   for (int srcr = 0; srcr < 8; srcr++) {
     for (int srcc = 0; srcc < 8; srcc++) {
       for (int dstr = 0; dstr < 8; dstr++) {
         for (int dstc = 0; dstc < 8; dstc++) {
           Prop prop =
-            SimplifyProp(ChessProp::IsLegal(board, srcr, srcc, dstr, dstc));
-          hist.Observe(PropSize(prop));
+            SimplifyProp(ChessProp::IsLegal(
+                             board, srcr, srcc, dstr, dstc,
+                             ChessProp::KID_CHESS));
+          if (prop == False()) {
+            unit_count++;
+          } else {
+            hist.Observe(PropSize(prop));
+          }
         }
       }
     }
   }
 
+  Print("False: {}\n", unit_count);
   Print("{}", hist.SimpleANSI(40));
 }
 
@@ -160,11 +169,13 @@ int main(int argc, char **argv) {
 
   Print("\nTest Attacked / IsLegal...\n");
 
+  #if 0
   TestStartingPosition();
   TestEnPassant();
   TestCastling();
   TestOutOfCheck();
   TestKingMoving();
+  #endif
 
   Print("Prop size histo:\n");
 

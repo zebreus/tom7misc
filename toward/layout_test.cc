@@ -218,6 +218,7 @@ static void Modest(const CellLibrary &library) {
                 ),
   };
   le->SetVerbose(2);
+  le->SetWriteImages(true);
   Layout layout = le->DoLayout(output);
   RenderCircuit(library, layout.circuit).Save("modest.png");
   library.DRC(layout.circuit);

@@ -22,6 +22,7 @@ static constexpr uint32_t ZERO_INPUT = 0xAA0000FF;
 static constexpr uint32_t ONE_OUTPUT = 0x00FF00FF;
 static constexpr uint32_t ONE_INPUT = 0x00AA00FF;
 
+static constexpr uint32_t USEFUL_CELL_COLOR = 0xAAAAAAFF;
 static constexpr uint32_t CELL_COLOR = 0x666666FF;
 static constexpr uint32_t CELL_BORDER_COLOR = 0x333333FF;
 
@@ -129,6 +130,75 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
               img.BlendText32(text_x, text_y, 0xFFFFFFFF, name);
             }
           }
+        }
+      }
+
+      cx += bw;
+    }
+    cy += layer_height;
+  }
+
+  return img;
+}
+
+ImageRGBA RenderCircuitMini(const CellLibrary &library,
+                            const Circuit &circuit) {
+  int max_w = 0;
+  for (const Layer &layer : circuit.layers) {
+    int w = 0;
+    for (const Cell &cell : layer) {
+      w += library.GetInfo(cell).block_width;
+    }
+    max_w = std::max(w, max_w);
+  }
+
+  const int layer_height = 6;
+  const int pad_height = 1;
+
+  int img_w = (max_w + 2) / 5;
+  int img_h = (int)circuit.layers.size() * layer_height;
+
+  if (img_w == 0 || img_h == 0) {
+    return ImageRGBA(img_w > 0 ? img_w : 1, img_h > 0 ? img_h : 1);
+  }
+
+  ImageRGBA img(img_w, img_h);
+  img.Clear32(BGCOLOR);
+
+  int cy = 0;
+  for (const Layer &layer : circuit.layers) {
+    int cx = 0;
+    for (const Cell &cell : layer) {
+      CellLibrary::Info info = library.GetInfo(cell);
+      int bw = info.block_width;
+
+      if (bw > 0 && cell.gate != Gate::SPACER) {
+        int px = (cx + 2) / 5;
+        int next_px = (cx + bw + 2) / 5;
+        int pw = std::max(1, next_px - px);
+
+        uint32_t cc = IsWire(cell.gate) ? CELL_COLOR : USEFUL_CELL_COLOR;
+
+        int cell_y = cy + pad_height;
+        int cell_h = layer_height - 2 * pad_height;
+        img.FillRect32(px, cell_y, pw, cell_h, CELL_BORDER_COLOR);
+        if (pw > 2 && cell_h > 2) {
+          img.FillRect32(px + 1, cell_y + 1, pw - 2, cell_h - 2, cc);
+        }
+
+        for (const CellLibrary::IO &io : info.inputs) {
+          int pad_x = (cx + io.xblock + 2) / 5;
+          pad_x = std::clamp(pad_x, px, px + pw - 1);
+          img.FillRect32(pad_x, cy, 1, pad_height,
+                         GetInputColor(io.type));
+        }
+
+        for (const CellLibrary::IO &io : info.outputs) {
+          int pad_x = (cx + io.xblock + 2) / 5;
+          pad_x = std::clamp(pad_x, px, px + pw - 1);
+          int py = cy + layer_height - pad_height;
+          img.FillRect32(pad_x, py, 1, pad_height,
+                         GetOutputColor(io.type));
         }
       }
 

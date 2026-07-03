@@ -33,6 +33,7 @@ struct LayoutEngine {
   virtual Layout DoLayout(std::span<const Prop> props) = 0;
 
   virtual void SetVerbose(int v) = 0;
+  virtual void SetWriteImages(bool yes) = 0;
 
   // This stuff is just exposed for testing and visualization.
 

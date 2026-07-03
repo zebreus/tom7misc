@@ -326,11 +326,13 @@ bool PropEq(const Prop &a_in, const Prop &b_in) {
   return true;
 }
 
-static std::string PropAtom(const Prop &prop, int max_depth) {
+// Or nullptr with no world.
+static std::string PropAtom(const World *world,
+                            const Prop &prop, int max_depth) {
   if (max_depth == 0) return "…";
   if (const Binop *b = std::get_if<Binop>(&prop.p)) {
-    std::string lhs = PropAtom(*b->a, max_depth - 1);
-    std::string rhs = PropAtom(*b->b, max_depth - 1);
+    std::string lhs = PropAtom(world, *b->a, max_depth - 1);
+    std::string rhs = PropAtom(world, *b->b, max_depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("({} ⋀ {})", lhs, rhs);
     case BinopOp::OR: return std::format("({} ⋁ {})", lhs, rhs);
@@ -341,20 +343,30 @@ static std::string PropAtom(const Prop &prop, int max_depth) {
   } else if (const Value *v = std::get_if<Value>(&prop.p)) {
     return v->value ? "⟙" : "⟘";
   } else if (const Var *v = std::get_if<Var>(&prop.p)) {
-    return std::format("v{}", v->id);
+    if (world == nullptr) {
+      return std::format("v{}", v->id);
+    } else {
+      if (v->id >= 0 && v->id < world->symbol_names.size()) {
+        return world->symbol_names[v->id];
+      } else {
+        return std::format("UNKNOWN-VAR-v{}", v->id);
+      }
+    }
   } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
     CHECK(u->op == UnopOp::NOT);
-    return std::format("¬{}", PropAtom(*u->a, max_depth - 1));
+    return std::format("¬{}", PropAtom(world, *u->a, max_depth - 1));
   } else {
     LOG(FATAL) << "Bad variant?";
   }
 }
 
-std::string PropString(const Prop &prop, std::optional<int> max_depth) {
+std::string PropStringInternal(const World *world,
+                               const Prop &prop,
+                               std::optional<int> max_depth) {
   int depth = max_depth.value_or(std::numeric_limits<int>::max());
   if (const Binop *b = std::get_if<Binop>(&prop.p)) {
-    std::string lhs = PropAtom(*b->a, depth - 1);
-    std::string rhs = PropAtom(*b->b, depth - 1);
+    std::string lhs = PropAtom(world, *b->a, depth - 1);
+    std::string rhs = PropAtom(world, *b->b, depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("{} ⋀ {}", lhs, rhs);
     case BinopOp::OR: return std::format("{} ⋁ {}", lhs, rhs);
@@ -363,8 +375,19 @@ std::string PropString(const Prop &prop, std::optional<int> max_depth) {
       LOG(FATAL) << "Unknown binop?";
     }
   } else {
-    return PropAtom(prop, depth);
+    return PropAtom(world, prop, depth);
   }
+}
+
+
+std::string PropString(const Prop &prop, std::optional<int> max_depth) {
+  return PropStringInternal(nullptr, prop, max_depth);
+}
+
+std::string PropString(const World &world,
+                       const Prop &prop,
+                       std::optional<int> max_depth) {
+  return PropStringInternal(&world, prop, max_depth);
 }
 
 // Negation but with peephole simplification.

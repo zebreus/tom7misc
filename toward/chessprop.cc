@@ -17,6 +17,7 @@
 
 using Board = ChessProp::Board;
 using enum ChessProp::Type;
+using Details = ChessProp::Details;
 
 static constexpr bool VERBOSE = false;
 
@@ -245,8 +246,8 @@ Prop ChessProp::Attacked(const Board &board, int r, int c) {
 // So rather than a fully different board, we could just
 // OR the standard one with a check for this one kind of
 // configuration along just that row.
-Prop KingAttackedAfter(const Board &board_before,
-                       int srcr, int srcc, int dstr, int dstc) {
+static Prop KingAttackedAfter(const Board &board_before,
+                              int srcr, int srcc, int dstr, int dstc) {
 
   Board board = board_before;
   // The source is empty.
@@ -274,7 +275,10 @@ Prop KingAttackedAfter(const Board &board_before,
 
   Prop any_attacked = False();
 
-  // Loop over all possible king positions.
+  // Loop over all possible king positions. Although discoveries can
+  // only happen through the newly vacant src square, we still need to
+  // check that we successfully *blocked* check if the king *was* in
+  // check. This is unfortunately a global property.
   for (int kr = 0; kr < 8; kr++) {
     for (int kc = 0; kc < 8; kc++) {
       // Since we know this is not a king move (and we can assume it
@@ -294,8 +298,8 @@ Prop KingAttackedAfter(const Board &board_before,
   return any_attacked;
 }
 
-Prop EnPassantLegal(const Board &board,
-                    int srcr, int srcc, int dstr, int dstc) {
+static Prop EnPassantLegal(const Board &board,
+                           int srcr, int srcc, int dstr, int dstc) {
   int dc = dstc - srcc;
 
   // Only on this specific row.
@@ -315,7 +319,8 @@ Prop EnPassantLegal(const Board &board,
 // dstr, dstc? This includes promotions (where we assume a
 // promotion to queen) but NOT en passant captures.
 // Assumes the source piece is a pawn, and not moving into check.
-Prop PawnLegal(const Board &board, int srcr, int srcc, int dstr, int dstc) {
+static Prop PawnLegal(const Board &board,
+                      int srcr, int srcc, int dstr, int dstc) {
   // Can't move into bottom two rows.
   if (dstr >= 6) return False();
 
@@ -383,8 +388,8 @@ GetDir(int srcr, int srcc, int dstr, int dstc) {
 // Normal rook moves; castling is represented by moving the king.
 // Assumes source piece is a rook or queen, and is not moving into
 // check.
-Prop RookLegal(const Board &board,
-               int srcr, int srcc, int dstr, int dstc) {
+static Prop RookLegal(const Board &board,
+                      int srcr, int srcc, int dstr, int dstc) {
 
   bool horiz = srcc != dstc;
   bool vert = srcr != dstr;
@@ -419,8 +424,8 @@ Prop RookLegal(const Board &board,
 
 // Assumes source piece is a bishop or queen, and is not moving into
 // check.
-Prop BishopLegal(const Board &board,
-                 int srcr, int srcc, int dstr, int dstc) {
+static Prop BishopLegal(const Board &board,
+                        int srcr, int srcc, int dstr, int dstc) {
   const auto dir = GetDir(srcr, srcc, dstr, dstc);
   if (!dir.has_value()) return False();
   const auto &[dr, dc] = dir.value();
@@ -442,8 +447,8 @@ Prop BishopLegal(const Board &board,
 }
 
 // Assumes source piece is a knight, and is not moving into check.
-Prop KnightLegal(const Board &board,
-                 int srcr, int srcc, int dstr, int dstc) {
+static Prop KnightLegal(const Board &board,
+                        int srcr, int srcc, int dstr, int dstc) {
   // This is simpler than the above because we don't need to
   // check anything in between.
   int distr = std::abs(dstr - srcr);
@@ -457,8 +462,9 @@ Prop KnightLegal(const Board &board,
 }
 
 // Must do its own move-into-check logic.
-Prop KingLegal(const Board &board,
-               int srcr, int srcc, int dstr, int dstc) {
+static Prop KingLegal(const Board &board,
+                      int srcr, int srcc, int dstr, int dstc,
+                      const Details &details) {
 
   int dr = dstr - srcr;
   int dc = dstc - srcc;
@@ -487,31 +493,44 @@ Prop KingLegal(const Board &board,
       // (Which implies a rook in the corner.)
       Castling(board, true, kingside) &
       // Can't castle out of check.
-      -ChessProp::Attacked(board, 7, 4);
+      (details.check_check ? -ChessProp::Attacked(board, 7, 4) : True());
 
-    // Also: Squares in between can't be attacked.
     if (kingside) {
       castling_move = castling_move &
         IsEmpty(board, 7, 5) &
-        IsEmpty(board, 7, 6) &
-        -ChessProp::Attacked(board, 7, 5) &
-        -ChessProp::Attacked(board, 7, 6);
+        IsEmpty(board, 7, 6);
     } else {
       castling_move = castling_move &
         IsEmpty(board, 7, 1) &
         IsEmpty(board, 7, 2) &
-        IsEmpty(board, 7, 3) &
+        IsEmpty(board, 7, 3);
+    }
+
+    // Also: Squares *that the king crosses* can't
+    // be attacked. Note that the rook (and g1) CAN
+    // be attacked in normal chess!
+    if (details.castling_attacked) {
+      if (kingside) {
+        castling_move = castling_move &
+          -ChessProp::Attacked(board, 7, 5) &
+          -ChessProp::Attacked(board, 7, 6);
+      } else {
+        castling_move = castling_move &
         -ChessProp::Attacked(board, 7, 2) &
         -ChessProp::Attacked(board, 7, 3);
+      }
     }
+
   }
 
   // Here, checking for moving into check is much more straightforward,
   // because we know where the king will be, and moving the rooks
   // cannot cause a discovered check (on white). (Note that this would
   // be possible in Chess960.)
-  return And(Or(normal_move, castling_move),
-             -(ChessProp::Attacked(board, dstr, dstc)));
+  Prop not_into_check =
+    details.check_check ? -ChessProp::Attacked(board, dstr, dstc) : True();
+
+  return And(Or(normal_move, castling_move), not_into_check);
 }
 
 
@@ -519,7 +538,8 @@ Prop KingLegal(const Board &board,
 // to dstr,dstc?
 Prop ChessProp::IsLegal(const Board &board,
                         int srcr, int srcc,
-                        int dstr, int dstc) {
+                        int dstr, int dstc,
+                        Details details) {
   CHECK(srcr >= 0 && srcr < 8);
   CHECK(srcc >= 0 && srcc < 8);
   CHECK(dstr >= 0 && dstr < 8);
@@ -541,7 +561,9 @@ Prop ChessProp::IsLegal(const Board &board,
   // Most piece moves test that the king is not in check the same
   // way: They remove the source piece and overwrite the destination.
   Prop simple_not_into_check =
-    -KingAttackedAfter(board, srcr, srcc, dstr, dstc);
+    details.check_check ?
+    -KingAttackedAfter(board, srcr, srcc, dstr, dstc) :
+    True();
 
   Prop simple_piece_move =
     simple_not_into_check &
@@ -564,12 +586,14 @@ Prop ChessProp::IsLegal(const Board &board,
   // But king moves test check directly.
   Prop king_move =
     HasContents(board, srcr, srcc, WHITE_KING) &
-    KingLegal(board, srcr, srcc, dstr, dstc);
+    KingLegal(board, srcr, srcc, dstr, dstc, details);
 
   // ... and en passant has a rare corner case to deal with.
   Prop en_passant_move =
-    HasContents(board, srcr, srcc, WHITE_PAWN) &
-    EnPassantLegal(board, srcr, srcc, dstr, dstc);
+    details.en_passant ?
+    (HasContents(board, srcr, srcc, WHITE_PAWN) &
+     EnPassantLegal(board, srcr, srcc, dstr, dstc)) :
+    False();
 
   return Or(simple_piece_move,
             king_move,

@@ -2,19 +2,12 @@
 
 #include "cell-library.h"
 
-#include <algorithm>
 #include <memory>
-#include <optional>
-#include <span>
-#include <string>
-#include <string_view>
-#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "base/stringprintf.h"
 #include "circuit.h"
 #include "level.h"
 
@@ -48,7 +41,7 @@ static void Simple() {
 static void VerifyFlippedWidths() {
   CellLibrary library;
 
-  auto check_cell = [&library](Cell cell) {
+  auto CheckCell = [&library](Cell cell) {
     cell.flip = false;
     int normal_width = library.GetInfo(cell).block_width;
     cell.flip = true;
@@ -60,15 +53,37 @@ static void VerifyFlippedWidths() {
   for (int g = 0; g <= CONST1; g++) {
     Gate gate = static_cast<Gate>(g);
     if (gate == SPACER || gate == WIREA || gate == WIREB) continue;
-    check_cell(Cell{gate, 0, false});
+    CheckCell(Cell{gate, 0, false});
   }
 
-  check_cell(CellLibrary::Spacer(1));
-  check_cell(CellLibrary::Spacer(5));
-  check_cell(CellLibrary::WireA(1));
-  check_cell(CellLibrary::WireA(8));
-  check_cell(CellLibrary::WireB(2));
-  check_cell(CellLibrary::WireB(16));
+  CheckCell(CellLibrary::Spacer(1));
+  CheckCell(CellLibrary::Spacer(5));
+  CheckCell(CellLibrary::WireA(1));
+  CheckCell(CellLibrary::WireA(8));
+  CheckCell(CellLibrary::WireB(2));
+  CheckCell(CellLibrary::WireB(16));
+}
+
+static void VerifyWireOffsets() {
+  CellLibrary library;
+
+  for (int offset : CellLibrary::WIRE_SIZES) {
+    auto CheckWire = [&](std::string_view style, const Cell &cell) {
+        CellLibrary::Info info = library.GetInfo(cell);
+        auto Err = [&]{
+            return std::format("Wire{}({}):\n{}\n",
+                               style, offset,
+                               CellLibrary::InfoString(info));
+          };
+        CHECK(info.inputs.size() == 1) << Err();
+        CHECK(info.outputs.size() == 1) << Err();
+        CHECK(info.inputs[0].xblock + offset == info.outputs[0].xblock) <<
+          Err();
+      };
+
+    CheckWire("A", CellLibrary::WireA(offset));
+    CheckWire("B", CellLibrary::WireB(offset));
+  }
 }
 
 int main(int argc, char **argv) {
@@ -76,6 +91,7 @@ int main(int argc, char **argv) {
 
   Simple();
   VerifyFlippedWidths();
+  VerifyWireOffsets();
 
   Print("OK\n");
   return 0;

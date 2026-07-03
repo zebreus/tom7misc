@@ -10,6 +10,16 @@
 // This is just used for position conversions.
 #include "chess.h"
 
+// Rule details. All of these should be turned on for full chess,
+// but turning off rules about check make the propositions massively
+// simpler, for example.
+struct ChessProp_Details {
+  bool castling = true;
+  bool castling_attacked = true;
+  bool check_check = true;
+  bool en_passant = true;
+};
+
 struct ChessProp {
   enum Type : uint8_t {
     BLACK_PAWN = 0,
@@ -84,9 +94,18 @@ struct ChessProp {
   // bit, inserting those at the end of the world.
   static Board NewBoard(World *world);
 
+  using Details = ChessProp_Details;
   static Prop IsLegal(const Board &board,
                       int srcr, int srcc,
-                      int dstr, int dstc);
+                      int dstr, int dstc,
+                      Details details = Details());
+
+  static constexpr Details KID_CHESS = {
+    .castling = true,
+    .castling_attacked = false,
+    .check_check = false,
+    .en_passant = true,
+  };
 
   // Every prop will be a constant true or false, so this is mostly
   // just useful for testing. Must be white's move.

@@ -26,11 +26,14 @@
 #include "image.h"
 #include "layout-canvas.h"
 #include "level.h"
+#include "periodically.h"
+#include "png.h"
 #include "prop.h"
 #include "render-circuit.h"
 #include "span-util.h"
 #include "status-bar.h"
 #include "timer.h"
+#include "util.h"
 #include "vector-util.h"
 
 // ----------------------------------------------------------------------
@@ -79,8 +82,6 @@ using DesireType = LayoutCanvas::DesireType;
 using Spring = LayoutCanvas::Spring;
 using enum LayoutCanvas::DesireType;
 
-static constexpr bool WRITE_IMAGES = false;
-
 // The hard part is the physical routing. Some gates like AND0110
 // need separated inputs in a specific form. Since we are working
 // bottom-up, the AND gate itself is not bad (we just place it
@@ -125,11 +126,16 @@ struct LayoutEngineImpl : public LayoutEngine {
   int num_sep = 0, num_dup = 0, num_comb = 0, num_not = 0;
   int num_spaced_layers = 0;
 
+  Periodically status_per = Periodically(1.0);
   std::unique_ptr<StatusBar> status;
 
+  std::vector<int> wire_sizes_descending;
+
   int verbose = 1;
+  bool write_images = false;
 
   void SetVerbose(int v) override { verbose = v; }
+  void SetWriteImages(bool b) override { write_images = b; }
 
   // The closest we ever need outputs to be for a single cell (blocks
   // between right edge and left edge). There's no reason for chutes
@@ -266,7 +272,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           last_interior_chute >= 0) << "Precondition is that we're "
       "not already done!";
 
-    constexpr float EXT_WEIGHT = 0.01f;
+    constexpr float EXT_WEIGHT = 0.5f;
 
     if (first_interior_chute > 0) {
       for (int c = 0; c < first_interior_chute; c++) {
@@ -600,7 +606,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         // Since we don't actually know where the next
         // chute would be relative to its cell's right edge, we should
         int additional_clearance =
-          library.MinClearanceFar() * 2;
+          library.MinClearanceFar() * 4;
 
         // Compute the desired left clearance.
         // This measures the distance from the left edge of the left
@@ -973,8 +979,34 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // Now do the passes above in priority order.
 
+    std::vector<int> todo;
+    todo.reserve(canvas.chutes.size());
+    {
+      std::vector<int> prop_size;
+      prop_size.reserve(canvas.chutes.size());
+
+      for (int c = 0; c < canvas.chutes.size(); c++) {
+        prop_size.push_back(PropSize(canvas.chutes[c].prop));
+        todo.push_back(c);
+      }
+
+      // Sort by descending proposition size. We prefer to act on big
+      // propositions, since once they are split we can work on their
+      // components in parallel.
+      std::sort(todo.begin(), todo.end(),
+                [&prop_size](int c1, int c2) {
+                  int p1 = prop_size[c1];
+                  int p2 = prop_size[c2];
+                  if (p1 == p2) {
+                    return c1 < c2;
+                  } else {
+                    return p1 > p2;
+                  }
+                });
+    }
+
     auto ForAllRemaining = [&](auto f) {
-        for (int c = 0; c < canvas.chutes.size(); c++)
+        for (int c : todo)
           if (!canvas.Assigned(c))
             f(c);
       };
@@ -1002,7 +1034,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         */
         LayoutCanvas::UpdateSpring(&canvas.springs[i],
                                    // min_output_distance,
-                                   max_cell_width,
+                                   max_cell_width + 1,
                                    library.MinClearanceClose(),
                                    1.0f, 0.1f);
       }
@@ -1059,9 +1091,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           WIREB : chute.type == CType::ZERO ? WIRE0B : WIRE1B;
 
         // Find the largest valid power of 2 wire that fits
-        for (int exp = CellLibrary::MAX_WIRE_EXP; exp >= 0; exp--) {
-          int amount = 1 << exp;
-          if (amount <= abs_disp) {
+        for (int amount : wire_sizes_descending) {
+          if (amount > 0 && amount <= abs_disp) {
             if (PlaceAlignedUnary(c, ga, Span{chute.prop}, amount, {flip}) ||
                 PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip})) {
               return;
@@ -1116,10 +1147,20 @@ struct LayoutEngineImpl : public LayoutEngine {
   }
 
   void DebugRender(const std::deque<std::vector<LC>> &layers) {
+    if (layers.empty()) return;
+
+    // XXX dynamic...
+    bool mini = true;
+
     std::string filename = std::format("debug-render-{}.png", layers.size());
 
     // Render only the top of the circuit, since they can get very large!
-    static constexpr int MAX_CIRCUIT_LAYERS = 500;
+    int MAX_CIRCUIT_LAYERS =
+      layers.front().size() < 32768 ? 500 : 200;
+
+    if (mini) MAX_CIRCUIT_LAYERS *= 2;
+
+    Print("Saving top {} layers to {}...\n", MAX_CIRCUIT_LAYERS, filename);
 
     Circuit circuit;
     circuit.layers.reserve(std::min((int)layers.size(), MAX_CIRCUIT_LAYERS));
@@ -1134,8 +1175,11 @@ struct LayoutEngineImpl : public LayoutEngine {
       circuit.layers.push_back(std::move(layer));
     }
 
-    ImageRGBA img = RenderCircuit(library, circuit);
-    img.Save(filename);
+    ImageRGBA img = mini ? RenderCircuitMini(library, circuit) :
+      RenderCircuit(library, circuit);
+    std::vector<uint8_t> png = PNG::EncodeInMemory(img);
+    Util::WriteFileBytes(filename, png);
+    Print("Wrote " AGREEN("{}") ".", filename);
   }
 
   void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
@@ -1198,21 +1242,25 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
 
       if (status) {
-        status->Status("{}\n"
-                       "{} and {} xchg {} or {} wire {} sep {} dup {} comb\n"
-                       "Layer {}: {} max prop, {} total. {} inv. {} top. "
-                       "Width: {}.\n",
-                       histo.OneLineANSI(75),
-                       num_and, num_xchg, num_or, num_wire, num_sep,
-                       num_dup, num_comb,
-                       layers->size(), max_prop_size, total_prop_size,
-                       inversions,
-                       last.size(),
-                       top_layer_width);
+        status_per.RunIf([&]() {
+            status->Status(
+                "{}\n"
+                "{} " ABLUE("∧") " {} xchg {} " ABLUE("∨")
+                " {} " ABLUE("|") " {} sep {} dup {} comb\n"
+                "Layer {}: {} max prop, {} total. {} inv. {} top. "
+                "Width: {}.\n",
+                histo.OneLineANSI(75),
+                num_and, num_xchg, num_or, num_wire, num_sep,
+                num_dup, num_comb,
+                layers->size(), max_prop_size, total_prop_size,
+                inversions,
+                last.size(),
+                top_layer_width);
+          });
       }
     }
 
-    if (WRITE_IMAGES || (layers->size() % 500) == 0) {
+    if (write_images || (layers->size() % 500) == 0) {
       DebugRender(*layers);
     }
 
@@ -1426,6 +1474,14 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     ComputeMinOutputDistance();
     ComputeMaxCellWidth();
+
+    for (int s : CellLibrary::WIRE_SIZES)
+      wire_sizes_descending.push_back(s);
+    std::sort(wire_sizes_descending.begin(),
+              wire_sizes_descending.end(),
+              [](int a, int b) {
+                return a > b;
+              });
   }
 };
 

@@ -241,9 +241,11 @@ struct CellLibraryImpl {
       Load("cell-wirea0.svg", ga, 0);
       Load("cell-wireb0.svg", gb, 0);
 
-      for (int offset : {1, 2, 4, 8, 16, 32, 64}) {
-        Load(std::format("cell-wireap{}.svg", offset), ga, offset);
-        Load(std::format("cell-wirebp{}.svg", offset), gb, offset);
+      for (int offset : CellLibrary::WIRE_SIZES) {
+        if (offset != 0) {
+          Load(std::format("cell-wireap{}.svg", offset), ga, offset);
+          Load(std::format("cell-wirebp{}.svg", offset), gb, offset);
+        }
       }
     }
 
@@ -394,9 +396,15 @@ Cell CellLibrary::Spacer(int width) {
   return Cell(Gate::SPACER, width);
 }
 
+bool CellLibrary::ValidWireSize(int s) {
+  for (int ss : WIRE_SIZES)
+    if (s == ss)
+      return true;
+  return false;
+}
+
 Cell CellLibrary::WireA(int k, CType t) {
-  CHECK(k == 0 || k == 1 || k == 2 || k == 4 || k == 8 || k == 16 ||
-        k == 32 || k == 64) << "Invalid offset for WireA: " << k;
+  CHECK(ValidWireSize(k)) << "Invalid offset for WireA: " << k;
   Gate g =
     (t == CType::MIXED) ? Gate::WIREA :
     (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
@@ -404,8 +412,7 @@ Cell CellLibrary::WireA(int k, CType t) {
 }
 
 Cell CellLibrary::WireB(int k, CType t) {
-  CHECK(k == 0 || k == 1 || k == 2 || k == 4 || k == 8 || k == 16 ||
-        k == 32 || k == 64) << "Invalid offset for WireB: " << k;
+  CHECK(ValidWireSize(k)) << "Invalid offset for WireB: " << k;
   Gate g =
     (t == CType::MIXED) ? Gate::WIREB :
     (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;

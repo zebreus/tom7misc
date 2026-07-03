@@ -10,4 +10,7 @@
 ImageRGBA RenderCircuit(const CellLibrary &library,
                         const Circuit &circuit);
 
+ImageRGBA RenderCircuitMini(const CellLibrary &library,
+                            const Circuit &circuit);
+
 #endif

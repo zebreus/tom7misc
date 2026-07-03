@@ -351,8 +351,8 @@ LayoutCanvas::ConvertToLayer() {
 std::vector<double> LayoutCanvas::SolveSprings() {
   constexpr float ANCHOR_WEIGHT = 0.01f;
 
-  // Perhaps depend on the number of chutes?
-  constexpr int MAX_ITERS = 500;
+  // Depend on the number of chutes, since forces move 1 element per iteration.
+  const int max_iters = 50 * chutes.size();
 
   // Desired left edge, initialized to the current location.
   std::vector<double> xpos(chutes.size());
@@ -360,7 +360,7 @@ std::vector<double> LayoutCanvas::SolveSprings() {
     xpos[i] = (double)chutes[i].pos;
   }
 
-  for (int iter = 0; iter < MAX_ITERS; iter++) {
+  for (int iter = 0; iter < max_iters; iter++) {
     for (int cidx = 0; cidx < xpos.size(); cidx++) {
       // If the chute is already anchored, its xpos cannot
       // change. It pushes and pulls neighbors in their own

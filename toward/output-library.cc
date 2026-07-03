@@ -90,8 +90,7 @@ static void PrintLibrary() {
 static void PrintWireLib() {
   CellLibrary library;
   Print("Available wires:\n");
-  for (int e = CellLibrary::MAX_WIRE_EXP; e >= 0; e--) {
-    int offset = 1 << e;
+  for (int offset : CellLibrary::WIRE_SIZES) {
     Cell wa = CellLibrary::WireA(offset, CType::MIXED);
     CellLibrary::Info ainfo = library.GetInfo(wa);
     Cell wb = CellLibrary::WireB(offset, CType::MIXED);

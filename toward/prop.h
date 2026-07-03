@@ -106,6 +106,8 @@ inline Prop And(Prop first, Args... args) {
 
 // Just using integers for variables.
 std::string PropString(const Prop &prop, std::optional<int> max_depth = {});
+std::string PropString(const World &world, const Prop &prop,
+                       std::optional<int> max_depth = {});
 
 size_t PropSize(const Prop &prop);
 
