@@ -47,6 +47,14 @@
     return std::move(eo.value());                                 \
   }()
 
+#define PARSE_LAYERS_OR_DIE(xml_bytes) []{                        \
+    std::string error;                                            \
+    auto eo = SVG::ParseLayers(xml_bytes, &error);                \
+    CHECK(eo.has_value()) << "On input document:\n" << xml_bytes  \
+      << "\nUnable to parse as SVG (layered): " << error;         \
+    return std::move(eo.value());                                 \
+  }()
+
 static void PrintRec(int depth, const SVG::Node &node) {
   if (const SVG::G *g = std::get_if<SVG::G>(&node.v)) {
     Print("{}<" ABLUE("g"), std::string(depth, ' '));
@@ -216,6 +224,43 @@ static void TestDashes() {
   CHECK_FEQ(state.stroke_dasharray[0], 4.0);
   CHECK_FEQ(state.stroke_dasharray[1], 5.1);
   CHECK_FEQ(state.stroke_dashoffset, 10.5);
+}
+
+static void TestLayers() {
+  // As exported by Illustrator.
+  static constexpr std::string_view LAYERS_SVG = R"(
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="773" height="607.595" version="1.1" viewBox="0 0 773 607.595">
+  <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
+  <g id="Background">
+    <polygon points="536 422 321.46 607.595 53.46 514.595 0 236 214.54 50.405 482.54 143.405 536 422" fill="#cc3f00"/>
+  </g>
+  <g id="Foreground">
+    <rect x="338" width="435" height="397" fill="#003fcc"/>
+  </g>
+</svg>
+)";
+
+  SVG::LayeredDoc doc = PARSE_LAYERS_OR_DIE(LAYERS_SVG);
+
+  CHECK(doc.view_box.has_value());
+  CHECK_FEQ(doc.view_box.value()[0], 0.0);
+  CHECK_FEQ(doc.view_box.value()[1], 0.0);
+  CHECK_FEQ(doc.view_box.value()[2], 773.0);
+  CHECK_FEQ(doc.view_box.value()[3], 607.595);
+
+  CHECK(doc.layers.size() == 2);
+  CHECK(doc.layers[0].first == "Background");
+  CHECK(doc.layers[1].first == "Foreground");
+
+  auto check_not_empty = [](const SVG::Node& node) {
+    if (const SVG::G* g = std::get_if<SVG::G>(&node.v)) {
+      CHECK(!g->children.empty());
+    }
+  };
+
+  check_not_empty(doc.layers[0].second);
+  check_not_empty(doc.layers[1].second);
 }
 
 static void TestPathInterpreter() {
@@ -485,6 +530,7 @@ int main() {
   TestDashes();
   TestColors();
   TestText();
+  TestLayers();
 
   TestParseText();
 

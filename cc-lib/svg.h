@@ -164,6 +164,22 @@ struct SVG {
 
   // Advanced stuff.
 
+  struct LayeredDoc {
+    // Named layers, from bottom to top stacking order.
+    std::vector<std::pair<std::string, Node>> layers;
+    std::optional<std::array<double, 4>> view_box;
+    std::unordered_map<std::string, SVG::G> defs;
+  };
+
+  // Parse the SVG, detecting top-level layers (<g id="Layer 1">)
+  // the way that Illustrator saves them. Any additional content
+  // that is not part of a layer goes in the topmost layer with
+  // an empty string as its name (so a document without layers
+  // should load a single-layer image).
+  static std::optional<LayeredDoc>
+  ParseLayers(std::string_view xml_bytes, std::string *error = nullptr);
+  static LayeredDoc ParseLayersOrDie(std::string_view xml_bytes);
+
   // Parse (and interpret) path data. This eliminates relative
   // coordinates and special forms (for example a relative
   // 't' curve becomes the equivalent absolute 'Q' curve).

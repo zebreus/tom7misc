@@ -777,6 +777,7 @@ static SVG::CubicBezier ApproxArc90(
 
 struct Converter {
   SVG::Doc doc;
+  SVG::LayeredDoc layered_doc;
   std::string error;
 
   // This will be moved into the doc at the end. But we use it
@@ -1597,44 +1598,95 @@ struct Converter {
   }
 
   // Consumes root, leaving it in an unspecified state.
-  void Convert(XML::Node *root) {
-    if (root->tag == "svg") {
-      auto vit = root->attrs.find("viewBox");
-      if (vit != root->attrs.end()) {
-        std::string_view s = vit->second;
-        if (const auto &a = Numbers<4>(&s)) {
-          doc.view_box = a;
-        } else {
-          error = "Bad viewBox";
-          return;
-        }
-      }
-
-      // Ignore other attributes.
-      root->attrs.clear();
-
-      // We need to find nodes we might refer to by id.
-      // We don't just do this for anything with an id, though,
-      // because it is not unusual to find an SVG where every
-      // node has a unique generated id. We collect the nodes
-      // that would not be rendered in the next pass.
-      std::unordered_map<std::string, SVG::G> defs;
-      if (!FindUnrenderedNodes(root, &defs)) {
-        if (error.empty()) error = "Error parsing defs?";
-        return;
-      }
-
-      // Now the defs are available for use.
-      doc_defs = std::make_optional(std::move(defs));
-      root->tag = "g";
-      doc.root = ConvertRec(root);
-
-      CHECK(doc_defs.has_value());
-      doc.defs = std::move(doc_defs.value());
-
-    } else {
+  bool PrepareConvert(XML::Node *root) {
+    if (root->tag != "svg") {
       error = "Root of SVG must be an <svg> tag.";
+      return false;
     }
+
+    auto vit = root->attrs.find("viewBox");
+    if (vit != root->attrs.end()) {
+      std::string_view s = vit->second;
+      if (const auto &a = Numbers<4>(&s)) {
+        doc.view_box = a;
+      } else {
+        error = "Bad viewBox";
+        return false;
+      }
+    }
+
+    // Ignore other attributes.
+    root->attrs.clear();
+
+    // We need to find nodes we might refer to by id.
+    // We don't just do this for anything with an id, though,
+    // because it is not unusual to find an SVG where every
+    // node has a unique generated id. We collect the nodes
+    // that would not be rendered in the next pass.
+    std::unordered_map<std::string, SVG::G> defs;
+    if (!FindUnrenderedNodes(root, &defs)) {
+      if (error.empty()) error = "Error parsing defs?";
+      return false;
+    }
+
+    // Now the defs are available for use.
+    doc_defs = std::make_optional(std::move(defs));
+    return true;
+  }
+
+  void Convert(XML::Node *root) {
+    if (!PrepareConvert(root)) return;
+
+    root->tag = "g";
+    doc.root = ConvertRec(root);
+
+    CHECK(doc_defs.has_value());
+    doc.defs = std::move(doc_defs.value());
+  }
+
+  void ConvertLayers(XML::Node *root) {
+    if (!PrepareConvert(root)) return;
+
+    layered_doc.view_box = doc.view_box;
+
+    std::vector<XML::Node> extra_children;
+
+    for (XML::Node &child : root->children) {
+      if (child.type == XML::NodeType::Element &&
+          child.tag == "g" &&
+          child.attrs.contains("id")) {
+        std::string id = child.attrs["id"];
+        SVG::Node layer_node = ConvertRec(&child);
+        if (!error.empty()) return;
+        layered_doc.layers.emplace_back(std::move(id), std::move(layer_node));
+      } else {
+        if (child.type == XML::NodeType::Text) {
+          std::string_view s(child.contents);
+          RemoveLeadingWhitespace(&s);
+          if (s.empty()) {
+            // Skip totally empty text nodes.
+            continue;
+          }
+        }
+        extra_children.emplace_back(std::move(child));
+      }
+    }
+
+    // TODO: Probably we should put these between layers?
+    // Not clear that this ever happens in the files we care
+    // about, anyway.
+    if (!extra_children.empty() || layered_doc.layers.empty()) {
+      XML::Node dummy_g;
+      dummy_g.type = XML::NodeType::Element;
+      dummy_g.tag = "g";
+      dummy_g.children = std::move(extra_children);
+      SVG::Node extra_node = ConvertRec(&dummy_g);
+      if (!error.empty()) return;
+      layered_doc.layers.emplace_back("", std::move(extra_node));
+    }
+
+    CHECK(doc_defs.has_value());
+    layered_doc.defs = std::move(doc_defs.value());
   }
 
 };
@@ -1651,7 +1703,7 @@ SVG::Parse(std::string_view xml_bytes, std::string *error) {
     if (error != nullptr) *error = std::move(converter.error);
     return std::nullopt;
   } else {
-    return {converter.doc};
+    return {std::move(converter.doc)};
   }
 }
 
@@ -1659,6 +1711,28 @@ SVG::Doc SVG::ParseOrDie(std::string_view xml_bytes) {
   std::string error;
   auto eo = Parse(xml_bytes, &error);
   CHECK(eo.has_value()) << "Unable to parse SVG: " << error;
+  return std::move(eo.value());
+}
+
+std::optional<SVG::LayeredDoc>
+SVG::ParseLayers(std::string_view xml_bytes, std::string *error) {
+  std::optional<XML::Node> oroot = XML::Parse(xml_bytes, error);
+  if (!oroot.has_value()) return std::nullopt;
+
+  Converter converter;
+  converter.ConvertLayers(&oroot.value());
+  if (!converter.error.empty()) {
+    if (error != nullptr) *error = std::move(converter.error);
+    return std::nullopt;
+  } else {
+    return {std::move(converter.layered_doc)};
+  }
+}
+
+SVG::LayeredDoc SVG::ParseLayersOrDie(std::string_view xml_bytes) {
+  std::string error;
+  auto eo = ParseLayers(xml_bytes, &error);
+  CHECK(eo.has_value()) << "Unable to parse layered SVG: " << error;
   return std::move(eo.value());
 }
 
