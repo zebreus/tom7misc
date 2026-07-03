@@ -30,7 +30,8 @@ std::string_view LayoutCanvas::DesireTypeString(DesireType dt) {
   case UNSPECIFIED: return "UNSPECIFIED";
   case DECOMPOSE: return "DECOMPOSE";
   case UNCOMBINE: return "UNCOMBINE";
-  case UNDUP: return "UNDUP";
+  case UNDUP_LHS: return "UNDUP_LHS";
+  case UNDUP_RHS: return "UNDUP_RHS";
   case UNSEPARATE_LHS: return "UNSEPARATE_LHS";
   case UNSEPARATE_RHS: return "UNSEPARATE_RHS";
   case EXCHANGE_LEFT: return "EXCHANGE_LEFT";
@@ -152,14 +153,20 @@ bool LayoutCanvas::CanPlaceCell(
   int cell_right = xpos + info.block_width;
 
   // Overlapping something already placed in the next layer?
-  for (const PC &pc : next) {
-    int pc_left = pc.xpos;
-    int pc_right = pc_left + library.GetInfo(pc.cell).block_width;
+  auto overlap_it = std::lower_bound(next.begin(), next.end(), cell_left,
+                                     [](const PC &pc, int x) {
+                                       return pc.xpos < x;
+                                     });
+  if (overlap_it != next.begin()) --overlap_it;
+  for (auto it = overlap_it; it != next.end(); ++it) {
+    int pc_left = it->xpos;
+    if (pc_left >= cell_right) break;
+    int pc_right = pc_left + library.GetInfo(it->cell).block_width;
     if (cell_left < pc_right && cell_right > pc_left) {
       if (verbose > 1) {
         Print("[{}] Can't place {} at {}: Would overlap cell at x={}\n",
               chute_context,
-              CellString(cell), xpos, pc.xpos);
+              CellString(cell), xpos, pc_left);
       }
       return false;
     }
@@ -171,10 +178,17 @@ bool LayoutCanvas::CanPlaceCell(
   int min_input_dist = Levels::OUT_WIDTH + 2 * min_clearance_close;
   for (const CellLibrary::IO &in : info.inputs) {
     int in_pos = xpos + in.xblock;
-    for (const PC &pc : next) {
-      CellLibrary::Info pc_info = library.GetInfo(pc.cell);
+    auto pc_it = std::lower_bound(
+        next.begin(), next.end(), in_pos - min_input_dist,
+        [](const PC &pc, int x) {
+          return pc.xpos < x;
+        });
+    if (pc_it != next.begin()) --pc_it;
+    for (auto it = pc_it; it != next.end(); ++it) {
+      if (it->xpos >= in_pos + min_input_dist) break;
+      CellLibrary::Info pc_info = library.GetInfo(it->cell);
       for (const CellLibrary::IO &pc_in : pc_info.inputs) {
-        int pc_in_pos = pc.xpos + pc_in.xblock;
+        int pc_in_pos = it->xpos + pc_in.xblock;
         if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
           if (verbose > 1) {
             Print("[{}] Can't place {} at {}: "
@@ -232,9 +246,15 @@ bool LayoutCanvas::CanPlaceCell(
         }
 
         // Check already placed cells.
-        for (const PC &pc : next) {
-          int pc_left = pc.xpos;
-          int pc_right = pc.xpos + library.GetInfo(pc.cell).block_width;
+        auto pc_it = std::lower_bound(next.begin(), next.end(), c_left,
+                                      [](const PC &pc, int x) {
+                                        return pc.xpos < x;
+                                      });
+        if (pc_it != next.begin()) --pc_it;
+        for (auto it = pc_it; it != next.end(); ++it) {
+          int pc_left = it->xpos;
+          if (pc_left >= c_right) break;
+          int pc_right = pc_left + library.GetInfo(it->cell).block_width;
           if (pc_left < c_right && pc_right > c_left) {
             memo = {false};
             return false;
@@ -306,11 +326,6 @@ bool LayoutCanvas::CanPlaceCell(
 
 std::pair<std::vector<LC>, int>
 LayoutCanvas::ConvertToLayer() {
-  std::sort(next.begin(), next.end(),
-            [](const PC &a, const PC &b) {
-              return a.xpos < b.xpos;
-            });
-
   std::vector<LC> next_layer;
   int start_pos = next.empty() ? 0 : next[0].xpos;
   int current_x = start_pos;
@@ -424,4 +439,31 @@ std::vector<double> LayoutCanvas::SolveSprings() {
   }
 
   return xpos;
+}
+
+std::string LayoutCanvas::DebugString() const {
+  std::string s;
+  AppendFormat(&s, "--- Chutes ---\n");
+  for (int i = 0; i < (int)chutes.size(); i++) {
+    AppendFormat(&s, " [{}] {}\n", i,
+                 LayoutCanvas::ChuteString(chutes[i]));
+  }
+  AppendFormat(&s, "--- Next Cells ---\n");
+  for (int i = 0; i < (int)next.size(); i++) {
+    AppendFormat(&s, " [{}] xpos={} cell={}\n", i, next[i].xpos,
+                 CellString(next[i].cell));
+  }
+  return s;
+}
+
+void LayoutCanvas::AddNext(int xpos, const Cell &cell,
+                           std::vector<Prop> inprops) {
+  auto it = std::lower_bound(
+      next.begin(), next.end(), xpos,
+      [](const PC &pc, int x) { return pc.xpos < x; });
+  next.insert(it, PC{
+      .xpos = xpos,
+      .cell = cell,
+      .inprops = std::move(inprops),
+    });
 }

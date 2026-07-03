@@ -35,7 +35,8 @@ struct LayoutCanvas {
     // Apply a combiner so that we have separated inputs.
     UNCOMBINE,
     // Unduplicate adjacent identical propositions.
-    UNDUP,
+    UNDUP_LHS,
+    UNDUP_RHS,
     // A matched pair that should be unseparated.
     UNSEPARATE_LHS,
     UNSEPARATE_RHS,
@@ -129,9 +130,10 @@ struct LayoutCanvas {
 
   void Anchor(int chute_idx) { chutes[chute_idx].anchored = true; }
 
-  // The next layer, under construction. These should output
-  // to the chutes.
-  std::vector<PC> next;
+  // Add a placed cell
+  void AddNext(int xpos, const Cell &cell, std::vector<Prop> inprops);
+
+  std::string DebugString() const;
 
   // Given the input chutes for the complete top layer,
   // and the in-progress next layer (next), is it possible
@@ -160,6 +162,11 @@ struct LayoutCanvas {
  private:
   const CellLibrary &library;
   int verbose = 0;
+
+  // The next layer, under construction. These should output
+  // to the chutes. This is kept in sorted order by x position,
+  // to make it faster to find overlap.
+  std::vector<PC> next;
 };
 
 #endif

@@ -230,7 +230,6 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
-  #if 0
   TestLoop1();
 
   // Tests of the full layout algorithm.
@@ -241,7 +240,6 @@ int main(int argc, char **argv) {
   AndVars(library);
   OrVars(library);
   XorVars(library);
-  #endif
 
   MultiOutput(library);
 

@@ -21,7 +21,6 @@
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "base/stringprintf.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
@@ -75,13 +74,12 @@
 // ----------------------------------------------------------------------
 
 using LC = LayoutCanvas::LC;
-using PC = LayoutCanvas::PC;
 using Chute = LayoutCanvas::Chute;
 using DesireType = LayoutCanvas::DesireType;
 using Spring = LayoutCanvas::Spring;
 using enum LayoutCanvas::DesireType;
 
-static constexpr bool WRITE_IMAGES = true;
+static constexpr bool WRITE_IMAGES = false;
 
 // The hard part is the physical routing. Some gates like AND0110
 // need separated inputs in a specific form. Since we are working
@@ -238,23 +236,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     return info.outputs[0].xblock;
   }
 
-  std::string DebugLayerState(
-      std::span<const Chute> chutes,
-      std::span<const PC> next_cells) const {
-    std::string s;
-    AppendFormat(&s, "--- Chutes ---\n");
-    for (int i = 0; i < (int)chutes.size(); i++) {
-      AppendFormat(&s, " [{}] {}\n", i,
-                   LayoutCanvas::ChuteString(chutes[i]));
-    }
-    AppendFormat(&s, "--- Next Cells ---\n");
-    for (int i = 0; i < (int)next_cells.size(); i++) {
-      AppendFormat(&s, " [{}] xpos={} cell={}\n", i, next_cells[i].xpos,
-                   CellString(next_cells[i].cell));
-    }
-    return s;
-  }
-
   // Set the desires and springs for "done" chutes on the exterior.
   void SetExterior(LayoutCanvas *canvas) {
     std::vector<Chute> &chutes = canvas->chutes;
@@ -350,8 +331,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute1.type == chute2.type &&
           // And syntactically the same proposition.
           chute1.prop == chute2.prop) {
-        chute1.desire = UNDUP;
-        chute2.desire = UNDUP;
+        chute1.desire = UNDUP_LHS;
+        chute2.desire = UNDUP_RHS;
         // Note that if we have an odd number of equal propositions,
         // the last one will be passed through and be in the correct
         // position to undup on the next layer.
@@ -511,7 +492,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     if (verbose > 1) {
       Print("\n" AYELLOW("=========== AddLayer start") ":\n{}\n",
-            DebugLayerState(canvas.chutes, {}));
+            canvas.DebugString());
     }
 
     // First, identify the already-completed portions of the
@@ -548,8 +529,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               CellLibrary::Spacer(1),
               clear_pos)) {
         LOG(FATAL) << "Input chutes are already in a state where "
-          "we're stuck!\n" <<
-          DebugLayerState(canvas.chutes, canvas.next);
+          "we're stuck!\n" << canvas.DebugString();
       }
     }
 
@@ -586,11 +566,7 @@ struct LayoutEngineImpl : public LayoutEngine {
             if (flip) {
               VectorReverse(&ip);
             }
-            canvas.next.push_back(PC{
-                .xpos = cell_pos,
-                .cell = cell,
-                .inprops = std::move(ip),
-              });
+            canvas.AddNext(cell_pos, cell, std::move(ip));
 
             switch (cell.gate) {
             case AND0110: num_and++; break;
@@ -637,7 +613,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           info.block_width - (out_last + Levels::IN_WIDTH) +
           additional_clearance;
 
-        if (status) {
+        if (verbose > 2) {
           Print("[{}] acquire clearance for {}. L: {}, R: {}\n",
                 chute_idx, GateString(gate),
                 left_clearance, right_clearance);
@@ -703,7 +679,12 @@ struct LayoutEngineImpl : public LayoutEngine {
           int out1 = info.outputs[1].xblock;
 
           CHECK(info.outputs[0].type == chute1.type &&
-                info.outputs[1].type == chute2.type);
+                info.outputs[1].type == chute2.type) <<
+            GateString(gate) << " " <<
+            TypeString(info.outputs[0].type) << " == " <<
+            TypeString(chute1.type) << " &&\n" <<
+            TypeString(info.outputs[1].type) << " == " <<
+            TypeString(chute2.type);
 
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
@@ -742,11 +723,7 @@ struct LayoutEngineImpl : public LayoutEngine {
                 LOG(FATAL) << "Unhandled gate in PlaceBinary: "
                            << GateString(g);
               }
-              canvas.next.push_back(PC{
-                  .xpos = cell_pos,
-                  .cell = cell,
-                  .inprops = std::move(inprops),
-                });
+              canvas.AddNext(cell_pos, cell, std::move(inprops));
 
               switch (cell.gate) {
               case SEPARATOR01:
@@ -768,13 +745,18 @@ struct LayoutEngineImpl : public LayoutEngine {
               default:;
               }
 
-              Print("[{}] Did place {}\n", chute_idx,
-                    CellString(cell));
+              if (verbose > 2) {
+                Print("[{}] Did place {}\n", chute_idx,
+                      CellString(cell));
+              }
 
               return;
             }
-            Print("[{}] could not place {}\n", chute_idx,
-                  CellString(cell));
+
+            if (verbose > 2) {
+              Print("[{}] could not place {}\n", chute_idx,
+                    CellString(cell));
+            }
 
           }
         }
@@ -789,8 +771,10 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         int dist = out1 - (out0 + Levels::IN_WIDTH);
         int current_dist = chute2.pos - (chute1.pos + Levels::IN_WIDTH);
-        Print("[{}] {}: Have dist {} want dist {}\n",
-              chute_idx, CellString(cell_unflipped), current_dist, dist);
+        if (verbose > 1) {
+          Print("[{}] {}: Have dist {} want dist {}\n",
+                chute_idx, CellString(cell_unflipped), current_dist, dist);
+        }
         if (dist == current_dist && !took_anchor) {
           // The first time (since we do these in a heuristic priority order)
           // that we have the right distance (but presumably could not fit
@@ -826,8 +810,8 @@ struct LayoutEngineImpl : public LayoutEngine {
         Chute &chute1 = canvas.chutes[c];
         Chute &chute2 = canvas.chutes[c + 1];
 
-        if (chute1.desire != DesireType::UNDUP ||
-            chute2.desire != DesireType::UNDUP)
+        if (chute1.desire != DesireType::UNDUP_LHS ||
+            chute2.desire != DesireType::UNDUP_RHS)
           return;
 
         if (chute1.type == CType::ZERO) {
@@ -996,6 +980,9 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     // These make clear progress to the final state.
+    // TODO: We should prioritize based on the size of the
+    // proposition (depth especially), since we want to
+    // be working on subprops in parallel!
     ForAllRemaining(DoUndup);
     ForAllRemaining(DoUnseparate);
     ForAllRemaining(DoDecompose);
@@ -1014,13 +1001,14 @@ struct LayoutEngineImpl : public LayoutEngine {
                            (canvas.chutes[i].pos + Levels::IN_WIDTH);
         */
         LayoutCanvas::UpdateSpring(&canvas.springs[i],
-                                   min_output_distance,
+                                   // min_output_distance,
+                                   max_cell_width,
                                    library.MinClearanceClose(),
                                    1.0f, 0.1f);
       }
     }
 
-    if (status) {
+    if (verbose > 1) {
       status->Print("--- Springs ---\n");
       for (int i = 0; i < (int)canvas.springs.size(); i++) {
         const Spring &s = canvas.springs[i];
@@ -1043,12 +1031,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<int> ideal_disp(canvas.chutes.size(), 0);
     for (int i = 0; i < canvas.chutes.size(); i++) {
       ideal_disp[i] = (int)std::round(ideal_pos[i]) - canvas.chutes[i].pos;
-      if (status) {
+      if (verbose > 1) {
         if (canvas.Assigned(i)) {
-          status->Print("[{}] is assigned.\n", i);
+          Print("[{}] is assigned.\n", i);
         } else {
-          status->Print("[{}] should move {} from {} to {:.2f}\n",
-                        i, ideal_disp[i], canvas.chutes[i].pos, ideal_pos[i]);
+          Print("[{}] should move {} from {} to {:.2f}\n",
+                i, ideal_disp[i], canvas.chutes[i].pos, ideal_pos[i]);
         }
       }
     }
@@ -1121,7 +1109,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     if (verbose > 1) {
       Print(AWHITE("Layer state at end") ":\n"
             "{}\n",
-            DebugLayerState(canvas.chutes, canvas.next));
+            canvas.DebugString());
     }
 
     return canvas.ConvertToLayer();
@@ -1129,9 +1117,15 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   void DebugRender(const std::deque<std::vector<LC>> &layers) {
     std::string filename = std::format("debug-render-{}.png", layers.size());
+
+    // Render only the top of the circuit, since they can get very large!
+    static constexpr int MAX_CIRCUIT_LAYERS = 500;
+
     Circuit circuit;
-    circuit.layers.reserve(layers.size());
-    for (const std::vector<LC> &layout_layer : layers) {
+    circuit.layers.reserve(std::min((int)layers.size(), MAX_CIRCUIT_LAYERS));
+
+    for (int i = 0; i < layers.size() && i < MAX_CIRCUIT_LAYERS; i++) {
+      const std::vector<LC> &layout_layer = layers[i];
       std::vector<Cell> layer;
       layer.reserve(layout_layer.size());
       for (const LC &lc : layout_layer) {
@@ -1206,19 +1200,19 @@ struct LayoutEngineImpl : public LayoutEngine {
       if (status) {
         status->Status("{}\n"
                        "{} and {} xchg {} or {} wire {} sep {} dup {} comb\n"
-                       "Layer {}: {} max prop, {} total. {} inv. {} sp. "
+                       "Layer {}: {} max prop, {} total. {} inv. {} top. "
                        "Width: {}.\n",
                        histo.OneLineANSI(75),
                        num_and, num_xchg, num_or, num_wire, num_sep,
                        num_dup, num_comb,
                        layers->size(), max_prop_size, total_prop_size,
                        inversions,
-                       num_spaced_layers,
+                       last.size(),
                        top_layer_width);
       }
     }
 
-    if (WRITE_IMAGES /* || (num_layers % 100) == 0 */) {
+    if (WRITE_IMAGES || (layers->size() % 500) == 0) {
       DebugRender(*layers);
     }
 

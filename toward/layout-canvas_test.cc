@@ -43,9 +43,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   {
     LayoutCanvas canvas(library);
     canvas.Reset({DISTANT_CHUTE});
-    canvas.next = {
-      {.xpos = 100, .cell = const0},
-    };
+    canvas.AddNext(100, const0, {});
 
     // Left overlap
     CHECK(!canvas.CanPlaceCell(-1, const0, 100 - const0_w + 1));
@@ -128,10 +126,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
       {.pos = 500 + stride, .prop = True(), .type = CType::MIXED},
       {.pos = 500 + 2 * stride, .prop = True(), .type = CType::MIXED},
     });
-    canvas.next = {
-      // Left side is blocked.
-      {.xpos = 400, .cell = CellLibrary::Spacer(100 - mid)},
-    };
+    canvas.AddNext(400, CellLibrary::Spacer(100 - mid), {});
 
     // Try to place a spacer on the right side, squeezing the chutes.
     Cell block_right = CellLibrary::Spacer(100);
@@ -178,9 +173,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     Cell cell(NOT0);
     CellLibrary::Info info = library.GetInfo(cell);
 
-    canvas.next = {
-      {.xpos = 1000, .cell = cell},
-    };
+    canvas.AddNext(1000, cell, {});
 
     int min_dist =
       Levels::OUT_WIDTH + library.MinClearanceClose() +
@@ -231,11 +224,14 @@ static void TestSolveSprings(const CellLibrary &library) {
     int target_dist = 100;
     int spacing = target_dist + Levels::IN_WIDTH;
     canvas.Reset({
-      {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = true},
-      // Displaced by 30 units
-      {.pos = spacing + 30, .prop = True(), .type = CType::MIXED, .anchored = false},
-      {.pos = 2 * spacing, .prop = True(), .type = CType::MIXED, .anchored = true},
-    });
+        {.pos = 0, .prop = True(), .type = CType::MIXED,
+         .anchored = true},
+        // Displaced by 30 units
+        {.pos = spacing + 30, .prop = True(), .type = CType::MIXED,
+         .anchored = false},
+        {.pos = 2 * spacing, .prop = True(), .type = CType::MIXED,
+         .anchored = true},
+      });
 
     canvas.springs[0] = {.target_dist = target_dist, .min_dist = 10};
     canvas.springs[1] = {.target_dist = target_dist, .min_dist = 10};
@@ -243,12 +239,14 @@ static void TestSolveSprings(const CellLibrary &library) {
     std::vector<double> xpos = canvas.SolveSprings();
     CHECK(xpos.size() == 3);
     CHECK(xpos[0] == 0.0);
-    // The center chute has 1.0 weight for its current position (spacing + 30),
+    // The center chute has 0.01 weight for its current position (spacing + 30),
     // 1.0 weight from left spring pushing to `spacing`,
     // 1.0 weight from right spring pushing to `spacing`.
-    // It converges in 1 iteration to (spacing + 30 + 2*spacing) / 3 =
-    // spacing + 10.
-    CHECK(std::abs(xpos[1] - (spacing + 10.0)) < 1e-4);
+    // It converges to (2.0 * spacing + 0.01 * (spacing + 30)) / 2.01.
+    double expected = spacing + (30.0 * 0.01) / 2.01;
+    CHECK(std::abs(xpos[1] - expected) < 1e-4) <<
+      xpos[1] << " vs " << expected;
+
     CHECK(xpos[2] == 2.0 * spacing);
   }
 
