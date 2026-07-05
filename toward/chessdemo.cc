@@ -10,6 +10,7 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "chessprop.h"
+#include "circuit.h"
 #include "image.h"
 #include "layout.h"
 #include "prop.h"
@@ -137,8 +138,8 @@ struct ChessDemo {
                   ImageRGBA img = RenderCircuit(library, lay.circuit);
                   img.Save(std::format("legal-{}.png", move));
                   Util::WriteFile(
-                      std::format("legal-{}.circ", move),
-                      SerializeCircuit(lay.circuit));
+                      std::format("legal-{}.layout", move),
+                      LayoutEngine::Serialize(lay));
                 });
 
             }

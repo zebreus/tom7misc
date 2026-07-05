@@ -447,18 +447,19 @@ std::string CellLibrary::DebugString(const Circuit &circuit) const {
 }
 
 void CellLibrary::DRC(const Circuit &circuit) const {
-  struct Chute {
+  struct DrcChute {
     int xpos;
     CType type;
+    Cell cell;
   };
 
-  std::vector<Chute> prev_outputs;
+  std::vector<DrcChute> prev_outputs;
 
   for (size_t i = 0; i < circuit.layers.size(); i++) {
     const Layer &layer = circuit.layers[i];
     int current_x = 0;
-    std::vector<Chute> current_inputs;
-    std::vector<Chute> current_outputs;
+    std::vector<DrcChute> current_inputs;
+    std::vector<DrcChute> current_outputs;
 
     for (const Cell &cell : layer) {
       Info info = GetInfo(cell);
@@ -467,13 +468,13 @@ void CellLibrary::DRC(const Circuit &circuit) const {
         CHECK(in.xblock >= 0 &&
               in.xblock + Levels::IN_WIDTH <= info.block_width)
             << "Input out of bounds in " << CellString(cell);
-        current_inputs.push_back({current_x + in.xblock, in.type});
+        current_inputs.push_back({current_x + in.xblock, in.type, cell});
       }
       for (const IO &out : info.outputs) {
         CHECK(out.xblock >= 0 &&
               out.xblock + Levels::OUT_WIDTH <= info.block_width)
             << "Output out of bounds in " << CellString(cell);
-        current_outputs.push_back({current_x + out.xblock, out.type});
+        current_outputs.push_back({current_x + out.xblock, out.type, cell});
       }
 
       current_x += info.block_width;
@@ -491,17 +492,34 @@ void CellLibrary::DRC(const Circuit &circuit) const {
     }
 
     if (i > 0) {
-      CHECK(prev_outputs.size() == current_inputs.size())
-          << "Layer " << i << " input count mismatch: expected "
-          << prev_outputs.size() << ", got " << current_inputs.size();
-      for (size_t j = 0; j < prev_outputs.size(); j++) {
+      size_t min_size = std::min(prev_outputs.size(), current_inputs.size());
+      for (size_t j = 0; j < min_size; j++) {
         CHECK(prev_outputs[j].xpos == current_inputs[j].xpos)
-            << "Layer " << i << " input " << j << " x mismatch: expected "
-            << prev_outputs[j].xpos << ", got " << current_inputs[j].xpos;
+            << "Layer " << i << " input " << j << " xpos mismatch: expected "
+            << prev_outputs[j].xpos << ", got " << current_inputs[j].xpos
+            << " (between " << CellString(prev_outputs[j].cell) << " and "
+            << CellString(current_inputs[j].cell) << ")";
         CHECK(prev_outputs[j].type == current_inputs[j].type)
             << "Layer " << i << " input " << j << " type mismatch: expected "
             << TypeString(prev_outputs[j].type) << ", got "
-            << TypeString(current_inputs[j].type);
+            << TypeString(current_inputs[j].type)
+            << " (between " << CellString(prev_outputs[j].cell) << " and "
+            << CellString(current_inputs[j].cell) << ")";
+      }
+
+      if (prev_outputs.size() != current_inputs.size()) {
+        std::string extra;
+        if (prev_outputs.size() > min_size) {
+          extra = std::format(" (extra output from {})",
+                              CellString(prev_outputs[min_size].cell));
+        } else {
+          extra = std::format(" (extra input to {})",
+                              CellString(current_inputs[min_size].cell));
+        }
+        CHECK(prev_outputs.size() == current_inputs.size())
+            << "Layer " << i << " input count mismatch: expected "
+            << prev_outputs.size() << ", got " << current_inputs.size()
+            << extra;
       }
     }
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
   <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
   <g opacity=".05">
     <rect width="1920" height="1080" fill="#fff"/>
@@ -10,7 +10,9 @@
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(325 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+        <g isolation="isolate">
+          <text transform="translate(325 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+        </g>
       </g>
     </g>
   </g>
@@ -18,10 +20,12 @@
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+        <g isolation="isolate">
+          <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+        </g>
       </g>
     </g>
   </g>
-  <polygon points="0 100 20 100 20 200 120 325 270 720 180 840 180 960 0 960 0 180 0 100" fill="#b36a16"/>
-  <polygon points="120 100 360 140 360 820 280 940 280 960 300 960 380 840 380 100 120 100" fill="#b36a16"/>
+  <polygon points="0 100 20 100 20 200 120 325 270 720 180 840 180 960 160 960 160 840 250 720 105 330 0 205 0 100" fill="#9e7548"/>
+  <polygon points="120 100 120 120 360 505 360 820 280 940 280 960 300 960 380 830 380 495 140 100 120 100" fill="#9e7548"/>
 </svg>

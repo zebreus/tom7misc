@@ -32,6 +32,13 @@
 #include "utf8.h"
 #include "util.h"
 
+enum NodeState {
+  // No input has entered the cell yet
+  WAITING,
+  //
+  FINISHED,
+};
+
 // Each node corresponds to a cell from the circuit, but we have
 // additional stuff for simulating and rendering it.
 struct Node {
@@ -115,7 +122,7 @@ struct Player {
   void ActivateNode(Node &node) {
     if (node.level.get() == nullptr) {
       node.level = library.GetLevel(node.cell);
-      Levels::AddChutes(node.level.get(), 0x00FF00FF, 0xFF0000FF);
+      Levels::AddChutes(node.level.get(), 0x339933FF, 0x993333FF);
     }
     CHECK(node.level.get());
 
@@ -152,7 +159,7 @@ struct Player {
     CHECK(olay.has_value()) << "Could not parse " << layout_file;
     layout = std::move(olay.value());
 
-    library.DRC(layout.circuit);
+    // library.DRC(layout.circuit);
   }
 
   void Reset() {

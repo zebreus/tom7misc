@@ -43,7 +43,7 @@ LevelBody Levels::One() {
     {0, 1, 2, 3},
   };
   body.dynamic = true;
-  body.color = 0xFF00FFFF;
+  body.color = 0x00FF00FF;
   body.item = LevelItem::ONE;
 
   return body;
@@ -123,7 +123,7 @@ LevelBody Levels::Zero() {
   body.mesh.vertices = std::move(verts);
   body.mesh.polygons = std::move(polys);
   body.dynamic = true;
-  body.color = 0xFF00FFFF;
+  body.color = 0xFF0000FF;
   body.item = LevelItem::ZERO;
 
   return body;
@@ -210,7 +210,7 @@ std::optional<vec2f> Levels::IsInput(const SVG::GraphicsState &outer_state,
                         IN_WIDTH, IN_HEIGHT);
 }
 
-static constexpr float IO_EPSILON = Levels::BLOCK_SIZE * (1.0f/32.0f);
+static constexpr float IO_EPSILON = Levels::BLOCK_SIZE * (1.0f / 32.0f);
 
 std::optional<int> Levels::IsStandardInput(
     const SVG::GraphicsState &outer_state,
@@ -531,6 +531,12 @@ void Levels::AddNodesToLevel(std::string_view error_context,
 
     bool has_fill = state.fill_color != SVG::COLOR_NONE;
     bool has_stroke = state.stroke_color != SVG::COLOR_NONE;
+
+    if (has_fill && has_stroke) {
+      Print("[{}] " AORANGE("Warning") ": Path has both fill and stroke "
+            "({:08x} and {:08x}).\n",
+            error_context, state.fill_color, state.stroke_color);
+    }
 
     if (!has_fill && !has_stroke) return;
 

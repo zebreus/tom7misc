@@ -104,7 +104,7 @@ output-library.exe : output-library.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
-cell-library.txt : output-library.exe
+cell-library.txt : output-library.exe cell-*.svg
 	@./output-library.exe > $@
 	@echo -n '/'
 
