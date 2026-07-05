@@ -83,7 +83,7 @@ bool IsWire(Gate gate) {
 
 std::string CellString(const Cell &cell) {
   std::string ret(GateString(cell.gate));
-  if (cell.gate == SPACER || IsWire(cell.gate)) {
+  if (cell.v != 0 || cell.gate == SPACER || IsWire(cell.gate)) {
     AppendFormat(&ret, "({})", cell.v);
   }
 

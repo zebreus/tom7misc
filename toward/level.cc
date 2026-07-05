@@ -825,6 +825,36 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
       << "Failed to write " << filename;
 }
 
+void Levels::FlipLevel(Level *level, int block_width) {
+  for (int &in : level->inputs) {
+    in = block_width - IN_WIDTH - in;
+    CHECK(in >= 0 && in + IN_WIDTH <= block_width) << "Flipped input out of bounds";
+  }
+  std::reverse(level->inputs.begin(), level->inputs.end());
+
+  for (int &out : level->outputs) {
+    out = block_width - OUT_WIDTH - out;
+    CHECK(out >= 0 && out + OUT_WIDTH <= block_width) <<
+      "Flipped output out of bounds";
+  }
+  std::reverse(level->outputs.begin(), level->outputs.end());
+
+  float total_width = block_width * BLOCK_SIZE;
+  for (LevelBody &body : level->bodies) {
+    body.pos.x = total_width - body.pos.x;
+    body.vel.x = -body.vel.x;
+    body.angle = -body.angle;
+    body.avel = -body.avel;
+    for (auto &v : body.mesh.vertices) {
+      v.x = -v.x;
+    }
+    // Reverse indices to maintain winding order
+    for (auto &poly : body.mesh.polygons) {
+      std::reverse(poly.begin(), poly.end());
+    }
+  }
+}
+
 void Levels::AddChutes(Level *level, uint32_t in_color, uint32_t out_color) {
   int h = std::max(Levels::IN_HEIGHT, Levels::OUT_HEIGHT);
 

@@ -165,8 +165,9 @@ static void ValidateLibrary() {
   // Not used; problematic:
   // Gate::NOT,
 
-  // TODO: Test flipped versions too.
   for (Gate g : {
+      Gate::NOT01,
+      Gate::AND0110,
       Gate::NOT0,
       Gate::NOT1,
       Gate::XCHG00,
@@ -184,16 +185,13 @@ static void ValidateLibrary() {
       Gate::SELFXCHG10,
       Gate::DUPSEP0011,
       Gate::SINK,
-      Gate::NOT01,
-      Gate::AND0110,
     }) {
     for (bool f : {false, true}) {
       // XXX skip known problematic
       // if (f && g == Gate::AND0110) continue;
-      if (f) continue;
       if (g == Gate::NOT) continue;
 
-      Cell cell(g, f);
+      Cell cell(g, 0, f);
       std::vector<Prop> args;
       CellLibrary::Info info = library.GetInfo(cell);
       if (g == Gate::SELFXCHG01 ||

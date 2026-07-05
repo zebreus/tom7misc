@@ -133,6 +133,9 @@ struct Levels {
 
   static void SaveSVG(const Level &level, std::string_view filename);
 
+  // Flip the level horizontally, assuming a bounding box of `block_width` blocks.
+  static void FlipLevel(Level *level, int block_width);
+
   // Add standard chute walls to both the input and output. The chutes
   // extend into the space where the connected level would be.
   static void AddChutes(Level *level, uint32_t in_color, uint32_t out_color);

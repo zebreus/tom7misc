@@ -118,6 +118,9 @@ static void XorVars(const CellLibrary &library) {
   Layout layout = le->DoLayout(output);
   library.DRC(layout.circuit);
   Verify(layout, output);
+
+  Util::WriteFile("xorvars.layout", LayoutEngine::Serialize(layout));
+  Print("Wrote xorvars.layout\n");
 }
 
 static void MultiOutput(const CellLibrary &library) {

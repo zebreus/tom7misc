@@ -18,6 +18,8 @@
 #include "inline-vector.h"
 #include "level.h"
 
+static constexpr bool VERBOSE = false;
+
 namespace {
 struct HashCell {
   size_t operator()(const Cell &cell) const {
@@ -187,8 +189,10 @@ struct CellLibraryImpl {
     if (entry.block_width < 0) entry.block_width = 0;
 
     CHECK(entry.block_width >= 0) << "Negative block width computed";
-    Print("Loaded {} (gate {}, v {}): min_x={:.2f}, max_x={:.2f}, width={}\n",
-          filename, (int)gate, v, min_x, max_x, entry.block_width);
+    if (VERBOSE) {
+      Print("Loaded {} (gate {}, v {}): min_x={:.2f}, max_x={:.2f}, width={}\n",
+            filename, (int)gate, v, min_x, max_x, entry.block_width);
+    }
 
     entry.level = std::make_unique<Level>(*level);
 
@@ -321,7 +325,8 @@ struct CellLibraryImpl {
     base.flip = false;
     auto it = info.find(base);
     CHECK(it != info.end()) << "Cell not found in library: "
-                            << CellString(cell);
+                            << CellString(cell) << " (via "
+                            << CellString(base) << ")";
 
 
     CellLibrary::Info result;
@@ -363,33 +368,7 @@ struct CellLibraryImpl {
     auto result = std::make_unique<Level>(*it->second.level);
 
     if (cell.flip) {
-      int bw = it->second.block_width;
-
-      for (int &in : result->inputs) {
-        in = bw - Levels::IN_WIDTH - in;
-        CHECK(in >= 0 && in + Levels::IN_WIDTH <= bw) << "Flipped input out of bounds";
-      }
-      std::reverse(result->inputs.begin(), result->inputs.end());
-
-      for (int &out : result->outputs) {
-        out = bw - Levels::OUT_WIDTH - out;
-        CHECK(out >= 0 && out + Levels::OUT_WIDTH <= bw) <<
-          "Flipped output out of bounds";
-      }
-      std::reverse(result->outputs.begin(), result->outputs.end());
-
-      float total_width = bw * Levels::BLOCK_SIZE;
-      for (LevelBody &body : result->bodies) {
-        body.pos.x = total_width - body.pos.x;
-        body.vel.x = -body.vel.x;
-        body.angle = -body.angle;
-        body.avel = -body.avel;
-        for (auto &v : body.mesh.vertices) {
-          v.x = -v.x;
-        }
-        // Reverse vertices to maintain winding order
-        std::reverse(body.mesh.vertices.begin(), body.mesh.vertices.end());
-      }
+      Levels::FlipLevel(result.get(), it->second.block_width);
     }
 
     return result;
