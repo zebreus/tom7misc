@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -142,5 +143,9 @@ Prop NormalizeToAnd(const Prop &prop);
 
 // Normalize to AND/OR/NOT.
 Prop NormalizeRemoveXor(const Prop &prop);
+
+// Can assume no spaces or newlines in serialized propositions.
+std::string SerializeProp(const Prop &prop);
+std::optional<Prop> ParseProp(std::string_view s);
 
 #endif

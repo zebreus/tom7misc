@@ -238,6 +238,15 @@ static void TestNormalizeToAnd() {
   }
 }
 
+static void TestSerializeParse() {
+  for (const Prop &p : InterestingProps()) {
+    std::string s = SerializeProp(p);
+    std::optional<Prop> parsed = ParseProp(s);
+    CHECK(parsed.has_value()) << "Failed to parse: " << s;
+    CHECK(*parsed == p) << "Round trip failed for: " << s;
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -252,6 +261,7 @@ int main(int argc, char **argv) {
   TestSimplifyProp();
   TestBalanceProp();
   TestNormalizeToAnd();
+  TestSerializeParse();
 
   Print("OK\n");
   return 0;

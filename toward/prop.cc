@@ -19,6 +19,7 @@
 
 #include "base/logging.h"
 #include "set-util.h"
+#include "util.h"
 
 // TODO: Macros, simplifications, etc.
 
@@ -466,3 +467,96 @@ Prop NormalizeRemoveXor(const Prop &prop) {
 
   return NormRec(prop);
 }
+
+std::string SerializeProp(const Prop &prop) {
+  if (const Value *v = std::get_if<Value>(&prop.p)) {
+    return v->value ? "T" : "F";
+  } else if (const Var *v = std::get_if<Var>(&prop.p)) {
+    return Util::itos(v->id);
+  } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
+    CHECK(u->op == UnopOp::NOT);
+    return "!" + SerializeProp(*u->a);
+  } else if (const Binop *b = std::get_if<Binop>(&prop.p)) {
+    std::string lhs = SerializeProp(*b->a);
+    std::string rhs = SerializeProp(*b->b);
+    char op = '?';
+    switch (b->op) {
+    case BinopOp::AND: op = '&'; break;
+    case BinopOp::OR:op = '|'; break;
+    case BinopOp::XOR: op = '^'; break;
+    default:
+      LOG(FATAL) << "Unknown binop?";
+    }
+    return std::format("({}{}{})", lhs, op, rhs);
+  }
+  LOG(FATAL) << "Bad variant?";
+}
+
+static std::optional<Prop> ParsePropRec(std::string_view *s);
+
+static std::optional<Prop> ParseAtom(std::string_view *s) {
+  if (s->empty()) return std::nullopt;
+  if (Util::TryStripPrefix("T", s)) {
+    return True();
+  } else if (Util::TryStripPrefix("F", s)) {
+    return False();
+  } else if (Util::TryStripPrefix("!", s)) {
+    auto a = ParseAtom(s);
+    if (!a) return std::nullopt;
+    return -std::move(*a);
+  } else if (Util::TryStripPrefix("(", s)) {
+    auto a = ParsePropRec(s);
+    if (!a || !Util::TryStripPrefix(")", s)) return std::nullopt;
+    return a;
+  } else {
+    // Must be digits then.
+    std::string_view var_str = Util::ConsumePrefixMatching(
+        [](char ch) { return ch >= '0' && ch <= '9'; }, s);
+    if (var_str.empty()) return std::nullopt;
+    std::optional<int64_t> id = Util::ParseInt64Opt(var_str);
+    if (!id.has_value() || id.value() < 0) return std::nullopt;
+    return Prop{.p = Var{.id = (int)id.value()}};
+  }
+  return std::nullopt;
+}
+
+static std::optional<Prop> ParseAnd(std::string_view *s) {
+  auto a = ParseAtom(s);
+  if (!a) return std::nullopt;
+  while (Util::TryStripPrefix("&", s)) {
+    auto b = ParseAtom(s);
+    if (!b) return std::nullopt;
+    a = std::move(*a) & std::move(*b);
+  }
+  return a;
+}
+
+static std::optional<Prop> ParseXor(std::string_view *s) {
+  auto a = ParseAnd(s);
+  if (!a) return std::nullopt;
+  while (Util::TryStripPrefix("^", s)) {
+    auto b = ParseAnd(s);
+    if (!b) return std::nullopt;
+    a = std::move(*a) ^ std::move(*b);
+  }
+  return a;
+}
+
+static std::optional<Prop> ParsePropRec(std::string_view *s) {
+  auto a = ParseXor(s);
+  if (!a) return std::nullopt;
+  while (Util::TryStripPrefix("|", s)) {
+    auto b = ParseXor(s);
+    if (!b) return std::nullopt;
+    a = std::move(*a) | std::move(*b);
+  }
+  return a;
+}
+
+std::optional<Prop> ParseProp(std::string_view s) {
+  auto a = ParsePropRec(&s);
+  // A valid parse must consume the entire string.
+  if (!a || !s.empty()) return std::nullopt;
+  return a;
+}
+
