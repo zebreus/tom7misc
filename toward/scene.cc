@@ -72,7 +72,7 @@ void Scene::Update() {
 
 bool Scene::AllAsleep() {
   for (const Scene::Obj &obj : objects) {
-    if (b2Body_IsAwake(obj.body_id)) {
+    if (b2Body_IsValid(obj.body_id) && b2Body_IsAwake(obj.body_id)) {
       return false;
     }
   }
@@ -137,12 +137,14 @@ std::optional<vec2f> Scene::RejectObject(
   std::vector<std::vector<b2ShapeId>> all_shapes;
   all_shapes.reserve(objects.size());
   for (const auto &obj : objects) {
-    int count = b2Body_GetShapeCount(obj.body_id);
-    std::vector<b2ShapeId> shapes(count);
-    if (count > 0) {
-      b2Body_GetShapes(obj.body_id, shapes.data(), count);
+    if (b2Body_IsValid(obj.body_id)) {
+      int count = b2Body_GetShapeCount(obj.body_id);
+      std::vector<b2ShapeId> shapes(count);
+      if (count > 0) {
+        b2Body_GetShapes(obj.body_id, shapes.data(), count);
+      }
+      all_shapes.push_back(std::move(shapes));
     }
-    all_shapes.push_back(std::move(shapes));
   }
 
   float step = 0.05f;
@@ -181,6 +183,8 @@ std::optional<vec2f> Scene::RejectObject(
 
     // Check if any existing object vertex/midpoint is inside the mesh.
     for (const auto &obj : objects) {
+      if (!b2Body_IsValid(obj.body_id)) continue;
+
       b2Vec2 pos = b2Body_GetPosition(obj.body_id);
       b2Rot rot = b2Body_GetRotation(obj.body_id);
 
@@ -231,11 +235,11 @@ std::optional<vec2f> Scene::RejectObject(
   return std::nullopt;
 }
 
-void Scene::AddObject(const Polygonization::Mesh &mesh,
-                      uint32_t color, vec2f pos, float angle,
-                      vec2f vel, float avel,
-                      float restitution,
-                      float friction) {
+size_t Scene::AddObject(const Polygonization::Mesh &mesh,
+                        uint32_t color, vec2f pos, float angle,
+                        vec2f vel, float avel,
+                        float restitution,
+                        float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
   body_def.position = {pos.x, pos.y};
@@ -254,12 +258,12 @@ void Scene::AddObject(const Polygonization::Mesh &mesh,
   shape_def.material.restitution = restitution;
   shape_def.material.friction = friction;
 
-  Attach(body_id, shape_def, mesh, color);
+  return Attach(body_id, shape_def, mesh, color);
 
   // Print("Object has mass of {:.4f}kg\n", b2Body_GetMass(body_id));
 }
 
-void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
+size_t Scene::AddFixedObject(const Polygonization::Mesh &mesh,
                            uint32_t color, vec2f pos,
                            float restitution,
                            float friction) {
@@ -274,7 +278,7 @@ void Scene::AddFixedObject(const Polygonization::Mesh &mesh,
   shape_def.material.restitution = restitution;
   shape_def.material.friction = friction;
 
-  Attach(body_id, shape_def, mesh, color);
+  return Attach(body_id, shape_def, mesh, color);
 }
 
 static std::vector<Rendering::Triangle> MakeTriangles(
@@ -329,10 +333,19 @@ void Scene::AddGraphics(const Polygonization::Mesh &mesh, uint32_t color,
   }
 }
 
-void Scene::Attach(b2BodyId body_id,
-                   b2ShapeDef shape_def,
-                   const Polygonization::Mesh &mesh,
-                   uint32_t color) {
+void Scene::Detach(size_t index) {
+  CHECK(index < objects.size());
+  Obj &obj = objects[index];
+  CHECK(b2Body_IsValid(obj.body_id));
+  b2DestroyBody(obj.body_id);
+  obj.body_id = {};
+  obj.mesh.clear();
+}
+
+size_t Scene::Attach(b2BodyId body_id,
+                     b2ShapeDef shape_def,
+                     const Polygonization::Mesh &mesh,
+                     uint32_t color) {
   std::vector<Rendering::Triangle> render_mesh;
 
   // TODO: This can use MakeTriangles I think
@@ -385,19 +398,24 @@ void Scene::Attach(b2BodyId body_id,
     }
   }
 
+  size_t idx = objects.size();
   objects.push_back(Obj{
       .rgba = color,
       .body_id = body_id,
       .mesh = render_mesh,
   });
+
+  return idx;
 }
 
 void Scene::ApplyImpulse(vec2f v) {
   for (const Obj &obj : objects) {
-    float mass = b2Body_GetMass(obj.body_id);
-    float ix = v.x * mass;
-    float iy = v.y * mass;
-    b2Body_ApplyLinearImpulseToCenter(obj.body_id, {ix, iy}, true);
+    if (b2Body_IsValid(obj.body_id)) {
+      float mass = b2Body_GetMass(obj.body_id);
+      float ix = v.x * mass;
+      float iy = v.y * mass;
+      b2Body_ApplyLinearImpulseToCenter(obj.body_id, {ix, iy}, true);
+    }
   }
 }
 
@@ -419,6 +437,8 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() {
 
   auto AddRenderLayer = [&scene](std::span<const Obj> layer) {
       for (const Obj &obj : layer) {
+        // (These objects do not have box2d ids.)
+
         for (const Rendering::Triangle &tri : obj.mesh) {
           auto Transform = [](vec2f p) -> vec2f {
               return vec2f{
@@ -440,6 +460,8 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() {
   AddRenderLayer(bg_objects);
 
   for (const Obj &obj : objects) {
+    if (!b2Body_IsValid(obj.body_id)) continue;
+
     b2Vec2 pos = b2Body_GetPosition(obj.body_id);
     b2Rot rot = b2Body_GetRotation(obj.body_id);
 
@@ -467,3 +489,31 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() {
 
   return scene;
 }
+
+vec2f Scene::GetPosition(const Obj &obj) {
+  CHECK(b2Body_IsValid(obj.body_id));
+  b2Vec2 p = b2Body_GetPosition(obj.body_id);
+  return vec2f{p.x, p.y};
+}
+
+vec2f Scene::GetVelocity(const Obj &obj) {
+  CHECK(b2Body_IsValid(obj.body_id));
+  b2Vec2 v = b2Body_GetLinearVelocity(obj.body_id);
+  return vec2f{v.x, v.y};
+}
+
+float Scene::GetAngle(const Obj &obj) {
+  CHECK(b2Body_IsValid(obj.body_id));
+  b2Rot rot = b2Body_GetRotation(obj.body_id);
+  return std::atan2(rot.s, rot.c);
+}
+
+float Scene::GetAngularVelocity(const Obj &obj) {
+  CHECK(b2Body_IsValid(obj.body_id));
+  return b2Body_GetAngularVelocity(obj.body_id);
+}
+
+bool Scene::IsSimulated(const Obj &obj) const {
+  return b2Body_IsValid(obj.body_id);
+}
+

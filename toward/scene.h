@@ -27,6 +27,8 @@ struct Scene {
 
   struct Obj {
     uint32_t rgba = 0xFFFFFFFF;
+    // background and foreground objects will not have a valid
+    // body_id (not simulated). Same for objects that are detached.
     b2BodyId body_id = {};
     std::vector<Rendering::Triangle> mesh;
     // Can be used to attach application-specific info by the
@@ -51,12 +53,16 @@ struct Scene {
 
   void Update();
 
-  void AddDirt(ArcFour *rc);
-
   // True if every object is asleep, so the simulation is
   // quiescent. Note that this may be more conservative than
   // you want, if for example an object has fallen out of the arena.
   bool AllAsleep();
+
+  // Get the position (etc.) of a simulated object.
+  vec2f GetPosition(const Obj &obj);
+  vec2f GetVelocity(const Obj &obj);
+  float GetAngle(const Obj &obj);
+  float GetAngularVelocity(const Obj &obj);
 
   // Attempt to place the mesh at pos, but then move it in the
   // reject_dir while it overlapping an existing object. If it exits
@@ -67,25 +73,34 @@ struct Scene {
       const Polygonization::Mesh &mesh, vec2f pos,
       vec2f reject_dir);
 
-  void AddObject(const Polygonization::Mesh &mesh, uint32_t color,
-                 // Initial position and angle. The angle is in
-                 // radians and rotation happens around the local
-                 // origin, which is not necessarily the center of mass.
-                 vec2f pos, float angle,
-                 // Velocity and angular velocity.
-                 vec2f vel, float avel,
-                 float restitution,
-                 float friction);
+  // Returns its index.
+  size_t AddObject(const Polygonization::Mesh &mesh, uint32_t color,
+                   // Initial position and angle. The angle is in
+                   // radians and rotation happens around the local
+                   // origin, which is not necessarily the center of mass.
+                   vec2f pos, float angle,
+                   // Velocity and angular velocity.
+                   vec2f vel, float avel,
+                   float restitution,
+                   float friction);
 
-  void AddFixedObject(const Polygonization::Mesh &mesh, uint32_t color,
-                      vec2f pos,
-                      float restitution,
-                      float friction);
+  // Returns its index.
+  size_t AddFixedObject(const Polygonization::Mesh &mesh, uint32_t color,
+                        vec2f pos,
+                        float restitution,
+                        float friction);
 
   void AddGraphics(const Polygonization::Mesh &mesh, uint32_t color,
                    vec2f pos, bool foreground);
 
-  void ApplyImpulse(vec2f v);
+  // Remove an Obj by index into the objects vector. Detaches the
+  // Box2D body and clears the mesh in place, so that indices into the
+  // object vector stay stable. (You can just std::vector::erase from
+  // the background and foreground objects, as they are not part of
+  // the box2d simulation.)
+  void Detach(size_t index);
+
+  bool IsSimulated(const Obj &obj) const;
 
   // Get the triangles for rendering, using Cartesian coordinates.
   std::vector<Rendering::Triangle> GetTriangles();
@@ -93,10 +108,14 @@ struct Scene {
   Scene(Scene &&other) noexcept = default;
   Scene &operator=(Scene &&other) noexcept = default;
 
+  // Stuff for debugging.
+  void AddDirt(ArcFour *rc);
+  void ApplyImpulse(vec2f v);
+
  private:
-  void Attach(b2BodyId body_id, b2ShapeDef shape_def,
-              const Polygonization::Mesh &mesh,
-              uint32_t color);
+  size_t Attach(b2BodyId body_id, b2ShapeDef shape_def,
+                const Polygonization::Mesh &mesh,
+                uint32_t color);
 
   // Move-only.
   Scene(const Scene &) = delete;
