@@ -397,7 +397,8 @@ static uint32_t GetBodyColor(const SVG::GraphicsState &state) {
 }
 
 
-void Levels::AddNodesToLevel(const Options &options,
+void Levels::AddNodesToLevel(std::string_view error_context,
+                             const Options &options,
                              const SVG::Node &node,
                              const SVG::GraphicsState &state,
                              Level *level,
@@ -440,7 +441,8 @@ void Levels::AddNodesToLevel(const Options &options,
     SVG::GraphicsState next_state = SVG::UpdateState(state, g->style);
 
     for (const auto &child : g->children) {
-      AddNodesToLevel(options, child, next_state, level, verbose, layer,
+      AddNodesToLevel(error_context,
+                      options, child, next_state, level, verbose, layer,
                       restitution, friction);
     }
 
@@ -583,7 +585,8 @@ void Levels::AddNodesToLevel(const Options &options,
 
     if (mesh == nullptr) {
       if (const std::string_view *err = std::get_if<std::string_view>(&res)) {
-        Print(AORANGE("Polygonization failed") ": {}\n", *err);
+        Print("[{}] " AORANGE("Polygonization failed") ": {}\n",
+              error_context, *err);
       }
       return;
     }
@@ -721,7 +724,8 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
       }
     }
 
-    AddNodesToLevel(options, root, state, level.get(), verbose, layer,
+    AddNodesToLevel(filename,
+                    options, root, state, level.get(), verbose, layer,
                     restitution, friction);
   }
 

@@ -182,8 +182,10 @@ struct Levels {
   static std::optional<vec2f> IsSVGZero(const SVG::GraphicsState &outer_state,
                                         const SVG::Node &node);
 
+ private:
   // Mostly for internal use.
-  static void AddNodesToLevel(const Options &options,
+  static void AddNodesToLevel(std::string_view error_context,
+                              const Options &options,
                               const SVG::Node &node,
                               const SVG::GraphicsState &state,
                               Level *level,
