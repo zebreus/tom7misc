@@ -16,6 +16,7 @@
 #include "circuit.h"
 #include "prop.h"
 #include "render-circuit.h"
+#include "util.h"
 
 static void StartTest(std::string_view name) {
   Print("\n\n" ABGCOLOR(0, 0, 160, "== {} ==") "\n", name);
@@ -90,6 +91,9 @@ static void AndVars(const CellLibrary &library) {
   Layout layout = le->DoLayout(output);
   library.DRC(layout.circuit);
   Verify(layout, output);
+
+  Util::WriteFile("andvars.layout", LayoutEngine::Serialize(layout));
+  Print("Wrote andvars.layout\n");
 }
 
 static void OrVars(const CellLibrary &library) {
@@ -225,6 +229,8 @@ static void Modest(const CellLibrary &library) {
   RenderCircuit(library, layout.circuit).Save("modest.png");
   library.DRC(layout.circuit);
   Verify(layout, output);
+  Util::WriteFile("modest.layout", LayoutEngine::Serialize(layout));
+  Print("Wrote modest.layout\n");
 }
 
 static void TestSerialization() {

@@ -186,6 +186,10 @@ struct CellLibraryImpl {
     entry.block_width = (int)std::ceil(max_x / Levels::BLOCK_SIZE - 0.01f);
     if (entry.block_width < 0) entry.block_width = 0;
 
+    CHECK(entry.block_width >= 0) << "Negative block width computed";
+    Print("Loaded {} (gate {}, v {}): min_x={:.2f}, max_x={:.2f}, width={}\n",
+          filename, (int)gate, v, min_x, max_x, entry.block_width);
+
     entry.level = std::make_unique<Level>(*level);
 
     Cell key(gate, v);
@@ -363,11 +367,14 @@ struct CellLibraryImpl {
 
       for (int &in : result->inputs) {
         in = bw - Levels::IN_WIDTH - in;
+        CHECK(in >= 0 && in + Levels::IN_WIDTH <= bw) << "Flipped input out of bounds";
       }
       std::reverse(result->inputs.begin(), result->inputs.end());
 
       for (int &out : result->outputs) {
         out = bw - Levels::OUT_WIDTH - out;
+        CHECK(out >= 0 && out + Levels::OUT_WIDTH <= bw) <<
+          "Flipped output out of bounds";
       }
       std::reverse(result->outputs.begin(), result->outputs.end());
 

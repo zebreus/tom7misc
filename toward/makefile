@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe
 
 fixme : separator.exe
 
@@ -33,7 +33,7 @@ SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
 
 # objects to compile with SDL flags
 SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
-SDL_ENTRYPOINT_OBJECTS=test.o editor.o
+SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o
 
 # all (library) objects
 LIB_OBJECTS=layout-canvas.o font-cache.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
@@ -122,6 +122,10 @@ render-circuit_test.exe : render-circuit_test.o $(LIB_OBJECTS)
 
 chessdemo.exe : chessdemo.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+playcircuit.exe : playcircuit.o $(LIB_OBJECTS) $(SDL_OBJECTS)
+	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
 clean :

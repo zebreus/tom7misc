@@ -15,6 +15,7 @@
 struct Rendering {
   using vec2f = yocto::vec2f;
 
+  // Using cartesian coordinates (y increases upward).
   struct Triangle {
     // vertices
     vec2f a, b, c;

@@ -20,12 +20,14 @@ static std::unordered_map<std::string, Letters *> *cache =
 const Letters *FontCache::Get(std::string_view font_name) {
   static std::unordered_map<std::string, std::string_view> fontfiles = {
     {"helvetica-bold", "helveticab.ttf"},
+    {"baskerville-bold", "baskervilleb.ttf"},
     // papyrus.ttf has self-intersecting geometry, omg!
     {"papyrus-regular", "papyrus-icg.ttf"},
     {"papyrus", "papyrus-icg.ttf"},
     {"comicsansms", "comic-sans-ms.ttf"},
     {"timesnewromanps-boldmt", "timesb.ttf"},
     {"adlib", "adlib-bt.ttf"},
+    {"franklingothic-medium", "franklingothicdemi.ttf"},
   };
 
   auto fit = fontfiles.find(Util::lcase(font_name));

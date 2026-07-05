@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "SDL.h"
 #include "SDL_events.h"
@@ -29,7 +30,15 @@ struct SDLInputs : public Inputs {
       return ret;
     }();
 
+  std::optional<Input> pending_;
+
   Input GetInput() override {
+    if (pending_) {
+      Input i = *pending_;
+      pending_.reset();
+      return i;
+    }
+
     SDL_Event e = {};
     while (SDL_PollEvent(&e)) {
       if (e.type == SDL_QUIT) {
@@ -48,7 +57,28 @@ struct SDLInputs : public Inputs {
           // XXX support other buttons as generic events?
           continue;
         }
+
+        uint8_t mask = 0;
+        uint32_t state = SDL_GetMouseState(nullptr, nullptr);
+        if (state & SDL_BUTTON_LMASK) mask |= (1 << MOUSE_LEFT);
+        if (state & SDL_BUTTON_RMASK) mask |= (1 << MOUSE_RIGHT);
+        if (state & SDL_BUTTON_MMASK) mask |= (1 << MOUSE_MIDDLE);
+        pending_ = MouseChange{e.button.x, e.button.y, 0, 0, mask};
+
         return MouseClick{e.button.x, e.button.y, button};
+      }
+
+      if (e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONUP) {
+        uint8_t mask = 0;
+        uint32_t state = SDL_GetMouseState(nullptr, nullptr);
+        if (state & SDL_BUTTON_LMASK) mask |= (1 << MOUSE_LEFT);
+        if (state & SDL_BUTTON_RMASK) mask |= (1 << MOUSE_RIGHT);
+        if (state & SDL_BUTTON_MMASK) mask |= (1 << MOUSE_MIDDLE);
+        int x = e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x;
+        int y = e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y;
+        int dx = e.type == SDL_MOUSEMOTION ? e.motion.xrel : 0;
+        int dy = e.type == SDL_MOUSEMOTION ? e.motion.yrel : 0;
+        return MouseChange{x, y, dx, dy, mask};
       }
 
       if (e.type == SDL_MOUSEWHEEL) {
@@ -56,7 +86,12 @@ struct SDLInputs : public Inputs {
           // This incorporates "natural scrolling," but we aren't scrolling.
           bool scroll_up = e.wheel.y > 0;
 
+          int x, y;
+          SDL_GetMouseState(&x, &y);
+
           return MouseWheel{
+            .x = x,
+            .y = y,
             .up = scroll_up != (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED),
           };
         }

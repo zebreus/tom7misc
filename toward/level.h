@@ -44,6 +44,10 @@ struct LevelBody {
   // bodies can collide with it, but this body
   // never moves.
   bool dynamic = false;
+  // If deleted, the body is ignored for simulation, etc.
+  // This is useful when we have indices pointing at the
+  // bodies array (e.g. from the simulation).
+  bool deleted = false;
   // Some bodies are instances of a special thing, e.g. a
   // '0' or '1'.
   std::optional<LevelItem> item;
@@ -129,6 +133,10 @@ struct Levels {
 
   static void SaveSVG(const Level &level, std::string_view filename);
 
+  // Add standard chute walls to both the input and output. The chutes
+  // extend into the space where the connected level would be.
+  static void AddChutes(Level *level, uint32_t in_color, uint32_t out_color);
+
   // user_data will be the index of the body in the level.
   static std::unique_ptr<Scene> CreateScene(const Level &level);
 
@@ -142,7 +150,8 @@ struct Levels {
   static LevelBody One();
   static LevelBody Zero();
   // Create a fixed rectangular body.
-  static LevelBody WallRect(vec2f center, int blockwidth, int blockheight);
+  static LevelBody WallRect(vec2f center, int blockwidth, int blockheight,
+                            uint32_t color = 0x888888FF);
 
   // Recognize an input. This a rectangle 5x5 blocks in size, with
   // color INPUT_COLOR. It does not become a body.
@@ -176,7 +185,9 @@ struct Levels {
                               const SVG::GraphicsState &state,
                               Level *level,
                               bool verbose,
-                              LevelLayer layer);
+                              LevelLayer layer,
+                              std::optional<float> restitution = std::nullopt,
+                              std::optional<float> friction = std::nullopt);
 };
 
 #endif

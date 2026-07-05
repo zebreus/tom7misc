@@ -27,22 +27,35 @@ static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
 void Simulate(std::string_view level_file) {
   ArcFour rc("sim");
 
-  Levels::Options opt;
-  opt.include_text = true;
-  if (level_file.find("cell-") != std::string_view::npos)
-    opt.include_text = false;
-
-  std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, level_file);
-  Print("There are {} bodies in the level.\n", level->bodies.size());
-  std::unique_ptr<Scene> scene = Levels::CreateScene(*level);
-
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
   std::unique_ptr<Rendering> rendering = CreateSDLGLRendering();
-
-  bool paused = false;
-
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
+
+
+  std::unique_ptr<Level> level;
+  std::unique_ptr<Scene> scene;
+
+
+  auto Reset = [&level, &scene, level_file]() {
+      bool is_cell = level_file.find("cell-") != std::string_view::npos;
+
+      Levels::Options opt;
+      opt.include_text = true;
+      if (is_cell)
+        opt.include_text = false;
+
+      level = Levels::LoadSVGExt(opt, level_file);
+      Print("There are {} bodies in the level.\n", level->bodies.size());
+      if (is_cell) {
+        Levels::AddChutes(level.get(), 0x00FF00FF, 0xFF0000FF);
+      }
+      scene = Levels::CreateScene(*level);
+    };
+
+  Reset();
+
+  bool paused = false;
 
   bool bit = true;
 
@@ -59,8 +72,7 @@ void Simulate(std::string_view level_file) {
         if (kdown->codepoint == '\r') {
           paused = !paused;
         } else if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
-          level = Levels::LoadSVGExt(opt, level_file);
-          scene = Levels::CreateScene(*level);
+          Reset();
         } else if (kdown->codepoint == '1') {
           bit = true;
         } else if (kdown->codepoint == '0') {

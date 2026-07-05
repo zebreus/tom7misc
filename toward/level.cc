@@ -267,10 +267,11 @@ std::optional<int> Levels::IsStandardOutput(
 }
 
 LevelBody Levels::WallRect(vec2f center,
-                           int blockwidth, int blockheight) {
+                           int blockwidth, int blockheight,
+                           uint32_t color) {
   LevelBody wall;
   wall.dynamic = false;
-  wall.color = 0x888888FF;
+  wall.color = color;
 
   float rect_w = blockwidth * BLOCK_SIZE;
   float rect_h = blockheight * BLOCK_SIZE;
@@ -401,7 +402,9 @@ void Levels::AddNodesToLevel(const Options &options,
                              const SVG::GraphicsState &state,
                              Level *level,
                              bool verbose,
-                             LevelLayer layer) {
+                             LevelLayer layer,
+                             std::optional<float> restitution,
+                             std::optional<float> friction) {
   if (std::optional<vec2f> oone = IsSVGOne(state, node)) {
     if (verbose) Print("Got One at {},{}\n", oone.value().x, oone.value().y);
     LevelBody one_body = Levels::One();
@@ -437,7 +440,8 @@ void Levels::AddNodesToLevel(const Options &options,
     SVG::GraphicsState next_state = SVG::UpdateState(state, g->style);
 
     for (const auto &child : g->children) {
-      AddNodesToLevel(options, child, next_state, level, verbose, layer);
+      AddNodesToLevel(options, child, next_state, level, verbose, layer,
+                      restitution, friction);
     }
 
   } else if (const SVG::Text *text = std::get_if<SVG::Text>(&node.v)) {
@@ -485,6 +489,8 @@ void Levels::AddNodesToLevel(const Options &options,
         if (it != letters->letter.end()) {
           const Letter &letter = it->second;
           LevelBody body;
+          if (restitution.has_value()) body.restitution = *restitution;
+          if (friction.has_value()) body.friction = *friction;
           body.dynamic = options.all_text_dynamic;
           body.color = body_color;
           body.layer = layer;
@@ -615,6 +621,8 @@ void Levels::AddNodesToLevel(const Options &options,
     uint32_t color = GetBodyColor(state);
 
     LevelBody body;
+    if (restitution.has_value()) body.restitution = *restitution;
+    if (friction.has_value()) body.friction = *friction;
     body.mesh = std::move(*mesh);
     body.color = color;
     body.pos = pos;
@@ -643,6 +651,28 @@ std::unique_ptr<Level> Levels::LoadSVG(std::string_view filename,
   return LoadSVGExt(Options{}, filename, verbose);
 }
 
+// Illustrator encodes some characters like __x3D__ for =.
+// This undoes that function to give us the actual layer name again.
+static std::string UnsanitizeLayerName(std::string_view name) {
+  std::string result;
+  result.reserve(name.size());
+  for (size_t i = 0; i < name.size(); ) {
+    if (i + 6 < name.size() &&
+        name[i] == '_' && name[i + 1] == '_' && name[i + 2] == 'x' &&
+        Util::IsHexDigit(name[i + 3]) && Util::IsHexDigit(name[i + 4]) &&
+        name[i + 5] == '_' && name[i + 6] == '_') {
+      result.push_back((char)(
+          (Util::HexDigitValue(name[i + 3]) << 4) |
+           Util::HexDigitValue(name[i + 4])));
+      i += 7;
+    } else {
+      result.push_back(name[i]);
+      i++;
+    }
+  }
+  return result;
+}
+
 std::unique_ptr<Level> Levels::LoadSVGExt(
     const Options &options,
     std::string_view filename,
@@ -660,13 +690,39 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
-  for (const auto [name, root] : doc.layers) {
+  for (const auto [raw_name, root] : doc.layers) {
+    // We want to see | and = in the layer name.
+    std::string name = UnsanitizeLayerName(raw_name);
+    if (!name.empty()) {
+      Print(AWHITE("Layer {}") "\n", name);
+    }
     bool background = Util::StartsWith(Util::lcase(name), "back");
     bool foreground = Util::StartsWith(Util::lcase(name), "fore");
     LevelLayer layer = background ? LevelLayer::BACKGROUND :
       foreground ? LevelLayer::FOREGROUND :
       LevelLayer::PHYSICAL;
-    AddNodesToLevel(options, root, state, level.get(), verbose, layer);
+
+    std::optional<float> restitution;
+    std::optional<float> friction;
+    if (layer == LevelLayer::PHYSICAL) {
+      for (const std::string &part : Util::Split(name, '|')) {
+        std::vector<std::string> kv = Util::Split(part, '=');
+        if (kv.size() == 2) {
+          std::string k = Util::lcase(Util::NormalizeWhitespace(kv[0]));
+          std::string v = Util::NormalizeWhitespace(kv[1]);
+          if (k == "cor") {
+            restitution = {(float)Util::ParseDouble(v, 0.01)};
+            Print("Using COR of {:.4f}\n", restitution.value());
+          } else if (k == "cof") {
+            friction = {(float)Util::ParseDouble(v, 0.04)};
+            Print("Using COF of {:.4f}\n", friction.value());
+          }
+        }
+      }
+    }
+
+    AddNodesToLevel(options, root, state, level.get(), verbose, layer,
+                    restitution, friction);
   }
 
   std::sort(level->inputs.begin(), level->inputs.end());
@@ -727,6 +783,8 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
   }
 
   for (const LevelBody &body : level.bodies) {
+    if (body.deleted) continue;
+
     SVG::Path path;
     for (const auto &poly : body.mesh.polygons) {
       if (poly.empty()) continue;
@@ -767,6 +825,40 @@ void Levels::SaveSVG(const Level &level, std::string_view filename) {
       << "Failed to write " << filename;
 }
 
+void Levels::AddChutes(Level *level, uint32_t in_color, uint32_t out_color) {
+  int h = std::max(Levels::IN_HEIGHT, Levels::OUT_HEIGHT);
+
+  // Inputs extend up from the bottom of the input region.
+  float in_cy = Levels::IN_Y + Levels::IN_HEIGHT - h / 2.0f;
+  for (int x : level->inputs) {
+    LevelBody left = Levels::WallRect(
+        vec2f{(x - 0.5f) * Levels::BLOCK_SIZE, in_cy * Levels::BLOCK_SIZE},
+        1, h, in_color);
+    level->bodies.push_back(std::move(left));
+
+    LevelBody right = Levels::WallRect(
+        vec2f{(x + Levels::IN_WIDTH + 0.5f) * Levels::BLOCK_SIZE,
+              in_cy * Levels::BLOCK_SIZE},
+        1, h, in_color);
+    level->bodies.push_back(std::move(right));
+  }
+
+  // Outputs extend down from the top of the output region.
+  float out_cy = Levels::OUT_Y + h / 2.0f;
+  for (int x : level->outputs) {
+    LevelBody left = Levels::WallRect(
+        vec2f{(x - 0.5f) * Levels::BLOCK_SIZE, out_cy * Levels::BLOCK_SIZE},
+        1, h, out_color);
+    level->bodies.push_back(std::move(left));
+
+    LevelBody right = Levels::WallRect(
+        vec2f{(x + Levels::OUT_WIDTH + 0.5f) * Levels::BLOCK_SIZE,
+              out_cy * Levels::BLOCK_SIZE},
+        1, h, out_color);
+    level->bodies.push_back(std::move(right));
+  }
+}
+
 void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
                             std::optional<uint64_t> user_data) {
   /*
@@ -781,19 +873,23 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
   case LevelLayer::FOREGROUND:
     scene->AddGraphics(body.mesh, body.color, body.pos, true);
     break;
-  case LevelLayer::PHYSICAL:
+  case LevelLayer::PHYSICAL: {
+    size_t idx = 0;
     if (body.dynamic) {
-      scene->AddObject(body.mesh, body.color,
-                       body.pos, body.angle,
-                       body.vel, body.avel,
-                       body.restitution,
-                       body.friction);
+      idx = scene->AddObject(body.mesh, body.color,
+                             body.pos, body.angle,
+                             body.vel, body.avel,
+                             body.restitution,
+                             body.friction);
     } else {
-      scene->AddFixedObject(body.mesh, body.color, body.pos,
-                            body.restitution,
-                            body.friction);
+      idx = scene->AddFixedObject(body.mesh, body.color, body.pos,
+                                  body.restitution,
+                                  body.friction);
     }
+
+    scene->objects[idx].user_data = user_data;
     break;
+  }
   }
 }
 
@@ -802,7 +898,9 @@ std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {
     std::make_unique<Scene>(level.scene_walls);
 
   for (size_t i = 0; i < level.bodies.size(); i++) {
-    AddBodyToScene(scene.get(), level.bodies[i], {i});
+    if (!level.bodies[i].deleted) {
+      AddBodyToScene(scene.get(), level.bodies[i], {i});
+    }
   }
   return scene;
 }

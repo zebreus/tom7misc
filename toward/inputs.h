@@ -30,15 +30,18 @@ struct Inputs {
   static constexpr uint8_t MOUSE_LEFT = 0x00;
   static constexpr uint8_t MOUSE_RIGHT = 0x01;
   static constexpr uint8_t MOUSE_MIDDLE = 0x02;
-  // Simple click detection.
+  // Simple click detection (mouse down).
+  // A click also generates a change event.
   struct MouseClick { int x; int y; uint8_t button; };
 
-  // TODO: For dragging, etc.
-  // struct MouseChange { int x; int y; uint8_t button; };
+  // Any time the mouse changes state, the new state.
+  struct MouseChange { int x; int y; int dx; int dy; uint8_t button; };
 
-  struct MouseWheel { bool up; };
+  // Mousewheel is an impulse event.
+  struct MouseWheel { int x; int y; bool up; };
 
   using Input = std::variant<None, Exit, KeyDown, KeyUp,
+                             MouseChange,
                              MouseClick, MouseWheel>;
 
   virtual Input GetInput() = 0;
