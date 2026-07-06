@@ -10,6 +10,14 @@
 #include "yocto-math.h"
 #include "polygons.h"
 
+struct PolygonizationOptions {
+  // Insert Steiner points using a triangular grid with this edge
+  // length. Points are not inserted if they are within the edge
+  // length of the input polygon's edge.
+  std::optional<float> triangular_grid;
+  // TODO: Other options!
+};
+
 // Creates a high-quality polygonization (using convex polygons up
 // to some limit in vertices) of a shape.
 struct Polygonization {
@@ -40,10 +48,13 @@ struct Polygonization {
     // Successful mesh
     Mesh>;
 
+  using Options = PolygonizationOptions;
+
   // Polygonize the shape into convex polygons with no more than
   // max_vertices each.
   static PolygonizeResult Polygonize(const Shape &shape,
-                                     int max_vertices);
+                                     int max_vertices,
+                                     Options options = {});
 
   // An explicitly triangular mesh.
   struct TriangularMesh {
@@ -53,7 +64,8 @@ struct Polygonization {
 
   using TriangulateResult = std::variant<std::string_view,
                                          TriangularMesh>;
-  static TriangulateResult Triangulate(const Shape &shape);
+  static TriangulateResult Triangulate(const Shape &shape,
+                                       Options options = {});
 };
 
 #endif

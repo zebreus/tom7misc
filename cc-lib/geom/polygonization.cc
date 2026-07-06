@@ -52,6 +52,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <deque>
 #include <list>
 #include <memory>
 #include <numbers>
@@ -1993,12 +1994,91 @@ class CDT {
   std::unique_ptr<Sweep> sweep_;
 };
 
+// Adds internal Steiner points in a grid of equilateral triangles
+// with the specified edge length. Points must be strictly inside the
+// boundary, outside all holes, and at least edge_length away from
+// any polygon edge.
+static void AddGridPoints(
+    double edge_length,
+    std::span<const vec2> boundary,
+    std::span<const std::span<const vec2>> holes,
+    std::deque<Point> &pts,
+    std::vector<std::pair<const Point *, int>> &pt_map,
+    Polygonization::TriangularMesh &mesh,
+    CDT &cdt) {
+  if (boundary.empty() || edge_length <= 0.0) return;
+
+  double min_x = boundary[0].x, max_x = boundary[0].x;
+  double min_y = boundary[0].y, max_y = boundary[0].y;
+  for (const vec2 &p : boundary) {
+    min_x = std::min(min_x, p.x);
+    max_x = std::max(max_x, p.x);
+    min_y = std::min(min_y, p.y);
+    max_y = std::max(max_y, p.y);
+  }
+
+  double dy = edge_length * std::sqrt(3.0) / 2.0;
+  double dx = edge_length;
+  double threshold = edge_length;
+
+  auto DistToPoly = [](std::span<const vec2> poly, const vec2 &pt) {
+    double min_dist = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < poly.size(); i++) {
+      vec2 v0 = poly[i];
+      vec2 v1 = poly[(i + 1) % poly.size()];
+      min_dist = std::min(min_dist, PointLineDistance(v0, v1, pt));
+    }
+    return min_dist;
+  };
+
+  int min_row = std::floor(min_y / dy);
+  int max_row = std::ceil(max_y / dy);
+
+  for (int row = min_row; row <= max_row; row++) {
+    double y = row * dy;
+    double offset = (std::abs(row % 2) == 1) ? (dx * 0.5) : 0.0;
+    int min_col = std::floor((min_x - offset) / dx);
+    int max_col = std::ceil((max_x - offset) / dx);
+
+    for (int col = min_col; col <= max_col; col++) {
+      double x = col * dx + offset;
+      vec2 pt{x, y};
+
+      if (!PointInPolygon(boundary, pt)) continue;
+
+      bool in_hole = false;
+      for (auto hole : holes) {
+        if (PointInPolygon(hole, pt)) {
+          in_hole = true;
+          break;
+        }
+      }
+      if (in_hole) continue;
+
+      if (DistToPoly(boundary, pt) < threshold) continue;
+
+      bool too_close = false;
+      for (auto hole : holes) {
+        if (DistToPoly(hole, pt) < threshold) {
+          too_close = true;
+          break;
+        }
+      }
+      if (too_close) continue;
+
+      pts.emplace_back(pt.x, pt.y);
+      Point* p = &pts.back();
+      mesh.vertices.push_back(pt);
+      pt_map.push_back({p, (int)mesh.vertices.size() - 1});
+      cdt.AddPoint(p);
+    }
+  }
+}
+
 }  // namespace
 
-
-// TODO: Add Steiner points!
 Polygonization::TriangulateResult Polygonization::Triangulate(
-    const Shape &shape) {
+    const Shape &shape, Options options) {
   if (shape.polys.empty()) {
     return TriangularMesh{};
   }
@@ -2090,14 +2170,13 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
       }
     }
 
-    std::vector<Point> pts;
-    pts.reserve(num_pts);
+    std::deque<Point> pts;
 
     std::vector<std::pair<const Point *, int>> pt_map;
     pt_map.reserve(num_pts);
 
     auto AddPt = [&](const vec2 &v) {
-      pts.push_back(Point(v.x, v.y));
+      pts.emplace_back(v.x, v.y);
       Point *p = &pts.back();
       mesh.vertices.push_back(v);
       pt_map.push_back({p, (int)mesh.vertices.size() - 1});
@@ -2111,6 +2190,7 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
 
     CDT cdt(polyline);
 
+    std::vector<std::span<const vec2>> active_holes;
     for (int j = 0; j < num_polys; j++) {
       if (parent[j] == i && cleaned_paths[j].size() >= 3) {
         std::vector<Point *> hole;
@@ -2118,7 +2198,13 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
           hole.push_back(AddPt(cleaned_paths[j][k]));
         }
         cdt.AddHole(hole);
+        active_holes.push_back(cleaned_paths[j]);
       }
+    }
+
+    if (options.triangular_grid.has_value()) {
+      AddGridPoints(*options.triangular_grid, cleaned_paths[i], active_holes,
+                    pts, pt_map, mesh, cdt);
     }
 
     cdt.Triangulate();
@@ -2172,8 +2258,8 @@ Polygonization::TriangulateResult Polygonization::Triangulate(
 }
 
 Polygonization::PolygonizeResult Polygonization::Polygonize(
-    const Shape &shape, int max_vertices) {
-  auto tres = Triangulate(shape);
+    const Shape &shape, int max_vertices, Options options) {
+  auto tres = Triangulate(shape, options);
   if (const std::string_view *err = std::get_if<std::string_view>(&tres)) {
     return {*err};
   }

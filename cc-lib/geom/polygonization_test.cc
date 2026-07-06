@@ -178,6 +178,58 @@ static void DebugDrawPolygonize() {
   }
 }
 
+static void TestTriangularGrid() {
+  ArcFour rc("grid");
+
+  Polygonization::Shape shape = GenerateShape(6, &rc);
+
+  Polygonization::Options options;
+  options.triangular_grid = 30.0f;
+
+  Polygonization::PolygonizeResult res =
+    Polygonization::Polygonize(shape, 8, options);
+
+  if (const std::string_view *err = std::get_if<std::string_view>(&res)) {
+    LOG(FATAL) << *err;
+  }
+  CHECK(std::holds_alternative<Mesh>(res));
+  const Mesh &mesh = std::get<Mesh>(res);
+
+  CHECK(!mesh.polygons.empty());
+  for (const auto &poly : mesh.polygons) {
+    CHECK(poly.size() >= 3) << "Polygon is too small";
+    for (int idx : poly) {
+      CHECK(idx >= 0 && idx < (int)mesh.vertices.size())
+          << "Vertex index out of bounds";
+    }
+  }
+
+  ImageRGBA img(kWidth, kHeight);
+  img.Clear32(0x000000FF);
+
+  for (const auto &poly : mesh.polygons) {
+    for (int j = 0; j < (int)poly.size(); j++) {
+      int next = (j + 1) % poly.size();
+      const auto &v1 = mesh.vertices[poly[j]];
+      const auto &v2 = mesh.vertices[poly[next]];
+      img.BlendLine32((int)v1.x, (int)v1.y, (int)v2.x, (int)v2.y,
+                      0xFF000080);
+    }
+  }
+
+  for (const auto &path : shape.polys) {
+    for (int j = 0; j < (int)path.size(); j++) {
+      int next = (j + 1) % path.size();
+      const auto &v1 = path[j];
+      const auto &v2 = path[next];
+      img.BlendLine32((int)v1.x, (int)v1.y, (int)v2.x, (int)v2.y,
+                      0xFFFFFFAA);
+    }
+  }
+
+  img.Save("polygonization-test-grid.png");
+}
+
 // This polygon has a near-duplicate final point. The library should
 // either give an error or deal with it anyway. It should not produce
 // an invalid (empty) polygonization.
@@ -204,6 +256,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   Regression1();
+  TestTriangularGrid();
 
   DebugDrawTriangulate();
   DebugDrawPolygonize();
