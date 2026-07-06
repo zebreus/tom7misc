@@ -1,0 +1,6 @@
+Needs box2d. I installed from source.
+
+On linux, I modified build.sh to use g++ and turn off samples:
+
+cmake -S . -B build -DGLFW_BUILD_WAYLAND=OFF -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DBOX2D_SAMPLES=OFF
+

@@ -30,7 +30,10 @@ struct Letter {
 };
 
 struct Letters {
-  static std::unique_ptr<Letters> LoadFont(std::string_view filename);
+  // If triangle_cells is true, the result will all be triangles,
+  // and the shape will be subdivided finely (e.g. for FEA).
+  static std::unique_ptr<Letters> LoadFont(std::string_view filename,
+                                           bool triangle_cells = false);
 
   // Keyed by codepoint.
   std::unordered_map<uint32_t, Letter> letter;

@@ -15,7 +15,8 @@
 
 static constexpr bool VERBOSE = true;
 
-std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
+std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
+                                           bool triangle_cells) {
   std::unique_ptr<Letters> result = std::make_unique<Letters>();
 
   std::unique_ptr<TTF> ttf = TTF::Load(filename);
@@ -77,7 +78,24 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename) {
 
     // Polygonize the shape into convex polygons.
     // 8 is Box2D's max.
-    auto poly_result = Polygonization::Polygonize(shape, 8);
+    const int MAX_POLYGON = triangle_cells ? 3 : 8;
+    PolygonizationOptions opt;
+    if (triangle_cells) {
+      // The em square is 1.0x1.0 in normalized coordinates (area = 1.0).
+      // The area of an equilateral triangle is (sqrt(3) / 4) * edge_length^2.
+      // To have 1000 triangles equal an area of 1.0:
+      // 1000 * (sqrt(3) / 4) * edge_length^2 = 1.0
+      // edge_length = sqrt(4.0 / sqrt(3.0)) / sqrt(1000.0)
+      float em_length = sqrt(4.0 / sqrt(3.0));
+
+      // So that an em square has approximately 1000 triangles
+      // (if 100% occupied).
+      float edge_length = em_length / sqrt(1000.0);
+
+      opt.triangular_grid = {edge_length};
+    }
+
+    auto poly_result = Polygonization::Polygonize(shape, MAX_POLYGON, opt);
     if (std::holds_alternative<Polygonization::Mesh>(poly_result)) {
       Letter letter;
       letter.mesh = std::get<Polygonization::Mesh>(std::move(poly_result));

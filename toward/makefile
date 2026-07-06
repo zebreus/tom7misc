@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe
 
 fixme : separator.exe
 
@@ -134,6 +134,10 @@ playcircuit.exe : playcircuit.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 
 slideshow.exe : slideshow.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+sound.exe : sound.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
 clean :
