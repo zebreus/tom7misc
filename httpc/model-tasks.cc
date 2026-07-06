@@ -199,12 +199,18 @@ ModelTasks::ChooseFiles(
 
   auto doc_opt = ModelUtil::ParseSloppy(json);
   if (!doc_opt.has_value()) {
-    return Failure{"Failed to parse JSON response."};
+    return Failure{
+      .message = "Failed to parse JSON response.",
+      .raw_content = json,
+    };
   }
 
   const auto &document = doc_opt.value();
   if (!document.IsObject()) {
-    return Failure{"JSON response was not an object."};
+    return Failure{
+      .message = "JSON response was not an object.",
+      .raw_content = json,
+    };
   }
 
   bool fail = false;

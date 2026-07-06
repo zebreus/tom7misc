@@ -215,7 +215,7 @@ ImageRGBA Eval::DebugStability(const Letter &letter) {
   b2BodyId body_id = scene.objects.front().body_id;
   b2Vec2 init_pos = b2Body_GetPosition(body_id);
   b2Rot init_rot = b2Body_GetRotation(body_id);
-  b2Vec2 init_com = b2Body_GetWorldCenterOfMass(body_id);
+  b2Vec2 init_com = b2Body_GetWorldCenter(body_id);
 
   LogText("Simulation started.");
   draw_scale = (float)FRAME_WIDTH / Scene::WIDTH;
@@ -231,7 +231,7 @@ ImageRGBA Eval::DebugStability(const Letter &letter) {
 
       b2Vec2 curr_pos = b2Body_GetPosition(body_id);
       b2Rot curr_rot = b2Body_GetRotation(body_id);
-      b2Vec2 curr_com = b2Body_GetWorldCenterOfMass(body_id);
+      b2Vec2 curr_com = b2Body_GetWorldCenter(body_id);
 
       DrawMesh(curr_pos, curr_rot, 0xFFFFFF88);
 

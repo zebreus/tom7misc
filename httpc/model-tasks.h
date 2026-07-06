@@ -20,6 +20,7 @@ struct ModelTasks {
 
   struct Failure {
     std::string message;
+    std::string raw_content;
   };
 
   struct Answer {

@@ -12,8 +12,8 @@
 #include <vector>
 #include <span>
 
-template<class A, class F>
-static auto VectorMap(std::span<const A> vec, const F &f) ->
+template<class Cont, class F>
+static auto VectorMap(const Cont &vec, const F &f) ->
   std::vector<decltype(f(vec[0]))> {
   using B = decltype(f(vec[0]));
   std::vector<B> ret;
@@ -25,8 +25,8 @@ static auto VectorMap(std::span<const A> vec, const F &f) ->
 }
 
 // Apply the function to each element in the vector.
-template<class A, class F>
-static void VectorApp(std::span<const A> vec, const F &f) {
+template<class Cont, class F>
+static void VectorApp(const Cont &vec, const F &f) {
   for (const auto &elt : vec) f(elt);
 }
 

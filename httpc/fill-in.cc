@@ -94,8 +94,8 @@ user.
 The message to the user is optional. It will show on their terminal,
 so it should be fairly brief. You may use markdown to set off code and
 command blocks, to make bullet-point lists, and to bold phrases in the
-prose. Avoid tables and other advanced markup. Avoid emoji, but
-Unicode symbols are acceptable.
+prose. Avoid tables, LaTeX math, and other advanced markup. Avoid
+emoji, but Unicode symbols are acceptable.
 
 
 You only get one shot at this, so be methodical and precise. If you

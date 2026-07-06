@@ -53,7 +53,8 @@ Now, please solve the user's question as best you can. Your output is
 shown on the user's command-line terminal, so please be brief. You may
 use markdown (inside the JSON string literals) to set off code and
 command blocks, and to bold phrases in the prose. Avoid bullet points,
-tables, and other advanced markup. Unicode symbols are acceptable.
+tables, LaTeX math, and other advanced markup. Unicode symbols are
+acceptable.
 
 It is good to include code that directly solves the user's problem,
 such as a correction to a typo found in the input files. Infer
@@ -269,6 +270,10 @@ int main(int argc, char **argv) {
         if (!fail->message.empty()) {
           Markdown::Document doc = Markdown::Parse(fail->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
+
+          if (!fail->raw_content.empty()) {
+            Print(AGREY("Raw content:\n{}") "\n", fail->raw_content);
+          }
         }
         exit(1);
       }
