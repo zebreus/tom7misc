@@ -1,9 +1,11 @@
 
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -133,6 +135,27 @@ SlideResult SimulateLevel(ArcFour *rc,
 
 }
 
+SlideResult ShowImage(ArcFour *rc,
+                      Inputs *inputs, Rendering *rendering,
+                      const ImageRGBA &image) {
+  CHECK(inputs != nullptr);
+  CHECK(rendering != nullptr);
+
+  rendering->SetBackground(image);
+
+  rendering->RenderScene({0.0, 0.0}, {1920.0, 1080.0}, {});
+
+  for (;;) {
+    const Inputs::Input input = inputs->GetInput();
+    if (std::optional<SlideResult> ro = DefaultSlideResult(input)) {
+      return ro.value();
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+
 // A single full-screen level.
 struct LevelContent {
   std::string file;
@@ -216,6 +239,20 @@ struct Slideshow {
                 }}
             });
 
+      } else if (Util::TryStripPrefix("image ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        std::unique_ptr<ImageRGBA> image(ImageRGBA::Load(line));
+        CHECK(image.get()) << line;
+        // TODO: Center it?
+        slides.emplace_back(
+            Slide{
+              .props = props,
+              .content = {ImageContent{
+                  .file = std::string(line),
+                  .image = std::move(*image),
+                }}
+            });
+
       } else {
         LOG(FATAL) << "Bad command: " << line;
       }
@@ -235,11 +272,16 @@ struct Slideshow {
       if (const LevelContent *lc = std::get_if<LevelContent>(&slide.content)) {
         sr = SimulateLevel(&rc,
                            inputs.get(), rendering.get(), lc->level.get());
+
       } else if (const ImageContent *ic = std::get_if<ImageContent>(&slide.content)) {
-        // TODO
+        sr = ShowImage(&rc, inputs.get(), rendering.get(), ic->image);
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
+
+      // TODO: Cleaner way to do this?
+      rendering->ClearBackground();
 
       switch (sr) {
       case SlideResult::EXIT:

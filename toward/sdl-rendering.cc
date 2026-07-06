@@ -307,7 +307,7 @@ struct SDLGLRendering : public Rendering {
 
   void SetBackground(const ImageRGBA &img) override {
     if (img.Width() == 0 || img.Height() == 0) {
-      has_bg = false;
+      ClearBackground();
       return;
     }
     if (!bg_texture) {
@@ -321,6 +321,10 @@ struct SDLGLRendering : public Rendering {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img.Width(), img.Height(), 0,
                  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, img.data().data());
     has_bg = true;
+  }
+
+  void ClearBackground() override {
+    has_bg = false;
   }
 
   void RenderScene(vec2f viewport_min,

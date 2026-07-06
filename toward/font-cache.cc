@@ -29,6 +29,7 @@ const Letters *FontCache::Get(std::string_view font_name) {
     {"adlib", "adlib-bt.ttf"},
     {"franklingothic-medium", "franklingothicdemi.ttf"},
     {"fixedersys1x", "fixedersys1x.ttf"},
+    {"avantgardef-bold", "avantgardeb.ttf"},
   };
 
   auto fit = fontfiles.find(Util::lcase(font_name));

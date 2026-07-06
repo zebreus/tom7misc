@@ -32,6 +32,10 @@ class ImageRendering : public Rendering {
     background.BlendImage(0, 0, img.ScaleBy(RENDER_SCALE));
   }
 
+  void ClearBackground() override {
+    background.Clear32(0x000000FF);
+  }
+
   void RenderScene(vec2f viewport_min, vec2f viewport_max,
                    std::span<const Triangle> scene) override {
     const int w = IMAGE_WIDTH * RENDER_SCALE;

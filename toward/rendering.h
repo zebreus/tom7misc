@@ -30,6 +30,7 @@ struct Rendering {
   // Set the pixels as the fixed background image for
   // future calls to RenderScene.
   virtual void SetBackground(const ImageRGBA &img) = 0;
+  virtual void ClearBackground() = 0;
 
   // TODO: Some way to set absolute positioning for UI elements?
   // Render the scene right now to the display.
