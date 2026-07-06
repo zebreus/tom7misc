@@ -24,6 +24,11 @@ struct Inputs {
   // Shift also affects the codepoint reported, e.g. you
   // get 'G' instead of 'g'.
   static constexpr uint8_t MOD_SHIFT = 0x04;
+
+  // Not real codepoints, but this is what SDL returns.
+  static constexpr uint32_t CP_LEFT = 0x40000050;
+  static constexpr uint32_t CP_RIGHT = 0x4000004f;
+
   struct KeyDown { uint32_t codepoint; uint8_t modifiers; };
   struct KeyUp { uint32_t codepoint; uint8_t modifiers; };
 

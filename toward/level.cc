@@ -534,8 +534,12 @@ void Levels::AddNodesToLevel(std::string_view error_context,
 
     if (has_fill && has_stroke) {
       Print("[{}] " AORANGE("Warning") ": Path has both fill and stroke "
-            "({:08x} and {:08x}).\n",
-            error_context, state.fill_color, state.stroke_color);
+            "([{}⏹" ANSI_RESET "]{:08x} and [{}⏹" ANSI_RESET "]{:08x}).\n",
+            error_context,
+            ANSI::ForegroundRGB32(state.fill_color),
+            state.fill_color,
+            ANSI::ForegroundRGB32(state.stroke_color),
+            state.stroke_color);
     }
 
     if (!has_fill && !has_stroke) return;

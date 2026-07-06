@@ -1,8 +1,10 @@
 
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -21,74 +23,82 @@
 #include "sdl-rendering.h"
 #include "toward-util.h"
 #include "utf8.h"
+#include "util.h"
 
 static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
 static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
 
-void Simulate(std::string_view level_file) {
-  ArcFour rc("sim");
+enum class SlideResult {
+  RESET,
+  NEXT,
+  PREV,
+  EXIT,
+};
 
-  std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
-  std::unique_ptr<Rendering> rendering = CreateSDLGLRendering();
-  CHECK(rendering.get() != nullptr);
-  Print("Created rendering.\n");
+// Shared by slide handlers.
+static std::optional<SlideResult> DefaultSlideResult(const Inputs::Input &input) {
+  if (std::holds_alternative<Inputs::None>(input))
+    return std::nullopt;
 
+  if (std::holds_alternative<Inputs::Exit>(input))
+    return {SlideResult::EXIT};
 
-  std::unique_ptr<Level> level;
-  std::unique_ptr<Scene> scene;
+  if (const Inputs::KeyDown *kdown = std::get_if<Inputs::KeyDown>(&input)) {
+    if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
+      return {SlideResult::RESET};
 
+    } else if (kdown->codepoint == Inputs::CP_LEFT) {
+      return {SlideResult::PREV};
 
-  auto Reset = [&level, &scene, level_file]() {
-      bool is_cell = level_file.find("cell-") != std::string_view::npos;
+    } else if (kdown->codepoint == Inputs::CP_RIGHT) {
+      return {SlideResult::NEXT};
 
-      Levels::Options opt;
-      opt.include_text = true;
-      if (is_cell)
-        opt.include_text = false;
+    } else if (kdown->codepoint == 0x1b) {
+      // Escape
+      return {SlideResult::EXIT};
+    }
+  }
 
-      level = Levels::LoadSVGExt(opt, level_file);
-      Print("There are {} bodies in the level.\n", level->bodies.size());
-      if (is_cell) {
-        Levels::AddChutes(level.get(), 0x00FF00FF, 0xFF0000FF);
-      }
-      scene = Levels::CreateScene(*level);
-    };
+  return std::nullopt;
+}
 
-  Reset();
+SlideResult SimulateLevel(ArcFour *rc,
+                          Inputs *inputs, Rendering *rendering,
+                          const Level *level_in) {
+
+  Level level = *level_in;
+
+  CHECK(inputs != nullptr);
+  CHECK(rendering != nullptr);
+
+  std::unique_ptr<Scene> scene = Levels::CreateScene(level);
 
   bool paused = false;
-
   bool bit = true;
 
   for (;;) {
     for (;;) {
       const Inputs::Input input = inputs->GetInput();
+      if (std::optional<SlideResult> ro = DefaultSlideResult(input)) {
+        return ro.value();
+      }
+
       if (std::holds_alternative<Inputs::None>(input))
         break;
 
-      if (std::holds_alternative<Inputs::Exit>(input))
-        return;
 
       if (const Inputs::KeyDown *kdown = std::get_if<Inputs::KeyDown>(&input)) {
-        if (kdown->codepoint == '\r') {
+        if (kdown->codepoint == '\r' || kdown->codepoint == ' ') {
           paused = !paused;
-        } else if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
-          Reset();
         } else if (kdown->codepoint == '1') {
           bit = true;
         } else if (kdown->codepoint == '0') {
           bit = false;
+        } else {
+          Print("KeyDown: {:08x} '{}'\n", kdown->codepoint,
+                UTF8::Encode(kdown->codepoint));
+          fflush(stdout);
         }
-
-      } else if (const Inputs::KeyUp *kup =
-                 std::get_if<Inputs::KeyUp>(&input)) {
-        if (kup->codepoint == 0x1b) {
-          // Escape
-          return;
-        }
-
-        Print("KeyUp: {}\n", UTF8::Encode(kup->codepoint));
-        fflush(stdout);
 
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
@@ -101,17 +111,14 @@ void Simulate(std::string_view level_file) {
           LevelBody body = bit ? Levels::One() : Levels::Zero();
           body.pos = pos;
           body.color = 0xFF00FFFF;
-          body.vel = vec2f(RandDouble(&rc) * 2 - 1, RandDouble(&rc) * 2 - 1);
+          body.vel = vec2f(RandDouble(rc) * 2 - 1, RandDouble(rc) * 2 - 1);
           // between -2 and +2 radians per second.
-          body.avel = RandDouble(&rc) * 4 - 2;
+          body.avel = RandDouble(rc) * 4 - 2;
 
-          level->bodies.push_back(body);
+          level.bodies.push_back(body);
           Levels::AddBodyToScene(scene.get(), body);
         }
 
-      } else if (const Inputs::MouseWheel *mw =
-                 std::get_if<Inputs::MouseWheel>(&input)) {
-        Print("Wheel {}\n", mw->up ? "up" : "dn");
       }
 
     }
@@ -127,30 +134,139 @@ void Simulate(std::string_view level_file) {
 }
 
 // A single full-screen level.
-struct SingleSlide {
+struct LevelContent {
   std::string file;
   std::unique_ptr<Level> level;
 };
 
 // A static full-screen image.
-struct ImageSlide {
+struct ImageContent {
   std::string file;
   ImageRGBA image;
 };
 
-using Slide = std::variant<SingleSlide, ImageSlide>;
+using Content = std::variant<LevelContent, ImageContent>;
+
+struct Props {
+  // Default physical properties.
+  float item_cor = LevelBody().restitution;
+  float item_cof = LevelBody().restitution;
+};
+
+struct Slide {
+  Props props = {};
+  Content content;
+};
 
 struct Slideshow {
+  int current_slide = 0;
   std::vector<Slide> slides;
+  ArcFour rc;
 
-  Slideshow(std::string_view slidefile) {
+  std::unique_ptr<Inputs> inputs;
+  std::unique_ptr<Rendering> rendering;
+
+  Slideshow(std::string_view slidefile) : rc("slides") {
+    inputs = Inputs::CreateSDL();
+    rendering = CreateSDLGLRendering();
+
     std::vector<std::string> lines = Util::ReadFileToLines(slidefile);
     CHECK(!lines.empty()) << slidefile;
 
+    // Apply props to slides until changed.
+    Props props;
+
     for (std::string_view line : lines) {
       Util::RemoveOuterWhitespace(&line);
+      if (line.empty()) continue;
+      if (Util::StartsWith(line, "#")) continue;
+
+      if (line == "reset") {
+        props = Props();
+
+      } else if (Util::TryStripPrefix("level ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        Levels::Options opt;
+        opt.include_text = true;
+
+        std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, line, false);
+        slides.emplace_back(
+            Slide{
+              .props = props,
+              .content = {LevelContent{
+                  .file = std::string(line),
+                  .level = std::move(level),
+                }}
+            });
+
+      } else if (Util::TryStripPrefix("cell ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        Levels::Options opt;
+        opt.include_text = false;
+
+        std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, line, false);
+        Levels::AddChutes(level.get(), 0x00FF00FF, 0xFF0000FF);
+
+        slides.emplace_back(
+            Slide{
+              .props = props,
+              .content = {LevelContent{
+                  .file = std::string(line),
+                  .level = std::move(level),
+                }}
+            });
+
+      } else {
+        LOG(FATAL) << "Bad command: " << line;
+      }
+    }
+
+  }
+
+  void Run() {
+
+    for (;;) {
+      const Slide &slide = slides[current_slide];
+
+      SlideResult sr = SlideResult::EXIT;
+
+      // The content runs until there's an event that should be handled by
+      // the slideshow loop (like "go to the next slide").
+      if (const LevelContent *lc = std::get_if<LevelContent>(&slide.content)) {
+        sr = SimulateLevel(&rc,
+                           inputs.get(), rendering.get(), lc->level.get());
+      } else if (const ImageContent *ic = std::get_if<ImageContent>(&slide.content)) {
+        // TODO
+      } else {
+        LOG(FATAL) << "Bad variant?";
+      }
+
+      switch (sr) {
+      case SlideResult::EXIT:
+        return;
+
+      case SlideResult::RESET:
+        // Just re-enter the loop.
+        break;
+
+      case SlideResult::NEXT:
+        current_slide++;
+        if (current_slide >= slides.size()) current_slide = 0;
+        break;
+
+      case SlideResult::PREV:
+        current_slide--;
+        if (current_slide < 0) current_slide = slides.size() - 1;
+        break;
+
+      default:
+        // ?
+        break;
+      }
 
     }
+
+
   }
 
 };
