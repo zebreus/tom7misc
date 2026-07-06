@@ -15,6 +15,7 @@
 #include "SDL_video.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "image.h"
 #include "rendering.h"
 
 #define GL_GLEXT_PROTOTYPES 1
@@ -42,6 +43,7 @@ static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = nullptr;
 static PFNGLUNIFORM1FPROC glUniform1f = nullptr;
 static PFNGLUNIFORM2FPROC glUniform2f = nullptr;
 static PFNGLUNIFORM1IPROC glUniform1i = nullptr;
+static PFNGLACTIVETEXTUREPROC glActiveTextureProc = nullptr;
 
 // SSBOs
 static PFNGLBINDBUFFERBASEPROC glBindBufferBase = nullptr;
@@ -82,6 +84,8 @@ static void LoadGLFunctions() {
   glUniform1f = (PFNGLUNIFORM1FPROC)SDL_GL_GetProcAddress("glUniform1f");
   glUniform2f = (PFNGLUNIFORM2FPROC)SDL_GL_GetProcAddress("glUniform2f");
   glUniform1i = (PFNGLUNIFORM1IPROC)SDL_GL_GetProcAddress("glUniform1i");
+  glActiveTextureProc =
+      (PFNGLACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glActiveTexture");
 
   glGenVertexArrays =
       (PFNGLGENVERTEXARRAYSPROC)SDL_GL_GetProcAddress("glGenVertexArrays");
@@ -164,6 +168,28 @@ void main() {
 }
 )";
 
+static const char *kBgVertexShader = R"(#version 430 core
+out vec2 v_texcoord;
+
+void main() {
+  float x = (gl_VertexID == 1) ? 3.0 : -1.0;
+  float y = (gl_VertexID == 2) ? 3.0 : -1.0;
+  v_texcoord = vec2((x + 1.0) * 0.5, 1.0 - (y + 1.0) * 0.5);
+  gl_Position = vec4(x, y, 0.0, 1.0);
+}
+)";
+
+static const char *kBgFragmentShader = R"(#version 430 core
+in vec2 v_texcoord;
+uniform sampler2D tex;
+out vec4 frag_color;
+
+void main() {
+  vec4 c = texture(tex, v_texcoord);
+  frag_color = vec4(c.rgb * c.a, c.a);
+}
+)";
+
 struct SDLGLRendering : public Rendering {
 
   static constexpr int SCREEN_WIDTH = 1920;
@@ -178,6 +204,12 @@ struct SDLGLRendering : public Rendering {
   GLint loc_viewport_min = -1;
   GLint loc_viewport_max = -1;
   size_t ssbo_capacity = 0;
+
+  GLuint bg_program = 0;
+  GLuint bg_vao = 0;
+  GLuint bg_texture = 0;
+  bool has_bg = false;
+  GLint loc_bg_tex = -1;
 
   void Initialize() {
     Print("Started OK.\n");
@@ -244,16 +276,51 @@ struct SDLGLRendering : public Rendering {
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    GLuint bg_vs = CompileShader(GL_VERTEX_SHADER, kBgVertexShader);
+    GLuint bg_fs = CompileShader(GL_FRAGMENT_SHADER, kBgFragmentShader);
+    bg_program = glCreateProgram();
+    glAttachShader(bg_program, bg_vs);
+    glAttachShader(bg_program, bg_fs);
+    glLinkProgram(bg_program);
+    glGetProgramiv(bg_program, GL_LINK_STATUS, &success);
+    if (!success) {
+      char info_log[512];
+      glGetProgramInfoLog(bg_program, sizeof(info_log), nullptr, info_log);
+      LOG(FATAL) << "BG Program link failed:\n" << info_log;
+    }
+    glDeleteShader(bg_vs);
+    glDeleteShader(bg_fs);
+
     loc_viewport_min = glGetUniformLocation(program, "viewport_min");
     loc_viewport_max = glGetUniformLocation(program, "viewport_max");
+    loc_bg_tex = glGetUniformLocation(bg_program, "tex");
 
     glGenVertexArrays(1, &vao);
+    glGenVertexArrays(1, &bg_vao);
     glGenBuffers(1, &ssbo);
 
     glEnable(GL_MULTISAMPLE);
     glEnable(GL_BLEND);
     // Premultiplied alpha.
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  }
+
+  void SetBackground(const ImageRGBA &img) override {
+    if (img.Width() == 0 || img.Height() == 0) {
+      has_bg = false;
+      return;
+    }
+    if (!bg_texture) {
+      glGenTextures(1, &bg_texture);
+    }
+    glBindTexture(GL_TEXTURE_2D, bg_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, img.Width(), img.Height(), 0,
+                 GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, img.data().data());
+    has_bg = true;
   }
 
   void RenderScene(vec2f viewport_min,
@@ -265,6 +332,16 @@ struct SDLGLRendering : public Rendering {
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    if (has_bg) {
+      glUseProgram(bg_program);
+      if (glActiveTextureProc) glActiveTextureProc(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, bg_texture);
+      glUniform1i(loc_bg_tex, 0);
+
+      glBindVertexArray(bg_vao);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
 
     if (scene.empty()) {
       SDL_GL_SwapWindow(window);
@@ -309,6 +386,8 @@ struct SDLGLRendering : public Rendering {
   }
 
   ~SDLGLRendering() override {
+    if (bg_texture) glDeleteTextures(1, &bg_texture);
+    if (bg_vao) glDeleteVertexArrays(1, &bg_vao);
     glDeleteVertexArrays(1, &vao);
     glDeleteBuffers(1, &ssbo);
     SDL_GL_DeleteContext(context);

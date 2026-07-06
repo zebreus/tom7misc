@@ -10,6 +10,7 @@
 #include <span>
 #include <string_view>
 
+#include "image.h"
 #include "yocto-math.h"
 
 struct Rendering {
@@ -26,8 +27,11 @@ struct Rendering {
     uint32_t reserved;
   };
 
-  // TODO: Some way to get absolute positioning for UI elements?
+  // Set the pixels as the fixed background image for
+  // future calls to RenderScene.
+  virtual void SetBackground(const ImageRGBA &img) = 0;
 
+  // TODO: Some way to set absolute positioning for UI elements?
   // Render the scene right now to the display.
   virtual void RenderScene(
       vec2f viewport_min,

@@ -7,7 +7,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include "base/logging.h"
 #include "image.h"
@@ -25,14 +24,20 @@ namespace {
 class ImageRendering : public Rendering {
  public:
   explicit ImageRendering(std::string_view base_filename)
-      : base_filename(base_filename) {}
+    : base_filename(base_filename),
+      background(IMAGE_WIDTH * RENDER_SCALE, IMAGE_HEIGHT * RENDER_SCALE) {}
+
+  void SetBackground(const ImageRGBA &img) override {
+    background.Clear32(0x000000FF);
+    background.BlendImage(0, 0, img.ScaleBy(RENDER_SCALE));
+  }
 
   void RenderScene(vec2f viewport_min, vec2f viewport_max,
                    std::span<const Triangle> scene) override {
     const int w = IMAGE_WIDTH * RENDER_SCALE;
     const int h = IMAGE_HEIGHT * RENDER_SCALE;
-    ImageRGBA img(w, h);
-    img.Clear32(0x000000FF);
+    ImageRGBA img = background;
+    CHECK(img.Width() == w && img.Height() == h);
 
     const float vw = viewport_max.x - viewport_min.x;
     const float vh = viewport_max.y - viewport_min.y;
@@ -76,6 +81,7 @@ class ImageRendering : public Rendering {
 
  private:
   std::string base_filename;
+  ImageRGBA background;
   int counter = 0;
 };
 

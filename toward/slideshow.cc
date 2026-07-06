@@ -33,9 +33,6 @@ void Simulate(std::string_view level_file) {
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
 
-  std::unique_ptr<ImageRGBA> bg(ImageRGBA::Load("backgroundtest.png"));
-  CHECK(bg.get() != nullptr);
-  rendering->SetBackground(*bg);
 
   std::unique_ptr<Level> level;
   std::unique_ptr<Scene> scene;
@@ -129,16 +126,45 @@ void Simulate(std::string_view level_file) {
 
 }
 
+// A single full-screen level.
+struct SingleSlide {
+  std::string file;
+  std::unique_ptr<Level> level;
+};
+
+// A static full-screen image.
+struct ImageSlide {
+  std::string file;
+  ImageRGBA image;
+};
+
+using Slide = std::variant<SingleSlide, ImageSlide>;
+
+struct Slideshow {
+  std::vector<Slide> slides;
+
+  Slideshow(std::string_view slidefile) {
+    std::vector<std::string> lines = Util::ReadFileToLines(slidefile);
+    CHECK(!lines.empty()) << slidefile;
+
+    for (std::string_view line : lines) {
+      Util::RemoveOuterWhitespace(&line);
+
+    }
+  }
+
+};
 
 int main(int argc, char* argv[]) {
   ANSI::Init();
 
-  std::string level_file = "talk/example.svg";
-  if (argc >= 2) level_file = argv[1];
+  std::string slides_file = "talk/slides.txt";
+  if (argc >= 2) slides_file = argv[1];
 
   Initialization::Initialize();
 
-  Simulate(level_file);
+  Slideshow show(slides_file);
+  show.Run();
 
   Initialization::Exit();
   return 0;
