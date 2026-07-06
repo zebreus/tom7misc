@@ -7,6 +7,7 @@
 #include "ansi.h"
 #include "base/print.h"
 #include "cell-library.h"
+#include "drc.h"
 #include "image.h"
 #include "layout.h"
 #include "prop.h"
@@ -21,7 +22,7 @@ static void RenderAnd(const CellLibrary &library) {
 
   ImageRGBA img = RenderCircuit(library, layout.circuit);
   img.Save("and.png");
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "and", layout);
 }
 
 static void RenderMulti(const CellLibrary &library) {
@@ -34,7 +35,7 @@ static void RenderMulti(const CellLibrary &library) {
   ImageRGBA img = RenderCircuit(library, layout.circuit);
   img.Save("multi.png");
 
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "multi", layout);
 }
 
 

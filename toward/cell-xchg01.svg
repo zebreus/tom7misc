@@ -6,19 +6,19 @@
   </g>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <rect x="1080" width="100" height="100" fill="#aff"/>
-  <rect x="1080" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="660" width="100" height="100" fill="#aff"/>
+  <rect x="660" y="960" width="100" height="120" fill="#faa"/>
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(935.689 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep 1</tspan></text>
+        <text transform="translate(405 65)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep 1 B</tspan></text>
       </g>
     </g>
   </g>
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(1085.0001 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+        <text transform="translate(560.0001 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0 A</tspan></text>
       </g>
     </g>
   </g>
@@ -26,7 +26,7 @@
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(165 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+        <text transform="translate(150.0001 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1 B</tspan></text>
       </g>
     </g>
   </g>
@@ -34,42 +34,28 @@
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
-        <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep 0</tspan></text>
+        <text transform="translate(141.378 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">sep 0 A</tspan></text>
       </g>
     </g>
   </g>
-  <g isolation="isolate">
-    <g isolation="isolate">
-      <g isolation="isolate">
-        <text transform="translate(400 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">Exchange separated 0</tspan></text>
-      </g>
-    </g>
-    <g isolation="isolate">
-      <g isolation="isolate">
-        <text transform="translate(400 102.6)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">with a separated 1</tspan></text>
-      </g>
-    </g>
-  </g>
-  <polygon points="20 100 20 200 500 500 500 525 0 220 0 100 20 100" fill="#8480ff"/>
-  <path d="M950,641c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M950,701c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M950,640c-22.091,0-40,17.909-40,40s17.909,40,40,40,40-17.909,40-40-17.909-40-40-40h0ZM950,700c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
-  <rect x="1180" y="485" width="20" height="475" fill="#8480ff"/>
-  <polygon points="980 720 920 720 1060 840 1060 960 1080 960 1080 840 980 720" fill="#8480ff"/>
-  <polygon points="250 635 180 700 120 920 120 960 140 960 140 935 270 660 270 635 250 635" fill="#fff299"/>
-  <polygon points="1180 100 1180 240 770 550 770 580 1200 250 1200 100 1180 100" fill="#fff299"/>
+  <polygon points="20 100 20 200 320 500 320 525 0 220 0 100 20 100" fill="#0057ee"/>
+  <path d="M620,641c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M620,701c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M620,640c-22.0909,0-40,17.909-40,40s17.9091,40,40,40,40-17.909,40-40-17.9091-40-40-40h0ZM620,700c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
+  <rect x="760" y="485" width="20" height="475" fill="#0057ee"/>
+  <polygon points="645 720 590 720 640 840 640 960 660 960 660 840 645 720" fill="#0057ee"/>
+  <polygon points="155 605 120 960 140 960 145 940 190 630 190 605 155 605" fill="#fff299"/>
+  <polygon points="760 100 760 245 460 560 460 590 405 590 405 600 480 600 780 260 780 100 760 100" fill="#fff299"/>
   <rect y="400" width="20" height="560" fill="#fff299"/>
-  <polygon points="760 580 285 580 285 560 740 560 740 440 760 440 760 580" fill="none" stroke="#ffdf00" stroke-miterlimit="10"/>
-  <rect x="310" y="580" width="10" height="20" fill="#6b00ee"/>
-  <rect x="570" y="580" width="10" height="20" fill="#6b00ee"/>
-  <rect x="310" y="540" width="10" height="20" fill="#6b00ee"/>
-  <rect x="700" y="540" width="10" height="20" fill="#6b00ee"/>
-  <rect x="570" y="540" width="10" height="20" fill="#6b00ee"/>
-  <rect x="820" y="700" width="10" height="20" fill="#6b00ee"/>
-  <rect x="820" y="660" width="10" height="20" fill="#6b00ee"/>
-  <rect x="600" y="700" width="10" height="20" fill="#6b00ee"/>
-  <rect x="600" y="660" width="10" height="20" fill="#6b00ee"/>
-  <path d="M540,560h-20v-140h20v140ZM520,700h380v-20h-360v-100h-20v120Z" fill="none" stroke="#0800ff" stroke-miterlimit="10"/>
-  <rect x="250" y="555" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
-  <polygon points="710 600 710 580 700 580 700 600 700 620 780 620 780 600 710 600" fill="#6b00ee"/>
-  <polygon points="1045 100 745 400 760 420 1080 100 1045 100" fill="#fff299"/>
-  <polygon points="120 100 500 380 510 360 160 100 120 100" fill="#8480ff"/>
+  <polygon points="450 580 185 580 185 560 430 560 430 440 450 440 450 580" fill="none" stroke="#ffdf00" stroke-miterlimit="10"/>
+  <rect x="210" y="580" width="10" height="20" fill="#6b00ee"/>
+  <rect x="390" y="580" width="10" height="20" fill="#6b00ee"/>
+  <rect x="210" y="540" width="10" height="20" fill="#6b00ee"/>
+  <rect x="390" y="540" width="10" height="20" fill="#6b00ee"/>
+  <rect x="490" y="700" width="10" height="20" fill="#6b00ee"/>
+  <rect x="490" y="660" width="10" height="20" fill="#6b00ee"/>
+  <rect x="390" y="700" width="10" height="20" fill="#6b00ee"/>
+  <rect x="390" y="660" width="10" height="20" fill="#6b00ee"/>
+  <path d="M360,560h-20v-140h20v140ZM340,700h230v-20h-210v-100h-20v120Z" fill="none" stroke="#8480ff" stroke-miterlimit="10"/>
+  <polygon points="120 100 120 120 360 380 380 360 140 100 120 100" fill="#0057ee"/>
+  <polygon points="640 100 430 380 430 400 450 400 660 120 660 100 640 100" fill="#fff299"/>
+  <rect x="155" y="525" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
 </svg>

@@ -17,6 +17,7 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "drc.h"
 #include "initialization.h"
 #include "inputs.h"
 #include "layout.h"
@@ -159,7 +160,7 @@ struct Player {
     CHECK(olay.has_value()) << "Could not parse " << layout_file;
     layout = std::move(olay.value());
 
-    // library.DRC(layout.circuit);
+    DRC::CheckLayout(library, layout_file, layout);
   }
 
   void Reset() {

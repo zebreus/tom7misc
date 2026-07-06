@@ -8,7 +8,7 @@
   <path d="M20,0h100v100H20V0Z" fill="#aff"/>
   <path d="M860,0h100v100h-100V0Z" fill="#aff"/>
   <path d="M1280,0h100v100h-100V0Z" fill="#aff"/>
-  <rect x="130" y="100" width="300" height="20" fill="#0057ee"/>
+  <rect x="130" y="100" width="300" height="20" fill="#eeba00"/>
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
@@ -75,28 +75,27 @@
     </g>
   </g>
   <rect x="1280" y="960" width="100" height="120" fill="#faa"/>
-  <polygon points="370 740 260 740 20 630 20 100 0 100 0 665 260 760 1275 960 1280 940 370 740" fill="#0057ee"/>
-  <polyline points="1400 960 1400 100 1380 100 1380 960" fill="#0057ee"/>
+  <polygon points="370 740 260 740 20 630 20 100 0 100 0 665 260 760 1275 960 1280 940 370 740" fill="#eeba00"/>
+  <polyline points="1400 960 1400 100 1380 100 1380 960" fill="#eeba00"/>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
   <polygon points="260 600 270 600 270 700 335 700 335 660 345 660 345 740 335 740 335 710 270 710 270 740 260 740 260 600" fill="none" stroke="#00cc16" stroke-miterlimit="10"/>
-  <polygon points="250 595 340 595 560 380 560 360 560 100 540 100 540 360 240 515 250 595" fill="#0057ee"/>
-  <rect x="560" y="100" width="280" height="20" fill="#0057ee"/>
+  <polygon points="250 595 340 595 560 380 560 360 560 100 540 100 540 360 240 515 250 595" fill="#eeba00"/>
   <path d="M1060,321c21.505,0,39,17.495,39,39s-17.495,39-39,39-39-17.495-39-39,17.495-39,39-39M1060,381c11.579,0,21-9.421,21-21s-9.421-21-21-21-21,9.421-21,21,9.421,21,21,21M1060,320c-22.0909,0-40,17.909-40,40s17.9091,40,40,40,40-17.909,40-40-17.9091-40-40-40h0ZM1060,380c-11.046,0-20-8.954-20-20s8.954-20,20-20,20,8.954,20,20-8.954,20-20,20h0Z" fill="#f0f"/>
   <polygon points="980 295 840 390 840 400 980 400 980 295" fill="#008aaa"/>
   <polygon points="1100 410 1100 400 840 400 840 240 830 240 830 410 1100 410" fill="none" stroke="#c00" stroke-miterlimit="10"/>
   <rect x="1005" y="410" width="10" height="20" fill="#008aaa"/>
   <rect x="830" y="410" width="10" height="20" fill="#008aaa"/>
   <rect x="700" y="240" width="20" height="180" fill="#008aaa"/>
-  <rect x="720" y="120" width="120" height="115" fill="#0057ee"/>
+  <polygon points="560 100 560 120 720 120 720 235 840 235 840 120 840 100 560 100" fill="#eeba00"/>
   <polygon points="1380 180 1240 275 1240 280 1380 280 1380 180" fill="#008aaa"/>
   <polygon points="1140 305 1240 400 1240 430 1140 430 1140 305" fill="#008aaa"/>
   <polygon points="1255 440 1255 285 1245 285 1245 430 1005 430 1005 440 1255 440" fill="none" stroke="#c00" stroke-miterlimit="10"/>
   <rect x="1105" y="440" width="10" height="20" fill="#008aaa"/>
   <rect x="1245" y="440" width="10" height="20" fill="#008aaa"/>
-  <polygon points="1140 100 980 100 980 120 980 400 1015 400 1015 120 1105 120 1105 430 1140 430 1140 120 1270 120 1270 100 1140 100" fill="#0057ee"/>
+  <polygon points="1140 100 980 100 980 120 980 400 1015 400 1015 120 1105 120 1105 430 1140 430 1140 120 1270 120 1270 100 1140 100" fill="#eeba00"/>
   <polygon points="1000 500 1000 640 1220 680 1000 500" fill="#008aaa"/>
   <rect x="350" y="660" width="20" height="80" fill="none" stroke="#f0f" stroke-miterlimit="10"/>
-  <rect x="290" y="595" width="30" height="95" fill="#0057ee"/>
-  <rect x="290" y="720" width="30" height="20" fill="#0057ee"/>
+  <rect x="290" y="595" width="30" height="95" fill="#eeba00"/>
+  <rect x="290" y="720" width="30" height="20" fill="#eeba00"/>
 </svg>

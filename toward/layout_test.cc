@@ -14,6 +14,7 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "drc.h"
 #include "prop.h"
 #include "render-circuit.h"
 #include "util.h"
@@ -53,7 +54,7 @@ static void Consts(const CellLibrary &library) {
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   std::vector<Prop> output = {True(), False()};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "consts", layout);
   Verify(layout, output);
 }
 
@@ -65,7 +66,7 @@ static void SingleVar(const CellLibrary &library) {
 
   std::vector<Prop> output = {a};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "consts", layout);
   Verify(layout, output);
 }
 
@@ -77,7 +78,7 @@ static void NotVar(const CellLibrary &library) {
 
   std::vector<Prop> output = {-a};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "not-var", layout);
   Verify(layout, output);
 }
 
@@ -89,7 +90,7 @@ static void AndVars(const CellLibrary &library) {
 
   std::vector<Prop> output = {a & b};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "and", layout);
   Verify(layout, output);
 
   Util::WriteFile("andvars.layout", LayoutEngine::Serialize(layout));
@@ -104,7 +105,7 @@ static void OrVars(const CellLibrary &library) {
 
   std::vector<Prop> output = {a | b};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "or", layout);
   Verify(layout, output);
 }
 
@@ -116,7 +117,7 @@ static void XorVars(const CellLibrary &library) {
 
   std::vector<Prop> output = {a ^ b};
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "xor", layout);
   Verify(layout, output);
 
   Util::WriteFile("xorvars.layout", LayoutEngine::Serialize(layout));
@@ -132,7 +133,7 @@ static void MultiOutput(const CellLibrary &library) {
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   le->SetVerbose(2);
   Layout layout = le->DoLayout(output);
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "multi-output", layout);
   Verify(layout, output);
 }
 
@@ -230,7 +231,7 @@ static void Modest(const CellLibrary &library) {
   le->SetWriteImages(true);
   Layout layout = le->DoLayout(output);
   RenderCircuit(library, layout.circuit).Save("modest.png");
-  library.DRC(layout.circuit);
+  DRC::CheckLayout(library, "modest", layout);
   Verify(layout, output);
   Util::WriteFile("modest.layout", LayoutEngine::Serialize(layout));
   Print("Wrote modest.layout\n");

@@ -40,12 +40,6 @@ struct CellLibrary {
   // cell, in its starting configuration.
   std::unique_ptr<Level> GetLevel(const Cell &cell) const;
 
-  // Check that inputs are lined up with outputs, their
-  // types match, and cells don't overlap. There should be
-  // no unconnected inputs or outputs except for inputs on the
-  // top layer, and outputs on the bottom layer.
-  void DRC(const Circuit &circuit) const;
-
   std::string DebugString(const Circuit &circuit) const;
 
   // Wires are asymmetric (even "vertical" wires have internal slopes
@@ -72,7 +66,7 @@ struct CellLibrary {
   // for the reverse slope, flip these.
 
   static constexpr std::initializer_list<int> WIRE_SIZES = {
-    0, 1, 2, /* 3, */ 4, /* 5, */ 8, 16, 32, 64,
+    0, 1, 2, 3, 4, 5, 8, 16, 32, 64,
   };
 
   static bool ValidWireSize(int w);

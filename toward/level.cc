@@ -636,7 +636,7 @@ void Levels::AddNodesToLevel(std::string_view error_context,
     body.color = color;
     body.pos = pos;
     // If it is outlined, it should be a dynamic body.
-    body.dynamic = has_stroke;
+    body.dynamic = has_stroke && layer == LevelLayer::PHYSICAL;
     body.layer = layer;
     level->bodies.push_back(std::move(body));
 

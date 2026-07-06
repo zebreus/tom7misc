@@ -11,8 +11,10 @@
 #include "cell-library.h"
 #include "chessprop.h"
 #include "circuit.h"
+#include "drc.h"
 #include "image.h"
 #include "layout.h"
+#include "optimization.h"
 #include "prop.h"
 #include "render-circuit.h"
 #include "span-util.h"
@@ -65,7 +67,7 @@ static void RenderParallel() {
   le->SetWriteImages(false);
   Layout layout = le->DoLayout(props);
   Print("Got layout!\n");
-  library.DRC(layout.circuit);
+  DRC::CheckCircuit(library, layout.circuit);
   Print("DRC ok!\n");
 
   ImageRGBA img = RenderCircuit(library, layout.circuit);
@@ -100,12 +102,19 @@ struct ChessDemo {
     Print("[{}] Prop:\n" AGREY("{}") "\n", name, PropString(world, prop));
 
     std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-    le->SetVerbose(1);
+    le->SetVerbose(0);
     le->SetWriteImages(false);
     Layout layout = le->DoLayout(Span{prop});
     Print("Got layout!\n");
-    library.DRC(layout.circuit);
-    Print("DRC ok!\n");
+    DRC::CheckLayout(library, name, layout);
+    Print("DRC OK\n");
+    /*
+    Layout opt_layout = Optimization::Optimize(library, layout);
+    DRC::AssertEquivalentLayout(library, name, layout, opt_layout);
+    Print("Optimized DRC ok!\n");
+    layout = std::move(opt_layout);
+    */
+
     return layout;
   }
 

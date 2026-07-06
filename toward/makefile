@@ -36,7 +36,7 @@ SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o
 
 # all (library) objects
-LIB_OBJECTS=layout-canvas.o font-cache.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=drc.o optimization.o layout-canvas.o font-cache.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -117,6 +117,10 @@ layout-canvas_test.exe : layout-canvas_test.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 render-circuit_test.exe : render-circuit_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+optimization_test.exe : optimization_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

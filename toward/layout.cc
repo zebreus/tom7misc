@@ -115,6 +115,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
+  // The desired displacement amount
+  AutoHisto disp_histo = AutoHisto(100000);
+
   // The amount of space we try to keep between the done region
   // (chutes on the far left and right that contain MIXED vars)
   // and the interior.
