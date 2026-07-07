@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -38,6 +39,20 @@ enum class SlideResult {
   EXIT,
 };
 
+struct Props {
+  // Using a filename. The images are cached.
+  // If empty string, no background.
+  std::string background_image;
+
+  // Default physical properties.
+  float item_cor = LevelBody().restitution;
+  float item_cof = LevelBody().friction;
+  // How much to scale random velocity (and angular velocity)
+  // for inserted items.
+  float vel_scale = 1.0;
+  float avel_scale = 1.0;
+};
+
 // Shared by slide handlers.
 static std::optional<SlideResult> DefaultSlideResult(
     const Inputs::Input &input) {
@@ -66,7 +81,11 @@ static std::optional<SlideResult> DefaultSlideResult(
   return std::nullopt;
 }
 
-SlideResult SimulateLevel(ArcFour *rc,
+// Preserve this across resets, at least, but might as well have
+// it be stateful for the whole program.
+static bool bit = true;
+
+SlideResult SimulateLevel(const Props &props, ArcFour *rc,
                           Inputs *inputs, Rendering *rendering,
                           const Level *level_in) {
 
@@ -78,7 +97,6 @@ SlideResult SimulateLevel(ArcFour *rc,
   std::unique_ptr<Scene> scene = Levels::CreateScene(level);
 
   bool paused = false;
-  bool bit = true;
 
   for (;;) {
     for (;;) {
@@ -115,9 +133,12 @@ SlideResult SimulateLevel(ArcFour *rc,
           LevelBody body = bit ? Levels::One() : Levels::Zero();
           body.pos = pos;
           body.color = 0xFF00FFFF;
-          body.vel = vec2f(RandDouble(rc) * 2 - 1, RandDouble(rc) * 2 - 1);
+          body.vel = vec2f(RandDouble(rc) * 2 - 1, RandDouble(rc) * 2 - 1) *
+            props.vel_scale;
           // between -2 and +2 radians per second.
-          body.avel = RandDouble(rc) * 4 - 2;
+          body.avel = (RandDouble(rc) * 4 - 2) * props.avel_scale;
+          body.restitution = props.item_cor;
+          body.friction = props.item_cof;
 
           level.bodies.push_back(body);
           Levels::AddBodyToScene(scene.get(), body);
@@ -144,7 +165,6 @@ SlideResult ShowImage(ArcFour *rc,
   CHECK(rendering != nullptr);
 
   rendering->SetBackground(image);
-
   rendering->RenderScene({0.0, 0.0}, {1920.0, 1080.0}, {});
 
   for (;;) {
@@ -172,12 +192,6 @@ struct ImageContent {
 
 using Content = std::variant<LevelContent, ImageContent>;
 
-struct Props {
-  // Default physical properties.
-  float item_cor = LevelBody().restitution;
-  float item_cof = LevelBody().restitution;
-};
-
 struct Slide {
   Props props = {};
   Content content;
@@ -190,6 +204,10 @@ struct Slideshow {
 
   std::unique_ptr<Inputs> inputs;
   std::unique_ptr<Rendering> rendering;
+
+  std::unordered_map<std::string,
+                     std::unique_ptr<ImageRGBA>> backgrounds;
+  std::string current_background;
 
   Slideshow(std::string_view slidefile) : rc("slides") {
     inputs = Inputs::CreateSDL();
@@ -212,6 +230,22 @@ struct Slideshow {
 
       if (line == "reset") {
         props = Props();
+
+      } else if (Util::TryStripPrefix("cof ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.item_cof = Util::ParseDouble(line, LevelBody().friction);
+
+      } else if (Util::TryStripPrefix("cor ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.item_cor = Util::ParseDouble(line, LevelBody().restitution);
+
+      } else if (Util::TryStripPrefix("vel-scale ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.vel_scale = Util::ParseDouble(line, 1.0);
+
+      } else if (Util::TryStripPrefix("avel-scale ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.avel_scale = Util::ParseDouble(line, 1.0);
 
       } else if (Util::TryStripPrefix("level ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
@@ -259,6 +293,19 @@ struct Slideshow {
                 }}
             });
 
+      } else if (Util::TryStripPrefix("background ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+
+        if (line == "none") {
+          props.background_image = "";
+
+        } else if (!backgrounds.contains(std::string(line))) {
+          std::unique_ptr<ImageRGBA> image(ImageRGBA::Load(line));
+          CHECK(image.get()) << line;
+          backgrounds[std::string(line)] = std::move(image);
+          props.background_image = std::string(line);
+        }
+
       } else {
         LOG(FATAL) << "Bad command: " << line;
       }
@@ -271,24 +318,39 @@ struct Slideshow {
     for (;;) {
       const Slide &slide = slides[current_slide];
 
+      if (slide.props.background_image != current_background) {
+        if (slide.props.background_image.empty()) {
+          rendering->ClearBackground();
+        } else {
+          const std::unique_ptr<ImageRGBA> &bg = backgrounds[
+              slide.props.background_image];
+          if (bg.get() == nullptr) {
+            Print("Missing {}!\n", slide.props.background_image);
+          } else {
+            rendering->SetBackground(*bg);
+          }
+        }
+
+        current_background = slide.props.background_image;
+      }
+
       SlideResult sr = SlideResult::EXIT;
 
       // The content runs until there's an event that should be handled by
       // the slideshow loop (like "go to the next slide").
       if (const LevelContent *lc = std::get_if<LevelContent>(&slide.content)) {
-        sr = SimulateLevel(&rc,
+        sr = SimulateLevel(slide.props, &rc,
                            inputs.get(), rendering.get(), lc->level.get());
 
       } else if (const ImageContent *ic =
                  std::get_if<ImageContent>(&slide.content)) {
         sr = ShowImage(&rc, inputs.get(), rendering.get(), ic->image);
+        // This overwrites the background, so make sure we track that.
+        current_background = ic->file;
 
       } else {
         LOG(FATAL) << "Bad variant?";
       }
-
-      // TODO: Cleaner way to do this?
-      rendering->ClearBackground();
 
       switch (sr) {
       case SlideResult::EXIT:

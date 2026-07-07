@@ -703,7 +703,7 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
   state.transform[3] = 1.0f / SVG_SCALE;
-  for (const auto [raw_name, root] : doc.layers) {
+  for (const auto &[raw_name, root] : doc.layers) {
     // We want to see | and = in the layer name.
     std::string name = UnsanitizeLayerName(raw_name);
     if (!name.empty()) {
