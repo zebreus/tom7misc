@@ -33,9 +33,11 @@ void Simulate(std::string_view level_file) {
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
 
+  /*
   std::unique_ptr<ImageRGBA> bg(ImageRGBA::Load("backgroundtest.png"));
   CHECK(bg.get() != nullptr);
   rendering->SetBackground(*bg);
+  */
 
   std::unique_ptr<Level> level;
   std::unique_ptr<Scene> scene;

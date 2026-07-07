@@ -26,6 +26,7 @@
 #include "toward-util.h"
 #include "utf8.h"
 #include "util.h"
+#include "pi-rendering.h"
 
 static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
 static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
@@ -38,7 +39,8 @@ enum class SlideResult {
 };
 
 // Shared by slide handlers.
-static std::optional<SlideResult> DefaultSlideResult(const Inputs::Input &input) {
+static std::optional<SlideResult> DefaultSlideResult(
+    const Inputs::Input &input) {
   if (std::holds_alternative<Inputs::None>(input))
     return std::nullopt;
 
@@ -191,7 +193,11 @@ struct Slideshow {
 
   Slideshow(std::string_view slidefile) : rc("slides") {
     inputs = Inputs::CreateSDL();
+    #ifdef RASPBERRY
+    rendering = CreatePiRendering();
+    #else
     rendering = CreateSDLGLRendering();
+    #endif
 
     std::vector<std::string> lines = Util::ReadFileToLines(slidefile);
     CHECK(!lines.empty()) << slidefile;
@@ -273,7 +279,8 @@ struct Slideshow {
         sr = SimulateLevel(&rc,
                            inputs.get(), rendering.get(), lc->level.get());
 
-      } else if (const ImageContent *ic = std::get_if<ImageContent>(&slide.content)) {
+      } else if (const ImageContent *ic =
+                 std::get_if<ImageContent>(&slide.content)) {
         sr = ShowImage(&rc, inputs.get(), rendering.get(), ic->image);
 
       } else {

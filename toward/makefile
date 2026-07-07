@@ -8,6 +8,16 @@ BOX2D=../../box2d
 FONTDB=../fontdb
 CHESS=../chess
 
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Msys)
+  GL_LIBS=-lopengl32
+  PLATFORM_CFLAGS=-flto
+else
+  # Linux
+  GL_LIBS=-lGL
+  PLATFORM_CFLAGS=-Wno-psabi -DRASPBERRY=1
+endif
+
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
 
@@ -17,7 +27,7 @@ FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
 CHESS_OBJECTS=$(CHESS)/chess.o
 
-OPT=-O2 -flto -g
+OPT=-O2 -g
 # OPT=-fsanitize=address -O1 -fno-omit-frame-pointer -g
 
 # OPT=-O -g -fprofile-instr-generate -fcoverage-mapping
@@ -26,13 +36,13 @@ OPT=-O2 -flto -g
 # llvm-profdata merge -sparse default.profraw -o default.profdata
 # llvm-cov show ./test.exe -instr-profile=default.profdata -format=html -output-dir=coverage_report
 
-CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(CHESS) -I$(BOX2D)/include/box2d --std=c++23
+CXXFLAGS=$(OPT) -march=native -Wall -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) -I$(FONTDB) -I$(CHESS) -I$(BOX2D)/include/box2d --std=c++23 $(PLATFORM_CFLAGS)
 
 LFLAGS=$(OPT) --std=c++23
-SDL_LFLAGS=$(LFLAGS) $(SDL_LIBS) -lopengl32
+SDL_LFLAGS=$(SDL_LIBS) $(GL_LIBS)
 
 # objects to compile with SDL flags
-SDL_OBJECTS=sdl-rendering.o initialization.o inputs.o
+SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
@@ -53,12 +63,12 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@echo -n "."
 
 test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS)
-	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
+	@$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
 	@echo -n ":"
 
 editor.exe : editor.o $(LIB_OBJECTS) $(SDL_OBJECTS)
-	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
-	@echo -n ":"
+	$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
+	echo -n ":"
 
 letters_test.exe : letters_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
@@ -129,11 +139,11 @@ chessdemo.exe : chessdemo.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 playcircuit.exe : playcircuit.o $(LIB_OBJECTS) $(SDL_OBJECTS)
-	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
+	@$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
 	@echo -n ":"
 
 slideshow.exe : slideshow.o $(LIB_OBJECTS) $(SDL_OBJECTS)
-	@$(CXX) $(SDL_LFLAGS) $^ $(LIBS) -o $@
+	@$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
 	@echo -n ":"
 
 sound.exe : sound.o $(LIB_OBJECTS)
