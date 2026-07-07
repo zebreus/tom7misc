@@ -259,7 +259,8 @@
          ;; to see frame parameters:
          ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
          ))
-     ((eq window-system 'x)
+     ((or (eq window-system 'x)
+          (eq window-system 'pgtk))
 
 
       (set-frame-font
