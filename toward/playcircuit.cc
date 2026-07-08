@@ -1,29 +1,20 @@
 
-#include <algorithm>
-#include <cstdio>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <utility>
 #include <variant>
 #include <vector>
 
 #include "SDL_main.h"
 #include "ansi.h"
-#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "cell-library.h"
-#include "circuit.h"
-#include "drc.h"
+#include "circuit-sim.h"
 #include "initialization.h"
 #include "inputs.h"
 #include "layout.h"
-#include "level.h"
 #include "periodically.h"
-#include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
 #include "sdl-rendering.h"
@@ -31,16 +22,14 @@
 #include "timer.h"
 #include "toward-util.h"
 #include "utf8.h"
-#include "util.h"
-#include "circuit-sim.h"
 
 static void Loop(std::string_view layout_file) {
   CellLibrary library;
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
   std::unique_ptr<Rendering> rendering = CreateSDLGLRendering();
 
-  CircuitSim sim(library, inputs.get(), rendering.get(), layout_file);
-  sim.Reset();
+  CircuitSim sim(library, rendering.get(), layout_file);
+  sim.GoToTopLeftCell();
 
   Periodically status_per = Periodically(0.5);
   StatusBar status = StatusBar(1);
@@ -92,17 +81,13 @@ static void Loop(std::string_view layout_file) {
       } else if (const Inputs::MouseChange *mc =
                  std::get_if<Inputs::MouseChange>(&input)) {
         if (mc->button & (1 << Inputs::MOUSE_MIDDLE)) {
-          vec2f old_pos = sim.ScreenToWorld(mc->x - mc->dx, mc->y - mc->dy);
-          vec2f new_pos = sim.ScreenToWorld(mc->x, mc->y);
-
-          // Shift view_pos to keep the world coordinate under the cursor the same.
-          sim.view_pos.x += old_pos.x - new_pos.x;
-          sim.view_pos.y += old_pos.y - new_pos.y;
+          sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
         }
 
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
         if (mc->button == Inputs::MOUSE_LEFT) {
+          [[maybe_unused]]
           vec2f pos = sim.ScreenToWorld(mc->x, mc->y);
 
           /*
@@ -122,19 +107,7 @@ static void Loop(std::string_view layout_file) {
 
       } else if (const Inputs::MouseWheel *mw =
                  std::get_if<Inputs::MouseWheel>(&input)) {
-        vec2f old_pos = sim.ScreenToWorld(mw->x, mw->y);
-
-        if (mw->up) {
-          sim.view_zoom *= 1.25f;
-        } else {
-          sim.view_zoom /= 1.25f;
-        }
-
-        vec2f new_pos = sim.ScreenToWorld(mw->x, mw->y);
-
-        // Shift view_pos to keep the world coordinate under the cursor the same.
-        sim.view_pos.x += old_pos.x - new_pos.x;
-        sim.view_pos.y += old_pos.y - new_pos.y;
+        sim.Zoom(mw->x, mw->y, mw->up);
       }
 
     }
@@ -146,7 +119,7 @@ static void Loop(std::string_view layout_file) {
     std::vector<Rendering::Triangle> tri;
     sim.FillVisibleTriangles(&tri);
 
-    rendering->RenderScene(sim.view_pos, sim.ViewPosMax(), tri);
+    rendering->RenderScene(sim.ViewPos(), sim.ViewPosMax(), tri);
     frames++;
 
     status_per.RunIf([&]{

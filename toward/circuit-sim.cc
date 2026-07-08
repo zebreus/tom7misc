@@ -1,6 +1,5 @@
 #include "circuit-sim.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -8,29 +7,20 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "drc.h"
-#include "initialization.h"
 #include "inputs.h"
 #include "layout.h"
 #include "level.h"
-#include "periodically.h"
 #include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
-#include "sdl-rendering.h"
-#include "status-bar.h"
-#include "timer.h"
 #include "toward-util.h"
-#include "utf8.h"
 #include "util.h"
 
 vec2f CircuitSim::ViewPosMax() const {
@@ -43,6 +33,31 @@ vec2f CircuitSim::ViewPosMax() const {
 vec2f CircuitSim::ScreenToWorld(int x, int y) const {
   vec2f bottom_right = ViewPosMax();
   return rendering->CartesianPixel(view_pos, bottom_right, x, y);
+}
+
+void CircuitSim::Pan(int x, int y, int dx, int dy) {
+  vec2f old_pos = ScreenToWorld(x - dx, y - dy);
+  vec2f new_pos = ScreenToWorld(x, y);
+
+  // Shift view_pos to keep the world coordinate under the cursor the same.
+  view_pos.x += old_pos.x - new_pos.x;
+  view_pos.y += old_pos.y - new_pos.y;
+}
+
+void CircuitSim::Zoom(int x, int y, bool up) {
+  vec2f old_pos = ScreenToWorld(x, y);
+
+  if (up) {
+    view_zoom *= 1.25f;
+  } else {
+    view_zoom /= 1.25f;
+  }
+
+  vec2f new_pos = ScreenToWorld(x, y);
+
+  // Shift view_pos to keep the world coordinate under the cursor the same.
+  view_pos.x += old_pos.x - new_pos.x;
+  view_pos.y += old_pos.y - new_pos.y;
 }
 
 // Ensure that the node is active, lazily loading if needed.
@@ -76,11 +91,9 @@ void CircuitSim::ActivateNode(Node &node) {
 }
 
 CircuitSim::CircuitSim(const CellLibrary &library,
-                       Inputs *inputs,
                        Rendering *rendering,
                        std::string_view layout_file) :
   library(library),
-  inputs(inputs),
   rendering(rendering),
   rc("sim") {
   std::string content = Util::ReadFile(layout_file);
@@ -93,6 +106,10 @@ CircuitSim::CircuitSim(const CellLibrary &library,
   // Maybe option to skip this in slideshow mode?
   DRC::CheckLayout(library, layout_file, layout);
 
+  Reset();
+}
+
+void CircuitSim::GoToTopLeftCell() {
   if (!sim.empty() && !sim[0].empty()) {
     view_pos.x = sim[0][0].xpos * Levels::BLOCK_SIZE;
     view_pos.y = 0.0f;
@@ -104,7 +121,6 @@ void CircuitSim::Reset() {
   sim.clear();
   ticks = 0;
 
-  int64_t nodes = 0;
   for (const Layer &layer : layout.circuit.layers) {
     std::vector<Node> row;
     int xpos = 0;
@@ -116,7 +132,6 @@ void CircuitSim::Reset() {
           .cell = cell,
         };
         row.push_back(std::move(node));
-        nodes++;
       }
       xpos += width;
     }
@@ -236,7 +251,6 @@ void CircuitSim::StepSimulation() {
   //
   // TODO PERF: Can do a single row of the circuit in parallel. But
   // later rows depend on earlier ones (bits can pass downward).
-  int running = 0;
 
   for (size_t r = 0; r < sim.size(); r++) {
     std::vector<Node> &row = sim[r];
@@ -245,7 +259,6 @@ void CircuitSim::StepSimulation() {
       ActivateNode(node);
 
       if (!node.scene->AllAsleep()) {
-        running++;
         node.scene->Update();
 
         // Look to see if any item has entered an output region.

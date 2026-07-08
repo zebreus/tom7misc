@@ -279,7 +279,7 @@ struct Slideshow {
         opt.include_text = false;
 
         std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, line, false);
-        Levels::AddChutes(level.get(), 0x00FF00FF, 0xFF0000FF);
+        Levels::AddChutes(level.get(), 0xAAAA77FF, 0xAA7777FF);
 
         slides.emplace_back(
             Slide{

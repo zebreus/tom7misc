@@ -2,38 +2,23 @@
 #ifndef _TOWARD_CIRCUIT_SIM_H
 #define _TOWARD_CIRCUIT_SIM_H
 
-#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
-#include "drc.h"
-#include "initialization.h"
 #include "inputs.h"
 #include "layout.h"
 #include "level.h"
-#include "periodically.h"
-#include "randutil.h"
 #include "rendering.h"
 #include "scene.h"
-#include "sdl-rendering.h"
-#include "status-bar.h"
-#include "timer.h"
 #include "toward-util.h"
-#include "utf8.h"
-#include "util.h"
 
 struct CircuitSim {
 
@@ -73,20 +58,24 @@ struct CircuitSim {
   };
 
 
+  vec2f ViewPos() const { return view_pos; }
   vec2f ViewPosMax() const;
   vec2f ScreenToWorld(int x, int y) const;
   // Simulation steps executed since reset.
-  int64_t Ticks() const;
+  int64_t Ticks() const { return ticks; }
+
+  void Pan(int x, int y, int dx, int dy);
+  void Zoom(int x, int y, bool up);
 
   // Ensure that the node is active, lazily loading if needed.
   void ActivateNode(Node &node);
 
   CircuitSim(const CellLibrary &library,
-             Inputs *inputs,
              Rendering *rendering,
              std::string_view layout_file);
 
   void Reset();
+  void GoToTopLeftCell();
 
   // Insert a bit body into one of the node's inputs.
   void AddInput(Node *node,
@@ -121,7 +110,6 @@ struct CircuitSim {
 
   // Not owned.
   // Maybe should leave this up to the client...
-  Inputs *inputs = nullptr;
   Rendering *rendering = nullptr;
 
   // World coordinates of the top left of the screen.
