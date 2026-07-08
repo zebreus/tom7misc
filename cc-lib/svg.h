@@ -5,6 +5,8 @@
 // attributes" or "style attributes". Both "Save as..." and "Export
 // as..." seem to work fine. Note that Illustrator will usually
 // flatten objects that have both fill and stroke into two fills.
+//
+// All lengths are in "px".
 
 #ifndef _CC_LIB_SVG_H
 #define _CC_LIB_SVG_H
@@ -109,6 +111,7 @@ struct SVG {
     std::optional<std::vector<std::string>> font_family;
     std::optional<double> font_size;
     std::optional<TextAnchor> text_anchor;
+    std::optional<double> additional_letter_spacing;
   };
 
   struct Node;
@@ -230,6 +233,8 @@ struct SVG {
     std::vector<std::string> font_family;
     double font_size = 16.0;
     TextAnchor text_anchor = TextAnchor::START;
+    // Letter spacing in px (not relative to font size).
+    double additional_letter_spacing = 0.0;
   };
 
   // True if nothing is set. If explicitly set to a default value,

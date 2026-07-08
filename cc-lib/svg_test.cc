@@ -187,7 +187,14 @@ static void TestParseNumbers() {
   PARSE_NUM("10,20", 10.0, ",20");
 
   PARSE_NUM("1.5e-5", 0.000015, "");
+  PARSE_NUM("1.5e+1", 15, "");
   PARSE_NUM("-2e10e", -2e10, "e");
+
+  // Tricky, since 5e100 could be floating point rep.
+  PARSE_NUM("5em", 5.0, "em");
+  PARSE_NUM("0.5em", 0.5, "em");
+  PARSE_NUM("0.5e-m", 0.5, "e-m");
+
 
   NO_PARSE("");
   NO_PARSE("e");
@@ -423,6 +430,18 @@ static void TestColors() {
   CHECK(g->style.fill_color.value() == 0x6495EDFF);
 }
 
+static void TestLetterSpacing() {
+  SVG::Doc doc = PARSE_OR_DIE(
+      R"(<svg><text font-size="20" letter-spacing="0.5em">Space</text></svg>)");
+
+  const SVG::G *g = std::get_if<SVG::G>(&doc.root.v);
+  CHECK(g != nullptr);
+  CHECK(g->style.font_size.has_value());
+  CHECK_FEQ(g->style.font_size.value(), 20.0);
+  CHECK(g->style.additional_letter_spacing.has_value());
+  CHECK_FEQ(g->style.additional_letter_spacing.value(), 10.0);
+}
+
 static void TestText() {
   {
     SVG::Doc doc = PARSE_OR_DIE(
@@ -510,7 +529,7 @@ static void TestText() {
 
   {
     SVG::Doc doc = PARSE_OR_DIE(
-      R"SVG(<svg><text>Hello   World</text></svg>)SVG"
+      R"(<svg><text>Hello   World</text></svg>)"
     );
 
     // No styles here, so it's just a text node.
@@ -530,6 +549,7 @@ int main() {
   TestDashes();
   TestColors();
   TestText();
+  TestLetterSpacing();
   TestLayers();
 
   TestParseText();

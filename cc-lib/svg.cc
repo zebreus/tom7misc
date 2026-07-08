@@ -80,7 +80,8 @@ bool SVG::IsDefault(const Style &style) {
            style.clip_path.has_value() ||
            style.font_family.has_value() ||
            style.font_size.has_value() ||
-           style.text_anchor.has_value());
+           style.text_anchor.has_value() ||
+           style.additional_letter_spacing.has_value());
 }
 
 double SVG::ParseLeadingNumber(std::string_view *d) {
@@ -125,6 +126,21 @@ double SVG::ParseLeadingNumber(std::string_view *d) {
       if (saw_exponent) {
         break;
       }
+
+      // If we have "1em" we need to stop with
+      // just 1, but "1e100" or "1e-100" continues.
+      auto HasExponent = [](std::string_view e) {
+          if (e.empty()) return false;
+          // There may be a sign.
+          if (e[0] == '-' || e[0] == '+')
+            e.remove_prefix(1);
+          // There must be digits.
+          if (e.empty()) return false;
+          return e[0] >= '0' && e[0] <= '9';
+        };
+
+      if (!HasExponent(d->substr(1))) break;
+
       saw_exponent = true;
       s.push_back(c);
       d->remove_prefix(1);
@@ -139,19 +155,6 @@ double SVG::ParseLeadingNumber(std::string_view *d) {
 
   if (s.empty()) return NAN;
   return Util::ParseDouble(s, NAN);
-}
-
-static std::optional<double> ParseLength(std::string_view s) {
-  Util::RemoveOuterWhitespace(&s);
-  double d = SVG::ParseLeadingNumber(&s);
-  if (!std::isfinite(d)) return std::nullopt;
-
-  if (s.empty() || s == "px") {
-    return {d};
-  } else {
-    Print(stderr, "Unimplemented or invalid length unit: {}", s);
-    return std::nullopt;
-  }
 }
 
 // A percentage is multiplied by the unit length. Use 1.0 to convert
@@ -780,13 +783,42 @@ struct Converter {
   SVG::LayeredDoc layered_doc;
   std::string error;
 
+  // Most attributes become part of the output (style on a group), but
+  // some things we want to keep track of while we transform the XML.
+  // For now, this is just the font size, which we need in order to
+  // interpret the 'em' unit in lengths.
+  struct Ctx {
+    // Font size in px.
+    double font_size = 16.0;
+  };
+
+  static std::optional<double> ParseLength(const Ctx &ctx,
+                                           std::string_view s) {
+    Util::RemoveOuterWhitespace(&s);
+    double d = SVG::ParseLeadingNumber(&s);
+    if (!std::isfinite(d)) return std::nullopt;
+
+    if (s.empty() || s == "px") {
+      return {d};
+    } else if (s == "em") {
+      return {d * ctx.font_size};
+    } else {
+      Print(stderr, "Unimplemented or invalid length unit: {}", s);
+      return std::nullopt;
+    }
+  }
+
   // This will be moved into the doc at the end. But we use it
   // to check whether ids are known. When converting the defs
   // themselves, this will be nullopt.
   std::optional<std::unordered_map<std::string, SVG::G>> doc_defs;
 
+  // Remove the style attributes from the Node in place, populating
+  // the style block. Also may modify ctx as it does (this affects
+  // attributes on this node, and the subtree).
   std::optional<SVG::Style> RemoveStyleAttributes(XML::Node *node,
-                                                  bool is_text) {
+                                                  bool is_text,
+                                                  Ctx *ctx) {
     if (node->attrs.empty()) return std::nullopt;
 
     SVG::Style style;
@@ -834,7 +866,59 @@ struct Converter {
     }
 
     bool had_style = false;
+
     // Attributes are all case-sensitive.
+    if (auto fo = GetStripAttribute("font-family")) {
+      had_style = true;
+      // TODO: Should parse a comma inside quotes correctly.
+      std::vector<std::string> ffs = Util::Split(fo.value(), ',');
+      // For some reason, Illustrator will do like "Helvetica, Helvetica".
+      std::unordered_set<std::string> already;
+      std::vector<std::string> out;
+      for (std::string &ff : ffs) {
+        ff = Util::NormalizeWhitespace(ff);
+        if (ff.size() >= 2 && ff[0] == ff.back() &&
+            (ff[0] == '\'' || ff[0] == '\"')) {
+          ff = ff.substr(1, ff.size() - 2);
+        }
+
+        if (!already.contains(ff)) {
+          already.insert(ff);
+          out.push_back(std::move(ff));
+        }
+      }
+      if (out.empty()) {
+        error = "There must be at least one font in font-family.";
+        return {};
+      }
+      style.font_family = std::make_optional(std::move(out));
+    }
+
+    if (auto fo = GetStripAttribute("font-size")) {
+      had_style = true;
+      if (auto fso = ParseLength(*ctx, fo.value())) {
+        style.font_size = fso;
+        ctx->font_size = fso.value();
+      } else {
+        error = "Invalid length in font-size";
+        return {};
+      }
+    }
+
+    if (auto lo = GetStripAttribute("letter-spacing")) {
+      had_style = true;
+      std::string_view val = lo.value();
+      Util::RemoveOuterWhitespace(&val);
+      if (val == "normal") {
+        style.additional_letter_spacing = 0.0;
+      } else if (auto lso = ParseLength(*ctx, val)) {
+        style.additional_letter_spacing = lso;
+      } else {
+        error = "Invalid length in letter-spacing";
+        return {};
+      }
+    }
+
     if (auto fo = GetStripAttribute("fill")) {
       had_style = true;
       if (auto co = ParseColor(fo.value())) {
@@ -845,9 +929,9 @@ struct Converter {
       }
     }
 
-    if (auto so = GetStripAttribute("fill-opacity")) {
+    if (auto fo = GetStripAttribute("fill-opacity")) {
       had_style = true;
-      if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
+      if (auto co = ParseNumberOrPercentage(fo.value(), 1.0)) {
         style.fill_opacity = co;
       } else {
         error = "Invalid number in fill-opacity";
@@ -877,7 +961,7 @@ struct Converter {
 
     if (auto so = GetStripAttribute("stroke-width")) {
       had_style = true;
-      if (auto co = ParseLength(so.value())) {
+      if (auto co = ParseLength(*ctx, so.value())) {
         style.stroke_width = co;
       } else {
         error = "Invalid length in stroke-width";
@@ -902,7 +986,7 @@ struct Converter {
 
     if (auto so = GetStripAttribute("stroke-dashoffset")) {
       had_style = true;
-      if (auto co = ParseLength(so.value())) {
+      if (auto co = ParseLength(*ctx, so.value())) {
         style.stroke_dashoffset = co;
       } else {
         error = "Invalid length in stroke-offset";
@@ -910,9 +994,9 @@ struct Converter {
       }
     }
 
-    if (auto so = GetStripAttribute("opacity")) {
+    if (auto oo = GetStripAttribute("opacity")) {
       had_style = true;
-      if (auto co = ParseNumberOrPercentage(so.value(), 1.0)) {
+      if (auto co = ParseNumberOrPercentage(oo.value(), 1.0)) {
         style.opacity = co;
       } else {
         error = "Invalid length in opacity";
@@ -933,10 +1017,10 @@ struct Converter {
     // Within <clipPath> the attribute is called clip-rule.
     // We just treat it the same way, which is a little sloppy,
     // but should be unambiguous for any reasonable SVG.
-    if (auto fo = GetStripAttribute("clip-rule")) {
-      if (fo.value() == "evenodd") {
+    if (auto co = GetStripAttribute("clip-rule")) {
+      if (co.value() == "evenodd") {
         style.use_even_odd_rule = {true};
-      } else if (fo.value() == "nonzero") {
+      } else if (co.value() == "nonzero") {
         style.use_even_odd_rule = {false};
       }
     }
@@ -972,42 +1056,6 @@ struct Converter {
         style.transform = tfo;
       } else {
         error = "Invalid transform list in transform attribute.";
-        return {};
-      }
-    }
-
-    if (auto fo = GetStripAttribute("font-family")) {
-      had_style = true;
-      // TODO: Should parse a comma inside quotes correctly.
-      std::vector<std::string> ffs = Util::Split(fo.value(), ',');
-      // For some reason, Illustrator will do like "Helvetica, Helvetica".
-      std::unordered_set<std::string> already;
-      std::vector<std::string> out;
-      for (std::string &ff : ffs) {
-        ff = Util::NormalizeWhitespace(ff);
-        if (ff.size() >= 2 && ff[0] == ff.back() &&
-            (ff[0] == '\'' || ff[0] == '\"')) {
-          ff = ff.substr(1, ff.size() - 2);
-        }
-
-        if (!already.contains(ff)) {
-          already.insert(ff);
-          out.push_back(std::move(ff));
-        }
-      }
-      if (out.empty()) {
-        error = "There must be at least one font in font-family.";
-        return {};
-      }
-      style.font_family = std::make_optional(std::move(out));
-    }
-
-    if (auto fo = GetStripAttribute("font-size")) {
-      had_style = true;
-      if (auto fso = ParseLength(fo.value())) {
-        style.font_size = fso;
-      } else {
-        error = "Invalid length in font-size";
         return {};
       }
     }
@@ -1056,7 +1104,8 @@ struct Converter {
   // we have to interpret the cursor to handle overrides correctly
   // and flatten this into pure transforms.
   SVG::Node ConvertTextRec(XML::Node *node,
-                           double cursor_x, double cursor_y) {
+                           double cursor_x, double cursor_y,
+                           Ctx ctx) {
     if (node->type == XML::NodeType::Text) {
       // We need to collapse whitespace like in HTML.
       std::string collapsed = Util::NormalizeWhitespace(node->contents);
@@ -1085,7 +1134,7 @@ struct Converter {
     };
 
     std::optional<SVG::Style> maybe_style =
-      RemoveStyleAttributes(node, true);
+      RemoveStyleAttributes(node, true, &ctx);
     if (!error.empty()) return {};
 
     double next_x = cursor_x, next_y = cursor_y;
@@ -1132,7 +1181,7 @@ struct Converter {
         // text span and advancing the cursor. This assumes that
         // all text is positioned absolutely on the <text> or <span>
         // nodes (which appears to be the case in illustrator).
-        children.emplace_back(ConvertTextRec(&child, next_x, next_y));
+        children.emplace_back(ConvertTextRec(&child, next_x, next_y, ctx));
       }
 
       return SVG::MakeGroup(std::move(maybe_style),
@@ -1145,7 +1194,7 @@ struct Converter {
   }
 
   // Modifies the XML tree in place.
-  SVG::Node ConvertRec(XML::Node *node) {
+  SVG::Node ConvertRec(XML::Node *node, Ctx ctx) {
 
     if (node->type == XML::NodeType::Text) {
       // Must be all whitespace for the subset we parse.
@@ -1165,7 +1214,7 @@ struct Converter {
       // text nodes and their descendants.
       const bool is_text = tag == "text";
       std::optional<SVG::Style> maybe_style =
-        RemoveStyleAttributes(node, is_text);
+        RemoveStyleAttributes(node, is_text, &ctx);
       if (!error.empty())
         return {};
 
@@ -1174,7 +1223,7 @@ struct Converter {
 
         std::vector<SVG::Node> children;
         for (XML::Node &child : node->children) {
-          children.emplace_back(ConvertRec(&child));
+          children.emplace_back(ConvertRec(&child, ctx));
         }
 
         return SVG::MakeGroup(std::move(maybe_style),
@@ -1187,7 +1236,7 @@ struct Converter {
         //
         // We know that the recusion is well-founded because we must
         // have removed at least one attribute.
-        return SVG::MakeGroup(maybe_style, {ConvertRec(node)});
+        return SVG::MakeGroup(maybe_style, {ConvertRec(node, ctx)});
 
       } else if (tag == "path") {
         // This is the main thing we're interested in, and we
@@ -1227,7 +1276,7 @@ struct Converter {
         node->attrs.erase("x2");
         node->attrs.erase("y2");
         node->attrs["d"] = std::move(d);
-        return ConvertRec(node);
+        return ConvertRec(node, ctx);
 
       } else if (tag == "polygon" || tag == "polyline") {
         auto pit = node->attrs.find("points");
@@ -1244,7 +1293,7 @@ struct Converter {
         node->tag = "path";
         node->attrs.erase(pit);
         node->attrs["d"] = std::move(d);
-        return ConvertRec(node);
+        return ConvertRec(node, ctx);
 
       } else if (tag == "rect") {
         double x = Util::ParseDouble(node->attrs["x"], 0.0);
@@ -1396,7 +1445,7 @@ struct Converter {
       } else if (tag == "text") {
         // Attributes have already been handled, so this acts
         // as a <g> that processes the subtree in text mode.
-        return ConvertTextRec(node, 0.0, 0.0);
+        return ConvertTextRec(node, 0.0, 0.0, ctx);
 
       } else if (IsUnrendered(tag)) {
         // Skip unrendered nodes.
@@ -1445,7 +1494,7 @@ struct Converter {
           return false;
         }
 
-        (*defs)[id] = ConvertUnrendered(node);
+        (*defs)[id] = ConvertUnrendered(node, Ctx{});
         return error.empty();
 
       } else {
@@ -1530,13 +1579,13 @@ struct Converter {
     return true;
   }
 
-  SVG::G ConvertUnrendered(XML::Node *node) {
+  SVG::G ConvertUnrendered(XML::Node *node, Ctx ctx) {
     std::string tag = node->tag;
     // In the future, this could use the tag type (e.g. clipPath)
     // to do more checking, etc.. But we just treat all of these
     // as transparent groups today.
     node->tag = "g";
-    SVG::Node ret = ConvertRec(node);
+    SVG::Node ret = ConvertRec(node, ctx);
 
     if (tag == "clipPath") {
       BakeClipPath(&ret);
@@ -1578,7 +1627,7 @@ struct Converter {
           return false;
         }
 
-        (*defs)[id] = ConvertUnrendered(node);
+        (*defs)[id] = ConvertUnrendered(node, Ctx{});
         // Clean it up; the second phase should ignore it
         // because it is an Unrendered tag.
         node->children.clear();
@@ -1638,7 +1687,7 @@ struct Converter {
     if (!PrepareConvert(root)) return;
 
     root->tag = "g";
-    doc.root = ConvertRec(root);
+    doc.root = ConvertRec(root, Ctx{});
 
     CHECK(doc_defs.has_value());
     doc.defs = std::move(doc_defs.value());
@@ -1656,7 +1705,7 @@ struct Converter {
           child.tag == "g" &&
           child.attrs.contains("id")) {
         std::string id = child.attrs["id"];
-        SVG::Node layer_node = ConvertRec(&child);
+        SVG::Node layer_node = ConvertRec(&child, Ctx{});
         if (!error.empty()) return;
         layered_doc.layers.emplace_back(std::move(id), std::move(layer_node));
       } else {
@@ -1680,7 +1729,7 @@ struct Converter {
       dummy_g.type = XML::NodeType::Element;
       dummy_g.tag = "g";
       dummy_g.children = std::move(extra_children);
-      SVG::Node extra_node = ConvertRec(&dummy_g);
+      SVG::Node extra_node = ConvertRec(&dummy_g, Ctx{});
       if (!error.empty()) return;
       layered_doc.layers.emplace_back("", std::move(extra_node));
     }
@@ -2203,6 +2252,8 @@ SVG::GraphicsState SVG::UpdateState(const GraphicsState &state,
     next.font_size = style.font_size.value();
   if (style.text_anchor.has_value())
     next.text_anchor = style.text_anchor.value();
+  if (style.additional_letter_spacing.has_value())
+    next.additional_letter_spacing = style.additional_letter_spacing.value();
 
   if (style.clip_path.has_value()) {
     next.clip_stack.push_back({next.transform, style.clip_path.value()});
@@ -2317,6 +2368,11 @@ struct Unconverter {
 
     if (style.font_size.has_value()) {
       AppendFormat(out, " font-size=\"{}\"", Rtos(style.font_size.value()));
+    }
+
+    if (style.additional_letter_spacing.has_value()) {
+      AppendFormat(out, " letter-spacing=\"{}\"",
+                   Rtos(style.additional_letter_spacing.value()));
     }
 
     if (style.text_anchor.has_value()) {
