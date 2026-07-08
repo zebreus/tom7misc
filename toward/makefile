@@ -46,7 +46,7 @@ SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
-LIB_OBJECTS=drc.o optimization.o layout-canvas.o font-cache.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
