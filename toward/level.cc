@@ -460,6 +460,7 @@ void Levels::AddNodesToLevel(std::string_view error_context,
     if (!letters) return;
 
     double font_size = state.font_size;
+    double render_scale = font_size * letters->scale;
 
     std::vector<uint32_t> codepoints = UTF8::Codepoints(text->content);
 
@@ -469,6 +470,9 @@ void Levels::AddNodesToLevel(std::string_view error_context,
         uint32_t c1 = codepoints[i];
         uint32_t c2 = (i + 1 < codepoints.size()) ? codepoints[i+1] : 0;
         total_width += const_cast<Letters*>(letters)->GetKerning(c1, c2);
+        if (render_scale != 0.0) {
+          total_width += state.additional_letter_spacing / render_scale;
+        }
       }
     }
 
@@ -485,6 +489,9 @@ void Levels::AddNodesToLevel(std::string_view error_context,
       uint32_t c = codepoints[i];
       uint32_t next_c = (i + 1 < codepoints.size()) ? codepoints[i + 1] : 0;
       double advance = const_cast<Letters*>(letters)->GetKerning(c, next_c);
+      if (render_scale != 0.0) {
+        advance += state.additional_letter_spacing / render_scale;
+      }
 
       if (c != ' ') {
         auto it = letters->letter.find(c);
@@ -499,7 +506,6 @@ void Levels::AddNodesToLevel(std::string_view error_context,
 
           vec2 center = {0.0, 0.0};
           body.mesh.polygons = letter.mesh.polygons;
-          double render_scale = font_size * letters->scale;
           for (const auto &v : letter.mesh.vertices) {
             vec2 local = (v + vec2{cursor_x, -letter.baseline_y}) *
               render_scale;

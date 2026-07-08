@@ -28,6 +28,8 @@ struct Inputs {
   // Not real codepoints, but this is what SDL returns.
   static constexpr uint32_t CP_LEFT = 0x40000050;
   static constexpr uint32_t CP_RIGHT = 0x4000004f;
+  static constexpr uint32_t CP_HOME = 0x4000004a;
+  static constexpr uint32_t CP_END = 0x4000004d;
 
   struct KeyDown { uint32_t codepoint; uint8_t modifiers; };
   struct KeyUp { uint32_t codepoint; uint8_t modifiers; };

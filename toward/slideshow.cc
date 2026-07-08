@@ -36,6 +36,8 @@ enum class SlideResult {
   RESET,
   NEXT,
   PREV,
+  FIRST,
+  LAST,
   EXIT,
 };
 
@@ -71,6 +73,12 @@ static std::optional<SlideResult> DefaultSlideResult(
 
     } else if (kdown->codepoint == Inputs::CP_RIGHT) {
       return {SlideResult::NEXT};
+
+    } else if (kdown->codepoint == Inputs::CP_HOME) {
+      return {SlideResult::FIRST};
+
+    } else if (kdown->codepoint == Inputs::CP_END) {
+      return {SlideResult::LAST};
 
     } else if (kdown->codepoint == 0x1b) {
       // Escape
@@ -231,6 +239,9 @@ struct Slideshow {
       if (line == "reset") {
         props = Props();
 
+      } else if (line == "start-here") {
+        current_slide = slides.size();
+
       } else if (Util::TryStripPrefix("cof ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
         props.item_cof = Util::ParseDouble(line, LevelBody().friction);
@@ -311,6 +322,8 @@ struct Slideshow {
       }
     }
 
+    CHECK(current_slide < slides.size()) << "No slides, or "
+      "start-here at the end?";
   }
 
   void Run() {
@@ -368,6 +381,14 @@ struct Slideshow {
       case SlideResult::PREV:
         current_slide--;
         if (current_slide < 0) current_slide = slides.size() - 1;
+        break;
+
+      case SlideResult::FIRST:
+        current_slide = 0;
+        break;
+
+      case SlideResult::LAST:
+        current_slide = slides.size() - 1;
         break;
 
       default:

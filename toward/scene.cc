@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/print.h"
 #include "box2d.h"
@@ -383,8 +384,11 @@ size_t Scene::Attach(b2BodyId body_id,
   }
 
   if (!has_shapes) {
-    Print("Object of color {:08x} with no shapes ({} v {} p)!\n",
-          color, mesh.vertices.size(), mesh.polygons.size());
+    Print("Object of color [{}⏹" ANSI_RESET "] {:08x} with "
+          "no shapes ({} v {} p)!\n",
+          ANSI::ForegroundRGB32(color),
+          color,
+          mesh.vertices.size(), mesh.polygons.size());
     for (size_t i = 0; i < mesh.vertices.size(); i++) {
       auto [x, y] = mesh.vertices[i];
       Print("  v[{}] = {}, {}\n", i, x, y);

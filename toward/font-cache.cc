@@ -33,7 +33,14 @@ const Letters *FontCache::Get(std::string_view font_name) {
     {"franklingothic-medium", "franklingothicdemi.ttf"},
     {"fixedersys1x", "fixedersys1x.ttf"},
     {"avantgardef-bold", "avantgardeb.ttf"},
-  };
+
+    {"addloopsnormal", "addloops-normal.ttf"},
+    {"damselwalkfont71-condensed", "damselwalk.ttf"},
+    {"flfirehousepup", "firehousepup.ttf"},
+
+    {"actionjackson", "action-jackson.ttf"},
+    {"prefix", "prefix.ttf"},
+    };
 
   auto fit = fontfiles.find(Util::lcase(font_name));
   CHECK(fit != fontfiles.end()) << "Unknown font: " << font_name;
