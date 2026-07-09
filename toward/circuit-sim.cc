@@ -109,6 +109,20 @@ CircuitSim::CircuitSim(const CellLibrary &library,
   Reset();
 }
 
+CircuitSim::CircuitSim(const CellLibrary &library,
+                       Rendering *rendering,
+                       Layout layout) :
+  library(library),
+  rendering(rendering),
+  layout(std::move(layout)),
+  rc("sim") {
+
+  // Maybe option to skip this in slideshow mode?
+  DRC::CheckLayout(library, "CircuitSim argument", layout);
+
+  Reset();
+}
+
 void CircuitSim::GoToTopLeftCell() {
   if (!sim.empty() && !sim[0].empty()) {
     view_pos.x = sim[0][0].xpos * Levels::BLOCK_SIZE;

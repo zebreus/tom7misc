@@ -25,7 +25,7 @@
 
 DECLARE_COUNTERS(ctr_invalid, ctr_discarded);
 
-static constexpr int NUM_THREADS = 8;
+static constexpr int NUM_THREADS = 12;
 
 // TODO: What's up with these? I looked at Rodchenko and it looks
 // perfectly decent, but the thread gets stuck on it.
@@ -115,7 +115,6 @@ static void EvaluateAll() {
 
   std::vector<Evaluated> evaled;
 
-  static constexpr int NUM_THREADS = 8;
   ParallelFan(
       NUM_THREADS,
       [&](int thread_idx) {
@@ -222,6 +221,37 @@ static void EvaluateAll() {
   for (size_t i = 0; i < 10 && i < all_letters.size(); i++) {
     status->Print("{}. {} in {} ({:.4f})\n", i + 1, all_letters[i].c,
                   all_letters[i].fontname, all_letters[i].stab);
+  }
+
+  std::array<double, 26> letter_totals = {};
+  if (!evaled.empty()) {
+    for (const Evaluated &e : evaled) {
+      for (int i = 0; i < 26; i++) {
+        letter_totals[i] += e.stabs[i];
+      }
+    }
+
+    struct AvgLetterResult {
+      char c = 0;
+      double avg = 0.0;
+    };
+
+    std::vector<AvgLetterResult> avg_letters;
+    avg_letters.reserve(26);
+    for (int i = 0; i < 26; i++) {
+      avg_letters.push_back({(char)('A' + i),
+                             letter_totals[i] / (double)evaled.size()});
+    }
+
+    std::sort(avg_letters.begin(), avg_letters.end(),
+              [](const AvgLetterResult &a, const AvgLetterResult &b) {
+                return a.avg < b.avg;
+              });
+
+    status->Print("\nAverage stability per letter (most to least stable):\n");
+    for (const AvgLetterResult &r : avg_letters) {
+      status->Print("{:c}: {:.4f}\n", r.c, r.avg);
+    }
   }
 }
 

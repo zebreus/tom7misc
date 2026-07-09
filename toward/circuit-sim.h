@@ -13,7 +13,6 @@
 #include "base/logging.h"
 #include "cell-library.h"
 #include "circuit.h"
-#include "inputs.h"
 #include "layout.h"
 #include "level.h"
 #include "rendering.h"
@@ -73,6 +72,11 @@ struct CircuitSim {
   CircuitSim(const CellLibrary &library,
              Rendering *rendering,
              std::string_view layout_file);
+
+  // Or from an already-loaded Layout object.
+  CircuitSim(const CellLibrary &library,
+             Rendering *rendering,
+             Layout layout);
 
   void Reset();
   void GoToTopLeftCell();

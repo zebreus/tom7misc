@@ -16,9 +16,12 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "cell-library.h"
+#include "circuit-sim.h"
 #include "image.h"
 #include "initialization.h"
 #include "inputs.h"
+#include "layout.h"
 #include "level.h"
 #include "randutil.h"
 #include "rendering.h"
@@ -166,6 +169,58 @@ SlideResult SimulateLevel(const Props &props, ArcFour *rc,
 
 }
 
+SlideResult SimulateCircuit(const CellLibrary &library,
+                            const Props &props, ArcFour *rc,
+                            Inputs *inputs, Rendering *rendering,
+                            const Layout &layout) {
+  CircuitSim sim(library, rendering, layout);
+  sim.GoToTopLeftCell();
+
+  bool paused = false;
+
+  for (;;) {
+    for (;;) {
+      const Inputs::Input input = inputs->GetInput();
+      if (std::optional<SlideResult> ro = DefaultSlideResult(input)) {
+        return ro.value();
+      }
+
+      if (std::holds_alternative<Inputs::None>(input))
+        break;
+
+      if (const Inputs::KeyDown *kdown = std::get_if<Inputs::KeyDown>(&input)) {
+        if (kdown->codepoint == '\r' || kdown->codepoint == ' ') {
+          paused = !paused;
+        } else if (kdown->codepoint == '1') {
+          bit = true;
+        } else if (kdown->codepoint == '0') {
+          bit = false;
+        } else if (kdown->codepoint == 'i' || kdown->codepoint == 'I') {
+          sim.InjectRandomAssignment();
+        }
+      } else if (const Inputs::MouseChange *mc =
+                 std::get_if<Inputs::MouseChange>(&input)) {
+        // Also added left click for easier trackpad panning
+        if (mc->button & ((1 << Inputs::MOUSE_MIDDLE) | (1 << Inputs::MOUSE_LEFT))) {
+          sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
+        }
+      } else if (const Inputs::MouseWheel *mw =
+                 std::get_if<Inputs::MouseWheel>(&input)) {
+        sim.Zoom(mw->x, mw->y, mw->up);
+      }
+    }
+
+    if (!paused) {
+      sim.StepSimulation();
+    }
+
+    std::vector<Rendering::Triangle> tri;
+    sim.FillVisibleTriangles(&tri);
+
+    rendering->RenderScene(sim.ViewPos(), sim.ViewPosMax(), tri);
+  }
+}
+
 SlideResult ShowImage(ArcFour *rc,
                       Inputs *inputs, Rendering *rendering,
                       const ImageRGBA &image) {
@@ -198,7 +253,12 @@ struct ImageContent {
   ImageRGBA image;
 };
 
-using Content = std::variant<LevelContent, ImageContent>;
+struct CircuitContent {
+  std::string file;
+  Layout layout;
+};
+
+using Content = std::variant<LevelContent, ImageContent, CircuitContent>;
 
 struct Slide {
   Props props = {};
@@ -216,6 +276,10 @@ struct Slideshow {
   std::unordered_map<std::string,
                      std::unique_ptr<ImageRGBA>> backgrounds;
   std::string current_background;
+
+  // Need this to load circuits, although we could skip it if there
+  // are no circuit slides?
+  CellLibrary library;
 
   Slideshow(std::string_view slidefile) : rc("slides") {
     inputs = Inputs::CreateSDL();
@@ -290,6 +354,20 @@ struct Slideshow {
                 }}
             });
 
+      } else if (Util::TryStripPrefix("circuit ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        std::string content = Util::ReadFile(std::string(line));
+        std::optional<Layout> layout = LayoutEngine::Parse(content);
+        CHECK(layout.has_value()) << line;
+        slides.emplace_back(
+            Slide{
+              .props = props,
+              .content = {CircuitContent{
+                  .file = std::string(line),
+                  .layout = std::move(layout.value()),
+                }}
+            });
+
       } else if (Util::TryStripPrefix("image ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
         std::unique_ptr<ImageRGBA> image(ImageRGBA::Load(line));
@@ -354,6 +432,11 @@ struct Slideshow {
       if (const LevelContent *lc = std::get_if<LevelContent>(&slide.content)) {
         sr = SimulateLevel(slide.props, &rc,
                            inputs.get(), rendering.get(), lc->level.get());
+
+      } else if (const CircuitContent *cc =
+                 std::get_if<CircuitContent>(&slide.content)) {
+        sr = SimulateCircuit(library, slide.props, &rc,
+                             inputs.get(), rendering.get(), cc->layout);
 
       } else if (const ImageContent *ic =
                  std::get_if<ImageContent>(&slide.content)) {

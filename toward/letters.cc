@@ -13,7 +13,7 @@
 #include "geom/bezier.h"
 #include "geom/polygonization.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
                                            bool triangle_cells) {
@@ -30,7 +30,7 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
   result->line_height = ttf->NormLineHeight();
   result->scale = ttf->Scale();
 
-  Print("{} TTF Scale: {}\n", filename, result->scale);
+  // Print("{} TTF Scale: {}\n", filename, result->scale);
 
   // Printable ascii for now.
   for (uint32_t codepoint = 32; codepoint < 127; codepoint++) {
