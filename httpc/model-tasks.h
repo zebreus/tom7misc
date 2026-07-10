@@ -40,6 +40,7 @@ struct ModelTasks {
     bool include_current_file = true;
     bool can_fail = false;
     bool can_answer = false;
+    bool guess_match = true;
   };
 
   // Using the given model,

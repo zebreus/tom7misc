@@ -240,8 +240,35 @@ ModelTasks::ChooseFiles(
     return Failure{std::move(message)};
   } else if (solve) {
     return Answer{std::move(message)};
-  } else {
-    return ChosenFiles{std::move(files), std::move(message)};
   }
+
+  // Otherwise we have some chosen files. A common problem is that
+  // it will ask for "svg.h" when the key is actually "cc-lib/svg.h".
+  // This is a model mistake, but we can rescue the attempt by
+  // matching against files that *are* available.
+  if (opt.guess_match) {
+    for (std::string &file : files) {
+      if (available.files.find(file) != available.files.end()) {
+        continue;
+      }
+
+      std::string filename = std::filesystem::path(file).filename().string();
+      std::string matched_key;
+      int match_count = 0;
+
+      for (const auto &[key, info] : available.files) {
+        if (info.path.filename().string() == filename) {
+          matched_key = key;
+          match_count++;
+        }
+      }
+
+      if (match_count == 1) {
+        file = matched_key;
+      }
+    }
+  }
+
+  return ChosenFiles{std::move(files), std::move(message)};
 }
 
