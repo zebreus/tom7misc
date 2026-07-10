@@ -37,10 +37,26 @@ const Letters *FontCache::Get(std::string_view font_name) {
     {"addloopsnormal", "addloops-normal.ttf"},
     {"damselwalkfont71-condensed", "damselwalk.ttf"},
     {"flfirehousepup", "firehousepup.ttf"},
+    {"u.s.a.condensed", "usa-condensed.ttf"},
+    {"squareslabserif711bt-bold", "squareslabserif711b.ttf"},
+    {"district-boldalt", "districtboldalt.ttf"},
+    {"fz-basic53ex", "fzbasic53ex.ttf"},
 
     {"actionjackson", "action-jackson.ttf"},
     {"prefix", "prefix.ttf"},
-    };
+    {"32768no", "32768no.ttf"},
+    {"geodesic", "geodesic.ttf"},
+    {"epilog", "epilog.ttf"},
+    {"progbot", "progbot.ttf"},
+    // {"isuckatgolf", "suckgolf.ttf"},
+    {"nullpointer", "nullp.ttf"},
+    {"potassiumscandal", "scandal.ttf"},
+    {"zincboomerang", "zincboom.ttf"},
+    {"tom's-newroman", "tomnr.ttf"},
+    // {"antelopeh", "antelope.ttf"},
+    // {"mayqueen", "mayqueen.ttf"},
+    {"guildofprofessionalactors", "guildof.ttf"},
+  };
 
   auto fit = fontfiles.find(Util::lcase(font_name));
   CHECK(fit != fontfiles.end()) << "Unknown font: " << font_name;

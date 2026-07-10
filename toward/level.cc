@@ -532,7 +532,7 @@ void Levels::AddNodesToLevel(std::string_view error_context,
     }
 
   } else if (const SVG::Path *path = std::get_if<SVG::Path>(&node.v)) {
-    if (state.opacity < 0.2) return;
+    if (options.discard_low_alpha && state.opacity < 0.2) return;
     if (!state.stroke_dasharray.empty()) return;
 
     bool has_fill = state.fill_color != SVG::COLOR_NONE;

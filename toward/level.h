@@ -125,6 +125,9 @@ struct Levels {
     // Text is dynamic even if the paths are filled.
     // If false, the text must be outlines (like with paths).
     bool all_text_dynamic = true;
+    // Discard paths that have less than 20% alpha; we sometimes
+    // use these to ensure the view box is what we want.
+    bool discard_low_alpha = true;
   };
 
   static std::unique_ptr<Level> LoadSVGExt(const Options &options,

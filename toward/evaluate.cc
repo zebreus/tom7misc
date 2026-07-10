@@ -7,11 +7,12 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
+#include "atomic-util.h"
+#include "banned.h"
 #include "base/print.h"
 #include "eval.h"
 #include "font-db.h"
@@ -21,27 +22,10 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
-#include "atomic-util.h"
 
 DECLARE_COUNTERS(ctr_invalid, ctr_discarded);
 
 static constexpr int NUM_THREADS = 12;
-
-// TODO: What's up with these? I looked at Rodchenko and it looks
-// perfectly decent, but the thread gets stuck on it.
-const std::unordered_set<std::string> &Banned() {
-  static std::unordered_set<std::string> *BANNED = new std::unordered_set<std::string>{
-    "d:\\temp\\fonts2020\\Google_Fonts_2017\\ofl\\rajdhani\\Rajdhani-Light.ttf",
-    "d:\\temp\\fonts2020\\Google_Fonts_2017\\ofl\\rajdhani\\Rajdhani-SemiBold.ttf",
-    "d:\\temp\\fonts2020\\Fonts\\R\\TrueType\\Rodchenko Regular.ttf",
-    "d:\\temp\\fonts2020\\Google_Fonts_2017\\ofl\\rajdhani\\Rajdhani-Medium.ttf",
-    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico.ttf",
-    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico Italic.ttf",
-    "d:\\temp\\fonts2020\\Fonts\\C\\TrueType\\Calico(1).ttf",
-  };
-
-  return *BANNED;
-};
 
 struct Evaluated {
   std::string fontname;
@@ -139,7 +123,7 @@ static void EvaluateAll() {
             }
           }
 
-          if (Banned().contains(fontname)) {
+          if (BannedFonts().contains(fontname)) {
             status->Print(ARED("BANNED") " {}\n", fontname);
             ctr_invalid++;
             continue;

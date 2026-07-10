@@ -1,6 +1,7 @@
 
 #include "letters.h"
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string_view>

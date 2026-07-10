@@ -4,12 +4,9 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string>
 #include <string_view>
 #include <unordered_map>
 
-#include "geom/polygons.h"
 #include "geom/polygonization.h"
 
 struct Letter {

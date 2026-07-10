@@ -56,6 +56,8 @@ struct Props {
   // for inserted items.
   float vel_scale = 1.0;
   float avel_scale = 1.0;
+
+  bool discard_low_alpha = true;
 };
 
 // Shared by slide handlers.
@@ -322,10 +324,15 @@ struct Slideshow {
         Util::RemoveLeadingWhitespace(&line);
         props.avel_scale = Util::ParseDouble(line, 1.0);
 
+      } else if (Util::TryStripPrefix("discard-low-alpha ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.discard_low_alpha = (line == "true" || line == "1");
+
       } else if (Util::TryStripPrefix("level ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
         Levels::Options opt;
         opt.include_text = true;
+        opt.discard_low_alpha = props.discard_low_alpha;
 
         std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, line, false);
         slides.emplace_back(
@@ -341,6 +348,7 @@ struct Slideshow {
         Util::RemoveLeadingWhitespace(&line);
         Levels::Options opt;
         opt.include_text = false;
+        opt.discard_low_alpha = props.discard_low_alpha;
 
         std::unique_ptr<Level> level = Levels::LoadSVGExt(opt, line, false);
         Levels::AddChutes(level.get(), 0xAAAA77FF, 0xAA7777FF);
