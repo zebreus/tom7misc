@@ -118,6 +118,7 @@ level talk/chess-draw-none.svg
 level talk/chess-draw-implemented.svg
 
 start-here
+level talk/chess-board-encoding.svg
 background talk/tom7-shirt-bg.png
 level talk/chess-legal-move.svg
 background none
