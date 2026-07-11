@@ -2448,4 +2448,12 @@ Polygonization::PolygonizeResult Polygonization::Polygonize(
   return mesh;
 }
 
-
+Polygonization::Mesh Polygonization::PolygonizeOrDie(
+    const Shape &shape, int max_vertices, Options options) {
+  auto omesh = Polygonize(shape, max_vertices, options);
+  const std::string_view *err = std::get_if<std::string_view>(&omesh);
+  CHECK(err == nullptr) << "Polygonization failed: " << err;
+  Mesh *mesh = std::get_if<Mesh>(&omesh);
+  CHECK(mesh != nullptr);
+  return std::move(*mesh);
+}

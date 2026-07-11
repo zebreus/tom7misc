@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "yocto-math.h"
-#include "polygons.h"
+#include "geom/polygons.h"
 
 struct PolygonizationOptions {
   // Insert Steiner points using a triangular grid with this edge
@@ -55,6 +55,9 @@ struct Polygonization {
   static PolygonizeResult Polygonize(const Shape &shape,
                                      int max_vertices,
                                      Options options = {});
+  static Mesh PolygonizeOrDie(const Shape &shape,
+                              int max_vertices,
+                              Options options = {});
 
   // An explicitly triangular mesh.
   struct TriangularMesh {

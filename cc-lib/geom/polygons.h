@@ -1,3 +1,7 @@
+// Basic routines for polygons (2D).
+// For convex hull, see hull-2d.h.
+// For triangulation and polygonization, see polygonization.h.
+
 #ifndef _CC_LIB_GEOM_POLYGONS_H
 #define _CC_LIB_GEOM_POLYGONS_H
 
