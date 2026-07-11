@@ -129,6 +129,40 @@ LevelBody Levels::Zero() {
   return body;
 }
 
+LevelBody Levels::Cursor() {
+  LevelBody body;
+  body.mesh.vertices = {
+    vec2{315, 216},
+    vec2{216, 216},
+    vec2{288, 351},
+    vec2{252, 369},
+    vec2{180, 234},
+    vec2{108, 306.14},
+    vec2{108, 36},
+  };
+  body.mesh.polygons = {
+    {4, 6, 5, },
+    {1, 6, 4, },
+    {6, 1, 0, },
+    {3, 2, 1, 4, },
+  };
+
+  // Original above was the SVG coordinates; scale to be about
+  // 3 blocks high.
+  auto Transform = [](vec2 &v) {
+      constexpr double scale = 3.0 * Levels::BLOCK_SIZE / 333.0;
+      v.x = (v.x - 108.0) * scale;
+      v.y = (v.y - 36.0) * scale;
+    };
+
+  for (vec2 &v : body.mesh.vertices)
+    Transform(v);
+
+  body.dynamic = true;
+  body.color = 0xFFFFFFFF;
+  return body;
+}
+
 static std::optional<vec2f> IsSVGRectangle(
     const SVG::GraphicsState &outer_state,
     const SVG::Node &node,

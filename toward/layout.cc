@@ -1574,3 +1574,35 @@ std::optional<Layout> LayoutEngine::Parse(std::string_view content) {
   return layout;
 }
 
+std::string LayoutEngine::ToString(const Layout &layout) {
+  std::string out;
+  AppendFormat(&out, "Layout ({} inputs, {} layers):\n",
+               layout.input_vars.size(), layout.circuit.layers.size());
+
+  out += "Inputs: ";
+  bool first = true;
+  for (const auto &[var, ctype] : layout.input_vars) {
+    if (!first) out += " ";
+    char c = '?';
+    switch (ctype) {
+    case CType::ZERO: c = 'O'; break;
+    case CType::ONE: c = 'I'; break;
+    case CType::MIXED: c = 'M'; break;
+    }
+    AppendFormat(&out, "{}{}", var, c);
+    first = false;
+  }
+  out += "\n";
+
+  for (size_t i = 0; i < layout.circuit.layers.size(); i++) {
+    AppendFormat(&out, "Layer {}: ", i);
+    const std::vector<Cell> &layer = layout.circuit.layers[i];
+    for (size_t j = 0; j < layer.size(); j++) {
+      if (j > 0) out += ", ";
+      AppendFormat(&out, "{}", CellString(layer[j]));
+    }
+    out += "\n";
+  }
+
+  return out;
+}

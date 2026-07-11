@@ -31,6 +31,7 @@
 #include "utf8.h"
 #include "util.h"
 #include "pi-rendering.h"
+#include "timer.h"
 
 static constexpr vec2f VIEW_MIN = vec2f{0.0f, 0.0f};
 static constexpr vec2f VIEW_MAX = vec2f{Scene::WIDTH, Scene::HEIGHT};
@@ -57,7 +58,14 @@ struct Props {
   float vel_scale = 1.0;
   float avel_scale = 1.0;
 
+  // Time on slide before letters fall.
+  float delay = 1.0;
+
+  // If set, objects in the scene with alpha less than 20% or
+  // so are dropped at loading time.
   bool discard_low_alpha = true;
+  // If true, clicking drops bit items. Otherwise, cursors.
+  bool drop_bits = true;
 };
 
 // Shared by slide handlers.
@@ -108,6 +116,7 @@ SlideResult SimulateLevel(const Props &props, ArcFour *rc,
   CHECK(rendering != nullptr);
 
   std::unique_ptr<Scene> scene = Levels::CreateScene(level);
+  Timer slide_timer;
 
   bool paused = false;
 
@@ -143,25 +152,35 @@ SlideResult SimulateLevel(const Props &props, ArcFour *rc,
           // XXX ugh
           pos.y = VIEW_MAX.y - pos.y;
 
-          LevelBody body = bit ? Levels::One() : Levels::Zero();
-          body.pos = pos;
-          body.color = 0xFF00FFFF;
-          body.vel = vec2f(RandDouble(rc) * 2 - 1, RandDouble(rc) * 2 - 1) *
-            props.vel_scale;
-          // between -2 and +2 radians per second.
-          body.avel = (RandDouble(rc) * 4 - 2) * props.avel_scale;
+          LevelBody body;
+
+          if (props.drop_bits) {
+            body = bit ? Levels::One() : Levels::Zero();
+            body.color = 0xFF00FFFF;
+            body.vel = vec2f(RandDouble(rc) * 2 - 1, RandDouble(rc) * 2 - 1) *
+              props.vel_scale;
+            // between -2 and +2 radians per second.
+            body.avel = (RandDouble(rc) * 4 - 2) * props.avel_scale;
+          } else {
+            body = Levels::Cursor();
+            body.color = 0xFFFFFFFF;
+            body.vel = vec2f(-3.0f, -3.0f);
+            body.avel = 0.0f;
+          }
+
           body.restitution = props.item_cor;
           body.friction = props.item_cof;
-
+          body.pos = pos;
           level.bodies.push_back(body);
           Levels::AddBodyToScene(scene.get(), body);
+
         }
 
       }
 
     }
 
-    if (!paused) {
+    if (!paused && slide_timer.Seconds() >= props.delay) {
       scene->Update();
     }
     std::vector<Rendering::Triangle> tri = scene->GetTriangles();
@@ -202,8 +221,8 @@ SlideResult SimulateCircuit(const CellLibrary &library,
         }
       } else if (const Inputs::MouseChange *mc =
                  std::get_if<Inputs::MouseChange>(&input)) {
-        // Also added left click for easier trackpad panning
-        if (mc->button & ((1 << Inputs::MOUSE_MIDDLE) | (1 << Inputs::MOUSE_LEFT))) {
+        if (mc->button & (Inputs::MOUSE_MIDDLE |
+                          Inputs::MOUSE_LEFT)) {
           sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
         }
       } else if (const Inputs::MouseWheel *mw =
@@ -327,6 +346,15 @@ struct Slideshow {
       } else if (Util::TryStripPrefix("discard-low-alpha ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
         props.discard_low_alpha = (line == "true" || line == "1");
+
+      } else if (Util::TryStripPrefix("drop ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        CHECK(line == "bits" || line == "cursors");
+        props.drop_bits = (line == "bits");
+
+      } else if (Util::TryStripPrefix("delay ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.delay = Util::ParseDouble(line, 1.0);
 
       } else if (Util::TryStripPrefix("level ", &line)) {
         Util::RemoveLeadingWhitespace(&line);

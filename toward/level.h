@@ -155,6 +155,8 @@ struct Levels {
   // position and color.
   static LevelBody One();
   static LevelBody Zero();
+  // Mouse cursor.
+  static LevelBody Cursor();
   // Create a fixed rectangular body.
   static LevelBody WallRect(vec2f center, int blockwidth, int blockheight,
                             uint32_t color = 0x888888FF);

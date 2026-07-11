@@ -80,13 +80,27 @@ struct Optimizer {
     int cell_x;
   };
 
+  // Identifies a specific input or output port on a cell in the circuit.
   struct PortLoc {
-    int l, c, port;
+    int l, c;
+    // Port number within this cell's inputs or outputs.
+    int port;
   };
+
+  // Adjacency lists for the circuit's connections.
+  // prev_port[l][c][p] gives the PortLoc of the output port connected to
+  // input port 'p' of cell 'c' on layer 'l'.
   std::vector<std::vector<std::vector<PortLoc>>> prev_port;
+
+  // next_port[l][c][p] gives the PortLoc of the input port connected to
+  // output port 'p' of cell 'c' on layer 'l'.
   std::vector<std::vector<std::vector<PortLoc>>> next_port;
+
+  // A pending shift request to propagate a shift to a connected cell.
   struct Req {
-    int l, c, port;
+    PortLoc loc;
+    // True if the shift propagates to this cell via its input port,
+    // false if it propagates via its output port.
     bool is_input;
   };
 
@@ -115,6 +129,19 @@ struct Optimizer {
   // We use backtracking to find a valid assignment that avoids overlaps.
   // If we encounter a wire that can absorb the shift by changing its delta,
   // we can stop propagating the shift along that path.
+  //
+  // Parameters:
+  //  - circuit: The grid of cell states to be modified.
+  //  - shifted: Bitmask indicating cells that have already been shifted in
+  //    this operation, to avoid infinite loops and duplicate shifts.
+  //  - s: The horizontal shift distance.
+  //  - reqs: Pending shift requests to propagate the shift to connected cells.
+  //  - is_all_wire: Flags indicating which layers are completely made of
+  //    wires. Used to determine if a wire can absorb the shift.
+  //
+  // Returns:
+  //  true if a valid, non-overlapping assignment was found; false if the
+  //  shift resulted in overlaps or invalid wires, prompting backtracking.
   bool TryApply(std::vector<std::vector<CellState>> &circuit,
                 std::vector<std::vector<bool>> &shifted, int s,
                 std::vector<Req> reqs, const std::vector<bool> &is_all_wire) {
@@ -136,7 +163,7 @@ struct Optimizer {
     Req req = reqs.back();
     reqs.pop_back();
 
-    int lidx = req.l, c = req.c;
+    int lidx = req.loc.l, c = req.loc.c;
 
     std::vector<CellState> &layer = circuit[lidx];
     std::vector<bool> &shifted_layer = shifted[lidx];
@@ -179,16 +206,16 @@ struct Optimizer {
 
     int num_in = library.GetInfo(layer[c].cell).inputs.size();
     for (int i = 0; i < num_in; ++i) {
-      if (req.is_input && i == req.port) continue;
+      if (req.is_input && i == req.loc.port) continue;
       auto prev = prev_port[lidx][c][i];
-      if (prev.l != -1) next_reqs.push_back({prev.l, prev.c, prev.port, false});
+      if (prev.l != -1) next_reqs.push_back({prev, false});
     }
 
     int num_out = library.GetInfo(layer[c].cell).outputs.size();
     for (int i = 0; i < num_out; ++i) {
-      if (!req.is_input && i == req.port) continue;
+      if (!req.is_input && i == req.loc.port) continue;
       auto next = next_port[lidx][c][i];
-      if (next.l != -1) next_reqs.push_back({next.l, next.c, next.port, true});
+      if (next.l != -1) next_reqs.push_back({next, true});
     }
 
     if (TryApply(circuit, shifted, s, next_reqs, is_all_wire)) return true;
@@ -226,7 +253,7 @@ struct Optimizer {
           circuit.size(), std::vector<bool>(circuit[0].size(), false));
       shifted[lidx][c] = true;
       std::vector<Req> reqs;
-      if (next.l != -1) reqs.push_back({next.l, next.c, next.port, true});
+      if (next.l != -1) reqs.push_back({next, true});
 
       if (TryApply(newcircuit, shifted, S, reqs, is_all_wire)) {
         circuit = std::move(newcircuit);
@@ -247,7 +274,7 @@ struct Optimizer {
           circuit.size(), std::vector<bool>(circuit[0].size(), false));
       shifted[lidx][c] = true;
       std::vector<Req> reqs;
-      if (prev.l != -1) reqs.push_back({prev.l, prev.c, prev.port, false});
+      if (prev.l != -1) reqs.push_back({prev, false});
 
       if (TryApply(newcircuit, shifted, S, reqs, is_all_wire)) {
         circuit = std::move(newcircuit);

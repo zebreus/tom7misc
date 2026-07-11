@@ -154,5 +154,9 @@ font-collection.exe : font-collection.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+polygonize.exe : polygonize.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe

@@ -60,6 +60,10 @@ struct LayoutEngine {
   // Must have 3 lines.
   virtual void SetStatusBar(StatusBar *s) = 0;
 
+  // Pretty-print for debugging, etc. Designed for small
+  // circuits!
+  static std::string ToString(const Layout &layout);
+
   static std::string Serialize(const Layout &layout);
   static std::optional<Layout> Parse(std::string_view content);
 
