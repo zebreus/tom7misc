@@ -156,7 +156,11 @@ ImageRGBA RenderCircuitMini(const CellLibrary &library,
   const int pad_height = 1;
 
   int img_w = (max_w + 2) / 5;
-  int img_h = (int)circuit.layers.size() * layer_height;
+  int num_layers = (int)circuit.layers.size();
+  // Ensure the image is tall enough for a 16:9 (1920x1080) aspect ratio.
+  int min_layers = (img_w * 9 + 16 * layer_height - 1) / (16 * layer_height);
+  num_layers = std::max(num_layers, min_layers);
+  int img_h = num_layers * layer_height;
 
   if (img_w == 0 || img_h == 0) {
     return ImageRGBA(img_w > 0 ? img_w : 1, img_h > 0 ? img_h : 1);

@@ -100,6 +100,13 @@ struct ChessProp {
                       int dstr, int dstc,
                       Details details = Details());
 
+  static constexpr Details REAL_CHESS = {
+    .castling = true,
+    .castling_attacked = true,
+    .check_check = true,
+    .en_passant = true,
+  };
+
   static constexpr Details KID_CHESS = {
     .castling = true,
     .castling_attacked = false,

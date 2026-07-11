@@ -74,6 +74,36 @@ static void RenderParallel() {
   img.Save("parallel.png");
 }
 
+static void RenderReal() {
+  CellLibrary library;
+
+  World world;
+  ChessProp::Board board = ChessProp::NewBoard(&world);
+
+  ChessProp::Details details = ChessProp::REAL_CHESS;
+
+  Prop prop =
+    SimplifyProp(ChessProp::IsLegal(board, 6, 1, 4, 1, details));
+  prop = BalanceProp(prop);
+  prop = SimplifyProp(prop);
+  int size = PropSize(prop);
+  Print("Prop size: {}\n", size);
+  Print("Prop:\n{}\n", PropString(world, prop));
+
+  LOG(FATAL) << "Exit early.";
+
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  le->SetVerbose(1);
+  le->SetWriteImages(false);
+  Layout layout = le->DoLayout(Span{prop});
+  Print("Got layout!\n");
+  DRC::CheckCircuit(library, layout.circuit);
+  Print("DRC ok!\n");
+
+  ImageRGBA img = RenderCircuit(library, layout.circuit);
+  img.Save("parallel.png");
+}
+
 
 struct ChessDemo {
   CellLibrary library;
@@ -166,8 +196,12 @@ struct ChessDemo {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  /*
   ChessDemo demo;
   demo.RenderAll();
+  */
+
+  RenderReal();
 
   // RenderParallel();
 

@@ -22,6 +22,8 @@
 #include "rendering.h"
 #include "threadutil.h"
 
+constexpr bool VERBOSE = false;
+
 // In Box2D, the global worlds structure is thread hostile.
 // But it seems like aside from world creation/destruction,
 // you can use them in parallel.
@@ -384,21 +386,70 @@ size_t Scene::Attach(b2BodyId body_id,
   }
 
   if (!has_shapes) {
-    Print("Object of color [{}⏹" ANSI_RESET "] {:08x} with "
-          "no shapes ({} v {} p)!\n",
-          ANSI::ForegroundRGB32(color),
-          color,
-          mesh.vertices.size(), mesh.polygons.size());
-    for (size_t i = 0; i < mesh.vertices.size(); i++) {
-      auto [x, y] = mesh.vertices[i];
-      Print("  v[{}] = {}, {}\n", i, x, y);
-    }
-    for (size_t i = 0; i < mesh.polygons.size(); i++) {
-      Print("  poly[{}]:", i);
-      for (int idx : mesh.polygons[i]) {
-        Print(" {}", idx);
+    if (VERBOSE) {
+      Print("Object of color [{}⏹" ANSI_RESET "] {:08x} with "
+            "no shapes ({} v {} p)!\n",
+            ANSI::ForegroundRGB32(color),
+            color,
+            mesh.vertices.size(), mesh.polygons.size());
+      for (size_t i = 0; i < mesh.vertices.size(); i++) {
+        auto [x, y] = mesh.vertices[i];
+        Print("  v[{}] = {}, {}\n", i, x, y);
       }
-      Print("\n");
+      for (size_t i = 0; i < mesh.polygons.size(); i++) {
+        Print("  poly[{}]:", i);
+        for (int idx : mesh.polygons[i]) {
+          Print(" {}", idx);
+        }
+        Print("\n");
+      }
+    }
+
+    // Fallback: Use the bounding box, honoring Box2D's minimum size.
+
+    float min_x = 1e9f, max_x = -1e9f;
+    float min_y = 1e9f, max_y = -1e9f;
+
+    if (mesh.vertices.empty()) {
+      min_x = -0.05f; max_x = 0.05f;
+      min_y = -0.05f; max_y = 0.05f;
+    } else {
+      for (const auto &v : mesh.vertices) {
+        auto [vx, vy] = v;
+        if (vx < min_x) min_x = vx;
+        if (vx > max_x) max_x = vx;
+        if (vy < min_y) min_y = vy;
+        if (vy > max_y) max_y = vy;
+      }
+    }
+
+    float w = max_x - min_x;
+    float h = max_y - min_y;
+
+    // Minimum acceptable side length to avoid degenerate shapes in Box2D.
+    const float min_len = 0.05f;
+    if (w < min_len) {
+      float cx = (min_x + max_x) * 0.5f;
+      min_x = cx - min_len * 0.5f;
+      max_x = cx + min_len * 0.5f;
+    }
+    if (h < min_len) {
+      float cy = (min_y + max_y) * 0.5f;
+      min_y = cy - min_len * 0.5f;
+      max_y = cy + min_len * 0.5f;
+    }
+
+    b2Vec2 aabb_pts[4] = {
+      {(float)min_x, (float)min_y},
+      {(float)max_x, (float)min_y},
+      {(float)max_x, (float)max_y},
+      {(float)min_x, (float)max_y}
+    };
+
+    b2Hull hull = b2ComputeHull(aabb_pts, 4);
+    if (hull.count >= 3) {
+      b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
+      b2CreatePolygonShape(body_id, &shape_def, &b2_poly);
     }
   }
 
