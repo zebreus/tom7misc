@@ -1,0 +1,149 @@
+
+start-here
+reset
+
+drop cursors
+delay 0
+level talk/hdmi-signal-error.svg
+
+# influencer
+level talk/shiptoast.svg
+# speaking of downhill..
+
+
+# bilingual
+level talk/controversial-s.svg
+
+# something to do with "font weight"
+# This seems like a common problem. Sometimes
+# 
+level talk/love.svg
+
+# now I'm not that into pandering, but
+# if you do a talk about fonts there
+# are some jokes you're supposed to do.
+# and you guys paid like ten bucks to
+# be here, so I want you to feel satisfied
+#   (... oh, is it $25?)
+level talk/kerning.svg
+delay 1
+level talk/fonts-we-hate.svg
+# image talk/papyrus-zoom-g.png
+
+background talk/composition-notebook-bg.png
+discard-low-alpha false
+level talk/action-jackson.svg
+reset
+background none
+
+drop cursors
+
+# May 2009
+background talk/swift-background.png
+discard-low-alpha false
+level talk/swift-assembled.svg
+# image talk/taylor-swift-pegicorn-action-jackson.jpg
+reset
+background none
+drop cursors
+
+# big rigs
+image talk/youre-winner.jpg
+
+# TODO! Explain the experiment here.
+level talk/all-the-fonts.svg
+level talk/letter-grid.svg
+
+level talk/letter-stability.svg
+level talk/enamelware.svg
+
+level talk/stable-fonts.svg
+level talk/most-stable-font.svg
+level talk/font-winner.svg
+
+level talk/notable-fonts.svg
+
+# "You're Not Winner"
+
+# speaking of lazy dogs!
+# what is up with this font... "101 dalmations"
+
+background talk/pupbg.png
+level talk/pup.svg
+background talk/dalmationsbg.png
+level talk/dalmations.svg
+background none
+
+# is it a way of sidestepping trademarks?
+# or is it a portmanteau of dalmatian animation?
+
+# anyway, speaking of one zero one animations...
+
+drop bits
+
+# fix my computer
+level talk/committing.svg
+
+
+# how to fix your computer for genious
+# cell cell-not.svg
+reset
+drop bits
+level talk/notgate.svg
+
+level talk/xchg-naive.svg
+level talk/collision.svg
+
+reset
+drop bits
+level talk/andgate.svg
+
+
+cor 0.6
+cof 0.2
+vel-scale 0.0
+avel-scale 0.0
+level talk/best-separator.svg
+reset
+
+
+drop bits
+level talk/teflon.svg
+level talk/teflon2.svg
+level talk/teflon-cor.svg
+ 
+level talk/teflon-cor-oops.svg
+level talk/teflon-dead-blow.svg
+level talk/teflon-particle-moment.svg
+
+level talk/metamaterial.svg
+
+# taken to its logical conclusion
+
+drop bits
+level talk/can-it-play-chess.svg
+
+# Now if I had a youtube channel...
+
+level talk/chess-draw.svg
+level talk/chess-draw-none.svg
+level talk/chess-draw-implemented.svg
+
+level talk/chess-board-encoding.svg
+background talk/tom7-shirt-bg.png
+level talk/chess-legal-move.svg
+background none
+
+circuit talk/legal-b2-b4.layout
+
+level talk/chess-into-check.svg
+level talk/b2b4real.svg
+
+background talk/too-big-bg.png
+level talk/too-big.svg
+background none
+
+drop cursors
+level talk/everything.svg
+
+# speaking of dividing by zero
