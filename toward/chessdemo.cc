@@ -22,7 +22,7 @@
 #include "util.h"
 
 static std::string Square(int row, int col) {
-  return std::format("{:c}{:c}", 'a' + row, '1' + (7 - col));
+  return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
 }
 
 static void RenderParallel() {
@@ -74,13 +74,16 @@ static void RenderParallel() {
   img.Save("parallel.png");
 }
 
-static void RenderReal() {
+static void RenderOne(ChessProp::Details details) {
   CellLibrary library;
 
   World world;
   ChessProp::Board board = ChessProp::NewBoard(&world);
 
-  ChessProp::Details details = ChessProp::REAL_CHESS;
+  const int srcr = 6;
+  const int srcc = 1;
+  const int dstr = 4;
+  const int dstc = 1;
 
   Prop prop =
     SimplifyProp(ChessProp::IsLegal(board, 6, 1, 4, 1, details));
@@ -90,18 +93,22 @@ static void RenderReal() {
   Print("Prop size: {}\n", size);
   Print("Prop:\n{}\n", PropString(world, prop));
 
-  LOG(FATAL) << "Exit early.";
-
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   le->SetVerbose(1);
   le->SetWriteImages(false);
+
+  std::string basename = std::format("one-legal-{}-{}",
+                                     Square(srcr, srcc), Square(dstr, dstc));
+
   Layout layout = le->DoLayout(Span{prop});
   Print("Got layout!\n");
   DRC::CheckCircuit(library, layout.circuit);
   Print("DRC ok!\n");
+  Util::WriteFile(std::format("{}.layout", basename),
+                  LayoutEngine::Serialize(layout));
 
   ImageRGBA img = RenderCircuit(library, layout.circuit);
-  img.Save("parallel.png");
+  img.Save(std::format("{}.png", basename));
 }
 
 
@@ -193,6 +200,8 @@ struct ChessDemo {
 };
 
 
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -201,9 +210,10 @@ int main(int argc, char **argv) {
   demo.RenderAll();
   */
 
-  RenderReal();
-
   // RenderParallel();
+
+  // RenderOne(ChessProp::REAL_CHESS);
+  RenderOne(ChessProp::KID_CHESS);
 
   return 0;
 }
