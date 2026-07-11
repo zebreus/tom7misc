@@ -53,6 +53,7 @@
 #include <cassert>
 #include <cmath>
 #include <deque>
+#include <limits>
 #include <list>
 #include <memory>
 #include <numbers>

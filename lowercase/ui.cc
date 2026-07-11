@@ -1937,7 +1937,7 @@ void UI::DrawBez() {
   int x = bez_startx;
   int y = bez_starty;
   for (const auto &[xx, yy] :
-         TesselateQuadraticBezier<double>(
+         TesselateQuadBezier<double>(
              bez_startx, bez_starty, bez_cx, bez_cy, bez_endx, bez_endy,
              sqerr)) {
     sdlutil::drawclipline(screen, x, y, xx, yy, 0x33, 0x33, 0xFF);
@@ -2144,7 +2144,7 @@ void UI::Draw() {
           // Line(x, y, p.cx, p.cy, 0x00FF00FF);
           // Line(p.cx, p.cy, p.px, p.py, 0x0000FFFF);
           for (const auto &[xx, yy] :
-                 TesselateQuadraticBezier<double>(
+                 TesselateQuadBezier<double>(
                      x, y, p.cx, p.cy, p.x, p.y, sqerr)) {
             // times.Norm(1, 1.0f / 1000.0f).second)) {
             Line(x, y, xx, yy, 0xFF0000FF);

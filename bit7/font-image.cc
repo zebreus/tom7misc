@@ -804,7 +804,7 @@ static PageInfo PageBit7Extended() {
     // suits are in main page
     // cullet is in main page
     0x25D8,  // (◘)
-    0x25CB,  // (○)
+    0x25CB,  // (○) (hollow circle)
     0x25D9,  // (◙)
     0x2642,  // (♂︎)
     0x2640,  // (♀︎)
