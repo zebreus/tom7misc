@@ -211,10 +211,12 @@ struct PiRendering : public Rendering {
     // Attempt to get SDL to put the window in the foreground.
     SDL_SetHint(SDL_HINT_FORCE_RAISEWINDOW, "1");
 
-    window = SDL_CreateWindow("Toward", SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED,
-                              SCREEN_WIDTH, SCREEN_HEIGHT,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_FULLSCREEN_DESKTOP);
+    window = SDL_CreateWindow(
+        "Toward", SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        SCREEN_WIDTH, SCREEN_HEIGHT,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE |
+        SDL_WINDOW_FULLSCREEN_DESKTOP);
     if (!window) {
       std::string err = std::format("Failed to create window: {}",
                                     SDL_GetError());
@@ -233,6 +235,10 @@ struct PiRendering : public Rendering {
       SDL_DestroyWindow(window);
       LOG(FATAL) << "Couldn't initialize SDL.\n" << err;
     }
+
+    int pixel_w = 0, pixel_h = 0;
+    SDL_GL_GetDrawableSize(window, &pixel_w, &pixel_h);
+    Print("Window pixel resolution: {}x{}\n", pixel_w, pixel_h);
 
     // Log the actual version you got
     int major, minor;
@@ -292,7 +298,8 @@ struct PiRendering : public Rendering {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
+                          (void*)(2 * sizeof(float)));
 
     glEnable(GL_MULTISAMPLE);
     glEnable(GL_BLEND);
@@ -327,10 +334,24 @@ struct PiRendering : public Rendering {
                    std::span<const Triangle> scene) override {
     int w = 0, h = 0;
     SDL_GL_GetDrawableSize(window, &w, &h);
-    glViewport(0, 0, w, h);
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+
+    int vw = w;
+    int vh = h;
+    int vx = 0;
+    int vy = 0;
+
+    if (w * SCREEN_HEIGHT > h * SCREEN_WIDTH) {
+      vw = h * SCREEN_WIDTH / SCREEN_HEIGHT;
+      vx = (w - vw) / 2;
+    } else if (w * SCREEN_HEIGHT < h * SCREEN_WIDTH) {
+      vh = w * SCREEN_HEIGHT / SCREEN_WIDTH;
+      vy = (h - vh) / 2;
+    }
+
+    glViewport(vx, vy, vw, vh);
 
     if (has_bg) {
       glUseProgram(bg_program);
@@ -390,8 +411,21 @@ struct PiRendering : public Rendering {
     int w = 1, h = 1;
     SDL_GetWindowSize(window, &w, &h);
 
-    float tx = x / (float)w;
-    float ty = y / (float)h;
+    int vw = w;
+    int vh = h;
+    int vx = 0;
+    int vy = 0;
+
+    if (w * SCREEN_HEIGHT > h * SCREEN_WIDTH) {
+      vw = h * SCREEN_WIDTH / SCREEN_HEIGHT;
+      vx = (w - vw) / 2;
+    } else if (w * SCREEN_HEIGHT < h * SCREEN_WIDTH) {
+      vh = w * SCREEN_HEIGHT / SCREEN_WIDTH;
+      vy = (h - vh) / 2;
+    }
+
+    float tx = (x - vx) / (float)vw;
+    float ty = (y - vy) / (float)vh;
 
     // Flip y coordinate.
     return vec2f{
