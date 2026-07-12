@@ -7,9 +7,11 @@ delay 0
 level talk/hdmi-signal-error.svg
 
 # influencer
+delay 0
+rate 1
 level talk/shiptoast.svg
 # speaking of downhill..
-
+rate 2
 
 # bilingual
 delay 6
@@ -163,6 +165,9 @@ background talk/too-big-bg.png
 rate 1
 level talk/too-big.svg
 background none
+
+delay 3
+level talk/futurework.svg
 
 drop cursors
 delay 0

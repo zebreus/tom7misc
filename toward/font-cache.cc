@@ -56,6 +56,8 @@ const Letters *FontCache::Get(std::string_view font_name) {
     // {"antelopeh", "antelope.ttf"},
     // {"mayqueen", "mayqueen.ttf"},
     {"guildofprofessionalactors", "guildof.ttf"},
+
+    {"sans-serif", "helveticab.ttf"},
   };
 
   auto fit = fontfiles.find(Util::lcase(font_name));

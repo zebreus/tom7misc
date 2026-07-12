@@ -310,6 +310,8 @@ struct Slideshow {
   // are no circuit slides?
   CellLibrary library;
 
+  Timer present_timer;
+
   Slideshow(std::string_view slidefile) : rc("slides") {
     inputs = Inputs::CreateSDL();
     #ifdef RASPBERRY
@@ -516,6 +518,7 @@ struct Slideshow {
 
       case SlideResult::FIRST:
         current_slide = 0;
+        present_timer.Reset();
         break;
 
       case SlideResult::LAST:
