@@ -61,6 +61,9 @@ struct Props {
   // Time on slide before letters fall.
   float delay = 1.0;
 
+  // Number of macro Box2D rounds per video frame.
+  int rate = 2;
+
   // If set, objects in the scene with alpha less than 20% or
   // so are dropped at loading time.
   bool discard_low_alpha = true;
@@ -181,10 +184,13 @@ SlideResult SimulateLevel(const Props &props, ArcFour *rc,
     }
 
     if (!paused && slide_timer.Seconds() >= props.delay) {
-      scene->Update();
+      for (int i = 0; i < props.rate; i++) {
+        scene->Update();
+      }
     }
     std::vector<Rendering::Triangle> tri = scene->GetTriangles();
 
+    // With vsync, this gets throttled to the display frequency.
     rendering->RenderScene(VIEW_MIN, VIEW_MAX, tri);
   }
 
@@ -232,7 +238,9 @@ SlideResult SimulateCircuit(const CellLibrary &library,
     }
 
     if (!paused) {
-      sim.StepSimulation();
+      for (int i = 0; i < props.rate; i++) {
+        sim.StepSimulation();
+      }
     }
 
     std::vector<Rendering::Triangle> tri;
@@ -355,6 +363,10 @@ struct Slideshow {
       } else if (Util::TryStripPrefix("delay ", &line)) {
         Util::RemoveLeadingWhitespace(&line);
         props.delay = Util::ParseDouble(line, 1.0);
+
+      } else if (Util::TryStripPrefix("rate ", &line)) {
+        Util::RemoveLeadingWhitespace(&line);
+        props.rate = Util::ParseInt64(line, 1);
 
       } else if (Util::TryStripPrefix("level ", &line)) {
         Util::RemoveLeadingWhitespace(&line);

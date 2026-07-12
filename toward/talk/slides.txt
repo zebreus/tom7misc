@@ -12,6 +12,7 @@ level talk/shiptoast.svg
 
 
 # bilingual
+delay 6
 level talk/controversial-s.svg
 
 # something to do with "font weight"
@@ -51,7 +52,9 @@ drop cursors
 image talk/youre-winner.jpg
 
 # TODO! Explain the experiment here.
+rate 1
 level talk/all-the-fonts.svg
+rate 2
 level talk/letter-grid.svg
 
 level talk/letter-stability.svg
@@ -59,7 +62,9 @@ level talk/enamelware.svg
 
 level talk/stable-fonts.svg
 level talk/most-stable-font.svg
+rate 1
 level talk/font-winner.svg
+rate 2
 
 level talk/notable-fonts.svg
 
@@ -77,6 +82,8 @@ background none
 # is it a way of sidestepping trademarks?
 # or is it a portmanteau of dalmatian animation?
 
+# like this lazy brown dog, I'm tired of fonts now
+
 # anyway, speaking of one zero one animations...
 
 drop bits
@@ -89,8 +96,8 @@ level talk/committing.svg
 # cell cell-not.svg
 reset
 drop bits
+delay 0.5
 level talk/notgate.svg
-
 level talk/xchg-naive.svg
 level talk/collision.svg
 
@@ -103,6 +110,7 @@ cor 0.6
 cof 0.2
 vel-scale 0.0
 avel-scale 0.0
+delay 0.5
 level talk/best-separator.svg
 reset
 
@@ -111,10 +119,13 @@ drop bits
 level talk/teflon.svg
 level talk/teflon2.svg
 level talk/teflon-cor.svg
- 
+
+delay 4.0
 level talk/teflon-cor-oops.svg
+rate 1
 level talk/teflon-dead-blow.svg
 level talk/teflon-particle-moment.svg
+rate 2
 
 level talk/metamaterial.svg
 
@@ -129,21 +140,33 @@ level talk/chess-draw.svg
 level talk/chess-draw-none.svg
 level talk/chess-draw-implemented.svg
 
+delay 4.0
 level talk/chess-board-encoding.svg
+reset
 background talk/tom7-shirt-bg.png
+drop cursors
 level talk/chess-legal-move.svg
+drop bits
 background none
 
+rate 1
 circuit talk/legal-b2-b4.layout
+reset
 
+delay 3
 level talk/chess-into-check.svg
+delay 0
+rate 1
 level talk/b2b4real.svg
 
 background talk/too-big-bg.png
+rate 1
 level talk/too-big.svg
 background none
 
 drop cursors
+delay 0
+rate 1
 level talk/everything.svg
 
 # speaking of dividing by zero

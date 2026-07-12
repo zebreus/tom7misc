@@ -60,9 +60,9 @@ struct SDLInputs : public Inputs {
 
         uint8_t mask = 0;
         uint32_t state = SDL_GetMouseState(nullptr, nullptr);
-        if (state & SDL_BUTTON_LMASK) mask |= (1 << MOUSE_LEFT);
-        if (state & SDL_BUTTON_RMASK) mask |= (1 << MOUSE_RIGHT);
-        if (state & SDL_BUTTON_MMASK) mask |= (1 << MOUSE_MIDDLE);
+        if (state & SDL_BUTTON_LMASK) mask |= MOUSE_LEFT;
+        if (state & SDL_BUTTON_RMASK) mask |= MOUSE_RIGHT;
+        if (state & SDL_BUTTON_MMASK) mask |= MOUSE_MIDDLE;
         pending_ = MouseChange{e.button.x, e.button.y, 0, 0, mask};
 
         return MouseClick{e.button.x, e.button.y, button};
@@ -71,9 +71,9 @@ struct SDLInputs : public Inputs {
       if (e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONUP) {
         uint8_t mask = 0;
         uint32_t state = SDL_GetMouseState(nullptr, nullptr);
-        if (state & SDL_BUTTON_LMASK) mask |= (1 << MOUSE_LEFT);
-        if (state & SDL_BUTTON_RMASK) mask |= (1 << MOUSE_RIGHT);
-        if (state & SDL_BUTTON_MMASK) mask |= (1 << MOUSE_MIDDLE);
+        if (state & SDL_BUTTON_LMASK) mask |= MOUSE_LEFT;
+        if (state & SDL_BUTTON_RMASK) mask |= MOUSE_RIGHT;
+        if (state & SDL_BUTTON_MMASK) mask |= MOUSE_MIDDLE;
         int x = e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x;
         int y = e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y;
         int dx = e.type == SDL_MOUSEMOTION ? e.motion.xrel : 0;

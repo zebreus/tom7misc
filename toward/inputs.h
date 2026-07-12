@@ -34,9 +34,10 @@ struct Inputs {
   struct KeyDown { uint32_t codepoint; uint8_t modifiers; };
   struct KeyUp { uint32_t codepoint; uint8_t modifiers; };
 
-  static constexpr uint8_t MOUSE_LEFT = 0x00;
-  static constexpr uint8_t MOUSE_RIGHT = 0x01;
-  static constexpr uint8_t MOUSE_MIDDLE = 0x02;
+  // Bitmasks.
+  static constexpr uint8_t MOUSE_LEFT   = 0b001;
+  static constexpr uint8_t MOUSE_RIGHT  = 0b010;
+  static constexpr uint8_t MOUSE_MIDDLE = 0b100;
   // Simple click detection (mouse down).
   // A click also generates a change event.
   struct MouseClick { int x; int y; uint8_t button; };
