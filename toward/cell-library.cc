@@ -248,8 +248,8 @@ struct CellLibraryImpl {
 
       for (int offset : CellLibrary::WIRE_SIZES) {
         if (offset < CellLibrary::SMALL_WIRE) {
-          Load(std::format("cell-wireap{}.svg", offset), ga, offset);
-          Load(std::format("cell-wirebp{}.svg", offset), gb, offset);
+          Load(std::format("cell-wire{}a.svg", offset), ga, offset);
+          Load(std::format("cell-wire{}b.svg", offset), gb, offset);
         } else {
           // Large wires are stored as the A variant.
           Load(std::format("cell-wire{}.svg", offset), ga, offset);
@@ -276,7 +276,7 @@ struct CellLibraryImpl {
     for (CType type : {CType::MIXED, CType::ZERO, CType::ONE}) {
       int best_close = 1e9;
       int best_far = 1e9;
-      for (int k : {0, 1, 2, 4, 8, 16, 32, 64}) {
+      for (int k : CellLibrary::WIRE_SIZES) {
         for (bool flip : {false, true}) {
           for (Bias bias : {Bias::LEFT, Bias::RIGHT}) {
             Cell cell = CellLibrary::Wire(k, bias, type);
