@@ -56,7 +56,7 @@ const std::vector<Prop> &MediumInterestingProps() {
         (a & b & c) | (d & e & f),
         (a | b | c) & (d | e | f),
         ((a & b) | (c & d)) ^ (e | f),
-        -(a | b) & (c ^ d) | (e & -f),
+        -((a | b) & (c ^ d)) | (e & -f),
         // At most one set.
         -(a & b & c & d & e) |
         -(a & b & c & d & f) |
