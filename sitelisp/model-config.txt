@@ -15,4 +15,4 @@ describe ../cc-lib/opt C++ Black-box optimizer
 describe ../cc-lib/geom C++ geometry libraries
 
 describe ../cc-lib/image.h ImageRGBA (and similar), loading, saving, drawing
-
+describe ../cc-lib/base/print.h Defines Print, which works like std::print

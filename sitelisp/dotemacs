@@ -712,6 +712,35 @@
 
 (autoload 'slide-mode "slide-mode" "Major mode for giving simple presentations in emacs." t)
 
+(defun randomize-lines (beg end)
+  "Randomize (shuffle) the lines in the region BEG to END in place."
+  (interactive "r")
+  (save-excursion
+    ;; Move cursor so that it spans complete lines.
+    (goto-char beg)
+    (setq beg (line-beginning-position))
+
+    (goto-char end)
+    ;; If the cursor is at column 0 of a new line, step back so 
+    ;; we don't accidentally include that whole line in the shuffle.
+    (when (and (bolp) (> (point) beg))
+      (backward-char 1))
+    (setq end (line-end-position))
+    
+    (let* ((text (buffer-substring-no-properties beg end))
+           (lines (split-string text "\n"))
+           (vec (vconcat lines))
+           (len (length vec)))
+      
+      (dotimes (i len)
+        (let* ((j (+ i (random (- len i))))
+               (tmp (aref vec i)))
+          (aset vec i (aref vec j))
+          (aset vec j tmp)))
+      
+      (delete-region beg end)
+      (insert (mapconcat #'identity vec "\n")))))
+
 ;; tal mode - not since grad school!
 
 ;; (setq auto-mode-alist (cons '("\\.tali?$" . tal-mode) auto-mode-alist))

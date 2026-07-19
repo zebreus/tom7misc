@@ -30,20 +30,21 @@
   "Creates a filter that acts on a <OPEN>...</CLOSE> sequence.
    Use eprocs-make-tag-filter to call this."
   (save-excursion
-    (goto-char start-marker)
-    (while (search-forward close-tag end-marker t)
-      (let ((close-end (point))
-            (close-start (match-beginning 0)))
-        (if (search-backward open-tag nil t)
-            (let* ((open-start (point-marker))
-                   (open-end (match-end 0))
-                   (payload (buffer-substring-no-properties
-                             open-end close-start)))
-              (delete-region open-start close-end)
-              (funcall callback payload)
-              (goto-char open-start)
-              (set-marker open-start nil))
-          (goto-char close-end))))))
+    (let ((case-fold-search nil))
+      (goto-char start-marker)
+      (while (search-forward close-tag end-marker t)
+        (let ((close-end (point))
+              (close-start (match-beginning 0)))
+          (if (search-backward open-tag nil t)
+              (let* ((open-start (point-marker))
+                     (open-end (match-end 0))
+                     (payload (buffer-substring-no-properties
+                               open-end close-start)))
+                (delete-region open-start close-end)
+                (funcall callback payload)
+                (goto-char open-start)
+                (set-marker open-start nil))
+            (goto-char close-end)))))))
 
 ;; creates a pipeline stage that finds matched tags. call like:
 ;;    eprocs-make-tag-filter "<OPEN>" "</CLOSE>" #'callback-fn
