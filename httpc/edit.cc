@@ -133,6 +133,192 @@ JSON:
 )", current_file, request, filetext);
 }
 
+struct Replacement {
+  std::string comment;
+  std::string before;
+  std::string after;
+};
+
+// Improve the diffs. The LLM will sometimes return a diff that spans
+// many lines but only sparsely changes a few of them. To keep the
+// diffs easier to review, we can convert these into equivalent diffs
+// that will create the same change.
+void ImproveReplacements(
+    const ModelUtil::AvailableFiles &available,
+    std::map<std::string, std::vector<Replacement>> *replacements) {
+  // Don't split up a replacement unless it is at least this number of lines.
+  constexpr int MIN_SPLIT_LENGTH = 12;
+  // Only split a replacement when there are this many unchanged lines
+  // between two regions with changes.
+  constexpr int MIN_GAP_LENGTH = 8;
+
+  struct Block { int b, a, len; };
+
+  // The maximum number of cut points to test within a single gap.
+  // Testing too many could be slow, and if the middle cuts are
+  // ambiguous, the edges likely are too.
+  constexpr int MAX_CUT_TESTS = 8;
+
+  std::map<std::string, std::vector<Replacement>> new_replacements;
+
+  for (auto &[filename, reps] : *replacements) {
+    auto it = available.files.find(filename);
+    if (it == available.files.end()) {
+      for (const Replacement &rep : reps) {
+        if (rep.before != rep.after) {
+          new_replacements[filename].push_back(rep);
+        }
+      }
+      continue;
+    }
+
+    std::string path = it->second.path.string();
+    std::string file_contents = Util::ReadFile(path);
+    if (file_contents.empty()) {
+      file_contents = Util::ReadFile(filename);
+    }
+
+    std::vector<std::string> file_lines = Util::SplitToLines(file_contents);
+
+    auto CountOccurrences = [&](const std::vector<std::string>& query) -> int {
+      if (query.empty()) return 0;
+      int count = 0;
+      for (size_t i = 0; i + query.size() <= file_lines.size(); i++) {
+        bool match = true;
+        for (size_t j = 0; j < query.size(); j++) {
+          if (file_lines[i + j] != query[j]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) count++;
+      }
+      return count;
+    };
+
+    auto SubstringByLines = [](std::string_view orig, int start_line, int end_line) -> std::string {
+      if (start_line >= end_line) return "";
+      int current_line = 0;
+      while (current_line < start_line && !orig.empty()) {
+        if (orig.front() == '\n') current_line++;
+        orig.remove_prefix(1);
+      }
+      std::string_view rest = orig;
+      while (current_line < end_line && !rest.empty()) {
+        if (rest.front() == '\n') current_line++;
+        rest.remove_prefix(1);
+      }
+      orig.remove_suffix(rest.size());
+      return std::string(orig);
+    };
+
+    std::vector<Replacement> file_new_reps;
+
+    for (const Replacement &rep : reps) {
+      std::vector<std::string> before_lines = Util::SplitToLines(rep.before);
+      std::vector<std::string> after_lines = Util::SplitToLines(rep.after);
+
+      int b_sz = before_lines.size();
+      int a_sz = after_lines.size();
+
+      if (b_sz < MIN_SPLIT_LENGTH || CountOccurrences(before_lines) != 1) {
+        if (rep.before != rep.after) {
+          file_new_reps.push_back(rep);
+        }
+        continue;
+      }
+
+      auto FindLongestMatch = [&](auto& self, int b_start, int b_end, int a_start, int a_end) -> Block {
+        Block best = {b_start, a_start, 0};
+        for (int i = b_start; i < b_end; i++) {
+          for (int j = a_start; j < a_end; j++) {
+            if (before_lines[i] == after_lines[j]) {
+              // Optimization: only start at the beginning of a matched block.
+              if (i > b_start && j > a_start && before_lines[i-1] == after_lines[j-1]) {
+                continue;
+              }
+              int k = 1;
+              while (i + k < b_end && j + k < a_end && before_lines[i+k] == after_lines[j+k]) {
+                k++;
+              }
+              if (k > best.len) {
+                best = {i, j, k};
+              }
+            }
+          }
+        }
+        return best;
+      };
+
+      auto SplitRep = [&](auto& self, int b_start, int b_end, int a_start, int a_end) -> std::vector<Replacement> {
+        std::vector<Block> gaps;
+
+        auto GetGaps = [&](auto& self_gaps, int bs, int be, int as, int ae) -> void {
+          Block m = FindLongestMatch(FindLongestMatch, bs, be, as, ae);
+          if (m.len >= MIN_GAP_LENGTH) {
+            self_gaps(self_gaps, bs, m.b, as, m.a);
+            gaps.push_back(m);
+            self_gaps(self_gaps, m.b + m.len, be, m.a + m.len, ae);
+          }
+        };
+        GetGaps(GetGaps, b_start, b_end, a_start, a_end);
+
+        std::vector<Block> sorted_gaps = gaps;
+        std::sort(sorted_gaps.begin(), sorted_gaps.end(), [](const Block& a, const Block& b) {
+          return a.len > b.len;
+        });
+
+        for (const Block& m : sorted_gaps) {
+          int mid = m.len / 2;
+          std::vector<int> ks;
+          for (int k = 1; k < m.len; k++) {
+            ks.push_back(k);
+          }
+          // Sort possible cut points by distance to the middle of the gap.
+          std::sort(ks.begin(), ks.end(), [mid](int a, int b) {
+            int dist_a = a > mid ? a - mid : mid - a;
+            int dist_b = b > mid ? b - mid : mid - b;
+            if (dist_a != dist_b) return dist_a < dist_b;
+            return a > b;
+          });
+
+          int attempts = 0;
+          for (int k : ks) {
+            if (attempts++ >= MAX_CUT_TESTS) break;
+
+            int b_cut = m.b + k;
+            int a_cut = m.a + k;
+
+            std::vector<std::string> left_b(before_lines.begin() + b_start, before_lines.begin() + b_cut);
+            std::vector<std::string> right_b(before_lines.begin() + b_cut, before_lines.begin() + b_end);
+
+            if (CountOccurrences(left_b) == 1 && CountOccurrences(right_b) == 1) {
+              std::vector<Replacement> left_reps = self(self, b_start, b_cut, a_start, a_cut);
+              std::vector<Replacement> right_reps = self(self, b_cut, b_end, a_cut, a_end);
+              left_reps.insert(left_reps.end(), right_reps.begin(), right_reps.end());
+              return left_reps;
+            }
+          }
+        }
+
+        Replacement r;
+        r.comment = rep.comment;
+        r.before = SubstringByLines(rep.before, b_start, b_end);
+        r.after = SubstringByLines(rep.after, a_start, a_end);
+        if (r.before == r.after) return {};
+        return {r};
+      };
+
+      std::vector<Replacement> split = SplitRep(SplitRep, 0, b_sz, 0, a_sz);
+      file_new_reps.insert(file_new_reps.end(), split.begin(), split.end());
+    }
+    new_replacements[filename] = file_new_reps;
+  }
+
+  *replacements = std::move(new_replacements);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Net::Init();
@@ -363,12 +549,6 @@ int main(int argc, char **argv) {
   }
   fflush(stdout);
 
-  struct Replacement {
-    std::string comment;
-    std::string before;
-    std::string after;
-  };
-
   // Keyed by filename.
   std::map<std::string, std::vector<Replacement>> replacements;
 
@@ -439,6 +619,9 @@ int main(int argc, char **argv) {
       Markdown::Document doc = Markdown::Parse(message);
       Print("\n{}\n", Markdown::ToColorTerminal(doc));
     }
+
+    ImproveReplacements(available, &replacements);
+
 
     // Now print the structured output for parsing by emacs.
     for (const auto &[file, reps] : replacements) {
