@@ -472,6 +472,19 @@ std::vector<Func> Transform(const Layer &layer,
   return out;
 }
 
+size_t CircuitSize(const Circuit &circuit) {
+  size_t size = 0;
+  for (const Layer &layer : circuit.layers) {
+    for (const Cell &cell : layer) {
+      if (cell.gate != Gate::SPACER) {
+        size++;
+      }
+    }
+  }
+
+  return size;
+}
+
 static constexpr std::string_view GateToCode(Gate g) {
   switch (g) {
   case AND0110:     return "aa";

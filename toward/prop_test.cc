@@ -1,12 +1,16 @@
 
 #include "prop.h"
 
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "interesting-props.h"
 
 static void TestValue() {
   std::vector<bool> assignments;
@@ -188,49 +192,29 @@ static bool IsAndNormalForm(const Prop &prop) {
   return true;
 }
 
-static std::vector<Prop> InterestingProps() {
-  Prop p0 = Prop{.p = Var{.id = 0}};
-  Prop p1 = Prop{.p = Var{.id = 1}};
-  Prop p2 = Prop{.p = Var{.id = 2}};
-  Prop p3 = Prop{.p = Var{.id = 3}};
-
-  return {
-    True(),
-    False(),
-    p0,
-    -p0,
-    p0 | p1,
-    p0 & p1,
-    p0 ^ p1,
-    (p0 | p1) ^ p2,
-    -(p0 | (p1 & p2)),
-    p0 & p1 & p2 & p3,
-    p0 | p1 | p2 | p3,
-    p0 ^ p1 ^ p2 ^ p3,
-    (p0 & p1) | (p2 & p3),
-    p0 | False(),
-    p0 & True(),
-    p0 ^ p0,
-    -(-p0),
-  };
+static std::vector<Prop> TestProps() {
+  std::vector<Prop> props;
+  for (const Prop &p : SmallInterestingProps()) props.push_back(p);
+  for (const Prop &p : MediumInterestingProps()) props.push_back(p);
+  return props;
 }
 
 static void TestSimplifyProp() {
-  for (const Prop &p : InterestingProps()) {
+  for (const Prop &p : TestProps()) {
     Prop simp = SimplifyProp(p);
     CHECK(PropEq(p, simp)) << PropString(p) << "\n" << PropString(simp);
   }
 }
 
 static void TestBalanceProp() {
-  for (const Prop &p : InterestingProps()) {
+  for (const Prop &p : TestProps()) {
     Prop bal = BalanceProp(p);
     CHECK(PropEq(p, bal)) << PropString(p) << "\n" << PropString(bal);
   }
 }
 
 static void TestNormalizeToAnd() {
-  for (const Prop &p : InterestingProps()) {
+  for (const Prop &p : TestProps()) {
     Prop norm = NormalizeToAnd(p);
     CHECK(PropEq(p, norm)) << PropString(p) << "\n" << PropString(norm);
     CHECK(IsAndNormalForm(norm)) << PropString(p) << "\n"
@@ -239,12 +223,40 @@ static void TestNormalizeToAnd() {
 }
 
 static void TestSerializeParse() {
-  for (const Prop &p : InterestingProps()) {
+  for (const Prop &p : TestProps()) {
     std::string s = SerializeProp(p);
     std::optional<Prop> parsed = ParseProp(s);
     CHECK(parsed.has_value()) << "Failed to parse: " << s;
     CHECK(*parsed == p) << "Round trip failed for: " << s;
   }
+}
+
+static void TestUnorderedMap() {
+  std::unordered_map<Prop, int> m;
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+
+  m[True()] = 10;
+  m[False()] = 20;
+  m[p0] = 30;
+  m[p1] = 40;
+  m[p0 & p1] = 50;
+
+  CHECK(m.size() == 5);
+  CHECK(m[True()] == 10);
+  CHECK(m[False()] == 20);
+  CHECK(m[p0] == 30);
+  CHECK(m[p1] == 40);
+  CHECK(m[p0 & p1] == 50);
+
+  // Check that equivalent Props resolve to the same keys.
+  Prop p0_copy = Prop{.p = Var{.id = 0}};
+  CHECK(m.contains(p0_copy));
+  CHECK(m[p0_copy] == 30);
+
+  Prop and_copy = p0_copy & Prop{.p = Var{.id = 1}};
+  CHECK(m.contains(and_copy));
+  CHECK(m[and_copy] == 50);
 }
 
 int main(int argc, char **argv) {
@@ -262,6 +274,7 @@ int main(int argc, char **argv) {
   TestBalanceProp();
   TestNormalizeToAnd();
   TestSerializeParse();
+  TestUnorderedMap();
 
   Print("OK\n");
   return 0;

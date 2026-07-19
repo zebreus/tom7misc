@@ -36,7 +36,7 @@ struct Optimizer {
 
   // We increment this whenever we make definite progress. This
   // implies that we have some well-founded order on circuits in mind.
-  // This is a lexicographic ordering along the lies of (number of
+  // This is a lexicographic ordering along the lines of (number of
   // layers, number of layers with only wires, global straightness of
   // wires). (Best if we can say precisely what it is!)
   int improve_count = 0;
@@ -119,6 +119,8 @@ struct Optimizer {
       return false;
     }
 
+    const int mcc = library.MinClearanceClose();
+
     size_t n = layers[start].size();
     std::vector<int> x0(n), x1(n), x2(n);
     auto compute_x = [&](int l, std::vector<int> &x_out) {
@@ -137,6 +139,9 @@ struct Optimizer {
     bool improved = false;
     int min_x0 = 0, min_x1 = 0, min_x2 = 0;
 
+    int out_prefix0 = 0, in_prefix1 = 0;
+    int out_prefix1 = 0, in_prefix2 = 0;
+
     for (size_t c = 0; c < n; ++c) {
       NC nc0 = layers[start][c];
       NC nc1 = layers[start+1][c];
@@ -146,13 +151,24 @@ struct Optimizer {
       auto info1 = library.GetInfo(nc1.cell);
       auto info2 = library.GetInfo(nc2.cell);
 
+      bool connected =
+        (out_prefix0 == in_prefix1) && (out_prefix1 == in_prefix2) &&
+        (info0.outputs.size() == 1) && (info1.inputs.size() == 1) &&
+        (info1.outputs.size() == 1) && (info2.inputs.size() == 1);
+
+      out_prefix0 += info0.outputs.size();
+      in_prefix1 += info1.inputs.size();
+      out_prefix1 += info1.outputs.size();
+      in_prefix2 += info2.inputs.size();
+
       // Skip if the topology is complex (not a simple strand)
-      if (info0.inputs.size() > 1 || info0.outputs.size() > 1 ||
+      if (!connected ||
+          info0.inputs.size() > 1 || info0.outputs.size() > 1 ||
           info1.inputs.size() > 1 || info1.outputs.size() > 1 ||
           info2.inputs.size() > 1 || info2.outputs.size() > 1) {
-        min_x0 = target_x[0][c] + info0.block_width + library.MinClearanceClose();
-        min_x1 = target_x[1][c] + info1.block_width + library.MinClearanceClose();
-        min_x2 = target_x[2][c] + info2.block_width + library.MinClearanceClose();
+        min_x0 = target_x[0][c] + info0.block_width + mcc;
+        min_x1 = target_x[1][c] + info1.block_width + mcc;
+        min_x2 = target_x[2][c] + info2.block_width + mcc;
         continue;
       }
 
@@ -178,16 +194,22 @@ struct Optimizer {
           int fixed_in = x0[c] + info0.inputs[0].xblock;
           int x = fixed_in - info.inputs[0].xblock;
           if (x < min_x0) continue;
-          if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[0][c+1]) continue;
+          if (c + 1 < n && x + info.block_width + mcc > target_x[0][c+1])
+            continue;
           int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
           int cost = IsWire(cell.gate) ? std::abs(cell.v) : 0;
-          if (!dp0.count(out) || cost < dp0[out].cost) dp0[out] = {cost, x, cell, 0};
+          if (!dp0.count(out) || cost < dp0[out].cost) {
+            dp0[out] = {cost, x, cell, 0};
+          }
         } else {
           for (int x = std::max(min_x0, x0[c] - 150); x <= x0[c] + 150; ++x) {
-            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[0][c+1]) continue;
+            if (c + 1 < n && x + info.block_width + mcc > target_x[0][c+1])
+              continue;
             int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
             int cost = IsWire(cell.gate) ? std::abs(cell.v) : 0;
-            if (!dp0.count(out) || cost < dp0[out].cost) dp0[out] = {cost, x, cell, 0};
+            if (!dp0.count(out) || cost < dp0[out].cost) {
+              dp0[out] = {cost, x, cell, 0};
+            }
           }
         }
       }
@@ -203,10 +225,15 @@ struct Optimizer {
           if (info.inputs.size() == 1) {
             int x = prev_out - info.inputs[0].xblock;
             if (x < min_x1) continue;
-            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[1][c+1]) continue;
+            if (c + 1 < n && x + info.block_width + mcc > target_x[1][c+1])
+              continue;
+
             int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
-            int cost = prev_state.cost + (IsWire(cell.gate) ? std::abs(cell.v) : 0);
-            if (!dp1.count(out) || cost < dp1[out].cost) dp1[out] = {cost, x, cell, prev_out};
+            int cost = prev_state.cost +
+              (IsWire(cell.gate) ? std::abs(cell.v) : 0);
+            if (!dp1.count(out) || cost < dp1[out].cost) {
+              dp1[out] = {cost, x, cell, prev_out};
+            }
           }
         }
       }
@@ -222,15 +249,19 @@ struct Optimizer {
           if (info.inputs.size() == 1) {
             int x = prev_out - info.inputs[0].xblock;
             if (x < min_x2) continue;
-            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[2][c+1]) continue;
+            if (c + 1 < n && x + info.block_width + mcc > target_x[2][c+1])
+              continue;
             if (info.outputs.size() == 1) {
               int out = x + info.outputs[0].xblock;
               int fixed_out = x2[c] + info2.outputs[0].xblock;
               if (out != fixed_out) continue;
             }
             int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
-            int cost = prev_state.cost + (IsWire(cell.gate) ? std::abs(cell.v) : 0);
-            if (!dp2.count(out) || cost < dp2[out].cost) dp2[out] = {cost, x, cell, prev_out};
+            int cost = prev_state.cost +
+              (IsWire(cell.gate) ? std::abs(cell.v) : 0);
+            if (!dp2.count(out) || cost < dp2[out].cost) {
+              dp2[out] = {cost, x, cell, prev_out};
+            }
           }
         }
       }
@@ -259,9 +290,12 @@ struct Optimizer {
         target_x[2][c] = s2.x;
       }
 
-      min_x0 = target_x[0][c] + library.GetInfo(layers[start][c].cell).block_width + library.MinClearanceClose();
-      min_x1 = target_x[1][c] + library.GetInfo(layers[start+1][c].cell).block_width + library.MinClearanceClose();
-      min_x2 = target_x[2][c] + library.GetInfo(layers[start+2][c].cell).block_width + library.MinClearanceClose();
+      min_x0 = target_x[0][c] +
+        library.GetInfo(layers[start][c].cell).block_width + mcc;
+      min_x1 = target_x[1][c] +
+        library.GetInfo(layers[start+1][c].cell).block_width + mcc;
+      min_x2 = target_x[2][c] +
+        library.GetInfo(layers[start+2][c].cell).block_width + mcc;
     }
 
     if (improved) {

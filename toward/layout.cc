@@ -14,6 +14,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
@@ -312,6 +314,30 @@ struct LayoutEngineImpl : public LayoutEngine {
   // desire field in place.
   void SetChuteDesires(std::vector<Chute> &chutes) {
 
+    struct Counts {
+      int any = 0;
+      int mixed = 0;
+      int zero = 0;
+      int one = 0;
+    };
+
+    std::unordered_map<Prop, Counts> prop_count;
+    for (Chute &chute : chutes) {
+      Counts &counts = prop_count[chute.prop];
+      counts.any++;
+      switch (chute.type) {
+      case CType::MIXED:
+        counts.mixed++;
+        break;
+      case CType::ONE:
+        counts.one++;
+        break;
+      case CType::ZERO:
+        counts.zero++;
+        break;
+      }
+    }
+
     // After dealing with the exterior, a mixed variable that is not
     // "done" is going to be problematic, because we will likely need
     // to cross over it to attain the order we want. So uncombine
@@ -354,11 +380,18 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    // Unseparate exterior pairs of separated variables. We do this
-    // after UNDUP so that UNDUP has higher priority.
+    // Unseparate separated propositions. We do this after UNDUP
+    // so that UNDUP has higher priority. We also only perform
+    // unseparation when the count of the relevant proposition
+    // has exactly one 1 and 0 chute; otherwise we could end up
+    // orphaning one of them. (If not exactly one, then we want
+    // to undup them first).
     for (int c = 0; c < (int)chutes.size() - 1; c++) {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
+
+      // Props are equal.
+      const Prop &prop = chute1.prop;
 
       if (!chute1.done && !chute2.done &&
           chute1.desire == UNSPECIFIED &&
@@ -366,10 +399,11 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute1.type != CType::MIXED &&
           chute2.type != CType::MIXED &&
           chute1.type != chute2.type &&
-          chute1.prop == chute2.prop) {
-
-        // Props are equal.
-        const Prop &prop = chute1.prop;
+          chute1.prop == chute2.prop &&
+          // (Note: We could use a weaker condition here. We just don't
+          // want to do it in a situation like zero = 2 and one = 1).
+          prop_count[prop].zero == 1 &&
+          prop_count[prop].one == 1) {
 
         // For variables, we only want to unseparate them if they are
         // exterior, so they will become done. Unseparating prematurely
@@ -387,10 +421,18 @@ struct LayoutEngineImpl : public LayoutEngine {
           }
 
         } else if (std::holds_alternative<Binop>(prop.p)) {
-
-          // Our binops all target mixed outputs, so we need
+          // Our binops target mixed outputs, so we need
           // to unseparate wherever this is. On the next
           // layer we should be able to decompose.
+          chute1.desire = UNSEPARATE_LHS;
+          chute2.desire = UNSEPARATE_RHS;
+
+        } else if (std::holds_alternative<Value>(prop.p)) {
+          // Values should usually be optimized away, so
+          // we don't worry too much about being clever
+          // here. Since CONST0 and CONST1 output mixed
+          // values, we should unseparate like in the
+          // other cases.
           chute1.desire = UNSEPARATE_LHS;
           chute2.desire = UNSEPARATE_RHS;
         }
@@ -1605,4 +1647,12 @@ std::string LayoutEngine::ToString(const Layout &layout) {
   }
 
   return out;
+}
+
+std::string LayoutEngine::LayoutInfo(const Layout &layout) {
+  // TODO: Compute duplicate inputs
+  return std::format("{} layers, {} inputs, {} cells",
+                     layout.circuit.layers.size(),
+                     layout.input_vars.size(),
+                     CircuitSize(layout.circuit));
 }

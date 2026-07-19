@@ -10,6 +10,8 @@
 #include <variant>
 #include <vector>
 #include <compare>
+#include <cstddef>
+#include <functional>
 
 struct World {
   // Just for input/output. A variable is uniquely
@@ -147,5 +149,18 @@ Prop NormalizeRemoveXor(const Prop &prop);
 // Can assume no spaces or newlines in serialized propositions.
 std::string SerializeProp(const Prop &prop);
 std::optional<Prop> ParseProp(std::string_view s);
+
+// Give arbitrary (new) names to the variables that occur in the
+// proposition, for situations where we require a world but don't have
+// one.
+void NameVars(World *world, const Prop &prop);
+
+// Overloads for std::unordered_set, etc.
+namespace std {
+template <>
+struct hash<Prop> {
+  size_t operator()(const Prop &prop) const;
+};
+}
 
 #endif

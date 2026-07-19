@@ -1,18 +1,19 @@
 
 #include "prop.h"
 
-#include <compare>
-#include <limits>
-#include <memory>
-#include <optional>
-#include <string>
-#include <unordered_set>
 #include <algorithm>
+#include <bit>
+#include <compare>
 #include <cstdint>
 #include <format>
 #include <functional>
 #include <iterator>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -560,3 +561,50 @@ std::optional<Prop> ParseProp(std::string_view s) {
   return a;
 }
 
+void NameVars(World *world, const Prop &prop) {
+  std::unordered_set<std::string> used;
+  for (const std::string &s : world->symbol_names) {
+    used.insert(s);
+  }
+
+  for (int v : PropVars(prop)) {
+    CHECK(v >= 0);
+    if (v >= world->symbol_names.size()) {
+      world->symbol_names.resize(v + 1);
+    }
+
+    if (world->symbol_names[v].empty()) {
+      std::string base = std::format("v{}", v);
+      std::string name = base;
+      int suffix = 1;
+      while (used.contains(name)) {
+        name = std::format("{}_{}", base, suffix++);
+      }
+      world->symbol_names[v] = name;
+      used.insert(name);
+    }
+  }
+}
+
+static size_t HashPropRec(const Prop &p) {
+  size_t h = std::hash<size_t>()(p.p.index());
+  if (const Value *v = std::get_if<Value>(&p.p)) {
+    h = std::rotl(h, 13) + std::hash<bool>()(v->value);
+  } else if (const Var *v = std::get_if<Var>(&p.p)) {
+    h = std::rotl(h, 13) + std::hash<int>()(v->id);
+  } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+    h = std::rotl(h, 13) + static_cast<size_t>(u->op);
+    h = std::rotl(h, 13) + HashPropRec(*u->a);
+  } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+    h = std::rotl(h, 13) + static_cast<size_t>(b->op);
+    h = std::rotl(h, 13) + HashPropRec(*b->a);
+    h = std::rotl(h, 13) + HashPropRec(*b->b);
+  } else {
+    LOG(FATAL) << "Bad variant?";
+  }
+  return h;
+}
+
+size_t std::hash<Prop>::operator()(const Prop &prop) const {
+  return HashPropRec(prop);
+}

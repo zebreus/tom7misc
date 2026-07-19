@@ -169,6 +169,10 @@ static void TestStraightenZigZagWire() {
   CHECK(opt_l1[0].gate == Gate::SINK);
 }
 
+static void RealExamples() {
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 

@@ -1,20 +1,27 @@
 
-#include <functional>
 #include <algorithm>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
-#include "drc.h"
-#include "util.h"
-#include "base/logging.h"
-#include "base/print.h"
 #include "ansi.h"
 #include "arcfour.h"
-#include "layout.h"
-#include "randutil.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "drc.h"
+#include "layout.h"
 #include "optimization.h"
 #include "periodically.h"
+#include "prop.h"
+#include "randutil.h"
 #include "status-bar.h"
+#include "util.h"
+
+static constexpr bool SELF_CHECK = true;
 
 static bool IsAllWires(const Layer &layer) {
   for (const Cell &cell : layer) {
@@ -98,15 +105,24 @@ struct Reducer {
           Print("Move: Remove topmost layer\n");
           Layout res = layout;
           res.circuit.layers.erase(res.circuit.layers.begin());
-          size_t new_arity = LayerArity(res.circuit.layers.front()).first;
+          std::vector<CType> new_types;
+          for (const Cell &cell : res.circuit.layers.front()) {
+            for (const auto &in : library.GetInfo(cell).inputs) {
+              new_types.push_back(in.type);
+            }
+          }
+          size_t new_arity = new_types.size();
           if (new_arity < res.input_vars.size()) {
             res.input_vars.resize(new_arity);
           } else {
             res.input_vars.resize(new_arity, {0, CType::MIXED});
           }
+          for (size_t i = 0; i < new_arity; i++) {
+            res.input_vars[i].second = new_types[i];
+          }
           return res;
         });
-      moves.push_back([this, &layout]() {
+      moves.push_back([&layout]() {
           Print("Move: Remove bottommost layer\n");
           Layout res = layout;
           res.circuit.layers.pop_back();
@@ -164,7 +180,8 @@ struct Reducer {
           if (next_i >= 0 && IsWire(Lnext[next_i].gate)) {
             if (CellFits(layout, l + 1, next_i, L[i])) {
               moves.push_back([this, &layout, l, i, next_i]() {
-                Print("Move: Move CONST from layer {} cell {} down to layer {} cell {}\n", l, i, l + 1, next_i);
+                Print("Move: Move CONST from layer {} cell {} down "
+                      "to layer {} cell {}\n", l, i, l + 1, next_i);
                 Layout res = layout;
                 Cell c = res.circuit.layers[l][i];
                 int w = library.GetInfo(c).block_width;
@@ -188,7 +205,7 @@ struct Reducer {
         if (IsWire(L[i].gate)) {
           Cell sink(Gate::SINK);
           if (CellFits(layout, last_l, i, sink)) {
-            moves.push_back([this, &layout, last_l, i, sink]() {
+            moves.push_back([&layout, last_l, i, sink]() {
               Print("Move: Replace output wire {} with SINK\n", i);
               Layout res = layout;
               res.circuit.layers[last_l][i] = sink;
@@ -212,7 +229,8 @@ struct Reducer {
           if (prev_i >= 0 && IsWire(Lprev[prev_i].gate)) {
             if (CellFits(layout, l - 1, prev_i, L[i])) {
               moves.push_back([this, &layout, l, i, prev_i]() {
-                Print("Move: Move SINK from layer {} cell {} up to layer {} cell {}\n", l, i, l - 1, prev_i);
+                Print("Move: Move SINK from layer {} cell {} up "
+                      "to layer {} cell {}\n", l, i, l - 1, prev_i);
                 Layout res = layout;
                 Cell c = res.circuit.layers[l][i];
                 int w = library.GetInfo(c).block_width;
@@ -233,7 +251,11 @@ struct Reducer {
     }
 
     const auto &f = moves[RandTo(&rc, moves.size())];
-    return f();
+    Layout lay = f();
+    if (SELF_CHECK) {
+      DRC::CheckLayout(library, "reduced", lay);
+    }
+    return lay;
   }
 
   Layout ReduceWhile(Layout layout, int max_consecutive_failures,
@@ -302,10 +324,12 @@ static Layout MakeStart(const CellLibrary &library) {
 
   std::vector<Prop> output = {(a ^ (b & -c)) | (a & c)};
   Layout layout = le->DoLayout(output);
-  Print("Got layout:\n{}\n", LayoutEngine::ToString(layout));
+  Print("Got Layout! {}", LayoutEngine::LayoutInfo(layout));
+  Print("Initial layout:\n{}\n", LayoutEngine::ToString(layout));
   Print("Try optimizing:\n");
   layout = Optimization::Optimize(library, layout);
-  Print("Optimized!\n");
+  Print("\n\nOptimized! {}\n", LayoutEngine::LayoutInfo(layout));
+  Print("Optimized layout:\n{}\n", LayoutEngine::ToString(layout));
   DRC::CheckLayout(library, "start", layout);
   return layout;
 }

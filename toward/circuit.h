@@ -110,6 +110,9 @@ std::string CellString(const Cell &cell);
 std::string SerializeCircuit(const Circuit &circuit);
 std::optional<Circuit> ParseCircuit(std::string_view s);
 
+// Total number of non-spacer cells.
+size_t CircuitSize(const Circuit &circuit);
+
 // All chutes are boolean functions (some proposition)
 // but could be represented different ways.
 struct Func {

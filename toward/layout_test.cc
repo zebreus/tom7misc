@@ -15,6 +15,7 @@
 #include "cell-library.h"
 #include "circuit.h"
 #include "drc.h"
+#include "interesting-props.h"
 #include "prop.h"
 #include "render-circuit.h"
 #include "util.h"
@@ -124,6 +125,67 @@ static void XorVars(const CellLibrary &library) {
   Print("Wrote xorvars.layout\n");
 }
 
+// Regression: Make sure we can handle an unoptimized constant like
+// False.
+static void OrBot(const CellLibrary &library) {
+  StartTest("OrBot");
+  World world{.symbol_names = {"a"}};
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  Prop a{Var{.id = 0}};
+
+  std::vector<Prop> output = {a | False()};
+  le->SetVerbose(0);
+  Layout layout = le->DoLayout(output);
+  DRC::CheckLayout(library, "orbot", layout);
+  Verify(layout, output);
+
+  Util::WriteFile("orbot.layout", LayoutEngine::Serialize(layout));
+  Print("Wrote orbot.layout\n");
+}
+
+// Regression: If we unseparate too eagerly we can get stuck (undup first).
+static void ManyXor(const CellLibrary &library) {
+  StartTest("ManyXor");
+  World world{.symbol_names = {"a", "b", "c", "d", "e", "f"}};
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}},
+    d{Var{.id = 3}}, e{Var{.id = 4}}, f{Var{.id = 5}};
+
+  std::vector<Prop> output = {a ^ b ^ c ^ d ^ e ^ f};
+  le->SetVerbose(0);
+  Layout layout = le->DoLayout(output);
+  DRC::CheckLayout(library, "many-xor", layout);
+  Verify(layout, output);
+
+  Util::WriteFile("many-xor.layout", LayoutEngine::Serialize(layout));
+  Print("Wrote many-xor.layout\n");
+}
+
+static std::vector<Prop> TestProps() {
+  std::vector<Prop> props;
+  for (const Prop &p : SmallInterestingProps()) props.push_back(p);
+  for (const Prop &p : MediumInterestingProps()) props.push_back(p);
+  return props;
+}
+
+static void LayoutInterestingProps(const CellLibrary &library) {
+  StartTest("Interesting Props");
+
+  World world;
+  std::vector<Prop> props = TestProps();
+  for (const Prop &prop : props) NameVars(&world, prop);
+
+  for (const Prop &prop : props) {
+    Print("---- Layout test: Interesting prop ----\n"
+          "{}\n\n", PropString(world, prop));
+    std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+    std::vector<Prop> output = {prop};
+    Layout layout = le->DoLayout(output);
+    DRC::CheckLayout(library, "xor", layout);
+    Verify(layout, output);
+  }
+}
+
 static void MultiOutput(const CellLibrary &library) {
   StartTest("Multi Output");
   World world{.symbol_names = {"a", "b", "c"}};
@@ -131,7 +193,7 @@ static void MultiOutput(const CellLibrary &library) {
 
   std::vector<Prop> output = {a & b, b | c, c ^ a, -a};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-  le->SetVerbose(2);
+  le->SetVerbose(0);
   Layout layout = le->DoLayout(output);
   DRC::CheckLayout(library, "multi-output", layout);
   Verify(layout, output);
@@ -279,6 +341,8 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
+  ManyXor(library);
+
   TestSerialization();
 
   TestLoop1();
@@ -291,11 +355,15 @@ int main(int argc, char **argv) {
   AndVars(library);
   OrVars(library);
   XorVars(library);
+  OrBot(library);
 
   MultiOutput(library);
 
   // took 190 layers!
   Modest(library);
+
+
+  LayoutInterestingProps(library);
 
   Print("OK\n");
   return 0;

@@ -21,6 +21,8 @@
 #include "threadutil.h"
 #include "util.h"
 
+static constexpr bool OPTIMIZE = true;
+
 static std::string Square(int row, int col) {
   return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
 }
@@ -67,7 +69,7 @@ static void RenderParallel() {
   le->SetWriteImages(false);
   Layout layout = le->DoLayout(props);
   Print("Got layout!\n");
-  DRC::CheckCircuit(library, layout.circuit);
+  DRC::CheckLayout(library, "parallel", layout);
   Print("DRC ok!\n");
 
   ImageRGBA img = RenderCircuit(library, layout.circuit);
@@ -101,9 +103,18 @@ static void RenderOne(ChessProp::Details details) {
                                      Square(srcr, srcc), Square(dstr, dstc));
 
   Layout layout = le->DoLayout(Span{prop});
-  Print("Got layout!\n");
-  DRC::CheckCircuit(library, layout.circuit);
+  Print("Got layout! {}\n", LayoutEngine::LayoutInfo(layout));
+  DRC::CheckLayout(library, basename, layout);
   Print("DRC ok!\n");
+
+  if (OPTIMIZE) {
+    Layout opt_layout = Optimization::Optimize(library, layout);
+    Print("Optimized! {}\n", LayoutEngine::LayoutInfo(opt_layout));
+    DRC::AssertEquivalentLayout(library, basename, layout, opt_layout);
+    Print("Optimized DRC ok!\n");
+    layout = std::move(opt_layout);
+  }
+
   Util::WriteFile(std::format("{}.layout", basename),
                   LayoutEngine::Serialize(layout));
 
@@ -142,15 +153,15 @@ struct ChessDemo {
     le->SetVerbose(0);
     le->SetWriteImages(false);
     Layout layout = le->DoLayout(Span{prop});
-    Print("Got layout!\n");
+    Print("Got layout! {}\n", LayoutEngine::LayoutInfo(layout));
     DRC::CheckLayout(library, name, layout);
     Print("DRC OK\n");
-    /*
+
     Layout opt_layout = Optimization::Optimize(library, layout);
+    Print("Optimized! {}\n", LayoutEngine::LayoutInfo(opt_layout));
     DRC::AssertEquivalentLayout(library, name, layout, opt_layout);
     Print("Optimized DRC ok!\n");
     layout = std::move(opt_layout);
-    */
 
     return layout;
   }

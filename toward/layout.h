@@ -64,6 +64,9 @@ struct LayoutEngine {
   // circuits!
   static std::string ToString(const Layout &layout);
 
+  // Single line of stats: Size, number of inputs, etc.
+  static std::string LayoutInfo(const Layout &layout);
+
   static std::string Serialize(const Layout &layout);
   static std::optional<Layout> Parse(std::string_view content);
 

@@ -17,6 +17,7 @@ struct DRC {
   // no unconnected inputs or outputs except for inputs on the
   // top layer, and outputs on the bottom layer.
   static void CheckCircuit(const CellLibrary &library,
+                           std::string_view error_context,
                            const Circuit &circuit);
 
   // The above, but also check that we have the right number of inputs.
