@@ -2,14 +2,14 @@
 #ifndef _TOWARD_SIMPLIFICATION_H
 #define _TOWARD_SIMPLIFICATION_H
 
-#include <cstdint>
-#include <vector>
 #include <cstddef>
+#include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 #include "base/logging.h"
-#include "prop.h"
 #include "inline-vector.h"
+#include "prop.h"
 
 struct Simplification {
   // Need to know the number of variables up front.

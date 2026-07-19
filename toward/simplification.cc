@@ -1,7 +1,9 @@
 
 #include "simplification.h"
 
+#include <bit>
 #include <cstdint>
+#include <utility>
 
 #include "prop.h"
 

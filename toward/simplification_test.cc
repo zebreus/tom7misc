@@ -43,6 +43,10 @@ static void TestHashConsing() {
   auto and5 = simp.AND(and3, c);
   CHECK(and4 == and5);
 
+  CHECK(and4 != and1);
+  CHECK(and4 != and3);
+  CHECK(and4 != c);
+
   CHECK(and1 != a);
   CHECK(and1 != simp.F());
 }

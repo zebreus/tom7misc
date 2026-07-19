@@ -18,13 +18,25 @@
 
 static std::string IOString(const CellLibrary::Info &info) {
   std::string s;
+  std::optional<int> min_x;
+  std::optional<int> max_x;
   for (const CellLibrary::IO &in : info.inputs) {
     AppendFormat(&s, "  Input at x={} t={}\n", in.xblock,
                  TypeString(in.type));
+    if (!min_x.has_value() || in.xblock < min_x.value()) min_x = in.xblock;
+    if (!max_x.has_value() || in.xblock > max_x.value()) max_x = in.xblock;
   }
   for (const CellLibrary::IO &out : info.outputs) {
     AppendFormat(&s, "  Output at x={} t={}\n", out.xblock,
                  TypeString(out.type));
+    if (!min_x.has_value() || out.xblock < min_x.value()) min_x = out.xblock;
+    if (!max_x.has_value() || out.xblock > max_x.value()) max_x = out.xblock;
+  }
+  if (min_x.has_value() && max_x.has_value()) {
+    int left_clearance = min_x.value();
+    int right_clearance = info.block_width - max_x.value() - Levels::IN_WIDTH;
+    AppendFormat(&s, "  Clearance: left {} right {}\n",
+                 left_clearance, right_clearance);
   }
   return s;
 }
