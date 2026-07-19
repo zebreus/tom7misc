@@ -299,6 +299,43 @@ static void Modest(const CellLibrary &library) {
   Print("Wrote modest.layout\n");
 }
 
+static void TestNormalize() {
+  StartTest("Normalize");
+
+  Layout layout;
+  layout.input_vars = {
+    {10, CType::MIXED},
+  };
+  layout.circuit.layers.push_back({
+      Cell(SPACER, 10),
+      Cell(SPACER, 0),
+      Cell(SPACER, 5),
+      Cell(WIREB, 0),
+      Cell(SPACER, 20),
+    });
+  layout.circuit.layers.push_back({
+      Cell(SPACER, 5),
+      Cell(WIREA, 0),
+      Cell(SPACER, 10),
+    });
+  layout.circuit.layers.push_back({
+      Cell(SPACER, 42),
+    });
+
+  Layout norm = LayoutEngine::Normalize(layout);
+
+  CHECK(norm.circuit.layers.size() == 3);
+
+  CHECK(norm.circuit.layers[0].size() == 2);
+  CHECK(norm.circuit.layers[0][0] == Cell(SPACER, 10));
+  CHECK(norm.circuit.layers[0][1] == Cell(WIREB, 0));
+
+  CHECK(norm.circuit.layers[1].size() == 1);
+  CHECK(norm.circuit.layers[1][0] == Cell(WIREA, 0));
+
+  CHECK(norm.circuit.layers[2].empty());
+}
+
 static void TestSerialization() {
   StartTest("Serialization");
 
@@ -344,6 +381,7 @@ int main(int argc, char **argv) {
   ManyXor(library);
 
   TestSerialization();
+  TestNormalize();
 
   TestLoop1();
 

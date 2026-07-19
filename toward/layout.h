@@ -70,6 +70,8 @@ struct LayoutEngine {
   static std::string Serialize(const Layout &layout);
   static std::optional<Layout> Parse(std::string_view content);
 
+  static Layout Normalize(Layout layout);
+
  protected:
   LayoutEngine();
 };

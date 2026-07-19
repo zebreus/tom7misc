@@ -1656,3 +1656,48 @@ std::string LayoutEngine::LayoutInfo(const Layout &layout) {
                      layout.input_vars.size(),
                      CircuitSize(layout.circuit));
 }
+
+Layout LayoutEngine::Normalize(Layout layout) {
+  for (Layer &layer : layout.circuit.layers) {
+    Layer new_layer;
+    for (const Cell &cell : layer) {
+      if (cell.gate == Gate::SPACER) {
+        if (cell.v <= 0) continue;
+        if (!new_layer.empty() && new_layer.back().gate == Gate::SPACER) {
+          new_layer.back().v += cell.v;
+        } else {
+          new_layer.push_back(cell);
+        }
+      } else {
+        new_layer.push_back(cell);
+      }
+    }
+    if (!new_layer.empty() && new_layer.back().gate == Gate::SPACER) {
+      new_layer.pop_back();
+    }
+    layer = std::move(new_layer);
+  }
+
+  int min_left = -1;
+  for (const Layer &layer : layout.circuit.layers) {
+    if (layer.empty()) continue;
+    int left = (layer.front().gate == Gate::SPACER) ? layer.front().v : 0;
+    if (min_left == -1 || left < min_left) {
+      min_left = left;
+    }
+  }
+
+  if (min_left > 0) {
+    for (Layer &layer : layout.circuit.layers) {
+      if (layer.empty()) continue;
+      if (layer.front().gate == Gate::SPACER) {
+        layer.front().v -= min_left;
+        if (layer.front().v == 0) {
+          layer.erase(layer.begin());
+        }
+      }
+    }
+  }
+
+  return layout;
+}

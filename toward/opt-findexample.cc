@@ -22,6 +22,7 @@
 #include "util.h"
 
 static constexpr bool SELF_CHECK = true;
+static constexpr int VERBOSE = 0;
 
 static bool IsAllWires(const Layer &layer) {
   for (const Cell &cell : layer) {
@@ -34,12 +35,13 @@ static bool IsAllWires(const Layer &layer) {
 
 static int ConsecutiveWireLayers(const Layout &layout) {
   int max_consec = 0;
-  int lower_bound = 0;
+  int current = 0;
   for (int i = 0; i < layout.circuit.layers.size(); i++) {
     if (IsAllWires(layout.circuit.layers[i])) {
-      max_consec = std::max(max_consec, (i + 1) - lower_bound);
+      current++;
+      max_consec = std::max(max_consec, current);
     } else {
-      lower_bound = i;
+      current = 0;
     }
   }
 
@@ -102,7 +104,9 @@ struct Reducer {
     // - Remove the topmost or bottommost layer.
     if (layout.circuit.layers.size() > 1) {
       moves.push_back([this, &layout]() {
-          Print("Move: Remove topmost layer\n");
+          if (VERBOSE > 1) {
+            Print("Move: Remove topmost layer\n");
+          }
           Layout res = layout;
           res.circuit.layers.erase(res.circuit.layers.begin());
           std::vector<CType> new_types;
@@ -123,14 +127,14 @@ struct Reducer {
           return res;
         });
       moves.push_back([&layout]() {
-          Print("Move: Remove bottommost layer\n");
+          if (VERBOSE > 1) {
+            Print("Move: Remove bottommost layer\n");
+          }
           Layout res = layout;
           res.circuit.layers.pop_back();
           return res;
         });
     }
-
-    Print("A: {} moves so far.\n", moves.size());
 
     // - Delete an input wire, replacing it with CONST0 or CONST1.
     if (!layout.circuit.layers.empty()) {
@@ -141,7 +145,9 @@ struct Reducer {
           Cell c1(Gate::CONST1);
           if (CellFits(layout, 0, i, c0)) {
             moves.push_back([this, &layout, i, c0]() {
-              Print("Move: Replace input wire {} with CONST0\n", i);
+              if (VERBOSE > 1) {
+                Print("Move: Replace input wire {} with CONST0\n", i);
+              }
               Layout res = layout;
               int in_idx = GetInputStart(res.circuit.layers[0], i);
               res.circuit.layers[0][i] = c0;
@@ -153,21 +159,21 @@ struct Reducer {
           }
           if (CellFits(layout, 0, i, c1)) {
             moves.push_back([this, &layout, i, c1]() {
-              Print("Move: Replace input wire {} with CONST1\n", i);
-              Layout res = layout;
-              int in_idx = GetInputStart(res.circuit.layers[0], i);
-              res.circuit.layers[0][i] = c1;
-              if (in_idx < res.input_vars.size()) {
-                res.input_vars.erase(res.input_vars.begin() + in_idx);
-              }
-              return res;
-            });
+                if (VERBOSE > 1) {
+                  Print("Move: Replace input wire {} with CONST1\n", i);
+                }
+                Layout res = layout;
+                int in_idx = GetInputStart(res.circuit.layers[0], i);
+                res.circuit.layers[0][i] = c1;
+                if (in_idx < res.input_vars.size()) {
+                  res.input_vars.erase(res.input_vars.begin() + in_idx);
+                }
+                return res;
+              });
           }
         }
       }
     }
-
-    Print("B: {} moves so far.\n", moves.size());
 
     // - Move a constant output with a wire below it down some number of layers.
     for (int l = 0; l + 1 < layout.circuit.layers.size(); l++) {
@@ -180,22 +186,67 @@ struct Reducer {
           if (next_i >= 0 && IsWire(Lnext[next_i].gate)) {
             if (CellFits(layout, l + 1, next_i, L[i])) {
               moves.push_back([this, &layout, l, i, next_i]() {
-                Print("Move: Move CONST from layer {} cell {} down "
-                      "to layer {} cell {}\n", l, i, l + 1, next_i);
-                Layout res = layout;
-                Cell c = res.circuit.layers[l][i];
-                int w = library.GetInfo(c).block_width;
-                res.circuit.layers[l][i] = CellLibrary::Spacer(w);
-                res.circuit.layers[l + 1][next_i] = c;
-                return res;
-              });
+                  if (VERBOSE > 1) {
+                    Print("Move: Move CONST from layer {} cell {} down "
+                          "to layer {} cell {}\n", l, i, l + 1, next_i);
+                  }
+                  Layout res = layout;
+                  Cell c = res.circuit.layers[l][i];
+                  int w = library.GetInfo(c).block_width;
+                  res.circuit.layers[l][i] = CellLibrary::Spacer(w);
+                  res.circuit.layers[l + 1][next_i] = c;
+                  return res;
+                });
             }
           }
         }
       }
     }
 
-    Print("C: {} moves so far.\n", moves.size());
+    // - Remove a contiguous wire from input to output.
+    if (!layout.circuit.layers.empty()) {
+      const Layer &L0 = layout.circuit.layers[0];
+      for (int i = 0; i < L0.size(); i++) {
+        if (IsWire(L0[i].gate)) {
+          std::vector<std::pair<int, int>> path;
+          path.push_back({0, i});
+          int current_out = GetOutputStart(L0, i);
+          bool contiguous = true;
+
+          for (int l = 1; l < layout.circuit.layers.size(); l++) {
+            const Layer &L = layout.circuit.layers[l];
+            int next_i = CellForInput(L, current_out);
+            if (next_i >= 0 && IsWire(L[next_i].gate)) {
+              path.push_back({l, next_i});
+              current_out = GetOutputStart(L, next_i);
+            } else {
+              contiguous = false;
+              break;
+            }
+          }
+
+          if (contiguous) {
+            moves.push_back([this, &layout, i, path]() {
+              if (VERBOSE > 1) {
+                Print("Move: Remove contiguous wire "
+                      "starting at input {}\n", i);
+              }
+              Layout res = layout;
+              int in_idx = GetInputStart(res.circuit.layers[0], i);
+              if (in_idx < res.input_vars.size()) {
+                res.input_vars.erase(res.input_vars.begin() + in_idx);
+              }
+              for (const auto &[l, c_idx] : path) {
+                int w = library.GetInfo(res.circuit.layers[l][c_idx]).
+                  block_width;
+                res.circuit.layers[l][c_idx] = CellLibrary::Spacer(w);
+              }
+              return LayoutEngine::Normalize(std::move(res));
+            });
+          }
+        }
+      }
+    }
 
     // - Delete an output wire, replacing it with SINK.
     if (!layout.circuit.layers.empty()) {
@@ -206,17 +257,17 @@ struct Reducer {
           Cell sink(Gate::SINK);
           if (CellFits(layout, last_l, i, sink)) {
             moves.push_back([&layout, last_l, i, sink]() {
-              Print("Move: Replace output wire {} with SINK\n", i);
-              Layout res = layout;
-              res.circuit.layers[last_l][i] = sink;
-              return res;
-            });
+                if (VERBOSE > 1) {
+                  Print("Move: Replace output wire {} with SINK\n", i);
+                }
+                Layout res = layout;
+                res.circuit.layers[last_l][i] = sink;
+                return res;
+              });
           }
         }
       }
     }
-
-    Print("D: {} moves so far.\n", moves.size());
 
     // - Move a sink cell with a wire above it up some number of steps.
     for (int l = 1; l < layout.circuit.layers.size(); l++) {
@@ -229,22 +280,22 @@ struct Reducer {
           if (prev_i >= 0 && IsWire(Lprev[prev_i].gate)) {
             if (CellFits(layout, l - 1, prev_i, L[i])) {
               moves.push_back([this, &layout, l, i, prev_i]() {
-                Print("Move: Move SINK from layer {} cell {} up "
-                      "to layer {} cell {}\n", l, i, l - 1, prev_i);
-                Layout res = layout;
-                Cell c = res.circuit.layers[l][i];
-                int w = library.GetInfo(c).block_width;
-                res.circuit.layers[l][i] = CellLibrary::Spacer(w);
-                res.circuit.layers[l - 1][prev_i] = c;
-                return res;
-              });
+                  if (VERBOSE > 1) {
+                    Print("Move: Move SINK from layer {} cell {} up "
+                          "to layer {} cell {}\n", l, i, l - 1, prev_i);
+                  }
+                  Layout res = layout;
+                  Cell c = res.circuit.layers[l][i];
+                  int w = library.GetInfo(c).block_width;
+                  res.circuit.layers[l][i] = CellLibrary::Spacer(w);
+                  res.circuit.layers[l - 1][prev_i] = c;
+                  return res;
+                });
             }
           }
         }
       }
     }
-
-    Print("End: {} moves so far.\n", moves.size());
 
     if (moves.empty()) {
       return std::nullopt;
@@ -296,40 +347,42 @@ struct Reducer {
 };
 
 bool Optimizable(const CellLibrary &library, const Layout &layout) {
-  Print("Check if optimizable...\n");
+  if (VERBOSE > 1) Print("Check if optimizable...\n");
   Layout optimized = Optimization::Optimize(library, layout);
-  Print("Optimized returned.\n");
+  if (VERBOSE > 1) Print("Optimized returned.\n");
 
   if (optimized.circuit.layers.size() < layout.circuit.layers.size()) {
     return true;
   }
 
-  size_t opt_cells = 0;
-  for (const auto &layer : optimized.circuit.layers) {
-    opt_cells += layer.size();
-  }
-
-  size_t orig_cells = 0;
-  for (const auto &layer : layout.circuit.layers) {
-    orig_cells += layer.size();
-  }
-
-  return opt_cells < orig_cells;
+  return CircuitSize(optimized.circuit) < CircuitSize(layout.circuit);
 }
 
 static Layout MakeStart(const CellLibrary &library) {
   World world{.symbol_names = {"a", "b", "c"}};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-  Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}};
+  Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}},
+    d{Var{.id = 3}}, e{Var{.id = 4}}, f{Var{.id = 5}},
+    g{Var{.id = 6}}, h{Var{.id = 7}}, i{Var{.id = 8}},
+    j{Var{.id = 9}};
 
-  std::vector<Prop> output = {(a ^ (b & -c)) | (a & c)};
+  // std::vector<Prop> output = {(a ^ (b & -c)) | (a & c)};
+  std::vector<Prop> output = {
+    (a & (b & c)) |
+    ((b & (d | e)) & ((f | g) | ((h | i) | (c | j)))),
+  };
+
   Layout layout = le->DoLayout(output);
   Print("Got Layout! {}", LayoutEngine::LayoutInfo(layout));
-  Print("Initial layout:\n{}\n", LayoutEngine::ToString(layout));
+  if (VERBOSE > 1) {
+    Print("Initial layout:\n{}\n", LayoutEngine::ToString(layout));
+  }
   Print("Try optimizing:\n");
   layout = Optimization::Optimize(library, layout);
   Print("\n\nOptimized! {}\n", LayoutEngine::LayoutInfo(layout));
-  Print("Optimized layout:\n{}\n", LayoutEngine::ToString(layout));
+  if (VERBOSE > 1) {
+    Print("Optimized layout:\n{}\n", LayoutEngine::ToString(layout));
+  }
   DRC::CheckLayout(library, "start", layout);
   return layout;
 }
@@ -350,6 +403,7 @@ static void ThreeLayers() {
   Reducer reducer(library);
 
   Layout result = reducer.ReduceWhile(layout, 100, Pred);
+  Print("Consecutive wire layers: {}\n", ConsecutiveWireLayers(result));
 
   Util::WriteFile("reduced.layout", LayoutEngine::Serialize(result));
   Print("Reduced:\n{}\n", LayoutEngine::ToString(result));

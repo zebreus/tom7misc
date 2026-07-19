@@ -17,6 +17,8 @@
 #include "layout.h"
 #include "vector-util.h"
 
+static constexpr int VERBOSE = 0;
+
 struct Optimizer {
   // Need to be able to access the dimensions of cells so that
   // we know how they can be moved around.
@@ -351,9 +353,9 @@ struct Optimizer {
     int run_iter = 0;
     do {
       run_iter++;
-      Print("Run pass {}\n", run_iter);
+      if (VERBOSE > 0) Print("Run pass {}\n", run_iter);
       if (run_iter > 100) {
-        Print("Bailing out of Run loop!\n");
+        if (VERBOSE > 0) Print("Bailing out of Run loop!\n");
         break;
       }
       // Incremented whenever we make definite progress.
