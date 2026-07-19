@@ -1,6 +1,8 @@
 
 #include <functional>
+#include <algorithm>
 
+#include "drc.h"
 #include "util.h"
 #include "base/logging.h"
 #include "base/print.h"
@@ -236,6 +238,8 @@ struct Reducer {
 
   Layout ReduceWhile(Layout layout, int max_consecutive_failures,
                      std::function<bool(const Layout &layout)> pred) {
+    CHECK(pred(layout)) << "Predicate must be initially true!";
+
     Periodically status_per(1.0);
     StatusBar status(1);
     status.Status("Startup.");
@@ -291,16 +295,32 @@ bool Optimizable(const CellLibrary &library, const Layout &layout) {
   return opt_cells < orig_cells;
 }
 
+static Layout MakeStart(const CellLibrary &library) {
+  World world{.symbol_names = {"a", "b", "c"}};
+  std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+  Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}};
+
+  std::vector<Prop> output = {(a ^ (b & -c)) | (a & c)};
+  Layout layout = le->DoLayout(output);
+  Print("Got layout:\n{}\n", LayoutEngine::ToString(layout));
+  Print("Try optimizing:\n");
+  layout = Optimization::Optimize(library, layout);
+  Print("Optimized!\n");
+  DRC::CheckLayout(library, "start", layout);
+  return layout;
+}
 
 static void ThreeLayers() {
   CellLibrary library;
-  auto olayout = LayoutEngine::Parse(Util::ReadFile("one-legal-b2-b4.layout"));
-  CHECK(olayout.has_value());
-  Layout layout = std::move(olayout.value());
+  // auto olayout = LayoutEngine::Parse(Util::ReadFile("xorvars.layout"));
+  //   CHECK(olayout.has_value());
+  // Layout layout = std::move(olayout.value());
+  Layout layout = MakeStart(library);
 
   // Does it have three layers of just wires in a row, but can't be optimized?
   std::function<bool(const Layout)> Pred = [&library](const Layout &layout) {
-      return ConsecutiveWireLayers(layout) >= 3 && !Optimizable(library, layout);
+      return ConsecutiveWireLayers(layout) >= 3 &&
+        !Optimizable(library, layout);
     };
 
   Reducer reducer(library);

@@ -65,7 +65,7 @@ struct CellLibrary {
   // all natively slope down and to the right like a backslash;
   // for the reverse slope, flip these.
 
-  #undef POWER2WIRES_ONLY
+  #define POWER2WIRES_ONLY 1
 
   #if POWER2WIRES_ONLY
   static constexpr std::initializer_list<int> WIRE_SIZES = {

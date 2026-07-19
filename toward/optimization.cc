@@ -2,12 +2,16 @@
 #include "optimization.h"
 
 #include <algorithm>
-#include <span>
 #include <cmath>
-#include <vector>
-#include <utility>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "layout.h"
@@ -30,6 +34,11 @@ struct Optimizer {
   std::vector<std::pair<int, CType>> input_vars;
   std::vector<std::vector<NC>> layers;
 
+  // We increment this whenever we make definite progress. This
+  // implies that we have some well-founded order on circuits in mind.
+  // This is a lexicographic ordering along the lies of (number of
+  // layers, number of layers with only wires, global straightness of
+  // wires). (Best if we can say precisely what it is!)
   int improve_count = 0;
 
   static std::vector<NC> NormalizeLayer(const std::vector<Cell> &layer) {
@@ -57,6 +66,230 @@ struct Optimizer {
                                                 NormalizeLayer)) {
   }
 
+  // The windowed layer pass works on three contiguous layers. It
+  // tries to produce an equivalent circuit (i.e. that has the same
+  // I/O behavior, including the positions of the ports) that is
+  // simpler. This has two goals, which together help us reduce
+  // the circuit:
+  //   * Make wires straighter. If an input port is connected to
+  //     an output port directly (only wire cells) then we count
+  //     the total absolute displacement of each of the three
+  //     wires, and consider smaller to be better. We should
+  //     increment improve_count when we've made definite progress.
+  //   * Move non-wire elements so that they are on the same
+  //     layer as each other. We make definite progress (and can
+  //     increment improve_count) when we remove the last non-wire
+  //     element from a layer.
+  CType GetWireType(Gate g) {
+    if (g == Gate::WIRE0A || g == Gate::WIRE0B) return CType::ZERO;
+    if (g == Gate::WIRE1A || g == Gate::WIRE1B) return CType::ONE;
+    return CType::MIXED;
+  }
+
+  std::vector<Cell> AllWires(CType type) {
+    std::vector<Cell> ret;
+    for (int v : CellLibrary::WIRE_SIZES) {
+      for (bool flip : {false, true}) {
+        Cell a = CellLibrary::WireA(v, type); a.flip = flip; ret.push_back(a);
+        Cell b = CellLibrary::WireB(v, type); b.flip = flip; ret.push_back(b);
+      }
+    }
+    return ret;
+  }
+
+  void WindowedLayerPass() {
+    bool changed = false;
+    for (size_t i = 0; i + 2 < layers.size(); ++i) {
+      if (OptimizeWindow(i)) {
+        changed = true;
+      }
+    }
+
+    // Termination metric: we make definite progress when we strictly
+    // decrease the absolute displacements of wires in the layout.
+    if (changed) {
+      improve_count++;
+    }
+  }
+
+  bool OptimizeWindow(size_t start) {
+    if (layers[start].size() != layers[start+1].size() ||
+        layers[start+1].size() != layers[start+2].size()) {
+      // For now, only optimize straightforward 1-to-1 strands.
+      return false;
+    }
+
+    size_t n = layers[start].size();
+    std::vector<int> x0(n), x1(n), x2(n);
+    auto compute_x = [&](int l, std::vector<int> &x_out) {
+      int x = 0;
+      for (size_t i = 0; i < n; ++i) {
+        x += layers[l][i].left_space;
+        x_out[i] = x;
+        x += library.GetInfo(layers[l][i].cell).block_width;
+      }
+    };
+    compute_x(start, x0);
+    compute_x(start+1, x1);
+    compute_x(start+2, x2);
+
+    std::vector<std::vector<int>> target_x = {x0, x1, x2};
+    bool improved = false;
+    int min_x0 = 0, min_x1 = 0, min_x2 = 0;
+
+    for (size_t c = 0; c < n; ++c) {
+      NC nc0 = layers[start][c];
+      NC nc1 = layers[start+1][c];
+      NC nc2 = layers[start+2][c];
+
+      auto info0 = library.GetInfo(nc0.cell);
+      auto info1 = library.GetInfo(nc1.cell);
+      auto info2 = library.GetInfo(nc2.cell);
+
+      // Skip if the topology is complex (not a simple strand)
+      if (info0.inputs.size() > 1 || info0.outputs.size() > 1 ||
+          info1.inputs.size() > 1 || info1.outputs.size() > 1 ||
+          info2.inputs.size() > 1 || info2.outputs.size() > 1) {
+        min_x0 = target_x[0][c] + info0.block_width + library.MinClearanceClose();
+        min_x1 = target_x[1][c] + info1.block_width + library.MinClearanceClose();
+        min_x2 = target_x[2][c] + info2.block_width + library.MinClearanceClose();
+        continue;
+      }
+
+      int current_cost = 0;
+      if (IsWire(nc0.cell.gate)) current_cost += std::abs(nc0.cell.v);
+      if (IsWire(nc1.cell.gate)) current_cost += std::abs(nc1.cell.v);
+      if (IsWire(nc2.cell.gate)) current_cost += std::abs(nc2.cell.v);
+
+      struct State {
+        int cost = 0, x = 0;
+        Cell cell{Gate::SPACER};
+        int prev_out = 0;
+      };
+
+      // DP Layer 0
+      std::unordered_map<int, State> dp0;
+      std::vector<Cell> c0_cands = IsWire(nc0.cell.gate) ?
+          AllWires(GetWireType(nc0.cell.gate)) : std::vector<Cell>{nc0.cell};
+
+      for (const Cell &cell : c0_cands) {
+        auto info = library.GetInfo(cell);
+        if (info.inputs.size() == 1) {
+          int fixed_in = x0[c] + info0.inputs[0].xblock;
+          int x = fixed_in - info.inputs[0].xblock;
+          if (x < min_x0) continue;
+          if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[0][c+1]) continue;
+          int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
+          int cost = IsWire(cell.gate) ? std::abs(cell.v) : 0;
+          if (!dp0.count(out) || cost < dp0[out].cost) dp0[out] = {cost, x, cell, 0};
+        } else {
+          for (int x = std::max(min_x0, x0[c] - 150); x <= x0[c] + 150; ++x) {
+            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[0][c+1]) continue;
+            int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
+            int cost = IsWire(cell.gate) ? std::abs(cell.v) : 0;
+            if (!dp0.count(out) || cost < dp0[out].cost) dp0[out] = {cost, x, cell, 0};
+          }
+        }
+      }
+
+      // DP Layer 1
+      std::unordered_map<int, State> dp1;
+      std::vector<Cell> c1_cands = IsWire(nc1.cell.gate) ?
+          AllWires(GetWireType(nc1.cell.gate)) : std::vector<Cell>{nc1.cell};
+
+      for (auto &[prev_out, prev_state] : dp0) {
+        for (const Cell &cell : c1_cands) {
+          auto info = library.GetInfo(cell);
+          if (info.inputs.size() == 1) {
+            int x = prev_out - info.inputs[0].xblock;
+            if (x < min_x1) continue;
+            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[1][c+1]) continue;
+            int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
+            int cost = prev_state.cost + (IsWire(cell.gate) ? std::abs(cell.v) : 0);
+            if (!dp1.count(out) || cost < dp1[out].cost) dp1[out] = {cost, x, cell, prev_out};
+          }
+        }
+      }
+
+      // DP Layer 2
+      std::unordered_map<int, State> dp2;
+      std::vector<Cell> c2_cands = IsWire(nc2.cell.gate) ?
+          AllWires(GetWireType(nc2.cell.gate)) : std::vector<Cell>{nc2.cell};
+
+      for (auto &[prev_out, prev_state] : dp1) {
+        for (const Cell &cell : c2_cands) {
+          auto info = library.GetInfo(cell);
+          if (info.inputs.size() == 1) {
+            int x = prev_out - info.inputs[0].xblock;
+            if (x < min_x2) continue;
+            if (c + 1 < n && x + info.block_width + library.MinClearanceClose() > target_x[2][c+1]) continue;
+            if (info.outputs.size() == 1) {
+              int out = x + info.outputs[0].xblock;
+              int fixed_out = x2[c] + info2.outputs[0].xblock;
+              if (out != fixed_out) continue;
+            }
+            int out = info.outputs.empty() ? x : x + info.outputs[0].xblock;
+            int cost = prev_state.cost + (IsWire(cell.gate) ? std::abs(cell.v) : 0);
+            if (!dp2.count(out) || cost < dp2[out].cost) dp2[out] = {cost, x, cell, prev_out};
+          }
+        }
+      }
+
+      // Find optimal assignments
+      int best_cost = 1e9, best_out = 0;
+      for (auto &[out, state] : dp2) {
+        if (state.cost < best_cost) {
+          best_cost = state.cost;
+          best_out = out;
+        }
+      }
+
+      if (best_cost < current_cost) {
+        improved = true;
+        State s2 = dp2[best_out];
+        State s1 = dp1[s2.prev_out];
+        State s0 = dp0[s1.prev_out];
+
+        layers[start][c].cell = s0.cell;
+        layers[start+1][c].cell = s1.cell;
+        layers[start+2][c].cell = s2.cell;
+
+        target_x[0][c] = s0.x;
+        target_x[1][c] = s1.x;
+        target_x[2][c] = s2.x;
+      }
+
+      min_x0 = target_x[0][c] + library.GetInfo(layers[start][c].cell).block_width + library.MinClearanceClose();
+      min_x1 = target_x[1][c] + library.GetInfo(layers[start+1][c].cell).block_width + library.MinClearanceClose();
+      min_x2 = target_x[2][c] + library.GetInfo(layers[start+2][c].cell).block_width + library.MinClearanceClose();
+    }
+
+    if (improved) {
+      auto rebuild = [&](int l, const std::vector<int> &tx) {
+        int current_x = 0;
+        for (size_t c = 0; c < n; ++c) {
+          layers[l][c].left_space = tx[c] - current_x;
+          current_x = tx[c] + library.GetInfo(layers[l][c].cell).block_width;
+        }
+      };
+      rebuild(start, target_x[0]);
+      rebuild(start+1, target_x[1]);
+      rebuild(start+2, target_x[2]);
+    }
+
+    return improved;
+  }
+
+  // Other passes may attempt to straighten out wires so that we can
+  // remove layers. In RemovePassthroughLayers we remove only layers
+  // that have wires (and spacers) exclusively. Therefore the goal is
+  // to put displacement-0 wires on wire-only layers. All that matters
+  // about a connected (vertical) series of wires is their net
+  // displacement, so we can shift displacement into adjacent layers
+  // to accomplish this. The wire cells have to fit, but we can choose
+  // variants (wire A/B) and flip at will. It's also acceptable to
+  // move non-wire cells, but we shouldn't change anything else about
+  // those.
   bool IsPassthrough(const std::vector<NC> &layer) {
     for (const NC &nc : layer) {
       if (!IsWire(nc.cell.gate) || nc.cell.v != 0) {
@@ -64,325 +297,6 @@ struct Optimizer {
       }
     }
     return true;
-  }
-
-  // Attempt to straighten out wires so that we can remove layers. In
-  // RemovePassthroughLayers we remove only layers that have wires
-  // (and spacers) exclusively. Therefore the goal is to put
-  // displacement-0 wires on wire-only layers. All that matters about
-  // a connected (vertical) series of wires is their net displacement,
-  // so we can shift displacement into adjacent layers to accomplish
-  // this. The wire cells have to fit, but we can choose variants (wire
-  // A/B) and flip at will. It's also acceptable to move non-wire cells,
-  // but we shouldn't change anything else about those.
-  struct CellState {
-    Cell cell;
-    int cell_x;
-  };
-
-  // Identifies a specific input or output port on a cell in the circuit.
-  struct PortLoc {
-    int l, c;
-    // Port number within this cell's inputs or outputs.
-    int port;
-  };
-
-  // Adjacency lists for the circuit's connections.
-  // prev_port[l][c][p] gives the PortLoc of the output port connected to
-  // input port 'p' of cell 'c' on layer 'l'.
-  std::vector<std::vector<std::vector<PortLoc>>> prev_port;
-
-  // next_port[l][c][p] gives the PortLoc of the input port connected to
-  // output port 'p' of cell 'c' on layer 'l'.
-  std::vector<std::vector<std::vector<PortLoc>>> next_port;
-
-  // A pending shift request to propagate a shift to a connected cell.
-  struct Req {
-    PortLoc loc;
-    // True if the shift propagates to this cell via its input port,
-    // false if it propagates via its output port.
-    bool is_input;
-  };
-
-  std::vector<Cell> GetWireCandidates(Gate orig, int delta) {
-    std::vector<Cell> ret;
-    int offset = std::abs(delta);
-    if (!CellLibrary::ValidWireSize(offset)) return ret;
-    bool flip = (delta < 0);
-
-    CType type = CType::MIXED;
-    if (orig == Gate::WIRE0A || orig == Gate::WIRE0B) type = CType::ZERO;
-    if (orig == Gate::WIRE1A || orig == Gate::WIRE1B) type = CType::ONE;
-
-    Cell wa = CellLibrary::WireA(offset, type);
-    wa.flip = flip;
-    ret.push_back(wa);
-
-    Cell wb = CellLibrary::WireB(offset, type);
-    wb.flip = flip;
-    ret.push_back(wb);
-
-    return ret;
-  }
-
-  // Recursively apply a shift s to a connected component of cells.
-  // We use backtracking to find a valid assignment that avoids overlaps.
-  // If we encounter a wire that can absorb the shift by changing its delta,
-  // we can stop propagating the shift along that path.
-  //
-  // Parameters:
-  //  - circuit: The grid of cell states to be modified.
-  //  - shifted: Bitmask indicating cells that have already been shifted in
-  //    this operation, to avoid infinite loops and duplicate shifts.
-  //  - s: The horizontal shift distance.
-  //  - reqs: Pending shift requests to propagate the shift to connected cells.
-  //  - is_all_wire: Flags indicating which layers are completely made of
-  //    wires. Used to determine if a wire can absorb the shift.
-  //
-  // Returns:
-  //  true if a valid, non-overlapping assignment was found; false if the
-  //  shift resulted in overlaps or invalid wires, prompting backtracking.
-  bool TryApply(std::vector<std::vector<CellState>> &circuit,
-                std::vector<std::vector<bool>> &shifted, int s,
-                std::vector<Req> reqs, const std::vector<bool> &is_all_wire) {
-    // Base case: all shift requests fulfilled. Check for overlaps.
-    if (reqs.empty()) {
-      for (size_t lidx = 0; lidx < circuit.size(); lidx++) {
-        const std::vector<CellState> &layer = circuit[lidx];
-        int prev_right = 0;
-        for (size_t c = 0; c < layer.size(); c++) {
-          if (layer[c].cell_x < prev_right)
-            return false;
-          prev_right = layer[c].cell_x +
-            library.GetInfo(layer[c].cell).block_width;
-        }
-      }
-      return true;
-    }
-
-    Req req = reqs.back();
-    reqs.pop_back();
-
-    int lidx = req.loc.l, c = req.loc.c;
-
-    std::vector<CellState> &layer = circuit[lidx];
-    std::vector<bool> &shifted_layer = shifted[lidx];
-
-    if (shifted_layer[c]) {
-      return TryApply(circuit, shifted, s, reqs, is_all_wire);
-    }
-
-    if (IsWire(layer[c].cell.gate)) {
-      if (!(is_all_wire[lidx] && layer[c].cell.v == 0)) {
-        int old_in = layer[c].cell_x +
-                     library.GetInfo(layer[c].cell).inputs[0].xblock;
-        int old_out = layer[c].cell_x +
-                      library.GetInfo(layer[c].cell).outputs[0].xblock;
-
-        int req_in = old_in + (req.is_input ? s : 0);
-        int req_out = old_out + (!req.is_input ? s : 0);
-        int target_delta = req_out - req_in;
-
-        std::vector<Cell> cands = GetWireCandidates(layer[c].cell.gate, target_delta);
-        for (const Cell &cand : cands) {
-          CellState backup = layer[c];
-          layer[c].cell = cand;
-          layer[c].cell_x = req_in - library.GetInfo(cand).inputs[0].xblock;
-
-          bool old_shifted = shifted_layer[c];
-          shifted_layer[c] = true;
-          if (TryApply(circuit, shifted, s, reqs, is_all_wire)) return true;
-          shifted_layer[c] = old_shifted;
-          layer[c] = backup;
-        }
-      }
-    }
-
-    CellState backup = layer[c];
-    layer[c].cell_x += s;
-    shifted_layer[c] = true;
-
-    std::vector<Req> next_reqs = reqs;
-
-    int num_in = library.GetInfo(layer[c].cell).inputs.size();
-    for (int i = 0; i < num_in; ++i) {
-      if (req.is_input && i == req.loc.port) continue;
-      auto prev = prev_port[lidx][c][i];
-      if (prev.l != -1) next_reqs.push_back({prev, false});
-    }
-
-    int num_out = library.GetInfo(layer[c].cell).outputs.size();
-    for (int i = 0; i < num_out; ++i) {
-      if (!req.is_input && i == req.loc.port) continue;
-      auto next = next_port[lidx][c][i];
-      if (next.l != -1) next_reqs.push_back({next, true});
-    }
-
-    if (TryApply(circuit, shifted, s, next_reqs, is_all_wire)) return true;
-
-    shifted_layer[c] = false;
-    layer[c] = backup;
-
-    return false;
-  }
-
-  // Try to straighten a wire cell to have 0 displacement.
-  // We can fix its input in place and shift its output (and all downstream cells),
-  // or fix its output and shift its input (and all upstream cells).
-  bool TryFixWire(std::vector<std::vector<CellState>> &circuit,
-                  int lidx, int c, const std::vector<bool> &is_all_wire) {
-    std::vector<CellState> &layer = circuit[lidx];
-    int old_in = layer[c].cell_x +
-      library.GetInfo(layer[c].cell).inputs[0].xblock;
-    int old_out = layer[c].cell_x +
-      library.GetInfo(layer[c].cell).outputs[0].xblock;
-    int old_delta = old_out - old_in;
-
-    std::vector<Cell> cands = GetWireCandidates(layer[c].cell.gate, 0);
-
-    // Strategy 1: Keep input fixed, shift output by -old_delta
-    for (const Cell &cand : cands) {
-      std::vector<std::vector<CellState>> newcircuit = circuit;
-      std::vector<CellState> &copy_layer = newcircuit[lidx];
-      copy_layer[c].cell = cand;
-      copy_layer[c].cell_x = old_in - library.GetInfo(cand).inputs[0].xblock;
-
-      int S = -old_delta;
-      auto next = next_port[lidx][c][0];
-      std::vector<std::vector<bool>> shifted(
-          circuit.size(), std::vector<bool>(circuit[0].size(), false));
-      shifted[lidx][c] = true;
-      std::vector<Req> reqs;
-      if (next.l != -1) reqs.push_back({next, true});
-
-      if (TryApply(newcircuit, shifted, S, reqs, is_all_wire)) {
-        circuit = std::move(newcircuit);
-        return true;
-      }
-    }
-
-    // Strategy 2: Keep output fixed, shift input by +old_delta
-    for (const Cell &cand : cands) {
-      std::vector<std::vector<CellState>> newcircuit = circuit;
-      std::vector<CellState> &copy_layer = newcircuit[lidx];
-      copy_layer[c].cell = cand;
-      copy_layer[c].cell_x = old_out - library.GetInfo(cand).outputs[0].xblock;
-
-      int S = old_delta;
-      auto prev = prev_port[lidx][c][0];
-      std::vector<std::vector<bool>> shifted(
-          circuit.size(), std::vector<bool>(circuit[0].size(), false));
-      shifted[lidx][c] = true;
-      std::vector<Req> reqs;
-      if (prev.l != -1) reqs.push_back({prev, false});
-
-      if (TryApply(newcircuit, shifted, S, reqs, is_all_wire)) {
-        circuit = std::move(newcircuit);
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Straightens out wires to enable layer removal.
-  // We identify layers consisting entirely of wires, and try to change
-  // those wires to have 0 displacement.
-  void AlignLayers() {
-    std::vector<std::vector<CellState>> circuit(layers.size());
-    for (size_t lidx = 0; lidx < layers.size(); lidx++) {
-      int x = 0;
-      for (size_t c = 0; c < layers[lidx].size(); c++) {
-        x += layers[lidx][c].left_space;
-        circuit[lidx].push_back({layers[lidx][c].cell, x});
-        x += library.GetInfo(layers[lidx][c].cell).block_width;
-      }
-    }
-
-    prev_port.assign(circuit.size(), {});
-    next_port.assign(circuit.size(), {});
-    for (size_t lidx = 0; lidx < circuit.size(); lidx++) {
-      const std::vector<CellState> &layer = circuit[lidx];
-      prev_port[lidx].resize(layer.size());
-      next_port[lidx].resize(layer.size());
-      for (size_t c = 0; c < layer.size(); c++) {
-        prev_port[lidx][c].assign(library.GetInfo(layer[c].cell).inputs.size(),
-                               {-1, -1, -1});
-        next_port[lidx][c].assign(library.GetInfo(layer[c].cell).outputs.size(),
-                               {-1, -1, -1});
-      }
-    }
-
-    for (size_t lidx = 0; lidx + 1 < circuit.size(); lidx++) {
-      const std::vector<CellState> &layer = circuit[lidx];
-      std::vector<std::pair<int, int>> outs;
-      for (size_t c = 0; c < layer.size(); c++) {
-        for (size_t p = 0;
-             p < library.GetInfo(layer[c].cell).outputs.size();
-             p++) {
-          outs.push_back({(int)c, (int)p});
-        }
-      }
-
-      const std::vector<CellState> &next_layer = circuit[lidx + 1];
-      std::vector<std::pair<int, int>> ins;
-      for (size_t c = 0; c < next_layer.size(); c++) {
-        for (size_t p = 0;
-             p < library.GetInfo(next_layer[c].cell).inputs.size();
-             p++) {
-          ins.push_back({(int)c, (int)p});
-        }
-      }
-
-      size_t n = std::min(outs.size(), ins.size());
-      for (size_t i = 0; i < n; ++i) {
-        next_port[lidx][outs[i].first][outs[i].second] = {
-            (int)lidx + 1, ins[i].first, ins[i].second};
-        prev_port[lidx + 1][ins[i].first][ins[i].second] = {
-            (int)lidx, outs[i].first, outs[i].second};
-      }
-    }
-
-    bool changed = true;
-    while (changed) {
-      changed = false;
-      std::vector<bool> is_all_wire(circuit.size(), true);
-      for (size_t lidx = 0; lidx < circuit.size(); lidx++) {
-        for (const auto &cs : circuit[lidx]) {
-          if (!IsWire(cs.cell.gate)) {
-            is_all_wire[lidx] = false;
-            break;
-          }
-        }
-      }
-
-      for (size_t lidx = 0; lidx < circuit.size(); lidx++) {
-        if (!is_all_wire[lidx]) continue;
-
-        for (size_t c = 0; c < circuit[lidx].size(); c++) {
-          if (circuit[lidx][c].cell.v != 0) {
-            if (TryFixWire(circuit, lidx, c, is_all_wire)) {
-              changed = true;
-              break;
-            }
-          }
-        }
-        if (changed) break;
-      }
-    }
-
-    for (size_t lidx = 0; lidx < circuit.size(); lidx++) {
-      const std::vector<CellState> &layer = circuit[lidx];
-      layers[lidx].clear();
-      int x = 0;
-      for (size_t c = 0; c < layer.size(); c++) {
-        NC nc{
-          .left_space = layer[c].cell_x - x,
-          .cell = layer[c].cell,
-        };
-        layers[lidx].push_back(nc);
-        x = layer[c].cell_x + library.GetInfo(nc.cell).block_width;
-      }
-    }
   }
 
   void RemovePassthroughLayers() {
@@ -400,12 +314,18 @@ struct Optimizer {
   }
 
   void Run() {
-
+    int run_iter = 0;
     do {
+      run_iter++;
+      Print("Run pass {}\n", run_iter);
+      if (run_iter > 100) {
+        Print("Bailing out of Run loop!\n");
+        break;
+      }
       // Incremented whenever we make definite progress.
       improve_count = 0;
 
-      AlignLayers();
+      WindowedLayerPass();
       RemovePassthroughLayers();
 
     } while (improve_count > 0);
