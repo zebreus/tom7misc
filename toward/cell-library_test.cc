@@ -59,10 +59,10 @@ static void VerifyFlippedWidths() {
 
   CheckCell(CellLibrary::Spacer(1));
   CheckCell(CellLibrary::Spacer(5));
-  CheckCell(CellLibrary::WireA(1));
-  CheckCell(CellLibrary::WireA(8));
-  CheckCell(CellLibrary::WireB(2));
-  CheckCell(CellLibrary::WireB(16));
+  CheckCell(CellLibrary::Wire(1, CellLibrary::Bias::RIGHT));
+  CheckCell(CellLibrary::Wire(8, CellLibrary::Bias::RIGHT));
+  CheckCell(CellLibrary::Wire(2, CellLibrary::Bias::LEFT));
+  CheckCell(CellLibrary::Wire(16, CellLibrary::Bias::LEFT));
 }
 
 static void VerifyWireOffsets() {
@@ -82,8 +82,8 @@ static void VerifyWireOffsets() {
           Err();
       };
 
-    CheckWire("A", CellLibrary::WireA(offset));
-    CheckWire("B", CellLibrary::WireB(offset));
+    CheckWire("A", CellLibrary::Wire(offset, CellLibrary::Bias::RIGHT));
+    CheckWire("B", CellLibrary::Wire(offset, CellLibrary::Bias::LEFT));
   }
 }
 

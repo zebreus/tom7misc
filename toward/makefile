@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexamples.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe
 
 fixme : separator.exe
 
@@ -68,7 +68,7 @@ test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 
 editor.exe : editor.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
-	echo -n ":"
+	@echo -n ":"
 
 letters_test.exe : letters_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@

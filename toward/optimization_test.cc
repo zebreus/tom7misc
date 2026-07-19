@@ -1,6 +1,7 @@
 
 #include "optimization.h"
 
+#include <algorithm>
 #include <vector>
 
 #include "ansi.h"
@@ -8,14 +9,18 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
-#include "layout.h"
 #include "drc.h"
+#include "interesting-props.h"
+#include "layout.h"
+#include "prop.h"
+
+using Bias = CellLibrary::Bias;
 
 static void TestRemoveAllWireLayer() {
   CellLibrary library;
 
   Cell const0(Gate::CONST0);
-  Cell wire_a1 = CellLibrary::WireA(1);
+  Cell wire_a1 = CellLibrary::Wire(1, Bias::RIGHT);
   Cell sink(Gate::SINK);
 
   int const0_out_x = library.GetInfo(const0).outputs[0].xblock;
@@ -94,10 +99,10 @@ static void TestStraightenZigZagWire() {
   CellLibrary library;
 
   Cell const0(Gate::CONST0);
-  Cell wire1 = CellLibrary::WireA(4);
-  Cell wire2 = CellLibrary::WireA(1);
+  Cell wire1 = CellLibrary::Wire(4, Bias::RIGHT);
+  Cell wire2 = CellLibrary::Wire(1, Bias::RIGHT);
   wire2.flip = true;
-  Cell wire3 = CellLibrary::WireA(5);
+  Cell wire3 = CellLibrary::Wire(5, Bias::RIGHT);
   Cell sink(Gate::SINK);
 
   std::vector<Cell> cells = {const0, wire1, wire2, wire3, sink};
@@ -169,8 +174,80 @@ static void TestStraightenZigZagWire() {
   CHECK(opt_l1[0].gate == Gate::SINK);
 }
 
-static void RealExamples() {
 
+
+static void TestWindowed() {
+  CellLibrary library;
+
+  Cell const0(Gate::CONST0);
+  Cell wire = CellLibrary::Wire(16, Bias::RIGHT);
+  Cell sink(Gate::SINK);
+
+  auto info_c = library.GetInfo(const0);
+  auto info_w = library.GetInfo(wire);
+  auto info_s = library.GetInfo(sink);
+
+  int c_out_x = info_c.outputs[0].xblock;
+  int w_in_x = info_w.inputs[0].xblock;
+  int w_out_x = info_w.outputs[0].xblock;
+  int s_in_x = info_s.inputs[0].xblock;
+
+  // Strand 0 positions.
+  int x0_c = 0;
+  int x0_w = x0_c + c_out_x - w_in_x;
+  int x0_s = x0_w + w_out_x - s_in_x;
+
+  // Strand 1 is placed in parallel to make it "nontrivial".
+  int offset = 300;
+  int x1_c = x0_c + offset;
+  int x1_w = x0_w + offset;
+  int x1_s = x0_s + offset;
+
+  int min_x = std::min({x0_c, x0_w, x0_s});
+  if (min_x < 0) {
+    x0_c -= min_x; x1_c -= min_x;
+    x0_w -= min_x; x1_w -= min_x;
+    x0_s -= min_x; x1_s -= min_x;
+  }
+
+  auto MakeLayer2 = [&](int x0, Cell cell0, int x1, Cell cell1) {
+    std::vector<Cell> layer;
+    if (x0 > 0) {
+      layer.push_back(CellLibrary::Spacer(x0));
+    }
+    layer.push_back(cell0);
+    int space = x1 - (x0 + library.GetInfo(cell0).block_width);
+    CHECK(space >= 0) << "Overlap in test setup!";
+    if (space > 0) {
+      layer.push_back(CellLibrary::Spacer(space));
+    }
+    layer.push_back(cell1);
+    return layer;
+  };
+
+  Layout layout;
+  layout.input_vars = {};
+  layout.circuit.layers.push_back(MakeLayer2(x0_c, const0, x1_c, const0));
+  layout.circuit.layers.push_back(MakeLayer2(x0_w, wire, x1_w, wire));
+  layout.circuit.layers.push_back(MakeLayer2(x0_s, sink, x1_s, sink));
+
+  CHECK(layout.circuit.layers.size() == 3);
+
+  DRC::CheckLayout(library, "windowed_before", layout);
+
+  size_t before_size = CircuitSize(layout.circuit);
+
+  Layout optimized = Optimization::Optimize(library, layout);
+
+  DRC::CheckLayout(library, "windowed_after", optimized);
+
+  size_t after_size = CircuitSize(optimized.circuit);
+
+  CHECK(after_size < before_size)
+      << "Expected circuit size to shrink! Before: " << before_size
+      << " After: " << after_size;
+  CHECK(optimized.circuit.layers.size() < layout.circuit.layers.size())
+      << "Expected fewer layers due to passthrough removal!";
 }
 
 int main(int argc, char **argv) {
@@ -178,6 +255,9 @@ int main(int argc, char **argv) {
 
   TestRemoveAllWireLayer();
   TestStraightenZigZagWire();
+
+  TestWindowed();
+
 
   Print("OK\n");
   return 0;

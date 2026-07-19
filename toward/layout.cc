@@ -1136,18 +1136,21 @@ struct LayoutEngineImpl : public LayoutEngine {
         bool flip = displacement > 0;
         int abs_disp = std::abs(displacement);
 
-        Gate ga = chute.type == CType::MIXED ?
-          WIREA : chute.type == CType::ZERO ? WIRE0A : WIRE1A;
-        Gate gb = chute.type == CType::MIXED ?
-          WIREB : chute.type == CType::ZERO ? WIRE0B : WIRE1B;
-
-        // Find the largest valid power of 2 wire that fits
+        // Find the largest wire that fits.
         for (int amount : wire_sizes_descending) {
           if (amount > 0 && amount <= abs_disp) {
-            if (PlaceAlignedUnary(c, ga, Span{chute.prop}, amount, {flip}) ||
-                PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip})) {
+            Gate ga = CellLibrary::Wire(
+                amount, CellLibrary::Bias::RIGHT, chute.type).gate;
+            Gate gb = CellLibrary::Wire(
+                amount, CellLibrary::Bias::LEFT, chute.type).gate;
+
+            if (PlaceAlignedUnary(c, ga, Span{chute.prop}, amount, {flip}))
               return;
-            }
+
+            // Also try the other wire variant if it exists.
+            if (ga != gb &&
+                PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip}))
+              return;
           }
         }
       };
@@ -1160,13 +1163,13 @@ struct LayoutEngineImpl : public LayoutEngine {
         if (canvas.Assigned(c)) return;
         Chute &chute = canvas.chutes[c];
 
-        Gate ga = chute.type == CType::MIXED ?
-          WIREA : chute.type == CType::ZERO ? WIRE0A : WIRE1A;
-        Gate gb = chute.type == CType::MIXED ?
-          WIREB : chute.type == CType::ZERO ? WIRE0B : WIRE1B;
+        Gate ga = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT,
+                                    chute.type).gate;
+        Gate gb = CellLibrary::Wire(0, CellLibrary::Bias::LEFT,
+                                    chute.type).gate;
 
         if (!PlaceAlignedUnary(c, ga, Span{chute.prop}, 0) &&
-            !PlaceAlignedUnary(c, gb, Span{chute.prop}, 0)) {
+            (ga == gb || !PlaceAlignedUnary(c, gb, Span{chute.prop}, 0))) {
           LOG(FATAL) << "Could not even place a 0-displacement wire "
             "for chute " << c;
         }
@@ -1414,7 +1417,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       for (int i = 0; i < props.size(); i++) {
         LC lc{
           .inprops = {props[i]},
-          .cell = CellLibrary::WireB(0),
+          .cell = CellLibrary::Wire(0, CellLibrary::Bias::LEFT),
         };
         final_layer.push_back(lc);
       }

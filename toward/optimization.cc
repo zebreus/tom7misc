@@ -92,8 +92,14 @@ struct Optimizer {
     std::vector<Cell> ret;
     for (int v : CellLibrary::WIRE_SIZES) {
       for (bool flip : {false, true}) {
-        Cell a = CellLibrary::WireA(v, type); a.flip = flip; ret.push_back(a);
-        Cell b = CellLibrary::WireB(v, type); b.flip = flip; ret.push_back(b);
+        Cell a = CellLibrary::Wire(v, CellLibrary::Bias::RIGHT, type);
+        a.flip = flip;
+        ret.push_back(a);
+        if (v < CellLibrary::SMALL_WIRE) {
+          Cell b = CellLibrary::Wire(v, CellLibrary::Bias::LEFT, type);
+          b.flip = flip;
+          ret.push_back(b);
+        }
       }
     }
     return ret;

@@ -33,6 +33,13 @@ void DRC::CheckCircuit(const CellLibrary &library,
     std::vector<DrcChute> current_outputs;
 
     for (const Cell &cell : layer) {
+      if (IsWire(cell.gate) && cell.v >= CellLibrary::SMALL_WIRE) {
+        CHECK(cell.gate == Gate::WIREA || cell.gate == Gate::WIRE0A ||
+              cell.gate == Gate::WIRE1A)
+            << error_context << ": Large wire must use A shape in "
+            << CellString(cell);
+      }
+
       CellLibrary::Info info = library.GetInfo(cell);
 
       for (const IO &in : info.inputs) {

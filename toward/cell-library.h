@@ -65,30 +65,31 @@ struct CellLibrary {
   // all natively slope down and to the right like a backslash;
   // for the reverse slope, flip these.
 
-  #define POWER2WIRES_ONLY 1
-
-  #if POWER2WIRES_ONLY
-  static constexpr std::initializer_list<int> WIRE_SIZES = {
-    0, 1, 2, 4, 8, 16, 32, 64,
-  };
-  #else
   static constexpr std::initializer_list<int> WIRE_SIZES = {
     0, 1, 2, 3, 4, 5, 8, 16, 32, 64,
   };
-  #endif
+
+  // If a wire has a displacement less than this, then it has
+  // both A and B variants. Otherwise, we get the same wire for
+  // both biases.
+  static constexpr int SMALL_WIRE = 8;
 
   static bool ValidWireSize(int w);
 
-  // Wire A has its input at x=1 and output at x=1+offset.
-  // It has tight clearance on the left (we say it is "right biased").
-  // offset in WIRE_SIZES.
-  static Cell WireA(int offset, CType type = CType::MIXED);
+  enum class Bias {
+    // Tight clearance on the left; may stick out on the right.
+    // This is wire shape A for small wires.
+    RIGHT,
+    // Tight clearance on the right; may stick out on the left.
+    // This is wire shape B for small wires.
+    LEFT,
+  };
 
-  // Wire B (left biased).
-  // Input is at x=6
-  // Output is at x=6 + offset
-  // offset in WIRE_SIZES.
-  static Cell WireB(int offset, CType type = CType::MIXED);
+  // Get the wire with the given offset and bias. For small wires,
+  // the bias affects whether this is wire shape A or B. For larger
+  // wires, the bias is ignored. The type does not affect the wire
+  // shape.
+  static Cell Wire(int offset, Bias bias, CType type = CType::MIXED);
 
  private:
   // Private implementation.

@@ -12,7 +12,7 @@
       <g isolation="isolate">
         <g isolation="isolate">
           <g isolation="isolate">
-            <text transform="translate(1235 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+            <text transform="translate(1445 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
           </g>
         </g>
       </g>
@@ -30,6 +30,6 @@
       </g>
     </g>
   </g>
-  <polygon points="20 200 20 100 0 100 0 180 0 220 500 360 0 520 0 749.832 1300 960 1300 940 20 725 20 545 580 360 20 200" fill="#9e7548"/>
-  <polygon points="700 100 130 100 130 120 680 120 680 500 340 620 1400 740 1400 960 1420 960 1420 710 700 630 700 100" fill="#9e7548"/>
+  <polygon points="20 325 20 100 0 100 0 330 0 710 1280 855 1280 960 1300 960 1300 840 20 690 20 325" fill="#9e7548"/>
+  <polygon points="140 100 120 100 120 120 120 570 1400 720 1400 960 1420 960 1420 700 140 550 140 100" fill="#9e7548"/>
 </svg>

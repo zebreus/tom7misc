@@ -91,18 +91,21 @@ static void PrintWireLib() {
   CellLibrary library;
   Print("Available wires:\n");
   for (int offset : CellLibrary::WIRE_SIZES) {
-    Cell wa = CellLibrary::WireA(offset, CType::MIXED);
+    Cell wa = CellLibrary::Wire(offset, CellLibrary::Bias::RIGHT);
     CellLibrary::Info ainfo = library.GetInfo(wa);
-    Cell wb = CellLibrary::WireB(offset, CType::MIXED);
-    CellLibrary::Info binfo = library.GetInfo(wb);
     Print("Offset {}:\n"
-          "Wire A({}), width {}:\n{}\n"
-          "Wire B({}), width {}:\n{}\n",
+          "Wire A({}), width {}:\n{}\n",
           offset,
           wa.v, ainfo.block_width,
-          IOString(ainfo),
-          wb.v, binfo.block_width,
-          IOString(binfo));
+          IOString(ainfo));
+
+    if (offset < CellLibrary::SMALL_WIRE) {
+      Cell wb = CellLibrary::Wire(offset, CellLibrary::Bias::LEFT);
+      CellLibrary::Info binfo = library.GetInfo(wb);
+      Print("Wire B({}), width {}:\n{}\n",
+            wb.v, binfo.block_width,
+            IOString(binfo));
+    }
   }
 }
 

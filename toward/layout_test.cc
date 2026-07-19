@@ -241,7 +241,7 @@ static void TestLoop1() {
   int current_x = 0;
 
   for (const ChuteDesc &desc : chutes) {
-    Cell cell = CellLibrary::WireA(0, desc.type);
+    Cell cell = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT, desc.type);
     int in_x = library.GetInfo(cell).inputs[0].xblock;
     int cell_x = desc.pos - in_x;
 

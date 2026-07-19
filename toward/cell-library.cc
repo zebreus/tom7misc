@@ -39,6 +39,8 @@ struct EqCell {
 };
 }  // namespace
 
+using Bias = CellLibrary::Bias;
+
 // Get the input/output types for the gate (unflipped).
 static std::pair<InlineVector<CType>, InlineVector<CType>>
 GetType(Gate g) {
@@ -236,8 +238,6 @@ struct CellLibraryImpl {
     Load("cell-combine.svg", Gate::COMBINE01, 0);
     Load("cell-combine.svg", Gate::COMBINE10, 0);
 
-    // PERF: Once we get to about offset 8, we no longer need
-    // to distinguish the left/right biased levels.
     for (CType t : { CType::MIXED, CType::ZERO, CType::ONE }) {
       Gate ga =
         (t == CType::MIXED) ? Gate::WIREA :
@@ -246,13 +246,13 @@ struct CellLibraryImpl {
         (t == CType::MIXED) ? Gate::WIREB :
         (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
 
-      Load("cell-wirea0.svg", ga, 0);
-      Load("cell-wireb0.svg", gb, 0);
-
       for (int offset : CellLibrary::WIRE_SIZES) {
-        if (offset != 0) {
+        if (offset < CellLibrary::SMALL_WIRE) {
           Load(std::format("cell-wireap{}.svg", offset), ga, offset);
           Load(std::format("cell-wirebp{}.svg", offset), gb, offset);
+        } else {
+          // Large wires are stored as the A variant.
+          Load(std::format("cell-wire{}.svg", offset), ga, offset);
         }
       }
     }
@@ -277,10 +277,9 @@ struct CellLibraryImpl {
       int best_close = 1e9;
       int best_far = 1e9;
       for (int k : {0, 1, 2, 4, 8, 16, 32, 64}) {
-        for (int w = 0; w < 2; w++) {
-          for (bool flip : {false, true}) {
-            Cell cell = (w == 0) ? CellLibrary::WireA(k, type)
-                                 : CellLibrary::WireB(k, type);
+        for (bool flip : {false, true}) {
+          for (Bias bias : {Bias::LEFT, Bias::RIGHT}) {
+            Cell cell = CellLibrary::Wire(k, bias, type);
             cell.flip = flip;
             CellLibrary::Info info = GetInfo(cell);
             CHECK(info.outputs.size() == 1);
@@ -389,19 +388,23 @@ bool CellLibrary::ValidWireSize(int s) {
   return false;
 }
 
-Cell CellLibrary::WireA(int k, CType t) {
-  CHECK(ValidWireSize(k)) << "Invalid offset for WireA: " << k;
-  Gate g =
-    (t == CType::MIXED) ? Gate::WIREA :
-    (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
-  return Cell(g, k);
-}
+Cell CellLibrary::Wire(int k, Bias b, CType t) {
+  CHECK(ValidWireSize(k)) << "Invalid offset for Wire: " << k;
+  Gate g = [&]{
+      if (k < SMALL_WIRE) {
+        if (b == Bias::RIGHT) {
+          return (t == CType::MIXED) ? Gate::WIREA :
+            (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
+        } else {
+          return (t == CType::MIXED) ? Gate::WIREB :
+            (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
+        }
+      } else {
+        return (t == CType::MIXED) ? Gate::WIREA :
+          (t == CType::ONE) ? Gate::WIRE1A : Gate::WIRE0A;
+      }
+    }();
 
-Cell CellLibrary::WireB(int k, CType t) {
-  CHECK(ValidWireSize(k)) << "Invalid offset for WireB: " << k;
-  Gate g =
-    (t == CType::MIXED) ? Gate::WIREB :
-    (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
   return Cell(g, k);
 }
 
