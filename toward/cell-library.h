@@ -66,15 +66,16 @@ struct CellLibrary {
   // for the reverse slope, flip these.
 
   static constexpr std::initializer_list<int> WIRE_SIZES = {
-    0, 1, 2, 3, 4, 5,
+    // Small wires (A/B variants exist).
+    0, 1, 2, 3,
     // Large wires.
-    6, 7, 8, 16, 32, 64,
+    4, 5, 6, 7, 8, 16, 32, 64,
   };
 
   // If a wire has a displacement less than this, then it has
   // both A and B variants. Otherwise, we get the same wire for
   // both biases.
-  static constexpr int SMALL_WIRE = 6;
+  static constexpr int SMALL_WIRE = 4;
 
   static bool ValidWireSize(int w);
 

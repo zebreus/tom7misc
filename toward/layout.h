@@ -64,6 +64,10 @@ struct LayoutEngine {
   // circuits!
   static std::string ToString(const Layout &layout);
 
+  // Number of redundant inputs (same var appears earlier,
+  // including of a different type).
+  static int RedundantInputs(const Layout &layout);
+
   // Single line of stats: Size, number of inputs, etc.
   static std::string LayoutInfo(const Layout &layout);
 

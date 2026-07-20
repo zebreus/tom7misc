@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "auto-histo.h"
 #include "base/print.h"
 #include "cell-library.h"
 #include "chessprop.h"
@@ -134,6 +135,14 @@ struct ChessDemo {
     board = ChessProp::NewBoard(&world);
   }
 
+  // stats across nontrivial circuits
+  AutoHisto layer_histo = AutoHisto(10000);
+  AutoHisto cell_histo = AutoHisto(10000);
+  int64_t total_cells = 0;
+  int64_t total_layers = 0;
+  int64_t total_redundant = 0;
+  int64_t max_layers = 0;
+  std::string max_layers_name;
 
   Layout RenderOne(std::string_view name, const Prop &prop_in) {
     size_t before = PropSize(prop_in);
@@ -157,11 +166,25 @@ struct ChessDemo {
     DRC::CheckLayout(library, name, layout);
     Print("DRC OK\n");
 
-    Layout opt_layout = Optimization::Optimize(library, layout);
-    Print("Optimized! {}\n", LayoutEngine::LayoutInfo(opt_layout));
-    DRC::AssertEquivalentLayout(library, name, layout, opt_layout);
-    Print("Optimized DRC ok!\n");
-    layout = std::move(opt_layout);
+    if (OPTIMIZE) {
+      Layout opt_layout = Optimization::Optimize(library, layout);
+      Print("Optimized! {}\n", LayoutEngine::LayoutInfo(opt_layout));
+      DRC::AssertEquivalentLayout(library, name, layout, opt_layout);
+      Print("Optimized DRC ok!\n");
+      layout = std::move(opt_layout);
+    }
+
+    int64_t layers = layout.circuit.layers.size();
+    int64_t cells = CircuitSize(layout.circuit);
+    layer_histo.Observe(layers);
+    cell_histo.Observe(cells);
+    total_layers += layers;
+    total_cells += cells;
+    total_redundant += LayoutEngine::RedundantInputs(layout);
+    if (layers > max_layers) {
+      max_layers = layers;
+      max_layers_name = name;
+    }
 
     return layout;
   }
@@ -207,10 +230,24 @@ struct ChessDemo {
 
     Print("Did {} normal and skipped {} trivial.\n",
           normal, trivial);
+
+    Print("Cells per circuit:\n{}"
+          "Layers per circuit:\n{}",
+          cell_histo.SimpleANSI(20),
+          layer_histo.SimpleANSI(20));
+
+    Print("\nTotal cells: {}\n"
+          "Total layers: {}\n"
+          "Total redundant inputs: {}\n"
+          "Largest circuit: {} ({} layers)\n"
+          "\n",
+          total_cells,
+          total_layers,
+          total_redundant,
+          max_layers_name,
+          max_layers);
   }
 };
-
-
 
 
 int main(int argc, char **argv) {

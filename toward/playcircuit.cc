@@ -80,7 +80,8 @@ static void Loop(std::string_view layout_file) {
 
       } else if (const Inputs::MouseChange *mc =
                  std::get_if<Inputs::MouseChange>(&input)) {
-        if (mc->button & (1 << Inputs::MOUSE_MIDDLE)) {
+
+        if (mc->button & Inputs::MOUSE_MIDDLE) {
           sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
         }
 

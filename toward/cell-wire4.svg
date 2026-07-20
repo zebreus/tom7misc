@@ -11,7 +11,7 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(245 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+          <text transform="translate(225 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
         </g>
       </g>
     </g>
@@ -26,8 +26,6 @@
       </g>
     </g>
   </g>
-  <path d="M20,100" fill="none" stroke="#f7ff69" stroke-miterlimit="10" stroke-width="6"/>
-  <path d="M200,960" fill="none" stroke="#f7ff69" stroke-miterlimit="10" stroke-width="6"/>
-  <polygon points="140 340 140 320 20 215 20 100 0 100 0 225 115 330 0 405 0 645 120 755 80 840 80 960 100 960 100 845 140 775 140 740 20 635 20 410 140 340" fill="#9e7548"/>
-  <polygon points="260 460 260 235 140 130 140 100 120 100 120 140 240 240 240 445 120 505 120 560 240 660 240 880 200 940 200 960 220 960 260 895 260 655 140 550 140 525 260 460" fill="#9e7548"/>
+  <polygon points="20 520 105 385 20 205 20 100 0 100 0 215 75 380 0 500 0 670 80 915 80 960 100 960 100 900 20 660 20 520" fill="#9e7548"/>
+  <polygon points="220 235 140 140 140 100 120 100 120 155 200 255 200 425 115 630 200 645 200 960 220 960 220 625 160 610 220 480 220 235" fill="#9e7548"/>
 </svg>

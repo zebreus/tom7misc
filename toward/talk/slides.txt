@@ -167,7 +167,7 @@ level talk/too-big.svg
 background none
 
 delay 3
-level talk/futurework.svg
+# level talk/futurework.svg
 
 drop cursors
 delay 0

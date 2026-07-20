@@ -11,7 +11,11 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(285 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <text transform="translate(285 1034.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+            </g>
+          </g>
         </g>
       </g>
     </g>
@@ -21,13 +25,15 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <text transform="translate(141.378 45)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">A</tspan></text>
+            </g>
+          </g>
         </g>
       </g>
     </g>
   </g>
-  <path d="M20,100" fill="none" stroke="#f7ff69" stroke-miterlimit="10" stroke-width="6"/>
-  <path d="M240,960" fill="none" stroke="#f7ff69" stroke-miterlimit="10" stroke-width="6"/>
-  <polygon points="140 340 140 320 20 215 20 100 0 100 0 225 115 330 0 405 0 645 120 755 120 960 140 960 140 740 20 635 20 410 140 340" fill="#9e7548"/>
-  <polygon points="260 460 260 235 140 130 140 100 120 100 120 140 240 240 240 445 120 505 120 560 240 660 240 960 260 960 260 655 140 550 140 525 260 460" fill="#9e7548"/>
+  <polygon points="20 630 20 325 20 100 0 100 0 330 0 650 120 960 140 960 140 840 20 630" fill="#9e7548"/>
+  <polygon points="140 100 120 100 120 120 120 540 240 700 240 960 260 960 260 680 140 520 140 100" fill="#9e7548"/>
 </svg>

@@ -18,6 +18,7 @@
 // The spec consists of:
 //   - A way of sampling inputs
 //   - The expected output
+// These are now just derived from the cell's definition.
 
 // A chute can have nothing, a zero or one bit, or garbage.
 enum class ChuteValue {
@@ -49,32 +50,6 @@ struct ValidationInstance {
 };
 
 struct Validation {
-  static std::unique_ptr<ValidationInstance> And();
-  static std::unique_ptr<ValidationInstance> Separator();
-  static std::unique_ptr<ValidationInstance> Not();
-  // Separates and duplicates its one input.
-  static std::unique_ptr<ValidationInstance> DupSep();
-  // Exchanges separated A and ¬A.
-  static std::unique_ptr<ValidationInstance> SepXchg();
-  // Exchanges two separated zeroes.
-  static std::unique_ptr<ValidationInstance> Sep00Xchg();
-  // A separated 0 and a separated 1.
-  static std::unique_ptr<ValidationInstance> Sep01Xchg();
-  static std::unique_ptr<ValidationInstance> Sep10Xchg();
-  static std::unique_ptr<ValidationInstance> Sep11Xchg();
-
-  // Wire shape A, offset +0.
-  static std::unique_ptr<ValidationInstance> WireA0();
-  // Offset -1.
-  static std::unique_ptr<ValidationInstance> WireAN1();
-  // Offset -2, -4, -8, etc.
-  static std::unique_ptr<ValidationInstance> WireAN2();
-  static std::unique_ptr<ValidationInstance> WireAN4();
-  static std::unique_ptr<ValidationInstance> WireAN8();
-  static std::unique_ptr<ValidationInstance> WireAN16();
-  static std::unique_ptr<ValidationInstance> WireAN32();
-
-  // TODO:
   // Create a validation instance that tests a standard cell,
   // verifying that it matches its logical behavior (Transform).
   // The args must match the input size for the cell. Most of

@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "image.h"
 #include "layout-canvas.h"
 #include "level.h"
+#include "map-util.h"
 #include "periodically.h"
 #include "png.h"
 #include "prop.h"
@@ -117,8 +119,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
-  // The desired displacement amount
-  AutoHisto disp_histo = AutoHisto(100000);
+  // The desired displacement amount, when we didn't have an
+  // exact match. Key is abs displacement, value is occurrence count.
+  std::unordered_map<int, int> disp_histo;
 
   // The amount of space we try to keep between the done region
   // (chutes on the far left and right that contain MIXED vars)
@@ -137,6 +140,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   StatusBar *status = nullptr;
 
   std::vector<int> wire_sizes_descending;
+  std::unordered_set<int> wire_sizes_available;
 
   int verbose = 1;
   bool write_images = false;
@@ -173,14 +177,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     for (const LC &lc : lcs) {
       CellLibrary::Info info = library.GetInfo(lc.cell);
       for (size_t i = 0; i < lc.inprops.size(); i++) {
-        /*
-          // XXX should put this back, but it's currently possible
-          // for a solo separated wire to persist to the end.
-          // We could add cleanup layers at the end.
         if (info.inputs[i].type != CType::MIXED) {
           return std::nullopt;
         }
-        */
         const Prop &p = lc.inprops[i];
         if (const Var *v = std::get_if<Var>(&p.p)) {
           vars.emplace_back(v->id, info.inputs[i].type);
@@ -229,7 +228,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     CHECK(min_dist.has_value());
     min_output_distance = min_dist.value();
 
-    if (verbose > 0) {
+    if (verbose > 1) {
       Print("Minimum output dist is for {}: {}\n",
             GateString(min_gate), min_output_distance);
     }
@@ -1137,6 +1136,12 @@ struct LayoutEngineImpl : public LayoutEngine {
         int abs_disp = std::abs(displacement);
 
         // Find the largest wire that fits.
+        // CHECK(!wire_sizes_descending.empty());
+        if (!wire_sizes_available.contains(abs_disp) &&
+            abs_disp <= 256) {
+          disp_histo[abs_disp]++;
+        }
+
         for (int amount : wire_sizes_descending) {
           if (amount > 0 && amount <= abs_disp) {
             Gate ga = CellLibrary::Wire(
@@ -1511,6 +1516,16 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     Layout lay = DoLayoutInternal(props_in);
 
+    #if 0
+    std::vector<std::pair<int, int>> missing_wires =
+      CountMapToDescendingVector(disp_histo);
+    Print("Top missing wire sizes:\n");
+    for (int i = 0; i < missing_wires.size() && i < 80; i++) {
+      const auto &[disp, count] = missing_wires[i];
+      Print("{}: {}" AGREY("×") "\n", disp, count);
+    }
+    #endif
+
     if (verbose > 0) {
       Print("Got {} inputs; {} layers.\n",
             lay.input_vars.size(),
@@ -1530,8 +1545,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     ComputeMinOutputDistance();
     ComputeMaxCellWidth();
 
-    for (int s : CellLibrary::WIRE_SIZES)
+    for (int s : CellLibrary::WIRE_SIZES) {
       wire_sizes_descending.push_back(s);
+      wire_sizes_available.insert(s);
+    }
     std::sort(wire_sizes_descending.begin(),
               wire_sizes_descending.end(),
               [](int a, int b) {
@@ -1652,11 +1669,30 @@ std::string LayoutEngine::ToString(const Layout &layout) {
   return out;
 }
 
+int LayoutEngine::RedundantInputs(const Layout &layout) {
+  std::unordered_set<int> saw;
+  int redundant = 0;
+  for (const auto &[v, t] : layout.input_vars) {
+    if (saw.contains(v)) {
+      redundant++;
+    } else {
+      saw.insert(v);
+    }
+  }
+
+  return redundant;
+}
+
 std::string LayoutEngine::LayoutInfo(const Layout &layout) {
-  // TODO: Compute duplicate inputs
-  return std::format("{} layers, {} inputs, {} cells",
+  int redundant = RedundantInputs(layout);
+  std::string rs;
+  if (redundant > 0) {
+    rs = std::format(" ({} red.)", redundant);
+  }
+  return std::format("{} layers, {} inputs{}, {} cells",
                      layout.circuit.layers.size(),
                      layout.input_vars.size(),
+                     rs,
                      CircuitSize(layout.circuit));
 }
 

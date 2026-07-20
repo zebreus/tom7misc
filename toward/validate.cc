@@ -19,8 +19,9 @@
 #include "scene.h"
 #include "status-bar.h"
 #include "threadutil.h"
-#include "validation.h"
 #include "util.h"
+#include "validation.h"
+#include "vector-util.h"
 
 // TODO: We should really test the possibility that one input
 // arrives way before the other. Initial velocities mostly
@@ -29,7 +30,7 @@
 static void RemoveValidationImages() {
   // So lifetime is simple for async.
   std::vector<std::string> files = Util::ListFiles(".");
-  int deleted = 0;
+  [[maybe_unused]] int deleted = 0;
   {
     Asynchronously async(8);
     for (const std::string &f : files) {
@@ -39,7 +40,7 @@ static void RemoveValidationImages() {
       }
     }
   }
-  Print("Deleted {} image files.\n", deleted);
+  // Print("Deleted {} image files.\n", deleted);
 }
 
 static bool Validate(const ValidationInstance &inst) {
@@ -123,44 +124,54 @@ static bool Validate(const ValidationInstance &inst) {
           });
       }, NUM_EVAL_THREADS);
 
+  status.Status("Done.");
   status.Remove();
-  Print("Validation of {}: {} / {} correct = {:.2f}%\n",
+
+
+  std::string_view cc = correct_count == NUM_TRIALS ? ANSI_GREEN : ANSI_RED;
+  Print("Validation of " ABLUE("{}") ": {} / {} correct = "
+        "{}{:.2f}%" ANSI_RESET "\n",
         inst.Name(),
         correct_count, NUM_TRIALS,
+        cc,
         (correct_count * 100.0) / done);
 
   return correct_count == NUM_TRIALS;
 }
 
-[[maybe_unused]]
-static void ValidateAll() {
-  CHECK(Validate(*Validation::And()));
-  CHECK(Validate(*Validation::Separator()));
-  CHECK(Validate(*Validation::Not()));
-  CHECK(Validate(*Validation::DupSep()));
-  CHECK(Validate(*Validation::SepXchg()));
-  CHECK(Validate(*Validation::Sep00Xchg()));
-  CHECK(Validate(*Validation::Sep01Xchg()));
-  CHECK(Validate(*Validation::Sep10Xchg()));
-  CHECK(Validate(*Validation::Sep11Xchg()));
+static void ValidateWires(const CellLibrary &library) {
+  std::vector<int> sizes = CellLibrary::WIRE_SIZES;
+  VectorReverse(&sizes);
+
+  for (int v : sizes) {
+    std::vector<CellLibrary::Bias> biases = {
+      CellLibrary::Bias::RIGHT,
+    };
+
+    if (v < CellLibrary::SMALL_WIRE)
+      biases.push_back(CellLibrary::Bias::LEFT);
+
+    for (CellLibrary::Bias bias : biases) {
+      for (bool f : {false, true}) {
+        // The shapes are the same, so we used mixed
+        // to just get a combination of both glyphs.
+        Cell cell = CellLibrary::Wire(v, bias, CType::MIXED);
+        cell.flip = f;
+
+        // All wires take one input.
+        std::vector<Prop> args = {Prop{Var{.id = 0}}};
+
+        std::unique_ptr<ValidationInstance> cv =
+          Validation::ValidateCell(library, cell, args);
+        CHECK(Validate(*cv)) << cv->Name();
+      }
+    }
+  }
 }
 
-static void ValidateWires() {
-  CHECK(Validate(*Validation::WireA0()));
-  CHECK(Validate(*Validation::WireAN1()));
-  CHECK(Validate(*Validation::WireAN2()));
-  CHECK(Validate(*Validation::WireAN4()));
-  CHECK(Validate(*Validation::WireAN8()));
-  CHECK(Validate(*Validation::WireAN16()));
-  CHECK(Validate(*Validation::WireAN32()));
-}
-
-static void ValidateLibrary() {
-  CellLibrary library;
-
+static void ValidateCells(const CellLibrary &library) {
+  // Nothing to validate:
   // SPACER,
-  // WIREA,
-  // WIREB,
 
   // Not used; problematic:
   // Gate::NOT,
@@ -187,10 +198,6 @@ static void ValidateLibrary() {
       Gate::SINK,
     }) {
     for (bool f : {false, true}) {
-      // XXX skip known problematic
-      // if (f && g == Gate::AND0110) continue;
-      if (g == Gate::NOT) continue;
-
       Cell cell(g, 0, f);
       std::vector<Prop> args;
       CellLibrary::Info info = library.GetInfo(cell);
@@ -235,14 +242,15 @@ static void ValidateLibrary() {
   }
 }
 
+static void ValidateLibrary() {
+  CellLibrary library;
+
+  ValidateWires(library);
+  ValidateCells(library);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
-
-
-  // Validate(*Validation::SepXchg());
-  // Validate(*Validation::Sep11Xchg());
-
-  // CHECK(Validate(*Validation::WireAN32()));
 
   ValidateLibrary();
 
