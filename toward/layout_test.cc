@@ -181,7 +181,7 @@ static void LayoutInterestingProps(const CellLibrary &library) {
     std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
     std::vector<Prop> output = {prop};
     Layout layout = le->DoLayout(output);
-    DRC::CheckLayout(library, "xor", layout);
+    DRC::CheckLayout(library, "interesting", layout);
     Verify(layout, output);
   }
 }

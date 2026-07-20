@@ -1318,7 +1318,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         "Top missing wire sizes:\n";
       for (int i = 0; i < missing_wires.size() && i < 80; i++) {
         const auto &[disp, count] = missing_wires[i];
-        AppendFormat(&content, "{}: {}" AGREY("×") "\n", disp, count);
+        AppendFormat(&content, "{}: {}×\n", disp, count);
       }
       Util::WriteFile("desired-wires.txt", content);
     }

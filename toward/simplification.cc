@@ -72,6 +72,22 @@ Simplification::Node Simplification::AND(Node lhs, Node rhs) {
   // Normalize to encourage sharing.
   if (rhs < lhs) std::swap(lhs, rhs);
 
+  // (a AND a) = a.
+  if (lhs == rhs)
+    return lhs;
+
+  // (a AND ¬a) = false
+  if ((lhs ^ rhs )== 0b1)
+    return F();
+
+  // (a AND false) = false
+  if (lhs == F() ||
+      rhs == F()) return F();
+
+  // (a AND true) = a
+  if (lhs == T()) return rhs;
+  if (rhs == T()) return lhs;
+
   Row row{
     .data = (uint64_t(lhs) << 32) | rhs,
     .hash = HashAnd(lhs, rhs),

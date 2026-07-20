@@ -250,6 +250,38 @@ static void TestWindowed() {
       << "Expected fewer layers due to passthrough removal!";
 }
 
+static std::vector<Prop> TestProps() {
+  std::vector<Prop> props;
+  for (const Prop &p : SmallInterestingProps()) props.push_back(p);
+  for (const Prop &p : MediumInterestingProps()) props.push_back(p);
+  return props;
+}
+
+static void OptimizeInteresting() {
+  const CellLibrary library;
+
+  World world;
+  std::vector<Prop> props = TestProps();
+  for (const Prop &prop : props) NameVars(&world, prop);
+
+  for (const Prop &prop : props) {
+    std::string name = PropString(prop);
+    std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
+    le->SetVerbose(0);
+    std::vector<Prop> output = {prop};
+    Layout layout = le->DoLayout(output);
+    DRC::CheckLayout(library, name, layout);
+
+    Layout opt_layout = Optimization::Optimize(library, layout);
+    DRC::AssertEquivalentLayout(library,
+                                name, layout, opt_layout);
+    Print("{} ->\n{}\n",
+          LayoutEngine::LayoutInfo(layout),
+          LayoutEngine::LayoutInfo(opt_layout));
+  }
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -258,6 +290,7 @@ int main(int argc, char **argv) {
 
   TestWindowed();
 
+  OptimizeInteresting();
 
   Print("OK\n");
   return 0;
