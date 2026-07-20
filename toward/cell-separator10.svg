@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
   <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
   <g opacity=".05">
     <rect width="1920" height="1080" fill="#fff"/>
@@ -7,7 +7,7 @@
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
   <polygon points="20 360 610 475 20 280 20 360" fill="#00a"/>
-  <polygon points="1100 660 395 660 1100 465 1100 660" fill="#00a"/>
+  <polygon points="900 660 395 660 900 520 900 660" fill="#00a"/>
   <polygon points="20.163 665 20 605 300 630 20.163 665" fill="#00a"/>
   <rect x="540" y="670" width="20" height="290" fill="#c00"/>
   <polygon points="440 960 280 960 280 745 440 880 440 960" fill="#c00"/>
@@ -17,7 +17,9 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(134.311 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">10</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(134.311 70)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">10</tspan></text>
+          </g>
         </g>
       </g>
     </g>
@@ -26,7 +28,9 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(554.9998 1029.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(554.9998 1029.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+          </g>
         </g>
       </g>
     </g>
@@ -35,12 +39,14 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(134.9999 1029.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(134.9999 1029.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+          </g>
         </g>
       </g>
     </g>
   </g>
-  <polygon points="130 100 130 120 1080 120 1080 490 1100 490 1100 120 1100 100 130 100" fill="#006ebb"/>
+  <polygon points="130 100 130 120 900 120 900 550.048 920 550.048 920 100 130 100" fill="#006ebb"/>
   <rect x="20" width="100" height="100" fill="#aff"/>
   <rect x="20" y="960" width="100" height="120" fill="#faa"/>
   <rect x="440" y="960" width="100" height="120" fill="#faa"/>

@@ -575,19 +575,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // Sanity check: Ensure the input chutes are not already stuck before
     // we even place anything.
-    {
-      // Some location that can't interfere with anything.
-      const int clear_pos = canvas.chutes.back().pos +
-        Levels::IN_WIDTH + 2 * library.MinClearanceFar() + 1;
-      if (!canvas.CanPlaceCell(
-              // Not a real chute
-              -1,
-              CellLibrary::Spacer(1),
-              clear_pos)) {
-        LOG(FATAL) << "Input chutes are already in a state where "
-          "we're stuck!\n" << canvas.DebugString();
-      }
-    }
+    canvas.CheckNotStuck();
 
     // In order to ensure we make progress, the first goal in
     // priority order that is in the right position but doesn't
@@ -1323,6 +1311,18 @@ struct LayoutEngineImpl : public LayoutEngine {
       DebugRender(*layers);
     }
 
+    if (layers->size() % 1000) {
+      std::vector<std::pair<int, int>> missing_wires =
+        CountMapToDescendingVector(disp_histo);
+      std::string content =
+        "Top missing wire sizes:\n";
+      for (int i = 0; i < missing_wires.size() && i < 80; i++) {
+        const auto &[disp, count] = missing_wires[i];
+        AppendFormat(&content, "{}: {}" AGREY("×") "\n", disp, count);
+      }
+      Util::WriteFile("desired-wires.txt", content);
+    }
+
     // Otherwise, compute a new top layer.
     auto [next, start_pos] = AddLayer(last);
 
@@ -1515,16 +1515,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     Layout lay = DoLayoutInternal(props_in);
-
-    #if 0
-    std::vector<std::pair<int, int>> missing_wires =
-      CountMapToDescendingVector(disp_histo);
-    Print("Top missing wire sizes:\n");
-    for (int i = 0; i < missing_wires.size() && i < 80; i++) {
-      const auto &[disp, count] = missing_wires[i];
-      Print("{}: {}" AGREY("×") "\n", disp, count);
-    }
-    #endif
 
     if (verbose > 0) {
       Print("Got {} inputs; {} layers.\n",

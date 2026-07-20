@@ -467,3 +467,48 @@ void LayoutCanvas::AddNext(int xpos, const Cell &cell,
       .inprops = std::move(inprops),
     });
 }
+
+
+void LayoutCanvas::CheckNotStuck() {
+  // Some location that can't interfere with anything.
+  const int clear_pos = chutes.back().pos +
+    Levels::IN_WIDTH + 2 * library.MinClearanceFar() + 1;
+  if (!CanPlaceCell(
+          // Not a real chute
+          -1,
+          CellLibrary::Spacer(1),
+          clear_pos)) {
+
+    Print("Stuck circuit!\n{}\n\n", DebugString());
+
+    // We're going to abort, but get a clearer error message!
+    // Turn off verbosity for the probes.
+    verbose = 0;
+
+    std::vector<int> stuck_chutes;
+    for (int i = 0; i < (int)chutes.size(); i++) {
+      if (Assigned(i)) continue;
+      const Chute &chute = chutes[i];
+
+      Cell wire_l = CellLibrary::Wire(0, CellLibrary::Bias::LEFT, chute.type);
+      Cell wire_r = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT, chute.type);
+
+      int xl = chute.pos - library.GetInfo(wire_l).outputs[0].xblock;
+      int xr = chute.pos - library.GetInfo(wire_r).outputs[0].xblock;
+
+      if (!CanPlaceCell(i, wire_l, xl) && !CanPlaceCell(i, wire_r, xr)) {
+        stuck_chutes.push_back(i);
+      }
+    }
+
+    std::string stuck_str;
+    for (int idx : stuck_chutes) {
+      if (!stuck_str.empty()) stuck_str += ", ";
+      stuck_str += std::to_string(idx);
+    }
+    if (stuck_str.empty()) stuck_str = "none (complex blockage)";
+
+    LOG(FATAL) << "Input chutes are already in a state "
+      "where we're stuck! Stuck chutes: [" << stuck_str << "]\n";
+  }
+}

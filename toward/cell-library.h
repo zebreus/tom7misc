@@ -69,7 +69,10 @@ struct CellLibrary {
     // Small wires (A/B variants exist).
     0, 1, 2, 3,
     // Large wires.
-    4, 5, 6, 7, 8, 16, 32, 64,
+    4, 5, 6, 7, 8, 9,
+    11,
+    16, 32, 64,
+    80,
   };
 
   // If a wire has a displacement less than this, then it has

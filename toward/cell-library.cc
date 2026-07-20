@@ -246,6 +246,10 @@ struct CellLibraryImpl {
         (t == CType::MIXED) ? Gate::WIREB :
         (t == CType::ONE) ? Gate::WIRE1B : Gate::WIRE0B;
 
+      // TODO: For size zero wires, flipping retains zero displacement,
+      // so "A" and "B" are actually redundant. Maybe we should have a
+      // center-bias version?
+
       for (int offset : CellLibrary::WIRE_SIZES) {
         if (offset < CellLibrary::SMALL_WIRE) {
           Load(std::format("cell-wire{}a.svg", offset), ga, offset);

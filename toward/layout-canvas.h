@@ -115,6 +115,10 @@ struct LayoutCanvas {
 
   void SetVerbose(int v);
 
+  // Assert that we are not already in a situation where we're
+  // stuck (where no cell can be placed).
+  void CheckNotStuck();
+
   // This stuff is just exposed for testing and visualization.
 
   static std::string_view DesireTypeString(DesireType dt);

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" version="1.1" viewBox="0 0 1920 1080">
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
   <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
   <g opacity=".05">
     <rect width="1920" height="1080" fill="#fff"/>
@@ -10,28 +10,32 @@
         <g isolation="isolate">
           <g isolation="isolate">
             <g isolation="isolate">
-              <text transform="translate(1199.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+              <g isolation="isolate">
+                <text transform="translate(759.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+              </g>
             </g>
           </g>
         </g>
       </g>
     </g>
   </g>
-  <path d="M1300,570" fill="#00a"/>
+  <path d="M860,570" fill="#00a"/>
   <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
   <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  <polygon points="1300 220 669.723 475.662 1300 300 1300 220" fill="#00a"/>
-  <polygon points="0 420 885 654.888 0 520 0 420" fill="#00a"/>
-  <polygon points="979.148 623.709 1300.968 599.888 1300 649.888 979.148 623.709" fill="#00a"/>
-  <rect x="1200" width="100" height="100" fill="#aff"/>
-  <rect x="780" y="960" width="100" height="120" fill="#faa"/>
-  <rect x="1200" y="960" width="100" height="120" fill="#faa"/>
-  <polygon points="880 920 1000 739.888 1000 960 880 960 880 920" fill="#c00"/>
+  <polygon points="860 220 229.723 475.662 860 300 860 220" fill="#00a"/>
+  <polyline points="20 542.0887 445 654.888 20 620" fill="#00a"/>
+  <polygon points="539.148 623.709 860.968 599.888 860 649.888 539.148 623.709" fill="#00a"/>
+  <rect x="760" width="100" height="100" fill="#aff"/>
+  <rect x="340" y="960" width="100" height="120" fill="#faa"/>
+  <rect x="760" y="960" width="100" height="120" fill="#faa"/>
+  <polygon points="440 920 560 739.888 560 960 440 960 440 920" fill="#c00"/>
   <g isolation="isolate">
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(1120 60)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(680 60)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">01</tspan></text>
+          </g>
         </g>
       </g>
     </g>
@@ -40,7 +44,9 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(710 1040)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(270 1040)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">0</tspan></text>
+          </g>
         </g>
       </g>
     </g>
@@ -49,14 +55,15 @@
     <g isolation="isolate">
       <g isolation="isolate">
         <g isolation="isolate">
-          <text transform="translate(1330 1030)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+          <g isolation="isolate">
+            <text transform="translate(890 1030)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">1</tspan></text>
+          </g>
         </g>
       </g>
     </g>
   </g>
-  <rect y="100" width="1190" height="20" fill="#006ebb"/>
-  <rect x="1300" y="100" width="20" height="860" fill="#006ebb"/>
-  <polygon points="1000 739.888 1000 960 1200 960 1000 739.888" fill="#0c2"/>
-  <polygon points="860 664.888 760 740 760 960 780 960 780 740 880 664.888 860 664.888" fill="#c00"/>
-  <rect y="120" width="20" height="310" fill="#006ebb"/>
+  <rect x="860" y="100" width="20" height="860" fill="#006ebb"/>
+  <polygon points="560 739.888 560 960 760 960 560 739.888" fill="#0c2"/>
+  <polygon points="420 664.888 320 740 320 960 340 960 340 740 440 664.888 420 664.888" fill="#c00"/>
+  <polygon points="0 100 0 620 20 620 20 120 750 120 750 100 0 100" fill="#006ebb"/>
 </svg>
