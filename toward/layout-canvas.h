@@ -151,9 +151,13 @@ struct LayoutCanvas {
   //    to an input as long as we have a lot of space on
   //    the other side, and that space can be populated
   //    without blocking further cells!
+  // If check_stuck is true, we use slightly conservative settings for
+  // the latter check (for normal situations). If false, we use the
+  // most permissive (for "emergencies").
   bool CanPlaceCell(int for_chute_ctx,
                     const Cell &cell,
-                    int xpos) const;
+                    int xpos,
+                    bool check_stuck) const;
 
   // Convert the 'next' field to a proper layer with its
   // starting offset (might be negative).

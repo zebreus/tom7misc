@@ -144,9 +144,10 @@ bool LayoutCanvas::CanPlaceCell(
       // The chute idx requesting this (just used for debug output).
       int chute_context,
       const Cell &cell,
-      int xpos) const {
-  const int min_clearance_close = library.MinClearanceClose();
-  const int min_clearance_far = library.MinClearanceFar();
+      int xpos,
+      bool check_stuck) const {
+  const int min_clearance_close = check_stuck ? library.MinClearanceClose() : 0;
+  const int min_clearance_far = check_stuck ? library.MinClearanceFar() : 0;
 
   CellLibrary::Info info = library.GetInfo(cell);
   int cell_left = xpos;
@@ -477,13 +478,34 @@ void LayoutCanvas::CheckNotStuck() {
           // Not a real chute
           -1,
           CellLibrary::Spacer(1),
-          clear_pos)) {
+          clear_pos,
+          // Ensure safe clearance.
+          true)) {
 
     Print("Stuck circuit!\n{}\n\n", DebugString());
 
     // We're going to abort, but get a clearer error message!
     // Turn off verbosity for the probes.
     verbose = 0;
+
+    auto Overlaps = [&](const Cell &cell, int xpos) {
+      int cell_left = xpos;
+      int cell_right = xpos + library.GetInfo(cell).block_width;
+      auto overlap_it = std::lower_bound(next.begin(), next.end(), cell_left,
+                                         [](const PC &pc, int x) {
+                                           return pc.xpos < x;
+                                         });
+      if (overlap_it != next.begin()) --overlap_it;
+      for (auto it = overlap_it; it != next.end(); ++it) {
+        int pc_left = it->xpos;
+        if (pc_left >= cell_right) break;
+        int pc_right = pc_left + library.GetInfo(it->cell).block_width;
+        if (cell_left < pc_right && cell_right > pc_left) {
+          return true;
+        }
+      }
+      return false;
+    };
 
     std::vector<int> stuck_chutes;
     for (int i = 0; i < (int)chutes.size(); i++) {
@@ -496,7 +518,7 @@ void LayoutCanvas::CheckNotStuck() {
       int xl = chute.pos - library.GetInfo(wire_l).outputs[0].xblock;
       int xr = chute.pos - library.GetInfo(wire_r).outputs[0].xblock;
 
-      if (!CanPlaceCell(i, wire_l, xl) && !CanPlaceCell(i, wire_r, xr)) {
+      if (Overlaps(wire_l, xl) && Overlaps(wire_r, xr)) {
         stuck_chutes.push_back(i);
       }
     }
@@ -508,7 +530,25 @@ void LayoutCanvas::CheckNotStuck() {
     }
     if (stuck_str.empty()) stuck_str = "none (complex blockage)";
 
+    std::string close_str;
+    int mcc = library.MinClearanceClose();
+    int mcf = library.MinClearanceFar();
+    for (int i = 0; i < (int)chutes.size() - 1; i++) {
+      if (Assigned(i) || Assigned(i + 1)) continue;
+      int dist = chutes[i + 1].pos - (chutes[i].pos + Levels::OUT_WIDTH);
+      if (dist < mcc + mcf) {
+        if (!close_str.empty()) close_str += ", ";
+        close_str += std::format("{}-{} (dist {})", i, i + 1, dist);
+      }
+    }
+    if (!close_str.empty()) {
+      close_str = std::format(
+          "\nVery close unassigned chutes (mcc={}, mcf={}): [{}]",
+          mcc, mcf, close_str);
+    }
+
     LOG(FATAL) << "Input chutes are already in a state "
-      "where we're stuck! Stuck chutes: [" << stuck_str << "]\n";
+      "where we're stuck! Stuck chutes: [" << stuck_str << "]" <<
+      close_str << "\n";
   }
 }

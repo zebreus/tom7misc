@@ -568,22 +568,6 @@ struct LayoutEngineImpl : public LayoutEngine {
       Print("\n");
     }
 
-
-    // Now we do a greedy pass. If we can place a desired cell
-    // (without creating a dead end) we do so, because this makes
-    // definite progress.
-
-    // Sanity check: Ensure the input chutes are not already stuck before
-    // we even place anything.
-    canvas.CheckNotStuck();
-
-    // In order to ensure we make progress, the first goal in
-    // priority order that is in the right position but doesn't
-    // have space is allowed to anchor itself and just propagate
-    // upward its chutes with zero displacement. Others will
-    // move away from the anchor.
-    bool took_anchor = false;
-
     // Try to place the specified gate so its single output aligns
     // with this chute (also trying its flipped version). The
     // inprops should reflect the input propositions for that cell
@@ -595,7 +579,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           Gate g,
           std::span<const Prop> inprops,
           int cell_val = 0,
-          std::initializer_list<bool> allow_flips = {false, true}) -> bool {
+          std::initializer_list<bool> allow_flips = {false, true},
+          bool check_stuck = true) -> bool {
         CHECK(!canvas.Assigned(chute_idx));
         Chute &chute = canvas.chutes[chute_idx];
 
@@ -604,7 +589,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           int xout = ItsOutputPos(cell);
 
           int cell_pos = chute.pos - xout;
-          if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
+          if (canvas.CanPlaceCell(chute_idx, cell, cell_pos, check_stuck)) {
             canvas.Assign(chute_idx);
             std::vector<Prop> ip(inprops.begin(), inprops.end());
             if (flip) {
@@ -629,6 +614,48 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         return false;
       };
+
+    // Route very close wires (with "emergency" margins), as they
+    // will otherwise cause all other placements to fail. Since
+    // wires are the smallest cells, this won't preempt cases
+    // where we would have been able to make progress with a useful
+    // gate.
+    for (int c = 0; c < (int)canvas.chutes.size() - 1; c++) {
+      if (canvas.Assigned(c) || canvas.Assigned(c + 1)) continue;
+      int dist = canvas.chutes[c + 1].pos -
+        (canvas.chutes[c].pos + Levels::OUT_WIDTH);
+      if (dist < library.MinClearanceClose() + library.MinClearanceFar()) {
+        Print(AORANGE("TOO CLOSE") ": {}-{}; dist {}\n",
+              c, c + 1, dist);
+        auto PlaceEmergencyWire = [&](int idx, bool flip) {
+          if (canvas.Assigned(idx)) return;
+          for (
+          Gate g =
+            CellLibrary::Wire(1, CellLibrary::Bias::RIGHT,
+                              canvas.chutes[idx].type).gate;
+          PlaceAlignedUnary(idx, g, Span{canvas.chutes[idx].prop}, 1,
+                            {flip, !flip}, false);
+        };
+
+        PlaceEmergencyWire(c, false);
+        PlaceEmergencyWire(c + 1, true);
+      }
+    }
+
+    // Now we do a greedy pass. If we can place a desired cell
+    // (without creating a dead end) we do so, because this makes
+    // definite progress.
+
+    // Sanity check: Ensure the input chutes are not already stuck before
+    // we even place anything.
+    canvas.CheckNotStuck();
+
+    // In order to ensure we make progress, the first goal in
+    // priority order that is in the right position but doesn't
+    // have space is allowed to anchor itself and just propagate
+    // upward its chutes with zero displacement. Others will
+    // move away from the anchor.
+    bool took_anchor = false;
 
     // Updates the springs to the left and right of the given chute(s)
     // to ensure we have enough space to place the gate (unflipped).
@@ -733,7 +760,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
             // Correct relative position, but will the cell fit?
-            if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
+            if (canvas.CanPlaceCell(chute_idx, cell, cell_pos, true)) {
               canvas.Assign(chute_idx);
               canvas.Assign(chute_idx + 1);
               canvas.Anchor(chute_idx);
@@ -1231,6 +1258,8 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
     const std::vector<LC> &last = layers->front();
+
+    Print("Layer {}:\n", layers->size());
 
     if (verbose > 0) {
       AutoHisto histo(1000);
