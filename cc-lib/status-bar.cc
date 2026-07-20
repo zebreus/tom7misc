@@ -168,7 +168,15 @@ void StatusBar::Remove() {
   std::unique_lock<std::mutex> ml(m);
   if (first) return;
 
+  // First erase status, as though Status("", ...). The ANSI
+  // codes are supposed to clear these lines, but anyway we
+  // also want the stored status to be empty in case the status
+  // bar gets reactivated.
+  MoveUpWithLock();
   EmitStatusLinesWithLock(std::vector<std::string>(num_lines, ""));
+
+  // Now put the cursor at the beginning of the former status
+  // region, reclaiming the space for normal output.
   MoveUpWithLock();
   first = true;
 }
