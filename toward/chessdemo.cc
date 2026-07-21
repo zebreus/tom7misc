@@ -253,14 +253,12 @@ struct ChessDemo {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   ChessDemo demo;
   demo.RenderAll();
-  */
 
   // RenderParallel();
 
-  RenderOne(ChessProp::REAL_CHESS);
+  // RenderOne(ChessProp::REAL_CHESS);
   // RenderOne(ChessProp::KID_CHESS);
 
   return 0;

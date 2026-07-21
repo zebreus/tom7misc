@@ -101,6 +101,13 @@ static void PrintLibrary() {
 
 static void PrintWireLib() {
   CellLibrary library;
+  Print("== Cell library ==\n");
+  Print("Min clearance close: {}\n"
+        "Min clearance far: {}\n"
+        "\n",
+        library.MinClearanceClose(),
+        library.MinClearanceFar());
+
   Print("Available wires:\n");
   for (int offset : CellLibrary::WIRE_SIZES) {
     Cell wa = CellLibrary::Wire(offset, CellLibrary::Bias::RIGHT);

@@ -1,6 +1,7 @@
 
 #include "layout-canvas.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string_view>
 #include <vector>
@@ -105,43 +106,6 @@ static void TestCanPlaceCell(const CellLibrary &library) {
                            400 + INPUT_WIDTH));
   }
 
-  // Chain of dependent chutes.
-  {
-    const int mcc = library.MinClearanceClose();
-    const int mcf = library.MinClearanceFar();
-    // Need something in between the two bounds: Too close for the
-    // large side, but far enough for the small side. This means that
-    // the wires can only fit when leaning to the right.
-    const int mid = (mcc + mcf) / 2;
-    CHECK(mcc < mid && mid < mcf) << mcc << " " << mid << " " << mcf;
-
-    // Enough room for a series of wires.
-    int stride = mcc + mcf + INPUT_WIDTH + 1;
-
-    Print("{} < {} < {}. Stride: {}\n", mcc, mid, mcf, stride);
-
-    LayoutCanvas canvas(library);
-    canvas.Reset({
-      {.pos = 500, .prop = True(), .type = CType::MIXED},
-      {.pos = 500 + stride, .prop = True(), .type = CType::MIXED},
-      {.pos = 500 + 2 * stride, .prop = True(), .type = CType::MIXED},
-    });
-    canvas.AddNext(400, CellLibrary::Spacer(100 - mid), {});
-
-    // Try to place a spacer on the right side, squeezing the chutes.
-    Cell block_right = CellLibrary::Spacer(100);
-    CHECK(!canvas.CanPlaceCell(-1, block_right,
-                            500 + 2 * stride + INPUT_WIDTH + mid));
-
-    // Placing it farther right leaves enough room for all three to route
-    // (to the right).
-    CHECK(canvas.CanPlaceCell(-1, block_right,
-                           500 + 3 * stride));
-
-    // Or way to the left.
-    CHECK(canvas.CanPlaceCell(-1, block_right, 0));
-  }
-
   // Cell with multiple outputs matching multiple chutes.
   {
     Cell sep_cell(SEPARATOR01);
@@ -164,6 +128,52 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     CHECK(!canvas.CanPlaceCell(-1, sep_cell, exact_x + 1));
   }
 
+  // Unassigned chutes need enough clearance so that we can at least
+  // route wires from them.
+  {
+    LayoutCanvas canvas(library);
+    Cell cell(NOT0);
+    CellLibrary::Info info = library.GetInfo(cell);
+
+    int place_x = 1000;
+    int cell_left = place_x;
+    int cell_right = place_x + info.block_width;
+    int mcf = library.MinClearanceFar();
+    int min_gate_dist = Levels::IN_WIDTH + 2 * mcf;
+
+    int cg = place_x + info.inputs[0].xblock;
+
+    // Chute on the left.
+    int valid_left_phys = cell_left - Levels::IN_WIDTH - mcf;
+    int valid_left_gate = cg - min_gate_dist;
+    int valid_left = std::min(valid_left_phys, valid_left_gate);
+
+    canvas.Reset({
+      {.pos = valid_left, .prop = True(), .type = CType::MIXED}
+    });
+    CHECK(canvas.CanPlaceCell(-1, cell, place_x));
+
+    canvas.Reset({
+      {.pos = valid_left + 1, .prop = True(), .type = CType::MIXED}
+    });
+    CHECK(!canvas.CanPlaceCell(-1, cell, place_x));
+
+    // Chute on the right.
+    int valid_right_phys = cell_right + mcf;
+    int valid_right_gate = cg + min_gate_dist;
+    int valid_right = std::max(valid_right_phys, valid_right_gate);
+
+    canvas.Reset({
+      {.pos = valid_right, .prop = True(), .type = CType::MIXED}
+    });
+    CHECK(canvas.CanPlaceCell(-1, cell, place_x));
+
+    canvas.Reset({
+      {.pos = valid_right - 1, .prop = True(), .type = CType::MIXED}
+    });
+    CHECK(!canvas.CanPlaceCell(-1, cell, place_x));
+  }
+
   // Inputs of newly placed cells must have enough clearance from
   // inputs of already placed cells.
   {
@@ -176,8 +186,7 @@ static void TestCanPlaceCell(const CellLibrary &library) {
     canvas.AddNext(1000, cell, {});
 
     int min_dist =
-      Levels::OUT_WIDTH + library.MinClearanceClose() +
-      library.MinClearanceFar();
+      Levels::IN_WIDTH + 2 * library.MinClearanceFar();
     int last_in1 = 1000 + info.inputs.back().xblock;
 
     int xpos_too_close = last_in1 + min_dist - 1 -

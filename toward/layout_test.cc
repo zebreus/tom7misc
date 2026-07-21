@@ -55,6 +55,7 @@ static void Consts(const CellLibrary &library) {
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   std::vector<Prop> output = {True(), False()};
   Layout layout = le->DoLayout(output);
+  le->SetVerbose(0);
   DRC::CheckLayout(library, "consts", layout);
   Verify(layout, output);
 }
@@ -72,7 +73,7 @@ static void SingleVar(const CellLibrary &library) {
 }
 
 static void NotVar(const CellLibrary &library) {
-  StartTest("Not Var ");
+  StartTest("Not Var");
   World world{.symbol_names = {"a"}};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   Prop a{Var{.id = 0}};
@@ -84,7 +85,7 @@ static void NotVar(const CellLibrary &library) {
 }
 
 static void AndVars(const CellLibrary &library) {
-  StartTest("And Vars ");
+  StartTest("And Vars");
   World world{.symbol_names = {"a", "b", "c", "d"}};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}}, d{Var{.id = 3}};
@@ -200,6 +201,7 @@ static void MultiOutput(const CellLibrary &library) {
 }
 
 static void TestLoop1() {
+  StartTest("Loop1");
   CellLibrary library;
   World world;
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
@@ -210,7 +212,7 @@ static void TestLoop1() {
  [41] Chute(pos=1563, prop=v733, type=ZERO)
  [42] Chute(pos=3070, prop=¬v629 ⋀ ¬v655, type=ONE)
  [43] Chute(pos=3091, prop=¬v629 ⋀ ¬v655, type=ZERO)
- [44] Chute(pos=3105, prop=v752, type=ZERO)
+ [44] Chute(pos=3106, prop=v752, type=ZERO)
  [45] Chute(pos=5935, prop=v746, type=ONE)
  [46] Chute(pos=5969, prop=v752, type=ONE)
   */
@@ -232,7 +234,7 @@ static void TestLoop1() {
       {1563, v733, CType::ZERO},
       {3070, -v629 & -v655, CType::ONE},
       {3091, -v629 & -v655, CType::ZERO},
-      {3105, v752, CType::ZERO},
+      {3106, v752, CType::ZERO},
       {5935, v746, CType::ONE},
       {5969, v752, CType::ONE},
   };
@@ -289,7 +291,7 @@ static void Modest(const CellLibrary &library) {
         ((-f) & (-(a & -d & (b | c))))
                 ),
   };
-  le->SetVerbose(2);
+  le->SetVerbose(0);
   le->SetWriteImages(true);
   Layout layout = le->DoLayout(output);
   RenderCircuit(library, layout.circuit).Save("modest.png");
@@ -378,12 +380,8 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
-  ManyXor(library);
-
   TestSerialization();
   TestNormalize();
-
-  TestLoop1();
 
   // Tests of the full layout algorithm.
   Empty(library);
@@ -394,8 +392,11 @@ int main(int argc, char **argv) {
   OrVars(library);
   XorVars(library);
   OrBot(library);
+  ManyXor(library);
 
   MultiOutput(library);
+
+  TestLoop1();
 
   // took 190 layers!
   Modest(library);

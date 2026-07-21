@@ -1,7 +1,9 @@
 
 // For use internally within layout.cc. Represents
 // the state while working on adding a single layer
-// (bottom up).
+// to the top of the circuit. We work bottom up, so
+// newly added cells have their outputs attached to
+// the inputs of the existing circuit.
 
 #ifndef _TOWARD_LAYOUT_CANVAS_H
 #define _TOWARD_LAYOUT_CANVAS_H
@@ -111,7 +113,7 @@ struct LayoutCanvas {
 
   // Use FlattenInputs to create the chutes from the current
   // top layer.
-  void Reset(std::vector<Chute> top);
+  void Reset(std::vector<Chute> chutes_in);
 
   void SetVerbose(int v);
 
@@ -144,20 +146,15 @@ struct LayoutCanvas {
   // to place the cell in the next layer with its left edge
   // at xpos? Needs to check:
   //  - It does not overlap anything already in that layer
-  //  - It does not block off any chutes on the top layer
-  //    (this does not include the chutes that match up
-  //    to the cell's output, though!). Being blocked off
-  //    is a non-trivial property: We can get close
-  //    to an input as long as we have a lot of space on
-  //    the other side, and that space can be populated
-  //    without blocking further cells!
-  // If check_stuck is true, we use slightly conservative settings for
-  // the latter check (for normal situations). If false, we use the
-  // most permissive (for "emergencies").
+  //  - Its input chutes do not come within the safe clearance
+  //    distance of neighboring input chutes. The safe clearance is
+  //    the inter-chute distance such that we can fit a small
+  //    wire (e.g. a 0-displacement wire) in either orientation
+  //    on both chutes. This ensures that we never get completely
+  //    stuck.
   bool CanPlaceCell(int for_chute_ctx,
                     const Cell &cell,
-                    int xpos,
-                    bool check_stuck) const;
+                    int xpos) const;
 
   // Convert the 'next' field to a proper layer with its
   // starting offset (might be negative).

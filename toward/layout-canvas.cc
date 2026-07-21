@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <format>
-#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -144,180 +143,98 @@ bool LayoutCanvas::CanPlaceCell(
       // The chute idx requesting this (just used for debug output).
       int chute_context,
       const Cell &cell,
-      int xpos,
-      bool check_stuck) const {
-  const int min_clearance_close = check_stuck ? library.MinClearanceClose() : 0;
-  const int min_clearance_far = check_stuck ? library.MinClearanceFar() : 0;
+      int xpos) const {
+  const int min_clearance_far = library.MinClearanceFar();
+  const int min_gate_dist = Levels::IN_WIDTH + 2 * min_clearance_far;
 
   CellLibrary::Info info = library.GetInfo(cell);
   int cell_left = xpos;
   int cell_right = xpos + info.block_width;
 
-  // Overlapping something already placed in the next layer?
+  // 1. Check physical overlap with already placed cells in the next layer.
+  // The clearance can be arbitrarily close as long as they are not touching.
   auto overlap_it = std::lower_bound(next.begin(), next.end(), cell_left,
                                      [](const PC &pc, int x) {
                                        return pc.xpos < x;
                                      });
-  if (overlap_it != next.begin()) --overlap_it;
-  for (auto it = overlap_it; it != next.end(); ++it) {
+  if (overlap_it != next.begin()) overlap_it--;
+  for (auto it = overlap_it; it != next.end(); it++) {
     int pc_left = it->xpos;
     if (pc_left >= cell_right) break;
     int pc_right = pc_left + library.GetInfo(it->cell).block_width;
     if (cell_left < pc_right && cell_right > pc_left) {
       if (verbose > 1) {
         Print("[{}] Can't place {} at {}: Would overlap cell at x={}\n",
-              chute_context,
-              CellString(cell), xpos, pc_left);
+              chute_context, CellString(cell), xpos, pc_left);
       }
       return false;
-    }
-  }
-
-  // Check if the inputs of the hypothetical cell are too close to the
-  // inputs of already placed cells. If so, they would become stuck chutes
-  // on the next layer.
-  int min_input_dist = Levels::OUT_WIDTH + 2 * min_clearance_close;
-  for (const CellLibrary::IO &in : info.inputs) {
-    int in_pos = xpos + in.xblock;
-    auto pc_it = std::lower_bound(
-        next.begin(), next.end(), in_pos - min_input_dist,
-        [](const PC &pc, int x) {
-          return pc.xpos < x;
-        });
-    if (pc_it != next.begin()) --pc_it;
-    for (auto it = pc_it; it != next.end(); ++it) {
-      if (it->xpos >= in_pos + min_input_dist) break;
-      CellLibrary::Info pc_info = library.GetInfo(it->cell);
-      for (const CellLibrary::IO &pc_in : pc_info.inputs) {
-        int pc_in_pos = it->xpos + pc_in.xblock;
-        if (std::abs(in_pos - pc_in_pos) < min_input_dist) {
-          if (verbose > 1) {
-            Print("[{}] Can't place {} at {}: "
-                  "Input at {} is too close to already placed input at {}.\n",
-                  chute_context,
-                  CellString(cell), xpos, in_pos, pc_in_pos);
-          }
-          return false;
-        }
-      }
     }
   }
 
   // Did we consume this chute with the hypothetical cell?
-  // If so we don't need to check that it's blocked below.
   auto MatchedHere = [&](const Chute &chute) {
-      for (const CellLibrary::IO &out : info.outputs) {
-        if (xpos + out.xblock == chute.pos) {
-          return true;
-        }
-      }
-      return false;
-    };
-
-  // Memo tables for below. Is it known that we can place on this
-  // smallest wire that's biased to the left?
-  std::vector<std::optional<bool>> ok_left(chutes.size(), std::nullopt);
-  // And symmetrically for the right.
-  std::vector<std::optional<bool>> ok_right(chutes.size(), std::nullopt);
-
-  // Check whether the chute still has space for a left-biased or
-  // right-biased wire (assuming the hypothetical cell placed).
-  std::function<bool(int, bool)> ChuteStillHasSpace =
-    [&](int cidx, bool look_left) -> bool {
-        std::optional<bool> &memo =
-          look_left ? ok_left[cidx] : ok_right[cidx];
-        if (memo.has_value()) return memo.value();
-
-        // Break cycles by assuming true while evaluating. This is sound
-        // because a cycle indicates self-consistent constraints, bounded
-        // eventually by the fixed obstacles checked below.
-        memo = true;
-
-        int req_left = look_left ? min_clearance_close : min_clearance_far;
-        int req_right = look_left ? min_clearance_far : min_clearance_close;
-        const Chute &chute = chutes[cidx];
-
-        int c_left = chute.pos - req_left;
-        int c_right = chute.pos + Levels::OUT_WIDTH + req_right;
-
-        // Check the hypothetical cell.
-        if (cell_left < c_right && cell_right > c_left) {
-          memo = {false};
-          return false;
-        }
-
-        // Check already placed cells.
-        auto pc_it = std::lower_bound(next.begin(), next.end(), c_left,
-                                      [](const PC &pc, int x) {
-                                        return pc.xpos < x;
-                                      });
-        if (pc_it != next.begin()) --pc_it;
-        for (auto it = pc_it; it != next.end(); ++it) {
-          int pc_left = it->xpos;
-          if (pc_left >= c_right) break;
-          int pc_right = pc_left + library.GetInfo(it->cell).block_width;
-          if (pc_left < c_right && pc_right > c_left) {
-            memo = {false};
-            return false;
-          }
-        }
-
-        {
-          // Check left neighbor.
-          int lidx = cidx - 1;
-          if (lidx >= 0 && !Assigned(lidx) && !MatchedHere(chutes[lidx])) {
-            const Chute &p_chute = chutes[lidx];
-            int dist = chute.pos - (p_chute.pos + Levels::OUT_WIDTH);
-            bool left_safe = (dist >= req_left + min_clearance_far) ||
-              ((dist >= req_left + min_clearance_close) &&
-               ChuteStillHasSpace(lidx, false));
-            if (!left_safe) {
-              memo = {false};
-              return false;
-            }
-          }
-        }
-
-        {
-          // Check right neighbor.
-          int ridx = cidx + 1;
-          if (ridx < (int)chutes.size() &&
-              !Assigned(ridx) &&
-              !MatchedHere(chutes[ridx])) {
-            const Chute &n_chute = chutes[ridx];
-            int dist = n_chute.pos - (chute.pos + Levels::OUT_WIDTH);
-            bool right_safe = (dist >= req_right + min_clearance_far) ||
-              ((dist >= req_right + min_clearance_close) &&
-               ChuteStillHasSpace(ridx, true));
-            if (!right_safe) {
-              memo = {false};
-              return false;
-            }
-          }
-        }
-
-        memo = {true};
+    for (const CellLibrary::IO &out : info.outputs) {
+      if (xpos + out.xblock == chute.pos) {
         return true;
-      };
+      }
+    }
+    return false;
+  };
 
-  // Are we blocking a chute from the top layer?
+  // 2. Check physical overlap with unassigned chutes.
+  // The cell body cannot physically cover any unassigned chute it doesn't
+  // consume, and we must leave enough clearance (min_clearance_far) so
+  // that a 0-displacement wire can later be placed on the chute.
   for (size_t i = 0; i < chutes.size(); i++) {
     if (!Assigned(i)) {
       const Chute &chute = chutes[i];
-      if (MatchedHere(chute))
-        continue;
+      if (MatchedHere(chute)) continue;
 
-      if (!ChuteStillHasSpace(i, true) &&
-          !ChuteStillHasSpace(i, false)) {
+      int chute_left = chute.pos - min_clearance_far;
+      int chute_right = chute.pos + Levels::IN_WIDTH + min_clearance_far;
+      if (cell_left < chute_right && cell_right > chute_left) {
         if (verbose > 1) {
-          Print("[{}] Can't place {} at {}: "
-                "Cell {} would be blocked.\n",
-                chute_context,
-                CellString(cell), xpos, i);
+          Print("[{}] Can't place {} at {}: Would physically overlap "
+                "unassigned chute at {}\n",
+                chute_context, CellString(cell), xpos, chute.pos);
         }
         return false;
       }
+    }
+  }
 
+  // 3. Check clearance between active gates.
+  // To ensure we don't get stuck routing, every input gate must have enough
+  // clearance to place a small wire in either orientation. This translates
+  // to a minimum edge-to-edge distance of 2 * min_clearance_far.
+  // Note: Outputs are at the bottom and do not need routing clearance.
+  std::vector<int> neighboring_inputs;
+  for (const PC &pc : next) {
+    CellLibrary::Info pc_info = library.GetInfo(pc.cell);
+    for (const CellLibrary::IO &pc_in : pc_info.inputs) {
+      neighboring_inputs.push_back(pc.xpos + pc_in.xblock);
+    }
+  }
+  // Unassigned chutes will act as input gates for their wires, so they
+  // also need gate clearance from newly placed cells.
+  for (size_t i = 0; i < chutes.size(); i++) {
+    if (!Assigned(i) && !MatchedHere(chutes[i])) {
+      neighboring_inputs.push_back(chutes[i].pos);
+    }
+  }
+
+  for (const CellLibrary::IO &in : info.inputs) {
+    int cg = xpos + in.xblock;
+    for (int ng : neighboring_inputs) {
+      if (std::abs(cg - ng) < min_gate_dist) {
+        if (verbose > 1) {
+          Print("[{}] Can't place {} at {}: Input gate at {} is too close "
+                "(dist {}) to neighboring input gate at {}.\n",
+                chute_context, CellString(cell), xpos, cg,
+                std::abs(cg - ng), ng);
+        }
+        return false;
+      }
     }
   }
 
@@ -471,24 +388,7 @@ void LayoutCanvas::AddNext(int xpos, const Cell &cell,
 
 
 void LayoutCanvas::CheckNotStuck() {
-  // Some location that can't interfere with anything.
-  const int clear_pos = chutes.back().pos +
-    Levels::IN_WIDTH + 2 * library.MinClearanceFar() + 1;
-  if (!CanPlaceCell(
-          // Not a real chute
-          -1,
-          CellLibrary::Spacer(1),
-          clear_pos,
-          // Ensure safe clearance.
-          true)) {
-
-    Print("Stuck circuit!\n{}\n\n", DebugString());
-
-    // We're going to abort, but get a clearer error message!
-    // Turn off verbosity for the probes.
-    verbose = 0;
-
-    auto Overlaps = [&](const Cell &cell, int xpos) {
+  auto Overlaps = [&](const Cell &cell, int xpos) {
       int cell_left = xpos;
       int cell_right = xpos + library.GetInfo(cell).block_width;
       auto overlap_it = std::lower_bound(next.begin(), next.end(), cell_left,
@@ -531,20 +431,33 @@ void LayoutCanvas::CheckNotStuck() {
     if (stuck_str.empty()) stuck_str = "none (complex blockage)";
 
     std::string close_str;
-    int mcc = library.MinClearanceClose();
     int mcf = library.MinClearanceFar();
     for (int i = 0; i < (int)chutes.size() - 1; i++) {
       if (Assigned(i) || Assigned(i + 1)) continue;
-      int dist = chutes[i + 1].pos - (chutes[i].pos + Levels::OUT_WIDTH);
-      if (dist < mcc + mcf) {
+      int dist = chutes[i + 1].pos - (chutes[i].pos + Levels::IN_WIDTH);
+      if (dist < 2 * mcf) {
         if (!close_str.empty()) close_str += ", ";
         close_str += std::format("{}-{} (dist {})", i, i + 1, dist);
       }
     }
+  if (!stuck_chutes.empty() || !close_str.empty()) {
+    Print("Stuck circuit!\n{}\n\n", DebugString());
+
+    // We're going to abort, but get a clearer error message!
+    // Turn off verbosity for the probes.
+    verbose = 0;
+
+    std::string stuck_str;
+    for (int idx : stuck_chutes) {
+      if (!stuck_str.empty()) stuck_str += ", ";
+      stuck_str += std::to_string(idx);
+    }
+    if (stuck_str.empty()) stuck_str = "none (complex blockage)";
+
     if (!close_str.empty()) {
       close_str = std::format(
-          "\nVery close unassigned chutes (mcc={}, mcf={}): [{}]",
-          mcc, mcf, close_str);
+          "\nVery close unassigned chutes (mcf={}): [{}]",
+          mcf, close_str);
     }
 
     LOG(FATAL) << "Input chutes are already in a state "
