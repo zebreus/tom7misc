@@ -292,13 +292,13 @@ static void Modest(const CellLibrary &library) {
                 ),
   };
   le->SetVerbose(0);
-  le->SetWriteImages(true);
+  // le->SetWriteImages(true);
   Layout layout = le->DoLayout(output);
   RenderCircuit(library, layout.circuit).Save("modest.png");
   DRC::CheckLayout(library, "modest", layout);
   Verify(layout, output);
   Util::WriteFile("modest.layout", LayoutEngine::Serialize(layout));
-  Print("Wrote modest.layout\n");
+  Print("Wrote modest.layout ({})\n", LayoutEngine::LayoutInfo(layout));
 }
 
 static void TestNormalize() {

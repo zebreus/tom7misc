@@ -142,6 +142,11 @@ struct LayoutEngineImpl : public LayoutEngine {
   std::vector<int> wire_sizes_descending;
   std::unordered_set<int> wire_sizes_available;
 
+  // For a positive sum (key) that is not in wire_sizes_available, all
+  // pairs of wire sizes (large, small) that sum to it.
+  // large >= abs(small). small may be negative.
+  std::unordered_map<int, std::vector<std::pair<int, int>>> wire_sums;
+
   int verbose = 1;
   bool write_images = false;
 
@@ -1122,27 +1127,55 @@ struct LayoutEngineImpl : public LayoutEngine {
         bool flip = displacement > 0;
         int abs_disp = std::abs(displacement);
 
-        // Find the largest wire that fits.
-        // CHECK(!wire_sizes_descending.empty());
-        if (!wire_sizes_available.contains(abs_disp) &&
-            abs_disp <= 256) {
-          disp_histo[abs_disp]++;
-        }
-
-        for (int amount : wire_sizes_descending) {
-          if (amount > 0 && amount <= abs_disp) {
+        auto PlaceAnyWire = [&](int amount) -> bool {
             Gate ga = CellLibrary::Wire(
                 amount, CellLibrary::Bias::RIGHT, chute.type).gate;
             Gate gb = CellLibrary::Wire(
                 amount, CellLibrary::Bias::LEFT, chute.type).gate;
 
             if (PlaceAlignedUnary(c, ga, Span{chute.prop}, amount, {flip}))
-              return;
+              return true;
 
             // Also try the other wire variant if it exists.
-            if (ga != gb &&
-                PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip}))
+            return ga != gb &&
+              PlaceAlignedUnary(c, gb, Span{chute.prop}, amount, {flip});
+          };
+
+        // First, try the exact wire size.
+        if (wire_sizes_available.contains(abs_disp)) {
+
+          if (PlaceAnyWire(abs_disp))
+            return;
+
+        } else {
+          // Record this so I know what wires would be most useful!
+          if (abs_disp <= 256) {
+            disp_histo[abs_disp]++;
+          }
+        }
+
+        // Then, see if we can do it in two wires. Undershoot is
+        // preferable because it uses less space on this layer.
+        for (const auto &[large, small] : wire_sums[abs_disp])
+          if (small > 0 && PlaceAnyWire(large))
               return;
+
+        // Otherwise, see if we can use a wire that
+        // would go over by an amount that we can subtract with
+        // a single additional wire. If we have space to overshoot,
+        // then the "negative" wire will fit on the next layer,
+        // above this larger wire.
+        for (const auto &[large, small] : wire_sums[abs_disp])
+          if (small < 0 && PlaceAnyWire(large))
+            return;
+
+
+        // Otherwise, just take the largest step that fits.
+        for (int amount : wire_sizes_descending) {
+          if (amount > 0 && amount <= abs_disp) {
+            if (PlaceAnyWire(amount)) {
+              return;
+            }
           }
         }
       };
@@ -1549,7 +1582,23 @@ struct LayoutEngineImpl : public LayoutEngine {
               [](int a, int b) {
                 return a > b;
               });
+
+    for (int s : CellLibrary::WIRE_SIZES) {
+      for (int t : CellLibrary::WIRE_SIZES) {
+        if (s >= t) {
+          int sum = s + t;
+          int dif = s - t;
+
+          if (!wire_sizes_available.contains(sum))
+            wire_sums[sum].emplace_back(s, t);
+
+          if (!wire_sizes_available.contains(dif))
+            wire_sums[dif].emplace_back(s, t);
+        }
+      }
+    }
   }
+
 };
 
 }  // namespace
