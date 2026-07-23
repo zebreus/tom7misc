@@ -3,16 +3,24 @@
 
 #include <algorithm>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
+#include "layout.h"
 #include "level.h"
-#include "bounds.h"
+#include "color-util.h"
 
 static constexpr int PAD_WIDTH = Levels::IN_WIDTH;
 
 static constexpr uint32_t BGCOLOR = 0x000000FF;
+
+static constexpr uint32_t Darken(uint32_t c) {
+  const auto &[r, g, b, a] = ColorUtil::Unpack32(c);
+  return ColorUtil::Pack32(r >> 1, g >> 1, b >> 1, a);
+}
 
 // Pad colors.
 static constexpr uint32_t MIXED_OUTPUT = 0x0000FFFF;
@@ -24,7 +32,9 @@ static constexpr uint32_t ONE_INPUT = 0x00AA00FF;
 
 static constexpr uint32_t USEFUL_CELL_COLOR = 0xAAAAAAFF;
 static constexpr uint32_t CELL_COLOR = 0x666666FF;
-static constexpr uint32_t CELL_BORDER_COLOR = 0x333333FF;
+
+// A wire cell that takes a variable.
+static constexpr uint32_t VAR_WIRE_COLOR = 0x332233FF;
 
 static constexpr uint32_t SPACER_COLOR = 0x000022FF;
 
@@ -52,8 +62,45 @@ static uint32_t GetOutputColor(CType type) {
   return MIXED_OUTPUT;
 }
 
+static void TransferIsVar(Gate gate, bool in0, bool in1,
+                          std::vector<bool> &out) {
+  if (IsWire(gate)) {
+    out.push_back(in0);
+    return;
+  }
+  switch (gate) {
+    case Gate::XCHG00:
+    case Gate::XCHG01:
+    case Gate::XCHG10:
+    case Gate::XCHG11:
+    case Gate::SELFXCHG01:
+    case Gate::SELFXCHG10:
+      out.push_back(in1);
+      out.push_back(in0);
+      break;
+    case Gate::DUPSEP0011:
+    case Gate::DUP0:
+    case Gate::DUP1:
+    case Gate::SEPARATOR01:
+    case Gate::SEPARATOR10:
+      out.push_back(in0);
+      out.push_back(in0);
+      break;
+    case Gate::COMBINE01:
+    case Gate::COMBINE10:
+      out.push_back(in0 || in1);
+      break;
+    default:
+      for (int i = 0; i < GateArity(gate).second; i++) {
+        out.push_back(false);
+      }
+      break;
+  }
+}
+
 ImageRGBA RenderCircuit(const CellLibrary &library,
-                        const Circuit &circuit) {
+                        const Circuit &circuit,
+                        std::vector<bool> is_var) {
   int max_w = 0;
   for (const Layer &layer : circuit.layers) {
     int w = 0;
@@ -80,11 +127,26 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
 
   int cy = 0;
   for (const Layer &layer : circuit.layers) {
+    std::vector<bool> next_is_var;
+    int input_idx = 0;
+
     int cx = 0;
     int prev_input_x = -1;
     for (const Cell &cell : layer) {
       CellLibrary::Info info = library.GetInfo(cell);
       int bw = info.block_width;
+
+      int num_inputs = (int)info.inputs.size();
+      bool in0 = false, in1 = false;
+      if (num_inputs > 0 && input_idx < (int)is_var.size()) {
+        in0 = is_var[input_idx];
+      }
+      if (num_inputs > 1 && input_idx + 1 < (int)is_var.size()) {
+        in1 = is_var[input_idx + 1];
+      }
+      bool cell_is_var = in0 || in1;
+      TransferIsVar(cell.gate, in0, in1, next_is_var);
+      input_idx += num_inputs;
 
       if (bw > 0) {
         if (cell.gate == Gate::SPACER) {
@@ -92,15 +154,23 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
         } else {
           int cell_y = cy + pad_height;
           int cell_h = layer_height - 2 * pad_height;
-          img.FillRect32(cx, cell_y, bw, cell_h, CELL_BORDER_COLOR);
+          // For the larger rendering, we don't use USEFUL_CELL_COLOR;
+          // the text on the cell is how we visually distinguish it.
+          uint32_t cc = CELL_COLOR;
+          if (IsWire(cell.gate) && cell_is_var) {
+            cc = VAR_WIRE_COLOR;
+          }
+
+          img.FillRect32(cx, cell_y, bw, cell_h, Darken(cc));
           if (bw > 2 && cell_h > 2) {
-            img.FillRect32(cx + 1, cell_y + 1, bw - 2, cell_h - 2, CELL_COLOR);
+            img.FillRect32(cx + 1, cell_y + 1, bw - 2, cell_h - 2, cc);
           }
 
           for (const CellLibrary::IO &io : info.inputs) {
             int px = cx + io.xblock;
-            img.FillRect32(px, cy, PAD_WIDTH, pad_height,
-                           GetInputColor(io.type));
+            uint32_t ic = GetInputColor(io.type);
+            if (cell_is_var) ic = Darken(ic);
+            img.FillRect32(px, cy, PAD_WIDTH, pad_height, ic);
             if (prev_input_x >= 0) {
               int dist = px - (prev_input_x + PAD_WIDTH);
               if (dist > 0 && dist < WARN_PAD_THRESHOLD) {
@@ -114,8 +184,9 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
           for (const CellLibrary::IO &io : info.outputs) {
             int px = cx + io.xblock;
             int py = cy + layer_height - pad_height;
-            img.FillRect32(px, py, PAD_WIDTH, pad_height,
-                           GetOutputColor(io.type));
+            uint32_t oc = GetOutputColor(io.type);
+            if (cell_is_var) oc = Darken(oc);
+            img.FillRect32(px, py, PAD_WIDTH, pad_height, oc);
           }
 
           if (!IsWire(cell.gate)) {
@@ -135,14 +206,25 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
 
       cx += bw;
     }
+    is_var = std::move(next_is_var);
     cy += layer_height;
   }
 
   return img;
 }
 
-ImageRGBA RenderCircuitMini(const CellLibrary &library,
-                            const Circuit &circuit) {
+ImageRGBA RenderLayout(const CellLibrary &library,
+                       const Layout &layout) {
+  // All vars on the input layer by definition.
+  std::vector<bool> is_var(layout.input_vars.size(), true);
+  return RenderCircuit(library, layout.circuit, is_var);
+}
+
+
+ImageRGBA RenderCircuitMini(
+    const CellLibrary &library,
+    const Circuit &circuit,
+    std::vector<bool> is_var) {
   int max_w = 0;
   for (const Layer &layer : circuit.layers) {
     int w = 0;
@@ -171,21 +253,39 @@ ImageRGBA RenderCircuitMini(const CellLibrary &library,
 
   int cy = 0;
   for (const Layer &layer : circuit.layers) {
+    std::vector<bool> next_is_var;
+    int input_idx = 0;
+
     int cx = 0;
     for (const Cell &cell : layer) {
       CellLibrary::Info info = library.GetInfo(cell);
       int bw = info.block_width;
+
+      int num_inputs = (int)info.inputs.size();
+      bool in0 = false, in1 = false;
+      if (num_inputs > 0 && input_idx < (int)is_var.size()) {
+        in0 = is_var[input_idx];
+      }
+      if (num_inputs > 1 && input_idx + 1 < (int)is_var.size()) {
+        in1 = is_var[input_idx + 1];
+      }
+      bool cell_is_var = in0 || in1;
+      TransferIsVar(cell.gate, in0, in1, next_is_var);
+      input_idx += num_inputs;
 
       if (bw > 0 && cell.gate != Gate::SPACER) {
         int px = (cx + 2) / 5;
         int next_px = (cx + bw + 2) / 5;
         int pw = std::max(1, next_px - px);
 
-        uint32_t cc = IsWire(cell.gate) ? CELL_COLOR : USEFUL_CELL_COLOR;
+        uint32_t cc = USEFUL_CELL_COLOR;
+        if (IsWire(cell.gate)) {
+          cc = cell_is_var ? VAR_WIRE_COLOR : CELL_COLOR;
+        }
 
         int cell_y = cy + pad_height;
         int cell_h = layer_height - 2 * pad_height;
-        img.FillRect32(px, cell_y, pw, cell_h, CELL_BORDER_COLOR);
+        img.FillRect32(px, cell_y, pw, cell_h, Darken(cc));
         if (pw > 2 && cell_h > 2) {
           img.FillRect32(px + 1, cell_y + 1, pw - 2, cell_h - 2, cc);
         }
@@ -193,24 +293,26 @@ ImageRGBA RenderCircuitMini(const CellLibrary &library,
         for (const CellLibrary::IO &io : info.inputs) {
           int pad_x = (cx + io.xblock + 2) / 5;
           pad_x = std::clamp(pad_x, px, px + pw - 1);
-          img.FillRect32(pad_x, cy, 1, pad_height,
-                         GetInputColor(io.type));
+          uint32_t ic = GetInputColor(io.type);
+          if (cell_is_var) ic = Darken(ic);
+          img.FillRect32(pad_x, cy, 1, pad_height, ic);
         }
 
         for (const CellLibrary::IO &io : info.outputs) {
           int pad_x = (cx + io.xblock + 2) / 5;
           pad_x = std::clamp(pad_x, px, px + pw - 1);
           int py = cy + layer_height - pad_height;
-          img.FillRect32(pad_x, py, 1, pad_height,
-                         GetOutputColor(io.type));
+          uint32_t oc = GetOutputColor(io.type);
+          if (cell_is_var) oc = Darken(oc);
+          img.FillRect32(pad_x, py, 1, pad_height, oc);
         }
       }
 
       cx += bw;
     }
+    is_var = std::move(next_is_var);
     cy += layer_height;
   }
 
   return img;
 }
-

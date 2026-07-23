@@ -694,6 +694,12 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
       };
 
+    // XXX: This works, but I think we can probably tweak it to make
+    // it a lot more efficient; I often see in real examples that we
+    // go several layers meandering before we hit the right distance
+    // and deposit the gate (or perhaps we are at the right distance
+    // but for some reason don't put the gate!).
+
     // Try placing a cell with two outputs atop chute_idx and
     // chute_idx+1. The output types are forced by the chutes we're
     // connecting to. Since when we flip a binary gate we may modify
@@ -1075,8 +1081,9 @@ struct LayoutEngineImpl : public LayoutEngine {
                            (canvas.chutes[i].pos + Levels::IN_WIDTH);
         */
         LayoutCanvas::UpdateSpring(&canvas.springs[i],
+                                   27,
                                    // min_output_distance,
-                                   max_cell_width + 1,
+                                   // max_cell_width + 1,
                                    2 * library.MinClearanceFar(),
                                    1.0f, 0.1f);
       }
@@ -1254,8 +1261,36 @@ struct LayoutEngineImpl : public LayoutEngine {
       circuit.layers.push_back(std::move(layer));
     }
 
-    ImageRGBA img = mini ? RenderCircuitMini(library, circuit) :
-      RenderCircuit(library, circuit);
+    std::optional<int> min_left;
+    for (const Layer &layer : circuit.layers) {
+      if (layer.empty()) continue;
+      int left = (layer.front().gate == Gate::SPACER) ? layer.front().v : 0;
+      if (!min_left.has_value() || left < *min_left) {
+        min_left = left;
+      }
+    }
+
+    if (min_left.value_or(0) > 0) {
+      for (Layer &layer : circuit.layers) {
+        if (layer.empty()) continue;
+        if (layer.front().gate == Gate::SPACER) {
+          layer.front().v -= *min_left;
+          if (layer.front().v == 0) {
+            layer.erase(layer.begin());
+          }
+        }
+      }
+    }
+
+    std::vector<bool> is_vars;
+    for (const LC &lc : layers.front()) {
+      for (const Prop &p : lc.inprops) {
+        is_vars.push_back(std::holds_alternative<Var>(p.p));
+      }
+    }
+
+    ImageRGBA img = mini ? RenderCircuitMini(library, circuit, is_vars) :
+      RenderCircuit(library, circuit, is_vars);
     std::vector<uint8_t> png = PNG::EncodeInMemory(img);
     Util::WriteFileBytes(filename, png);
     Print("Wrote " AGREEN("{}") ".", filename);
@@ -1265,15 +1300,33 @@ struct LayoutEngineImpl : public LayoutEngine {
     const std::vector<LC> &last = layers->front();
 
     if (verbose > 0) {
-      AutoHisto histo(1000);
+      AutoHisto histo(10000);
       size_t max_prop_size = 0;
       size_t total_prop_size = 0;
+      int count_var = 0;
+      int count_and = 0;
+      int count_or = 0;
+      int count_not = 0;
       for (const LC &lc : last) {
         for (const Prop &p : lc.inprops) {
           size_t ps = PropSize(p);
           max_prop_size = std::max(ps, max_prop_size);
           total_prop_size += ps;
           histo.Observe(ps);
+
+          if (std::holds_alternative<Var>(p.p)) {
+            count_var++;
+          } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
+            if (b->op == BinopOp::AND) {
+              count_and++;
+            } else if (b->op == BinopOp::OR) {
+              count_or++;
+            }
+          } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
+            if (u->op == UnopOp::NOT) {
+              count_not++;
+            }
+          }
         }
       }
 
@@ -1324,17 +1377,18 @@ struct LayoutEngineImpl : public LayoutEngine {
         status_per.RunIf([&]() {
             status->Status(
                 "{}\n"
-                "{} " ABLUE("∧") " {} xchg {} " ABLUE("∨")
+                "Gates: {} " ABLUE("∧") " {} xchg {} " ABLUE("∨")
                 " {} " ABLUE("|") " {} sep {} dup {} comb\n"
-                "Layer {}: {} max prop, {} total. {} inv. {} top. "
-                "Width: {}.\n",
+                "Layer {}: {} max prop, {} total. {} inv. "
+                "Width: {}.\n"
+                "{} top: {} v {} and {} or {} not",
                 histo.OneLineANSI(75),
                 num_and, num_xchg, num_or, num_wire, num_sep,
                 num_dup, num_comb,
                 layers->size(), max_prop_size, total_prop_size,
                 inversions,
-                last.size(),
-                top_layer_width);
+                top_layer_width,
+                last.size(), count_var, count_and, count_or, count_not);
           });
       }
     }
@@ -1346,11 +1400,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     if (layers->size() % 1000) {
       std::vector<std::pair<int, int>> missing_wires =
         CountMapToDescendingVector(disp_histo);
-      std::string content =
-        "Top missing wire sizes:\n";
+      std::string content;
       for (int i = 0; i < missing_wires.size() && i < 80; i++) {
         const auto &[disp, count] = missing_wires[i];
-        AppendFormat(&content, "{}: {}×\n", disp, count);
+        AppendFormat(&content, "{}: {}\n", disp, count);
       }
       Util::WriteFile("desired-wires.txt", content);
     }
@@ -1496,31 +1549,31 @@ struct LayoutEngineImpl : public LayoutEngine {
   // format.
   Layout Finalize(std::deque<std::vector<LC>> layers,
                   std::vector<std::pair<int, CType>> vars) {
-    int min_left = 0;
-    int min_right = 0;
+    std::optional<int> min_left;
+    std::optional<int> min_right;
     for (const std::vector<LC> &layer : layers) {
       int left = (!layer.empty() && layer.front().cell.gate == Gate::SPACER)
         ? layer.front().cell.v : 0;
-      min_left = std::min(min_left, left);
+      min_left = !min_left.has_value() ? left : std::min(*min_left, left);
 
       int right = (layer.size() > 1 && layer.back().cell.gate == Gate::SPACER)
         ? layer.back().cell.v : 0;
-      min_right = std::min(min_right, right);
+      min_right = !min_right.has_value() ? right : std::min(*min_right, right);
     }
 
-    if (min_left > 0) {
+    if (min_left.value_or(0) > 0) {
       for (std::vector<LC> &layer : layers) {
-        layer.front().cell.v -= min_left;
+        layer.front().cell.v -= *min_left;
         if (layer.front().cell.v == 0) {
           layer.erase(layer.begin());
         }
       }
     }
 
-    if (min_right > 0) {
+    if (min_right.value_or(0) > 0) {
       for (std::vector<LC> &layer : layers) {
         if (!layer.empty()) {
-          layer.back().cell.v -= min_right;
+          layer.back().cell.v -= *min_right;
           if (layer.back().cell.v == 0) {
             layer.pop_back();
           }
@@ -1567,7 +1620,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
     world(world), library(library) {
-    status_owned.reset(new StatusBar(3));
+    status_owned.reset(new StatusBar(4));
     status = status_owned.get();
 
     ComputeMinOutputDistance();
@@ -1761,20 +1814,20 @@ Layout LayoutEngine::Normalize(Layout layout) {
     layer = std::move(new_layer);
   }
 
-  int min_left = -1;
+  std::optional<int> min_left;
   for (const Layer &layer : layout.circuit.layers) {
     if (layer.empty()) continue;
     int left = (layer.front().gate == Gate::SPACER) ? layer.front().v : 0;
-    if (min_left == -1 || left < min_left) {
+    if (!min_left.has_value() || left < *min_left) {
       min_left = left;
     }
   }
 
-  if (min_left > 0) {
+  if (min_left.value_or(0) > 0) {
     for (Layer &layer : layout.circuit.layers) {
       if (layer.empty()) continue;
       if (layer.front().gate == Gate::SPACER) {
-        layer.front().v -= min_left;
+        layer.front().v -= *min_left;
         if (layer.front().v == 0) {
           layer.erase(layer.begin());
         }

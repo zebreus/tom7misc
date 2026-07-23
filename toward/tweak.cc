@@ -8,10 +8,14 @@
 #include "ansi.h"
 #include "auto-histo.h"
 #include "base/logging.h"
+#include "cell-library.h"
+#include "circuit.h"
 #include "level.h"
 #include "opt/opt-seq.h"
 #include "periodically.h"
+#include "prop.h"
 #include "scene.h"
+#include "span-util.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -152,7 +156,17 @@ static void DoTweak(const ValidationInstance &inst,
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  DoTweak(*Validation::Not(), "not-tweaked.svg");
+  CellLibrary library;
+
+  std::unique_ptr<ValidationInstance> vi =
+    Validation::ValidateCell(
+        library,
+        Cell(NOT0, 0, false),
+        Span{Prop{Var{.id = 0}}});
+
+  DoTweak(*vi, "not-tweaked.svg");
+
+  // DoTweak(*Validation::Not(), "not-tweaked.svg");
 
   return 0;
 }

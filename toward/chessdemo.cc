@@ -20,6 +20,7 @@
 #include "render-circuit.h"
 #include "span-util.h"
 #include "threadutil.h"
+#include "timer.h"
 #include "util.h"
 
 static constexpr bool OPTIMIZE = true;
@@ -73,7 +74,7 @@ static void RenderParallel() {
   DRC::CheckLayout(library, "parallel", layout);
   Print("DRC ok!\n");
 
-  ImageRGBA img = RenderCircuit(library, layout.circuit);
+  ImageRGBA img = RenderLayout(library, layout);
   img.Save("parallel.png");
 }
 
@@ -108,18 +109,32 @@ static void RenderOne(ChessProp::Details details) {
   DRC::CheckLayout(library, basename, layout);
   Print("DRC ok!\n");
 
+  {
+    std::string filename = std::format("{}-unopt.layout", basename);
+    Util::WriteFile(filename,
+                    LayoutEngine::Serialize(layout));
+
+  }
+
   if (OPTIMIZE) {
+    Timer timer;
     Layout opt_layout = Optimization::Optimize(library, layout);
-    Print("Optimized! {}\n", LayoutEngine::LayoutInfo(opt_layout));
+    Print("Optimized in {}!\n{}\n",
+          timer.Seconds(),
+          LayoutEngine::LayoutInfo(opt_layout));
     DRC::AssertEquivalentLayout(library, basename, layout, opt_layout);
     Print("Optimized DRC ok!\n");
     layout = std::move(opt_layout);
   }
 
-  Util::WriteFile(std::format("{}.layout", basename),
-                  LayoutEngine::Serialize(layout));
+  {
+    std::string filename = std::format("{}.layout", basename);
+    Util::WriteFile(filename,
+                    LayoutEngine::Serialize(layout));
+    Print("Wrote {}.\n", filename);
+  }
 
-  ImageRGBA img = RenderCircuit(library, layout.circuit);
+  ImageRGBA img = RenderLayout(library, layout);
   img.Save(std::format("{}.png", basename));
 }
 
@@ -215,7 +230,7 @@ struct ChessDemo {
 
               Layout lay = RenderOne(move, prop);
               async.Run([this, lay = std::move(lay), move = std::move(move)]{
-                  ImageRGBA img = RenderCircuit(library, lay.circuit);
+                  ImageRGBA img = RenderLayout(library, lay);
                   img.Save(std::format("legal-{}.png", move));
                   Util::WriteFile(
                       std::format("legal-{}.layout", move),
@@ -253,12 +268,14 @@ struct ChessDemo {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  /*
   ChessDemo demo;
   demo.RenderAll();
+  */
 
   // RenderParallel();
 
-  // RenderOne(ChessProp::REAL_CHESS);
+  RenderOne(ChessProp::REAL_CHESS);
   // RenderOne(ChessProp::KID_CHESS);
 
   return 0;

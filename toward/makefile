@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe cell-library.txt
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt
 
 fixme : separator.exe
 
@@ -163,6 +163,10 @@ opt-findexample.exe : opt-findexample.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 simplification_test.exe : simplification_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+wire-sums.exe : wire-sums.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
