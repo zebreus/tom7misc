@@ -61,6 +61,11 @@ struct LayoutCanvas {
 
     DesireType desire = DesireType::UNSPECIFIED;
 
+    // The desired position in the global order.
+    // If the prop and type are the same, the rank may be
+    // the same.
+    int rank = 0;
+
     // Exterior chutes that hold variables are done.
     bool done = false;
     // True if we've assigned something on the next layer.

@@ -506,14 +506,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         // (We don't even care what the ordering is, as long as it
         // puts equal props together so that we can dedup or uncombine
         // them).
-        auto ord = chute1.prop <=> chute2.prop;
-
-        if (// Props out of order?
-            ord == std::strong_ordering::greater ||
-            // Same prop but abnormal bit order?
-            (ord == std::strong_ordering::equal &&
-             chute1.type == CType::ONE &&
-             chute2.type == CType::ZERO)) {
+        if (chute1.rank > chute2.rank) {
           chute1.desire = DesireType::EXCHANGE_RIGHT;
           chute2.desire = DesireType::EXCHANGE_LEFT;
         }
@@ -531,13 +524,50 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
+  void SetRanks(LayoutCanvas *canvas) {
+    std::vector<int> indices(canvas->chutes.size());
+    for (int i = 0; i < (int)indices.size(); i++) {
+      indices[i] = i;
+    }
+
+    auto type_rank = [](CType t) {
+      if (t == CType::ZERO) return 0;
+      if (t == CType::ONE) return 1;
+      return 2;
+    };
+
+    std::sort(indices.begin(), indices.end(), [&](int a, int b) {
+      const Chute &ca = canvas->chutes[a];
+      const Chute &cb = canvas->chutes[b];
+      auto ord = ca.prop <=> cb.prop;
+      if (ord != std::strong_ordering::equal) {
+        return ord == std::strong_ordering::less;
+      }
+      return type_rank(ca.type) < type_rank(cb.type);
+    });
+
+    int current_rank = 0;
+    for (int i = 0; i < (int)indices.size(); i++) {
+      if (i > 0) {
+        const Chute &prev = canvas->chutes[indices[i - 1]];
+        const Chute &curr = canvas->chutes[indices[i]];
+        if (prev.prop != curr.prop ||
+            type_rank(prev.type) != type_rank(curr.type)) {
+          current_rank++;
+        }
+      }
+      canvas->chutes[indices[i]].rank = current_rank;
+    }
+  }
+
   // Given a top layer (annotated with the propositions it takes as
   // inputs), create a new layer that produces those layers and is
   // simpler. (Simpler as in some unspecified well-founded ordering
   // so that this process terminates.) The input and output layers
   // should start at x=0.
   std::pair<std::vector<LC>, int>
-  AddLayer(std::span<const LC> top) override {
+  AddLayer(const std::deque<std::vector<LC>> &layers) override {
+    std::span<const LC> top = layers.front();
     CHECK(!top.empty()) << "Precondition.";
 
     // First we flatten all of the inputs we need to satisfy on the
@@ -560,6 +590,13 @@ struct LayoutEngineImpl : public LayoutEngine {
     // circuit and create springs for them. We don't want to
     // involve these in the gate-placement code below.
     SetExterior(&canvas);
+
+    // Annotate the curent global ordering onto each chute.
+    // We use this to perform local swaps to move chutes closer
+    // to the desired position.
+    SetRanks(&canvas);
+
+    OutputDebugging(layers, canvas);
 
     // Now set the desires for each.
     SetChuteDesires(canvas.chutes);
@@ -1296,10 +1333,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     Print("Wrote " AGREEN("{}") ".", filename);
   }
 
-  void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
-    const std::vector<LC> &last = layers->front();
-
-    if (verbose > 0) {
+  void OutputDebugging(const std::deque<std::vector<LC>> &layers, const LayoutCanvas &canvas) {
+    const std::vector<LC> &last = layers.front();
+    if (verbose > 0 && status) {
+      // Stats on the input propositions.
       AutoHisto histo(10000);
       size_t max_prop_size = 0;
       size_t total_prop_size = 0;
@@ -1331,27 +1368,16 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
 
       // Number of pairs of separated chutes that are out of order
-      // (using the global <=> ordering), so they will need to be
+      // (using the global ordering), so they will need to be
       // exchanged in order to be combined. A mixed chute does not
       // count as out of order.
       int inversions = 0;
-      std::vector<std::pair<Prop, CType>> flat_inputs;
-      for (const LC &lc : last) {
-        CellLibrary::Info info = library.GetInfo(lc.cell);
-        for (size_t i = 0; i < lc.inprops.size(); i++) {
-          flat_inputs.emplace_back(lc.inprops[i], info.inputs[i].type);
-        }
-      }
 
-      for (size_t i = 0; i < flat_inputs.size(); i++) {
-        if (flat_inputs[i].second == CType::MIXED) continue;
-        for (size_t j = i + 1; j < flat_inputs.size(); j++) {
-          if (flat_inputs[j].second == CType::MIXED) continue;
-          auto ord = flat_inputs[i].first <=> flat_inputs[j].first;
-          if (ord == std::strong_ordering::greater ||
-              (ord == std::strong_ordering::equal &&
-               flat_inputs[i].second == CType::ONE &&
-               flat_inputs[j].second == CType::ZERO)) {
+      for (size_t i = 0; i < canvas.chutes.size(); i++) {
+        if (canvas.chutes[i].type == CType::MIXED) continue;
+        for (size_t j = i + 1; j < canvas.chutes.size(); j++) {
+          if (canvas.chutes[j].type == CType::MIXED) continue;
+          if (canvas.chutes[i].rank > canvas.chutes[j].rank) {
             inversions++;
           }
         }
@@ -1385,7 +1411,7 @@ struct LayoutEngineImpl : public LayoutEngine {
                 histo.OneLineANSI(75),
                 num_and, num_xchg, num_or, num_wire, num_sep,
                 num_dup, num_comb,
-                layers->size(), max_prop_size, total_prop_size,
+                layers.size(), max_prop_size, total_prop_size,
                 inversions,
                 top_layer_width,
                 last.size(), count_var, count_and, count_or, count_not);
@@ -1393,11 +1419,11 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    if (write_images || (layers->size() % 500) == 0) {
-      DebugRender(*layers);
+    if (write_images || (layers.size() % 500) == 0) {
+      DebugRender(layers);
     }
 
-    if (layers->size() % 1000) {
+    if (layers.size() % 1000) {
       std::vector<std::pair<int, int>> missing_wires =
         CountMapToDescendingVector(disp_histo);
       std::string content;
@@ -1407,9 +1433,13 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
       Util::WriteFile("desired-wires.txt", content);
     }
+  }
+
+  void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
+    const std::vector<LC> &last = layers->front();
 
     // Otherwise, compute a new top layer.
-    auto [next, start_pos] = AddLayer(last);
+    auto [next, start_pos] = AddLayer(*layers);
 
     // True if the layers are effectively the same, ignoring leading
     // spacers (i.e. they can have different starting offsets). If

@@ -47,7 +47,7 @@ struct LayoutEngine {
   using PC = LayoutCanvas::PC;
 
   virtual std::pair<std::vector<LC>, int>
-  AddLayer(std::span<const LC> top) = 0;
+  AddLayer(const std::deque<std::vector<LC>> &layers) = 0;
 
   virtual std::optional<std::vector<std::pair<int, CType>>>
   AllVars(std::span<const LC> lcs) = 0;
