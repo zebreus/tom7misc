@@ -120,7 +120,7 @@ static void RenderOne(ChessProp::Details details) {
     Timer timer;
     Layout opt_layout = Optimization::Optimize(library, layout);
     Print("Optimized in {}!\n{}\n",
-          timer.Seconds(),
+          ANSI::Time(timer.Seconds()),
           LayoutEngine::LayoutInfo(opt_layout));
     DRC::AssertEquivalentLayout(library, basename, layout, opt_layout);
     Print("Optimized DRC ok!\n");

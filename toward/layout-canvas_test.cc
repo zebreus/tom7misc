@@ -200,6 +200,40 @@ static void TestCanPlaceCell(const CellLibrary &library) {
   }
 }
 
+static void TestSolveSpringsConverges(const CellLibrary &library) {
+  StartTest("SolveSpringsConverges");
+
+  // A large array of chutes should quickly propagate forces and move outward
+  // without getting snagged by the anchor weight.
+  LayoutCanvas canvas(library);
+  int num = 100;
+  std::vector<LayoutCanvas::Chute> chutes;
+  for (int i = 0; i < num; i++) {
+    chutes.push_back({
+      .pos = i * 10,
+      .prop = True(),
+      .type = CType::MIXED,
+    });
+  }
+  // Anchor the ends
+  chutes.front().anchored = true;
+  chutes.back().anchored = true;
+  // Move the right anchor far away to create tension
+  chutes.back().pos = num * 100;
+
+  canvas.Reset(chutes);
+
+  for (int i = 0; i < num - 1; i++) {
+    canvas.springs[i] = {.target_dist = 10, .min_dist = 0, .compress = 1.0f, .expand = 1.0f};
+  }
+
+  std::vector<double> xpos = canvas.SolveSprings();
+
+  // The middle chute should have moved substantially from its original position (500)
+  // towards the midpoint between 0 and 10000 (which is 5000).
+  CHECK(xpos[num / 2] > 2000.0) << "Middle chute didn't move enough: " << xpos[num / 2];
+}
+
 static void TestSolveSprings(const CellLibrary &library) {
   StartTest("SolveSprings");
 
@@ -248,11 +282,11 @@ static void TestSolveSprings(const CellLibrary &library) {
     std::vector<double> xpos = canvas.SolveSprings();
     CHECK(xpos.size() == 3);
     CHECK(xpos[0] == 0.0);
-    // The center chute has 0.01 weight for its current position (spacing + 30),
+    // The center chute has 1e-4 weight for its current position (spacing + 30),
     // 1.0 weight from left spring pushing to `spacing`,
     // 1.0 weight from right spring pushing to `spacing`.
-    // It converges to (2.0 * spacing + 0.01 * (spacing + 30)) / 2.01.
-    double expected = spacing + (30.0 * 0.01) / 2.01;
+    // It converges to (2.0 * spacing + 1e-4 * (spacing + 30)) / 2.0001.
+    double expected = spacing + (30.0 * 1e-4) / 2.0001;
     CHECK(std::abs(xpos[1] - expected) < 1e-4) <<
       xpos[1] << " vs " << expected;
 
@@ -366,6 +400,7 @@ int main(int argc, char **argv) {
   TestCanPlaceCell(library);
   TestFlattenInputs(library);
   TestSolveSprings(library);
+  TestSolveSpringsConverges(library);
 
   Print("OK\n");
   return 0;

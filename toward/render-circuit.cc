@@ -262,15 +262,15 @@ ImageRGBA RenderCircuitMini(
       int bw = info.block_width;
 
       int num_inputs = (int)info.inputs.size();
-      bool in0 = false, in1 = false;
+      bool var0 = false, var1 = false;
       if (num_inputs > 0 && input_idx < (int)is_var.size()) {
-        in0 = is_var[input_idx];
+        var0 = is_var[input_idx];
       }
       if (num_inputs > 1 && input_idx + 1 < (int)is_var.size()) {
-        in1 = is_var[input_idx + 1];
+        var1 = is_var[input_idx + 1];
       }
-      bool cell_is_var = in0 || in1;
-      TransferIsVar(cell.gate, in0, in1, next_is_var);
+      bool cell_is_var = var0 || var1;
+      TransferIsVar(cell.gate, var0, var1, next_is_var);
       input_idx += num_inputs;
 
       if (bw > 0 && cell.gate != Gate::SPACER) {

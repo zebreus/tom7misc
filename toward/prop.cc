@@ -331,7 +331,7 @@ bool PropEq(const Prop &a_in, const Prop &b_in) {
 // Or nullptr with no world.
 static std::string PropAtom(const World *world,
                             const Prop &prop, int max_depth) {
-  if (max_depth == 0) return "…";
+  if (max_depth <= 0) return "…";
   if (const Binop *b = std::get_if<Binop>(&prop.p)) {
     std::string lhs = PropAtom(world, *b->a, max_depth - 1);
     std::string rhs = PropAtom(world, *b->b, max_depth - 1);

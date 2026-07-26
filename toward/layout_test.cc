@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -271,7 +272,8 @@ static void TestLoop1() {
       Print("Got all vars!\n");
       break;
     }
-    le->DoAddLayer(&layers);
+    std::unordered_map<Prop, int> ranks = le->GetPropRanks(layers.front());
+    le->DoAddLayer(&layers, ranks);
   }
 
 }

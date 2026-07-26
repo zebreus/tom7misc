@@ -151,7 +151,7 @@ bool LayoutCanvas::CanPlaceCell(
   int cell_left = xpos;
   int cell_right = xpos + info.block_width;
 
-  // 1. Check physical overlap with already placed cells in the next layer.
+  // Check physical overlap with already placed cells in the next layer.
   // The clearance can be arbitrarily close as long as they are not touching.
   auto overlap_it = std::lower_bound(next.begin(), next.end(), cell_left,
                                      [](const PC &pc, int x) {
@@ -181,59 +181,85 @@ bool LayoutCanvas::CanPlaceCell(
     return false;
   };
 
-  // 2. Check physical overlap with unassigned chutes.
+  // Check clearance against unassigned chutes.
   // The cell body cannot physically cover any unassigned chute it doesn't
   // consume, and we must leave enough clearance (min_clearance_far) so
   // that a 0-displacement wire can later be placed on the chute.
-  for (size_t i = 0; i < chutes.size(); i++) {
-    if (!Assigned(i)) {
-      const Chute &chute = chutes[i];
-      if (MatchedHere(chute)) continue;
+  int min_chute_pos = cell_left - Levels::IN_WIDTH - min_clearance_far;
+  auto chute_overlap_it = std::lower_bound(
+      chutes.begin(), chutes.end(), min_chute_pos,
+      [](const Chute &c, int pos) { return c.pos < pos; });
 
-      int chute_left = chute.pos - min_clearance_far;
-      int chute_right = chute.pos + Levels::IN_WIDTH + min_clearance_far;
+  for (auto it = chute_overlap_it; it != chutes.end(); it++) {
+    int chute_left = it->pos - min_clearance_far;
+    if (chute_left >= cell_right) break;
+
+    if (!it->assigned) {
+      if (MatchedHere(*it)) continue;
+
+      int chute_right = it->pos + Levels::IN_WIDTH + min_clearance_far;
       if (cell_left < chute_right && cell_right > chute_left) {
         if (verbose > 1) {
           Print("[{}] Can't place {} at {}: Would physically overlap "
                 "unassigned chute at {}\n",
-                chute_context, CellString(cell), xpos, chute.pos);
+                chute_context, CellString(cell), xpos, it->pos);
         }
         return false;
       }
     }
   }
 
-  // 3. Check clearance between active gates.
+  // Check clearance between active gates.
   // To ensure we don't get stuck routing, every input gate must have enough
   // clearance to place a small wire in either orientation. This translates
   // to a minimum edge-to-edge distance of 2 * min_clearance_far.
   // Note: Outputs are at the bottom and do not need routing clearance.
-  std::vector<int> neighboring_inputs;
-  for (const PC &pc : next) {
-    CellLibrary::Info pc_info = library.GetInfo(pc.cell);
-    for (const CellLibrary::IO &pc_in : pc_info.inputs) {
-      neighboring_inputs.push_back(pc.xpos + pc_in.xblock);
-    }
-  }
-  // Unassigned chutes will act as input gates for their wires, so they
-  // also need gate clearance from newly placed cells.
-  for (size_t i = 0; i < chutes.size(); i++) {
-    if (!Assigned(i) && !MatchedHere(chutes[i])) {
-      neighboring_inputs.push_back(chutes[i].pos);
-    }
-  }
-
   for (const CellLibrary::IO &in : info.inputs) {
     int cg = xpos + in.xblock;
-    for (int ng : neighboring_inputs) {
-      if (std::abs(cg - ng) < min_gate_dist) {
-        if (verbose > 1) {
-          Print("[{}] Can't place {} at {}: Input gate at {} is too close "
-                "(dist {}) to neighboring input gate at {}.\n",
-                chute_context, CellString(cell), xpos, cg,
-                std::abs(cg - ng), ng);
+    int min_ng = cg - min_gate_dist;
+    int max_ng = cg + min_gate_dist;
+
+    auto next_it = std::lower_bound(
+        next.begin(), next.end(), min_ng,
+        [](const PC &pc, int x) { return pc.xpos < x; });
+    if (next_it != next.begin()) next_it--;
+
+    for (auto it = next_it; it != next.end(); it++) {
+      if (it->xpos > max_ng) break;
+      CellLibrary::Info pc_info = library.GetInfo(it->cell);
+      if (it->xpos + pc_info.block_width < min_ng) continue;
+
+      for (const CellLibrary::IO &pc_in : pc_info.inputs) {
+        int ng = it->xpos + pc_in.xblock;
+        if (std::abs(cg - ng) < min_gate_dist) {
+          if (verbose > 1) {
+            Print("[{}] Can't place {} at {}: Input gate at {} is too close "
+                  "(dist {}) to neighboring input gate at {}.\n",
+                  chute_context, CellString(cell), xpos, cg,
+                  std::abs(cg - ng), ng);
+          }
+          return false;
         }
-        return false;
+      }
+    }
+
+    auto chute_it = std::lower_bound(
+        chutes.begin(), chutes.end(), min_ng,
+        [](const Chute &c, int pos) { return c.pos < pos; });
+
+    for (auto it = chute_it; it != chutes.end(); it++) {
+      if (it->pos > max_ng) break;
+      if (!it->assigned && !MatchedHere(*it)) {
+        int ng = it->pos;
+        if (std::abs(cg - ng) < min_gate_dist) {
+          if (verbose > 1) {
+            Print("[{}] Can't place {} at {}: Input gate at {} is too close "
+                  "(dist {}) to neighboring input gate at {}.\n",
+                  chute_context, CellString(cell), xpos, cg,
+                  std::abs(cg - ng), ng);
+          }
+          return false;
+        }
       }
     }
   }
@@ -267,9 +293,13 @@ LayoutCanvas::ConvertToLayer() {
 
 
 std::vector<double> LayoutCanvas::SolveSprings() {
-  constexpr float ANCHOR_WEIGHT = 0.01f;
+  // Small anchor weight. We mostly want to follow the inter-gate
+  // spacing; we just have a small preference to stay aligned
+  // with the current positions.
+  constexpr double ANCHOR_WEIGHT = 1e-5;
 
-  // Depend on the number of chutes, since forces move 1 element per iteration.
+  // Depend on the number of chutes, since we only propagate forces
+  // one cell at a time.
   const int max_iters = 50 * chutes.size();
 
   // Desired left edge, initialized to the current location.
@@ -279,7 +309,10 @@ std::vector<double> LayoutCanvas::SolveSprings() {
   }
 
   for (int iter = 0; iter < max_iters; iter++) {
-    for (int cidx = 0; cidx < xpos.size(); cidx++) {
+    int start = (iter % 2 == 0) ? 0 : (int)xpos.size() - 1;
+    int end = (iter % 2 == 0) ? (int)xpos.size() : -1;
+    int step = (iter % 2 == 0) ? 1 : -1;
+    for (int cidx = start; cidx != end; cidx += step) {
       // If the chute is already anchored, its xpos cannot
       // change. It pushes and pulls neighbors in their own
       // updates.

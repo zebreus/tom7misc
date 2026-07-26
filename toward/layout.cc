@@ -8,12 +8,14 @@
 #include <cstdlib>
 #include <deque>
 #include <format>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -28,6 +30,7 @@
 #include "cell-library.h"
 #include "circuit.h"
 #include "image.h"
+#include "inline-vector.h"
 #include "layout-canvas.h"
 #include "level.h"
 #include "map-util.h"
@@ -134,6 +137,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   int num_and = 0, num_xchg = 0, num_or = 0, num_wire = 0;
   int num_sep = 0, num_dup = 0, num_comb = 0, num_not = 0;
   int num_spaced_layers = 0;
+  int resorted = 0;
+
+  bool write_ranks = true;
 
   Periodically status_per = Periodically(1.0);
   std::unique_ptr<StatusBar> status_owned;
@@ -524,39 +530,18 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
-  void SetRanks(LayoutCanvas *canvas) {
-    std::vector<int> indices(canvas->chutes.size());
-    for (int i = 0; i < (int)indices.size(); i++) {
-      indices[i] = i;
-    }
-
+  void SetRanks(LayoutCanvas *canvas,
+                const std::unordered_map<Prop, int> &prop_ranks) {
     auto type_rank = [](CType t) {
       if (t == CType::ZERO) return 0;
       if (t == CType::ONE) return 1;
       return 2;
     };
 
-    std::sort(indices.begin(), indices.end(), [&](int a, int b) {
-      const Chute &ca = canvas->chutes[a];
-      const Chute &cb = canvas->chutes[b];
-      auto ord = ca.prop <=> cb.prop;
-      if (ord != std::strong_ordering::equal) {
-        return ord == std::strong_ordering::less;
-      }
-      return type_rank(ca.type) < type_rank(cb.type);
-    });
-
-    int current_rank = 0;
-    for (int i = 0; i < (int)indices.size(); i++) {
-      if (i > 0) {
-        const Chute &prev = canvas->chutes[indices[i - 1]];
-        const Chute &curr = canvas->chutes[indices[i]];
-        if (prev.prop != curr.prop ||
-            type_rank(prev.type) != type_rank(curr.type)) {
-          current_rank++;
-        }
-      }
-      canvas->chutes[indices[i]].rank = current_rank;
+    for (Chute &chute : canvas->chutes) {
+      auto it = prop_ranks.find(chute.prop);
+      int pr = it != prop_ranks.end() ? it->second : 0;
+      chute.rank = pr * 3 + type_rank(chute.type);
     }
   }
 
@@ -566,7 +551,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   // so that this process terminates.) The input and output layers
   // should start at x=0.
   std::pair<std::vector<LC>, int>
-  AddLayer(const std::deque<std::vector<LC>> &layers) override {
+  AddLayer(const std::deque<std::vector<LC>> &layers,
+           const std::unordered_map<Prop, int> &prop_ranks) override {
     std::span<const LC> top = layers.front();
     CHECK(!top.empty()) << "Precondition.";
 
@@ -594,7 +580,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // Annotate the curent global ordering onto each chute.
     // We use this to perform local swaps to move chutes closer
     // to the desired position.
-    SetRanks(&canvas);
+    SetRanks(&canvas, prop_ranks);
 
     OutputDebugging(layers, canvas);
 
@@ -684,32 +670,32 @@ struct LayoutEngineImpl : public LayoutEngine {
 
         // Since we don't actually know where the next
         // chute would be relative to its cell's right edge, we should
+        // be conservative here.
         int additional_clearance =
           library.MinClearanceFar() * 4;
 
-        // Compute the desired left clearance.
-        // This measures the distance from the left edge of the left
-        // output to the next chute's right edge such that cell_unflipped
-        // would fit here.
-        int left_clearance = out0 + additional_clearance;
+        int stick_out_left = out0;
+        int stick_out_right = info.block_width - (out_last + Levels::IN_WIDTH);
 
-        // Same, symmetrically, for the right clearance.
-        int right_clearance =
-          info.block_width - (out_last + Levels::IN_WIDTH) +
+        // Request the same amount on both sides.
+        // Here we want the edge-to-edge clearance between the gates.
+        int clearance = std::max(stick_out_left, stick_out_right) +
           additional_clearance;
 
+        #if 0
         if (verbose > 2) {
           Print("[{}] acquire clearance for {}. L: {}, R: {}\n",
                 chute_idx, GateString(gate),
                 left_clearance, right_clearance);
         }
+        #endif
 
         // (No spring to the left of the first chute.)
         if (chute_idx > 0) {
           Spring *left = &canvas.springs[chute_idx - 1];
           LayoutCanvas::UpdateSpring(
               left,
-              left_clearance,
+              clearance,
               2 * library.MinClearanceFar(),
               // Compressing would mean we're still unable to
               // place.
@@ -724,7 +710,7 @@ struct LayoutEngineImpl : public LayoutEngine {
           Spring *right = &canvas.springs[last_chute_idx];
           LayoutCanvas::UpdateSpring(
               right,
-              right_clearance,
+              clearance,
               2 * library.MinClearanceFar(),
               100.0f,
               0.01f);
@@ -783,8 +769,6 @@ struct LayoutEngineImpl : public LayoutEngine {
             if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
               canvas.Assign(chute_idx);
               canvas.Assign(chute_idx + 1);
-              canvas.Anchor(chute_idx);
-              canvas.Anchor(chute_idx + 1);
 
               int dist = out1 - (out0 + Levels::IN_WIDTH);
               CHECK(dist >= 0);
@@ -1333,7 +1317,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     Print("Wrote " AGREEN("{}") ".", filename);
   }
 
-  void OutputDebugging(const std::deque<std::vector<LC>> &layers, const LayoutCanvas &canvas) {
+  void OutputDebugging(const std::deque<std::vector<LC>> &layers,
+                       const LayoutCanvas &canvas) {
     const std::vector<LC> &last = layers.front();
     if (verbose > 0 && status) {
       // Stats on the input propositions.
@@ -1405,14 +1390,15 @@ struct LayoutEngineImpl : public LayoutEngine {
                 "{}\n"
                 "Gates: {} " ABLUE("∧") " {} xchg {} " ABLUE("∨")
                 " {} " ABLUE("|") " {} sep {} dup {} comb\n"
-                "Layer {}: {} max prop, {} total. {} inv. "
+                "[" AWHITE("Layer {}") "] {} max prop, {} total. {} inv. "
+                "{} resort. "
                 "Width: {}.\n"
                 "{} top: {} v {} and {} or {} not",
                 histo.OneLineANSI(75),
                 num_and, num_xchg, num_or, num_wire, num_sep,
                 num_dup, num_comb,
                 layers.size(), max_prop_size, total_prop_size,
-                inversions,
+                inversions, resorted,
                 top_layer_width,
                 last.size(), count_var, count_and, count_or, count_not);
           });
@@ -1435,11 +1421,39 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
-  void DoAddLayer(std::deque<std::vector<LC>> *layers) override {
+  // Returns true if we made definite progress on the layer,
+  // by placing at least one decomposing or unduplicating gate.
+  // This permits us to rerank the propositions without creating
+  // the possibility of an endless loop.
+  static bool DefiniteProgress(const std::vector<LC> &new_layer) {
+    for (const LC &lc : new_layer) {
+      switch (lc.cell.gate) {
+      case Gate::AND0110:
+      case Gate::OR1100:
+      case Gate::NOT0:
+      case Gate::NOT1:
+      case Gate::NOT01:
+      case Gate::NOT:
+        return true;
+
+      case Gate::DUP0:
+      case Gate::DUP1:
+        return true;
+
+      default:
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  void DoAddLayer(std::deque<std::vector<LC>> *layers,
+                  const std::unordered_map<Prop, int> &prop_ranks) override {
     const std::vector<LC> &last = layers->front();
 
     // Otherwise, compute a new top layer.
-    auto [next, start_pos] = AddLayer(*layers);
+    auto [next, start_pos] = AddLayer(*layers, prop_ranks);
 
     // True if the layers are effectively the same, ignoring leading
     // spacers (i.e. they can have different starting offsets). If
@@ -1447,60 +1461,63 @@ struct LayoutEngineImpl : public LayoutEngine {
     // an infinite loop, so we should abort.
     auto SameLayer = [](const std::vector<LC> &a,
                         const std::vector<LC> &b) {
-      auto ita = a.begin(), itb = b.begin();
-      while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
-      while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;
-      while (true) {
-        if (ita == a.end() && itb == b.end()) return true;
-        if (ita == a.end() || itb == b.end()) return false;
-        if (ita->cell.gate != itb->cell.gate ||
-            ita->cell.v != itb->cell.v ||
-            ita->cell.flip != itb->cell.flip ||
-            ita->inprops != itb->inprops) {
-          return false;
+        auto ita = a.begin(), itb = b.begin();
+        while (ita != a.end() && ita->cell.gate == Gate::SPACER) ita++;
+        while (itb != b.end() && itb->cell.gate == Gate::SPACER) itb++;
+        for (;;) {
+          if (ita == a.end() && itb == b.end()) return true;
+          if (ita == a.end() || itb == b.end()) return false;
+          if (ita->cell.gate != itb->cell.gate ||
+              ita->cell.v != itb->cell.v ||
+              ita->cell.flip != itb->cell.flip ||
+              ita->inprops != itb->inprops) {
+            return false;
+          }
+          ita++;
+          itb++;
         }
-        ita++;
-        itb++;
-      }
-    };
+      };
 
     if (SameLayer(last, next)) {
       LOG(FATAL) << "Layout made no progress! New layer is identical\n"
         "to the previous one.";
     }
 
-    size_t num_next_outputs = 0;
-    for (const LC &lc : next) {
-      num_next_outputs += library.GetInfo(lc.cell).outputs.size();
-    }
+    // Another simple validity self-check: The layer should match
+    // the number of chutes on the next one.
+    {
+      size_t num_next_outputs = 0;
+      for (const LC &lc : next) {
+        num_next_outputs += library.GetInfo(lc.cell).outputs.size();
+      }
 
-    size_t num_last_inputs = 0;
-    for (const LC &lc : last) {
-      num_last_inputs += lc.inprops.size();
-    }
+      size_t num_last_inputs = 0;
+      for (const LC &lc : last) {
+        num_last_inputs += lc.inprops.size();
+      }
 
-    if (num_next_outputs != num_last_inputs) {
-
-      LOG(FATAL)
-        << "Error after " << layers->size() << "layers:\n"
-        << "Bad Layer! New outputs (" << num_next_outputs
-        << ") != top layer inputs (" << num_last_inputs << ").";
+      if (num_next_outputs != num_last_inputs) {
+        LOG(FATAL)
+          << "Error after " << layers->size() << "layers:\n"
+          << "Bad Layer! New outputs (" << num_next_outputs
+          << ") != top layer inputs (" << num_last_inputs << ").";
+      }
     }
 
     // We might need to shift over this layer, or
     // shift over all the remaining ones, to align.
     auto AddLeftSpacer = [](std::vector<LC> &layer, int pad) {
-      if (pad == 0) return;
-      CHECK(pad > 0);
-      if (!layer.empty() && layer.front().cell.gate == Gate::SPACER) {
-        layer.front().cell.v += pad;
-      } else {
-        layer.insert(layer.begin(), LC{
-            .inprops = {},
-            .cell = CellLibrary::Spacer(pad),
-        });
-      }
-    };
+        if (pad == 0) return;
+        CHECK(pad > 0);
+        if (!layer.empty() && layer.front().cell.gate == Gate::SPACER) {
+          layer.front().cell.v += pad;
+        } else {
+          layer.insert(layer.begin(), LC{
+              .inprops = {},
+                .cell = CellLibrary::Spacer(pad),
+                });
+        }
+      };
 
     if (start_pos > 0) {
       AddLeftSpacer(next, start_pos);
@@ -1512,6 +1529,129 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     layers->push_front(std::move(next));
+  }
+
+  std::unordered_map<Prop, int> GetPropRanks(
+      std::span<const LC> layer,
+      std::string_view debug_filename = "") override {
+    std::unordered_map<Prop, InlineVector<int>> positions;
+
+    int next_pos = 0;
+    int largest_pos = 0;
+    int largest = 0;
+
+    std::function<int(const Prop &)> Flatten = [&](const Prop &prop) -> int {
+        int size = 0;
+        // First descend left.
+        if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
+          size += Flatten(*bop->a);
+        } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
+          size += Flatten(*uop->a);
+        }
+
+        int pos = next_pos++;
+        positions[prop].push_back(pos);
+
+        // Then descend right.
+        if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
+          size += Flatten(*bop->b);
+        }
+
+        size++;
+
+        if (size > largest) {
+          largest_pos = pos;
+          largest = size;
+        }
+
+        return size;
+      };
+
+    for (const LC &lc : layer) {
+      for (const Prop &prop : lc.inprops) {
+        Flatten(prop);
+      }
+    }
+
+    // Now we project everything to a position on the number line.
+    // This is unsorted, but each prop is unique.
+    // prop, count, pos
+    std::vector<std::tuple<Prop, int, double>> proj;
+
+    // A cheap way of separating into classes: We space them out
+    // by the current total width.
+    double width = next_pos;
+
+    auto AveragePos = [](const InlineVector<int> &p) {
+        CHECK(!p.empty());
+        double sum = 0.0;
+        for (int x : p) sum += x;
+        return sum / p.size();
+      };
+
+    // For variables, we want these all to end up on the exterior
+    // so that we can be done with them. They can either be on
+    // the left or the right of the action. We use the largest pos
+    // as the "middle".
+    //
+    // Wherever we have more than one position, we use the mean
+    // position, since this would optimistically require the fewest
+    // layers to swap the props to that same spot.
+    for (const auto &[prop, ps] : positions) {
+      double avg_pos = AveragePos(ps);
+      if (std::holds_alternative<Var>(prop.p)) {
+        // We pick the farthest class (2) for unique variables,
+        // then the outer class (1) for other variables.
+        int cls = ps.size() == 1 ? 2 : 1;
+
+        if (avg_pos <= largest_pos) {
+          proj.emplace_back(prop, ps.size(), -cls * width + avg_pos);
+        } else {
+          proj.emplace_back(prop, ps.size(), cls * width + avg_pos);
+        }
+      } else {
+        // Everything else just goes in the main class, targeting
+        // its average position.
+
+        proj.emplace_back(prop, ps.size(), avg_pos);
+      }
+    }
+
+    std::sort(proj.begin(), proj.end(),
+              [](const auto &a, const auto &b) {
+                return std::get<2>(a) < std::get<2>(b);
+              });
+
+    if (!debug_filename.empty()) {
+      std::string content = "--- Top layer props ---\n";
+      int prop_idx = 0;
+      for (const LC &lc : layer) {
+        for (const Prop &prop : lc.inprops) {
+          content.append(std::format(" [{}] {}\n", prop_idx++,
+                                     PropString(prop, 8)));
+        }
+      }
+      content.append("\n--- Prop ranks ---\n");
+      for (int i = 0; i < (int)proj.size(); i++) {
+        const auto &[prop, ct, pos] = proj[i];
+        size_t sz = PropSize(prop);
+        content.append(
+            std::format(" [{}] size {}. x{}. {} (pos: {:.2f})\n",
+                        i, sz, ct, PropString(prop, 8), pos));
+      }
+      Util::WriteFile(debug_filename, content);
+      if (verbose > 0 && status != nullptr) {
+        status->Print("Wrote {}\n", debug_filename);
+      }
+    }
+
+    std::unordered_map<Prop, int> prop_ranks;
+    prop_ranks.reserve(proj.size());
+    for (int i = 0; i < (int)proj.size(); i++) {
+      prop_ranks[std::get<0>(proj[i])] = i;
+    }
+
+    return prop_ranks;
   }
 
 
@@ -1550,9 +1690,20 @@ struct LayoutEngineImpl : public LayoutEngine {
       layers.push_front(std::move(final_layer));
     }
 
+    // A map for all propositions (including their subterms) in
+    // the problem to the rank (not necessarily dense) in the
+    // desired order. This may change as we make progress on
+    // the network.
+    CHECK(!layers.empty());
+    std::unordered_map<Prop, int> prop_ranks =
+      GetPropRanks(layers.front(), write_ranks ? "initial-ranks.txt" : "");
+
+    bool write_ranks_next = false;
     // Repeatedly take the front of the layers, and simplify.
     for (int num_layers = 1; true; num_layers++) {
-      (void)num_layers;
+      if (num_layers % 500 == 0) {
+        write_ranks_next = true;
+      }
 
       // CHECK(num_layers < 8);
 
@@ -1571,7 +1722,18 @@ struct LayoutEngineImpl : public LayoutEngine {
                         std::move(ovars.value()));
       }
 
-      DoAddLayer(&layers);
+      DoAddLayer(&layers, prop_ranks);
+
+      CHECK(!layers.empty());
+      if (DefiniteProgress(layers.front())) {
+        std::string file;
+        if (write_ranks && write_ranks_next) {
+          file = std::format("ranks-{}.txt", num_layers);
+        }
+        prop_ranks = GetPropRanks(layers.front(), file);
+        resorted++;
+        write_ranks_next = false;
+      }
     }
   }
 

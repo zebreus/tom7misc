@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -47,14 +48,20 @@ struct LayoutEngine {
   using PC = LayoutCanvas::PC;
 
   virtual std::pair<std::vector<LC>, int>
-  AddLayer(const std::deque<std::vector<LC>> &layers) = 0;
+  AddLayer(const std::deque<std::vector<LC>> &layers,
+           const std::unordered_map<Prop, int> &prop_ranks) = 0;
 
   virtual std::optional<std::vector<std::pair<int, CType>>>
   AllVars(std::span<const LC> lcs) = 0;
 
+  virtual std::unordered_map<Prop, int>
+  GetPropRanks(std::span<const LC> layer,
+               std::string_view debug_filename = "") = 0;
+
   // Add a layer to the top. The input may not be empty, and must
   // not be done (all variables).
-  virtual void DoAddLayer(std::deque<std::vector<LC>> *layers) = 0;
+  virtual void DoAddLayer(std::deque<std::vector<LC>> *layers,
+                          const std::unordered_map<Prop, int> &prop_ranks) = 0;
 
   // Advanced!
   // Must have 3 lines.
