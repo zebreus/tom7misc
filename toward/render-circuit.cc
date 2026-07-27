@@ -34,6 +34,7 @@ static constexpr uint32_t USEFUL_CELL_COLOR = 0xAAAAAAFF;
 static constexpr uint32_t CELL_COLOR = 0x666666FF;
 
 static constexpr uint32_t XCHG_COLOR = 0x888888FF;
+static constexpr uint32_t DUP_COLOR = 0xFFFF00FF;
 
 // A wire cell that takes a variable.
 static constexpr uint32_t VAR_WIRE_COLOR = 0x332233FF;
@@ -72,6 +73,17 @@ static bool IsXchg(Gate gate) {
     case Gate::XCHG11:
     case Gate::SELFXCHG01:
     case Gate::SELFXCHG10:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool IsDup(Gate gate) {
+  switch (gate) {
+    case Gate::DUPSEP0011:
+    case Gate::DUP0:
+    case Gate::DUP1:
       return true;
     default:
       return false;
@@ -177,6 +189,8 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
             cc = VAR_WIRE_COLOR;
           } else if (IsXchg(cell.gate)) {
             cc = XCHG_COLOR;
+          } else if (IsDup(cell.gate)) {
+            cc = DUP_COLOR;
           }
 
           img.FillRect32(cx, cell_y, bw, cell_h, Darken(cc));
@@ -301,6 +315,8 @@ ImageRGBA RenderCircuitMini(
           cc = cell_is_var ? VAR_WIRE_COLOR : CELL_COLOR;
         } else if (IsXchg(cell.gate)) {
           cc = XCHG_COLOR;
+        } else if (IsDup(cell.gate)) {
+          cc = DUP_COLOR;
         }
 
         int cell_y = cy + pad_height;

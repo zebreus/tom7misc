@@ -127,12 +127,14 @@ struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
+  ArcFour rc;
+
   // The desired displacement amount, when we didn't have an
   // exact match. Key is abs displacement, value is occurrence count.
   std::unordered_map<int, int> disp_histo;
 
-  // The list of spring records; one per layer that we created.
-  std::deque<std::vector<SpringRecord>> spring_records;
+  // Debug info: The list of spring records; one per layer that we created.
+  std::deque<std::vector<SpringRecord>> spring_history;
 
   // The amount of space we try to keep between the done region
   // (chutes on the far left and right that contain MIXED vars)
@@ -147,20 +149,31 @@ struct LayoutEngineImpl : public LayoutEngine {
   int num_spaced_layers = 0;
   int resorted = 0;
 
-  bool write_ranks = true;
-
   Periodically status_per = Periodically(1.0);
   std::unique_ptr<StatusBar> status_owned;
   StatusBar *status = nullptr;
 
+  // True if we should write ranks the next time we compute them.
+  bool write_ranks = true;
+
+
+  // Precomputed info about the library.
   std::vector<int> wire_sizes_descending;
   std::unordered_set<int> wire_sizes_available;
-
   // For a positive sum (key) that is not in wire_sizes_available, all
   // pairs of wire sizes (large, small) that sum to it.
   // large >= abs(small). small may be negative.
   std::unordered_map<int, std::vector<std::pair<int, int>>> wire_sums;
 
+  // The closest we ever need outputs to be for a single cell (blocks
+  // between right edge and left edge). There's no reason for chutes
+  // to be closer than this, so we push them apart to avoid getting
+  // stuck.
+  int min_output_distance = 0;
+  // The largest cell width (not including wires).
+  int max_cell_width = 0;
+
+  // Global debugging flags.
   int verbose = 1;
   bool write_images = false;
 
@@ -171,16 +184,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     status = s;
   }
 
-  // The closest we ever need outputs to be for a single cell (blocks
-  // between right edge and left edge). There's no reason for chutes
-  // to be closer than this, so we push them apart to avoid getting
-  // stuck.
-  int min_output_distance = 0;
-  // The largest cell width (not including wires).
-  int max_cell_width = 0;
-
-  ArcFour rc;
-
   template<typename... Args>
   inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
     if (status != nullptr) {
@@ -190,8 +193,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
-  const std::deque<std::vector<SpringRecord>> &GetSpringRecords() const override {
-    return spring_records;
+  const std::deque<std::vector<SpringRecord>> &GetSpringHistory() const override {
+    return spring_history;
   }
 
   // Returns the flattened vector of variable ids if all
@@ -271,6 +274,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
+  // The output position for a cell with one output.
   int ItsOutputPos(const Cell &cell) const {
     const CellLibrary::Info info = library.GetInfo(cell);
     CHECK(info.outputs.size() == 1);
@@ -345,6 +349,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       int one = 0;
     };
 
+    // Count of propositions in the top layer.
     std::unordered_map<Prop, Counts> prop_count;
     for (Chute &chute : chutes) {
       Counts &counts = prop_count[chute.prop];
@@ -362,10 +367,48 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
+    // And all subterms.
+    std::unordered_map<Prop, Counts> subterm_count;
+    {
+      std::function<void(const Prop &, CType)> CountSubterms =
+        [&subterm_count, &CountSubterms](const Prop &prop, CType t) {
+          Counts &counts = subterm_count[prop];
+          counts.any++;
+          switch (t) {
+          case CType::MIXED:
+            counts.mixed++;
+            break;
+          case CType::ONE:
+            counts.one++;
+            break;
+          case CType::ZERO:
+            counts.zero++;
+            break;
+          }
+
+          if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
+            CountSubterms(*bop->a, t);
+            CountSubterms(*bop->b, t);
+          } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
+            CountSubterms(*uop->a, t);
+          }
+        };
+      for (Chute &chute : chutes) {
+        CountSubterms(chute.prop, chute.type);
+      }
+    }
+
+
     // After dealing with the exterior, a mixed variable that is not
     // "done" is going to be problematic, because we will likely need
     // to cross over it to attain the order we want. So uncombine
-    // those.
+    // those. Mixed variables don't arise naturally, since we only
+    // create them on the exterior and the current decomposing gates
+    // all have separated props as inputs.
+    //
+    // (This is actually covered below by the general UNCOMBINE pass.
+    // Mixed variables cannot get any of the next few treatments.)
+    /*
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       if (!chute.done &&
@@ -375,12 +418,12 @@ struct LayoutEngineImpl : public LayoutEngine {
         chute.desire = UNCOMBINE;
       }
     }
+    */
 
-    // We attempt to UNDUP propositions that are equal and already
-    // next to one another. We want to do this before crossing over,
-    // because reducing the number of total chutes is a big efficiency
-    // win. (TODO: We might want to prioritize this proportional to
-    // the prop size!)
+    // UNDUP is very important, since we are strict about not
+    // decomposing a proposition until it is unique. We attempt to
+    // UNDUP any propositions that are equal and already next to one
+    // another. Exchanges attempt to move duplicates together.
     for (int c = 0; c < (int)chutes.size() - 1; c++) {
       Chute &chute1 = chutes[c];
       Chute &chute2 = chutes[c + 1];
@@ -424,10 +467,10 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute2.type != CType::MIXED &&
           chute1.type != chute2.type &&
           chute1.prop == chute2.prop &&
-          // (Note: We could use a weaker condition here. We just don't
-          // want to do it in a situation like zero = 2 and one = 1).
-          prop_count[prop].zero == 1 &&
-          prop_count[prop].one == 1) {
+          // We require that these are the only occurrences of the
+          // proposition globally, including in subterms.
+          subterm_count[prop].zero == 1 &&
+          subterm_count[prop].one == 1) {
 
         // For variables, we only want to unseparate them if they are
         // exterior, so they will become done. Unseparating prematurely
@@ -445,9 +488,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           }
 
         } else if (std::holds_alternative<Binop>(prop.p)) {
-          // Our binops target mixed outputs, so we need
-          // to unseparate wherever this is. On the next
-          // layer we should be able to decompose.
+          // Our binops target mixed outputs. Once we know we aren't
+          // duplicating anything, we want to unseparate this
+          // (anywhere) so that we can decompose it.
           chute1.desire = UNSEPARATE_LHS;
           chute2.desire = UNSEPARATE_RHS;
 
@@ -465,12 +508,17 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // Similarly, decomposing a mixed binary proposition gets us
     // separated inputs (which we want) as well as simplifying.
+    // But we should only do this if it's unique, or else we
+    // can get exponential blow-up.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
+      const Prop &prop = chute.prop;
       if (!chute.done &&
           chute.type == CType::MIXED &&
           (std::holds_alternative<Binop>(chute.prop.p) ||
-           std::holds_alternative<Value>(chute.prop.p))) {
+           std::holds_alternative<Value>(chute.prop.p)) &&
+          // Must be unique.
+          subterm_count[prop].any == 1) {
         CHECK(chute.desire == DesireType::UNSPECIFIED);
         chute.desire = DECOMPOSE;
       }
@@ -490,18 +538,22 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    // Strip NOT from separated propositions, which is easy to do
-    // locally. It would often be better to swap and dedup first if
-    // possible (because when we swap with some non-negated
-    // proposition, we are at least helping that other one get to the
-    // right place!). But these are basically just wires so they don't
-    // particularly add complexity.
+    // Strip NOT from separated propositions. Unlike the binary
+    // DECOMPOSE operators, we do not risk exponential blowup
+    // for non-unique propositions here.
+    //
+    // It would often be better to swap and dedup first if possible
+    // (because when we swap with some non-negated proposition, we are
+    // at least helping that other one get to the right place!). But
+    // these are basically just wires so they don't particularly add
+    // complexity.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
+      const Prop &prop = chute.prop;
       if (!chute.done &&
           chute.type != CType::MIXED &&
           chute.desire == DesireType::UNSPECIFIED &&
-          std::holds_alternative<Unop>(chute.prop.p)) {
+          std::holds_alternative<Unop>(prop.p)) {
         chute.desire = DECOMPOSE;
       }
     }
@@ -519,13 +571,8 @@ struct LayoutEngineImpl : public LayoutEngine {
         CHECK(chute1.type != CType::MIXED);
         CHECK(chute2.type != CType::MIXED);
 
-        // Just do local swaps if out of order. We could be smarter
-        // about this (e.g. by inspecting propositions that we know we
-        // are decomposing and will need to deal with further up) but
-        // it would probably be better to just make a better ordering.
-        // (We don't even care what the ordering is, as long as it
-        // puts equal props together so that we can dedup or uncombine
-        // them).
+        // Just do local swaps if out of order. The ranks are chosen
+        // in hopes of minimizing the number of swaps we have to do.
         if (chute1.rank > chute2.rank) {
           chute1.desire = DesireType::EXCHANGE_RIGHT;
           chute2.desire = DesireType::EXCHANGE_LEFT;
@@ -1361,12 +1408,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     const float compressed_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0xFF0000FF));
     const float stretched_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0x00FF00FF));
 
-    if (!spring_records.empty()) {
+    if (!spring_history.empty()) {
       int min_x = 0, max_x = 0;
       int num_render_layers =
-          std::min((int)spring_records.size(), max_circuit_layers);
+          std::min((int)spring_history.size(), max_circuit_layers);
       for (int i = 0; i < num_render_layers; i++) {
-        for (const SpringRecord &rec : spring_records[i]) {
+        for (const SpringRecord &rec : spring_history[i]) {
           min_x = std::min({min_x, rec.start_pos / Levels::IN_WIDTH,
                             (int)std::round(rec.ideal_pos) / Levels::IN_WIDTH});
           max_x = std::max({max_x, rec.start_pos / Levels::IN_WIDTH,
@@ -1381,7 +1428,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       simg.Clear32(0x000000FF);
 
       for (int i = 0; i < num_render_layers; i++) {
-        const std::vector<SpringRecord> &layer_recs = spring_records[i];
+        const std::vector<SpringRecord> &layer_recs = spring_history[i];
         int y_base = i * 3;
         int y_top = y_base;
         int y_mid = y_base + 1;
@@ -1645,7 +1692,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       for (std::vector<LC> &layer : *layers) {
         AddLeftSpacer(layer, pad);
       }
-      for (std::vector<SpringRecord> &shr : this->spring_records) {
+      for (std::vector<SpringRecord> &shr : this->spring_history) {
         for (SpringRecord &rec : shr) {
           rec.start_pos += pad;
           rec.ideal_pos += pad;
@@ -1658,9 +1705,12 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
 
     layers->push_front(std::move(next));
-    this->spring_records.push_front(std::move(layer_spring_records));
+    this->spring_history.push_front(std::move(layer_spring_records));
   }
 
+  // Recompute the desired order for all of the distinct propositions that
+  // appear in the top layer. This is like the global plan for spatial
+  // routing. We can recompute this when we output a decomposing gate.
   std::unordered_map<Prop, int> GetPropRanks(
       std::span<const LC> layer,
       std::string_view debug_filename = "") override {
@@ -1801,7 +1851,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // All the layers, annotated with props. We'll add to the front
     // of this.
     std::deque<std::vector<LC>> layers;
-    this->spring_records.clear();
+    this->spring_history.clear();
 
     // First create a layer with just wires to get us started. This is
     // probably not necessary, but it makes it easier to reason about
@@ -1832,7 +1882,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         final_springs.push_back(rec);
       }
       layers.push_front(std::move(final_layer));
-      this->spring_records.push_front(std::move(final_springs));
+      this->spring_history.push_front(std::move(final_springs));
     }
 
     // A map for all propositions (including their subterms) in
@@ -1903,12 +1953,6 @@ struct LayoutEngineImpl : public LayoutEngine {
         layer.front().cell.v -= *min_left;
         if (layer.front().cell.v == 0) {
           layer.erase(layer.begin());
-        }
-      }
-      for (std::vector<SpringRecord> &shr : this->spring_records) {
-        for (SpringRecord &rec : shr) {
-          rec.start_pos -= *min_left;
-          rec.ideal_pos -= *min_left;
         }
       }
     }

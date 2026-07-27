@@ -81,7 +81,7 @@ struct LayoutEngine {
   // Must have 3 lines.
   virtual void SetStatusBar(StatusBar *s) = 0;
 
-  virtual const std::deque<std::vector<SpringRecord>> &GetSpringRecords() const = 0;
+  virtual const std::deque<std::vector<SpringRecord>> &GetSpringHistory() const = 0;
 
   // Pretty-print for debugging, etc. Designed for small
   // circuits!
