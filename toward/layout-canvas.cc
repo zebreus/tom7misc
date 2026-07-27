@@ -293,10 +293,21 @@ LayoutCanvas::ConvertToLayer() {
 
 
 std::vector<double> LayoutCanvas::SolveSprings() {
-  // Small anchor weight. We mostly want to follow the inter-gate
-  // spacing; we just have a small preference to stay aligned
-  // with the current positions.
-  constexpr double ANCHOR_WEIGHT = 1e-5;
+  // We mostly care about inter-gate spacing, but we require
+  // at least one chute to be anchored, so that we don't get
+  // the entire circuit drifting to one side.
+  const bool any_anchored = [&]{
+      for (const Chute &chute : chutes) {
+        if (chute.anchored) {
+          return true;
+        }
+      }
+      return false;
+    }();
+
+  if (!any_anchored && !chutes.empty()) {
+    chutes[chutes.size() / 2].anchored = true;
+  }
 
   // Depend on the number of chutes, since we only propagate forces
   // one cell at a time.
@@ -306,6 +317,57 @@ std::vector<double> LayoutCanvas::SolveSprings() {
   std::vector<double> xpos(chutes.size());
   for (int i = 0; i < chutes.size(); i++) {
     xpos[i] = (double)chutes[i].pos;
+  }
+
+  // Pre-pass: propagate expansion forces left-to-right and right-to-left.
+  // Gauss-Seidel takes O(N^2) iterations to propagate a signal, which is
+  // too slow for large circuits that start densely compressed. We use the
+  // maximum of target_dist and min_dist to ensure that unanchored chutes
+  // are pushed far enough to honor their minimum distance constraints and
+  // stay in order (unless the anchors are overconstrained).
+
+  // To prevent the pre-pass from pushing chutes past anchors and causing
+  // them to be out-of-order, we precalculate the bounds imposed by anchors.
+  std::vector<double> max_limit(xpos.size(), 1e12);
+  std::vector<double> min_limit(xpos.size(), -1e12);
+
+  {
+    double cur_limit = 1e12;
+    for (int i = (int)xpos.size() - 1; i >= 0; i--) {
+      if (chutes[i].anchored) {
+        cur_limit = xpos[i];
+      } else {
+        cur_limit -= Levels::IN_WIDTH + springs[i].min_dist;
+      }
+      max_limit[i] = cur_limit;
+    }
+
+    cur_limit = -1e12;
+    for (int i = 0; i < (int)xpos.size(); i++) {
+      if (chutes[i].anchored) {
+        cur_limit = xpos[i];
+      } else if (i > 0) {
+        cur_limit += Levels::IN_WIDTH + springs[i - 1].min_dist;
+      }
+      min_limit[i] = cur_limit;
+    }
+  }
+
+  for (int i = 1; i < (int)xpos.size(); i++) {
+    if (!chutes[i].anchored) {
+      double ideal = xpos[i - 1] + Levels::IN_WIDTH +
+          std::max(springs[i - 1].target_dist, springs[i - 1].min_dist);
+      if (ideal > max_limit[i]) ideal = max_limit[i];
+      if (xpos[i] < ideal) xpos[i] = ideal;
+    }
+  }
+  for (int i = (int)xpos.size() - 2; i >= 0; i--) {
+    if (!chutes[i].anchored) {
+      double ideal = xpos[i + 1] - Levels::IN_WIDTH -
+          std::max(springs[i].target_dist, springs[i].min_dist);
+      if (ideal < min_limit[i]) ideal = min_limit[i];
+      if (xpos[i] > ideal) xpos[i] = ideal;
+    }
   }
 
   for (int iter = 0; iter < max_iters; iter++) {
@@ -319,10 +381,8 @@ std::vector<double> LayoutCanvas::SolveSprings() {
       if (chutes[cidx].anchored)
         continue;
 
-      // Weakly prefer the current position. We don't want the
-      // whole network to drift to one side, for example.
-      double weighted_pos = ANCHOR_WEIGHT * (double)chutes[cidx].pos;
-      double total_weight = ANCHOR_WEIGHT;
+      double weighted_pos = 0.0;
+      double total_weight = 0.0;
 
       // Spring to the left.
       if (cidx > 0) {
@@ -349,7 +409,9 @@ std::vector<double> LayoutCanvas::SolveSprings() {
         total_weight += weight;
       }
 
-      xpos[cidx] = weighted_pos / total_weight;
+      double target = weighted_pos / total_weight;
+      // Successive over-relaxation (SOR) to speed up convergence.
+      xpos[cidx] = xpos[cidx] + 1.5 * (target - xpos[cidx]);
 
       // Never (well, subject to physical possibility) let chutes be
       // closer than the min distance (which also prohibits overlap).

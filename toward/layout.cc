@@ -4,12 +4,12 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
-#include <compare>
 #include <cstdlib>
 #include <deque>
 #include <format>
 #include <functional>
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <span>
@@ -23,12 +23,14 @@
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "color-util.h"
 #include "image.h"
 #include "inline-vector.h"
 #include "layout-canvas.h"
@@ -37,12 +39,15 @@
 #include "periodically.h"
 #include "png.h"
 #include "prop.h"
+#include "randutil.h"
 #include "render-circuit.h"
 #include "span-util.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "util.h"
 #include "vector-util.h"
+
+static constexpr bool ANCHORING = false;
 
 // ----------------------------------------------------------------------
 // Core concepts used in LayoutEngine:
@@ -126,6 +131,9 @@ struct LayoutEngineImpl : public LayoutEngine {
   // exact match. Key is abs displacement, value is occurrence count.
   std::unordered_map<int, int> disp_histo;
 
+  // The list of spring records; one per layer that we created.
+  std::deque<std::vector<SpringRecord>> spring_records;
+
   // The amount of space we try to keep between the done region
   // (chutes on the far left and right that contain MIXED vars)
   // and the interior.
@@ -171,6 +179,8 @@ struct LayoutEngineImpl : public LayoutEngine {
   // The largest cell width (not including wires).
   int max_cell_width = 0;
 
+  ArcFour rc;
+
   template<typename... Args>
   inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
     if (status != nullptr) {
@@ -178,6 +188,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     } else {
       ::Print(fmt, std::forward<Args>(args)...);
     }
+  }
+
+  const std::deque<std::vector<SpringRecord>> &GetSpringRecords() const override {
+    return spring_records;
   }
 
   // Returns the flattened vector of variable ids if all
@@ -550,9 +564,15 @@ struct LayoutEngineImpl : public LayoutEngine {
   // simpler. (Simpler as in some unspecified well-founded ordering
   // so that this process terminates.) The input and output layers
   // should start at x=0.
-  std::pair<std::vector<LC>, int>
+  //
+  // If allow_placement is false, then we don't place useful gates;
+  // we just compute the desired clearance and run the spring solver.
+  // This allows us to space out large circuits without getting in
+  // our own way.
+  std::tuple<std::vector<LC>, int, std::vector<SpringRecord>>
   AddLayer(const std::deque<std::vector<LC>> &layers,
-           const std::unordered_map<Prop, int> &prop_ranks) override {
+           const std::unordered_map<Prop, int> &prop_ranks,
+           bool allow_placement) override {
     std::span<const LC> top = layers.front();
     CHECK(!top.empty()) << "Precondition.";
 
@@ -625,6 +645,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           std::initializer_list<bool> allow_flips = {false, true}) -> bool {
         CHECK(!canvas.Assigned(chute_idx));
         Chute &chute = canvas.chutes[chute_idx];
+
+        if (!allow_placement && !IsWire(g)) return false;
 
         for (bool flip : allow_flips) {
           Cell cell(g, cell_val, flip);
@@ -766,7 +788,8 @@ struct LayoutEngineImpl : public LayoutEngine {
           int cell_pos = chute1.pos - out0;
           if (cell_pos + out1 == chute2.pos) {
             // Correct relative position, but will the cell fit?
-            if (canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
+            if (allow_placement &&
+                canvas.CanPlaceCell(chute_idx, cell, cell_pos)) {
               canvas.Assign(chute_idx);
               canvas.Assign(chute_idx + 1);
 
@@ -850,11 +873,16 @@ struct LayoutEngineImpl : public LayoutEngine {
           Print("[{}] {}: Have dist {} want dist {}\n",
                 chute_idx, CellString(cell_unflipped), current_dist, dist);
         }
-        if (dist == current_dist && !took_anchor) {
+        if (dist == current_dist && !took_anchor && allow_placement &&
+            ANCHORING) {
           // The first time (since we do these in a heuristic priority order)
           // that we have the right distance (but presumably could not fit
           // the cell itself) we anchor these so that we will eventually
           // make progress as things are pushed away from it.
+          //
+          // XXX We can probably still allow this single anchor when
+          // allow_placement is false; the spring solver will choose
+          // one arbitrarily anyway.
           took_anchor = true;
           chute1.anchored = true;
           chute2.anchored = true;
@@ -1051,27 +1079,18 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<int> todo;
     todo.reserve(canvas.chutes.size());
     {
-      std::vector<int> prop_size;
-      prop_size.reserve(canvas.chutes.size());
-
-      for (int c = 0; c < canvas.chutes.size(); c++) {
-        prop_size.push_back(PropSize(canvas.chutes[c].prop));
-        todo.push_back(c);
-      }
-
-      // Sort by descending proposition size. We prefer to act on big
+      // Collate by descending proposition size. We prefer to act on big
       // propositions, since once they are split we can work on their
       // components in parallel.
-      std::sort(todo.begin(), todo.end(),
-                [&prop_size](int c1, int c2) {
-                  int p1 = prop_size[c1];
-                  int p2 = prop_size[c2];
-                  if (p1 == p2) {
-                    return c1 < c2;
-                  } else {
-                    return p1 > p2;
-                  }
-                });
+      std::map<int, std::vector<int>, std::greater<int>> by_size;
+      for (int c = 0; c < canvas.chutes.size(); c++) {
+        by_size[PropSize(canvas.chutes[c].prop)].push_back(c);
+      }
+
+      for (auto &[size, indices] : by_size) {
+        Shuffle(&rc, &indices);
+        todo.insert(todo.end(), indices.begin(), indices.end());
+      }
     }
 
     auto ForAllRemaining = [&](auto f) {
@@ -1081,9 +1100,6 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     // These make clear progress to the final state.
-    // TODO: We should prioritize based on the size of the
-    // proposition (depth especially), since we want to
-    // be working on subprops in parallel!
     ForAllRemaining(DoUndup);
     ForAllRemaining(DoUnseparate);
     ForAllRemaining(DoDecompose);
@@ -1126,12 +1142,28 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<double> ideal_pos = canvas.SolveSprings();
     CHECK(ideal_pos.size() == canvas.chutes.size());
 
+    std::vector<SpringRecord> spring_records;
+    spring_records.reserve(canvas.chutes.size());
+
     // Displacement here is talking about the way we want the
     // chute to move as we go bottom up. Positive displacement
     // means that we want the gate on the next layer to be to the
     // right of where it currently is.
     std::vector<int> ideal_disp(canvas.chutes.size(), 0);
     for (int i = 0; i < canvas.chutes.size(); i++) {
+      SpringRecord rec;
+      rec.start_pos = canvas.chutes[i].pos;
+      rec.ideal_pos = (float)ideal_pos[i];
+      if (i < canvas.springs.size()) {
+        const Spring &s = canvas.springs[i];
+        rec.target_dist = s.target_dist;
+        rec.min_dist = s.min_dist;
+        rec.compress = s.compress;
+        rec.expand = s.expand;
+      }
+      rec.anchored = canvas.chutes[i].anchored;
+      spring_records.push_back(rec);
+
       ideal_disp[i] = (int)std::round(ideal_pos[i]) - canvas.chutes[i].pos;
       if (verbose > 1) {
         if (canvas.Assigned(i)) {
@@ -1250,7 +1282,8 @@ struct LayoutEngineImpl : public LayoutEngine {
             canvas.DebugString());
     }
 
-    return canvas.ConvertToLayer();
+    auto [next_layer, start_pos] = canvas.ConvertToLayer();
+    return {std::move(next_layer), start_pos, std::move(spring_records)};
   }
 
   void DebugRender(const std::deque<std::vector<LC>> &layers) {
@@ -1262,9 +1295,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::string filename = std::format("debug-render-{}.png", layers.size());
 
     // Render only the top of the circuit, since they can get very large!
-    int MAX_CIRCUIT_LAYERS =
-      layers.front().size() < 32768 ? 500 : 200;
-
+    int MAX_CIRCUIT_LAYERS = layers.front().size() < 32768 ? 500 : 200;
     if (mini) MAX_CIRCUIT_LAYERS *= 2;
 
     Print("Saving top {} layers to {}...\n", MAX_CIRCUIT_LAYERS, filename);
@@ -1315,6 +1346,87 @@ struct LayoutEngineImpl : public LayoutEngine {
     std::vector<uint8_t> png = PNG::EncodeInMemory(img);
     Util::WriteFileBytes(filename, png);
     Print("Wrote " AGREEN("{}") ".", filename);
+
+    std::string sfilename = std::format("springs-{}.png", layers.size());
+    WriteSpringHistory(MAX_CIRCUIT_LAYERS, sfilename);
+    Print("\nWrote " AGREEN("{}") ".\n", sfilename);
+  }
+
+  void WriteSpringHistory(int max_circuit_layers, std::string_view filename) {
+
+    // Render spring history.
+    constexpr uint32_t ANCHORED_CHUTE = 0xFFFF00FF;
+    constexpr uint32_t NORMAL_CHUTE = 0xAAAAAAFF;
+
+    const float compressed_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0xFF0000FF));
+    const float stretched_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0x00FF00FF));
+
+    if (!spring_records.empty()) {
+      int min_x = 0, max_x = 0;
+      int num_render_layers =
+          std::min((int)spring_records.size(), max_circuit_layers);
+      for (int i = 0; i < num_render_layers; i++) {
+        for (const SpringRecord &rec : spring_records[i]) {
+          min_x = std::min({min_x, rec.start_pos / Levels::IN_WIDTH,
+                            (int)std::round(rec.ideal_pos) / Levels::IN_WIDTH});
+          max_x = std::max({max_x, rec.start_pos / Levels::IN_WIDTH,
+                            (int)std::round(rec.ideal_pos) / Levels::IN_WIDTH});
+        }
+      }
+
+      int offset_x = min_x < 0 ? -min_x + 10 : 10;
+      int img_w = max_x + offset_x + 10;
+      int img_h = num_render_layers * 3;
+      ImageRGBA simg(img_w, img_h);
+      simg.Clear32(0x000000FF);
+
+      for (int i = 0; i < num_render_layers; i++) {
+        const std::vector<SpringRecord> &layer_recs = spring_records[i];
+        int y_base = i * 3;
+        int y_top = y_base;
+        int y_mid = y_base + 1;
+        int y_bot = y_base + 2;
+
+        for (size_t c = 0; c < layer_recs.size(); c++) {
+          const SpringRecord &rec = layer_recs[c];
+          int sx = rec.start_pos / Levels::IN_WIDTH + offset_x;
+          int ix = (int)std::round(rec.ideal_pos) / Levels::IN_WIDTH + offset_x;
+
+          uint32_t color = rec.anchored ? ANCHORED_CHUTE : NORMAL_CHUTE;
+          simg.SetPixel32(sx, y_bot, color);
+          simg.SetPixel32(ix, y_top, color);
+
+          if (c < layer_recs.size() - 1) {
+            const SpringRecord &next_rec = layer_recs[c + 1];
+            int nx = next_rec.start_pos / Levels::IN_WIDTH + offset_x;
+            int current_dist = next_rec.start_pos - rec.start_pos;
+            if (current_dist >= 0 && rec.target_dist > 0) {
+              bool compressed = rec.target_dist > current_dist;
+              float diff = 0.0f;
+              if (current_dist > 0) {
+                float ratio = (float)rec.target_dist / current_dist;
+                diff = compressed ? (ratio - 1.0f) : (1.0f - ratio);
+              } else {
+                diff = compressed ? 1.0f : 0.0f;
+              }
+
+              float val = std::clamp(0.5f + diff * 0.5f, 0.5f, 1.0f);
+              float hue = compressed ? compressed_hue : stretched_hue;
+              uint32_t line_color = ColorUtil::HSVAToRGBA32(hue, 1.0f, val, 0.25f);
+
+              int center = (sx + nx) / 2;
+              int half_len = (rec.target_dist / Levels::IN_WIDTH) / 2;
+              int x0 = std::max(0, center - half_len);
+              int x1 = std::min(img_w - 1, center + half_len);
+              simg.BlendLine32(x0, y_mid, x1, y_mid, line_color);
+            }
+          }
+        }
+      }
+
+      std::vector<uint8_t> spng = PNG::EncodeInMemory(simg);
+      Util::WriteFileBytes(filename, spng);
+    }
   }
 
   void OutputDebugging(const std::deque<std::vector<LC>> &layers,
@@ -1452,8 +1564,15 @@ struct LayoutEngineImpl : public LayoutEngine {
                   const std::unordered_map<Prop, int> &prop_ranks) override {
     const std::vector<LC> &last = layers->front();
 
-    // Otherwise, compute a new top layer.
-    auto [next, start_pos] = AddLayer(*layers, prop_ranks);
+    // TODO: See if we're too squished, and if so, don't allow
+    // placement!
+
+    // Compute a new top layer. Every once in a while we don't allow
+    // the placement of useful gates, so that we can resolve spring
+    // tension without anchors.
+    constexpr int SPACING_EVERY = 100;
+    const bool allow_placement = (layers->size() % SPACING_EVERY) != 0;
+    auto [next, start_pos, layer_spring_records] = AddLayer(*layers, prop_ranks, allow_placement);
 
     // True if the layers are effectively the same, ignoring leading
     // spacers (i.e. they can have different starting offsets). If
@@ -1478,7 +1597,7 @@ struct LayoutEngineImpl : public LayoutEngine {
         }
       };
 
-    if (SameLayer(last, next)) {
+    if (allow_placement && SameLayer(last, next)) {
       LOG(FATAL) << "Layout made no progress! New layer is identical\n"
         "to the previous one.";
     }
@@ -1526,9 +1645,20 @@ struct LayoutEngineImpl : public LayoutEngine {
       for (std::vector<LC> &layer : *layers) {
         AddLeftSpacer(layer, pad);
       }
+      for (std::vector<SpringRecord> &shr : this->spring_records) {
+        for (SpringRecord &rec : shr) {
+          rec.start_pos += pad;
+          rec.ideal_pos += pad;
+        }
+      }
+      for (SpringRecord &rec : layer_spring_records) {
+        rec.start_pos += pad;
+        rec.ideal_pos += pad;
+      }
     }
 
     layers->push_front(std::move(next));
+    this->spring_records.push_front(std::move(layer_spring_records));
   }
 
   std::unordered_map<Prop, int> GetPropRanks(
@@ -1626,8 +1756,13 @@ struct LayoutEngineImpl : public LayoutEngine {
       std::string content = "--- Top layer props ---\n";
       int prop_idx = 0;
       for (const LC &lc : layer) {
-        for (const Prop &prop : lc.inprops) {
-          content.append(std::format(" [{}] {}\n", prop_idx++,
+        CellLibrary::Info info = library.GetInfo(lc.cell);
+        for (size_t i = 0; i < lc.inprops.size(); i++) {
+          const Prop &prop = lc.inprops[i];
+          char c = 'M';
+          if (info.inputs[i].type == CType::ZERO) c = '0';
+          else if (info.inputs[i].type == CType::ONE) c = '1';
+          content.append(std::format(" [{}] {:c}: {}\n", prop_idx++, c,
                                      PropString(prop, 8)));
         }
       }
@@ -1666,6 +1801,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     // All the layers, annotated with props. We'll add to the front
     // of this.
     std::deque<std::vector<LC>> layers;
+    this->spring_records.clear();
 
     // First create a layer with just wires to get us started. This is
     // probably not necessary, but it makes it easier to reason about
@@ -1674,20 +1810,29 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     {
       std::vector<LC> final_layer;
+      std::vector<SpringRecord> final_springs;
+      int cur_pos = 0;
       for (int i = 0; i < props.size(); i++) {
         if (i > 0) {
+          int pad = 2 * library.MinClearanceFar();
           final_layer.push_back(LC{
             .inprops = {},
-            .cell = CellLibrary::Spacer(2 * library.MinClearanceFar()),
+            .cell = CellLibrary::Spacer(pad),
           });
+          cur_pos += pad;
         }
         LC lc{
           .inprops = {props[i]},
           .cell = CellLibrary::Wire(0, CellLibrary::Bias::LEFT),
         };
         final_layer.push_back(lc);
+        SpringRecord rec;
+        rec.start_pos = cur_pos;
+        rec.ideal_pos = cur_pos;
+        final_springs.push_back(rec);
       }
       layers.push_front(std::move(final_layer));
+      this->spring_records.push_front(std::move(final_springs));
     }
 
     // A map for all propositions (including their subterms) in
@@ -1760,6 +1905,12 @@ struct LayoutEngineImpl : public LayoutEngine {
           layer.erase(layer.begin());
         }
       }
+      for (std::vector<SpringRecord> &shr : this->spring_records) {
+        for (SpringRecord &rec : shr) {
+          rec.start_pos -= *min_left;
+          rec.ideal_pos -= *min_left;
+        }
+      }
     }
 
     if (min_right.value_or(0) > 0) {
@@ -1811,7 +1962,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   // Args must outlast the engine.
   LayoutEngineImpl(const CellLibrary &library, const World &world) :
-    world(world), library(library) {
+    world(world), library(library), rc("layout") {
     status_owned.reset(new StatusBar(4));
     status = status_owned.get();
 
@@ -2029,3 +2180,4 @@ Layout LayoutEngine::Normalize(Layout layout) {
 
   return layout;
 }
+

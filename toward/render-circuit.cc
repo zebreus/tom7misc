@@ -33,6 +33,8 @@ static constexpr uint32_t ONE_INPUT = 0x00AA00FF;
 static constexpr uint32_t USEFUL_CELL_COLOR = 0xAAAAAAFF;
 static constexpr uint32_t CELL_COLOR = 0x666666FF;
 
+static constexpr uint32_t XCHG_COLOR = 0x888888FF;
+
 // A wire cell that takes a variable.
 static constexpr uint32_t VAR_WIRE_COLOR = 0x332233FF;
 
@@ -60,6 +62,20 @@ static uint32_t GetOutputColor(CType type) {
     case CType::MIXED: return MIXED_OUTPUT;
   }
   return MIXED_OUTPUT;
+}
+
+static bool IsXchg(Gate gate) {
+  switch (gate) {
+    case Gate::XCHG00:
+    case Gate::XCHG01:
+    case Gate::XCHG10:
+    case Gate::XCHG11:
+    case Gate::SELFXCHG01:
+    case Gate::SELFXCHG10:
+      return true;
+    default:
+      return false;
+  }
 }
 
 static void TransferIsVar(Gate gate, bool in0, bool in1,
@@ -159,6 +175,8 @@ ImageRGBA RenderCircuit(const CellLibrary &library,
           uint32_t cc = CELL_COLOR;
           if (IsWire(cell.gate) && cell_is_var) {
             cc = VAR_WIRE_COLOR;
+          } else if (IsXchg(cell.gate)) {
+            cc = XCHG_COLOR;
           }
 
           img.FillRect32(cx, cell_y, bw, cell_h, Darken(cc));
@@ -281,6 +299,8 @@ ImageRGBA RenderCircuitMini(
         uint32_t cc = USEFUL_CELL_COLOR;
         if (IsWire(cell.gate)) {
           cc = cell_is_var ? VAR_WIRE_COLOR : CELL_COLOR;
+        } else if (IsXchg(cell.gate)) {
+          cc = XCHG_COLOR;
         }
 
         int cell_y = cy + pad_height;

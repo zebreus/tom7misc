@@ -282,15 +282,36 @@ static void TestSolveSprings(const CellLibrary &library) {
     std::vector<double> xpos = canvas.SolveSprings();
     CHECK(xpos.size() == 3);
     CHECK(xpos[0] == 0.0);
-    // The center chute has 1e-4 weight for its current position (spacing + 30),
-    // 1.0 weight from left spring pushing to `spacing`,
+    // The center chute has 1.0 weight from left spring pushing to `spacing`,
     // 1.0 weight from right spring pushing to `spacing`.
-    // It converges to (2.0 * spacing + 1e-4 * (spacing + 30)) / 2.0001.
-    double expected = spacing + (30.0 * 1e-4) / 2.0001;
+    // It converges exactly to spacing.
+    double expected = spacing;
     CHECK(std::abs(xpos[1] - expected) < 1e-4) <<
       xpos[1] << " vs " << expected;
 
     CHECK(xpos[2] == 2.0 * spacing);
+  }
+
+  // Unanchored case: Center chute becomes the anchor.
+  {
+    LayoutCanvas canvas(library);
+    int target_dist = 100;
+    int spacing = target_dist + Levels::IN_WIDTH;
+    canvas.Reset({
+      {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = false},
+      {.pos = spacing, .prop = True(), .type = CType::MIXED, .anchored = false},
+      {.pos = 2 * spacing + 100, .prop = True(), .type = CType::MIXED, .anchored = false},
+    });
+
+    canvas.springs[0] = {.target_dist = target_dist, .min_dist = 10};
+    canvas.springs[1] = {.target_dist = target_dist, .min_dist = 10};
+
+    std::vector<double> xpos = canvas.SolveSprings();
+    CHECK(xpos.size() == 3);
+    // Center chute (index 1) becomes anchored, so it shouldn't move.
+    CHECK(std::abs(xpos[1] - spacing) < 1e-4);
+    CHECK(std::abs(xpos[0] - 0.0) < 1e-4);
+    CHECK(std::abs(xpos[2] - 2 * spacing) < 1e-4);
   }
 
   // Overconstrained case: Anchored ends are too close for the min_distance.
@@ -336,6 +357,91 @@ static void TestSolveSprings(const CellLibrary &library) {
     double expected = 0.0 + Levels::IN_WIDTH + min_dist;
     CHECK(std::abs(xpos[1] - expected) < 1e-4);
   }
+}
+
+static void TestSolveSpringsPrePassOrder(const CellLibrary &library) {
+  StartTest("SolveSpringsPrePassOrder");
+
+  LayoutCanvas canvas(library);
+  int num_chutes = 500;
+  std::vector<LayoutCanvas::Chute> chutes;
+  chutes.reserve(num_chutes);
+
+  // A line of tightly packed chutes, anchored at both ends and in the middle.
+  for (int i = 0; i < num_chutes; i++) {
+    chutes.push_back({
+      .pos = i * 10,
+      .prop = True(),
+      .type = CType::MIXED,
+      .anchored = (i == 0 || i == num_chutes / 2 || i == num_chutes - 1),
+    });
+  }
+
+  canvas.Reset(chutes);
+
+  // Set a large target dist that would push them far out of bounds,
+  // potentially inverting their order if not capped properly.
+  for (int i = 0; i < num_chutes - 1; i++) {
+    canvas.springs[i] = {
+      .target_dist = 10000,
+      .min_dist = 2,
+      .compress = 1.0f,
+      .expand = 1.0f,
+    };
+  }
+
+  std::vector<double> xpos = canvas.SolveSprings();
+
+  CHECK(xpos.size() == num_chutes);
+  for (int i = 0; i < num_chutes - 1; i++) {
+    CHECK(xpos[i] + Levels::IN_WIDTH + canvas.springs[i].min_dist <=
+          xpos[i + 1] + 1e-4)
+      << "Chutes out of order or min_dist violated: " << i << " ("
+      << xpos[i] << ") and " << i + 1 << " (" << xpos[i + 1] << ")";
+  }
+}
+
+static void TestSolveSpringsLargeScale(const CellLibrary &library) {
+  StartTest("SolveSpringsLargeScale");
+
+  LayoutCanvas canvas(library);
+  int num_springs = 5000;
+  int num_chutes = num_springs + 1;
+  std::vector<LayoutCanvas::Chute> chutes;
+  chutes.reserve(num_chutes);
+
+  int min_dist = 10;
+  int target_dist = 100;
+
+  for (int i = 0; i < num_chutes; i++) {
+    chutes.push_back({
+      .pos = i * (min_dist + Levels::IN_WIDTH),
+      .prop = True(),
+      .type = CType::MIXED,
+      .anchored = (i == 0),
+    });
+  }
+
+  canvas.Reset(chutes);
+
+  for (int i = 0; i < num_springs; i++) {
+    canvas.springs[i] = {
+      .target_dist = target_dist,
+      .min_dist = min_dist,
+      .compress = 1.0f,
+      .expand = 1.0f,
+    };
+  }
+
+  Print("Solving springs for {} chutes. This might take a moment...\n", num_chutes);
+  std::vector<double> xpos = canvas.SolveSprings();
+
+  int center = num_springs / 2;
+  double center_dist = xpos[center + 1] - xpos[center] - Levels::IN_WIDTH;
+
+  CHECK(center_dist > target_dist * 0.5)
+    << "Center spring failed to acquire space! Actual distance: "
+    << center_dist << " (Target was " << target_dist << ").";
 }
 
 static void TestFlattenInputs(const CellLibrary &library) {
@@ -400,7 +506,9 @@ int main(int argc, char **argv) {
   TestCanPlaceCell(library);
   TestFlattenInputs(library);
   TestSolveSprings(library);
+  TestSolveSpringsPrePassOrder(library);
   TestSolveSpringsConverges(library);
+  TestSolveSpringsLargeScale(library);
 
   Print("OK\n");
   return 0;

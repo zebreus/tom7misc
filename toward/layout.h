@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -43,13 +44,26 @@ struct LayoutEngine {
 
   // This stuff is just exposed for testing and visualization.
 
+  // Debugging info.
+  // The front of the deque is the topmost layer.
+  struct SpringRecord {
+    int start_pos = 0;
+    float ideal_pos = 0.0f;
+    int target_dist = 0;
+    int min_dist = 0;
+    float compress = 0.0f;
+    float expand = 0.0f;
+    bool anchored = false;
+  };
+
   using LC = LayoutCanvas::LC;
   using Chute = LayoutCanvas::Chute;
   using PC = LayoutCanvas::PC;
 
-  virtual std::pair<std::vector<LC>, int>
+  virtual std::tuple<std::vector<LC>, int, std::vector<SpringRecord>>
   AddLayer(const std::deque<std::vector<LC>> &layers,
-           const std::unordered_map<Prop, int> &prop_ranks) = 0;
+           const std::unordered_map<Prop, int> &prop_ranks,
+           bool allow_placement = true) = 0;
 
   virtual std::optional<std::vector<std::pair<int, CType>>>
   AllVars(std::span<const LC> lcs) = 0;
@@ -66,6 +80,8 @@ struct LayoutEngine {
   // Advanced!
   // Must have 3 lines.
   virtual void SetStatusBar(StatusBar *s) = 0;
+
+  virtual const std::deque<std::vector<SpringRecord>> &GetSpringRecords() const = 0;
 
   // Pretty-print for debugging, etc. Designed for small
   // circuits!

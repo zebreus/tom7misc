@@ -11,7 +11,7 @@
 #include "cell-library.h"
 #include "util.h"
 
-static constexpr int MAX_WIRE = 128;
+static constexpr int MAX_WIRE = 256;
 
 // Given a new wire displacement, compute all the wire sums (w1 + w2 and
 // w1 - w2).
