@@ -1011,9 +1011,106 @@ struct AlmostIdSolver : public Solver<SolutionDB::METHOD_ALMOST_ID> {
   }
 };
 
+
 static void SolveAlmostId(const Polyhedron &polyhedron, StatusBar *status,
-                       std::optional<double> time_limit = std::nullopt) {
+                          std::optional<double> time_limit = std::nullopt) {
   AlmostIdSolver s(polyhedron, status, time_limit);
+  s.Run();
+}
+
+struct SpoilerSolver : public Solver<SolutionDB::METHOD_SPOILER> {
+  std::vector<double> params;
+
+  SpoilerSolver(const Polyhedron &poly, StatusBar *st,
+                std::optional<double> tl = std::nullopt) :
+    Solver<SolutionDB::METHOD_SPOILER>(poly, st, tl) {
+    std::string filename = std::format("spoiler-{}.txt", polyhedron.name);
+    std::string s = Util::ReadFile(filename);
+    std::vector<std::string> tokens = Util::Tokens(s, Util::IsWhitespace);
+    for (const std::string &t : tokens) {
+      params.push_back(Util::ParseDouble(t));
+    }
+    CHECK(params.size() >= 10) << filename;
+  }
+
+  std::tuple<double, frame3, frame3> RunOne(ArcFour *rc) override {
+    constexpr bool SIGNS = false;
+    constexpr bool PERMUTE = false;
+
+    if (params.size() < 10) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      return std::make_tuple(1.0e10, frame3{}, frame3{});
+    }
+
+    // Note: Yocto uses xyzw but David uses wxyz.
+    std::vector<int> qp = {0, 1, 2, 3};
+    if (PERMUTE) {
+      Shuffle(rc, &qp);
+    }
+
+    quat4 outer_rot = normalize(quat4{
+        .x = params[qp[1]],
+        .y = params[qp[2]],
+        .z = params[qp[3]],
+        .w = params[qp[0]],
+      });
+
+    quat4 inner_rot = normalize(quat4{
+        .x = params[4 + qp[1]],
+        .y = params[4 + qp[2]],
+        .z = params[4 + qp[3]],
+        .w = params[4 + qp[0]],
+      });
+
+    if (SIGNS) {
+      uint8_t b = rc->Byte();
+      #define FLIP(q, a) if (b & 1) (q . a) = 0.0 - (q . a);
+
+      FLIP(outer_rot, x); FLIP(inner_rot, x); b >>= 1;
+      FLIP(outer_rot, y); FLIP(inner_rot, y); b >>= 1;
+      FLIP(outer_rot, z); FLIP(inner_rot, z); b >>= 1;
+      FLIP(outer_rot, w); FLIP(inner_rot, w); b >>= 1;
+      #undef FLIP
+
+      outer_rot = normalize(outer_rot);
+      inner_rot = normalize(inner_rot);
+    }
+
+    double dx = params[8];
+    double dy = params[9];
+
+    if (SIGNS && (rc->Byte() & 1)) {
+      dx = 0.0 - dx;
+      dy = 0.0 - dy;
+    }
+
+    frame3 outer_frame = yocto::rotation_frame(outer_rot);
+
+    frame3 inner_rot_frame = yocto::rotation_frame(inner_rot);
+
+    auto InnerFrame = [&](double s) {
+        return yocto::translation_frame(vec3(s * dx, s * dy, 0.0)) *
+          inner_rot_frame;
+      };
+
+    auto Loss = [&](double s) {
+        frame3 inner_frame = InnerFrame(s);
+
+        attempts++;
+        return LossFunctionContainsOrigin(polyhedron,
+                                          outer_frame,
+                                          inner_frame);
+      };
+
+    const auto [scale, err] = Opt::Minimize1D(Loss, 0.0, 10.0, 100000);
+
+    return std::make_tuple(err, outer_frame, InnerFrame(scale));
+  }
+};
+
+static void SolveSpoiler(const Polyhedron &polyhedron, StatusBar *status,
+                         std::optional<double> time_limit = std::nullopt) {
+  SpoilerSolver s(polyhedron, status, time_limit);
   s.Run();
 }
 
@@ -1039,6 +1136,8 @@ static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
     return SolveOrigin(poly, status, time_limit);
   case SolutionDB::METHOD_ALMOST_ID:
     return SolveAlmostId(poly, status, time_limit);
+  case SolutionDB::METHOD_SPOILER:
+    return SolveSpoiler(poly, status, time_limit);
   default:
     LOG(FATAL) << "Method not available";
   }
@@ -1373,11 +1472,16 @@ int main(int argc, char **argv) {
   }
 
   if (true) {
+    SolutionDB db;
+    SolveSpoiler(db.AnyPolyhedronByName("nopert_214"), &status);
+  }
+
+  if (false) {
     GrindNoperts();
   }
 
   // Grind every unsolved cell.
-  if (true) {
+  if (false) {
     std::unordered_set<std::string> poly_filter;
     for (int i = 1; i < argc; i++) {
       poly_filter.insert(argv[i]);
@@ -1432,12 +1536,13 @@ int main(int argc, char **argv) {
 
   // Polyhedron target = DualizePoly(Noperthedron());
   SolutionDB db;
-  Polyhedron target = DualizePoly(
-      db.AnyPolyhedronByName("nopert_214"));
-  target.name = "onpert_214";
+  // Polyhedron target = DualizePoly(db.AnyPolyhedronByName("nopert_214"));
+  // target.name = "onpert_214";
+
+  SolveSpoiler(db.AnyPolyhedronByName("nopert_214"), &status);
 
   // Call one of the solution procedures:
-  SolveSimul(target, &status);
+  // SolveSimul(target, &status);
 
   printf("OK\n");
   return 0;
