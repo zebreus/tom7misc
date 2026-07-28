@@ -1,13 +1,18 @@
 
 #include "minitable.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "dense-int-set.h"
+#include "inline-vector.h"
 #include "prop.h"
 
 // Props are stored with var 0, 1, 2, 3
@@ -39,7 +44,7 @@ MiniTable::MiniTable(uint32_t opts) {
   one[0] = False();
   one[0xFFFF] = True();
   for (int v = 0; v < 4; v++) {
-    Prop p = Var{.id = v};
+    Prop p = Prop{Var{.id = v}};
     uint16_t tt = Eval(p);
     one[tt] = p;
   }
@@ -122,10 +127,10 @@ static Prop Substitute(const Prop &p, int a, int b, int c, int d) {
 
   } else if (const auto *var = std::get_if<Var>(&p.p)) {
     switch (var->id) {
-    case 0: return Var{.id = a};
-    case 1: return Var{.id = b};
-    case 2: return Var{.id = c};
-    case 3: return Var{.id = d};
+    case 0: return {Var{.id = a}};
+    case 1: return {Var{.id = b}};
+    case 2: return {Var{.id = c}};
+    case 3: return {Var{.id = d}};
     default:
       LOG(FATAL) << "Free variable out of range!";
     }
@@ -154,12 +159,37 @@ Prop MiniTable::Minimal(int a, int b, int c, int d, uint16_t fn) {
   return Substitute(minimal[fn], a, b, c, d);
 }
 
+static bool GetQuadVars(const Prop &p, InlineVector<int> *vars) {
+  if (std::holds_alternative<Value>(p.p)) {
+    return true;
+
+  } else if (const auto *var = std::get_if<Var>(&p.p)) {
+    for (int id : *vars) {
+      if (id == var->id) return true;
+    }
+    if (vars->size() == 4) return false;
+    vars->push_back(var->id);
+    return true;
+
+  } else if (const auto *un = std::get_if<Unop>(&p.p)) {
+    return GetQuadVars(*un->a, vars);
+
+  } else if (const auto *bin = std::get_if<Binop>(&p.p)) {
+    if (!GetQuadVars(*bin->a, vars)) return false;
+    return GetQuadVars(*bin->b, vars);
+  }
+
+  LOG(FATAL) << "Bad variant?";
+  return false;
+}
+
 std::optional<std::tuple<int, int, int, int, uint16_t>>
 MiniTable::GetQuad(const Prop &p) {
-  std::vector<int> vars = PropVars(p);
-  if (vars.size() > 4) {
+  InlineVector<int> vars;
+  if (!GetQuadVars(p, &vars)) {
     return std::nullopt;
   }
+  std::sort(vars.begin(), vars.end());
 
   int v0 = vars.size() > 0 ? vars[0] : 0;
   int v1 = vars.size() > 1 ? vars[1] : v0;

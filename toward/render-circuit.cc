@@ -129,6 +129,7 @@ static void TransferIsVar(Gate gate, bool in0, bool in1,
 ImageRGBA RenderCircuit(const CellLibrary &library,
                         const Circuit &circuit,
                         std::vector<bool> is_var) {
+
   int max_w = 0;
   for (const Layer &layer : circuit.layers) {
     int w = 0;
@@ -252,11 +253,46 @@ ImageRGBA RenderLayout(const CellLibrary &library,
   return RenderCircuit(library, layout.circuit, is_var);
 }
 
+// Tiny alpha-transparent icon.
+static ImageRGBA Icon(int w, std::string_view s) {
+  return Image1(w, s).MonoRGBA(0xFFFFFF77, 0x00000000);
+}
 
 ImageRGBA RenderCircuitMini(
     const CellLibrary &library,
     const Circuit &circuit,
     std::vector<bool> is_var) {
+
+
+  ImageRGBA icon_and = Icon(5,
+                            "..@.."
+                            ".@.@."
+                            "@...@");
+  ImageRGBA icon_or = Icon(5,
+                           "@...@"
+                           ".@.@."
+                           "..@..");
+
+  ImageRGBA icon_not = Icon(5,
+                            "....."
+                            ".@@@."
+                            "...@.");
+
+  ImageRGBA icon_separator = Icon(5,
+                                  ".@@@."
+                                  ".@.@."
+                                  "@@.@@");
+
+  ImageRGBA icon_dup = Icon(5,
+                            "..@.."
+                            "@.@.@"
+                            "@...@");
+
+  ImageRGBA icon_combine = Icon(5,
+                                "@...@"
+                                "@...@"
+                                ".@@@.");
+
   int max_w = 0;
   for (const Layer &layer : circuit.layers) {
     int w = 0;
@@ -324,6 +360,43 @@ ImageRGBA RenderCircuitMini(
         img.FillRect32(px, cell_y, pw, cell_h, Darken(cc));
         if (pw > 2 && cell_h > 2) {
           img.FillRect32(px + 1, cell_y + 1, pw - 2, cell_h - 2, cc);
+        }
+
+        const ImageRGBA *icon = nullptr;
+        switch (cell.gate) {
+          case Gate::AND0110:
+            icon = &icon_and;
+            break;
+          case Gate::OR1100:
+            icon = &icon_or;
+            break;
+          case Gate::NOT:
+          case Gate::NOT0:
+          case Gate::NOT1:
+          case Gate::NOT01:
+            icon = &icon_not;
+            break;
+          case Gate::SEPARATOR01:
+          case Gate::SEPARATOR10:
+            icon = &icon_separator;
+            break;
+          case Gate::DUPSEP0011:
+          case Gate::DUP0:
+          case Gate::DUP1:
+            icon = &icon_dup;
+            break;
+          case Gate::COMBINE01:
+          case Gate::COMBINE10:
+            icon = &icon_combine;
+            break;
+          default:
+            break;
+        }
+
+        if (icon != nullptr) {
+          int ix = px + (pw - icon->Width()) / 2;
+          int iy = cell_y + (cell_h - icon->Height()) / 2;
+          img.BlendImage(ix, iy, *icon);
         }
 
         for (const CellLibrary::IO &io : info.inputs) {

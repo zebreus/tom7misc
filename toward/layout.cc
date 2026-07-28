@@ -470,7 +470,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           // We require that these are the only occurrences of the
           // proposition globally, including in subterms.
           subterm_count[prop].zero == 1 &&
-          subterm_count[prop].one == 1) {
+          subterm_count[prop].one == 1 &&
+          // (no "mixed" occurrences either.)
+          subterm_count[prop].any == 2) {
 
         // For variables, we only want to unseparate them if they are
         // exterior, so they will become done. Unseparating prematurely

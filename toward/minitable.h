@@ -2,6 +2,13 @@
 #ifndef _TOWARD_MINITABLE_H
 #define _TOWARD_MINITABLE_H
 
+#include <cstdint>
+#include <optional>
+#include <tuple>
+#include <vector>
+
+#include "prop.h"
+
 // Computes the smallest proposition that computes a function
 // on four variables.
 struct MiniTable {
