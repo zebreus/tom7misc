@@ -1,12 +1,12 @@
 
-#include "simplification.h"
+#include "aig.h"
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
 
 static void TestConstants() {
-  Simplification simp(5);
+  AIG simp(5);
   CHECK(simp.F() != simp.T());
   CHECK(simp.NOT(simp.F()) != simp.F());
   CHECK(simp.NOT(simp.NOT(simp.F())) == simp.F());
@@ -14,7 +14,7 @@ static void TestConstants() {
 }
 
 static void TestVariables() {
-  Simplification simp(5);
+  AIG simp(5);
   CHECK(simp.V(0) != simp.V(1));
   CHECK(simp.V(0) == simp.V(0));
   CHECK(simp.V(2) != simp.F());
@@ -24,7 +24,7 @@ static void TestVariables() {
 }
 
 static void TestHashConsing() {
-  Simplification simp(5);
+  AIG simp(5);
   auto a = simp.V(0);
   auto b = simp.V(1);
   auto c = simp.V(2);

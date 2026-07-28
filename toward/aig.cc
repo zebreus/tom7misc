@@ -1,5 +1,5 @@
 
-#include "simplification.h"
+#include "aig.h"
 
 #include <bit>
 #include <cstdint>
@@ -7,8 +7,8 @@
 
 #include "prop.h"
 
-using Node = Simplification::Node;
-using Row = Simplification::Row;
+using Node = AIG::Node;
+using Row = AIG::Row;
 
 static uint64_t HashVar(int v) {
   return 0x77773333CAFE0000 + v;
@@ -30,18 +30,18 @@ static uint64_t HashAnd(Node a, Node b) {
 
 // Register (in the hash table) an entry that is already in the pool,
 // using its index.
-void Simplification::Register(int idx) {
+void AIG::Register(int idx) {
   CHECK(idx >= 0 && idx < pool.size());
   CHECK(idx < 0x3FFFFFFF);
   uint64_t h = pool[idx].hash;
   table[h].push_back(idx);
 }
 
-Simplification::Simplification(const World &world) :
-  Simplification(world.symbol_names.size()) {
+AIG::AIG(const World &world) :
+  AIG(world.symbol_names.size()) {
 }
 
-Simplification::Simplification(int num_vars) : num_vars(num_vars) {
+AIG::AIG(int num_vars) : num_vars(num_vars) {
   pool.emplace_back(Row{
       .data = 0x00,
       .hash = HashFalse(),
@@ -68,7 +68,7 @@ Simplification::Simplification(int num_vars) : num_vars(num_vars) {
 }
 
 
-Simplification::Node Simplification::AND(Node lhs, Node rhs) {
+AIG::Node AIG::AND(Node lhs, Node rhs) {
   // Normalize to encourage sharing.
   if (rhs < lhs) std::swap(lhs, rhs);
 

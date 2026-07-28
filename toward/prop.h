@@ -112,7 +112,11 @@ std::string PropString(const Prop &prop, std::optional<int> max_depth = {});
 std::string PropString(const World &world, const Prop &prop,
                        std::optional<int> max_depth = {});
 
+// Counting the number of nodes in the tree.
 size_t PropSize(const Prop &prop);
+
+// Counting the number of distinct nodes in the tree.
+size_t SharedPropSize(const Prop &prop);
 
 bool EvaluateProp(const std::vector<bool> &assignments,
                   const Prop &prop);

@@ -9,8 +9,8 @@
 
 #include "prop.h"
 
-// Computes the smallest proposition that computes a function
-// on four variables.
+// Creates a table containing the smallest proposition that computes
+// each function on four variables.
 struct MiniTable {
   // You must supply enough options to compute the full gamut!
   static constexpr uint32_t OPT_AND = 0b1;

@@ -70,6 +70,39 @@ size_t PropSize(const Prop &prop) {
   }
 }
 
+size_t SharedPropSize(const Prop &prop_in) {
+  std::unordered_set<Prop> done;
+  std::vector<const Prop *> todo = {&prop_in};
+  while (!todo.empty()) {
+    const Prop *p = todo.back();
+    todo.pop_back();
+
+    if (done.contains(*p))
+      continue;
+
+    done.insert(*p);
+
+    if (std::holds_alternative<Value>(p->p)) {
+      continue;
+
+    } else if (std::holds_alternative<Var>(p->p)) {
+      continue;
+
+    } else if (const Unop *u = std::get_if<Unop>(&p->p)) {
+      todo.push_back(u->a.get());
+
+    } else if (const Binop *b = std::get_if<Binop>(&p->p)) {
+      todo.push_back(b->a.get());
+      todo.push_back(b->b.get());
+
+    } else {
+      LOG(FATAL) << "Bad variant?";
+    }
+  }
+
+  return done.size();
+}
+
 static bool IsTrue(const Prop &prop) {
   if (const Value *v = std::get_if<Value>(&prop.p)) {
     return v->value;

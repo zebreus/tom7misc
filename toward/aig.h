@@ -1,6 +1,6 @@
 
-#ifndef _TOWARD_SIMPLIFICATION_H
-#define _TOWARD_SIMPLIFICATION_H
+#ifndef _TOWARD_AIG_H
+#define _TOWARD_AIG_H
 
 #include <cstddef>
 #include <cstdint>
@@ -11,10 +11,10 @@
 #include "inline-vector.h"
 #include "prop.h"
 
-struct Simplification {
+struct AIG {
   // Need to know the number of variables up front.
-  explicit Simplification(const World &world);
-  explicit Simplification(int num_vars);
+  explicit AIG(const World &world);
+  explicit AIG(int num_vars);
 
   // Packed index into the pool + not bit (lsb).
   using Node = uint32_t;
@@ -56,7 +56,7 @@ struct Simplification {
     uint64_t hash;
   };
 
-  // Simplification requires knowing the set of variables
+  // AIG requires knowing the set of variables
   // up front. These are the first entries in the pool.
   const int num_vars = 0;
 

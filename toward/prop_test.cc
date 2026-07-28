@@ -169,6 +169,26 @@ static void TestPropEq() {
   CHECK(!PropEq(b, p10));
 }
 
+static void TestPropSize() {
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+
+  CHECK(PropSize(True()) == 1);
+  CHECK(SharedPropSize(True()) == 1);
+
+  Prop p = p0 | (p0 & p1);
+  CHECK(PropSize(p) == 5);
+  CHECK(SharedPropSize(p) == 4);
+
+  Prop and_tree = (p0 & p1) & (p0 & p1);
+  CHECK(PropSize(and_tree) == 7);
+  CHECK(SharedPropSize(and_tree) == 4);
+
+  Prop not_tree = -(-p0);
+  CHECK(PropSize(not_tree) == 3);
+  CHECK(SharedPropSize(not_tree) == 3);
+}
+
 static bool IsAndNormalForm(const Prop &prop) {
   std::vector<const Prop *> v = {&prop};
   while (!v.empty()) {
@@ -270,6 +290,7 @@ int main(int argc, char **argv) {
   TestVariadicAnd();
   TestPropVars();
   TestPropEq();
+  TestPropSize();
   TestSimplifyProp();
   TestBalanceProp();
   TestNormalizeToAnd();
