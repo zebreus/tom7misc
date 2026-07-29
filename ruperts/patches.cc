@@ -42,8 +42,8 @@
 #include "util.h"
 #include "vector-util.h"
 #include "yocto-math.h"
-#include "z3.h"
-#include "z3/run-z3.h"
+#include "z3/z3.h"
+#include "z3decs.h"
 
 static const char *NONEMPTY_PATCHES_FILE = "scube-nonempty-patches.txt";
 static const char *MASK_AND_EXAMPLE_FILE = "scube-patch-mask-ex.txt";
@@ -414,16 +414,16 @@ uint64_t GetCodeMask(const Boundaries &boundaries,
 
     AppendFormat(&out, "(check-sat)\n");
 
-    switch (RunZ3(out, {60.0})) {
-    case Z3Result::SAT:
+    switch (Z3::RunSat(out, {60.0})) {
+    case Z3::SatResult::SAT:
       // Bit is necessary, since it can feasibly have the opposite
       // value with the current mask.
       break;
-    case Z3Result::UNSAT:
+    case Z3::SatResult::UNSAT:
       // Bit is unnecessary; its value is forced with the current mask.
       mask &= ~test_pos;
       break;
-    case Z3Result::UNKNOWN:
+    case Z3::SatResult::UNKNOWN:
       // If we don't know, we have to keep it.
       Print(ARED("Z3 at its limits??") " Code {} "
             "mask {}\n", code, mask);
@@ -467,14 +467,14 @@ static bool CanCodeContainZ(const Boundaries &boundaries,
 
   AppendFormat(&out, "(check-sat)\n");
 
-  switch (RunZ3(out, {60.0})) {
-  case Z3Result::SAT:
+  switch (Z3::RunSat(out, {60.0})) {
+  case Z3::SatResult::SAT:
     // Found a solution including the Z axis.
     return true;
-  case Z3Result::UNSAT:
+  case Z3::SatResult::UNSAT:
     // No solutions with Z axis.
     return false;
-  case Z3Result::UNKNOWN:
+  case Z3::SatResult::UNKNOWN:
     // Could consider this as having the z axis conservatively,
     // but we also expect Z3 to be able to succeed at these.
     Print(ARED("Z3 at its limits??") " Code {} ", code);
@@ -512,12 +512,12 @@ static bool CanBeAllPositive(const Boundaries &boundaries,
 
   AppendFormat(&out, "(check-sat)\n");
 
-  switch (RunZ3(out, {60.0})) {
-  case Z3Result::SAT:
+  switch (Z3::RunSat(out, {60.0})) {
+  case Z3::SatResult::SAT:
     return true;
-  case Z3Result::UNSAT:
+  case Z3::SatResult::UNSAT:
     return false;
-  case Z3Result::UNKNOWN:
+  case Z3::SatResult::UNKNOWN:
     Print(ARED("Z3 at its limits??") " Code {} ", code);
     LOG(FATAL) << out;
     return false;
@@ -757,12 +757,12 @@ struct PatchEnumerator {
 
     z3calls++;
     status.Status("Z3: {:b}", code);
-    Z3Result z3result = RunZ3(out);
+    Z3::SatResult z3result = Z3::RunSat(out);
     status.Status("{} Z3 calls. Depth {}\n", z3calls, depth);
-    CHECK(z3result != Z3Result::UNKNOWN) << "Expecting a definitive "
+    CHECK(z3result != Z3::SatResult::UNKNOWN) << "Expecting a definitive "
       "answer here";
 
-    if (z3result == Z3Result::UNSAT) {
+    if (z3result == Z3::SatResult::UNSAT) {
       status.Print("Code {} is impossible.\n",
                    PartialCodeString(depth, code));
       return;

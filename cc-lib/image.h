@@ -470,6 +470,10 @@ struct Image1 {
 
   void SetRect(int x, int y, int w, int h, bool value = true);
 
+  // Use @ for 1 bit, . for 0 bit. No newlines. Aborts if the input is not
+  // divisible by width.
+  Image1(int width, std::string_view str);
+
  private:
   int width, height;
   // Size width * height / 64.

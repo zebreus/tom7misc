@@ -33,6 +33,9 @@ struct ColorUtil {
   // For RGB values in [0, 1].
   static std::tuple<float, float, float>
   RGBToHSV(float r, float g, float b);
+  static std::tuple<float, float, float, float>
+  RGBA32ToHSVA(uint32_t c);
+
 
   // Convert to CIE L*A*B*.
   // RGB channels are nominally in [0, 1].

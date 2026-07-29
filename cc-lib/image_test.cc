@@ -422,6 +422,19 @@ static void TestTriangle() {
   CHECK(img.GetPixel32(125, 127) == 0x000000FF);
 }
 
+static void Test1Str() {
+  Image1 arrow(6,
+               "....@."
+               "@@@@@@"
+               "....@.");
+  CHECK(arrow.Width() == 6);
+  CHECK(arrow.Height() == 3);
+  CHECK(arrow.GetPixel(0, 0) == false);
+  CHECK(arrow.GetPixel(4, 0) == true);
+  CHECK(arrow.GetPixel(5, 1) == true);
+  CHECK(arrow.GetPixel(5, 2) == false);
+}
+
 static void TestGigantic() {
   Print("Make gigantic image...\n");
   ImageRGBA img(36700, 21200);
@@ -440,6 +453,7 @@ int main(int argc, char **argv) {
   TestThickCircle();
   TestCopyImage();
   TestTriangle();
+  Test1Str();
 
   TestText();
   TestVerticalText();

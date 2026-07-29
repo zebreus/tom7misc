@@ -2183,3 +2183,13 @@ void Image1::SetRect(int x, int y, int w, int h, bool value) {
     }
   }
 }
+
+Image1::Image1(int width, std::string_view s) : Image1(width, s.size() / width) {
+  CHECK(width * height == (int)s.size()) << "s's length must be divisible by the width";
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      SetPixel(x, y, s[0] == '@');
+      s.remove_prefix(1);
+    }
+  }
+}

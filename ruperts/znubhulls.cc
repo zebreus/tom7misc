@@ -21,8 +21,8 @@
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto-math.h"
-#include "z3.h"
-#include "z3/run-z3.h"
+#include "z3/z3.h"
+#include "z3decs.h"
 
 static constexpr int DIGITS = 24;
 
@@ -400,7 +400,7 @@ void BoundArea(const Boundaries &boundaries,
                  "(get-model)\n");
     status.Print("Sanity check satisfiability... ({} bytes)\n",
                  sanity.size());
-    CHECK(Z3Result::SAT == RunZ3(sanity, {120.0})) << "Couldn't prove "
+    CHECK(Z3::SatResult::SAT == Z3::RunSat(sanity, {120.0})) << "Couldn't prove "
       "that the setup is satisfiable?";
     status.Print("Satisfiable; OK in {}\n",
                  ANSI::Time(timer.Seconds()));
@@ -426,7 +426,7 @@ void BoundArea(const Boundaries &boundaries,
                  "(get-model)\n");
     status.Print("Sanity check example... ({} bytes)\n",
                  sanity.size());
-    CHECK(Z3Result::SAT == RunZ3(sanity, {120.0}));
+    CHECK(Z3::SatResult::SAT == Z3::RunSat(sanity, {120.0}));
     status.Print("Example satisfiable; OK in {}\n",
                  ANSI::Time(timer.Seconds()));
 
@@ -472,9 +472,9 @@ void BoundArea(const Boundaries &boundaries,
       AppendFormat(&out,
                    "(check-sat)\n");
 
-      Z3Result lesseq = RunZ3(out, {timeout});
+      Z3::SatResult lesseq = Z3::RunSat(out, {timeout});
       switch (lesseq) {
-      case Z3Result::SAT:
+      case Z3::SatResult::SAT:
         // Possible for the area to be lesseq than the test point.
         status.Print("sat: area <= {}", test_point.ToString());
         if (test_point <= min_area.ub) {
@@ -483,7 +483,7 @@ void BoundArea(const Boundaries &boundaries,
         }
         sat++;
         break;
-      case Z3Result::UNSAT:
+      case Z3::SatResult::UNSAT:
         // The area is always more than the test point.
         status.Print("unsat: area <= {}", test_point.ToString());
         if (test_point >= min_area.lb) {
@@ -492,7 +492,7 @@ void BoundArea(const Boundaries &boundaries,
         }
         unsat++;
         break;
-      case Z3Result::UNKNOWN:
+      case Z3::SatResult::UNKNOWN:
         // No info.
         unknown++;
         status.Print(ARED("unknown") ": area <= {}",
@@ -511,9 +511,9 @@ void BoundArea(const Boundaries &boundaries,
       AppendFormat(&out,
                    "(check-sat)\n");
 
-      Z3Result lesseq = RunZ3(out, {timeout});
+      Z3::SatResult lesseq = Z3::RunSat(out, {timeout});
       switch (lesseq) {
-      case Z3Result::SAT:
+      case Z3::SatResult::SAT:
         status.Print("sat: area >= {}", test_point.ToString());
         // Possible for the area to be greatereq than the test point.
         if (test_point >= max_area.lb) {
@@ -522,7 +522,7 @@ void BoundArea(const Boundaries &boundaries,
         }
         sat++;
         break;
-      case Z3Result::UNSAT:
+      case Z3::SatResult::UNSAT:
         status.Print("unsat: area >= {}", test_point.ToString());
         // The area is always less than the test point.
         if (test_point <= max_area.ub) {
@@ -531,7 +531,7 @@ void BoundArea(const Boundaries &boundaries,
         }
         unsat++;
         break;
-      case Z3Result::UNKNOWN:
+      case Z3::SatResult::UNKNOWN:
         // No info.
         status.Print(ARED("unknown") ": area >= {}",
                       test_point.ToString());
@@ -626,7 +626,7 @@ void BoundEdges(const Boundaries &boundaries,
                  "(get-model)\n");
     status.Print("Sanity check satisfiability... ({} bytes)\n",
                  sanity.size());
-    CHECK(Z3Result::SAT == RunZ3(sanity, {120.0})) << "Couldn't prove "
+    CHECK(Z3::SatResult::SAT == Z3::RunSat(sanity, {120.0})) << "Couldn't prove "
       "that the setup is satisfiable?";
     status.Print("Satisfiable; OK in {}\n",
                  ANSI::Time(timer.Seconds()));
@@ -643,7 +643,7 @@ void BoundEdges(const Boundaries &boundaries,
                  "(get-model)\n");
     status.Print("Sanity check example... ({} bytes)\n",
                  sanity.size());
-    CHECK(Z3Result::SAT == RunZ3(sanity, {120.0}));
+    CHECK(Z3::SatResult::SAT == Z3::RunSat(sanity, {120.0}));
     status.Print("Example satisfiable; OK in {}\n",
                  ANSI::Time(timer.Seconds()));
   }
@@ -708,9 +708,9 @@ void BoundEdges(const Boundaries &boundaries,
       AppendFormat(&out,
                    "(check-sat)\n");
 
-      Z3Result lesseq = RunZ3(out, {timeout});
+      Z3::SatResult lesseq = Z3::RunSat(out, {timeout});
       switch (lesseq) {
-      case Z3Result::SAT:
+      case Z3::SatResult::SAT:
         // Possible for the length to be lesseq than the test point.
         status.Print(AMINT("sat")
                      ": length <= {}", test_point.ToString());
@@ -722,7 +722,7 @@ void BoundEdges(const Boundaries &boundaries,
         }
         sat++;
         break;
-      case Z3Result::UNSAT:
+      case Z3::SatResult::UNSAT:
         // The length is always more than the test point.
         status.Print(ASKY("unsat")
                      ": length <= {}", test_point.ToString());
@@ -734,7 +734,7 @@ void BoundEdges(const Boundaries &boundaries,
         }
         unsat++;
         break;
-      case Z3Result::UNKNOWN:
+      case Z3::SatResult::UNKNOWN:
         // No info.
         unknown++;
         status.Print(ARED("unknown") ": length <= {}. timeout now {}",
@@ -756,9 +756,9 @@ void BoundEdges(const Boundaries &boundaries,
       AppendFormat(&out,
                    "(check-sat)\n");
 
-      Z3Result lesseq = RunZ3(out, {timeout});
+      Z3::SatResult lesseq = Z3::RunSat(out, {timeout});
       switch (lesseq) {
-      case Z3Result::SAT:
+      case Z3::SatResult::SAT:
         status.Print(AMINT("sat")
                      ": length >= {}", test_point.ToString());
         // Possible for the length to be greatereq than the test point.
@@ -770,7 +770,7 @@ void BoundEdges(const Boundaries &boundaries,
         }
         sat++;
         break;
-      case Z3Result::UNSAT:
+      case Z3::SatResult::UNSAT:
         status.Print(ASKY("unsat")
                      ": length >= {}", test_point.ToString());
         // The length is always less than the test point.
@@ -782,7 +782,7 @@ void BoundEdges(const Boundaries &boundaries,
         }
         unsat++;
         break;
-      case Z3Result::UNKNOWN:
+      case Z3::SatResult::UNKNOWN:
         // No info.
         status.Print(ARED("unknown") ": length >= {}. timeout now {}",
                      test_point.ToString(),
@@ -813,6 +813,7 @@ static void EdgeBounds() {
   BoundEdges(boundaries, uint64_t{0b1010111101010001010010100000});
 }
 
+[[maybe_unused]]
 static void ComputeMasks() {
   BigPoly scube = BigScube(DIGITS);
   Boundaries boundaries(scube);

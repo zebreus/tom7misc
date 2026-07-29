@@ -14,7 +14,7 @@
 #include "base/stringprintf.h"
 #include "geom/polyhedra.h"
 #include "util.h"
-#include "z3.h"
+#include "z3decs.h"
 
 // require no translation of either polyhedron, only rotations.
 static constexpr bool REQUIRE_ORIGIN = true;

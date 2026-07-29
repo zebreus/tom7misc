@@ -1,9 +1,9 @@
 
 // Stuff for manipulating Z3 expressions (as strings; not fancy).
-// To run Z3, use z3/run-z3.h
+// To run Z3, use z3/z3.h
 
-#ifndef _RUPERTS_Z3_H
-#define _RUPERTS_Z3_H
+#ifndef _RUPERTS_Z3DECS_H
+#define _RUPERTS_Z3DECS_H
 
 #include <cstdint>
 #include <format>

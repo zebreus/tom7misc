@@ -76,6 +76,12 @@ ColorUtil::RGBToHSV(float r, float g, float b) {
   return std::make_tuple(h, s, v);
 }
 
+std::tuple<float, float, float, float> ColorUtil::RGBA32ToHSVA(uint32_t color) {
+  const auto &[r, g, b, a] = Unpack32(color);
+  const auto &[h, s, v] = RGBToHSV(r, g, b);
+  return std::make_tuple(h, s, v, a);
+}
+
 std::tuple<float, float, float>
 ColorUtil::LABToRGB(float lab_l, float lab_a, float lab_b) {
   // http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
