@@ -46,7 +46,7 @@ SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
-LIB_OBJECTS=simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=aiger.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -183,6 +183,14 @@ render-mini.exe : render-mini.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 chess-z3.exe : chess-z3.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+aiger_test.exe : aiger_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+chess-abc.exe : chess-abc.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
