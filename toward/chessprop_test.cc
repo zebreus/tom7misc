@@ -104,6 +104,15 @@ static void TestEnPassant() {
   Print("En passant OK.\n");
 }
 
+static void TestEnPassantOutOfCheck() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "k7/8/8/3Pp3/8/8/8/K6q w - e6 0 1", &pos));
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+  Print("En passant (out of check) OK.\n");
+}
+
 static void TestCastling() {
   Position pos;
   CHECK(Position::ParseFEN(
@@ -169,12 +178,13 @@ int main(int argc, char **argv) {
 
   Print("\nTest Attacked / IsLegal...\n");
 
-  #if 0
+  #if 1
   TestStartingPosition();
-  TestEnPassant();
   TestCastling();
   TestOutOfCheck();
   TestKingMoving();
+  TestEnPassant();
+  TestEnPassantOutOfCheck();
   #endif
 
   Print("Prop size histo:\n");

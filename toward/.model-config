@@ -2,6 +2,7 @@
 svn ../cc-lib/geom
 svn ../cc-lib/fonts
 svn ../cc-lib/opt
+svn ../cc-lib/z3
 
 describe ../cc-lib/opt Black-box optimization
 
@@ -13,4 +14,4 @@ describe ../../box2d/src Box2D source code
 
 file cell-library.txt Sizes and I/O offsets for actual circuit cells
 
-describe toward-util.h General declarations and constants for this project
+# describe toward-util.h General declarations and constants for this project

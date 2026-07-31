@@ -24,7 +24,7 @@ struct MiniTable {
   // Create the minimal proposition that has the given
   // truth table.
   Prop Minimal(int a, int b, int c, int d,
-               uint16_t fn);
+               uint16_t fn) const;
 
   // Get the truth table for the proposition, which must
   // use variables 0..3 only.

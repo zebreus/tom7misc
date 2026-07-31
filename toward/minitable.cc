@@ -155,7 +155,7 @@ static Prop Substitute(const Prop &p, int a, int b, int c, int d) {
   }
 }
 
-Prop MiniTable::Minimal(int a, int b, int c, int d, uint16_t fn) {
+Prop MiniTable::Minimal(int a, int b, int c, int d, uint16_t fn) const {
   return Substitute(minimal[fn], a, b, c, d);
 }
 

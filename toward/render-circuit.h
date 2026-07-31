@@ -25,5 +25,4 @@ ImageRGBA RenderCircuitMini(const CellLibrary &library,
                             const Circuit &circuit,
                             std::vector<bool> is_var = {});
 
-
 #endif

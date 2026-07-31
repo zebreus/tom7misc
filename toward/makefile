@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt minitable_test.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt aig_test.exe minitable_test.exe simplification_test.exe render-mini.exe chess-z3.exe
 
 fixme : separator.exe
 
@@ -21,7 +21,7 @@ endif
 SDL_CFLAGS=`sdl2-config --cflags`
 SDL_LIBS=`sdl2-config --libs`
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/png.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o $(CC_LIB)/bounds.o $(CC_LIB)/svg.o $(CC_LIB)/xml.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/png.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/polygonization.o $(CC_LIB)/geom/polygons.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/atomic-util.o $(CC_LIB)/bounds.o $(CC_LIB)/svg.o $(CC_LIB)/xml.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o $(CC_LIB)/process-util.o $(CC_LIB)/z3/z3.o $(CC_LIB)/crypt/sha256.o
 
 FONTDB_OBJECTS=$(FONTDB)/font-db.o
 
@@ -46,7 +46,7 @@ SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
-LIB_OBJECTS=minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -171,6 +171,18 @@ wire-sums.exe : wire-sums.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 minitable_test.exe : minitable_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+simplification_test.exe : simplification_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+render-mini.exe : render-mini.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+chess-z3.exe : chess-z3.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

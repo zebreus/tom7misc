@@ -18,6 +18,7 @@
 #include "optimization.h"
 #include "prop.h"
 #include "render-circuit.h"
+#include "simplification.h"
 #include "span-util.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -27,6 +28,11 @@ static constexpr bool OPTIMIZE = true;
 
 static std::string Square(int row, int col) {
   return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
+}
+
+static const Simplification &SimSingleton() {
+  static const Simplification *s = new Simplification;
+  return *s;
 }
 
 static void RenderParallel() {
@@ -93,8 +99,12 @@ static void RenderOne(ChessProp::Details details) {
     SimplifyProp(ChessProp::IsLegal(board, 6, 1, 4, 1, details));
   prop = BalanceProp(prop);
   prop = SimplifyProp(prop);
-  int size = PropSize(prop);
-  Print("Prop size: {}\n", size);
+  int size1 = PropSize(prop);
+  int sh1 = SharedPropSize(prop);
+  prop = SimSingleton().Simplify(prop);
+  int size2 = PropSize(prop);
+  int sh2 = SharedPropSize(prop);
+  Print("Prop size: {} ({}) -> {} ({})\n", size1, sh1, size2, sh2);
   Print("Prop:\n{}\n", PropString(world, prop));
 
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
@@ -162,6 +172,7 @@ struct ChessDemo {
   Layout RenderOne(std::string_view name, const Prop &prop_in) {
     size_t before = PropSize(prop_in);
     Prop prop = SimplifyProp(prop_in);
+    prop = SimSingleton().Simplify(prop);
     size_t after = PropSize(prop);
 
     Print("[{}] Simplified: {} -> {}\n", name, before, after);
@@ -268,14 +279,14 @@ struct ChessDemo {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-
+  /*
   ChessDemo demo;
   demo.RenderAll();
-
+  */
 
   // RenderParallel();
 
-  // RenderOne(ChessProp::REAL_CHESS);
+  RenderOne(ChessProp::REAL_CHESS);
   // RenderOne(ChessProp::KID_CHESS);
 
   return 0;
