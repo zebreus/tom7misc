@@ -11,7 +11,7 @@
 // Generates the ASCII AIGER format.
 std::string ToAIGER(const Prop &prop);
 
-// Parses the ASCII AIGER format.
+// Parses the ASCII or binary AIGER formats.
 std::optional<Prop> FromAIGER(std::string_view content);
 
 #endif

@@ -65,6 +65,82 @@ static void TestParseGates() {
   }
 }
 
+static void TestParseBinary() {
+  {
+    std::string_view empty_aig = "aig 0 0 0 0 0\n";
+    std::optional<Prop> prop = FromAIGER(empty_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary empty circuit";
+  }
+
+  {
+    std::string_view false_aig =
+        "aig 0 0 0 1 0\n"
+        "0\n";
+    std::optional<Prop> prop = FromAIGER(false_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary constant FALSE";
+  }
+
+  {
+    std::string_view true_aig =
+        "aig 0 0 0 1 0\n"
+        "1\n";
+    std::optional<Prop> prop = FromAIGER(true_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary constant TRUE";
+  }
+
+  {
+    std::string_view inv_aig =
+        "aig 1 1 0 1 0\n"
+        "3\n";
+    std::optional<Prop> prop = FromAIGER(inv_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary inverter";
+  }
+
+  {
+    // AND gate
+    // lhs=6, rhs0=4, rhs1=2.
+    // delta0 = 6 - 4 = 2 (\x02)
+    // delta1 = 4 - 2 = 2 (\x02)
+    std::string_view and_aig =
+        "aig 3 2 0 1 1\n"
+        "6\n"
+        "\x02\x02";
+    std::optional<Prop> prop = FromAIGER(and_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary AND gate";
+  }
+
+  {
+    // AND gate with multi-byte delta
+    // I=67, A=1 => M=68.
+    // LHS = 2*(67)+2 = 136
+    // RHS0 = 6, RHS1 = 4
+    // delta0 = 136 - 6 = 130 (\x82\x01)
+    // delta1 = 6 - 4 = 2 (\x02)
+    std::string_view multi_byte_aig =
+        "aig 68 67 0 1 1\n"
+        "136\n"
+        "\x82\x01\x02";
+    std::optional<Prop> prop = FromAIGER(multi_byte_aig);
+    CHECK(prop.has_value())
+        << "Failed to parse binary AND gate with multi-byte delta";
+  }
+
+  {
+    // AND gate with symbol table and comments
+    std::string_view sym_aig =
+        "aig 3 2 0 1 1\n"
+        "6\n"
+        "\x02\x02"
+        "i0 x\n"
+        "i1 y\n"
+        "o0 s\n"
+        "c\n"
+        "binary half adder sum\n";
+    std::optional<Prop> prop = FromAIGER(sym_aig);
+    CHECK(prop.has_value()) << "Failed to parse binary format with symbols";
+  }
+}
+
 static void TestRoundTrip() {
   std::string_view half_adder =
       "aag 7 2 0 1 3\n"
@@ -131,6 +207,20 @@ static void TestInvalidInput() {
         "6 2\n");
     CHECK(!bad_gate.has_value()) << "Bad gate definition should fail";
   }
+
+  {
+    std::optional<Prop> bad_binary_header = FromAIGER("aig 0 0 0\n");
+    CHECK(!bad_binary_header.has_value()) << "Bad binary header should fail";
+  }
+
+  {
+    // Truncated binary format (missing delta byte)
+    std::optional<Prop> trunc_binary = FromAIGER(
+        "aig 3 2 0 1 1\n"
+        "6\n"
+        "\x02");
+    CHECK(!trunc_binary.has_value()) << "Truncated binary gate should fail";
+  }
 }
 
 int main(int argc, char **argv) {
@@ -139,6 +229,7 @@ int main(int argc, char **argv) {
   TestParseEmpty();
   TestParseConstants();
   TestParseGates();
+  TestParseBinary();
   TestRoundTrip();
   TestInterestingPropsRoundTrip();
   TestInvalidInput();
