@@ -61,10 +61,30 @@ struct Simplifier {
 
     } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
       const auto &[a, vs] = SimplifyRec(*u->a);
-      Prop np = -a;
+
+      auto Not = [](const Prop &p) {
+          if (const Unop *un = std::get_if<Unop>(&p.p);
+              un && un->op == UnopOp::NOT) {
+            return *un->a;
+          }
+          return -p;
+        };
+
+      Prop np;
+      const Unop *ua = std::get_if<Unop>(&a.p);
+      const Binop *bop = std::get_if<Binop>(&a.p);
+
+      if (ua && ua->op == UnopOp::NOT) {
+        np = *ua->a;
+      } else if (bop && bop->op == BinopOp::AND) {
+        np = Not(*bop->a) | Not(*bop->b);
+      } else if (bop && bop->op == BinopOp::OR) {
+        np = Not(*bop->a) & Not(*bop->b);
+      } else {
+        np = -a;
+      }
 
       if (vs.Infinite()) {
-        // TODO: Consider rewriting, especially if not(not(...))
         seen.insert(np);
         return std::make_pair(np, vs);
 
