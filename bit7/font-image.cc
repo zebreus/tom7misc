@@ -2090,6 +2090,7 @@ static PageInfo PageBit7Sym1() {
 
 
   info.codepoints = {
+    // Miscellaneous Technical
     0x2300,  // (⌀) DIAMETER SIGN
     0x2301,  // (⌁) ELECTRIC ARROW
     0x2302,  // (⌂) HOUSE
@@ -2348,6 +2349,8 @@ static PageInfo PageBit7Sym1() {
     0x23ff,  // (⏿) OBSERVER EYE SYMBOL
 
     // Free to a good home
+
+    // Geometric shapes? U+25A0 would fit
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

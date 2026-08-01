@@ -156,6 +156,26 @@ std::unique_ptr<TTF> TTF::Load(std::string_view filename) {
   return ret;
 }
 
+std::optional<std::string> TTF::FullName() const {
+
+  int len = 0;
+  const char *name = stbtt_GetFontNameString(&font, &len, 1, 0, 0, 4);
+  if (name != nullptr) {
+    return {std::string(name, len)};
+  }
+
+  name = stbtt_GetFontNameString(&font, &len, 3, 1, 1033, 4);
+  if (name != nullptr) {
+    std::string ret;
+    for (int i = 0; i + 1 < len; i += 2) {
+      ret += name[i + 1];
+    }
+    return {ret};
+  }
+
+  return std::nullopt;
+}
+
 std::pair<float, float> TTF::Norm(float x, float y) const {
   // x coordinate is easy; just scale by the same factor.
   x = norm * x;
@@ -744,6 +764,11 @@ string TTF::Font::ToSFD(const string &name) const {
   // const char antialias_flag = antialias ? '1' : '0';
   const char antialias_flag = '1';
 
+  // TODO: Make it possible to specify these?
+  constexpr int TTF_WEIGHT = 400;
+  // Must be 1-9. 5 is "normal."
+  constexpr int TTF_WIDTH = 5;
+
   // FYI the values in the Layer: command are what tell it that
   // we are using quadratic beziers.
   const int numchars = chars.size();
@@ -765,12 +790,12 @@ InvalidEm: 0
 LayerCount: 2
 Layer: 0 1 "Back" 1
 Layer: 1 1 "Fore" 0
-OS2Version: 0
+OS2Version: 4
 OS2_WeightWidthSlopeOnly: 0
 OS2_UseTypoMetrics: 1
 PfmFamily: 0
-TTFWeight: 0
-TTFWidth: 0
+TTFWeight: {}
+TTFWidth: {}
 LineGap: {}
 VLineGap: {}
 OS2TypoAscent: 0
@@ -798,7 +823,7 @@ WinInfo: 64 8 5
 BeginChars: 1114112 {}
 )!", name_no_space, name, name,
      copyright,
-     ascent, descent,
+     ascent, descent, TTF_WEIGHT, TTF_WIDTH,
      native_linegap, native_linegap, native_linegap,
      vendor[0], vendor[1], vendor[2], vendor[3],
      antialias_flag,

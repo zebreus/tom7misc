@@ -15,6 +15,7 @@ from htop:
 HR S  CPU%▽MEM%
 R S  CPU%△MEM%
 
+▸ U+25B8
 
 Glyphs todo:
  - unicode stars

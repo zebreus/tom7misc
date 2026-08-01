@@ -3,11 +3,7 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe
 
-# These need FontForge installed (see tottf.sh).
-# It's hard-coded for a windows installation. You can
-# just load the .sfd files and generate ttfs from the
-# FontForge UI.
-ttf : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf
+# Not reinstall.exe by default since it is windows-specific.
 
 # ASAN=true
 
@@ -23,7 +19,6 @@ CC_LIB=../cc-lib
 CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I$(CC_LIB)
 LFLAGS=$(OPTFLAGS) -static
 
-
 CCLIB_OBJECTS=$(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
@@ -33,6 +28,17 @@ CCLIB_FONT_OBJECTS=$(CC_LIB)/fonts/island-finder.o $(CC_LIB)/fonts/ttf.o $(CC_LI
 %.o : %.cc
 	@$(CXX) $(CXXFLAGS) -c $^ -o $@
 	@echo -n "."
+
+# These need FontForge installed (see tottf.sh).
+# It's hard-coded for a windows installation. You can
+# just load the .sfd files and generate ttfs from the
+# FontForge UI.
+ttf : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf
+
+install : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf reinstall.exe
+	./reinstall.exe FixederSys1x.ttf
+	./reinstall.exe FixederSys2x.ttf
+	./reinstall.exe FixederSysLight2x.ttf
 
 makegrid.exe : makegrid.o font-image.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
@@ -102,6 +108,9 @@ unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
 
 getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
+
+reinstall.exe : reinstall.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@ -lgdi32 -ladvapi32 -luser32
 
 WIKIPEDIA_OBJECTS = $(CC_LIB)/wikipedia.o $(RE2_OBJECTS)
 

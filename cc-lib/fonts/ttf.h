@@ -37,6 +37,11 @@ struct TTF {
   // Doesn't perform validation; can crash later.
   static std::unique_ptr<TTF> LoadFast(std::string_view filename);
 
+  // Fonts have lots of names, so beware! This is an attempt to find
+  // the right full name for use in the Windows registry. Supports
+  // only ASCII.
+  std::optional<std::string> FullName() const;
+
   // amount to advance from one line of text to the next. This would
   // be +1.0 by definition except that we also take into account the
   // "line gap".
