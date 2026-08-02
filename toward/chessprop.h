@@ -4,6 +4,7 @@
 
 #include "prop.h"
 
+#include <format>
 #include <string_view>
 #include <vector>
 
@@ -120,6 +121,10 @@ struct ChessProp {
 
   // Mainly exposed for testing.
   static Prop Attacked(const Board &board, int r, int c);
+
+  static std::string Square(int row, int col) {
+    return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
+  }
 };
 
 #endif

@@ -26,10 +26,6 @@
 
 static constexpr bool OPTIMIZE = true;
 
-static std::string Square(int row, int col) {
-  return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
-}
-
 static const Simplification &SimSingleton() {
   static const Simplification *s = new Simplification;
   return *s;
@@ -55,7 +51,8 @@ static void RenderParallel() {
           int size = PropSize(prop);
           if (size > 256) {
             Print("Large prop {}->{}:\n{}\n",
-                  Square(srcr, srcc), Square(dstr, dstc),
+                  ChessProp::Square(srcr, srcc),
+                  ChessProp::Square(dstr, dstc),
                   PropString(world, prop));
           }
           if (prop == False()) {
@@ -112,7 +109,8 @@ static void RenderOne(ChessProp::Details details) {
   le->SetWriteImages(false);
 
   std::string basename = std::format("one-legal-{}-{}",
-                                     Square(srcr, srcc), Square(dstr, dstc));
+                                     ChessProp::Square(srcr, srcc),
+                                     ChessProp::Square(dstr, dstc));
 
   Layout layout = le->DoLayout(Span{prop});
   Print("Got layout! {}\n", LayoutEngine::LayoutInfo(layout));
@@ -228,7 +226,9 @@ struct ChessDemo {
                                board, srcr, srcc, dstr, dstc, details));
             int size = PropSize(prop);
             std::string move =
-              std::format("{}-{}", Square(srcr, srcc), Square(dstr, dstc));
+              std::format("{}-{}",
+                          ChessProp::Square(srcr, srcc),
+                          ChessProp::Square(dstr, dstc));
             if (size > 32) {
               Print("Large prop {}:\n{}\n",
                     move,
