@@ -37,6 +37,7 @@ std::string_view GateString(Gate g) {
   case SPACER: return "SPACER";
   case AND0110: return "AND0110";
   case OR1100: return "OR1100";
+  case NAND0011: return "NAND0011";
   case NOT: return "NOT";
   case NOT01: return "NOT01";
   case NOT0: return "NOT0";
@@ -99,6 +100,7 @@ std::pair<int, int> GateArity(Gate g) {
   case SPACER: return {0, 0};
   case AND0110: return {4, 1};
   case OR1100: return {4, 1};
+  case NAND0011: return {4, 1};
   case NOT: return {1, 1};
   case NOT0:
   case NOT1: return {1, 1};
@@ -190,6 +192,28 @@ std::vector<Func> TransformCell(const Cell &cell,
 
     out[OutputIdx(0)] = Func{
       .prop = fa.prop | fb.prop,
+      .type = CType::MIXED,
+    };
+
+    break;
+  }
+
+  case NAND0011: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    const Func &fc = in[InputIdx(2)];
+    const Func &fd = in[InputIdx(3)];
+
+    // We can assume fa.prop = fc.prop,
+    // fb.prop = fd.prop.
+
+    CHECK(fa.type == CType::ZERO);
+    CHECK(fb.type == CType::ZERO);
+    CHECK(fc.type == CType::ONE);
+    CHECK(fd.type == CType::ONE);
+
+    out[OutputIdx(0)] = Func{
+      .prop = -(fa.prop & fb.prop),
       .type = CType::MIXED,
     };
 
@@ -488,6 +512,7 @@ size_t CircuitSize(const Circuit &circuit) {
 static constexpr std::string_view GateToCode(Gate g) {
   switch (g) {
   case AND0110:     return "aa";
+  case NAND0011:    return "na";
   case OR1100:      return "or";
   case NOT:         return "no";
   case NOT0:        return "n0";

@@ -31,6 +31,7 @@ struct Value {
 
 enum class BinopOp {
   AND,
+  NAND,
   OR,
   XOR,
 };
@@ -106,6 +107,22 @@ template <typename... Args>
 inline Prop And(Prop first, Args... args) {
   return (std::move(first) & ... & std::move(args));
 }
+
+template <typename... Args>
+inline Prop Nand(Prop first, Args... args) {
+  auto Nand2 = [](Prop a, Prop b) -> Prop {
+      return {.p = Binop{
+          .op = BinopOp::NAND,
+          .a = std::make_shared<Prop>(std::move(a)),
+          .b = std::make_shared<Prop>(std::move(b)),
+        }};
+    };
+
+  Prop res = std::move(first);
+  ((res = Nand2(std::move(res), std::move(args))), ...);
+  return res;
+}
+
 
 // Just using integers for variables.
 std::string PropString(const Prop &prop, std::optional<int> max_depth = {});

@@ -78,6 +78,30 @@ static void TestBinop() {
   }
 }
 
+static void TestNand() {
+  std::vector<bool> assignments;
+  {
+    Prop p = Nand(True(), True());
+    CHECK(!EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nand(True(), False());
+    CHECK(EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nand(False(), True());
+    CHECK(EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nand(False(), False());
+    CHECK(EvaluateProp(assignments, p));
+  }
+
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+  CHECK(PropEq(Nand(p0, p1), -(p0 & p1)));
+}
+
 static void TestVariadicOr() {
   std::vector<bool> assignments;
   {
@@ -286,6 +310,7 @@ int main(int argc, char **argv) {
   TestVar();
   TestUnop();
   TestBinop();
+  TestNand();
   TestVariadicOr();
   TestVariadicAnd();
   TestPropVars();

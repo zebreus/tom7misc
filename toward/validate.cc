@@ -177,6 +177,8 @@ static void ValidateCells(const CellLibrary &library) {
   // Gate::NOT,
 
   for (Gate g : {
+      Gate::NAND0011,
+
       Gate::XCHG00,
       Gate::XCHG01,
       Gate::XCHG10,
@@ -219,6 +221,15 @@ static void ValidateCells(const CellLibrary &library) {
           Prop{Var{.id = 1}},
         };
 
+      } else if (g == Gate::NAND0011) {
+        CHECK(info.inputs.size() == 4);
+        args = {
+          Prop{Var{.id = 0}},
+          Prop{Var{.id = 1}},
+          Prop{Var{.id = 0}},
+          Prop{Var{.id = 1}},
+        };
+
       } else if (g == Gate::OR1100) {
         CHECK(info.inputs.size() == 4);
         args = {
@@ -245,8 +256,8 @@ static void ValidateCells(const CellLibrary &library) {
 static void ValidateLibrary() {
   CellLibrary library;
 
-  ValidateWires(library);
   ValidateCells(library);
+  ValidateWires(library);
 }
 
 int main(int argc, char **argv) {

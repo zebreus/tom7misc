@@ -46,12 +46,17 @@ static std::pair<InlineVector<CType>, InlineVector<CType>>
 GetType(Gate g) {
   switch (g) {
   case SPACER: return {{}, {}};
+
   case AND0110:
     return {{CType::ZERO, CType::ONE, CType::ONE, CType::ZERO},
             {CType::MIXED}};
   case OR1100:
     return {{CType::ONE, CType::ONE, CType::ZERO, CType::ZERO},
             {CType::MIXED}};
+  case NAND0011:
+    return {{CType::ZERO, CType::ZERO, CType::ONE, CType::ONE},
+            {CType::MIXED}};
+
   case NOT: return {{CType::MIXED}, {CType::MIXED}};
   case NOT0: return {{CType::ZERO}, {CType::ONE}};
   case NOT1: return {{CType::ONE}, {CType::ZERO}};
@@ -218,6 +223,7 @@ struct CellLibraryImpl {
     Load("cell-dup0.svg", Gate::DUP0, 0);
     Load("cell-dup1.svg", Gate::DUP1, 0);
     Load("cell-and0110.svg", Gate::AND0110, 0);
+    Load("cell-nand0011.svg", Gate::NAND0011, 0);
     Load("cell-or1100.svg", Gate::OR1100, 0);
     Load("cell-separator01.svg", Gate::SEPARATOR01, 0);
     Load("cell-separator10.svg", Gate::SEPARATOR10, 0);

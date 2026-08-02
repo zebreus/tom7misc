@@ -40,6 +40,7 @@ bool EvaluateProp(const std::vector<bool> &assignments,
         bool rhs = EvalRec(*b->b);
         switch (b->op) {
         case BinopOp::AND: return lhs && rhs;
+        case BinopOp::NAND: return !(lhs && rhs);
         case BinopOp::OR: return lhs || rhs;
         case BinopOp::XOR: return lhs != rhs;
         default:
@@ -134,7 +135,7 @@ static std::vector<std::pair<Prop, int>> GatherBin(const Binop *b) {
     todo.pop_back();
 
     if (const Binop *child = std::get_if<Binop>(&p.p)) {
-      if (child->op == op) {
+      if (child->op == op && op != BinopOp::NAND) {
         todo.push_back(*child->a);
         todo.push_back(*child->b);
       } else {
@@ -236,6 +237,20 @@ Prop SimplifyProp(const Prop &prop) {
 
           return lhs & rhs;
         }
+
+        case BinopOp::NAND: {
+          if (IsTrue(lhs) && IsTrue(rhs))
+            return False();
+          if (IsFalse(lhs) || IsFalse(rhs))
+            return True();
+          if (IsTrue(lhs))
+            return -rhs;
+          if (IsTrue(rhs))
+            return -lhs;
+
+          return Nand(lhs, rhs);
+        }
+
         case BinopOp::OR: {
           if (IsTrue(lhs) || IsTrue(rhs))
             return True();
@@ -370,6 +385,7 @@ static std::string PropAtom(const World *world,
     std::string rhs = PropAtom(world, *b->b, max_depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("({} ⋀ {})", lhs, rhs);
+    case BinopOp::NAND: return std::format("({} ⊼ {})", lhs, rhs);
     case BinopOp::OR: return std::format("({} ⋁ {})", lhs, rhs);
     case BinopOp::XOR: return std::format("({} ⊕ {})", lhs, rhs);
     default:
@@ -404,6 +420,7 @@ std::string PropStringInternal(const World *world,
     std::string rhs = PropAtom(world, *b->b, depth - 1);
     switch (b->op) {
     case BinopOp::AND: return std::format("{} ⋀ {}", lhs, rhs);
+    case BinopOp::NAND: return std::format("{} ⊼ {}", lhs, rhs);
     case BinopOp::OR: return std::format("{} ⋁ {}", lhs, rhs);
     case BinopOp::XOR: return std::format("{} ⊕ {}", lhs, rhs);
     default:
@@ -452,6 +469,8 @@ Prop NormalizeToAnd(const Prop &prop) {
         switch (b->op) {
         case BinopOp::AND:
           return lhs & rhs;
+        case BinopOp::NAND:
+          return -(lhs & rhs);
         case BinopOp::OR:
           return -(N(lhs) & N(rhs));
         case BinopOp::XOR:
@@ -484,6 +503,8 @@ Prop NormalizeRemoveXor(const Prop &prop) {
         switch (b->op) {
         case BinopOp::AND:
           return lhs & rhs;
+        case BinopOp::NAND:
+          return Nand(lhs, rhs);
         case BinopOp::OR:
           return lhs | rhs;
         case BinopOp::XOR:
@@ -516,6 +537,7 @@ std::string SerializeProp(const Prop &prop) {
     char op = '?';
     switch (b->op) {
     case BinopOp::AND: op = '&'; break;
+    case BinopOp::NAND: op = '/'; break;
     case BinopOp::OR:op = '|'; break;
     case BinopOp::XOR: op = '^'; break;
     default:
@@ -565,11 +587,22 @@ static std::optional<Prop> ParseAnd(std::string_view *s) {
   return a;
 }
 
-static std::optional<Prop> ParseXor(std::string_view *s) {
+static std::optional<Prop> ParseNand(std::string_view *s) {
   auto a = ParseAnd(s);
   if (!a) return std::nullopt;
-  while (Util::TryStripPrefix("^", s)) {
+  while (Util::TryStripPrefix("/", s)) {
     auto b = ParseAnd(s);
+    if (!b) return std::nullopt;
+    a = Nand(std::move(*a), std::move(*b));
+  }
+  return a;
+}
+
+static std::optional<Prop> ParseXor(std::string_view *s) {
+  auto a = ParseNand(s);
+  if (!a) return std::nullopt;
+  while (Util::TryStripPrefix("^", s)) {
+    auto b = ParseNand(s);
     if (!b) return std::nullopt;
     a = std::move(*a) ^ std::move(*b);
   }
