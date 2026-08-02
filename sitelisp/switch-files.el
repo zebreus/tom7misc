@@ -3,7 +3,7 @@
 ;;
 ;; Copyright (C) 2002-2004  Wes Hardaker <elisp@hardakers.net>
 ;;
-;; Modified by Tom 7, 19 Dec 2009.
+;; Modified by Tom 7, 19 Dec 2009 and 22 Jul 2026.
 ;;
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -19,8 +19,6 @@
 ;; program's author (send electronic mail to psmith@BayNetworks.com) or
 ;; from the Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA
 ;; 02139, USA.
-;;
-;; $Revision: 1.8 $
 
 ;; here 'nil' is like "." but behaves better with stuff like "plink:" paths.
 (defvar switch-files-paths '(nil "/usr/include" "/usr/local/include")
@@ -30,32 +28,14 @@
 ;; certain suffixes, for example .h (.c, .cc, .cpp, etc.).
 ;; We open the first one that works.
 (defvar switch-files-list '(
-                ("\\.cc" ".h")
-                ("\\.h" ".cc")
-
-                ("\\.c" ".h")
-                ("\\.h" ".c")
-
-                ("\\.C" ".H")
-                ("\\.H" ".C")
-
-                ("\\.cpp" ".h")
-                ("\\.h" ".cpp")
-
-                ;; we never switch *to* the test, but it can be
-                ;; useful to switch *away* from it.
-                ("_test\\.cc" ".h")
-                ("_test\\.cc" ".cc")
-
-                ("-sig\\.sml" ".sml")
-                ("\\.sml" "-sig.sml")
+                (".h" ".cc" "_test.cc")
+                (".h" ".c")
+                (".H" ".C")
+                (".h" ".cpp")
+                ("-sig.sml" ".sml")
                 )
-  "A list of file regexp matches and replacements switch between.")
+  "A list of file rotation groups. The extensions are matched as suffixes.")
 
-(defvar switch-file-backto nil
-  "A buffer local variable containing a buffer to jump back to for switch-file.")
-
-(require 'cl)
 (require 'seq)
 
 ;; switch to the first file in the list for which we already have an open
@@ -100,70 +80,39 @@
   (interactive)
   (let* ((curbuffer (current-buffer))
      (buffername (buffer-file-name))
-     ;; single file based on history or what we're looking at
-     (already
-      ;; are we staring at an include directive?
-      ;; XXX do I need this? I don't think I ever use C-o for this. -tom7
-      (or
-       (and
-        (looking-at
-         "#include [<\\\"]\\([^/>\\\"]*\\|.*/[^/>\\\"]*\\)[>\\\"]")
-        (buffer-substring (match-beginning 1) (match-end 1)))
-       ;; are we in a buffer that we know where to go back to already?
-       ;; XXX if so, just prioritizing it as the first element might make
-       ;; more sense than returning a singleton list...
-       switch-file-backto))
-
-       ;; can we guess at a file name from the current buffer name?
-
-
-     ; list of files to try switching to, in priority order
+     ;; list of files to try switching to, in priority order
      (startfiles
-      (if already
-          ;; if we already have a single file, return that
-          (list already)
-        ;; otherwise, get all associations that match the buffer
-        ;; (XXX more convoluted than it needs to be. we want mapPartial, but
-        ;; instead we first map to the filename or nil, then filter out nils.
-        ;; note that due to the history of this code, we need to do the
-        ;; transform right after the match (uses regex match state))
-        (let* ((matches-with-nils
-            (seq-map
-             (function (lambda (row)
-                 ;; (message "regex %s" (car key))
-                 (if (string-match
-                      (concat "\\(.*\\)" (car row))
-                      buffername)
-                     ;; matched
-                     (file-name-nondirectory
-                      (concat (substring buffername (match-beginning 1)
-                             (match-end 1))
-                          (cadr row)))
-                   ;; not matched
-                   nil)))
-             switch-files-list))
-           (targets (seq-filter
-                 (function (lambda (elt) (not (null elt))))
-                 matches-with-nils)))
-
-          (message "%s" targets)
-          targets
-     ))))
+      (apply
+       #'append
+       (mapcar
+        (lambda (group)
+          (let ((matches (seq-filter
+                          (lambda (ext)
+                            (and buffername
+                                 (string-suffix-p ext buffername)))
+                          group)))
+            (if matches
+                (let* ((match (car (seq-sort
+                                    (lambda (a b) (> (length a) (length b)))
+                                    matches)))
+                       (base-len (- (length buffername) (length match)))
+                       (basename (file-name-nondirectory
+                                  (substring buffername 0 base-len)))
+                       (pos (seq-position group match))
+                       (rotated (append (nthcdr (1+ pos) group)
+                                        (seq-take group pos))))
+                  (mapcar (lambda (ext) (concat basename ext))
+                          rotated))
+              nil)))
+        switch-files-list))))
 
     ;; body of let*
     ;; can we switch to anything in startfiles?
 
     (cond
      ;; first prefer open buffers
-     ((switch-to-buffer-rec startfiles)
-      ;; (note, we didn't used to do this in the case that the buffer is already
-      ;; open, but it seems to make sense!
-      (make-local-variable 'switch-file-backto)
-      (setq switch-file-backto curbuffer))
-
-     ((switch-by-opening-rec startfiles)
-      (make-local-variable 'switch-file-backto)
-      (setq switch-file-backto curbuffer))
+     ((switch-to-buffer-rec startfiles))
+     ((switch-by-opening-rec startfiles))
 
      (t
       (message "(From buffer '%s' name '%s', no targets matched: %s"
@@ -172,6 +121,5 @@
 
 (global-set-key "\C-x\M-f" 'switch-files)
 
-; (switch-files)
 
 (provide 'switch-files)

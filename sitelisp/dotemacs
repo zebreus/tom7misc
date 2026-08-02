@@ -1622,7 +1622,7 @@
  '(typescript-indent-level 2)
  '(typescript-indent-switch-clauses nil)
  '(undo-outer-limit 30000000)
- '(warning-suppress-types '(((undo discard-info))))
+ '(warning-suppress-types '((auto-save) ((undo discard-info))))
  '(web-mode-code-indent-offset 2)
  '(web-mode-css-indent-offset 2)
  '(web-mode-enable-auto-closing nil)
