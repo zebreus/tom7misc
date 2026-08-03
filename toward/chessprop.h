@@ -5,10 +5,13 @@
 #include "prop.h"
 
 #include <format>
+#include <string>
 #include <string_view>
 #include <vector>
 
+// These are just used for position conversions and examples.
 #include "chess.h"
+#include "arcfour.h"
 
 // Rule details. All of these should be turned on for full chess,
 // but turning off rules about check make the propositions massively
@@ -124,6 +127,9 @@ struct ChessProp {
   static std::string Square(int row, int col) {
     return std::format("{:c}{:c}", 'a' + col, '1' + (7 - row));
   }
+
+  // Get the requested number of valid positions; white to move.
+  static std::vector<Position> LegalPositions(ArcFour *rc, int num);
 };
 
 #endif

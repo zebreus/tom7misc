@@ -22,15 +22,14 @@
 #include "set-util.h"
 #include "util.h"
 
-// TODO: Macros, simplifications, etc.
-
 bool EvaluateProp(const std::vector<bool> &assignments,
                   const Prop &prop) {
   std::function<bool(const Prop&)> EvalRec = [&](const Prop &p) -> bool {
       if (const Value *v = std::get_if<Value>(&p.p)) {
         return v->value;
       } else if (const Var *v = std::get_if<Var>(&p.p)) {
-        CHECK(v->id >= 0 && v-> id < assignments.size());
+        CHECK(v->id >= 0 && v->id < assignments.size()) <<
+          v->id << " vs " << assignments.size();
         return assignments[v->id];
       } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
         CHECK(u->op == UnopOp::NOT);

@@ -1,34 +1,31 @@
 
 #include <cstdio>
 #include <format>
-#include <map>
-#include <memory>
-#include <set>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "timer.h"
-#include "crypt/sha256.h"
 #include "ansi.h"
 #include "base/print.h"
+#include "blif.h"
 #include "cell-library.h"
+#include "chess.h"
 #include "chessprop.h"
-#include "functional-map.h"
+#include "crypt/sha256.h"
+#include "periodically.h"
+#include "process-util.h"
 #include "prop.h"
 #include "simplification.h"
-#include "util.h"
-#include "aiger.h"
-#include "process-util.h"
-#include "verilog.h"
-#include "blif.h"
-#include "threadutil.h"
 #include "status-bar.h"
-#include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
+#include "verilog.h"
+
+static constexpr bool USE_ABC = false;
 
 static Prop ExactlyOne(const std::vector<Prop> &props) {
   Prop any = False();
@@ -50,6 +47,74 @@ static Prop AtMostOne(const std::vector<Prop> &props) {
     }
   }
   return -any_two;
+}
+
+static Prop OptimizeABC(const World &world,
+                        const Prop &prop,
+                        const Prop &exdc) {
+  if (!USE_ABC) return prop;
+
+  // Print("Write blif...\n");
+  std::string contents = ToBLIF("chess", world, prop, exdc);
+  std::string sha = SHA256::Ascii(SHA256::HashStringView(contents));
+  std::string blif_filename = std::format("chess-{}.blif", sha);
+
+  Util::WriteFile(blif_filename, contents);
+
+  std::string aiger_filename = std::format("chess-{}.aig", sha);
+  (void)Util::RemoveFile(aiger_filename);
+
+  std::string verilog_filename = std::format("chess-{}.v", sha);
+  (void)Util::RemoveFile(verilog_filename);
+
+  std::string eqn_filename = std::format("chess-{}.eqn", sha);
+  (void)Util::RemoveFile(eqn_filename);
+
+  std::string cmdline =
+    std::format("../../berkeley-abc/abc -c \""
+                "source ../../berkeley-abc/abc.rc; "
+                "read_genlib aoinx.genlib; "
+                "read_blif {}; "
+                "sweep; mfs -W 100 -M 10000; "
+                "strash; "
+                "compress2rs; compress2rs; compress2rs; "
+                "dch; fraig; "
+                "compress2rs; "
+                "dch; fraig; "
+                // aiger, but this only supports and/not
+                // "write {}; "
+                // "map" for depth/area. amap for area.
+                "amap; "
+                "print_stats; "
+                "write_verilog {}; "
+                // "write_eqn {}; "
+                "\"",
+                blif_filename,
+                verilog_filename);
+
+  Timer abc_timer;
+  // Print("Run abc...\n");
+  // Print(ABLUE("{}") "\n", cmdline);
+  std::optional<std::string> abc_out = ProcessUtil::GetOutput(cmdline);
+  [[maybe_unused]] double abc_sec = abc_timer.Seconds();
+  // Print("Ran abc in {}\n", ANSI::Time(abc_sec));
+  CHECK(abc_out.has_value());
+  // Print(AGREY("{}") "\n", abc_out.value());
+
+  // Success if the file appears!
+  // std::string aiger = Util::ReadFile(aiger_filename);
+  // CHECK(!aiger.empty()) << aiger_filename;
+  // std::optional<Prop> opt = FromAIGER(aiger);
+
+  std::string verilog = Util::ReadFile(verilog_filename);
+  CHECK(!verilog.empty()) << verilog_filename;
+  std::optional<Prop> opt = FromVerilog(world, verilog);
+  CHECK(opt.has_value()) << verilog_filename;
+
+  Util::RemoveFile(blif_filename);
+  Util::RemoveFile(verilog_filename);
+
+  return std::move(opt.value());
 }
 
 static void Generate(const CellLibrary &library,
@@ -201,78 +266,20 @@ static void Generate(const CellLibrary &library,
   exdc = BalanceProp(SimplifyProp(exdc));
   exdc = SimplifyProp(exdc);
 
-  // Print("Write blif...\n");
-  std::string contents = ToBLIF("chess", world, prop, exdc);
-  std::string sha = SHA256::Ascii(SHA256::HashStringView(contents));
-  std::string blif_filename = std::format("chess-{}.blif", sha);
-
-  Util::WriteFile(blif_filename, contents);
-
-  std::string aiger_filename = std::format("chess-{}.aig", sha);
-  (void)Util::RemoveFile(aiger_filename);
-
-  std::string verilog_filename = std::format("chess-{}.v", sha);
-  (void)Util::RemoveFile(verilog_filename);
-
-  std::string eqn_filename = std::format("chess-{}.eqn", sha);
-  (void)Util::RemoveFile(eqn_filename);
-
-  std::string cmdline =
-    std::format("../../berkeley-abc/abc -c \""
-                "source ../../berkeley-abc/abc.rc; "
-                "read_genlib aoinx.genlib; "
-                "read_blif {}; "
-                "sweep; mfs -W 100 -M 10000; "
-                "strash; "
-                "compress2rs; compress2rs; compress2rs; "
-                "dch; fraig; "
-                "compress2rs; "
-                "dch; fraig; "
-                // aiger, but this only supports and/not
-                // "write {}; "
-                // "map" for depth/area. amap for area.
-                "amap; "
-                "print_stats; "
-                "write_verilog {}; "
-                // "write_eqn {}; "
-                "\"",
-                blif_filename,
-                verilog_filename);
-
-  Timer abc_timer;
-  // Print("Run abc...\n");
-  // Print(ABLUE("{}") "\n", cmdline);
-  std::optional<std::string> abc_out = ProcessUtil::GetOutput(cmdline);
-  [[maybe_unused]] double abc_sec = abc_timer.Seconds();
-  // Print("Ran abc in {}\n", ANSI::Time(abc_sec));
-  CHECK(abc_out.has_value());
-  // Print(AGREY("{}") "\n", abc_out.value());
-
-  // Success if the file appears!
-  // std::string aiger = Util::ReadFile(aiger_filename);
-  // CHECK(!aiger.empty()) << aiger_filename;
-  // std::optional<Prop> opt = FromAIGER(aiger);
-
-  std::string verilog = Util::ReadFile(verilog_filename);
-  CHECK(!verilog.empty()) << verilog_filename;
-  std::optional<Prop> opt = FromVerilog(verilog);
-  CHECK(opt.has_value()) << verilog_filename;
+  Prop opt = OptimizeABC(world, prop, exdc);
 
   [[maybe_unused]]
-  size_t abc_size = PropSize(opt.value());
+  size_t abc_size = PropSize(opt);
   [[maybe_unused]]
-  size_t abc_shared_size = SharedPropSize(opt.value());
+  size_t abc_shared_size = SharedPropSize(opt);
 
-  // Print("ABC opt:\n{}\n\n", PropString(opt.value()));
+  // Print("ABC opt:\n{}\n\n", PropString(opt));
 
-  Prop fin = sim.Simplify(opt.value());
+  Prop fin = sim.Simplify(opt);
   size_t fin_size = PropSize(fin);
   size_t fin_shared_size = SharedPropSize(fin);
 
   // Print("Fin opt:\n{}\n\n", PropString(fin));
-
-  Util::RemoveFile(blif_filename);
-  Util::RemoveFile(verilog_filename);
 
   const char *color =
     fin_shared_size < orig_shared_size ?

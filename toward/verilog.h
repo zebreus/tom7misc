@@ -9,6 +9,6 @@
 
 // Parse a very small subset of verilog (output of ABC optimization)
 // to a proposition, or returns nullopt.
-std::optional<Prop> FromVerilog(std::string_view content);
+std::optional<Prop> FromVerilog(const World &world, std::string_view content);
 
 #endif

@@ -18,7 +18,8 @@ module simple(a, b, c, out);
   or2 g1(.a(w1), .b(c), .O(out));
 endmodule
   )";
-  std::optional<Prop> p = FromVerilog(content);
+  World world;
+  std::optional<Prop> p = FromVerilog(world, content);
   CHECK(p.has_value());
 
   // Variables are assigned IDs in order of first appearance as a gate port.
@@ -41,14 +42,16 @@ module constants(out);
   and2 g1(.a(w1), .b(1'b1), .O(out));
 endmodule
   )";
-  std::optional<Prop> p = FromVerilog(content);
+  World world;
+  std::optional<Prop> p = FromVerilog(world, content);
   CHECK(p.has_value());
   CHECK(PropEq(*p, -False() & True()));
 }
 
 static void TestParseFailure() {
   std::string content = "garbage that is not verilog";
-  std::optional<Prop> p = FromVerilog(content);
+  World world;
+  std::optional<Prop> p = FromVerilog(world, content);
   CHECK(!p.has_value());
 }
 
@@ -75,9 +78,55 @@ module chess (
 endmodule
   )";
 
-  std::optional<Prop> p = FromVerilog(content);
+  World world;
+  std::optional<Prop> p = FromVerilog(world, content);
   CHECK(p.has_value());
   CHECK(PropSize(*p) > 10);
+}
+
+static void TestParseWorld() {
+  std::string content = R"(
+module simple(a, b, c, out);
+  input a, b, c;
+  output out;
+  wire w1;
+  and2 g0(.a(a), .b(b), .O(w1));
+  or2 g1(.a(w1), .b(c), .O(out));
+endmodule
+  )";
+  World world;
+  world.symbol_names = {"a", "b", "c", "out", "w1"};
+  std::optional<Prop> p = FromVerilog(world, content);
+  CHECK(p.has_value());
+
+  Prop a = Prop{.p = Var{.id = 0}};
+  Prop b = Prop{.p = Var{.id = 1}};
+  Prop c = Prop{.p = Var{.id = 2}};
+  Prop expected = (a & b) | c;
+
+  CHECK(PropEq(*p, expected));
+}
+
+static void TestParseAssign() {
+  std::string content = R"(
+module assign_test(a, b, out);
+  input a, b;
+  output out;
+  wire w1;
+  assign w1 = a;
+  and2 g0(.a(w1), .b(b), .O(out));
+endmodule
+  )";
+  World world;
+  world.symbol_names = {"a", "b"};
+  std::optional<Prop> p = FromVerilog(world, content);
+  CHECK(p.has_value());
+
+  Prop a = Prop{.p = Var{.id = 0}};
+  Prop b = Prop{.p = Var{.id = 1}};
+  Prop expected = a & b;
+
+  CHECK(PropEq(*p, expected));
 }
 
 int main(int argc, char **argv) {
@@ -87,6 +136,8 @@ int main(int argc, char **argv) {
   TestParseConstants();
   TestParseFailure();
   TestParseABC();
+  TestParseWorld();
+  TestParseAssign();
 
   Print("OK\n");
   return 0;

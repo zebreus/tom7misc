@@ -1,19 +1,23 @@
 
 #include "chessprop.h"
 
+#include <unordered_set>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <functional>
+#include <initializer_list>
 #include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "chess.h"
 #include "prop.h"
+#include "randutil.h"
 
 using Board = ChessProp::Board;
 using enum ChessProp::Type;
@@ -648,4 +652,59 @@ Board ChessProp::BoardFromPosition(const Position &pos) {
   }
 
   return board;
+}
+
+std::vector<Position> ChessProp::LegalPositions(ArcFour *rc, int num) {
+  // Seed positions; always white to move.
+  static std::initializer_list<std::string_view> SEED_FEN = {
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "rn3r2/pbppq1p1/1p2pN2/8/3P2NP/6P1/PPP1BP1R/R3K1k1 w Q - 5 18",
+    "1B6/8/7P/4p3/3b3k/8/8/2K5 w - - 0 1",
+    "2rq2kb/pb1r3p/2n1R1pB/1pp2pN1/3p1Q2/P1PP2P1/1P3PBP/4R1K1 w - - 0 1",
+    "1nbqkbnr/prpppppp/8/2p5/6P1/2BQ1BN1/P1PPPP1P/R3K2R w KQk - 0 1",
+    "r1bqkbr1/pp1nnpp1/B6p/1Pppp3/4P3/B4N2/P1PPQPPP/RN2K2R w KQq c6 0 8",
+  };
+
+  std::unordered_set<Position, PositionHash, PositionEq> seen;
+  seen.reserve(num);
+  // Unique entries.
+  std::vector<Position> pool;
+  pool.reserve(num);
+
+  for (std::string_view fen : SEED_FEN) {
+    Position pos;
+    CHECK(Position::ParseFEN(fen, &pos)) << fen;
+    CHECK(!pos.BlackMove()) << fen;
+    CHECK(!seen.contains(pos));
+    seen.insert(pos);
+    pool.push_back(pos);
+  }
+
+  while (pool.size() < (int)num) {
+    size_t idx = RandTo(rc, pool.size());
+    Position pos = pool[idx];
+
+    auto moves = pos.GetLegalMoves();
+    if (moves.empty()) {
+      continue;
+    }
+
+    size_t move_idx = RandTo(rc, moves.size());
+    pos.ApplyMove(moves[move_idx]);
+
+    // Switch sides so that it's always white to move.
+    pos = Position::FlipSides(pos);
+
+    if (seen.insert(pos).second) {
+      pool.push_back(pos);
+    }
+  }
+
+  // If num is smaller than the initial seed size, trim it.
+  if (pool.size() > (int)num) {
+    pool.resize(num);
+  }
+
+  Shuffle(rc, &pool);
+  return pool;
 }
