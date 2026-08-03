@@ -12,6 +12,13 @@
 #include "yocto-math.h"
 #include "ansi.h"
 
+// Physical properties for the simulation.
+static constexpr double DENSITY = 1.0;
+static constexpr double TENSION = 1000.0;
+static constexpr double DAMPING = 0.01;
+static constexpr int SAMPLE_RATE = 44100;
+static constexpr double DT = 1.0 / SAMPLE_RATE;
+
 struct SimTri {
   // Vertex indices. Screen clockwise (Cartesian CCW) winding order.
   int a = 0, b = 0, c = 0;
@@ -30,6 +37,28 @@ struct SimLetter {
   std::vector<vec2> vertices;
   std::vector<SimTri> triangles;
 };
+
+// Triangles only move along the z-axis. This is the simulation state,
+// with vectors parallel to the triangles in SimLetter.
+struct SimState {
+  std::vector<double> pos;
+  std::vector<double> vel;
+};
+
+static SimState RestState(const SimLetter &letter) {
+  return SimState{
+    .pos = std::vector<double>(letter.triangles.size(), 0.0),
+    .vel = std::vector<double>(letter.triangles.size(), 0.0),
+  };
+}
+
+static void ApplyImpulse(SimState *state, int idx, double accel) {
+  state->vel[idx] += accel;
+}
+
+static void StepState(SimState *state) {
+  // TODO
+}
 
 SimLetter MakeSimLetter(const Letter &letter) {
   SimLetter result;
@@ -120,6 +149,16 @@ void TestOne(const Letters &letters, char ch) {
   CHECK(it != letters.letter.end());
   SimLetter sletter = MakeSimLetter(it->second);
 
+  SimState state = RestState(sletter);
+
+  ApplyImpulse(&state, 0, 1.0);
+
+  static constexpr int SECONDS = 5;
+  for (int i = 0; i < SAMPLE_RATE * SECONDS; i++) {
+    StepState(&state);
+
+    // TODO: Sample and record wave
+  }
 }
 
 void Test() {
