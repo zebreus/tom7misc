@@ -1,0 +1,26 @@
+
+3 Aug 2026
+
+also xor gate, amap
+(actually xor gate is broken I think! but amap helps a lot)
+
+Total size: 11236207 nodes
+Total shared: 4929730 nodes
+
+
+2 Aug 2026
+
+with nand gate
+
+4096 props loaded.
+Total size: 15195189 nodes
+Total shared: 5211714 nodes
+
+
+2 Aug 2026
+original; abc optimized
+
+4096 props loaded.
+Total size: 15925832 nodes
+Total shared: 4757823 nodes
+

@@ -8,7 +8,6 @@
 #include <string_view>
 #include <vector>
 
-// This is just used for position conversions.
 #include "chess.h"
 
 // Rule details. All of these should be turned on for full chess,

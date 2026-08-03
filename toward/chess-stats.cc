@@ -13,7 +13,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 
-static void PrintStats() {
+static void PrintStats(std::string_view dir) {
   std::mutex mu;
   size_t total_size = 0, total_shared = 0;
   int done = 0;
@@ -26,7 +26,8 @@ static void PrintStats() {
         m.dst_row = dst / 8;
         m.dst_col = dst % 8;
 
-        std::string file = std::format("chess/islegal-{}-{}.prop",
+        std::string file = std::format("{}/islegal-{}-{}.prop",
+                                       dir,
                                        ChessProp::Square(m.src_row,
                                                          m.src_col),
                                        ChessProp::Square(m.dst_row,
@@ -48,17 +49,23 @@ static void PrintStats() {
       },
       8);
 
-  Print("{} props loaded.\n"
+  Print("Chess lib: {}\n"
+        "{} props loaded.\n"
         "Total size: {} nodes\n"
         "Total shared: {} nodes\n",
-        done,
+        dir, done,
         total_size, total_shared);
 };
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  PrintStats();
+  std::string dir = "chess";
+  if (argc > 1) {
+    dir = argv[1];
+  }
+
+  PrintStats(dir);
 
   return 0;
 }

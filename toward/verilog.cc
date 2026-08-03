@@ -2,18 +2,19 @@
 #include "verilog.h"
 
 #include <string_view>
-
-#include "util.h"
-#include "prop.h"
-
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "util.h"
+#include "prop.h"
+#include "base/logging.h"
+
 std::optional<Prop> FromVerilog(std::string_view content) {
   std::vector<std::string> tokens = Util::Tokens(content, [](char c) {
-    return Util::IsWhitespace(c) || c == '(' || c == ')' || c == ',' || c == ';';
+    return Util::IsWhitespace(c) || c == '(' || c == ')' ||
+      c == ',' || c == ';';
   });
 
   std::unordered_map<std::string, std::shared_ptr<Prop>> env;
@@ -46,7 +47,8 @@ std::optional<Prop> FromVerilog(std::string_view content) {
         i++;
       }
     } else if (tok == "and2" || tok == "nand2" || tok == "or2" ||
-               tok == "not" || tok == "xor2") {
+               tok == "not" || tok == "inv" ||
+               tok == "xor2") {
       std::string in_a, in_b, out_y;
 
       if (i + 1 < tokens.size() && !tokens[i + 1].starts_with('.')) {
@@ -86,10 +88,13 @@ std::optional<Prop> FromVerilog(std::string_view content) {
           *y_ptr = Prop{.p = Binop{.op = BinopOp::XOR,
                                    .a = GetProp(in_a),
                                    .b = GetProp(in_b)}};
-        } else if (tok == "not") {
+        } else if (tok == "not" || tok == "inv") {
           *y_ptr = Prop{.p = Unop{.op = UnopOp::NOT,
                                   .a = GetProp(in_a)}};
+        } else {
+          LOG(FATAL) << "Unhandled operator " << tok;
         }
+
       }
     } else if (tok == "endmodule") {
       break;
