@@ -1,0 +1,4 @@
+file ../sitelisp/*.el
+describe ../sitelisp/wtf.el emacs script driving "wtf.exe"
+describe ../sitelisp/edit.el emacs script driving "edit.exe"
+describe ../sitelisp/fill-in.el emacs script driving "fill-in.exe"

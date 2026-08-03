@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -166,6 +167,29 @@ void ModelUtil::FileCollection::AddConfig(std::string_view config_file) {
           DescribeDir(cc, line);
         } else {
           DescribeFile(cc, line);
+        }
+      }
+
+    } else if (Util::TryStripPrefix("tree", &line)) {
+      std::string_view dir = Util::Chop(&line);
+      Util::RemoveLeadingWhitespace(&line);
+      std::string_view pattern = Util::Chop(&line);
+      Util::RemoveLeadingWhitespace(&line);
+
+      CHECK(!dir.empty() && !pattern.empty() && line.empty())
+          << "tree command expects exactly two arguments";
+
+      std::filesystem::path cc = config_path / dir;
+      AddWildcard(cc, pattern);
+
+      std::error_code ec;
+      if (std::filesystem::is_directory(cc, ec)) {
+        auto opts = std::filesystem::directory_options::skip_permission_denied;
+        for (const auto &entry :
+             std::filesystem::recursive_directory_iterator(cc, opts, ec)) {
+          if (entry.is_directory(ec)) {
+            AddWildcard(entry.path(), pattern);
+          }
         }
       }
 

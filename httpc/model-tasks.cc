@@ -4,8 +4,8 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
-#include <vector>
 #include <vector>
 
 #include "base/logging.h"
@@ -265,6 +265,54 @@ ModelTasks::ChooseFiles(
 
       if (match_count == 1) {
         file = matched_key;
+      }
+    }
+  }
+
+  if (opt.include_mentioned) {
+    // Find unambiguous filenames.
+    std::unordered_map<std::string, int> filename_counts;
+    for (const auto &[key, info] : available.files)
+      filename_counts[info.path.filename().string()]++;
+
+    auto IsAlnum = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9');
+      };
+
+    for (const auto &[key, info] : available.files) {
+      const std::string filename = info.path.filename().string();
+      if (filename.find('.') == std::string::npos) continue;
+      if (filename_counts[filename] != 1) continue;
+
+      // If it's mentioned, and not inside some alphanumeric string,
+      // then always include it.
+      size_t pos = 0;
+      bool found = false;
+      while ((pos = user_request.find(filename, pos)) != std::string::npos) {
+        bool before_letter = pos > 0 && IsAlnum(user_request[pos - 1]);
+        size_t after_pos = pos + filename.size();
+        bool after_letter = after_pos < user_request.size() &&
+                            IsAlnum(user_request[after_pos]);
+
+        if (!before_letter && !after_letter) {
+          found = true;
+          break;
+        }
+        pos += filename.size();
+      }
+
+      if (found) {
+        bool already_included = false;
+        for (const std::string &f : files) {
+          if (f == key) {
+            already_included = true;
+            break;
+          }
+        }
+        if (!already_included) {
+          files.push_back(key);
+        }
       }
     }
   }

@@ -625,6 +625,12 @@ int main(int argc, char **argv) {
 
     // Now print the structured output for parsing by emacs.
     for (const auto &[file, reps] : replacements) {
+      std::string out_file = file;
+      auto it = available.files.find(file);
+      if (it != available.files.end()) {
+        out_file = ModelUtil::UnixPath(it->second.path);
+      }
+
       for (const Replacement &rep : reps) {
         std::string comment;
         if (!rep.comment.empty())
@@ -639,7 +645,7 @@ int main(int argc, char **argv) {
               " \"before\": \"{}\",\n"
               " \"after\": \"{}\"}}\n"
               "</" "REPLACEMENT>\n",
-              Util::EscapeJS(file),
+              Util::EscapeJS(out_file),
               comment,
               Util::EscapeJS(rep.before),
               Util::EscapeJS(rep.after));

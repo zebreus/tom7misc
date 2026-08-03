@@ -41,6 +41,7 @@ struct ModelTasks {
     bool can_fail = false;
     bool can_answer = false;
     bool guess_match = true;
+    bool include_mentioned = true;
   };
 
   // Using the given model,
