@@ -42,6 +42,16 @@ static Prop ExactlyOne(const std::vector<Prop> &props) {
   return any & -any_two;
 }
 
+static Prop AtMostOne(const std::vector<Prop> &props) {
+  Prop any_two = False();
+  for (size_t i = 0; i < props.size(); i++) {
+    for (size_t j = i + 1; j < props.size(); j++) {
+      any_two = any_two | (props[i] & props[j]);
+    }
+  }
+  return -any_two;
+}
+
 static void Generate(const CellLibrary &library,
                      const Simplification &sim,
                      StatusBar *status,
@@ -93,6 +103,8 @@ static void Generate(const CellLibrary &library,
 
   // Print("Create exdc (don't care) condition...\n");
   Prop valid = True();
+
+  // On each sequare, exactly one of the one-hot types is true.
   for (int r = 0; r < 8; r++) {
     for (int c = 0; c < 8; c++) {
       std::vector<Prop> square_props;
@@ -102,6 +114,89 @@ static void Generate(const CellLibrary &library,
       valid = valid & ExactlyOne(square_props);
     }
   }
+
+  constexpr bool EXTENDED_EXDC = false;
+
+  if (EXTENDED_EXDC) {
+    // At most one of the en passant columns is set.
+    std::vector<Prop> ep_props;
+    for (int c = 0; c < 8; c++) {
+      ep_props.push_back(board.props[ChessProp::EnPassantColIdx(c)]);
+    }
+    valid = valid & AtMostOne(ep_props);
+
+    // If an en passant column is set, the capturable black pawn must be
+    // in the corresponding spot, and the two squares behind it must be
+    // empty (because it just did a double pawn move).
+    for (int c = 0; c < 8; c++) {
+      Prop ep = board.props[ChessProp::EnPassantColIdx(c)];
+      Prop bpawn = board.props[
+          ChessProp::HasContentsIdx(3, c, ChessProp::BLACK_PAWN)];
+      Prop empty1 = board.props[
+          ChessProp::HasContentsIdx(2, c, ChessProp::EMPTY)];
+      Prop empty2 = board.props[
+          ChessProp::HasContentsIdx(1, c, ChessProp::EMPTY)];
+      valid = valid & (-ep | (bpawn & empty1 & empty2));
+    }
+
+    // The black king is on exactly one of the 64 squares.
+    {
+      std::vector<Prop> bk_props;
+      for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+          bk_props.push_back(board.props[
+              ChessProp::HasContentsIdx(r, c, ChessProp::BLACK_KING)]);
+        }
+      }
+      valid = valid & ExactlyOne(bk_props);
+    }
+
+    // The white king is on exactly one of the 64 squares.
+    {
+      std::vector<Prop> wk_props;
+      for (int r = 0; r < 8; r++) {
+        for (int c = 0; c < 8; c++) {
+          wk_props.push_back(board.props[
+              ChessProp::HasContentsIdx(r, c, ChessProp::WHITE_KING)]);
+        }
+      }
+      valid = valid & ExactlyOne(wk_props);
+    }
+
+    // Neither color of pawn can be on the first or last rank.
+    for (int c = 0; c < 8; c++) {
+      for (int r : {0, 7}) {
+        valid = valid & -board.props[
+            ChessProp::HasContentsIdx(r, c, ChessProp::WHITE_PAWN)];
+        valid = valid & -board.props[
+            ChessProp::HasContentsIdx(r, c, ChessProp::BLACK_PAWN)];
+      }
+    }
+
+    // Additional constraint: Castling privileges imply the king and
+    // corresponding rook are on their starting squares.
+    valid = valid & (-board.props[ChessProp::CastlingIdx(true, true)] |
+                     (board.props[ChessProp::HasContentsIdx(
+                          7, 4, ChessProp::WHITE_KING)] &
+                      board.props[ChessProp::HasContentsIdx(
+                          7, 7, ChessProp::WHITE_ROOK)]));
+    valid = valid & (-board.props[ChessProp::CastlingIdx(true, false)] |
+                     (board.props[ChessProp::HasContentsIdx(
+                          7, 4, ChessProp::WHITE_KING)] &
+                      board.props[ChessProp::HasContentsIdx(
+                          7, 0, ChessProp::WHITE_ROOK)]));
+    valid = valid & (-board.props[ChessProp::CastlingIdx(false, true)] |
+                     (board.props[ChessProp::HasContentsIdx(
+                          0, 4, ChessProp::BLACK_KING)] &
+                      board.props[ChessProp::HasContentsIdx(
+                          0, 7, ChessProp::BLACK_ROOK)]));
+    valid = valid & (-board.props[ChessProp::CastlingIdx(false, false)] |
+                     (board.props[ChessProp::HasContentsIdx(
+                          0, 4, ChessProp::BLACK_KING)] &
+                      board.props[ChessProp::HasContentsIdx(
+                          0, 0, ChessProp::BLACK_ROOK)]));
+  }
+
   Prop exdc = -valid;
   exdc = BalanceProp(SimplifyProp(exdc));
   exdc = SimplifyProp(exdc);
@@ -125,7 +220,7 @@ static void Generate(const CellLibrary &library,
   std::string cmdline =
     std::format("../../berkeley-abc/abc -c \""
                 "source ../../berkeley-abc/abc.rc; "
-                "read_genlib and-or-not.genlib; "
+                "read_genlib aoinx.genlib; "
                 "read_blif {}; "
                 "sweep; mfs -W 100 -M 10000; "
                 "strash; "
@@ -135,7 +230,8 @@ static void Generate(const CellLibrary &library,
                 "dch; fraig; "
                 // aiger, but this only supports and/not
                 // "write {}; "
-                "map; "
+                // "map" for depth/area. amap for area.
+                "amap; "
                 "print_stats; "
                 "write_verilog {}; "
                 // "write_eqn {}; "
@@ -209,7 +305,7 @@ static void Generate() {
   Timer timer;
   Periodically status_per(1);
 
-  std::mutex m;
+  std::mutex mu;
   int done = 0;
   ParallelComp2D(
       64, 64,
@@ -223,7 +319,7 @@ static void Generate() {
         Generate(library, sim, &status, m);
 
         {
-          MutexLock ml(&m);
+          MutexLock ml(&mu);
           done++;
         }
         status_per.RunIf([&]{

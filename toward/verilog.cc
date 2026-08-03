@@ -45,7 +45,7 @@ std::optional<Prop> FromVerilog(std::string_view content) {
         output_name = tokens[i + 1];
         i++;
       }
-    } else if (tok == "and2" || tok == "or2" ||
+    } else if (tok == "and2" || tok == "nand2" || tok == "or2" ||
                tok == "not" || tok == "xor2") {
       std::string in_a, in_b, out_y;
 
@@ -72,6 +72,10 @@ std::optional<Prop> FromVerilog(std::string_view content) {
         auto y_ptr = GetProp(out_y);
         if (tok == "and2") {
           *y_ptr = Prop{.p = Binop{.op = BinopOp::AND,
+                                   .a = GetProp(in_a),
+                                   .b = GetProp(in_b)}};
+        } else if (tok == "nand2") {
+          *y_ptr = Prop{.p = Binop{.op = BinopOp::NAND,
                                    .a = GetProp(in_a),
                                    .b = GetProp(in_b)}};
         } else if (tok == "or2") {
