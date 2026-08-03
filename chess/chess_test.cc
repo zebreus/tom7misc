@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <string>
 #include <cstdint>
-#include <tuple>
 #include <utility>
 #include <vector>
 #include <initializer_list>
@@ -620,6 +619,21 @@ static void TestCastleMate() {
   CHECK(pos.IsMated()) << pos.BoardString();
 }
 
+// King cannot "block itself" (from its old position) when testing
+// whether it is attacked in its new position.
+static void TestKingBack() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "k3r3/8/8/8/4K3/8/8/8 w - - 0 1", &pos));
+  Move m;
+  m.src_row = 4;
+  m.src_col = 4;
+  m.dst_row = 5;
+  m.dst_col = 4;
+  m.promote_to = 0;
+  CHECK(!pos.IsLegal(m)) << pos.BoardString();
+}
+
 static void TestRandom() {
   // We only require that the position is legal. But that means
   // we should be able to enumerate moves for it, for example
@@ -654,6 +668,8 @@ int main(int argc, char **argv) {
   ValidMoves2();
 
   TestCastleMate();
+
+  TestKingBack();
 
   TestEp();
   TestNoEpIntoCheck();

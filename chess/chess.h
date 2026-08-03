@@ -4,10 +4,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
-#include <optional>
 
 // Several benchmarks confirm this to be faster, but
 // it can depend on the workload.
@@ -150,7 +151,7 @@ struct Position {
 
   // This ignores the move counts, since we don't track those.
   // e.g. rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-  static bool ParseFEN(const char *fen, Position *pos);
+  static bool ParseFEN(std::string_view fen, Position *pos);
 
   // Requires the caller to specify the move clock (number of half-moves
   // since a pawn move or capture) and full move count (starts at 1

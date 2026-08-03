@@ -7,6 +7,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -20,21 +21,24 @@ using uint32 = uint32_t;
 #define IFDEBUG if (true) {} else
 // #define IFDEBUG
 
-bool Position::ParseFEN(const char *fen, Position *pos) {
-  int idx = 0;
+bool Position::ParseFEN(std::string_view fen, Position *pos) {
+  auto Next = [&fen]() -> char {
+      char c = fen[0];
+      fen.remove_prefix(1);
+      return c;
+    };
 
   // First part fills in the pieces.
   auto InitBoard =
-    [fen, pos, &idx]() {
+    [&fen, &Next, pos]() {
       int row = 0, col = 0;
-      for (;; idx++) {
-        const char c = fen[idx];
-        if (c == 0) return false;
+      for (;;) {
+        if (fen.empty()) return false;
+        char c = Next();
 
         if (col == 8) {
           if (row == 7) {
             // This is the only successful termination.
-            idx++;
             return c == ' ';
           } else {
             if (c != '/')
@@ -43,6 +47,7 @@ bool Position::ParseFEN(const char *fen, Position *pos) {
             col = 0;
             row++;
           }
+
         } else {
           if (c >= '1' && c <= '8') {
             int n = c - '0';
@@ -77,8 +82,10 @@ bool Position::ParseFEN(const char *fen, Position *pos) {
     };
 
   auto InitMeta =
-    [fen, pos, &idx]() {
-      const char whose_move = fen[idx++];
+    [&fen, &Next, pos]() {
+      if (fen.empty()) return false;
+      const char whose_move = Next();
+
       switch (whose_move) {
       case 'w':
         pos->bits = 0u;
@@ -90,14 +97,15 @@ bool Position::ParseFEN(const char *fen, Position *pos) {
         return false;
       }
 
-      if (fen[idx++] != ' ')
+      if (fen.empty() || Next() != ' ')
         return false;
 
       for (;;) {
-        const char c = fen[idx++];
+        if (fen.empty()) return false;
+        const char c = Next();
+
         switch (c) {
         default:
-          // This includes the NUL terminator.
           return false;
 
         case 'K':
@@ -136,14 +144,18 @@ bool Position::ParseFEN(const char *fen, Position *pos) {
       // end the castling part above.
 
       {
-        char ep_col = fen[idx++];
+        if (fen.empty()) return false;
+        char ep_col = Next();
+
         if (ep_col == '-') {
           // no en passant.
         } else {
           int col = ep_col - 'a';
           if (col < 0 || col >= 8)
             return false;
-          char ep_row = fen[idx++];
+          if (fen.empty()) return false;
+          char ep_row = Next();
+
           if (ep_row == '3') {
             if (!pos->BlackMove())
               return false;
