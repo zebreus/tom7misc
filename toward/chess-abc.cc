@@ -3,6 +3,7 @@
 #include <format>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -25,7 +26,29 @@
 #include "util.h"
 #include "verilog.h"
 
-static constexpr bool USE_ABC = false;
+static constexpr bool USE_ABC = true;
+static constexpr bool ALWAYS_ABC = true;
+static constexpr bool EXTENDED_EXDC = true;
+static constexpr bool ABC_XAG = true;
+static constexpr bool FINAL_SIMPLIFY = false;
+
+static constexpr std::string_view GENLIB = "aoinx";
+
+static constexpr bool SAMPLE_ONLY = true;
+
+static bool SampleMove(Position::Move m) {
+  if (!SAMPLE_ONLY) return true;
+
+  // b2-b4
+  if (m.src_row == 6 && m.src_col == 1 &&
+      m.dst_row == 4 && m.dst_col == 1) return true;
+
+  // Covers castling moves, etc.
+  if (m.src_row == 7 && m.src_col == 4 &&
+      m.src_row <= 7) return true;
+
+  return false;
+}
 
 static Prop ExactlyOne(const std::vector<Prop> &props) {
   Prop any = False();
@@ -54,6 +77,14 @@ static Prop OptimizeABC(const World &world,
                         const Prop &exdc) {
   if (!USE_ABC) return prop;
 
+  std::set<int> var_set;
+  for (int v : PropVars(prop)) var_set.insert(v);
+  for (int v : PropVars(exdc)) var_set.insert(v);
+  std::vector<std::string> inputs;
+  for (int v : var_set) {
+    inputs.push_back(world.symbol_names[v]);
+  }
+
   // Print("Write blif...\n");
   std::string contents = ToBLIF("chess", world, prop, exdc);
   std::string sha = SHA256::Ascii(SHA256::HashStringView(contents));
@@ -70,27 +101,46 @@ static Prop OptimizeABC(const World &world,
   std::string eqn_filename = std::format("chess-{}.eqn", sha);
   (void)Util::RemoveFile(eqn_filename);
 
+  std::string cmds;
+  if (ABC_XAG) {
+    cmds =
+      "&get; "
+      "&st; "
+      "&syn4; &syn4; "
+      "&put; "
+      // Map to genlib, minimizing area
+      "map -a; ";
+  } else {
+    cmds =
+      "sweep; mfs -W 100 -M 10000; "
+      "strash; "
+      "compress2rs; compress2rs; compress2rs; "
+      "dch; fraig; "
+      "compress2rs; "
+      "dch; fraig; "
+      // aiger, but this only supports and/not
+      // "write {}; "
+      // "map" for depth/area. amap for area.
+      "amap; ";
+  }
+
   std::string cmdline =
     std::format("../../berkeley-abc/abc -c \""
                 "source ../../berkeley-abc/abc.rc; "
-                "read_genlib aoinx.genlib; "
+                // "read_genlib aoinx.genlib; "
+                "read_genlib {}.genlib; "
+                "read_super {}.super; "
                 "read_blif {}; "
-                "sweep; mfs -W 100 -M 10000; "
-                "strash; "
-                "compress2rs; compress2rs; compress2rs; "
-                "dch; fraig; "
-                "compress2rs; "
-                "dch; fraig; "
-                // aiger, but this only supports and/not
-                // "write {}; "
-                // "map" for depth/area. amap for area.
-                "amap; "
+                "{}"
                 "print_stats; "
                 "write_verilog {}; "
                 // "write_eqn {}; "
                 "\"",
+                GENLIB, GENLIB,
                 blif_filename,
+                cmds,
                 verilog_filename);
+
 
   Timer abc_timer;
   // Print("Run abc...\n");
@@ -108,11 +158,11 @@ static Prop OptimizeABC(const World &world,
 
   std::string verilog = Util::ReadFile(verilog_filename);
   CHECK(!verilog.empty()) << verilog_filename;
-  std::optional<Prop> opt = FromVerilog(world, verilog);
+  std::optional<Prop> opt = FromVerilog(world, verilog, inputs);
   CHECK(opt.has_value()) << verilog_filename;
 
   Util::RemoveFile(blif_filename);
-  Util::RemoveFile(verilog_filename);
+  // Util::RemoveFile(verilog_filename);
 
   return std::move(opt.value());
 }
@@ -169,7 +219,7 @@ static void Generate(const CellLibrary &library,
   // Print("Create exdc (don't care) condition...\n");
   Prop valid = True();
 
-  // On each sequare, exactly one of the one-hot types is true.
+  // On each square, exactly one of the one-hot types is true.
   for (int r = 0; r < 8; r++) {
     for (int c = 0; c < 8; c++) {
       std::vector<Prop> square_props;
@@ -179,8 +229,6 @@ static void Generate(const CellLibrary &library,
       valid = valid & ExactlyOne(square_props);
     }
   }
-
-  constexpr bool EXTENDED_EXDC = false;
 
   if (EXTENDED_EXDC) {
     // At most one of the en passant columns is set.
@@ -238,8 +286,8 @@ static void Generate(const CellLibrary &library,
       }
     }
 
-    // Additional constraint: Castling privileges imply the king and
-    // corresponding rook are on their starting squares.
+    // Castling privileges imply the king and corresponding rook are
+    // on their starting squares.
     valid = valid & (-board.props[ChessProp::CastlingIdx(true, true)] |
                      (board.props[ChessProp::HasContentsIdx(
                           7, 4, ChessProp::WHITE_KING)] &
@@ -275,15 +323,17 @@ static void Generate(const CellLibrary &library,
 
   // Print("ABC opt:\n{}\n\n", PropString(opt));
 
-  Prop fin = sim.Simplify(opt);
+  Prop fin = FINAL_SIMPLIFY ? sim.Simplify(opt) : opt;
   size_t fin_size = PropSize(fin);
   size_t fin_shared_size = SharedPropSize(fin);
 
   // Print("Fin opt:\n{}\n\n", PropString(fin));
 
   const char *color =
-    fin_shared_size < orig_shared_size ?
-    ANSI_GREEN : ANSI_RED;
+    fin_shared_size == orig_shared_size ?
+    ANSI_YELLOW :
+    (fin_shared_size < orig_shared_size ?
+     ANSI_GREEN : ANSI_RED);
 
   status->Print("[{}-{}] {} "
                 "Orig: {} ({} shared) → "
@@ -297,7 +347,7 @@ static void Generate(const CellLibrary &library,
                 color,
                 fin_size, fin_shared_size);
 
-  if (fin_shared_size < orig_shared_size) {
+  if (ALWAYS_ABC || fin_shared_size < orig_shared_size) {
     Output(fin);
   } else {
     Output(prop);
@@ -312,6 +362,8 @@ static void Generate() {
   Timer timer;
   Periodically status_per(1);
 
+  (void)Util::MakeDir("chess");
+
   std::mutex mu;
   int done = 0;
   ParallelComp2D(
@@ -323,7 +375,9 @@ static void Generate() {
         m.dst_row = dst / 8;
         m.dst_col = dst % 8;
 
-        Generate(library, sim, &status, m);
+        if (SampleMove(m)) {
+          Generate(library, sim, &status, m);
+        }
 
         {
           MutexLock ml(&mu);

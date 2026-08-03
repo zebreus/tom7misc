@@ -1,26 +1,30 @@
 
-3 Aug 2026
 
-also xor gate, amap
-(actually xor gate is broken I think! but amap helps a lot)
+Redo!
 
-Total size: 11236207 nodes
-Total shared: 4929730 nodes
+Samples only this time.
 
-
-2 Aug 2026
-
-with nand gate
-
-4096 props loaded.
-Total size: 15195189 nodes
-Total shared: 5211714 nodes
+Chess lib: chess
+Missing: 4031
+65 props loaded.
+Total size: 273252 nodes
+Total shared: 85939 nodes
 
 
-2 Aug 2026
-original; abc optimized
+with extende exdc:
 
-4096 props loaded.
-Total size: 15925832 nodes
-Total shared: 4757823 nodes
+Chess lib: chess
+Missing: 4031
+65 props loaded.
+Total size: 273259 nodes
+Total shared: 85918 nodes
+Errors: 0
 
+a little smaller (shared)!
+
+
+with only and/or/inv:
+
+Total size: 232782 nodes
+Total shared: 69887 nodes
+Errors: 0

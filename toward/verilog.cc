@@ -11,7 +11,7 @@
 #include "prop.h"
 #include "base/logging.h"
 
-std::optional<Prop> FromVerilog(const World &world, std::string_view content) {
+std::optional<Prop> FromVerilog(const World &world, std::string_view content, const std::vector<std::string> &inputs) {
   std::vector<std::string> tokens = Util::Tokens(content, [](char c) {
     return Util::IsWhitespace(c) || c == '(' || c == ')' ||
       c == ',' || c == ';' || c == '=';
@@ -48,10 +48,31 @@ std::optional<Prop> FromVerilog(const World &world, std::string_view content) {
   };
 
   std::string output_name;
+  size_t input_idx = 0;
 
   for (size_t i = 0; i < tokens.size(); i++) {
     const std::string &tok = tokens[i];
-    if (tok == "output") {
+    if (tok == "input") {
+      while (i + 1 < tokens.size()) {
+        const std::string &next = tokens[i + 1];
+        if (next == "input" || next == "output" || next == "wire" ||
+            next == "assign" || next == "endmodule" || next == "module" ||
+            next == "and2" || next == "nand2" || next == "or2" ||
+            next == "nor2" || next == "not" || next == "inv" ||
+            next == "buf" || next == "xor2" || next == "xnor2") {
+          break;
+        }
+        i++;
+        std::string input_name = tokens[i];
+        if (input_idx < inputs.size()) {
+          auto nit = name_to_id.find(inputs[input_idx]);
+          if (nit != name_to_id.end()) {
+            env[input_name] = std::make_shared<Prop>(Prop{.p = Var{nit->second}});
+          }
+        }
+        input_idx++;
+      }
+    } else if (tok == "output") {
       if (i + 1 < tokens.size() && output_name.empty()) {
         output_name = tokens[i + 1];
         i++;
@@ -143,7 +164,7 @@ std::optional<Prop> FromVerilog(const World &world, std::string_view content) {
   if (!output_name.empty()) {
     auto it = env.find(output_name);
     if (it != env.end()) {
-      return *(it->second);
+      return *it->second;
     }
   }
 

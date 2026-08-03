@@ -155,9 +155,7 @@ Prop Simplification::Simplify(const Prop &in) const {
   return std::get<0>(sim.SimplifyRec(in));
 }
 
-Simplification::Simplification() :
-  table(new MiniTable(MiniTable::OPT_AND |
-                      MiniTable::OPT_OR |
-                      MiniTable::OPT_NOT)) {
+Simplification::Simplification(uint32_t opts) :
+  table(new MiniTable(opts)) {
 }
 
