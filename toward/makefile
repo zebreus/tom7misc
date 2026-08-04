@@ -195,7 +195,7 @@ verilog_test.exe : verilog_test.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 chess-abc.exe : chess-abc.o $(LIB_OBJECTS)
-	make -j 3 aoix.super aoi.super aoinx.super oix.super
+	make -j 3 aoin.super aoix.super aoi.super aoinx.super oix.super
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

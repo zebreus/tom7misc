@@ -26,15 +26,16 @@
 #include "util.h"
 #include "verilog.h"
 
+static constexpr bool SAMPLE_ONLY = false;
+
 static constexpr bool USE_ABC = true;
-static constexpr bool ALWAYS_ABC = true;
+static constexpr bool ALWAYS_ABC = false;
 static constexpr bool EXTENDED_EXDC = true;
 static constexpr bool ABC_XAG = true;
 static constexpr bool FINAL_SIMPLIFY = false;
 
-static constexpr std::string_view GENLIB = "aoinx";
+static constexpr std::string_view GENLIB = "aoin";
 
-static constexpr bool SAMPLE_ONLY = true;
 
 static bool SampleMove(Position::Move m) {
   if (!SAMPLE_ONLY) return true;
@@ -106,8 +107,20 @@ static Prop OptimizeABC(const World &world,
     cmds =
       "&get; "
       "&st; "
-      "&syn4; &syn4; "
+      "&syn4; &fraig; &syn4; "
+
+      // sloooo
+      "&mfs -W 100 -M 10000; "
+
+      // extra juice
+      "&fraig; "
+      "&syn4; "
+
       "&put; "
+
+      // Also give it options from the original circuit
+      "&dch; "
+
       // Map to genlib, minimizing area
       "map -a; ";
   } else {
@@ -308,6 +321,13 @@ static void Generate(const CellLibrary &library,
                           0, 4, ChessProp::BLACK_KING)] &
                       board.props[ChessProp::HasContentsIdx(
                           0, 0, ChessProp::BLACK_ROOK)]));
+
+
+    // TODO: The two kings cannot be on adjacent (8-connected) squares,
+    // since that would imply black is in check.
+    // or more generally...
+    // TODO: Wherever the black king is, that square is not attacked
+    // (by white). (We would need to flip the board to test this.)
   }
 
   Prop exdc = -valid;

@@ -1,5 +1,65 @@
 
 
+--------------------------------------------------
+
+ALL: aoin, xag, correct real chess:
+
+Chess lib: chess
+Missing: 0
+4096 props loaded.
+Total size: 19917651 nodes
+Total shared: 4754598 nodes
+Errors: 0
+Node counts:
+  AND: 3196528
+   OR: 4212362
+  NOT: 3596261
+  XOR: 0
+ NAND: 749757
+
+
+then with fraig; syn4
+
+Chess lib: chess
+Missing: 0
+4096 props loaded.
+Total size: 19884897 nodes
+Total shared: 4750311 nodes
+Errors: 0
+Node counts:
+  AND: 3174780
+   OR: 4236442
+  NOT: 3555907
+  XOR: 0
+ NAND: 751225
+
+(this is fast... like 1.5s each)
+
+
+Also using &mfs, which supposedly is good at
+applying don't-cares, but is expensive.
+
+
+Chess lib: chess
+Missing: 0
+4096 props loaded.
+Total size: 19892712 nodes
+Total shared: 4749935 nodes
+Errors: 0
+Node counts:
+  AND: 3174995
+   OR: 4239508
+  NOT: 3556770
+  XOR: 0
+ NAND: 751420
+
+(still fast, like 3s each)
+
+
+==================================================
+
+
+
 Redo!
 
 Samples only this time.
