@@ -113,6 +113,32 @@ static void TestEnPassantOutOfCheck() {
   Print("En passant (out of check) OK.\n");
 }
 
+// Tricky case. en passant is not possible here because the
+// rook on a5 would then be attacking the white king. We
+// actually need to vacate the source square, fill the
+// destination square, AND vacate the captured pawn.
+static void TestEnPassantNotIntoCheck() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "1nbqkbnr/1ppp2pp/8/r3Pp1K/8/8/PPPP1PPP/RNBQ1BNR "
+            "w - fg 0 1", &pos));
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+  Print("En passant (not into check) OK.\n");
+}
+
+// Another reason we need to clear the captured pawn is that it
+// might have itself been delivering the only check.
+static void TestEnPassantOutOfCheck2() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "rnb1kbnr/1pp2ppp/8/3pP3/2K5/8/PPPP1PPP/RNBQ1BNR "
+            "w - d6 0 1", &pos));
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+  Print("En passant (out of check #2) OK.\n");
+}
+
 static void TestCastling() {
   Position pos;
   CHECK(Position::ParseFEN(
@@ -185,6 +211,8 @@ int main(int argc, char **argv) {
   TestKingMoving();
   TestEnPassant();
   TestEnPassantOutOfCheck();
+  TestEnPassantOutOfCheck2();
+  TestEnPassantNotIntoCheck();
   #endif
 
   Print("Prop size histo:\n");

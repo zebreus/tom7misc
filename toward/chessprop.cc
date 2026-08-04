@@ -103,6 +103,17 @@ Board ChessProp::NewBoard(World *world) {
   return board;
 }
 
+static void SetPiece(Board *board, int r, int c, int t) {
+  CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
+  for (int type = 0; type < ChessProp::NUM_TYPES; type++) {
+    if (type == t) {
+      board->props[ChessProp::HasContentsIdx(r, c, type)] = True();
+    } else {
+      board->props[ChessProp::HasContentsIdx(r, c, type)] = False();
+    }
+  }
+}
+
 inline Prop HasContents(const Board &board, int r, int c, int t) {
   CHECK(r >= 0 && r < 8 && c >= 0 && c < 8);
   return board.props[ChessProp::HasContentsIdx(r, c, t)];
@@ -303,7 +314,8 @@ static Prop KingAttackedAfter(const Board &board_before,
 }
 
 static Prop EnPassantLegal(const Board &board,
-                           int srcr, int srcc, int dstr, int dstc) {
+                           int srcr, int srcc, int dstr, int dstc,
+                           const Details &details) {
   int dc = dstc - srcc;
 
   // Only on this specific row.
@@ -314,9 +326,16 @@ static Prop EnPassantLegal(const Board &board,
   // and there's a pawn to be captured.
   Prop legal = EnPassantCol(board, dstc);
 
-  // TODO: Not moving into check.
-  // This requires some special logic to remove the captured pawn!
-  return legal;
+  Board new_board = board;
+  SetPiece(&new_board, 3, srcc, EMPTY);
+  SetPiece(&new_board, 2, dstc, WHITE_PAWN);
+  SetPiece(&new_board, 3, dstc, EMPTY);
+
+  Prop check_ok = details.check_check ?
+    -KingAttackedAfter(new_board, srcr, srcc, dstr, dstc) :
+    True();
+
+  return legal & check_ok;
 }
 
 // Is it legal to move the white pawn at srcr, srcc to
@@ -527,12 +546,18 @@ static Prop KingLegal(const Board &board,
 
   }
 
+  // For testing whether the king is attacked in its new square, we need
+  // to clear the square the king vacated; the previous king can't block
+  // an attack on the new square!
+  Board new_board = board;
+  SetPiece(&new_board, srcr, srcc, EMPTY);
+
   // Here, checking for moving into check is much more straightforward,
   // because we know where the king will be, and moving the rooks
   // cannot cause a discovered check (on white). (Note that this would
   // be possible in Chess960.)
   Prop not_into_check =
-    details.check_check ? -ChessProp::Attacked(board, dstr, dstc) : True();
+    details.check_check ? -ChessProp::Attacked(new_board, dstr, dstc) : True();
 
   return And(Or(normal_move, castling_move), not_into_check);
 }
@@ -596,7 +621,7 @@ Prop ChessProp::IsLegal(const Board &board,
   Prop en_passant_move =
     details.en_passant ?
     (HasContents(board, srcr, srcc, WHITE_PAWN) &
-     EnPassantLegal(board, srcr, srcc, dstr, dstc)) :
+     EnPassantLegal(board, srcr, srcc, dstr, dstc, details)) :
     False();
 
   return Or(simple_piece_move,
