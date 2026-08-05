@@ -46,6 +46,16 @@ bool EvaluateProp(const std::vector<bool> &assignments,
         default:
           LOG(FATAL) << "Unknown binop?";
         }
+      } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+        bool a = EvalRec(*t->a);
+        bool b = EvalRec(*t->b);
+        bool c = EvalRec(*t->c);
+        switch (t->op) {
+        case TernopOp::ITE: return a ? b : c;
+        default:
+          LOG(FATAL) << "Unknown ternop?";
+        }
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
@@ -65,6 +75,13 @@ size_t PropSize(const Prop &prop) {
     size_t lhs = PropSize(*b->a);
     size_t rhs = PropSize(*b->b);
     return 1 + lhs + rhs;
+
+  } else if (const Ternop *t = std::get_if<Ternop>(&prop.p)) {
+    size_t a = PropSize(*t->a);
+    size_t b = PropSize(*t->b);
+    size_t c = PropSize(*t->c);
+    return 1 + a + b + c;
+
   } else {
     LOG(FATAL) << "Bad variant?";
     return 0;
@@ -95,6 +112,11 @@ size_t SharedPropSize(const Prop &prop_in) {
     } else if (const Binop *b = std::get_if<Binop>(&p->p)) {
       todo.push_back(b->a.get());
       todo.push_back(b->b.get());
+
+    } else if (const Ternop *t = std::get_if<Ternop>(&p->p)) {
+      todo.push_back(t->a.get());
+      todo.push_back(t->b.get());
+      todo.push_back(t->c.get());
 
     } else {
       LOG(FATAL) << "Bad variant?";
@@ -193,6 +215,13 @@ static std::pair<Prop, int> BalancePropInternal(const Prop &p) {
     }
 
     return std::move(flat.front());
+
+  } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+    auto [a, da] = BalancePropInternal(*t->a);
+    auto [b, db] = BalancePropInternal(*t->b);
+    auto [c, dc] = BalancePropInternal(*t->c);
+    Prop ite = Ite(std::move(a), std::move(b), std::move(c));
+    return {std::move(ite), std::max({da, db, dc}) + 1};
   }
 
   LOG(FATAL) << "Bad variant?";
@@ -288,6 +317,23 @@ Prop SimplifyProp(const Prop &prop) {
         default:
           LOG(FATAL) << "Unknown binop?";
         }
+
+      } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+        Prop a = SimpRec(*t->a);
+        Prop b = SimpRec(*t->b);
+        Prop c = SimpRec(*t->c);
+        switch (t->op) {
+        case TernopOp::ITE:
+          if (IsTrue(a)) return b;
+          if (IsFalse(a)) return c;
+          if (b == c) return b;
+          if (IsTrue(b) && IsFalse(c)) return a;
+          if (IsFalse(b) && IsTrue(c)) return -a;
+          return Ite(a, b, c);
+        default:
+          LOG(FATAL) << "Unknown ternop?";
+        }
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
@@ -304,15 +350,18 @@ std::strong_ordering operator<=>(const Prop &a, const Prop &b) {
   if (const Value *v_a = std::get_if<Value>(&a.p)) {
     const Value *v_b = std::get_if<Value>(&b.p);
     return v_a->value <=> v_b->value;
+
   } else if (const Var *v_a = std::get_if<Var>(&a.p)) {
     const Var *v_b = std::get_if<Var>(&b.p);
     return v_a->id <=> v_b->id;
+
   } else if (const Unop *u_a = std::get_if<Unop>(&a.p)) {
     const Unop *u_b = std::get_if<Unop>(&b.p);
     if (auto cmp = u_a->op <=> u_b->op; cmp != 0) {
       return cmp;
     }
     return *u_a->a <=> *u_b->a;
+
   } else if (const Binop *b_a = std::get_if<Binop>(&a.p)) {
     const Binop *b_b = std::get_if<Binop>(&b.p);
     if (auto cmp = b_a->op <=> b_b->op; cmp != 0) {
@@ -322,7 +371,21 @@ std::strong_ordering operator<=>(const Prop &a, const Prop &b) {
       return cmp;
     }
     return *b_a->b <=> *b_b->b;
+
+  } else if (const Ternop *t_a = std::get_if<Ternop>(&a.p)) {
+    const Ternop *t_b = std::get_if<Ternop>(&b.p);
+    if (auto cmp = t_a->op <=> t_b->op; cmp != 0) {
+      return cmp;
+    }
+    if (auto cmp = *t_a->a <=> *t_b->a; cmp != 0) {
+      return cmp;
+    }
+    if (auto cmp = *t_a->b <=> *t_b->b; cmp != 0) {
+      return cmp;
+    }
+    return *t_a->c <=> *t_b->c;
   }
+
 
   return std::strong_ordering::equal;
 }
@@ -335,13 +398,22 @@ std::vector<int> PropVars(const Prop &a) {
   std::function<void(const Prop&)> GetRec = [&](const Prop &p) {
       if (std::holds_alternative<Value>(p.p)) {
         return;
+
       } else if (const Var *v = std::get_if<Var>(&p.p)) {
         var_set.insert(v->id);
+
       } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
         GetRec(*u->a);
+
       } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
         GetRec(*b->a);
         GetRec(*b->b);
+
+      } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+        GetRec(*t->a);
+        GetRec(*t->b);
+        GetRec(*t->c);
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
@@ -405,6 +477,18 @@ static std::string PropAtom(const World *world,
     default:
       LOG(FATAL) << "Unknown binop?";
     }
+
+  } else if (const Ternop *t = std::get_if<Ternop>(&prop.p)) {
+    std::string a = PropAtom(world, *t->a, max_depth - 1);
+    std::string b = PropAtom(world, *t->b, max_depth - 1);
+    std::string c = PropAtom(world, *t->c, max_depth - 1);
+    switch (t->op) {
+    case TernopOp::ITE:
+      return std::format("({} ? {} : {})", a, b, c);
+    default:
+      LOG(FATAL) << "Unknown ternop?";
+    }
+
   } else if (const Value *v = std::get_if<Value>(&prop.p)) {
     return v->value ? "⟙" : "⟘";
   } else if (const Var *v = std::get_if<Var>(&prop.p)) {
@@ -417,6 +501,7 @@ static std::string PropAtom(const World *world,
         return std::format("UNKNOWN-VAR-v{}", v->id);
       }
     }
+
   } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
     CHECK(u->op == UnopOp::NOT);
     return std::format("¬{}", PropAtom(world, *u->a, max_depth - 1));
@@ -441,6 +526,18 @@ std::string PropStringInternal(const World *world,
     default:
       LOG(FATAL) << "Unknown binop?";
     }
+
+  } else if (const Ternop *t = std::get_if<Ternop>(&prop.p)) {
+    std::string a = PropAtom(world, *t->a, depth - 1);
+    std::string b = PropAtom(world, *t->b, depth - 1);
+    std::string c = PropAtom(world, *t->c, depth - 1);
+    switch (t->op) {
+    case TernopOp::ITE:
+      return std::format("{} ? {} : {}", a, b, c);
+    default:
+      LOG(FATAL) << "Unknown ternop?";
+    }
+
   } else {
     return PropAtom(world, prop, depth);
   }
@@ -498,6 +595,19 @@ Prop NormalizeToAnd(const Prop &prop) {
         default:
           LOG(FATAL) << "Unknown binop?";
         }
+
+      } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+        Prop a = NormRec(*t->a);
+        Prop b = NormRec(*t->b);
+        Prop c = NormRec(*t->c);
+        switch (t->op) {
+        case TernopOp::ITE:
+          // Note duplication here as well.
+          return -(-(a & b) & -(N(a) & c));
+        default:
+          LOG(FATAL) << "Unknown ternop?";
+        }
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
@@ -534,6 +644,19 @@ Prop NormalizeRemoveXor(const Prop &prop) {
         default:
           LOG(FATAL) << "Unknown binop?";
         }
+
+      } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+        Prop a = NormRec(*t->a);
+        Prop b = NormRec(*t->b);
+        Prop c = NormRec(*t->c);
+        switch (t->op) {
+        case TernopOp::ITE:
+          // Note duplication here as well.
+          return Ite(std::move(a), std::move(b), std::move(c));
+        default:
+          LOG(FATAL) << "Unknown ternop?";
+        }
+
       } else {
         LOG(FATAL) << "Bad variant?";
       }
@@ -545,11 +668,14 @@ Prop NormalizeRemoveXor(const Prop &prop) {
 std::string SerializeProp(const Prop &prop) {
   if (const Value *v = std::get_if<Value>(&prop.p)) {
     return v->value ? "T" : "F";
+
   } else if (const Var *v = std::get_if<Var>(&prop.p)) {
     return Util::itos(v->id);
+
   } else if (const Unop *u = std::get_if<Unop>(&prop.p)) {
     CHECK(u->op == UnopOp::NOT);
     return "!" + SerializeProp(*u->a);
+
   } else if (const Binop *b = std::get_if<Binop>(&prop.p)) {
     std::string lhs = SerializeProp(*b->a);
     std::string rhs = SerializeProp(*b->b);
@@ -564,6 +690,16 @@ std::string SerializeProp(const Prop &prop) {
       LOG(FATAL) << "Unknown binop?";
     }
     return std::format("({}{}{})", lhs, op, rhs);
+
+  } else if (const Ternop *t = std::get_if<Ternop>(&prop.p)) {
+    std::string a = SerializeProp(*t->a);
+    std::string b = SerializeProp(*t->b);
+    std::string c = SerializeProp(*t->c);
+    switch (t->op) {
+    case TernopOp::ITE: return std::format("({}?{}:{})", a, b, c);
+    default:
+      LOG(FATAL) << "Unknown ternop?";
+    }
   }
   LOG(FATAL) << "Bad variant?";
 }
@@ -574,16 +710,29 @@ static std::optional<Prop> ParseAtom(std::string_view *s) {
   if (s->empty()) return std::nullopt;
   if (Util::TryStripPrefix("T", s)) {
     return True();
+
   } else if (Util::TryStripPrefix("F", s)) {
     return False();
+
   } else if (Util::TryStripPrefix("!", s)) {
     auto a = ParseAtom(s);
-    if (!a) return std::nullopt;
+    if (!a.has_value()) return std::nullopt;
     return -std::move(*a);
+
   } else if (Util::TryStripPrefix("(", s)) {
     auto a = ParsePropRec(s);
-    if (!a || !Util::TryStripPrefix(")", s)) return std::nullopt;
-    return a;
+    if (!a.has_value()) return std::nullopt;
+    if (Util::TryStripPrefix(")", s)) {
+      return a;
+    } else if (Util::TryStripPrefix("?", s)) {
+      auto b = ParsePropRec(s);
+      if (!b.has_value() || !Util::TryStripPrefix(":", s)) return std::nullopt;
+      auto c = ParsePropRec(s);
+      if (!c.has_value() || !Util::TryStripPrefix(")", s)) return std::nullopt;
+      return Ite(std::move(a.value()), std::move(b.value()), std::move(c.value()));
+    }
+    return std::nullopt;
+
   } else {
     // Must be digits then.
     std::string_view var_str = Util::ConsumePrefixMatching(
@@ -688,14 +837,19 @@ static size_t HashPropRec(const Prop &p) {
   if (const Value *v = std::get_if<Value>(&p.p)) {
     h = std::rotl(h, 13) + std::hash<bool>()(v->value);
   } else if (const Var *v = std::get_if<Var>(&p.p)) {
-    h = std::rotl(h, 13) + std::hash<int>()(v->id);
+    h = std::rotl(h, 15) + std::hash<int>()(v->id);
   } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
-    h = std::rotl(h, 13) + static_cast<size_t>(u->op);
-    h = std::rotl(h, 13) + HashPropRec(*u->a);
+    h = std::rotl(h, 23) + static_cast<size_t>(u->op);
+    h = std::rotl(h, 11) + HashPropRec(*u->a);
   } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
-    h = std::rotl(h, 13) + static_cast<size_t>(b->op);
-    h = std::rotl(h, 13) + HashPropRec(*b->a);
-    h = std::rotl(h, 13) + HashPropRec(*b->b);
+    h = std::rotl(h, 27) + static_cast<size_t>(b->op);
+    h = std::rotl(h, 15) + HashPropRec(*b->a);
+    h = std::rotl(h, 14) + HashPropRec(*b->b);
+  } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+    h = std::rotl(h, 39) + static_cast<size_t>(t->op);
+    h = std::rotl(h, 22) + HashPropRec(*t->a);
+    h = std::rotl(h, 51) + HashPropRec(*t->b);
+    h = std::rotl(h, 3) + HashPropRec(*t->c);
   } else {
     LOG(FATAL) << "Bad variant?";
   }

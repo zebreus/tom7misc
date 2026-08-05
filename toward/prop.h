@@ -29,6 +29,10 @@ struct Value {
   bool value = false;
 };
 
+enum class TernopOp {
+  ITE,
+};
+
 enum class BinopOp {
   AND,
   NAND,
@@ -39,6 +43,11 @@ enum class BinopOp {
 
 enum class UnopOp {
   NOT,
+};
+
+struct Ternop {
+  TernopOp op = TernopOp::ITE;
+  std::shared_ptr<Prop> a, b, c;
 };
 
 struct Binop {
@@ -54,7 +63,7 @@ struct Unop {
 // This is recursive, so we need a wrapper struct for the forward
 // declaration.
 struct Prop {
-  std::variant<Value, Var, Binop, Unop> p;
+  std::variant<Value, Var, Binop, Unop, Ternop> p;
 };
 
 inline Prop False() { return {.p = Value{.value = false}}; }
@@ -125,6 +134,14 @@ inline Prop Nor(Prop a, Prop b) {
     }};
 }
 
+inline Prop Ite(Prop a, Prop b, Prop c) {
+  return {.p = Ternop{
+      .op = TernopOp::ITE,
+      .a = std::make_shared<Prop>(std::move(a)),
+      .b = std::make_shared<Prop>(std::move(b)),
+      .c = std::make_shared<Prop>(std::move(c)),
+    }};
+}
 
 // Just using integers for variables.
 std::string PropString(const Prop &prop, std::optional<int> max_depth = {});

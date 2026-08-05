@@ -253,6 +253,8 @@ static bool IsAndNormalForm(const Prop &prop) {
       if (b->op != BinopOp::AND) return false;
       v.push_back(b->a.get());
       v.push_back(b->b.get());
+    } else if (std::holds_alternative<Ternop>(p->p)) {
+      return false;
     } else {
       LOG(FATAL) << "Bad variant?";
     }
@@ -327,6 +329,28 @@ static void TestUnorderedMap() {
   CHECK(m[and_copy] == 50);
 }
 
+static void TestIte() {
+  std::vector<bool> assignments;
+  {
+    Prop p = Ite(True(), False(), True());
+    CHECK(!EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Ite(False(), False(), True());
+    CHECK(EvaluateProp(assignments, p));
+  }
+
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+  Prop p2 = Prop{.p = Var{.id = 2}};
+  Prop p = Ite(p0, p1, p2);
+  CHECK(PropEq(p, (p0 & p1) | (-p0 & p2)));
+
+  std::optional<Prop> parsed = ParseProp(SerializeProp(p));
+  CHECK(parsed.has_value());
+  CHECK(*parsed == p);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -346,6 +370,8 @@ int main(int argc, char **argv) {
   TestNormalizeToAnd();
   TestSerializeParse();
   TestUnorderedMap();
+  TestIte();
+
 
   Print("OK\n");
   return 0;

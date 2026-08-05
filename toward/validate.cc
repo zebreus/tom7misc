@@ -177,8 +177,9 @@ static void ValidateCells(const CellLibrary &library) {
   // Gate::NOT,
 
   for (Gate g : {
-      Gate::XOR1100,
-      Gate::XOR1010,
+      Gate::NOR1100,
+      //      Gate::XOR1100,
+      // Gate::XOR1010,
       Gate::NAND0011,
       Gate::XCHG00,
       Gate::XCHG01,
@@ -249,7 +250,7 @@ static void ValidateCells(const CellLibrary &library) {
           Prop{Var{.id = 1}},
         };
 
-      } else if (g == Gate::OR1100) {
+      } else if (g == Gate::OR1100 || g == Gate::NOR1100) {
         CHECK(info.inputs.size() == 4);
         args = {
           Prop{Var{.id = 0}},

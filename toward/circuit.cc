@@ -1,20 +1,19 @@
 
 #include "circuit.h"
 
-#include <array>
 #include <charconv>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <cstdint>
-#include <span>
 #include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "util.h"
 #include "prop.h"
+#include "util.h"
 
 Cell::Cell(Gate g, int v, bool flip) :
   gate(g), v(v), flip(flip) {
@@ -38,6 +37,7 @@ std::string_view GateString(Gate g) {
   case AND0110: return "AND0110";
   case OR1100: return "OR1100";
   case NAND0011: return "NAND0011";
+  case NOR1100: return "NOR1100";
   case XOR1010: return "XOR1010";
   case XOR1100: return "XOR1100";
   case NOT: return "NOT";
@@ -103,6 +103,7 @@ std::pair<int, int> GateArity(Gate g) {
   case AND0110: return {4, 1};
   case OR1100: return {4, 1};
   case NAND0011: return {4, 1};
+  case NOR1100: return {4, 1};
   case XOR1010: return {4, 1};
   case XOR1100: return {4, 1};
   case NOT: return {1, 1};
@@ -196,6 +197,28 @@ std::vector<Func> TransformCell(const Cell &cell,
 
     out[OutputIdx(0)] = Func{
       .prop = fa.prop | fb.prop,
+      .type = CType::MIXED,
+    };
+
+    break;
+  }
+
+  case NOR1100: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    const Func &fc = in[InputIdx(2)];
+    const Func &fd = in[InputIdx(3)];
+
+    // We can assume fa.prop = fc.prop,
+    // fb.prop = fd.prop.
+
+    CHECK(fa.type == CType::ONE);
+    CHECK(fb.type == CType::ONE);
+    CHECK(fc.type == CType::ZERO);
+    CHECK(fd.type == CType::ZERO);
+
+    out[OutputIdx(0)] = Func{
+      .prop = Nor(fa.prop, fb.prop),
       .type = CType::MIXED,
     };
 
@@ -562,6 +585,7 @@ static constexpr std::string_view GateToCode(Gate g) {
   case AND0110:     return "aa";
   case NAND0011:    return "na";
   case OR1100:      return "or";
+  case NOR1100:     return "nr";
   case XOR1100:     return "xo";
   case NOT:         return "no";
   case NOT0:        return "n0";

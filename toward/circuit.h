@@ -37,6 +37,7 @@ enum Gate : uint8_t {
   AND0110,
   OR1100,
   NAND0011,
+  NOR1100,
   XOR1010, // XXX in progress
   XOR1100, // XXX in progress
   NOT,
@@ -73,7 +74,7 @@ enum Gate : uint8_t {
 };
 
 inline constexpr std::array ALL_GATES = {
-  SPACER, AND0110, OR1100, NAND0011,
+  SPACER, AND0110, OR1100, NAND0011, NOR1100,
   XOR1010, XOR1100,
   NOT, NOT0, NOT1, NOT01,
   SEPARATOR01, SEPARATOR10, SELFXCHG01, SELFXCHG10,

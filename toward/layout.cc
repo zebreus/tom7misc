@@ -1570,7 +1570,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       DebugRender(layers);
     }
 
-    if (layers.size() % 1000) {
+    if (layers.size() % 1000 == 0) {
       std::vector<std::pair<int, int>> missing_wires =
         CountMapToDescendingVector(disp_histo);
       std::string content;

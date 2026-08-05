@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
+  <g id="Background">
+    <rect width="1920" height="1080" fill="#fff" opacity=".75"/>
+    <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+    <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
+  </g>
+  <g id="Physics">
+    <path d="M440,0h100v100h-100V0Z" fill="#aff"/>
+    <path d="M20,0h100v100H20V0Z" fill="#aff"/>
+    <path d="M860,0h100v100h-100V0Z" fill="#aff"/>
+    <path d="M1280,0h100v100h-100V0Z" fill="#aff"/>
+    <g isolation="isolate">
+      <g isolation="isolate">
+        <g isolation="isolate">
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <g isolation="isolate">
+                <g isolation="isolate">
+                  <text transform="translate(550 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C0</tspan></text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g isolation="isolate">
+      <g isolation="isolate">
+        <g isolation="isolate">
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <g isolation="isolate">
+                <g isolation="isolate">
+                  <text transform="translate(125 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">F</tspan></text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g isolation="isolate">
+      <g isolation="isolate">
+        <g isolation="isolate">
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <g isolation="isolate">
+                <g isolation="isolate">
+                  <text transform="translate(1050 1035)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C ? T : F</tspan></text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g isolation="isolate">
+      <g isolation="isolate">
+        <g isolation="isolate">
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <g isolation="isolate">
+                <g isolation="isolate">
+                  <text transform="translate(965 55)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C1</tspan></text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <g isolation="isolate">
+      <g isolation="isolate">
+        <g isolation="isolate">
+          <g isolation="isolate">
+            <g isolation="isolate">
+              <g isolation="isolate">
+                <g isolation="isolate">
+                  <text transform="translate(1394.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">T</tspan></text>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+    <rect x="920" y="960" width="100" height="120" fill="#faa"/>
+    <polygon points="20 100 20 820 920 940 915 960 0 960 0 100 20 100" fill="#4c4ccc"/>
+    <path d="M1400,930" fill="#00a"/>
+    <polygon points="1400 100 1380 100 1380 886 1020 940 1025 960 1400 960 1400 100" fill="#4c4ccc"/>
+    <path d="M1420,510" fill="#4c4ccc"/>
+    <rect x="540" y="100" width="20" height="240" fill="#008a17"/>
+    <rect x="840" y="100" width="20" height="240" fill="#008a17"/>
+    <rect x="1260" y="100" width="20" height="510" fill="#008a17"/>
+    <polygon points="20 560 20 570 300 570 300 440 290 440 290 560 20 560" fill="none" stroke="#55ffde" stroke-miterlimit="10"/>
+    <rect x="120" y="570" width="5" height="15" fill="#008aaa"/>
+    <rect x="280" y="570" width="5" height="15" fill="#008aaa"/>
+    <rect x="1115" y="620" width="5" height="15" fill="#008aaa"/>
+    <rect x="1275" y="620" width="5" height="15" fill="#008aaa"/>
+    <rect x="410" y="500" width="30" height="10" fill="#008aaa"/>
+    <rect x="940" y="565" width="30" height="10" fill="#008aaa"/>
+    <path d="M540,420" fill="#008a17"/>
+    <polygon points="140 440 140 100 120 100 120 560 285 560 285 550 140 440" fill="#008a17"/>
+    <path d="M230,320l70,115h240v-200c-5,0-310,85-310,85Z" fill="#008a17"/>
+    <rect x="140" y="100" width="290" height="20" fill="#008a17"/>
+    <polygon points="1080 620 1080 490 1090 490 1090 610 1380 610 1380 620 1080 620" fill="none" stroke="#55ffde" stroke-miterlimit="10"/>
+    <polygon points="860 235 860 485 1090 485 1170 340 860 235" fill="#008a17"/>
+    <polygon points="1095 610 1095 600 1260 480 1260 610 1095 610" fill="#008a17"/>
+  </g>
+</svg>

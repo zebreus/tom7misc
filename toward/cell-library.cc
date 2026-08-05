@@ -53,6 +53,10 @@ GetType(Gate g) {
   case OR1100:
     return {{CType::ONE, CType::ONE, CType::ZERO, CType::ZERO},
             {CType::MIXED}};
+  case NOR1100:
+    return {{CType::ONE, CType::ONE, CType::ZERO, CType::ZERO},
+            {CType::MIXED}};
+
   case NAND0011:
     return {{CType::ZERO, CType::ZERO, CType::ONE, CType::ONE},
             {CType::MIXED}};
@@ -235,6 +239,7 @@ struct CellLibraryImpl {
     Load("cell-xor1010.svg", Gate::XOR1010, 0);
     Load("cell-xor1100.svg", Gate::XOR1100, 0);
     Load("cell-or1100.svg", Gate::OR1100, 0);
+    Load("cell-nor1100.svg", Gate::NOR1100, 0);
     Load("cell-separator01.svg", Gate::SEPARATOR01, 0);
     Load("cell-separator10.svg", Gate::SEPARATOR10, 0);
     Load("cell-sink.svg", Gate::SINK, 0);
