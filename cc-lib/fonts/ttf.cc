@@ -764,11 +764,6 @@ string TTF::Font::ToSFD(const string &name) const {
   // const char antialias_flag = antialias ? '1' : '0';
   const char antialias_flag = '1';
 
-  // TODO: Make it possible to specify these?
-  constexpr int TTF_WEIGHT = 400;
-  // Must be 1-9. 5 is "normal."
-  constexpr int TTF_WIDTH = 5;
-
   // FYI the values in the Layer: command are what tell it that
   // we are using quadratic beziers.
   const int numchars = chars.size();
@@ -823,7 +818,7 @@ WinInfo: 64 8 5
 BeginChars: 1114112 {}
 )!", name_no_space, name, name,
      copyright,
-     ascent, descent, TTF_WEIGHT, TTF_WIDTH,
+     ascent, descent, weight, width,
      native_linegap, native_linegap, native_linegap,
      vendor[0], vendor[1], vendor[2], vendor[3],
      antialias_flag,

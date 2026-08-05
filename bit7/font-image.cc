@@ -2754,6 +2754,14 @@ Config Config::ParseConfig(std::string_view cfgfile) {
     config.vendor[3] = v[3];
   }
 
+  if (m.find("weight") != m.end()) {
+    config.weight = atoi(m["weight"].c_str());
+  }
+
+  if (m.find("width") != m.end()) {
+    config.width = atoi(m["width"].c_str());
+  }
+
   for (const std::string &p : pp) {
     if (!p.empty()) {
       config.pages.push_back(ParsePage(p));

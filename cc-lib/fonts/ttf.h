@@ -179,6 +179,11 @@ struct TTF {
     // not baseline, ascent, or descent.
     float extra_scale = 1.0f;
 
+    // TTF metdata. Weight=400 is normal.
+    int weight = 400;
+    // Width in 1-9; 5 for normal.
+    int width = 5;
+
     // Hint about whether anti-aliasing is appropriate.
     bool antialias = true;
 

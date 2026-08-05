@@ -29,7 +29,7 @@ SDLOBJECTS=$(SDLOPATH)/SDL.o $(SDLOPATH)/SDL_error.o $(SDLOPATH)/SDL_fatal.o $(S
 
 LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/png.o
 
 # old
 # XXX can't they just be in CXXFLAGS?
@@ -46,9 +46,14 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 OBJECTS=$(UTIL_OBJECTS)
 
 # XXX can maybe use miniz instead of zlib here? Is it for SDL?
-LFLAGS= $(ASAN) -L. $(LINKSDL) -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
+SDL_LFLAGS=$(LINKSDL)
+LFLAGS= $(ASAN) -L. -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
 
 crop.exe : crop.o $(OBJECTS) $(SDLOBJECTS)
+	$(CXX) $^ -o $@ $(LINKSDL) $(LFLAGS)
+	@echo -n "!"
+
+clip.exe : clip.o $(OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

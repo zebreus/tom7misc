@@ -628,7 +628,7 @@ int main(int argc, char **argv) {
       std::string out_file = file;
       auto it = available.files.find(file);
       if (it != available.files.end()) {
-        out_file = ModelUtil::UnixPath(it->second.path);
+        out_file = ModelUtil::UnixPath(std::filesystem::proximate(it->second.path));
       }
 
       for (const Replacement &rep : reps) {

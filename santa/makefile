@@ -1,5 +1,5 @@
 
-all : sophie.exe test.exe brute.exe min.exe mistaken.exe
+all : sophie.exe test.exe brute.exe min.exe mistaken.exe marbles.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
@@ -68,6 +68,10 @@ qr.exe : qr.o $(OBJECTS)
 	@echo -n "!"
 
 maketitle.exe : maketitle.o $(OBJECTS) $(BIT7_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+marbles.exe : marbles.o  $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

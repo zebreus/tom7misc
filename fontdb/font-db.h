@@ -156,7 +156,7 @@ struct FontDB {
   static std::string FlagString(const std::map<Flag, bool> &flags) {
     if (flags.empty()) return "_";
     std::string ret;
-    for (const auto [flag, val] : flags) {
+    for (const auto &[flag, val] : flags) {
       const auto [tc, fc] = FlagChar(flag);
       ret.push_back(val ? tc : fc);
     }

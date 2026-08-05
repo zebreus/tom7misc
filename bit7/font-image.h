@@ -64,6 +64,11 @@ struct Config {
 
   char vendor[4] = {'f', 'o', 'n', 't'};
 
+  // These are just used in TTF properties. 400 is normal weight.
+  int weight = 400;
+  // 5 is normal width (ranges from 1 for narrow to 9 for expanded).
+  int width = 5;
+
   // Details for composing the braille glyphs.
   std::optional<Image1> braille_on;
   std::optional<Image1> braille_off;
