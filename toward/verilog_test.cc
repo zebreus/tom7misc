@@ -129,6 +129,27 @@ endmodule
   CHECK(PropEq(*p, expected));
 }
 
+static void TestParseIte() {
+  std::string content = R"(
+module ite_test(a, b, c, out);
+  input a, b, c;
+  output out;
+  ite g0(.a(a), .b(b), .c(c), .O(out));
+endmodule
+  )";
+  World world;
+  world.symbol_names = {"a", "b", "c"};
+  std::optional<Prop> p = FromVerilog(world, content);
+  CHECK(p.has_value());
+
+  Prop a = Prop{.p = Var{.id = 0}};
+  Prop b = Prop{.p = Var{.id = 1}};
+  Prop c = Prop{.p = Var{.id = 2}};
+  Prop expected = Ite(a, b, c);
+
+  CHECK(PropEq(*p, expected));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -138,6 +159,7 @@ int main(int argc, char **argv) {
   TestParseABC();
   TestParseWorld();
   TestParseAssign();
+  TestParseIte();
 
   Print("OK\n");
   return 0;
