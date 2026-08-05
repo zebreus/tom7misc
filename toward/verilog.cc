@@ -118,6 +118,11 @@ std::optional<Prop> FromVerilog(const World &world, std::string_view content, co
                                    .a = GetProp(in_a),
                                    .b = GetProp(in_b)}};
 
+        } else if (tok == "nor2") {
+          *y_ptr = Prop{.p = Binop{.op = BinopOp::NOR,
+                                   .a = GetProp(in_a),
+                                   .b = GetProp(in_b)}};
+
         } else if (tok == "or2") {
           *y_ptr = Prop{.p = Binop{.op = BinopOp::OR,
                                    .a = GetProp(in_a),
@@ -135,9 +140,6 @@ std::optional<Prop> FromVerilog(const World &world, std::string_view content, co
         } else if (tok == "buf") {
           // Unexpected but easy to handle.
           *y_ptr = *GetProp(in_a);
-
-        } else if (tok == "nor2") {
-          LOG(FATAL) << "nor2 unsupported";
 
         } else if (tok == "xnor2") {
           LOG(FATAL) << "xnor2 unsupported";

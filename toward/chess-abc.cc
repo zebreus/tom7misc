@@ -34,7 +34,7 @@ static constexpr bool EXTENDED_EXDC = true;
 static constexpr bool ABC_XAG = true;
 static constexpr bool FINAL_SIMPLIFY = false;
 
-static constexpr std::string_view GENLIB = "aoin";
+static constexpr std::string_view GENLIB = "aoinr";
 
 
 static bool SampleMove(Position::Move m) {

@@ -32,6 +32,7 @@ struct Value {
 enum class BinopOp {
   AND,
   NAND,
+  NOR,
   OR,
   XOR,
 };
@@ -108,19 +109,20 @@ inline Prop And(Prop first, Args... args) {
   return (std::move(first) & ... & std::move(args));
 }
 
-template <typename... Args>
-inline Prop Nand(Prop first, Args... args) {
-  auto Nand2 = [](Prop a, Prop b) -> Prop {
-      return {.p = Binop{
-          .op = BinopOp::NAND,
-          .a = std::make_shared<Prop>(std::move(a)),
-          .b = std::make_shared<Prop>(std::move(b)),
-        }};
-    };
+inline Prop Nand(Prop a, Prop b) {
+  return {.p = Binop{
+      .op = BinopOp::NAND,
+      .a = std::make_shared<Prop>(std::move(a)),
+      .b = std::make_shared<Prop>(std::move(b)),
+    }};
+}
 
-  Prop res = std::move(first);
-  ((res = Nand2(std::move(res), std::move(args))), ...);
-  return res;
+inline Prop Nor(Prop a, Prop b) {
+  return {.p = Binop{
+      .op = BinopOp::NOR,
+      .a = std::make_shared<Prop>(std::move(a)),
+      .b = std::make_shared<Prop>(std::move(b)),
+    }};
 }
 
 

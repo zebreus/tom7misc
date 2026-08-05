@@ -17,6 +17,8 @@ struct MiniTable {
   static constexpr uint32_t OPT_NOT = 0b10;
   static constexpr uint32_t OPT_XOR = 0b100;
   static constexpr uint32_t OPT_OR = 0b1000;
+  static constexpr uint32_t OPT_NAND = 0b10000;
+  static constexpr uint32_t OPT_NOR = 0b100000;
 
   explicit MiniTable(uint32_t opts);
 

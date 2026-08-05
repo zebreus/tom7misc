@@ -102,6 +102,30 @@ static void TestNand() {
   CHECK(PropEq(Nand(p0, p1), -(p0 & p1)));
 }
 
+static void TestNor() {
+  std::vector<bool> assignments;
+  {
+    Prop p = Nor(True(), True());
+    CHECK(!EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nor(True(), False());
+    CHECK(!EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nor(False(), True());
+    CHECK(!EvaluateProp(assignments, p));
+  }
+  {
+    Prop p = Nor(False(), False());
+    CHECK(EvaluateProp(assignments, p));
+  }
+
+  Prop p0 = Prop{.p = Var{.id = 0}};
+  Prop p1 = Prop{.p = Var{.id = 1}};
+  CHECK(PropEq(Nor(p0, p1), -(p0 | p1)));
+}
+
 static void TestVariadicOr() {
   std::vector<bool> assignments;
   {
@@ -311,6 +335,7 @@ int main(int argc, char **argv) {
   TestUnop();
   TestBinop();
   TestNand();
+  TestNor();
   TestVariadicOr();
   TestVariadicAnd();
   TestPropVars();
