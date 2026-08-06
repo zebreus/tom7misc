@@ -73,6 +73,7 @@ struct Simplifier {
       Prop np;
       const Unop *ua = std::get_if<Unop>(&a.p);
       const Binop *bop = std::get_if<Binop>(&a.p);
+      const Ternop *top = std::get_if<Ternop>(&a.p);
 
       if (ua && ua->op == UnopOp::NOT) {
         np = *ua->a;
@@ -80,6 +81,12 @@ struct Simplifier {
         np = Not(*bop->a) | Not(*bop->b);
       } else if (bop && bop->op == BinopOp::OR) {
         np = Not(*bop->a) & Not(*bop->b);
+      } else if (bop && bop->op == BinopOp::NAND) {
+        np = *bop->a & *bop->b;
+      } else if (bop && bop->op == BinopOp::NOR) {
+        np = *bop->a | *bop->b;
+      } else if (top && top->op == TernopOp::ITE) {
+        np = Ite(*top->a, Not(*top->b), Not(*top->c));
       } else {
         np = -a;
       }
@@ -95,9 +102,9 @@ struct Simplifier {
         CHECK(oo.has_value()) << "This should always succeed when there "
           "are four or fewer variables..?";
 
-        const auto &[a, b, c, d, tt] = oo.value();
+        const auto &[qa, qb, qc, qd, tt] = oo.value();
 
-        Prop m = table->Minimal(a, b, c, d, tt);
+        Prop m = table->Minimal(qa, qb, qc, qd, tt);
         return std::make_pair(m, vs);
       }
 
@@ -132,9 +139,42 @@ struct Simplifier {
         CHECK(oo.has_value()) << "This should always succeed when there "
           "are four or fewer variables..?";
 
-        const auto &[a, b, c, d, tt] = oo.value();
+        const auto &[qa, qb, qc, qd, tt] = oo.value();
 
-        Prop m = table->Minimal(a, b, c, d, tt);
+        Prop m = table->Minimal(qa, qb, qc, qd, tt);
+        return std::make_pair(m, vs);
+      }
+
+    } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
+      const auto &[a, av] = SimplifyRec(*top->a);
+      const auto &[b, bv] = SimplifyRec(*top->b);
+      const auto &[c, cv] = SimplifyRec(*top->c);
+
+      LimitedSet vs = av;
+      for (int v : bv.vec) vs.Add(v);
+      for (int v : cv.vec) vs.Add(v);
+
+      Prop p = {Ternop{
+          .op = top->op,
+          .a = std::make_shared<Prop>(a),
+          .b = std::make_shared<Prop>(b),
+          .c = std::make_shared<Prop>(c),
+        }};
+
+      if (vs.Infinite()) {
+        seen.insert(p);
+        return std::make_pair(p, vs);
+
+      } else {
+
+        // Otherwise, use the minitable.
+        auto oo = MiniTable::GetQuad(p);
+        CHECK(oo.has_value()) << "This should always succeed when there "
+          "are four or fewer variables..?";
+
+        const auto &[qa, qb, qc, qd, tt] = oo.value();
+
+        Prop m = table->Minimal(qa, qb, qc, qd, tt);
         return std::make_pair(m, vs);
       }
 

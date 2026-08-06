@@ -34,7 +34,7 @@ static constexpr bool EXTENDED_EXDC = true;
 static constexpr bool ABC_XAG = true;
 static constexpr bool FINAL_SIMPLIFY = false;
 
-static constexpr std::string_view GENLIB = "aoinr";
+static constexpr std::string_view GENLIB = "aoinrq";
 
 
 static bool SampleMove(Position::Move m) {
@@ -154,12 +154,20 @@ static Prop OptimizeABC(const World &world,
                 cmds,
                 verilog_filename);
 
-
   Timer abc_timer;
   // Print("Run abc...\n");
   // Print(ABLUE("{}") "\n", cmdline);
   std::optional<std::string> abc_out = ProcessUtil::GetOutput(cmdline);
   [[maybe_unused]] double abc_sec = abc_timer.Seconds();
+
+  auto Error = [&]() -> std::string {
+      if (abc_out.has_value()) {
+        return std::format("\nABC output:\n{}\n", abc_out.value());
+      } else {
+        return "\n(no ABC output)\n";
+      }
+    };
+
   // Print("Ran abc in {}\n", ANSI::Time(abc_sec));
   CHECK(abc_out.has_value());
   // Print(AGREY("{}") "\n", abc_out.value());
@@ -170,9 +178,9 @@ static Prop OptimizeABC(const World &world,
   // std::optional<Prop> opt = FromAIGER(aiger);
 
   std::string verilog = Util::ReadFile(verilog_filename);
-  CHECK(!verilog.empty()) << verilog_filename;
+  CHECK(!verilog.empty()) << verilog_filename << Error();
   std::optional<Prop> opt = FromVerilog(world, verilog, inputs);
-  CHECK(opt.has_value()) << verilog_filename;
+  CHECK(opt.has_value()) << verilog_filename << Error();
 
   Util::RemoveFile(blif_filename);
   // Util::RemoveFile(verilog_filename);

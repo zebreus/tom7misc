@@ -63,7 +63,7 @@ std::optional<Prop> FromVerilog(const World &world,
             next == "and2" || next == "nand2" || next == "or2" ||
             next == "nor2" || next == "not" || next == "inv" ||
             next == "buf" || next == "xor2" || next == "xnor2" ||
-            next == "ite") {
+            next == "ite" || next == "zero" || next == "one") {
           break;
         }
         tidx++;
@@ -86,7 +86,8 @@ std::optional<Prop> FromVerilog(const World &world,
     } else if (tok == "and2" || tok == "nand2" || tok == "or2" ||
                tok == "nor2" ||
                tok == "not" || tok == "inv" || tok == "buf" ||
-               tok == "xor2" || tok == "xnor2" || tok == "ite") {
+               tok == "xor2" || tok == "xnor2" || tok == "ite" ||
+               tok == "zero" || tok == "one") {
       std::string in_a, in_b, in_c, out_y;
 
       if (tidx + 1 < tokens.size() && !tokens[tidx + 1].starts_with('.')) {
@@ -155,6 +156,12 @@ std::optional<Prop> FromVerilog(const World &world,
         } else if (tok == "buf") {
           // Unexpected but easy to handle.
           *y_ptr = *GetProp(in_a);
+
+        } else if (tok == "zero") {
+          *y_ptr = False();
+
+        } else if (tok == "one") {
+          *y_ptr = True();
 
         } else if (tok == "xnor2") {
           LOG(FATAL) << "xnor2 unsupported";

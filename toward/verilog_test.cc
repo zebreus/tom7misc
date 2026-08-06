@@ -48,6 +48,22 @@ endmodule
   CHECK(PropEq(*p, -False() & True()));
 }
 
+static void TestParseZeroOne() {
+  std::string content = R"(
+module zero_one(out);
+  output out;
+  wire w1, w2;
+  zero g0(.O(w1));
+  one g1(.O(w2));
+  and2 g2(.a(w1), .b(w2), .O(out));
+endmodule
+  )";
+  World world;
+  std::optional<Prop> p = FromVerilog(world, content);
+  CHECK(p.has_value());
+  CHECK(PropEq(*p, False() & True()));
+}
+
 static void TestParseFailure() {
   std::string content = "garbage that is not verilog";
   World world;
@@ -155,6 +171,7 @@ int main(int argc, char **argv) {
 
   TestParseSimple();
   TestParseConstants();
+  TestParseZeroOne();
   TestParseFailure();
   TestParseABC();
   TestParseWorld();

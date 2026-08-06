@@ -20,12 +20,25 @@
 #include "util.h"
 
 struct NodeCounts {
+  size_t num_ite = 0;
   size_t num_and = 0;
   size_t num_or = 0;
   size_t num_not = 0;
   size_t num_xor = 0;
   size_t num_nand = 0;
+  size_t num_nor = 0;
 };
+
+static NodeCounts &operator+=(NodeCounts &a, const NodeCounts &b) {
+  a.num_ite += b.num_ite;
+  a.num_and += b.num_and;
+  a.num_or += b.num_or;
+  a.num_not += b.num_not;
+  a.num_xor += b.num_xor;
+  a.num_nand += b.num_nand;
+  a.num_nor += b.num_nor;
+  return a;
+}
 
 static NodeCounts Count(const Prop &prop) {
   NodeCounts counts;
@@ -33,22 +46,31 @@ static NodeCounts Count(const Prop &prop) {
   while (!stack.empty()) {
     const Prop *p = stack.back();
     stack.pop_back();
-    if (const Binop *binop = std::get_if<Binop>(&p->p)) {
+
+    if (const Unop *unop = std::get_if<Unop>(&p->p)) {
+      if (unop->op == UnopOp::NOT) {
+        counts.num_not++;
+      }
+      stack.push_back(unop->a.get());
+
+    } else if (const Binop *binop = std::get_if<Binop>(&p->p)) {
       switch (binop->op) {
         case BinopOp::AND: counts.num_and++; break;
         case BinopOp::OR: counts.num_or++; break;
         case BinopOp::XOR: counts.num_xor++; break;
         case BinopOp::NAND: counts.num_nand++; break;
+        case BinopOp::NOR: counts.num_nor++; break;
       }
       stack.push_back(binop->a.get());
       stack.push_back(binop->b.get());
-    } else if (const Unop *unop = std::get_if<Unop>(&p->p)) {
-      if (unop->op == UnopOp::NOT) {
-        counts.num_not++;
+
+    } else if (const Ternop *ternop = std::get_if<Ternop>(&p->p)) {
+      if (ternop->op == TernopOp::ITE) {
+        counts.num_ite++;
       }
-      stack.push_back(unop->a.get());
     }
   }
+
   return counts;
 }
 
@@ -140,11 +162,7 @@ static void PrintStats(std::string_view dir) {
           total_size += size;
           total_shared += shared;
           errors += local_errors;
-          total.num_and += prop_counts.num_and;
-          total.num_or += prop_counts.num_or;
-          total.num_not += prop_counts.num_not;
-          total.num_xor += prop_counts.num_xor;
-          total.num_nand += prop_counts.num_nand;
+          total += prop_counts;
           if (local_example_error.has_value() && !example_error.has_value()) {
             example_error = local_example_error;
           }
@@ -164,15 +182,18 @@ static void PrintStats(std::string_view dir) {
         "Total shared: {} nodes\n"
         "Errors: {}\n"
         "Node counts:\n"
+        "  ITE: {}\n"
         "  AND: {}\n"
         "   OR: {}\n"
         "  NOT: {}\n"
         "  XOR: {}\n"
-        " NAND: {}\n",
+        " NAND: {}\n"
+        "  NOR: {}\n",
         dir, missing, done,
         total_size, total_shared, errors,
+        total.num_ite,
         total.num_and, total.num_or, total.num_not,
-        total.num_xor, total.num_nand);
+        total.num_xor, total.num_nand, total.num_nor);
 
   if (example_error.has_value()) {
     const auto &[pos, m] = example_error.value();

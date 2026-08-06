@@ -1,10 +1,11 @@
 #include "simplification.h"
 
+#include <variant>
+
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "prop.h"
-#include <variant>
 
 static void TestSimplificationBasic(const Simplification &simp) {
   Prop a = Prop{.p = Var{1}};
@@ -57,12 +58,34 @@ static void TestSimplificationDeMorgan(const Simplification &simp) {
   Prop p = -(-v1 & -v2 & -v3 & -v4 & -v5);
   Prop s = simp.Simplify(p);
 
-  CHECK(PropEq(s, p)) << "De Morgan simplification should maintain semantic equality.";
+  CHECK(PropEq(s, p)) << "De Morgan simplification should maintain "
+    "semantic equality.";
 
   // At the root, we expect it to be an OR proposition now.
   CHECK(std::holds_alternative<Binop>(s.p));
   if (const Binop *bop = std::get_if<Binop>(&s.p)) {
     CHECK(bop->op == BinopOp::OR) << "Expected an OR proposition at the root.";
+  }
+}
+
+static void TestSimplificationIte(const Simplification &simp) {
+  Prop a = Prop{.p = Var{1}};
+  Prop b = Prop{.p = Var{2}};
+  Prop c = Prop{.p = Var{3}};
+
+  std::vector<Prop> props = {
+    Ite(c, a, b),
+    Ite(True(), a, b),
+    Ite(False(), a, b),
+    Ite(c, a, a),
+    Ite(c, True(), False()),
+    Ite(c, Ite(a, b, c), Ite(b, c, a)),
+  };
+
+  for (const Prop &p : props) {
+    Prop s = simp.Simplify(p);
+    CHECK(PropEq(s, p))
+        << "Simplification of ITE should maintain semantic equality.";
   }
 }
 
@@ -75,6 +98,7 @@ int main(int argc, char **argv) {
   TestSimplificationConstants(simp);
   TestSimplificationFiveVars(simp);
   TestSimplificationDeMorgan(simp);
+  TestSimplificationIte(simp);
 
   Print("OK\n");
   return 0;

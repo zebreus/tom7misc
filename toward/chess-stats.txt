@@ -55,6 +55,101 @@ Node counts:
 
 (still fast, like 3s each)
 
+add NOR gate:
+
+Total size: 18567052 nodes
+Total shared: 4341390 nodes
+Errors: 0
+Node counts:
+  AND: 2860042
+   OR: 1588513
+  NOT: 2233278
+  XOR: 0
+ NAND: 339464
+  NOR: 3376820
+
+nice :)
+
+
+add ITE gate:
+
+Total size: 19974584 nodes
+Total shared: 4277483 nodes
+Errors: 0
+Node counts:
+  ITE: 211619
+  AND: 360564
+   OR: 606529
+  NOT: 239686
+  XOR: 0
+ NAND: 233667
+  NOR: 630225
+
+shared size does drop!
+
+without abc; just simplify/minitable:
+
+Total size: 16131190 nodes
+Total shared: 5588912 nodes
+Errors: 0
+Node counts:
+  ITE: 0
+  AND: 1800145
+   OR: 6261168
+  NOT: 4468
+  XOR: 0
+ NAND: 0
+  NOR: 0
+
+minitable has ITE support (no abc):
+
+Chess lib: chess
+Missing: 0
+4096 props loaded.
+Total size: 16415192 nodes
+Total shared: 5641135 nodes
+Errors: 0
+Node counts:
+  ITE: 283574
+  AND: 1799717
+   OR: 5977594
+  NOT: 4468
+  XOR: 0
+ NAND: 0
+  NOR: 0
+
+Fix minitable bugs:
+
+4096 props loaded.
+Total size: 16131190 nodes
+Total shared: 5588912 nodes
+Errors: 0
+Node counts:
+  ITE: 0
+  AND: 1800145
+   OR: 6261168
+  NOT: 4468
+  XOR: 0
+ NAND: 0
+  NOR: 0
+
+
+And run with abc now:
+
+4096 props loaded.
+Total size: 19974584 nodes
+Total shared: 4277483 nodes
+Errors: 0
+Node counts:
+  ITE: 211619
+  AND: 360564
+   OR: 606529
+  NOT: 239686
+  XOR: 0
+ NAND: 233667
+  NOR: 630225
+
+... identical to before, but no mysteries here. LGTM.
 
 ==================================================
 
