@@ -1,6 +1,7 @@
 
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -10,6 +11,7 @@
 #include "auto-histo.h"
 #include "base/print.h"
 #include "cell-library.h"
+#include "chess.h"
 #include "chessprop.h"
 #include "circuit.h"
 #include "drc.h"
@@ -31,6 +33,7 @@ static const Simplification &SimSingleton() {
   return *s;
 }
 
+[[maybe_unused]]
 static void RenderParallel() {
   CellLibrary library;
 
@@ -81,36 +84,20 @@ static void RenderParallel() {
   img.Save("parallel.png");
 }
 
-static void RenderOne(ChessProp::Details details) {
-  CellLibrary library;
-
-  World world;
-  ChessProp::Board board = ChessProp::NewBoard(&world);
-
-  const int srcr = 6;
-  const int srcc = 1;
-  const int dstr = 4;
-  const int dstc = 1;
-
-  Prop prop =
-    SimplifyProp(ChessProp::IsLegal(board, 6, 1, 4, 1, details));
-  prop = BalanceProp(prop);
-  prop = SimplifyProp(prop);
-  int size1 = PropSize(prop);
-  int sh1 = SharedPropSize(prop);
-  prop = SimSingleton().Simplify(prop);
-  int size2 = PropSize(prop);
-  int sh2 = SharedPropSize(prop);
-  Print("Prop size: {} ({}) -> {} ({})\n", size1, sh1, size2, sh2);
-  Print("Prop:\n{}\n", PropString(world, prop));
+static void RenderOneProp(const CellLibrary &library,
+                          const World &world,
+                          const Position::Move &move,
+                          const Prop &prop) {
+  Print(AYELLOW("== LAYOUT ==") "\n"
+        "Prop size: {} ({})\n", PropSize(prop), SharedPropSize(prop));
 
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   le->SetVerbose(1);
   le->SetWriteImages(false);
 
   std::string basename = std::format("one-legal-{}-{}",
-                                     ChessProp::Square(srcr, srcc),
-                                     ChessProp::Square(dstr, dstc));
+                                     ChessProp::Square(move.src_row, move.src_col),
+                                     ChessProp::Square(move.dst_row, move.dst_col));
 
   Layout layout = le->DoLayout(Span{prop});
   Print("Got layout! {}\n", LayoutEngine::LayoutInfo(layout));
@@ -144,8 +131,58 @@ static void RenderOne(ChessProp::Details details) {
 
   ImageRGBA img = RenderLayout(library, layout);
   img.Save(std::format("{}.png", basename));
+
 }
 
+static void RenderOne(ChessProp::Details details) {
+  CellLibrary library;
+
+  World world;
+  ChessProp::Board board = ChessProp::NewBoard(&world);
+
+  Position::Move move = {
+    .src_row = 6,
+    .src_col = 1,
+    .dst_row = 4,
+    .dst_col = 1,
+  };
+
+  Prop prop =
+    SimplifyProp(ChessProp::IsLegal(board,
+                                    move.src_row, move.src_col, move.dst_row, move.dst_col,
+                                    details));
+  prop = BalanceProp(prop);
+  prop = SimplifyProp(prop);
+  int size1 = PropSize(prop);
+  int sh1 = SharedPropSize(prop);
+  prop = SimSingleton().Simplify(prop);
+  int size2 = PropSize(prop);
+  int sh2 = SharedPropSize(prop);
+  Print("Prop size: {} ({}) -> {} ({})\n", size1, sh1, size2, sh2);
+  Print("Prop:\n{}\n", PropString(world, prop));
+
+  RenderOneProp(library, world, move, prop);
+}
+
+static void RenderFrom(std::string_view prop_dir,
+                       const Position::Move &m) {
+  CellLibrary library;
+
+  // Get variable names for pretty-printing.
+  // We assume that these indices haven't changed compared to the serialized
+  // proposition, which just uses numbers!
+  World world;
+  (void)ChessProp::NewBoard(&world);
+
+  std::string file = std::format("{}/islegal-{}-{}.prop", prop_dir,
+                                 ChessProp::Square(m.src_row, m.src_col),
+                                 ChessProp::Square(m.dst_row, m.dst_col));
+
+  std::optional<Prop> oprop = ParseProp(Util::ReadFile(file));
+  CHECK(oprop.has_value()) << file;
+
+  RenderOneProp(library, world, m, oprop.value());
+}
 
 struct ChessDemo {
   CellLibrary library;
@@ -286,8 +323,17 @@ int main(int argc, char **argv) {
 
   // RenderParallel();
 
-  RenderOne(ChessProp::REAL_CHESS);
+  // RenderOne(ChessProp::REAL_CHESS);
   // RenderOne(ChessProp::KID_CHESS);
+
+  const Position::Move b2b4 = {
+    .src_row = 6,
+    .src_col = 1,
+    .dst_row = 4,
+    .dst_col = 1,
+  };
+
+  RenderFrom("chess", b2b4);
 
   return 0;
 }

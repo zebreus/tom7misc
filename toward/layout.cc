@@ -711,8 +711,10 @@ struct LayoutEngineImpl : public LayoutEngine {
             canvas.AddNext(cell_pos, cell, std::move(ip));
 
             switch (cell.gate) {
-            case AND0110: num_and++; break;
-            case OR1100: num_or++; break;
+            case AND0110:
+            case NAND0011: num_and++; break;
+            case OR1100:
+            case NOR1100: num_or++; break;
             case COMBINE01:
             case COMBINE10: num_comb++; break;
             case NOT0:
@@ -1031,6 +1033,20 @@ struct LayoutEngineImpl : public LayoutEngine {
                 return;
               }
               AcquireClearance(c, OR1100);
+
+            } else if (b->op == BinopOp::NAND) {
+              if (PlaceAlignedUnary(c, NAND0011,
+                                    Span{*b->a, *b->b, *b->a, *b->b})) {
+                return;
+              }
+              AcquireClearance(c, NAND0011);
+
+            } else if (b->op == BinopOp::NOR) {
+              if (PlaceAlignedUnary(c, NOR1100,
+                                    Span{*b->a, *b->b, *b->a, *b->b})) {
+                return;
+              }
+              AcquireClearance(c, NOR1100);
 
             } else {
               LOG(FATAL) << "Unexpected binop?";
@@ -1500,9 +1516,9 @@ struct LayoutEngineImpl : public LayoutEngine {
           if (std::holds_alternative<Var>(p.p)) {
             count_var++;
           } else if (const Binop *b = std::get_if<Binop>(&p.p)) {
-            if (b->op == BinopOp::AND) {
+            if (b->op == BinopOp::AND || b->op == BinopOp::NAND) {
               count_and++;
-            } else if (b->op == BinopOp::OR) {
+            } else if (b->op == BinopOp::OR || b->op == BinopOp::NOR) {
               count_or++;
             }
           } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
@@ -1590,7 +1606,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     for (const LC &lc : new_layer) {
       switch (lc.cell.gate) {
       case Gate::AND0110:
+      case Gate::NAND0011:
       case Gate::OR1100:
+      case Gate::NOR1100:
       case Gate::NOT0:
       case Gate::NOT1:
       case Gate::NOT01:
@@ -1847,7 +1865,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   Layout DoLayoutInternal(std::span<const Prop> props_in) {
     // std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
 
-    // We support AND, OR, NOT.
+    // We support AND, NAND, OR, NOR, NOT.
     std::vector<Prop> props = VectorMap(props_in, NormalizeRemoveXor);
 
     // All the layers, annotated with props. We'll add to the front
