@@ -146,6 +146,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Just stats for reporting.
   int num_and = 0, num_xchg = 0, num_or = 0, num_wire = 0;
   int num_sep = 0, num_dup = 0, num_comb = 0, num_not = 0;
+  int num_ite = 0;
   int num_spaced_layers = 0;
   int resorted = 0;
 
@@ -391,6 +392,10 @@ struct LayoutEngineImpl : public LayoutEngine {
             CountSubterms(*bop->b, t);
           } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
             CountSubterms(*uop->a, t);
+          } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
+            CountSubterms(*top->a, t);
+            CountSubterms(*top->b, t);
+            CountSubterms(*top->c, t);
           }
         };
       for (Chute &chute : chutes) {
@@ -489,8 +494,9 @@ struct LayoutEngineImpl : public LayoutEngine {
             chute2.desire = UNSEPARATE_RHS;
           }
 
-        } else if (std::holds_alternative<Binop>(prop.p)) {
-          // Our binops target mixed outputs. Once we know we aren't
+        } else if (std::holds_alternative<Binop>(prop.p) ||
+                   std::holds_alternative<Ternop>(prop.p)) {
+          // Our binops (and ite) target mixed outputs. Once we know we aren't
           // duplicating anything, we want to unseparate this
           // (anywhere) so that we can decompose it.
           chute1.desire = UNSEPARATE_LHS;
@@ -508,16 +514,17 @@ struct LayoutEngineImpl : public LayoutEngine {
       }
     }
 
-    // Similarly, decomposing a mixed binary proposition gets us
-    // separated inputs (which we want) as well as simplifying.
-    // But we should only do this if it's unique, or else we
-    // can get exponential blow-up.
+    // Similarly, decomposing a mixed binary (or ternary) proposition
+    // gets us separated inputs (which we want) as well as
+    // simplifying. But we should only do this if it's unique, or else
+    // we can get exponential blow-up.
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       const Prop &prop = chute.prop;
       if (!chute.done &&
           chute.type == CType::MIXED &&
           (std::holds_alternative<Binop>(chute.prop.p) ||
+           std::holds_alternative<Ternop>(chute.prop.p) ||
            std::holds_alternative<Value>(chute.prop.p)) &&
           // Must be unique.
           subterm_count[prop].any == 1) {
@@ -715,6 +722,7 @@ struct LayoutEngineImpl : public LayoutEngine {
             case NAND0011: num_and++; break;
             case OR1100:
             case NOR1100: num_or++; break;
+            case ITE10: num_ite++; break;
             case COMBINE01:
             case COMBINE10: num_comb++; break;
             case NOT0:
@@ -1017,9 +1025,7 @@ struct LayoutEngineImpl : public LayoutEngine {
             }
             AcquireClearance(c, g);
 
-          } else {
-            const Binop *b = std::get_if<Binop>(&chute.prop.p);
-            CHECK(b != nullptr);
+          } else if (const Binop *b = std::get_if<Binop>(&chute.prop.p)) {
             if (b->op == BinopOp::AND) {
               if (PlaceAlignedUnary(c, AND0110,
                                     Span{*b->a, *b->a, *b->b, *b->b})) {
@@ -1051,6 +1057,22 @@ struct LayoutEngineImpl : public LayoutEngine {
             } else {
               LOG(FATAL) << "Unexpected binop?";
             }
+          } else if (const Ternop *t = std::get_if<Ternop>(&chute.prop.p)) {
+            if (t->op == TernopOp::ITE) {
+              if (PlaceAlignedUnary(c, ITE10,
+                                    // true branch on left (mixed),
+                                    // condition in center (separated 1, 0),
+                                    // false branch on right (mixed)
+                                    Span{*t->b, *t->a, *t->a, *t->c})) {
+                return;
+              }
+              AcquireClearance(c, ITE10);
+            } else {
+              LOG(FATAL) << "Unexpected ternop?";
+            }
+
+          } else {
+            LOG(FATAL) << "Unexpected mixed prop?";
           }
 
         } else {
@@ -1506,6 +1528,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       int count_and = 0;
       int count_or = 0;
       int count_not = 0;
+      int count_ite = 0;
       for (const LC &lc : last) {
         for (const Prop &p : lc.inprops) {
           size_t ps = PropSize(p);
@@ -1524,6 +1547,10 @@ struct LayoutEngineImpl : public LayoutEngine {
           } else if (const Unop *u = std::get_if<Unop>(&p.p)) {
             if (u->op == UnopOp::NOT) {
               count_not++;
+            }
+          } else if (const Ternop *t = std::get_if<Ternop>(&p.p)) {
+            if (t->op == TernopOp::ITE) {
+              count_ite++;
             }
           }
         }
@@ -1566,18 +1593,18 @@ struct LayoutEngineImpl : public LayoutEngine {
             status->Status(
                 "{}\n"
                 "Gates: {} " ABLUE("∧") " {} xchg {} " ABLUE("∨")
-                " {} " ABLUE("|") " {} sep {} dup {} comb\n"
+                " {} " ABLUE("|") " {} sep {} dup {} comb {} ite\n"
                 "[" AWHITE("Layer {}") "] {} max prop, {} total. {} inv. "
                 "{} resort. "
                 "Width: {}.\n"
-                "{} top: {} v {} and {} or {} not",
+                "{} top: {} v {} and {} or {} not {} ite",
                 histo.OneLineANSI(75),
                 num_and, num_xchg, num_or, num_wire, num_sep,
-                num_dup, num_comb,
+                num_dup, num_comb, num_ite,
                 layers.size(), max_prop_size, total_prop_size,
                 inversions, resorted,
                 top_layer_width,
-                last.size(), count_var, count_and, count_or, count_not);
+                last.size(), count_var, count_and, count_or, count_not, count_ite);
           });
       }
     }
@@ -1613,6 +1640,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       case Gate::NOT1:
       case Gate::NOT01:
       case Gate::NOT:
+      case Gate::ITE10:
         return true;
 
       case Gate::DUP0:
@@ -1747,6 +1775,13 @@ struct LayoutEngineImpl : public LayoutEngine {
           size += Flatten(*bop->a);
         } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
           size += Flatten(*uop->a);
+        } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
+          // Careful: The physical order for the ITE gate is
+          // true branch (mixed), condition (two separated), false branch.
+          // So the in-order traversal should put b before a. a could
+          // come before or after the prop itself; unclear which is better.
+          size += Flatten(*top->b);
+          size += Flatten(*top->a);
         }
 
         int pos = next_pos++;
@@ -1755,6 +1790,8 @@ struct LayoutEngineImpl : public LayoutEngine {
         // Then descend right.
         if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
           size += Flatten(*bop->b);
+        } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
+          size += Flatten(*top->c);
         }
 
         size++;

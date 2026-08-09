@@ -40,6 +40,7 @@ std::string_view GateString(Gate g) {
   case NOR1100: return "NOR1100";
   case XOR1010: return "XOR1010";
   case XOR1100: return "XOR1100";
+  case ITE10: return "ITE10";
   case NOT: return "NOT";
   case NOT01: return "NOT01";
   case NOT0: return "NOT0";
@@ -106,6 +107,7 @@ std::pair<int, int> GateArity(Gate g) {
   case NOR1100: return {4, 1};
   case XOR1010: return {4, 1};
   case XOR1100: return {4, 1};
+  case ITE10: return {4, 1};
   case NOT: return {1, 1};
   case NOT0:
   case NOT1: return {1, 1};
@@ -307,6 +309,26 @@ std::vector<Func> TransformCell(const Cell &cell,
 
     out[OutputIdx(0)] = Func{
       .prop = fa.prop | fb.prop,
+      .type = CType::MIXED,
+    };
+
+    break;
+  }
+
+  case ITE10: {
+    const Func &fa = in[InputIdx(0)];
+    const Func &fb = in[InputIdx(1)];
+    const Func &fc = in[InputIdx(2)];
+    const Func &fd = in[InputIdx(3)];
+
+    CHECK(fa.type == CType::MIXED);
+    CHECK(fb.type == CType::ONE);
+    CHECK(fc.type == CType::ZERO);
+    CHECK(fd.type == CType::MIXED);
+
+    // Assume fb.prop = fc.prop.
+    out[OutputIdx(0)] = Func{
+      .prop = Ite(fb.prop, fa.prop, fd.prop),
       .type = CType::MIXED,
     };
 
@@ -587,6 +609,7 @@ static constexpr std::string_view GateToCode(Gate g) {
   case OR1100:      return "or";
   case NOR1100:     return "nr";
   case XOR1100:     return "xo";
+  case ITE10:       return "it";
   case NOT:         return "no";
   case NOT0:        return "n0";
   case NOT1:        return "n1";
