@@ -18,10 +18,13 @@
 #include "chess.h"
 #include "prop.h"
 #include "randutil.h"
+#include "small-int-set.h"
 
 using Board = ChessProp::Board;
 using enum ChessProp::Type;
 using Details = ChessProp::Details;
+
+using SquareSet = SmallIntSet<64>;
 
 static constexpr bool VERBOSE = false;
 
@@ -292,6 +295,10 @@ static Prop KingAttackedAfter(const Board &board_before,
 
   Prop any_attacked = False();
 
+  // PERF: I think we can also skip intermediate squares when the
+  // move is horizontal or diagonal; these can't contain the king
+  // if the move is legal.
+
   // Loop over all possible king positions. Although discoveries can
   // only happen through the newly vacant src square, we still need to
   // check that we successfully *blocked* check if the king *was* in
@@ -313,6 +320,126 @@ static Prop KingAttackedAfter(const Board &board_before,
   }
 
   return any_attacked;
+}
+
+// Return the step (-1, 0, or 1) in the row and column directions for
+// a queen-like move. Returns nullopt if this is not such a move.
+static std::optional<std::pair<int, int>>
+GetDir(int srcr, int srcc, int dstr, int dstc) {
+  // (0, 0) is not a valid direction.
+  if (srcr == dstr && srcc == dstc) return std::nullopt;
+  if (srcr == dstr) {
+    // Horizontal
+    return {std::make_pair(0, srcc < dstc ? 1 : -1)};
+  }
+  if (srcc == dstc) {
+    // Vertical
+    return {std::make_pair(srcr < dstr ? 1 : -1, 0)};
+  }
+
+  int dr = dstr - srcr;
+  int dc = dstc - srcc;
+  if (dr == dc || dr == -dc) {
+    // Diagonal
+    return {std::make_pair(dr > 0 ? 1 : -1, dc > 0 ? 1 : -1)};
+  }
+
+  return std::nullopt;
+}
+
+static inline int Square(int r, int c) {
+  return r * 8 + c;
+}
+
+// For horizontal and vertical move shapes, this is the inclusive set
+// of squares between the source and destination. For other moves
+// (e.g. knight, or invalid moves) it is the empty set.
+static SquareSet GetRay(int srcr, int srcc, int dstr, int dstc) {
+  CHECK(srcr >= 0 && srcc >= 0 && dstr >= 0 && dstc >= 0);
+  CHECK(srcr < 8 && srcc < 8 && dstr < 8 && dstc < 8);
+
+  std::optional<std::pair<int, int>> odir = GetDir(srcr, srcc,
+                                                   dstr, dstc);
+
+  if (!odir.has_value()) return SquareSet();
+
+  SquareSet ret;
+  const auto &[dr, dc] = odir.value();
+  for (int r = srcr + dr, c = srcc + dc; !(r == dstr && c == dstc); ) {
+    ret.Add(Square(r, c));
+    r += dr;
+    c += dc;
+  }
+  ret.Add(Square(dstr, dstc));
+  return ret;
+
+#if 0
+  if (srcr == dstr) {
+    // Horizontal move.
+    if (srcc == dstc) return SquareSet();
+
+    SquareSet ret;
+    if (dstc < srcc) std::swap(dstc, srcc);
+    while (srcc <= dstc) {
+      ret.Add(Square(srcr, srcc));
+      srcc++;
+    }
+
+    return ret;
+  } else if (srcc == dstc) {
+    // Vertical move.
+    if (srcr == dstr) return SquareSet();
+
+    SquareSet ret;
+    if (dstr < srcr) std::swap(dstr, srcr);
+    while (srcr <= dstr) {
+      ret.Add(Square(srcr, srcc));
+      srcr++;
+    }
+
+    return ret;
+  } else {
+    // Diagonal
+  }
+#endif
+}
+
+// Another approach: For a non-king and non-ep move, we compute the
+// set of squares for which the king might have had its attacked
+// status changed. This prevents us from having to test for
+// pre-existing check everywhere on the board, even when moves aren't
+// related; instead we just use the existing check status. For some
+// moves (e.g. a2a3) the king cannot have a discovered check!
+static std::unordered_set<std::pair<int, int>>
+KingAttackChanged(const Board &board_before,
+                  int srcr, int srcc, int dstr, int dstc) {
+
+  SquareSet ray = GetRay(srcr, srcc, dstr, dstc);
+
+  // Test all king positions.
+  for (int kr = 0; kr < 8; kr++) {
+    for (int kc = 0; kc < 8; kc++) {
+      // Since we know this is not a king move (and we can assume it
+      // is otherwise valid) we do not need to include the
+      // src and dst.
+      if ((kr == srcr && kc == srcc) ||
+          (kr == dstr && kc == dstc)) {
+        continue;
+      }
+
+      // Also, for queen-like moves, the king cannot occupy intermediate
+      // squares if the move is legal.
+      if (ray.Contains(Square(kr, kc)))
+        continue;
+
+      // Now, for each of those king positions (which is most of the
+      // squares on the board), we see whether it's possible for a
+      // change at
+
+      // XXX ...
+    }
+  }
+
 }
 
 static Prop EnPassantLegal(const Board &board,
@@ -383,31 +510,6 @@ static Prop PawnLegal(const Board &board,
   // queen, which is the assumption.
 
   return Or(legal_single, legal_double, legal_capture);
-}
-
-// Return the step (-1, 0, or 1) in the row and column directions for
-// a queen-like move. Returns nullopt if this is not such a move.
-static std::optional<std::pair<int, int>>
-GetDir(int srcr, int srcc, int dstr, int dstc) {
-  // (0, 0) is not a valid direction.
-  if (srcr == dstr && srcc == dstc) return std::nullopt;
-  if (srcr == dstr) {
-    // Horizontal
-    return {std::make_pair(0, srcc < dstc ? 1 : -1)};
-  }
-  if (srcc == dstc) {
-    // Vertical
-    return {std::make_pair(srcr < dstr ? 1 : -1, 0)};
-  }
-
-  int dr = dstr - srcr;
-  int dc = dstc - srcc;
-  if (dr == dc || dr == -dc) {
-    // Diagonal
-    return {std::make_pair(dr > 0 ? 1 : -1, dc > 0 ? 1 : -1)};
-  }
-
-  return std::nullopt;
 }
 
 // Normal rook moves; castling is represented by moving the king.
@@ -576,15 +678,8 @@ Prop ChessProp::IsLegal(const Board &board,
   CHECK(dstr >= 0 && dstr < 8);
   CHECK(dstc >= 0 && dstc < 8);
 
-  // PERF: Many pairs of squares can never have a legal move!
-  // The code below should already compute an expression equivalent
-  // to false for them, but we should make sure it optimizes
-  // away.
-
-  // PERF: These generally all need to check that the destination
-  // is empty and/or capturable. So we should compute those
-  // expressions up front and factor them out, or make sure that
-  // optimization can do this.
+  // Note: Many pairs of squares can never have a legal move!
+  // The below should compute an expression equivalent to false.
 
   // Self-moves are never legal.
   if (srcr == dstr && srcc == dstc) return False();
