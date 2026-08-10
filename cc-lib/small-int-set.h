@@ -35,12 +35,7 @@ struct SmallIntSet {
 
   // All elements.
   static SmallIntSet Top() {
-    if constexpr (RADIX == 64) {
-      // 1 << 64 is still undefined behavior!
-      return ~uint64_t{0};
-    } else {
-      return SmallIntSet((uint64_t{1} << RADIX) - 1);
-    }
+    return SmallIntSet(Mask());
   }
 
   // Empty.
@@ -74,6 +69,11 @@ struct SmallIntSet {
     bits = 0;
   }
 
+  // Negate all bits.
+  void Negate() {
+    bits = (~bits) & Mask();
+  }
+
   // Takes time proportional to N.
   inline int operator[](int idx) const;
 
@@ -85,6 +85,12 @@ struct SmallIntSet {
   static SmallIntSet Union(const SmallIntSet &a,
                            const SmallIntSet &b) {
     return SmallIntSet(a.bits | b.bits);
+  }
+
+  static SmallIntSet Negation(const SmallIntSet &a) {
+    SmallIntSet na = a;
+    na.Negate();
+    return na;
   }
 
   // true if a <= b.
@@ -167,6 +173,15 @@ struct SmallIntSet {
 
 
  private:
+  static uint64_t Mask() {
+    if constexpr (RADIX == 64) {
+      // 1 << 64 is still undefined behavior!
+      return ~uint64_t{0};
+    } else {
+      return (uint64_t{1} << RADIX) - 1;
+    }
+  }
+
   SmallIntSet(uint64_t b) : bits(b) {}
   uint64_t bits = 0;
 };

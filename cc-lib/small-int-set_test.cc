@@ -97,6 +97,25 @@ static void Simple() {
   ITERATE_LIST(63);
   ITERATE_LIST(0, 0);
   ITERATE_LIST(63, 2, 2, 0, 63, 31);
+
+  {
+    SmallIntSet<N> s;
+    for (int i : {0, 1, 33, 31, 63, 7, 8, 9}) {
+      if (i < N) s.Add(i);
+    }
+
+    SmallIntSet<N> ns = s;
+    ns.Negate();
+
+    CHECK(ns == SmallIntSet<N>::Negation(s));
+
+    for (int i = 0; i < N; i++) {
+      CHECK(s.Contains(i) != ns.Contains(i));
+    }
+
+    CHECK(SmallIntSet<N>::Union(s, ns) == SmallIntSet<N>::Top());
+    CHECK(SmallIntSet<N>::Intersection(s, ns).Empty());
+  }
 }
 
 int main(int argc, char **argv) {
