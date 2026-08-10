@@ -155,7 +155,7 @@ static void TestKingMoving() {
             "k3r3/8/8/8/4K3/8/8/8 w - - 0 1", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
-  Print("King Moving OK.\n");
+  Print("King moving OK.\n");
 }
 
 static void TestOutOfCheck() {
@@ -166,7 +166,21 @@ static void TestOutOfCheck() {
             "w KQkq - 0 1", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
-  Print("Out of Check OK.\n");
+  Print("Out of check OK.\n");
+}
+
+static void TestDoubleCheck() {
+  Position pos;
+  // White is in check from the rook and pawn. Can't
+  // escape check except by moving the king.
+  CHECK(Position::ParseFEN(
+            "4Q3/6B1/2r4Q/1P5R/1N1p3R/2K1P3/4N3/7B w - - 0 1",
+            &pos));
+  CHECK(pos.IsInCheck());
+  CHECK(!pos.IsMated());
+  CheckAttacked(pos);
+  CheckAllMovesAgree(pos);
+  Print("Double check OK.\n");
 }
 
 static void PropSizeHisto() {
@@ -204,7 +218,6 @@ int main(int argc, char **argv) {
 
   Print("\nTest Attacked / IsLegal...\n");
 
-  #if 1
   TestStartingPosition();
   TestCastling();
   TestOutOfCheck();
@@ -213,7 +226,7 @@ int main(int argc, char **argv) {
   TestEnPassantOutOfCheck();
   TestEnPassantOutOfCheck2();
   TestEnPassantNotIntoCheck();
-  #endif
+  TestDoubleCheck();
 
   Print("Prop size histo:\n");
 

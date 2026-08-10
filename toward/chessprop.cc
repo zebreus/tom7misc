@@ -351,6 +351,10 @@ static inline int Square(int r, int c) {
   return r * 8 + c;
 }
 
+static inline std::pair<int, int> UnSquare(int sq) {
+  return std::make_pair(sq / 8, sq % 8);
+}
+
 // For horizontal and vertical move shapes, this is the inclusive set
 // of squares between the source and destination. For other moves
 // (e.g. knight, or invalid moves) it is the empty set.
@@ -365,6 +369,7 @@ static SquareSet GetRay(int srcr, int srcc, int dstr, int dstc) {
 
   SquareSet ret;
   const auto &[dr, dc] = odir.value();
+  ret.Add(Square(srcr, srcc));
   for (int r = srcr + dr, c = srcc + dc; !(r == dstr && c == dstc); ) {
     ret.Add(Square(r, c));
     r += dr;
@@ -372,36 +377,16 @@ static SquareSet GetRay(int srcr, int srcc, int dstr, int dstc) {
   }
   ret.Add(Square(dstr, dstc));
   return ret;
+}
 
-#if 0
-  if (srcr == dstr) {
-    // Horizontal move.
-    if (srcc == dstc) return SquareSet();
+static inline bool IsKnightMove(int srcr, int srcc, int dstr, int dstc) {
+  // This is simpler than the above because we don't need to
+  // check anything in between.
+  int distr = std::abs(dstr - srcr);
+  int distc = std::abs(dstc - srcc);
 
-    SquareSet ret;
-    if (dstc < srcc) std::swap(dstc, srcc);
-    while (srcc <= dstc) {
-      ret.Add(Square(srcr, srcc));
-      srcc++;
-    }
-
-    return ret;
-  } else if (srcc == dstc) {
-    // Vertical move.
-    if (srcr == dstr) return SquareSet();
-
-    SquareSet ret;
-    if (dstr < srcr) std::swap(dstr, srcr);
-    while (srcr <= dstr) {
-      ret.Add(Square(srcr, srcc));
-      srcr++;
-    }
-
-    return ret;
-  } else {
-    // Diagonal
-  }
-#endif
+  // Must be an L-shaped move.
+  return (distr == 2 && distc == 1) || (distr == 1 && distc == 2);
 }
 
 // Another approach: For a non-king and non-ep move, we compute the
@@ -410,37 +395,176 @@ static SquareSet GetRay(int srcr, int srcc, int dstr, int dstc) {
 // pre-existing check everywhere on the board, even when moves aren't
 // related; instead we just use the existing check status. For some
 // moves (e.g. a2a3) the king cannot have a discovered check!
-static std::unordered_set<std::pair<int, int>>
-KingAttackChanged(const Board &board_before,
-                  int srcr, int srcc, int dstr, int dstc) {
+static SquareSet KingCheckCheck(
+    // Places where the king might be.
+    SquareSet king_squares,
+    // Squares that we now know are empty.
+    SquareSet cleared_squares,
+    // Squares that were made into white non-king
+    // material.
+    SquareSet made_white_squares) {
 
-  SquareSet ray = GetRay(srcr, srcc, dstr, dstc);
+  SquareSet check_kings;
+  for (int ksq : king_squares) {
+    if (cleared_squares.Contains(ksq)) continue;
+    if (made_white_squares.Contains(ksq)) continue;
 
-  // Test all king positions.
-  for (int kr = 0; kr < 8; kr++) {
-    for (int kc = 0; kc < 8; kc++) {
-      // Since we know this is not a king move (and we can assume it
-      // is otherwise valid) we do not need to include the
-      // src and dst.
-      if ((kr == srcr && kc == srcc) ||
-          (kr == dstr && kc == dstc)) {
-        continue;
+    // Supposing the king is here, where could it be
+    // attacked from? Are any of those squares affected?
+    const auto &[kr, kc] = UnSquare(ksq);
+
+    for (int s = 0; s < 64; s++) {
+      // Can't attack itself.
+      if (s == ksq) continue;
+
+      const auto &[sr, sc] = UnSquare(s);
+
+      if (IsKnightMove(sr, sc, kr, kc)) {
+        // For check given by a knight, it cannot be blocked. So it's
+        // only affected if it was a made_white_square (capturing the
+        // attacking piece).
+        if (made_white_squares.Contains(s)) {
+          check_kings.Add(ksq);
+          goto next_k;
+        }
+      } else {
+        SquareSet ray = GetRay(sr, sc, kr, kc);
+
+        for (int rsq : ray) {
+          // If the ray includes a cleared square or
+          // a square made white, then this check could
+          // be affected.
+          // PERF: We can do better here, because if
+          // the ray is completely included within
+          // the attacking ray, we know it will still
+          // be blocked.
+
+          if (made_white_squares.Contains(rsq) ||
+              cleared_squares.Contains(rsq)) {
+            check_kings.Add(ksq);
+            goto next_k;
+          }
+        }
       }
+    }
 
-      // Also, for queen-like moves, the king cannot occupy intermediate
-      // squares if the move is legal.
-      if (ray.Contains(Square(kr, kc)))
-        continue;
+  next_k:;
+  }
 
-      // Now, for each of those king positions (which is most of the
-      // squares on the board), we see whether it's possible for a
-      // change at
+  return check_kings;
+}
 
-      // XXX ...
+// New approach:
+// True if the king is in check after this move. Must not be a king
+// move. Depends on knowing whether the king was in check before the move.
+static Prop KingAttackedAfter2(const Board &board_before,
+                               int srcr, int srcc, int dstr, int dstc) {
+  Prop was_in_check = board_before.props[ChessProp::CheckIdx()];
+
+  // The strategy here is to test all king squares. If check might
+  // have changed at that square, then we do the full test. Otherwise
+  // we just return the current value. Remember that even when we can
+  // know that check was blocked (because we put a white piece in the
+  // destination square), there is the possibility that the king is
+  // in a double check. Although it is possible to reason about what
+  // double-checks are possible, we aren't doing that, so we need
+  // to just recompute the whole function.
+
+  SquareSet king_squares = SquareSet::Top();
+  // It isn't a king move, so the king can't be here.
+  king_squares.Remove(Square(srcr, srcc));
+  king_squares.Remove(Square(dstr, dstc));
+  // And for a queen-like move, the squares must have been clear
+  // for the move to be legal. So the white king can't be there.
+  for (int rsq : GetRay(srcr, srcc, dstr, dstc)) {
+    king_squares.Remove(rsq);
+  }
+
+  SquareSet cleared;
+  cleared.Add(Square(srcr, srcc));
+  // TODO: en passant here too.
+
+  SquareSet filled;
+  filled.Add(Square(dstr, dstc));
+
+  SquareSet check_kings = KingCheckCheck(king_squares, cleared, filled);
+
+  // Now compute the updated board proposition.
+  Board board = board_before;
+  // The source is empty.
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    if (t == EMPTY) {
+      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = True();
+    } else {
+      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = False();
     }
   }
 
+  // Squares on the inside of the ray must be empty.
+  for (int rsq : GetRay(srcr, srcc, dstr, dstc)) {
+    const auto &[r, c] = UnSquare(rsq);
+    // Starting and ending are handled separately, because we also
+    // need those for knight moves.
+    if (r == srcr && c == srcc) continue;
+    if (r == dstr && c == dstc) continue;
+
+    for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+      if (t == EMPTY) {
+        board.props[ChessProp::HasContentsIdx(r, c, t)] = True();
+      } else {
+        board.props[ChessProp::HasContentsIdx(r, c, t)] = False();
+      }
+    }
+  }
+
+  // PERF: Depending on the move shape, we can also know the specific
+  // piece. It's not that interesting for testing legality (generally
+  // we just need to know it's a white piece).
+  // And the destination has the source piece.
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] =
+      board_before.props[ChessProp::HasContentsIdx(srcr, srcc, t)];
+  }
+
+  // But as an optimization, we can actually assume it now contains a
+  // white piece (and not the King). All legal moves do this. This
+  // helps interrupt rays unconditionally (not empty, not an attacking
+  // piece).
+  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+    if (t == EMPTY || ChessProp::IsBlackPiece(t) || t == WHITE_KING)
+      board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] = False();
+  }
+
+  // Now we have two cases. If it's in the set to check, then we
+  // perform the full attacked test. Otherwise, we use the existing
+  // value.
+
+
+  // First, all of the full checks.
+  Prop full_check = False();
+  for (int ksq : check_kings) {
+    const auto &[kr, kc] = UnSquare(ksq);
+    full_check = full_check |
+      (HasContents(board, kr, kc, WHITE_KING) &
+       ChessProp::Attacked(board, kr, kc));
+  }
+
+  // Then all the squares where check will be unaffected.
+  Prop unaffected_king = False();
+  for (int ksq : SquareSet::Negation(check_kings)) {
+    const auto &[kr, kc] = UnSquare(ksq);
+
+    unaffected_king = unaffected_king |
+      HasContents(board, kr, kc, WHITE_KING);
+  }
+
+  // Then for any unaffected king square, we are in check iff we
+  // were already in check.
+  Prop unaffected = unaffected_king & was_in_check;
+
+  return full_check | unaffected;
 }
+
 
 static Prop EnPassantLegal(const Board &board,
                            int srcr, int srcc, int dstr, int dstc,
@@ -460,6 +584,7 @@ static Prop EnPassantLegal(const Board &board,
   SetPiece(&new_board, 2, dstc, WHITE_PAWN);
   SetPiece(&new_board, 3, dstc, EMPTY);
 
+  // PERF use KingAttackedAfter2, when it can be done
   Prop check_ok = details.check_check ?
     -KingAttackedAfter(new_board, srcr, srcc, dstr, dstc) :
     True();
@@ -578,12 +703,7 @@ static Prop KnightLegal(const Board &board,
                         int srcr, int srcc, int dstr, int dstc) {
   // This is simpler than the above because we don't need to
   // check anything in between.
-  int distr = std::abs(dstr - srcr);
-  int distc = std::abs(dstc - srcc);
-
-  // Must be an L-shaped move.
-  if (!((distr == 2 && distc == 1) ||
-        (distr == 1 && distc == 2))) return False();
+  if (!IsKnightMove(srcr, srcc, dstr, dstc)) return False();
 
   return IsCapturable(board, dstr, dstc) | IsEmpty(board, dstr, dstc);
 }
@@ -688,7 +808,7 @@ Prop ChessProp::IsLegal(const Board &board,
   // way: They remove the source piece and overwrite the destination.
   Prop simple_not_into_check =
     details.check_check ?
-    -KingAttackedAfter(board, srcr, srcc, dstr, dstc) :
+    -KingAttackedAfter2(board, srcr, srcc, dstr, dstc) :
     True();
 
   Prop simple_piece_move =
