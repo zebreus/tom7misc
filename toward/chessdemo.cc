@@ -27,6 +27,7 @@
 #include "util.h"
 
 static constexpr bool OPTIMIZE = true;
+static constexpr int MAX_RENDER_LAYERS = 1000;
 
 static const Simplification &SimSingleton() {
   static const Simplification *s = new Simplification;
@@ -95,9 +96,10 @@ static void RenderOneProp(const CellLibrary &library,
   le->SetVerbose(1);
   le->SetWriteImages(false);
 
-  std::string basename = std::format("one-legal-{}-{}",
-                                     ChessProp::Square(move.src_row, move.src_col),
-                                     ChessProp::Square(move.dst_row, move.dst_col));
+  std::string basename = std::format(
+      "one-legal-{}-{}",
+      ChessProp::Square(move.src_row, move.src_col),
+      ChessProp::Square(move.dst_row, move.dst_col));
 
   Layout layout = le->DoLayout(Span{prop});
   Print("Got layout! {}\n", LayoutEngine::LayoutInfo(layout));
@@ -129,9 +131,11 @@ static void RenderOneProp(const CellLibrary &library,
     Print("Wrote {}.\n", filename);
   }
 
-  ImageRGBA img = RenderLayout(library, layout);
-  img.Save(std::format("{}.png", basename));
+  Circuit trunc = TruncateCircuit(std::move(layout.circuit),
+                                  MAX_RENDER_LAYERS);
 
+  ImageRGBA img = RenderCircuitMini(library, trunc);
+  img.Save(std::format("{}.png", basename));
 }
 
 static void RenderOne(ChessProp::Details details) {
@@ -148,9 +152,10 @@ static void RenderOne(ChessProp::Details details) {
   };
 
   Prop prop =
-    SimplifyProp(ChessProp::IsLegal(board,
-                                    move.src_row, move.src_col, move.dst_row, move.dst_col,
-                                    details));
+    SimplifyProp(ChessProp::IsLegal(
+                     board,
+                     move.src_row, move.src_col, move.dst_row, move.dst_col,
+                     details));
   prop = BalanceProp(prop);
   prop = SimplifyProp(prop);
   int size1 = PropSize(prop);

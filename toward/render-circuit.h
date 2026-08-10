@@ -25,4 +25,6 @@ ImageRGBA RenderCircuitMini(const CellLibrary &library,
                             const Circuit &circuit,
                             std::vector<bool> is_var = {});
 
+Circuit TruncateCircuit(Circuit circuit, int max_layers);
+
 #endif

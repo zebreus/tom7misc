@@ -2,6 +2,7 @@
 #include "render-circuit.h"
 
 #include <algorithm>
+#include <optional>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -124,6 +125,35 @@ static void TransferIsVar(Gate gate, bool in0, bool in1,
       }
       break;
   }
+}
+
+Circuit TruncateCircuit(Circuit circuit, int max_layers) {
+  if (circuit.layers.size() > (size_t)max_layers) {
+    circuit.layers.resize(max_layers);
+  }
+
+  std::optional<int> min_left;
+  for (const Layer &layer : circuit.layers) {
+    if (layer.empty()) continue;
+    int left = (layer.front().gate == Gate::SPACER) ? layer.front().v : 0;
+    if (!min_left.has_value() || left < *min_left) {
+      min_left = left;
+    }
+  }
+
+  if (min_left.value_or(0) > 0) {
+    for (Layer &layer : circuit.layers) {
+      if (layer.empty()) continue;
+      if (layer.front().gate == Gate::SPACER) {
+        layer.front().v -= *min_left;
+        if (layer.front().v == 0) {
+          layer.erase(layer.begin());
+        }
+      }
+    }
+  }
+
+  return circuit;
 }
 
 ImageRGBA RenderCircuit(const CellLibrary &library,
@@ -262,7 +292,6 @@ ImageRGBA RenderCircuitMini(
     const CellLibrary &library,
     const Circuit &circuit,
     std::vector<bool> is_var) {
-
 
   ImageRGBA icon_and = Icon(5,
                             "..@.."

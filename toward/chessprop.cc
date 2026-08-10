@@ -100,6 +100,8 @@ Board ChessProp::NewBoard(World *world) {
     }
   }
 
+  SetSym(CheckIdx(), "in_check");
+
   return board;
 }
 
@@ -675,6 +677,8 @@ Board ChessProp::BoardFromPosition(const Position &pos) {
   if (std::optional<uint8_t> oep = pos.EnPassantColumn()) {
     board.props[EnPassantColIdx(oep.value())] = True();
   }
+
+  board.props[CheckIdx()] = Position(pos).IsInCheck() ? True() : False();
 
   return board;
 }

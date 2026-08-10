@@ -282,8 +282,64 @@ struct LayoutEngineImpl : public LayoutEngine {
     return info.outputs[0].xblock;
   }
 
+  struct Counts {
+    int any = 0;
+    // Counts within a proposition (not necessarily top-level) with
+    // this ctype.
+    int mixed = 0;
+    int zero = 0;
+    int one = 0;
+  };
+
+  using CountMap = std::unordered_map<Prop, Counts>;
+
+  // Returns the counts for all subterms appearing in the input propositions.
+  static CountMap GetCounts(const std::vector<Chute> &chutes) {
+    CountMap subterm_count;
+
+    std::function<void(const Prop &, CType)> CountSubterms =
+      [&subterm_count, &CountSubterms](const Prop &prop, CType t) {
+        Counts &counts = subterm_count[prop];
+        counts.any++;
+        switch (t) {
+        case CType::MIXED:
+          counts.mixed++;
+          break;
+        case CType::ONE:
+          counts.one++;
+          break;
+        case CType::ZERO:
+          counts.zero++;
+          break;
+        }
+
+        if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
+          CountSubterms(*bop->a, t);
+          CountSubterms(*bop->b, t);
+        } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
+          CountSubterms(*uop->a, t);
+        } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
+          CountSubterms(*top->a, t);
+          CountSubterms(*top->b, t);
+          CountSubterms(*top->c, t);
+        }
+      };
+    for (const Chute &chute : chutes) {
+      CountSubterms(chute.prop, chute.type);
+    }
+
+    return subterm_count;
+  }
+
+  const Counts zero;
+  const Counts &CountOf(const CountMap &m, const Prop &prop) {
+    auto it = m.find(prop);
+    if (it == m.end()) return zero;
+    return it->second;
+  }
+
   // Set the desires and springs for "done" chutes on the exterior.
-  void SetExterior(LayoutCanvas *canvas) {
+  void SetExterior(LayoutCanvas *canvas, const CountMap &subterm_count) {
     std::vector<Chute> &chutes = canvas->chutes;
 
     int first_interior_chute = -1;
@@ -292,7 +348,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     for (int c = 0; c < chutes.size(); c++) {
       Chute &chute = chutes[c];
       if (!std::holds_alternative<Var>(chute.prop.p) ||
-          chute.type != CType::MIXED) {
+          chute.type != CType::MIXED ||
+          CountOf(subterm_count, chute.prop).any != 1) {
         first_interior_chute = c;
         break;
       }
@@ -302,7 +359,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     for (int c = (int)chutes.size() - 1; c >= 0; c--) {
       Chute &chute = chutes[c];
       if (!std::holds_alternative<Var>(chute.prop.p) ||
-          chute.type != CType::MIXED) {
+          chute.type != CType::MIXED ||
+          CountOf(subterm_count, chute.prop).any != 1) {
         last_interior_chute = c;
         break;
       }
@@ -341,68 +399,8 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   // Generate the desired action for each chute by updating its
   // desire field in place.
-  void SetChuteDesires(std::vector<Chute> &chutes) {
-
-    struct Counts {
-      int any = 0;
-      int mixed = 0;
-      int zero = 0;
-      int one = 0;
-    };
-
-    // Count of propositions in the top layer.
-    std::unordered_map<Prop, Counts> prop_count;
-    for (Chute &chute : chutes) {
-      Counts &counts = prop_count[chute.prop];
-      counts.any++;
-      switch (chute.type) {
-      case CType::MIXED:
-        counts.mixed++;
-        break;
-      case CType::ONE:
-        counts.one++;
-        break;
-      case CType::ZERO:
-        counts.zero++;
-        break;
-      }
-    }
-
-    // And all subterms.
-    std::unordered_map<Prop, Counts> subterm_count;
-    {
-      std::function<void(const Prop &, CType)> CountSubterms =
-        [&subterm_count, &CountSubterms](const Prop &prop, CType t) {
-          Counts &counts = subterm_count[prop];
-          counts.any++;
-          switch (t) {
-          case CType::MIXED:
-            counts.mixed++;
-            break;
-          case CType::ONE:
-            counts.one++;
-            break;
-          case CType::ZERO:
-            counts.zero++;
-            break;
-          }
-
-          if (const Binop *bop = std::get_if<Binop>(&prop.p)) {
-            CountSubterms(*bop->a, t);
-            CountSubterms(*bop->b, t);
-          } else if (const Unop *uop = std::get_if<Unop>(&prop.p)) {
-            CountSubterms(*uop->a, t);
-          } else if (const Ternop *top = std::get_if<Ternop>(&prop.p)) {
-            CountSubterms(*top->a, t);
-            CountSubterms(*top->b, t);
-            CountSubterms(*top->c, t);
-          }
-        };
-      for (Chute &chute : chutes) {
-        CountSubterms(chute.prop, chute.type);
-      }
-    }
-
+  void SetChuteDesires(std::vector<Chute> &chutes,
+                       const CountMap &subterm_count) {
 
     // After dealing with the exterior, a mixed variable that is not
     // "done" is going to be problematic, because we will likely need
@@ -474,10 +472,13 @@ struct LayoutEngineImpl : public LayoutEngine {
           chute1.prop == chute2.prop &&
           // We require that these are the only occurrences of the
           // proposition globally, including in subterms.
-          subterm_count[prop].zero == 1 &&
-          subterm_count[prop].one == 1 &&
+          //
+          // PERF: We probably don't need to count .zero, .one, .mixed.
+          // We can just insist that the total count is 2.
+          CountOf(subterm_count, prop).zero == 1 &&
+          CountOf(subterm_count, prop).one == 1 &&
           // (no "mixed" occurrences either.)
-          subterm_count[prop].any == 2) {
+          CountOf(subterm_count, prop).any == 2) {
 
         // For variables, we only want to unseparate them if they are
         // exterior, so they will become done. Unseparating prematurely
@@ -527,7 +528,7 @@ struct LayoutEngineImpl : public LayoutEngine {
            std::holds_alternative<Ternop>(chute.prop.p) ||
            std::holds_alternative<Value>(chute.prop.p)) &&
           // Must be unique.
-          subterm_count[prop].any == 1) {
+          CountOf(subterm_count, prop).any == 1) {
         CHECK(chute.desire == DesireType::UNSPECIFIED);
         chute.desire = DECOMPOSE;
       }
@@ -648,10 +649,12 @@ struct LayoutEngineImpl : public LayoutEngine {
             canvas.DebugString());
     }
 
+    const CountMap subterm_count = GetCounts(canvas.chutes);
+
     // First, identify the already-completed portions of the
     // circuit and create springs for them. We don't want to
     // involve these in the gate-placement code below.
-    SetExterior(&canvas);
+    SetExterior(&canvas, subterm_count);
 
     // Annotate the curent global ordering onto each chute.
     // We use this to perform local swaps to move chutes closer
@@ -661,7 +664,7 @@ struct LayoutEngineImpl : public LayoutEngine {
     OutputDebugging(layers, canvas);
 
     // Now set the desires for each.
-    SetChuteDesires(canvas.chutes);
+    SetChuteDesires(canvas.chutes, subterm_count);
 
     if (verbose > 1) {
       Print(AWHITE("Chute desires") " before placement:\n");
@@ -1388,9 +1391,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     Print("Saving top {} layers to {}...\n", MAX_CIRCUIT_LAYERS, filename);
 
     Circuit circuit;
-    circuit.layers.reserve(std::min((int)layers.size(), MAX_CIRCUIT_LAYERS));
+    int num_layers = std::min((int)layers.size(), MAX_CIRCUIT_LAYERS);
+    circuit.layers.reserve(num_layers);
 
-    for (int i = 0; i < layers.size() && i < MAX_CIRCUIT_LAYERS; i++) {
+    for (int i = 0; i < num_layers; i++) {
       const std::vector<LC> &layout_layer = layers[i];
       std::vector<Cell> layer;
       layer.reserve(layout_layer.size());
@@ -1400,26 +1404,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       circuit.layers.push_back(std::move(layer));
     }
 
-    std::optional<int> min_left;
-    for (const Layer &layer : circuit.layers) {
-      if (layer.empty()) continue;
-      int left = (layer.front().gate == Gate::SPACER) ? layer.front().v : 0;
-      if (!min_left.has_value() || left < *min_left) {
-        min_left = left;
-      }
-    }
-
-    if (min_left.value_or(0) > 0) {
-      for (Layer &layer : circuit.layers) {
-        if (layer.empty()) continue;
-        if (layer.front().gate == Gate::SPACER) {
-          layer.front().v -= *min_left;
-          if (layer.front().v == 0) {
-            layer.erase(layer.begin());
-          }
-        }
-      }
-    }
+    circuit = TruncateCircuit(std::move(circuit), MAX_CIRCUIT_LAYERS);
 
     std::vector<bool> is_vars;
     for (const LC &lc : layers.front()) {
@@ -1828,8 +1813,8 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     // For variables, we want these all to end up on the exterior
     // so that we can be done with them. They can either be on
-    // the left or the right of the action. We use the largest pos
-    // as the "middle".
+    // the left or the right of the action. We use the position of
+    // the largest proposition as the "middle."
     //
     // Wherever we have more than one position, we use the mean
     // position, since this would optimistically require the fewest

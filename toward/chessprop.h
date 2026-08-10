@@ -23,6 +23,13 @@ struct ChessProp_Details {
   bool en_passant = true;
 };
 
+// TODO: We can probably make the props smaller (and arguably more
+// interesting) by also passing a bit for "white is in check."
+// This would cut down on "find the king on the board and see if
+// it is (still) in check" and make it more like "what checks might
+// have been discovered / blocked." I like that because it's more
+// move-specific.
+
 struct ChessProp {
   enum Type : uint8_t {
     BLACK_PAWN = 0,
@@ -57,7 +64,9 @@ struct ChessProp {
     // en passant columns
     8 +
     // castling flags
-    4;
+    4 +
+    // is white in check?
+    1;
 
   // The configuration of the board.
   //
@@ -91,6 +100,10 @@ struct ChessProp {
   static int CastlingIdx(bool white, bool kingside) {
     int off = (white ? 0b10 : 0b00) | (kingside ? 0b01 : 0b00);
     return 8 * 8 * NUM_TYPES + 8 + off;
+  }
+
+  static int CheckIdx() {
+    return 8 * 8 * NUM_TYPES + 8 + 4;
   }
 
   // Creates a new unconstrained chessboard with a variable for every
