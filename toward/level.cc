@@ -746,7 +746,7 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   for (const auto &[raw_name, root] : doc.layers) {
     // We want to see | and = in the layer name.
     std::string name = UnsanitizeLayerName(raw_name);
-    if (!name.empty()) {
+    if (verbose && !name.empty()) {
       Print(AWHITE("Layer {}") "\n", name);
     }
     bool background = Util::StartsWith(Util::lcase(name), "back");

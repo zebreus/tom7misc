@@ -203,6 +203,10 @@ chess-stats.exe : chess-stats.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+opt-layout.exe : opt-layout.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 %.super : %.genlib
 	@../../berkeley-abc/abc -c "super $^"
 	@echo -n "⋀"

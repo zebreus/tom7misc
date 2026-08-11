@@ -13,6 +13,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "cell-library.h"
@@ -38,9 +39,15 @@ struct LayoutEngine {
   // Props must all be in the same world.
   virtual Layout DoLayout(std::span<const Prop> props) = 0;
 
+  // If something goes wrong (like we reach the maximum depth or
+  // we get in a cycle) this may return an error message as the
+  // string component of the variant.
+  virtual std::variant<Layout, std::string> DoLayoutExt(
+      std::span<const Prop> props, std::optional<int> max_layers = {}) = 0;
+
   virtual void SetVerbose(int v) = 0;
   virtual void SetWriteImages(bool yes) = 0;
-
+  virtual void SetWriteDebugging(bool yes) = 0;
 
   // This stuff is just exposed for testing and visualization.
 
@@ -81,7 +88,8 @@ struct LayoutEngine {
   // Must have 3 lines.
   virtual void SetStatusBar(StatusBar *s) = 0;
 
-  virtual const std::deque<std::vector<SpringRecord>> &GetSpringHistory() const = 0;
+  virtual const std::deque<std::vector<SpringRecord>> &GetSpringHistory()
+    const = 0;
 
   // Pretty-print for debugging, etc. Designed for small
   // circuits!
@@ -98,6 +106,19 @@ struct LayoutEngine {
   static std::optional<Layout> Parse(std::string_view content);
 
   static Layout Normalize(Layout layout);
+
+
+  // For externally-driven optimization. Not recommended to
+  // change these.
+
+  virtual void SetExtWeight(float w) = 0;
+  virtual void SetAdditionalAdditionalClearance(int a) = 0;
+  virtual void SetClearanceCompressionWeight(float c) = 0;
+  virtual void SetCorrectSpringWeight(float w) = 0;
+  virtual void SetQuiesceDistance(int d) = 0;
+  virtual void SetAdditionalMinQuiesceDistance(int a) = 0;
+  virtual void SetQuiesceCompress(float f) = 0;
+  virtual void SetQuiesceExpand(float f) = 0;
 
  protected:
   LayoutEngine();

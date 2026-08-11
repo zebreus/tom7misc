@@ -145,9 +145,9 @@ static void RenderOne(ChessProp::Details details) {
   ChessProp::Board board = ChessProp::NewBoard(&world);
 
   Position::Move move = {
-    .src_row = 6,
+    .src_row = 7,
     .src_col = 1,
-    .dst_row = 4,
+    .dst_row = 5,
     .dst_col = 1,
   };
 
@@ -165,6 +165,7 @@ static void RenderOne(ChessProp::Details details) {
   int sh2 = SharedPropSize(prop);
   Print("Prop size: {} ({}) -> {} ({})\n", size1, sh1, size2, sh2);
   Print("Prop:\n{}\n", PropString(world, prop));
+  Print("Serialized:\n{}\n", SerializeProp(prop));
 
   RenderOneProp(library, world, move, prop);
 }
@@ -331,6 +332,7 @@ int main(int argc, char **argv) {
   // RenderOne(ChessProp::REAL_CHESS);
   // RenderOne(ChessProp::KID_CHESS);
 
+  #if 1
   const Position::Move b2b4 = {
     .src_row = 6,
     .src_col = 1,
@@ -339,6 +341,7 @@ int main(int argc, char **argv) {
   };
 
   RenderFrom("chess", b2b4);
+  #endif
 
   return 0;
 }

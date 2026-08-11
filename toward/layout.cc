@@ -127,6 +127,19 @@ struct LayoutEngineImpl : public LayoutEngine {
   const World &world;
   const CellLibrary &library;
 
+  // Tunable parameters.
+  // Weight for springs on the exterior.
+  float EXT_WEIGHT = 27.0f;
+  int ADDITIONAL_ADDITIONAL_CLEARANCE = 6;
+  float CLEARANCE_COMPRESSION_WEIGHT = 2512.0f;
+  // Compression/expansion rigidity when the distance is already correct.
+  float CORRECT_SPRING_WEIGHT = 3300.0f;
+  // Target distance for quiescent pairs.
+  int QUIESCE_DISTANCE = 27;
+  int ADDITIONAL_MIN_QUIESCE_DISTANCE = 6;
+  float QUIESCE_COMPRESS = 140.0f;
+  float QUIESCE_EXPAND = 122.0f;
+
   ArcFour rc;
 
   // The desired displacement amount, when we didn't have an
@@ -177,13 +190,32 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Global debugging flags.
   int verbose = 1;
   bool write_images = false;
+  bool write_debugging = false;
 
   void SetVerbose(int v) override { verbose = v; }
   void SetWriteImages(bool b) override { write_images = b; }
+  void SetWriteDebugging(bool b) override { write_debugging = b; }
   void SetStatusBar(StatusBar *s) override {
     // Not owned.
     status = s;
   }
+
+  void SetExtWeight(float w) override { EXT_WEIGHT = w; }
+  void SetAdditionalAdditionalClearance(int a) override {
+    ADDITIONAL_ADDITIONAL_CLEARANCE = a;
+  }
+  void SetClearanceCompressionWeight(float c) override {
+    CLEARANCE_COMPRESSION_WEIGHT = c;
+  }
+  void SetCorrectSpringWeight(float w) override {
+    CORRECT_SPRING_WEIGHT = w;
+  }
+  void SetQuiesceDistance(int d) override { QUIESCE_DISTANCE = d; }
+  void SetAdditionalMinQuiesceDistance(int a) override {
+    ADDITIONAL_MIN_QUIESCE_DISTANCE = a;
+  }
+  void SetQuiesceCompress(float f) override { QUIESCE_COMPRESS = f; }
+  void SetQuiesceExpand(float f) override { QUIESCE_EXPAND = f; }
 
   template<typename... Args>
   inline void Print(std::format_string<Args...> fmt, Args &&...args) const {
@@ -194,7 +226,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     }
   }
 
-  const std::deque<std::vector<SpringRecord>> &GetSpringHistory() const override {
+  const std::deque<std::vector<SpringRecord>> &GetSpringHistory()
+    const override {
     return spring_history;
   }
 
@@ -369,8 +402,6 @@ struct LayoutEngineImpl : public LayoutEngine {
     CHECK(first_interior_chute >= 0 &&
           last_interior_chute >= 0) << "Precondition is that we're "
       "not already done!";
-
-    constexpr float EXT_WEIGHT = 0.5f;
 
     if (first_interior_chute > 0) {
       for (int c = 0; c < first_interior_chute; c++) {
@@ -755,24 +786,17 @@ struct LayoutEngineImpl : public LayoutEngine {
         // Since we don't actually know where the next
         // chute would be relative to its cell's right edge, we should
         // be conservative here.
-        int additional_clearance =
-          library.MinClearanceFar() * 4;
+        int additional_clearance = library.MinClearanceFar() * 4 +
+          ADDITIONAL_ADDITIONAL_CLEARANCE;
 
         int stick_out_left = out0;
-        int stick_out_right = info.block_width - (out_last + Levels::IN_WIDTH);
+        int stick_out_right = info.block_width -
+          (out_last + Levels::OUT_WIDTH);
 
         // Request the same amount on both sides.
         // Here we want the edge-to-edge clearance between the gates.
         int clearance = std::max(stick_out_left, stick_out_right) +
           additional_clearance;
-
-        #if 0
-        if (verbose > 2) {
-          Print("[{}] acquire clearance for {}. L: {}, R: {}\n",
-                chute_idx, GateString(gate),
-                left_clearance, right_clearance);
-        }
-        #endif
 
         // (No spring to the left of the first chute.)
         if (chute_idx > 0) {
@@ -783,7 +807,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               2 * library.MinClearanceFar(),
               // Compressing would mean we're still unable to
               // place.
-              100.0f,
+              CLEARANCE_COMPRESSION_WEIGHT,
               // Happy to have expansion here.
               0.01f);
         }
@@ -796,7 +820,7 @@ struct LayoutEngineImpl : public LayoutEngine {
               right,
               clearance,
               2 * library.MinClearanceFar(),
-              100.0f,
+              CLEARANCE_COMPRESSION_WEIGHT,
               0.01f);
         }
       };
@@ -954,8 +978,8 @@ struct LayoutEngineImpl : public LayoutEngine {
         spring.target_dist = dist;
         // Very counterproductive to compress or expand when
         // we're already at the right distance.
-        spring.compress = 1000.0f;
-        spring.expand = 1000.0f;
+        spring.compress = CORRECT_SPRING_WEIGHT;
+        spring.expand = CORRECT_SPRING_WEIGHT;
 
         // Unclear what the correct absolute minimum is; match
         // the safe clearance used by LayoutCanvas.
@@ -1208,11 +1232,10 @@ struct LayoutEngineImpl : public LayoutEngine {
                            (canvas.chutes[i].pos + Levels::IN_WIDTH);
         */
         LayoutCanvas::UpdateSpring(&canvas.springs[i],
-                                   27,
-                                   // min_output_distance,
-                                   // max_cell_width + 1,
-                                   2 * library.MinClearanceFar(),
-                                   1.0f, 0.1f);
+                                   QUIESCE_DISTANCE,
+                                   2 * library.MinClearanceFar() +
+                                   ADDITIONAL_MIN_QUIESCE_DISTANCE,
+                                   QUIESCE_COMPRESS, QUIESCE_EXPAND);
       }
     }
 
@@ -1378,6 +1401,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   void DebugRender(const std::deque<std::vector<LC>> &layers) {
     if (layers.empty()) return;
+    if (!write_debugging) return;
 
     // XXX dynamic...
     bool mini = true;
@@ -1430,8 +1454,10 @@ struct LayoutEngineImpl : public LayoutEngine {
     constexpr uint32_t ANCHORED_CHUTE = 0xFFFF00FF;
     constexpr uint32_t NORMAL_CHUTE = 0xAAAAAAFF;
 
-    const float compressed_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0xFF0000FF));
-    const float stretched_hue = std::get<0>(ColorUtil::RGBA32ToHSVA(0x00FF00FF));
+    const float compressed_hue =
+      std::get<0>(ColorUtil::RGBA32ToHSVA(0xFF0000FF));
+    const float stretched_hue =
+      std::get<0>(ColorUtil::RGBA32ToHSVA(0x00FF00FF));
 
     if (!spring_history.empty()) {
       int min_x = 0, max_x = 0;
@@ -1484,7 +1510,8 @@ struct LayoutEngineImpl : public LayoutEngine {
 
               float val = std::clamp(0.5f + diff * 0.5f, 0.5f, 1.0f);
               float hue = compressed ? compressed_hue : stretched_hue;
-              uint32_t line_color = ColorUtil::HSVAToRGBA32(hue, 1.0f, val, 0.25f);
+              uint32_t line_color =
+                ColorUtil::HSVAToRGBA32(hue, 1.0f, val, 0.25f);
 
               int center = (sx + nx) / 2;
               int half_len = (rec.target_dist / Levels::IN_WIDTH) / 2;
@@ -1589,7 +1616,8 @@ struct LayoutEngineImpl : public LayoutEngine {
                 layers.size(), max_prop_size, total_prop_size,
                 inversions, resorted,
                 top_layer_width,
-                last.size(), count_var, count_and, count_or, count_not, count_ite);
+                last.size(),
+                count_var, count_and, count_or, count_not, count_ite);
           });
       }
     }
@@ -1598,7 +1626,7 @@ struct LayoutEngineImpl : public LayoutEngine {
       DebugRender(layers);
     }
 
-    if (layers.size() % 1000 == 0) {
+    if (write_debugging && layers.size() % 1000 == 0) {
       std::vector<std::pair<int, int>> missing_wires =
         CountMapToDescendingVector(disp_histo);
       std::string content;
@@ -1640,8 +1668,9 @@ struct LayoutEngineImpl : public LayoutEngine {
     return false;
   }
 
-  void DoAddLayer(std::deque<std::vector<LC>> *layers,
-                  const std::unordered_map<Prop, int> &prop_ranks) override {
+  std::optional<std::string>
+  DoAddLayerInternal(std::deque<std::vector<LC>> *layers,
+                     const std::unordered_map<Prop, int> &prop_ranks) {
     const std::vector<LC> &last = layers->front();
 
     // TODO: See if we're too squished, and if so, don't allow
@@ -1652,7 +1681,8 @@ struct LayoutEngineImpl : public LayoutEngine {
     // tension without anchors.
     constexpr int SPACING_EVERY = 100;
     const bool allow_placement = (layers->size() % SPACING_EVERY) != 0;
-    auto [next, start_pos, layer_spring_records] = AddLayer(*layers, prop_ranks, allow_placement);
+    auto [next, start_pos, layer_spring_records] =
+      AddLayer(*layers, prop_ranks, allow_placement);
 
     // True if the layers are effectively the same, ignoring leading
     // spacers (i.e. they can have different starting offsets). If
@@ -1678,8 +1708,8 @@ struct LayoutEngineImpl : public LayoutEngine {
       };
 
     if (allow_placement && SameLayer(last, next)) {
-      LOG(FATAL) << "Layout made no progress! New layer is identical\n"
-        "to the previous one.";
+      return {"Layout made no progress! New layer is identical\n"
+        "to the previous one."};
     }
 
     // Another simple validity self-check: The layer should match
@@ -1697,7 +1727,7 @@ struct LayoutEngineImpl : public LayoutEngine {
 
       if (num_next_outputs != num_last_inputs) {
         LOG(FATAL)
-          << "Error after " << layers->size() << "layers:\n"
+          << "Bug: Error after " << layers->size() << "layers:\n"
           << "Bad Layer! New outputs (" << num_next_outputs
           << ") != top layer inputs (" << num_last_inputs << ").";
       }
@@ -1739,7 +1769,17 @@ struct LayoutEngineImpl : public LayoutEngine {
 
     layers->push_front(std::move(next));
     this->spring_history.push_front(std::move(layer_spring_records));
+
+    // Success.
+    return std::nullopt;
   }
+
+  void DoAddLayer(std::deque<std::vector<LC>> *layers,
+                  const std::unordered_map<Prop, int> &prop_ranks) override {
+    std::optional<std::string> so = DoAddLayerInternal(layers, prop_ranks);
+    CHECK(!so.has_value()) << so.value();
+  }
+
 
   // Recompute the desired order for all of the distinct propositions that
   // appear in the top layer. This is like the global plan for spatial
@@ -1884,9 +1924,9 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   // We work bottom-up. The goal is to add layers so that we simplify
   // the inputs, until they're all variables.
-  Layout DoLayoutInternal(std::span<const Prop> props_in) {
-    // std::vector<Prop> props = VectorMap(props_in, NormalizeToAnd);
-
+  std::variant<Layout, std::string> DoLayoutExt(
+      std::span<const Prop> props_in,
+      std::optional<int> max_layers = std::nullopt) override {
     // We support AND, NAND, OR, NOR, NOT.
     std::vector<Prop> props = VectorMap(props_in, NormalizeRemoveXor);
 
@@ -1938,16 +1978,13 @@ struct LayoutEngineImpl : public LayoutEngine {
     bool write_ranks_next = false;
     // Repeatedly take the front of the layers, and simplify.
     for (int num_layers = 1; true; num_layers++) {
-      if (num_layers % 500 == 0) {
-        write_ranks_next = true;
+      if (max_layers.has_value() && num_layers > max_layers.value()) {
+        return {"Maximum depth reached."};
       }
 
-      // CHECK(num_layers < 8);
-
-      /*
-      if (num_layers > 1000) verbose = 2;
-      CHECK(num_layers < 1004);
-      */
+      if (write_debugging && num_layers % 500 == 0) {
+        write_ranks_next = true;
+      }
 
       CHECK(!layers.empty());
       const std::vector<LC> &last = layers.front();
@@ -1959,7 +1996,8 @@ struct LayoutEngineImpl : public LayoutEngine {
                         std::move(ovars.value()));
       }
 
-      DoAddLayer(&layers, prop_ranks);
+      std::optional<std::string> so = DoAddLayerInternal(&layers, prop_ranks);
+      if (so.has_value()) return {so.value()};
 
       CHECK(!layers.empty());
       if (DefiniteProgress(layers.front())) {
@@ -2034,7 +2072,12 @@ struct LayoutEngineImpl : public LayoutEngine {
             max_cell_width);
     }
 
-    Layout lay = DoLayoutInternal(props_in);
+    std::variant<Layout, std::string> res = DoLayoutExt(props_in);
+    if (std::holds_alternative<std::string>(res)) {
+      LOG(FATAL) << "DoLayout failed: " << std::get<std::string>(res);
+    }
+
+    Layout lay = std::move(std::get<Layout>(res));
 
     if (verbose > 0) {
       Print("Got {} inputs; {} layers.\n",

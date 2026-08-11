@@ -336,7 +336,7 @@ std::vector<double> LayoutCanvas::SolveSprings() {
     for (int i = (int)xpos.size() - 1; i >= 0; i--) {
       if (chutes[i].anchored) {
         cur_limit = xpos[i];
-      } else {
+      } else if (i < (int)xpos.size() - 1) {
         cur_limit -= Levels::IN_WIDTH + springs[i].min_dist;
       }
       max_limit[i] = cur_limit;
@@ -409,9 +409,17 @@ std::vector<double> LayoutCanvas::SolveSprings() {
         total_weight += weight;
       }
 
+      #if 0
       double target = weighted_pos / total_weight;
       // Successive over-relaxation (SOR) to speed up convergence.
       xpos[cidx] = xpos[cidx] + 1.5 * (target - xpos[cidx]);
+      #else
+      double target =
+        total_weight > 0.0 ? (weighted_pos / total_weight) : xpos[cidx];
+      // Standard Gauss-Seidel update (SOR with omega > 1 can oscillate
+      // when interacting with hard min/max constraints).
+      xpos[cidx] = target;
+      #endif
 
       // Never (well, subject to physical possibility) let chutes be
       // closer than the min distance (which also prohibits overlap).
