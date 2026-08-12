@@ -47,8 +47,7 @@ struct Scene {
   // Not simulated, but drawn on top of the objects.
   std::vector<Obj> fg_objects;
 
-  Scene(bool walls = true);
-
+  Scene();
   ~Scene();
 
   void Update();
@@ -66,9 +65,9 @@ struct Scene {
 
   // Attempt to place the mesh at pos, but then move it in the
   // reject_dir while it overlapping an existing object. If it exits
-  // the arena (overlapping a wall) while we try to resolve (or some
-  // unresolvable conflict occurs, then returns nullopt. Otherwise,
-  // returns the deconflicted position.
+  // the arena while we try to resolve (or some unresolvable conflict
+  // occurs, then returns nullopt. Otherwise, returns the deconflicted
+  // position.
   std::optional<vec2f> RejectObject(
       const Polygonization::Mesh &mesh, vec2f pos,
       vec2f reject_dir);

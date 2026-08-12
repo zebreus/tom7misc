@@ -31,6 +31,7 @@ struct Game {
     letters = Letters::LoadFont(fontfile);
     CHECK(letters.get() != nullptr);
     scene = std::make_unique<Scene>();
+    AddWalls(0x333333FF);
   }
 
   ArcFour rc;
@@ -48,6 +49,37 @@ struct Game {
     float dx = ((float)RandDouble(&rc) * 2.0f - 1.0f) * max_mag;
     float dy = ((float)RandDouble(&rc) - 1.0f) * max_mag;
     scene->ApplyImpulse({dx, dy});
+  }
+
+  void AddWalls(uint32_t color) {
+    // Adds walls on the exterior of the arena, just barely
+    // visible on-screen, but extending outside it so that they
+    // are robust to penetration.
+    constexpr float T = 10.0f;
+    constexpr float M = Scene::MARGIN;
+    constexpr float W = Scene::WIDTH;
+    constexpr float H = Scene::HEIGHT;
+
+    auto add_wall = [this, color](float x, float y, double w, double h) {
+      Polygonization::Mesh mesh;
+      mesh.vertices = {
+        vec2{0.0, 0.0},
+        vec2{w, 0.0},
+        vec2{w, h},
+        vec2{0.0, h}
+      };
+      mesh.polygons = {{0, 1, 2, 3}};
+      scene->AddFixedObject(mesh, color, vec2f{x, y}, 0.05f, 0.05f);
+    };
+
+    // Top
+    add_wall(-T, M - T, W + 2.0f * T, T);
+    // Bottom
+    add_wall(-T, H - M, W + 2.0f * T, T);
+    // Left
+    add_wall(M - T, M, T, H - 2.0f * M);
+    // Right
+    add_wall(W - M, M, T, H - 2.0f * M);
   }
 
   void AddLetter(uint32_t codepoint) {

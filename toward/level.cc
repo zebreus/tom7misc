@@ -738,7 +738,6 @@ std::unique_ptr<Level> Levels::LoadSVGExt(
   // Print("\n{}\n", SVG::ToSVG(doc));
 
   auto level = std::make_unique<Level>();
-  level->scene_walls = false;
 
   SVG::GraphicsState state;
   state.transform[0] = 1.0f / SVG_SCALE;
@@ -978,8 +977,7 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
 }
 
 std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {
-  std::unique_ptr<Scene> scene =
-    std::make_unique<Scene>(level.scene_walls);
+  std::unique_ptr<Scene> scene = std::make_unique<Scene>();
 
   for (size_t i = 0; i < level.bodies.size(); i++) {
     if (!level.bodies[i].deleted) {

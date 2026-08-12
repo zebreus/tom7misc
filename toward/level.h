@@ -66,7 +66,6 @@ struct Level {
   // The location (x coordinate of its left edge) of each output, in
   // ascending order.
   std::vector<int> outputs;
-  bool scene_walls = true;
 };
 
 
