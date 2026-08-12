@@ -158,8 +158,8 @@ void CircuitSim::Reset() {
 void CircuitSim::AddInput(Node *node,
                           int input_idx,
                           bool one,
-                          // Position of the body (relative to the output region's
-                          // top-left corner).
+                          // Position of the body (relative to the
+                          // output region's top-left corner).
                           vec2f output_pos,
                           float angle,
                           vec2f vel,
@@ -172,8 +172,11 @@ void CircuitSim::AddInput(Node *node,
   LevelBody body = one ? Levels::One() : Levels::Zero();
 
   // Transform relative output_pos to the input region's coordinate space.
-  body.pos.x = output_pos.x + node->level->inputs[input_idx] * Levels::BLOCK_SIZE;
-  body.pos.y = output_pos.y + Levels::IN_Y * Levels::BLOCK_SIZE;
+  // The input region overlaps the bottom of the taller output region.
+  body.pos.x = output_pos.x + node->level->inputs[input_idx] *
+    Levels::BLOCK_SIZE;
+  body.pos.y = output_pos.y - (Levels::OUT_HEIGHT - Levels::IN_HEIGHT) *
+    Levels::BLOCK_SIZE + Levels::IN_Y * Levels::BLOCK_SIZE;
   body.angle = angle;
   body.vel = vel;
   body.avel = avel;
@@ -270,7 +273,7 @@ void CircuitSim::StepSimulation() {
     std::vector<Node> &row = sim[r];
     for (size_t c = 0; c < row.size(); c++) {
       Node &node = row[c];
-      ActivateNode(node);
+      if (node.scene == nullptr) continue;
 
       if (!node.scene->AllAsleep()) {
         node.scene->Update();
@@ -286,13 +289,15 @@ void CircuitSim::StepSimulation() {
             const Scene::Obj &obj = node.scene->objects[obj_idx];
 
             bool is_one =
-              node.level->bodies[obj.user_data.value()].item.value() == LevelItem::ONE;
+              node.level->bodies[obj.user_data.value()].item.value() ==
+              LevelItem::ONE;
             vec2f pos = node.scene->GetPosition(obj);
             vec2f vel = node.scene->GetVelocity(obj);
             float angle = node.scene->GetAngle(obj);
             float avel = node.scene->GetAngularVelocity(obj);
 
-            float out_x = node.level->outputs[out_idx.value()] * Levels::BLOCK_SIZE;
+            float out_x = node.level->outputs[out_idx.value()] *
+              Levels::BLOCK_SIZE;
             float out_y = Levels::OUT_Y * Levels::BLOCK_SIZE;
             vec2f rel_pos = {pos.x - out_x, pos.y - out_y};
 
@@ -434,7 +439,8 @@ void CircuitSim::InjectRandomAssignment() {
 
         vec2f pos = {
           .x = Levels::IN_WIDTH * 0.5f * Levels::BLOCK_SIZE,
-          .y = Levels::IN_HEIGHT * 0.5f * Levels::BLOCK_SIZE,
+          .y = (Levels::IN_HEIGHT * 0.5f + Levels::OUT_HEIGHT -
+                Levels::IN_HEIGHT) * Levels::BLOCK_SIZE,
         };
         vec2f vel = {(float)(RandDouble(&rc) * 2.0 - 1.0),
                      (float)(RandDouble(&rc) * 2.0 - 1.0)};
