@@ -267,9 +267,9 @@ size_t Scene::AddObject(const Polygonization::Mesh &mesh,
 }
 
 size_t Scene::AddFixedObject(const Polygonization::Mesh &mesh,
-                           uint32_t color, vec2f pos,
-                           float restitution,
-                           float friction) {
+                             uint32_t color, vec2f pos,
+                             float restitution,
+                             float friction) {
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_staticBody;
   body_def.position = {pos.x, pos.y};
@@ -292,13 +292,6 @@ static std::vector<Rendering::Triangle> MakeTriangles(
   for (const auto &poly : mesh.polygons) {
     if (poly.size() < 3)
       continue;
-
-    std::vector<b2Vec2> pts;
-    pts.reserve(poly.size());
-    for (int idx : poly) {
-      auto [px, py] = mesh.vertices[idx];
-      pts.push_back({(float)px, (float)py});
-    }
 
     for (size_t i = 1; i + 1 < poly.size(); i++) {
       auto [x0, y0] = mesh.vertices[poly[0]];
@@ -349,9 +342,8 @@ size_t Scene::Attach(b2BodyId body_id,
                      b2ShapeDef shape_def,
                      const Polygonization::Mesh &mesh,
                      uint32_t color) {
-  std::vector<Rendering::Triangle> render_mesh;
+  std::vector<Rendering::Triangle> render_mesh = MakeTriangles(mesh, color);
 
-  // TODO: This can use MakeTriangles I think
   bool has_shapes = false;
   for (const auto &poly : mesh.polygons) {
     if (poly.size() < 3)
@@ -362,18 +354,6 @@ size_t Scene::Attach(b2BodyId body_id,
     for (int idx : poly) {
       auto [px, py] = mesh.vertices[idx];
       pts.push_back({(float)px, (float)py});
-    }
-
-    for (size_t i = 1; i + 1 < poly.size(); i++) {
-      auto [x0, y0] = mesh.vertices[poly[0]];
-      auto [x1, y1] = mesh.vertices[poly[i]];
-      auto [x2, y2] = mesh.vertices[poly[i + 1]];
-
-      render_mesh.push_back({{(float)x0, (float)y0},
-                             {(float)x1, (float)y1},
-                             {(float)x2, (float)y2},
-                             color,
-                             0});
     }
 
     b2Hull hull = b2ComputeHull(pts.data(), pts.size());
@@ -443,7 +423,7 @@ size_t Scene::Attach(b2BodyId body_id,
       {(float)min_x, (float)min_y},
       {(float)max_x, (float)min_y},
       {(float)max_x, (float)max_y},
-      {(float)min_x, (float)max_y}
+      {(float)min_x, (float)max_y},
     };
 
     b2Hull hull = b2ComputeHull(aabb_pts, 4);
@@ -458,7 +438,7 @@ size_t Scene::Attach(b2BodyId body_id,
       .rgba = color,
       .body_id = body_id,
       .mesh = render_mesh,
-  });
+    });
 
   return idx;
 }

@@ -14,7 +14,6 @@
 #include "cell-library.h"
 #include "circuit.h"
 #include "drc.h"
-#include "inputs.h"
 #include "layout.h"
 #include "level.h"
 #include "randutil.h"
