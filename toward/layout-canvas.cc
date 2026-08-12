@@ -291,176 +291,162 @@ LayoutCanvas::ConvertToLayer() {
   return {std::move(next_layer), start_pos};
 }
 
+// Calculates the length of a single spring given a global
+// tension/compression force f.
+static double SpringLength(const LayoutCanvas::Spring &s, double f) {
+  double dist = s.target_dist + (f > 0 ? (f / s.expand) : (f / s.compress));
+  return std::max((double)s.min_dist, dist);
+}
 
-std::vector<double> LayoutCanvas::SolveSprings() {
-  // We mostly care about inter-gate spacing, but we require
-  // at least one chute to be anchored, so that we don't get
-  // the entire circuit drifting to one side.
-  const bool any_anchored = [&]{
-      for (const Chute &chute : chutes) {
-        if (chute.anchored) {
-          return true;
-        }
+// Solves a single contiguous segment of springs between two anchored chutes.
+static void SolveSpringSegment(
+    const std::vector<LayoutCanvas::Spring> &springs,
+    std::vector<double> &xpos,
+    int start_idx,
+    int end_idx) {
+  static constexpr int CHUTE_WIDTH = Levels::IN_WIDTH;
+
+  if (end_idx - start_idx <= 0)
+    return;
+
+  // The minimal required space the springs must fill.
+  double total_chute_width = 0;
+  for (int i = start_idx; i < end_idx; i++) {
+    total_chute_width += CHUTE_WIDTH;
+  }
+
+  // Distance between anchors, minus the physical width of the chutes
+  // in between.
+  double target_total_length =
+      xpos[end_idx] - xpos[start_idx] - total_chute_width;
+
+  // The min possible length to avoid violating min_dist.
+  double min_possible_length = 0;
+  for (int i = start_idx; i < end_idx; i++) {
+    min_possible_length += springs[i].min_dist;
+  }
+
+  if (target_total_length <= min_possible_length) {
+    // Impossible to satisfy all min_dists without overrunning the anchor.
+    // We must violate min_dist. Distribute the available space based on
+    // the spring compression rates.
+    double total_target = 0;
+    double total_inv_comp = 0;
+    for (int i = start_idx; i < end_idx; i++) {
+      total_target += springs[i].target_dist;
+      total_inv_comp += 1.0 / springs[i].compress;
+    }
+
+    if (total_inv_comp > 1e-6) {
+      double F = (target_total_length - total_target) / total_inv_comp;
+      double current_x = xpos[start_idx];
+      for (int i = start_idx; i < end_idx; i++) {
+        xpos[i] = current_x;
+        double dist = springs[i].target_dist + (F / springs[i].compress);
+        current_x += CHUTE_WIDTH + dist;
       }
-      return false;
-    }();
+    } else {
+      double step = (xpos[end_idx] - xpos[start_idx]) / (end_idx - start_idx);
+      for (int i = start_idx; i < end_idx; i++) {
+        xpos[i] = xpos[start_idx] + (i - start_idx) * step;
+      }
+    }
+    return;
+  }
 
-  if (!any_anchored && !chutes.empty()) {
+  // Binary search to find the equilibrium force 'f'.
+  double f_min = -1000000.0;
+  double f_max = 1000000.0;
+
+  // Dynamically expand bounds if necessary.
+  auto TotalLen = [&](double F) {
+      double len = 0;
+      for (int i = start_idx; i < end_idx; i++)
+        len += SpringLength(springs[i], F);
+      return len;
+    };
+
+  while (TotalLen(f_min) > target_total_length)
+    f_min *= 2.0;
+  while (TotalLen(f_max) < target_total_length)
+    f_max *= 2.0;
+
+  // 64 iterations of binary search provides enough precision for
+  // IEEE double.
+  double f_mid = 0;
+  for (int iter = 0; iter < 64; iter++) {
+    f_mid = (f_min + f_max) * 0.5;
+    double current_length = TotalLen(f_mid);
+
+    if (current_length < target_total_length) {
+      f_min = f_mid;
+    } else {
+      f_max = f_mid;
+    }
+  }
+
+  // 4. Apply the final calculated positions
+  double current_x = xpos[start_idx];
+  for (int i = start_idx; i < end_idx; i++) {
+    xpos[i] = current_x;
+    current_x += CHUTE_WIDTH + SpringLength(springs[i], f_mid);
+  }
+}
+
+// Solve the whole system
+std::vector<double> LayoutCanvas::SolveSprings() {
+  if (chutes.empty())
+    return {};
+
+  // Require at least one anchored chute so that the entire circuit
+  // doesn't drift. If none are anchored, anchor the middle one.
+  bool any_anchored = false;
+  for (const Chute &chute : chutes) {
+    if (chute.anchored) {
+      any_anchored = true;
+      break;
+    }
+  }
+  if (!any_anchored) {
     chutes[chutes.size() / 2].anchored = true;
   }
 
-  // Depend on the number of chutes, since we only propagate forces
-  // one cell at a time.
-  const int max_iters = 50 * chutes.size();
-
-  // Desired left edge, initialized to the current location.
   std::vector<double> xpos(chutes.size());
-  for (int i = 0; i < chutes.size(); i++) {
+  for (int i = 0; i < (int)chutes.size(); i++) {
     xpos[i] = (double)chutes[i].pos;
   }
 
-  // Pre-pass: propagate expansion forces left-to-right and right-to-left.
-  // Gauss-Seidel takes O(N^2) iterations to propagate a signal, which is
-  // too slow for large circuits that start densely compressed. We use the
-  // maximum of target_dist and min_dist to ensure that unanchored chutes
-  // are pushed far enough to honor their minimum distance constraints and
-  // stay in order (unless the anchors are overconstrained).
+  int first_anchor_idx = -1;
+  int last_anchor_idx = -1;
 
-  // To prevent the pre-pass from pushing chutes past anchors and causing
-  // them to be out-of-order, we precalculate the bounds imposed by anchors.
-  std::vector<double> max_limit(xpos.size(), 1e12);
-  std::vector<double> min_limit(xpos.size(), -1e12);
-
-  {
-    double cur_limit = 1e12;
-    for (int i = (int)xpos.size() - 1; i >= 0; i--) {
-      if (chutes[i].anchored) {
-        cur_limit = xpos[i];
-      } else if (i < (int)xpos.size() - 1) {
-        cur_limit -= Levels::IN_WIDTH + springs[i].min_dist;
+  for (int i = 0; i < (int)chutes.size(); i++) {
+    if (chutes[i].anchored) {
+      if (first_anchor_idx == -1) {
+        first_anchor_idx = i;
       }
-      max_limit[i] = cur_limit;
-    }
-
-    cur_limit = -1e12;
-    for (int i = 0; i < (int)xpos.size(); i++) {
-      if (chutes[i].anchored) {
-        cur_limit = xpos[i];
-      } else if (i > 0) {
-        cur_limit += Levels::IN_WIDTH + springs[i - 1].min_dist;
+      if (last_anchor_idx != -1) {
+        // Solve the chunk between the previous anchor and this anchor
+        SolveSpringSegment(springs, xpos, last_anchor_idx, i);
       }
-      min_limit[i] = cur_limit;
+      last_anchor_idx = i;
     }
   }
 
-  for (int i = 1; i < (int)xpos.size(); i++) {
-    if (!chutes[i].anchored) {
-      double ideal = xpos[i - 1] + Levels::IN_WIDTH +
-          std::max(springs[i - 1].target_dist, springs[i - 1].min_dist);
-      if (ideal > max_limit[i]) ideal = max_limit[i];
-      if (xpos[i] < ideal) xpos[i] = ideal;
-    }
-  }
-  for (int i = (int)xpos.size() - 2; i >= 0; i--) {
-    if (!chutes[i].anchored) {
-      double ideal = xpos[i + 1] - Levels::IN_WIDTH -
-          std::max(springs[i].target_dist, springs[i].min_dist);
-      if (ideal < min_limit[i]) ideal = min_limit[i];
-      if (xpos[i] > ideal) xpos[i] = ideal;
-    }
+  // Handle "loose ends" (chutes before the first anchor, or
+  // after the last anchor). Because they are loose, tension F = 0.
+  // They just assume their target_dist (or min_dist, whichever is larger).
+  for (int i = first_anchor_idx - 1; i >= 0; --i) {
+    xpos[i] = xpos[i + 1] - Levels::IN_WIDTH - SpringLength(springs[i], 0.0);
   }
 
-  for (int iter = 0; iter < max_iters; iter++) {
-    int start = (iter % 2 == 0) ? 0 : (int)xpos.size() - 1;
-    int end = (iter % 2 == 0) ? (int)xpos.size() : -1;
-    int step = (iter % 2 == 0) ? 1 : -1;
-    for (int cidx = start; cidx != end; cidx += step) {
-      // If the chute is already anchored, its xpos cannot
-      // change. It pushes and pulls neighbors in their own
-      // updates.
-      if (chutes[cidx].anchored)
-        continue;
-
-      double weighted_pos = 0.0;
-      double total_weight = 0.0;
-
-      // Spring to the left.
-      if (cidx > 0) {
-        const Spring &spring = springs[cidx - 1];
-        float current_dist = xpos[cidx] - (xpos[cidx - 1] + Levels::IN_WIDTH);
-        float weight = (current_dist < spring.target_dist) ?
-          spring.compress : spring.expand;
-
-        weighted_pos += weight * (xpos[cidx - 1] +
-                                  Levels::IN_WIDTH + spring.target_dist);
-        total_weight += weight;
-      }
-
-      // Spring to the right.
-      if (cidx < xpos.size() - 1) {
-        const Spring &spring = springs[cidx];
-        float current_dist = xpos[cidx + 1] - (xpos[cidx] + Levels::IN_WIDTH);
-
-        float weight = (current_dist < spring.target_dist) ?
-          spring.compress : spring.expand;
-
-        weighted_pos += weight * (xpos[cidx + 1] -
-                                  Levels::IN_WIDTH - spring.target_dist);
-        total_weight += weight;
-      }
-
-      #if 0
-      double target = weighted_pos / total_weight;
-      // Successive over-relaxation (SOR) to speed up convergence.
-      xpos[cidx] = xpos[cidx] + 1.5 * (target - xpos[cidx]);
-      #else
-      double target =
-        total_weight > 0.0 ? (weighted_pos / total_weight) : xpos[cidx];
-      // Standard Gauss-Seidel update (SOR with omega > 1 can oscillate
-      // when interacting with hard min/max constraints).
-      xpos[cidx] = target;
-      #endif
-
-      // Never (well, subject to physical possibility) let chutes be
-      // closer than the min distance (which also prohibits overlap).
-      //
-      // Normally checking the left neighbor alone would be sufficient,
-      // but we skip chutes that are anchored (and can't move them).
-      // So we also need to check overlaps to the right.
-      //
-      // Since we could violate both constraints at once, we compute
-      // them up front and settle for the midpoint if we can't satisfy
-      // both of them. This at least ensures that chutes don't get
-      // reordered.
-      std::optional<double> min_x, max_x;
-
-      if (cidx > 0) {
-        min_x = xpos[cidx - 1] + Levels::IN_WIDTH +
-          springs[cidx - 1].min_dist;
-      }
-
-      if (cidx < xpos.size() - 1) {
-        max_x = xpos[cidx + 1] - Levels::IN_WIDTH -
-          springs[cidx].min_dist;
-      }
-
-      if (min_x.has_value() && max_x.has_value() &&
-          min_x.value() > max_x.value()) {
-        // If constrained on both sides and unable to satisfy both,
-        // place the chute at the midpoint.
-        xpos[cidx] = (min_x.value() + max_x.value()) / 2.0;
-      } else {
-        if (min_x.has_value() && xpos[cidx] < min_x.value())
-          xpos[cidx] = min_x.value();
-        if (max_x.has_value() && xpos[cidx] > max_x.value())
-          xpos[cidx] = max_x.value();
-      }
-
-    }
+  for (int i = last_anchor_idx + 1; i < (int)chutes.size(); i++) {
+    xpos[i] = xpos[i - 1] +
+      Levels::IN_WIDTH + SpringLength(springs[i - 1], 0.0);
   }
 
   return xpos;
 }
+
 
 std::string LayoutCanvas::DebugString() const {
   std::string s;

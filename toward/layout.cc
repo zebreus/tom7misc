@@ -190,7 +190,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   // Global debugging flags.
   int verbose = 1;
   bool write_images = false;
-  bool write_debugging = false;
+  bool write_debugging = true;
 
   void SetVerbose(int v) override { verbose = v; }
   void SetWriteImages(bool b) override { write_images = b; }

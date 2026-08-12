@@ -224,14 +224,17 @@ static void TestSolveSpringsConverges(const CellLibrary &library) {
   canvas.Reset(chutes);
 
   for (int i = 0; i < num - 1; i++) {
-    canvas.springs[i] = {.target_dist = 10, .min_dist = 0, .compress = 1.0f, .expand = 1.0f};
+    canvas.springs[i] = {.target_dist = 10, .min_dist = 0,
+      .compress = 1.0f, .expand = 1.0f};
   }
 
   std::vector<double> xpos = canvas.SolveSprings();
 
-  // The middle chute should have moved substantially from its original position (500)
-  // towards the midpoint between 0 and 10000 (which is 5000).
-  CHECK(xpos[num / 2] > 2000.0) << "Middle chute didn't move enough: " << xpos[num / 2];
+  // The middle chute should have moved substantially from its
+  // original position (500) towards the midpoint between 0 and 10000
+  // (which is 5000).
+  CHECK(xpos[num / 2] > 2000.0) << "Middle chute didn't move enough: "
+                                << xpos[num / 2];
 }
 
 static void TestSolveSprings(const CellLibrary &library) {
@@ -300,7 +303,8 @@ static void TestSolveSprings(const CellLibrary &library) {
     canvas.Reset({
       {.pos = 0, .prop = True(), .type = CType::MIXED, .anchored = false},
       {.pos = spacing, .prop = True(), .type = CType::MIXED, .anchored = false},
-      {.pos = 2 * spacing + 100, .prop = True(), .type = CType::MIXED, .anchored = false},
+      {.pos = 2 * spacing + 100, .prop = True(), .type = CType::MIXED,
+       .anchored = false},
     });
 
     canvas.springs[0] = {.target_dist = target_dist, .min_dist = 10};

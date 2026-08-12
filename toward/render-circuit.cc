@@ -293,6 +293,10 @@ ImageRGBA RenderCircuitMini(
     const Circuit &circuit,
     std::vector<bool> is_var) {
 
+  static constexpr uint32_t ONLY_WIRES = 0xFF00FF77;
+  static constexpr uint32_t ONLY_EXCHANGE = 0x00FF7777;
+  static constexpr uint32_t USEFUL_GATES = 0x33FF3377;
+
   ImageRGBA icon_and = Icon(5,
                             "..@.."
                             ".@.@."
@@ -334,7 +338,9 @@ ImageRGBA RenderCircuitMini(
   const int layer_height = 6;
   const int pad_height = 1;
 
-  int img_w = (max_w + 2) / 5;
+  const int LEFT_COL = 7;
+
+  int img_w = (max_w + 2) / 5 + LEFT_COL;
   int num_layers = (int)circuit.layers.size();
   // Ensure the image is tall enough for a 16:9 (1920x1080) aspect ratio.
   int min_layers = (img_w * 9 + 16 * layer_height - 1) / (16 * layer_height);
@@ -353,7 +359,22 @@ ImageRGBA RenderCircuitMini(
     std::vector<bool> next_is_var;
     int input_idx = 0;
 
+    bool has_exchange = false;
+    bool has_useful = false;
+    for (const Cell &cell : layer) {
+      if (cell.gate != Gate::SPACER) {
+        if (!IsWire(cell.gate)) {
+          if (IsXchg(cell.gate)) {
+            has_exchange = true;
+          } else {
+            has_useful = true;
+          }
+        }
+      }
+    }
+
     int cx = 0;
+    bool first_cell_drawn = false;
     for (const Cell &cell : layer) {
       CellLibrary::Info info = library.GetInfo(cell);
       int bw = info.block_width;
@@ -371,9 +392,22 @@ ImageRGBA RenderCircuitMini(
       input_idx += num_inputs;
 
       if (bw > 0 && cell.gate != Gate::SPACER) {
-        int px = (cx + 2) / 5;
-        int next_px = (cx + bw + 2) / 5;
+        int px = (cx + 2) / 5 + LEFT_COL;
+        int next_px = (cx + bw + 2) / 5 + LEFT_COL;
         int pw = std::max(1, next_px - px);
+
+        if (!first_cell_drawn) {
+          uint32_t ind_color = ONLY_WIRES;
+          if (has_useful) {
+            ind_color = USEFUL_GATES;
+          } else if (has_exchange) {
+            ind_color = ONLY_EXCHANGE;
+          }
+          constexpr int c = 4;
+          img.BlendFilledCircle32(px - LEFT_COL + c/2,
+                                  cy + layer_height / 2, c, ind_color);
+          first_cell_drawn = true;
+        }
 
         uint32_t cc = USEFUL_CELL_COLOR;
         if (IsWire(cell.gate)) {
@@ -429,7 +463,7 @@ ImageRGBA RenderCircuitMini(
         }
 
         for (const CellLibrary::IO &io : info.inputs) {
-          int pad_x = (cx + io.xblock + 2) / 5;
+          int pad_x = (cx + io.xblock + 2) / 5 + LEFT_COL;
           pad_x = std::clamp(pad_x, px, px + pw - 1);
           uint32_t ic = GetInputColor(io.type);
           if (cell_is_var) ic = Darken(ic);
@@ -437,7 +471,7 @@ ImageRGBA RenderCircuitMini(
         }
 
         for (const CellLibrary::IO &io : info.outputs) {
-          int pad_x = (cx + io.xblock + 2) / 5;
+          int pad_x = (cx + io.xblock + 2) / 5 + LEFT_COL;
           pad_x = std::clamp(pad_x, px, px + pw - 1);
           int py = cy + layer_height - pad_height;
           uint32_t oc = GetOutputColor(io.type);
