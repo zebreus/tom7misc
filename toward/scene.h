@@ -2,6 +2,7 @@
 #define _TOWARD_SCENE_H
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -71,6 +72,10 @@ struct Scene {
   // Not simulated, but drawn on top of the objects.
   std::vector<Obj> fg_objects;
 
+  // Returns nullptr if there are no world slots available.
+  static std::unique_ptr<Scene> Create();
+
+  // Aborts if there are no world slots available.
   Scene();
   ~Scene();
 
@@ -82,8 +87,9 @@ struct Scene {
   void Hibernate();
   // Restart the simulation, acquiring the global resources.
   // Note that world ids and body id may change; use user_data
-  // for long-lived references.
-  void Unhibernate();
+  // for long-lived references. Returns false if there are no
+  // available world slots.
+  bool Unhibernate();
   bool Hibernating() const;
 
   // True if every object is asleep, so the simulation is
@@ -150,6 +156,7 @@ struct Scene {
   void ApplyImpulse(vec2f v);
 
  private:
+  explicit Scene(b2WorldId world);
   size_t Attach(b2BodyId body_id, b2ShapeDef shape_def,
                 const Polygonization::Mesh &mesh,
                 uint32_t color);

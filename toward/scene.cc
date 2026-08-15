@@ -2,6 +2,7 @@
 #include "scene.h"
 
 #include <cmath>
+#include <memory>
 #include <mutex>
 #include <numbers>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include "base/print.h"
 #include "box2d.h"
 #include "color-util.h"
+#include "constants.h"
 #include "geom/polygonization.h"
 #include "geom/polygons.h"
 #include "math_functions.h"
@@ -28,12 +30,13 @@ constexpr bool VERBOSE = false;
 // But it seems like aside from world creation/destruction,
 // you can use them in parallel.
 static std::mutex world_mutex;
+static int world_count = 0;
 
 static b2Rot MakeExactRot(float angle) {
   return b2Rot{std::cos(angle), std::sin(angle)};
 }
 
-Scene::Scene() {
+static std::optional<b2WorldId> AcquireWorld() {
   b2WorldDef world_def = b2DefaultWorldDef();
   // XXX... necessary for parallelism?
   world_def.workerCount = 0;
@@ -41,14 +44,38 @@ Scene::Scene() {
 
   {
     MutexLock ml(&world_mutex);
-    world_id = b2CreateWorld(&world_def);
+    if (world_count == B2_MAX_WORLDS)
+      return std::nullopt;
+    b2WorldId world_id = b2CreateWorld(&world_def);
+    world_count++;
+    return world_id;
   }
+}
+
+static b2WorldId AcquireWorldOrDie() {
+  auto wo = AcquireWorld();
+  CHECK(wo.has_value()) << "Exceeded maximum per-process worlds";
+  return wo.value();
+}
+
+std::unique_ptr<Scene> Scene::Create() {
+  auto wo = AcquireWorld();
+  if (!wo.has_value()) return {nullptr};
+  return std::unique_ptr<Scene>(new Scene(wo.value()));
+}
+
+Scene::Scene() : Scene(AcquireWorldOrDie()) {
+}
+
+Scene::Scene(b2WorldId world) : world_id(world) {
+
 }
 
 Scene::~Scene() {
   MutexLock ml(&world_mutex);
   if (world_id.has_value()) {
     b2DestroyWorld(world_id.value());
+    world_count--;
   }
 }
 
@@ -106,23 +133,20 @@ void Scene::Hibernate() {
   {
     MutexLock ml(&world_mutex);
     b2DestroyWorld(world_id.value());
+    world_count--;
   }
   world_id = std::nullopt;
 }
 
-void Scene::Unhibernate() {
+bool Scene::Unhibernate() {
   if (world_id.has_value()) {
-    return;
+    return true;
   }
 
-  b2WorldDef world_def = b2DefaultWorldDef();
-  world_def.workerCount = 0;
-  world_def.gravity = {0.0f, 9.8f};
+  auto wo = AcquireWorld();
+  if (!wo.has_value()) return false;
 
-  {
-    MutexLock ml(&world_mutex);
-    world_id = b2CreateWorld(&world_def);
-  }
+  world_id = wo.value();
 
   for (Obj &obj : objects) {
     if (obj.hibernation_state.has_value()) {
@@ -158,6 +182,8 @@ void Scene::Unhibernate() {
       obj.hibernation_state = std::nullopt;
     }
   }
+
+  return true;
 }
 
 bool Scene::AllAsleep() {

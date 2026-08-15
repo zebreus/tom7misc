@@ -5,11 +5,13 @@
 #include <memory>
 #include <numbers>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "constants.h"
 #include "geom/polygonization.h"
 #include "rendering.h"
 
@@ -173,6 +175,50 @@ static void TestDetach() {
   CHECK(scene.IsSimulated(scene.objects[obj2]));
 }
 
+static void TestWorldLimits() {
+  Print("Testing world limits...\n");
+  std::vector<std::unique_ptr<Scene>> scenes;
+  for (int i = 0; i < B2_MAX_WORLDS - 2; i++) {
+    scenes.push_back(std::make_unique<Scene>());
+  }
+
+  {
+    bool hit_limit = false;
+    for (int i = 0; i < 8; i++) {
+      std::unique_ptr<Scene> s = Scene::Create();
+      if (s.get() == nullptr) {
+        Print("Hit limit as expected!\n");
+        hit_limit = true;
+        break;
+      }
+      scenes.push_back(std::move(s));
+    }
+
+    CHECK(hit_limit) << "Failed to hit world slot limit";
+  }
+
+  // Check that sparse removal still frees up slots.
+  Print("Remove some scenes...\n");
+  CHECK(B2_MAX_WORLDS > 255 * 5) << "You'll need to adjust the test.";
+  for (int i = 0; i < B2_MAX_WORLDS; i += 255) {
+    scenes[i].reset();
+  }
+
+  Print("Now we should be able to create some...\n");
+  for (int i = 0; i < 5; i++) {
+    std::unique_ptr<Scene> s = Scene::Create();
+    CHECK(s.get() != nullptr);
+    scenes.push_back(std::move(s));
+  }
+
+  Print("Destroy all.\n");
+  scenes.clear();
+
+  Print("One more...\n");
+  std::unique_ptr<Scene> s = Scene::Create();
+  CHECK(s.get() != nullptr);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -180,6 +226,7 @@ int main(int argc, char **argv) {
   TestBasicProperties();
   TestGraphics();
   TestDetach();
+  TestWorldLimits();
 
   Print("OK\n");
 

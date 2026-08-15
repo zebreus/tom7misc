@@ -44,7 +44,7 @@ struct CircuitSim {
 
     // The corresponding scene. This may be null if we have
     // not yet started simulating this node (e.g. because we
-    // haven't loaded the level yet).
+    // haven't loaded the level yet). Might be hibernating.
     std::unique_ptr<Scene> scene;
 
     // The indices of objects in the level that are items (zero or
