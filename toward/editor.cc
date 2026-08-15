@@ -83,6 +83,14 @@ void Simulate(std::string_view level_file) {
           bit = true;
         } else if (kdown->codepoint == '0') {
           bit = false;
+        } else if (kdown->codepoint == 'h') {
+          if (scene->Hibernating()) {
+            Print("Unhibernate.\n");
+            scene->Unhibernate();
+          } else {
+            Print("Hibernate.\n");
+            scene->Hibernate();
+          }
         }
 
       } else if (const Inputs::KeyUp *kup =

@@ -66,6 +66,10 @@ test.exe : test.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
 	@echo -n ":"
 
+scene_test.exe : scene_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 editor.exe : editor.o $(LIB_OBJECTS) $(SDL_OBJECTS)
 	$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
 	@echo -n ":"

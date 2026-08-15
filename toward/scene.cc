@@ -29,6 +29,10 @@ constexpr bool VERBOSE = false;
 // you can use them in parallel.
 static std::mutex world_mutex;
 
+static b2Rot MakeExactRot(float angle) {
+  return b2Rot{std::cos(angle), std::sin(angle)};
+}
+
 Scene::Scene() {
   b2WorldDef world_def = b2DefaultWorldDef();
   // XXX... necessary for parallelism?
@@ -43,14 +47,123 @@ Scene::Scene() {
 
 Scene::~Scene() {
   MutexLock ml(&world_mutex);
-  b2DestroyWorld(world_id);
+  if (world_id.has_value()) {
+    b2DestroyWorld(world_id.value());
+  }
 }
 
 void Scene::Update() {
-  b2World_Step(world_id, 1.0f / 120.0f, 8);
+  if (world_id.has_value()) {
+    b2World_Step(world_id.value(), 1.0f / 120.0f, 8);
+  }
+}
+
+void Scene::Hibernate() {
+  if (!world_id.has_value()) {
+    return;
+  }
+
+  for (Obj &obj : objects) {
+    if (b2Body_IsValid(obj.body_id)) {
+      HibernationState state;
+      b2Vec2 p = b2Body_GetPosition(obj.body_id);
+      state.pos = {p.x, p.y};
+
+      b2Rot rot = b2Body_GetRotation(obj.body_id);
+      state.angle = std::atan2(rot.s, rot.c);
+
+      b2Vec2 v = b2Body_GetLinearVelocity(obj.body_id);
+      state.vel = {v.x, v.y};
+      state.avel = b2Body_GetAngularVelocity(obj.body_id);
+
+      state.is_static = (b2Body_GetType(obj.body_id) == b2_staticBody);
+
+      int count = b2Body_GetShapeCount(obj.body_id);
+      std::vector<b2ShapeId> shapes(count);
+      if (count > 0) {
+        b2Body_GetShapes(obj.body_id, shapes.data(), count);
+        state.restitution = b2Shape_GetRestitution(shapes[0]);
+        state.friction = b2Shape_GetFriction(shapes[0]);
+
+        for (b2ShapeId shape_id : shapes) {
+          if (b2Shape_GetType(shape_id) == b2_polygonShape) {
+            b2Polygon b2_poly = b2Shape_GetPolygon(shape_id);
+            Polygon poly;
+            poly.reserve(b2_poly.count);
+            for (int i = 0; i < b2_poly.count; i++) {
+              poly.push_back({b2_poly.vertices[i].x, b2_poly.vertices[i].y});
+            }
+            state.shapes.push_back(std::move(poly));
+          }
+        }
+      }
+
+      obj.hibernation_state = std::move(state);
+      obj.body_id = {};
+    }
+  }
+
+  {
+    MutexLock ml(&world_mutex);
+    b2DestroyWorld(world_id.value());
+  }
+  world_id = std::nullopt;
+}
+
+void Scene::Unhibernate() {
+  if (world_id.has_value()) {
+    return;
+  }
+
+  b2WorldDef world_def = b2DefaultWorldDef();
+  world_def.workerCount = 0;
+  world_def.gravity = {0.0f, 9.8f};
+
+  {
+    MutexLock ml(&world_mutex);
+    world_id = b2CreateWorld(&world_def);
+  }
+
+  for (Obj &obj : objects) {
+    if (obj.hibernation_state.has_value()) {
+      const HibernationState &state = obj.hibernation_state.value();
+
+      b2BodyDef body_def = b2DefaultBodyDef();
+      body_def.type = state.is_static ? b2_staticBody : b2_dynamicBody;
+      body_def.position = {state.pos.x, state.pos.y};
+      body_def.rotation = MakeExactRot(state.angle);
+      body_def.linearVelocity = {state.vel.x, state.vel.y};
+      body_def.angularVelocity = state.avel;
+
+      obj.body_id = b2CreateBody(world_id.value(), &body_def);
+
+      b2ShapeDef shape_def = b2DefaultShapeDef();
+      shape_def.density = state.is_static ? 1.0f : 6.25f;
+      shape_def.material.restitution = state.restitution;
+      shape_def.material.friction = state.friction;
+
+      for (const Polygon &poly : state.shapes) {
+        std::vector<b2Vec2> pts;
+        pts.reserve(poly.size());
+        for (const vec2f &p : poly) {
+          pts.push_back({p.x, p.y});
+        }
+        b2Hull hull = b2ComputeHull(pts.data(), pts.size());
+        if (hull.count >= 3) {
+          b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
+          b2CreatePolygonShape(obj.body_id, &shape_def, &b2_poly);
+        }
+      }
+
+      obj.hibernation_state = std::nullopt;
+    }
+  }
 }
 
 bool Scene::AllAsleep() {
+  if (!world_id.has_value()) {
+    return true;
+  }
   for (const Scene::Obj &obj : objects) {
     if (b2Body_IsValid(obj.body_id) && b2Body_IsAwake(obj.body_id)) {
       return false;
@@ -96,6 +209,7 @@ void Scene::AddDirt(ArcFour *rc) {
 std::optional<vec2f> Scene::RejectObject(
     const Polygonization::Mesh &mesh, vec2f pos,
     vec2f reject_dir) {
+  CHECK(world_id.has_value()) << "RejectObject requires an active simulation.";
   float cx = pos.x;
   float cy = pos.y;
 
@@ -220,14 +334,16 @@ size_t Scene::AddObject(const Polygonization::Mesh &mesh,
                         vec2f vel, float avel,
                         float restitution,
                         float friction) {
+  CHECK(world_id.has_value()) << "Cannot add object while hibernating";
+
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_dynamicBody;
   body_def.position = {pos.x, pos.y};
-  body_def.rotation = b2MakeRot(angle);
+  body_def.rotation = MakeExactRot(angle);
   body_def.linearVelocity = {vel.x, vel.y};
   body_def.angularVelocity = avel;
 
-  b2BodyId body_id = b2CreateBody(world_id, &body_def);
+  b2BodyId body_id = b2CreateBody(world_id.value(), &body_def);
 
   b2ShapeDef shape_def = b2DefaultShapeDef();
   // Since all the objects have the same density, it actually
@@ -247,11 +363,13 @@ size_t Scene::AddFixedObject(const Polygonization::Mesh &mesh,
                              uint32_t color, vec2f pos,
                              float restitution,
                              float friction) {
+  CHECK(world_id.has_value()) << "Cannot add fixed object while hibernating";
+
   b2BodyDef body_def = b2DefaultBodyDef();
   body_def.type = b2_staticBody;
   body_def.position = {pos.x, pos.y};
 
-  b2BodyId body_id = b2CreateBody(world_id, &body_def);
+  b2BodyId body_id = b2CreateBody(world_id.value(), &body_def);
 
   b2ShapeDef shape_def = b2DefaultShapeDef();
   shape_def.density = 1.0f;
@@ -309,9 +427,11 @@ void Scene::AddGraphics(const Polygonization::Mesh &mesh, uint32_t color,
 void Scene::Detach(size_t index) {
   CHECK(index < objects.size());
   Obj &obj = objects[index];
-  CHECK(b2Body_IsValid(obj.body_id));
-  b2DestroyBody(obj.body_id);
-  obj.body_id = {};
+  if (b2Body_IsValid(obj.body_id)) {
+    b2DestroyBody(obj.body_id);
+    obj.body_id = {};
+  }
+  obj.hibernation_state = std::nullopt;
   obj.mesh.clear();
 }
 
@@ -432,7 +552,7 @@ void Scene::ApplyImpulse(vec2f v) {
 }
 
 // Get the scene, using Cartesian coordinates.
-std::vector<Rendering::Triangle> Scene::GetTriangles() {
+std::vector<Rendering::Triangle> Scene::GetTriangles() const {
   std::vector<Rendering::Triangle> scene;
   size_t num_triangles = 0;
 
@@ -472,14 +592,27 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() {
   AddRenderLayer(bg_objects);
 
   for (const Obj &obj : objects) {
-    if (!b2Body_IsValid(obj.body_id)) continue;
+    vec2f pos;
+    float c, s;
 
-    b2Vec2 pos = b2Body_GetPosition(obj.body_id);
-    b2Rot rot = b2Body_GetRotation(obj.body_id);
+    if (obj.hibernation_state.has_value()) {
+      const HibernationState &hs = obj.hibernation_state.value();
+      pos = hs.pos;
+      c = std::cos(hs.angle);
+      s = std::sin(hs.angle);
+    } else if (b2Body_IsValid(obj.body_id)) {
+      b2Vec2 b2pos = b2Body_GetPosition(obj.body_id);
+      pos = {b2pos.x, b2pos.y};
+      b2Rot rot = b2Body_GetRotation(obj.body_id);
+      c = rot.c;
+      s = rot.s;
+    } else {
+      continue;
+    }
 
     auto Transform = [&](const Rendering::vec2f &v) -> Rendering::vec2f {
-        float rx = rot.c * v.x - rot.s * v.y;
-        float ry = rot.s * v.x + rot.c * v.y;
+        float rx = c * v.x - s * v.y;
+        float ry = s * v.x + c * v.y;
         return {
           .x = pos.x + rx,
           .y = HEIGHT - (pos.y + ry),
@@ -503,29 +636,44 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() {
 }
 
 vec2f Scene::GetPosition(const Obj &obj) {
+  if (obj.hibernation_state.has_value()) {
+    return obj.hibernation_state.value().pos;
+  }
   CHECK(b2Body_IsValid(obj.body_id));
   b2Vec2 p = b2Body_GetPosition(obj.body_id);
   return vec2f{p.x, p.y};
 }
 
 vec2f Scene::GetVelocity(const Obj &obj) {
+  if (obj.hibernation_state.has_value()) {
+    return obj.hibernation_state.value().vel;
+  }
   CHECK(b2Body_IsValid(obj.body_id));
   b2Vec2 v = b2Body_GetLinearVelocity(obj.body_id);
   return vec2f{v.x, v.y};
 }
 
 float Scene::GetAngle(const Obj &obj) {
+  if (obj.hibernation_state.has_value()) {
+    return obj.hibernation_state.value().angle;
+  }
   CHECK(b2Body_IsValid(obj.body_id));
   b2Rot rot = b2Body_GetRotation(obj.body_id);
   return std::atan2(rot.s, rot.c);
 }
 
 float Scene::GetAngularVelocity(const Obj &obj) {
+  if (obj.hibernation_state.has_value()) {
+    return obj.hibernation_state.value().avel;
+  }
   CHECK(b2Body_IsValid(obj.body_id));
   return b2Body_GetAngularVelocity(obj.body_id);
 }
 
 bool Scene::IsSimulated(const Obj &obj) const {
-  return b2Body_IsValid(obj.body_id);
+  return b2Body_IsValid(obj.body_id) || obj.hibernation_state.has_value();
 }
 
+bool Scene::Hibernating() const {
+  return !world_id.has_value();
+}
