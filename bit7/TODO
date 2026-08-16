@@ -10,6 +10,9 @@ right stem compared to latin u.
 
 （✿ ͡◕ ᴗ◕)つ━━✫
 
+Seen in the wild (pip install): ╸
+from more box drawing chars: https://www.compart.com/en/unicode/block/U+2500
+
 
 from htop:
 HR S  CPU%▽MEM%
@@ -42,8 +45,6 @@ Emoji TODO: 🎉 ✅
 
 // Common in Wikipedia:
 U+026a (ɪ): 41570  (IPA small caps?)
-U+300c (「): 30788
-U+300d (」): 30753
 U+0283 (ʃ): 29294
 
 

@@ -3,6 +3,7 @@
 // with it (stray pixels, etc.).
 
 #include <string>
+#include <string_view>
 
 #include "base/logging.h"
 #include "base/print.h"
@@ -11,7 +12,7 @@
 
 using namespace std;
 
-static Config ParseAndCheckConfig(const std::string &cfgfile) {
+static Config ParseAndCheckConfig(std::string_view cfgfile) {
   Config config = Config::ParseConfig(cfgfile);
   CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
   CHECK(!config.name.empty()) << "Required config line: name";
@@ -19,7 +20,7 @@ static Config ParseAndCheckConfig(const std::string &cfgfile) {
   CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
   CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";
 
-  CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";
+  CHECK(config.descent >= 0) << "Config line descent must be >= 0";
 
   CHECK(config.chars_across > 0);
   CHECK(config.chars_down > 0);

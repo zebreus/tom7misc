@@ -28,12 +28,17 @@ static constexpr bool VERBOSE = true;
 // consider not even outputting them in the TTFs. The purpose
 // is to allow for some utility-style glyph pieces in the
 // font images that are not deleted by normalization.
+static constexpr uint32_t PUA_START = 0xF7000;
 enum PrivateUse : uint32_t {
-  PUA_START = 0xF7000,
-  PUA_LC_SLASH1,
+  PUA_LC_SLASH1 = PUA_START,
   PUA_SLASH_STEEP,
   PUA_SLASH,
+  PUA_CENTER_TILDE,
+
+  PUA_END,
 };
+constexpr int NUM_PUA = PUA_END - PUA_START;
+static_assert(NUM_PUA <= 16);
 
 struct PageInfo {
   // Codepoint or -1.
@@ -261,11 +266,12 @@ static PageInfo PageBit7Classic() {
 // Standard size is: 16x24
 static PageInfo PageBit7LatinABC() {
   PageInfo info;
+
   info.sections = {
     {0, 8 * 16},
     {8 * 16, 13 * 16},
     {(8 + 13) * 16, 2 * 16},
-    {(8 + 13 + 2) * 16, 16},
+    {(8 + 13 + 2) * 16, NUM_PUA},
   };
 
   info.codepoints = {
@@ -657,15 +663,17 @@ static PageInfo PageBit7LatinABC() {
     0x2C7D,  // (ⱽ) MODIFIER LETTER CAPITAL V
     0x2C7E,  // (Ȿ) LATIN CAPITAL LETTER S WITH SWASH TAIL
     0x2C7F,  // (Ɀ) LATIN CAPITAL LETTER Z WITH SWASH TAIL
-
-    // Private area for utility glyph pieces (slashes)
-    PUA_LC_SLASH1,
-    PUA_SLASH_STEEP,
-    PUA_SLASH,
-
-    // 16 unused slots
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
+
+  // Private area for utility glyph pieces (e.g. slashes)
+  for (int i = 0; i < 16; i++) {
+    if (i < NUM_PUA) {
+      info.codepoints.push_back(PUA_START + i);
+    } else {
+      // remainder of line unused
+      info.codepoints.push_back(-1);
+    }
+  }
 
   CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
   return info;
@@ -2278,7 +2286,7 @@ static PageInfo PageBit7Sym1() {
     0x23b8,  // (⎸) LEFT VERTICAL BOX LINE
     0x23b9,  // (⎹) RIGHT VERTICAL BOX LINE
     0x23ba,  // (⎺) HORIZONTAL SCAN LINE-1
-    0x23bb,  // (⎻) HORIZONTAL SCAN LINE-3
+    0x23bb,  // (⎻) HORIZONTAL SCAN LINE-3 (fyi: LINE-5 is U+2500)
     0x23bc,  // (⎼) HORIZONTAL SCAN LINE-7
     0x23bd,  // (⎽) HORIZONTAL SCAN LINE-9
     0x23be,  // (⎾) DENTISTRY SYMBOL LIGHT VERTICAL AND TOP RIGHT
@@ -2551,6 +2559,12 @@ REUSE_FOR = {
   {0x2295, 0x2A01},  // oplus
   {0x2279, 0x2A02},  // otimes
   // ... more here.
+
+  // APL symbols have copies of some lowercase greek
+  {0x03B9, 0x2373},  // iota
+  {0x03C1, 0x2374},  // rho
+  {0x03C9, 0x2375},  // omega
+  {0x03B1, 0x237A},  // alpha
 
   // Various spaces. Since the font is fixed-width,
   // we just render these the same as space. Most of these
