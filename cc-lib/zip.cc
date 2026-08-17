@@ -811,18 +811,39 @@ void ZIP::CCLibHeader::ParseHeader(const uint8_t *data) {
   memcpy(this, data, CCLibHeader::SIZE);
 }
 
-std::vector<uint8_t> ZIP::CCZ(std::span<const uint8_t> data, int level) {
+void ZIP::AppendCCZ(std::vector<uint8_t> *out,
+                    std::span<const uint8_t> data, int level) {
   CCLibHeader header;
   CHECK(header.HasCorrectMagic());
   header.SetFlags(0);
   header.SetSize(data.size());
   // PERF: Avoid copying!
   std::vector<uint8_t> flate_payload = ZipPtr(data.data(), data.size(), level);
-  std::vector<uint8_t> out(CCLibHeader::SIZE + flate_payload.size());
-  memcpy(out.data(), &header, CCLibHeader::SIZE);
-  memcpy(out.data() + CCLibHeader::SIZE, flate_payload.data(),
+  size_t start_at = out->size();
+  out->resize(out->size() + CCLibHeader::SIZE + flate_payload.size());
+  memcpy(out->data() + start_at, &header, CCLibHeader::SIZE);
+  memcpy(out->data() + start_at + CCLibHeader::SIZE, flate_payload.data(),
          flate_payload.size());
+}
+
+void ZIP::AppendCCZ(std::vector<uint8_t> *out,
+                    std::string_view data, int level) {
+  return AppendCCZ(out,
+                   std::span<const uint8_t>((const uint8_t*)data.data(),
+                                            data.size()),
+                   level);
+}
+
+std::vector<uint8_t> ZIP::CCZ(std::span<const uint8_t> data, int level) {
+  std::vector<uint8_t> out;
+  AppendCCZ(&out, data, level);
   return out;
+}
+
+std::vector<uint8_t> ZIP::CCZ(std::string_view data, int level) {
+  return CCZ(std::span<const uint8_t>((const uint8_t*)data.data(),
+                                      data.size()),
+             level);
 }
 
 std::vector<uint8_t> ZIP::UnCCZ(std::span<const uint8_t> data) {

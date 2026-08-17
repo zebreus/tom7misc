@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <span>
 #include <utility>
 #include <vector>
 #include <string_view>
@@ -600,10 +601,17 @@ static void TestCCZ() {
     }) {
     std::vector<uint8_t> v = StringVec(s);
     std::vector<uint8_t> enc = ZIP::CCZ(v);
+
+    // encoded with leading bytes
+    std::vector<uint8_t> padenc = {3, 2, 1};
+    ZIP::AppendCCZ(&padenc, s, 9);
+    CHECK(padenc.size() > 3);
+
     std::vector<uint8_t> dec = ZIP::UnCCZ(enc);
     CHECK(v == dec) << s;
     std::string decs = ZIP::UnCCZString(enc);
     CHECK(decs.size() == dec.size());
+
     for (size_t i = 0; i < dec.size(); i++) {
       // Account for signed characters
       const uint8_t c1 = decs[i];
@@ -613,6 +621,10 @@ static void TestCCZ() {
                                      s,
                                      i, decs[i], dec[i]);
     }
+
+    std::vector<uint8_t> pdec = ZIP::UnCCZ(std::span<const uint8_t>(padenc).
+                                           subspan(3));
+    CHECK(pdec == v) << s;
   }
   Print("ccz round trip " AGREEN("OK") "\n");
 }

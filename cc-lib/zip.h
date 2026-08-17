@@ -129,15 +129,16 @@ struct ZIP {
     void ParseHeader(const uint8_t *data);
   };
 
-  // TODO
-  /*
-
-  */
 
   // Convenience methods. If you want stuff like graceful error handling
   // or streaming, you should use the above instead.
   // Encode as CCZ in memory, including a header.
   static std::vector<uint8_t> CCZ(std::span<const uint8_t> data, int level = 7);
+  static std::vector<uint8_t> CCZ(std::string_view data, int level = 7);
+  static void AppendCCZ(std::vector<uint8_t> *out,
+                        std::span<const uint8_t> data, int level = 7);
+  static void AppendCCZ(std::vector<uint8_t> *out,
+                        std::string_view data, int level = 7);
 
   // Decode a CCZ file including its header.
   // Aborts if malformed.
