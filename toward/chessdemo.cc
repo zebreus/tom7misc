@@ -108,8 +108,8 @@ static void RenderOneProp(const CellLibrary &library,
 
   {
     std::string filename = std::format("{}-unopt.layout", basename);
-    Util::WriteFile(filename,
-                    LayoutEngine::Serialize(layout));
+    Util::WriteFileBytes(filename,
+                         LayoutEngine::Serialize(layout));
 
   }
 
@@ -126,8 +126,8 @@ static void RenderOneProp(const CellLibrary &library,
 
   {
     std::string filename = std::format("{}.layout", basename);
-    Util::WriteFile(filename,
-                    LayoutEngine::Serialize(layout));
+    Util::WriteFileBytes(filename,
+                         LayoutEngine::Serialize(layout));
     Print("Wrote {}.\n", filename);
   }
 
@@ -286,7 +286,7 @@ struct ChessDemo {
               async.Run([this, lay = std::move(lay), move = std::move(move)]{
                   ImageRGBA img = RenderLayout(library, lay);
                   img.Save(std::format("legal-{}.png", move));
-                  Util::WriteFile(
+                  Util::WriteFileBytes(
                       std::format("legal-{}.layout", move),
                       LayoutEngine::Serialize(lay));
                 });
@@ -333,14 +333,14 @@ int main(int argc, char **argv) {
   // RenderOne(ChessProp::KID_CHESS);
 
   #if 1
-  const Position::Move b2b4 = {
-    .src_row = 6,
+  const Position::Move move = {
+    .src_row = 1,
     .src_col = 1,
-    .dst_row = 4,
-    .dst_col = 1,
+    .dst_row = 7,
+    .dst_col = 7,
   };
 
-  RenderFrom("chess", b2b4);
+  RenderFrom("chess", move);
   #endif
 
   return 0;

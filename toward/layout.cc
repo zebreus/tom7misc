@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <format>
 #include <functional>
@@ -46,6 +47,7 @@
 #include "timer.h"
 #include "util.h"
 #include "vector-util.h"
+#include "zip.h"
 
 static constexpr bool ANCHORING = false;
 
@@ -2136,27 +2138,53 @@ std::unique_ptr<LayoutEngine> LayoutEngine::Create(
 LayoutEngine::LayoutEngine() {}
 LayoutEngine::~LayoutEngine() {}
 
+static constexpr std::string_view MAGIC = "\xCCzCL";
 
-std::string LayoutEngine::Serialize(const Layout &layout) {
-  std::string out;
+std::vector<uint8_t> LayoutEngine::Serialize(const Layout &layout) {
+  std::string str;
   bool first = true;
   for (const auto &[var, ctype] : layout.input_vars) {
-    if (!first) out += " ";
+    if (!first) str += " ";
     char c = '?';
     switch (ctype) {
     case CType::ZERO: c = 'O'; break;
     case CType::ONE: c = 'I'; break;
     case CType::MIXED: c = 'M'; break;
     }
-    out += std::to_string(var) + c;
+    str += std::to_string(var) + c;
     first = false;
   }
-  out += "\n";
-  out += SerializeCircuit(layout.circuit);
-  return out;
+  str += "\n";
+  str += SerializeCircuit(layout.circuit);
+
+  if (str.size() > 256) {
+    std::vector<uint8_t> out;
+    for (size_t i = 0; i < MAGIC.size(); i++)
+      out.push_back(MAGIC[i]);
+    ZIP::AppendCCZ(&out, str, 9);
+    return out;
+  } else {
+    std::vector<uint8_t> v(str.size());
+    memcpy(v.data(), (const uint8_t*)str.data(), str.size());
+    return v;
+  }
+}
+
+std::optional<Layout> LayoutEngine::Parse(std::span<const uint8_t> content) {
+  return Parse(std::string_view((const char*)content.data(), content.size()));
 }
 
 std::optional<Layout> LayoutEngine::Parse(std::string_view content) {
+  // Local decompression buffer, if the input is compressed.
+  std::string uncomp;
+  if (content.starts_with(MAGIC)) {
+    content.remove_prefix(MAGIC.size());
+    uncomp = ZIP::UnCCZString(
+        std::span<const uint8_t>((const uint8_t*)content.data(),
+                                 content.size()));
+    content = uncomp;
+  }
+
   size_t pos = content.find('\n');
   if (pos == std::string_view::npos) {
     return std::nullopt;

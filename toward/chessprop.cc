@@ -1,7 +1,6 @@
 
 #include "chessprop.h"
 
-#include <unordered_set>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
@@ -9,6 +8,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -712,6 +712,7 @@ static Prop KnightLegal(const Board &board,
 static Prop KingLegal(const Board &board,
                       int srcr, int srcc, int dstr, int dstc,
                       const Details &details) {
+  Prop was_in_check = board.props[ChessProp::CheckIdx()];
 
   int dr = dstr - srcr;
   int dc = dstc - srcc;
@@ -740,7 +741,7 @@ static Prop KingLegal(const Board &board,
       // (Which implies a rook in the corner.)
       Castling(board, true, kingside) &
       // Can't castle out of check.
-      (details.check_check ? -ChessProp::Attacked(board, 7, 4) : True());
+      (details.check_check ? -was_in_check : True());
 
     if (kingside) {
       castling_move = castling_move &

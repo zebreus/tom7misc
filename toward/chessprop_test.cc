@@ -2,7 +2,9 @@
 #include "chessprop.h"
 
 #include <format>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "ansi.h"
@@ -11,6 +13,8 @@
 #include "base/print.h"
 #include "chess.h"
 #include "prop.h"
+
+using Move = Position::Move;
 
 static void CheckAttacked(const Position &pos) {
   CHECK(!pos.BlackMove());
@@ -36,6 +40,44 @@ static void CheckAttacked(const Position &pos) {
     }
   }
 }
+
+static void CheckMove(const Position &pos_in, std::string_view ms) {
+  Position pos(pos_in);
+
+  std::optional<Move> omove = pos_in.ParseLongMove(ms);
+  CHECK(omove.has_value()) << ms;
+  const Move &move = omove.value();
+
+  bool expected = pos.IsLegal(move);
+
+  ChessProp::Board board = ChessProp::BoardFromPosition(pos);
+  World empty_world;
+  std::vector<bool> empty_assignments;
+
+  Prop prop = ChessProp::IsLegal(board,
+                                 move.src_row, move.src_col,
+                                 move.dst_row, move.dst_col);
+  bool actual = EvaluateProp(empty_assignments, prop);
+
+  if (expected != actual) {
+    Print("FEN: {}\n", pos.ToFEN(0, 1));
+    Print("Actual: {}, Expected: {}\n",
+          actual ? "legal" : "illegal",
+          expected ? "legal" : "illegal");
+    std::string ms;
+    if (expected) {
+      ms = std::format(" ({}{})",
+                       Position(pos).ShortMoveString(move),
+                       pos.PGNMoveSuffix(move));
+    }
+    Print("For move: {}{}\n", Position::DebugMoveString(move), ms);
+    Print("Source contains: {:c}\n",
+          Position::DebugPieceChar(
+              pos.SimplePieceAt(move.src_row, move.src_col)));
+    LOG(FATAL) << "Failed";
+  }
+}
+
 
 static void CheckAllMovesAgree(const Position &pos) {
   CHECK(!pos.BlackMove());
@@ -149,6 +191,30 @@ static void TestCastling() {
   Print("Castling OK.\n");
 }
 
+static void TestNotCastling() {
+  for (const std::string_view fen : {
+      // in check
+      "3kr3/8/8/8/8/8/8/R3K2R w KQ - 0 1",
+      // attacked square that the king moves through
+      "3k1r2/8/8/8/6b1/8/8/R3K2R w KQ - 0 1",
+      // attacked final square
+      "3k4/8/8/2b3b1/8/8/8/R3K2R w KQ - 0 1",
+      // piece in the way
+      "3k4/8/8/8/8/8/8/Rn2K1nR w KQ - 0 1",
+      // piece in the way (2)
+      "3k4/8/8/8/8/8/8/R1n1KR1R w KQ - 0 1",
+      // no castling bits
+      "3k4/8/8/8/8/8/8/R3K2R w - - 0 1",
+    }) {
+    Position pos;
+    CHECK(Position::ParseFEN(fen, &pos));
+    CheckMove(pos, "O-O");
+    CheckMove(pos, "O-O-O");
+  }
+
+  Print("Not Castling OK.\n");
+}
+
 static void TestKingMoving() {
   Position pos;
   CHECK(Position::ParseFEN(
@@ -220,6 +286,7 @@ int main(int argc, char **argv) {
 
   TestStartingPosition();
   TestCastling();
+  TestNotCastling();
   TestOutOfCheck();
   TestKingMoving();
   TestEnPassant();

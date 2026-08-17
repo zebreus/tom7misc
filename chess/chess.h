@@ -178,6 +178,18 @@ struct Position {
   //    and destination of the move.
   //  - The move string may be terminated by \0 or whitespace.
   bool ParseMove(const char *m, Move *move);
+  bool ParseMove(std::string_view m, Move *move);
+
+  // Position-independent parsing. The move need not be legal.
+  //  - Castling as O-O, O-O-O, or the king move.
+  //  - Otherwise, must have a source and destination square like "b2b4".
+  //  - Check and mood suffixes are allowed and ignored.
+  //  - =P suffix for promotion.
+  //  - Piece prefix (KQRNBP) is allowed and ignored.
+  // The current turn only matters for castling and promotion.
+  static std::optional<Move> ParseLongMove(std::string_view m,
+                                           bool black_move);
+  std::optional<Move> ParseLongMove(std::string_view m) const;
 
   // Assuming the move is legal, is it a castling move?
   bool IsCastling(Move m) const;

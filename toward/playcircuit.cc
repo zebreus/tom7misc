@@ -31,7 +31,7 @@ static void Loop(std::string_view layout_file) {
   CircuitSim sim(library, rendering.get(), layout_file);
   sim.GoToTopLeftCell();
 
-  Periodically status_per = Periodically(0.5);
+  Periodically status_per = Periodically(1);
   StatusBar status = StatusBar(1);
 
   Timer timer;

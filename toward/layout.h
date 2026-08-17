@@ -102,8 +102,9 @@ struct LayoutEngine {
   // Single line of stats: Size, number of inputs, etc.
   static std::string LayoutInfo(const Layout &layout);
 
-  static std::string Serialize(const Layout &layout);
+  static std::vector<uint8_t> Serialize(const Layout &layout);
   static std::optional<Layout> Parse(std::string_view content);
+  static std::optional<Layout> Parse(std::span<const uint8_t> content);
 
   static Layout Normalize(Layout layout);
 

@@ -405,7 +405,7 @@ static void ThreeLayers() {
   Layout result = reducer.ReduceWhile(layout, 100, Pred);
   Print("Consecutive wire layers: {}\n", ConsecutiveWireLayers(result));
 
-  Util::WriteFile("reduced.layout", LayoutEngine::Serialize(result));
+  Util::WriteFileBytes("reduced.layout", LayoutEngine::Serialize(result));
   Print("Reduced:\n{}\n", LayoutEngine::ToString(result));
 }
 

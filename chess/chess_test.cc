@@ -28,14 +28,14 @@ static constexpr bool VERBOSE = false;
     CHECK(fabs(v1 - v2) < 0.0001) << v1 << " vs " << v2;    \
   } while (false)
 
-static Position::Move ApplyMove(Position *pos, const char *pgn,
+static Position::Move ApplyMove(Position *pos, const char *pgn_move,
                                 Fates *fates) {
   Move m;
   const Position old_position = *pos;
-  CHECK(pos->ParseMove(pgn, &m)) << pgn;
+  CHECK(pos->ParseMove(pgn_move, &m)) << pgn_move;
   CHECK(PositionEq{}(old_position, *pos)) << "ParseMove modified board "
     "state!";
-  CHECK(pos->IsLegal(m)) << pgn;
+  CHECK(pos->IsLegal(m)) << pgn_move;
   CHECK(PositionEq{}(old_position, *pos)) << "IsLegal modified board "
     "state!";
 
@@ -644,6 +644,56 @@ static void TestRandom() {
   }
 }
 
+static void TestParseLongMove() {
+  auto ParseWhite = [](std::string_view s) {
+    return Position::ParseLongMove(s, false);
+  };
+  auto ParseBlack = [](std::string_view s) {
+    return Position::ParseLongMove(s, true);
+  };
+
+  std::optional<Move> m;
+
+  m = ParseWhite("e2e4");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 4 && m.value().src_row == 6);
+  CHECK(m.value().dst_col == 4 && m.value().dst_row == 4);
+  CHECK(m.value().promote_to == 0);
+
+  m = ParseBlack("Ng8f6!?");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 6 && m.value().src_row == 0);
+  CHECK(m.value().dst_col == 5 && m.value().dst_row == 2);
+  CHECK(m.value().promote_to == 0);
+
+  m = ParseWhite("a7a8=Q+");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 0 && m.value().src_row == 1);
+  CHECK(m.value().dst_col == 0 && m.value().dst_row == 0);
+  CHECK(m.value().promote_to == (Position::WHITE | Position::QUEEN));
+
+  m = ParseBlack("b2b1=R#");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 1 && m.value().src_row == 6);
+  CHECK(m.value().dst_col == 1 && m.value().dst_row == 7);
+  CHECK(m.value().promote_to == (Position::BLACK | Position::ROOK));
+
+  m = ParseWhite("O-O");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 4 && m.value().src_row == 7);
+  CHECK(m.value().dst_col == 6 && m.value().dst_row == 7);
+
+  m = ParseBlack("O-O-O+");
+  CHECK(m.has_value());
+  CHECK(m.value().src_col == 4 && m.value().src_row == 0);
+  CHECK(m.value().dst_col == 2 && m.value().dst_row == 0);
+
+  CHECK(!ParseWhite("e2").has_value());
+  CHECK(!ParseWhite("e2e9").has_value());
+  CHECK(!ParseWhite("a1a2=X").has_value());
+  CHECK(!ParseWhite("O-").has_value());
+}
+
 int main(int argc, char **argv) {
 
   CheckInit();
@@ -680,6 +730,7 @@ int main(int argc, char **argv) {
   RegressionRg8();
 
   TestRandom();
+  TestParseLongMove();
 
   printf("\nOK\n");
   return 0;

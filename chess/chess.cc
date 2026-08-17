@@ -391,13 +391,28 @@ std::string Position::UnicodeAnsiBoardString() const {
 }
 
 bool Position::ParseMove(const char *m, Move *move) {
-  IFDEBUG printf("\n== %s ==\n", m);
+  // move can be terminated by whitespace or \0
+  for (size_t sz = 0; true; sz++) {
+    char c = m[sz];
+    if (c == 0 || c == ' ' || c == '\n' || c == '\t') {
+      return ParseMove(std::string_view(m, sz), move);
+    }
+  }
+}
+
+// TODO: This will accept invalid moves with valid prefixes,
+// like O-O-O-O. We should be more precise about what what
+// suffixes are allowed!
+bool Position::ParseMove(std::string_view m, Move *move) {
+  IFDEBUG printf("\n== %s ==\n", std::string(m).c_str());
 
   const bool blackmove = !!(bits & BLACK_MOVE);
   const uint8 my_color = blackmove ? BLACK : WHITE;
   // const uint8 your_color = blackmove ? WHITE : BLACK;
 
-  if (m[0] == 'O' && m[1] == '-' && m[2] == 'O') {
+  if (m.empty()) return false;
+
+  if (m.starts_with("O-O")) {
     // Castling move. The king must be on its home square for
     // this to possibly be legal.
     const int row = blackmove ? 0 : 7;
@@ -409,7 +424,7 @@ bool Position::ParseMove(const char *m, Move *move) {
     move->src_col = 4;
 
     // Queen-side?
-    if (m[3] == '-' && m[4] == 'O') {
+    if (m.size() >= 5 && m[3] == '-' && m[4] == 'O') {
       move->dst_col = 2;
     } else {
       move->dst_col = 6;
@@ -419,7 +434,8 @@ bool Position::ParseMove(const char *m, Move *move) {
   }
 
   // Need to find the end of the move string up front.
-  // This does not include any '=P' promotion string.
+  // This does not include any '=P' promotion string
+  // or check/mood suffix.
   int len = 0;
   {
     auto IsMoveChar =
@@ -438,7 +454,7 @@ bool Position::ParseMove(const char *m, Move *move) {
         }
       };
 
-    while (IsMoveChar(m[len])) len++;
+    while (len < m.size() && IsMoveChar(m[len])) len++;
   }
 
   // Invalid!
@@ -456,14 +472,17 @@ bool Position::ParseMove(const char *m, Move *move) {
   move->dst_col = dc - 'a';
 
   // Also parse promotion string if it's there.
-  if (m[len] == '=') {
-    switch (m[len + 1]) {
-    case 'Q': move->promote_to = QUEEN | my_color; break;
-    case 'N': move->promote_to = KNIGHT | my_color; break;
-    case 'R': move->promote_to = ROOK | my_color; break;
-    case 'B': move->promote_to = BISHOP | my_color; break;
-    default:
-      return false;
+  {
+    std::string_view promo = m.substr(len);
+    if (promo.size() >= 2 && promo[0] == '=') {
+      switch (promo[1]) {
+      case 'Q': move->promote_to = QUEEN | my_color; break;
+      case 'N': move->promote_to = KNIGHT | my_color; break;
+      case 'R': move->promote_to = ROOK | my_color; break;
+      case 'B': move->promote_to = BISHOP | my_color; break;
+      default:
+        return false;
+      }
     }
   }
 
@@ -815,6 +834,64 @@ bool Position::ParseMove(const char *m, Move *move) {
   }
   // Bug!
   return false;
+}
+
+std::optional<Move> Position::ParseLongMove(std::string_view m,
+                                            bool black_move) {
+  Move move;
+  if (m.starts_with("O-O")) {
+    m.remove_prefix(3);
+    move.src_row = black_move ? 0 : 7;
+    move.dst_row = black_move ? 0 : 7;
+    move.src_col = 4;
+    if (m.starts_with("-O")) {
+      move.dst_col = 2;
+    } else {
+      move.dst_col = 6;
+    }
+    return {move};
+  }
+
+  if (m.starts_with("K") ||
+      m.starts_with("Q") ||
+      m.starts_with("R") ||
+      m.starts_with("N") ||
+      m.starts_with("B") ||
+      m.starts_with("P")) {
+    m.remove_prefix(1);
+  }
+
+  if (m.size() < 4) return std::nullopt;
+  if (m[0] >= 'a' && m[0] <= 'h' &&
+      m[1] >= '1' && m[1] <= '8' &&
+      m[2] >= 'a' && m[2] <= 'h' &&
+      m[3] >= '1' && m[3] <= '8') {
+    move.src_col = m[0] - 'a';
+    move.src_row = 7 - (m[1] - '1');
+    move.dst_col = m[2] - 'a';
+    move.dst_row = 7 - (m[3] - '1');
+    m.remove_prefix(4);
+  } else {
+    return std::nullopt;
+  }
+
+  if (m.size() >= 2 && m[0] == '=') {
+    uint8_t mask = black_move ? BLACK : WHITE;
+    switch (m[1]) {
+    case 'Q': move.promote_to = mask | QUEEN; break;
+    case 'R': move.promote_to = mask | ROOK; break;
+    case 'N': move.promote_to = mask | KNIGHT; break;
+    case 'B': move.promote_to = mask | BISHOP; break;
+    default:
+      return std::nullopt;
+    }
+  }
+
+  return {move};
+}
+
+std::optional<Move> Position::ParseLongMove(std::string_view m) const {
+  return ParseLongMove(m, BlackMove());
 }
 
 bool Position::IsLegal(Move m) {

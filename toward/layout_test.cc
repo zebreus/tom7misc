@@ -4,7 +4,6 @@
 #include <deque>
 #include <memory>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -96,7 +95,7 @@ static void AndVars(const CellLibrary &library) {
   DRC::CheckLayout(library, "and", layout);
   Verify(layout, output);
 
-  Util::WriteFile("andvars.layout", LayoutEngine::Serialize(layout));
+  Util::WriteFileBytes("andvars.layout", LayoutEngine::Serialize(layout));
   Print("Wrote andvars.layout\n");
 }
 
@@ -123,7 +122,7 @@ static void XorVars(const CellLibrary &library) {
   DRC::CheckLayout(library, "xor", layout);
   Verify(layout, output);
 
-  Util::WriteFile("xorvars.layout", LayoutEngine::Serialize(layout));
+  Util::WriteFileBytes("xorvars.layout", LayoutEngine::Serialize(layout));
   Print("Wrote xorvars.layout\n");
 }
 
@@ -141,7 +140,7 @@ static void OrBot(const CellLibrary &library) {
   DRC::CheckLayout(library, "orbot", layout);
   Verify(layout, output);
 
-  Util::WriteFile("orbot.layout", LayoutEngine::Serialize(layout));
+  Util::WriteFileBytes("orbot.layout", LayoutEngine::Serialize(layout));
   Print("Wrote orbot.layout\n");
 }
 
@@ -159,7 +158,7 @@ static void ManyXor(const CellLibrary &library) {
   DRC::CheckLayout(library, "many-xor", layout);
   Verify(layout, output);
 
-  Util::WriteFile("many-xor.layout", LayoutEngine::Serialize(layout));
+  Util::WriteFileBytes("many-xor.layout", LayoutEngine::Serialize(layout));
   Print("Wrote many-xor.layout\n");
 }
 
@@ -299,7 +298,7 @@ static void Modest(const CellLibrary &library) {
   RenderCircuit(library, layout.circuit).Save("modest.png");
   DRC::CheckLayout(library, "modest", layout);
   Verify(layout, output);
-  Util::WriteFile("modest.layout", LayoutEngine::Serialize(layout));
+  Util::WriteFileBytes("modest.layout", LayoutEngine::Serialize(layout));
   Print("Wrote modest.layout ({})\n", LayoutEngine::LayoutInfo(layout));
 }
 
@@ -357,7 +356,7 @@ static void TestSerialization() {
         Cell(WIRE0A, 8, true),
       });
 
-    std::string s = LayoutEngine::Serialize(layout);
+    std::vector<uint8_t> s = LayoutEngine::Serialize(layout);
     std::optional<Layout> parsed = LayoutEngine::Parse(s);
 
     CHECK(parsed.has_value());
@@ -367,12 +366,33 @@ static void TestSerialization() {
 
   {
     Layout layout;
-    std::string s = LayoutEngine::Serialize(layout);
+    std::vector<uint8_t> s = LayoutEngine::Serialize(layout);
     std::optional<Layout> parsed = LayoutEngine::Parse(s);
 
     CHECK(parsed.has_value());
     CHECK(parsed->input_vars.empty());
     CHECK(parsed->circuit.layers.empty());
+  }
+
+  {
+    // Create a large circuit so that we also exercise the
+    // compressed format.
+    Layout layout;
+    for (int i = 0; i < 300; i++) {
+      layout.input_vars.push_back({i, CType::MIXED});
+    }
+    layout.circuit.layers.push_back({});
+    for (int i = 0; i < 300; i++) {
+      layout.circuit.layers.back().push_back(Cell(WIRE0A, i % 10, i % 2 == 0));
+    }
+
+    std::vector<uint8_t> s = LayoutEngine::Serialize(layout);
+    CHECK(s.size() >= 256);
+
+    std::optional<Layout> parsed = LayoutEngine::Parse(s);
+    CHECK(parsed.has_value());
+    CHECK(parsed->input_vars == layout.input_vars);
+    CHECK(parsed->circuit.layers == layout.circuit.layers);
   }
 }
 

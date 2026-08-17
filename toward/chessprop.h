@@ -23,13 +23,6 @@ struct ChessProp_Details {
   bool en_passant = true;
 };
 
-// TODO: We can probably make the props smaller (and arguably more
-// interesting) by also passing a bit for "white is in check."
-// This would cut down on "find the king on the board and see if
-// it is (still) in check" and make it more like "what checks might
-// have been discovered / blocked." I like that because it's more
-// move-specific.
-
 struct ChessProp {
   enum Type : uint8_t {
     BLACK_PAWN = 0,
