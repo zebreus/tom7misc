@@ -142,6 +142,7 @@ struct ZIP {
   // Decode a CCZ file including its header.
   // Aborts if malformed.
   static std::vector<uint8_t> UnCCZ(std::span<const uint8_t> data);
+  static std::string UnCCZString(std::span<const uint8_t> data);
 
   // With a ZLIB header and Adler-32 checksum at the end (RFC 1950).
   static std::vector<uint8_t> ZlibVector(const std::vector<uint8_t> &v,

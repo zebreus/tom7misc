@@ -651,6 +651,24 @@ static T DecompressPtr(const uint8_t *data, size_t size,
   }
 }
 
+// Avoid copying when you know the output size ahead of time.
+template<class T>
+static T SizedDecompressSpan(std::span<const uint8_t> flate_data,
+                             size_t out_size,
+                             int flags) {
+  // PERF: Can use uninitialized buffer
+  // if (__cpp_lib_string_resize_and_overwrite)
+  T out(out_size, 0);
+  const size_t decoded =
+    tinfl_decompress_mem_to_mem(out.data(), out.size(),
+                                flate_data.data(), flate_data.size(),
+                                flags |
+                                TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  CHECK(decoded == out.size());
+  return out;
+}
+
+
 std::vector<uint8_t> ZIP::UnzipPtr(const uint8_t *data, size_t size) {
   return DecompressPtr<std::vector<uint8_t>>(data, size, 0);
 }
@@ -802,7 +820,8 @@ std::vector<uint8_t> ZIP::CCZ(std::span<const uint8_t> data, int level) {
   std::vector<uint8_t> flate_payload = ZipPtr(data.data(), data.size(), level);
   std::vector<uint8_t> out(CCLibHeader::SIZE + flate_payload.size());
   memcpy(out.data(), &header, CCLibHeader::SIZE);
-  memcpy(out.data() + CCLibHeader::SIZE, flate_payload.data(), flate_payload.size());
+  memcpy(out.data() + CCLibHeader::SIZE, flate_payload.data(),
+         flate_payload.size());
   return out;
 }
 
@@ -812,18 +831,22 @@ std::vector<uint8_t> ZIP::UnCCZ(std::span<const uint8_t> data) {
   header.ParseHeader(data.data());
   CHECK(header.HasCorrectMagic()) << "Not a CCZ header.";
   CHECK(header.GetFlags() == 0) << "Unsupported flags: " << header.GetFlags();
-  std::vector<uint8_t> out(header.GetSize());
-  CHECK(out.size() == header.GetSize());
-
-/* tdefl_compress_mem_to_mem() compresses a block in memory to another block in memory. */
-/* Returns 0 on failure. */
 
   std::span<const uint8_t> flate_payload = data.subspan(CCLibHeader::SIZE);
+  return SizedDecompressSpan<std::vector<uint8_t>>(flate_payload,
+                                                   header.GetSize(),
+                                                   0);
+}
 
-  size_t decoded =
-    tinfl_decompress_mem_to_mem(out.data(), out.size(),
-                                flate_payload.data(), flate_payload.size(),
-                                TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
-  CHECK(decoded == out.size());
-  return out;
+std::string ZIP::UnCCZString(std::span<const uint8_t> data) {
+  CHECK(data.size() >= CCLibHeader::SIZE) << "Incomplete CCZ header.";
+  CCLibHeader header;
+  header.ParseHeader(data.data());
+  CHECK(header.HasCorrectMagic()) << "Not a CCZ header.";
+  CHECK(header.GetFlags() == 0) << "Unsupported flags: " << header.GetFlags();
+
+  std::span<const uint8_t> flate_payload = data.subspan(CCLibHeader::SIZE);
+  return SizedDecompressSpan<std::string>(flate_payload,
+                                          header.GetSize(),
+                                          0);
 }

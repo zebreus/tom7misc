@@ -17,11 +17,12 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "base/stringprintf.h"
-#include "randutil.h"
-#include "util.h"
-#include "periodically.h"
-#include "timer.h"
 #include "image.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 // These do whole-buffer decompression, but using the stream interface,
 // to exercise that.
@@ -247,63 +248,68 @@ static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
 static void TestRoundTripRandom() {
   Periodically status_per(0.25);
   Timer timer;
-  ArcFour rc("zip_test");
+
+  static constexpr int NUM_THREADS = 8;
 
   static constexpr int NUM_ROUNDS = 8192;
-  for (int i = 0; i < NUM_ROUNDS; i++) {
-    int size = 1 + RandTo(&rc, 131072 * 4);
-    // int size = 128;
-    std::vector<uint8_t> v;
-    v.reserve(size);
+  ParallelComp(
+      NUM_ROUNDS,
+      [&](int i) {
+        ArcFour rc(std::format("zip_test.{}", i));
+        int size = 1 + RandTo(&rc, 131072 * 4);
 
-    switch (rc.Byte() & 3) {
-    default:
-    case 0:
-      // Uniformly random.
-      for (int x = 0; x < size; x++) {
-        v.push_back(rc.Byte());
-      }
-      break;
-    case 1: {
-      // Runs of random length.
-      uint8_t b = rc.Byte();
-      while ((int)v.size() < size) {
-        uint8_t x = rc.Byte();
-        if ((x & 0xf) == 0) {
-          b = rc.Byte();
-        } else {
-          v.push_back(b);
+        std::vector<uint8_t> v;
+        v.reserve(size);
+
+        switch (rc.Byte() & 3) {
+        default:
+        case 0:
+          // Uniformly random.
+          for (int x = 0; x < size; x++) {
+            v.push_back(rc.Byte());
+          }
+          break;
+        case 1: {
+          // Runs of random length.
+          uint8_t b = rc.Byte();
+          while ((int)v.size() < size) {
+            uint8_t x = rc.Byte();
+            if ((x & 0xf) == 0) {
+              b = rc.Byte();
+            } else {
+              v.push_back(b);
+            }
+          }
+          break;
         }
-      }
-      break;
-    }
-    case 2: {
-      v.push_back(rc.Byte());
+        case 2: {
+          v.push_back(rc.Byte());
 
-      // Alternating a substring of the existing buffer,
-      // then a new random byte.
-      while ((int)v.size() < size) {
-        int pos = RandTo(&rc, v.size());
-        int len = std::min(size - v.size(),
-                           RandTo(&rc, v.size() - pos));
-        for (int i = 0; i < len; i++) {
-          v.push_back(v[pos + i]);
+          // Alternating a substring of the existing buffer,
+          // then a new random byte.
+          while ((int)v.size() < size) {
+            int pos = RandTo(&rc, v.size());
+            int len = std::min(size - v.size(),
+                               RandTo(&rc, v.size() - pos));
+            for (int i = 0; i < len; i++) {
+              v.push_back(v[pos + i]);
+            }
+            v.push_back(rc.Byte());
+          }
+
+          break;
         }
-        v.push_back(rc.Byte());
-      }
+        }
 
-      break;
-    }
-    }
-
-    TestOneRoundTrip(v);
-    if (status_per.ShouldRun()) {
-      Print(ANSI_UP "{}\n",
-            ANSI::ProgressBar(i, NUM_ROUNDS,
-                              "Random vector round-trips",
-                              timer.Seconds()));
-    }
-  }
+        TestOneRoundTrip(v);
+        if (status_per.ShouldRun()) {
+          Print(ANSI_UP "{}\n",
+                ANSI::ProgressBar(i, NUM_ROUNDS,
+                                  "Random vector round-trips",
+                                  timer.Seconds()));
+        }
+      },
+      NUM_THREADS);
 }
 
 static bool RoundTripOK(const std::vector<uint8_t> &v) {
@@ -596,6 +602,17 @@ static void TestCCZ() {
     std::vector<uint8_t> enc = ZIP::CCZ(v);
     std::vector<uint8_t> dec = ZIP::UnCCZ(enc);
     CHECK(v == dec) << s;
+    std::string decs = ZIP::UnCCZString(enc);
+    CHECK(decs.size() == dec.size());
+    for (size_t i = 0; i < dec.size(); i++) {
+      // Account for signed characters
+      const uint8_t c1 = decs[i];
+      const uint8_t c2 = dec[i];
+      CHECK(c1 == c2) << std::format("On \"{}\":\n"
+                                     "Offset {}, {:02x} vs {:02x}",
+                                     s,
+                                     i, decs[i], dec[i]);
+    }
   }
   Print("ccz round trip " AGREEN("OK") "\n");
 }
