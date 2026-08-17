@@ -119,6 +119,8 @@ SlideResult SimulateLevel(const Props &props, ArcFour *rc,
   CHECK(rendering != nullptr);
 
   std::unique_ptr<Scene> scene = Levels::CreateScene(level);
+  CHECK(scene.get() != nullptr);
+
   Timer slide_timer;
 
   bool paused = false;

@@ -1,9 +1,7 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt aig_test.exe minitable_test.exe simplification_test.exe render-mini.exe chess-z3.exe aiger_test.exe verilog_test.exe chess-stats.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt aig_test.exe minitable_test.exe simplification_test.exe render-mini.exe chess-z3.exe aiger_test.exe verilog_test.exe chess-stats.exe separator.exe
 
 # not chess-abc.exe because it requires abc
-
-fixme : separator.exe
 
 CC_LIB=../cc-lib
 BOX2D=../../box2d

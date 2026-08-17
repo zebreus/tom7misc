@@ -74,6 +74,8 @@ struct Scene {
 
   // Returns nullptr if there are no world slots available.
   static std::unique_ptr<Scene> Create();
+  // Starts hibernating; this always succeeds.
+  static std::unique_ptr<Scene> CreateHibernating();
 
   // Aborts if there are no world slots available.
   Scene();
@@ -115,6 +117,7 @@ struct Scene {
       const Polygonization::Mesh &mesh, vec2f pos,
       vec2f reject_dir);
 
+  // OK to add objects when the scene is hibernating.
   // Returns its index.
   size_t AddObject(const Polygonization::Mesh &mesh, uint32_t color,
                    // Initial position and angle. The angle is in
@@ -157,9 +160,9 @@ struct Scene {
 
  private:
   explicit Scene(b2WorldId world);
-  size_t Attach(b2BodyId body_id, b2ShapeDef shape_def,
-                const Polygonization::Mesh &mesh,
-                uint32_t color);
+  enum class Hibernation { tag };
+  explicit Scene(Hibernation);
+  void Attach(Obj &obj);
 
   // Move-only.
   Scene(const Scene &) = delete;

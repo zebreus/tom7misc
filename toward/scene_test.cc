@@ -197,6 +197,17 @@ static void TestWorldLimits() {
     CHECK(hit_limit) << "Failed to hit world slot limit";
   }
 
+  // We should be able to create a hibernating world, even though
+  // the slots are full.
+  {
+    std::unique_ptr<Scene> h = Scene::CreateHibernating();
+    CHECK(h.get() != nullptr);
+    CHECK(h->Hibernating());
+    // but we should not be able to unhibernate it!
+    CHECK(!h->Unhibernate());
+    scenes.push_back(std::move(h));
+  }
+
   // Check that sparse removal still frees up slots.
   Print("Remove some scenes...\n");
   CHECK(B2_MAX_WORLDS > 255 * 5) << "You'll need to adjust the test.";

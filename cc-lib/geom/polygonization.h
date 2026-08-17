@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_GEOM_POLYGONIZATION_H
 #define _CC_LIB_GEOM_POLYGONIZATION_H
 
+#include <optional>
 #include <string_view>
 #include <tuple>
 #include <variant>

@@ -66,6 +66,10 @@ struct ColorUtil {
   static constexpr uint32_t
   Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 
+  // Composite the above color onto the below color, honoring
+  // alpha.
+  static constexpr uint32_t
+  Composite32(uint32_t above, uint32_t below);
 
   // Convert float RGBA components (nominally in [0, 1]; clamped) to
   // 8-bit channels packed as RRGGBBAA.
@@ -191,6 +195,34 @@ ColorUtil::Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     ((uint32_t)b << 8) |
     (uint32_t)a;
 }
+
+inline constexpr uint32_t
+ColorUtil::Composite32(uint32_t above, uint32_t below) {
+  using word = uint32_t;
+
+  const auto &[r, g, b, a] = Unpack32(above);
+  if (a == 0xFF) return above;
+
+  const auto &[old_r, old_g, old_b, old_a] = Unpack32(below);
+  if (a == 0) return below;
+
+  // out_a = src_a + dst_a * (1 - src_a)
+  // out_c = (src_c * src_a + dst_c * dst_a * (1 - src_a)) / out_a
+  const word oma = 0xFF - a;
+  const word term2 = (old_a * oma) / 0xFF;
+  const word aa = a + term2;
+
+  const word rr = ((word)r * a + (word)old_r * term2) / aa;
+  const word gg = ((word)g * a + (word)old_g * term2) / aa;
+  const word bb = ((word)b * a + (word)old_b * term2) / aa;
+  // Note that the components cannot be > 0xFF.
+  if (rr > 0xFF) __builtin_unreachable();
+  if (gg > 0xFF) __builtin_unreachable();
+  if (bb > 0xFF) __builtin_unreachable();
+
+  return Pack32(rr, gg, bb, aa);
+}
+
 
 #endif
 

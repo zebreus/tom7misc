@@ -57,6 +57,7 @@ void Simulate(std::string_view level_file) {
         Levels::AddChutes(level.get(), 0x00FF00FF, 0xFF0000FF);
       }
       scene = Levels::CreateScene(*level);
+      CHECK(scene.get() != nullptr);
     };
 
   Reset();

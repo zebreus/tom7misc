@@ -976,8 +976,11 @@ void Levels::AddBodyToScene(Scene *scene, const LevelBody &body,
   }
 }
 
-std::unique_ptr<Scene> Levels::CreateScene(const Level &level) {
-  std::unique_ptr<Scene> scene = std::make_unique<Scene>();
+std::unique_ptr<Scene> Levels::CreateScene(const Level &level,
+                                           bool hibernating) {
+  std::unique_ptr<Scene> scene =
+    hibernating ? Scene::CreateHibernating() : Scene::Create();
+  if (scene.get() == nullptr) return scene;
 
   for (size_t i = 0; i < level.bodies.size(); i++) {
     if (!level.bodies[i].deleted) {

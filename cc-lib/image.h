@@ -297,7 +297,7 @@ struct ImageRGB {
 
   // TODO: Extract individual channels, or build from channels.
 
-private:
+ private:
   // Bytes are packed RR,GG,BB, RR,GG,BB, ... regardless of host
   // endianness.
   int width = 0, height = 0;

@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
-  <!-- Generator: Adobe Illustrator 30.6.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 109)  -->
-  <g id="Background">
-    <rect width="1920" height="1080" fill="#fff" opacity=".75"/>
-    <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
-    <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
-  </g>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
+  <!-- Generator: Adobe Illustrator 30.7.0, SVG Export Plug-In . SVG Version: 2.1.4 Build 114)  -->
+  <rect width="1920" height="1080" fill="#fff" isolation="isolate" opacity=".1"/>
+  <line y1="960" x2="1920" y2="960" fill="none" stroke="#e00" stroke-dasharray="12" stroke-miterlimit="10"/>
+  <line y1="100" x2="1920" y2="100" fill="none" stroke="aqua" stroke-dasharray="12" stroke-miterlimit="10"/>
   <g id="Physics">
     <path d="M440,0h100v100h-100V0Z" fill="#aff"/>
     <path d="M20,0h100v100H20V0Z" fill="#aff"/>
@@ -18,7 +16,9 @@
             <g isolation="isolate">
               <g isolation="isolate">
                 <g isolation="isolate">
-                  <text transform="translate(550 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C1</tspan></text>
+                  <g isolation="isolate">
+                    <text transform="translate(550 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C1</tspan></text>
+                  </g>
                 </g>
               </g>
             </g>
@@ -33,7 +33,9 @@
             <g isolation="isolate">
               <g isolation="isolate">
                 <g isolation="isolate">
-                  <text transform="translate(125 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">F</tspan></text>
+                  <g isolation="isolate">
+                    <text transform="translate(125 50)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">F</tspan></text>
+                  </g>
                 </g>
               </g>
             </g>
@@ -48,7 +50,9 @@
             <g isolation="isolate">
               <g isolation="isolate">
                 <g isolation="isolate">
-                  <text transform="translate(1050 1035)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C ? T : F</tspan></text>
+                  <g isolation="isolate">
+                    <text transform="translate(1050 1035)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C ? T : F</tspan></text>
+                  </g>
                 </g>
               </g>
             </g>
@@ -63,7 +67,9 @@
             <g isolation="isolate">
               <g isolation="isolate">
                 <g isolation="isolate">
-                  <text transform="translate(965 55)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C0</tspan></text>
+                  <g isolation="isolate">
+                    <text transform="translate(965 55)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">C0</tspan></text>
+                  </g>
                 </g>
               </g>
             </g>
@@ -78,7 +84,9 @@
             <g isolation="isolate">
               <g isolation="isolate">
                 <g isolation="isolate">
-                  <text transform="translate(1394.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">T</tspan></text>
+                  <g isolation="isolate">
+                    <text transform="translate(1394.9998 59.9998)" font-family="ArialMT, Arial" font-size="48" isolation="isolate"><tspan x="0" y="0">T</tspan></text>
+                  </g>
                 </g>
               </g>
             </g>

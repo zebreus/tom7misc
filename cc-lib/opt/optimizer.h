@@ -241,9 +241,9 @@ struct Optimizer {
     return results;
   }
 
-  // Using the saved data (SetSaveAll must be true and we must have
-  // observations, usually by running optimization), fit coefficients
-  // to the features that explain the output variable.
+  // Fit coefficients to the features that explain the output variable,
+  // using the provided observations (usually by passing GetAll()
+  // after running optimization with SetSaveAll(true)).
   //
   // Ignores the infeasible region.
   struct IntFeature {
@@ -293,7 +293,8 @@ struct Optimizer {
     // we have one for each observed value.
     std::vector<std::unordered_set<int32_t>> values(
         N_INTS, std::unordered_set<int32_t>{});
-    for (const auto &[arg, score_, ret_] : results) {
+    for (const auto &[arg, score_, ret] : results) {
+      if (!ret.has_value()) continue;
       const auto &ints = arg.first;
       for (int i = 0; i < N_INTS; i++) {
         if (int_features[i].categorical) {
@@ -362,7 +363,8 @@ struct Optimizer {
         double loss = 0.0;
         // For each row, compute the score we'd get with the chosen
         // coefficients.
-        for (const auto &[arg, actual_score, ret_] : results) {
+        for (const auto &[arg, actual_score, ret] : results) {
+          if (!ret.has_value()) continue;
           const auto &[int_args, double_args] = arg;
           double computed_score = 0.0;
           for (int i = 0; i < (int)features.size(); i++) {

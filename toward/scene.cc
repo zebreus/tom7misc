@@ -64,12 +64,15 @@ std::unique_ptr<Scene> Scene::Create() {
   return std::unique_ptr<Scene>(new Scene(wo.value()));
 }
 
-Scene::Scene() : Scene(AcquireWorldOrDie()) {
+std::unique_ptr<Scene> Scene::CreateHibernating() {
+  return std::unique_ptr<Scene>(new Scene(Hibernation::tag));
 }
 
-Scene::Scene(b2WorldId world) : world_id(world) {
+Scene::Scene() : Scene(AcquireWorldOrDie()) {}
 
-}
+Scene::Scene(b2WorldId world) : world_id(world) {}
+
+Scene::Scene(Scene::Hibernation h) : world_id(std::nullopt) {}
 
 Scene::~Scene() {
   MutexLock ml(&world_mutex);
@@ -150,36 +153,7 @@ bool Scene::Unhibernate() {
 
   for (Obj &obj : objects) {
     if (obj.hibernation_state.has_value()) {
-      const HibernationState &state = obj.hibernation_state.value();
-
-      b2BodyDef body_def = b2DefaultBodyDef();
-      body_def.type = state.is_static ? b2_staticBody : b2_dynamicBody;
-      body_def.position = {state.pos.x, state.pos.y};
-      body_def.rotation = MakeExactRot(state.angle);
-      body_def.linearVelocity = {state.vel.x, state.vel.y};
-      body_def.angularVelocity = state.avel;
-
-      obj.body_id = b2CreateBody(world_id.value(), &body_def);
-
-      b2ShapeDef shape_def = b2DefaultShapeDef();
-      shape_def.density = state.is_static ? 1.0f : 6.25f;
-      shape_def.material.restitution = state.restitution;
-      shape_def.material.friction = state.friction;
-
-      for (const Polygon &poly : state.shapes) {
-        std::vector<b2Vec2> pts;
-        pts.reserve(poly.size());
-        for (const vec2f &p : poly) {
-          pts.push_back({p.x, p.y});
-        }
-        b2Hull hull = b2ComputeHull(pts.data(), pts.size());
-        if (hull.count >= 3) {
-          b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
-          b2CreatePolygonShape(obj.body_id, &shape_def, &b2_poly);
-        }
-      }
-
-      obj.hibernation_state = std::nullopt;
+      Attach(obj);
     }
   }
 
@@ -355,54 +329,90 @@ std::optional<vec2f> Scene::RejectObject(
   return std::nullopt;
 }
 
+static std::vector<Rendering::Triangle> MakeTriangles(
+    const Polygonization::Mesh &mesh,
+    uint32_t color);
+
+static std::vector<Scene::Polygon> ExtractShapes(
+    const Polygonization::Mesh &mesh) {
+  std::vector<Scene::Polygon> shapes;
+  for (const auto &poly : mesh.polygons) {
+    if (poly.size() < 3) continue;
+    Scene::Polygon p;
+    p.reserve(poly.size());
+    for (int idx : poly) {
+      auto [px, py] = mesh.vertices[idx];
+      p.push_back({(float)px, (float)py});
+    }
+    shapes.push_back(std::move(p));
+  }
+
+  if (shapes.empty()) {
+    Scene::Polygon p;
+    p.reserve(mesh.vertices.size());
+    for (const auto &v : mesh.vertices) {
+      auto [vx, vy] = v;
+      p.push_back({(float)vx, (float)vy});
+    }
+    shapes.push_back(std::move(p));
+  }
+  return shapes;
+}
+
 size_t Scene::AddObject(const Polygonization::Mesh &mesh,
                         uint32_t color, vec2f pos, float angle,
                         vec2f vel, float avel,
                         float restitution,
                         float friction) {
-  CHECK(world_id.has_value()) << "Cannot add object while hibernating";
+  Obj obj;
+  obj.rgba = color;
+  obj.mesh = MakeTriangles(mesh, color);
 
-  b2BodyDef body_def = b2DefaultBodyDef();
-  body_def.type = b2_dynamicBody;
-  body_def.position = {pos.x, pos.y};
-  body_def.rotation = MakeExactRot(angle);
-  body_def.linearVelocity = {vel.x, vel.y};
-  body_def.angularVelocity = avel;
+  HibernationState state;
+  state.pos = pos;
+  state.angle = angle;
+  state.vel = vel;
+  state.avel = avel;
+  state.restitution = restitution;
+  state.friction = friction;
+  state.is_static = false;
+  state.shapes = ExtractShapes(mesh);
 
-  b2BodyId body_id = b2CreateBody(world_id.value(), &body_def);
+  obj.hibernation_state = std::move(state);
 
-  b2ShapeDef shape_def = b2DefaultShapeDef();
-  // Since all the objects have the same density, it actually
-  // doesn't matter what constant we use!
-  // 6.25 is chosen so that the 1x4 block has a mass of 1kg.
-  // shape_def.density = 1.0f;
-  shape_def.density = 6.25f;
-  shape_def.material.restitution = restitution;
-  shape_def.material.friction = friction;
+  if (world_id.has_value()) {
+    Attach(obj);
+  }
 
-  return Attach(body_id, shape_def, mesh, color);
-
-  // Print("Object has mass of {:.4f}kg\n", b2Body_GetMass(body_id));
+  size_t idx = objects.size();
+  objects.push_back(std::move(obj));
+  return idx;
 }
 
 size_t Scene::AddFixedObject(const Polygonization::Mesh &mesh,
                              uint32_t color, vec2f pos,
                              float restitution,
                              float friction) {
-  CHECK(world_id.has_value()) << "Cannot add fixed object while hibernating";
+  Obj obj;
+  obj.rgba = color;
+  obj.mesh = MakeTriangles(mesh, color);
 
-  b2BodyDef body_def = b2DefaultBodyDef();
-  body_def.type = b2_staticBody;
-  body_def.position = {pos.x, pos.y};
+  HibernationState state;
+  state.pos = pos;
+  state.restitution = restitution;
+  state.friction = friction;
+  state.is_static = true;
+  state.shapes = ExtractShapes(mesh);
 
-  b2BodyId body_id = b2CreateBody(world_id.value(), &body_def);
+  obj.hibernation_state = std::move(state);
 
-  b2ShapeDef shape_def = b2DefaultShapeDef();
-  shape_def.density = 1.0f;
-  shape_def.material.restitution = restitution;
-  shape_def.material.friction = friction;
+  if (world_id.has_value()) {
+    Attach(obj);
+  }
 
-  return Attach(body_id, shape_def, mesh, color);
+  size_t idx = objects.size();
+  objects.push_back(std::move(obj));
+  return idx;
 }
 
 static std::vector<Rendering::Triangle> MakeTriangles(
@@ -461,75 +471,72 @@ void Scene::Detach(size_t index) {
   obj.mesh.clear();
 }
 
-size_t Scene::Attach(b2BodyId body_id,
-                     b2ShapeDef shape_def,
-                     const Polygonization::Mesh &mesh,
-                     uint32_t color) {
-  std::vector<Rendering::Triangle> render_mesh = MakeTriangles(mesh, color);
+void Scene::Attach(Obj &obj) {
+  CHECK(world_id.has_value());
+  CHECK(obj.hibernation_state.has_value());
+  HibernationState &state = obj.hibernation_state.value();
+
+  b2BodyDef body_def = b2DefaultBodyDef();
+  body_def.type = state.is_static ? b2_staticBody : b2_dynamicBody;
+  body_def.position = {state.pos.x, state.pos.y};
+  body_def.rotation = MakeExactRot(state.angle);
+  body_def.linearVelocity = {state.vel.x, state.vel.y};
+  body_def.angularVelocity = state.avel;
+
+  obj.body_id = b2CreateBody(world_id.value(), &body_def);
+
+  b2ShapeDef shape_def = b2DefaultShapeDef();
+  shape_def.density = state.is_static ? 1.0f : 6.25f;
+  shape_def.material.restitution = state.restitution;
+  shape_def.material.friction = state.friction;
 
   bool has_shapes = false;
-  for (const auto &poly : mesh.polygons) {
-    if (poly.size() < 3)
-      continue;
+  for (const Polygon &poly : state.shapes) {
+    if (poly.size() < 3) continue;
 
     std::vector<b2Vec2> pts;
     pts.reserve(poly.size());
-    for (int idx : poly) {
-      auto [px, py] = mesh.vertices[idx];
-      pts.push_back({(float)px, (float)py});
+    for (const vec2f &p : poly) {
+      pts.push_back({p.x, p.y});
     }
 
     b2Hull hull = b2ComputeHull(pts.data(), pts.size());
-    if (hull.count < 3)
-      continue;
+    if (hull.count < 3) continue;
 
     b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
-    b2CreatePolygonShape(body_id, &shape_def, &b2_poly);
+    b2CreatePolygonShape(obj.body_id, &shape_def, &b2_poly);
     has_shapes = true;
   }
 
   if (!has_shapes) {
     if (VERBOSE) {
       Print("Object of color [{}⏹" ANSI_RESET "] {:08x} with "
-            "no shapes ({} v {} p)!\n",
-            ANSI::ForegroundRGB32(color),
-            color,
-            mesh.vertices.size(), mesh.polygons.size());
-      for (size_t i = 0; i < mesh.vertices.size(); i++) {
-        auto [x, y] = mesh.vertices[i];
-        Print("  v[{}] = {}, {}\n", i, x, y);
-      }
-      for (size_t i = 0; i < mesh.polygons.size(); i++) {
-        Print("  poly[{}]:", i);
-        for (int idx : mesh.polygons[i]) {
-          Print(" {}", idx);
-        }
-        Print("\n");
-      }
+            "no valid shapes! Falling back to AABB.\n",
+            ANSI::ForegroundRGB32(obj.rgba), obj.rgba);
     }
-
-    // Fallback: Use the bounding box, honoring Box2D's minimum size.
 
     float min_x = 1e9f, max_x = -1e9f;
     float min_y = 1e9f, max_y = -1e9f;
+    bool any_pts = false;
 
-    if (mesh.vertices.empty()) {
+    for (const Polygon &poly : state.shapes) {
+      for (const vec2f &v : poly) {
+        if (v.x < min_x) min_x = v.x;
+        if (v.x > max_x) max_x = v.x;
+        if (v.y < min_y) min_y = v.y;
+        if (v.y > max_y) max_y = v.y;
+        any_pts = true;
+      }
+    }
+
+    if (!any_pts) {
       min_x = -0.05f; max_x = 0.05f;
       min_y = -0.05f; max_y = 0.05f;
-    } else {
-      for (const auto &v : mesh.vertices) {
-        auto [vx, vy] = v;
-        if (vx < min_x) min_x = vx;
-        if (vx > max_x) max_x = vx;
-        if (vy < min_y) min_y = vy;
-        if (vy > max_y) max_y = vy;
-      }
     }
 
     float w = max_x - min_x;
     float h = max_y - min_y;
 
-    // Minimum acceptable side length to avoid degenerate shapes in Box2D.
     const float min_len = 0.05f;
     if (w < min_len) {
       float cx = (min_x + max_x) * 0.5f;
@@ -552,18 +559,11 @@ size_t Scene::Attach(b2BodyId body_id,
     b2Hull hull = b2ComputeHull(aabb_pts, 4);
     if (hull.count >= 3) {
       b2Polygon b2_poly = b2MakePolygon(&hull, 0.0f);
-      b2CreatePolygonShape(body_id, &shape_def, &b2_poly);
+      b2CreatePolygonShape(obj.body_id, &shape_def, &b2_poly);
     }
   }
 
-  size_t idx = objects.size();
-  objects.push_back(Obj{
-      .rgba = color,
-      .body_id = body_id,
-      .mesh = render_mesh,
-    });
-
-  return idx;
+  obj.hibernation_state = std::nullopt;
 }
 
 void Scene::ApplyImpulse(vec2f v) {

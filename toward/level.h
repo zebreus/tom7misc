@@ -135,7 +135,8 @@ struct Levels {
 
   static void SaveSVG(const Level &level, std::string_view filename);
 
-  // Flip the level horizontally, assuming a bounding box of `block_width` blocks.
+  // Flip the level horizontally, assuming a bounding box of
+  // `block_width` blocks.
   static void FlipLevel(Level *level, int block_width);
 
   // Add standard chute walls to both the input and output. The chutes
@@ -143,7 +144,10 @@ struct Levels {
   static void AddChutes(Level *level, uint32_t in_color, uint32_t out_color);
 
   // user_data will be the index of the body in the level.
-  static std::unique_ptr<Scene> CreateScene(const Level &level);
+  // When hibernating is false, then this might return nullptr if
+  // there are no available world slots.
+  static std::unique_ptr<Scene> CreateScene(const Level &level,
+                                            bool hibernating = false);
 
   // For interactive editing, with an existing scene. Usually you just
   // want to use CreateScene from a static Level.

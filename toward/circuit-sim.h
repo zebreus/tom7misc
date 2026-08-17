@@ -3,6 +3,7 @@
 #define _TOWARD_CIRCUIT_SIM_H
 
 #include <cstdio>
+#include <deque>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -11,6 +12,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "inline-vector.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "layout.h"
@@ -31,6 +33,9 @@ struct CircuitSim {
   // Each node corresponds to a cell from the circuit, but we have
   // additional stuff for simulating and rendering it.
   struct Node {
+    // True if this node is currently in the active_nodes queue.
+    bool in_queue = false;
+
     // Position of the left edge, measured in blocks. All nodes
     // on this layer have the same y coordinate.
     int xpos = 0;
@@ -51,6 +56,11 @@ struct CircuitSim {
     // one bits). Their user_data fields should indicate level
     // items
     std::vector<int> items;
+
+    // Precomputed table of connected inputs for each of the node's outputs.
+    // matching_inputs[local_out_idx] contains the column and local input index
+    // of the connected node in the next row.
+    InlineVector<std::pair<size_t, int>> matching_inputs;
 
     // TODO: Stuff for telling whether the node is waiting, running,
     // or complete.
@@ -82,7 +92,7 @@ struct CircuitSim {
   void GoToTopLeftCell();
 
   // Insert a bit body into one of the node's inputs.
-  void AddInput(Node *node,
+  void AddInput(size_t r, size_t c,
                 int input_idx,
                 bool one,
                 // Position of the body (relative to the output region's
@@ -96,7 +106,7 @@ struct CircuitSim {
   // deleted the corresponding Obj from the scene, and LevelBody from the level.
   void DeleteItem(Node *node, int item_idx);
 
-  std::optional<std::pair<size_t, int>> FindMatchingInput(
+  std::pair<size_t, int> FindMatchingInput(
       size_t r, size_t c, int local_out_idx) const;
 
   // Returns the index of the output that the item's center is inside,
@@ -110,7 +120,7 @@ struct CircuitSim {
   void InjectRandomAssignment();
 
  private:
-    const CellLibrary &library;
+  const CellLibrary &library;
 
   // Not owned.
   // Maybe should leave this up to the client...
@@ -132,6 +142,9 @@ struct CircuitSim {
   // The simulation. This has the same number of rows as the layout,
   // and a column for each of the layer's non-spacer cells.
   std::vector<std::vector<Node>> sim;
+
+  // Nodes that are ready to execute or currently executing.
+  std::deque<std::pair<size_t, size_t>> active_nodes;
 
   ArcFour rc;
   int64_t ticks = 0;

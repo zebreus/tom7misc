@@ -13,6 +13,7 @@
 #include "base/logging.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "color-util.h"
 #include "drc.h"
 #include "layout.h"
 #include "level.h"
@@ -68,7 +69,10 @@ void CircuitSim::ActivateNode(Node &node) {
   CHECK(node.level.get());
 
   if (node.scene.get() == nullptr) {
-    node.scene = Levels::CreateScene(*node.level);
+    // Begin hibernating so that we can draw it without simulating it.
+    node.scene = Levels::CreateScene(*node.level, true);
+    CHECK(node.scene.get() != nullptr) << "Bug: Should always succeed "
+      "when creating a hibernating scene.";
 
     for (int i = 0; i < node.scene->objects.size(); i++) {
       const Scene::Obj &obj = node.scene->objects[i];
@@ -132,6 +136,7 @@ void CircuitSim::GoToTopLeftCell() {
 
 void CircuitSim::Reset() {
   sim.clear();
+  active_nodes.clear();
   ticks = 0;
 
   for (const Layer &layer : layout.circuit.layers) {
@@ -141,6 +146,7 @@ void CircuitSim::Reset() {
       int width = library.GetInfo(cell).block_width;
       if (cell.gate != Gate::SPACER) {
         Node node{
+          .in_queue = false,
           .xpos = xpos,
           .cell = cell,
         };
@@ -150,11 +156,37 @@ void CircuitSim::Reset() {
     }
     sim.push_back(std::move(row));
   }
+
+  for (size_t r = 0; r < sim.size(); r++) {
+    size_t next_c = 0;
+    int next_in = 0;
+
+    for (size_t c = 0; c < sim[r].size(); c++) {
+      int node_outputs = GateArity(sim[r][c].cell.gate).second;
+      for (int i = 0; i < node_outputs; i++) {
+        std::pair<size_t, int> match = {(size_t)-1, -1};
+        if (r + 1 < sim.size()) {
+          while (next_c < sim[r + 1].size()) {
+            int node_inputs = GateArity(sim[r + 1][next_c].cell.gate).first;
+            if (next_in < node_inputs) {
+              match = {next_c, next_in};
+              next_in++;
+              break;
+            }
+            next_c++;
+            next_in = 0;
+          }
+          CHECK(match.first != (size_t)-1) << "Failed to find matching input";
+          sim[r][c].matching_inputs.push_back(match);
+        }
+      }
+    }
+  }
 }
 
 
 // Insert a bit body into one of the node's inputs.
-void CircuitSim::AddInput(Node *node,
+void CircuitSim::AddInput(size_t r, size_t c,
                           int input_idx,
                           bool one,
                           // Position of the body (relative to the
@@ -163,7 +195,7 @@ void CircuitSim::AddInput(Node *node,
                           float angle,
                           vec2f vel,
                           float avel) {
-  CHECK(node != nullptr);
+  Node *node = &sim[r][c];
   ActivateNode(*node);
 
   CHECK(input_idx >= 0 && input_idx < node->level->inputs.size());
@@ -190,6 +222,11 @@ void CircuitSim::AddInput(Node *node,
 
   // The newly created body is the last one in the scene's simulated objects.
   node->items.push_back(static_cast<int>(node->scene->objects.size() - 1));
+
+  if (!node->in_queue) {
+    node->in_queue = true;
+    active_nodes.push_back({r, c});
+  }
 }
 
 // Takes an index into the items vector and removes it. Marks as
@@ -208,26 +245,17 @@ void CircuitSim::DeleteItem(Node *node, int item_idx) {
 // Wires in the circuit connect outputs of row r sequentially to inputs of
 // row r + 1. Given a node's column and its local output index, this returns
 // the column of the connected node in the next row and its local input index.
-// PERF: We could do this once at load time.
-std::optional<std::pair<size_t, int>> CircuitSim::FindMatchingInput(
+std::pair<size_t, int> CircuitSim::FindMatchingInput(
     size_t r, size_t c, int local_out_idx) const {
-  if (r + 1 >= sim.size()) return std::nullopt;
+  CHECK(r + 1 < sim.size());
+  CHECK(c < sim[r].size());
+  const Node &node = sim[r][c];
+  CHECK(local_out_idx >= 0 &&
+        (size_t)local_out_idx < node.matching_inputs.size());
 
-  int global_out = local_out_idx;
-  for (size_t prev_c = 0; prev_c < c; prev_c++) {
-    global_out += GateArity(sim[r][prev_c].cell.gate).second;
-  }
-
-  int input_sum = 0;
-  for (size_t next_c = 0; next_c < sim[r + 1].size(); next_c++) {
-    int node_inputs = GateArity(sim[r + 1][next_c].cell.gate).first;
-    if (global_out < input_sum + node_inputs) {
-      return std::pair{next_c, global_out - input_sum};
-    }
-    input_sum += node_inputs;
-  }
-
-  return std::nullopt;
+  std::pair<size_t, int> match = node.matching_inputs[local_out_idx];
+  CHECK(match.first != (size_t)-1);
+  return match;
 }
 
 // Returns the index of the output that the item's center is inside,
@@ -261,58 +289,69 @@ std::optional<int> CircuitSim::ItemInsideOutput(Node *node, int item_idx) {
 void CircuitSim::StepSimulation() {
   ticks++;
 
-  // TODO: Keep a queue of active nodes so that we don't have to
-  // do a linear scan. Only activate them if they are on screen or
-  // need to be simulated because a bit enters.
-  //
-  // TODO PERF: Can do a single row of the circuit in parallel. But
-  // later rows depend on earlier ones (bits can pass downward).
+  size_t queue_size = active_nodes.size();
+  for (size_t k = 0; k < queue_size; k++) {
+    auto [r, c] = active_nodes.front();
+    active_nodes.pop_front();
+    Node *node = &sim[r][c];
 
-  for (size_t r = 0; r < sim.size(); r++) {
-    std::vector<Node> &row = sim[r];
-    for (size_t c = 0; c < row.size(); c++) {
-      Node &node = row[c];
-      if (node.scene == nullptr) continue;
+    if (node->scene == nullptr) {
+      node->in_queue = false;
+      continue;
+    }
 
-      if (!node.scene->AllAsleep()) {
-        node.scene->Update();
+    if (node->scene->Hibernating()) {
+      if (!node->scene->Unhibernate()) {
+        active_nodes.push_back({r, c});
+        continue;
+      }
+    }
 
-        // Look to see if any item has entered an output region.
-        // If so, we should remove it from the node, and insert
-        // a new bit (AddInput) into the connected node's input.
-        for (size_t i = 0; i < node.items.size(); ) {
-          std::optional<int> out_idx = ItemInsideOutput(&node, i);
-          if (out_idx.has_value()) {
-            int item_idx = i;
-            int obj_idx = node.items[item_idx];
-            const Scene::Obj &obj = node.scene->objects[obj_idx];
+    if (!node->scene->AllAsleep()) {
+      node->scene->Update();
 
-            bool is_one =
-              node.level->bodies[obj.user_data.value()].item.value() ==
-              LevelItem::ONE;
-            vec2f pos = node.scene->GetPosition(obj);
-            vec2f vel = node.scene->GetVelocity(obj);
-            float angle = node.scene->GetAngle(obj);
-            float avel = node.scene->GetAngularVelocity(obj);
+      // Look to see if any item has entered an output region.
+      // If so, we should remove it from the node, and insert
+      // a new bit (AddInput) into the connected node's input.
+      for (size_t i = 0; i < node->items.size(); ) {
+        std::optional<int> out_idx = ItemInsideOutput(node, i);
+        if (out_idx.has_value()) {
+          int item_idx = i;
+          int obj_idx = node->items[item_idx];
+          const Scene::Obj &obj = node->scene->objects[obj_idx];
 
-            float out_x = node.level->outputs[out_idx.value()] *
-              Levels::BLOCK_SIZE;
-            float out_y = Levels::OUT_Y * Levels::BLOCK_SIZE;
-            vec2f rel_pos = {pos.x - out_x, pos.y - out_y};
+          bool is_one =
+            node->level->bodies[obj.user_data.value()].item.value() ==
+            LevelItem::ONE;
+          vec2f pos = node->scene->GetPosition(obj);
+          vec2f vel = node->scene->GetVelocity(obj);
+          float angle = node->scene->GetAngle(obj);
+          float avel = node->scene->GetAngularVelocity(obj);
 
-            DeleteItem(&node, item_idx);
+          float out_x = node->level->outputs[out_idx.value()] *
+            Levels::BLOCK_SIZE;
+          float out_y = Levels::OUT_Y * Levels::BLOCK_SIZE;
+          vec2f rel_pos = {pos.x - out_x, pos.y - out_y};
 
-            std::optional<std::pair<size_t, int>> next_in =
+          DeleteItem(node, item_idx);
+
+          if (r + 1 < sim.size()) {
+            std::pair<size_t, int> next_in =
                 FindMatchingInput(r, c, out_idx.value());
-            if (next_in.has_value()) {
-              AddInput(&sim[r + 1][next_in->first], next_in->second, is_one,
-                       rel_pos, angle, vel, avel);
-            }
-          } else {
-            i++;
+            AddInput(r + 1, next_in.first, next_in.second, is_one,
+                     rel_pos, angle, vel, avel);
           }
+        } else {
+          i++;
         }
       }
+    }
+
+    if (node->scene->AllAsleep()) {
+      node->scene->Hibernate();
+      node->in_queue = false;
+    } else {
+      active_nodes.push_back({r, c});
     }
   }
 }
@@ -378,7 +417,12 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
           .y = render_y,
         };
 
+        bool hibernating = node.scene->Hibernating();
+
         for (Rendering::Triangle t : node.scene->GetTriangles()) {
+          if (hibernating) {
+            t.rgba = ColorUtil::Composite32(0x00000055, t.rgba);
+          }
           t.a += offset;
           t.b += offset;
           t.c += offset;
@@ -435,7 +479,6 @@ void CircuitSim::InjectRandomAssignment() {
       }
 
       if (insert) {
-
         vec2f pos = {
           .x = Levels::IN_WIDTH * 0.5f * Levels::BLOCK_SIZE,
           .y = (Levels::IN_HEIGHT * 0.5f + Levels::OUT_HEIGHT -
@@ -444,7 +487,7 @@ void CircuitSim::InjectRandomAssignment() {
         vec2f vel = {(float)(RandDouble(&rc) * 2.0 - 1.0),
                      (float)(RandDouble(&rc) * 2.0 - 1.0)};
         float avel = (float)(RandDouble(&rc) * 4.0 - 2.0);
-        AddInput(&node, i, is_one, pos, 0.0f, vel, avel);
+        AddInput(0, c, i, is_one, pos, 0.0f, vel, avel);
       }
 
       global_in_idx++;

@@ -53,10 +53,10 @@ static constexpr int OUT1_X = 30;
 static constexpr int OUT1_Y = Levels::BLOCKS_DOWN - CUP_HEIGHT - 1;
 
 
-// The centers of the inputs and the two outputs.
+// The x-coordinate of the left edge (in blocks) of the input and two outputs.
 struct Problem {
-  vec2f input;
-  vec2f output0, output1;
+  int input;
+  int output0, output1;
 };
 
 // Add the walls for the input and output regions defined in the
@@ -87,9 +87,9 @@ static std::vector<LevelBody> InitialBodies(const Problem &problem) {
       bodies.push_back(std::move(body));
     };
 
-  auto AddCup = [&](vec2f center, uint32_t color) {
-      float ex = center.x - (CUP_WIDTH * Levels::BLOCK_SIZE) / 2.0f;
-      float ey = center.y - (CUP_HEIGHT * Levels::BLOCK_SIZE) / 2.0f;
+  auto AddCup = [&](int block_x, int block_y, uint32_t color) {
+      float ex = block_x * Levels::BLOCK_SIZE;
+      float ey = block_y * Levels::BLOCK_SIZE;
 
       AddBlockRect(ex - Levels::BLOCK_SIZE, ey, 1, CUP_HEIGHT, color);
       AddBlockRect(ex + CUP_WIDTH * Levels::BLOCK_SIZE,
@@ -99,11 +99,11 @@ static std::vector<LevelBody> InitialBodies(const Problem &problem) {
                    CUP_WIDTH + 2, 1, color);
     };
 
-  AddCup(problem.output0, 0xFF0000FF);
-  AddCup(problem.output1, 0x00FF00FF);
+  AddCup(problem.output0, OUT0_Y, 0xFF0000FF);
+  AddCup(problem.output1, OUT1_Y, 0x00FF00FF);
 
-  float in_ex = problem.input.x - (IN_SIZE * Levels::BLOCK_SIZE) / 2.0f;
-  float in_ey = problem.input.y - (IN_SIZE * Levels::BLOCK_SIZE) / 2.0f;
+  float in_ex = problem.input * Levels::BLOCK_SIZE;
+  float in_ey = IN_Y * Levels::BLOCK_SIZE;
 
   // In region must have vertical walls.
   AddBlockRect(in_ex - Levels::BLOCK_SIZE,
@@ -178,7 +178,6 @@ static Score ComputeScore(
         // needed to simulate.
         Level level{
           .bodies = bodies,
-          .scene_walls = false,
         };
 
         PCG32 pcg(seed + sample);
@@ -208,14 +207,15 @@ static Score ComputeScore(
           0.02f + bith * 0.5f +
           pcg.Double() * sample_height;
 
-        float in_left = problem.input.x - (IN_SIZE * Levels::BLOCK_SIZE) / 2.0f;
-        float in_top = problem.input.y - (IN_SIZE * Levels::BLOCK_SIZE) / 2.0f;
+        float in_left = problem.input * Levels::BLOCK_SIZE;
+        float in_top = IN_Y * Levels::BLOCK_SIZE;
 
         body.pos = vec2f(in_left + xoff, in_top + yoff);
 
         level.bodies.emplace_back(std::move(body));
 
         std::unique_ptr<Scene> scene = Levels::CreateScene(level);
+        CHECK(scene.get() != nullptr);
 
         b2BodyId body_id = scene->objects.back().body_id;
 
@@ -226,8 +226,12 @@ static Score ComputeScore(
 
         b2Vec2 final_pos = b2Body_GetPosition(body_id);
 
-        float target_x = bit ? problem.output1.x : problem.output0.x;
-        float target_y = bit ? problem.output1.y : problem.output0.y;
+        float out_x = bit ? problem.output1 : problem.output0;
+        float out_y = bit ? OUT1_Y : OUT0_Y;
+        float target_x = out_x * Levels::BLOCK_SIZE +
+                         (CUP_WIDTH * Levels::BLOCK_SIZE) / 2.0f;
+        float target_y = out_y * Levels::BLOCK_SIZE +
+                         (CUP_HEIGHT * Levels::BLOCK_SIZE) / 2.0f;
 
         double dx = final_pos.x - target_x;
         double dy = final_pos.y - target_y;
@@ -236,10 +240,8 @@ static Score ComputeScore(
         MutexLock ml(&m);
         if (bit) {
           score.one_pos.push_back(vec2f{final_pos.x, final_pos.y});
-          float out1_left =
-            problem.output1.x - (CUP_WIDTH * Levels::BLOCK_SIZE) / 2.0f;
-          float out1_top =
-            problem.output1.y - (CUP_HEIGHT * Levels::BLOCK_SIZE) / 2.0f;
+          float out1_left = problem.output1 * Levels::BLOCK_SIZE;
+          float out1_top = OUT1_Y * Levels::BLOCK_SIZE;
           if (final_pos.x >= out1_left &&
               final_pos.x <= out1_left + CUP_WIDTH * Levels::BLOCK_SIZE &&
               final_pos.y >= out1_top &&
@@ -250,10 +252,8 @@ static Score ComputeScore(
           }
         } else {
           score.zero_pos.push_back(vec2f{final_pos.x, final_pos.y});
-          float out0_left =
-            problem.output0.x - (CUP_WIDTH * Levels::BLOCK_SIZE) / 2.0f;
-          float out0_top =
-            problem.output0.y - (CUP_HEIGHT * Levels::BLOCK_SIZE) / 2.0f;
+          float out0_left = problem.output0 * Levels::BLOCK_SIZE;
+          float out0_top = OUT0_Y * Levels::BLOCK_SIZE;
           if (final_pos.x >= out0_left &&
               final_pos.x <= out0_left + CUP_WIDTH * Levels::BLOCK_SIZE &&
               final_pos.y >= out0_top &&
@@ -332,12 +332,9 @@ static std::pair<Problem, std::vector<double>> StartRoot() {
   CHECK(ret.size() == NUM_TRIANGLES * 6);
 
   Problem problem;
-  problem.input = vec2f((IN_X + IN_SIZE / 2.0f) * Levels::BLOCK_SIZE,
-                        (IN_Y + IN_SIZE / 2.0f) * Levels::BLOCK_SIZE);
-  problem.output0 = vec2f((OUT0_X + CUP_WIDTH / 2.0f) * Levels::BLOCK_SIZE,
-                          (OUT0_Y + CUP_HEIGHT / 2.0f) * Levels::BLOCK_SIZE);
-  problem.output1 = vec2f((OUT1_X + CUP_WIDTH / 2.0f) * Levels::BLOCK_SIZE,
-                          (OUT1_Y + CUP_HEIGHT / 2.0f) * Levels::BLOCK_SIZE);
+  problem.input = IN_X;
+  problem.output0 = OUT0_X;
+  problem.output1 = OUT1_X;
 
   return {problem, ret};
 }
@@ -409,7 +406,6 @@ static void Optimize(Problem start_problem,
           if (best_dirty) {
             Level level;
             level.bodies = InitialBodies(problem);
-            level.scene_walls = false;
             for (LevelBody &body : ApplyArgs(best_values)) {
               level.bodies.emplace_back(std::move(body));
             }

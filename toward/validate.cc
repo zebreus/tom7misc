@@ -71,6 +71,7 @@ static bool Validate(const ValidationInstance &inst) {
           Validation::LevelWithInputs(*base_level, inst, base_seed + trial);
 
         std::unique_ptr<Scene> scene = Levels::CreateScene(level);
+        CHECK(scene.get() != nullptr);
 
         static constexpr int MAX_SIMULATE_STEPS = 2000;
         for (int step = 0; step < MAX_SIMULATE_STEPS; step++) {
