@@ -1187,8 +1187,14 @@ fun pack-one-paragraph (column-width : float) (para : layout) : layout list =
       let
         val boxes = get-boxes para
         do column-width >. 0.0 otherwise
-          fail ("in pack-one-paragraph, column width must be positive, " ^
-                "but got: " ^ float-to-string column-width)
+          let in
+            print "\nLooking at:\n";
+            debug-print-doc para;
+            print "\nWhich made boxes:\n";
+            debug-print-doc boxes;
+            fail ("in pack-one-paragraph, column width must be positive, " ^
+                  "but got: " ^ float-to-string column-width)
+          end
         val (badness : float, lines : layout list) =
           pack-boxes-horiz (BEST, just, column-width, boxes)
 
@@ -1773,7 +1779,11 @@ fun main-text lay =
                   case widths of
                     (* nil may be possible if the body has lines with
                        zero height, but we still want to emit them. *)
-                    nil => 0.0
+                    nil =>
+                      (case space of
+                         SpaceCol { page = _, x = _, y = _,
+                                    w, h, footnotes = _ } :: _ => w
+                       | nil => 0.0)
                   | w :: _ => w
 
                 do list-app (fn w => w ==. width otherwise

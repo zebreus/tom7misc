@@ -1449,7 +1449,7 @@ embarrassed at how costly it is to run the encryption algorithms.
 Compared to plain HTTP, TLS adds several complete round trips to the
 page load ([tt[ClientHello]], [tt[ServerHello]],
 [tt[ClientKeyExchange]] and [tt[ChangeCipherSpec]], then
-[tt[HandshakeFinished]], each of which depends on the previous
+[tt[HandshakeFinished]]), each of which depends on the previous
 messages and cannot be pipelined,[footnote[Though using constant
 client random and server random values as recommended in this paper
 [it[does]] allow for some optimistic execution!]] which is a problem
@@ -1551,8 +1551,8 @@ Some applications with a high level of toxic max-security will refuse
 to connect to [httpv] servers because they are not able to negotiate
 a pretentious enough cipher suite. One example is [tt[wget]], which
 will print this on a fresh install of Ubuntu in February 2026:
-[
-(* TODO: make the command bold *)
+
+[(* TODO: make the command bold *)
  monospace-block-ext { left-indent = 0.0,
                        width = COLUMN-WIDTH(),
                        line-spacing = point 0.05,
@@ -1597,8 +1597,9 @@ monospace-block-ext { left-indent = 0.0,
                       attrs = {(Object) } } [
 curl -o- https://raw.githubusercontent.com/\
 nvm-sh/nvm/v0.40.3/install.sh | bash
-]]
-This is literally what people do with curl these days: They pipe that
+]][*
+
+*]This is literally what people do with curl these days: They pipe that
 shit right into their shell without even looking at it.[footnote[The
 16-kilobyte shell script installs a program that installs
 Node.js® so that you can install [tt[npm]] and YOLO tens of millions
@@ -1737,7 +1738,7 @@ centered-image (0.9 *. COLUMN-WIDTH()) "mbti-snft.svg"
 dichotomy generalized to a tetratomy. The classic
 traits are about preferences for information processing,
 with the x-axis being about direct perception by the five
-senses[footnote[Can I put footnotes here?]] (sensing) versus
+senses (sensing) versus
 the recognition of patterns and interrelationships (intuition).
 Here we generalize this x-axis to be about atomic vs.
 holistic information processing. A new y-axis is about
@@ -1746,7 +1747,7 @@ The classic S/N dichotomy mostly describes processing of
 [it[a posteriori]] information received by the person.
 For a person who prefers [it[a priori]] processing, the
 atomic trait is about a bottom-up or “foundational” style,
-as opposed to a holistic top-down or “taxonomic” style.])]) [*
+as opposed to a holistic top-down or “taxonomic” style.])]). [*
 
 *] This trait is about preferences for information processing. We use
 the same x-axis as [mbti], describing whether the subject prefers
