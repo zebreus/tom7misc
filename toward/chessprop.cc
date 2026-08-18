@@ -240,88 +240,6 @@ Prop ChessProp::Attacked(const Board &board, int r, int c) {
   return Or(pawn, knight, traced, king);
 }
 
-// True if the king is attacked in the resulting state.
-// We should take a modified board. This will only be
-// used for non-king and non-ep moves, so we can assume that the
-// src is vacated by the move and the dst is populated
-// by a white piece/pawn (not king).
-//
-// Castling is a king move and moving into check is already
-// handled by king movement code.
-//
-// en passant captures are an annoying corner case. Here the
-// modified board doesn't just move the src to the dst; we
-// also need to vacate the captured pawn. (Consider "K1Pp1r"
-// where white captures its adjacent pawn en passant,
-// revealing a discovered attack from the rook on the king.)
-// Fortunately there are only 14 distinct en passant
-// captures, so we don't get a huge combinatorial blow-up.
-// Some clever optimization may be possible here; I think
-// that a discovered attack through the captured pawn can
-// only come from a rook or queen on the same file. It can't
-// be along the vertical (the white pawn is now in the way)
-// or the diagonal (we know black's last move was a double
-// pawn move, but then white would have already been in
-// check along that diagonal; this situation is impossible!).
-// So rather than a fully different board, we could just
-// OR the standard one with a check for this one kind of
-// configuration along just that row.
-static Prop KingAttackedAfter(const Board &board_before,
-                              int srcr, int srcc, int dstr, int dstc) {
-
-  Board board = board_before;
-  // The source is empty.
-  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
-    if (t == EMPTY) {
-      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = True();
-    } else {
-      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = False();
-    }
-  }
-
-  // And the destination has the source piece.
-  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
-    board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] =
-      board_before.props[ChessProp::HasContentsIdx(srcr, srcc, t)];
-  }
-  // But as an optimization, we can actually assume it now contains a
-  // white piece (and not the King). All legal moves do this. This
-  // helps interrupt traces unconditionally (not empty, not an attacking
-  // piece).
-  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
-    if (t == EMPTY || ChessProp::IsBlackPiece(t) || t == WHITE_KING)
-      board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] = False();
-  }
-
-  Prop any_attacked = False();
-
-  // PERF: I think we can also skip intermediate squares when the
-  // move is horizontal or diagonal; these can't contain the king
-  // if the move is legal.
-
-  // Loop over all possible king positions. Although discoveries can
-  // only happen through the newly vacant src square, we still need to
-  // check that we successfully *blocked* check if the king *was* in
-  // check. This is unfortunately a global property.
-  for (int kr = 0; kr < 8; kr++) {
-    for (int kc = 0; kc < 8; kc++) {
-      // Since we know this is not a king move (and we can assume it
-      // is otherwise valid) we do not need to include the
-      // src and dst.
-      if ((kr == srcr && kc == srcc) ||
-          (kr == dstr && kc == dstc)) {
-        continue;
-      }
-
-      any_attacked = any_attacked |
-        (HasContents(board, kr, kc, WHITE_KING) &
-         ChessProp::Attacked(board, kr, kc));
-    }
-  }
-
-  return any_attacked;
-}
-
 // Return the step (-1, 0, or 1) in the row and column directions for
 // a queen-like move. Returns nullopt if this is not such a move.
 static std::optional<std::pair<int, int>>
@@ -454,12 +372,23 @@ static SquareSet KingCheckCheck(
   return check_kings;
 }
 
-// New approach:
-// True if the king is in check after this move. Must not be a king
-// move. Depends on knowing whether the king was in check before the move.
-static Prop KingAttackedAfter2(const Board &board_before,
-                               int srcr, int srcc, int dstr, int dstc) {
+// New approach to detecting check, which depends on knowing whether
+// the king was in check before the move. It only checks the squares
+// on which the king's check status might have changed.
+//
+// Returns true if the king is in check after this move. Must not be a
+// king move. Pass the additional squares cleared other than
+// the source (only for en passant).
+static Prop KingAttackedAfter(
+    const Board &board_before,
+    int srcr, int srcc,
+    int dstr, int dstc,
+    SquareSet also_cleared = SquareSet::Bot()) {
   Prop was_in_check = board_before.props[ChessProp::CheckIdx()];
+
+  // Set of squares that are cleared.
+  SquareSet cleared = also_cleared;
+  cleared.Add(Square(srcr, srcc));
 
   // The strategy here is to test all king squares. If check might
   // have changed at that square, then we do the full test. Otherwise
@@ -471,18 +400,15 @@ static Prop KingAttackedAfter2(const Board &board_before,
   // to just recompute the whole function.
 
   SquareSet king_squares = SquareSet::Top();
+  // These squares are known to be empty now (so not the king).
+  for (int csq : cleared) king_squares.Remove(csq);
   // It isn't a king move, so the king can't be here.
-  king_squares.Remove(Square(srcr, srcc));
   king_squares.Remove(Square(dstr, dstc));
   // And for a queen-like move, the squares must have been clear
   // for the move to be legal. So the white king can't be there.
   for (int rsq : GetRay(srcr, srcc, dstr, dstc)) {
     king_squares.Remove(rsq);
   }
-
-  SquareSet cleared;
-  cleared.Add(Square(srcr, srcc));
-  // TODO: en passant here too.
 
   SquareSet filled;
   filled.Add(Square(dstr, dstc));
@@ -491,16 +417,19 @@ static Prop KingAttackedAfter2(const Board &board_before,
 
   // Now compute the updated board proposition.
   Board board = board_before;
-  // The source is empty.
-  for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
-    if (t == EMPTY) {
-      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = True();
-    } else {
-      board.props[ChessProp::HasContentsIdx(srcr, srcc, t)] = False();
+  // Cleared squares are empty.
+  for (int csq : cleared) {
+    const auto &[r, c] = UnSquare(csq);
+    for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
+      if (t == EMPTY) {
+        board.props[ChessProp::HasContentsIdx(r, c, t)] = True();
+      } else {
+        board.props[ChessProp::HasContentsIdx(r, c, t)] = False();
+      }
     }
   }
 
-  // Squares on the inside of the ray must be empty.
+  // Squares on the inside of the ray are known to be empty.
   for (int rsq : GetRay(srcr, srcc, dstr, dstc)) {
     const auto &[r, c] = UnSquare(rsq);
     // Starting and ending are handled separately, because we also
@@ -535,7 +464,7 @@ static Prop KingAttackedAfter2(const Board &board_before,
       board.props[ChessProp::HasContentsIdx(dstr, dstc, t)] = False();
   }
 
-  // Now we have two cases. If it's in the set to check, then we
+  // Now we have two cases. If the square in the set to check, then we
   // perform the full attacked test. Otherwise, we use the existing
   // value.
 
@@ -575,18 +504,15 @@ static Prop EnPassantLegal(const Board &board,
   if (srcr != 3 || dstr != 2 || !(dc == -1 || dc == 1))
     return False();
 
-  // En passant column also implies the destination is empty,
-  // and there's a pawn to be captured.
+  // If an en passant column is set, that also implies the destination
+  // is empty (pawn had to do a double-move through that square) and
+  // there's a pawn to be captured.
   Prop legal = EnPassantCol(board, dstc);
-
-  Board new_board = board;
-  SetPiece(&new_board, 3, srcc, EMPTY);
-  SetPiece(&new_board, 2, dstc, WHITE_PAWN);
-  SetPiece(&new_board, 3, dstc, EMPTY);
-
-  // PERF use KingAttackedAfter2, when it can be done
+  // Need to explicitly note that the captured pawn's square is cleared.
+  SquareSet also_cleared;
+  also_cleared.Add(Square(srcr, srcc + dc));
   Prop check_ok = details.check_check ?
-    -KingAttackedAfter(new_board, srcr, srcc, dstr, dstc) :
+    -KingAttackedAfter(board, srcr, srcc, dstr, dstc, also_cleared) :
     True();
 
   return legal & check_ok;
@@ -809,7 +735,7 @@ Prop ChessProp::IsLegal(const Board &board,
   // way: They remove the source piece and overwrite the destination.
   Prop simple_not_into_check =
     details.check_check ?
-    -KingAttackedAfter2(board, srcr, srcc, dstr, dstc) :
+    -KingAttackedAfter(board, srcr, srcc, dstr, dstc) :
     True();
 
   Prop simple_piece_move =

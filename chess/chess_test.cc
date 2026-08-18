@@ -552,6 +552,30 @@ static void TestEp() {
   CHECK(!pos.EnPassantColumn().has_value());
 }
 
+// Tests that we correctly detect that an en passant capture is
+// not legal because it would create a discovered check through
+// the vacated source square.
+static void TestEpDiscoveredCheck() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "b7/8/8/3Pp3/8/8/8/k6K w - d6 0 1",
+            &pos));
+
+  std::optional<uint8> epc = pos.EnPassantColumn();
+  CHECK(epc.has_value());
+  CHECK(epc.value() == 3) << (int)epc.value();
+
+  Move ep{
+    .src_row = 3,
+    .src_col = 4,
+    .dst_row = 2,
+    .dst_col = 3,
+  };
+
+  CHECK(!pos.IsLegal(ep));
+  CHECK(pos.HasLegalMoves());
+}
+
 // Very unusual corner case where an en passant capture is not legal
 // because it would expose the king to check.
 static void TestNoEpIntoCheck() {
@@ -722,6 +746,7 @@ int main(int argc, char **argv) {
   TestKingBack();
 
   TestEp();
+  TestEpDiscoveredCheck();
   TestNoEpIntoCheck();
 
   TestShortMove();

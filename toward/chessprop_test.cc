@@ -146,6 +146,15 @@ static void TestEnPassant() {
   Print("En passant OK.\n");
 }
 
+static void TestNotEnPassant() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "rnbqkbnr/pppp2pp/8/4Pp2/8/8/PPPP1PPP/RNBQKBNR "
+            "w KQkq - 0 1", &pos));
+  CheckMove(pos, "Pe5f6");
+  Print("Not en passant OK.\n");
+}
+
 static void TestEnPassantOutOfCheck() {
   Position pos;
   CHECK(Position::ParseFEN(
@@ -163,10 +172,35 @@ static void TestEnPassantNotIntoCheck() {
   Position pos;
   CHECK(Position::ParseFEN(
             "1nbqkbnr/1ppp2pp/8/r3Pp1K/8/8/PPPP1PPP/RNBQ1BNR "
-            "w - fg 0 1", &pos));
+            "w - f6 0 1", &pos));
   CheckAttacked(pos);
   CheckAllMovesAgree(pos);
   Print("En passant (not into check) OK.\n");
+}
+
+// Test en passant with a check discovered only through the source square.
+static void TestEnPassantDiscoveredCheck() {
+  for (std::string_view fen : {
+      // Not legal: Discovery through source square
+      "b7/8/8/3Pp3/8/8/8/k6K w - e6 0 1",
+      "3r4/8/8/3Pp3/8/8/3K3k/8 w - e6 0 1",
+      // Legal here, since the pawn ends up blocking the
+      // check on the destination square.
+      "6b1/8/8/3Pp3/8/8/K6k/8 w - e6 0 1",
+
+      // Discovered check + existing check. None are legal.
+      "8/1K3r2/8/3Pp3/8/8/8/k6b w - e6 0 1",
+      "3r4/8/8/3Pp3/3K4/8/7k/8 w - e6 0 1",
+      "8/2r2K2/8/3Pp3/8/8/b6k/8 w - e6 0 1",
+      "8/3q4/8/1r1PpK2/8/8/8/1k6 w - e6 0 1",
+      "5b2/8/8/2KPp1r1/8/8/8/1k6 w - e6 0 1",
+    }) {
+    Position pos;
+    CHECK(Position::ParseFEN(fen, &pos));
+    CheckMove(pos, "Pd5e6");
+  }
+
+  Print("En passant discovered check OK.\n");
 }
 
 // Another reason we need to clear the captured pawn is that it
@@ -249,6 +283,17 @@ static void TestDoubleCheck() {
   Print("Double check OK.\n");
 }
 
+static void TestPromotion() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "rr4KQ/PPPPPPPP/8/8/8/8/8/3k4 w - - 0 1",
+            &pos));
+  CHECK(pos.IsInCheck());
+  CHECK(!pos.IsMated());
+  CheckAllMovesAgree(pos);
+  Print("Promotion OK.\n");
+}
+
 static void PropSizeHisto() {
   AutoHisto hist(10000);
   World world;
@@ -264,7 +309,7 @@ static void PropSizeHisto() {
           Prop prop =
             SimplifyProp(ChessProp::IsLegal(
                              board, srcr, srcc, dstr, dstc,
-                             ChessProp::KID_CHESS));
+                             ChessProp::REAL_CHESS));
           if (prop == False()) {
             unit_count++;
           } else {
@@ -290,10 +335,13 @@ int main(int argc, char **argv) {
   TestOutOfCheck();
   TestKingMoving();
   TestEnPassant();
+  TestNotEnPassant();
   TestEnPassantOutOfCheck();
   TestEnPassantOutOfCheck2();
   TestEnPassantNotIntoCheck();
+  TestEnPassantDiscoveredCheck();
   TestDoubleCheck();
+  TestPromotion();
 
   Print("Prop size histo:\n");
 
