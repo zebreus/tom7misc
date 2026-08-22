@@ -46,7 +46,7 @@ SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
-LIB_OBJECTS=verilog.o aiger.o blif.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=prop-util.o verilog.o aiger.o blif.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -199,7 +199,7 @@ verilog_test.exe : verilog_test.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 chess-abc.exe : chess-abc.o $(LIB_OBJECTS)
-	make -j 3 aoin.super aoix.super aoi.super aoinx.super oix.super aoinr.super aoinrq.super
+	make -j 3 aoin.super aoix.super aoi.super aoinx.super oix.super aoinr.super aoinrq.super aoinrqx.super
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
@@ -208,6 +208,18 @@ chess-stats.exe : chess-stats.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 opt-layout.exe : opt-layout.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+chess-decode.exe : chess-decode.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+renderfen.exe : renderfen.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+chess-abc-bug.exe : chess-abc-bug.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

@@ -71,7 +71,8 @@ std::optional<Prop> FromVerilog(const World &world,
         if (input_idx < inputs.size()) {
           auto nit = name_to_id.find(inputs[input_idx]);
           if (nit != name_to_id.end()) {
-            env[input_name] = std::make_shared<Prop>(Prop{.p = Var{nit->second}});
+            env[input_name] = std::make_shared<Prop>(
+                Prop{.p = Var{nit->second}});
           }
         }
         input_idx++;
@@ -147,7 +148,7 @@ std::optional<Prop> FromVerilog(const World &world,
           *y_ptr = Prop{.p = Ternop{.op = TernopOp::ITE,
                                    .a = GetProp(in_a),
                                    .b = GetProp(in_b),
-                                   .c = GetProp(in_c),}};
+                                   .c = GetProp(in_c)}};
 
         } else if (tok == "not" || tok == "inv") {
           *y_ptr = Prop{.p = Unop{.op = UnopOp::NOT,

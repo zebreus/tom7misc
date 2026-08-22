@@ -1,6 +1,7 @@
 
 #include <cstdio>
 #include <format>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -25,12 +26,14 @@
 #include "timer.h"
 #include "util.h"
 #include "verilog.h"
+#include "prop-util.h"
 
-static constexpr bool SAMPLE_ONLY = false;
+static constexpr bool SAMPLE_ONLY = true;
 
 static constexpr bool USE_ABC = true;
 static constexpr bool ALWAYS_ABC = false;
-static constexpr bool EXTENDED_EXDC = true;
+static constexpr bool USE_EXDC = false;
+static constexpr bool EXTENDED_EXDC = false;
 static constexpr bool ABC_XAG = true;
 static constexpr bool FINAL_SIMPLIFY = false;
 
@@ -40,13 +43,19 @@ static constexpr std::string_view GENLIB = "aoinrq";
 static bool SampleMove(Position::Move m) {
   if (!SAMPLE_ONLY) return true;
 
+  #if 0
   // b2-b4
   if (m.src_row == 6 && m.src_col == 1 &&
       m.dst_row == 4 && m.dst_col == 1) return true;
 
   // Covers castling moves, etc.
   if (m.src_row == 7 && m.src_col == 4 &&
-      m.src_row <= 7) return true;
+      m.dst_row == 7) return true;
+  #endif
+
+  // Just kingside castle
+  if (m.src_row == 7 && m.src_col == 4 &&
+      m.dst_row == 7 && m.dst_col == 2) return true;
 
   return false;
 }
@@ -188,70 +197,25 @@ static Prop OptimizeABC(const World &world,
   return std::move(opt.value());
 }
 
-static void Generate(const CellLibrary &library,
-                     const Simplification &sim,
-                     StatusBar *status,
-                     Position::Move m) {
-  // Print("Init...\n");
-  Timer timer;
-  World world;
-  ChessProp::Board board = ChessProp::NewBoard(&world);
-
-  // Print("Get chess prop...\n");
-  // fflush(stdout);
-  Prop prop = ChessProp::IsLegal(board,
-                                 m.src_row, m.src_col,
-                                 m.dst_row, m.dst_col,
-                                 ChessProp::REAL_CHESS);
-
-  [[maybe_unused]] size_t start_size = PropSize(prop);
-  [[maybe_unused]] size_t start_shared_size = PropSize(prop);
-  // Print("Starting size: {} ({} shared)\n",
-  // start_size, start_shared_size);
-
-  prop = BalanceProp(SimplifyProp(prop));
-  prop = SimplifyProp(prop);
-  // Print("Simplify...\n");
-  prop = sim.Simplify(prop);
-  [[maybe_unused]]
-  size_t orig_size = PropSize(prop);
-  [[maybe_unused]]
-  size_t orig_shared_size = SharedPropSize(prop);
-
-
-  auto Output = [&](const Prop &p) {
-      std::string outfile = std::format("chess/islegal-{}-{}.prop",
-                                        ChessProp::Square(m.src_row,
-                                                          m.src_col),
-                                        ChessProp::Square(m.dst_row,
-                                                          m.dst_col));
-      Util::WriteFile(outfile, SerializeProp(p));
-    };
-
-  if (prop == False()) {
-    status->Print("[{}-{}] " AGREY("Trivially false") ".\n",
-                  ChessProp::Square(m.src_row, m.src_col),
-                  ChessProp::Square(m.dst_row, m.dst_col));
-
-    Output(prop);
-    return;
-  }
-
+static Prop GetEXDC(const ChessProp::Board &board,
+                    bool basic, bool extended) {
   // Print("Create exdc (don't care) condition...\n");
   Prop valid = True();
+  if (!basic) return valid;
 
   // On each square, exactly one of the one-hot types is true.
   for (int r = 0; r < 8; r++) {
     for (int c = 0; c < 8; c++) {
       std::vector<Prop> square_props;
       for (int t = 0; t < ChessProp::NUM_TYPES; t++) {
-        square_props.push_back(board.props[ChessProp::HasContentsIdx(r, c, t)]);
+        square_props.push_back(
+            board.props[ChessProp::HasContentsIdx(r, c, t)]);
       }
       valid = valid & ExactlyOne(square_props);
     }
   }
 
-  if (EXTENDED_EXDC) {
+  if (extended) {
     // At most one of the en passant columns is set.
     std::vector<Prop> ep_props;
     for (int c = 0; c < 8; c++) {
@@ -338,6 +302,60 @@ static void Generate(const CellLibrary &library,
     // (by white). (We would need to flip the board to test this.)
   }
 
+  return valid;
+}
+
+static void Generate(const CellLibrary &library,
+                     const Simplification &sim,
+                     StatusBar *status,
+                     Position::Move m) {
+  // Print("Init...\n");
+  Timer timer;
+  World world;
+  ChessProp::Board board = ChessProp::NewBoard(&world);
+
+  // Print("Get chess prop...\n");
+  // fflush(stdout);
+  Prop prop = ChessProp::IsLegal(board,
+                                 m.src_row, m.src_col,
+                                 m.dst_row, m.dst_col,
+                                 ChessProp::REAL_CHESS);
+
+  [[maybe_unused]] size_t start_size = PropSize(prop);
+  [[maybe_unused]] size_t start_shared_size = PropSize(prop);
+  // Print("Starting size: {} ({} shared)\n",
+  // start_size, start_shared_size);
+
+  prop = BalanceProp(SimplifyProp(prop));
+  prop = SimplifyProp(prop);
+  // Print("Simplify...\n");
+  prop = sim.Simplify(prop);
+  [[maybe_unused]]
+  size_t orig_size = PropSize(prop);
+  [[maybe_unused]]
+  size_t orig_shared_size = SharedPropSize(prop);
+
+
+  auto Output = [&](const Prop &p) {
+      std::string outfile = std::format("chess/islegal-{}-{}.prop",
+                                        ChessProp::Square(m.src_row,
+                                                          m.src_col),
+                                        ChessProp::Square(m.dst_row,
+                                                          m.dst_col));
+      Util::WriteFile(outfile, SerializeProp(p));
+    };
+
+  if (prop == False()) {
+    status->Print("[{}-{}] " AGREY("Trivially false") ".\n",
+                  ChessProp::Square(m.src_row, m.src_col),
+                  ChessProp::Square(m.dst_row, m.dst_col));
+
+    Output(prop);
+    return;
+  }
+
+  Prop valid = GetEXDC(board, USE_EXDC, EXTENDED_EXDC);
+
   Prop exdc = -valid;
   exdc = BalanceProp(SimplifyProp(exdc));
   exdc = SimplifyProp(exdc);
@@ -374,6 +392,14 @@ static void Generate(const CellLibrary &library,
                 abc_size, abc_shared_size,
                 color,
                 fin_size, fin_shared_size);
+
+  Prop valid_board = GetEXDC(board, true, true);
+  std::string z3 =
+    PropUtil::CompareZ3(world, prop, fin, valid_board);
+  Util::WriteFile(std::format("chess/z3-debug-{}-{}.smt2",
+                              ChessProp::Square(m.src_row, m.src_col),
+                              ChessProp::Square(m.dst_row, m.dst_col)),
+                  z3);
 
   if (ALWAYS_ABC || fin_shared_size < orig_shared_size) {
     Output(fin);

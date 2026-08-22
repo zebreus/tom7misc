@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <cstdlib>
 #include <format>
 #include <mutex>
@@ -76,9 +77,15 @@ static NodeCounts Count(const Prop &prop) {
   return counts;
 }
 
+struct MoveStat {
+  std::string name;
+  size_t size = 0;
+  size_t shared_size = 0;
+};
+
 static void PrintStats(std::string_view dir) {
   ArcFour rc("chessing");
-  std::vector<Position> pool = ChessProp::LegalPositions(&rc, 100);
+  std::vector<Position> pool = ChessProp::LegalPositions(&rc, 1000);
 
   std::vector<std::vector<bool>> pool_assignments;
   pool_assignments.reserve(pool.size());
@@ -96,11 +103,14 @@ static void PrintStats(std::string_view dir) {
   StatusBar status(1);
   Periodically status_per(1);
 
+  static constexpr int MAX_ERRORS = 100;
+
   std::mutex mu;
+  std::vector<MoveStat> all_moves;
   size_t total_size = 0, total_shared = 0;
   size_t errors = 0;
   NodeCounts total;
-  std::optional<std::pair<Position, Position::Move>> example_error;
+  std::vector<std::pair<Position, Position::Move>> example_errors;
   int done = 0;
   int missing = 0;
   ParallelComp2D(
@@ -112,12 +122,13 @@ static void PrintStats(std::string_view dir) {
         m.dst_row = dst / 8;
         m.dst_col = dst % 8;
 
-        std::string file = std::format("{}/islegal-{}-{}.prop",
-                                       dir,
-                                       ChessProp::Square(m.src_row,
-                                                         m.src_col),
-                                       ChessProp::Square(m.dst_row,
-                                                         m.dst_col));
+        std::string move_name = std::format("{}-{}",
+                                            ChessProp::Square(m.src_row,
+                                                              m.src_col),
+                                            ChessProp::Square(m.dst_row,
+                                                              m.dst_col));
+
+        std::string file = std::format("{}/islegal-{}.prop", dir, move_name);
 
         std::optional<Prop> oprop =
           ParseProp(Util::ReadFile(file));
@@ -135,7 +146,7 @@ static void PrintStats(std::string_view dir) {
         NodeCounts prop_counts = Count(prop);
 
         int local_errors = 0;
-        std::optional<std::pair<Position, Position::Move>> local_example_error;
+        std::vector<std::pair<Position, Position::Move>> local_example_errors;
         for (size_t i = 0; i < pool.size(); i++) {
           const Position &pos = pool[i];
           const std::vector<bool> &assignments = pool_assignments[i];
@@ -153,8 +164,8 @@ static void PrintStats(std::string_view dir) {
 
           if (expected != actual) {
             local_errors++;
-            if (!local_example_error.has_value()) {
-              local_example_error = {pos, ref_m};
+            if (local_example_errors.size() < MAX_ERRORS) {
+              local_example_errors.emplace_back(pos, ref_m);
             }
           }
         }
@@ -165,9 +176,11 @@ static void PrintStats(std::string_view dir) {
           total_shared += shared;
           errors += local_errors;
           total += prop_counts;
-          if (local_example_error.has_value() && !example_error.has_value()) {
-            example_error = local_example_error;
+          for (const auto &p : local_example_errors) {
+            if (example_errors.size() >= MAX_ERRORS) break;
+            example_errors.push_back(p);
           }
+          all_moves.push_back(MoveStat{move_name, size, shared});
           done++;
         }
 
@@ -176,6 +189,46 @@ static void PrintStats(std::string_view dir) {
           });
       },
       8);
+
+  #if 0
+  {
+    std::sort(all_moves.begin(), all_moves.end(),
+              [](const MoveStat &a, const MoveStat &b) {
+                return a.name < b.name;
+              });
+
+
+    Print("\nAll moves:\n");
+    for (const auto &ms : all_moves) {
+      Print("{}: size {}, shared {}\n", ms.name, ms.size, ms.shared_size);
+    }
+  }
+  #endif
+
+  {
+    std::sort(all_moves.begin(), all_moves.end(),
+              [](const MoveStat &a, const MoveStat &b) {
+                return a.size > b.size;
+              });
+
+    Print("\nLargest 16 by size:\n");
+    for (size_t i = 0; i < std::min<size_t>(16, all_moves.size()); i++) {
+      Print("{}: {}\n", all_moves[i].name, all_moves[i].size);
+    }
+  }
+
+  {
+    std::sort(all_moves.begin(), all_moves.end(),
+              [](const MoveStat &a, const MoveStat &b) {
+                return a.shared_size > b.shared_size;
+              });
+
+    Print("\nLargest 16 by shared_size:\n");
+    for (size_t i = 0; i < std::min<size_t>(16, all_moves.size()); i++) {
+      Print("{}: {}\n",
+            all_moves[i].name, all_moves[i].shared_size);
+    }
+  }
 
   Print("Chess lib: {}\n"
         "Missing: {}\n"
@@ -197,13 +250,16 @@ static void PrintStats(std::string_view dir) {
         total.num_and, total.num_or, total.num_not,
         total.num_xor, total.num_nand, total.num_nor);
 
-  if (example_error.has_value()) {
-    const auto &[pos, m] = example_error.value();
-    Print("Example error:\n"
-          "FEN: {}\n"
-          "Move: {}\n",
-          pos.ToFEN(0, 1),
-          Position::DebugMoveString(m));
+  if (!example_errors.empty()) {
+    Print("\nExample errors:\n");
+    for (const auto &[pos, m] : example_errors) {
+      bool legal = Position(pos).IsLegal(m);
+      Print("FEN: {}\n"
+            "  Move: {}  (should be {})\n",
+            pos.ToFEN(0, 1),
+            Position::DebugMoveString(m),
+            legal ? "legal" : "illegal");
+    }
   }
 };
 

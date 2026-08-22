@@ -1,4 +1,22 @@
 
+All good opts from before, but now using Attacked2
+for normal moves. A nice reduction!
+
+Chess lib: chess
+Missing: 0
+4096 props loaded.
+Total size: 11808824 nodes
+Total shared: 3312187 nodes
+Errors: 0
+Node counts:
+  ITE: 125274
+  AND: 233753
+   OR: 381218
+  NOT: 127114
+  XOR: 0
+ NAND: 136284
+  NOR: 399770
+
 
 --------------------------------------------------
 

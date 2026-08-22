@@ -828,12 +828,18 @@ Board ChessProp::BoardFromPosition(const Position &pos) {
 std::vector<Position> ChessProp::LegalPositions(ArcFour *rc, int num) {
   // Seed positions; always white to move.
   static std::initializer_list<std::string_view> SEED_FEN = {
+    /*
     "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "rn3r2/pbppq1p1/1p2pN2/8/3P2NP/6P1/PPP1BP1R/R3K1k1 w Q - 5 18",
     "1B6/8/7P/4p3/3b3k/8/8/2K5 w - - 0 1",
     "2rq2kb/pb1r3p/2n1R1pB/1pp2pN1/3p1Q2/P1PP2P1/1P3PBP/4R1K1 w - - 0 1",
     "1nbqkbnr/prpppppp/8/2p5/6P1/2BQ1BN1/P1PPPP1P/R3K2R w KQk - 0 1",
     "r1bqkbr1/pp1nnpp1/B6p/1Pppp3/4P3/B4N2/P1PPQPPP/RN2K2R w KQq c6 0 8",
+    */
+
+    // from solver; not necessarily possible positions
+    "n1b1bbbq/8/8/pppppppp/5pnp/5kq1/7n/R3K1bR w Q - 0 0",
+    "r1b1kbbr/8/8/pppppppp/r5b1/5pr1/8/R3K1nR w Q - 0 0",
   };
 
   std::unordered_set<Position, PositionHash, PositionEq> seen;
