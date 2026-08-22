@@ -343,6 +343,10 @@ Prop SimplifyProp(const Prop &prop) {
 }
 
 std::strong_ordering operator<=>(const Prop &a, const Prop &b) {
+  if (&a == &b) {
+    return std::strong_ordering::equal;
+  }
+
   if (auto cmp = a.p.index() <=> b.p.index(); cmp != 0) {
     return cmp;
   }

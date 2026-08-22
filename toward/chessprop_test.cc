@@ -2,9 +2,11 @@
 #include "chessprop.h"
 
 #include <format>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -294,6 +296,25 @@ static void TestPromotion() {
   Print("Promotion OK.\n");
 }
 
+static void TestRegressions() {
+  static std::initializer_list<std::pair<std::string_view,
+                                         std::string_view>> CASES = {
+    {"1nbqkbnr/pBpp1pp1/8/2p1p2p/4Q1P1/2B3N1/P1PPPP1P/R3K2R w KQk e6 0 1",
+     "O-O-O"},
+    {"rn2Nr2/pbppq1p1/4p3/1p6/3P2NP/6P1/PPP1BP1R/R3K1k1 w Q - 0 1",
+     "O-O-O"},
+    {"1nbqkb1r/prpppppp/7n/2p5/2Q3P1/2B2BN1/P1PPPP1P/R3K2R w KQk - 0 1",
+     "O-O"},
+  };
+
+  for (const auto &[fen, ms] : CASES) {
+    Position pos;
+    CHECK(Position::ParseFEN(fen, &pos));
+    CheckMove(pos, ms);
+  }
+  Print("Regressions OK.\n");
+}
+
 static void PropSizeHisto() {
   AutoHisto hist(10000);
   World world;
@@ -330,6 +351,7 @@ int main(int argc, char **argv) {
   Print("\nTest Attacked / IsLegal...\n");
 
   TestStartingPosition();
+  TestRegressions();
   TestCastling();
   TestNotCastling();
   TestOutOfCheck();

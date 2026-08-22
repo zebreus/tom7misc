@@ -649,7 +649,7 @@ static Prop KingLegal(const Board &board,
   // Must move to one of the 8-connected neighbors.
   bool normal = (distr <= 1 && distc <= 1 && (dr != 0 || dc != 0));
 
-  bool castling = srcr == 7 && srcc == 4 && dstr == 7 &&
+  bool is_castling = srcr == 7 && srcc == 4 && dstr == 7 &&
     (dstc == 2 || dstc == 6);
 
   Prop normal_move =
@@ -657,7 +657,7 @@ static Prop KingLegal(const Board &board,
               IsEmpty(board, dstr, dstc)) : False();
 
   Prop castling_move = False();
-  if (castling) {
+  if (is_castling && details.castling) {
     bool kingside = dstc == 6;
 
     CHECK(srcr == 7);
@@ -681,7 +681,7 @@ static Prop KingLegal(const Board &board,
     }
 
     // Also: Squares *that the king crosses* can't
-    // be attacked. Note that the rook (and g1) CAN
+    // be attacked. Note that the rook (and b1) CAN
     // be attacked in normal chess!
     if (details.castling_attacked) {
       if (kingside) {

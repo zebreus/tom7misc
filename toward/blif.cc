@@ -1,15 +1,17 @@
 
 #include "blif.h"
 
-#include <unordered_set>
-#include <vector>
-#include <unordered_map>
 #include <format>
-#include <string>
 #include <set>
+#include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <variant>
+#include <vector>
 
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "prop.h"
 
 std::string ToBLIF(std::string_view model_name,
@@ -22,7 +24,7 @@ std::string ToBLIF(std::string_view model_name,
 
   res += ".inputs";
   for (int v : var_set) {
-    res += std::format(" {}", world.symbol_names[v]);
+    AppendFormat(&res, " {}", world.symbol_names[v]);
   }
   res += "\n";
   res += ".outputs out\n";
@@ -49,6 +51,7 @@ std::string ToBLIF(std::string_view model_name,
             children_done = false;
             todo.push_back(u->a.get());
           }
+
         } else if (const Binop *b = std::get_if<Binop>(&curr->p)) {
           if (!visited.contains(*b->a)) {
             children_done = false;
@@ -57,6 +60,20 @@ std::string ToBLIF(std::string_view model_name,
           if (!visited.contains(*b->b)) {
             children_done = false;
             todo.push_back(b->b.get());
+          }
+
+        } else if (const Ternop *t = std::get_if<Ternop>(&curr->p)) {
+          if (!visited.contains(*t->a)) {
+            children_done = false;
+            todo.push_back(t->a.get());
+          }
+          if (!visited.contains(*t->b)) {
+            children_done = false;
+            todo.push_back(t->b.get());
+          }
+          if (!visited.contains(*t->c)) {
+            children_done = false;
+            todo.push_back(t->c.get());
           }
         }
 
@@ -70,43 +87,94 @@ std::string ToBLIF(std::string_view model_name,
       for (const Prop *curr : order) {
         if (const Value *v = std::get_if<Value>(&curr->p)) {
           std::string name = std::format("n{}", next_node++);
-          gates += std::format(".names {}\n", name);
+          AppendFormat(&gates, ".names {}\n", name);
           if (v->value) {
             gates += "1\n";
           }
           memo[*curr] = name;
+
         } else if (const Var *v = std::get_if<Var>(&curr->p)) {
           memo[*curr] = world.symbol_names[v->id];
+
         } else if (const Unop *u = std::get_if<Unop>(&curr->p)) {
           std::string name = std::format("n{}", next_node++);
-          gates += std::format(".names {} {}\n0 1\n", memo.at(*u->a), name);
+          AppendFormat(&gates, ".names {} {}\n0 1\n", memo.at(*u->a), name);
           memo[*curr] = name;
+
         } else if (const Binop *b = std::get_if<Binop>(&curr->p)) {
           std::string name = std::format("n{}", next_node++);
           std::string name_a = memo.at(*b->a);
           std::string name_b = memo.at(*b->b);
           if (name_a == name_b) {
+            // BLIF tools usually require distinct inputs to a gate.
+            // When the inputs are identical, we simplify to a 1-input
+            // gate or a constant.
             if (b->op == BinopOp::AND || b->op == BinopOp::OR) {
-              gates += std::format(".names {} {}\n1 1\n", name_a, name);
+              AppendFormat(&gates, ".names {} {}\n1 1\n", name_a, name);
+            } else if (b->op == BinopOp::NAND || b->op == BinopOp::NOR) {
+              AppendFormat(&gates, ".names {} {}\n0 1\n", name_a, name);
+            } else if (b->op == BinopOp::XOR) {
+              // Same as constant 0.
+              AppendFormat(&gates, ".names {}\n", name);
             } else {
-              gates += std::format(".names {}\n", name);
+              LOG(FATAL) << "Unimplemented binop(a, a)!";
             }
+
           } else {
             if (b->op == BinopOp::AND) {
-              gates += std::format(".names {} {} {}\n11 1\n",
-                                   name_a, name_b, name);
+              AppendFormat(&gates, ".names {} {} {}\n11 1\n",
+                           name_a, name_b, name);
             } else if (b->op == BinopOp::OR) {
-              gates += std::format(".names {} {} {}\n1- 1\n-1 1\n",
-                                   name_a, name_b, name);
+              AppendFormat(&gates, ".names {} {} {}\n1- 1\n-1 1\n",
+                           name_a, name_b, name);
             } else if (b->op == BinopOp::XOR) {
-              gates += std::format(".names {} {} {}\n01 1\n10 1\n",
-                                   name_a, name_b, name);
+              AppendFormat(&gates, ".names {} {} {}\n01 1\n10 1\n",
+                           name_a, name_b, name);
+            } else if (b->op == BinopOp::NAND) {
+              AppendFormat(&gates, ".names {} {} {}\n0- 1\n-0 1\n",
+                           name_a, name_b, name);
+            } else if (b->op == BinopOp::NOR) {
+              AppendFormat(&gates, ".names {} {} {}\n00 1\n",
+                           name_a, name_b, name);
+            } else {
+              LOG(FATAL) << "Unhandled binop!";
             }
+          }
+          memo[*curr] = name;
+
+        } else if (const Ternop *t = std::get_if<Ternop>(&curr->p)) {
+          // Also need to handle duplicate children here.
+          std::string name = std::format("n{}", next_node++);
+          std::string name_a = memo.at(*t->a);
+          std::string name_b = memo.at(*t->b);
+          std::string name_c = memo.at(*t->c);
+
+          if (t->op == TernopOp::ITE) {
+            if (name_a == name_b && name_a == name_c) {
+              AppendFormat(&gates, ".names {} {}\n1 1\n", name_a, name);
+            } else if (name_a == name_b) {
+              // ITE(a, a, c) = a OR c
+              AppendFormat(&gates, ".names {} {} {}\n1- 1\n-1 1\n",
+                           name_a, name_c, name);
+            } else if (name_a == name_c) {
+              // ITE(a, b, a) = a AND b
+              AppendFormat(&gates, ".names {} {} {}\n11 1\n",
+                           name_a, name_b, name);
+            } else if (name_b == name_c) {
+              // ITE(a, b, b) = b
+              AppendFormat(&gates, ".names {} {}\n1 1\n", name_b, name);
+            } else {
+              AppendFormat(&gates, ".names {} {} {} {}\n11- 1\n0-1 1\n",
+                           name_a, name_b, name_c, name);
+            }
+
+          } else {
+            LOG(FATAL) << "Unhandled ternop!";
           }
           memo[*curr] = name;
         }
       }
-      gates += std::format(".names {} out\n1 1\n", memo.at(p));
+      AppendFormat(&gates, ".names {} out\n1 1\n", memo.at(p));
       return gates;
     };
 
@@ -115,7 +183,7 @@ std::string ToBLIF(std::string_view model_name,
   res += ".exdc\n";
   res += ".inputs";
   for (int v : var_set) {
-    res += std::format(" {}", world.symbol_names[v]);
+    AppendFormat(&res, " {}", world.symbol_names[v]);
   }
   res += "\n";
   res += ".outputs out\n";
