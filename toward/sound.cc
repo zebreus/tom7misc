@@ -1,23 +1,29 @@
 
-
 #include <cmath>
 #include <map>
 #include <memory>
 #include <tuple>
 #include <vector>
 
-#include "hashing.h"
+#include "ansi.h"
 #include "geom/polygonization.h"
+#include "hashing.h"
 #include "letters.h"
 #include "yocto-math.h"
-#include "ansi.h"
 
 // Physical properties for the simulation.
+// kg/m^2
 static constexpr double DENSITY = 1.0;
+// N/m
 static constexpr double TENSION = 1000.0;
+// kg/(m^2 s)
 static constexpr double DAMPING = 0.01;
+// Samples per second.
 static constexpr int SAMPLE_RATE = 44100;
 static constexpr double DT = 1.0 / SAMPLE_RATE;
+// kg/(m*s). 0 means free-floating; infinity means fixed (like a drum head).
+static constexpr double BOUNDARY_DAMPING =
+  std::numeric_limits<double>::infinity();
 
 struct SimTri {
   // Vertex indices. Screen clockwise (Cartesian CCW) winding order.
@@ -31,6 +37,7 @@ struct SimTri {
 
   // Physical quantities that we will need for the simulation.
   float area = 0.0f;
+  vec2 center = {0.0f, 0.0f};
 };
 
 struct SimLetter {
@@ -56,8 +63,55 @@ static void ApplyImpulse(SimState *state, int idx, double accel) {
   state->vel[idx] += accel;
 }
 
-static void StepState(SimState *state) {
-  // TODO
+// Advance the simulation state by DT.
+static void StepState(const SimLetter &letter, SimState *state) {
+  int n = letter.triangles.size();
+  std::vector<double> force(n, 0.0);
+
+  for (int i = 0; i < n; i++) {
+    const SimTri &tri = letter.triangles[i];
+    double z_i = state->pos[i];
+    double v_i = state->vel[i];
+
+    // Intrinsic damping force
+    double f = -DAMPING * tri.area * v_i;
+
+    // Forces from neighboring triangles or boundaries
+    auto edge_force = [&](int neighbor_idx, float len) -> double {
+      if (neighbor_idx >= 0) {
+        double z_j = state->pos[neighbor_idx];
+        const SimTri &ntri = letter.triangles[neighbor_idx];
+        double dist = yocto::distance(tri.center, ntri.center);
+        dist = dist < 1e-9 ? 1e-9 : dist;
+        return TENSION * len * (z_j - z_i) / dist;
+      } else {
+        if (std::isinf(BOUNDARY_DAMPING)) {
+          // Fixed boundary at z = 0
+          double dist = (2.0 * tri.area) / (3.0 * len);
+          dist = dist < 1e-9 ? 1e-9 : dist;
+          return TENSION * len * (0.0 - z_i) / dist;
+        } else {
+          // Absorbing boundary
+          return -BOUNDARY_DAMPING * len * v_i;
+        }
+      }
+    };
+
+    f += edge_force(tri.ab, tri.len_ab);
+    f += edge_force(tri.bc, tri.len_bc);
+    f += edge_force(tri.ca, tri.len_ca);
+
+    force[i] = f;
+  }
+
+  // Update velocities and positions using semi-implicit Euler
+  for (int i = 0; i < n; i++) {
+    double mass = DENSITY * letter.triangles[i].area;
+    mass = mass < 1e-9 ? 1e-9 : mass;
+    double accel = force[i] / mass;
+    state->vel[i] += accel * DT;
+    state->pos[i] += state->vel[i] * DT;
+  }
 }
 
 SimLetter MakeSimLetter(const Letter &letter) {
@@ -110,6 +164,9 @@ SimLetter MakeSimLetter(const Letter &letter) {
     tri.area = (float)(0.5 * cross);
     CHECK(tri.area >= 0.0);
 
+    tri.center.x = (va.x + vb.x + vc.x) / 3.0f;
+    tri.center.y = (va.y + vb.y + vc.y) / 3.0f;
+
     result.triangles.push_back(tri);
   }
 
@@ -155,7 +212,7 @@ void TestOne(const Letters &letters, char ch) {
 
   static constexpr int SECONDS = 5;
   for (int i = 0; i < SAMPLE_RATE * SECONDS; i++) {
-    StepState(&state);
+    StepState(sletter, &state);
 
     // TODO: Sample and record wave
   }
