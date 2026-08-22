@@ -2733,7 +2733,11 @@ Config Config::ParseConfig(std::string_view cfgfile) {
 
   CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
   config.pngfile = Util::DirPlus(path, m["pngfile"]);
-  config.name = m["name"];
+  if (m.contains("fallback-pngfile")) {
+    config.fallback_pngfile = Util::DirPlus(path, m["fallback-pngfile"]);
+  }
+
+  config.family_name = m["family-name"];
   config.copyright = m["copyright"];
   config.charbox_width = atoi(m["charbox-width"].c_str());
   config.charbox_height = atoi(m["charbox-height"].c_str());
@@ -2766,6 +2770,15 @@ Config Config::ParseConfig(std::string_view cfgfile) {
     config.vendor[1] = v[1];
     config.vendor[2] = v[2];
     config.vendor[3] = v[3];
+  }
+
+  if (m.contains("ribbi")) {
+    std::string r = m["ribbi"];
+    if (r == "regular") config.ribbi = RIBBI::REGULAR;
+    else if (r == "italic") config.ribbi = RIBBI::ITALIC;
+    else if (r == "bold") config.ribbi = RIBBI::BOLD;
+    else if (r == "bold-italic") config.ribbi = RIBBI::BOLD_ITALIC;
+    else LOG(FATAL) << "Unknown ribbi value: " << r;
   }
 
   if (m.find("weight") != m.end()) {
@@ -3045,6 +3058,10 @@ FontImage::FontImage(const Config &config) : config(config) {
   std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
   CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
 
+  std::unique_ptr<ImageRGBA> fallback;
+  if (!config.fallback_pngfile.empty())
+    fallback.reset(ImageRGBA::Load(config.fallback_pngfile));
+
   const int page_width = config.chars_across * config.charbox_width;
   const int page_height = config.chars_down * config.charbox_height;
   const int spaced_page_width = page_width + config.page_spacing;
@@ -3060,17 +3077,26 @@ FontImage::FontImage(const Config &config) : config(config) {
 #endif
 
   // Currently, pages are always arranged horizontally.
+  auto LoadPages = [&](const ImageRGBA &img) {
+    for (int page_num = 0; page_num < (int)config.pages.size(); page_num++) {
+      const Page &p = config.pages[page_num];
+      const int page_x = page_num * spaced_page_width;
 
-  for (int page_num = 0; page_num < (int)config.pages.size(); page_num++) {
-    const Page &p = config.pages[page_num];
-    const int page_x = page_num * spaced_page_width;
+      ImageRGBA page_img(page_width, page_height);
 
-    ImageRGBA page_img(page_width, page_height);
+      page_img.CopyImageRect(0, 0, img, page_x, 0,
+                             page_width, page_height);
+      AddPage(page_img, p);
+    }
+  };
 
-    page_img.CopyImageRect(0, 0, *input, page_x, 0,
-                           page_width, page_height);
-    AddPage(page_img, p);
+  // First load fallback glyphs.
+  if (fallback.get() != nullptr) {
+    LoadPages(*fallback);
   }
+  // ... and then overwrite any of them with the explicit glyphs from
+  // the input.
+  LoadPages(*input);
 
   ComposeBraille();
 
@@ -3111,9 +3137,10 @@ Unpack32(uint32_t color) {
           (uint8_t)(color & 255)};
 }
 
-inline static constexpr uint32_t Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-  return
-    ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | (uint32_t)a;
+inline static constexpr uint32_t Pack32(
+    uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+  return ((uint32_t)r << 24) | ((uint32_t)g << 16) |
+    ((uint32_t)b << 8) | (uint32_t)a;
 }
 
 inline static constexpr uint32_t Darken(uint32_t c) {
@@ -3145,7 +3172,8 @@ struct SectionColors {
     colors.resize(size);
 
     // Pass the bright color; the darker color is computed automatically.
-    auto SetColor = [&config, this](int cidx, uint32_t ecolor, uint32_t ocolor) {
+    auto SetColor = [&config, this](int cidx,
+                                    uint32_t ecolor, uint32_t ocolor) {
         int x = cidx % config.chars_across;
         int y = cidx / config.chars_across;
         const bool odd = !!((x + y) & 1);

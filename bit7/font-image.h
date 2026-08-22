@@ -23,12 +23,25 @@ enum class Page {
 };
 
 struct Config {
+  enum class RIBBI {
+    REGULAR, ITALIC, BOLD, BOLD_ITALIC,
+  };
+
   // Should be a path that we can open from the pwd. The
   // config loading function will interpret the filename
   // as a path relative to the config file.
   std::string pngfile;
 
-  std::string name;
+  // As above. Must use the same image settings. Glyphs
+  // are read from here if they are not present in the
+  // main pngfile.
+  std::string fallback_pngfile;
+
+  // When generating TTFs: If it's a regular font (ribbi = REGULAR,
+  // weight = 400) then the user-visible name will be the same as
+  // this. Bold/italic variants will be composed such that OSes
+  // understand that they are in this same family.
+  std::string family_name;
   std::string copyright;
 
   // TODO: Make configurable?
@@ -64,6 +77,7 @@ struct Config {
 
   char vendor[4] = {'f', 'o', 'n', 't'};
 
+  RIBBI ribbi = RIBBI::REGULAR;
   // These are just used in TTF properties. 400 is normal weight.
   int weight = 400;
   // 5 is normal width (ranges from 1 for narrow to 9 for expanded).

@@ -21,7 +21,7 @@ static bool ContainsKey(const C &c, const K &k) {
 static Config ParseAndCheckConfig(const std::string &cfgfile) {
   Config config = Config::ParseConfig(cfgfile);
   CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
-  CHECK(!config.name.empty()) << "Required config line: name";
+  CHECK(!config.family_name.empty()) << "Required config line: family-name";
 
   CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
   CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";

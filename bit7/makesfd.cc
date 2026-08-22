@@ -39,7 +39,7 @@ static bool ContainsKey(const C &c, const K &k) {
 static Config ParseAndCheckConfig(const std::string &cfgfile) {
   Config config = Config::ParseConfig(cfgfile);
   CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
-  CHECK(!config.name.empty()) << "Required config line: name";
+  CHECK(!config.family_name.empty()) << "Required config line: family-name";
 
   CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
   CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";
@@ -48,6 +48,15 @@ static Config ParseAndCheckConfig(const std::string &cfgfile) {
 
   CHECK(config.chars_across > 0);
   CHECK(config.chars_down > 0);
+
+  if (config.ribbi != Config::RIBBI::REGULAR) {
+    const string &fam = config.family_name;
+    CHECK(!Util::EndsWith(fam, " Bold") &&
+          !Util::EndsWith(fam, " Italic")) <<
+      "Family name '" << fam << "' ends with Bold or Italic, but "
+      "ribbi is not REGULAR. It should be just the base (family) "
+      "name.";
+  }
 
   return config;
 }
@@ -144,12 +153,12 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
   // a smaller y coordinate, which is also in the blob.
   const auto [startpx, startpy] = [&bitmap, InBlob]() ->
     std::pair<int, int> {
-      for (int y = 0; y < bitmap.Height(); y++) {
-        for (int x = 0; x < bitmap.Width(); x++) {
-          if (InBlob(x, y)) return make_pair(x, y);
-        }
+    for (int y = 0; y < bitmap.Height(); y++) {
+      for (int x = 0; x < bitmap.Width(); x++) {
+        if (InBlob(x, y)) return make_pair(x, y);
       }
-      LOG(FATAL) << "VectorizeOne requires a non-empty bitmap!";
+    }
+    LOG(FATAL) << "VectorizeOne requires a non-empty bitmap!";
   }();
 
   // We wind around the pixel blob's exterior, always maintaining a
@@ -498,8 +507,12 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 4; i++)
     ttf_font.vendor[i] = config.vendor[i];
   ttf_font.copyright = config.copyright;
+  ttf_font.family_name = config.family_name;
+  ttf_font.ribbi = static_cast<TTF::RIBBI>(config.ribbi);
+  ttf_font.weight = config.weight;
+  ttf_font.width = config.width;
 
-  const string sfd = ttf_font.ToSFD(config.name);
+  const string sfd = ttf_font.ToSFD();
   Util::WriteFile(out_sfd, sfd);
 
   return 0;

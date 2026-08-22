@@ -169,6 +169,10 @@ struct TTF {
     std::vector<Contour> contours;
     float width = 1.0f;
   };
+
+  enum class RIBBI {
+    REGULAR, ITALIC, BOLD, BOLD_ITALIC,
+  };
   struct Font {
     // Key is the unicode codepoint.
     std::map<int, Char> chars;
@@ -179,8 +183,25 @@ struct TTF {
     // not baseline, ascent, or descent.
     float extra_scale = 1.0f;
 
-    // TTF metdata. Weight=400 is normal.
+    // This should be the exact same string for all font variants that
+    // you want the operating system to associate.
+    std::string family_name;
+
+    // For sanity's sake, we don't support arbitrary subfamily names,
+    // and compose the "full name" (ID 4) and "postscript name" (ID 6)
+    // from the family name and subfamily.
+    //
+    // TTF metadata, which might be used for the operating system
+    // to associate fonts that are part of the same family. If you
+    // just have one font, using 400/regular is probably your
+    // best bet.
+    //
+    // Use 400 for normal, 700 for bold.
     int weight = 400;
+    // This should match the weight.
+    // Produces the font subfamily.
+    RIBBI ribbi = RIBBI::REGULAR;
+
     // Width in 1-9; 5 for normal.
     int width = 5;
 
@@ -208,9 +229,9 @@ struct TTF {
 
     // Not to be confused with SDF! This is the text file format for
     // FontForge. Extremely simple subset with many fields hackily
-    // hard-coded. Name is the font name (spaces are stripped to
-    // produce the internal name; avoid weird characters).
-    std::string ToSFD(const std::string &name) const;
+    // hard-coded. A non-empty family name is required; if you leave
+    // the rest as defaults you'll just get a font called that.
+    std::string ToSFD() const;
   };
 
   // In-place update control point coordinates (only -- metrics are

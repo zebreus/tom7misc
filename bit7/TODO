@@ -13,7 +13,6 @@ right stem compared to latin u.
 Seen in the wild (pip install): ╸
 from more box drawing chars: https://www.compart.com/en/unicode/block/U+2500
 
-
 from htop:
 HR S  CPU%▽MEM%
 R S  CPU%△MEM%

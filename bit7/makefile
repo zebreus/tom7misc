@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe
+default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd fixedersys2xbold.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe
 
 # Not reinstall.exe by default since it is windows-specific.
 
@@ -25,20 +25,24 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 CCLIB_FONT_OBJECTS=$(CC_LIB)/fonts/island-finder.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/stb_truetype.o
 
-%.o : %.cc
-	@$(CXX) $(CXXFLAGS) -c $^ -o $@
+# All header files, but exclude the generated header.
+HEADERS=$(filter-out embed9x9.h, $(wildcard *.h))
+
+%.o : %.cc $(HEADERS)
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
 # These need FontForge installed (see tottf.sh).
 # It's hard-coded for a windows installation. You can
 # just load the .sfd files and generate ttfs from the
 # FontForge UI.
-ttf : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf
+ttf : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf FixederSys2xBold.ttf
 
-install : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf reinstall.exe
+install : FixederSys1x.ttf FixederSys2x.ttf FixederSysLight2x.ttf FixederSys2xBold.ttf reinstall.exe
 	./reinstall.exe FixederSys1x.ttf
 	./reinstall.exe FixederSys2x.ttf
 	./reinstall.exe FixederSysLight2x.ttf
+	./reinstall.exe FixederSys2xBold.ttf
 
 makegrid.exe : makegrid.o font-image.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
@@ -86,8 +90,12 @@ fixedersys1x.sfd : fixedersys1x.png fixedersys1x.cfg makesfd.exe
 fixedersys2x.sfd : fixedersys2x.png fixedersys2x.cfg makesfd.exe
 	./makesfd.exe fixedersys2x.cfg $@
 
-fixedersyslight2x.sfd : fixedersyslight2x.png fixedersyslight2x.cfg makesfd.exe
+# these two fall back to the normal 2x image
+fixedersyslight2x.sfd : fixedersys2x.png fixedersyslight2x.png fixedersyslight2x.cfg makesfd.exe
 	./makesfd.exe fixedersyslight2x.cfg $@
+
+fixedersys2xbold.sfd : fixedersys2x.png fixedersys2xbold.png fixedersys2xbold.cfg makesfd.exe
+	./makesfd.exe fixedersys2xbold.cfg $@
 
 FixederSys1x.ttf : fixedersys1x.sfd
 	./tottf.sh $^ $@
@@ -98,10 +106,14 @@ FixederSys2x.ttf : fixedersys2x.sfd
 FixederSysLight2x.ttf : fixedersyslight2x.sfd
 	./tottf.sh $^ $@
 
-normalize : normalize.exe fixedersys1x.png fixedersys2x.png
+FixederSys2xBold.ttf : fixedersys2xbold.sfd
+	./tottf.sh $^ $@
+
+normalize : normalize.exe fixedersys1x.png fixedersys2x.png fixedersyslight2x.png fixedersys2xbold.png
 	./normalize.exe fixedersys1x.cfg
 	./normalize.exe fixedersys2x.cfg
 	./normalize.exe fixedersyslight2x.cfg
+	./normalize.exe fixedersys2xbold.cfg
 
 unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
