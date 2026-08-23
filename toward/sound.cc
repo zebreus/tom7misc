@@ -1,12 +1,14 @@
 
 #include <cmath>
-#include <map>
+#include <limits>
 #include <memory>
-#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "geom/polygonization.h"
+#include "geom/polygons.h"
 #include "hashing.h"
 #include "letters.h"
 #include "yocto-math.h"
@@ -171,7 +173,8 @@ SimLetter MakeSimLetter(const Letter &letter) {
   }
 
   // Compute adjacency using a map of directed edges.
-  std::unordered_map<std::pair<int, int>, int, Hashing<std::pair<int, int>>> edge_to_tri;
+  std::unordered_map<std::pair<int, int>, int,
+                     Hashing<std::pair<int, int>>> edge_to_tri;
   for (int i = 0; i < (int)result.triangles.size(); i++) {
     const SimTri &tri = result.triangles[i];
     edge_to_tri[{tri.a, tri.b}] = i;

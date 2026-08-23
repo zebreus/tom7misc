@@ -43,7 +43,7 @@ SDL_LFLAGS=$(SDL_LIBS) $(GL_LIBS)
 
 # objects to compile with SDL flags
 SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
-SDL_ENTRYPOINT_OBJECTS=test.o editor.o playcircuit.o slideshow.o
+SDL_ENTRYPOINT_OBJECTS=toward.o test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
 LIB_OBJECTS=prop-util.o verilog.o aiger.o blif.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
@@ -226,6 +226,10 @@ chess-abc-bug.exe : chess-abc-bug.o $(LIB_OBJECTS)
 %.super : %.genlib
 	@../../berkeley-abc/abc -c "super $^"
 	@echo -n "⋀"
+
+toward.exe : toward.o $(LIB_OBJECTS) $(SDL_OBJECTS)
+	$(CXX) $(LFLAGS) $^ $(SDL_LFLAGS) $(LIBS) -o $@
+	@echo -n ":"
 
 clean :
 	rm -f *.o $(CC_LIB_OBJECTS) test.exe
