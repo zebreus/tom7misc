@@ -564,6 +564,103 @@ std::vector<Func> TransformCell(const Cell &cell,
   return out;
 }
 
+std::vector<CType> CellInputTypes(const Cell &cell) {
+  const auto &[num_in, num_out] = GateArity(cell.gate);
+  if (num_in == 0) return {};
+
+  std::vector<CType> types(num_in, CType::MIXED);
+
+  auto SetInput = [&](int idx, CType t) {
+      if (cell.flip) {
+        types[num_in - 1 - idx] = t;
+      } else {
+        types[idx] = t;
+      }
+    };
+
+  switch (cell.gate) {
+  case OR1100:
+  case NOR1100:
+  case XOR1100:
+    SetInput(0, CType::ONE);
+    SetInput(1, CType::ONE);
+    SetInput(2, CType::ZERO);
+    SetInput(3, CType::ZERO);
+    break;
+  case NAND0011:
+    SetInput(0, CType::ZERO);
+    SetInput(1, CType::ZERO);
+    SetInput(2, CType::ONE);
+    SetInput(3, CType::ONE);
+    break;
+  case AND0110:
+    SetInput(0, CType::ZERO);
+    SetInput(1, CType::ONE);
+    SetInput(2, CType::ONE);
+    SetInput(3, CType::ZERO);
+    break;
+  case XOR1010:
+    SetInput(0, CType::ONE);
+    SetInput(1, CType::ZERO);
+    SetInput(2, CType::ONE);
+    SetInput(3, CType::ZERO);
+    break;
+  case ITE10:
+    SetInput(0, CType::MIXED);
+    SetInput(1, CType::ONE);
+    SetInput(2, CType::ZERO);
+    SetInput(3, CType::MIXED);
+    break;
+  case SELFXCHG01:
+  case NOT01:
+  case COMBINE01:
+  case XCHG01:
+    SetInput(0, CType::ZERO);
+    SetInput(1, CType::ONE);
+    break;
+  case SELFXCHG10:
+  case COMBINE10:
+  case XCHG10:
+    SetInput(0, CType::ONE);
+    SetInput(1, CType::ZERO);
+    break;
+  case NOT0:
+  case WIRE0A:
+  case WIRE0B:
+  case DUP0:
+    SetInput(0, CType::ZERO);
+    break;
+  case NOT1:
+  case WIRE1A:
+  case WIRE1B:
+  case DUP1:
+    SetInput(0, CType::ONE);
+    break;
+  case XCHG00:
+    SetInput(0, CType::ZERO);
+    SetInput(1, CType::ZERO);
+    break;
+  case XCHG11:
+    SetInput(0, CType::ONE);
+    SetInput(1, CType::ONE);
+    break;
+
+  case WIREA:
+  case WIREB:
+  case SEPARATOR01:
+  case SEPARATOR10:
+  case DUPSEP0011:
+  case NOT:
+    SetInput(1, CType::MIXED);
+    break;
+
+  default:
+    LOG(FATAL) << "Unhandled cell type?";
+    break;
+  }
+  return types;
+}
+
 std::vector<Func> Transform(const Layer &layer,
                             const std::vector<Func> &in) {
   const auto &[num_inputs, num_outputs] = LayerArity(layer);

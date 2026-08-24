@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 #include "arcfour.h"
 #include "base/logging.h"
@@ -105,6 +106,10 @@ CircuitSim::CircuitSim(const CellLibrary &library,
   std::optional<Layout> olay = LayoutEngine::Parse(content);
   CHECK(olay.has_value()) << "Could not parse " << layout_file;
   layout = std::move(olay.value());
+
+  if (CircuitSize(layout.circuit) < 128) {
+    Print("Layout:\n{}\n", LayoutEngine::ToString(layout));
+  }
 
   // Maybe option to skip this in slideshow mode?
   DRC::CheckLayout(library, layout_file, layout);
@@ -516,7 +521,159 @@ std::optional<CircuitSim::NodeLocation> CircuitSim::GetNodeAt(vec2f pos) const {
       return NodeLocation{r, c, &node};
     }
   }
-
   return std::nullopt;
 }
 
+Layout CircuitSim::ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const {
+  Layout result;
+  if (sim.empty()) return result;
+
+  static constexpr int ROW_HEIGHT_BLOCKS = Levels::OUT_Y + 1;
+  static constexpr float ROW_HEIGHT = ROW_HEIGHT_BLOCKS * Levels::BLOCK_SIZE;
+
+  int min_r = aabb_min.y < 0.0f ? 0 : (int)(aabb_min.y / ROW_HEIGHT);
+  int max_r = aabb_max.y < 0.0f ? -1 : (int)(aabb_max.y / ROW_HEIGHT);
+  if (max_r >= (int)sim.size()) max_r = (int)sim.size() - 1;
+  if (min_r > max_r || min_r >= (int)sim.size()) return Layout();
+
+  std::vector<std::vector<bool>> kept(sim.size());
+  for (size_t r = 0; r < sim.size(); r++) {
+    kept[r].resize(sim[r].size(), false);
+  }
+
+  // Identify cells that are initially inside the bounding box.
+  for (int r = min_r; r <= max_r; r++) {
+    for (size_t c = 0; c < sim[r].size(); c++) {
+      const Node &node = sim[r][c];
+      int width = library.GetInfo(node.cell).block_width;
+      float node_min_x = node.xpos * Levels::BLOCK_SIZE;
+      float node_max_x = (node.xpos + width) * Levels::BLOCK_SIZE;
+      if (node_min_x >= aabb_max.x) {
+        break;
+      }
+      if (node_max_x > aabb_min.x) {
+        kept[r][c] = true;
+      }
+    }
+  }
+
+  struct ExtraWire {
+    int x;
+    Cell cell;
+  };
+  std::vector<std::vector<ExtraWire>> extra_wires(sim.size());
+
+  // Trace broken connections to the top/bottom of the bounding box.
+  int start_r = std::max(0, min_r - 1);
+  for (int r = start_r; r <= max_r; r++) {
+    if (r + 1 >= (int)sim.size()) continue;
+
+    for (size_t c = 0; c < sim[r].size(); c++) {
+      const Node &src = sim[r][c];
+      bool src_kept = (r >= min_r && r <= max_r && kept[r][c]);
+
+      for (int out_idx = 0; out_idx < (int)src.matching_inputs.size(); out_idx++) {
+        auto match = src.matching_inputs[out_idx];
+        if (match.first == (size_t)-1) continue;
+
+        bool dst_kept = (r + 1 >= min_r && r + 1 <= max_r && kept[r + 1][match.first]);
+
+        if (src_kept && !dst_kept) {
+          // Connection goes out of bounds downwards.
+          const auto &info = library.GetInfo(src.cell);
+          CType type = info.outputs[out_idx].type;
+          Gate wire_gate = Gate::WIREA;
+          if (type == CType::ZERO) wire_gate = Gate::WIRE0A;
+          else if (type == CType::ONE) wire_gate = Gate::WIRE1A;
+          Cell wire_cell(wire_gate, 0);
+          const auto &wire_info = library.GetInfo(wire_cell);
+
+          int current_x = src.xpos + info.outputs[out_idx].xblock;
+          for (int k = r + 1; k <= max_r; k++) {
+            int cell_x = current_x - wire_info.inputs[0].xblock;
+            extra_wires[k].push_back({cell_x, wire_cell});
+            current_x = cell_x + wire_info.outputs[0].xblock;
+          }
+        } else if (!src_kept && dst_kept) {
+          // Connection comes from out of bounds upwards.
+          const Node &dst = sim[r + 1][match.first];
+          const auto &info = library.GetInfo(dst.cell);
+          CType type = info.inputs[match.second].type;
+          Gate wire_gate = Gate::WIREA;
+          if (type == CType::ZERO) wire_gate = Gate::WIRE0A;
+          else if (type == CType::ONE) wire_gate = Gate::WIRE1A;
+          Cell wire_cell(wire_gate, 0);
+          const auto &wire_info = library.GetInfo(wire_cell);
+
+          int current_x = dst.xpos + info.inputs[match.second].xblock;
+          for (int k = r; k >= min_r; k--) {
+            int cell_x = current_x - wire_info.outputs[0].xblock;
+            extra_wires[k].push_back({cell_x, wire_cell});
+            current_x = cell_x + wire_info.inputs[0].xblock;
+          }
+        }
+      }
+    }
+  }
+
+  struct Item {
+    int xpos;
+    Cell cell;
+    bool operator<(const Item &other) const {
+      return xpos < other.xpos;
+    }
+  };
+
+  // Filter out empty rows at the extremes.
+  int actual_min_r = -1;
+  int actual_max_r = -1;
+  for (int r = min_r; r <= max_r; r++) {
+    bool has_any = !extra_wires[r].empty();
+    for (size_t c = 0; c < sim[r].size(); c++) {
+      if (kept[r][c]) has_any = true;
+    }
+    if (has_any) {
+      if (actual_min_r == -1) actual_min_r = r;
+      actual_max_r = r;
+    }
+  }
+
+  if (actual_min_r == -1) {
+    return Layout();
+  }
+
+  for (int r = actual_min_r; r <= actual_max_r; r++) {
+    std::vector<Item> items;
+    for (size_t c = 0; c < sim[r].size(); c++) {
+      if (kept[r][c]) {
+        items.push_back({sim[r][c].xpos, sim[r][c].cell});
+      }
+    }
+    for (const auto &ew : extra_wires[r]) {
+      items.push_back({ew.x, ew.cell});
+    }
+    std::sort(items.begin(), items.end());
+
+    Layer layer;
+    int current_x = 0;
+    for (const Item &item : items) {
+      int x = std::max(item.xpos, current_x);
+      if (x > current_x) {
+        layer.push_back(CellLibrary::Spacer(x - current_x));
+      }
+      layer.push_back(item.cell);
+      current_x = x + library.GetInfo(item.cell).block_width;
+    }
+    result.circuit.layers.push_back(std::move(layer));
+  }
+
+  int next_var_id = 0;
+  for (const Cell &cell : result.circuit.layers.front()) {
+    std::vector<CType> types = CellInputTypes(cell);
+    for (CType t : types) {
+      result.input_vars.push_back({next_var_id++, t});
+    }
+  }
+
+  return LayoutEngine::Normalize(std::move(result));
+}

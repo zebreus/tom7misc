@@ -129,6 +129,10 @@ struct CircuitSim {
   // Returns the node at the given world position, or std::nullopt if none.
   std::optional<NodeLocation> GetNodeAt(vec2f pos) const;
 
+  // Extracts the cells that overlap an AABB provided in world coordinates,
+  // returning them as a Layout object.
+  Layout ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const;
+
   const std::vector<std::vector<Node>> &GetSim() const { return sim; }
 
  private:

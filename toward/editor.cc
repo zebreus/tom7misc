@@ -11,7 +11,6 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "image.h"
 #include "initialization.h"
 #include "inputs.h"
 #include "level.h"

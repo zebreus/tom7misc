@@ -133,6 +133,9 @@ struct Func {
 std::vector<Func> Transform(const Layer &layer,
                             const std::vector<Func> &funcs);
 
+// Returns the expected input types for the given cell, accounting for flip.
+std::vector<CType> CellInputTypes(const Cell &cell);
+
 // Transform just the one cell. Assumes the input is the correct size.
 std::vector<Func> TransformCell(const Cell &cell,
                                 std::span<const Func> in);

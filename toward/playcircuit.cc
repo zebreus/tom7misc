@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -25,6 +26,8 @@
 #include "toward-util.h"
 #include "utf8.h"
 
+static constexpr uint32_t SELECTION_COLOR = 0x8888FF44;
+
 static void Loop(std::string_view layout_file) {
   CellLibrary library;
   std::unique_ptr<Inputs> inputs = Inputs::CreateSDL();
@@ -39,6 +42,12 @@ static void Loop(std::string_view layout_file) {
   Timer timer;
   int64_t frames = 0;
   bool paused = false;
+
+  bool shift_held = false;
+  bool is_dragging_sel = false;
+  bool has_selection = false;
+  vec2f sel_start = {0, 0};
+  vec2f sel_end = {0, 0};
 
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
@@ -56,6 +65,8 @@ static void Loop(std::string_view layout_file) {
         return;
 
       if (const Inputs::KeyDown *kdown = std::get_if<Inputs::KeyDown>(&input)) {
+        shift_held = (kdown->modifiers & Inputs::MOD_SHIFT) != 0;
+
         if (kdown->codepoint == '\r') {
           paused = !paused;
         } else if (kdown->codepoint == 'r' || kdown->codepoint == 'R') {
@@ -69,10 +80,30 @@ static void Loop(std::string_view layout_file) {
           bit = false;
         } else if (kdown->codepoint == 'i' || kdown->codepoint == 'I') {
           sim.InjectRandomAssignment();
+        } else if (kdown->codepoint == 'c' || kdown->codepoint == 'C') {
+          if (has_selection) {
+            vec2f aabb_min = {std::min(sel_start.x, sel_end.x),
+                              std::min(sel_start.y, sel_end.y)};
+            vec2f aabb_max = {std::max(sel_start.x, sel_end.x),
+                              std::max(sel_start.y, sel_end.y)};
+            Layout extracted = sim.ExtractOverlapping(aabb_min, aabb_max);
+            std::vector<uint8_t> serialized =
+              LayoutEngine::Serialize(extracted);
+            FILE *f = fopen("copied.layout", "wb");
+            if (f != nullptr) {
+              fwrite(serialized.data(), 1, serialized.size(), f);
+              fclose(f);
+              status.Print("Saved copied.layout\n");
+            } else {
+              status.Print("Failed to save copied.layout\n");
+            }
+          }
         }
 
       } else if (const Inputs::KeyUp *kup =
                  std::get_if<Inputs::KeyUp>(&input)) {
+        shift_held = (kup->modifiers & Inputs::MOD_SHIFT) != 0;
+
         if (kup->codepoint == 0x1b) {
           // Escape
           return;
@@ -87,14 +118,30 @@ static void Loop(std::string_view layout_file) {
           sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
         }
 
+        if (is_dragging_sel) {
+          if (mc->button & Inputs::MOUSE_LEFT) {
+            sel_end = sim.ScreenToWorld(mc->x, mc->y);
+          } else {
+            is_dragging_sel = false;
+          }
+        }
+
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
         if (mc->button == Inputs::MOUSE_LEFT) {
-          vec2f pos = sim.ScreenToWorld(mc->x, mc->y);
-          if (auto hit = sim.GetNodeAt(pos)) {
-            status.Print("Layer {}, Column {}, Cell: {}\n",
-                         hit->layer, hit->col, CellString(hit->node->cell));
-            fflush(stdout);
+          if (shift_held) {
+            is_dragging_sel = true;
+            has_selection = true;
+            sel_start = sim.ScreenToWorld(mc->x, mc->y);
+            sel_end = sel_start;
+          } else {
+            has_selection = false;
+            vec2f pos = sim.ScreenToWorld(mc->x, mc->y);
+            if (auto hit = sim.GetNodeAt(pos)) {
+              status.Print("Layer {}, Column {}, Cell: {}\n",
+                           hit->layer, hit->col, CellString(hit->node->cell));
+              fflush(stdout);
+            }
           }
         }
 
@@ -111,6 +158,19 @@ static void Loop(std::string_view layout_file) {
 
     std::vector<Rendering::Triangle> tri;
     sim.FillVisibleTriangles(&tri);
+
+    if (has_selection) {
+      vec2f a = {std::min(sel_start.x, sel_end.x),
+                 std::min(sel_start.y, sel_end.y)};
+      vec2f b = {std::max(sel_start.x, sel_end.x),
+                 std::min(sel_start.y, sel_end.y)};
+      vec2f c = {std::min(sel_start.x, sel_end.x),
+                 std::max(sel_start.y, sel_end.y)};
+      vec2f d = {std::max(sel_start.x, sel_end.x),
+                 std::max(sel_start.y, sel_end.y)};
+      tri.push_back({a, b, c, SELECTION_COLOR, 0});
+      tri.push_back({c, b, d, SELECTION_COLOR, 0});
+    }
 
     rendering->RenderScene(sim.ViewPos(), sim.ViewPosMax(), tri);
     frames++;
