@@ -2,10 +2,11 @@
 #ifndef _TOWARD_OPTIMIZATION_H
 #define _TOWARD_OPTIMIZATION_H
 
+#include <span>
+
 #include "circuit.h"
 #include "layout.h"
 #include "cell-library.h"
-#include <span>
 
 // Optimize circuit layout.
 struct Optimization {

@@ -32,7 +32,7 @@ vec2f CircuitSim::ViewPosMax() const {
 
 vec2f CircuitSim::ScreenToWorld(int x, int y) const {
   vec2f bottom_right = ViewPosMax();
-  return rendering->CartesianPixel(view_pos, bottom_right, x, y);
+  return rendering->ScreenToWorld(view_pos, bottom_right, x, y);
 }
 
 void CircuitSim::Pan(int x, int y, int dx, int dy) {
@@ -374,11 +374,9 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
   int low_r = 0, high_r = sim.size();
   while (low_r < high_r) {
     int mid = low_r + (high_r - low_r) / 2;
-    // Rendered triangles use cartesian coordinates. So as the
-    // simulation row increases, render_y must decrese.
-    float render_y = -(float)(mid) * ROW_HEIGHT;
-    // Skip rows that are entirely above the top of the viewport (vmax.y)
-    if (render_y - MAX_MARGIN > vmax.y) {
+    float render_y = (float)(mid) * ROW_HEIGHT;
+    // Skip rows that are entirely above the top of the viewport (vmin.y).
+    if (render_y + ROW_HEIGHT + MAX_MARGIN < vmin.y) {
       low_r = mid + 1;
     } else {
       high_r = mid;
@@ -386,9 +384,9 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
   }
 
   for (size_t r = low_r; r < sim.size(); r++) {
-    float render_y = -(float)(r) * ROW_HEIGHT;
-    // If this row is entirely below the bottom of the viewport, stop.
-    if (render_y + Scene::HEIGHT + MAX_MARGIN < vmin.y) break;
+    float render_y = (float)(r) * ROW_HEIGHT;
+    // If this row is entirely below the bottom of the viewport (vmax.y), stop.
+    if (render_y - MAX_MARGIN > vmax.y) break;
 
     std::vector<Node> &row = sim[r];
     if (row.empty()) continue;
@@ -493,5 +491,32 @@ void CircuitSim::InjectRandomAssignment() {
       global_in_idx++;
     }
   }
+}
+
+std::optional<CircuitSim::NodeLocation> CircuitSim::GetNodeAt(vec2f pos) const {
+  if (pos.y < 0.0f || pos.x < 0.0f) {
+    return std::nullopt;
+  }
+
+  static constexpr int ROW_HEIGHT_BLOCKS = Levels::OUT_Y + 1;
+  static constexpr float ROW_HEIGHT = ROW_HEIGHT_BLOCKS * Levels::BLOCK_SIZE;
+
+  size_t r = (size_t)(pos.y / ROW_HEIGHT);
+  if (r >= sim.size()) {
+    return std::nullopt;
+  }
+
+  int block_x = (int)(pos.x / Levels::BLOCK_SIZE);
+
+  const std::vector<Node> &row = sim[r];
+  for (size_t c = 0; c < row.size(); c++) {
+    const Node &node = row[c];
+    int width = library.GetInfo(node.cell).block_width;
+    if (block_x >= node.xpos && block_x < node.xpos + width) {
+      return NodeLocation{r, c, &node};
+    }
+  }
+
+  return std::nullopt;
 }
 

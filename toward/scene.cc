@@ -577,7 +577,7 @@ void Scene::ApplyImpulse(vec2f v) {
   }
 }
 
-// Get the scene, using Cartesian coordinates.
+// Get the scene. Rendering uses the same y-down coordinate system.
 std::vector<Rendering::Triangle> Scene::GetTriangles() const {
   std::vector<Rendering::Triangle> scene;
   size_t num_triangles = 0;
@@ -598,19 +598,7 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() const {
         // (These objects do not have box2d ids.)
 
         for (const Rendering::Triangle &tri : obj.mesh) {
-          auto Transform = [](vec2f p) -> vec2f {
-              return vec2f{
-                .x = p.x,
-                .y = HEIGHT - p.y,
-              };
-            };
-          scene.push_back({
-              Transform(tri.a),
-              Transform(tri.b),
-              Transform(tri.c),
-              tri.rgba,
-              tri.reserved,
-            });
+          scene.push_back(tri);
         }
       }
     };
@@ -641,7 +629,7 @@ std::vector<Rendering::Triangle> Scene::GetTriangles() const {
         float ry = s * v.x + c * v.y;
         return {
           .x = pos.x + rx,
-          .y = HEIGHT - (pos.y + ry),
+          .y = pos.y + ry,
         };
       };
 

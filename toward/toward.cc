@@ -129,10 +129,8 @@ void Game::Loop() {
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
         if (mc->button == Inputs::MOUSE_LEFT) {
-          vec2f pos = rendering->CartesianPixel(
+          vec2f pos = rendering->ScreenToWorld(
               VIEW_MIN, VIEW_MAX, mc->x, mc->y);
-          // XXX ugh
-          pos.y = VIEW_MAX.y - pos.y;
 
           LevelBody body = bit ? Levels::One() : Levels::Zero();
           body.pos = pos;

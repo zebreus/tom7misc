@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,8 @@
 #include "layout.h"
 #include "prop.h"
 #include "render-circuit.h"
+#include "status-bar.h"
+#include "threadutil.h"
 #include "util.h"
 
 using Bias = CellLibrary::Bias;
@@ -95,6 +99,69 @@ static void TestRemoveAllWireLayer(const CellLibrary &library) {
   std::vector<Cell> opt_l1 = GetNonSpacers(optimized.circuit.layers[1]);
   CHECK(opt_l1.size() == 1);
   CHECK(opt_l1[0].gate == Gate::SINK);
+}
+
+static void TestStraightenParallelWires(const CellLibrary &library) {
+  Cell const0(Gate::CONST0);
+  Cell wire8 = CellLibrary::Wire(8, CellLibrary::Bias::RIGHT);
+  Cell wire0 = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT);
+  Cell sink(Gate::SINK);
+
+  auto info_c = library.GetInfo(const0);
+  auto info_w8 = library.GetInfo(wire8);
+  auto info_s = library.GetInfo(sink);
+
+  int c_w = info_c.block_width;
+
+  int x1_c = 0;
+  int x1_w = x1_c + info_c.outputs[0].xblock - info_w8.inputs[0].xblock;
+  int x1_s = x1_w + info_w8.outputs[0].xblock - info_s.inputs[0].xblock;
+
+  // Place Strand 2 far enough right to prevent wire and sink
+  // overlaps. Wire(8) extends right, and Sinks need left clearance.
+  // 12 units is enough to avoid overlap, which also gives Strand 1
+  // enough room to fully straighten.
+  int x2_c = x1_c + c_w + 12;
+
+  auto info_w0 = library.GetInfo(wire0);
+  int x2_w = x2_c + info_c.outputs[0].xblock - info_w0.inputs[0].xblock;
+  int x2_s = x2_w + info_w0.outputs[0].xblock - info_s.inputs[0].xblock;
+
+  auto MakeLayer = [&](std::vector<std::pair<int, Cell>> items) {
+    std::sort(items.begin(), items.end(), [](const auto &a, const auto &b) {
+      return a.first < b.first;
+    });
+    std::vector<Cell> layer;
+    int curr_x = 0;
+    for (const auto &item : items) {
+      int x = item.first;
+      if (x > curr_x) {
+        layer.push_back(CellLibrary::Spacer(x - curr_x));
+      }
+      layer.push_back(item.second);
+      curr_x = x + library.GetInfo(item.second).block_width;
+    }
+    return layer;
+  };
+
+  Layout layout;
+  layout.input_vars = {};
+  layout.circuit.layers.push_back(MakeLayer({{x1_c, const0}, {x2_c, const0}}));
+  layout.circuit.layers.push_back(MakeLayer({{x1_w, wire8}, {x2_w, wire0}}));
+  layout.circuit.layers.push_back(MakeLayer({{x1_s, sink}, {x2_s, sink}}));
+
+  DRC::CheckLayout(library, "parallel_before", layout);
+
+  Layout optimized = Optimization::Optimize(library, layout);
+
+  DRC::CheckLayout(library, "parallel_after", optimized);
+
+  if (optimized.circuit.layers.size() != 2) {
+    Print("After:\n{}\n",
+          LayoutEngine::ToString(optimized));
+
+    LOG(FATAL) << "Expected the wire layer to be fully removed!";
+  }
 }
 
 static void TestStraightenZigZagWire(const CellLibrary &library) {
@@ -257,36 +324,50 @@ static std::vector<Prop> TestProps() {
 }
 
 static void OptimizeInteresting(const CellLibrary &library) {
+  StatusBar status(1);
+
   World world;
   std::vector<Prop> props = TestProps();
   for (const Prop &prop : props) NameVars(&world, prop);
 
-  for (const Prop &prop : props) {
-    std::string name = PropString(prop);
-    std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
-    le->SetVerbose(0);
-    std::vector<Prop> output = {prop};
-    Layout layout = le->DoLayout(output);
-    DRC::CheckLayout(library, name, layout);
+  std::mutex m;
+  int done = 0;
+  ParallelApp(
+      props,
+      [&](const Prop &prop) {
+        std::string name = PropString(prop);
+        std::unique_ptr<LayoutEngine> le =
+          LayoutEngine::Create(library, world);
+        le->SetVerbose(0);
+        std::vector<Prop> output = {prop};
+        Layout layout = le->DoLayout(output);
+        DRC::CheckLayout(library, name, layout);
 
-    if (CircuitSize(layout.circuit) < 128) {
-      Print(AWHITE("Before") ":\n{}\n",
-            LayoutEngine::ToString(layout));
-    }
+        if (CircuitSize(layout.circuit) < 128) {
+          status.Print(ABLUE("{}") " " AWHITE("before") ":\n{}\n",
+                       name,
+                       LayoutEngine::ToString(layout));
+        }
 
-    Layout opt_layout = Optimization::Optimize(library, layout);
+        Layout opt_layout = Optimization::Optimize(library, layout);
 
-    if (CircuitSize(opt_layout.circuit) < 128) {
-      Print(AWHITE("After") ":\n{}\n",
-            LayoutEngine::ToString(opt_layout));
-    }
+        if (CircuitSize(opt_layout.circuit) < 128) {
+          status.Print(ABLUE("{}") " " AWHITE("After") ":\n{}\n",
+                       name,
+                       LayoutEngine::ToString(opt_layout));
+        }
 
-    DRC::AssertEquivalentLayout(library,
-                                name, layout, opt_layout);
-    Print("{} " AGREY("->") " {}\n",
-          LayoutEngine::LayoutInfo(layout),
-          LayoutEngine::LayoutInfo(opt_layout));
-  }
+        DRC::AssertEquivalentLayout(library,
+                                    name, layout, opt_layout);
+        status.Print("{} " AGREY("->") " {}\n",
+                     LayoutEngine::LayoutInfo(layout),
+                     LayoutEngine::LayoutInfo(opt_layout));
+
+        MutexLock ml(&m);
+        done++;
+        status.Progress(done, props.size(), "Interesting");
+      },
+      8);
 }
 
 
@@ -325,7 +406,8 @@ static void TestResolveDisplacementMovesInputs() {
       library, network, 0, deltas);
   CHECK(success) << "Should allow input delta to propagate without failing!";
 
-  // The NOT gate should now be shifted by 5, meaning there's a spacer before it.
+  // The NOT gate should now be shifted by 5, meaning there's a spacer
+  // before it.
   CHECK(network.size() == 1);
   CHECK(network[0].size() == 2);
   CHECK(network[0][0].gate == Gate::SPACER);
@@ -490,6 +572,139 @@ static void OptimizeModest(const CellLibrary &library) {
         LayoutEngine::LayoutInfo(opt_layout));
 }
 
+static void TestTightUpward(const CellLibrary &library) {
+  // Simulate a tightly packed gate that can move up.
+  Cell wire(Gate::WIREA, 0);
+  Cell gate(Gate::NOT);
+  Cell sink(Gate::SINK);
+  Layout l;
+  l.input_vars = {};
+  l.circuit.layers.push_back({wire});
+  l.circuit.layers.push_back({gate});
+  l.circuit.layers.push_back({sink});
+  Layout opt = Optimization::Optimize(library, l);
+  CHECK(opt.circuit.layers.size() == 2) << "Failed to move tight gate up!";
+}
+
+static void TestExactSpaceUpward(const CellLibrary &library) {
+  Cell gate(Gate::NOT);
+  Cell const0(Gate::CONST0);
+  Cell sink(Gate::SINK);
+
+  auto gate_info = library.GetInfo(gate);
+  auto const0_info = library.GetInfo(const0);
+  auto sink_info = library.GetInfo(sink);
+
+  int x_left_obs = 0;
+  int x_new_gate = x_left_obs + const0_info.block_width;
+  int x_right_obs = x_new_gate + gate_info.block_width;
+
+  int x_left_sink = x_left_obs +
+    const0_info.outputs[0].xblock - sink_info.inputs[0].xblock;
+  int x_right_sink = x_right_obs +
+    const0_info.outputs[0].xblock - sink_info.inputs[0].xblock;
+
+  int best_offset = -1;
+  Cell wire(Gate::SPACER);
+  int x_wire = 0;
+  int x_gate = 0;
+  int x_mid_src = 0;
+
+  // Search for a wire size that produces a valid non-overlapping
+  // layout initially.
+  for (int w : CellLibrary::WIRE_SIZES) {
+    Cell w_cell = CellLibrary::Wire(w, CellLibrary::Bias::RIGHT);
+    auto wi = library.GetInfo(w_cell);
+    int xw = x_new_gate + gate_info.inputs[0].xblock - wi.inputs[0].xblock;
+
+    // Check layer 1 overlaps
+    if (xw < x_left_obs + const0_info.block_width) continue;
+    if (xw + wi.block_width > x_right_obs) continue;
+
+    // Check layer 2 overlaps
+    int xg = xw + wi.outputs[0].xblock - gate_info.inputs[0].xblock;
+    if (xg < x_left_sink + sink_info.block_width) continue;
+    if (xg + gate_info.block_width > x_right_sink) continue;
+
+    best_offset = w;
+    wire = w_cell;
+    x_wire = xw;
+    x_gate = xg;
+    x_mid_src = xw + wi.inputs[0].xblock - const0_info.outputs[0].xblock;
+    break;
+  }
+
+  CHECK(best_offset != -1)
+      << "Could not find a wire that fits the test geometry constraints.";
+
+  int x_gate_sink = x_gate +
+    gate_info.outputs[0].xblock - sink_info.inputs[0].xblock;
+
+  int shift = 0;
+  if (x_mid_src < shift) shift = -x_mid_src;
+  if (x_left_sink < shift) shift = -x_left_sink;
+  if (x_gate < shift) shift = -x_gate;
+  if (x_gate_sink < shift) shift = -x_gate_sink;
+
+  x_left_obs += shift;
+  x_new_gate += shift;
+  x_right_obs += shift;
+  x_left_sink += shift;
+  x_right_sink += shift;
+  x_wire += shift;
+  x_gate += shift;
+  x_mid_src += shift;
+  x_gate_sink += shift;
+
+  auto MakeLayer = [&](std::vector<std::pair<int, Cell>> items) {
+      std::sort(items.begin(), items.end(),
+                [](const auto &a, const auto &b) {
+                  return a.first < b.first;
+                });
+      std::vector<Cell> layer;
+      int curr_x = 0;
+      for (const auto &item : items) {
+        int x = item.first;
+        if (x > curr_x) {
+          layer.push_back(CellLibrary::Spacer(x - curr_x));
+        }
+        layer.push_back(item.second);
+        curr_x = x + library.GetInfo(item.second).block_width;
+      }
+      return layer;
+    };
+
+  Layout l;
+  l.input_vars = {};
+
+  l.circuit.layers.push_back(MakeLayer({
+        {x_mid_src, const0}
+      }));
+
+  l.circuit.layers.push_back(MakeLayer({
+        {x_left_obs, const0},
+        {x_wire, wire},
+        {x_right_obs, const0}
+      }));
+
+  l.circuit.layers.push_back(MakeLayer({
+        {x_left_sink, sink},
+        {x_gate, gate},
+        {x_right_sink, sink}
+      }));
+
+  l.circuit.layers.push_back(MakeLayer({
+        {x_gate_sink, sink}
+      }));
+
+  DRC::CheckLayout(library, "exact_upward_before", l);
+
+  Layout opt = Optimization::Optimize(library, l);
+
+  DRC::CheckLayout(library, "exact_upward_after", opt);
+
+  CHECK(opt.circuit.layers.size() < 4) << "Failed to move exact-fit gate up!";
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -505,10 +720,13 @@ int main(int argc, char **argv) {
 
   TestRemoveAllWireLayer(library);
   TestStraightenZigZagWire(library);
+  TestStraightenParallelWires(library);
+  TestTightUpward(library);
+  TestExactSpaceUpward(library);
 
   TestWindowed(library);
 
-  OptimizeInteresting();
+  OptimizeInteresting(library);
 
   OptimizeModest(library);
 

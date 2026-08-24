@@ -16,7 +16,8 @@
 struct Rendering {
   using vec2f = yocto::vec2f;
 
-  // Using cartesian coordinates (y increases upward).
+  // Everything uses y-down coordinates; GL will flip
+  // them internally.
   struct Triangle {
     // vertices
     vec2f a, b, c;
@@ -39,11 +40,11 @@ struct Rendering {
       vec2f viewport_max,
       std::span<const Triangle> scene) = 0;
 
-  // Where in rendering space (Cartesian) is this pixel (screen)?
+  // Where in world space is this pixel (screen)?
   // e.g. For a mouse click on the screen.
-  virtual vec2f CartesianPixel(vec2f viewport_min,
-                               vec2f viewport_max,
-                               int x, int y) = 0;
+  virtual vec2f ScreenToWorld(vec2f viewport_min,
+                              vec2f viewport_max,
+                              int x, int y) = 0;
 
   virtual ~Rendering();
 };

@@ -69,6 +69,7 @@ struct CircuitSim {
 
   vec2f ViewPos() const { return view_pos; }
   vec2f ViewPosMax() const;
+  // Using y-down coordinates.
   vec2f ScreenToWorld(int x, int y) const;
   // Simulation steps executed since reset.
   int64_t Ticks() const { return ticks; }
@@ -119,6 +120,17 @@ struct CircuitSim {
 
   void InjectRandomAssignment();
 
+  struct NodeLocation {
+    size_t layer;
+    size_t col;
+    const Node *node;
+  };
+
+  // Returns the node at the given world position, or std::nullopt if none.
+  std::optional<NodeLocation> GetNodeAt(vec2f pos) const;
+
+  const std::vector<std::vector<Node>> &GetSim() const { return sim; }
+
  private:
   const CellLibrary &library;
 
@@ -127,8 +139,7 @@ struct CircuitSim {
   Rendering *rendering = nullptr;
 
   // World coordinates of the top left of the screen.
-  // This code uses computer graphics coordinates (y down) except for
-  // the rendered triangles.
+  // This code uses computer graphics coordinates (y down).
   vec2f view_pos = {0.0f, 0.0f};
   // When 1.0, this means the viewport is Scene::WIDTH x Scene::HEIGHT.
   // When 2.0, WIDTH/2 by HEIGHT/2.

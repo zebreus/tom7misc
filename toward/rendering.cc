@@ -51,9 +51,8 @@ class ImageRendering : public Rendering {
     auto MapX = [&](float x) -> int {
         return (int)(std::round((x - viewport_min.x) / vw * w));
       };
-    // Invert Y axis: viewport_max.y is image y=0.
     auto MapY = [&](float y) -> int {
-        return (int)(std::round((viewport_max.y - y) / vh * h));
+        return (int)(std::round((y - viewport_min.y) / vh * h));
       };
 
     for (const auto &t : scene) {
@@ -69,15 +68,14 @@ class ImageRendering : public Rendering {
     out.Save(filename);
   }
 
-  vec2f CartesianPixel(vec2f viewport_min, vec2f viewport_max,
-                       int x, int y) override {
+  vec2f ScreenToWorld(vec2f viewport_min, vec2f viewport_max,
+                      int x, int y) override {
     float tx = x / (float)IMAGE_WIDTH;
     float ty = y / (float)IMAGE_HEIGHT;
 
-    // Flip y coordinate to match Cartesian style.
     return vec2f{
       viewport_min.x + tx * (viewport_max.x - viewport_min.x),
-      viewport_max.y - ty * (viewport_max.y - viewport_min.y),
+      viewport_min.y + ty * (viewport_max.y - viewport_min.y),
     };
   }
 

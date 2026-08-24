@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -11,6 +12,7 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "circuit-sim.h"
+#include "circuit.h"
 #include "initialization.h"
 #include "inputs.h"
 #include "layout.h"
@@ -88,22 +90,12 @@ static void Loop(std::string_view layout_file) {
       } else if (const Inputs::MouseClick *mc =
                  std::get_if<Inputs::MouseClick>(&input)) {
         if (mc->button == Inputs::MOUSE_LEFT) {
-          [[maybe_unused]]
           vec2f pos = sim.ScreenToWorld(mc->x, mc->y);
-
-          /*
-            TODO: Figure out which node we're clicking on
-
-          LevelBody body = bit ? Levels::One() : Levels::Zero();
-          body.pos = pos;
-          body.color = 0xFF00FFFF;
-          body.vel = vec2f(RandDouble(&rc) * 2 - 1, RandDouble(&rc) * 2 - 1);
-          // between -2 and +2 radians per second.
-          body.avel = RandDouble(&rc) * 4 - 2;
-
-          level->bodies.push_back(body);
-          Levels::AddBodyToScene(scene.get(), body);
-          */
+          if (auto hit = sim.GetNodeAt(pos)) {
+            status.Print("Layer {}, Column {}, Cell: {}\n",
+                         hit->layer, hit->col, CellString(hit->node->cell));
+            fflush(stdout);
+          }
         }
 
       } else if (const Inputs::MouseWheel *mw =

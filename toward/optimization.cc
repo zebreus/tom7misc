@@ -2,12 +2,10 @@
 #include "optimization.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <memory>
-#include <unordered_map>
-#include <unordered_set>
+#include <mutex>
 #include <span>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -39,15 +37,12 @@
 // - `IsWire(Gate)` tells if a gate is a wire.
 // - `GateArity(Gate)` returns a pair of (num_inputs, num_outputs).
 
-// Generally, try to write this using helper functions that have
-// independently meaningful semantics. Otherwise, this can get hairy
-// quickly! For example, a function that attempts to iteratively
-// resolve a requested displacement as it traces through a set of
-// adjacent wires would make sense; it should clearly state its
-// non-obvious preconditions and the guarantees it makes. If it makes
-// sense to transform into intermediate representations so that the
-// code becomes less fiddly, that is also a good idea.
+#define TALLY_WIRES 1
 
+#ifdef TALLY_WIRES
+static std::mutex mu;
+static std::array<int, 128> desired_wires = {};
+#endif
 
 static constexpr int VERBOSE = 0;
 
@@ -57,30 +52,24 @@ static CType GetWireType(Gate g) {
   return CType::MIXED;
 }
 
-static std::vector<Cell> AllWires(CType type) {
-  std::vector<Cell> ret;
-  for (int v : CellLibrary::WIRE_SIZES) {
-    for (bool flip : {false, true}) {
-      Cell a = CellLibrary::Wire(v, CellLibrary::Bias::RIGHT, type);
-      a.flip = flip;
-      ret.push_back(a);
-      if (v < CellLibrary::SMALL_WIRE) {
-        Cell b = CellLibrary::Wire(v, CellLibrary::Bias::LEFT, type);
-        b.flip = flip;
-        ret.push_back(b);
-      }
-    }
-  }
-  return ret;
-}
+static bool ResolveDisplacementUpwardInternal(
+    const CellLibrary &library,
+    std::span<Layer> network,
+    int start_chute,
+    std::span<const int> deltas,
+    bool top_can_move);
 
 struct Optimizer {
+  static constexpr int MAX_PROPAGATE_DISTANCE = 20;
   // Need to be able to access the dimensions of cells so that
   // we know how they can be moved around.
   const CellLibrary &library;
 
   // A normalized cell. We remove all spacers, instead recording the
-  // non-negative space before a cell.
+  // non-negative space before a cell. The leftmost cell can have
+  // negative space (to allow us to expand beyond the left edge of the
+  // circuit if needed), since it never overlaps anything. We patch
+  // this up when exporting the layout.
   struct NC {
     int left_space = 0;
     Cell cell;
@@ -123,20 +112,37 @@ struct Optimizer {
                                                 NormalizeLayer)) {
   }
 
-  // The windowed layer pass works on three contiguous layers. It
-  // tries to produce an equivalent circuit (i.e. that has the same
-  // I/O behavior, including the positions of the ports) that is
-  // simpler. This has two goals, which together help us reduce
-  // the circuit:
-  //   * Make wires straighter. If an input port is connected to
-  //     an output port directly (only wire cells) then we count
-  //     the total absolute displacement of each of the three
-  //     wires, and consider smaller to be better. We should
-  //     increment improve_count when we've made definite progress.
-  //   * Move non-wire elements so that they are on the same
-  //     layer as each other. We make definite progress (and can
-  //     increment improve_count) when we remove the last non-wire
-  //     element from a layer.
+  std::vector<Layer> BuildNetwork(int start, int end, int offset = 0) const {
+    std::vector<Layer> network;
+    for (int l = start; l < end; l++) {
+      Layer lay;
+      bool first = true;
+      for (const NC &nc : layers[l]) {
+        int space = nc.left_space;
+        if (first) {
+          space += offset;
+          first = false;
+        }
+        if (space != 0) {
+          lay.push_back(Cell(Gate::SPACER, space));
+        }
+        lay.push_back(nc.cell);
+      }
+      network.push_back(lay);
+    }
+    return network;
+  }
+
+  void ApplyNetwork(int start, int end, const std::vector<Layer> &network,
+                    int offset = 0) {
+    for (int l = start; l < end; l++) {
+      layers[l] = NormalizeLayer(network[l - start]);
+      if (!layers[l].empty()) {
+        layers[l][0].left_space -= offset;
+      }
+    }
+  }
+
   bool MoveCellsUpPass() {
     bool changed = false;
     for (size_t i = 0; i + 1 < layers.size(); ++i) {
@@ -221,11 +227,12 @@ struct Optimizer {
 
       int c_x = l_i_plus_1_x[idx];
 
-      // We need to replace c in layer i+1 with straight wires that route
-      // its outputs. Check if these new wires fit in the available horizontal space.
+      // We need to replace c in layer i+1 with straight wires that
+      // route its outputs. Check if these new wires fit in the
+      // available horizontal space.
       std::vector<NC> new_wires;
       bool fit_wires = true;
-      int curr_left_limit = 0;
+      int curr_left_limit = -1000000000;
       if (idx > 0) {
         CellLibrary::Info prev_info =
             library.GetInfo(layers[i + 1][idx - 1].cell);
@@ -243,7 +250,7 @@ struct Optimizer {
         }
 
         NC nc_w{
-          .left_space = w_x - curr_left_limit,
+          .left_space = (idx == 0 && j == 0) ? w_x : (w_x - curr_left_limit),
           .cell = w,
         };
         new_wires.push_back(nc_w);
@@ -255,13 +262,15 @@ struct Optimizer {
       if (idx + 1 < (int)layers[i + 1].size()) {
         right_limit_i_plus_1 = l_i_plus_1_x[idx + 1];
       }
-      if (curr_left_limit > right_limit_i_plus_1) fit_wires = false;
+      if (idx > 0 || !new_wires.empty()) {
+        if (curr_left_limit > right_limit_i_plus_1) fit_wires = false;
+      }
       if (!fit_wires) continue;
 
       // Check if cell c fits in layer i within the space freed up by
       // removing the wires.
       int c_end = c_x + info_c.block_width;
-      int left_limit_i = 0;
+      int left_limit_i = -1000000000;
       if (layer_i_start_idx > 0) {
         CellLibrary::Info prev_info =
             library.GetInfo(layers[i][layer_i_start_idx - 1].cell);
@@ -275,11 +284,12 @@ struct Optimizer {
       }
       if (c_end > right_limit_i) continue;
 
-      // Calculate the horizontal displacement required for each input connection.
-      // Cell c replaces some wires in layer i. It will be placed at c_x.
-      // Its inputs will be at new_in_x, but the layer above (i-1) currently
-      // outputs at old_in_x (where the wires received their inputs).
-      // So layer i-1 must shift its outputs by (new_in_x - old_in_x) to match.
+      // Calculate the horizontal displacement required for each input
+      // connection. Cell c replaces some wires in layer i. It will be
+      // placed at c_x. Its inputs will be at new_in_x, but the layer
+      // above (i-1) currently outputs at old_in_x (where the wires
+      // received their inputs). So layer i-1 must shift its outputs
+      // by (new_in_x - old_in_x) to match.
       std::vector<int> deltas;
       int input_k = 0;
       for (int k = layer_i_start_idx; k <= layer_i_end_idx; k++) {
@@ -294,16 +304,8 @@ struct Optimizer {
 
       // Attempt to resolve the displacements by propagating them upward
       // through the layers above i.
-      std::vector<Layer> network;
-      for (int l = 0; l < i; l++) {
-        Layer lay;
-        for (const NC &nc : layers[l]) {
-          if (nc.left_space > 0)
-            lay.push_back(Cell(Gate::SPACER, nc.left_space));
-          lay.push_back(nc.cell);
-        }
-        network.push_back(lay);
-      }
+      int start_layer = std::max(0, i - MAX_PROPAGATE_DISTANCE);
+      std::vector<Layer> network = BuildNetwork(start_layer, i, 1000000);
 
       int in_chute_start_layer_i = 0;
       for (int k = 0; k < layer_i_start_idx; k++) {
@@ -311,18 +313,16 @@ struct Optimizer {
           library.GetInfo(layers[i][k].cell).inputs.size();
       }
 
-      if (!Optimization::ResolveDisplacementUpward(library, network,
-                                                   in_chute_start_layer_i,
-                                                   deltas)) {
+      if (!ResolveDisplacementUpwardInternal(library, network,
+                                             in_chute_start_layer_i,
+                                             deltas, start_layer == 0)) {
         continue;
       }
 
-      for (int l = 0; l < i; l++) {
-        layers[l] = NormalizeLayer(network[l]);
-      }
+      ApplyNetwork(start_layer, i, network, 1000000);
 
       NC new_c{
-        .left_space = c_x - left_limit_i,
+        .left_space = (layer_i_start_idx == 0) ? c_x : (c_x - left_limit_i),
         .cell = c,
       };
 
@@ -345,7 +345,11 @@ struct Optimizer {
 
       int next_left_space_i_plus_1 = 0;
       if (idx + 1 < (int)layers[i + 1].size()) {
-        next_left_space_i_plus_1 = l_i_plus_1_x[idx + 1] - curr_left_limit;
+        if (idx == 0 && new_wires.empty()) {
+          next_left_space_i_plus_1 = l_i_plus_1_x[idx + 1];
+        } else {
+          next_left_space_i_plus_1 = l_i_plus_1_x[idx + 1] - curr_left_limit;
+        }
       }
       std::vector<NC> new_layer_i_plus_1;
       for (int k = 0; k < idx; k++) {
@@ -367,14 +371,28 @@ struct Optimizer {
     return false;
   }
 
+  enum class StraightenResult {
+    NOTHING,
+    MODIFIED,
+    DELETED,
+  };
+
   bool StraightenWiresPass() {
     bool changed = false;
     for (size_t i = 0; i < layers.size(); ) {
-      if (StraightenWires(i)) {
-        changed = true;
-      } else {
+      switch (StraightenWires(i)) {
+      case StraightenResult::NOTHING:
         i++;
+        break;
+      case StraightenResult::MODIFIED:
+        i++;
+        changed = true;
+        break;
+      case StraightenResult::DELETED:
+        changed = true;
+        break;
       }
+
     }
 
     if (changed) {
@@ -385,10 +403,203 @@ struct Optimizer {
     return false;
   }
 
-  bool StraightenWires(int i) {
+  StraightenResult StraightenIndividualWires(int i) {
+    bool changed = false;
+    bool local_changed;
+    do {
+      local_changed = false;
+      int current_in_chute = 0;
+      int curr_x = 0;
+
+      std::vector<int> x_coords(layers[i].size());
+      for (size_t k = 0; k < layers[i].size(); k++) {
+        curr_x += layers[i][k].left_space;
+        x_coords[k] = curr_x;
+        curr_x += library.GetInfo(layers[i][k].cell).block_width;
+      }
+
+      // Try to straighten all non-straight wires simultaneously.
+      std::vector<int> new_x = x_coords;
+      std::vector<Cell> new_cells;
+      new_cells.reserve(layers[i].size());
+      for (size_t k = 0; k < layers[i].size(); k++) {
+        new_cells.push_back(layers[i][k].cell);
+      }
+
+      bool any_wants_straighten = false;
+      std::vector<int> all_deltas;
+
+      for (size_t k = 0; k < layers[i].size(); k++) {
+        const NC &nc = layers[i][k];
+        const Cell &c = nc.cell;
+        CellLibrary::Info info = library.GetInfo(c);
+
+        if (IsWire(c.gate) && c.v != 0) {
+          int in_x = x_coords[k] + info.inputs[0].xblock;
+          int out_x = x_coords[k] + info.outputs[0].xblock;
+
+          Cell straight_wire = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT,
+                                                 GetWireType(c.gate));
+          CellLibrary::Info straight_info = library.GetInfo(straight_wire);
+
+          int new_c_x = out_x - straight_info.outputs[0].xblock;
+          int new_in_x = new_c_x + straight_info.inputs[0].xblock;
+          int delta = new_in_x - in_x;
+
+          new_x[k] = new_c_x;
+          new_cells[k] = straight_wire;
+          all_deltas.push_back(delta);
+          any_wants_straighten = true;
+        } else {
+          for (size_t j = 0; j < info.inputs.size(); j++) {
+            all_deltas.push_back(0);
+          }
+        }
+      }
+
+      if (any_wants_straighten) {
+        bool overlap = false;
+        for (size_t k = 0; k + 1 < layers[i].size(); k++) {
+          int right_edge = new_x[k] + library.GetInfo(new_cells[k]).block_width;
+          if (right_edge > new_x[k + 1]) {
+            overlap = true;
+            break;
+          }
+        }
+        if (!overlap) {
+          int start_layer = std::max(0, i - MAX_PROPAGATE_DISTANCE);
+          std::vector<Layer> network = BuildNetwork(start_layer, i, 1000000);
+          if (ResolveDisplacementUpwardInternal(
+                  library, network, 0, all_deltas, start_layer == 0)) {
+            ApplyNetwork(start_layer, i, network, 1000000);
+
+            std::vector<NC> new_layer_i;
+            new_layer_i.reserve(layers[i].size());
+            for (size_t k = 0; k < layers[i].size(); k++) {
+              int left_space = 0;
+              if (k == 0) {
+                left_space = new_x[k];
+              } else {
+                int prev_right = new_x[k - 1] +
+                                 library.GetInfo(new_cells[k - 1]).block_width;
+                left_space = new_x[k] - prev_right;
+              }
+              new_layer_i.push_back(NC{
+                  .left_space = left_space,
+                  .cell = new_cells[k],
+                });
+            }
+            layers[i] = std::move(new_layer_i);
+
+            local_changed = true;
+            changed = true;
+            continue;
+          }
+        }
+      }
+
+      current_in_chute = 0;
+      for (size_t k = 0; k < layers[i].size(); k++) {
+        const NC &nc = layers[i][k];
+        const Cell &c = nc.cell;
+        CellLibrary::Info info = library.GetInfo(c);
+
+        if (IsWire(c.gate) && c.v != 0) {
+          int in_x = x_coords[k] + info.inputs[0].xblock;
+          int out_x = x_coords[k] + info.outputs[0].xblock;
+          int target_disp = out_x - in_x;
+
+          bool found_better = false;
+          for (int try_v = 0; try_v < c.v; try_v++) {
+            if (!CellLibrary::ValidWireSize(try_v)) continue;
+
+            std::vector<Cell> candidate_wires;
+            candidate_wires.push_back(CellLibrary::Wire(
+                try_v, CellLibrary::Bias::RIGHT, GetWireType(c.gate)));
+            if (try_v < CellLibrary::SMALL_WIRE) {
+              candidate_wires.push_back(CellLibrary::Wire(
+                try_v, CellLibrary::Bias::LEFT, GetWireType(c.gate)));
+            }
+
+            for (Cell &straight_wire : candidate_wires) {
+              if (target_disp < 0) straight_wire.flip = true;
+              CellLibrary::Info straight_info = library.GetInfo(straight_wire);
+
+              int new_c_x = out_x - straight_info.outputs[0].xblock;
+              int new_in_x = new_c_x + straight_info.inputs[0].xblock;
+              int delta = new_in_x - in_x;
+
+              int left_limit = -1000000000;
+              if (k > 0) {
+                CellLibrary::Info prev_info =
+                    library.GetInfo(layers[i][k - 1].cell);
+                left_limit = x_coords[k - 1] + prev_info.block_width;
+              }
+
+              int right_limit = 1000000000;
+              if (k + 1 < layers[i].size()) {
+                right_limit = x_coords[k + 1];
+              }
+
+              if (new_c_x >= left_limit &&
+                  new_c_x + straight_info.block_width <= right_limit) {
+                int start_layer = std::max(0, i - MAX_PROPAGATE_DISTANCE);
+                std::vector<Layer> network = BuildNetwork(start_layer, i,
+                                                          1000000);
+
+                std::vector<int> deltas = {delta};
+                if (ResolveDisplacementUpwardInternal(
+                        library, network, current_in_chute, deltas,
+                        start_layer == 0)) {
+                  ApplyNetwork(start_layer, i, network, 1000000);
+
+                  std::vector<NC> new_layer_i;
+                  for (size_t j = 0; j < k; j++) {
+                    new_layer_i.push_back(layers[i][j]);
+                  }
+
+                  NC new_nc{
+                    .left_space = (k == 0) ? new_c_x : (new_c_x - left_limit),
+                    .cell = straight_wire,
+                  };
+                  new_layer_i.push_back(new_nc);
+
+                  if (k + 1 < layers[i].size()) {
+                    NC next_nc = layers[i][k + 1];
+                    next_nc.left_space =
+                        right_limit - (new_c_x + straight_info.block_width);
+                    new_layer_i.push_back(next_nc);
+                    for (size_t j = k + 2; j < layers[i].size(); j++) {
+                      new_layer_i.push_back(layers[i][j]);
+                    }
+                  }
+
+                  layers[i] = std::move(new_layer_i);
+                  local_changed = true;
+                  changed = true;
+                  found_better = true;
+                  break;
+                }
+              }
+            }
+            if (found_better) break;
+          }
+          if (found_better) break;
+        }
+
+        current_in_chute += info.inputs.size();
+      }
+    } while (local_changed);
+
+    return changed ? StraightenResult::MODIFIED : StraightenResult::NOTHING;
+  }
+
+  StraightenResult StraightenWires(int i) {
     // Only attempt this on layers that are already all wires.
     for (const NC &nc : layers[i]) {
-      if (!IsWire(nc.cell.gate)) return false;
+      if (!IsWire(nc.cell.gate)) {
+        return StraightenIndividualWires(i);
+      }
     }
 
     std::vector<int> deltas;
@@ -417,31 +628,20 @@ struct Optimizer {
 
     if (all_straight) {
       layers.erase(layers.begin() + i);
-      return true;
+      return StraightenResult::DELETED;
     }
 
-    std::vector<Layer> network;
-    for (int l = 0; l < i; l++) {
-      Layer lay;
-      for (const NC &nc : layers[l]) {
-        if (nc.left_space > 0) {
-          lay.push_back(Cell(Gate::SPACER, nc.left_space));
-        }
-        lay.push_back(nc.cell);
-      }
-      network.push_back(lay);
+    int start_layer = std::max(0, i - MAX_PROPAGATE_DISTANCE);
+    std::vector<Layer> network = BuildNetwork(start_layer, i, 1000000);
+
+    if (!ResolveDisplacementUpwardInternal(library, network, 0, deltas, start_layer == 0)) {
+      return StraightenIndividualWires(i);
     }
 
-    if (!Optimization::ResolveDisplacementUpward(library, network, 0, deltas)) {
-      return false;
-    }
-
-    for (int l = 0; l < i; l++) {
-      layers[l] = NormalizeLayer(network[l]);
-    }
+    ApplyNetwork(start_layer, i, network, 1000000);
 
     layers.erase(layers.begin() + i);
-    return true;
+    return StraightenResult::DELETED;
   }
 
   // Other passes may attempt to straighten out wires so that we can
@@ -509,14 +709,32 @@ struct Optimizer {
   }
 
   Layout Get() {
+    int min_x = 0;
+    for (const std::vector<NC> &nlayer : layers) {
+      int curr_x = 0;
+      for (const NC &nc : nlayer) {
+        curr_x += nc.left_space;
+        if (curr_x < min_x) {
+          min_x = curr_x;
+        }
+        curr_x += library.GetInfo(nc.cell).block_width;
+      }
+    }
+
     std::vector<Layer> ret_layers;
     ret_layers.reserve(layers.size());
     for (const std::vector<NC> &nlayer : layers) {
       std::vector<Cell> layer;
       layer.reserve(nlayer.size() * 2);
+      bool first = true;
       for (const NC &nc : nlayer) {
-        if (nc.left_space > 0) {
-          layer.push_back(Cell(Gate::SPACER, nc.left_space));
+        int space = nc.left_space;
+        if (first) {
+          space -= min_x;
+          first = false;
+        }
+        if (space > 0) {
+          layer.push_back(Cell(Gate::SPACER, space));
         }
         layer.push_back(nc.cell);
       }
@@ -535,15 +753,28 @@ Layout Optimization::Optimize(const CellLibrary &library,
                               const Layout &layout) {
   Optimizer optimizer(library, layout);
   optimizer.Run();
-  return optimizer.Get();
+  Layout result = optimizer.Get();
+
+#ifdef TALLY_WIRES
+  {
+    std::lock_guard<std::mutex> lock(mu);
+    for (size_t i = 0; i < desired_wires.size(); ++i) {
+      if (desired_wires[i] > 0) {
+        Print("Desired wire size {}: {}\n", i, desired_wires[i]);
+      }
+    }
+  }
+#endif
+
+  return result;
 }
 
-// OK for the top-layer inputs (i.e., for the entire circuit) to move.
-bool Optimization::ResolveDisplacementUpward(
+static bool ResolveDisplacementUpwardInternal(
     const CellLibrary &library,
     std::span<Layer> network,
     int start_chute,
-    std::span<const int> deltas) {
+    std::span<const int> deltas,
+    bool top_can_move) {
 
   if (network.empty()) return true;
 
@@ -608,7 +839,8 @@ bool Optimization::ResolveDisplacementUpward(
 
       if (!IsWire(old_cell.gate)) {
         // For non-wires, we can only shift the entire cell rigidly.
-        // This is only possible if all requested output displacements are identical.
+        // This is only possible if all requested output displacements
+        // are identical.
         bool equal = true;
         int d = cell_out_deltas.empty() ? 0 : cell_out_deltas[0];
         for (int cd : cell_out_deltas) {
@@ -616,18 +848,15 @@ bool Optimization::ResolveDisplacementUpward(
         }
         if (equal) {
           int x_pos = orig_x[i] + d;
-          // Cells cannot be placed before the left edge of the board.
-          // If x_pos < 0, this shift is physically impossible.
-          if (x_pos >= 0) {
-            Config cfg;
-            cfg.cell = old_cell;
-            cfg.x_pos = x_pos;
-            cfg.right_edge = cfg.x_pos + old_info.block_width;
-            // The entire cell shifts by d, so its inputs must also shift by d.
-            cfg.in_deltas.assign(num_inputs, d);
-            cfg.total_cost = 0;
-            dp[i].push_back(cfg);
-          }
+          if (x_pos < 0) continue;
+          Config cfg;
+          cfg.cell = old_cell;
+          cfg.x_pos = x_pos;
+          cfg.right_edge = cfg.x_pos + old_info.block_width;
+          // The entire cell shifts by d, so its inputs must also shift by d.
+          cfg.in_deltas.assign(num_inputs, d);
+          cfg.total_cost = 0;
+          dp[i].push_back(cfg);
         }
 
       } else {
@@ -638,18 +867,55 @@ bool Optimization::ResolveDisplacementUpward(
         int old_in_x = orig_x[i] + old_info.inputs[0].xblock;
 
         CType type = GetWireType(old_cell.gate);
-        // Try all wire shapes to see which ones can reach req_out_x.
-        for (const Cell &w : AllWires(type)) {
+        int target_disp = req_out_x - old_in_x;
+        int abs_disp = std::abs(target_disp);
+
+        std::vector<Cell> candidate_wires;
+        // 1. Wire(s) that perfectly absorb the displacement.
+        if (CellLibrary::ValidWireSize(abs_disp)) {
+          bool flip = (target_disp < 0);
+          Cell w = CellLibrary::Wire(abs_disp, CellLibrary::Bias::RIGHT,
+                                     type);
+          w.flip = flip;
+          candidate_wires.push_back(w);
+          if (abs_disp < CellLibrary::SMALL_WIRE) {
+            Cell w2 = CellLibrary::Wire(abs_disp, CellLibrary::Bias::LEFT,
+                                        type);
+            w2.flip = flip;
+            candidate_wires.push_back(w2);
+          }
+        } else {
+#ifdef TALLY_WIRES
+          if (abs_disp < (int)desired_wires.size()) {
+            std::lock_guard<std::mutex> lock(mu);
+            desired_wires[abs_disp]++;
+          }
+#endif
+        }
+
+        // 2. The old wire, which rigidly shifts and passes
+        // displacement upward.
+        bool has_old = false;
+        for (const Cell &w : candidate_wires) {
+          if (w == old_cell) {
+            has_old = true;
+            break;
+          }
+        }
+        if (!has_old) {
+          candidate_wires.push_back(old_cell);
+        }
+
+        for (const Cell &w : candidate_wires) {
           CellLibrary::Info w_info = library.GetInfo(w);
           int x_pos = req_out_x - w_info.outputs[0].xblock;
-
-          // Reject wires that would protrude past the left edge.
           if (x_pos < 0) continue;
 
           int in_x = x_pos + w_info.inputs[0].xblock;
-          // The input of this wire will be at in_x, but the layer above originally
-          // provided the input at old_in_x. Thus, the layer above must shift its
-          // output by in_delta to match.
+          // The input of this wire will be at in_x, but the layer
+          // above originally provided the input at old_in_x. Thus,
+          // the layer above must shift its output by in_delta to
+          // match.
           int in_delta = in_x - old_in_x;
 
           Config cfg;
@@ -719,7 +985,7 @@ bool Optimization::ResolveDisplacementUpward(
     for (int i = 0; i < num_cells; ++i) {
       const Config &cfg = selected[i];
       int space = cfg.x_pos - current_x;
-      if (space > 0) {
+      if (space != 0) {
         new_layer.push_back(Cell(Gate::SPACER, space));
       }
       new_layer.push_back(cfg.cell);
@@ -734,11 +1000,27 @@ bool Optimization::ResolveDisplacementUpward(
     current_deltas = std::move(next_deltas);
   }
 
+  if (!top_can_move) {
+    for (int d : current_deltas) {
+      if (d != 0) return false;
+    }
+  }
+
   for (size_t i = 0; i < network.size(); ++i) {
     network[i] = std::move(new_network[i]);
   }
 
   return true;
+}
+
+// OK for the top-layer inputs (i.e., for the entire circuit) to move.
+bool Optimization::ResolveDisplacementUpward(
+    const CellLibrary &library,
+    std::span<Layer> network,
+    int start_chute,
+    std::span<const int> deltas) {
+  return ResolveDisplacementUpwardInternal(
+      library, network, start_chute, deltas, true);
 }
 
 

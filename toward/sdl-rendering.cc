@@ -7,7 +7,7 @@
 #include <span>
 #include <string>
 
-#include "SDL.h"
+#include "SDL.h"  // IWYU pragma: keep
 #include "SDL_error.h"
 #include "SDL_hints.h"
 #include "SDL_opengl.h"
@@ -147,7 +147,8 @@ void main() {
   vec2 size = viewport_max - viewport_min;
   vec2 ndc = ((pos - viewport_min) / size) * 2.0 - 1.0;
 
-  gl_Position = vec4(ndc, 0.0, 1.0);
+  // Convert from y-down to OpenGL's y-up
+  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
 
   uint c = t.rgba;
   float r = float((c >> 24u) & 0xFFu) / 255.0;
@@ -373,20 +374,33 @@ struct SDLGLRendering : public Rendering {
     SDL_GL_SwapWindow(window);
   }
 
-  vec2f CartesianPixel(vec2f viewport_min,
-                       vec2f viewport_max,
-                       int x, int y) override {
+  vec2f ScreenToWorld(vec2f viewport_min,
+                      vec2f viewport_max,
+                      int x, int y) override {
     // There is also...
     // SDL_GetWindowSize(window, &w, &h);
 
     float tx = x / (float)SCREEN_WIDTH;
     float ty = y / (float)SCREEN_HEIGHT;
 
-    // Flip y coordinate.
-    return vec2f{
-      viewport_min.x + tx * (viewport_max.x - viewport_min.x),
-      viewport_max.y - ty * (viewport_max.y - viewport_min.y),
+    vec2f c{
+      .x = viewport_min.x + tx * (viewport_max.x - viewport_min.x),
+      .y = viewport_min.y + ty * (viewport_max.y - viewport_min.y),
     };
+
+    #if 0
+    Print("\n\nx {} y {}\n"
+          "{} + {} * ({} - {})\n"
+          "{} + {} * ({} - {})\n"
+          " = ({}, {})\n\n",
+          x, y,
+          viewport_min.x, tx, viewport_max.x, viewport_min.x,
+          viewport_min.y, ty, viewport_max.y, viewport_min.y,
+          c.x, c.y);
+    fflush(stdout);
+    #endif
+
+    return c;
   }
 
   ~SDLGLRendering() override {

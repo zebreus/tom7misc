@@ -140,7 +140,8 @@ void main() {
   vec2 size = viewport_max - viewport_min;
   vec2 ndc = ((pos - viewport_min) / size) * 2.0 - 1.0;
 
-  gl_Position = vec4(ndc, 0.0, 1.0);
+  // Convert from y-down to OpenGL's y-up
+  gl_Position = vec4(ndc.x, -ndc.y, 0.0, 1.0);
   v_color = color;
 }
 )";
@@ -405,9 +406,9 @@ struct PiRendering : public Rendering {
     SDL_GL_SwapWindow(window);
   }
 
-  vec2f CartesianPixel(vec2f viewport_min,
-                       vec2f viewport_max,
-                       int x, int y) override {
+  vec2f ScreenToWorld(vec2f viewport_min,
+                      vec2f viewport_max,
+                      int x, int y) override {
     int w = 1, h = 1;
     SDL_GetWindowSize(window, &w, &h);
 
@@ -427,10 +428,9 @@ struct PiRendering : public Rendering {
     float tx = (x - vx) / (float)vw;
     float ty = (y - vy) / (float)vh;
 
-    // Flip y coordinate.
     return vec2f{
       viewport_min.x + tx * (viewport_max.x - viewport_min.x),
-      viewport_max.y - ty * (viewport_max.y - viewport_min.y),
+      viewport_min.y + ty * (viewport_max.y - viewport_min.y),
     };
   }
 
