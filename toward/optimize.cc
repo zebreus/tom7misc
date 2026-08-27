@@ -8,6 +8,7 @@
 #include "cell-library.h"
 #include "layout.h"
 #include "optimization.h"
+#include "status-bar.h"
 #include "util.h"
 
 int main(int argc, char **argv) {
@@ -28,12 +29,14 @@ int main(int argc, char **argv) {
 
   CellLibrary library;
 
-  Print("Optimizing layout...\n");
-  Layout optimized = Optimization::Optimize(library, opt_layout.value());
+  StatusBar status(1);
+  status.Print("Optimizing layout...\n");
+  Layout optimized = Optimization::Optimize(library, opt_layout.value(),
+                                            &status);
 
   std::vector<uint8_t> out_data = LayoutEngine::Serialize(optimized);
   CHECK(Util::WriteFileBytes(output_filename, out_data));
 
-  Print("Wrote {} bytes to {}.\n", out_data.size(), output_filename);
+  status.Print("Wrote {} bytes to {}.\n", out_data.size(), output_filename);
   return 0;
 }

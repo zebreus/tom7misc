@@ -116,7 +116,7 @@ static void DoOptimize() {
     {0.0, 500.0},    // QuiesceExpand
   }};
 
-  constexpr double OPT_SEC = 600.0;
+  constexpr double OPT_SEC = 3600.0 * 2.0;
 
   opt.Run(int_bounds, double_bounds, std::nullopt, std::nullopt,
           OPT_SEC, std::nullopt);

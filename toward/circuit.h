@@ -104,6 +104,13 @@ inline bool operator==(const Cell &a, const Cell &b) {
   return a.gate == b.gate && a.v == b.v && a.flip == b.flip;
 }
 
+struct CellHash {
+  size_t operator()(const Cell &cell) const {
+    return (size_t)cell.gate | ((size_t)cell.v << 8) |
+           (cell.flip ? 1ULL << 31 : 0);
+  }
+};
+
 bool IsWire(Gate gate);
 
 // number of inputs, outputs

@@ -26,7 +26,7 @@
 #include "timer.h"
 #include "util.h"
 
-static constexpr bool OPTIMIZE = true;
+static constexpr bool OPTIMIZE = false;
 static constexpr int MAX_RENDER_LAYERS = 1000;
 
 static const Simplification &SimSingleton() {

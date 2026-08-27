@@ -131,6 +131,20 @@ struct LayoutEngineImpl : public LayoutEngine {
 
   // Tunable parameters.
   // Weight for springs on the exterior.
+  float EXT_WEIGHT = 28.0f;
+  int ADDITIONAL_ADDITIONAL_CLEARANCE = 1;
+  float CLEARANCE_COMPRESSION_WEIGHT = 10.0f;
+  // Compression/expansion rigidity when the distance is already correct.
+  float CORRECT_SPRING_WEIGHT = 2200.0f;
+  // Target distance for quiescent pairs.
+  int QUIESCE_DISTANCE = 16;
+  int ADDITIONAL_MIN_QUIESCE_DISTANCE = 2;
+  float QUIESCE_COMPRESS = 135.0f;
+  float QUIESCE_EXPAND = 0.24f;
+
+  /*
+  // Tunable parameters.
+  // Weight for springs on the exterior.
   float EXT_WEIGHT = 27.0f;
   int ADDITIONAL_ADDITIONAL_CLEARANCE = 6;
   float CLEARANCE_COMPRESSION_WEIGHT = 2512.0f;
@@ -141,6 +155,7 @@ struct LayoutEngineImpl : public LayoutEngine {
   int ADDITIONAL_MIN_QUIESCE_DISTANCE = 6;
   float QUIESCE_COMPRESS = 140.0f;
   float QUIESCE_EXPAND = 122.0f;
+  */
 
   ArcFour rc;
 

@@ -62,6 +62,9 @@ struct CircuitSim {
     // of the connected node in the next row.
     InlineVector<std::pair<size_t, int>> matching_inputs;
 
+    // Average color of the cell for level-of-detail rendering.
+    uint32_t lod_color = 0;
+
     // TODO: Stuff for telling whether the node is waiting, running,
     // or complete.
   };

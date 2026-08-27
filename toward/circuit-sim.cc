@@ -1,5 +1,7 @@
 #include "circuit-sim.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -8,7 +10,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <algorithm>
 
 #include "arcfour.h"
 #include "base/logging.h"
@@ -139,10 +140,51 @@ void CircuitSim::GoToTopLeftCell() {
   }
 }
 
+static uint32_t ComputeLODColor(const CellLibrary &library,
+                                const Cell &cell) {
+  int width = library.GetInfo(cell).block_width;
+  std::unique_ptr<Level> lvl = library.GetLevel(cell);
+  Levels::AddChutes(lvl.get(), 0x339933FF, 0x993333FF);
+  std::unique_ptr<Scene> sc = Levels::CreateScene(*lvl, true);
+  CHECK(sc.get() != nullptr);
+
+  float sum_r = 0.0f, sum_g = 0.0f, sum_b = 0.0f, sum_a = 0.0f;
+  for (const Rendering::Triangle &t : sc->GetTriangles()) {
+    float area = 0.5f * std::abs(
+      t.a.x * (t.b.y - t.c.y) +
+      t.b.x * (t.c.y - t.a.y) +
+      t.c.x * (t.a.y - t.b.y));
+    auto [r, g, b, a] = ColorUtil::U32ToFloats(t.rgba);
+    sum_r += r * a * area;
+    sum_g += g * a * area;
+    sum_b += b * a * area;
+    sum_a += a * area;
+  }
+
+  static constexpr int ROW_HEIGHT_BLOCKS = Levels::OUT_Y + 1;
+  static constexpr float ROW_HEIGHT = ROW_HEIGHT_BLOCKS * Levels::BLOCK_SIZE;
+
+  float total_area = width * Levels::BLOCK_SIZE * ROW_HEIGHT;
+  if (total_area > 0.0f && sum_a > 0.0f) {
+    const auto &[h, s, v] = ColorUtil::RGBToHSV(sum_r / sum_a,
+                                                sum_g / sum_a,
+                                                sum_b / sum_a);
+    // Unprincipled, but: Boost saturation and value. Without this it
+    // just gets way too dark, since most cells are mostly background.
+    const auto &[rr, gg, bb] = ColorUtil::HSVToRGB(h, sqrt(s), sqrt(v));
+
+    const float aa = sum_a / total_area;
+    return ColorUtil::FloatsTo32(rr, gg, bb, aa);
+  }
+  return 0;
+}
+
 void CircuitSim::Reset() {
   sim.clear();
   active_nodes.clear();
   ticks = 0;
+
+  std::unordered_map<Cell, uint32_t, CellHash> lod_cache;
 
   for (const Layer &layer : layout.circuit.layers) {
     std::vector<Node> row;
@@ -155,6 +197,15 @@ void CircuitSim::Reset() {
           .xpos = xpos,
           .cell = cell,
         };
+
+        auto it = lod_cache.find(cell);
+        if (it != lod_cache.end()) {
+          node.lod_color = it->second;
+        } else {
+          node.lod_color = ComputeLODColor(library, cell);
+          lod_cache[cell] = node.lod_color;
+        }
+
         row.push_back(std::move(node));
       }
       xpos += width;
@@ -362,6 +413,11 @@ void CircuitSim::StepSimulation() {
 }
 
 void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
+  // Cutoff in pixels (assuming 100 pixels per world unit) for level-of-detail.
+  // When a cell's drawn width is smaller than this, it is rendered as a single
+  // rectangle of its average color.
+  static constexpr float LOD_CUTOFF_PIXELS = 1.0f;
+
   // We assume that the geometry in a scene does not extend more than 5%
   // of the scene width.
   static constexpr float MAX_MARGIN = Scene::WIDTH * 0.05;
@@ -413,6 +469,43 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
       float node_min_x = node.xpos * Levels::BLOCK_SIZE - MAX_MARGIN;
       if (node_min_x > vmax.x) break;
 
+      float cell_width =
+          library.GetInfo(node.cell).block_width * Levels::BLOCK_SIZE;
+
+      if (cell_width * view_zoom * 100.0f < LOD_CUTOFF_PIXELS) {
+        if ((node.lod_color & 255) != 0) {
+          vec2f offset = {
+            .x = node.xpos * Levels::BLOCK_SIZE,
+            .y = render_y,
+          };
+
+          uint32_t c = node.lod_color;
+          // Treat not-yet activated nodes as hibernating.
+          bool hibernating = node.scene.get() == nullptr ||
+            node.scene->Hibernating();
+          if (hibernating) {
+            c = ColorUtil::Composite32(0x00000055, c);
+          }
+
+          Rendering::Triangle t1, t2;
+          t1.rgba = c;
+          t2.rgba = c;
+
+          t1.a = offset;
+          t1.b = offset + vec2f{cell_width, 0.0f};
+          t1.c = offset + vec2f{cell_width, ROW_HEIGHT};
+
+          t2.a = offset;
+          t2.b = offset + vec2f{cell_width, ROW_HEIGHT};
+          t2.c = offset + vec2f{0.0f, ROW_HEIGHT};
+
+          tri->push_back(t1);
+          tri->push_back(t2);
+        }
+        continue;
+      }
+
+      // Need to activate the node to draw it with detail.
       ActivateNode(node);
       if (node.scene != nullptr) {
         vec2f offset = {
