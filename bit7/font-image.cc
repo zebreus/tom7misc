@@ -34,6 +34,8 @@ enum PrivateUse : uint32_t {
   PUA_SLASH_STEEP,
   PUA_SLASH,
   PUA_CENTER_TILDE,
+  // lighter than tilde
+  PUT_SWUNG_DASH,
 
   PUA_END,
 };
@@ -786,7 +788,8 @@ static PageInfo PageBit7Extended() {
     // when followed by U+FE0F.
     0x1F39E,
 
-    -1,
+    // EMOJI: PACKAGE
+    0x1F4E6,
 
     // Warning Sign
     0x26A0,
