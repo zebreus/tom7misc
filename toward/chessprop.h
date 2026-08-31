@@ -126,6 +126,7 @@ struct ChessProp {
   // Every prop will be a constant true or false, so this is mostly
   // just useful for testing. Must be white's move.
   static Board BoardFromPosition(const Position &pos);
+  static std::vector<bool> AssignmentFromPosition(const Position &pos);
 
   // Mainly exposed for testing.
   static Prop Attacked(const Board &board, int r, int c);

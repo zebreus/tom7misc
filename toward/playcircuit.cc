@@ -49,6 +49,14 @@ static void Loop(std::string_view layout_file) {
   vec2f sel_start = {0, 0};
   vec2f sel_end = {0, 0};
 
+  int mouse_x = 0;
+  int mouse_y = 0;
+  bool is_tracking = false;
+  uint64_t track_id = 0;
+
+  Timer frame_timer;
+  double frame_accumulator = 0.0;
+
   CHECK(rendering.get() != nullptr);
   Print("Created rendering.\n");
 
@@ -78,6 +86,24 @@ static void Loop(std::string_view layout_file) {
           bit = true;
         } else if (kdown->codepoint == '0') {
           bit = false;
+        } else if (kdown->codepoint == 'f' || kdown->codepoint == 'F') {
+          if (is_tracking) {
+            is_tracking = false;
+            status.Print("Stopped tracking item.\n");
+          } else {
+            vec2f pos = sim.ScreenToWorld(mouse_x, mouse_y);
+            if (auto hit = sim.GetNodeAt(pos)) {
+              if (hit->node->items.size() == 1) {
+                is_tracking = true;
+                track_id = hit->node->items[0].id;
+                status.Print("Tracking item ID {}\n", track_id);
+              } else {
+                status.Print("Need exactly 1 item in cell to track.\n");
+              }
+            }
+          }
+          fflush(stdout);
+
         } else if (kdown->codepoint == 'i' || kdown->codepoint == 'I') {
           sim.InjectRandomAssignment();
         } else if (kdown->codepoint == 'c' || kdown->codepoint == 'C') {
@@ -113,6 +139,8 @@ static void Loop(std::string_view layout_file) {
 
       } else if (const Inputs::MouseChange *mc =
                  std::get_if<Inputs::MouseChange>(&input)) {
+        mouse_x = mc->x;
+        mouse_y = mc->y;
 
         if (mc->button & Inputs::MOUSE_MIDDLE) {
           sim.Pan(mc->x, mc->y, mc->dx, mc->dy);
@@ -152,8 +180,33 @@ static void Loop(std::string_view layout_file) {
 
     }
 
-    if (!paused) {
-      sim.StepSimulation();
+    constexpr bool FIX_YOUR_TIMESTEP = false;
+    if (FIX_YOUR_TIMESTEP) {
+      double frame_time = frame_timer.Seconds();
+      frame_timer.Reset();
+      frame_time = std::max(frame_time, 1.0 / 10.0);
+
+      if (!paused) {
+        frame_accumulator += frame_time;
+        while (frame_accumulator >= Scene::DELTA_T) {
+          sim.StepSimulation();
+          frame_accumulator -= Scene::DELTA_T;
+        }
+      }
+    } else {
+
+      if (!paused) {
+        sim.StepSimulation();
+      }
+    }
+
+    if (is_tracking) {
+      if (std::optional<vec2f> pos = sim.GetItemPosition(track_id)) {
+        sim.CenterOn(*pos);
+      } else {
+        is_tracking = false;
+        status.Print("Lost tracked item (destroyed or exited circuit).\n");
+      }
     }
 
     std::vector<Rendering::Triangle> tri;

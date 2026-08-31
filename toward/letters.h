@@ -13,11 +13,8 @@ struct Letter {
   // A mesh of convex polygons.
   // Coordinates are computer graphics style (y-down). Note that
   // the origin is at the top left of the glyph, however, not the
-  // baseline.
+  // baseline (Letters::baseline_y has that offset).
   Polygonization::Mesh mesh;
-
-  // The y-coordinate of the baseline in the same coordinate system.
-  double baseline_y = 0.0;
 
   // The nominal horizontal advance (width) of this letter. See also
   // the kerning table below.
@@ -42,6 +39,10 @@ struct Letters {
   // in order to go from the unit scale to the original font metrics.
   // Everything else is using the normalized unit scale.
   double scale = 1.0;
+
+  // The y-coordinate of the baseline in the same coordinate system
+  // used by the letters. Same for every letter.
+  double baseline_y = 0.0;
 
   double GetKerning(uint32_t c1, uint32_t c2) const;
 

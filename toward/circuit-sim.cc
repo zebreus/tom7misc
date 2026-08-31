@@ -13,6 +13,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "color-util.h"
@@ -63,7 +64,9 @@ void CircuitSim::Zoom(int x, int y, bool up) {
 }
 
 // Ensure that the node is active, lazily loading if needed.
-void CircuitSim::ActivateNode(Node &node) {
+void CircuitSim::ActivateNode(size_t r, size_t c) {
+  Node &node = sim[r][c];
+
   if (node.level.get() == nullptr) {
     node.level = library.GetLevel(node.cell);
     Levels::AddChutes(node.level.get(), 0x339933FF, 0x993333FF);
@@ -87,7 +90,9 @@ void CircuitSim::ActivateNode(Node &node) {
       CHECK(lb >= 0 && lb < node.level->bodies.size());
       const LevelBody &body = node.level->bodies[lb];
       if (body.item.has_value()) {
-        node.items.push_back(i);
+        uint64_t id = next_item_id++;
+        node.items.push_back({i, id});
+        item_locations[id] = {r, c, (int)node.items.size() - 1};
       }
     }
   }
@@ -140,6 +145,35 @@ void CircuitSim::GoToTopLeftCell() {
   }
 }
 
+void CircuitSim::ZoomToFit() {
+  if (sim.empty()) return;
+
+  static constexpr int ROW_HEIGHT_BLOCKS = Levels::OUT_Y + 1;
+  static constexpr float ROW_HEIGHT = ROW_HEIGHT_BLOCKS * Levels::BLOCK_SIZE;
+
+  float max_x = 0.0f;
+  for (const auto &row : sim) {
+    if (!row.empty()) {
+      const Node &last_node = row.back();
+      float x = (last_node.xpos + library.GetInfo(last_node.cell).block_width) *
+                Levels::BLOCK_SIZE;
+      if (x > max_x) {
+        max_x = x;
+      }
+    }
+  }
+  float max_y = sim.size() * ROW_HEIGHT;
+
+  if (max_x > 0.0f && max_y > 0.0f) {
+    float zoom_x = Scene::WIDTH / max_x;
+    float zoom_y = Scene::HEIGHT / max_y;
+    view_zoom = std::min(zoom_x, zoom_y) * 0.95f;
+
+    view_pos.x = -(Scene::WIDTH / view_zoom - max_x) / 2.0f;
+    view_pos.y = -(Scene::HEIGHT / view_zoom - max_y) / 2.0f;
+  }
+}
+
 static uint32_t ComputeLODColor(const CellLibrary &library,
                                 const Cell &cell) {
   int width = library.GetInfo(cell).block_width;
@@ -182,6 +216,9 @@ static uint32_t ComputeLODColor(const CellLibrary &library,
 void CircuitSim::Reset() {
   sim.clear();
   active_nodes.clear();
+  item_locations.clear();
+  final_outputs.clear();
+  next_item_id = 1;
   ticks = 0;
 
   std::unordered_map<Cell, uint32_t, CellHash> lod_cache;
@@ -250,9 +287,10 @@ void CircuitSim::AddInput(size_t r, size_t c,
                           vec2f output_pos,
                           float angle,
                           vec2f vel,
-                          float avel) {
+                          float avel,
+                          std::optional<uint64_t> id) {
+  ActivateNode(r, c);
   Node *node = &sim[r][c];
-  ActivateNode(*node);
 
   CHECK(input_idx >= 0 && input_idx < node->level->inputs.size());
 
@@ -277,7 +315,9 @@ void CircuitSim::AddInput(size_t r, size_t c,
                          {body_idx});
 
   // The newly created body is the last one in the scene's simulated objects.
-  node->items.push_back(static_cast<int>(node->scene->objects.size() - 1));
+  uint64_t item_id = id.has_value() ? id.value() : next_item_id++;
+  node->items.push_back({static_cast<int>(node->scene->objects.size() - 1), item_id});
+  item_locations[item_id] = {r, c, (int)node->items.size() - 1};
 
   if (!node->in_queue) {
     node->in_queue = true;
@@ -287,15 +327,22 @@ void CircuitSim::AddInput(size_t r, size_t c,
 
 // Takes an index into the items vector and removes it. Marks as
 // deleted the corresponding Obj from the scene, and LevelBody from the level.
-void CircuitSim::DeleteItem(Node *node, int item_idx) {
+void CircuitSim::DeleteItem(size_t r, size_t c, int item_idx) {
+  Node *node = &sim[r][c];
   CHECK(item_idx >= 0 && item_idx < node->items.size());
-  const int obj_idx = node->items[item_idx];
+  const int obj_idx = node->items[item_idx].obj_idx;
   const uint64_t body_idx = node->scene->objects[obj_idx].user_data.value();
 
   node->scene->Detach(obj_idx);
   node->level->bodies[body_idx].deleted = true;
 
+  uint64_t id = node->items[item_idx].id;
+  item_locations.erase(id);
+
   node->items.erase(node->items.begin() + item_idx);
+  for (size_t i = item_idx; i < node->items.size(); i++) {
+    item_locations[node->items[i].id].item_idx = (int)i;
+  }
 }
 
 // Wires in the circuit connect outputs of row r sequentially to inputs of
@@ -322,7 +369,7 @@ std::optional<int> CircuitSim::ItemInsideOutput(Node *node, int item_idx) {
   CHECK(node->level != nullptr);
   CHECK(item_idx >= 0 && item_idx < node->items.size());
 
-  const int obj_idx = node->items[item_idx];
+  const int obj_idx = node->items[item_idx].obj_idx;
   const Scene::Obj &obj = node->scene->objects[obj_idx];
   vec2f pos = node->scene->GetPosition(obj);
 
@@ -373,7 +420,7 @@ void CircuitSim::StepSimulation() {
         std::optional<int> out_idx = ItemInsideOutput(node, i);
         if (out_idx.has_value()) {
           int item_idx = i;
-          int obj_idx = node->items[item_idx];
+          int obj_idx = node->items[item_idx].obj_idx;
           const Scene::Obj &obj = node->scene->objects[obj_idx];
 
           bool is_one =
@@ -389,13 +436,16 @@ void CircuitSim::StepSimulation() {
           float out_y = Levels::OUT_Y * Levels::BLOCK_SIZE;
           vec2f rel_pos = {pos.x - out_x, pos.y - out_y};
 
-          DeleteItem(node, item_idx);
+          uint64_t item_id = node->items[item_idx].id;
+          DeleteItem(r, c, item_idx);
 
           if (r + 1 < sim.size()) {
             std::pair<size_t, int> next_in =
                 FindMatchingInput(r, c, out_idx.value());
             AddInput(r + 1, next_in.first, next_in.second, is_one,
-                     rel_pos, angle, vel, avel);
+                     rel_pos, angle, vel, avel, item_id);
+          } else {
+            final_outputs.push_back({c, out_idx.value(), is_one, item_id});
           }
         } else {
           i++;
@@ -506,7 +556,7 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
       }
 
       // Need to activate the node to draw it with detail.
-      ActivateNode(node);
+      ActivateNode(r, c);
       if (node.scene != nullptr) {
         vec2f offset = {
           .x = node.xpos * Levels::BLOCK_SIZE,
@@ -529,17 +579,63 @@ void CircuitSim::FillVisibleTriangles(std::vector<Rendering::Triangle> *tri) {
   }
 }
 
+std::optional<CircuitSim::ItemLocation> CircuitSim::TrackItem(uint64_t id) const {
+  auto it = item_locations.find(id);
+  if (it != item_locations.end()) return it->second;
+  return std::nullopt;
+}
+
+std::optional<vec2f> CircuitSim::GetItemPosition(uint64_t id) const {
+  auto it = item_locations.find(id);
+  if (it == item_locations.end()) return std::nullopt;
+  const ItemLocation &loc = it->second;
+  const Node &node = sim[loc.layer][loc.col];
+  if (node.scene == nullptr) return std::nullopt;
+  int obj_idx = node.items[loc.item_idx].obj_idx;
+  const Scene::Obj &obj = node.scene->objects[obj_idx];
+  vec2f item_pos = node.scene->GetPosition(obj);
+
+  static constexpr int ROW_HEIGHT_BLOCKS = Levels::OUT_Y + 1;
+  static constexpr float ROW_HEIGHT = ROW_HEIGHT_BLOCKS * Levels::BLOCK_SIZE;
+
+  return vec2f{
+    node.xpos * Levels::BLOCK_SIZE + item_pos.x,
+    loc.layer * ROW_HEIGHT + item_pos.y
+  };
+}
+
+void CircuitSim::CenterOn(vec2f pos) {
+  view_pos.x = pos.x - Scene::WIDTH / (2.0f * view_zoom);
+  view_pos.y = pos.y - Scene::HEIGHT / (2.0f * view_zoom);
+}
+
 void CircuitSim::InjectRandomAssignment() {
   if (sim.empty() || sim[0].empty()) return;
 
   // Create a random assignment of variables. We must be consistent
   // about a variable's value!
-  std::unordered_map<int, bool> assignment;
+  int max_var = -1;
   for (const auto &[var_id, type] : layout.input_vars) {
-    if (!assignment.contains(var_id)) {
-      assignment[var_id] = rc.Byte() & 1;
+    if (var_id > max_var) {
+      max_var = var_id;
     }
   }
+
+  std::vector<bool> assignment(max_var + 1);
+  std::vector<bool> assigned(max_var + 1, false);
+  for (const auto &[var_id, type] : layout.input_vars) {
+    if (!assigned[var_id]) {
+      assignment[var_id] = rc.Byte() & 1;
+      assigned[var_id] = true;
+    }
+  }
+
+  InjectAssignment(assignment);
+}
+
+void CircuitSim::InjectAssignment(
+    const std::vector<bool> &assignment) {
+  if (sim.empty() || sim[0].empty()) return;
 
   size_t global_in_idx = 0;
   for (size_t c = 0; c < sim[0].size(); c++) {
@@ -552,7 +648,10 @@ void CircuitSim::InjectRandomAssignment() {
       }
 
       const auto &[var_id, type] = layout.input_vars[global_in_idx];
-      bool val = assignment[var_id];
+      bool val = false;
+      if (var_id >= 0 && var_id < (int)assignment.size()) {
+        val = assignment[var_id];
+      }
 
       bool insert = false;
       bool is_one = false;
@@ -665,23 +764,66 @@ Layout CircuitSim::ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const {
       const Node &src = sim[r][c];
       bool src_kept = (r >= min_r && r <= max_r && kept[r][c]);
 
-      for (int out_idx = 0; out_idx < (int)src.matching_inputs.size(); out_idx++) {
+      for (int out_idx = 0; out_idx < (int)src.matching_inputs.size();
+           out_idx++) {
         auto match = src.matching_inputs[out_idx];
-        if (match.first == (size_t)-1) continue;
+        if (match.first == (size_t)-1)
+          continue;
 
-        bool dst_kept = (r + 1 >= min_r && r + 1 <= max_r && kept[r + 1][match.first]);
+        bool dst_kept =
+            (r + 1 >= min_r && r + 1 <= max_r && kept[r + 1][match.first]);
 
         if (src_kept && !dst_kept) {
           // Connection goes out of bounds downwards.
           const auto &info = library.GetInfo(src.cell);
           CType type = info.outputs[out_idx].type;
-          Gate wire_gate = Gate::WIREA;
-          if (type == CType::ZERO) wire_gate = Gate::WIRE0A;
-          else if (type == CType::ONE) wire_gate = Gate::WIRE1A;
-          Cell wire_cell(wire_gate, 0);
-          const auto &wire_info = library.GetInfo(wire_cell);
+
+          const Node &dst = sim[r + 1][match.first];
+          int orig_xblock =
+              library.GetInfo(dst.cell).inputs[match.second].xblock;
+
+          Cell wire_a = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT, type);
+          Cell wire_b = CellLibrary::Wire(0, CellLibrary::Bias::LEFT, type);
+          int diff_a =
+              std::abs(library.GetInfo(wire_a).inputs[0].xblock - orig_xblock);
+          int diff_b =
+              std::abs(library.GetInfo(wire_b).inputs[0].xblock - orig_xblock);
+          Cell wire_cell = (diff_b < diff_a) ? wire_b : wire_a;
 
           int current_x = src.xpos + info.outputs[out_idx].xblock;
+
+          auto check_overlap = [&](Cell w) {
+            int test_current_x = current_x;
+            for (int k = r + 1; k <= max_r; k++) {
+              int cx =
+                  test_current_x - library.GetInfo(w).inputs[0].xblock;
+              int cx_end = cx + library.GetInfo(w).block_width;
+              for (const auto &prev : extra_wires[k]) {
+                int prev_end = prev.x + library.GetInfo(prev.cell).block_width;
+                if (cx < prev_end && cx_end > prev.x) return true;
+              }
+              for (size_t c2 = 0; c2 < sim[k].size(); c2++) {
+                if (kept[k][c2]) {
+                  int prev_x = sim[k][c2].xpos;
+                  int prev_end =
+                      prev_x + library.GetInfo(sim[k][c2].cell).block_width;
+                  if (cx < prev_end && cx_end > prev_x) return true;
+                }
+              }
+              test_current_x = cx + library.GetInfo(w).outputs[0].xblock;
+            }
+            return false;
+          };
+          if (check_overlap(wire_cell)) {
+            // A straight wire intersects either another extra wire or a cell
+            // that we kept (like a slanted wire passing through this column).
+            // Try the other bias to see if it routes cleanly around it.
+            wire_cell = (wire_cell == wire_a) ? wire_b : wire_a;
+            // If both biases overlap, this extraction cannot be routed simply.
+            if (check_overlap(wire_cell)) return Layout();
+          }
+          const auto &wire_info = library.GetInfo(wire_cell);
+
           for (int k = r + 1; k <= max_r; k++) {
             int cell_x = current_x - wire_info.inputs[0].xblock;
             extra_wires[k].push_back({cell_x, wire_cell});
@@ -692,13 +834,53 @@ Layout CircuitSim::ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const {
           const Node &dst = sim[r + 1][match.first];
           const auto &info = library.GetInfo(dst.cell);
           CType type = info.inputs[match.second].type;
-          Gate wire_gate = Gate::WIREA;
-          if (type == CType::ZERO) wire_gate = Gate::WIRE0A;
-          else if (type == CType::ONE) wire_gate = Gate::WIRE1A;
-          Cell wire_cell(wire_gate, 0);
-          const auto &wire_info = library.GetInfo(wire_cell);
+
+          int orig_xblock = library.GetInfo(src.cell).outputs[out_idx].xblock;
+
+          // All cells stick out at least as much as a wire, but might
+          // not have the same bias. Try both.
+          Cell wire_a = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT, type);
+          Cell wire_b = CellLibrary::Wire(0, CellLibrary::Bias::LEFT, type);
+          int diff_a =
+              std::abs(library.GetInfo(wire_a).outputs[0].xblock - orig_xblock);
+          int diff_b =
+              std::abs(library.GetInfo(wire_b).outputs[0].xblock - orig_xblock);
+          Cell wire_cell = (diff_b < diff_a) ? wire_b : wire_a;
 
           int current_x = dst.xpos + info.inputs[match.second].xblock;
+
+          auto check_overlap = [&](Cell w) {
+            int test_current_x = current_x;
+            for (int k = r; k >= min_r; k--) {
+              int cx =
+                  test_current_x - library.GetInfo(w).outputs[0].xblock;
+              int cx_end = cx + library.GetInfo(w).block_width;
+              for (const auto &prev : extra_wires[k]) {
+                int prev_end = prev.x + library.GetInfo(prev.cell).block_width;
+                if (cx < prev_end && cx_end > prev.x) return true;
+              }
+              for (size_t c2 = 0; c2 < sim[k].size(); c2++) {
+                if (kept[k][c2]) {
+                  int prev_x = sim[k][c2].xpos;
+                  int prev_end =
+                      prev_x + library.GetInfo(sim[k][c2].cell).block_width;
+                  if (cx < prev_end && cx_end > prev_x) return true;
+                }
+              }
+              test_current_x = cx + library.GetInfo(w).inputs[0].xblock;
+            }
+            return false;
+          };
+          if (check_overlap(wire_cell)) {
+            // A straight wire intersects either another extra wire or a cell
+            // that we kept (like a slanted wire passing through this column).
+            // Try the other bias to see if it routes cleanly around it.
+            wire_cell = (wire_cell == wire_a) ? wire_b : wire_a;
+            // If both biases overlap, this extraction cannot be routed simply.
+            if (check_overlap(wire_cell)) return Layout();
+          }
+          const auto &wire_info = library.GetInfo(wire_cell);
+
           for (int k = r; k >= min_r; k--) {
             int cell_x = current_x - wire_info.outputs[0].xblock;
             extra_wires[k].push_back({cell_x, wire_cell});
@@ -709,10 +891,10 @@ Layout CircuitSim::ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const {
     }
   }
 
-  struct Item {
+  struct Elt {
     int xpos;
     Cell cell;
-    bool operator<(const Item &other) const {
+    bool operator<(const Elt &other) const {
       return xpos < other.xpos;
     }
   };
@@ -736,26 +918,38 @@ Layout CircuitSim::ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const {
   }
 
   for (int r = actual_min_r; r <= actual_max_r; r++) {
-    std::vector<Item> items;
+    std::vector<Elt> elts;
     for (size_t c = 0; c < sim[r].size(); c++) {
       if (kept[r][c]) {
-        items.push_back({sim[r][c].xpos, sim[r][c].cell});
+        elts.push_back({sim[r][c].xpos, sim[r][c].cell});
       }
     }
     for (const auto &ew : extra_wires[r]) {
-      items.push_back({ew.x, ew.cell});
+      elts.push_back({ew.x, ew.cell});
     }
-    std::sort(items.begin(), items.end());
+    std::sort(elts.begin(), elts.end());
 
     Layer layer;
     int current_x = 0;
-    for (const Item &item : items) {
-      int x = std::max(item.xpos, current_x);
+    for (const Elt &elt : elts) {
+      int x = std::max(elt.xpos, current_x);
+      static constexpr bool VERBOSE = false;
+      if (VERBOSE && x > elt.xpos) {
+        // This can happen because inserted straight wires (offset 0)
+        // are wider (e.g., width 11) than the output spacing of some
+        // cells (like DUPSEP0011, min output distance 4). If we cut
+        // the circuit and drop straight wires, they may overlap.
+        // Most circuits do not use experimental cells like DUPSEP0011
+        // though.
+        Print("WARNING: ExtractOverlapping: elt {} pushed from {} to {} "
+              "due to overlap\n",
+              CellString(elt.cell), elt.xpos, x);
+      }
       if (x > current_x) {
         layer.push_back(CellLibrary::Spacer(x - current_x));
       }
-      layer.push_back(item.cell);
-      current_x = x + library.GetInfo(item.cell).block_width;
+      layer.push_back(elt.cell);
+      current_x = x + library.GetInfo(elt.cell).block_width;
     }
     result.circuit.layers.push_back(std::move(layer));
   }

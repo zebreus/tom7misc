@@ -2,6 +2,8 @@
 #ifndef _TOWARD_DRC_H
 #define _TOWARD_DRC_H
 
+#include <optional>
+#include <string>
 #include <string_view>
 
 #include "cell-library.h"
@@ -19,11 +21,21 @@ struct DRC {
   static void CheckCircuit(const CellLibrary &library,
                            std::string_view error_context,
                            const Circuit &circuit);
+  // Same, but doesn't abort. Returns nullopt if everything is OK.
+  static std::optional<std::string> GetCircuitError(
+      const CellLibrary &library,
+      std::string_view error_context,
+      const Circuit &circuit);
 
   // The above, but also check that we have the right number of inputs.
   static void CheckLayout(const CellLibrary &library,
                           std::string_view error_context,
                           const Layout &layout);
+  static std::optional<std::string> GetLayoutError(
+      const CellLibrary &library,
+      std::string_view error_context,
+      const Layout &layout);
+
 
   // Check both layouts. Verify that the two have the same I/O behavior:
   // the same input variables/types in same order, and the same functions

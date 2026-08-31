@@ -84,6 +84,11 @@ struct Scene {
   // Run the simulation for one step. Not allowed when
   // hibernating.
   void Update();
+  // The amount of simulation time that transpires in an
+  // Update call, in seconds. Not necessarily related to wall time.
+  // (e.g. if gravity is 9.8 m/s^2, then this is the seconds
+  // we're talking about with this constant).
+  static constexpr double DELTA_T = 1 / 120.0;
 
   // Stop the simulation, freeing up global resources for Box2D.
   void Hibernate();

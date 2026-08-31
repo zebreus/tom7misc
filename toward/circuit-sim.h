@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -52,10 +53,13 @@ struct CircuitSim {
     // haven't loaded the level yet). Might be hibernating.
     std::unique_ptr<Scene> scene;
 
-    // The indices of objects in the level that are items (zero or
-    // one bits). Their user_data fields should indicate level
-    // items
-    std::vector<int> items;
+    // The objects in the scene that are items (zero or one bits).
+    // Their user_data fields indicate the level bodies.
+    struct Item {
+      int obj_idx;
+      uint64_t id;
+    };
+    std::vector<Item> items;
 
     // Precomputed table of connected inputs for each of the node's outputs.
     // matching_inputs[local_out_idx] contains the column and local input index
@@ -81,7 +85,7 @@ struct CircuitSim {
   void Zoom(int x, int y, bool up);
 
   // Ensure that the node is active, lazily loading if needed.
-  void ActivateNode(Node &node);
+  void ActivateNode(size_t r, size_t c);
 
   CircuitSim(const CellLibrary &library,
              Rendering *rendering,
@@ -94,6 +98,7 @@ struct CircuitSim {
 
   void Reset();
   void GoToTopLeftCell();
+  void ZoomToFit();
 
   // Insert a bit body into one of the node's inputs.
   void AddInput(size_t r, size_t c,
@@ -104,11 +109,12 @@ struct CircuitSim {
                 vec2f output_pos,
                 float angle,
                 vec2f vel,
-                float avel);
+                float avel,
+                std::optional<uint64_t> id = std::nullopt);
 
   // Takes an index into the items vector and removes it. Marks as
   // deleted the corresponding Obj from the scene, and LevelBody from the level.
-  void DeleteItem(Node *node, int item_idx);
+  void DeleteItem(size_t r, size_t c, int item_idx);
 
   std::pair<size_t, int> FindMatchingInput(
       size_t r, size_t c, int local_out_idx) const;
@@ -122,12 +128,30 @@ struct CircuitSim {
   void FillVisibleTriangles(std::vector<Rendering::Triangle> *tri);
 
   void InjectRandomAssignment();
+  void InjectAssignment(const std::vector<bool> &assignment);
 
   struct NodeLocation {
     size_t layer;
     size_t col;
     const Node *node;
   };
+
+  struct ItemLocation {
+    size_t layer;
+    size_t col;
+    int item_idx;
+  };
+
+  struct FinalOutput {
+    size_t col;
+    int out_idx;
+    bool is_one;
+    uint64_t item_id;
+  };
+
+  std::optional<ItemLocation> TrackItem(uint64_t id) const;
+  std::optional<vec2f> GetItemPosition(uint64_t id) const;
+  void CenterOn(vec2f pos);
 
   // Returns the node at the given world position, or std::nullopt if none.
   std::optional<NodeLocation> GetNodeAt(vec2f pos) const;
@@ -137,6 +161,7 @@ struct CircuitSim {
   Layout ExtractOverlapping(vec2f aabb_min, vec2f aabb_max) const;
 
   const std::vector<std::vector<Node>> &GetSim() const { return sim; }
+  const std::vector<FinalOutput> &GetFinalOutputs() const { return final_outputs; }
 
  private:
   const CellLibrary &library;
@@ -163,6 +188,11 @@ struct CircuitSim {
 
   // Nodes that are ready to execute or currently executing.
   std::deque<std::pair<size_t, size_t>> active_nodes;
+
+  std::vector<FinalOutput> final_outputs;
+
+  std::unordered_map<uint64_t, ItemLocation> item_locations;
+  uint64_t next_item_id = 1;
 
   ArcFour rc;
   int64_t ticks = 0;

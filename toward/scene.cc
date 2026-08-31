@@ -84,7 +84,7 @@ Scene::~Scene() {
 
 void Scene::Update() {
   if (world_id.has_value()) {
-    b2World_Step(world_id.value(), 1.0f / 120.0f, 8);
+    b2World_Step(world_id.value(), DELTA_T, 8);
   }
 }
 

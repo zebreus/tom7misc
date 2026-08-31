@@ -651,7 +651,8 @@ std::vector<CType> CellInputTypes(const Cell &cell) {
   case SEPARATOR10:
   case DUPSEP0011:
   case NOT:
-    SetInput(1, CType::MIXED);
+  case SINK:
+    SetInput(0, CType::MIXED);
     break;
 
   default:
@@ -705,6 +706,7 @@ static constexpr std::string_view GateToCode(Gate g) {
   case NAND0011:    return "na";
   case OR1100:      return "or";
   case NOR1100:     return "nr";
+  case XOR1010:     return "xx";
   case XOR1100:     return "xo";
   case ITE10:       return "it";
   case NOT:         return "no";

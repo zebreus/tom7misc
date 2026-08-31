@@ -16,6 +16,7 @@
 #include "base/print.h"
 #include "cell-library.h"
 #include "circuit.h"
+#include "dense-int-set.h"
 #include "drc.h"
 #include "interesting-props.h"
 #include "layout.h"
@@ -29,6 +30,7 @@
 using Bias = CellLibrary::Bias;
 
 static void TestRemoveAllWireLayer(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell const0(Gate::CONST0);
   Cell wire_a1 = CellLibrary::Wire(1, Bias::RIGHT);
   Cell sink(Gate::SINK);
@@ -106,6 +108,7 @@ static void TestRemoveAllWireLayer(const CellLibrary &library) {
 }
 
 static void TestStraightenParallelWires(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell const0(Gate::CONST0);
   Cell wire8 = CellLibrary::Wire(8, CellLibrary::Bias::RIGHT);
   Cell wire0 = CellLibrary::Wire(0, CellLibrary::Bias::RIGHT);
@@ -169,6 +172,7 @@ static void TestStraightenParallelWires(const CellLibrary &library) {
 }
 
 static void TestStraightenZigZagWire(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell const0(Gate::CONST0);
   Cell wire1 = CellLibrary::Wire(4, Bias::RIGHT);
   Cell wire2 = CellLibrary::Wire(1, Bias::RIGHT);
@@ -248,6 +252,7 @@ static void TestStraightenZigZagWire(const CellLibrary &library) {
 
 
 static void TestWindowed(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell const0(Gate::CONST0);
   Cell wire = CellLibrary::Wire(16, Bias::RIGHT);
   Cell sink(Gate::SINK);
@@ -328,6 +333,7 @@ static std::vector<Prop> TestProps() {
 }
 
 static void OptimizeInteresting(const CellLibrary &library) {
+  Print("{}\n", __func__);
   StatusBar status(1);
 
   World world;
@@ -374,48 +380,51 @@ static void OptimizeInteresting(const CellLibrary &library) {
       8);
 }
 
-
-static void TestResolveBeamDisplacementUpward(const CellLibrary &library) {
-  Cell wire4 = CellLibrary::Wire(4, Bias::RIGHT);
+static void TestResolveBeamShiftUpward(const CellLibrary &library) {
+  Print("{}\n", __func__);
+  Cell gate(Gate::NOT);
 
   std::vector<Layer> network;
-  // Place two wires separated by a spacer of 3.
+  // Place two gates separated by a spacer of 3.
   int spacer_width = 3;
-  network.push_back({wire4, CellLibrary::Spacer(spacer_width), wire4});
-  network.push_back({wire4, CellLibrary::Spacer(spacer_width), wire4});
+  network.push_back({gate, CellLibrary::Spacer(spacer_width), gate});
+  network.push_back({gate, CellLibrary::Spacer(spacer_width), gate});
 
-  std::vector<int> deltas = {0};
-
-  // Ask the beam (left wire) to shift right by at least spacer_width + 2.
+  std::vector<int> deltas = {0}; // Ask the beam (left gate) to shift right by
+                                 // at least spacer_width + 2.
   // The available space is only spacer_width, so this should fail.
-  std::optional<int> disp_fail = Optimization::ResolveBeamDisplacementUpward(
-      library, network, 0, deltas, spacer_width + 2, spacer_width + 10);
-  CHECK(!disp_fail.has_value()) << "Should fail due to collision!";
+  DenseIntSet fail_set =
+      DenseIntSet::Top((spacer_width + 10) - (spacer_width + 2) + 1);
+  DenseIntSet shift_fail = Optimization::ResolveBeamShiftUpward(
+      library, network, 0, deltas, spacer_width + 2, fail_set);
+  CHECK(shift_fail.Empty()) << "Should fail due to collision!";
 
   // Ask the beam to shift right by at least 1, up to spacer_width + 10.
   // It should succeed and pick a shift that fits (e.g. 1).
-  std::optional<int> disp_succ = Optimization::ResolveBeamDisplacementUpward(
-      library, network, 0, deltas, 1, spacer_width + 10);
-  CHECK(disp_succ.has_value()) << "Should succeed by eating the spacer!";
-  CHECK(disp_succ.value() >= 1 && disp_succ.value() <= spacer_width);
+  DenseIntSet succ_set = DenseIntSet::Top((spacer_width + 10) - 1 + 1);
+  DenseIntSet shift_succ = Optimization::ResolveBeamShiftUpward(
+      library, network, 0, deltas, 1, succ_set);
+  CHECK(!shift_succ.Empty()) << "Should succeed by eating the spacer!";
 
-  // What if we want to shift the RIGHT wire (chute 1) to the LEFT?
+  // What if we want to shift the RIGHT gate (chute 1) to the LEFT?
   // Shift left by at least spacer_width + 1 (min_s = -10, max_s =
   // -(spacer_width + 1)). Available space is spacer_width. Should fail.
-  std::optional<int> disp_fail2 = Optimization::ResolveBeamDisplacementUpward(
-      library, network, 1, deltas, -10, -(spacer_width + 1));
-  CHECK(!disp_fail2.has_value()) << "Should fail due to collision!";
+  DenseIntSet fail_set2 = DenseIntSet::Top(-(spacer_width + 1) - (-10) + 1);
+  DenseIntSet shift_fail2 = Optimization::ResolveBeamShiftUpward(
+      library, network, 1, deltas, -10, fail_set2);
+  CHECK(shift_fail2.Empty()) << "[2] Should fail due to collision!";
 
   // Shift left by at most 2 (min_s = -10, max_s = -2).
   // Assuming spacer_width >= 2, it should succeed.
   CHECK(spacer_width >= 2);
-  std::optional<int> disp_succ2 = Optimization::ResolveBeamDisplacementUpward(
-      library, network, 1, deltas, -10, -2);
-  CHECK(disp_succ2.has_value());
-  CHECK(disp_succ2.value() >= -spacer_width && disp_succ2.value() <= -2);
+  DenseIntSet succ_set2 = DenseIntSet::Top(-2 - (-10) + 1);
+  DenseIntSet shift_succ2 = Optimization::ResolveBeamShiftUpward(
+      library, network, 1, deltas, -10, succ_set2);
+  CHECK(!shift_succ2.Empty());
 }
 
 static void TestResolveDisplacementUpward(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell wire4 = CellLibrary::Wire(4, Bias::RIGHT);
   std::vector<Layer> network;
   network.push_back({wire4});
@@ -438,6 +447,7 @@ static void TestResolveDisplacementUpward(const CellLibrary &library) {
 }
 
 static void TestResolveDisplacementMovesInputs() {
+  Print("{}\n", __func__);
   CellLibrary library;
 
   // NOT gate passes displacement directly to its input.
@@ -460,6 +470,7 @@ static void TestResolveDisplacementMovesInputs() {
 }
 
 static void TestResolveDisplacementFailsOverlap() {
+  Print("{}\n", __func__);
   CellLibrary library;
 
   Cell wire4 = CellLibrary::Wire(4, Bias::RIGHT);
@@ -475,6 +486,7 @@ static void TestResolveDisplacementFailsOverlap() {
 }
 
 static void TestResolveDisplacementDownward(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell wire4 = CellLibrary::Wire(4, Bias::RIGHT);
   std::vector<Layer> network;
   network.push_back({wire4});
@@ -502,6 +514,7 @@ static void TestResolveDisplacementDownward(const CellLibrary &library) {
 }
 
 static void DownwardMovesOutputs(const CellLibrary &library) {
+  Print("{}\n", __func__);
   // NOT gate passes displacement directly to its output.
   Cell not_gate(Gate::NOT);
   std::vector<Layer> network;
@@ -523,6 +536,7 @@ static void DownwardMovesOutputs(const CellLibrary &library) {
 
 static void DownwardFailsOverlap(
     const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell wire4 = CellLibrary::Wire(4, Bias::RIGHT);
   std::vector<Layer> network;
   network.push_back({wire4, wire4});
@@ -536,6 +550,7 @@ static void DownwardFailsOverlap(
 }
 
 static void DownwardCornerCases(const CellLibrary &library) {
+  Print("{}\n", __func__);
   {
     // Test that shifting a wire input so much that it crosses its output
     // causes the wire to flip.
@@ -599,6 +614,7 @@ static void DownwardCornerCases(const CellLibrary &library) {
 }
 
 static void TestOptimizeWindowCornerCases(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell const0(Gate::CONST0);
   Cell wire = CellLibrary::Wire(0, Bias::RIGHT);
   Cell not_gate(Gate::NOT);
@@ -635,6 +651,7 @@ static void TestOptimizeWindowCornerCases(const CellLibrary &library) {
   if (x3_m < 0) { int s = -x3_m; x0_m += s; x1_m += s; x2_m += s; x3_m = 0; }
 
   {
+    Print("  Case 1.\n");
     Layout layout;
     layout.input_vars = {};
     layout.circuit.layers.push_back(MakeLayer({{x0_m, const0}}));
@@ -650,6 +667,7 @@ static void TestOptimizeWindowCornerCases(const CellLibrary &library) {
   }
 
   {
+    Print("  Case 2.\n");
     int x1_n = GetX(const0, x0_m, 0, not_gate, 0);
     int x2_n = GetX(not_gate, x1_n, 0, not_gate, 0);
     int x3_n = GetX(not_gate, x2_n, 0, sink, 0);
@@ -675,6 +693,7 @@ static void TestOptimizeWindowCornerCases(const CellLibrary &library) {
   }
 
   {
+    Print("  Case 3.\n");
     int wire_width = library.GetInfo(wire).block_width;
     int not_width = library.GetInfo(not_gate).block_width;
 
@@ -707,6 +726,7 @@ static void TestOptimizeWindowCornerCases(const CellLibrary &library) {
 }
 
 static void OptimizeModest(const CellLibrary &library) {
+  Print("{}\n", __func__);
   World world{.symbol_names = {"a", "b", "c", "d", "e", "f", "g", "h"}};
   std::unique_ptr<LayoutEngine> le = LayoutEngine::Create(library, world);
   Prop a{Var{.id = 0}}, b{Var{.id = 1}}, c{Var{.id = 2}}, d{Var{.id = 3}},
@@ -741,20 +761,47 @@ static void OptimizeModest(const CellLibrary &library) {
 }
 
 static void TestTightUpward(const CellLibrary &library) {
+  Print("{}\n", __func__);
   // Simulate a tightly packed gate that can move up.
-  Cell wire(Gate::WIREA, 0);
+  Cell wire = CellLibrary::Wire(0, Bias::RIGHT);
   Cell gate(Gate::NOT);
   Cell sink(Gate::SINK);
+
+  auto info_w = library.GetInfo(wire);
+  auto info_g = library.GetInfo(gate);
+  auto info_s = library.GetInfo(sink);
+
+  int x_w = 0;
+  int x_g = x_w + info_w.outputs[0].xblock - info_g.inputs[0].xblock;
+  int x_s = x_g + info_g.outputs[0].xblock - info_s.inputs[0].xblock;
+
+  int min_x = std::min({x_w, x_g, x_s});
+  x_w -= min_x;
+  x_g -= min_x;
+  x_s -= min_x;
+
+  auto MakeLayer = [](int x, Cell cell) {
+    std::vector<Cell> layer;
+    if (x > 0) {
+      layer.push_back(CellLibrary::Spacer(x));
+    }
+    layer.push_back(cell);
+    return layer;
+  };
+
   Layout l;
-  l.input_vars = {};
-  l.circuit.layers.push_back({wire});
-  l.circuit.layers.push_back({gate});
-  l.circuit.layers.push_back({sink});
+  l.input_vars = {{0, CType::MIXED}};
+  l.circuit.layers.push_back(MakeLayer(x_w, wire));
+  l.circuit.layers.push_back(MakeLayer(x_g, gate));
+  l.circuit.layers.push_back(MakeLayer(x_s, sink));
+
+  DRC::CheckLayout(library, "tight_upward_before", l);
   Layout opt = Optimization::Optimize(library, l);
   CHECK(opt.circuit.layers.size() == 2) << "Failed to move tight gate up!";
 }
 
 static void TestExactSpaceUpward(const CellLibrary &library) {
+  Print("{}\n", __func__);
   Cell gate(Gate::NOT);
   Cell const0(Gate::CONST0);
   Cell sink(Gate::SINK);
@@ -885,6 +932,7 @@ static std::initializer_list<TestCase> TEST_CASES = {
 };
 
 static void TryTestCases(const CellLibrary &library) {
+  Print("{}\n", __func__);
   std::vector<TestCase> cases(TEST_CASES.begin(), TEST_CASES.end());
 
   std::mutex m;
@@ -965,8 +1013,8 @@ int main(int argc, char **argv) {
   DownwardCornerCases(library);
   Print("Resolve displacement OK.\n");
 
-  TestResolveBeamDisplacementUpward(library);
-  Print("Resolve beam displacement OK.\n");
+  TestResolveBeamShiftUpward(library);
+  Print("Resolve beam shift OK.\n");
 
   TestOptimizeWindowCornerCases(library);
 

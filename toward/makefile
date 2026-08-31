@@ -1,5 +1,5 @@
 
-all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt aig_test.exe minitable_test.exe simplification_test.exe render-mini.exe chess-z3.exe aiger_test.exe verilog_test.exe chess-stats.exe separator.exe optimize.exe
+all : test.exe editor.exe letters_test.exe evaluate.exe debug-evaluate.exe validate.exe tweak.exe prop_test.exe chessprop_test.exe circuit_test.exe cell-library_test.exe output-library.exe layout_test.exe layout-canvas_test.exe render-circuit_test.exe chessdemo.exe playcircuit.exe slideshow.exe sound.exe font-collection.exe polygonize.exe opt-findexample.exe wire-sums.exe cell-library.txt aig_test.exe minitable_test.exe simplification_test.exe render-mini.exe chess-z3.exe aiger_test.exe verilog_test.exe drc_test.exe chess-stats.exe separator.exe optimize.exe circuitbench.exe find-copybug.exe toward.exe
 
 # not chess-abc.exe because it requires abc
 
@@ -46,7 +46,7 @@ SDL_OBJECTS=sdl-rendering.o pi-rendering.o initialization.o inputs.o
 SDL_ENTRYPOINT_OBJECTS=toward.o test.o editor.o playcircuit.o slideshow.o
 
 # all (library) objects
-LIB_OBJECTS=prop-util.o verilog.o aiger.o blif.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
+LIB_OBJECTS=prop-util.o verilog.o aiger.o blif.o simplification.o minitable.o aig.o banned.o drc.o optimization.o layout-canvas.o font-cache.o circuit-sim.o render-circuit.o layout.o cell-library.o circuit.o prop.o chessprop.o validation.o rendering.o scene.o letters.o eval.o level.o interesting-props.o layout-reducer.o $(CC_LIB_OBJECTS) $(FONTDB_OBJECTS) $(CHESS_OBJECTS)
 
 LIBS=$(BOX2D)/build/src/libbox2d.a
 
@@ -198,6 +198,10 @@ verilog_test.exe : verilog_test.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 
+drc_test.exe : drc_test.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
 chess-abc.exe : chess-abc.o $(LIB_OBJECTS)
 	make -j 3 aoin.super aoix.super aoi.super aoinx.super oix.super aoinr.super aoinrq.super aoinrqx.super
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
@@ -224,6 +228,14 @@ renderfen.exe : renderfen.o $(LIB_OBJECTS)
 	@echo -n ":"
 
 chess-abc-bug.exe : chess-abc-bug.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+find-copybug.exe : find-copybug.o $(LIB_OBJECTS)
+	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
+	@echo -n ":"
+
+circuitbench.exe : circuitbench.o $(LIB_OBJECTS)
 	@$(CXX) $(LFLAGS) $^ $(LIBS) -o $@
 	@echo -n ":"
 

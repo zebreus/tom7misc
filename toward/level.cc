@@ -541,7 +541,7 @@ void Levels::AddNodesToLevel(std::string_view error_context,
           vec2 center = {0.0, 0.0};
           body.mesh.polygons = letter.mesh.polygons;
           for (const auto &v : letter.mesh.vertices) {
-            vec2 local = (v + vec2{cursor_x, -letter.baseline_y}) *
+            vec2 local = (v + vec2{cursor_x, -letters->baseline_y}) *
               render_scale;
             vec2 t = {
               state.transform[0] * local.x +

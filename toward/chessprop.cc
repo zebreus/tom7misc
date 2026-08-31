@@ -773,10 +773,8 @@ Prop ChessProp::IsLegal(const Board &board,
             en_passant_move);
 }
 
-Board ChessProp::BoardFromPosition(const Position &pos) {
-  Board board{
-    .props = std::vector<Prop>(NUM_BOARD_PROPS, False()),
-  };
+std::vector<bool> ChessProp::AssignmentFromPosition(const Position &pos) {
+  std::vector<bool> assign(NUM_BOARD_PROPS, false);
 
   CHECK(!pos.BlackMove()) << "Can only represent positions "
     "where it's white's move.";
@@ -804,23 +802,38 @@ Board ChessProp::BoardFromPosition(const Position &pos) {
       }
 
       // The rest remain false.
-      board.props[HasContentsIdx(r, c, t)] = True();
+      assign[HasContentsIdx(r, c, t)] = true;
     }
   }
 
   for (bool white : {false, true}) {
     for (bool kingside : {false, true}) {
       if (pos.CanStillCastle(white, kingside)) {
-        board.props[CastlingIdx(white, kingside)] = True();
+        assign[CastlingIdx(white, kingside)] = true;
       }
     }
   }
 
   if (std::optional<uint8_t> oep = pos.EnPassantColumn()) {
-    board.props[EnPassantColIdx(oep.value())] = True();
+    assign[EnPassantColIdx(oep.value())] = true;
   }
 
-  board.props[CheckIdx()] = Position(pos).IsInCheck() ? True() : False();
+  assign[CheckIdx()] = Position(pos).IsInCheck();
+
+  return assign;
+}
+
+Board ChessProp::BoardFromPosition(const Position &pos) {
+  Board board{
+    .props = std::vector<Prop>(NUM_BOARD_PROPS, False()),
+  };
+
+  std::vector<bool> assign = AssignmentFromPosition(pos);
+  for (size_t i = 0; i < assign.size(); i++) {
+    if (assign[i]) {
+      board.props[i] = True();
+    }
+  }
 
   return board;
 }

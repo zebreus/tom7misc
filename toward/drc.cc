@@ -15,9 +15,10 @@
 
 using IO = CellLibrary::IO;
 
-void DRC::CheckCircuit(const CellLibrary &library,
-                       std::string_view error_context,
-                       const Circuit &circuit) {
+std::optional<std::string> DRC::GetCircuitError(
+    const CellLibrary &library,
+    std::string_view error_context,
+    const Circuit &circuit) {
   struct DrcChute {
     int xpos;
     CType type;
@@ -34,26 +35,29 @@ void DRC::CheckCircuit(const CellLibrary &library,
 
     for (const Cell &cell : layer) {
       if (IsWire(cell.gate) && cell.v >= CellLibrary::SMALL_WIRE) {
-        CHECK(cell.gate == Gate::WIREA || cell.gate == Gate::WIRE0A ||
-              cell.gate == Gate::WIRE1A)
-            << error_context << ": Large wire must use A shape in "
-            << CellString(cell);
+        if (!(cell.gate == Gate::WIREA || cell.gate == Gate::WIRE0A ||
+              cell.gate == Gate::WIRE1A)) {
+          return std::format("{}: Large wire must use A shape in {}",
+                             error_context, CellString(cell));
+        }
       }
 
       CellLibrary::Info info = library.GetInfo(cell);
 
       for (const IO &in : info.inputs) {
-        CHECK(in.xblock >= 0 &&
-              in.xblock + Levels::IN_WIDTH <= info.block_width)
-            << error_context << ": Input out of bounds in "
-            << CellString(cell);
+        if (!(in.xblock >= 0 &&
+              in.xblock + Levels::IN_WIDTH <= info.block_width)) {
+          return std::format("{}: Input out of bounds in {}",
+                             error_context, CellString(cell));
+        }
         current_inputs.push_back({current_x + in.xblock, in.type, cell});
       }
       for (const IO &out : info.outputs) {
-        CHECK(out.xblock >= 0 &&
-              out.xblock + Levels::OUT_WIDTH <= info.block_width)
-            << error_context << ": Output out of bounds in "
-            << CellString(cell);
+        if (!(out.xblock >= 0 &&
+              out.xblock + Levels::OUT_WIDTH <= info.block_width)) {
+          return std::format("{}: Output out of bounds in {}",
+                             error_context, CellString(cell));
+        }
         current_outputs.push_back({current_x + out.xblock, out.type, cell});
       }
 
@@ -61,33 +65,42 @@ void DRC::CheckCircuit(const CellLibrary &library,
     }
 
     for (size_t j = 1; j < current_inputs.size(); j++) {
-      CHECK(current_inputs[j - 1].xpos + Levels::IN_WIDTH <=
-            current_inputs[j].xpos)
-          << error_context << ": Overlapping or out-of-order inputs in layer "
-          << i;
+      if (!(current_inputs[j - 1].xpos + Levels::IN_WIDTH <=
+            current_inputs[j].xpos)) {
+        return std::format(
+            "{}: Overlapping or out-of-order inputs in layer {}",
+            error_context, i);
+      }
     }
     for (size_t j = 1; j < current_outputs.size(); j++) {
-      CHECK(current_outputs[j - 1].xpos + Levels::OUT_WIDTH <=
-            current_outputs[j].xpos)
-          << error_context << ": Overlapping or out-of-order outputs in layer "
-          << i;
+      if (!(current_outputs[j - 1].xpos + Levels::OUT_WIDTH <=
+            current_outputs[j].xpos)) {
+        return std::format(
+            "{}: Overlapping or out-of-order outputs in layer {}",
+            error_context, i);
+      }
     }
 
     if (i > 0) {
       size_t min_size = std::min(prev_outputs.size(), current_inputs.size());
       for (size_t j = 0; j < min_size; j++) {
-        CHECK(prev_outputs[j].xpos == current_inputs[j].xpos)
-            << error_context << ": Layer " << i << " input " << j
-            << " xpos mismatch: expected " << prev_outputs[j].xpos << ", got "
-            << current_inputs[j].xpos << " (between "
-            << CellString(prev_outputs[j].cell) << " and "
-            << CellString(current_inputs[j].cell) << ")";
-        CHECK(prev_outputs[j].type == current_inputs[j].type)
-            << error_context << ": Layer " << i << " input " << j
-            << " type mismatch: expected " << TypeString(prev_outputs[j].type)
-            << ", got " << TypeString(current_inputs[j].type) << " (between "
-            << CellString(prev_outputs[j].cell) << " and "
-            << CellString(current_inputs[j].cell) << ")";
+        if (prev_outputs[j].xpos != current_inputs[j].xpos) {
+          return std::format(
+              "{}: Layer {} input {} xpos mismatch: expected {}, got {} "
+              "(between {} and {})",
+              error_context, i, j, prev_outputs[j].xpos, current_inputs[j].xpos,
+              CellString(prev_outputs[j].cell),
+              CellString(current_inputs[j].cell));
+        }
+        if (prev_outputs[j].type != current_inputs[j].type) {
+          return std::format(
+              "{}: Layer {} input {} type mismatch: expected {}, got {} "
+              "(between {} and {})",
+              error_context, i, j, TypeString(prev_outputs[j].type),
+              TypeString(current_inputs[j].type),
+              CellString(prev_outputs[j].cell),
+              CellString(current_inputs[j].cell));
+        }
       }
 
       if (prev_outputs.size() != current_inputs.size()) {
@@ -99,21 +112,31 @@ void DRC::CheckCircuit(const CellLibrary &library,
           extra = std::format(" (extra input to {})",
                               CellString(current_inputs[min_size].cell));
         }
-        CHECK(prev_outputs.size() == current_inputs.size())
-            << error_context << ": Layer " << i
-            << " input count mismatch: expected " << prev_outputs.size()
-            << ", got " << current_inputs.size() << extra;
+        return std::format(
+            "{}: Layer {} input count mismatch: expected {}, got {}{}",
+            error_context, i, prev_outputs.size(), current_inputs.size(),
+            extra);
       }
     }
 
     prev_outputs = std::move(current_outputs);
   }
+
+  return std::nullopt;
 }
 
-void DRC::CheckLayout(const CellLibrary &library,
-                      std::string_view error_context,
-                      const Layout &layout) {
+void DRC::CheckCircuit(const CellLibrary &library,
+                       std::string_view error_context,
+                       const Circuit &circuit) {
+  if (std::optional<std::string> err =
+          GetCircuitError(library, error_context, circuit)) {
+    CHECK(false) << err.value();
+  }
+}
 
+std::optional<std::string> DRC::GetLayoutError(const CellLibrary &library,
+                                               std::string_view error_context,
+                                               const Layout &layout) {
   std::vector<CType> first_layer_inputs;
   if (!layout.circuit.layers.empty()) {
     for (const Cell &cell : layout.circuit.layers.front()) {
@@ -124,19 +147,32 @@ void DRC::CheckLayout(const CellLibrary &library,
     }
   }
 
-  CHECK(layout.input_vars.size() == first_layer_inputs.size())
-      << error_context << ": input count mismatch: layout has "
-      << layout.input_vars.size() << " vars, but first layer has "
-      << first_layer_inputs.size() << " inputs";
-
-  for (size_t i = 0; i < layout.input_vars.size(); i++) {
-    CHECK(layout.input_vars[i].second == first_layer_inputs[i])
-        << error_context << ": input var " << i << " type mismatch: expected "
-        << TypeString(layout.input_vars[i].second) << ", got "
-        << TypeString(first_layer_inputs[i]);
+  if (layout.input_vars.size() != first_layer_inputs.size()) {
+    return std::format(
+        "{}: input count mismatch: layout has {} vars, but first layer has "
+        "{} inputs",
+        error_context, layout.input_vars.size(), first_layer_inputs.size());
   }
 
-  CheckCircuit(library, error_context, layout.circuit);
+  for (size_t i = 0; i < layout.input_vars.size(); i++) {
+    if (layout.input_vars[i].second != first_layer_inputs[i]) {
+      return std::format(
+          "{}: input var {} type mismatch: expected {}, got {}",
+          error_context, i, TypeString(layout.input_vars[i].second),
+          TypeString(first_layer_inputs[i]));
+    }
+  }
+
+  return GetCircuitError(library, error_context, layout.circuit);
+}
+
+void DRC::CheckLayout(const CellLibrary &library,
+                      std::string_view error_context,
+                      const Layout &layout) {
+  if (std::optional<std::string> err =
+          GetLayoutError(library, error_context, layout)) {
+    CHECK(false) << err.value();
+  }
 }
 
 void DRC::AssertEquivalentLayout(const CellLibrary &library,

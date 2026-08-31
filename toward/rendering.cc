@@ -25,7 +25,9 @@ class ImageRendering : public Rendering {
  public:
   explicit ImageRendering(std::string_view base_filename)
     : base_filename(base_filename),
-      background(IMAGE_WIDTH * RENDER_SCALE, IMAGE_HEIGHT * RENDER_SCALE) {}
+      background(IMAGE_WIDTH * RENDER_SCALE, IMAGE_HEIGHT * RENDER_SCALE) {
+    ClearBackground();
+  }
 
   void SetBackground(const ImageRGBA &img) override {
     background.Clear32(0x000000FF);

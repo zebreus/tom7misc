@@ -29,6 +29,7 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
   }
 
   result->line_height = ttf->NormLineHeight();
+  result->baseline_y = ttf->Baseline();
   result->scale = ttf->Scale();
 
   // Print("{} TTF Scale: {}\n", filename, result->scale);
@@ -41,7 +42,6 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
       // Space or missing character. We still want an entry for it.
       if (codepoint == ' ') {
         Letter letter;
-        letter.baseline_y = ttf->Baseline();
         letter.width = ttf->NormKernAdvance(codepoint, 0);
         result->letter[codepoint] = std::move(letter);
       }
@@ -100,7 +100,6 @@ std::unique_ptr<Letters> Letters::LoadFont(std::string_view filename,
     if (std::holds_alternative<Polygonization::Mesh>(poly_result)) {
       Letter letter;
       letter.mesh = std::get<Polygonization::Mesh>(std::move(poly_result));
-      letter.baseline_y = ttf->Baseline();
       letter.width = ttf->NormKernAdvance(codepoint, 0);
       result->letter[codepoint] = std::move(letter);
     } else {

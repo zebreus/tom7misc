@@ -2,12 +2,12 @@
 #ifndef _TOWARD_OPTIMIZATION_H
 #define _TOWARD_OPTIMIZATION_H
 
-#include <optional>
 #include <span>
 
-#include "circuit.h"
-#include "layout.h"
 #include "cell-library.h"
+#include "circuit.h"
+#include "dense-int-set.h"
+#include "layout.h"
 
 struct StatusBar;
 
@@ -61,23 +61,24 @@ struct Optimization {
       int start_chute,
       std::span<const int> deltas);
 
-  // Attempt to resolve a displacement applied to a "beam" of chutes
+  // Attempt to resolve a shift applied to a "beam" of chutes
   // by rewriting the network upward. A beam is a sequence of
   // contiguous chutes that can move rigidly together.
   //
   // Similar to ResolveDisplacementUpward, but allows the shifted
-  // section to choose a rigid displacement from the range
-  // [min_beam_disp, max_beam_disp].
+  // section to choose a rigid shift from the range
+  // [min_shift, max_shift].
   //
-  // Returns the chosen displacement for the beam, or std::nullopt
-  // if no valid configuration was found within the bounds.
-  static std::optional<int> ResolveBeamDisplacementUpward(
+  // Returns the subset of `shifts` that resulted in a
+  // valid configuration. Elements in the set are offset by
+  // `min_shift` (i.e. element `i` means `min_shift + i`).
+  static DenseIntSet ResolveBeamShiftUpward(
       const CellLibrary &library,
       std::span<Layer> network,
       int start_chute,
       std::span<const int> deltas,
-      int min_beam_disp,
-      int max_beam_disp);
+      int min_shift,
+      const DenseIntSet &shifts);
 
 };
 
