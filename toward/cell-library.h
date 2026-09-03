@@ -9,6 +9,7 @@
 
 #include "circuit.h"
 #include "level.h"
+#include "inline-vector.h"
 
 // Library of specific geometry implementing gates (circuit.h).
 
@@ -21,18 +22,21 @@ struct CellLibrary {
 
   struct IO {
     // Offset of the input/output pad within the cell.
-    int xblock = 0;
+    uint8_t xblock = 0;
     CType type = CType::MIXED;
   };
 
   struct Info {
     int block_width = 0;
 
-    std::vector<IO> inputs;
-    std::vector<IO> outputs;
+    InlineVector<IO> inputs;
+    InlineVector<IO> outputs;
   };
 
   Info GetInfo(const Cell &cell) const;
+  // Same as GetInfo(cell).block_width, but doesn't allocate the
+  // vectors; good for inner loops!
+  int GetWidth(const Cell &cell) const;
 
   static std::string InfoString(const Info &info);
 

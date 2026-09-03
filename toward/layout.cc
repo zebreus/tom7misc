@@ -2200,6 +2200,8 @@ std::optional<Layout> LayoutEngine::Parse(std::string_view content) {
     content = uncomp;
   }
 
+  Util::RemoveOuterWhitespace(&content);
+
   size_t pos = content.find('\n');
   if (pos == std::string_view::npos) {
     return std::nullopt;

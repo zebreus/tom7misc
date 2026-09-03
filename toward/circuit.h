@@ -26,7 +26,7 @@
 // have a pair of outputs (ZERO, ONE) for a proposition
 // when working with separated values.
 
-enum class CType {
+enum class CType : uint8_t {
   ZERO,
   ONE,
   MIXED,

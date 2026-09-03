@@ -3,6 +3,7 @@
 #define _TOWARD_OPTIMIZATION_H
 
 #include <span>
+#include <string>
 
 #include "cell-library.h"
 #include "circuit.h"
@@ -20,6 +21,8 @@ struct Optimization {
   static Layout Optimize(const CellLibrary &library,
                          const Layout &layout,
                          StatusBar *status = nullptr);
+
+  static std::string DebugCounters();
 
   // Attempt to resolve a horizontal displacement of output chutes by
   // rewriting the network upward.

@@ -116,8 +116,8 @@ struct CellLibraryImpl {
   struct InternalInfo {
     int block_width = 0;
 
-    std::vector<CellLibrary::IO> inputs;
-    std::vector<CellLibrary::IO> outputs;
+    InlineVector<CellLibrary::IO> inputs;
+    InlineVector<CellLibrary::IO> outputs;
 
     std::unique_ptr<Level> level;
   };
@@ -342,6 +342,22 @@ struct CellLibraryImpl {
     min_clearance_far = max_far;
   }
 
+  int GetWidth(const Cell &cell) const {
+    if (cell.gate == Gate::SPACER) {
+      CHECK(cell.v > 0) << "Spacers must be positive width: "
+                        << CellString(cell);
+      return cell.v;
+    }
+
+    Cell base = cell;
+    base.flip = false;
+    auto it = info.find(base);
+    CHECK(it != info.end()) << "Cell not found in library: "
+                            << CellString(cell) << " (via "
+                            << CellString(base) << ")";
+
+    return it->second.block_width;
+  }
 
   CellLibrary::Info GetInfo(const Cell &cell) const {
     if (cell.gate == Gate::SPACER) {
@@ -441,6 +457,10 @@ Cell CellLibrary::Wire(int k, Bias b, CType t) {
 CellLibrary::CellLibrary() : impl(new CellLibraryImpl) {}
 
 CellLibrary::~CellLibrary() {}
+
+int CellLibrary::GetWidth(const Cell &cell) const {
+  return impl->GetWidth(cell);
+}
 
 CellLibrary::Info CellLibrary::GetInfo(const Cell &cell) const {
   return impl->GetInfo(cell);

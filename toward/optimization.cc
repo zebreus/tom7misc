@@ -8,12 +8,14 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "cell-library.h"
 #include "circuit.h"
 #include "dense-int-set.h"
@@ -23,6 +25,19 @@
 #include "status-bar.h"
 #include "timer.h"
 #include "vector-util.h"
+
+#include "atomic-util.h"
+
+DECLARE_COUNTERS(ctr_beamshiftdown,
+                 ctr_beamshiftup,
+                 ctr_resolve_up,
+                 ctr_resolve_down,
+                 ctr_move_up,
+                 ctr_straighten_indiv,
+                 ctr_dp_cells_up,
+                 ctr_dp_cells_down);
+
+static constexpr bool COUNT = true;
 
 // Concepts needed for layout optimization (from other files):
 //
@@ -46,7 +61,7 @@
 // - `IsWire(Gate)` tells if a gate is a wire.
 // - `GateArity(Gate)` returns a pair of (num_inputs, num_outputs).
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 
 #define TALLY_WIRES 1
 
@@ -158,7 +173,8 @@ MakeWindowedStrandsUpward(const CellLibrary &library,
 
     for (size_t k = 0; k < layer.size(); ++k) {
       curr_x += layer[k].left_space;
-      int num_out = library.GetInfo(layer[k].cell).outputs.size();
+      CellLibrary::Info info = library.GetInfo(layer[k].cell);
+      int num_out = info.outputs.size();
 
       // If a cell has multiple outputs and overlaps the window boundary, the
       // entire cell is included in the strand, and the chute window expands
@@ -177,7 +193,7 @@ MakeWindowedStrandsUpward(const CellLibrary &library,
         last_idx = k;
       }
       out_chute_idx += num_out;
-      curr_x += library.GetInfo(layer[k].cell).block_width;
+      curr_x += info.block_width;
     }
 
     if (first_idx != -1) {
@@ -198,7 +214,7 @@ MakeWindowedStrandsUpward(const CellLibrary &library,
         int obs_x = 0;
         for (int k = 0; k < first_idx; ++k) {
           obs_x += layer[k].left_space;
-          obs_x += library.GetInfo(layer[k].cell).block_width;
+          obs_x += library.GetWidth(layer[k].cell);
         }
         left_obs = obs_x;
       }
@@ -209,7 +225,7 @@ MakeWindowedStrandsUpward(const CellLibrary &library,
         for (int k = 0; k <= last_idx + 1; ++k) {
           obs_x += layer[k].left_space;
           if (k <= last_idx) {
-            obs_x += library.GetInfo(layer[k].cell).block_width;
+            obs_x += library.GetWidth(layer[k].cell);
           }
         }
         right_obs = obs_x;
@@ -267,7 +283,8 @@ MakeWindowedStrandsDownward(const CellLibrary &library,
 
     for (size_t k = 0; k < layer.size(); ++k) {
       curr_x += layer[k].left_space;
-      int num_in = library.GetInfo(layer[k].cell).inputs.size();
+      CellLibrary::Info info = library.GetInfo(layer[k].cell);
+      int num_in = info.inputs.size();
 
       bool overlap = !(in_chute_idx + num_in <= target_start ||
                        in_chute_idx >= target_end);
@@ -280,7 +297,7 @@ MakeWindowedStrandsDownward(const CellLibrary &library,
         last_idx = k;
       }
       in_chute_idx += num_in;
-      curr_x += library.GetInfo(layer[k].cell).block_width;
+      curr_x += info.block_width;
     }
 
     if (first_idx != -1) {
@@ -301,7 +318,7 @@ MakeWindowedStrandsDownward(const CellLibrary &library,
         int obs_x = 0;
         for (int k = 0; k < first_idx; ++k) {
           obs_x += layer[k].left_space;
-          obs_x += library.GetInfo(layer[k].cell).block_width;
+          obs_x += library.GetWidth(layer[k].cell);
         }
         left_obs = obs_x;
       }
@@ -312,7 +329,7 @@ MakeWindowedStrandsDownward(const CellLibrary &library,
         for (int k = 0; k <= last_idx + 1; ++k) {
           obs_x += layer[k].left_space;
           if (k <= last_idx) {
-            obs_x += library.GetInfo(layer[k].cell).block_width;
+            obs_x += library.GetWidth(layer[k].cell);
           }
         }
         right_obs = obs_x;
@@ -364,7 +381,7 @@ ReintegrateWindowedStrands(const CellLibrary &library,
     for (int k = 0; k < first_idx; ++k) {
       new_layer.push_back(network[i][k]);
       curr_x += network[i][k].left_space;
-      curr_x += library.GetInfo(network[i][k].cell).block_width;
+      curr_x += library.GetWidth(network[i][k].cell);
     }
 
     for (size_t k = 0; k < resolved[i].size(); ++k) {
@@ -374,7 +391,7 @@ ReintegrateWindowedStrands(const CellLibrary &library,
       }
       new_layer.push_back(nc);
       curr_x += nc.left_space;
-      curr_x += library.GetInfo(nc.cell).block_width;
+      curr_x += library.GetWidth(nc.cell);
     }
 
     if (last_idx + 1 < (int)network[i].size()) {
@@ -396,14 +413,16 @@ static std::optional<std::vector<std::vector<NC>>>
 ResolveDisplacementUpwardStrand(const CellLibrary &library,
                                 std::span<const LayerStrand> strand_network,
                                 int start_chute_relative,
-                                std::span<const int> deltas, bool top_can_move);
+                                std::span<const int> deltas, bool top_can_move,
+                                bool build_result = true);
 
 static std::optional<std::vector<std::vector<NC>>>
 ResolveDisplacementDownwardStrand(const CellLibrary &library,
                                   std::span<const LayerStrand> strand_network,
                                   int start_chute_relative,
                                   std::span<const int> deltas,
-                                  bool bottom_can_move);
+                                  bool bottom_can_move,
+                                  bool build_result = true);
 
 static DenseIntSet ResolveBeamShiftUpwardStrand(
     const CellLibrary &library, std::span<const LayerStrand> strand_network,
@@ -472,13 +491,14 @@ struct Optimizer {
   // MoveCellsUp attempts to move a non-wire cell from layer i+1 up into
   // layer i.
   bool MoveCellsUp(int i) {
+    if (COUNT) ctr_move_up++;
     auto GetXCoords = [&](int layer_idx) {
       std::vector<int> x_coords(layers[layer_idx].size());
       int curr_x = 0;
       for (size_t k = 0; k < layers[layer_idx].size(); k++) {
         curr_x += layers[layer_idx][k].left_space;
         x_coords[k] = curr_x;
-        curr_x += library.GetInfo(layers[layer_idx][k].cell).block_width;
+        curr_x += library.GetWidth(layers[layer_idx][k].cell);
       }
       return x_coords;
     };
@@ -567,9 +587,8 @@ struct Optimizer {
         bool fit_wires = true;
         int curr_left_limit = -1000000000;
         if (idx > 0) {
-          CellLibrary::Info prev_info =
-              library.GetInfo(layers[i + 1][idx - 1].cell);
-          curr_left_limit = l_i_plus_1_x[idx - 1] + prev_info.block_width;
+          curr_left_limit = l_i_plus_1_x[idx - 1] +
+                            library.GetWidth(layers[i + 1][idx - 1].cell);
         }
 
         for (size_t j = 0; j < info_c.outputs.size(); j++) {
@@ -622,9 +641,8 @@ struct Optimizer {
         int c_end = c_x + info_c.block_width;
         int left_limit_i = -1000000000;
         if (layer_i_start_idx > 0) {
-          CellLibrary::Info prev_info =
-              library.GetInfo(layers[i][layer_i_start_idx - 1].cell);
-          left_limit_i = l_i_x[layer_i_start_idx - 1] + prev_info.block_width;
+          left_limit_i = l_i_x[layer_i_start_idx - 1] +
+                         library.GetWidth(layers[i][layer_i_start_idx - 1].cell);
         }
         if (c_x < left_limit_i)
           continue;
@@ -674,25 +692,57 @@ struct Optimizer {
         int min_shift = left_limit_i - c_x;
         int max_shift = right_limit_i - c_end;
 
-        // Clamp the shift range to prevent exploring an enormous search space
-        // when the boundaries are effectively unbounded (-1B to +1B).
-        // Shifts larger than this are impossible to resolve anyway due to
-        // maximum wire sizes, so it's safe to prune them.
-        min_shift = std::max(min_shift, -max_possible_shift);
-        max_shift = std::min(max_shift, max_possible_shift);
+        int end_layer = std::min((int)layers.size(), i + 1 + MAX_WINDOW_HEIGHT);
+
+        // Clamp the shift range to prevent exploring an enormous search space.
+        // We can tightly bound the search by the number of layers available
+        // to absorb the required shifts.
+        int max_shift_up = max_possible_shift;
+        if (start_layer > 0) max_shift_up = max_wire * (i - start_layer);
+        int max_shift_down = max_possible_shift;
+        if (end_layer < (int)layers.size())
+          max_shift_down = max_wire * (end_layer - (i + 1));
+
+        int prune_min = -max_shift_down;
+        int prune_max = max_shift_down;
+        for (int d : deltas) {
+          prune_min = std::max(prune_min, -max_shift_up - d);
+          prune_max = std::min(prune_max, max_shift_up - d);
+        }
+
+        min_shift = std::max(min_shift, prune_min);
+        max_shift = std::min(max_shift, prune_max);
 
         if (min_shift > max_shift)
           continue;
+
+        // We don't want to try thousands of shifts; this is heuristic
+        // to try to cover the space sparsely.
+        DenseIntSet shifts_to_try(max_shift - min_shift + 1);
+        auto TryAdd = [&](int s) {
+            if (s >= min_shift && s <= max_shift) {
+              shifts_to_try.Add(s - min_shift);
+            }
+          };
+        TryAdd(-1);
+        TryAdd(0);
+        TryAdd(1);
+        TryAdd(left_limit_i - c_x);
+        TryAdd(right_limit_i - c_end);
+        TryAdd(min_shift);
+        TryAdd(max_shift);
+        for (int s = 0; s <= max_shift; s += max_wire) TryAdd(s);
+        for (int s = 0; s >= min_shift; s -= max_wire) TryAdd(s);
+
         std::vector<LayerStrand> strands = MakeWindowedStrandsUpward(
             library, network, in_chute_start_layer_i, deltas.size());
         DenseIntSet valid_shifts = ResolveBeamShiftUpwardStrand(
             library, strands, in_chute_start_layer_i, deltas, min_shift,
-            DenseIntSet::Top(max_shift - min_shift + 1), start_layer == 0);
+            shifts_to_try, start_layer == 0);
 
-        int end_layer = std::min((int)layers.size(), i + 1 + MAX_WINDOW_HEIGHT);
         std::span<std::vector<NC>> down_network(layers.data() + i + 1,
                                                 end_layer - (i + 1));
-        std::vector<int> down_deltas_base(info_c.outputs.size(), 0);
+        std::vector<int> down_deltas_base(info_c.inputs.size(), 0);
 
         std::vector<LayerStrand> down_strands = MakeWindowedStrandsDownward(
             library, down_network, in_chute_start, down_deltas_base.size());
@@ -871,6 +921,7 @@ struct Optimizer {
   }
 
   StraightenResult StraightenIndividualWires(int i) {
+    if (COUNT) ctr_straighten_indiv++;
     bool changed = false;
     bool local_changed;
     do {
@@ -882,7 +933,7 @@ struct Optimizer {
       for (size_t k = 0; k < layers[i].size(); k++) {
         curr_x += layers[i][k].left_space;
         x_coords[k] = curr_x;
-        curr_x += library.GetInfo(layers[i][k].cell).block_width;
+        curr_x += library.GetWidth(layers[i][k].cell);
       }
 
       // Try to straighten all non-straight wires simultaneously.
@@ -927,7 +978,7 @@ struct Optimizer {
       if (any_wants_straighten) {
         bool overlap = false;
         for (size_t k = 0; k + 1 < layers[i].size(); k++) {
-          int right_edge = new_x[k] + library.GetInfo(new_cells[k]).block_width;
+          int right_edge = new_x[k] + library.GetWidth(new_cells[k]);
           if (right_edge > new_x[k + 1]) {
             overlap = true;
             break;
@@ -953,7 +1004,7 @@ struct Optimizer {
                 left_space = new_x[k];
               } else {
                 int prev_right = new_x[k - 1] +
-                                 library.GetInfo(new_cells[k - 1]).block_width;
+                                 library.GetWidth(new_cells[k - 1]);
                 left_space = new_x[k] - prev_right;
               }
               new_layer_i.push_back(NC{
@@ -1005,9 +1056,8 @@ struct Optimizer {
 
               int left_limit = -1000000000;
               if (k > 0) {
-                CellLibrary::Info prev_info =
-                    library.GetInfo(layers[i][k - 1].cell);
-                left_limit = x_coords[k - 1] + prev_info.block_width;
+                left_limit = x_coords[k - 1] +
+                             library.GetWidth(layers[i][k - 1].cell);
               }
 
               int right_limit = 1000000000;
@@ -1075,6 +1125,11 @@ struct Optimizer {
   }
 
   StraightenResult StraightenWires(int i) {
+    // We cannot delete the last remaining layer of the circuit.
+    if (layers.size() <= 1) {
+      return StraightenIndividualWires(i);
+    }
+
     // Only attempt this on layers that are already all wires.
     for (const NC &nc : layers[i]) {
       if (!IsWire(nc.cell.gate)) {
@@ -1153,11 +1208,13 @@ struct Optimizer {
   void RemovePassthroughLayers() {
     std::vector<std::vector<NC>> trimmed;
 
-    for (std::vector<NC> &layer : layers) {
-      if (IsPassthrough(layer)) {
+    for (size_t i = 0; i < layers.size(); ++i) {
+      // Leave at least one layer if the entire circuit is passthrough.
+      if (IsPassthrough(layers[i]) &&
+          (trimmed.size() > 0 || i + 1 < layers.size())) {
         improve_count++;
       } else {
-        trimmed.emplace_back(std::move(layer));
+        trimmed.emplace_back(std::move(layers[i]));
       }
     }
 
@@ -1173,11 +1230,8 @@ struct Optimizer {
                      layers_removed, cells_moved,
                      ANSI::Time(run_timer.Seconds()));
     }
-  }
-
-  void Run() {
+  }  void Run() {
     do {
-
       run_iter++;
       if (VERBOSE > 0)
         Print("Run pass {}\n", run_iter);
@@ -1194,7 +1248,10 @@ struct Optimizer {
 
       if (SELF_CHECK) {
         Layout l = Get();
-        DRC::CheckLayout(library, std::format("Run pass {} MoveCellsUpPass", run_iter), l);
+        std::optional<std::string> err =
+          DRC::GetLayoutError(library, "MCUP", l);
+        CHECK(!err.has_value()) << "Failed on run_iter " << run_iter <<
+          " after MoveCellsUpPass:\n" << err.value();
       }
 
       // Try to straighten wires to reduce the overall absolute
@@ -1204,7 +1261,15 @@ struct Optimizer {
 
       if (SELF_CHECK) {
         Layout l = Get();
-        DRC::CheckLayout(library, std::format("Run pass {} StraightenWiresPass", run_iter), l);
+        std::optional<std::string> err =
+          DRC::GetLayoutError(library, "SWP", l);
+        if (err.has_value()) {
+          if (CircuitSize(l.circuit) < 128) {
+            Print("Layout:\n{}\n\n", LayoutEngine::ToString(l));
+          }
+          LOG(FATAL) << "Failed on run_iter " << run_iter <<
+            "after StraightenWiresPass:\n" << err.value();
+        }
       }
 
     } while (improve_count > 0);
@@ -1231,7 +1296,7 @@ struct Optimizer {
         if (curr_x < min_x) {
           min_x = curr_x;
         }
-        curr_x += library.GetInfo(nc.cell).block_width;
+        curr_x += library.GetWidth(nc.cell);
       }
     }
 
@@ -1250,6 +1315,18 @@ struct Optimizer {
 
 Layout Optimization::Optimize(const CellLibrary &library, const Layout &layout,
                               StatusBar *status) {
+
+#define RESET(ctr) (ctr).Reset()
+  RESET(ctr_beamshiftdown);
+  RESET(ctr_beamshiftup);
+  RESET(ctr_resolve_up);
+  RESET(ctr_resolve_down);
+  RESET(ctr_move_up);
+  RESET(ctr_straighten_indiv);
+  RESET(ctr_dp_cells_up);
+  RESET(ctr_dp_cells_down);
+#undef RESET
+
   Optimizer optimizer(library, layout, status);
   optimizer.Run();
   Layout result = optimizer.Get();
@@ -1288,34 +1365,31 @@ ResolveDisplacementUpwardStrand(
     std::span<const LayerStrand> strand_network,
     int start_chute_relative,
     std::span<const int> deltas,
-    bool top_can_move) {
+    bool top_can_move,
+    bool build_result) {
+
+  if (COUNT) ctr_resolve_up++;
 
   if (strand_network.empty())
     return std::vector<std::vector<NC>>();
 
-  std::vector<std::vector<NC>> new_network(strand_network.size());
+  std::vector<std::vector<NC>> new_network;
+  if (build_result) new_network.resize(strand_network.size());
 
   int current_deltas_start = start_chute_relative;
   std::vector<int> current_deltas(deltas.begin(), deltas.end());
+
+  static constexpr int max_wire =
+      *std::max_element(CellLibrary::WIRE_SIZES.begin(),
+                        CellLibrary::WIRE_SIZES.end());
 
   for (int layer_idx = (int)strand_network.size() - 1; layer_idx >= 0;
        layer_idx--) {
     const LayerStrand &strand = strand_network[layer_idx];
 
-    std::vector<Cell> orig_cells;
-    std::vector<int> orig_x;
-    int curr_x = strand.start_x;
-    for (size_t i = 0; i < strand.cells.size(); ++i) {
-      if (i > 0)
-        curr_x += strand.cells[i].left_space;
-      orig_cells.push_back(strand.cells[i].cell);
-      orig_x.push_back(curr_x);
-      curr_x += library.GetInfo(strand.cells[i].cell).block_width;
-    }
-
-    int num_cells = orig_cells.size();
+    int num_cells = strand.cells.size();
     if (num_cells == 0) {
-      new_network[layer_idx] = {};
+      if (build_result) new_network[layer_idx] = {};
       continue;
     }
 
@@ -1325,7 +1399,7 @@ ResolveDisplacementUpwardStrand(
       int x_pos = 0;      // Absolute X coordinate.
       int right_edge = 0; // Absolute X coordinate of the right edge.
       // Displacements required from the inputs feeding this cell.
-      std::vector<int> in_deltas;
+      int in_delta = 0;
       // Index of the best valid config for the previous (leftwards) cell.
       int prev_config_idx = -1;
       int64_t total_cost = 0;
@@ -1333,14 +1407,16 @@ ResolveDisplacementUpwardStrand(
 
     std::vector<std::vector<Config>> dp(num_cells);
     int out_chute_idx = 0;
+    int curr_orig_x = strand.start_x;
 
     for (int i = 0; i < num_cells; ++i) {
-      const Cell &old_cell = orig_cells[i];
+      if (i > 0) curr_orig_x += strand.cells[i].left_space;
+      const Cell &old_cell = strand.cells[i].cell;
       CellLibrary::Info old_info = library.GetInfo(old_cell);
       int num_outputs = old_info.outputs.size();
-      int num_inputs = old_info.inputs.size();
 
-      std::vector<int> cell_out_deltas;
+      bool equal = true;
+      int first_d = 0;
       for (int k = 0; k < num_outputs; ++k) {
         int global_idx = strand.out_chute_start + out_chute_idx + k;
         int d = 0;
@@ -1348,16 +1424,22 @@ ResolveDisplacementUpwardStrand(
             global_idx < current_deltas_start + (int)current_deltas.size()) {
           d = current_deltas[global_idx - current_deltas_start];
         }
-        cell_out_deltas.push_back(d);
+        if (k == 0) {
+          first_d = d;
+        } else if (d != first_d) {
+          equal = false;
+        }
       }
 
       auto AddConfig = [&](const Cell &w, int x_pos,
-                           const std::vector<int> &in_deltas, int64_t cost) {
+                           int in_delta, int64_t cost) {
+        if (!top_can_move && std::abs(in_delta) > max_wire * layer_idx)
+          return;
         Config cfg;
         cfg.cell = w;
         cfg.x_pos = x_pos;
-        cfg.right_edge = x_pos + library.GetInfo(w).block_width;
-        cfg.in_deltas = in_deltas;
+        cfg.right_edge = x_pos + library.GetWidth(w);
+        cfg.in_delta = in_delta;
         cfg.total_cost = cost;
         if (i == 0 && cfg.x_pos < strand.left_obstacle_x)
           return;
@@ -1367,21 +1449,14 @@ ResolveDisplacementUpwardStrand(
       };
 
       if (!IsWire(old_cell.gate)) {
-        bool equal = true;
-        int d = cell_out_deltas.empty() ? 0 : cell_out_deltas[0];
-        for (int cd : cell_out_deltas) {
-          if (cd != d)
-            equal = false;
-        }
         if (equal) {
-          int x_pos = orig_x[i] + d;
-          std::vector<int> in_deltas(num_inputs, d);
-          AddConfig(old_cell, x_pos, in_deltas, 0);
+          int x_pos = curr_orig_x + first_d;
+          AddConfig(old_cell, x_pos, first_d, 0);
         }
       } else {
-        int d = cell_out_deltas[0];
-        int req_out_x = orig_x[i] + old_info.outputs[0].xblock + d;
-        int old_in_x = orig_x[i] + old_info.inputs[0].xblock;
+        int d = first_d;
+        int req_out_x = curr_orig_x + old_info.outputs[0].xblock + d;
+        int old_in_x = curr_orig_x + old_info.inputs[0].xblock;
 
         CType type = GetWireType(old_cell.gate);
         int target_disp = req_out_x - old_in_x;
@@ -1421,10 +1496,14 @@ ResolveDisplacementUpwardStrand(
           int x_pos = req_out_x - w_info.outputs[0].xblock;
           int in_x = x_pos + w_info.inputs[0].xblock;
           int in_delta = in_x - old_in_x;
-          std::vector<int> in_deltas(num_inputs, in_delta);
-          AddConfig(w, x_pos, in_deltas, std::abs(in_delta));
+          AddConfig(w, x_pos, in_delta, std::abs(in_delta));
         }
       }
+
+      out_chute_idx += num_outputs;
+      curr_orig_x += old_info.block_width;
+
+      if (COUNT) ctr_dp_cells_up += dp[i].size();
 
       if (dp[i].empty())
         return std::nullopt;
@@ -1453,8 +1532,6 @@ ResolveDisplacementUpwardStrand(
         if (dp[i].empty())
           return std::nullopt;
       }
-
-      out_chute_idx += num_outputs;
     }
 
     int best_last_idx = -1;
@@ -1478,23 +1555,27 @@ ResolveDisplacementUpwardStrand(
     }
 
     std::vector<NC> new_layer;
+    if (build_result) new_layer.reserve(num_cells);
     std::vector<int> next_deltas;
     int current_x = 0;
     for (int i = 0; i < num_cells; ++i) {
       const Config &cfg = selected[i];
-      int space = cfg.x_pos - current_x;
-      new_layer.push_back(NC{
-          .left_space = space,
-          .cell = cfg.cell,
-      });
+      if (build_result) {
+        int space = cfg.x_pos - current_x;
+        new_layer.push_back(NC{
+            .left_space = space,
+            .cell = cfg.cell,
+        });
+      }
       current_x = cfg.right_edge;
 
-      for (int d : cfg.in_deltas) {
-        next_deltas.push_back(d);
+      int num_inputs = library.GetInfo(cfg.cell).inputs.size();
+      for (int k = 0; k < num_inputs; ++k) {
+        next_deltas.push_back(cfg.in_delta);
       }
     }
 
-    new_network[layer_idx] = std::move(new_layer);
+    if (build_result) new_network[layer_idx] = std::move(new_layer);
     current_deltas = std::move(next_deltas);
     current_deltas_start = strand.in_chute_start;
   }
@@ -1518,33 +1599,30 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
                                   std::span<const LayerStrand> strand_network,
                                   int start_chute_relative,
                                   std::span<const int> deltas,
-                                  bool bottom_can_move) {
+                                  bool bottom_can_move,
+                                  bool build_result) {
+
+  if (COUNT) ctr_resolve_down++;
 
   if (strand_network.empty())
     return std::vector<std::vector<NC>>();
 
-  std::vector<std::vector<NC>> new_network(strand_network.size());
+  std::vector<std::vector<NC>> new_network;
+  if (build_result) new_network.resize(strand_network.size());
 
   int current_deltas_start = start_chute_relative;
   std::vector<int> current_deltas(deltas.begin(), deltas.end());
 
+  static constexpr int max_wire =
+      *std::max_element(CellLibrary::WIRE_SIZES.begin(),
+                        CellLibrary::WIRE_SIZES.end());
+
   for (int layer_idx = 0; layer_idx < (int)strand_network.size(); ++layer_idx) {
     const LayerStrand &strand = strand_network[layer_idx];
 
-    std::vector<Cell> orig_cells;
-    std::vector<int> orig_x;
-    int curr_x = strand.start_x;
-    for (size_t i = 0; i < strand.cells.size(); ++i) {
-      if (i > 0)
-        curr_x += strand.cells[i].left_space;
-      orig_cells.push_back(strand.cells[i].cell);
-      orig_x.push_back(curr_x);
-      curr_x += library.GetInfo(strand.cells[i].cell).block_width;
-    }
-
-    int num_cells = orig_cells.size();
+    int num_cells = strand.cells.size();
     if (num_cells == 0) {
-      new_network[layer_idx] = {};
+      if (build_result) new_network[layer_idx] = {};
       continue;
     }
 
@@ -1552,21 +1630,23 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
       Cell cell = Cell(Gate::CONST0);
       int x_pos = 0;
       int right_edge = 0;
-      std::vector<int> out_deltas;
+      int out_delta = 0;
       int prev_config_idx = -1;
       int64_t total_cost = 0;
     };
 
     std::vector<std::vector<Config>> dp(num_cells);
     int in_chute_idx = 0;
+    int curr_orig_x = strand.start_x;
 
     for (int i = 0; i < num_cells; ++i) {
-      const Cell &old_cell = orig_cells[i];
+      if (i > 0) curr_orig_x += strand.cells[i].left_space;
+      const Cell &old_cell = strand.cells[i].cell;
       CellLibrary::Info old_info = library.GetInfo(old_cell);
-      int num_outputs = old_info.outputs.size();
       int num_inputs = old_info.inputs.size();
 
-      std::vector<int> cell_in_deltas;
+      bool equal = true;
+      int first_d = 0;
       for (int k = 0; k < num_inputs; ++k) {
         int global_idx = strand.in_chute_start + in_chute_idx + k;
         int d = 0;
@@ -1574,16 +1654,25 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
             global_idx < current_deltas_start + (int)current_deltas.size()) {
           d = current_deltas[global_idx - current_deltas_start];
         }
-        cell_in_deltas.push_back(d);
+        if (k == 0) {
+          first_d = d;
+        } else if (d != first_d) {
+          equal = false;
+        }
       }
 
       auto AddConfig = [&](const Cell &w, int x_pos,
-                           const std::vector<int> &out_deltas, int64_t cost) {
+                           int out_delta, int64_t cost) {
+        if (!bottom_can_move) {
+          int layers_left = (int)strand_network.size() - 1 - layer_idx;
+          if (std::abs(out_delta) > max_wire * layers_left)
+            return;
+        }
         Config cfg;
         cfg.cell = w;
         cfg.x_pos = x_pos;
-        cfg.right_edge = x_pos + library.GetInfo(w).block_width;
-        cfg.out_deltas = out_deltas;
+        cfg.right_edge = x_pos + library.GetWidth(w);
+        cfg.out_delta = out_delta;
         cfg.total_cost = cost;
         if (i == 0 && cfg.x_pos < strand.left_obstacle_x)
           return;
@@ -1593,21 +1682,14 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
       };
 
       if (!IsWire(old_cell.gate)) {
-        bool equal = true;
-        int d = cell_in_deltas.empty() ? 0 : cell_in_deltas[0];
-        for (int cd : cell_in_deltas) {
-          if (cd != d)
-            equal = false;
-        }
         if (equal) {
-          int x_pos = orig_x[i] + d;
-          std::vector<int> out_deltas(num_outputs, d);
-          AddConfig(old_cell, x_pos, out_deltas, 0);
+          int x_pos = curr_orig_x + first_d;
+          AddConfig(old_cell, x_pos, first_d, 0);
         }
       } else {
-        int d = cell_in_deltas[0];
-        int req_in_x = orig_x[i] + old_info.inputs[0].xblock + d;
-        int old_out_x = orig_x[i] + old_info.outputs[0].xblock;
+        int d = first_d;
+        int req_in_x = curr_orig_x + old_info.inputs[0].xblock + d;
+        int old_out_x = curr_orig_x + old_info.outputs[0].xblock;
 
         CType type = GetWireType(old_cell.gate);
         int target_disp = old_out_x - req_in_x;
@@ -1647,10 +1729,14 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
           int x_pos = req_in_x - w_info.inputs[0].xblock;
           int out_x = x_pos + w_info.outputs[0].xblock;
           int out_delta = out_x - old_out_x;
-          std::vector<int> out_deltas(num_outputs, out_delta);
-          AddConfig(w, x_pos, out_deltas, std::abs(out_delta));
+          AddConfig(w, x_pos, out_delta, std::abs(out_delta));
         }
       }
+
+      in_chute_idx += num_inputs;
+      curr_orig_x += old_info.block_width;
+
+      if (COUNT) ctr_dp_cells_down += dp[i].size();
 
       if (dp[i].empty())
         return std::nullopt;
@@ -1679,7 +1765,6 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
         if (dp[i].empty())
           return std::nullopt;
       }
-      in_chute_idx += num_inputs;
     }
 
     int best_last_idx = -1;
@@ -1703,22 +1788,27 @@ ResolveDisplacementDownwardStrand(const CellLibrary &library,
     }
 
     std::vector<NC> new_layer;
+    if (build_result) new_layer.reserve(num_cells);
     std::vector<int> next_deltas;
     int current_x = 0;
     for (int i = 0; i < num_cells; ++i) {
       const Config &cfg = selected[i];
-      int space = cfg.x_pos - current_x;
-      new_layer.push_back(NC{
-          .left_space = space,
-          .cell = cfg.cell,
-      });
+      if (build_result) {
+        int space = cfg.x_pos - current_x;
+        new_layer.push_back(NC{
+            .left_space = space,
+            .cell = cfg.cell,
+        });
+      }
       current_x = cfg.right_edge;
-      for (int d : cfg.out_deltas) {
-        next_deltas.push_back(d);
+
+      int num_outputs = library.GetInfo(cfg.cell).outputs.size();
+      for (int k = 0; k < num_outputs; ++k) {
+        next_deltas.push_back(cfg.out_delta);
       }
     }
 
-    new_network[layer_idx] = std::move(new_layer);
+    if (build_result) new_network[layer_idx] = std::move(new_layer);
     current_deltas = std::move(next_deltas);
     current_deltas_start = strand.out_chute_start;
   }
@@ -1744,17 +1834,34 @@ static DenseIntSet ResolveBeamShiftUpwardStrand(
     const DenseIntSet &shifts, bool top_can_move) {
 
   DenseIntSet valid_shifts(shifts.Radix());
+  static constexpr int max_wire =
+      *std::max_element(CellLibrary::WIRE_SIZES.begin(),
+                        CellLibrary::WIRE_SIZES.end());
+  int max_start_delta = max_wire * (int)strand_network.size();
 
   for (int bit : shifts) {
+    if (COUNT) ctr_beamshiftup++;
     int s = min_shift + bit;
+
+    bool possible = true;
+    if (!top_can_move) {
+      for (int d : deltas) {
+        if (std::abs(d + s) > max_start_delta) {
+          possible = false;
+          break;
+        }
+      }
+    }
+    if (!possible) continue;
 
     std::vector<int> current_deltas(deltas.begin(), deltas.end());
     for (int &d : current_deltas) {
       d += s;
     }
 
-    auto resolved = ResolveDisplacementUpwardStrand(
-        library, strand_network, start_chute, current_deltas, top_can_move);
+    auto resolved =
+        ResolveDisplacementUpwardStrand(library, strand_network, start_chute,
+                                        current_deltas, top_can_move, false);
 
     if (resolved.has_value()) {
       valid_shifts.Add(bit);
@@ -1770,9 +1877,27 @@ static DenseIntSet ResolveBeamShiftDownwardStrand(
     const DenseIntSet &shifts, bool bottom_can_move) {
 
   DenseIntSet valid_shifts(shifts.Radix());
+  static constexpr int max_wire =
+      *std::max_element(CellLibrary::WIRE_SIZES.begin(),
+                        CellLibrary::WIRE_SIZES.end());
+  int max_start_delta = max_wire * (int)strand_network.size();
 
   for (int bit : shifts) {
+    if (COUNT) {
+      ctr_beamshiftdown++;
+    }
     int s = min_shift + bit;
+
+    bool possible = true;
+    if (!bottom_can_move) {
+      for (int d : deltas) {
+        if (std::abs(d + s) > max_start_delta) {
+          possible = false;
+          break;
+        }
+      }
+    }
+    if (!possible) continue;
 
     std::vector<int> current_deltas(deltas.begin(), deltas.end());
     for (int &d : current_deltas) {
@@ -1780,7 +1905,8 @@ static DenseIntSet ResolveBeamShiftDownwardStrand(
     }
 
     auto resolved = ResolveDisplacementDownwardStrand(
-        library, strand_network, start_chute, current_deltas, bottom_can_move);
+        library, strand_network, start_chute, current_deltas, bottom_can_move,
+        false);
 
     if (resolved.has_value()) {
       valid_shifts.Add(bit);
@@ -1840,7 +1966,7 @@ bool Optimization::ResolveDisplacementUpward(const CellLibrary &library,
         if (curr_x < min_x) {
           min_x = curr_x;
         }
-        curr_x += library.GetInfo(nc.cell).block_width;
+        curr_x += library.GetWidth(nc.cell);
       }
     }
     for (size_t i = 0; i < sub_network.size(); ++i) {
@@ -1893,7 +2019,7 @@ bool Optimization::ResolveDisplacementDownward(const CellLibrary &library,
         if (curr_x < min_x) {
           min_x = curr_x;
         }
-        curr_x += library.GetInfo(nc.cell).block_width;
+        curr_x += library.GetWidth(nc.cell);
       }
     }
     for (size_t i = 0; i < sub_network.size(); ++i) {
@@ -1913,4 +2039,23 @@ bool Optimization::ResolveDisplacementDownward(const CellLibrary &library,
   }
 
   return success;
+}
+
+
+std::string Optimization::DebugCounters() {
+  std::string ret = "Counters:\n";
+  #define OUT(ctr) AppendFormat(&ret, #ctr ": {}\n", (ctr).Read())
+
+  OUT(ctr_beamshiftdown);
+  OUT(ctr_beamshiftup);
+  OUT(ctr_resolve_up);
+  OUT(ctr_resolve_down);
+  OUT(ctr_move_up);
+  OUT(ctr_straighten_indiv);
+  OUT(ctr_dp_cells_up);
+  OUT(ctr_dp_cells_down);
+
+  #undef OUT
+
+  return ret;
 }

@@ -20,14 +20,21 @@
 #include "status-bar.h"
 #include "timer.h"
 
-static bool IsLayerActive(std::span<const CircuitSim::Node> layer) {
-  for (const CircuitSim::Node &node : sim_nodes[r]) {
-    if (node.level.get() == nullptr ||
-        node.scene.get() == nullptr)
 
+static bool IsLayerActive(std::span<const CircuitSim::Node> layer) {
+  for (const CircuitSim::Node &node : layer) {
+    if (node.level.get() == nullptr ||
+        node.scene.get() == nullptr) {
+
+      // XXX also, not hibernating
+      continue;
     }
+    return true;
   }
+
+  return false;
 }
+
 
 
 static void Benchmark(std::string_view layout_file) {

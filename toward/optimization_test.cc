@@ -342,16 +342,18 @@ static void OptimizeInteresting(const CellLibrary &library) {
 
   std::mutex m;
   int done = 0;
-  ParallelApp(
+  UnParallelApp(
       props,
       [&](const Prop &prop) {
         std::string name = PropString(prop);
+        Print("Run " ABLUE("{}") " ...\n", name);
         std::unique_ptr<LayoutEngine> le =
           LayoutEngine::Create(library, world);
         le->SetVerbose(0);
         std::vector<Prop> output = {prop};
         Layout layout = le->DoLayout(output);
-        DRC::CheckLayout(library, name, layout);
+        std::optional<std::string> err_before =
+          DRC::GetLayoutError(library, name, layout);
 
         if (CircuitSize(layout.circuit) < 128) {
           status.Print(ABLUE("{}") " " AWHITE("before") ":\n{}\n",
@@ -359,7 +361,13 @@ static void OptimizeInteresting(const CellLibrary &library) {
                        LayoutEngine::ToString(layout));
         }
 
+        CHECK(!err_before.has_value()) << name << " fails DRC before:\n"
+                                       << err_before.value();
+
+        Timer opt_timer;
         Layout opt_layout = Optimization::Optimize(library, layout);
+        status.Print(ABLUE("{}") " optimized in {}\n",
+                     name, ANSI::Time(opt_timer.Seconds()));
 
         if (CircuitSize(opt_layout.circuit) < 128) {
           status.Print(ABLUE("{}") " " AWHITE("After") ":\n{}\n",
@@ -375,6 +383,10 @@ static void OptimizeInteresting(const CellLibrary &library) {
 
         MutexLock ml(&m);
         done++;
+
+        std::string ctrs = Optimization::DebugCounters();
+        status.Print("After {}:\n{}\n", name, ctrs);
+
         status.Progress(done, props.size(), "Interesting");
       },
       8);
@@ -928,7 +940,35 @@ struct TestCase {
 };
 
 static std::initializer_list<TestCase> TEST_CASES = {
-  // ...
+  {
+    .name = "move-up1",
+    .comment = "the dup can move up",
+    .layout = R"(
+0I 1M
+0 wf 42 s0
+0 wf 16 Wc42 14 we8
+4 we1 12 wc9 55 we
+5 we 20 wc 5 d1
+5 we 20 wc 32 we10 4 we64
+)",
+  },
+  {
+    .name = "move-upquad",
+    .comment = "the three bottom not gates can move up",
+    .layout = R"(
+0I 1O 2O 3I 4I 5O
+21 we 13 wd 0 aa
+21 we 17 wc3 16 s0
+21 we 16 Wc 24 Wc9 0 We14
+21 we 16 Wc 20 Wc 5 We3
+21 we 16 wd 0 n0 6 we
+21 we 20 wc 12 We8 6 we
+0 n1 0 n0 16 we 10 N1
+21 wc 10 We10 16 we 10 wc
+21 aa
+)",
+  },
+
 };
 
 static void TryTestCases(const CellLibrary &library) {
@@ -946,7 +986,7 @@ static void TryTestCases(const CellLibrary &library) {
   StatusBar status(1);
   Timer run_timer;
 
-  ParallelApp(
+  UnParallelApp(
       cases,
       [&](const TestCase &tc) {
         std::optional<Layout> opt_layout = LayoutEngine::Parse(tc.layout);
