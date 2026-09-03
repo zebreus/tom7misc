@@ -1,6 +1,7 @@
 
 #include "model-tasks.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -8,7 +9,9 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "model-client.h"
 #include "model-util.h"
@@ -22,6 +25,9 @@ static std::string ChooseFilesPrompt(
     const ChooseFilesOptions &opt,
     std::string_view user_request) {
   std::string ret;
+
+  Print("ChooseFilesPrompt.\n");
+  fflush(stdout);
 
   std::string current_file_contents;
   if (!opt.current_filename.empty() &&
@@ -87,6 +93,9 @@ thought process, and the list of files you would like to open.)";
       "\n";
   }
 
+  Print("ChooseFilesPrompt 2.\n");
+  fflush(stdout);
+
   if (!opt.current_filename.empty()) {
     AppendFormat(&ret,
                  "The file that the user is looking at is called `{}`",
@@ -118,10 +127,21 @@ thought process, and the list of files you would like to open.)";
      "solve it.\n\n";
  }
 
+ Print("Textualizing...\n");
+ for (const auto &[s, af] : available.files) {
+   Print("  {} = {}\n", s, af.path.string());
+   fflush(stdout);
+ }
+ fflush(stdout);
+
+
  AppendFormat(&ret,
               "The available files are:\n"
               "{}\n\n",
               available.Textualize());
+
+ Print("Textualized.\n");
+ fflush(stdout);
 
  ret +=
 R"(Each file is listed with its byte size. The cost is directly
@@ -148,7 +168,7 @@ referred to with a different name (e.g. without the path) elsewhere.)";
    "ends with a \"message\" field that will be shown to the user.\n"
    "The message field may use light markdown (code blocks, bullet\n"
    "points, and bold text) but should be brief; for example avoid\n"
-   "section headings.\n";
+   "section headings. Avoid LaTeX-style math markup.\n";
 
  if (opt.can_fail || opt.can_answer) {
    if (opt.can_fail) {
@@ -188,9 +208,24 @@ ModelTasks::ChooseFiles(
     std::string_view user_request,
     const ModelUtil::AvailableFiles &available,
     const ChooseFilesOptions &opt) {
+  if (opt.verbosity > 0) {
+    Print("Making prompt...\n");
+    fflush(stdout);
+  }
 
   std::string prompt = ChooseFilesPrompt(available, opt, user_request);
+  if (opt.verbosity > 0) {
+    Print("Prompt:\n"
+          AGREY("{}") "\n", prompt);
+    fflush(stdout);
+  }
   std::string raw = client->Infer(prompt);
+  if (opt.verbosity > 0) {
+    Print("Res:\n"
+          ABLUE("{}") "\n", raw);
+    fflush(stdout);
+  }
+
   std::string json = ModelUtil::FindOneJSONObject(raw).value_or("");
 
   if (json.empty()) {

@@ -36,6 +36,8 @@ struct ModelClient {
 
   virtual void SetVerbose(int v) = 0;
 
+  virtual std::string Info() const = 0;
+
   // Simple blocking inference call. When verbose, this creates a
   // console status bar and writes to it, removing it when it's done.
   // Automatically retries when it detects a failure.

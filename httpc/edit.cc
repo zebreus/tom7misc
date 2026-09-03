@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -228,17 +229,20 @@ void ImproveReplacements(
         continue;
       }
 
-      auto FindLongestMatch = [&](auto& self, int b_start, int b_end, int a_start, int a_end) -> Block {
+      auto FindLongestMatch = [&](auto& self, int b_start, int b_end,
+                                  int a_start, int a_end) -> Block {
         Block best = {b_start, a_start, 0};
         for (int i = b_start; i < b_end; i++) {
           for (int j = a_start; j < a_end; j++) {
             if (before_lines[i] == after_lines[j]) {
               // Optimization: only start at the beginning of a matched block.
-              if (i > b_start && j > a_start && before_lines[i-1] == after_lines[j-1]) {
+              if (i > b_start &&
+                  j > a_start && before_lines[i-1] == after_lines[j-1]) {
                 continue;
               }
               int k = 1;
-              while (i + k < b_end && j + k < a_end && before_lines[i+k] == after_lines[j+k]) {
+              while (i + k < b_end && j + k < a_end &&
+                     before_lines[i+k] == after_lines[j+k]) {
                 k++;
               }
               if (k > best.len) {
@@ -250,10 +254,12 @@ void ImproveReplacements(
         return best;
       };
 
-      auto SplitRep = [&](auto& self, int b_start, int b_end, int a_start, int a_end) -> std::vector<Replacement> {
+      auto SplitRep = [&](auto& self, int b_start, int b_end,
+                          int a_start, int a_end) -> std::vector<Replacement> {
         std::vector<Block> gaps;
 
-        auto GetGaps = [&](auto& self_gaps, int bs, int be, int as, int ae) -> void {
+        auto GetGaps = [&](auto& self_gaps, int bs, int be,
+                           int as, int ae) -> void {
           Block m = FindLongestMatch(FindLongestMatch, bs, be, as, ae);
           if (m.len >= MIN_GAP_LENGTH) {
             self_gaps(self_gaps, bs, m.b, as, m.a);
@@ -264,7 +270,8 @@ void ImproveReplacements(
         GetGaps(GetGaps, b_start, b_end, a_start, a_end);
 
         std::vector<Block> sorted_gaps = gaps;
-        std::sort(sorted_gaps.begin(), sorted_gaps.end(), [](const Block& a, const Block& b) {
+        std::sort(sorted_gaps.begin(), sorted_gaps.end(),
+                  [](const Block& a, const Block& b) {
           return a.len > b.len;
         });
 
@@ -289,13 +296,19 @@ void ImproveReplacements(
             int b_cut = m.b + k;
             int a_cut = m.a + k;
 
-            std::vector<std::string> left_b(before_lines.begin() + b_start, before_lines.begin() + b_cut);
-            std::vector<std::string> right_b(before_lines.begin() + b_cut, before_lines.begin() + b_end);
+            std::vector<std::string> left_b(before_lines.begin() + b_start,
+                                            before_lines.begin() + b_cut);
+            std::vector<std::string> right_b(before_lines.begin() + b_cut,
+                                             before_lines.begin() + b_end);
 
-            if (CountOccurrences(left_b) == 1 && CountOccurrences(right_b) == 1) {
-              std::vector<Replacement> left_reps = self(self, b_start, b_cut, a_start, a_cut);
-              std::vector<Replacement> right_reps = self(self, b_cut, b_end, a_cut, a_end);
-              left_reps.insert(left_reps.end(), right_reps.begin(), right_reps.end());
+            if (CountOccurrences(left_b) == 1 &&
+                CountOccurrences(right_b) == 1) {
+              std::vector<Replacement> left_reps = self(self, b_start, b_cut,
+                                                        a_start, a_cut);
+              std::vector<Replacement> right_reps = self(self, b_cut, b_end,
+                                                         a_cut, a_end);
+              left_reps.insert(left_reps.end(),
+                               right_reps.begin(), right_reps.end());
               return left_reps;
             }
           }
@@ -443,6 +456,7 @@ int main(int argc, char **argv) {
   const std::string current_file_key = okey.value();
   Print("Current file is available as " AWHITE("{}") "\n",
         current_file_key);
+  fflush(stdout);
 
   // Construct prompt to guess at files to include (cheap model).
 
@@ -455,10 +469,17 @@ int main(int argc, char **argv) {
 
       CHECK(!request.empty());
 
-      if (emacs) Print("<" "STATUS>\n");
+      if (emacs) {
+        Print("<" "STATUS>\n");
+        fflush(stdout);
+      }
       std::unique_ptr<ModelClient> client =
           ModelClient::Create(Model::GEMINI_MEDIUM, api_key);
       client->SetVerbose(verbose);
+      if (verbose > 0) {
+        Print("Created model: {}\n", client->Info());
+        fflush(stdout);
+      }
 
       ModelTasks::ChooseFilesOptions opt;
       opt.current_filename = current_file_key;
@@ -468,7 +489,10 @@ int main(int argc, char **argv) {
       ModelTasks::ChooseFilesResult result =
           ModelTasks::ChooseFiles(client.get(), request,
                                   available, opt);
-      if (emacs) Print("</" "STATUS>\n");
+      if (emacs) {
+        Print("</" "STATUS>\n");
+        fflush(stdout);
+      }
 
       std::vector<std::string> to_include;
       if (const ModelTasks::ChosenFiles *cf =
@@ -484,6 +508,10 @@ int main(int argc, char **argv) {
         if (!fail->message.empty()) {
           Markdown::Document doc = Markdown::Parse(fail->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
+
+          if (!fail->raw_content.empty()) {
+            Print("Raw response: " AGREY("{}") "\n", fail->raw_content);
+          }
         }
 
         LOG(FATAL) << "Include phase failed.";

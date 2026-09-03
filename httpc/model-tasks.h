@@ -37,6 +37,7 @@ struct ModelTasks {
     std::string task_hints;
     // This must be a key in the available files map, or can be empty.
     std::string current_filename;
+    int verbosity = 1;
     bool include_current_file = true;
     bool can_fail = false;
     bool can_answer = false;

@@ -617,6 +617,10 @@ struct ModelClientImpl : public ModelClient {
     return resp;
   }
 
+  std::string Info() const override {
+    return model_name;
+  }
+
   std::string Infer(std::string_view prompt, int num_attempts) override {
     std::unique_ptr<StatusBar> status;
 
@@ -773,6 +777,10 @@ struct TestModelClientImpl : public ModelClient {
 
   void SetVerbose(int v) override {
     verbose = v;
+  }
+
+  std::string Info() const override {
+    return "test-model";
   }
 
   std::string Infer(std::string_view prompt, int max_attempts) override {

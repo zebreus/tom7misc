@@ -122,6 +122,16 @@ static constexpr std::string_view BAD_JSON2 = R"(
 )";
 
 
+static constexpr std::string_view BAD_JSON3 = R"(
+{
+  "notes": "Blah blah `optimization.cc`.",
+  "solve": true,
+  "message": "
+* In the worst case, $S \le 2 \times \text{max\_possible\_shift} = 2 \times (\text{max\_wire} \times W)$.
+" }
+)";
+
+
 static constexpr std::string_view UNRECOVERABLE1 = R"(
 } it ain\'t
 
@@ -130,8 +140,41 @@ even close‽\n
 \\" "
 {)";
 
+
+static void TestRescueJSONEscapes() {
+  auto TestEscape = [](std::string_view in, std::string_view expected) {
+    std::string rescued = ModelUtil::RescueJSON(in);
+    CHECK(rescued == expected)
+      << "Expected: " << expected << "\nGot: " << rescued;
+
+    rapidjson::Document doc;
+    CHECK(!doc.Parse(rescued).HasParseError())
+      << "Rescued JSON failed to parse: " << rescued;
+  };
+
+  // Valid escapes should be left alone.
+  TestEscape(R"({"key": "valid\n"})", R"({"key": "valid\n"})");
+  TestEscape(R"({"key": "valid\u123A"})", R"({"key": "valid\u123A"})");
+  TestEscape(R"({"key": "valid\\"})", R"({"key": "valid\\"})");
+  TestEscape(R"({"key": "valid\""})", R"({"key": "valid\""})");
+
+  // Invalid escapes should be double-escaped.
+  TestEscape(R"({"key": "invalid\x"})", R"({"key": "invalid\\x"})");
+  TestEscape(R"({"key": "invalid\a"})", R"({"key": "invalid\\a"})");
+  TestEscape(R"({"key": "invalid\u12"})", R"({"key": "invalid\\u12"})");
+  TestEscape(R"({"key": "invalid\u123"})", R"({"key": "invalid\\u123"})");
+
+  // Multiple and mixed escapes.
+  TestEscape(R"({"key": "inv\x and \y"})", R"({"key": "inv\\x and \\y"})");
+  TestEscape(R"({"key": "valid\n and invalid\x"})",
+             R"({"key": "valid\n and invalid\\x"})");
+
+  // Bare backslash before end of string.
+  TestEscape(R"({"key": "inv\}"})", R"({"key": "inv\\}"})");
+}
+
 static void TestRecoverJSON() {
-  for (const std::string_view bad_json : {BAD_JSON1, BAD_JSON2}) {
+  for (const std::string_view bad_json : {BAD_JSON1, BAD_JSON2, BAD_JSON3}) {
     rapidjson::Document document;
     CHECK(document.Parse(std::string(bad_json)).HasParseError()) << "This "
       "test wants an input that does not initially parse!";
@@ -182,6 +225,7 @@ int main(int argc, char **argv) {
   TestFindOneJSONObject();
 
   TestEscapeJSON();
+  TestRescueJSONEscapes();
   TestRecoverJSON();
   TestParseSloppy();
 

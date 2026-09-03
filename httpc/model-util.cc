@@ -594,22 +594,83 @@ std::string ModelUtil::EscapeJSON(std::string_view s) {
   return esc;
 }
 
-static std::string RescueJSONNewlines(std::string_view j) {
-  std::string out;
-  out.reserve(j.size());
-  bool in_str = false;
-  for (size_t i = 0; i < j.size(); ++i) {
-    char c = j[i];
-    if (c == '"') {
-      // Check if quote is escaped by counting backslashes
-      size_t b = 0;
-      while (i > b && j[i - b - 1] == '\\') b++;
-      if (b % 2 == 0) in_str = !in_str;
+static std::string RescueJSONEscapes(std::string_view j) {
+  std::string escaped;
+  escaped.reserve(j.size() + 16);
+  while (!j.empty()) {
+    size_t pos = j.find('\\');
+    if (pos == std::string_view::npos) {
+      escaped += j;
+      break;
+    }
+    escaped += j.substr(0, pos);
+    j.remove_prefix(pos + 1);
+
+    bool valid = false;
+    if (!j.empty()) {
+      char next = j[0];
+      if (next == '"' || next == '\\' || next == '/' || next == 'b' ||
+          next == 'f' || next == 'n' || next == 'r' || next == 't') {
+        valid = true;
+      } else if (next == 'u' && j.size() >= 5) {
+        if (std::isxdigit((unsigned char)j[1]) &&
+            std::isxdigit((unsigned char)j[2]) &&
+            std::isxdigit((unsigned char)j[3]) &&
+            std::isxdigit((unsigned char)j[4])) {
+          valid = true;
+        }
+      }
     }
 
-    if (in_str && c == '\n') out += "\\n";
-    else if (in_str && c == '\r') out += "\\r";
-    else out.push_back(c);
+    if (valid) {
+      escaped += '\\';
+      escaped += j[0];
+      if (j[0] == 'u') {
+        escaped += j.substr(1, 4);
+        j.remove_prefix(5);
+      } else {
+        j.remove_prefix(1);
+      }
+    } else {
+      escaped += "\\\\";
+    }
+  }
+
+  return escaped;
+}
+
+static std::string RescueJSONNewlines(std::string_view j) {
+  // Phase 2: Fix newlines and carriage returns inside strings
+  std::string out;
+  out.reserve(j.size() + 16);
+  bool in_str = false;
+  while (!j.empty()) {
+    size_t pos = j.find_first_of("\"\n\r\\");
+    if (pos == std::string_view::npos) {
+      out += j;
+      break;
+    }
+    out += j.substr(0, pos);
+    char c = j[pos];
+    j.remove_prefix(pos + 1);
+
+    if (c == '"') {
+      in_str = !in_str;
+      out += '"';
+    } else if (c == '\\') {
+      // Assumes all backslashes are valid escapes (RescueJSONEscapes).
+      out += '\\';
+      if (!j.empty()) {
+        out += j[0];
+        j.remove_prefix(1);
+      }
+    } else if (c == '\n') {
+      if (in_str) out += "\\n";
+      else out += '\n';
+    } else if (c == '\r') {
+      if (in_str) out += "\\r";
+      else out += '\r';
+    }
   }
 
   return out;
@@ -672,7 +733,8 @@ static std::string RescueJSONQuotes(std::string_view j) {
 }
 
 std::string ModelUtil::RescueJSON(std::string_view j) {
-  std::string rj = RescueJSONNewlines(j);
+  std::string rj = RescueJSONEscapes(j);
+  rj = RescueJSONNewlines(rj);
   rapidjson::Document doc;
   if (!doc.Parse(rj.data(), rj.size()).HasParseError()) {
     return rj;
