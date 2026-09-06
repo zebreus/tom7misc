@@ -39,9 +39,10 @@ struct SolutionDB {
   static constexpr int METHOD_RATIONAL = 11;
   static constexpr int METHOD_IMPROVE_CLEARANCE = 12;
   static constexpr int METHOD_SPOILER = 13;
+  static constexpr int METHOD_TILT = 14;
 
   static constexpr int FIRST_METHOD = 1;
-  static constexpr int LAST_METHOD = 13;
+  static constexpr int LAST_METHOD = 14;
 
   static const char *MethodName(int m) {
     switch (m) {
@@ -59,6 +60,7 @@ struct SolutionDB {
     case METHOD_RATIONAL: return "METHOD_RATIONAL";
     case METHOD_IMPROVE_CLEARANCE: return "METHOD_IMPROVE_CLEARANCE";
     case METHOD_SPOILER: return "METHOD_SPOILER";
+    case METHOD_TILT: return "METHOD_TILT";
     default: return "UNKNOWN";
     }
   }

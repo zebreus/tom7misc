@@ -1114,6 +1114,241 @@ static void SolveSpoiler(const Polyhedron &polyhedron, StatusBar *status,
   s.Run();
 }
 
+struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
+  using Solver::Solver;
+
+  struct PolygonEdge {
+    // inward unit normal
+    vec2 normal;
+    // normal ∙ p >= b for points inside
+    double b;
+  };
+
+  static std::vector<PolygonEdge>
+  GetOuterEdges(const Mesh2D &souter, const std::vector<int> &outer_hull) {
+    std::vector<PolygonEdge> edges;
+    const int m = outer_hull.size();
+    edges.reserve(m);
+    vec2 centroid = vec2{0, 0};
+    for (int idx : outer_hull)
+      centroid += souter.vertices[idx];
+    if (m > 0)
+      centroid /= (double)m;
+
+    for (int i = 0; i < m; i++) {
+      const vec2 p1 = souter.vertices[outer_hull[i]];
+      const vec2 p2 = souter.vertices[outer_hull[(i + 1) % m]];
+      const vec2 d = p2 - p1;
+      const double len = length(d);
+      if (len < 1e-12)
+        continue;
+      vec2 n = vec2{-d.y / len, d.x / len};
+      double b = dot(n, p1);
+      if (dot(n, centroid) < b) {
+        n = -n;
+        b = -b;
+      }
+      edges.push_back({n, b});
+    }
+    return edges;
+  }
+
+  // Fast 2D clearance maximization for translation t = (dx, dy).
+  // Given inward edge normals and inner vertices, computes
+  // the maximum clearance min_j (n_j ∙ t - d_j) and the maximizing t.
+  struct FastClearance {
+    static double Eval(const std::vector<PolygonEdge> &edges,
+                       const std::vector<double> &d, const vec2 &t) {
+      double min_m = std::numeric_limits<double>::infinity();
+      for (size_t j = 0; j < edges.size(); j++) {
+        double m = dot(edges[j].normal, t) - d[j];
+        if (m < min_m)
+          min_m = m;
+      }
+      return min_m;
+    }
+
+    static std::pair<double, vec2>
+    Maximize(const std::vector<PolygonEdge> &edges,
+             const std::vector<vec2> &inner_verts) {
+      const int m = edges.size();
+      std::vector<double> d(m);
+      for (int j = 0; j < m; j++) {
+        double min_proj = std::numeric_limits<double>::infinity();
+        for (const vec2 &v : inner_verts) {
+          double proj = dot(edges[j].normal, v);
+          if (proj < min_proj)
+            min_proj = proj;
+        }
+        d[j] = edges[j].b - min_proj;
+      }
+
+      // 2D Nelder-Mead on R^2 starting at t = (0, 0)
+      double step = 0.0005;
+      vec2 p[3] = {vec2{0, 0}, vec2{step, 0}, vec2{0, step}};
+      double val[3];
+      for (int i = 0; i < 3; i++)
+        val[i] = Eval(edges, d, p[i]);
+
+      for (int iter = 0; iter < 60; iter++) {
+        if (val[1] > val[0]) {
+          std::swap(p[0], p[1]);
+          std::swap(val[0], val[1]);
+        }
+        if (val[2] > val[0]) {
+          std::swap(p[0], p[2]);
+          std::swap(val[0], val[2]);
+        }
+        if (val[2] > val[1]) {
+          std::swap(p[1], p[2]);
+          std::swap(val[1], val[2]);
+        }
+
+        vec2 c = (p[0] + p[1]) * 0.5;
+        vec2 xr = c + (c - p[2]);
+        double vr = Eval(edges, d, xr);
+
+        if (vr > val[0]) {
+          vec2 xe = c + (xr - c) * 2.0;
+          double ve = Eval(edges, d, xe);
+          if (ve > vr) {
+            p[2] = xe;
+            val[2] = ve;
+          } else {
+            p[2] = xr;
+            val[2] = vr;
+          }
+        } else if (vr > val[1]) {
+          p[2] = xr;
+          val[2] = vr;
+        } else {
+          vec2 xc = c + (p[2] - c) * 0.5;
+          double vc = Eval(edges, d, xc);
+          if (vc > val[2]) {
+            p[2] = xc;
+            val[2] = vc;
+          } else {
+            p[1] = p[0] + (p[1] - p[0]) * 0.5;
+            val[1] = Eval(edges, d, p[1]);
+            p[2] = p[0] + (p[2] - p[0]) * 0.5;
+            val[2] = Eval(edges, d, p[2]);
+          }
+        }
+      }
+
+      int best = (val[1] > val[0]) ? (val[2] > val[1] ? 2 : 1)
+                                   : (val[2] > val[0] ? 2 : 0);
+      return {val[best], p[best]};
+    }
+  };
+
+  std::tuple<double, frame3, frame3> RunOne(ArcFour *rc) override {
+    quat4 q_outer;
+    const int mode = RandTo(rc, 10);
+    if (mode < 5) {
+      // 50%: Area-maximizing pose (local maximum of shadow area from a random
+      // pose)
+      const quat4 initial_rot = RandomQuaternion(rc);
+      auto AreaLoss = [&](const std::array<double, 4> &args) {
+        attempts++;
+        const auto &[o0, o1, o2, o3] = args;
+        quat4 rot = normalize(quat4{
+            .x = initial_rot.x + o0,
+            .y = initial_rot.y + o1,
+            .z = initial_rot.z + o2,
+            .w = initial_rot.w + o3,
+        });
+        Mesh2D mesh = Shadow(Rotate(polyhedron, yocto::rotation_frame(rot)));
+        std::vector<int> h = Hull2D::QuickHull(mesh.vertices);
+        return -AreaOfHull(mesh, h);
+      };
+      const std::array<double, 4> area_lb = {-0.1, -0.1, -0.1, -0.1};
+      const std::array<double, 4> area_ub = {+0.1, +0.1, +0.1, +0.1};
+      const auto [area_args, area_err] =
+          Opt::Minimize<4>(AreaLoss, area_lb, area_ub, 300, 1, 1, Rand32(rc));
+      q_outer = normalize(quat4{
+          .x = initial_rot.x + area_args[0],
+          .y = initial_rot.y + area_args[1],
+          .z = initial_rot.z + area_args[2],
+          .w = initial_rot.w + area_args[3],
+      });
+
+    } else if (mode < 8 && polyhedron.faces != nullptr &&
+               polyhedron.faces->v.size() >= 2) {
+      // 30%: Two faces aligned with z / y
+      const auto &[face1, face2] = TwoNonParallelFaces(rc, polyhedron);
+      q_outer = AlignFaces(polyhedron.vertices, polyhedron.faces->v[face1],
+                           polyhedron.faces->v[face2]);
+
+    } else {
+      // 20%: Uniform random orientation
+      q_outer = RandomQuaternion(rc);
+    }
+
+    const frame3 outer_frame = yocto::rotation_frame(q_outer);
+    const Mesh2D souter = Shadow(Rotate(polyhedron, outer_frame));
+    if (AllZero(souter.vertices)) {
+      return {std::numeric_limits<double>::infinity(), outer_frame,
+              outer_frame};
+    }
+    const std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+    if (outer_hull.size() < 3) {
+      return {std::numeric_limits<double>::infinity(), outer_frame,
+              outer_frame};
+    }
+    const auto edges = GetOuterEdges(souter, outer_hull);
+
+    // Sample across different tilt angular scales
+    static constexpr double SCALES[] = {0.003, 0.01, 0.03, 0.08, 0.15};
+    const double w_max = SCALES[RandTo(rc, std::size(SCALES))];
+    const std::array<double, 3> lb = {-w_max, -w_max, -w_max};
+    const std::array<double, 3> ub = {+w_max, +w_max, +w_max};
+
+    frame3 best_inner_frame = outer_frame;
+    double best_clearance = -std::numeric_limits<double>::infinity();
+
+    auto RotLoss = [&](const std::array<double, 3> &w) {
+      attempts++;
+      const double wx = w[0], wy = w[1], wz = w[2];
+      const double theta = std::sqrt(wx * wx + wy * wy + wz * wz);
+      // Identity cannot be a Rupert solution; penalize the origin.
+      if (theta < 1e-6)
+        return 1.0;
+
+      const double s = std::sin(theta * 0.5) / theta;
+      const quat4 delta_q =
+          quat4{wx * s, wy * s, wz * s, std::cos(theta * 0.5)};
+      const quat4 q_inner = normalize(delta_q * q_outer);
+      const frame3 rot_frame = yocto::rotation_frame(q_inner);
+      const Mesh2D sinner = Shadow(Rotate(polyhedron, rot_frame));
+      const auto [c, trans] = FastClearance::Maximize(edges, sinner.vertices);
+      if (c > best_clearance) {
+        best_clearance = c;
+        best_inner_frame =
+            yocto::translation_frame(vec3{trans.x, trans.y, 0.0}) * rot_frame;
+      }
+      return -c;
+    };
+
+    Opt::Minimize<3>(RotLoss, lb, ub, 1500, 2, 5, Rand32(rc));
+
+    if (best_clearance > 1e-9) {
+      auto cl = GetClearance(polyhedron, outer_frame, best_inner_frame);
+      if (cl.has_value() && cl.value() > 0.0) {
+        return {0.0, outer_frame, best_inner_frame};
+      }
+    }
+
+    const double err = (best_clearance > 0.0) ? 1e-10 : -best_clearance;
+    return {err, outer_frame, best_inner_frame};
+  }
+};
+
+static void SolveTilt(const Polyhedron &polyhedron, StatusBar *status,
+                      std::optional<double> time_limit = std::nullopt) {
+  TiltSolver s(polyhedron, status, time_limit);
+  s.Run();
+}
 
 static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
                       std::optional<double> time_limit) {
@@ -1138,6 +1373,8 @@ static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
     return SolveAlmostId(poly, status, time_limit);
   case SolutionDB::METHOD_SPOILER:
     return SolveSpoiler(poly, status, time_limit);
+  case SolutionDB::METHOD_TILT:
+    return SolveTilt(poly, status, time_limit);
   default:
     LOG(FATAL) << "Method not available";
   }
@@ -1411,7 +1648,8 @@ static void GrindRandom(const std::unordered_set<std::string> &poly_filter) {
             SolutionDB::METHOD_PARALLEL,
             SolutionDB::METHOD_SPECIAL,
             SolutionDB::METHOD_ORIGIN,
-            SolutionDB::METHOD_ALMOST_ID}) {
+            SolutionDB::METHOD_ALMOST_ID,
+            SolutionDB::METHOD_TILT}) {
           if (HasSolutionWithMethod(poly, method)) {
             has_solution = true;
             std::string name = Util::lcase(SolutionDB::MethodName(method));
@@ -1462,7 +1700,37 @@ int main(int argc, char **argv) {
     Polyhedron poly = // PolyhedronByName(name);
       db.AnyPolyhedronByName(name);
 
+    if (argc > 2) {
+      std::string m = argv[2];
+      if (m == "tilt") {
+        SolveTilt(poly, &status);
+        return 0;
+      } else if (m == "almost_id") {
+        SolveAlmostId(poly, &status);
+        return 0;
+      } else if (m == "spoiler") {
+        SolveSpoiler(poly, &status);
+        return 0;
+      } else if (m == "simul") {
+        SolveSimul(poly, &status);
+        return 0;
+      } else if (m == "hull") {
+        SolveHull(poly, &status);
+        return 0;
+      } else if (m == "max") {
+        SolveMax(poly, &status);
+        return 0;
+      } else if (m == "parallel") {
+        SolveParallel(poly, &status);
+        return 0;
+      } else if (m == "special") {
+        SolveSpecial(poly, &status);
+        return 0;
+      }
+    }
+
     for (;;) {
+      SolveWith(poly, SolutionDB::METHOD_TILT, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_SIMUL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_HULL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_MAX, &status, 3600.0);
@@ -1471,7 +1739,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (true) {
+  if (false) {
     SolutionDB db;
     SolveSpoiler(db.AnyPolyhedronByName("nopert_214"), &status);
   }
@@ -1539,7 +1807,9 @@ int main(int argc, char **argv) {
   // Polyhedron target = DualizePoly(db.AnyPolyhedronByName("nopert_214"));
   // target.name = "onpert_214";
 
-  SolveSpoiler(db.AnyPolyhedronByName("nopert_214"), &status);
+  for (;;) {
+    SolveTilt(db.AnyPolyhedronByName("nopert_214"), &status);
+  }
 
   // Call one of the solution procedures:
   // SolveSimul(target, &status);
