@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -241,5 +242,7 @@ std::string PolyhedronHumanName(std::string_view name);
 // For P/A/C solids. Returns the name of the dual.
 std::string DualPolyhedron(std::string_view name);
 
+// Unsolved classic polyhedra.
+const std::unordered_set<std::string> &Wishlist();
 
 #endif

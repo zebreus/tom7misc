@@ -34,18 +34,6 @@ std::string FullMethodName(const char *color,
   }
 }
 
-static const std::unordered_set<std::string> &Wishlist() {
-  static auto *s = new std::unordered_set<std::string>{
-    "snubcube",
-    "rhombicosidodecahedron",
-    "snubdodecahedron",
-    "pentagonalhexecontahedron",
-    "deltoidalhexecontahedron",
-  };
-
-  return *s;
-}
-
 
 static void PrintAll(bool noperts,
                      bool full,

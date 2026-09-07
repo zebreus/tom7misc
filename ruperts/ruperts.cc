@@ -15,6 +15,7 @@
 #include <numbers>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <unordered_set>
@@ -26,6 +27,7 @@
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
@@ -36,6 +38,7 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "ruperts-util.h"
+#include "set-util.h"
 #include "solutions.h"
 #include "status-bar.h"
 #include "threadutil.h"
@@ -58,7 +61,8 @@ using Mesh2D = PolyhedronMesh2D;
 // These are all de novo, so the source is always zero.
 static constexpr int SOURCE = 0;
 
-static void SaveSolution(const Polyhedron &poly,
+static void SaveSolution(StatusBar *status,
+                         const Polyhedron &poly,
                          const frame3 &outer_frame,
                          const frame3 &inner_frame,
                          int method) {
@@ -83,7 +87,11 @@ static void SaveSolution(const Polyhedron &poly,
     GetClearance(poly, outer_frame, inner_frame);
 
   if (!new_ratio.has_value() || !new_clearance.has_value()) {
-    printf(ARED("SOLUTION IS INVALID!?") "\n");
+    if (status != nullptr) {
+      status->Print(ARED("SOLUTION IS INVALID!?") "\n");
+    } else {
+      Print(ARED("SOLUTION IS INVALID!?") "\n");
+    }
     return;
   }
 
@@ -94,9 +102,12 @@ static void SaveSolution(const Polyhedron &poly,
   db.AddSolution(poly.name, outer_frame, inner_frame,
                  method, SOURCE, ratio, clearance);
 
-  printf("Added solution (" AYELLOW("%s") ") to database with "
-         "ratio " APURPLE("%.17g") ", clearance " ABLUE("%.17g") "\n",
-         poly.name.c_str(), ratio, clearance);
+  if (status != nullptr) {
+    status->Print(
+        "Added solution (" AYELLOW("{}") ") to database with "
+        "ratio " APURPLE("{:.17g}") ", clearance " ABLUE("{:.17g}") "\n",
+        poly.name, ratio, clearance);
+  }
 }
 
 static constexpr int NUM_THREADS = 4;
@@ -185,9 +196,9 @@ struct Solver {
                                      polyhedron.name);
 
     Util::WriteFile(sfile, contents);
-    status->Print("Wrote " AGREEN("{}") "\n", sfile.c_str());
+    status->Print("Wrote " AGREEN("{}") "\n", sfile);
 
-    SaveSolution(polyhedron, outer_frame, inner_frame, METHOD);
+    SaveSolution(status, polyhedron, outer_frame, inner_frame, METHOD);
   }
 
   void Run() {
@@ -1497,7 +1508,7 @@ static void SolveTiltGrad(const Polyhedron &polyhedron, StatusBar *status,
 static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
                       std::optional<double> time_limit) {
   status->Print("Solve " AYELLOW("{}") " with " AWHITE("{}") "...\n",
-                poly.name.c_str(),
+                poly.name,
                 SolutionDB::MethodName(method));
 
   switch (method) {
@@ -1785,7 +1796,7 @@ static void GrindRandom(const std::unordered_set<std::string> &poly_filter) {
 
       std::vector<std::pair<const Polyhedron *, int>> remaining;
       for (const Polyhedron &poly : all) {
-        printf(AWHITE("%s") ":", poly.name.c_str());
+        Print(AWHITE("{}") ":", poly.name);
         bool has_solution = false;
         for (int method : {
             SolutionDB::METHOD_HULL,
@@ -1801,7 +1812,7 @@ static void GrindRandom(const std::unordered_set<std::string> &poly_filter) {
             has_solution = true;
             std::string name = Util::lcase(SolutionDB::MethodName(method));
             (void)Util::TryStripPrefix("method_", &name);
-            printf(" " ACYAN("%s"), name.c_str());
+            Print(" " ACYAN("{}"), name);
           } else if (poly_filter.empty() || poly_filter.contains(poly.name)) {
             remaining.emplace_back(&poly, method);
           }
@@ -1814,7 +1825,7 @@ static void GrindRandom(const std::unordered_set<std::string> &poly_filter) {
         }
       }
 
-      printf("Total remaining: " APURPLE("%d") "\n", (int)remaining.size());
+      Print("Total remaining: " APURPLE("{}") "\n", remaining.size());
       return remaining;
     };
 
@@ -1933,6 +1944,18 @@ int main(int argc, char **argv) {
     return 0;
   }
 
+  if (true) {
+    SolutionDB db;
+    ArcFour rc(std::format("tilt.{}", time(nullptr)));
+    std::vector<std::string> wishlist = SetToSortedVec(Wishlist());
+    for (;;) {
+      Shuffle(&rc, &wishlist);
+      for (std::string_view name : wishlist) {
+        Polyhedron target = db.AnyPolyhedronByName(name);
+        SolveWith(target, SolutionDB::METHOD_TILT_GRAD, &status, 3600.0);
+      }
+    }
+  }
 
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();

@@ -67,7 +67,7 @@ $(CODEC)/%.o : $(CODEC)/%.cc makefile
 	@echo -n "."
 
 %.o : %.cc *.h makefile
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
 ruperts.exe : ruperts.o $(OBJECTS)
