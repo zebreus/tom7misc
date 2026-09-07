@@ -1209,7 +1209,7 @@ struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
       const vec3 w_vec = vec3{w[0], w[1], w[2]};
       const double theta = yocto::length(w_vec);
       // Identity cannot be a Rupert solution; penalize the origin.
-      if (theta < 1e-6)
+      if (theta < 1e-8)
         return 1.0;
 
       const quat4 delta_q = RotationVectorToQuat(w_vec);
@@ -1234,7 +1234,8 @@ struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
       }
     }
 
-    const double err = (best_clearance > 0.0) ? 1e-10 : -best_clearance;
+    const double err =
+        std::max(1e-10, (best_clearance > 0.0) ? 1e-10 : -best_clearance);
     return {err, outer_frame, best_inner_frame};
   }
 };
@@ -1313,19 +1314,30 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
 
     // Step 1: Candidate direction sampling away from identity.
     // At identity w = 0, clearance is 0.0 and identity is a local maximum
-    // in all directions that penetrate. To find an upward ascent slope,
-    // evaluate 8 candidate angles in the projection plane (wx = r*cos(phi),
-    // wy = r*sin(phi), wz = 0) across three small angular scales r (rad).
-    static constexpr double TEST_SCALES[] = {0.0008, 0.002, 0.006};
-    vec3 best_w = vec3{0.0, 0.0, 0.0};
+    // in all directions that penetrate. We explore 14 symmetric directions
+    // in R^3 (6 axes + 8 diagonals) across five angular scales r (rad).
+    static constexpr double TEST_SCALES[] = {0.0005, 0.002, 0.008, 0.025, 0.08};
+    static const double INV_SQRT3 = 1.0 / std::sqrt(3.0);
+    static const vec3 TEST_DIRS[14] = {
+        vec3{1.0, 0.0, 0.0}, vec3{-1.0, 0.0, 0.0},
+        vec3{0.0, 1.0, 0.0}, vec3{0.0, -1.0, 0.0},
+        vec3{0.0, 0.0, 1.0}, vec3{0.0, 0.0, -1.0},
+        vec3{INV_SQRT3, INV_SQRT3, INV_SQRT3},
+        vec3{INV_SQRT3, INV_SQRT3, -INV_SQRT3},
+        vec3{INV_SQRT3, -INV_SQRT3, INV_SQRT3},
+        vec3{INV_SQRT3, -INV_SQRT3, -INV_SQRT3},
+        vec3{-INV_SQRT3, INV_SQRT3, INV_SQRT3},
+        vec3{-INV_SQRT3, INV_SQRT3, -INV_SQRT3},
+        vec3{-INV_SQRT3, -INV_SQRT3, INV_SQRT3},
+        vec3{-INV_SQRT3, -INV_SQRT3, -INV_SQRT3},
+    };
+    vec3 best_w = TEST_DIRS[0] * TEST_SCALES[0];
     double best_clearance = -std::numeric_limits<double>::infinity();
     vec2 best_trans = vec2{0.0, 0.0};
 
     for (double r : TEST_SCALES) {
-      for (int k = 0; k < 8; k++) {
-        const double phi_ang = k * (std::numbers::pi / 4.0);
-        const vec3 w_cand =
-            vec3{r * std::cos(phi_ang), r * std::sin(phi_ang), 0.0};
+      for (const vec3 &dir : TEST_DIRS) {
+        const vec3 w_cand = dir * r;
         const auto res = EvalW(w_cand, vec2{0.0, 0.0});
         if (res.clearance > best_clearance) {
           best_clearance = res.clearance;
@@ -1357,7 +1369,7 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
 
       // Central difference gradient:
       // grad = (c(w + h*e_i) - c(w - h*e_i)) / (2*h)
-      const vec3 grad = vec3{
+      vec3 grad = vec3{
           (EvalW(w + vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance -
            EvalW(w - vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance) /
               (2.0 * EPS_DIFF),
@@ -1368,6 +1380,23 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
            EvalW(w - vec3{0.0, 0.0, EPS_DIFF}, best_trans, 1e-5).clearance) /
               (2.0 * EPS_DIFF),
       };
+
+      // The identity is an attractive point (we get closer and closer to the
+      // invalid trivial solution), so deliberately avoid following the
+      // gradient in that direction when clearance is negative or zero.
+      //
+      // When penetrating, moving toward identity reduces penetration trivially
+      // because c(0) = 0 > c(w). We project the gradient onto the tangent
+      // sphere S^2 of radius ||w|| so the optimizer is compelled to explore
+      // lateral tilt directions.
+      const double w_len = yocto::length(w);
+      if (w_len > 1e-8) {
+        const vec3 u_w = w / w_len;
+        const double radial = yocto::dot(grad, u_w);
+        if (best_clearance <= 0.0 && radial < 0.0) {
+          grad -= u_w * radial;
+        }
+      }
 
       const double g_norm = yocto::length(grad);
       if (g_norm < 1e-12)
@@ -1398,7 +1427,7 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
       }
     }
 
-    if (best_clearance > 1e-9) {
+    if (best_clearance > 0.0 && yocto::length(best_w) > 1e-8) {
       const frame3 inner_f = MakeInnerFrame(best_w, best_trans, q_outer);
       const auto cl = GetClearance(polyhedron, outer_frame, inner_f);
       if (cl.has_value() && cl.value() > 0.0) {
@@ -1412,7 +1441,7 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
     // Perturb the outer frame by rotation vector phi in R^3 to adjust
     // the outer shadow boundary.
     vec3 phi = vec3{0.0, 0.0, 0.0};
-    if (best_clearance > -5e-5) {
+    if (best_clearance > -5e-5 && yocto::length(best_w) > 1e-8) {
       double outer_step = 2e-4;
 
       auto EvalOuterInner = [&](const vec3 &p_outer, const vec3 &w_inner,
@@ -1476,7 +1505,7 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
         }
       }
 
-      if (best_clearance > 1e-9) {
+      if (best_clearance > 0.0 && yocto::length(best_w) > 1e-8) {
         const quat4 d_qo = RotationVectorToQuat(phi);
         const quat4 final_outer_q = yocto::normalize(d_qo * q_outer);
         const frame3 final_outer_f = yocto::rotation_frame(final_outer_q);
@@ -1493,7 +1522,8 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
     const quat4 d_qo = RotationVectorToQuat(phi);
     const quat4 final_outer_q = yocto::normalize(d_qo * q_outer);
     const frame3 final_outer_f = yocto::rotation_frame(final_outer_q);
-    const double err = (best_clearance > 0.0) ? 1e-10 : -best_clearance;
+    const double err =
+        std::max(1e-10, (best_clearance > 0.0) ? 1e-10 : -best_clearance);
     const frame3 best_inner = MakeInnerFrame(best_w, best_trans, final_outer_q);
     return {err, final_outer_f, best_inner};
   }
