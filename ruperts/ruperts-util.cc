@@ -258,6 +258,155 @@ double HullClearance(const std::vector<vec2> &outer_points,
   return std::sqrt(min_sqdist);
 }
 
+std::vector<PolygonEdge> GetHullEdges(std::span<const vec2> verts,
+                                     const std::vector<int> &outer_hull) {
+  std::vector<PolygonEdge> edges;
+  const int m = outer_hull.size();
+  edges.reserve(m);
+  vec2 centroid = vec2{0, 0};
+  for (int idx : outer_hull)
+    centroid += verts[idx];
+  if (m > 0)
+    centroid /= (double)m;
+
+  for (int i = 0; i < m; i++) {
+    const vec2 p1 = verts[outer_hull[i]];
+    const vec2 p2 = verts[outer_hull[(i + 1) % m]];
+    const vec2 d = p2 - p1;
+    const double len = length(d);
+    if (len < 1e-12)
+      continue;
+    vec2 n = vec2{-d.y / len, d.x / len};
+    double b = dot(n, p1);
+    if (dot(n, centroid) < b) {
+      n = -n;
+      b = -b;
+    }
+    edges.push_back({n, b});
+  }
+  return edges;
+}
+
+std::vector<PolygonEdge> GetHullEdges(const PolyhedronMesh2D &souter,
+                                     const std::vector<int> &outer_hull) {
+  return GetHullEdges(std::span<const vec2>(souter.vertices), outer_hull);
+}
+
+static inline double EvalClearanceMargin(const std::vector<PolygonEdge> &edges,
+                                        const double *d,
+                                        const vec2 &t) {
+  double min_m = std::numeric_limits<double>::infinity();
+  for (size_t j = 0; j < edges.size(); j++) {
+    double m = dot(edges[j].normal, t) - d[j];
+    if (m < min_m)
+      min_m = m;
+  }
+  return min_m;
+}
+
+Clearance2D MaximizeClearance2D(const std::vector<PolygonEdge> &edges,
+                                std::span<const vec2> inner_verts,
+                                vec2 initial_translation, double initial_step) {
+  const int m = edges.size();
+  double d_buf[64];
+  std::vector<double> d_vec;
+  double *d = d_buf;
+  if (m > 64) {
+    d_vec.resize(m);
+    d = d_vec.data();
+  }
+
+  for (int j = 0; j < m; j++) {
+    double min_proj = std::numeric_limits<double>::infinity();
+    for (const vec2 &v : inner_verts) {
+      double proj = dot(edges[j].normal, v);
+      if (proj < min_proj)
+        min_proj = proj;
+    }
+    d[j] = edges[j].b - min_proj;
+  }
+
+  // 2D Nelder-Mead simplex optimization on R^2.
+  double step = initial_step;
+  vec2 p[3] = {initial_translation, initial_translation + vec2{step, 0.0},
+               initial_translation + vec2{0.0, step}};
+  double val[3];
+  for (int i = 0; i < 3; i++)
+    val[i] = EvalClearanceMargin(edges, d, p[i]);
+
+  for (int iter = 0; iter < 60; iter++) {
+    if (val[1] > val[0]) {
+      std::swap(p[0], p[1]);
+      std::swap(val[0], val[1]);
+    }
+    if (val[2] > val[0]) {
+      std::swap(p[0], p[2]);
+      std::swap(val[0], val[2]);
+    }
+    if (val[2] > val[1]) {
+      std::swap(p[1], p[2]);
+      std::swap(val[1], val[2]);
+    }
+
+    vec2 c = (p[0] + p[1]) * 0.5;
+    vec2 xr = c + (c - p[2]);
+    double vr = EvalClearanceMargin(edges, d, xr);
+
+    if (vr > val[0]) {
+      vec2 xe = c + (xr - c) * 2.0;
+      double ve = EvalClearanceMargin(edges, d, xe);
+      if (ve > vr) {
+        p[2] = xe;
+        val[2] = ve;
+      } else {
+        p[2] = xr;
+        val[2] = vr;
+      }
+    } else if (vr > val[1]) {
+      p[2] = xr;
+      val[2] = vr;
+    } else if (vr > val[2]) {
+      // Outside contraction: reflection is better than worst
+      vec2 xc = c + (xr - c) * 0.5;
+      double vc = EvalClearanceMargin(edges, d, xc);
+      if (vc >= vr) {
+        p[2] = xc;
+        val[2] = vc;
+      } else {
+        p[2] = xr;
+        val[2] = vr;
+      }
+    } else {
+      // Inside contraction: reflection is worse than worst
+      vec2 xc = c + (p[2] - c) * 0.5;
+      double vc = EvalClearanceMargin(edges, d, xc);
+      if (vc > val[2]) {
+        p[2] = xc;
+        val[2] = vc;
+      } else {
+        // Shrink toward p[0]
+        p[1] = p[0] + (p[1] - p[0]) * 0.5;
+        val[1] = EvalClearanceMargin(edges, d, p[1]);
+        p[2] = p[0] + (p[2] - p[0]) * 0.5;
+        val[2] = EvalClearanceMargin(edges, d, p[2]);
+      }
+    }
+  }
+
+  const int best = (val[1] > val[0]) ?
+    (val[2] > val[1] ? 2 : 1) : (val[2] > val[0] ? 2 : 0);
+  return Clearance2D{.clearance = val[best], .translation = p[best]};
+}
+
+Clearance2D FastSilhouetteClearance(const std::vector<PolygonEdge> &outer_edges,
+                                    const Polyhedron &poly,
+                                    const frame3 &inner_rot_frame,
+                                    vec2 initial_translation) {
+  Polyhedron inner = Rotate(poly, inner_rot_frame);
+  PolyhedronMesh2D sinner = Shadow(inner);
+  return MaximizeClearance2D(outer_edges, sinner.vertices, initial_translation);
+}
+
 // PERF: See polyehdra_benchmark for different approaches. This
 // was the winner for the snub cube, but the tradeoffs are likely
 // different for other shapes. (In particular, QuickHull may be

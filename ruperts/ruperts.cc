@@ -161,8 +161,10 @@ struct Solver {
       return;
     should_die = true;
 
-    status->Print("Solved! {} iters, {} attempts, in {}\n", iters.Read(),
-                  attempts.Read(), ANSI::Time(run_timer.Seconds()));
+    status->Print("Solved! {} iters, {} attempts, in {}\n",
+                  FormatNum(iters.Read()),
+                  FormatNum(attempts.Read()),
+                  ANSI::Time(run_timer.Seconds()));
 
     WriteImage(std::format("solved-{}-{}.png", LowerMethod(),
                            polyhedron.name),
@@ -1114,133 +1116,17 @@ static void SolveSpoiler(const Polyhedron &polyhedron, StatusBar *status,
   s.Run();
 }
 
+// Convert rotation vector w in R^3 (axis w / ||w||, angle ||w||) to quat4.
+static inline quat4 RotationVectorToQuat(const vec3 &w) {
+  const double theta = yocto::length(w);
+  if (theta < 1e-12) {
+    return quat4{0.0, 0.0, 0.0, 1.0};
+  }
+  return QuatFromVec(yocto::rotation_quat(w / theta, theta));
+}
+
 struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
   using Solver::Solver;
-
-  struct PolygonEdge {
-    // inward unit normal
-    vec2 normal;
-    // normal ∙ p >= b for points inside
-    double b;
-  };
-
-  static std::vector<PolygonEdge>
-  GetOuterEdges(const Mesh2D &souter, const std::vector<int> &outer_hull) {
-    std::vector<PolygonEdge> edges;
-    const int m = outer_hull.size();
-    edges.reserve(m);
-    vec2 centroid = vec2{0, 0};
-    for (int idx : outer_hull)
-      centroid += souter.vertices[idx];
-    if (m > 0)
-      centroid /= (double)m;
-
-    for (int i = 0; i < m; i++) {
-      const vec2 p1 = souter.vertices[outer_hull[i]];
-      const vec2 p2 = souter.vertices[outer_hull[(i + 1) % m]];
-      const vec2 d = p2 - p1;
-      const double len = length(d);
-      if (len < 1e-12)
-        continue;
-      vec2 n = vec2{-d.y / len, d.x / len};
-      double b = dot(n, p1);
-      if (dot(n, centroid) < b) {
-        n = -n;
-        b = -b;
-      }
-      edges.push_back({n, b});
-    }
-    return edges;
-  }
-
-  // Fast 2D clearance maximization for translation t = (dx, dy).
-  // Given inward edge normals and inner vertices, computes
-  // the maximum clearance min_j (n_j ∙ t - d_j) and the maximizing t.
-  struct FastClearance {
-    static double Eval(const std::vector<PolygonEdge> &edges,
-                       const std::vector<double> &d, const vec2 &t) {
-      double min_m = std::numeric_limits<double>::infinity();
-      for (size_t j = 0; j < edges.size(); j++) {
-        double m = dot(edges[j].normal, t) - d[j];
-        if (m < min_m)
-          min_m = m;
-      }
-      return min_m;
-    }
-
-    static std::pair<double, vec2>
-    Maximize(const std::vector<PolygonEdge> &edges,
-             const std::vector<vec2> &inner_verts) {
-      const int m = edges.size();
-      std::vector<double> d(m);
-      for (int j = 0; j < m; j++) {
-        double min_proj = std::numeric_limits<double>::infinity();
-        for (const vec2 &v : inner_verts) {
-          double proj = dot(edges[j].normal, v);
-          if (proj < min_proj)
-            min_proj = proj;
-        }
-        d[j] = edges[j].b - min_proj;
-      }
-
-      // 2D Nelder-Mead on R^2 starting at t = (0, 0)
-      double step = 0.0005;
-      vec2 p[3] = {vec2{0, 0}, vec2{step, 0}, vec2{0, step}};
-      double val[3];
-      for (int i = 0; i < 3; i++)
-        val[i] = Eval(edges, d, p[i]);
-
-      for (int iter = 0; iter < 60; iter++) {
-        if (val[1] > val[0]) {
-          std::swap(p[0], p[1]);
-          std::swap(val[0], val[1]);
-        }
-        if (val[2] > val[0]) {
-          std::swap(p[0], p[2]);
-          std::swap(val[0], val[2]);
-        }
-        if (val[2] > val[1]) {
-          std::swap(p[1], p[2]);
-          std::swap(val[1], val[2]);
-        }
-
-        vec2 c = (p[0] + p[1]) * 0.5;
-        vec2 xr = c + (c - p[2]);
-        double vr = Eval(edges, d, xr);
-
-        if (vr > val[0]) {
-          vec2 xe = c + (xr - c) * 2.0;
-          double ve = Eval(edges, d, xe);
-          if (ve > vr) {
-            p[2] = xe;
-            val[2] = ve;
-          } else {
-            p[2] = xr;
-            val[2] = vr;
-          }
-        } else if (vr > val[1]) {
-          p[2] = xr;
-          val[2] = vr;
-        } else {
-          vec2 xc = c + (p[2] - c) * 0.5;
-          double vc = Eval(edges, d, xc);
-          if (vc > val[2]) {
-            p[2] = xc;
-            val[2] = vc;
-          } else {
-            p[1] = p[0] + (p[1] - p[0]) * 0.5;
-            val[1] = Eval(edges, d, p[1]);
-            p[2] = p[0] + (p[2] - p[0]) * 0.5;
-            val[2] = Eval(edges, d, p[2]);
-          }
-        }
-      }
-
-      int best = (val[1] > val[0]) ? (val[2] > val[1] ? 2 : 1)
-                                   : (val[2] > val[0] ? 2 : 0);
-      return {val[best], p[best]};
-    }
-  };
 
   std::tuple<double, frame3, frame3> RunOne(ArcFour *rc) override {
     quat4 q_outer;
@@ -1296,7 +1182,7 @@ struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
       return {std::numeric_limits<double>::infinity(), outer_frame,
               outer_frame};
     }
-    const auto edges = GetOuterEdges(souter, outer_hull);
+    const auto edges = GetHullEdges(souter, outer_hull);
 
     // Sample across different tilt angular scales
     static constexpr double SCALES[] = {0.003, 0.01, 0.03, 0.08, 0.15};
@@ -1309,19 +1195,17 @@ struct TiltSolver : public Solver<SolutionDB::METHOD_TILT> {
 
     auto RotLoss = [&](const std::array<double, 3> &w) {
       attempts++;
-      const double wx = w[0], wy = w[1], wz = w[2];
-      const double theta = std::sqrt(wx * wx + wy * wy + wz * wz);
+      const vec3 w_vec = vec3{w[0], w[1], w[2]};
+      const double theta = yocto::length(w_vec);
       // Identity cannot be a Rupert solution; penalize the origin.
       if (theta < 1e-6)
         return 1.0;
 
-      const double s = std::sin(theta * 0.5) / theta;
-      const quat4 delta_q =
-          quat4{wx * s, wy * s, wz * s, std::cos(theta * 0.5)};
-      const quat4 q_inner = normalize(delta_q * q_outer);
+      const quat4 delta_q = RotationVectorToQuat(w_vec);
+      const quat4 q_inner = yocto::normalize(delta_q * q_outer);
       const frame3 rot_frame = yocto::rotation_frame(q_inner);
       const Mesh2D sinner = Shadow(Rotate(polyhedron, rot_frame));
-      const auto [c, trans] = FastClearance::Maximize(edges, sinner.vertices);
+      const auto [c, trans] = MaximizeClearance2D(edges, sinner.vertices);
       if (c > best_clearance) {
         best_clearance = c;
         best_inner_frame =
@@ -1350,6 +1234,266 @@ static void SolveTilt(const Polyhedron &polyhedron, StatusBar *status,
   s.Run();
 }
 
+// This solver chooses an outer orientation, and then the inner rotation
+// as a small relative rotation w.
+//
+// The outer shadow yields half-planes (the convex hull), which we can
+// use to minimize the distance of the inner vertices under 2D
+// translation (t) using a simple linear program. The signed clearance (c)
+// we achieve gives us a gradient towards better solutions. If we achieve
+// clearance close to zero, we also start optimizing the outer frame (phi).
+struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
+  using Solver::Solver;
+
+  std::tuple<double, frame3, frame3> RunOne(ArcFour *rc) override {
+    quat4 q_outer;
+    const int mode = RandTo(rc, 10);
+    if (mode < 7 && polyhedron.faces != nullptr &&
+        polyhedron.faces->v.size() >= 2) {
+      // 70%: View direction aligned parallel to two face planes
+      const auto &[face1, face2] = TwoNonParallelFaces(rc, polyhedron);
+      q_outer = AlignFaces(polyhedron.vertices, polyhedron.faces->v[face1],
+                           polyhedron.faces->v[face2]);
+    } else {
+      // 30%: Uniform random orientation
+      q_outer = RandomQuaternion(rc);
+    }
+
+    const int num_v = polyhedron.vertices.size();
+    std::vector<vec2> outer_verts(num_v);
+    std::vector<vec2> inner_verts(num_v);
+
+    // Fast 3D frame transform and projection to 2D (xy plane) without copying
+    // the Polyhedron structure or allocating on the heap.
+    auto ProjectVertices = [&](const frame3 &f, std::vector<vec2> &out) {
+      for (int i = 0; i < num_v; i++) {
+        const vec3 &v = polyhedron.vertices[i];
+        out[i] = vec2{
+            f.x.x * v.x + f.y.x * v.y + f.z.x * v.z + f.o.x,
+            f.x.y * v.x + f.y.y * v.y + f.z.y * v.z + f.o.y,
+        };
+      }
+    };
+
+    frame3 outer_frame = yocto::rotation_frame(q_outer);
+    ProjectVertices(outer_frame, outer_verts);
+    if (AllZero(outer_verts)) {
+      return {std::numeric_limits<double>::infinity(), outer_frame,
+              outer_frame};
+    }
+    const std::vector<int> outer_hull = Hull2D::QuickHull(outer_verts);
+    if (outer_hull.size() < 3) {
+      return {std::numeric_limits<double>::infinity(), outer_frame,
+              outer_frame};
+    }
+    const auto edges = GetHullEdges(outer_verts, outer_hull);
+
+    // Evaluates the signed clearance margin c(w) for relative rotation vector
+    // w in R^3, solving for the optimal 2D translation t in R^2.
+    auto EvalW = [&](const vec3 &w_in, vec2 initial_t,
+                     double initial_step = 0.0005) -> Clearance2D {
+      attempts++;
+      const quat4 delta_q = RotationVectorToQuat(w_in);
+      const quat4 q_inner = yocto::normalize(delta_q * q_outer);
+      const frame3 rot_frame = yocto::rotation_frame(q_inner);
+      ProjectVertices(rot_frame, inner_verts);
+      return MaximizeClearance2D(edges, inner_verts, initial_t, initial_step);
+    };
+
+    // Step 1: Candidate direction sampling away from identity.
+    // At identity w = 0, clearance is 0.0 and identity is a local maximum
+    // in all directions that penetrate. To find an upward ascent slope,
+    // evaluate 8 candidate angles in the projection plane (wx = r*cos(phi),
+    // wy = r*sin(phi), wz = 0) across three small angular scales r (rad).
+    static constexpr double TEST_SCALES[] = {0.0008, 0.002, 0.006};
+    vec3 best_w = vec3{0.0, 0.0, 0.0};
+    double best_clearance = -std::numeric_limits<double>::infinity();
+    vec2 best_trans = vec2{0.0, 0.0};
+
+    for (double r : TEST_SCALES) {
+      for (int k = 0; k < 8; k++) {
+        const double phi_ang = k * (std::numbers::pi / 4.0);
+        const vec3 w_cand =
+            vec3{r * std::cos(phi_ang), r * std::sin(phi_ang), 0.0};
+        const auto res = EvalW(w_cand, vec2{0.0, 0.0});
+        if (res.clearance > best_clearance) {
+          best_clearance = res.clearance;
+          best_w = w_cand;
+          best_trans = res.translation;
+        }
+      }
+    }
+
+    // Builds full 3D frame from relative rotation vector w,
+    // translation t, and base outer quaternion.
+    auto MakeInnerFrame = [&](const vec3 &w_sol, const vec2 &t,
+                              const quat4 &base_qo) {
+      const quat4 delta_q = RotationVectorToQuat(w_sol);
+      const quat4 q_in = yocto::normalize(delta_q * base_qo);
+      const frame3 rot_f = yocto::rotation_frame(q_in);
+      return yocto::translation_frame(vec3{t.x, t.y, 0.0}) * rot_f;
+    };
+
+    // Step 2: Backtracking Gradient Ascent on relative rotation vector w in
+    // R^3. Ascends the subgradient ∇_w c(w) of the signed clearance margin.
+    vec3 w = best_w;
+    double step_size = 5e-4;
+    static constexpr double EPS_DIFF = 1e-5;
+
+    for (int iter = 0; iter < 40; iter++) {
+      if (best_clearance > 1e-9)
+        break;
+
+      // Central difference gradient:
+      // grad = (c(w + h*e_i) - c(w - h*e_i)) / (2*h)
+      const vec3 grad = vec3{
+          (EvalW(w + vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance -
+           EvalW(w - vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance) /
+              (2.0 * EPS_DIFF),
+          (EvalW(w + vec3{0.0, EPS_DIFF, 0.0}, best_trans, 1e-5).clearance -
+           EvalW(w - vec3{0.0, EPS_DIFF, 0.0}, best_trans, 1e-5).clearance) /
+              (2.0 * EPS_DIFF),
+          (EvalW(w + vec3{0.0, 0.0, EPS_DIFF}, best_trans, 1e-5).clearance -
+           EvalW(w - vec3{0.0, 0.0, EPS_DIFF}, best_trans, 1e-5).clearance) /
+              (2.0 * EPS_DIFF),
+      };
+
+      const double g_norm = yocto::length(grad);
+      if (g_norm < 1e-12)
+        break;
+      const vec3 u_g = grad / g_norm;
+
+      // Armijo-style backtracking line search along ascent direction u_g
+      double alpha = step_size;
+      bool improved = false;
+      for (int ls = 0; ls < 8; ls++) {
+        const vec3 w_cand = w + u_g * alpha;
+        const auto res = EvalW(w_cand, best_trans, 1e-5);
+        if (res.clearance > best_clearance) {
+          best_clearance = res.clearance;
+          best_w = w_cand;
+          w = w_cand;
+          best_trans = res.translation;
+          step_size = std::min(0.01, alpha * 1.4);
+          improved = true;
+          break;
+        }
+        alpha *= 0.5;
+      }
+      if (!improved) {
+        step_size *= 0.5;
+        if (step_size < 1e-8)
+          break;
+      }
+    }
+
+    if (best_clearance > 1e-9) {
+      const frame3 inner_f = MakeInnerFrame(best_w, best_trans, q_outer);
+      const auto cl = GetClearance(polyhedron, outer_frame, inner_f);
+      if (cl.has_value() && cl.value() > 0.0) {
+        return {0.0, outer_frame, inner_f};
+      }
+    }
+
+    // Step 4: Outer pose optimization (phi).
+    // When clearance is near zero (c > -5e-5), the outer pose is often
+    // within a fraction of a degree of an orientation admitting a solution.
+    // Perturb the outer frame by rotation vector phi in R^3 to adjust
+    // the outer shadow boundary.
+    vec3 phi = vec3{0.0, 0.0, 0.0};
+    if (best_clearance > -5e-5) {
+      double outer_step = 2e-4;
+
+      auto EvalOuterInner = [&](const vec3 &p_outer, const vec3 &w_inner,
+                                vec2 t_hint,
+                                double initial_step = 1e-5) -> Clearance2D {
+        attempts++;
+        const quat4 d_qo = RotationVectorToQuat(p_outer);
+        const quat4 qo = yocto::normalize(d_qo * q_outer);
+        const frame3 fo = yocto::rotation_frame(qo);
+        ProjectVertices(fo, outer_verts);
+        const std::vector<int> ho = Hull2D::QuickHull(outer_verts);
+        if (ho.size() < 3)
+          return Clearance2D{.clearance = -1.0, .translation = vec2{0.0, 0.0}};
+        const auto eo = GetHullEdges(outer_verts, ho);
+
+        const quat4 d_qi = RotationVectorToQuat(w_inner);
+        const quat4 qi = yocto::normalize(d_qi * qo);
+        const frame3 fi = yocto::rotation_frame(qi);
+        ProjectVertices(fi, inner_verts);
+        return MaximizeClearance2D(eo, inner_verts, t_hint, initial_step);
+      };
+
+      for (int p_iter = 0; p_iter < 12; p_iter++) {
+        if (best_clearance > 1e-9)
+          break;
+
+        const vec3 grad_phi = vec3{
+            (EvalOuterInner(phi + vec3{EPS_DIFF, 0.0, 0.0}, best_w, best_trans)
+                 .clearance -
+             EvalOuterInner(phi - vec3{EPS_DIFF, 0.0, 0.0}, best_w, best_trans)
+                 .clearance) /
+                (2.0 * EPS_DIFF),
+            (EvalOuterInner(phi + vec3{0.0, EPS_DIFF, 0.0}, best_w, best_trans)
+                 .clearance -
+             EvalOuterInner(phi - vec3{0.0, EPS_DIFF, 0.0}, best_w, best_trans)
+                 .clearance) /
+                (2.0 * EPS_DIFF),
+            (EvalOuterInner(phi + vec3{0.0, 0.0, EPS_DIFF}, best_w, best_trans)
+                 .clearance -
+             EvalOuterInner(phi - vec3{0.0, 0.0, EPS_DIFF}, best_w, best_trans)
+                 .clearance) /
+                (2.0 * EPS_DIFF),
+        };
+
+        const double gp_norm = yocto::length(grad_phi);
+        if (gp_norm > 1e-12) {
+          const vec3 u_gp = grad_phi / gp_norm;
+          double a = outer_step;
+          for (int ls = 0; ls < 5; ls++) {
+            const vec3 p_cand = phi + u_gp * a;
+            const auto res = EvalOuterInner(p_cand, best_w, best_trans);
+            if (res.clearance > best_clearance) {
+              best_clearance = res.clearance;
+              phi = p_cand;
+              best_trans = res.translation;
+              outer_step = std::min(0.005, a * 1.4);
+              break;
+            }
+            a *= 0.5;
+          }
+        }
+      }
+
+      if (best_clearance > 1e-9) {
+        const quat4 d_qo = RotationVectorToQuat(phi);
+        const quat4 final_outer_q = yocto::normalize(d_qo * q_outer);
+        const frame3 final_outer_f = yocto::rotation_frame(final_outer_q);
+        const frame3 final_inner_f =
+            MakeInnerFrame(best_w, best_trans, final_outer_q);
+
+        const auto cl = GetClearance(polyhedron, final_outer_f, final_inner_f);
+        if (cl.has_value() && cl.value() > 0.0) {
+          return {0.0, final_outer_f, final_inner_f};
+        }
+      }
+    }
+
+    const quat4 d_qo = RotationVectorToQuat(phi);
+    const quat4 final_outer_q = yocto::normalize(d_qo * q_outer);
+    const frame3 final_outer_f = yocto::rotation_frame(final_outer_q);
+    const double err = (best_clearance > 0.0) ? 1e-10 : -best_clearance;
+    const frame3 best_inner = MakeInnerFrame(best_w, best_trans, final_outer_q);
+    return {err, final_outer_f, best_inner};
+  }
+};
+
+static void SolveTiltGrad(const Polyhedron &polyhedron, StatusBar *status,
+                          std::optional<double> time_limit = std::nullopt) {
+  TiltGradSolver s(polyhedron, status, time_limit);
+  s.Run();
+}
+
 static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
                       std::optional<double> time_limit) {
   status->Print("Solve " AYELLOW("{}") " with " AWHITE("{}") "...\n",
@@ -1375,6 +1519,8 @@ static void SolveWith(const Polyhedron &poly, int method, StatusBar *status,
     return SolveSpoiler(poly, status, time_limit);
   case SolutionDB::METHOD_TILT:
     return SolveTilt(poly, status, time_limit);
+  case SolutionDB::METHOD_TILT_GRAD:
+    return SolveTiltGrad(poly, status, time_limit);
   default:
     LOG(FATAL) << "Method not available";
   }
@@ -1649,7 +1795,8 @@ static void GrindRandom(const std::unordered_set<std::string> &poly_filter) {
             SolutionDB::METHOD_SPECIAL,
             SolutionDB::METHOD_ORIGIN,
             SolutionDB::METHOD_ALMOST_ID,
-            SolutionDB::METHOD_TILT}) {
+            SolutionDB::METHOD_TILT,
+            SolutionDB::METHOD_TILT_GRAD}) {
           if (HasSolutionWithMethod(poly, method)) {
             has_solution = true;
             std::string name = Util::lcase(SolutionDB::MethodName(method));
@@ -1705,6 +1852,9 @@ int main(int argc, char **argv) {
       if (m == "tilt") {
         SolveTilt(poly, &status);
         return 0;
+      } else if (m == "tiltgrad" || m == "tilt_grad") {
+        SolveTiltGrad(poly, &status);
+        return 0;
       } else if (m == "almost_id") {
         SolveAlmostId(poly, &status);
         return 0;
@@ -1730,6 +1880,7 @@ int main(int argc, char **argv) {
     }
 
     for (;;) {
+      SolveWith(poly, SolutionDB::METHOD_TILT_GRAD, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_TILT, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_SIMUL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_HULL, &status, 3600.0);
@@ -1808,7 +1959,7 @@ int main(int argc, char **argv) {
   // target.name = "onpert_214";
 
   for (;;) {
-    SolveTilt(db.AnyPolyhedronByName("nopert_214"), &status);
+    SolveTiltGrad(db.AnyPolyhedronByName("nopert_214"), &status);
   }
 
   // Call one of the solution procedures:

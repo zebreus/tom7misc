@@ -1,28 +1,21 @@
 
-#include "geom/polygons.h"
 #include "ruperts-util.h"
 
 #include <cmath>
 #include <cstdint>
 #include <format>
-#include <numbers>
 #include <optional>
-#include <string>
 #include <tuple>
-#include <unordered_set>
 #include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "bounds.h"
-#include "dirty.h"
 #include "geom/hull-2d.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
-#include "image.h"
 #include "randutil.h"
-#include "rendering.h"
 #include "yocto-math.h"
 
 double IsNear(double a, double b) {
@@ -181,6 +174,139 @@ static void TestLossRegression() {
   CHECK(!oclearance.has_value()) << oclearance.value();
 }
 
+static void TestGetHullEdges() {
+  ArcFour rc("hull_edges");
+  for (int iter = 0; iter < 100; iter++) {
+    std::vector<vec2> points;
+    for (int j = 0; j < 20; j++) {
+      points.emplace_back(RandDouble(&rc) * 4.0 - 2.0,
+                          RandDouble(&rc) * 4.0 - 2.0);
+    }
+    const std::vector<int> hull = Hull2D::QuickHull(points);
+    if (hull.size() < 3) continue;
+
+    const auto edges = GetHullEdges(points, hull);
+    CHECK(edges.size() == hull.size());
+
+    // Every edge normal must be unit length.
+    for (const auto &edge : edges) {
+      CHECK_NEAR(yocto::length(edge.normal), 1.0);
+    }
+
+    // All points in the set must satisfy the inward halfspace:
+    // n ∙ p >= b - eps.
+    for (const vec2 &pt : points) {
+      for (const auto &edge : edges) {
+        CHECK(dot(edge.normal, pt) >= edge.b - 1e-9);
+      }
+    }
+
+    // The edge endpoints must lie on the boundary line: n ∙ p == b.
+    const int m = hull.size();
+    for (int i = 0; i < m; i++) {
+      const vec2 p1 = points[hull[i]];
+      const vec2 p2 = points[hull[(i + 1) % m]];
+      CHECK_NEAR(dot(edges[i].normal, p1), edges[i].b);
+      CHECK_NEAR(dot(edges[i].normal, p2), edges[i].b);
+    }
+
+    // Centroid of hull must be strictly inside (positive margin to
+    // all edges).
+    vec2 centroid = vec2{0.0, 0.0};
+    for (int idx : hull) centroid += points[idx];
+    centroid /= (double)hull.size();
+    for (const auto &edge : edges) {
+      CHECK(dot(edge.normal, centroid) > edge.b + 1e-9);
+    }
+  }
+}
+
+static void TestMaximizeClearance2D() {
+  // Use a symmetric square [-1, 1] x [-1, 1].
+  const std::vector<vec2> outer = {
+      {-1.0, -1.0}, {1.0, -1.0}, {1.0, 1.0}, {-1.0, 1.0}};
+  const std::vector<int> hull = {0, 1, 2, 3};
+  const auto edges = GetHullEdges(outer, hull);
+
+  // Exact clearance of scaled inner square [-s, s]^2 is (1 - s).
+  for (double s : {0.25, 0.5, 0.75}) {
+    const std::vector<vec2> inner = {{-s, -s}, {s, -s}, {s, s}, {-s, s}};
+    const auto res = MaximizeClearance2D(edges, inner);
+    CHECK_NEAR(res.clearance, 1.0 - s);
+    CHECK_NEAR(res.translation.x, 0.0);
+    CHECK_NEAR(res.translation.y, 0.0);
+  }
+
+  // Shift invariance: If the inner square is pre-translated by t0,
+  // the maximizing translation recovers -t0 and yields the same
+  // clearance.
+  ArcFour rc("shift");
+  for (int iter = 0; iter < 50; iter++) {
+    const double s = 0.5;
+    const vec2 t0{RandDouble(&rc) * 0.6 - 0.3, RandDouble(&rc) * 0.6 - 0.3};
+    const std::vector<vec2> shifted_inner = {{-s + t0.x, -s + t0.y},
+                                             {s + t0.x, -s + t0.y},
+                                             {s + t0.x, s + t0.y},
+                                             {-s + t0.x, s + t0.y}};
+    const auto res =
+        MaximizeClearance2D(edges, shifted_inner, vec2{0.0, 0.0}, 0.1);
+    CHECK(std::abs(res.clearance - (1.0 - s)) < 1e-4);
+    CHECK(std::abs(res.translation.x - (-t0.x)) < 1e-4);
+    CHECK(std::abs(res.translation.y - (-t0.y)) < 1e-4);
+  }
+
+  // Monotonicity with scale:
+  // Smaller inner shapes must yield strictly greater clearance.
+  // Shapes larger than outer (s > 1) must yield negative clearance.
+  {
+    const std::vector<vec2> inner_small = {
+        {-0.3, -0.3}, {0.3, -0.3}, {0.3, 0.3}, {-0.3, 0.3}};
+    const std::vector<vec2> inner_med = {
+        {-0.6, -0.6}, {0.6, -0.6}, {0.6, 0.6}, {-0.6, 0.6}};
+    const std::vector<vec2> inner_large = {
+        {-1.3, -1.3}, {1.3, -1.3}, {1.3, 1.3}, {-1.3, 1.3}};
+
+    const auto res_small = MaximizeClearance2D(edges, inner_small);
+    const auto res_med = MaximizeClearance2D(edges, inner_med);
+    const auto res_large = MaximizeClearance2D(edges, inner_large);
+
+    CHECK(res_small.clearance > res_med.clearance);
+    CHECK(res_med.clearance > 0.0);
+    CHECK(res_large.clearance < 0.0);
+  }
+
+  // Feasibility of returned translation:
+  // For any inner shape, translating by res.translation must ensure every
+  // vertex satisfies the reported clearance margin against every edge.
+  {
+    const std::vector<vec2> inner = {
+        {-0.4, -0.5}, {0.3, -0.2}, {0.2, 0.4}, {-0.3, 0.3}};
+    const auto res = MaximizeClearance2D(edges, inner);
+    for (const vec2 &v : inner) {
+      const vec2 shifted_v = v + res.translation;
+      for (const auto &edge : edges) {
+        CHECK(dot(edge.normal, shifted_v) - edge.b >= res.clearance - 1e-7);
+      }
+    }
+  }
+}
+
+static void TestFastSilhouetteClearance() {
+  const Polyhedron cube = Cube();
+  const frame3 outer_frame{};
+  const PolyhedronMesh2D souter = Shadow(Rotate(cube, outer_frame));
+  const std::vector<int> outer_hull = Hull2D::QuickHull(souter.vertices);
+  const auto edges = GetHullEdges(souter, outer_hull);
+
+  // When inner rotation frame equals outer frame (identity),
+  // inner shadow equals outer shadow; maximum clearance is
+  // exactly 0.0 at t = (0, 0).
+  const auto res = FastSilhouetteClearance(edges, cube, outer_frame);
+  CHECK_NEAR(res.clearance, 0.0);
+  CHECK_NEAR(res.translation.x, 0.0);
+  CHECK_NEAR(res.translation.y, 0.0);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Print("\n");
@@ -191,6 +317,10 @@ int main(int argc, char **argv) {
   TestUnpackFull();
 
   TestLossRegression();
+
+  TestGetHullEdges();
+  TestMaximizeClearance2D();
+  TestFastSilhouetteClearance();
 
   Print("OK\n");
   return 0;

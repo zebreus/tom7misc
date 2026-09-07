@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -122,6 +123,42 @@ double HullClearance(const std::vector<vec2> &outer_points,
                      const std::vector<int> &outer_hull,
                      const std::vector<vec2> &inner_points,
                      const std::vector<int> &inner_hull);
+
+// Inward-facing halfspace representation of a 2D hull edge:
+// normal ∙ p >= b for points inside the polygon.
+struct PolygonEdge {
+  vec2 normal;
+  double b = 0.0;
+};
+
+// Extract inward-facing halfspace edges for the convex hull of 2D vertices.
+std::vector<PolygonEdge> GetHullEdges(std::span<const vec2> verts,
+                                     const std::vector<int> &outer_hull);
+std::vector<PolygonEdge> GetHullEdges(const PolyhedronMesh2D &souter,
+                                     const std::vector<int> &outer_hull);
+
+// Result of 2D translation clearance optimization.
+struct Clearance2D {
+  double clearance = 0.0;
+  vec2 translation = {0.0, 0.0};
+};
+
+// Given outer hull edges and inner shadow vertices, compute the maximum
+// clearance min_j (n_j ∙ t - d_j) and the maximizing translation
+// t = (dx, dy).
+// If clearance > 0, the inner points strictly fit inside with that margin.
+// If clearance <= 0, -clearance is the minimum penetration depth.
+Clearance2D MaximizeClearance2D(const std::vector<PolygonEdge> &edges,
+                               std::span<const vec2> inner_verts,
+                               vec2 initial_translation = vec2{0.0, 0.0},
+                               double initial_step = 0.0005);
+
+// Fast clearance computation for fixed outer hull edges and an inner
+// rotation frame.
+Clearance2D FastSilhouetteClearance(const std::vector<PolygonEdge> &outer_edges,
+                                    const Polyhedron &poly,
+                                    const frame3 &inner_rot_frame,
+                                    vec2 initial_translation = vec2{0.0, 0.0});
 
 // The area of the convex hull; should also work for any simple
 // polygon.
