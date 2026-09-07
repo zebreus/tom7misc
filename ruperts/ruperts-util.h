@@ -217,6 +217,33 @@ std::optional<double> GetClearance(const Polyhedron &poly,
 // other.
 std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
 
+// Half-space defined as: dot(normal, x) <= d, with ||normal|| = 1.
+struct HalfSpace {
+  vec3 normal = vec3(0, 0, 1);
+  double d = 1.0;
+
+  // Evaluates signed distance from plane (positive = outside / violating).
+  double SignedDistance(const vec3 &p) const {
+    return yocto::dot(normal, p) - d;
+  }
+
+  bool Contains(const vec3 &p, double eps = 1e-9) const {
+    return SignedDistance(p) <= eps;
+  }
+};
+
+// Extract the bounding half-spaces (unique face planes) of the 3D convex
+// hull of the given vertices. Faces may be quads or higher-order polygons;
+// the underlying QuickHull triangulates them, so coplanar triangular facets
+// are deduplicated to produce one half-space per face.
+// Normals point outward: dot(normal, x) <= d for all points in the hull.
+std::vector<HalfSpace> ExtractHalfSpacesFromHull(
+    const std::vector<vec3> &vertices);
+
+inline std::vector<HalfSpace> ExtractHalfSpacesFromHull(
+    const Polyhedron &poly) {
+  return ExtractHalfSpacesFromHull(poly.vertices);
+}
 
 TriangularMesh3D PolyToTriangularMesh(const Polyhedron &poly);
 

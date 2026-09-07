@@ -21,6 +21,7 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "geom/hull-2d.h"
+#include "geom/hull-3d.h"
 #include "geom/mesh.h"
 #include "geom/polyhedra.h"
 #include "hashing.h"
@@ -233,6 +234,56 @@ std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly) {
       return std::make_pair(f1, f2);
     }
   }
+}
+
+std::vector<HalfSpace> ExtractHalfSpacesFromHull(
+    const std::vector<vec3> &vertices) {
+  if (vertices.size() < 4) return {};
+
+  auto triangles = Hull3D::HullFaces(vertices);
+  std::vector<HalfSpace> planes;
+
+  // Compute centroid of vertices to orient normals outward from interior.
+  vec3 centroid = vec3(0, 0, 0);
+  for (const vec3 &v : vertices) {
+    centroid += v;
+  }
+  centroid = centroid / (double)vertices.size();
+
+  for (const auto &[i, j, k] : triangles) {
+    const vec3 &v0 = vertices[i];
+    const vec3 &v1 = vertices[j];
+    const vec3 &v2 = vertices[k];
+
+    vec3 cross_prod = yocto::cross(v1 - v0, v2 - v0);
+    double len = yocto::length(cross_prod);
+    if (len < 1e-12) continue;
+
+    vec3 normal = cross_prod / len;
+    double d = yocto::dot(normal, v0);
+
+    // Ensure normal points outward: centroid is strictly in interior,
+    // so dot(normal, centroid) < d must hold.
+    if (yocto::dot(normal, centroid) > d) {
+      normal = -normal;
+      d = -d;
+    }
+
+    // Deduplicate near-identical planes
+    bool duplicate = false;
+    for (const auto &existing : planes) {
+      if (yocto::length(existing.normal - normal) < 1e-5 &&
+          std::abs(existing.d - d) < 1e-5) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      planes.push_back(HalfSpace{.normal = normal, .d = d});
+    }
+  }
+
+  return planes;
 }
 
 double HullClearance(const std::vector<vec2> &outer_points,

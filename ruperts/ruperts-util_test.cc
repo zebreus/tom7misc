@@ -307,6 +307,90 @@ static void TestFastSilhouetteClearance() {
   CHECK_NEAR(res.translation.y, 0.0);
 }
 
+static void TestExtractHalfSpaces() {
+  // 1. Cube: 8 vertices, 6 faces (each square face triangulated into 2 coplanar triangles)
+  {
+    const Polyhedron cube = Cube();
+    const auto hs = ExtractHalfSpacesFromHull(cube);
+    CHECK(hs.size() == 6) << std::format("Expected 6 faces for Cube, got {}", hs.size());
+
+    for (const auto &h : hs) {
+      CHECK_NEAR(yocto::length(h.normal), 1.0);
+      int on_boundary = 0;
+      for (const vec3 &v : cube.vertices) {
+        CHECK(h.Contains(v, 1e-7)) << std::format("Vertex outside halfspace: dist={}", h.SignedDistance(v));
+        if (std::abs(h.SignedDistance(v)) < 1e-7) {
+          on_boundary++;
+        }
+      }
+      CHECK(on_boundary == 4) << std::format("Square face should touch 4 vertices, got {}", on_boundary);
+    }
+  }
+
+  // 2. Octahedron: 6 vertices, 8 triangular faces
+  {
+    const Polyhedron octa = Octahedron();
+    const auto hs = ExtractHalfSpacesFromHull(octa);
+    CHECK(hs.size() == 8) << std::format("Expected 8 faces for Octahedron, got {}", hs.size());
+
+    for (const auto &h : hs) {
+      CHECK_NEAR(yocto::length(h.normal), 1.0);
+      int on_boundary = 0;
+      for (const vec3 &v : octa.vertices) {
+        CHECK(h.Contains(v, 1e-7)) << std::format("Vertex outside halfspace: dist={}", h.SignedDistance(v));
+        if (std::abs(h.SignedDistance(v)) < 1e-7) {
+          on_boundary++;
+        }
+      }
+      CHECK(on_boundary == 3) << std::format("Triangular face should touch 3 vertices, got {}", on_boundary);
+    }
+  }
+
+  // 3. Dodecahedron: 20 vertices, 12 pentagonal faces
+  {
+    const Polyhedron dodeca = Dodecahedron();
+    const auto hs = ExtractHalfSpacesFromHull(dodeca);
+    CHECK(hs.size() == 12) << std::format("Expected 12 faces for Dodecahedron, got {}", hs.size());
+
+    for (const auto &h : hs) {
+      CHECK_NEAR(yocto::length(h.normal), 1.0);
+      int on_boundary = 0;
+      for (const vec3 &v : dodeca.vertices) {
+        CHECK(h.Contains(v, 1e-7)) << std::format("Vertex outside halfspace: dist={}", h.SignedDistance(v));
+        if (std::abs(h.SignedDistance(v)) < 1e-7) {
+          on_boundary++;
+        }
+      }
+      CHECK(on_boundary == 5) << std::format("Pentagonal face should touch 5 vertices, got {}", on_boundary);
+    }
+  }
+
+  // 4. Translated Cube: Verify origin-independence
+  {
+    Polyhedron cube = Cube();
+    const vec3 offset(12.3, -4.56, 7.89);
+    for (vec3 &v : cube.vertices) {
+      v += offset;
+    }
+    const auto hs = ExtractHalfSpacesFromHull(cube);
+    CHECK(hs.size() == 6) << std::format("Expected 6 faces for translated Cube, got {}", hs.size());
+
+    for (const auto &h : hs) {
+      CHECK_NEAR(yocto::length(h.normal), 1.0);
+      // Centroid must be strictly in the interior
+      CHECK(h.SignedDistance(offset) < -0.1);
+      int on_boundary = 0;
+      for (const vec3 &v : cube.vertices) {
+        CHECK(h.Contains(v, 1e-7));
+        if (std::abs(h.SignedDistance(v)) < 1e-7) {
+          on_boundary++;
+        }
+      }
+      CHECK(on_boundary == 4);
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   Print("\n");
@@ -321,6 +405,7 @@ int main(int argc, char **argv) {
   TestGetHullEdges();
   TestMaximizeClearance2D();
   TestFastSilhouetteClearance();
+  TestExtractHalfSpaces();
 
   Print("OK\n");
   return 0;

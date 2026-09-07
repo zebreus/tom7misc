@@ -198,7 +198,7 @@ SolutionDB::GetAllNopertAttempts() {
 }
 
 
-void SolutionDB::AddNopert(const Polyhedron &poly, int method) {
+int SolutionDB::AddNopert(const Polyhedron &poly, int method) {
   std::string vs;
   for (const vec3 &v : poly.vertices) {
     if (!vs.empty()) vs.push_back(',');
@@ -212,6 +212,12 @@ void SolutionDB::AddNopert(const Polyhedron &poly, int method) {
           "values ({}, '{}', {}, {})",
           poly.vertices.size(),
           vs, time(nullptr), method));
+
+  auto q = db->ExecuteString("select max(id) from noperts");
+  CHECK(q != nullptr);
+  auto row = q->NextRow();
+  CHECK(row != nullptr);
+  return row->GetInt(0);
 }
 
 // Expects a specific column order; see below.

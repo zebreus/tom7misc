@@ -41,9 +41,10 @@ struct SolutionDB {
   static constexpr int METHOD_SPOILER = 13;
   static constexpr int METHOD_TILT = 14;
   static constexpr int METHOD_TILT_GRAD = 15;
+  static constexpr int METHOD_TILT_GPU = 16;
 
   static constexpr int FIRST_METHOD = 1;
-  static constexpr int LAST_METHOD = 15;
+  static constexpr int LAST_METHOD = 16;
 
   static const char *MethodName(int m) {
     switch (m) {
@@ -63,6 +64,7 @@ struct SolutionDB {
     case METHOD_SPOILER: return "METHOD_SPOILER";
     case METHOD_TILT: return "METHOD_TILT";
     case METHOD_TILT_GRAD: return "METHOD_TILT_GRAD";
+    case METHOD_TILT_GPU: return "METHOD_TILT_GPU";
     default: return "UNKNOWN";
     }
   }
@@ -169,6 +171,7 @@ struct SolutionDB {
   static constexpr int NOPERT_METHOD_UNOPT = 7;
   static constexpr int NOPERT_METHOD_CHURRO = 8;
   static constexpr int NOPERT_METHOD_FLATTEN76 = 9;
+  static constexpr int NOPERT_METHOD_REPAIR214_QUAD = 10;
 
   static const char *NopertMethodName(int m) {
     switch (m) {
@@ -181,6 +184,7 @@ struct SolutionDB {
     case NOPERT_METHOD_UNOPT: return "NOPERT_METHOD_UNOPT";
     case NOPERT_METHOD_CHURRO: return "NOPERT_METHOD_CHURRO";
     case NOPERT_METHOD_FLATTEN76: return "NOPERT_METHOD_FLATTEN76";
+    case NOPERT_METHOD_REPAIR214_QUAD: return "NOPERT_METHOD_REPAIR214_QUAD";
     default: return "UNKNOWN";
     }
   }
@@ -191,7 +195,7 @@ struct SolutionDB {
 
   std::vector<NopertAttempt> GetAllNopertAttempts();
 
-  void AddNopert(const Polyhedron &poly, int method);
+  int AddNopert(const Polyhedron &poly, int method);
   // Or abort.
   Nopert GetNopert(int id);
 
