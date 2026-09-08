@@ -641,6 +641,40 @@ double Diameter(const Polyhedron &p) {
   return std::sqrt(dist);
 }
 
+double Volume(const Polyhedron &p) {
+  if (p.faces == nullptr) {
+    if (p.vertices.size() < 4) return 0.0;
+    auto poly = PolyhedronFromVertices(p.vertices);
+    CHECK(poly.has_value()) << "Cannot compute volume of degenerate polyhedron";
+    return Volume(poly.value());
+  }
+
+  if (p.faces->triangulation.empty() || p.vertices.empty()) {
+    return 0.0;
+  }
+
+  // Use the centroid of the vertices as the reference point to reduce
+  // floating-point error for polyhedra positioned far from the origin.
+  vec3 ref{0.0, 0.0, 0.0};
+  for (const vec3 &v : p.vertices) {
+    ref += v;
+  }
+  ref = ref * (1.0 / (double)p.vertices.size());
+
+  double signed_vol = 0.0;
+  for (const auto &[a, b, c] : p.faces->triangulation) {
+    CHECK(a >= 0 && a < (int)p.vertices.size());
+    CHECK(b >= 0 && b < (int)p.vertices.size());
+    CHECK(c >= 0 && c < (int)p.vertices.size());
+    const vec3 va = p.vertices[a] - ref;
+    const vec3 vb = p.vertices[b] - ref;
+    const vec3 vc = p.vertices[c] - ref;
+    signed_vol += yocto::dot(yocto::cross(va, vb), vc);
+  }
+
+  return std::abs(signed_vol) / 6.0;
+}
+
 Polyhedron NormalizeRadius(const Polyhedron &p) {
   double max_dist = 0.0;
   for (const vec3 &v : p.vertices) {

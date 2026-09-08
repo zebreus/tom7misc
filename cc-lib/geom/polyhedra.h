@@ -176,6 +176,9 @@ inline PolyhedronMesh2D Translate(const PolyhedronMesh2D &m, const vec2 &t) {
 // Note: This is non-standard.
 double Diameter(const Polyhedron &p);
 
+// Volume of a convex polyhedron.
+double Volume(const Polyhedron &p);
+
 // Normalize so that the most distant point from the origin is
 // distance 1. This really only makes sense if the polyhedron
 // contains the origin (and ideally is centered around it).

@@ -272,10 +272,109 @@ static void TestStructure() {
 static void TestGetByName() {
   auto po = PolyhedronByName("cube");
   CHECK(po.has_value());
-  CHECK(po.value().faces->NumFaces() == 8);
+  CHECK(po.value().faces->NumFaces() == 6);
+  CHECK(po.value().faces->NumVertices() == 8);
 
   CHECK(!PolyhedronByName("").has_value());
   CHECK(!PolyhedronByName("fakeohedron").has_value());
+}
+
+static void TestVolume() {
+  // Test known analytic volumes.
+  {
+    // Cube is [-1, 1]^3 with side length 2, so V = 2^3 = 8.
+    Polyhedron cube = Cube();
+    CHECK_NEAR(Volume(cube), 8.0);
+  }
+
+  {
+    // Tetrahedron has vertices at 4 alternating cube corners:
+    // (1,1,1), (1,-1,-1), (-1,1,-1), (-1,-1,1).
+    // Cube volume 8 minus 4 corner tetrahedra of volume (1/6)*2*2*2 = 4/3 each:
+    // 8 - 4 * (4/3) = 8/3.
+    Polyhedron tet = Tetrahedron();
+    CHECK_NEAR(Volume(tet), 8.0 / 3.0);
+  }
+
+  {
+    // Octahedron with vertices at distance 1 along coordinate axes.
+    // Two square pyramids with base area 2 and height 1: 2 * (1/3 * 2 * 1) = 4/3.
+    Polyhedron oct = Octahedron();
+    CHECK_NEAR(Volume(oct), 4.0 / 3.0);
+  }
+
+  {
+    // 4-prism of depth 3.0. Base is square inscribed in unit circle (area = 2.0).
+    // Volume = 2.0 * 3.0 = 6.0.
+    Polyhedron prism4 = NPrism(4, 3.0);
+    CHECK_NEAR(Volume(prism4), 6.0);
+  }
+
+  {
+    // 6-prism of depth 2.0. Base is regular hexagon inscribed in unit circle:
+    // area = 3*sqrt(3)/2. Volume = 3*sqrt(3).
+    Polyhedron prism6 = NPrism(6, 2.0);
+    CHECK_NEAR(Volume(prism6), 3.0 * std::sqrt(3.0));
+  }
+
+  {
+    // Dodecahedron has edge length a = sqrt(5) - 1.
+    // Analytic volume is 10 + 2*sqrt(5).
+    Polyhedron dod = Dodecahedron();
+    CHECK_NEAR(Volume(dod), 10.0 + 2.0 * std::sqrt(5.0));
+  }
+
+  // Scaling property: Volume scales with s^3.
+  for (const auto &p : {Cube(), Tetrahedron(), Octahedron(), Dodecahedron(),
+                        Icosahedron(), Noperthedron()}) {
+    const double v0 = Volume(p);
+    CHECK(v0 > 0.0) << p.name;
+    for (double s : {0.25, 0.5, 1.7, 2.0}) {
+      CHECK_NEAR(Volume(Scale(p, s)), v0 * s * s * s);
+    }
+  }
+
+  // Rigid transformation invariance: translation and rotation preserve volume.
+  {
+    Polyhedron cube = Cube();
+    // Translation
+    Polyhedron translated = cube;
+    for (vec3 &v : translated.vertices) {
+      v += vec3{123.456, -789.012, 345.678};
+    }
+    CHECK_NEAR(Volume(translated), 8.0);
+
+    // Rotation
+    const quat4 q = yocto::normalize(quat4{0.5, -0.2, 0.7, 0.4});
+    Polyhedron rotated = Rotate(cube, q);
+    CHECK_NEAR(Volume(rotated), 8.0);
+
+    // Translation + Rotation
+    const frame3 f = yocto::translation_frame(vec3{50.0, -100.0, 25.0}) *
+                     yocto::rotation_frame(q);
+    Polyhedron tf = Rotate(cube, f);
+    CHECK_NEAR(Volume(tf), 8.0);
+  }
+
+  // Polyhedron without pre-computed faces (faces == nullptr).
+  {
+    Polyhedron raw_cube;
+    raw_cube.vertices = Cube().vertices;
+    CHECK(raw_cube.faces == nullptr);
+    CHECK_NEAR(Volume(raw_cube), 8.0);
+  }
+
+  // Degenerate shapes
+  {
+    Polyhedron empty_poly;
+    CHECK_NEAR(Volume(empty_poly), 0.0);
+
+    Polyhedron flat_poly;
+    flat_poly.vertices = {vec3{0, 0, 0}, vec3{1, 0, 0}, vec3{0, 1, 0}};
+    CHECK_NEAR(Volume(flat_poly), 0.0);
+  }
+
+  Print("Volume OK!\n");
 }
 
 int main(int argc, char **argv) {
@@ -291,6 +390,7 @@ int main(int argc, char **argv) {
   TestStructure();
 
   TestGetByName();
+  TestVolume();
 
   Print("OK\n");
   return 0;
