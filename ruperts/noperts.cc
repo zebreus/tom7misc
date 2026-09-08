@@ -29,6 +29,7 @@
 #include "geom/hull-2d.h"
 #include "geom/hull-3d.h"
 #include "geom/point-map.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "geom/symmetry-groups.h"
 #include "interval-cover-util.h"

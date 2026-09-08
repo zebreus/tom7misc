@@ -1,6 +1,5 @@
 
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <string>
 #include <vector>
@@ -9,6 +8,7 @@
 #include "arcfour.h"
 #include "base/print.h"
 #include "big-polyhedra.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "map-util.h"
 #include "patches.h"

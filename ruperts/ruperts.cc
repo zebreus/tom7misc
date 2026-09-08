@@ -2009,11 +2009,13 @@ int main(int argc, char **argv) {
     for (;;) {
       SolveWith(poly, SolutionDB::METHOD_TILT_GRAD, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_TILT, &status, 3600.0);
+      /*
       SolveWith(poly, SolutionDB::METHOD_SIMUL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_HULL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_MAX, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_PARALLEL, &status, 3600.0);
       SolveWith(poly, SolutionDB::METHOD_SPECIAL, &status, 3600.0);
+      */
     }
   }
 

@@ -576,7 +576,8 @@ static void AddEvenPermutations(
 
 BigPoly BigRidode(int digits) {
   const BigInt inv_epsilon = BigNumbers::Pow10(digits);
-  const BigRat phi = (BigRat(1) + BigRat::Sqrt(BigRat(5), inv_epsilon)) / BigRat(2);
+  const BigRat phi =
+      (BigRat(1) + BigRat::Sqrt(BigRat(5), inv_epsilon)) / BigRat(2);
   const BigRat phi_squared = phi * phi;
   const BigRat phi_cubed = phi_squared * phi;
   const BigRat zero = BigRat(0);
@@ -774,23 +775,26 @@ BigPoly BigPhexe(int digits) {
 
   const BigRat C0 = phi * Sqrt(BigRat(3) - xx) / BigRat(2);
   const BigRat C1 =
-    phi * Sqrt((x - BigRat{1} - (BigRat{1} / x)) * phi) / (BigRat(2) * x);
-  const BigRat C2 = phi * Sqrt((x - BigRat{1} - (BigRat{1} / x)) * phi) / BigRat(2);
+      phi * Sqrt((x - BigRat{1} - (BigRat{1} / x)) * phi) / (BigRat(2) * x);
+  const BigRat C2 =
+      phi * Sqrt((x - BigRat{1} - (BigRat{1} / x)) * phi) / BigRat(2);
   const BigRat C3 = xx * phi * Sqrt(BigRat(3) - xx) / BigRat(2);
-  const BigRat C4 = phi * Sqrt(BigRat{1} - x + (BigRat{1} + phi) / x) / BigRat(2);
+  const BigRat C4 =
+      phi * Sqrt(BigRat{1} - x + (BigRat{1} + phi) / x) / BigRat(2);
   const BigRat C5 = Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * x);
   const BigRat C6 = Sqrt((x + BigRat(2)) * phi + BigRat(2)) / (BigRat(2) * x);
-  const BigRat C7 =
-    Sqrt(-xx * (BigRat(2) + phi) +
-         x * (BigRat{1} + BigRat(3) * phi) + BigRat{4}) / BigRat(2);
-  const BigRat C8 = (BigRat{1} + phi) *
-    Sqrt(BigRat{1} + (BigRat{1} / x)) / (BigRat(2) * x);
-  const BigRat C9 = Sqrt(BigRat(2) + BigRat(3) * phi -
-                         BigRat(2) * x + (BigRat(3) / x)) / BigRat(2);
-  const BigRat C10 =
-    Sqrt(xx * (BigRat(392) + BigRat{225} * phi) + x *
-         (BigRat{249} + BigRat{670} * phi) +
-         (BigRat{470} + BigRat{157} * phi)) / BigRat(62);
+  const BigRat C7 = Sqrt(-xx * (BigRat(2) + phi) +
+                         x * (BigRat{1} + BigRat(3) * phi) + BigRat{4}) /
+                    BigRat(2);
+  const BigRat C8 =
+      (BigRat{1} + phi) * Sqrt(BigRat{1} + (BigRat{1} / x)) / (BigRat(2) * x);
+  const BigRat C9 =
+      Sqrt(BigRat(2) + BigRat(3) * phi - BigRat(2) * x + (BigRat(3) / x)) /
+      BigRat(2);
+  const BigRat C10 = Sqrt(xx * (BigRat(392) + BigRat{225} * phi) +
+                          x * (BigRat{249} + BigRat{670} * phi) +
+                          (BigRat{470} + BigRat{157} * phi)) /
+                     BigRat(62);
   const BigRat C11 = phi * Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * x);
   const BigRat C12 = phi * Sqrt(xx + x + BigRat{1} + phi) / (BigRat(2) * x);
   const BigRat C13 =
@@ -798,13 +802,13 @@ BigPoly BigPhexe(int digits) {
   const BigRat C14 = Sqrt(xx * (BigRat{1} + BigRat(2) * phi) - phi) / BigRat(2);
   const BigRat C15 = phi * Sqrt(xx + x) / BigRat(2);
   const BigRat C16 =
-    (phi * phi * phi) * Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * xx);
-  const BigRat C17 =
-    Sqrt(xx * (BigRat{617} + BigRat(842) * phi) + x *
-         (BigRat{919} + BigRat{1589} * phi) +
-         (BigRat{627} + BigRat{784} * phi)) / BigRat(62);
+      (phi * phi * phi) * Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * xx);
+  const BigRat C17 = Sqrt(xx * (BigRat{617} + BigRat(842) * phi) +
+                          x * (BigRat{919} + BigRat{1589} * phi) +
+                          (BigRat{627} + BigRat{784} * phi)) /
+                     BigRat(62);
   const BigRat C18 =
-    (phi * phi) * Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * x);
+      (phi * phi) * Sqrt(x * (x + phi) + BigRat{1}) / (BigRat(2) * x);
   const BigRat C19 = phi * Sqrt(x * (x + phi) + BigRat{1}) / BigRat(2);
 
   // Check that the computed values are very close to their quoted

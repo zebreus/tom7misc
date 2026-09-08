@@ -8,6 +8,7 @@
 #include <limits>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -23,6 +24,7 @@
 #include "geom/hull-2d.h"
 #include "geom/hull-3d.h"
 #include "geom/mesh.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "hashing.h"
 #include "randutil.h"

@@ -48,6 +48,7 @@ inline bool CrossIsZero(const BigVec3 &a, const BigVec3 &b) {
     BigRat::Sign(a.x * b.y - a.y * b.x) == 0;
 }
 
+[[maybe_unused]]
 inline bool IsZero(const BigVec3 &a) {
   return BigRat::Sign(a.x) == 0 &&
     BigRat::Sign(a.y) == 0 &&

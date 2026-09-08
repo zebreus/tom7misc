@@ -1,4 +1,4 @@
-default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe
+default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe repair214.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe
 
 # by default, don't require opencl
 all: default gpuperts.exe
@@ -82,6 +82,14 @@ gpuperts.exe : gpuperts.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+tiltperts.exe : tiltperts.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
+lean228.exe : lean228.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 topng.exe : topng.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -127,6 +135,10 @@ squery.exe : squery.o $(OBJECTS)
 	@echo -n "!"
 
 noperts.exe : noperts.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+repair214.exe : repair214.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

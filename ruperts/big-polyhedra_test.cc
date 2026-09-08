@@ -207,6 +207,10 @@ static void TestViewPosFromQuat() {
   printf("TestViewPosFromQuat OK.\n");
 }
 
+void TestBigPolyhedra() {
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
