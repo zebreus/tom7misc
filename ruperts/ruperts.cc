@@ -1258,16 +1258,42 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
   using Solver::Solver;
 
   std::tuple<double, frame3, frame3> RunOne(ArcFour *rc) override {
-    quat4 q_outer;
     const int mode = RandTo(rc, 10);
-    if (mode < 7 && polyhedron.faces != nullptr &&
-        polyhedron.faces->v.size() >= 2) {
-      // 70%: View direction aligned parallel to two face planes
+    quat4 q_outer;
+    if (mode < 5) {
+      // 50%: Local shadow area maximization
+      const quat4 initial_rot = RandomQuaternion(rc);
+      auto AreaLoss = [&](const std::array<double, 4> &args) {
+        attempts++;
+        const auto &[o0, o1, o2, o3] = args;
+        quat4 rot = normalize(quat4{
+            .x = initial_rot.x + o0,
+            .y = initial_rot.y + o1,
+            .z = initial_rot.z + o2,
+            .w = initial_rot.w + o3,
+        });
+        Mesh2D mesh = Shadow(Rotate(polyhedron, yocto::rotation_frame(rot)));
+        std::vector<int> h = Hull2D::QuickHull(mesh.vertices);
+        return -AreaOfHull(mesh, h);
+      };
+      const std::array<double, 4> area_lb = {-0.1, -0.1, -0.1, -0.1};
+      const std::array<double, 4> area_ub = {+0.1, +0.1, +0.1, +0.1};
+      const auto [area_args, area_err] =
+          Opt::Minimize<4>(AreaLoss, area_lb, area_ub, 300, 1, 1, Rand32(rc));
+      q_outer = normalize(quat4{
+          .x = initial_rot.x + area_args[0],
+          .y = initial_rot.y + area_args[1],
+          .z = initial_rot.z + area_args[2],
+          .w = initial_rot.w + area_args[3],
+      });
+    } else if (mode < 8 && polyhedron.faces != nullptr &&
+               polyhedron.faces->v.size() >= 2) {
+      // 30%: Two faces aligned with z / y
       const auto &[face1, face2] = TwoNonParallelFaces(rc, polyhedron);
       q_outer = AlignFaces(polyhedron.vertices, polyhedron.faces->v[face1],
                            polyhedron.faces->v[face2]);
     } else {
-      // 30%: Uniform random orientation
+      // 20%: Uniform random orientation
       q_outer = RandomQuaternion(rc);
     }
 
@@ -1312,25 +1338,24 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
       return MaximizeClearance2D(edges, inner_verts, initial_t, initial_step);
     };
 
-    // Step 1: Candidate direction sampling away from identity.
-    // At identity w = 0, clearance is 0.0 and identity is a local maximum
-    // in all directions that penetrate. We explore 14 symmetric directions
-    // in R^3 (6 axes + 8 diagonals) across five angular scales r (rad).
-    static constexpr double TEST_SCALES[] = {0.0005, 0.002, 0.008, 0.025, 0.08};
-    static const double INV_SQRT3 = 1.0 / std::sqrt(3.0);
-    static const vec3 TEST_DIRS[14] = {
-        vec3{1.0, 0.0, 0.0}, vec3{-1.0, 0.0, 0.0},
-        vec3{0.0, 1.0, 0.0}, vec3{0.0, -1.0, 0.0},
-        vec3{0.0, 0.0, 1.0}, vec3{0.0, 0.0, -1.0},
-        vec3{INV_SQRT3, INV_SQRT3, INV_SQRT3},
-        vec3{INV_SQRT3, INV_SQRT3, -INV_SQRT3},
-        vec3{INV_SQRT3, -INV_SQRT3, INV_SQRT3},
-        vec3{INV_SQRT3, -INV_SQRT3, -INV_SQRT3},
-        vec3{-INV_SQRT3, INV_SQRT3, INV_SQRT3},
-        vec3{-INV_SQRT3, INV_SQRT3, -INV_SQRT3},
-        vec3{-INV_SQRT3, -INV_SQRT3, INV_SQRT3},
-        vec3{-INV_SQRT3, -INV_SQRT3, -INV_SQRT3},
-    };
+    // Step 1: Candidate direction sampling away from identity in R^3.
+    // (w_x, w_y) produces silhouette contraction via projective foreshortening,
+    // while w_z rotates the inner polygon in the projection plane to align with
+    // the outer shadow boundary. Scales < 0.0005 are omitted to avoid attraction
+    // to the trivial identity well.
+    static constexpr double TEST_SCALES[] = {0.0008, 0.002, 0.006, 0.015, 0.04};
+    static const auto TEST_DIRS = [] {
+      std::vector<vec3> dirs;
+      for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+          for (int dz = -1; dz <= 1; dz++) {
+            if (dx == 0 && dy == 0 && dz == 0) continue;
+            dirs.push_back(yocto::normalize(vec3{(double)dx, (double)dy, (double)dz}));
+          }
+        }
+      }
+      return dirs;
+    }();
     vec3 best_w = TEST_DIRS[0] * TEST_SCALES[0];
     double best_clearance = -std::numeric_limits<double>::infinity();
     vec2 best_trans = vec2{0.0, 0.0};
@@ -1357,8 +1382,7 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
       return yocto::translation_frame(vec3{t.x, t.y, 0.0}) * rot_f;
     };
 
-    // Step 2: Backtracking Gradient Ascent on relative rotation vector w in
-    // R^3. Ascends the subgradient ∇_w c(w) of the signed clearance margin.
+    // Step 2: Backtracking Gradient Ascent on 3D tilt vector (w_x, w_y, w_z).
     vec3 w = best_w;
     double step_size = 5e-4;
     static constexpr double EPS_DIFF = 1e-5;
@@ -1367,8 +1391,6 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
       if (best_clearance > 1e-9)
         break;
 
-      // Central difference gradient:
-      // grad = (c(w + h*e_i) - c(w - h*e_i)) / (2*h)
       vec3 grad = vec3{
           (EvalW(w + vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance -
            EvalW(w - vec3{EPS_DIFF, 0.0, 0.0}, best_trans, 1e-5).clearance) /
@@ -1381,14 +1403,8 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
               (2.0 * EPS_DIFF),
       };
 
-      // The identity is an attractive point (we get closer and closer to the
-      // invalid trivial solution), so deliberately avoid following the
-      // gradient in that direction when clearance is negative or zero.
-      //
-      // When penetrating, moving toward identity reduces penetration trivially
-      // because c(0) = 0 > c(w). We project the gradient onto the tangent
-      // sphere S^2 of radius ||w|| so the optimizer is compelled to explore
-      // lateral tilt directions.
+      // Project out inward radial component when clearance <= 0 to avoid
+      // descending into the trivial identity basin w = 0.
       const double w_len = yocto::length(w);
       if (w_len > 1e-8) {
         const vec3 u_w = w / w_len;
@@ -1424,6 +1440,76 @@ struct TiltGradSolver : public Solver<SolutionDB::METHOD_TILT_GRAD> {
         step_size *= 0.5;
         if (step_size < 1e-8)
           break;
+      }
+    }
+
+    // Step 3: Nelder-Mead Polish on w when clearance is promising.
+    if (best_clearance > -5e-6 && yocto::length(best_w) > 1e-8) {
+      double nm_step = 1e-5;
+      vec3 p_nm[4] = {
+          best_w,
+          best_w + vec3{nm_step, 0.0, 0.0},
+          best_w + vec3{0.0, nm_step, 0.0},
+          best_w + vec3{0.0, 0.0, nm_step},
+      };
+      double val_nm[4];
+      vec2 trans_nm[4];
+      for (int i = 0; i < 4; i++) {
+        auto res = EvalW(p_nm[i], best_trans, 1e-5);
+        val_nm[i] = res.clearance;
+        trans_nm[i] = res.translation;
+      }
+
+      for (int iter = 0; iter < 50; iter++) {
+        for (int i = 0; i < 3; i++) {
+          for (int j = i + 1; j < 4; j++) {
+            if (val_nm[j] > val_nm[i]) {
+              std::swap(val_nm[i], val_nm[j]);
+              std::swap(p_nm[i], p_nm[j]);
+              std::swap(trans_nm[i], trans_nm[j]);
+            }
+          }
+        }
+
+        if (val_nm[0] > 0.0) {
+          best_w = p_nm[0];
+          best_trans = trans_nm[0];
+          best_clearance = val_nm[0];
+          break;
+        }
+
+        vec3 c = (p_nm[0] + p_nm[1] + p_nm[2]) / 3.0;
+        vec3 xr = c + (c - p_nm[3]);
+        auto rr = EvalW(xr, trans_nm[0], 1e-5);
+        if (rr.clearance > val_nm[0]) {
+          vec3 xe = c + (xr - c) * 2.0;
+          auto re = EvalW(xe, rr.translation, 1e-5);
+          if (re.clearance > rr.clearance) {
+            p_nm[3] = xe; val_nm[3] = re.clearance; trans_nm[3] = re.translation;
+          } else {
+            p_nm[3] = xr; val_nm[3] = rr.clearance; trans_nm[3] = rr.translation;
+          }
+        } else if (rr.clearance > val_nm[2]) {
+          p_nm[3] = xr; val_nm[3] = rr.clearance; trans_nm[3] = rr.translation;
+        } else {
+          vec3 xc = c + (p_nm[3] - c) * 0.5;
+          auto rc = EvalW(xc, trans_nm[0], 1e-5);
+          if (rc.clearance > val_nm[3]) {
+            p_nm[3] = xc; val_nm[3] = rc.clearance; trans_nm[3] = rc.translation;
+          } else {
+            for (int i = 1; i < 4; i++) {
+              p_nm[i] = p_nm[0] + (p_nm[i] - p_nm[0]) * 0.5;
+              auto ri = EvalW(p_nm[i], trans_nm[0], 1e-5);
+              val_nm[i] = ri.clearance;
+              trans_nm[i] = ri.translation;
+            }
+          }
+        }
+      }
+      if (val_nm[0] > best_clearance) {
+        best_clearance = val_nm[0];
+        best_w = p_nm[0];
+        best_trans = trans_nm[0];
       }
     }
 
