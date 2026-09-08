@@ -1611,7 +1611,6 @@
  '(global-eldoc-mode nil)
  '(indent-tabs-mode nil)
  '(indicate-empty-lines t)
- '(ispell-program-name nil)
  '(js-curly-indent-offset 0)
  '(js-expr-indent-offset 2)
  '(js-indent-level 2)
