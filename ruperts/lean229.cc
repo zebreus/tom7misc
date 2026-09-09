@@ -746,8 +746,9 @@ static GpuResult EvaluateBoxCPU(
       }
     }
 
-    double defect_penalty = d_bound * (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
-    double margin = min_b - defect_penalty - 300.0 * d_bound * 1e-9;
+    double defect_penalty =
+      d_bound * (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
+    double margin = min_b - defect_penalty - 1e-9 * d_bound;
 
     if (margin > 0.0) {
       res.certified = 1;
@@ -1006,9 +1007,9 @@ struct CheckpointHeader {
 struct SearchManager {
   int chart = 0;
   int batch_size = 32768;
-  int max_depth = 64;
-  int max_box_depth = 48;
-  int max_view_depth = 20;
+  int max_depth = 96;
+  int max_box_depth = 72;
+  int max_view_depth = 24;
   int num_candidates = 128;
   int num_threads = 8;
   bool use_gpu = true;
@@ -1740,7 +1741,8 @@ struct SearchManager {
                        FormatNum(stack.size()), ckpt_path);
           std::fflush(stdout);
           std::fflush(stderr);
-          break;
+          row_log.close();
+          exit(0);
         }
       }
 
@@ -1966,9 +1968,9 @@ int main(int argc, char **argv) {
       Print("Usage: ./lean229.exe [options]\n"
             "  --chart <0|1|2>     Cayley chart index (default 0)\n"
             "  --batch_size <N>    Batch size for GPU/evaluator (default 32768)\n"
-            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 64)\n"
-            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 48)\n"
-            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 20)\n"
+            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 96)\n"
+            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 72)\n"
+            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 24)\n"
             "  --candidates <N>    Candidate contact triples to test per box (default 128)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"

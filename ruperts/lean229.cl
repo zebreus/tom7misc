@@ -268,7 +268,7 @@ __kernel void EvaluateBoxes(
 
     double defect_penalty = d_bound *
       (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
-    double margin = min_b - defect_penalty - 300.0 * d_bound * 1e-9;
+    double margin = min_b - defect_penalty - 1e-9 * d_bound;
 
     if (margin > 0.0) {
       // Certified!
