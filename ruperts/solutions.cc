@@ -1,9 +1,11 @@
 #include "solutions.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <limits>
 #include <format>
 #include <memory>
 #include <optional>
@@ -464,3 +466,41 @@ Polyhedron SolutionDB::AnyPolyhedronByName(std::string_view name) {
 
   return PolyhedronByNameOrDie(name);
 }
+
+std::vector<SolutionDB::Solution> SolutionDB::GetRelatedSolutions(
+    std::span<const vec3> target_vertices, double max_dist) {
+  const size_t n = target_vertices.size();
+  if (n == 0) return {};
+
+  std::vector<Nopert> all_noperts = GetAllNoperts();
+  std::vector<Solution> ret;
+
+  for (const Nopert &nop : all_noperts) {
+    if (nop.vertices.size() != n) continue;
+
+    auto Within = [&](){
+        for (size_t i = 0; i < n; i++) {
+          if (yocto::length(target_vertices[i] - nop.vertices[i]) > max_dist) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+    if (Within()) {
+      std::string name = NopertName(nop.id);
+      std::vector<Solution> sols = GetSolutionsFor(name);
+      for (Solution &sol : sols) {
+        ret.push_back(std::move(sol));
+      }
+    }
+  }
+
+  return ret;
+}
+
+std::vector<SolutionDB::Solution> SolutionDB::GetRelatedSolutions(
+    const Polyhedron &target, double max_dist) {
+  return GetRelatedSolutions(target.vertices, max_dist);
+}
+

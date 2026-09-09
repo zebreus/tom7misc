@@ -11,6 +11,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <span>
 #include <vector>
 
 #include "auto-histo.h"
@@ -137,6 +138,15 @@ struct SolutionDB {
                               // true = highest clearance
                               bool use_clearance = false);
   std::vector<Solution> GetAllNopertSolutions();
+
+  // Returns all solutions in the database for candidate polyhedra
+  // whose vertices are within the given Euclidean distance of the
+  // target vertices. This is for seeding solution poses when we are
+  // doing something like tweaking a candidate after solving it.
+  std::vector<Solution> GetRelatedSolutions(
+      std::span<const vec3> target_vertices, double max_dist);
+  std::vector<Solution> GetRelatedSolutions(
+      const Polyhedron &target, double max_dist);
 
   // Attempts to solve a nopert, not to generate one.
   std::vector<Attempt> GetAttemptsForNoperts();

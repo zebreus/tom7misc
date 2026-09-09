@@ -286,8 +286,26 @@ __kernel void TiltGradAscent(
     if (solution->solved) break;
     if (best_c > 1e-9) break;
 
-    // Central difference gradient in 3D:
     double2 dummy_t;
+#ifdef FORWARD_DIFFERENCE
+    // Forward difference gradient in 3D (3 evaluations using best_c = c(w)):
+    double cx_p =
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
+                        local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
+    double cy_p =
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
+                        local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
+    double cz_p =
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
+                        local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
+
+    double3 grad = (double3)(
+      (cx_p - best_c) / EPS,
+      (cy_p - best_c) / EPS,
+      (cz_p - best_c) / EPS
+    );
+#else
+    // Central difference gradient in 3D (6 evaluations):
     double cx_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
@@ -314,6 +332,7 @@ __kernel void TiltGradAscent(
       (cy_p - cy_m) / (2.0 * EPS),
       (cz_p - cz_m) / (2.0 * EPS)
     );
+#endif
 
     // Project out inward radial component in 3D when clearance <= 0.
     double w_len = length(w);

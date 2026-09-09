@@ -149,7 +149,9 @@ struct TiltGPU {
           const Polyhedron &poly,
           int batch_size = 512,
           int threads_per_pose = 128,
-          int max_steps = 25)
+          int max_steps = 25,
+          bool dump_ptx = false,
+          bool forward_diff = true)
       : rc(std::format("tiltgpu.{}", time(nullptr))),
         db(db),
         poly(poly),
@@ -157,17 +159,30 @@ struct TiltGPU {
         batch_size(batch_size),
         threads_per_pose(threads_per_pose),
         max_steps(max_steps),
+        forward_diff(forward_diff),
         status(STATUS_LINES) {
     CHECK(batch_size > 0);
     CHECK(threads_per_pose > 0);
 
     std::string defines =
         std::format("#define NUM_VERTICES {}\n", num_vertices);
+    if (forward_diff) {
+      defines += "#define FORWARD_DIFFERENCE 1\n";
+    }
 
     std::string kernel_src = defines + Util::ReadFile("tiltperts.cl");
     const auto &[prg, kernels] =
         cl->BuildKernels(kernel_src, {"TiltGradAscent"}, 1);
     program = prg;
+
+    if (dump_ptx) {
+      if (const auto ptx = CL::DecodeProgram(program)) {
+        Util::WriteFile("tiltperts_nvidia.ptx", *ptx);
+        Print(AGREEN("Dumped driver PTX to tiltperts_nvidia.ptx ({} bytes).\n"), ptx->size());
+      } else {
+        Print(ARED("CL::DecodeProgram did not return text (e.g. driver is PoCL on CPU).\n"));
+      }
+    }
 
     auto it = kernels.find("TiltGradAscent");
     CHECK(it != kernels.end());
@@ -518,6 +533,7 @@ struct TiltGPU {
   const int batch_size;
   const int threads_per_pose;
   const int max_steps;
+  const bool forward_diff;
 
   StatusBar status;
 
@@ -546,6 +562,8 @@ int main(int argc, char **argv) {
   int threads_per_pose = 64;
   int max_steps = 25;
   int iters = -1;
+  bool dump_ptx = false;
+  bool forward_diff = true;
 
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -564,6 +582,12 @@ int main(int argc, char **argv) {
     } else if (arg == "--iters" || arg == "-n") {
       CHECK(i + 1 < argc);
       iters = std::stoi(argv[++i]);
+    } else if (arg == "--dump-ptx" || arg == "-d") {
+      dump_ptx = true;
+    } else if (arg == "--forward-diff") {
+      forward_diff = true;
+    } else if (arg == "--central-diff") {
+      forward_diff = false;
 
     } else if (arg == "--help" || arg == "-h") {
       Print("Usage: ./tiltperts.exe [options] [polyhedron_name]\n",
@@ -572,7 +596,10 @@ int main(int argc, char **argv) {
             "  --batch, -b <K>        Outer poses per batch (default: 256)\n"
             "  --threads, -t <W>      Search threads per pose (default: 64)\n"
             "  --steps, -s <N>        Gradient steps per trajectory (default: 25)\n"
-            "  --iters, -n <M>        Max batches to run (-1 = infinite)\n");
+            "  --iters, -n <M>        Max batches to run (-1 = infinite)\n"
+            "  --forward-diff         Use forward differences (3 evals/step, default)\n"
+            "  --central-diff         Use central differences (6 evals/step)\n"
+            "  --dump-ptx, -d         Dump driver PTX/binary after build\n");
       return -1;
 
     } else if (arg[0] != '-') {
@@ -584,10 +611,12 @@ int main(int argc, char **argv) {
   Polyhedron target = db.AnyPolyhedronByName(poly_name);
   Print("Target polyhedron: " APURPLE("{}") " ({} vertices)\n",
          target.name, target.vertices.size());
-  Print("Config: batch={}, threads_per_pose={}, steps={} (total work-items per launch: {})\n\n",
-         batch_size, threads_per_pose, max_steps, batch_size * threads_per_pose);
+  Print("Config: batch={}, threads_per_pose={}, steps={}, diff={} (total work-items per launch: {})\n\n",
+         batch_size, threads_per_pose, max_steps,
+         forward_diff ? "forward (3 evals)" : "central (6 evals)",
+         batch_size * threads_per_pose);
 
-  TiltGPU solver(&db, target, batch_size, threads_per_pose, max_steps);
+  TiltGPU solver(&db, target, batch_size, threads_per_pose, max_steps, dump_ptx, forward_diff);
   solver.Run(iters);
 
   delete cl;
