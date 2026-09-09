@@ -611,10 +611,11 @@ int main(int argc, char **argv) {
   Polyhedron target = db.AnyPolyhedronByName(poly_name);
   Print("Target polyhedron: " APURPLE("{}") " ({} vertices)\n",
          target.name, target.vertices.size());
-  Print("Config: batch={}, threads_per_pose={}, steps={}, diff={} (total work-items per launch: {})\n\n",
-         batch_size, threads_per_pose, max_steps,
-         forward_diff ? "forward (3 evals)" : "central (6 evals)",
-         batch_size * threads_per_pose);
+  Print("Config: batch={}, threads_per_pose={}, steps={}, diff={}\n"
+        "  (total work-items per launch: {})\n\n",
+        batch_size, threads_per_pose, max_steps,
+        forward_diff ? "forward (3 evals)" : "central (6 evals)",
+        batch_size * threads_per_pose);
 
   TiltGPU solver(&db, target, batch_size, threads_per_pose, max_steps, dump_ptx, forward_diff);
   solver.Run(iters);

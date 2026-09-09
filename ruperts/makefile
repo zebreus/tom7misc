@@ -90,6 +90,10 @@ lean228.exe : lean228.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+lean229.exe : lean229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 topng.exe : topng.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

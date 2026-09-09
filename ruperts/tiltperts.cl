@@ -88,8 +88,8 @@ inline void ComputeEdgeOffsets(
     double max_val = -1e30;
     for (int k = 0; k < NUM_VERTICES; k++) {
       double3 vk = (double3)(base_verts[k * 3 + 0],
-                            base_verts[k * 3 + 1],
-                            base_verts[k * 3 + 2]);
+                             base_verts[k * 3 + 1],
+                             base_verts[k * 3 + 2]);
       double val = edges[j].b - dot(mu, vk);
       if (val > max_val) max_val = val;
     }
