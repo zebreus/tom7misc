@@ -10,12 +10,18 @@
 #define MAX_TRIPLES 128
 
 typedef struct {
-  double cx, cy, cz;   // Cayley box center
-  double rx, ry, rz;   // Cayley box radii
-  double tri[3][3];    // Projective view triangle corners
-  int chart;           // Cayley chart index (0, 1, 2)
-  int num_triples;     // Number of candidate triples to test
-  int triple_offset;   // Offset in global triples array
+  // Cayley box center
+  double cx, cy, cz;
+  // Cayley box radii
+  double rx, ry, rz;
+  // Projective view triangle corners
+  double tri[3][3];
+  // Cayley chart index (0, 1, 2)
+  int chart;
+  // Number of candidate triples to test
+  int num_triples;
+  // Offset in global triples array
+  int triple_offset;
 } GpuBox;
 
 typedef struct {
@@ -25,15 +31,21 @@ typedef struct {
 } GpuContact;
 
 typedef struct {
-  int c0, c1, c2;      // Contact indices
-  double w_coeff[3][3];// Precomputed cross-product coefficients
+  // Contact indices
+  int c0, c1, c2;
+  // Precomputed cross-product coefficients
+  double w_coeff[3][3];
 } GpuTriple;
 
 typedef struct {
-  int certified;       // 1 if box is proved non-Rupert, 0 otherwise
-  int winning_triple;  // Winning candidate triple index
-  int inner[3];        // Winning inner contact vertices
-  double margin;       // Certified positive margin
+  // 1 if box is proved non-Rupert, 0 otherwise
+  int certified;
+  // Winning candidate triple index
+  int winning_triple;
+  // Winning inner contact vertices
+  int inner[3];
+  // Certified positive margin
+  double margin;
 } GpuResult;
 
 inline double3 Cross(double3 a, double3 b) {
@@ -48,7 +60,8 @@ inline double Dot(double3 a, double3 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-// Evaluate a batch of boxes against their candidate triples using Bernstein control points.
+// Evaluate a batch of boxes against their candidate triples using
+// Bernstein control points.
 __kernel void EvaluateBoxes(
     __global const GpuBox *restrict boxes,
     __global const GpuContact *restrict contacts,
@@ -89,7 +102,7 @@ __kernel void EvaluateBoxes(
   res.inner[2] = 0;
   res.margin = -1e30;
 
-  // Cayley rotation matrix numerator at center
+  // Cayley rotation matrix numerator at center.
   double num[3][3] = {
     {1.0 + x0*x0 - y0*y0 - z0*z0, 2.0*(x0*y0 - z0), 2.0*(x0*z0 + y0)},
     {2.0*(x0*y0 + z0), 1.0 - x0*x0 + y0*y0 - z0*z0, 2.0*(y0*z0 - x0)},
@@ -97,7 +110,7 @@ __kernel void EvaluateBoxes(
   };
   double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
 
-  // Test candidate triples assigned to this box
+  // Test candidate triples assigned to this box.
   for (int t = 0; t < box.num_triples; t++) {
     const GpuTriple triple = triples[box.triple_offset + t];
 
@@ -120,9 +133,15 @@ __kernel void EvaluateBoxes(
     double best_val0 = -1e30, best_val1 = -1e30, best_val2 = -1e30;
     int best_in0 = 0, best_in1 = 0, best_in2 = 0;
 
-    double3 out0 = (double3)(VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]);
-    double3 out1 = (double3)(VERTICES[c1.vertex][0], VERTICES[c1.vertex][1], VERTICES[c1.vertex][2]);
-    double3 out2 = (double3)(VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]);
+    double3 out0 = (double3)(VERTICES[c0.vertex][0],
+                             VERTICES[c0.vertex][1],
+                             VERTICES[c0.vertex][2]);
+    double3 out1 = (double3)(VERTICES[c1.vertex][0],
+                             VERTICES[c1.vertex][1],
+                             VERTICES[c1.vertex][2]);
+    double3 out2 = (double3)(VERTICES[c2.vertex][0],
+                             VERTICES[c2.vertex][1],
+                             VERTICES[c2.vertex][2]);
 
     for (int k = 0; k < NUM_VERTICES; k++) {
       double3 vin = (double3)(VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]);
@@ -162,8 +181,12 @@ __kernel void EvaluateBoxes(
     for (int c_idx = 0; c_idx < 3; c_idx++) {
       int in_k = in_idx[c_idx];
       int out_k = out_idx[c_idx];
-      double3 vin = (double3)(VERTICES[in_k][0], VERTICES[in_k][1], VERTICES[in_k][2]);
-      double3 vout = (double3)(VERTICES[out_k][0], VERTICES[out_k][1], VERTICES[out_k][2]);
+      double3 vin = (double3)(VERTICES[in_k][0],
+                              VERTICES[in_k][1],
+                              VERTICES[in_k][2]);
+      double3 vout = (double3)(VERTICES[out_k][0],
+                               VERTICES[out_k][1],
+                               VERTICES[out_k][2]);
       double3 u = u_vec[c_idx];
       double weight = w_vec[c_idx];
 
@@ -220,8 +243,9 @@ __kernel void EvaluateBoxes(
     double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
     double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
 
-    double a0 = (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
-                 C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
+    double a0 =
+      (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
+       C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
     double ax = wx * (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz);
     double ay = wy * (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz);
     double az = wz * (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz);
@@ -232,25 +256,29 @@ __kernel void EvaluateBoxes(
     for (int bi = 0; bi <= 2; bi++) {
       double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
       for (int bj = 0; bj <= 2; bj++) {
-        double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+        double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) +
+          0.25 * bi * bj * axy;
         for (int bk = 0; bk <= 2; bk++) {
-          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) + 0.25 * bk * (bi * axz + bj * ayz);
+          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+            0.25 * bk * (bi * axz + bj * ayz);
           if (val < min_b) min_b = val;
         }
       }
     }
 
-    double defect_penalty = d_bound * (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
+    double defect_penalty = d_bound *
+      (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
     double margin = min_b - defect_penalty - 300.0 * d_bound * 1e-9;
 
     if (margin > 0.0) {
+      // Certified!
       res.certified = 1;
       res.winning_triple = t;
       res.inner[0] = best_in0;
       res.inner[1] = best_in1;
       res.inner[2] = best_in2;
       res.margin = margin;
-      break; // Certified!
+      break;
     }
   }
 

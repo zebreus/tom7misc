@@ -31,6 +31,7 @@
 
 #include "ansi.h"
 #include "atomic-util.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "geom/hull-2d.h"
@@ -213,7 +214,8 @@ static inline FundamentalPruneResult CheckFundamentalPrune(
     if (b.center.x + b.radii.x < -1.0 / 3.0) return {true, -1};
   }
 
-  // 2. Advantage quadratics against fivefold rotations (Direction::negative = -1, positive = +1):
+  // 2. Advantage quadratics against fivefold rotations.
+  // (Direction::negative = -1, positive = +1):
   const double K_a = -690983.0 / 1000000.0;
   const double K_b_base = 951057.0 / 1000000.0;
   const double approx_error = 2.0 / 125000.0; // 1.6e-5
@@ -473,12 +475,14 @@ GetTrianglePool(const ProjectiveTriangle &tri) {
   }
 }
 
+// TODO: Histogram of pool sizes.
+
 static TriangleCandidatePool RankCandidatesForBox(
     const std::shared_ptr<const TrianglePool> &tpool,
     const ProjectiveTriangle &tri,
     const CayleyBox &box,
     int chart,
-    size_t base_candidates = 128) {
+    size_t base_candidates) {
 
   TriangleCandidatePool pool;
   if (!tpool || tpool->valid_triples.empty()) return pool;
@@ -563,7 +567,8 @@ static TriangleCandidatePool RankCandidatesForBox(
   };
 
   if (take < scored.size()) {
-    std::partial_sort(scored.begin(), scored.begin() + take, scored.end(), comp);
+    std::partial_sort(scored.begin(), scored.begin() + take,
+                      scored.end(), comp);
   } else {
     std::sort(scored.begin(), scored.end(), comp);
   }
