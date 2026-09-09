@@ -1546,8 +1546,8 @@ struct SearchManager {
             }
           } else {
             if (node.depth >= max_depth ||
-                node.box_depth >= max_box_depth ||
-                node.view_depth >= max_view_depth) {
+                (node.box_depth >= max_box_depth &&
+                 node.view_depth >= max_view_depth)) {
               if (auto witness = CheckSolutionWitness(node)) {
                 status.Print(
                     "\n"
@@ -1584,10 +1584,22 @@ struct SearchManager {
             }
 
             int widest = node.box.WidestAxis();
-            // Balanced subdivision: split Cayley coordinate if wide,
-            // else refine view triangle.
-            if (node.box.radii[widest] > 1.0 / 512.0 ||
-                node.view_depth >= max_view_depth) {
+            // Balanced subdivision: refine box first if coarse, then alternate
+            // 3 box splits per view split so both spaces refine proportionally.
+            bool split_box;
+            if (node.box_depth >= max_box_depth) {
+              split_box = false;
+            } else if (node.view_depth >= max_view_depth) {
+              split_box = true;
+            } else if (node.box.radii[widest] > 1.0 / 512.0) {
+              split_box = true;
+            } else {
+              int b_rel = std::max(0, node.box_depth - 26);
+              int v_rel = std::max(0, node.view_depth - 1);
+              split_box = (b_rel < 3 * v_rel);
+            }
+
+            if (split_box) {
               split_count++;
               row_log << std::format("SPLIT {} {} {}\n",
                                      node.id, node.parent_id, node.depth);
@@ -1664,8 +1676,11 @@ struct SearchManager {
         if (sigint_received.load()) {
           status.Print("\n"
                        AYELLOW("Interrupted (SIGINT)") ".\n"
-                       "Saved checkpoint with {} nodes to {}.\n",
+                       "Saved checkpoint with {} nodes to {}.\n"
+                       "Exiting...\n",
                        FormatNum(stack.size()), ckpt_path);
+          std::fflush(stdout);
+          std::fflush(stderr);
           break;
         }
       }
