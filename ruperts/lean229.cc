@@ -19,11 +19,13 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -43,7 +45,8 @@
 #include "util.h"
 #include "yocto-math.h"
 
-DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count);
+DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
+                 ctr_built_triangles, ctr_loops);
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -193,7 +196,8 @@ struct FundamentalPruneResult {
   int direction = 0; // -1 or 1
 };
 
-static inline FundamentalPruneResult CheckFundamentalPrune(int chart, const CayleyBox &b) {
+static inline FundamentalPruneResult CheckFundamentalPrune(
+    int chart, const CayleyBox &b) {
   // 1. Restricted root interval bounds:
   // Chart 0: z in [-1/3, 1/3]
   // Chart 1: y in [-1/3, 1/3]
@@ -308,7 +312,9 @@ static uint64_t HashTriangle(const ProjectiveTriangle &tri) {
   return h;
 }
 
-static std::shared_ptr<const TrianglePool> BuildTrianglePool(const ProjectiveTriangle &tri) {
+static std::shared_ptr<const TrianglePool> BuildTrianglePool(
+    const ProjectiveTriangle &tri) {
+  ctr_built_triangles++;
   auto pool = std::make_shared<TrianglePool>();
   vec3 view = tri.Centroid();
   double len = yocto::length(view);
@@ -368,7 +374,10 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const ProjectiveTri
         if (upper > max_upper) max_upper = upper;
         if (upper < min_upper) min_upper = upper;
       }
-      if (min_upper >= 0.0) continue; // Not a valid silhouette support direction
+      if (min_upper >= 0.0) {
+        // Not a valid silhouette support direction.
+        continue;
+      }
 
       GpuContact c;
       c.vertex = curr;
@@ -384,9 +393,21 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const ProjectiveTri
   for (int i = 0; i < C; i++) {
     for (int j = i + 1; j < C; j++) {
       for (int k = j + 1; k < C; k++) {
-        vec3 e0 = {pool->contacts[i].edge[0], pool->contacts[i].edge[1], pool->contacts[i].edge[2]};
-        vec3 e1 = {pool->contacts[j].edge[0], pool->contacts[j].edge[1], pool->contacts[j].edge[2]};
-        vec3 e2 = {pool->contacts[k].edge[0], pool->contacts[k].edge[1], pool->contacts[k].edge[2]};
+        vec3 e0 = {
+          pool->contacts[i].edge[0],
+          pool->contacts[i].edge[1],
+          pool->contacts[i].edge[2],
+        };
+        vec3 e1 = {
+          pool->contacts[j].edge[0],
+          pool->contacts[j].edge[1],
+          pool->contacts[j].edge[2],
+        };
+        vec3 e2 = {
+          pool->contacts[k].edge[0],
+          pool->contacts[k].edge[1],
+          pool->contacts[k].edge[2],
+        };
 
         vec3 coeff0 = yocto::cross(e1, e2);
         vec3 coeff1 = yocto::cross(e2, e0);
@@ -436,8 +457,9 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const ProjectiveTri
 static std::mutex g_triangle_cache_mutex;
 static std::unordered_map<uint64_t, std::shared_ptr<const TrianglePool>> g_triangle_cache;
 
-static std::shared_ptr<const TrianglePool> GetTrianglePool(const ProjectiveTriangle &tri) {
-  uint64_t h = HashTriangle(tri);
+static std::shared_ptr<const TrianglePool>
+GetTrianglePool(const ProjectiveTriangle &tri) {
+  const uint64_t h = HashTriangle(tri);
   {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
@@ -519,18 +541,26 @@ static TriangleCandidatePool RankCandidatesForBox(
 
     GpuTriple trip;
     trip.c0 = ci; trip.c1 = cj; trip.c2 = ck;
-    trip.w_coeff[0][0] = vt.coeff0.x; trip.w_coeff[0][1] = vt.coeff0.y; trip.w_coeff[0][2] = vt.coeff0.z;
-    trip.w_coeff[1][0] = vt.coeff1.x; trip.w_coeff[1][1] = vt.coeff1.y; trip.w_coeff[1][2] = vt.coeff1.z;
-    trip.w_coeff[2][0] = vt.coeff2.x; trip.w_coeff[2][1] = vt.coeff2.y; trip.w_coeff[2][2] = vt.coeff2.z;
+    trip.w_coeff[0][0] = vt.coeff0.x;
+    trip.w_coeff[0][1] = vt.coeff0.y;
+    trip.w_coeff[0][2] = vt.coeff0.z;
+    trip.w_coeff[1][0] = vt.coeff1.x;
+    trip.w_coeff[1][1] = vt.coeff1.y;
+    trip.w_coeff[1][2] = vt.coeff1.z;
+    trip.w_coeff[2][0] = vt.coeff2.x;
+    trip.w_coeff[2][1] = vt.coeff2.y;
+    trip.w_coeff[2][2] = vt.coeff2.z;
     scored.push_back({score, trip});
   }
 
-  std::sort(scored.begin(), scored.end(), [](const ScoredTriple &a, const ScoredTriple &b) {
+  std::sort(scored.begin(), scored.end(),
+            [](const ScoredTriple &a, const ScoredTriple &b) {
     return a.score > b.score;
   });
 
   int widest = box.WidestAxis();
-  size_t target_take = (box.radii[widest] <= 1.0 / 256.0) ? std::max(size_t(256), base_candidates) : base_candidates;
+  size_t target_take = (box.radii[widest] <= 1.0 / 256.0) ?
+    std::max(size_t(256), base_candidates) : base_candidates;
   size_t take = std::min(scored.size(), target_take);
   pool.triples.reserve(take);
   for (size_t t = 0; t < take; t++) {
@@ -1289,6 +1319,7 @@ struct SearchManager {
     };
 
     while (!stack.empty() && !sigint_received.load()) {
+      ctr_loops++;
       const size_t target_pool_size = (size_t)batch_size * 2;
       int count = 0;
       current_batch.clear();
@@ -1459,8 +1490,12 @@ struct SearchManager {
           const auto &pool = batch_pools[idx];
 
           GpuBox box;
-          box.cx = node.box.center.x; box.cy = node.box.center.y; box.cz = node.box.center.z;
-          box.rx = node.box.radii.x;  box.ry = node.box.radii.y;  box.rz = node.box.radii.z;
+          box.cx = node.box.center.x;
+          box.cy = node.box.center.y;
+          box.cz = node.box.center.z;
+          box.rx = node.box.radii.x;
+          box.ry = node.box.radii.y;
+          box.rz = node.box.radii.z;
           for (int c = 0; c < 3; c++) {
             box.tri[c][0] = node.tri.corners[c].x;
             box.tri[c][1] = node.tri.corners[c].y;
@@ -1471,7 +1506,8 @@ struct SearchManager {
           box.num_triples = pool.triples.size();
 
           int contact_offset = all_contacts.size();
-          all_contacts.insert(all_contacts.end(), pool.contacts.begin(), pool.contacts.end());
+          all_contacts.insert(all_contacts.end(),
+                              pool.contacts.begin(), pool.contacts.end());
 
           for (auto trip : pool.triples) {
             trip.c0 += contact_offset;
@@ -1485,16 +1521,23 @@ struct SearchManager {
 
         std::vector<GpuResult> active_results(active_indices.size());
 
-        if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() && !all_triples.empty()) {
+        if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
+            !all_triples.empty()) {
           cl_int err = CL_SUCCESS;
-          cl_mem b_boxes = clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                         sizeof(GpuBox) * active_gpu_boxes.size(), active_gpu_boxes.data(), &err);
-          cl_mem b_contacts = clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                            sizeof(GpuContact) * all_contacts.size(), all_contacts.data(), &err);
-          cl_mem b_triples = clCreateBuffer(cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-                                           sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
-          cl_mem b_results = clCreateBuffer(cl->context, CL_MEM_WRITE_ONLY,
-                                           sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
+          cl_mem b_boxes = clCreateBuffer(
+              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+              sizeof(GpuBox) * active_gpu_boxes.size(), active_gpu_boxes.data(),
+              &err);
+          cl_mem b_contacts = clCreateBuffer(
+              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+              sizeof(GpuContact) * all_contacts.size(), all_contacts.data(),
+              &err);
+          cl_mem b_triples = clCreateBuffer(
+              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+              sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
+          cl_mem b_results = clCreateBuffer(
+              cl->context, CL_MEM_WRITE_ONLY,
+              sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
 
           int num_b = active_gpu_boxes.size();
           clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
@@ -1505,17 +1548,23 @@ struct SearchManager {
 
           size_t global_work_size = ((num_b + 63) / 64) * 64;
           size_t local_work_size = 64;
-          clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr, &global_work_size, &local_work_size, 0, nullptr, nullptr);
-          clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0, sizeof(GpuResult) * num_b, active_results.data(), 0, nullptr, nullptr);
+          clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
+                                 &global_work_size, &local_work_size, 0,
+                                 nullptr, nullptr);
+          clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
+                              sizeof(GpuResult) * num_b, active_results.data(),
+                              0, nullptr, nullptr);
 
           clReleaseMemObject(b_boxes);
           clReleaseMemObject(b_contacts);
           clReleaseMemObject(b_triples);
           clReleaseMemObject(b_results);
+
         } else {
           // Multi-threaded CPU fallback
           ParallelComp(active_gpu_boxes.size(), [&](int64_t a) {
-            active_results[a] = EvaluateBoxCPU(active_gpu_boxes[a], all_contacts, all_triples);
+            active_results[a] = EvaluateBoxCPU(active_gpu_boxes[a],
+                                               all_contacts, all_triples);
           }, num_threads);
         }
 
@@ -1702,17 +1751,22 @@ struct SearchManager {
         }
 
         status.Status(
-            "Eval: {} " AGREY("|")
+            "Loop: {} " AGREY("|")
+            " Eval: {} " AGREY("|")
             " Cert: {} " AGREY("|")
-            " Pruned: {}\n"
+            " Pruned: {} " AGREY("|")
+            " {}⊿ "
+            "\n"
             "Stack: {} " AGREY("|")
             " Depth: {} " AGREY("|")
             " {} boxes/s " AGREY("|")
             " {}\n"
             "{}",
+            FormatNum(ctr_loops.Read()),
             FormatNum(evaluated_count.Read()),
             FormatNum(certified_count.Read()),
             FormatNum(pruned_count.Read()),
+            FormatNum(ctr_built_triangles.Read()),
             FormatNum(stack.size()),
             current_batch.empty() ? 0 : current_batch[0].depth,
             FormatNum((int64_t)rate), ANSI::Time(elapsed),
@@ -1804,7 +1858,8 @@ struct SearchManager {
     Print("\n--- Case 1: Box centered at solution ---\n");
     auto witness1 = CheckSolutionWitness(node1);
     if (witness1) {
-      Print(AGREEN("Case 1 PASSED: Verified clearance {:.17g}\n"), witness1->clearance);
+      Print(AGREEN("Case 1 PASSED: Verified clearance {:.17g}\n"),
+            witness1->clearance);
     } else {
       Print(ARED("Case 1 FAILED!\n"));
     }
