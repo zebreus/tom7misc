@@ -2,6 +2,10 @@
 
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable
 
+#ifndef NUM_VERTICES
+#error "NUM_VERTICES must be defined"
+#endif
+
 #define MAX_EDGES 32
 
 typedef struct {
@@ -70,7 +74,6 @@ inline double3 QuatRotateVector(double4 q, double3 v) {
 // Computes edge offset margins d_j = max_k (b_j - mu_j ∙ v_k) using dual support identity
 inline void ComputeEdgeOffsets(
     __constant const double *base_verts,
-    int num_vertices,
     __local const GpuEdge *edges,
     int num_edges,
     double4 q_inner,
@@ -83,7 +86,7 @@ inline void ComputeEdgeOffsets(
     double3 mu = QuatRotateVector(q_inv, n_3d);
 
     double max_val = -1e30;
-    for (int k = 0; k < num_vertices; k++) {
+    for (int k = 0; k < NUM_VERTICES; k++) {
       double3 vk = (double3)(base_verts[k * 3 + 0],
                             base_verts[k * 3 + 1],
                             base_verts[k * 3 + 2]);
@@ -200,7 +203,6 @@ inline double MaximizeClearance2D_NM(
 
 inline double EvalClearanceForW(
     __constant const double *base_verts,
-    int num_vertices,
     __local const GpuEdge *edges,
     int num_edges,
     double4 q_outer,
@@ -212,14 +214,13 @@ inline double EvalClearanceForW(
   double4 q_inner = QuatNormalize(QuatMul(delta_q, q_outer));
 
   double d[MAX_EDGES];
-  ComputeEdgeOffsets(base_verts, num_vertices, edges, num_edges, q_inner, d);
+  ComputeEdgeOffsets(base_verts, edges, num_edges, q_inner, d);
 
   return MaximizeClearance2D_NM(edges, num_edges, d, initial_t, initial_step, out_t);
 }
 
 __kernel void TiltGradAscent(
     __constant const double *base_verts,
-    int num_vertices,
     __global const GpuOuterPose *outer_poses,
     int max_steps,
     __global GpuSolution *solution,
@@ -261,7 +262,7 @@ __kernel void TiltGradAscent(
   double3 w = r * u;
 
   double2 best_t = (double2)(0.0, 0.0);
-  double c = EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+  double c = EvalClearanceForW(base_verts, local_edges, local_num_edges,
                               local_q_outer, w, best_t, 0.0005, &best_t);
 
   double3 best_w = w;
@@ -288,24 +289,24 @@ __kernel void TiltGradAscent(
     // Central difference gradient in 3D:
     double2 dummy_t;
     double cx_p =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
     double cx_m =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w - (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
 
     double cy_p =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
     double cy_m =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w - (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
 
     double cz_p =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
     double cz_m =
-      EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      EvalClearanceForW(base_verts, local_edges, local_num_edges,
                         local_q_outer, w - (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
 
     double3 grad = (double3)(
@@ -333,7 +334,7 @@ __kernel void TiltGradAscent(
     for (int ls = 0; ls < 6; ls++) {
       double3 w_cand = w + alpha * u_g;
       double2 cand_t;
-      double c_cand = EvalClearanceForW(base_verts, num_vertices, local_edges, local_num_edges,
+      double c_cand = EvalClearanceForW(base_verts, local_edges, local_num_edges,
                                         local_q_outer, w_cand, best_t, 1e-5, &cand_t);
       if (c_cand > best_c) {
         best_c = c_cand;

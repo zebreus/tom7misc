@@ -372,11 +372,10 @@ struct TiltGPU {
       CopyBufferToGPU<GpuSolution>(cl->queue, {init_sol}, solution_buf);
 
       CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 0, sizeof(cl_mem), (void *)&base_verts_buf));
-      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 1, sizeof(int), (void *)&num_vertices));
-      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 2, sizeof(cl_mem), (void *)&outer_poses_buf));
-      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 3, sizeof(int), (void *)&max_steps));
-      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 4, sizeof(cl_mem), (void *)&solution_buf));
-      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 5, sizeof(cl_mem), (void *)&candidates_buf));
+      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 1, sizeof(cl_mem), (void *)&outer_poses_buf));
+      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 2, sizeof(int), (void *)&max_steps));
+      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 3, sizeof(cl_mem), (void *)&solution_buf));
+      CHECK_SUCCESS(clSetKernelArg(tilt_kernel, 4, sizeof(cl_mem), (void *)&candidates_buf));
 
       const size_t global_work_size[1] = { (size_t)(batch_size * threads_per_pose) };
       const size_t local_work_size[1] = { (size_t)threads_per_pose };
