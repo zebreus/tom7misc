@@ -553,15 +553,20 @@ static TriangleCandidatePool RankCandidatesForBox(
     scored.push_back({score, trip});
   }
 
-  std::sort(scored.begin(), scored.end(),
-            [](const ScoredTriple &a, const ScoredTriple &b) {
-    return a.score > b.score;
-  });
-
   int widest = box.WidestAxis();
   size_t target_take = (box.radii[widest] <= 1.0 / 256.0) ?
     std::max(size_t(256), base_candidates) : base_candidates;
   size_t take = std::min(scored.size(), target_take);
+
+  auto comp = [](const ScoredTriple &a, const ScoredTriple &b) {
+    return a.score > b.score;
+  };
+
+  if (take < scored.size()) {
+    std::partial_sort(scored.begin(), scored.begin() + take, scored.end(), comp);
+  } else {
+    std::sort(scored.begin(), scored.end(), comp);
+  }
   pool.triples.reserve(take);
   for (size_t t = 0; t < take; t++) {
     pool.triples.push_back(scored[t].trip);
@@ -1373,7 +1378,7 @@ struct SearchManager {
 
       // Phase 1: Parallel domain filtering and candidate ranking
       // across CPU cores.
-      ParallelComp(count, [&](int64_t i) {
+      UnParallelComp(count, [&](int64_t i) {
         auto &node = current_batch[i];
         FundamentalPruneResult fund =
           CheckFundamentalPrune(node.chart, node.box);
@@ -1588,7 +1593,7 @@ struct SearchManager {
                   node.tri.ContainsRay(p.view)) {
                 p.certified = true;
                 status.Print(AGREEN("✔") " "
-                             "Related sol #{} proved obstructed at "
+                             "Related sol #{} excluded at "
                              "depth {} (margin = {:.17g})!\n",
                              p.solution_id, node.depth, res.margin);
               }
@@ -1968,7 +1973,10 @@ int main(int argc, char **argv) {
             "  --resume            Resume from checkpoint if present (default)\n"
             "  --fresh             Ignore any checkpoint and start fresh\n"
             "  --test_solution     Verify detection on known Rupert solution 1662\n");
-      return 0;
+      return -1;
+    } else {
+      Print("Unknown arg. Try ./lean229.exe --help\n");
+      return -1;
     }
   }
 
