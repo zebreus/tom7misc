@@ -283,16 +283,17 @@ static inline bool InsideIdentityTube(int chart, const CayleyBox &b,
 
 // Full 5D pose node in branch-and-bound search
 struct SearchNode {
-  int id = 0;
-  int parent_id = -1;
-  int depth = 0;
-  int view_depth = 0;
-  int box_depth = 0;
-  int chart = 0;
-  int fund_direction = 0;
+  int64_t id = 0;
+  int64_t parent_id = -1;
   CayleyBox box;
   ProjectiveTriangle tri;
+  uint8_t depth = 0;
+  uint8_t view_depth = 0;
+  uint8_t box_depth = 0;
+  uint8_t chart = 0;
+  int8_t fund_direction = 0;
 };
+static_assert(sizeof(SearchNode) == 144, "SearchNode should be packed to 144 bytes");
 
 struct TrianglePool {
   std::vector<GpuContact> contacts;
@@ -928,7 +929,7 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
 // Checkpoint metadata
 struct CheckpointHeader {
   uint64_t magic = 0x4E4F504552543232ULL; // "NOPERT22"
-  int32_t version = 2;
+  int32_t version = 3;
   int32_t chart = 0;
   int64_t next_node_id = 0;
   int64_t evaluated_count = 0;
@@ -944,7 +945,7 @@ struct SearchManager {
   int batch_size = 32768;
   int max_depth = 96;
   int max_box_depth = 72;
-  int max_view_depth = 12;
+  int max_view_depth = 24;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 6;
   int num_threads = 8;
@@ -956,7 +957,7 @@ struct SearchManager {
   std::string output_dir = ".artifacts/nopert229";
 
   std::vector<SearchNode> stack; // DFS LIFO stack
-  int next_node_id = 0;
+  int64_t next_node_id = 0;
 
   StatusBar status = StatusBar(3);
 
@@ -1026,7 +1027,7 @@ struct SearchManager {
     CheckpointHeader hdr;
     if (fread(&hdr, sizeof(hdr), 1, f) != 1 ||
         hdr.magic != 0x4E4F504552543232ULL ||
-        hdr.version != 2 ||
+        hdr.version != 3 ||
         hdr.chart != chart) {
       fclose(f);
       return false;
@@ -1086,6 +1087,11 @@ struct SearchManager {
         .w = {0.00096893310546875, -0.0012969970703125, -0.002044677734375},
         .view = {0.99999106802591464, 3.8457110645325201e-06, 5.0862630208333331e-06},
         .label = "Chart 0 near-identity grinder" },
+      // Chart 0: near-identity view grinder
+      { .chart = 0,
+        .w = {0.00097647309303283691, -0.0012219548225402832, -0.0019906759262084961},
+        .view = {0.92218818586940847, 0.20787508492040183, 0.32612502157077433},
+        .label = "Chart 0 near-identity view grinder" },
       // Chart 2: boundary grinder
       { .chart = 2,
         .w = {-0.28256338834762573, -0.86962884664535522, -0.27563470602035522},
@@ -1629,7 +1635,36 @@ struct SearchManager {
         for (int idx : active_indices) {
           evaluated_count++;
           const auto &node = current_batch[idx];
-          const auto &res = results[idx];
+          auto res = results[idx];
+
+          if (!res.certified && (node.box_depth >= max_box_depth ||
+                                 node.depth >= max_depth - 2)) {
+            // Stubborn leaf has reached max box depth or tree depth limit.
+            // Escalate cone samples before allowing deep view runaway or depth-out:
+            for (int cs : {8, 10, 12}) {
+              auto esc_pool = GetTrianglePool(node.tri, cs);
+              GpuBox gb;
+              gb.cx = node.box.center.x; gb.cy = node.box.center.y; gb.cz = node.box.center.z;
+              gb.rx = node.box.radii.x;  gb.ry = node.box.radii.y;  gb.rz = node.box.radii.z;
+              for (int c = 0; c < 3; c++) {
+                gb.tri[c][0] = node.tri.corners[c].x;
+                gb.tri[c][1] = node.tri.corners[c].y;
+                gb.tri[c][2] = node.tri.corners[c].z;
+              }
+              gb.chart = node.chart;
+              gb.triple_offset = 0;
+              gb.num_triples = esc_pool->gpu_triples.size();
+              GpuResult esc_res = EvaluateBoxCPU(gb, esc_pool->contacts, esc_pool->gpu_triples);
+              if (esc_res.certified) {
+                res = esc_res;
+                status.Print(
+                    ACYAN("⚡") " Escalated leaf at depth {} (box_depth={}, view_depth={}) "
+                    "certified with cone_samples={} (margin={:.17g})!\n",
+                    node.depth, node.box_depth, node.view_depth, cs, res.margin);
+                break;
+              }
+            }
+          }
 
           if (res.certified) {
             certified_count++;
