@@ -22,6 +22,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <numbers>
@@ -293,15 +294,8 @@ struct SearchNode {
   ProjectiveTriangle tri;
 };
 
-struct PrecomputedTriple {
-  int c0, c1, c2;
-  vec3 coeff0, coeff1, coeff2;
-  double p0, p1, p2; // at triangle centroid
-};
-
 struct TrianglePool {
   std::vector<GpuContact> contacts;
-  std::vector<PrecomputedTriple> valid_triples;
   std::vector<GpuTriple> gpu_triples;
 };
 
@@ -396,7 +390,6 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
   int C = pool->contacts.size();
 
   struct SortableTriple {
-    PrecomputedTriple pt;
     GpuTriple gt;
     double defect_sum;
     double min_p;
@@ -458,10 +451,6 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
         if (w0_min < 0.0 || w1_min < 0.0 || w2_min < 0.0) continue;
 
         SortableTriple st;
-        st.pt.c0 = ci; st.pt.c1 = cj; st.pt.c2 = ck;
-        st.pt.coeff0 = coeff0; st.pt.coeff1 = coeff1; st.pt.coeff2 = coeff2;
-        st.pt.p0 = p0; st.pt.p1 = p1; st.pt.p2 = p2;
-
         st.gt.c0 = ci; st.gt.c1 = cj; st.gt.c2 = ck;
         st.gt.w_coeff[0][0] = coeff0.x; st.gt.w_coeff[0][1] = coeff0.y; st.gt.w_coeff[0][2] = coeff0.z;
         st.gt.w_coeff[1][0] = coeff1.x; st.gt.w_coeff[1][1] = coeff1.y; st.gt.w_coeff[1][2] = coeff1.z;
@@ -482,18 +471,18 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
     return a.min_p > b.min_p;
   });
 
-  pool->valid_triples.reserve(sortable.size());
   pool->gpu_triples.reserve(sortable.size());
   for (const auto &st : sortable) {
-    pool->valid_triples.push_back(st.pt);
     pool->gpu_triples.push_back(st.gt);
   }
 
   return pool;
 }
 
+static constexpr size_t MAX_TRIANGLE_CACHE_SIZE = 2048;
 static std::mutex g_triangle_cache_mutex;
-static std::unordered_map<uint64_t, std::shared_ptr<const TrianglePool>>
+static std::list<std::pair<uint64_t, std::shared_ptr<const TrianglePool>>> g_triangle_lru_list;
+static std::unordered_map<uint64_t, std::list<std::pair<uint64_t, std::shared_ptr<const TrianglePool>>>::iterator>
 g_triangle_cache;
 
 static std::shared_ptr<const TrianglePool>
@@ -502,12 +491,26 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
   {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
-    if (it != g_triangle_cache.end()) return it->second;
+    if (it != g_triangle_cache.end()) {
+      g_triangle_lru_list.splice(g_triangle_lru_list.begin(), g_triangle_lru_list, it->second);
+      return it->second->second;
+    }
   }
   auto pool = BuildTrianglePool(tri, cone_samples);
   {
     MutexLock ml(&g_triangle_cache_mutex);
-    g_triangle_cache[h] = pool;
+    auto it = g_triangle_cache.find(h);
+    if (it != g_triangle_cache.end()) {
+      g_triangle_lru_list.splice(g_triangle_lru_list.begin(), g_triangle_lru_list, it->second);
+      return it->second->second;
+    }
+    if (g_triangle_cache.size() >= MAX_TRIANGLE_CACHE_SIZE) {
+      auto oldest = std::prev(g_triangle_lru_list.end());
+      g_triangle_cache.erase(oldest->first);
+      g_triangle_lru_list.pop_back();
+    }
+    g_triangle_lru_list.push_front({h, pool});
+    g_triangle_cache[h] = g_triangle_lru_list.begin();
     return pool;
   }
 }
@@ -941,7 +944,7 @@ struct SearchManager {
   int batch_size = 32768;
   int max_depth = 96;
   int max_box_depth = 72;
-  int max_view_depth = 24;
+  int max_view_depth = 12;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 6;
   int num_threads = 8;
@@ -1374,12 +1377,12 @@ struct SearchManager {
                                stack.begin() + remaining);
           stack.erase(stack.begin(), stack.begin() + remaining);
         } else {
-          // Frontier is abundant! Pick deepest nodes (DFS) to advance
-          // and close certificate branches while keeping memory bounded.
-          std::nth_element(stack.begin(), stack.end() - remaining, stack.end(),
-                           [](const SearchNode &a, const SearchNode &b) {
-                             return a.depth < b.depth;
-                           });
+          // Pure DFS: take directly from back of stack (LIFO).
+          // Crucial: do NOT run std::nth_element here! Running std::nth_element
+          // scrambles the stack order and destroys spatial locality, mixing
+          // nodes from thousands of open branches and exploding unique view triangles.
+          // Directly taking from the back keeps all nodes in the same local branch
+          // and sharing the SAME view triangle, certifying and closing branches quickly.
           current_batch.insert(current_batch.end(), stack.end() - remaining,
                                stack.end());
           stack.erase(stack.end() - remaining, stack.end());
@@ -1566,32 +1569,45 @@ struct SearchManager {
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
               sizeof(GpuBox) * active_gpu_boxes.size(), active_gpu_boxes.data(),
               &err);
+          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_boxes failed: " << err;
           cl_mem b_contacts = clCreateBuffer(
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
               sizeof(GpuContact) * all_contacts.size(), all_contacts.data(),
               &err);
+          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_contacts failed: " << err;
           cl_mem b_triples = clCreateBuffer(
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
               sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
+          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_triples failed ("
+                                    << (sizeof(GpuTriple) * all_triples.size() / (1024 * 1024))
+                                    << " MB): " << err;
           cl_mem b_results = clCreateBuffer(
               cl->context, CL_MEM_WRITE_ONLY,
               sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
+          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_results failed: " << err;
 
           int num_b = active_gpu_boxes.size();
-          clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
-          clSetKernelArg(kernel, 1, sizeof(cl_mem), &b_contacts);
-          clSetKernelArg(kernel, 2, sizeof(cl_mem), &b_triples);
-          clSetKernelArg(kernel, 3, sizeof(cl_mem), &b_results);
-          clSetKernelArg(kernel, 4, sizeof(int), &num_b);
+          err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
+          CHECK_EQ(err, CL_SUCCESS);
+          err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &b_contacts);
+          CHECK_EQ(err, CL_SUCCESS);
+          err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &b_triples);
+          CHECK_EQ(err, CL_SUCCESS);
+          err = clSetKernelArg(kernel, 3, sizeof(cl_mem), &b_results);
+          CHECK_EQ(err, CL_SUCCESS);
+          err = clSetKernelArg(kernel, 4, sizeof(int), &num_b);
+          CHECK_EQ(err, CL_SUCCESS);
 
           size_t global_work_size = ((num_b + 63) / 64) * 64;
           size_t local_work_size = 64;
-          clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
-                                 &global_work_size, &local_work_size, 0,
-                                 nullptr, nullptr);
-          clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
-                              sizeof(GpuResult) * num_b, active_results.data(),
-                              0, nullptr, nullptr);
+          err = clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
+                                       &global_work_size, &local_work_size, 0,
+                                       nullptr, nullptr);
+          CHECK_EQ(err, CL_SUCCESS) << "clEnqueueNDRangeKernel failed: " << err;
+          err = clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
+                                    sizeof(GpuResult) * num_b, active_results.data(),
+                                    0, nullptr, nullptr);
+          CHECK_EQ(err, CL_SUCCESS) << "clEnqueueReadBuffer failed: " << err;
 
           clReleaseMemObject(b_boxes);
           clReleaseMemObject(b_contacts);
