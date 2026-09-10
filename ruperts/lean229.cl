@@ -6,8 +6,6 @@
 // Evaluates exact 27-point Bernstein control bounds for the 10-coefficient
 // quadratic displacement polynomial across each box.
 
-#define MAX_CONTACTS 64
-#define MAX_TRIPLES 128
 
 typedef struct {
   // Cayley box center

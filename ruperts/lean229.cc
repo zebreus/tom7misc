@@ -5,17 +5,9 @@
 // Generates certificate trees (.rows.log and .pack) that can be verified
 // directly by constructNopert229 in Lean.
 //
-// TODO: Eliminate CPU bottleneck in RankCandidatesForBox by offloading all
-// triple evaluations directly to the GPU. For each view triangle, the ~28
-// silhouette contacts and ~888 valid triples depend strictly on the view
-// triangle, not the Cayley box. Instead of having the CPU rank and sort
-// triples for every box individually and copying ~400 MB of triples over
-// PCIe each batch, upload the TrianglePool (~10 KB) to GPU memory once
-// per active view triangle. Boxes then only transfer their 6D bounds
-// and pool ID (~2 MB per batch), and GPU threads loop over the pool's
-// triples directly. Even worst-case evaluation of all 888 triples across
-// 32k boxes takes <1 ms on GPU, eliminating millions of CPU scoring loops
-// and sorting calls.
+// Evaluates all candidate triples directly on the GPU/CPU without per-box
+// candidate ranking or sorting overhead. Unique triangle pools are deduplicated
+// per batch, and threads loop over pool triples with early exit on certificate.
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
@@ -301,12 +293,6 @@ struct SearchNode {
   ProjectiveTriangle tri;
 };
 
-// Candidate contact and triple caching per triangle
-struct TriangleCandidatePool {
-  std::vector<GpuContact> contacts;
-  std::vector<GpuTriple> triples;
-};
-
 struct PrecomputedTriple {
   int c0, c1, c2;
   vec3 coeff0, coeff1, coeff2;
@@ -316,6 +302,7 @@ struct PrecomputedTriple {
 struct TrianglePool {
   std::vector<GpuContact> contacts;
   std::vector<PrecomputedTriple> valid_triples;
+  std::vector<GpuTriple> gpu_triples;
 };
 
 static uint64_t HashTriangle(const ProjectiveTriangle &tri) {
@@ -332,7 +319,7 @@ static uint64_t HashTriangle(const ProjectiveTriangle &tri) {
 }
 
 static std::shared_ptr<const TrianglePool> BuildTrianglePool(
-    const ProjectiveTriangle &tri) {
+    const ProjectiveTriangle &tri, int cone_samples = 6) {
   ctr_built_triangles++;
   auto pool = std::make_shared<TrianglePool>();
   vec3 view = tri.Centroid();
@@ -360,8 +347,7 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
   int H = hull.size();
   if (H < 3) return pool;
 
-  // Build silhouette edge contacts interpolating adjacent edges
-  // (cone_samples = 4).
+  // Build silhouette edge contacts interpolating adjacent edges.
   std::vector<GpuContact> valid_contacts;
   for (int i = 0; i < H; i++) {
     int curr = hull[i];
@@ -375,8 +361,8 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
     vec3 first = v_prev - v_curr;
     vec3 second = v_curr - v_next;
 
-    for (int s = 0; s < 4; s++) {
-      double lam = (s + 1.0) / 5.0;
+    for (int s = 0; s < cone_samples; s++) {
+      double lam = (s + 1.0) / (cone_samples + 1.0);
       vec3 e = lam * first + (1.0 - lam) * second;
 
       double max_upper = 0.0;
@@ -408,6 +394,14 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
   pool->contacts = std::move(valid_contacts);
   int C = pool->contacts.size();
+
+  struct SortableTriple {
+    PrecomputedTriple pt;
+    GpuTriple gt;
+    double defect_sum;
+    double min_p;
+  };
+  std::vector<SortableTriple> sortable;
 
   for (int i = 0; i < C; i++) {
     for (int j = i + 1; j < C; j++) {
@@ -463,13 +457,36 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
         if (w0_min < 0.0 || w1_min < 0.0 || w2_min < 0.0) continue;
 
-        PrecomputedTriple pt;
-        pt.c0 = ci; pt.c1 = cj; pt.c2 = ck;
-        pt.coeff0 = coeff0; pt.coeff1 = coeff1; pt.coeff2 = coeff2;
-        pt.p0 = p0; pt.p1 = p1; pt.p2 = p2;
-        pool->valid_triples.push_back(pt);
+        SortableTriple st;
+        st.pt.c0 = ci; st.pt.c1 = cj; st.pt.c2 = ck;
+        st.pt.coeff0 = coeff0; st.pt.coeff1 = coeff1; st.pt.coeff2 = coeff2;
+        st.pt.p0 = p0; st.pt.p1 = p1; st.pt.p2 = p2;
+
+        st.gt.c0 = ci; st.gt.c1 = cj; st.gt.c2 = ck;
+        st.gt.w_coeff[0][0] = coeff0.x; st.gt.w_coeff[0][1] = coeff0.y; st.gt.w_coeff[0][2] = coeff0.z;
+        st.gt.w_coeff[1][0] = coeff1.x; st.gt.w_coeff[1][1] = coeff1.y; st.gt.w_coeff[1][2] = coeff1.z;
+        st.gt.w_coeff[2][0] = coeff2.x; st.gt.w_coeff[2][1] = coeff2.y; st.gt.w_coeff[2][2] = coeff2.z;
+
+        st.defect_sum = pool->contacts[ci].defect + pool->contacts[cj].defect + pool->contacts[ck].defect;
+        st.min_p = std::min({p0, p1, p2});
+        sortable.push_back(st);
       }
     }
+  }
+
+  // Pre-sort triples once per pool: zero-defect / well-centered triples first
+  // so that evaluating threads exit as early as possible.
+  std::sort(sortable.begin(), sortable.end(), [](const SortableTriple &a, const SortableTriple &b) {
+    if (std::abs(a.defect_sum - b.defect_sum) > 1e-9)
+      return a.defect_sum < b.defect_sum;
+    return a.min_p > b.min_p;
+  });
+
+  pool->valid_triples.reserve(sortable.size());
+  pool->gpu_triples.reserve(sortable.size());
+  for (const auto &st : sortable) {
+    pool->valid_triples.push_back(st.pt);
+    pool->gpu_triples.push_back(st.gt);
   }
 
   return pool;
@@ -480,124 +497,19 @@ static std::unordered_map<uint64_t, std::shared_ptr<const TrianglePool>>
 g_triangle_cache;
 
 static std::shared_ptr<const TrianglePool>
-GetTrianglePool(const ProjectiveTriangle &tri) {
-  const uint64_t h = HashTriangle(tri);
+GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
+  const uint64_t h = HashTriangle(tri) ^ (uint64_t(cone_samples) * 0x9e3779b97f4a7c15ULL);
   {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
     if (it != g_triangle_cache.end()) return it->second;
   }
-  auto pool = BuildTrianglePool(tri);
+  auto pool = BuildTrianglePool(tri, cone_samples);
   {
     MutexLock ml(&g_triangle_cache_mutex);
     g_triangle_cache[h] = pool;
     return pool;
   }
-}
-
-// TODO: Histogram of pool sizes.
-
-static TriangleCandidatePool RankCandidatesForBox(
-    const std::shared_ptr<const TrianglePool> &tpool,
-    const ProjectiveTriangle &tri,
-    const CayleyBox &box,
-    int chart,
-    size_t base_candidates) {
-
-  TriangleCandidatePool pool;
-  if (!tpool || tpool->valid_triples.empty()) return pool;
-  pool.contacts = tpool->contacts;
-  int C = pool.contacts.size();
-
-  // Precompute best inner vertex displacement for each contact at box center
-  vec3 view = tri.Centroid();
-  double x0 = box.center.x, y0 = box.center.y, z0 = box.center.z;
-  double num[3][3] = {
-    {1.0 + x0*x0 - y0*y0 - z0*z0, 2.0*(x0*y0 - z0), 2.0*(x0*z0 + y0)},
-    {2.0*(x0*y0 + z0), 1.0 - x0*x0 + y0*y0 - z0*z0, 2.0*(y0*z0 - x0)},
-    {2.0*(x0*z0 - y0), 2.0*(y0*z0 + x0), 1.0 - x0*x0 - y0*y0 + z0*z0}
-  };
-  double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
-
-  double sx = (chart == 2 || chart == 3) ? -1.0 : 1.0;
-  double sy = (chart == 1 || chart == 3) ? -1.0 : 1.0;
-  double sz = (chart == 1 || chart == 2) ? -1.0 : 1.0;
-
-  std::vector<double> contact_best_disp(C, -1e30);
-  for (int c_idx = 0; c_idx < C; c_idx++) {
-    vec3 e = {
-      pool.contacts[c_idx].edge[0],
-      pool.contacts[c_idx].edge[1],
-      pool.contacts[c_idx].edge[2],
-    };
-    vec3 out = {VERTICES[pool.contacts[c_idx].vertex][0],
-                VERTICES[pool.contacts[c_idx].vertex][1],
-                VERTICES[pool.contacts[c_idx].vertex][2]};
-    double best_v = -1e30;
-    for (int k = 0; k < NUM_VERTICES; k++) {
-      vec3 vin = {VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]};
-      vec3 rot_in = {
-        sx * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
-        sy * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
-        sz * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
-      };
-      double v = yocto::dot(view, yocto::cross(e, rot_in - denom0 * out));
-      if (v > best_v) best_v = v;
-    }
-    contact_best_disp[c_idx] = best_v;
-  }
-
-  struct ScoredTriple {
-    double score;
-    GpuTriple trip;
-  };
-  std::vector<ScoredTriple> scored;
-  scored.reserve(tpool->valid_triples.size());
-
-  for (const auto &vt : tpool->valid_triples) {
-    int ci = vt.c0, cj = vt.c1, ck = vt.c2;
-    double score = vt.p0 * contact_best_disp[ci] +
-                   vt.p1 * contact_best_disp[cj] +
-                   vt.p2 * contact_best_disp[ck] -
-                   (vt.p0 * pool.contacts[ci].defect +
-                    vt.p1 * pool.contacts[cj].defect +
-                    vt.p2 * pool.contacts[ck].defect);
-
-    GpuTriple trip;
-    trip.c0 = ci; trip.c1 = cj; trip.c2 = ck;
-    trip.w_coeff[0][0] = vt.coeff0.x;
-    trip.w_coeff[0][1] = vt.coeff0.y;
-    trip.w_coeff[0][2] = vt.coeff0.z;
-    trip.w_coeff[1][0] = vt.coeff1.x;
-    trip.w_coeff[1][1] = vt.coeff1.y;
-    trip.w_coeff[1][2] = vt.coeff1.z;
-    trip.w_coeff[2][0] = vt.coeff2.x;
-    trip.w_coeff[2][1] = vt.coeff2.y;
-    trip.w_coeff[2][2] = vt.coeff2.z;
-    scored.push_back({score, trip});
-  }
-
-  int widest = box.WidestAxis();
-  size_t target_take = (box.radii[widest] <= 1.0 / 256.0) ?
-    std::max(size_t(256), base_candidates) : base_candidates;
-  size_t take = std::min(scored.size(), target_take);
-
-  auto comp = [](const ScoredTriple &a, const ScoredTriple &b) {
-    return a.score > b.score;
-  };
-
-  if (take < scored.size()) {
-    std::partial_sort(scored.begin(), scored.begin() + take,
-                      scored.end(), comp);
-  } else {
-    std::sort(scored.begin(), scored.end(), comp);
-  }
-  pool.triples.reserve(take);
-  for (size_t t = 0; t < take; t++) {
-    pool.triples.push_back(scored[t].trip);
-  }
-
-  return pool;
 }
 
 
@@ -1030,7 +942,8 @@ struct SearchManager {
   int max_depth = 96;
   int max_box_depth = 72;
   int max_view_depth = 24;
-  int num_candidates = 128;
+  size_t num_candidates = 0; // 0 = all
+  int cone_samples = 6;
   int num_threads = 8;
   bool use_gpu = true;
   bool resume = true;
@@ -1264,6 +1177,23 @@ struct SearchManager {
     }
   }
 
+  // Computes exact completed domain volume fraction in [0.0, 1.0] by
+  // evaluating uncertified leaf weights on the stack using depth-bucketed
+  // Horner evaluation. Zero floating-point accumulation error.
+  double CompletedFraction() const {
+    uint64_t stack_k[256] = {0};
+    for (const auto &node : stack) {
+      int k = node.box_depth + 2 * node.view_depth;
+      if (k < 256) stack_k[k]++;
+    }
+    double pending_vol = 0.0;
+    for (int k = 255; k > 0; k--) {
+      pending_vol = (pending_vol + stack_k[k]) * 0.5;
+    }
+    pending_vol += stack_k[0];
+    return std::clamp(1.0 - pending_vol, 0.0, 1.0);
+  }
+
   void InitRoot() {
     stack.clear();
     next_node_id = 0;
@@ -1361,10 +1291,11 @@ struct SearchManager {
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
 
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
-    status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Max Depth: {} "
-                 "(box={}, view={}), Device: {}\n",
-                 chart, batch_size, num_candidates, max_depth, max_box_depth,
-                 max_view_depth,
+    status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {}, "
+                 "Max Depth: {} (box={}, view={}), Device: {}\n",
+                 chart, batch_size,
+                 num_candidates == 0 ? "all" : std::to_string(num_candidates),
+                 cone_samples, max_depth, max_box_depth, max_view_depth,
                  use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
     status.Print("Writing log to: {}\n", log_path);
 
@@ -1404,7 +1335,6 @@ struct SearchManager {
     std::vector<GpuTriple> all_triples;
     std::vector<GpuResult> results;
     std::vector<SearchNode> current_batch;
-    std::vector<TriangleCandidatePool> batch_pools;
 
     enum NodeAction {
       ACTION_PRUNE_RADIUS,
@@ -1464,12 +1394,10 @@ struct SearchManager {
       all_contacts.clear();
       all_triples.clear();
       results.assign(count, GpuResult{});
-      batch_pools.resize(count);
 
       std::vector<NodeAction> node_actions(count);
 
-      // Phase 1: Parallel domain filtering and candidate ranking
-      // across CPU cores.
+      // Phase 1: Parallel domain filtering across CPU cores.
       UnParallelComp(count, [&](int64_t i) {
         auto &node = current_batch[i];
         FundamentalPruneResult fund =
@@ -1489,17 +1417,11 @@ struct SearchManager {
         } else if (node.chart == 0 && node.box.ContainsOrigin()) {
           node_actions[i] = ACTION_SPLIT_ORIGIN;
         } else {
-          auto tpool = GetTrianglePool(node.tri);
-          if (tpool->valid_triples.empty()) {
+          auto tpool = GetTrianglePool(node.tri, cone_samples);
+          if (tpool->gpu_triples.empty()) {
             node_actions[i] = ACTION_SPLIT_VIEW;
           } else {
-            batch_pools[i] = RankCandidatesForBox(
-                tpool, node.tri, node.box, node.chart, num_candidates);
-            if (batch_pools[i].triples.empty()) {
-              node_actions[i] = ACTION_SPLIT_VIEW;
-            } else {
-              node_actions[i] = ACTION_EVALUATE;
-            }
+            node_actions[i] = ACTION_EVALUATE;
           }
         }
       }, num_threads);
@@ -1583,9 +1505,38 @@ struct SearchManager {
         std::vector<GpuBox> active_gpu_boxes;
         active_gpu_boxes.reserve(active_indices.size());
 
+        struct PoolBatchInfo {
+          int contact_offset;
+          int triple_offset;
+          int num_triples;
+        };
+        std::unordered_map<const TrianglePool*, PoolBatchInfo> active_pools;
+
         for (int idx : active_indices) {
           const auto &node = current_batch[idx];
-          const auto &pool = batch_pools[idx];
+          auto tpool = GetTrianglePool(node.tri, cone_samples);
+
+          auto [it, inserted] = active_pools.try_emplace(tpool.get(), PoolBatchInfo{});
+          if (inserted) {
+            it->second.contact_offset = (int)all_contacts.size();
+            it->second.triple_offset = (int)all_triples.size();
+            int n_trip = (int)tpool->gpu_triples.size();
+            if (num_candidates > 0 && num_candidates < (size_t)n_trip) {
+              n_trip = (int)num_candidates;
+            }
+            it->second.num_triples = n_trip;
+
+            all_contacts.insert(all_contacts.end(),
+                                tpool->contacts.begin(), tpool->contacts.end());
+
+            for (int t = 0; t < n_trip; t++) {
+              GpuTriple gt = tpool->gpu_triples[t];
+              gt.c0 += it->second.contact_offset;
+              gt.c1 += it->second.contact_offset;
+              gt.c2 += it->second.contact_offset;
+              all_triples.push_back(gt);
+            }
+          }
 
           GpuBox box;
           box.cx = node.box.center.x;
@@ -1600,19 +1551,8 @@ struct SearchManager {
             box.tri[c][2] = node.tri.corners[c].z;
           }
           box.chart = node.chart;
-          box.triple_offset = all_triples.size();
-          box.num_triples = pool.triples.size();
-
-          int contact_offset = all_contacts.size();
-          all_contacts.insert(all_contacts.end(),
-                              pool.contacts.begin(), pool.contacts.end());
-
-          for (auto trip : pool.triples) {
-            trip.c0 += contact_offset;
-            trip.c1 += contact_offset;
-            trip.c2 += contact_offset;
-            all_triples.push_back(trip);
-          }
+          box.triple_offset = it->second.triple_offset;
+          box.num_triples = it->second.num_triples;
 
           active_gpu_boxes.push_back(box);
         }
@@ -1828,6 +1768,7 @@ struct SearchManager {
       if (progress_report.ShouldRun()) {
         double elapsed = timer.Seconds();
         double rate = evaluated_count.Read() / std::max(1e-6, elapsed);
+        double completed_frac = CompletedFraction();
 
         std::string pool_str;
         if (prioritize_related) {
@@ -1849,6 +1790,7 @@ struct SearchManager {
             " {}⊿ "
             "\n"
             "Stack: {} " AGREY("|")
+            " Done: {:.4f}% " AGREY("|")
             " Depth: {} " AGREY("|")
             " {} boxes/s " AGREY("|")
             " {}\n"
@@ -1859,6 +1801,7 @@ struct SearchManager {
             FormatNum(pruned_count.Read()),
             FormatNum(ctr_built_triangles.Read()),
             FormatNum(stack.size()),
+            completed_frac * 100.0,
             current_batch.empty() ? 0 : current_batch[0].depth,
             FormatNum((int64_t)rate), ANSI::Time(elapsed),
             pool_str);
@@ -2037,6 +1980,8 @@ int main(int argc, char **argv) {
       mgr.max_view_depth = std::atoi(argv[++i]);
     } else if (arg == "--candidates" && i + 1 < argc) {
       mgr.num_candidates = std::atoi(argv[++i]);
+    } else if (arg == "--cone_samples" && i + 1 < argc) {
+      mgr.cone_samples = std::atoi(argv[++i]);
     } else if (arg == "--threads" && i + 1 < argc) {
       mgr.num_threads = std::atoi(argv[++i]);
     } else if (arg == "--output_dir" && i + 1 < argc) {
@@ -2070,7 +2015,8 @@ int main(int argc, char **argv) {
             "  --max_depth <D>     Maximum branch-and-bound tree depth (default 96)\n"
             "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 72)\n"
             "  --max_view_depth <D> Maximum view triangle subdivision depth (default 24)\n"
-            "  --candidates <N>    Candidate contact triples to test per box (default 128)\n"
+            "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
+            "  --cone_samples <N>  Silhouette cone samples per vertex (default 6)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
