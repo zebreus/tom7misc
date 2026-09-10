@@ -4,6 +4,18 @@
 //
 // Generates certificate trees (.rows.log and .pack) that can be verified
 // directly by constructNopert229 in Lean.
+//
+// TODO: Eliminate CPU bottleneck in RankCandidatesForBox by offloading all
+// triple evaluations directly to the GPU. For each view triangle, the ~28
+// silhouette contacts and ~888 valid triples depend strictly on the view
+// triangle, not the Cayley box. Instead of having the CPU rank and sort
+// triples for every box individually and copying ~400 MB of triples over
+// PCIe each batch, upload the TrianglePool (~10 KB) to GPU memory once
+// per active view triangle. Boxes then only transfer their 6D bounds
+// and pool ID (~2 MB per batch), and GPU threads loop over the pool's
+// triples directly. Even worst-case evaluation of all 888 triples across
+// 32k boxes takes <1 ms on GPU, eliminating millions of CPU scoring loops
+// and sorting calls.
 
 #include <CL/cl.h>
 #include <algorithm>
@@ -426,7 +438,9 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
           coeff0 = yocto::cross(e1, e2);
           coeff1 = yocto::cross(e2, e0);
           coeff2 = yocto::cross(e0, e1);
-          p0 = -p0; p1 = -p1; p2 = -p2;
+          p0 = yocto::dot(view, coeff0);
+          p1 = yocto::dot(view, coeff1);
+          p2 = yocto::dot(view, coeff2);
         }
 
         if (p0 <= 1e-9 || p1 <= 1e-9 || p2 <= 1e-9) continue;
@@ -1117,16 +1131,16 @@ struct SearchManager {
   struct PriorityPoint {
     vec3 view;
     vec3 w;
+    int chart = 0;
     int solution_id = 0;
+    std::string label;
     bool certified = false;
   };
   std::vector<PriorityPoint> priority_points;
 
   bool ContainsUncertifiedPriority(const SearchNode &node) const {
-    if (node.chart != chart)
-      return false;
     for (const auto &p : priority_points) {
-      if (!p.certified && node.box.Contains(p.w) &&
+      if (p.chart == node.chart && !p.certified && node.box.Contains(p.w) &&
           node.tri.ContainsRay(p.view)) {
         return true;
       }
@@ -1136,68 +1150,112 @@ struct SearchManager {
 
   void LoadPriorityPoints(double max_dist = 0.05) {
     priority_points.clear();
-    SolutionDB db;
-    Polyhedron target_poly = db.AnyPolyhedronByName("nopert_229");
-    auto solutions = db.GetRelatedSolutions(target_poly, max_dist);
-    if (solutions.empty()) {
-      status.Print(AYELLOW("No related solutions")
-                   " within max_dist = {:.17g}.\n", max_dist);
-      return;
-    }
-    status.Print("Found " ACYAN("{}") " related solutions "
-                 "(max_dist = {:.17g}).\n",
-                 solutions.size(), max_dist);
 
-    for (const auto &sol : solutions) {
-      const frame3 &o_frame = sol.outer_frame;
-      const frame3 &i_frame = sol.inner_frame;
+    // Static known hard / pathological points from past runs:
+    struct StaticHardPoint {
+      int chart;
+      vec3 w;
+      vec3 view;
+      const char *label;
+    };
+    static const StaticHardPoint kKnownHardPoints[] = {
+      // Chart 0: near-identity rotation grinder
+      { .chart = 0,
+        .w = {0.00096893310546875, -0.0012969970703125, -0.002044677734375},
+        .view = {0.99999106802591464, 3.8457110645325201e-06, 5.0862630208333331e-06},
+        .label = "Chart 0 near-identity grinder" },
+      // Chart 2: boundary grinder
+      { .chart = 2,
+        .w = {-0.28256338834762573, -0.86962884664535522, -0.27563470602035522},
+        .view = {0.18209315363953751, 0.30716461912403265, 0.51074222723642981},
+        .label = "Chart 2 boundary grinder" },
+    };
 
-      vec3 sol_view =
-          yocto::normalize(vec3{o_frame.x.z, o_frame.y.z, o_frame.z.z});
-
-      vec3 out_cols[3] = {o_frame.x, o_frame.y, o_frame.z};
-      vec3 inn_cols[3] = {i_frame.x, i_frame.y, i_frame.z};
-      double R[3][3];
-      for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-          R[i][j] = yocto::dot(out_cols[i], inn_cols[j]);
-        }
+    int hard_count = 0;
+    for (const auto &hp : kKnownHardPoints) {
+      if (hp.chart == chart) {
+        priority_points.push_back(PriorityPoint{
+            .view = hp.view,
+            .w = hp.w,
+            .chart = hp.chart,
+            .solution_id = -1,
+            .label = hp.label,
+            .certified = false,
+        });
+        hard_count++;
       }
-      double denom = 1.0 + R[0][0] + R[1][1] + R[2][2];
-      if (std::abs(denom) > 1e-6) {
-        vec3 sol_w = {
-          (R[2][1] - R[1][2]) / denom,
-          (R[0][2] - R[2][0]) / denom,
-          (R[1][0] - R[0][1]) / denom
-        };
+    }
+    if (hard_count > 0) {
+      status.Print("Loaded " ACYAN("{}") " static pathological test point(s) in Chart {}.\n",
+                   hard_count, chart);
+    }
 
-        // Check all 5-fold rotations around z to find representation
-        // in chart 0 wedge.
-        for (int k = 0; k < 5; k++) {
-          double theta = 2.0 * std::numbers::pi * k / 5.0;
-          double c = std::cos(theta), s = std::sin(theta);
-          vec3 rot_v = {c * sol_view.x - s * sol_view.y,
-                        s * sol_view.x + c * sol_view.y, sol_view.z};
-          ProjectiveTriangle wedge_root;
-          wedge_root.corners[0] = {1.0, 0.0, 0.0};
-          wedge_root.corners[1] = {10.0 / 41.0, 31.0 / 41.0, 0.0};
-          wedge_root.corners[2] = {0.0, 0.0, 1.0};
-          if (wedge_root.ContainsRay(rot_v) &&
-              std::abs(sol_w.z) <= 1.0 / 3.0 + 1e-6) {
-            priority_points.push_back(PriorityPoint{
-                .view = rot_v,
-                .w = sol_w,
-                .solution_id = sol.id,
-                .certified = false,
-            });
-            break;
+    if (chart == 0) {
+      SolutionDB db;
+      Polyhedron target_poly = db.AnyPolyhedronByName("nopert_229");
+      auto solutions = db.GetRelatedSolutions(target_poly, max_dist);
+      if (solutions.empty()) {
+        status.Print(AYELLOW("No related solutions")
+                     " within max_dist = {:.17g}.\n", max_dist);
+      } else {
+        status.Print("Found " ACYAN("{}") " related solutions "
+                     "(max_dist = {:.17g}).\n",
+                     solutions.size(), max_dist);
+
+        for (const auto &sol : solutions) {
+          const frame3 &o_frame = sol.outer_frame;
+          const frame3 &i_frame = sol.inner_frame;
+
+          vec3 sol_view =
+              yocto::normalize(vec3{o_frame.x.z, o_frame.y.z, o_frame.z.z});
+
+          vec3 out_cols[3] = {o_frame.x, o_frame.y, o_frame.z};
+          vec3 inn_cols[3] = {i_frame.x, i_frame.y, i_frame.z};
+          double R[3][3];
+          for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+              R[i][j] = yocto::dot(out_cols[i], inn_cols[j]);
+            }
+          }
+          double denom = 1.0 + R[0][0] + R[1][1] + R[2][2];
+          if (std::abs(denom) > 1e-6) {
+            vec3 sol_w = {
+              (R[2][1] - R[1][2]) / denom,
+              (R[0][2] - R[2][0]) / denom,
+              (R[1][0] - R[0][1]) / denom
+            };
+
+            // Check all 5-fold rotations around z to find representation
+            // in chart 0 wedge.
+            for (int k = 0; k < 5; k++) {
+              double theta = 2.0 * std::numbers::pi * k / 5.0;
+              double c = std::cos(theta), s = std::sin(theta);
+              vec3 rot_v = {c * sol_view.x - s * sol_view.y,
+                            s * sol_view.x + c * sol_view.y, sol_view.z};
+              ProjectiveTriangle wedge_root;
+              wedge_root.corners[0] = {1.0, 0.0, 0.0};
+              wedge_root.corners[1] = {10.0 / 41.0, 31.0 / 41.0, 0.0};
+              wedge_root.corners[2] = {0.0, 0.0, 1.0};
+              if (wedge_root.ContainsRay(rot_v) &&
+                  std::abs(sol_w.z) <= 1.0 / 3.0 + 1e-6) {
+                priority_points.push_back(PriorityPoint{
+                    .view = rot_v,
+                    .w = sol_w,
+                    .chart = 0,
+                    .solution_id = sol.id,
+                    .label = "",
+                    .certified = false,
+                });
+                break;
+              }
+            }
           }
         }
+        status.Print("Loaded " ACYAN("{}") " candidate solution poses "
+                     "in Chart 0 (max_euclidean_dist = {}).\n",
+                     priority_points.size() - hard_count, max_dist);
       }
     }
-    status.Print("Loaded " ACYAN("{}") " candidate solution poses "
-                 "in Chart 0 (max_euclidean_dist = {}).\n",
-                 priority_points.size(), max_dist);
   }
 
   void InitRoot() {
@@ -1595,13 +1653,19 @@ struct SearchManager {
                                    res.winning_triple, res.margin,
                                    res.inner[0], res.inner[1], res.inner[2]);
             for (auto &p : priority_points) {
-              if (!p.certified && node.box.Contains(p.w) &&
-                  node.tri.ContainsRay(p.view)) {
+              if (p.chart == node.chart && !p.certified &&
+                  node.box.Contains(p.w) && node.tri.ContainsRay(p.view)) {
                 p.certified = true;
-                status.Print(AGREEN("✔") " "
-                             "Related sol #{} excluded at "
-                             "depth {} (margin = {:.17g})!\n",
-                             p.solution_id, node.depth, res.margin);
+                if (!p.label.empty()) {
+                  status.Print(AGREEN("✔") " "
+                               "{} excluded at depth {} (margin = {:.17g})!\n",
+                               p.label, node.depth, res.margin);
+                } else {
+                  status.Print(AGREEN("✔") " "
+                               "Related sol #{} excluded at "
+                               "depth {} (margin = {:.17g})!\n",
+                               p.solution_id, node.depth, res.margin);
+                }
               }
             }
           } else {
