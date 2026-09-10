@@ -18,6 +18,7 @@
 // and sorting calls.
 
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -26,10 +27,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <format>
-#include <fstream>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <numbers>
@@ -56,6 +56,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "work-queue.h"
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
@@ -261,10 +262,13 @@ static inline FundamentalPruneResult CheckFundamentalPrune(
     double gy = cy + cxy*x + 2.0*cyy*y;
     double gz = cz + 2.0*czz*z;
 
-    double center = val0 + 0.5 * (cxx*rx*rx + cyy*ry*ry + czz*rz*rz);
-    double radius = (std::abs(gx)*rx + std::abs(gy)*ry + std::abs(gz)*rz) +
-                    std::abs(cxy)*rx*ry +
-                    0.5 * (std::abs(cxx)*rx*rx + std::abs(cyy)*ry*ry + std::abs(czz)*rz*rz);
+    double center =
+        val0 + 0.5 * (cxx * rx * rx + cyy * ry * ry + czz * rz * rz);
+    double radius =
+        (std::abs(gx) * rx + std::abs(gy) * ry + std::abs(gz) * rz) +
+        std::abs(cxy) * rx * ry +
+        0.5 * (std::abs(cxx) * rx * rx + std::abs(cyy) * ry * ry +
+               std::abs(czz) * rz * rz);
 
     double lower = center - radius;
     if (lower > approx_error) {
@@ -275,7 +279,8 @@ static inline FundamentalPruneResult CheckFundamentalPrune(
   return {false, 0};
 }
 
-static inline bool InsideIdentityTube(int chart, const CayleyBox &b, double tube_r = 1e-4) {
+static inline bool InsideIdentityTube(int chart, const CayleyBox &b,
+                                      double tube_r = 1e-4) {
   if (chart != 0) return false;
   double mx = std::abs(b.center.x) + b.radii.x;
   double my = std::abs(b.center.y) + b.radii.y;
@@ -471,7 +476,8 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 }
 
 static std::mutex g_triangle_cache_mutex;
-static std::unordered_map<uint64_t, std::shared_ptr<const TrianglePool>> g_triangle_cache;
+static std::unordered_map<uint64_t, std::shared_ptr<const TrianglePool>>
+g_triangle_cache;
 
 static std::shared_ptr<const TrianglePool>
 GetTrianglePool(const ProjectiveTriangle &tri) {
@@ -1324,13 +1330,35 @@ struct SearchManager {
     }
   }
 
+  std::mutex row_mutex;
+  std::string row_buffer;
+  FILE *row_file = nullptr;
+  void FlushRowsWithLock() {
+    Print(row_file, "{}", row_buffer);
+    row_buffer.clear();
+  }
+
+  void FlushRows() {
+    MutexLock ml(&row_mutex);
+    FlushRowsWithLock();
+  }
+
+  void OutputRow(std::string_view row) {
+    MutexLock ml(&row_mutex);
+    row_buffer.append(row);
+    if (row_buffer.size() > 32768) {
+      FlushRowsWithLock();
+    }
+  }
+
   void Run() {
     std::filesystem::create_directories(output_dir);
     std::string log_path =
         std::format("{}/chart{}.rows.log", output_dir, chart);
+    row_file = fopen(log_path.c_str(), "a");
+    CHECK(row_file) << log_path;
     std::string ckpt_path =
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
-    std::ofstream row_log(log_path, std::ios::app);
 
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
     status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Max Depth: {} "
@@ -1447,7 +1475,12 @@ struct SearchManager {
         FundamentalPruneResult fund =
           CheckFundamentalPrune(node.chart, node.box);
         if (OutsideBall(node.box)) {
+          pruned_count++;
+          certified_count++;
+          OutputRow(std::format("PRUNE {} {} {} RADIUS\n",
+                                node.id, node.parent_id, node.depth));
           node_actions[i] = ACTION_PRUNE_RADIUS;
+
         } else if (fund.prune) {
           node_actions[i] = ACTION_PRUNE_FUNDAMENTAL;
           node.fund_direction = fund.direction;
@@ -1479,29 +1512,25 @@ struct SearchManager {
         const auto &node = current_batch[i];
         switch (node_actions[i]) {
           case ACTION_PRUNE_RADIUS:
-            pruned_count++;
-            certified_count++;
-            row_log << std::format("PRUNE {} {} {} RADIUS\n",
-                                   node.id, node.parent_id, node.depth);
             break;
           case ACTION_PRUNE_FUNDAMENTAL:
             pruned_count++;
             certified_count++;
-            row_log << std::format("PRUNE {} {} {} FUNDAMENTAL {}\n",
-                                   node.id, node.parent_id, node.depth,
-                                   node.fund_direction);
+            OutputRow(std::format("PRUNE {} {} {} FUNDAMENTAL {}\n",
+                                  node.id, node.parent_id, node.depth,
+                                  node.fund_direction));
             break;
           case ACTION_PRUNE_TUBE:
             pruned_count++;
             certified_count++;
-            row_log << std::format("TUBE {} {} {} {:.17g}\n",
-                                   node.id, node.parent_id, node.depth,
-                                   tube_radius);
+            OutputRow(std::format("TUBE {} {} {} {:.17g}\n",
+                                  node.id, node.parent_id, node.depth,
+                                  tube_radius));
             break;
           case ACTION_SPLIT_ORIGIN: {
             split_count++;
-            row_log << std::format("SPLIT_ORIGIN {} {} {}\n",
-                                   node.id, node.parent_id, node.depth);
+            OutputRow(std::format("SPLIT_ORIGIN {} {} {}\n",
+                                  node.id, node.parent_id, node.depth));
             int widest = node.box.WidestAxis();
             auto [b0, b1] = node.box.Split(widest);
 
@@ -1530,8 +1559,8 @@ struct SearchManager {
           }
           case ACTION_SPLIT_VIEW: {
             split_count++;
-            row_log << std::format("SPLIT_VIEW {} {} {}\n", node.id,
-                                   node.parent_id, node.depth);
+            OutputRow(std::format("SPLIT_VIEW {} {} {}\n", node.id,
+                                  node.parent_id, node.depth));
             auto sub_tris = node.tri.Subdivide();
             for (int t = sub_tris.size() - 1; t >= 0; t--) {
               SearchNode child = node;
@@ -1648,10 +1677,11 @@ struct SearchManager {
 
           if (res.certified) {
             certified_count++;
-            row_log << std::format("CERT {} {} {} {} {:.17g} {} {} {}\n",
-                                   node.id, node.parent_id, node.depth,
-                                   res.winning_triple, res.margin,
-                                   res.inner[0], res.inner[1], res.inner[2]);
+            OutputRow(
+                std::format("CERT {} {} {} {} {:.17g} {} {} {}\n",
+                            node.id, node.parent_id, node.depth,
+                            res.winning_triple, res.margin,
+                            res.inner[0], res.inner[1], res.inner[2]));
             for (auto &p : priority_points) {
               if (p.chart == node.chart && !p.certified &&
                   node.box.Contains(p.w) && node.tri.ContainsRay(p.view)) {
@@ -1668,6 +1698,7 @@ struct SearchManager {
                 }
               }
             }
+
           } else {
             if (node.depth >= max_depth ||
                 (node.box_depth >= max_box_depth &&
@@ -1725,8 +1756,8 @@ struct SearchManager {
 
             if (split_box) {
               split_count++;
-              row_log << std::format("SPLIT {} {} {}\n",
-                                     node.id, node.parent_id, node.depth);
+              OutputRow(std::format("SPLIT {} {} {}\n",
+                                    node.id, node.parent_id, node.depth));
 
               auto [b0, b1] = node.box.Split(widest);
 
@@ -1756,8 +1787,8 @@ struct SearchManager {
               }
             } else {
               split_count++;
-              row_log << std::format("SPLIT_VIEW {} {} {}\n",
-                                     node.id, node.parent_id, node.depth);
+              OutputRow(std::format("SPLIT_VIEW {} {} {}\n",
+                                    node.id, node.parent_id, node.depth));
 
               auto sub_tris = node.tri.Subdivide();
               int priority_idx = -1;
@@ -1791,22 +1822,6 @@ struct SearchManager {
               }
             }
           }
-        }
-      }
-
-      if (checkpoint_timer.ShouldRun() || sigint_received.load()) {
-        SaveCheckpoint(ckpt_path);
-        row_log.flush();
-        if (sigint_received.load()) {
-          status.Print("\n"
-                       AYELLOW("Interrupted (SIGINT)") ".\n"
-                       "Saved checkpoint with {} nodes to {}.\n"
-                       "Exiting...\n",
-                       FormatNum(stack.size()), ckpt_path);
-          std::fflush(stdout);
-          std::fflush(stderr);
-          row_log.close();
-          exit(0);
         }
       }
 
@@ -1847,9 +1862,25 @@ struct SearchManager {
             current_batch.empty() ? 0 : current_batch[0].depth,
             FormatNum((int64_t)rate), ANSI::Time(elapsed),
             pool_str);
-        row_log.flush();
+      }
+
+      if (checkpoint_timer.ShouldRun() || sigint_received.load()) {
+        SaveCheckpoint(ckpt_path);
+        FlushRows();
+        if (sigint_received.load()) {
+          status.Print("\n"
+                       AYELLOW("Interrupted (SIGINT)") ".\n"
+                       "Saved checkpoint with {} nodes to {}.\n"
+                       "Exiting...\n",
+                       FormatNum(stack.size()), ckpt_path);
+          std::fflush(stdout);
+          std::fflush(stderr);
+          break;
+        }
       }
     }
+
+
 
     if (!sigint_received.load() && stack.empty()) {
       // Completed full tree!
@@ -1860,7 +1891,8 @@ struct SearchManager {
                    ANSI::Time(timer.Seconds()));
     }
 
-    row_log.close();
+    FlushRows();
+    fclose(row_file);
     status.Print("Total evaluated: {}\n"
                  "Total certified: {}\n"
                  "Total pruned: {}\n"
@@ -1872,7 +1904,8 @@ struct SearchManager {
   }
 
   void TestKnownSolution() {
-    Print(AYELLOW("Testing Rupert solution detection on known solution 1662...\n"));
+    Print(AYELLOW("Testing Rupert solution detection on "
+                  "known solution 1662...\n"));
 
     auto o_frame = SolutionDB::StringFrame(
         "-0.49746192508304149,0.72491410864775851,-0.47647787795038249,"
@@ -1913,8 +1946,10 @@ struct SearchManager {
       (R[1][0] - R[0][1]) / denom
     };
 
-    Print("Extracted Cayley w: ({:.17g}, {:.17g}, {:.17g})\n", sol_w.x, sol_w.y, sol_w.z);
-    Print("Extracted View v:  ({:.17g}, {:.17g}, {:.17g})\n", sol_view.x, sol_view.y, sol_view.z);
+    Print("Extracted Cayley w: ({:.17g}, {:.17g}, {:.17g})\n",
+          sol_w.x, sol_w.y, sol_w.z);
+    Print("Extracted View v:  ({:.17g}, {:.17g}, {:.17g})\n",
+          sol_view.x, sol_view.y, sol_view.z);
 
     // Test 1: Exact box centered at solution
     SearchNode node1;
