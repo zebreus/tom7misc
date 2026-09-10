@@ -53,7 +53,7 @@
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
-                 ctr_built_triangles, ctr_loops);
+                 ctr_built_triangles, ctr_loops, ctr_esc_certified);
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -662,22 +662,26 @@ static GpuResult EvaluateBoxCPU(
     double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
     double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
 
-    double a0 = (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
-                 C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
-    double ax = wx * (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz);
-    double ay = wy * (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz);
-    double az = wz * (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz);
-    double axx = C[4]*wx*wx, ayy = C[7]*wy*wy, azz = C[9]*wz*wz;
-    double axy = C[5]*wx*wy, axz = C[6]*wx*wz, ayz = C[8]*wy*wz;
+    double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
+                 C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
+                 C[8] * ly * lz + C[9] * lz * lz);
+    double ax = wx * (C[1] + 2.0 * C[4] * lx + C[5] * ly + C[6] * lz);
+    double ay = wy * (C[2] + C[5] * lx + 2.0 * C[7] * ly + C[8] * lz);
+    double az = wz * (C[3] + C[6] * lx + C[8] * ly + 2.0 * C[9] * lz);
+    double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+    double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
 
     double min_b = 1e30;
     for (int bi = 0; bi <= 2; bi++) {
       double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
       for (int bj = 0; bj <= 2; bj++) {
-        double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+        double tj =
+            ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
         for (int bk = 0; bk <= 2; bk++) {
-          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) + 0.25 * bk * (bi * axz + bj * ayz);
-          if (val < min_b) min_b = val;
+          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+                       0.25 * bk * (bi * axz + bj * ayz);
+          if (val < min_b)
+            min_b = val;
         }
       }
     }
@@ -887,7 +891,8 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
       double vr = EvalClearance(xr, &c2d_r, &inner_r);
       if (vr > 0.0) {
         auto verified = GetClearance(poly, outer_frame, inner_r);
-        if (verified && *verified > 0.0) return SolutionWitness{outer_frame, inner_r, *verified};
+        if (verified && *verified > 0.0)
+          return SolutionWitness{outer_frame, inner_r, *verified};
       }
 
       if (vr > val[0]) {
@@ -897,7 +902,8 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
         double ve = EvalClearance(xe, &c2d_e, &inner_e);
         if (ve > 0.0) {
           auto verified = GetClearance(poly, outer_frame, inner_e);
-          if (verified && *verified > 0.0) return SolutionWitness{outer_frame, inner_e, *verified};
+          if (verified && *verified > 0.0)
+            return SolutionWitness{outer_frame, inner_e, *verified};
         }
         if (ve > vr) { p[3] = xe; val[3] = ve; }
         else { p[3] = xr; val[3] = vr; }
@@ -910,7 +916,8 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
         double vc = EvalClearance(xc, &c2d_c, &inner_c);
         if (vc > 0.0) {
           auto verified = GetClearance(poly, outer_frame, inner_c);
-          if (verified && *verified > 0.0) return SolutionWitness{outer_frame, inner_c, *verified};
+          if (verified && *verified > 0.0)
+            return SolutionWitness{outer_frame, inner_c, *verified};
         }
         if (vc > val[3]) { p[3] = xc; val[3] = vc; }
         else {
@@ -947,8 +954,17 @@ struct SearchManager {
   int max_box_depth = 72;
   int max_view_depth = 24;
   size_t num_candidates = 0; // 0 = all
-  int cone_samples = 6;
+  int cone_samples = 8;
+  int escalate_depth = 48;
+  int escalate_cone_samples = 10;
   int num_threads = 8;
+
+  int EffectiveConeSamples(const SearchNode &node) const {
+    if (escalate_depth > 0 && node.depth >= escalate_depth) {
+      return escalate_cone_samples;
+    }
+    return cone_samples;
+  }
   bool use_gpu = true;
   bool resume = true;
   bool prioritize_related = true;
@@ -1300,11 +1316,12 @@ struct SearchManager {
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
 
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
-    status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {}, "
+    status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}), "
                  "Max Depth: {} (box={}, view={}), Device: {}\n",
                  chart, batch_size,
                  num_candidates == 0 ? "all" : std::to_string(num_candidates),
-                 cone_samples, max_depth, max_box_depth, max_view_depth,
+                 cone_samples, escalate_cone_samples, escalate_depth,
+                 max_depth, max_box_depth, max_view_depth,
                  use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
     status.Print("Writing log to: {}\n", log_path);
 
@@ -1426,7 +1443,7 @@ struct SearchManager {
         } else if (node.chart == 0 && node.box.ContainsOrigin()) {
           node_actions[i] = ACTION_SPLIT_ORIGIN;
         } else {
-          auto tpool = GetTrianglePool(node.tri, cone_samples);
+          auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
           if (tpool->gpu_triples.empty()) {
             node_actions[i] = ACTION_SPLIT_VIEW;
           } else {
@@ -1523,7 +1540,7 @@ struct SearchManager {
 
         for (int idx : active_indices) {
           const auto &node = current_batch[idx];
-          auto tpool = GetTrianglePool(node.tri, cone_samples);
+          auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
 
           auto [it, inserted] = active_pools.try_emplace(tpool.get(), PoolBatchInfo{});
           if (inserted) {
@@ -1592,7 +1609,7 @@ struct SearchManager {
               sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
           CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_results failed: " << err;
 
-          int num_b = active_gpu_boxes.size();
+          int num_boxes = active_gpu_boxes.size();
           err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
           CHECK_EQ(err, CL_SUCCESS);
           err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &b_contacts);
@@ -1601,17 +1618,17 @@ struct SearchManager {
           CHECK_EQ(err, CL_SUCCESS);
           err = clSetKernelArg(kernel, 3, sizeof(cl_mem), &b_results);
           CHECK_EQ(err, CL_SUCCESS);
-          err = clSetKernelArg(kernel, 4, sizeof(int), &num_b);
+          err = clSetKernelArg(kernel, 4, sizeof(int), &num_boxes);
           CHECK_EQ(err, CL_SUCCESS);
 
-          size_t global_work_size = ((num_b + 63) / 64) * 64;
+          size_t global_work_size = ((num_boxes + 63) / 64) * 64;
           size_t local_work_size = 64;
           err = clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
                                        &global_work_size, &local_work_size, 0,
                                        nullptr, nullptr);
           CHECK_EQ(err, CL_SUCCESS) << "clEnqueueNDRangeKernel failed: " << err;
           err = clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
-                                    sizeof(GpuResult) * num_b, active_results.data(),
+                                    sizeof(GpuResult) * num_boxes, active_results.data(),
                                     0, nullptr, nullptr);
           CHECK_EQ(err, CL_SUCCESS) << "clEnqueueReadBuffer failed: " << err;
 
@@ -1640,8 +1657,8 @@ struct SearchManager {
           if (!res.certified && (node.box_depth >= max_box_depth ||
                                  node.depth >= max_depth - 2)) {
             // Stubborn leaf has reached max box depth or tree depth limit.
-            // Escalate cone samples before allowing deep view runaway or depth-out:
-            for (int cs : {8, 10, 12}) {
+            // Safety-net escalation before depth-out:
+            for (int cs : {12, 14}) {
               auto esc_pool = GetTrianglePool(node.tri, cs);
               GpuBox gb;
               gb.cx = node.box.center.x; gb.cy = node.box.center.y; gb.cz = node.box.center.z;
@@ -1656,11 +1673,8 @@ struct SearchManager {
               gb.num_triples = esc_pool->gpu_triples.size();
               GpuResult esc_res = EvaluateBoxCPU(gb, esc_pool->contacts, esc_pool->gpu_triples);
               if (esc_res.certified) {
+                ctr_esc_certified++;
                 res = esc_res;
-                status.Print(
-                    ACYAN("⚡") " Escalated leaf at depth {} (box_depth={}, view_depth={}) "
-                    "certified with cone_samples={} (margin={:.17g})!\n",
-                    node.depth, node.box_depth, node.view_depth, cs, res.margin);
                 break;
               }
             }
@@ -1838,7 +1852,8 @@ struct SearchManager {
             " Eval: {} " AGREY("|")
             " Cert: {} " AGREY("|")
             " Pruned: {} " AGREY("|")
-            " {}⊿ "
+            " {}⊿ " AGREY("|")
+            " {}⚡ "
             "\n"
             "Stack: {} " AGREY("|")
             " Done: {:.4f}% " AGREY("|")
@@ -1851,6 +1866,7 @@ struct SearchManager {
             FormatNum(certified_count.Read()),
             FormatNum(pruned_count.Read()),
             FormatNum(ctr_built_triangles.Read()),
+            FormatNum(ctr_esc_certified.Read()),
             FormatNum(stack.size()),
             completed_frac * 100.0,
             current_batch.empty() ? 0 : current_batch[0].depth,
@@ -2033,6 +2049,10 @@ int main(int argc, char **argv) {
       mgr.num_candidates = std::atoi(argv[++i]);
     } else if (arg == "--cone_samples" && i + 1 < argc) {
       mgr.cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--escalate_depth" && i + 1 < argc) {
+      mgr.escalate_depth = std::atoi(argv[++i]);
+    } else if (arg == "--escalate_cone_samples" && i + 1 < argc) {
+      mgr.escalate_cone_samples = std::atoi(argv[++i]);
     } else if (arg == "--threads" && i + 1 < argc) {
       mgr.num_threads = std::atoi(argv[++i]);
     } else if (arg == "--output_dir" && i + 1 < argc) {
@@ -2067,7 +2087,9 @@ int main(int argc, char **argv) {
             "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 72)\n"
             "  --max_view_depth <D> Maximum view triangle subdivision depth (default 24)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
-            "  --cone_samples <N>  Silhouette cone samples per vertex (default 6)\n"
+            "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
+            "  --escalate_depth <D> Tree depth to escalate cone samples (default 48)\n"
+            "  --escalate_cone_samples <N> Escalated cone samples (default 10)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
