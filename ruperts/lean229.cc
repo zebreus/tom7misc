@@ -1493,8 +1493,6 @@ struct SearchManager {
     std::filesystem::create_directories(output_dir);
     std::string log_path =
         std::format("{}/chart{}.rows.log", output_dir, chart);
-    row_file = fopen(log_path.c_str(), "a");
-    CHECK(row_file) << log_path;
     std::string ckpt_path =
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
 
@@ -1506,15 +1504,16 @@ struct SearchManager {
                  cone_samples, escalate_cone_samples, escalate_depth,
                  max_depth, max_box_depth, max_view_depth,
                  use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
-    status.Print("Writing log to: {}\n", log_path);
 
     if (prioritize_related) {
       active_priority = GetPriorityPoints(related_epsilon);
     }
 
+    bool resumed = false;
     if (stack.empty()) {
       if (resume && std::filesystem::exists(ckpt_path)) {
         if (LoadCheckpoint(ckpt_path)) {
+          resumed = true;
           status.Print(AGREEN("Resumed")
                        " from checkpoint: {} pending nodes on "
                        "stack, {} evaluated, {} certified, {} pruned\n",
@@ -1527,11 +1526,29 @@ struct SearchManager {
               "Failed to read checkpoint " AORANGE("{}")
               "; starting fresh.\n",
               ckpt_path);
+          std::error_code ec;
+          std::filesystem::remove(ckpt_path, ec);
           InitRoot();
         }
       } else {
+        if (!resume && std::filesystem::exists(ckpt_path)) {
+          std::error_code ec;
+          std::filesystem::remove(ckpt_path, ec);
+        }
         InitRoot();
       }
+    }
+
+    if (resumed) {
+      row_file = fopen(log_path.c_str(), "a");
+      CHECK(row_file) << log_path;
+      status.Print("Appending log to: {}\n", log_path);
+    } else {
+      std::error_code ec;
+      std::filesystem::remove(log_path, ec);
+      row_file = fopen(log_path.c_str(), "w");
+      CHECK(row_file) << log_path;
+      status.Print("Writing fresh log to: {}\n", log_path);
     }
 
     Timer timer;
