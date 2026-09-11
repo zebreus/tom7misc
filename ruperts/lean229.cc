@@ -703,10 +703,11 @@ static GpuResult EvaluateBoxCPU(
     };
   }
 
-  // Precompute best inner vertex for each contact in this pool
+  // Precompute best inner vertex and unit center polynomial for each contact in this pool
   int c_start = box.contact_offset;
   int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
   std::vector<int> best_in(c_count);
+  std::vector<std::array<double, 10>> psi_center(c_count);
   for (int c = 0; c < c_count; c++) {
     const auto &gc = contacts[c_start + c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
@@ -723,6 +724,13 @@ static GpuResult EvaluateBoxCPU(
       }
     }
     best_in[c] = best_k;
+
+    vec3 vin = {VERTICES[best_k][0], VERTICES[best_k][1], VERTICES[best_k][2]};
+    double poly[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    AccumulateContactPoly(poly, 1.0, u, vin, out, s);
+    for (int m = 0; m < 10; m++) {
+      psi_center[c][m] = poly[m];
+    }
   }
 
   GpuResult res;
@@ -738,9 +746,37 @@ static GpuResult EvaluateBoxCPU(
 
     double defect_penalty = d_bound * trip.weighted_defect_upper;
 
-    int in0 = best_in[trip.c0 - c_start];
-    int in1 = best_in[trip.c1 - c_start];
-    int in2 = best_in[trip.c2 - c_start];
+    // Stage 1: Fast filter at view_center (27 controls)
+    vec3 w_coeff0 = {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]};
+    vec3 w_coeff1 = {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]};
+    vec3 w_coeff2 = {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]};
+
+    double w0 = yocto::dot(view_center, w_coeff0);
+    double w1 = yocto::dot(view_center, w_coeff1);
+    double w2 = yocto::dot(view_center, w_coeff2);
+    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+
+    int loc_c0 = trip.c0 - c_start;
+    int loc_c1 = trip.c1 - c_start;
+    int loc_c2 = trip.c2 - c_start;
+
+    double C_center[10];
+    for (int m = 0; m < 10; m++) {
+      C_center[m] = w0 * psi_center[loc_c0][m] +
+                    w1 * psi_center[loc_c1][m] +
+                    w2 * psi_center[loc_c2][m];
+    }
+
+    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
+    if (min_b_center - defect_penalty - disp_error <= 0.0) {
+      continue;
+    }
+
+    // Stage 2: Simplex Bernstein evaluation with progressive early exit
+    // Only evaluated when center filter passes (~12% of triples).
+    int in0 = best_in[loc_c0];
+    int in1 = best_in[loc_c1];
+    int in2 = best_in[loc_c2];
 
     const auto &c0 = contacts[trip.c0];
     const auto &c1 = contacts[trip.c1];
@@ -758,26 +794,6 @@ static GpuResult EvaluateBoxCPU(
 
     vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
     vec3 vout2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
-
-    // Stage 1: Fast filter at view_center (27 controls)
-    vec3 w_coeff0 = {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]};
-    vec3 w_coeff1 = {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]};
-    vec3 w_coeff2 = {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]};
-
-    double w0 = yocto::dot(view_center, w_coeff0);
-    double w1 = yocto::dot(view_center, w_coeff1);
-    double w2 = yocto::dot(view_center, w_coeff2);
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
-
-    double C_center[10] = {0};
-    AccumulateContactPoly(C_center, w0, yocto::cross(view_center, edge0), vin0, vout0, s);
-    AccumulateContactPoly(C_center, w1, yocto::cross(view_center, edge1), vin1, vout1, s);
-    AccumulateContactPoly(C_center, w2, yocto::cross(view_center, edge2), vin2, vout2, s);
-
-    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
-    if (min_b_center - defect_penalty - disp_error <= 0.0) {
-      continue;
-    }
 
     // Stage 2: Simplex Bernstein evaluation with progressive early exit
     // Corner 0

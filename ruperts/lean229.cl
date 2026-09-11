@@ -190,10 +190,10 @@ __kernel void EvaluateBoxes(
     );
   }
 
-  // Precompute best inner vertex for each contact in this pool (Blunder A fix)
-  // Max contacts per pool is ~64; 128 is safely sufficient.
-  char best_in[128];
-  int n_contacts = box.num_contacts <= 128 ? box.num_contacts : 128;
+  // Precompute best inner vertex and unit center polynomial for each contact in this pool
+  char best_in[144];
+  double psi_center[144][10];
+  int n_contacts = box.num_contacts <= 144 ? box.num_contacts : 144;
   for (int c = 0; c < n_contacts; c++) {
     const GpuContact gc = contacts[box.contact_offset + c];
     double3 edge = (double3)(gc.edge[0], gc.edge[1], gc.edge[2]);
@@ -210,6 +210,13 @@ __kernel void EvaluateBoxes(
       }
     }
     best_in[c] = (char)best_k;
+
+    double3 vin = (double3)(VERTICES[best_k][0], VERTICES[best_k][1], VERTICES[best_k][2]);
+    double poly[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    AccumulateContactPoly(poly, 1.0, u, vin, out, s);
+    for (int m = 0; m < 10; m++) {
+      psi_center[c][m] = poly[m];
+    }
   }
 
   GpuResult res;
@@ -226,10 +233,30 @@ __kernel void EvaluateBoxes(
 
     double defect_penalty = d_bound * triple.weighted_defect_upper;
 
+    // Stage 1: Fast filter at view_center (27 controls)
+    double w0 = Dot(view_center, (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1 = Dot(view_center, (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2 = Dot(view_center, (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+
     int loc_c0 = triple.c0 - box.contact_offset;
     int loc_c1 = triple.c1 - box.contact_offset;
     int loc_c2 = triple.c2 - box.contact_offset;
 
+    double C_center[10];
+    for (int m = 0; m < 10; m++) {
+      C_center[m] = w0 * psi_center[loc_c0][m] +
+                    w1 * psi_center[loc_c1][m] +
+                    w2 * psi_center[loc_c2][m];
+    }
+
+    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
+    if (min_b_center - defect_penalty - disp_error <= 0.0) {
+      continue;
+    }
+
+    // Stage 2: Simplex Bernstein evaluation with progressive early exit
+    // Only evaluated when center filter passes (~12% of triples).
     int in0 = (int)best_in[loc_c0];
     int in1 = (int)best_in[loc_c1];
     int in2 = (int)best_in[loc_c2];
@@ -250,26 +277,6 @@ __kernel void EvaluateBoxes(
 
     double3 vin2 = (double3)(VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]);
     double3 vout2 = (double3)(VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]);
-
-    // Stage 1: Fast filter at view_center (27 controls)
-    double w0 = Dot(view_center, (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1 = Dot(view_center, (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2 = Dot(view_center, (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
-
-    double3 u0 = Cross(view_center, edge0);
-    double3 u1 = Cross(view_center, edge1);
-    double3 u2 = Cross(view_center, edge2);
-
-    double C_center[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    AccumulateContactPoly(C_center, w0, u0, vin0, vout0, s);
-    AccumulateContactPoly(C_center, w1, u1, vin1, vout1, s);
-    AccumulateContactPoly(C_center, w2, u2, vin2, vout2, s);
-
-    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
-    if (min_b_center - defect_penalty - disp_error <= 0.0) {
-      continue;
-    }
 
     // Stage 2: Simplex Bernstein evaluation with progressive early exit
     // Step 2a: Evaluate Corner 0
