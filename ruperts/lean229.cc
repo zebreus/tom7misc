@@ -955,8 +955,8 @@ struct SearchManager {
   int max_view_depth = 24;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 8;
-  int escalate_depth = 48;
-  int escalate_cone_samples = 10;
+  int escalate_depth = 36;
+  int escalate_cone_samples = 12;
   int num_threads = 8;
 
   int EffectiveConeSamples(const SearchNode &node) const {
@@ -1076,10 +1076,12 @@ struct SearchManager {
     bool certified = false;
   };
   std::vector<PriorityPoint> priority_points;
+  std::vector<PriorityPoint> active_priority;
 
   bool ContainsUncertifiedPriority(const SearchNode &node) const {
-    for (const auto &p : priority_points) {
-      if (p.chart == node.chart && !p.certified && node.box.Contains(p.w) &&
+    if (!prioritize_related || active_priority.empty()) return false;
+    for (const auto &p : active_priority) {
+      if (p.chart == node.chart && node.box.Contains(p.w) &&
           node.tri.ContainsRay(p.view)) {
         return true;
       }
@@ -1108,6 +1110,11 @@ struct SearchManager {
         .w = {0.00097647309303283691, -0.0012219548225402832, -0.0019906759262084961},
         .view = {0.92218818586940847, 0.20787508492040183, 0.32612502157077433},
         .label = "Chart 0 near-identity view grinder" },
+      // Chart 0: small-rotation silhouette grinder
+      { .chart = 0,
+        .w = {0.010819882154464722, -0.016599953174591064, 0.028645873069763184},
+        .view = {0.3984395379, 0.8338690325, 0.3819795573},
+        .label = "Chart 0 small-rotation silhouette grinder" },
       // Chart 2: boundary grinder
       { .chart = 2,
         .w = {-0.28256338834762573, -0.86962884664535522, -0.27563470602035522},
@@ -1200,6 +1207,7 @@ struct SearchManager {
                      priority_points.size() - hard_count, max_dist);
       }
     }
+    active_priority = priority_points;
   }
 
   // Computes exact completed domain volume fraction in [0.0, 1.0] by
@@ -1352,8 +1360,9 @@ struct SearchManager {
     }
 
     Timer timer;
-    Periodically progress_report(1.0);
-    Periodically checkpoint_timer(5.0);
+    Periodically progress_per(1.0);
+    Periodically checkpoint_per(5.0);
+    Periodically where_per(120.0);
 
     // Buffers for GPU batch
     std::vector<GpuBox> gpu_boxes;
@@ -1378,11 +1387,13 @@ struct SearchManager {
       current_batch.clear();
 
       // First, extract any uncertified priority nodes into current_batch
-      for (int i = (int)stack.size() - 1;
-           i >= 0 && current_batch.size() < (size_t)batch_size; i--) {
-        if (ContainsUncertifiedPriority(stack[i])) {
-          current_batch.push_back(stack[i]);
-          stack.erase(stack.begin() + i);
+      if (prioritize_related && !active_priority.empty()) {
+        for (int i = (int)stack.size() - 1;
+             i >= 0 && current_batch.size() < (size_t)batch_size; i--) {
+          if (ContainsUncertifiedPriority(stack[i])) {
+            current_batch.push_back(stack[i]);
+            stack.erase(stack.begin() + i);
+          }
         }
       }
 
@@ -1422,6 +1433,22 @@ struct SearchManager {
       results.assign(count, GpuResult{});
 
       std::vector<NodeAction> node_actions(count);
+
+      // Periodically show some node from the batch, so we can note places
+      // where we got stuck, etc.
+      where_per.RunIf([&]{
+          if (current_batch.empty()) return;
+          const auto &node = current_batch[0];
+          status.Print("[{}] #{}\n"
+                       "  depth {}, box_depth {}, view_depth {}\n"
+                       "  radii ({:.17g}, {:.17g}, {:.17g}))\n"
+                       "  box ({:.17g}, {:.17g}, {:.17g})\n",
+                       ANSI::Time(timer.Seconds()),
+                       node.id,
+                       node.depth, node.box_depth, node.view_depth,
+                       node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                       node.box.center.x, node.box.center.y, node.box.center.z);
+        });
 
       // Phase 1: Parallel domain filtering across CPU cores.
       UnParallelComp(count, [&](int64_t i) {
@@ -1542,7 +1569,8 @@ struct SearchManager {
           const auto &node = current_batch[idx];
           auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
 
-          auto [it, inserted] = active_pools.try_emplace(tpool.get(), PoolBatchInfo{});
+          auto [it, inserted] =
+              active_pools.try_emplace(tpool.get(), PoolBatchInfo{});
           if (inserted) {
             it->second.contact_offset = (int)all_contacts.size();
             it->second.triple_offset = (int)all_triples.size();
@@ -1587,6 +1615,7 @@ struct SearchManager {
 
         if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
             !all_triples.empty()) {
+
           cl_int err = CL_SUCCESS;
           cl_mem b_boxes = clCreateBuffer(
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -1597,17 +1626,20 @@ struct SearchManager {
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
               sizeof(GpuContact) * all_contacts.size(), all_contacts.data(),
               &err);
-          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_contacts failed: " << err;
+          CHECK_EQ(err, CL_SUCCESS)
+              << "clCreateBuffer b_contacts failed: " << err;
           cl_mem b_triples = clCreateBuffer(
               cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
               sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
-          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_triples failed ("
-                                    << (sizeof(GpuTriple) * all_triples.size() / (1024 * 1024))
-                                    << " MB): " << err;
+          CHECK_EQ(err, CL_SUCCESS)
+              << "clCreateBuffer b_triples failed ("
+              << (sizeof(GpuTriple) * all_triples.size() / (1024 * 1024))
+              << " MB): " << err;
           cl_mem b_results = clCreateBuffer(
               cl->context, CL_MEM_WRITE_ONLY,
               sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
-          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_results failed: " << err;
+          CHECK_EQ(err, CL_SUCCESS)
+              << "clCreateBuffer b_results failed: " << err;
 
           int num_boxes = active_gpu_boxes.size();
           err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
@@ -1628,8 +1660,8 @@ struct SearchManager {
                                        nullptr, nullptr);
           CHECK_EQ(err, CL_SUCCESS) << "clEnqueueNDRangeKernel failed: " << err;
           err = clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
-                                    sizeof(GpuResult) * num_boxes, active_results.data(),
-                                    0, nullptr, nullptr);
+                                    sizeof(GpuResult) * num_boxes,
+                                    active_results.data(), 0, nullptr, nullptr);
           CHECK_EQ(err, CL_SUCCESS) << "clEnqueueReadBuffer failed: " << err;
 
           clReleaseMemObject(b_boxes);
@@ -1658,11 +1690,15 @@ struct SearchManager {
                                  node.depth >= max_depth - 2)) {
             // Stubborn leaf has reached max box depth or tree depth limit.
             // Safety-net escalation before depth-out:
-            for (int cs : {12, 14}) {
+            for (int cs : {14, 16}) {
               auto esc_pool = GetTrianglePool(node.tri, cs);
               GpuBox gb;
-              gb.cx = node.box.center.x; gb.cy = node.box.center.y; gb.cz = node.box.center.z;
-              gb.rx = node.box.radii.x;  gb.ry = node.box.radii.y;  gb.rz = node.box.radii.z;
+              gb.cx = node.box.center.x;
+              gb.cy = node.box.center.y;
+              gb.cz = node.box.center.z;
+              gb.rx = node.box.radii.x;
+              gb.ry = node.box.radii.y;
+              gb.rz = node.box.radii.z;
               for (int c = 0; c < 3; c++) {
                 gb.tri[c][0] = node.tri.corners[c].x;
                 gb.tri[c][1] = node.tri.corners[c].y;
@@ -1687,19 +1723,30 @@ struct SearchManager {
                             node.id, node.parent_id, node.depth,
                             res.winning_triple, res.margin,
                             res.inner[0], res.inner[1], res.inner[2]));
-            for (auto &p : priority_points) {
-              if (p.chart == node.chart && !p.certified &&
-                  node.box.Contains(p.w) && node.tri.ContainsRay(p.view)) {
-                p.certified = true;
-                if (!p.label.empty()) {
-                  status.Print(AGREEN("✔") " "
-                               "{} excluded at depth {} (margin = {:.17g})!\n",
-                               p.label, node.depth, res.margin);
+            if (prioritize_related && !active_priority.empty()) {
+              for (auto it = active_priority.begin(); it != active_priority.end(); ) {
+                if (it->chart == node.chart && node.box.Contains(it->w) &&
+                    node.tri.ContainsRay(it->view)) {
+                  if (!it->label.empty()) {
+                    status.Print(AGREEN("✔") " "
+                                 "{} excluded at depth {} (margin = {:.17g})!\n",
+                                 it->label, node.depth, res.margin);
+                  } else {
+                    status.Print(AGREEN("✔") " "
+                                 "Related sol #{} excluded at "
+                                 "depth {} (margin = {:.17g})!\n",
+                                 it->solution_id, node.depth, res.margin);
+                  }
+                  for (auto &mp : priority_points) {
+                    if (mp.solution_id == it->solution_id && mp.label == it->label &&
+                        mp.chart == it->chart) {
+                      mp.certified = true;
+                      break;
+                    }
+                  }
+                  it = active_priority.erase(it);
                 } else {
-                  status.Print(AGREEN("✔") " "
-                               "Related sol #{} excluded at "
-                               "depth {} (margin = {:.17g})!\n",
-                               p.solution_id, node.depth, res.margin);
+                  ++it;
                 }
               }
             }
@@ -1830,19 +1877,15 @@ struct SearchManager {
         }
       }
 
-      if (progress_report.ShouldRun()) {
+      if (progress_per.ShouldRun()) {
         double elapsed = timer.Seconds();
         double rate = evaluated_count.Read() / std::max(1e-6, elapsed);
         double completed_frac = CompletedFraction();
 
         std::string pool_str;
         if (prioritize_related) {
-          int remaining_pool = 0;
-          for (const auto &p : priority_points) {
-            if (!p.certified) remaining_pool++;
-          }
           pool_str = std::format("{} / {} related pending",
-                                 remaining_pool, priority_points.size());
+                                 active_priority.size(), priority_points.size());
         } else {
           pool_str = AGREY("Related solution pool: inactive");
         }
@@ -1874,7 +1917,7 @@ struct SearchManager {
             pool_str);
       }
 
-      if (checkpoint_timer.ShouldRun() || sigint_received.load()) {
+      if (checkpoint_per.ShouldRun() || sigint_received.load()) {
         SaveCheckpoint(ckpt_path);
         FlushRows();
         if (sigint_received.load()) {
@@ -1907,10 +1950,10 @@ struct SearchManager {
                  "Total certified: {}\n"
                  "Total pruned: {}\n"
                  "Total splits: {}\n",
-                 evaluated_count.Read(),
-                 certified_count.Read(),
-                 pruned_count.Read(),
-                 split_count.Read());
+                  evaluated_count.Read(),
+                  certified_count.Read(),
+                  pruned_count.Read(),
+                  split_count.Read());
   }
 
   void TestKnownSolution() {
@@ -2088,8 +2131,8 @@ int main(int argc, char **argv) {
             "  --max_view_depth <D> Maximum view triangle subdivision depth (default 24)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
             "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
-            "  --escalate_depth <D> Tree depth to escalate cone samples (default 48)\n"
-            "  --escalate_cone_samples <N> Escalated cone samples (default 10)\n"
+            "  --escalate_depth <D> Tree depth to escalate cone samples (default 36)\n"
+            "  --escalate_cone_samples <N> Escalated cone samples (default 12)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
