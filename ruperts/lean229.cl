@@ -31,8 +31,10 @@ typedef struct {
 typedef struct {
   // Contact indices
   int c0, c1, c2;
+  int _pad;
   // Precomputed cross-product coefficients
   double w_coeff[3][3];
+  double weighted_defect_upper;
 } GpuTriple;
 
 typedef struct {
@@ -56,6 +58,35 @@ inline double3 Cross(double3 a, double3 b) {
 
 inline double Dot(double3 a, double3 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline double Bernstein27Min(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz) {
+  double a0 =
+    (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
+     C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
+  double ax = wx * (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz);
+  double ay = wy * (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz);
+  double az = wz * (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz);
+  double axx = C[4]*wx*wx, ayy = C[7]*wy*wy, azz = C[9]*wz*wz;
+  double axy = C[5]*wx*wy, axz = C[6]*wx*wz, ayz = C[8]*wy*wz;
+
+  double min_b = 1e30;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) +
+        0.25 * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+          0.25 * bk * (bi * axz + bj * ayz);
+        if (val < min_b) min_b = val;
+      }
+    }
+  }
+  return min_b;
 }
 
 // Evaluate a batch of boxes against their candidate triples using
@@ -174,108 +205,132 @@ __kernel void EvaluateBoxes(
     double3 u_vec[3] = {u0, u1, u2};
     double w_vec[3] = {w0, w1, w2};
 
-    double C[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-
+    double D[3][3][10];
     for (int c_idx = 0; c_idx < 3; c_idx++) {
       int in_k = in_idx[c_idx];
       int out_k = out_idx[c_idx];
-      double3 vin = (double3)(VERTICES[in_k][0],
-                              VERTICES[in_k][1],
-                              VERTICES[in_k][2]);
-      double3 vout = (double3)(VERTICES[out_k][0],
-                               VERTICES[out_k][1],
-                               VERTICES[out_k][2]);
-      double3 u = u_vec[c_idx];
-      double weight = w_vec[c_idx];
+      double3 vin = (double3)(VERTICES[in_k][0], VERTICES[in_k][1], VERTICES[in_k][2]);
+      double3 vout = (double3)(VERTICES[out_k][0], VERTICES[out_k][1], VERTICES[out_k][2]);
 
-      // D_c[m]: displacement vector polynomial components for
-      // coordinate c in 0..2.
-      // Monomial order: 1, x, y, z, x^2, xy, xz, y^2, yz, z^2
-      double D0[10] = {
-        sx*vin.x - vout.x,
-        0.0,
-        2.0*sx*vin.z,
-        -2.0*sx*vin.y,
-        sx*vin.x - vout.x,
-        2.0*sx*vin.y,
-        2.0*sx*vin.z,
-        -sx*vin.x - vout.x,
-        0.0,
-        -sx*vin.x - vout.x
-      };
+      // coord 0:
+      D[c_idx][0][0] = sx*vin.x - vout.x;
+      D[c_idx][0][1] = 0.0;
+      D[c_idx][0][2] = 2.0*sx*vin.z;
+      D[c_idx][0][3] = -2.0*sx*vin.y;
+      D[c_idx][0][4] = sx*vin.x - vout.x;
+      D[c_idx][0][5] = 2.0*sx*vin.y;
+      D[c_idx][0][6] = 2.0*sx*vin.z;
+      D[c_idx][0][7] = -sx*vin.x - vout.x;
+      D[c_idx][0][8] = 0.0;
+      D[c_idx][0][9] = -sx*vin.x - vout.x;
 
-      double D1[10] = {
-        sy*vin.y - vout.y,
-        -2.0*sy*vin.z,
-        0.0,
-        2.0*sy*vin.x,
-        -sy*vin.y - vout.y,
-        2.0*sy*vin.x,
-        0.0,
-        sy*vin.y - vout.y,
-        2.0*sy*vin.z,
-        -sy*vin.y - vout.y
-      };
+      // coord 1:
+      D[c_idx][1][0] = sy*vin.y - vout.y;
+      D[c_idx][1][1] = -2.0*sy*vin.z;
+      D[c_idx][1][2] = 0.0;
+      D[c_idx][1][3] = 2.0*sy*vin.x;
+      D[c_idx][1][4] = -sy*vin.y - vout.y;
+      D[c_idx][1][5] = 2.0*sy*vin.x;
+      D[c_idx][1][6] = 0.0;
+      D[c_idx][1][7] = sy*vin.y - vout.y;
+      D[c_idx][1][8] = 2.0*sy*vin.z;
+      D[c_idx][1][9] = -sy*vin.y - vout.y;
 
-      double D2[10] = {
-        sz*vin.z - vout.z,
-        2.0*sz*vin.y,
-        -2.0*sz*vin.x,
-        0.0,
-        -sz*vin.z - vout.z,
-        0.0,
-        2.0*sz*vin.x,
-        -sz*vin.z - vout.z,
-        2.0*sz*vin.y,
-        sz*vin.z - vout.z
-      };
-
-      for (int m = 0; m < 10; m++) {
-        double P_m = u.x * D0[m] + u.y * D1[m] + u.z * D2[m];
-        C[m] += weight * P_m;
-      }
+      // coord 2:
+      D[c_idx][2][0] = sz*vin.z - vout.z;
+      D[c_idx][2][1] = 2.0*sz*vin.y;
+      D[c_idx][2][2] = -2.0*sz*vin.x;
+      D[c_idx][2][3] = 0.0;
+      D[c_idx][2][4] = -sz*vin.z - vout.z;
+      D[c_idx][2][5] = 0.0;
+      D[c_idx][2][6] = 2.0*sz*vin.x;
+      D[c_idx][2][7] = -sz*vin.z - vout.z;
+      D[c_idx][2][8] = 2.0*sz*vin.y;
+      D[c_idx][2][9] = sz*vin.z - vout.z;
     }
 
     // Bernstein 27-point control evaluation on the Cayley box
-    // [cx-rx, cx+rx] x ...
     double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
     double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
 
-    double a0 =
-      (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
-       C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
-    double ax = wx * (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz);
-    double ay = wy * (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz);
-    double az = wz * (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz);
-    double axx = C[4]*wx*wx, ayy = C[7]*wy*wy, azz = C[9]*wz*wz;
-    double axy = C[5]*wx*wy, axz = C[6]*wx*wz, ayz = C[8]*wy*wz;
+    double defect_penalty = d_bound * triple.weighted_defect_upper;
+    double disp_error = 300.0 * d_bound * 1e-10;
 
-    double min_b = 1e30;
-    for (int bi = 0; bi <= 2; bi++) {
-      double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
-      for (int bj = 0; bj <= 2; bj++) {
-        double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) +
-          0.25 * bi * bj * axy;
-        for (int bk = 0; bk <= 2; bk++) {
-          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
-            0.25 * bk * (bi * axz + bj * ayz);
-          if (val < min_b) min_b = val;
-        }
+    // Stage 1: Fast filter at view_center (27 controls)
+    double C_center[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    for (int c_idx = 0; c_idx < 3; c_idx++) {
+      double3 u = u_vec[c_idx];
+      double weight = w_vec[c_idx];
+      for (int m = 0; m < 10; m++) {
+        double P_m = u.x * D[c_idx][0][m] + u.y * D[c_idx][1][m] + u.z * D[c_idx][2][m];
+        C_center[m] += weight * P_m;
       }
     }
 
-    double defect_penalty = d_bound *
-      (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
-    double margin = min_b - defect_penalty - 1e-9 * d_bound;
+    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
+    double margin_center = min_b_center - defect_penalty - disp_error;
+    if (margin_center <= 0.0) {
+      continue;
+    }
 
-    if (margin > 0.0) {
-      // Certified!
+    // Stage 2: Full degree-2 simplex Bernstein controls over the view triangle (162 controls)
+    double3 p[6];
+    p[0] = (double3)(box.tri[0][0], box.tri[0][1], box.tri[0][2]);
+    p[1] = (double3)(box.tri[1][0], box.tri[1][1], box.tri[1][2]);
+    p[2] = (double3)(box.tri[2][0], box.tri[2][1], box.tri[2][2]);
+    p[3] = 0.5 * (p[0] + p[1]);
+    p[4] = 0.5 * (p[1] + p[2]);
+    p[5] = 0.5 * (p[2] + p[0]);
+
+    double poly[6][10];
+    for (int i = 0; i < 6; i++) {
+      double3 vi = p[i];
+      double wi[3];
+      wi[0] = vi.x * triple.w_coeff[0][0] + vi.y * triple.w_coeff[0][1] + vi.z * triple.w_coeff[0][2];
+      wi[1] = vi.x * triple.w_coeff[1][0] + vi.y * triple.w_coeff[1][1] + vi.z * triple.w_coeff[1][2];
+      wi[2] = vi.x * triple.w_coeff[2][0] + vi.y * triple.w_coeff[2][1] + vi.z * triple.w_coeff[2][2];
+
+      double3 ui[3];
+      ui[0] = Cross(vi, edge0);
+      ui[1] = Cross(vi, edge1);
+      ui[2] = Cross(vi, edge2);
+
+      for (int m = 0; m < 10; m++) {
+        poly[i][m] = wi[0] * (ui[0].x * D[0][0][m] + ui[0].y * D[0][1][m] + ui[0].z * D[0][2][m])
+                   + wi[1] * (ui[1].x * D[1][0][m] + ui[1].y * D[1][1][m] + ui[1].z * D[1][2][m])
+                   + wi[2] * (ui[2].x * D[2][0][m] + ui[2].y * D[2][1][m] + ui[2].z * D[2][2][m]);
+      }
+    }
+
+    double ctrl_poly[6][10];
+    for (int m = 0; m < 10; m++) {
+      ctrl_poly[0][m] = poly[0][m]; // Corner 0
+      ctrl_poly[1][m] = poly[1][m]; // Corner 1
+      ctrl_poly[2][m] = poly[2][m]; // Corner 2
+      ctrl_poly[3][m] = 2.0 * poly[3][m] - 0.5 * (poly[0][m] + poly[1][m]); // Edge 01
+      ctrl_poly[4][m] = 2.0 * poly[4][m] - 0.5 * (poly[1][m] + poly[2][m]); // Edge 12
+      ctrl_poly[5][m] = 2.0 * poly[5][m] - 0.5 * (poly[2][m] + poly[0][m]); // Edge 20
+    }
+
+    double min_162 = 1e30;
+    int all_pass = 1;
+    for (int s = 0; s < 6; s++) {
+      double min_s = Bernstein27Min(ctrl_poly[s], lx, ly, lz, wx, wy, wz);
+      if (min_s - defect_penalty - disp_error <= 0.0) {
+        all_pass = 0;
+        break;
+      }
+      if (min_s < min_162) min_162 = min_s;
+    }
+
+    if (all_pass) {
+      // Proved non-Rupert for all views in the triangle and all rotations in the box!
       res.certified = 1;
       res.winning_triple = t;
       res.inner[0] = best_in0;
       res.inner[1] = best_in1;
       res.inner[2] = best_in2;
-      res.margin = margin;
+      res.margin = min_162 - defect_penalty - disp_error;
       break;
     }
   }

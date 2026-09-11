@@ -113,8 +113,11 @@ struct GpuContact {
 
 struct GpuTriple {
   int c0, c1, c2;
+  int _pad;
   double w_coeff[3][3];
+  double weighted_defect_upper;
 };
+static_assert(sizeof(GpuTriple) == 96, "GpuTriple struct size mismatch");
 
 struct GpuResult {
   int certified;
@@ -313,6 +316,49 @@ static uint64_t HashTriangle(const ProjectiveTriangle &tri) {
   return h;
 }
 
+static double ComputeWeightedDefectUpper(const ProjectiveTriangle &tri,
+                                         const std::vector<GpuContact> &contacts,
+                                         int c0, int c1, int c2,
+                                         const vec3 w_coeff[3]) {
+  double total = 0.0;
+  const double error = 1e-9;
+  const int c_indices[3] = {c0, c1, c2};
+  for (int i = 0; i < 3; i++) {
+    int sel = contacts[c_indices[i]].vertex;
+    vec3 edge = {contacts[c_indices[i]].edge[0],
+                 contacts[c_indices[i]].edge[1],
+                 contacts[c_indices[i]].edge[2]};
+    double w_vals[3] = {
+      yocto::dot(tri.corners[0], w_coeff[i]) + error,
+      yocto::dot(tri.corners[1], w_coeff[i]) + error,
+      yocto::dot(tri.corners[2], w_coeff[i]) + error
+    };
+    double upper = 0.0;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      if (k == sel) continue;
+      vec3 delta = {
+        VERTICES[k][0] - VERTICES[sel][0],
+        VERTICES[k][1] - VERTICES[sel][1],
+        VERTICES[k][2] - VERTICES[sel][2]
+      };
+      vec3 s_coeff = yocto::cross(edge, delta);
+      double s_vals[3] = {
+        yocto::dot(tri.corners[0], s_coeff) + error,
+        yocto::dot(tri.corners[1], s_coeff) + error,
+        yocto::dot(tri.corners[2], s_coeff) + error
+      };
+      for (int a = 0; a < 3; a++) {
+        for (int b = 0; b < 3; b++) {
+          double ctrl = 0.5 * (w_vals[a] * s_vals[b] + w_vals[b] * s_vals[a]);
+          if (ctrl > upper) upper = ctrl;
+        }
+      }
+    }
+    total += upper;
+  }
+  return total;
+}
+
 static std::shared_ptr<const TrianglePool> BuildTrianglePool(
     const ProjectiveTriangle &tri, int cone_samples = 6) {
   ctr_built_triangles++;
@@ -356,8 +402,8 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
     vec3 first = v_prev - v_curr;
     vec3 second = v_curr - v_next;
 
-    for (int s = 0; s < cone_samples; s++) {
-      double lam = (s + 1.0) / (cone_samples + 1.0);
+    for (int s = 0; s <= cone_samples + 1; s++) {
+      double lam = (double)s / (cone_samples + 1.0);
       vec3 e = lam * first + (1.0 - lam) * second;
 
       double max_upper = 0.0;
@@ -368,6 +414,7 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
                       VERTICES[k][1] - VERTICES[curr][1],
                       VERTICES[k][2] - VERTICES[curr][2]};
         vec3 coeff = yocto::cross(e, delta);
+        if (yocto::length(coeff) < 1e-12) continue;
         double upper = std::max({yocto::dot(tri.corners[0], coeff),
                                  yocto::dot(tri.corners[1], coeff),
                                  yocto::dot(tri.corners[2], coeff)});
@@ -378,6 +425,19 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
         // Not a valid silhouette support direction.
         continue;
       }
+
+      // Check for duplicate contact direction already in valid_contacts
+      vec3 e_norm = yocto::normalize(e);
+      bool duplicate = false;
+      for (const auto &ex : valid_contacts) {
+        vec3 ex_norm = yocto::normalize(
+            vec3{ex.edge[0], ex.edge[1], ex.edge[2]});
+        if (yocto::dot(e_norm, ex_norm) > 1.0 - 1e-9) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (duplicate) continue;
 
       GpuContact c;
       c.vertex = curr;
@@ -453,11 +513,15 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
         SortableTriple st;
         st.gt.c0 = ci; st.gt.c1 = cj; st.gt.c2 = ck;
+        st.gt._pad = 0;
         st.gt.w_coeff[0][0] = coeff0.x; st.gt.w_coeff[0][1] = coeff0.y; st.gt.w_coeff[0][2] = coeff0.z;
         st.gt.w_coeff[1][0] = coeff1.x; st.gt.w_coeff[1][1] = coeff1.y; st.gt.w_coeff[1][2] = coeff1.z;
         st.gt.w_coeff[2][0] = coeff2.x; st.gt.w_coeff[2][1] = coeff2.y; st.gt.w_coeff[2][2] = coeff2.z;
 
-        st.defect_sum = pool->contacts[ci].defect + pool->contacts[cj].defect + pool->contacts[ck].defect;
+        vec3 w_coeffs[3] = {coeff0, coeff1, coeff2};
+        st.gt.weighted_defect_upper =
+          ComputeWeightedDefectUpper(tri, pool->contacts, ci, cj, ck, w_coeffs);
+        st.defect_sum = st.gt.weighted_defect_upper;
         st.min_p = std::min({p0, p1, p2});
         sortable.push_back(st);
       }
@@ -516,6 +580,34 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
   }
 }
 
+inline double Bernstein27Min(const double C[10],
+                             double lx, double ly, double lz,
+                             double wx, double wy, double wz) {
+  double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
+               C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
+               C[8] * ly * lz + C[9] * lz * lz);
+  double ax = wx * (C[1] + 2.0 * C[4] * lx + C[5] * ly + C[6] * lz);
+  double ay = wy * (C[2] + C[5] * lx + 2.0 * C[7] * ly + C[8] * lz);
+  double az = wz * (C[3] + C[6] * lx + C[8] * ly + 2.0 * C[9] * lz);
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  double min_b = 1e30;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj =
+          ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+                     0.25 * bk * (bi * axz + bj * ayz);
+        if (val < min_b)
+          min_b = val;
+      }
+    }
+  }
+  return min_b;
+}
 
 // CPU evaluator matching Bernstein logic
 static GpuResult EvaluateBoxCPU(
@@ -604,99 +696,137 @@ static GpuResult EvaluateBoxCPU(
     vec3 u_vec[3] = {u0, u1, u2};
     double w_vec[3] = {w0, w1, w2};
 
-    double C[10] = {0};
-
+    double D[3][3][10];
     for (int c_idx = 0; c_idx < 3; c_idx++) {
       int in_k = in_idx[c_idx];
       int out_k = out_idx[c_idx];
       vec3 vin = {VERTICES[in_k][0], VERTICES[in_k][1], VERTICES[in_k][2]};
       vec3 vout = {VERTICES[out_k][0], VERTICES[out_k][1], VERTICES[out_k][2]};
-      vec3 u = u_vec[c_idx];
-      double weight = w_vec[c_idx];
 
-      double D0[10] = {
-        sx*vin.x - vout.x,
-        0.0,
-        2.0*sx*vin.z,
-        -2.0*sx*vin.y,
-        sx*vin.x - vout.x,
-        2.0*sx*vin.y,
-        2.0*sx*vin.z,
-        -sx*vin.x - vout.x,
-        0.0,
-        -sx*vin.x - vout.x
-      };
+      // coord 0:
+      D[c_idx][0][0] = sx*vin.x - vout.x;
+      D[c_idx][0][1] = 0.0;
+      D[c_idx][0][2] = 2.0*sx*vin.z;
+      D[c_idx][0][3] = -2.0*sx*vin.y;
+      D[c_idx][0][4] = sx*vin.x - vout.x;
+      D[c_idx][0][5] = 2.0*sx*vin.y;
+      D[c_idx][0][6] = 2.0*sx*vin.z;
+      D[c_idx][0][7] = -sx*vin.x - vout.x;
+      D[c_idx][0][8] = 0.0;
+      D[c_idx][0][9] = -sx*vin.x - vout.x;
 
-      double D1[10] = {
-        sy*vin.y - vout.y,
-        -2.0*sy*vin.z,
-        0.0,
-        2.0*sy*vin.x,
-        -sy*vin.y - vout.y,
-        2.0*sy*vin.x,
-        0.0,
-        sy*vin.y - vout.y,
-        2.0*sy*vin.z,
-        -sy*vin.y - vout.y
-      };
+      // coord 1:
+      D[c_idx][1][0] = sy*vin.y - vout.y;
+      D[c_idx][1][1] = -2.0*sy*vin.z;
+      D[c_idx][1][2] = 0.0;
+      D[c_idx][1][3] = 2.0*sy*vin.x;
+      D[c_idx][1][4] = -sy*vin.y - vout.y;
+      D[c_idx][1][5] = 2.0*sy*vin.x;
+      D[c_idx][1][6] = 0.0;
+      D[c_idx][1][7] = sy*vin.y - vout.y;
+      D[c_idx][1][8] = 2.0*sy*vin.z;
+      D[c_idx][1][9] = -sy*vin.y - vout.y;
 
-      double D2[10] = {
-        sz*vin.z - vout.z,
-        2.0*sz*vin.y,
-        -2.0*sz*vin.x,
-        0.0,
-        -sz*vin.z - vout.z,
-        0.0,
-        2.0*sz*vin.x,
-        -sz*vin.z - vout.z,
-        2.0*sz*vin.y,
-        sz*vin.z - vout.z
-      };
-
-      for (int m = 0; m < 10; m++) {
-        double P_m = u.x * D0[m] + u.y * D1[m] + u.z * D2[m];
-        C[m] += weight * P_m;
-      }
+      // coord 2:
+      D[c_idx][2][0] = sz*vin.z - vout.z;
+      D[c_idx][2][1] = 2.0*sz*vin.y;
+      D[c_idx][2][2] = -2.0*sz*vin.x;
+      D[c_idx][2][3] = 0.0;
+      D[c_idx][2][4] = -sz*vin.z - vout.z;
+      D[c_idx][2][5] = 0.0;
+      D[c_idx][2][6] = 2.0*sz*vin.x;
+      D[c_idx][2][7] = -sz*vin.z - vout.z;
+      D[c_idx][2][8] = 2.0*sz*vin.y;
+      D[c_idx][2][9] = sz*vin.z - vout.z;
     }
 
     double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
     double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
 
-    double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
-                 C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
-                 C[8] * ly * lz + C[9] * lz * lz);
-    double ax = wx * (C[1] + 2.0 * C[4] * lx + C[5] * ly + C[6] * lz);
-    double ay = wy * (C[2] + C[5] * lx + 2.0 * C[7] * ly + C[8] * lz);
-    double az = wz * (C[3] + C[6] * lx + C[8] * ly + 2.0 * C[9] * lz);
-    double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
-    double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+    double defect_penalty = d_bound * trip.weighted_defect_upper;
+    double disp_error = 300.0 * d_bound * 1e-10;
 
-    double min_b = 1e30;
-    for (int bi = 0; bi <= 2; bi++) {
-      double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
-      for (int bj = 0; bj <= 2; bj++) {
-        double tj =
-            ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
-        for (int bk = 0; bk <= 2; bk++) {
-          double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
-                       0.25 * bk * (bi * axz + bj * ayz);
-          if (val < min_b)
-            min_b = val;
-        }
+    // Stage 1: Fast filter at view_center (27 controls)
+    double C_center[10] = {0};
+    for (int c_idx = 0; c_idx < 3; c_idx++) {
+      vec3 u = u_vec[c_idx];
+      double weight = w_vec[c_idx];
+      for (int m = 0; m < 10; m++) {
+        double P_m = u.x * D[c_idx][0][m] + u.y * D[c_idx][1][m] + u.z * D[c_idx][2][m];
+        C_center[m] += weight * P_m;
       }
     }
 
-    double defect_penalty =
-      d_bound * (w0 * c0.defect + w1 * c1.defect + w2 * c2.defect);
-    double margin = min_b - defect_penalty - 1e-9 * d_bound;
+    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
+    double margin_center = min_b_center - defect_penalty - disp_error;
+    if (margin_center <= 0.0) {
+      continue;
+    }
 
-    if (margin > 0.0) {
+    // Stage 2: Full degree-2 simplex Bernstein controls over the view triangle (162 controls)
+    vec3 p[6];
+    p[0] = {box.tri[0][0], box.tri[0][1], box.tri[0][2]};
+    p[1] = {box.tri[1][0], box.tri[1][1], box.tri[1][2]};
+    p[2] = {box.tri[2][0], box.tri[2][1], box.tri[2][2]};
+    p[3] = (p[0] + p[1]) * 0.5;
+    p[4] = (p[1] + p[2]) * 0.5;
+    p[5] = (p[2] + p[0]) * 0.5;
+
+    vec3 w_coeffs[3] = {
+      {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]},
+      {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]},
+      {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]}
+    };
+
+    double poly[6][10];
+    for (int i = 0; i < 6; i++) {
+      vec3 vi = p[i];
+      double wi[3] = {
+        yocto::dot(vi, w_coeffs[0]),
+        yocto::dot(vi, w_coeffs[1]),
+        yocto::dot(vi, w_coeffs[2])
+      };
+      vec3 ui[3] = {
+        yocto::cross(vi, edge0),
+        yocto::cross(vi, edge1),
+        yocto::cross(vi, edge2)
+      };
+
+      for (int m = 0; m < 10; m++) {
+        poly[i][m] = wi[0] * (ui[0].x * D[0][0][m] + ui[0].y * D[0][1][m] + ui[0].z * D[0][2][m])
+                   + wi[1] * (ui[1].x * D[1][0][m] + ui[1].y * D[1][1][m] + ui[1].z * D[1][2][m])
+                   + wi[2] * (ui[2].x * D[2][0][m] + ui[2].y * D[2][1][m] + ui[2].z * D[2][2][m]);
+      }
+    }
+
+    double ctrl_poly[6][10];
+    for (int m = 0; m < 10; m++) {
+      ctrl_poly[0][m] = poly[0][m]; // Corner 0
+      ctrl_poly[1][m] = poly[1][m]; // Corner 1
+      ctrl_poly[2][m] = poly[2][m]; // Corner 2
+      ctrl_poly[3][m] = 2.0 * poly[3][m] - 0.5 * (poly[0][m] + poly[1][m]); // Edge 01
+      ctrl_poly[4][m] = 2.0 * poly[4][m] - 0.5 * (poly[1][m] + poly[2][m]); // Edge 12
+      ctrl_poly[5][m] = 2.0 * poly[5][m] - 0.5 * (poly[2][m] + poly[0][m]); // Edge 20
+    }
+
+    double min_162 = 1e30;
+    bool all_pass = true;
+    for (int s = 0; s < 6; s++) {
+      double min_s = Bernstein27Min(ctrl_poly[s], lx, ly, lz, wx, wy, wz);
+      if (min_s - defect_penalty - disp_error <= 0.0) {
+        all_pass = false;
+        break;
+      }
+      if (min_s < min_162) min_162 = min_s;
+    }
+
+    if (all_pass) {
       res.certified = 1;
       res.winning_triple = t;
       res.inner[0] = best_in0;
       res.inner[1] = best_in1;
       res.inner[2] = best_in2;
-      res.margin = margin;
+      res.margin = min_162 - defect_penalty - disp_error;
       break;
     }
   }
