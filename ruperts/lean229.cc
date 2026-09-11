@@ -1111,8 +1111,11 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
 
 // Checkpoint metadata
 struct CheckpointHeader {
-  uint64_t magic = 0x4E4F504552543232ULL; // "NOPERT22"
-  int32_t version = 4;
+  static constexpr uint64_t kMagic = 0x4E4F504552543232ULL; // "NOPERT22"
+  static constexpr int32_t kVersion = 4;
+
+  uint64_t magic = kMagic;
+  int32_t version = kVersion;
   int32_t chart = 0;
   int64_t next_node_id = 0;
   int64_t evaluated_count = 0;
@@ -1217,10 +1220,30 @@ struct SearchManager {
     if (!f) return false;
 
     CheckpointHeader hdr;
-    if (fread(&hdr, sizeof(hdr), 1, f) != 1 ||
-        hdr.magic != 0x4E4F504552543232ULL ||
-        hdr.version != 3 ||
-        hdr.chart != chart) {
+    if (fread(&hdr, sizeof(hdr), 1, f) != 1) {
+      status.Print("Failed to read checkpoint header from " AORANGE("{}") "\n",
+                   path);
+      fclose(f);
+      return false;
+    }
+    if (hdr.magic != CheckpointHeader::kMagic) {
+      status.Print("Checkpoint magic mismatch in " AORANGE("{}")
+                   " (got 0x{:x}, expected 0x{:x})\n",
+                   path, hdr.magic, CheckpointHeader::kMagic);
+      fclose(f);
+      return false;
+    }
+    if (hdr.version != CheckpointHeader::kVersion) {
+      status.Print("Checkpoint version mismatch in " AORANGE("{}")
+                   " (got {}, expected {})\n",
+                   path, hdr.version, CheckpointHeader::kVersion);
+      fclose(f);
+      return false;
+    }
+    if (hdr.chart != chart) {
+      status.Print("Checkpoint chart mismatch in " AORANGE("{}")
+                   " (got chart {}, current chart {})\n",
+                   path, hdr.chart, chart);
       fclose(f);
       return false;
     }
@@ -1235,6 +1258,9 @@ struct SearchManager {
     if (hdr.stack_size > 0) {
       if (fread(stack.data(), sizeof(SearchNode), hdr.stack_size, f) !=
           hdr.stack_size) {
+        status.Print("Checkpoint " AORANGE("{}")
+                     " truncated while reading {} stack nodes\n",
+                     path, hdr.stack_size);
         fclose(f);
         return false;
       }
