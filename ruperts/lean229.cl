@@ -6,7 +6,6 @@
 // Evaluates exact 27-point Bernstein control bounds for the 10-coefficient
 // quadratic displacement polynomial across each box.
 
-
 typedef struct {
   // Cayley box center
   double cx, cy, cz;
@@ -20,6 +19,11 @@ typedef struct {
   int num_triples;
   // Offset in global triples array
   int triple_offset;
+  // Offset in global contacts array
+  int contact_offset;
+  // Number of contacts for this triangle pool
+  int num_contacts;
+  int _pad;
 } GpuBox;
 
 typedef struct {
@@ -89,6 +93,34 @@ inline double Bernstein27Min(
   return min_b;
 }
 
+// In-register accumulation of the 10 quadratic displacement polynomial coefficients
+// for contact (vin, vout) with normal vector u, scaled by chart signs s = (sx, sy, sz).
+inline void AccumulateContactPoly(double C[10], double weight, double3 u,
+                                  double3 vin, double3 vout, double3 s) {
+  double sx = s.x, sy = s.y, sz = s.z;
+  double ux = u.x, uy = u.y, uz = u.z;
+  double vx = vin.x, vy = vin.y, vz = vin.z;
+  double ox = vout.x, oy = vout.y, oz = vout.z;
+
+  // Constant term (m = 0):
+  C[0] += weight * (ux * (sx*vx - ox) + uy * (sy*vy - oy) + uz * (sz*vz - oz));
+
+  // Linear terms:
+  C[1] += weight * 2.0 * (-uy * sy * vz + uz * sz * vy);
+  C[2] += weight * 2.0 * (ux * sx * vz - uz * sz * vx);
+  C[3] += weight * 2.0 * (-ux * sx * vy + uy * sy * vx);
+
+  // Quadratic pure terms:
+  C[4] += weight * (ux * (sx*vx - ox) - uy * (sy*vy + oy) - uz * (sz*vz + oz));
+  C[7] += weight * (-ux * (sx*vx + ox) + uy * (sy*vy - oy) - uz * (sz*vz + oz));
+  C[9] += weight * (-ux * (sx*vx + ox) - uy * (sy*vy + oy) + uz * (sz*vz - oz));
+
+  // Quadratic cross terms:
+  C[5] += weight * 2.0 * (ux * sx * vy + uy * sy * vx);
+  C[6] += weight * 2.0 * (ux * sx * vz + uz * sz * vx);
+  C[8] += weight * 2.0 * (uy * sy * vz + uz * sz * vy);
+}
+
 // Evaluate a batch of boxes against their candidate triples using
 // Bernstein control points.
 __kernel void EvaluateBoxes(
@@ -108,9 +140,11 @@ __kernel void EvaluateBoxes(
   double z0 = box.cz;
 
   // Chart signs
-  double sx = (box.chart == 2 || box.chart == 3) ? -1.0 : 1.0;
-  double sy = (box.chart == 1 || box.chart == 3) ? -1.0 : 1.0;
-  double sz = (box.chart == 1 || box.chart == 2) ? -1.0 : 1.0;
+  double3 s = (double3)(
+    (box.chart == 2 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 2) ? -1.0 : 1.0
+  );
 
   double3 view_center = (double3)(
     (box.tri[0][0] + box.tri[1][0] + box.tri[2][0]) / 3.0,
@@ -123,13 +157,19 @@ __kernel void EvaluateBoxes(
   double ez = fmax(fabs(box.cz - box.rz), fabs(box.cz + box.rz));
   double d_bound = 1.0 + ex*ex + ey*ey + ez*ez;
 
-  GpuResult res;
-  res.certified = 0;
-  res.winning_triple = -1;
-  res.inner[0] = 0;
-  res.inner[1] = 0;
-  res.inner[2] = 0;
-  res.margin = -1e30;
+  // Cayley box bounding interval constants (constant across all triples)
+  double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
+  double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
+  double disp_error = 300.0 * d_bound * 1e-10;
+
+  // Projective view triangle nodes (constant across all triples)
+  double3 p[6];
+  p[0] = (double3)(box.tri[0][0], box.tri[0][1], box.tri[0][2]);
+  p[1] = (double3)(box.tri[1][0], box.tri[1][1], box.tri[1][2]);
+  p[2] = (double3)(box.tri[2][0], box.tri[2][1], box.tri[2][2]);
+  p[3] = 0.5 * (p[0] + p[1]);
+  p[4] = 0.5 * (p[1] + p[2]);
+  p[5] = 0.5 * (p[2] + p[0]);
 
   // Cayley rotation matrix numerator at center.
   double num[3][3] = {
@@ -139,9 +179,60 @@ __kernel void EvaluateBoxes(
   };
   double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
 
+  // Pre-rotate all 20 inner vertices at box center
+  double3 rot_vin[20];
+  for (int k = 0; k < 20; k++) {
+    double3 vin = (double3)(VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]);
+    rot_vin[k] = (double3)(
+      s.x * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
+      s.y * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
+      s.z * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
+    );
+  }
+
+  // Precompute best inner vertex for each contact in this pool (Blunder A fix)
+  // Max contacts per pool is ~64; 128 is safely sufficient.
+  char best_in[128];
+  int n_contacts = box.num_contacts <= 128 ? box.num_contacts : 128;
+  for (int c = 0; c < n_contacts; c++) {
+    const GpuContact gc = contacts[box.contact_offset + c];
+    double3 edge = (double3)(gc.edge[0], gc.edge[1], gc.edge[2]);
+    double3 out = (double3)(VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]);
+    double3 u = Cross(view_center, edge);
+    double best_val = -1e30;
+    int best_k = 0;
+    for (int k = 0; k < 20; k++) {
+      double3 disp = rot_vin[k] - denom0 * out;
+      double v = Dot(u, disp);
+      if (v > best_val) {
+        best_val = v;
+        best_k = k;
+      }
+    }
+    best_in[c] = (char)best_k;
+  }
+
+  GpuResult res;
+  res.certified = 0;
+  res.winning_triple = -1;
+  res.inner[0] = 0;
+  res.inner[1] = 0;
+  res.inner[2] = 0;
+  res.margin = -1e30;
+
   // Test candidate triples assigned to this box.
   for (int t = 0; t < box.num_triples; t++) {
     const GpuTriple triple = triples[box.triple_offset + t];
+
+    double defect_penalty = d_bound * triple.weighted_defect_upper;
+
+    int loc_c0 = triple.c0 - box.contact_offset;
+    int loc_c1 = triple.c1 - box.contact_offset;
+    int loc_c2 = triple.c2 - box.contact_offset;
+
+    int in0 = (int)best_in[loc_c0];
+    int in1 = (int)best_in[loc_c1];
+    int in2 = (int)best_in[loc_c2];
 
     const GpuContact c0 = contacts[triple.c0];
     const GpuContact c1 = contacts[triple.c1];
@@ -151,188 +242,116 @@ __kernel void EvaluateBoxes(
     double3 edge1 = (double3)(c1.edge[0], c1.edge[1], c1.edge[2]);
     double3 edge2 = (double3)(c2.edge[0], c2.edge[1], c2.edge[2]);
 
-    double w0 = Dot(view_center, Cross(edge1, edge2));
-    double w1 = Dot(view_center, Cross(edge2, edge0));
-    double w2 = Dot(view_center, Cross(edge0, edge1));
+    double3 vin0 = (double3)(VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]);
+    double3 vout0 = (double3)(VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]);
 
-    // Must strictly contain the origin in dual projective view
+    double3 vin1 = (double3)(VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]);
+    double3 vout1 = (double3)(VERTICES[c1.vertex][0], VERTICES[c1.vertex][1], VERTICES[c1.vertex][2]);
+
+    double3 vin2 = (double3)(VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]);
+    double3 vout2 = (double3)(VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]);
+
+    // Stage 1: Fast filter at view_center (27 controls)
+    double w0 = Dot(view_center, (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1 = Dot(view_center, (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2 = Dot(view_center, (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
     if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
 
-    // Evaluate best inner vertex for each of the 3 contacts (at center)
-    double best_val0 = -1e30, best_val1 = -1e30, best_val2 = -1e30;
-    int best_in0 = 0, best_in1 = 0, best_in2 = 0;
-
-    double3 out0 = (double3)(VERTICES[c0.vertex][0],
-                             VERTICES[c0.vertex][1],
-                             VERTICES[c0.vertex][2]);
-    double3 out1 = (double3)(VERTICES[c1.vertex][0],
-                             VERTICES[c1.vertex][1],
-                             VERTICES[c1.vertex][2]);
-    double3 out2 = (double3)(VERTICES[c2.vertex][0],
-                             VERTICES[c2.vertex][1],
-                             VERTICES[c2.vertex][2]);
-
-    for (int k = 0; k < NUM_VERTICES; k++) {
-      double3 vin = (double3)(VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]);
-      double3 rot_in = (double3)(
-        sx * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
-        sy * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
-        sz * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
-      );
-
-      double3 disp0 = rot_in - denom0 * out0;
-      double v0 = Dot(view_center, Cross(edge0, disp0));
-      if (v0 > best_val0) { best_val0 = v0; best_in0 = k; }
-
-      double3 disp1 = rot_in - denom0 * out1;
-      double v1 = Dot(view_center, Cross(edge1, disp1));
-      if (v1 > best_val1) { best_val1 = v1; best_in1 = k; }
-
-      double3 disp2 = rot_in - denom0 * out2;
-      double v2 = Dot(view_center, Cross(edge2, disp2));
-      if (v2 > best_val2) { best_val2 = v2; best_in2 = k; }
-    }
-
-    // Now compute the 10 quadratic coefficients of the combined
-    // displacement polynomial for this triple: C[m] = w0*P0[m] +
-    // w1*P1[m] + w2*P2[m]
     double3 u0 = Cross(view_center, edge0);
     double3 u1 = Cross(view_center, edge1);
     double3 u2 = Cross(view_center, edge2);
 
-    int in_idx[3] = {best_in0, best_in1, best_in2};
-    int out_idx[3] = {c0.vertex, c1.vertex, c2.vertex};
-    double3 u_vec[3] = {u0, u1, u2};
-    double w_vec[3] = {w0, w1, w2};
-
-    double D[3][3][10];
-    for (int c_idx = 0; c_idx < 3; c_idx++) {
-      int in_k = in_idx[c_idx];
-      int out_k = out_idx[c_idx];
-      double3 vin = (double3)(VERTICES[in_k][0], VERTICES[in_k][1], VERTICES[in_k][2]);
-      double3 vout = (double3)(VERTICES[out_k][0], VERTICES[out_k][1], VERTICES[out_k][2]);
-
-      // coord 0:
-      D[c_idx][0][0] = sx*vin.x - vout.x;
-      D[c_idx][0][1] = 0.0;
-      D[c_idx][0][2] = 2.0*sx*vin.z;
-      D[c_idx][0][3] = -2.0*sx*vin.y;
-      D[c_idx][0][4] = sx*vin.x - vout.x;
-      D[c_idx][0][5] = 2.0*sx*vin.y;
-      D[c_idx][0][6] = 2.0*sx*vin.z;
-      D[c_idx][0][7] = -sx*vin.x - vout.x;
-      D[c_idx][0][8] = 0.0;
-      D[c_idx][0][9] = -sx*vin.x - vout.x;
-
-      // coord 1:
-      D[c_idx][1][0] = sy*vin.y - vout.y;
-      D[c_idx][1][1] = -2.0*sy*vin.z;
-      D[c_idx][1][2] = 0.0;
-      D[c_idx][1][3] = 2.0*sy*vin.x;
-      D[c_idx][1][4] = -sy*vin.y - vout.y;
-      D[c_idx][1][5] = 2.0*sy*vin.x;
-      D[c_idx][1][6] = 0.0;
-      D[c_idx][1][7] = sy*vin.y - vout.y;
-      D[c_idx][1][8] = 2.0*sy*vin.z;
-      D[c_idx][1][9] = -sy*vin.y - vout.y;
-
-      // coord 2:
-      D[c_idx][2][0] = sz*vin.z - vout.z;
-      D[c_idx][2][1] = 2.0*sz*vin.y;
-      D[c_idx][2][2] = -2.0*sz*vin.x;
-      D[c_idx][2][3] = 0.0;
-      D[c_idx][2][4] = -sz*vin.z - vout.z;
-      D[c_idx][2][5] = 0.0;
-      D[c_idx][2][6] = 2.0*sz*vin.x;
-      D[c_idx][2][7] = -sz*vin.z - vout.z;
-      D[c_idx][2][8] = 2.0*sz*vin.y;
-      D[c_idx][2][9] = sz*vin.z - vout.z;
-    }
-
-    // Bernstein 27-point control evaluation on the Cayley box
-    double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
-    double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
-
-    double defect_penalty = d_bound * triple.weighted_defect_upper;
-    double disp_error = 300.0 * d_bound * 1e-10;
-
-    // Stage 1: Fast filter at view_center (27 controls)
     double C_center[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    for (int c_idx = 0; c_idx < 3; c_idx++) {
-      double3 u = u_vec[c_idx];
-      double weight = w_vec[c_idx];
-      for (int m = 0; m < 10; m++) {
-        double P_m = u.x * D[c_idx][0][m] + u.y * D[c_idx][1][m] + u.z * D[c_idx][2][m];
-        C_center[m] += weight * P_m;
-      }
-    }
+    AccumulateContactPoly(C_center, w0, u0, vin0, vout0, s);
+    AccumulateContactPoly(C_center, w1, u1, vin1, vout1, s);
+    AccumulateContactPoly(C_center, w2, u2, vin2, vout2, s);
 
     double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
-    double margin_center = min_b_center - defect_penalty - disp_error;
-    if (margin_center <= 0.0) {
+    if (min_b_center - defect_penalty - disp_error <= 0.0) {
       continue;
     }
 
-    // Stage 2: Full degree-2 simplex Bernstein controls over the view triangle (162 controls)
-    double3 p[6];
-    p[0] = (double3)(box.tri[0][0], box.tri[0][1], box.tri[0][2]);
-    p[1] = (double3)(box.tri[1][0], box.tri[1][1], box.tri[1][2]);
-    p[2] = (double3)(box.tri[2][0], box.tri[2][1], box.tri[2][2]);
-    p[3] = 0.5 * (p[0] + p[1]);
-    p[4] = 0.5 * (p[1] + p[2]);
-    p[5] = 0.5 * (p[2] + p[0]);
+    // Stage 2: Simplex Bernstein evaluation with progressive early exit
+    // Step 2a: Evaluate Corner 0
+    double C0[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double w0_0 = Dot(p[0], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_0 = Dot(p[0], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_0 = Dot(p[0], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(C0, w0_0, Cross(p[0], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C0, w1_0, Cross(p[0], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C0, w2_0, Cross(p[0], edge2), vin2, vout2, s);
+    double min_0 = Bernstein27Min(C0, lx, ly, lz, wx, wy, wz);
+    if (min_0 - defect_penalty - disp_error <= 0.0) continue;
 
-    double poly[6][10];
-    for (int i = 0; i < 6; i++) {
-      double3 vi = p[i];
-      double wi[3];
-      wi[0] = vi.x * triple.w_coeff[0][0] + vi.y * triple.w_coeff[0][1] + vi.z * triple.w_coeff[0][2];
-      wi[1] = vi.x * triple.w_coeff[1][0] + vi.y * triple.w_coeff[1][1] + vi.z * triple.w_coeff[1][2];
-      wi[2] = vi.x * triple.w_coeff[2][0] + vi.y * triple.w_coeff[2][1] + vi.z * triple.w_coeff[2][2];
+    // Step 2b: Evaluate Corner 1
+    double C1[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double w0_1 = Dot(p[1], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_1 = Dot(p[1], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_1 = Dot(p[1], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(C1, w0_1, Cross(p[1], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C1, w1_1, Cross(p[1], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C1, w2_1, Cross(p[1], edge2), vin2, vout2, s);
+    double min_1 = Bernstein27Min(C1, lx, ly, lz, wx, wy, wz);
+    if (min_1 - defect_penalty - disp_error <= 0.0) continue;
 
-      double3 ui[3];
-      ui[0] = Cross(vi, edge0);
-      ui[1] = Cross(vi, edge1);
-      ui[2] = Cross(vi, edge2);
+    // Step 2c: Evaluate Corner 2
+    double C2[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double w0_2 = Dot(p[2], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_2 = Dot(p[2], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_2 = Dot(p[2], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(C2, w0_2, Cross(p[2], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C2, w1_2, Cross(p[2], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C2, w2_2, Cross(p[2], edge2), vin2, vout2, s);
+    double min_2 = Bernstein27Min(C2, lx, ly, lz, wx, wy, wz);
+    if (min_2 - defect_penalty - disp_error <= 0.0) continue;
 
-      for (int m = 0; m < 10; m++) {
-        poly[i][m] = wi[0] * (ui[0].x * D[0][0][m] + ui[0].y * D[0][1][m] + ui[0].z * D[0][2][m])
-                   + wi[1] * (ui[1].x * D[1][0][m] + ui[1].y * D[1][1][m] + ui[1].z * D[1][2][m])
-                   + wi[2] * (ui[2].x * D[2][0][m] + ui[2].y * D[2][1][m] + ui[2].z * D[2][2][m]);
-      }
-    }
+    // Step 2d: Midpoints (Edges 01, 12, 20)
+    // Edge 01 (midpoint p[3]): Q = 2 * P(p[3]) - 0.5 * (C0 + C1)
+    double M[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double w0_3 = Dot(p[3], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_3 = Dot(p[3], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_3 = Dot(p[3], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(M, w0_3, Cross(p[3], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_3, Cross(p[3], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_3, Cross(p[3], edge2), vin2, vout2, s);
+    double Q[10];
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C0[m] + C1[m]);
+    double min_3 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_3 - defect_penalty - disp_error <= 0.0) continue;
 
-    double ctrl_poly[6][10];
-    for (int m = 0; m < 10; m++) {
-      ctrl_poly[0][m] = poly[0][m]; // Corner 0
-      ctrl_poly[1][m] = poly[1][m]; // Corner 1
-      ctrl_poly[2][m] = poly[2][m]; // Corner 2
-      ctrl_poly[3][m] = 2.0 * poly[3][m] - 0.5 * (poly[0][m] + poly[1][m]); // Edge 01
-      ctrl_poly[4][m] = 2.0 * poly[4][m] - 0.5 * (poly[1][m] + poly[2][m]); // Edge 12
-      ctrl_poly[5][m] = 2.0 * poly[5][m] - 0.5 * (poly[2][m] + poly[0][m]); // Edge 20
-    }
+    // Edge 12 (midpoint p[4]): Q = 2 * P(p[4]) - 0.5 * (C1 + C2)
+    for (int m = 0; m < 10; m++) M[m] = 0.0;
+    double w0_4 = Dot(p[4], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_4 = Dot(p[4], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_4 = Dot(p[4], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(M, w0_4, Cross(p[4], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_4, Cross(p[4], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_4, Cross(p[4], edge2), vin2, vout2, s);
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C1[m] + C2[m]);
+    double min_4 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_4 - defect_penalty - disp_error <= 0.0) continue;
 
-    double min_162 = 1e30;
-    int all_pass = 1;
-    for (int s = 0; s < 6; s++) {
-      double min_s = Bernstein27Min(ctrl_poly[s], lx, ly, lz, wx, wy, wz);
-      if (min_s - defect_penalty - disp_error <= 0.0) {
-        all_pass = 0;
-        break;
-      }
-      if (min_s < min_162) min_162 = min_s;
-    }
+    // Edge 20 (midpoint p[5]): Q = 2 * P(p[5]) - 0.5 * (C2 + C0)
+    for (int m = 0; m < 10; m++) M[m] = 0.0;
+    double w0_5 = Dot(p[5], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
+    double w1_5 = Dot(p[5], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
+    double w2_5 = Dot(p[5], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    AccumulateContactPoly(M, w0_5, Cross(p[5], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_5, Cross(p[5], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_5, Cross(p[5], edge2), vin2, vout2, s);
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C2[m] + C0[m]);
+    double min_5 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_5 - defect_penalty - disp_error <= 0.0) continue;
 
-    if (all_pass) {
-      // Proved non-Rupert for all views in the triangle and all rotations in the box!
-      res.certified = 1;
-      res.winning_triple = t;
-      res.inner[0] = best_in0;
-      res.inner[1] = best_in1;
-      res.inner[2] = best_in2;
-      res.margin = min_162 - defect_penalty - disp_error;
-      break;
-    }
+    // All 6 simplex Bernstein bounds passed!
+    double min_162 = fmin(fmin(fmin(min_0, min_1), min_2), fmin(fmin(min_3, min_4), min_5));
+    res.certified = 1;
+    res.winning_triple = t;
+    res.inner[0] = in0;
+    res.inner[1] = in1;
+    res.inner[2] = in2;
+    res.margin = min_162 - defect_penalty - disp_error;
+    break;
   }
 
   results[gid] = res;

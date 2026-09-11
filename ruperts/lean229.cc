@@ -22,6 +22,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -36,7 +37,6 @@
 
 #include "ansi.h"
 #include "atomic-util.h"
-#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "geom/hull-2d.h"
@@ -49,7 +49,6 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-#include "work-queue.h"
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
@@ -103,7 +102,11 @@ struct GpuBox {
   int chart;
   int num_triples;
   int triple_offset;
+  int contact_offset;
+  int num_contacts;
+  int _pad;
 };
+static_assert(sizeof(GpuBox) == 144, "GpuBox struct size mismatch");
 
 struct GpuContact {
   int vertex;
@@ -294,9 +297,8 @@ struct SearchNode {
   uint8_t view_depth = 0;
   uint8_t box_depth = 0;
   uint8_t chart = 0;
-  int8_t fund_direction = 0;
 };
-static_assert(sizeof(SearchNode) == 144, "SearchNode should be packed to 144 bytes");
+static_assert(sizeof(SearchNode) == 144);
 
 struct TrianglePool {
   std::vector<GpuContact> contacts;
@@ -514,9 +516,15 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
         SortableTriple st;
         st.gt.c0 = ci; st.gt.c1 = cj; st.gt.c2 = ck;
         st.gt._pad = 0;
-        st.gt.w_coeff[0][0] = coeff0.x; st.gt.w_coeff[0][1] = coeff0.y; st.gt.w_coeff[0][2] = coeff0.z;
-        st.gt.w_coeff[1][0] = coeff1.x; st.gt.w_coeff[1][1] = coeff1.y; st.gt.w_coeff[1][2] = coeff1.z;
-        st.gt.w_coeff[2][0] = coeff2.x; st.gt.w_coeff[2][1] = coeff2.y; st.gt.w_coeff[2][2] = coeff2.z;
+        st.gt.w_coeff[0][0] = coeff0.x;
+        st.gt.w_coeff[0][1] = coeff0.y;
+        st.gt.w_coeff[0][2] = coeff0.z;
+        st.gt.w_coeff[1][0] = coeff1.x;
+        st.gt.w_coeff[1][1] = coeff1.y;
+        st.gt.w_coeff[1][2] = coeff1.z;
+        st.gt.w_coeff[2][0] = coeff2.x;
+        st.gt.w_coeff[2][1] = coeff2.y;
+        st.gt.w_coeff[2][2] = coeff2.z;
 
         vec3 w_coeffs[3] = {coeff0, coeff1, coeff2};
         st.gt.weighted_defect_upper =
@@ -530,11 +538,12 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
   // Pre-sort triples once per pool: zero-defect / well-centered triples first
   // so that evaluating threads exit as early as possible.
-  std::sort(sortable.begin(), sortable.end(), [](const SortableTriple &a, const SortableTriple &b) {
-    if (std::abs(a.defect_sum - b.defect_sum) > 1e-9)
-      return a.defect_sum < b.defect_sum;
-    return a.min_p > b.min_p;
-  });
+  std::sort(sortable.begin(), sortable.end(),
+            [](const SortableTriple &a, const SortableTriple &b) {
+              if (std::abs(a.defect_sum - b.defect_sum) > 1e-9)
+                return a.defect_sum < b.defect_sum;
+              return a.min_p > b.min_p;
+            });
 
   pool->gpu_triples.reserve(sortable.size());
   for (const auto &st : sortable) {
@@ -552,12 +561,14 @@ g_triangle_cache;
 
 static std::shared_ptr<const TrianglePool>
 GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
-  const uint64_t h = HashTriangle(tri) ^ (uint64_t(cone_samples) * 0x9e3779b97f4a7c15ULL);
+  const uint64_t h =
+      HashTriangle(tri) ^ (uint64_t(cone_samples) * 0x9e3779b97f4a7c15ULL);
   {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
     if (it != g_triangle_cache.end()) {
-      g_triangle_lru_list.splice(g_triangle_lru_list.begin(), g_triangle_lru_list, it->second);
+      g_triangle_lru_list.splice(g_triangle_lru_list.begin(),
+                                 g_triangle_lru_list, it->second);
       return it->second->second;
     }
   }
@@ -566,7 +577,8 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
     if (it != g_triangle_cache.end()) {
-      g_triangle_lru_list.splice(g_triangle_lru_list.begin(), g_triangle_lru_list, it->second);
+      g_triangle_lru_list.splice(g_triangle_lru_list.begin(),
+                                 g_triangle_lru_list, it->second);
       return it->second->second;
     }
     if (g_triangle_cache.size() >= MAX_TRIANGLE_CACHE_SIZE) {
@@ -609,6 +621,34 @@ inline double Bernstein27Min(const double C[10],
   return min_b;
 }
 
+// In-register accumulation of the 10 quadratic displacement polynomial coefficients
+// for contact (vin, vout) with normal vector u, scaled by chart signs s = (sx, sy, sz).
+inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
+                                  vec3 vin, vec3 vout, vec3 s) {
+  double sx = s.x, sy = s.y, sz = s.z;
+  double ux = u.x, uy = u.y, uz = u.z;
+  double vx = vin.x, vy = vin.y, vz = vin.z;
+  double ox = vout.x, oy = vout.y, oz = vout.z;
+
+  // Constant term (m = 0):
+  C[0] += weight * (ux * (sx*vx - ox) + uy * (sy*vy - oy) + uz * (sz*vz - oz));
+
+  // Linear terms:
+  C[1] += weight * 2.0 * (-uy * sy * vz + uz * sz * vy);
+  C[2] += weight * 2.0 * (ux * sx * vz - uz * sz * vx);
+  C[3] += weight * 2.0 * (-ux * sx * vy + uy * sy * vx);
+
+  // Quadratic pure terms:
+  C[4] += weight * (ux * (sx*vx - ox) - uy * (sy*vy + oy) - uz * (sz*vz + oz));
+  C[7] += weight * (-ux * (sx*vx + ox) + uy * (sy*vy - oy) - uz * (sz*vz + oz));
+  C[9] += weight * (-ux * (sx*vx + ox) - uy * (sy*vy + oy) + uz * (sz*vz - oz));
+
+  // Quadratic cross terms:
+  C[5] += weight * 2.0 * (ux * sx * vy + uy * sy * vx);
+  C[6] += weight * 2.0 * (ux * sx * vz + uz * sz * vx);
+  C[8] += weight * 2.0 * (uy * sy * vz + uz * sz * vy);
+}
+
 // CPU evaluator matching Bernstein logic
 static GpuResult EvaluateBoxCPU(
     const GpuBox &box,
@@ -623,9 +663,11 @@ static GpuResult EvaluateBoxCPU(
   };
   double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
 
-  double sx = (box.chart == 2 || box.chart == 3) ? -1.0 : 1.0;
-  double sy = (box.chart == 1 || box.chart == 3) ? -1.0 : 1.0;
-  double sz = (box.chart == 1 || box.chart == 2) ? -1.0 : 1.0;
+  vec3 s = {
+    (box.chart == 2 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 2) ? -1.0 : 1.0
+  };
 
   vec3 view_center = {
     (box.tri[0][0] + box.tri[1][0] + box.tri[2][0]) / 3.0,
@@ -638,6 +680,51 @@ static GpuResult EvaluateBoxCPU(
   double ez = std::max(std::abs(box.cz - box.rz), std::abs(box.cz + box.rz));
   double d_bound = 1.0 + ex*ex + ey*ey + ez*ez;
 
+  double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
+  double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
+  double disp_error = 300.0 * d_bound * 1e-10;
+
+  vec3 p[6];
+  p[0] = {box.tri[0][0], box.tri[0][1], box.tri[0][2]};
+  p[1] = {box.tri[1][0], box.tri[1][1], box.tri[1][2]};
+  p[2] = {box.tri[2][0], box.tri[2][1], box.tri[2][2]};
+  p[3] = (p[0] + p[1]) * 0.5;
+  p[4] = (p[1] + p[2]) * 0.5;
+  p[5] = (p[2] + p[0]) * 0.5;
+
+  // Pre-rotate all 20 inner vertices at box center
+  vec3 rot_vin[20];
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    vec3 vin = {VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]};
+    rot_vin[k] = {
+      s.x * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
+      s.y * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
+      s.z * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
+    };
+  }
+
+  // Precompute best inner vertex for each contact in this pool
+  int c_start = box.contact_offset;
+  int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
+  std::vector<int> best_in(c_count);
+  for (int c = 0; c < c_count; c++) {
+    const auto &gc = contacts[c_start + c];
+    vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
+    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
+    vec3 u = yocto::cross(view_center, edge);
+    double best_val = -1e30;
+    int best_k = 0;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      vec3 disp = rot_vin[k] - denom0 * out;
+      double v = yocto::dot(u, disp);
+      if (v > best_val) {
+        best_val = v;
+        best_k = k;
+      }
+    }
+    best_in[c] = best_k;
+  }
+
   GpuResult res;
   res.certified = 0;
   res.winning_triple = -1;
@@ -648,6 +735,13 @@ static GpuResult EvaluateBoxCPU(
 
   for (int t = 0; t < box.num_triples; t++) {
     const auto &trip = triples[box.triple_offset + t];
+
+    double defect_penalty = d_bound * trip.weighted_defect_upper;
+
+    int in0 = best_in[trip.c0 - c_start];
+    int in1 = best_in[trip.c1 - c_start];
+    int in2 = best_in[trip.c2 - c_start];
+
     const auto &c0 = contacts[trip.c0];
     const auto &c1 = contacts[trip.c1];
     const auto &c2 = contacts[trip.c2];
@@ -656,179 +750,115 @@ static GpuResult EvaluateBoxCPU(
     vec3 edge1 = {c1.edge[0], c1.edge[1], c1.edge[2]};
     vec3 edge2 = {c2.edge[0], c2.edge[1], c2.edge[2]};
 
-    double w0 = yocto::dot(view_center, yocto::cross(edge1, edge2));
-    double w1 = yocto::dot(view_center, yocto::cross(edge2, edge0));
-    double w2 = yocto::dot(view_center, yocto::cross(edge0, edge1));
+    vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+    vec3 vout0 = {VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]};
 
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+    vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+    vec3 vout1 = {VERTICES[c1.vertex][0], VERTICES[c1.vertex][1], VERTICES[c1.vertex][2]};
 
-    double best_val0 = -1e30, best_val1 = -1e30, best_val2 = -1e30;
-    int best_in0 = 0, best_in1 = 0, best_in2 = 0;
-
-    vec3 out0 = {VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]};
-    vec3 out1 = {VERTICES[c1.vertex][0], VERTICES[c1.vertex][1], VERTICES[c1.vertex][2]};
-    vec3 out2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
-
-    for (int k = 0; k < NUM_VERTICES; k++) {
-      vec3 vin = {VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]};
-      vec3 rot_in = {
-        sx * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
-        sy * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
-        sz * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
-      };
-
-      double v0 = yocto::dot(view_center, yocto::cross(edge0, rot_in - denom0 * out0));
-      if (v0 > best_val0) { best_val0 = v0; best_in0 = k; }
-
-      double v1 = yocto::dot(view_center, yocto::cross(edge1, rot_in - denom0 * out1));
-      if (v1 > best_val1) { best_val1 = v1; best_in1 = k; }
-
-      double v2 = yocto::dot(view_center, yocto::cross(edge2, rot_in - denom0 * out2));
-      if (v2 > best_val2) { best_val2 = v2; best_in2 = k; }
-    }
-
-    vec3 u0 = yocto::cross(view_center, edge0);
-    vec3 u1 = yocto::cross(view_center, edge1);
-    vec3 u2 = yocto::cross(view_center, edge2);
-
-    int in_idx[3] = {best_in0, best_in1, best_in2};
-    int out_idx[3] = {c0.vertex, c1.vertex, c2.vertex};
-    vec3 u_vec[3] = {u0, u1, u2};
-    double w_vec[3] = {w0, w1, w2};
-
-    double D[3][3][10];
-    for (int c_idx = 0; c_idx < 3; c_idx++) {
-      int in_k = in_idx[c_idx];
-      int out_k = out_idx[c_idx];
-      vec3 vin = {VERTICES[in_k][0], VERTICES[in_k][1], VERTICES[in_k][2]};
-      vec3 vout = {VERTICES[out_k][0], VERTICES[out_k][1], VERTICES[out_k][2]};
-
-      // coord 0:
-      D[c_idx][0][0] = sx*vin.x - vout.x;
-      D[c_idx][0][1] = 0.0;
-      D[c_idx][0][2] = 2.0*sx*vin.z;
-      D[c_idx][0][3] = -2.0*sx*vin.y;
-      D[c_idx][0][4] = sx*vin.x - vout.x;
-      D[c_idx][0][5] = 2.0*sx*vin.y;
-      D[c_idx][0][6] = 2.0*sx*vin.z;
-      D[c_idx][0][7] = -sx*vin.x - vout.x;
-      D[c_idx][0][8] = 0.0;
-      D[c_idx][0][9] = -sx*vin.x - vout.x;
-
-      // coord 1:
-      D[c_idx][1][0] = sy*vin.y - vout.y;
-      D[c_idx][1][1] = -2.0*sy*vin.z;
-      D[c_idx][1][2] = 0.0;
-      D[c_idx][1][3] = 2.0*sy*vin.x;
-      D[c_idx][1][4] = -sy*vin.y - vout.y;
-      D[c_idx][1][5] = 2.0*sy*vin.x;
-      D[c_idx][1][6] = 0.0;
-      D[c_idx][1][7] = sy*vin.y - vout.y;
-      D[c_idx][1][8] = 2.0*sy*vin.z;
-      D[c_idx][1][9] = -sy*vin.y - vout.y;
-
-      // coord 2:
-      D[c_idx][2][0] = sz*vin.z - vout.z;
-      D[c_idx][2][1] = 2.0*sz*vin.y;
-      D[c_idx][2][2] = -2.0*sz*vin.x;
-      D[c_idx][2][3] = 0.0;
-      D[c_idx][2][4] = -sz*vin.z - vout.z;
-      D[c_idx][2][5] = 0.0;
-      D[c_idx][2][6] = 2.0*sz*vin.x;
-      D[c_idx][2][7] = -sz*vin.z - vout.z;
-      D[c_idx][2][8] = 2.0*sz*vin.y;
-      D[c_idx][2][9] = sz*vin.z - vout.z;
-    }
-
-    double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
-    double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
-
-    double defect_penalty = d_bound * trip.weighted_defect_upper;
-    double disp_error = 300.0 * d_bound * 1e-10;
+    vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+    vec3 vout2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
 
     // Stage 1: Fast filter at view_center (27 controls)
+    vec3 w_coeff0 = {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]};
+    vec3 w_coeff1 = {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]};
+    vec3 w_coeff2 = {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]};
+
+    double w0 = yocto::dot(view_center, w_coeff0);
+    double w1 = yocto::dot(view_center, w_coeff1);
+    double w2 = yocto::dot(view_center, w_coeff2);
+    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+
     double C_center[10] = {0};
-    for (int c_idx = 0; c_idx < 3; c_idx++) {
-      vec3 u = u_vec[c_idx];
-      double weight = w_vec[c_idx];
-      for (int m = 0; m < 10; m++) {
-        double P_m = u.x * D[c_idx][0][m] + u.y * D[c_idx][1][m] + u.z * D[c_idx][2][m];
-        C_center[m] += weight * P_m;
-      }
-    }
+    AccumulateContactPoly(C_center, w0, yocto::cross(view_center, edge0), vin0, vout0, s);
+    AccumulateContactPoly(C_center, w1, yocto::cross(view_center, edge1), vin1, vout1, s);
+    AccumulateContactPoly(C_center, w2, yocto::cross(view_center, edge2), vin2, vout2, s);
 
     double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
-    double margin_center = min_b_center - defect_penalty - disp_error;
-    if (margin_center <= 0.0) {
+    if (min_b_center - defect_penalty - disp_error <= 0.0) {
       continue;
     }
 
-    // Stage 2: Full degree-2 simplex Bernstein controls over the view triangle (162 controls)
-    vec3 p[6];
-    p[0] = {box.tri[0][0], box.tri[0][1], box.tri[0][2]};
-    p[1] = {box.tri[1][0], box.tri[1][1], box.tri[1][2]};
-    p[2] = {box.tri[2][0], box.tri[2][1], box.tri[2][2]};
-    p[3] = (p[0] + p[1]) * 0.5;
-    p[4] = (p[1] + p[2]) * 0.5;
-    p[5] = (p[2] + p[0]) * 0.5;
+    // Stage 2: Simplex Bernstein evaluation with progressive early exit
+    // Corner 0
+    double C0[10] = {0};
+    double w0_0 = yocto::dot(p[0], w_coeff0);
+    double w1_0 = yocto::dot(p[0], w_coeff1);
+    double w2_0 = yocto::dot(p[0], w_coeff2);
+    AccumulateContactPoly(C0, w0_0, yocto::cross(p[0], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C0, w1_0, yocto::cross(p[0], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C0, w2_0, yocto::cross(p[0], edge2), vin2, vout2, s);
+    double min_0 = Bernstein27Min(C0, lx, ly, lz, wx, wy, wz);
+    if (min_0 - defect_penalty - disp_error <= 0.0) continue;
 
-    vec3 w_coeffs[3] = {
-      {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]},
-      {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]},
-      {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]}
-    };
+    // Corner 1
+    double C1[10] = {0};
+    double w0_1 = yocto::dot(p[1], w_coeff0);
+    double w1_1 = yocto::dot(p[1], w_coeff1);
+    double w2_1 = yocto::dot(p[1], w_coeff2);
+    AccumulateContactPoly(C1, w0_1, yocto::cross(p[1], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C1, w1_1, yocto::cross(p[1], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C1, w2_1, yocto::cross(p[1], edge2), vin2, vout2, s);
+    double min_1 = Bernstein27Min(C1, lx, ly, lz, wx, wy, wz);
+    if (min_1 - defect_penalty - disp_error <= 0.0) continue;
 
-    double poly[6][10];
-    for (int i = 0; i < 6; i++) {
-      vec3 vi = p[i];
-      double wi[3] = {
-        yocto::dot(vi, w_coeffs[0]),
-        yocto::dot(vi, w_coeffs[1]),
-        yocto::dot(vi, w_coeffs[2])
-      };
-      vec3 ui[3] = {
-        yocto::cross(vi, edge0),
-        yocto::cross(vi, edge1),
-        yocto::cross(vi, edge2)
-      };
+    // Corner 2
+    double C2[10] = {0};
+    double w0_2 = yocto::dot(p[2], w_coeff0);
+    double w1_2 = yocto::dot(p[2], w_coeff1);
+    double w2_2 = yocto::dot(p[2], w_coeff2);
+    AccumulateContactPoly(C2, w0_2, yocto::cross(p[2], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C2, w1_2, yocto::cross(p[2], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C2, w2_2, yocto::cross(p[2], edge2), vin2, vout2, s);
+    double min_2 = Bernstein27Min(C2, lx, ly, lz, wx, wy, wz);
+    if (min_2 - defect_penalty - disp_error <= 0.0) continue;
 
-      for (int m = 0; m < 10; m++) {
-        poly[i][m] = wi[0] * (ui[0].x * D[0][0][m] + ui[0].y * D[0][1][m] + ui[0].z * D[0][2][m])
-                   + wi[1] * (ui[1].x * D[1][0][m] + ui[1].y * D[1][1][m] + ui[1].z * D[1][2][m])
-                   + wi[2] * (ui[2].x * D[2][0][m] + ui[2].y * D[2][1][m] + ui[2].z * D[2][2][m]);
-      }
-    }
+    // Midpoint p[3] (Edge 01)
+    double M[10] = {0};
+    double w0_3 = yocto::dot(p[3], w_coeff0);
+    double w1_3 = yocto::dot(p[3], w_coeff1);
+    double w2_3 = yocto::dot(p[3], w_coeff2);
+    AccumulateContactPoly(M, w0_3, yocto::cross(p[3], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_3, yocto::cross(p[3], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_3, yocto::cross(p[3], edge2), vin2, vout2, s);
+    double Q[10];
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C0[m] + C1[m]);
+    double min_3 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_3 - defect_penalty - disp_error <= 0.0) continue;
 
-    double ctrl_poly[6][10];
-    for (int m = 0; m < 10; m++) {
-      ctrl_poly[0][m] = poly[0][m]; // Corner 0
-      ctrl_poly[1][m] = poly[1][m]; // Corner 1
-      ctrl_poly[2][m] = poly[2][m]; // Corner 2
-      ctrl_poly[3][m] = 2.0 * poly[3][m] - 0.5 * (poly[0][m] + poly[1][m]); // Edge 01
-      ctrl_poly[4][m] = 2.0 * poly[4][m] - 0.5 * (poly[1][m] + poly[2][m]); // Edge 12
-      ctrl_poly[5][m] = 2.0 * poly[5][m] - 0.5 * (poly[2][m] + poly[0][m]); // Edge 20
-    }
+    // Midpoint p[4] (Edge 12)
+    for (int m = 0; m < 10; m++) M[m] = 0;
+    double w0_4 = yocto::dot(p[4], w_coeff0);
+    double w1_4 = yocto::dot(p[4], w_coeff1);
+    double w2_4 = yocto::dot(p[4], w_coeff2);
+    AccumulateContactPoly(M, w0_4, yocto::cross(p[4], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_4, yocto::cross(p[4], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_4, yocto::cross(p[4], edge2), vin2, vout2, s);
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C1[m] + C2[m]);
+    double min_4 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_4 - defect_penalty - disp_error <= 0.0) continue;
 
-    double min_162 = 1e30;
-    bool all_pass = true;
-    for (int s = 0; s < 6; s++) {
-      double min_s = Bernstein27Min(ctrl_poly[s], lx, ly, lz, wx, wy, wz);
-      if (min_s - defect_penalty - disp_error <= 0.0) {
-        all_pass = false;
-        break;
-      }
-      if (min_s < min_162) min_162 = min_s;
-    }
+    // Midpoint p[5] (Edge 20)
+    for (int m = 0; m < 10; m++) M[m] = 0;
+    double w0_5 = yocto::dot(p[5], w_coeff0);
+    double w1_5 = yocto::dot(p[5], w_coeff1);
+    double w2_5 = yocto::dot(p[5], w_coeff2);
+    AccumulateContactPoly(M, w0_5, yocto::cross(p[5], edge0), vin0, vout0, s);
+    AccumulateContactPoly(M, w1_5, yocto::cross(p[5], edge1), vin1, vout1, s);
+    AccumulateContactPoly(M, w2_5, yocto::cross(p[5], edge2), vin2, vout2, s);
+    for (int m = 0; m < 10; m++) Q[m] = 2.0 * M[m] - 0.5 * (C2[m] + C0[m]);
+    double min_5 = Bernstein27Min(Q, lx, ly, lz, wx, wy, wz);
+    if (min_5 - defect_penalty - disp_error <= 0.0) continue;
 
-    if (all_pass) {
-      res.certified = 1;
-      res.winning_triple = t;
-      res.inner[0] = best_in0;
-      res.inner[1] = best_in1;
-      res.inner[2] = best_in2;
-      res.margin = min_162 - defect_penalty - disp_error;
-      break;
-    }
+    // All 6 simplex Bernstein bounds passed!
+    double min_162 = std::min({min_0, min_1, min_2, min_3, min_4, min_5});
+    res.certified = 1;
+    res.winning_triple = t;
+    res.inner[0] = in0;
+    res.inner[1] = in1;
+    res.inner[2] = in2;
+    res.margin = min_162 - defect_penalty - disp_error;
+    break;
   }
 
   return res;
@@ -1066,7 +1096,7 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
 // Checkpoint metadata
 struct CheckpointHeader {
   uint64_t magic = 0x4E4F504552543232ULL; // "NOPERT22"
-  int32_t version = 3;
+  int32_t version = 4;
   int32_t chart = 0;
   int64_t next_node_id = 0;
   int64_t evaluated_count = 0;
@@ -1203,10 +1233,9 @@ struct SearchManager {
     int chart = 0;
     int solution_id = 0;
     std::string label;
-    bool certified = false;
   };
-  std::vector<PriorityPoint> priority_points;
   std::vector<PriorityPoint> active_priority;
+  int num_priority_points = 0;
 
   bool ContainsUncertifiedPriority(const SearchNode &node) const {
     if (!prioritize_related || active_priority.empty()) return false;
@@ -1219,55 +1248,71 @@ struct SearchManager {
     return false;
   }
 
-  void LoadPriorityPoints(double max_dist = 0.05) {
-    priority_points.clear();
-
-    // Static known hard / pathological points from past runs:
-    struct StaticHardPoint {
+  std::vector<PriorityPoint> GetPriorityPoints(double max_dist = 0.05) {
+    std::vector<PriorityPoint> priority_points;
+    // Known hard / pathological points from past runs.
+    struct HardPoint {
       int chart;
       vec3 w;
       vec3 view;
-      const char *label;
+      std::string_view label;
     };
-    static const StaticHardPoint kKnownHardPoints[] = {
-      // Chart 0: near-identity rotation grinder
-      { .chart = 0,
-        .w = {0.00096893310546875, -0.0012969970703125, -0.002044677734375},
-        .view = {0.99999106802591464, 3.8457110645325201e-06, 5.0862630208333331e-06},
-        .label = "Chart 0 near-identity grinder" },
-      // Chart 0: near-identity view grinder
-      { .chart = 0,
-        .w = {0.00097647309303283691, -0.0012219548225402832, -0.0019906759262084961},
-        .view = {0.92218818586940847, 0.20787508492040183, 0.32612502157077433},
-        .label = "Chart 0 near-identity view grinder" },
-      // Chart 0: small-rotation silhouette grinder
-      { .chart = 0,
-        .w = {0.010819882154464722, -0.016599953174591064, 0.028645873069763184},
-        .view = {0.3984395379, 0.8338690325, 0.3819795573},
-        .label = "Chart 0 small-rotation silhouette grinder" },
-      // Chart 2: boundary grinder
-      { .chart = 2,
-        .w = {-0.28256338834762573, -0.86962884664535522, -0.27563470602035522},
-        .view = {0.18209315363953751, 0.30716461912403265, 0.51074222723642981},
-        .label = "Chart 2 boundary grinder" },
+
+    static constexpr HardPoint HARD_POINTS[] = {
+        {.chart = 0,
+         .w = {0.00096893310546875, -0.0012969970703125, -0.002044677734375},
+         .view = {0.99999106802591464, 3.8457110645325201e-06,
+                  5.0862630208333331e-06},
+         .label = "Near-identity"},
+
+        {.chart = 0,
+         .w = {0.00097647309303283691, -0.0012219548225402832,
+               -0.0019906759262084961},
+         .view = {0.92218818586940847, 0.20787508492040183,
+                  0.32612502157077433},
+         .label = "Near-identity view"},
+
+        {.chart = 0,
+         .w = {0.010819882154464722, -0.016599953174591064,
+               0.028645873069763184},
+         .view = {0.3984395379, 0.8338690325, 0.3819795573},
+         .label = "Small-rotation silhouette"},
+
+        {.chart = 2,
+         .w = {-0.28256338834762573, -0.86962884664535522,
+               -0.27563470602035522},
+         .view = {0.18209315363953751, 0.30716461912403265,
+                  0.51074222723642981},
+         .label = "Boundary"},
+
+        {.chart = 2,
+         .w = {1.0 / 6.0, 3.0 / 8.0, 3.0 / 4.0},
+         .view = {0.7073170731707317, 0.12601626016260162, 0.16666666666666666},
+         .label = "Box 326 (simplex boundary)"},
+
+        {.chart = 2,
+         .w = {-1.0 / 24.0, -13.0 / 16.0, -9.0 / 16.0},
+         .view = {0.7073170731707317, 0.12601626016260162, 0.16666666666666666},
+         .label = "Node 290 (verified Lean certificate)"},
     };
 
     int hard_count = 0;
-    for (const auto &hp : kKnownHardPoints) {
+    for (const auto &hp : HARD_POINTS) {
       if (hp.chart == chart) {
         priority_points.push_back(PriorityPoint{
             .view = hp.view,
             .w = hp.w,
             .chart = hp.chart,
             .solution_id = -1,
-            .label = hp.label,
-            .certified = false,
+            .label = std::string(hp.label),
         });
         hard_count++;
       }
     }
+
     if (hard_count > 0) {
-      status.Print("Loaded " ACYAN("{}") " static pathological test point(s) in Chart {}.\n",
+      status.Print("Loaded " ACYAN("{}")
+                   " static hard point(s) in Chart {}.\n",
                    hard_count, chart);
     }
 
@@ -1324,8 +1369,7 @@ struct SearchManager {
                     .w = sol_w,
                     .chart = 0,
                     .solution_id = sol.id,
-                    .label = "",
-                    .certified = false,
+                    .label = "solution",
                 });
                 break;
               }
@@ -1338,6 +1382,7 @@ struct SearchManager {
       }
     }
     active_priority = priority_points;
+    return priority_points;
   }
 
   // Computes exact completed domain volume fraction in [0.0, 1.0] by
@@ -1464,7 +1509,7 @@ struct SearchManager {
     status.Print("Writing log to: {}\n", log_path);
 
     if (prioritize_related) {
-      LoadPriorityPoints(related_epsilon);
+      active_priority = GetPriorityPoints(related_epsilon);
     }
 
     if (stack.empty()) {
@@ -1500,15 +1545,6 @@ struct SearchManager {
     std::vector<GpuTriple> all_triples;
     std::vector<GpuResult> results;
     std::vector<SearchNode> current_batch;
-
-    enum NodeAction {
-      ACTION_PRUNE_RADIUS,
-      ACTION_PRUNE_FUNDAMENTAL,
-      ACTION_PRUNE_TUBE,
-      ACTION_SPLIT_ORIGIN,
-      ACTION_SPLIT_VIEW,
-      ACTION_EVALUATE,
-    };
 
     while (!stack.empty() && !sigint_received.load()) {
       ctr_loops++;
@@ -1562,7 +1598,27 @@ struct SearchManager {
       all_triples.clear();
       results.assign(count, GpuResult{});
 
-      std::vector<NodeAction> node_actions(count);
+      // Periodically show some node from the batch, so we can note places
+      // where we got stuck, etc.
+      where_per.RunIf([&]{
+          if (current_batch.empty()) return;
+          const auto &node = current_batch[0];
+          status.Print("[{}] #{}\n"
+                       "  depth {}, box_depth {}, view_depth {}\n"
+                       "  radii ({:.17g}, {:.17g}, {:.17g}))\n"
+                       "  box ({:.17g}, {:.17g}, {:.17g})\n",
+                       ANSI::Time(timer.Seconds()),
+                       node.id,
+                       node.depth, node.box_depth, node.view_depth,
+                       node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                       node.box.center.x, node.box.center.y, node.box.center.z);
+        });
+
+
+      // Mutex guards the stack and eval indices.
+      std::mutex mu;
+      std::vector<int> eval_indices;
+      eval_indices.reserve(count);
 
       // Periodically show some node from the batch, so we can note places
       // where we got stuck, etc.
@@ -1580,59 +1636,34 @@ struct SearchManager {
                        node.box.center.x, node.box.center.y, node.box.center.z);
         });
 
-      // Phase 1: Parallel domain filtering across CPU cores.
-      UnParallelComp(count, [&](int64_t i) {
-        auto &node = current_batch[i];
-        FundamentalPruneResult fund =
-          CheckFundamentalPrune(node.chart, node.box);
-        if (OutsideBall(node.box)) {
-          pruned_count++;
-          certified_count++;
-          OutputRow(std::format("PRUNE {} {} {} RADIUS\n",
-                                node.id, node.parent_id, node.depth));
-          node_actions[i] = ACTION_PRUNE_RADIUS;
-
-        } else if (fund.prune) {
-          node_actions[i] = ACTION_PRUNE_FUNDAMENTAL;
-          node.fund_direction = fund.direction;
-        } else if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
-          node_actions[i] = ACTION_PRUNE_TUBE;
-        } else if (node.chart == 0 && node.box.ContainsOrigin()) {
-          node_actions[i] = ACTION_SPLIT_ORIGIN;
-        } else {
-          auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
-          if (tpool->gpu_triples.empty()) {
-            node_actions[i] = ACTION_SPLIT_VIEW;
-          } else {
-            node_actions[i] = ACTION_EVALUATE;
+      ParallelComp(count, [&](int64_t i) {
+          const auto &node = current_batch[i];
+          if (OutsideBall(node.box)) {
+            pruned_count++;
+            certified_count++;
+            OutputRow(std::format("PRUNE {} {} {} RADIUS\n",
+                                  node.id, node.parent_id, node.depth));
+            return;
           }
-        }
-      }, num_threads);
 
-      // Phase 2: Process domain pruning and subdivisions on main thread
-      std::vector<int> active_indices;
-      active_indices.reserve(count);
+          FundamentalPruneResult fund =
+            CheckFundamentalPrune(node.chart, node.box);
 
-      for (int i = 0; i < count; i++) {
-        const auto &node = current_batch[i];
-        switch (node_actions[i]) {
-          case ACTION_PRUNE_RADIUS:
-            break;
-          case ACTION_PRUNE_FUNDAMENTAL:
+          if (fund.prune) {
             pruned_count++;
             certified_count++;
             OutputRow(std::format("PRUNE {} {} {} FUNDAMENTAL {}\n",
                                   node.id, node.parent_id, node.depth,
-                                  node.fund_direction));
-            break;
-          case ACTION_PRUNE_TUBE:
+                                  fund.direction));
+
+          } else if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
             pruned_count++;
             certified_count++;
             OutputRow(std::format("TUBE {} {} {} {:.17g}\n",
                                   node.id, node.parent_id, node.depth,
                                   tube_radius));
-            break;
-          case ACTION_SPLIT_ORIGIN: {
+
+          } else if (node.chart == 0 && node.box.ContainsOrigin()) {
             split_count++;
             OutputRow(std::format("SPLIT_ORIGIN {} {} {}\n",
                                   node.id, node.parent_id, node.depth));
@@ -1654,39 +1685,43 @@ struct SearchManager {
             child1.box = b1;
 
             if (child0.box.ContainsOrigin()) {
+              MutexLock ml(&mu);
               stack.push_back(child1);
               stack.push_back(child0);
             } else {
+              MutexLock ml(&mu);
               stack.push_back(child0);
               stack.push_back(child1);
             }
-            break;
-          }
-          case ACTION_SPLIT_VIEW: {
-            split_count++;
-            OutputRow(std::format("SPLIT_VIEW {} {} {}\n", node.id,
-                                  node.parent_id, node.depth));
-            auto sub_tris = node.tri.Subdivide();
-            for (int t = sub_tris.size() - 1; t >= 0; t--) {
-              SearchNode child = node;
-              child.id = next_node_id++;
-              child.parent_id = node.id;
-              child.depth = node.depth + 1;
-              child.view_depth = node.view_depth + 1;
-              child.tri = sub_tris[t];
-              stack.push_back(child);
-            }
-            break;
-          }
-          case ACTION_EVALUATE:
-            active_indices.push_back(i);
-            break;
-        }
-      }
 
-      if (!active_indices.empty()) {
+          } else {
+            auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
+            if (tpool->gpu_triples.empty()) {
+              split_count++;
+              OutputRow(std::format("SPLIT_VIEW {} {} {}\n", node.id,
+                                    node.parent_id, node.depth));
+              auto sub_tris = node.tri.Subdivide();
+              for (int t = sub_tris.size() - 1; t >= 0; t--) {
+                SearchNode child = node;
+                child.id = next_node_id++;
+                child.parent_id = node.id;
+                child.depth = node.depth + 1;
+                child.view_depth = node.view_depth + 1;
+                child.tri = sub_tris[t];
+                MutexLock ml(&mu);
+                stack.push_back(child);
+              }
+
+            } else {
+              MutexLock ml(&mu);
+              eval_indices.push_back(i);
+            }
+          }
+        }, num_threads);
+
+      if (!eval_indices.empty()) {
         std::vector<GpuBox> active_gpu_boxes;
-        active_gpu_boxes.reserve(active_indices.size());
+        active_gpu_boxes.reserve(eval_indices.size());
 
         struct PoolBatchInfo {
           int contact_offset;
@@ -1695,7 +1730,7 @@ struct SearchManager {
         };
         std::unordered_map<const TrianglePool*, PoolBatchInfo> active_pools;
 
-        for (int idx : active_indices) {
+        for (int idx : eval_indices) {
           const auto &node = current_batch[idx];
           auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
 
@@ -1737,11 +1772,14 @@ struct SearchManager {
           box.chart = node.chart;
           box.triple_offset = it->second.triple_offset;
           box.num_triples = it->second.num_triples;
+          box.contact_offset = it->second.contact_offset;
+          box.num_contacts = (int)tpool->contacts.size();
+          box._pad = 0;
 
           active_gpu_boxes.push_back(box);
         }
 
-        std::vector<GpuResult> active_results(active_indices.size());
+        std::vector<GpuResult> active_results(eval_indices.size());
 
         if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
             !all_triples.empty()) {
@@ -1807,11 +1845,11 @@ struct SearchManager {
           }, num_threads);
         }
 
-        for (size_t a = 0; a < active_indices.size(); a++) {
-          results[active_indices[a]] = active_results[a];
+        for (size_t a = 0; a < eval_indices.size(); a++) {
+          results[eval_indices[a]] = active_results[a];
         }
 
-        for (int idx : active_indices) {
+        for (int idx : eval_indices) {
           evaluated_count++;
           const auto &node = current_batch[idx];
           auto res = results[idx];
@@ -1837,7 +1875,11 @@ struct SearchManager {
               gb.chart = node.chart;
               gb.triple_offset = 0;
               gb.num_triples = esc_pool->gpu_triples.size();
-              GpuResult esc_res = EvaluateBoxCPU(gb, esc_pool->contacts, esc_pool->gpu_triples);
+              gb.contact_offset = 0;
+              gb.num_contacts = (int)esc_pool->contacts.size();
+              gb._pad = 0;
+              GpuResult esc_res =
+                EvaluateBoxCPU(gb, esc_pool->contacts, esc_pool->gpu_triples);
               if (esc_res.certified) {
                 ctr_esc_certified++;
                 res = esc_res;
@@ -1861,18 +1903,21 @@ struct SearchManager {
                     status.Print(AGREEN("✔") " "
                                  "{} excluded at depth {} (margin = {:.17g})!\n",
                                  it->label, node.depth, res.margin);
+                    status.Print("  Node {}: box_depth={}, view_depth={}, box.c=({:.10g}, {:.10g}, {:.10g}), r=({:.10g}, {:.10g}, {:.10g})\n"
+                                 "  tri=[({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g})]\n"
+                                 "  winning_triple={}, inner=[{}, {}, {}]\n",
+                                 node.id, node.box_depth, node.view_depth,
+                                 node.box.center.x, node.box.center.y, node.box.center.z,
+                                 node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                                 node.tri.corners[0].x, node.tri.corners[0].y, node.tri.corners[0].z,
+                                 node.tri.corners[1].x, node.tri.corners[1].y, node.tri.corners[1].z,
+                                 node.tri.corners[2].x, node.tri.corners[2].y, node.tri.corners[2].z,
+                                 res.winning_triple, res.inner[0], res.inner[1], res.inner[2]);
                   } else {
                     status.Print(AGREEN("✔") " "
                                  "Related sol #{} excluded at "
                                  "depth {} (margin = {:.17g})!\n",
                                  it->solution_id, node.depth, res.margin);
-                  }
-                  for (auto &mp : priority_points) {
-                    if (mp.solution_id == it->solution_id && mp.label == it->label &&
-                        mp.chart == it->chart) {
-                      mp.certified = true;
-                      break;
-                    }
                   }
                   it = active_priority.erase(it);
                 } else {
@@ -2014,8 +2059,9 @@ struct SearchManager {
 
         std::string pool_str;
         if (prioritize_related) {
-          pool_str = std::format("{} / {} related pending",
-                                 active_priority.size(), priority_points.size());
+          pool_str = std::format("{}/{} priority left",
+                                 active_priority.size(),
+                                 num_priority_points);
         } else {
           pool_str = AGREY("Related solution pool: inactive");
         }
