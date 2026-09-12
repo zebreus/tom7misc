@@ -1696,9 +1696,29 @@ struct SearchManager {
           // nodes from thousands of open branches and exploding unique view triangles.
           // Directly taking from the back keeps all nodes in the same local branch
           // and sharing the SAME view triangle, certifying and closing branches quickly.
-          current_batch.insert(current_batch.end(), stack.end() - remaining,
+          size_t pop_count = remaining;
+          // If the stack contains nodes from many disparate branches, do a short
+          // batch if we exceed 16 distinct triangle pools, provided we have enough
+          // nodes (>= 4096) to keep the GPU fully occupied.
+          if (remaining > 4096) {
+            uint64_t last_hash = 0;
+            size_t distinct = 0;
+            size_t count = 0;
+            for (auto it = stack.rbegin(); it != stack.rend() && count < remaining; ++it, ++count) {
+              uint64_t h = HashTriangle(it->tri);
+              if (count == 0 || h != last_hash) {
+                last_hash = h;
+                distinct++;
+                if (distinct > 16 && count >= 4096) {
+                  pop_count = count;
+                  break;
+                }
+              }
+            }
+          }
+          current_batch.insert(current_batch.end(), stack.end() - pop_count,
                                stack.end());
-          stack.erase(stack.end() - remaining, stack.end());
+          stack.erase(stack.end() - pop_count, stack.end());
         }
       } else {
         current_batch.insert(current_batch.end(), stack.begin(), stack.end());
@@ -1836,133 +1856,176 @@ struct SearchManager {
         }, num_threads);
 
       if (!eval_indices.empty()) {
-        std::vector<GpuBox> active_gpu_boxes;
-        active_gpu_boxes.reserve(eval_indices.size());
-
-        struct PoolBatchInfo {
-          int contact_offset;
-          int triple_offset;
-          int num_triples;
+        struct EvalItem {
+          int batch_idx;
+          std::shared_ptr<const TrianglePool> pool;
         };
-        std::unordered_map<uint64_t, PoolBatchInfo> active_pools;
-
+        std::vector<EvalItem> eval_items;
+        eval_items.reserve(eval_indices.size());
         for (int idx : eval_indices) {
           const auto &node = current_batch[idx];
-          auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
-
-          auto [it, inserted] =
-              active_pools.try_emplace(tpool->id, PoolBatchInfo{});
-          if (inserted) {
-            it->second.contact_offset = (int)all_contacts.size();
-            it->second.triple_offset = (int)all_triples.size();
-            int n_trip = (int)tpool->gpu_triples.size();
-            if (num_candidates > 0 && num_candidates < (size_t)n_trip) {
-              n_trip = (int)num_candidates;
-            }
-            it->second.num_triples = n_trip;
-
-            all_contacts.insert(all_contacts.end(),
-                                tpool->contacts.begin(), tpool->contacts.end());
-
-            for (int t = 0; t < n_trip; t++) {
-              GpuTriple gt = tpool->gpu_triples[t];
-              gt.c0 += it->second.contact_offset;
-              gt.c1 += it->second.contact_offset;
-              gt.c2 += it->second.contact_offset;
-              all_triples.push_back(gt);
-            }
-          }
-
-          GpuBox box;
-          box.cx = node.box.center.x;
-          box.cy = node.box.center.y;
-          box.cz = node.box.center.z;
-          box.rx = node.box.radii.x;
-          box.ry = node.box.radii.y;
-          box.rz = node.box.radii.z;
-          for (int c = 0; c < 3; c++) {
-            box.tri[c][0] = node.tri.corners[c].x;
-            box.tri[c][1] = node.tri.corners[c].y;
-            box.tri[c][2] = node.tri.corners[c].z;
-          }
-          box.chart = node.chart;
-          box.triple_offset = it->second.triple_offset;
-          box.num_triples = it->second.num_triples;
-          box.contact_offset = it->second.contact_offset;
-          box.num_contacts = (int)tpool->contacts.size();
-          box._pad = 0;
-
-          active_gpu_boxes.push_back(box);
+          eval_items.push_back({idx, GetTrianglePool(node.tri, EffectiveConeSamples(node))});
         }
 
-        std::vector<GpuResult> active_results(eval_indices.size());
+        // Collate by triangle pool ID: groups identical triangles together so GPU work-items
+        // within every warp execute in lockstep on identical candidate triples, with 100%
+        // broadcast cache hits and zero memory divergence.
+        std::sort(eval_items.begin(), eval_items.end(),
+                  [](const EvalItem &a, const EvalItem &b) {
+                    return a.pool->id < b.pool->id;
+                  });
 
-        if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
-            !all_triples.empty()) {
+        static constexpr size_t MAX_POOLS_PER_DISPATCH = 16;
+        size_t item_start = 0;
+        while (item_start < eval_items.size()) {
+          // Identify slice [item_start, item_end) containing at most MAX_POOLS_PER_DISPATCH pools
+          size_t item_end = item_start;
+          uint64_t current_id = 0;
+          size_t distinct_pools = 0;
+          while (item_end < eval_items.size()) {
+            if (item_end == item_start || eval_items[item_end].pool->id != current_id) {
+              if (distinct_pools >= MAX_POOLS_PER_DISPATCH) {
+                break;
+              }
+              current_id = eval_items[item_end].pool->id;
+              distinct_pools++;
+            }
+            item_end++;
+          }
 
-          cl_int err = CL_SUCCESS;
-          cl_mem b_boxes = clCreateBuffer(
-              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-              sizeof(GpuBox) * active_gpu_boxes.size(), active_gpu_boxes.data(),
-              &err);
-          CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_boxes failed: " << err;
-          cl_mem b_contacts = clCreateBuffer(
-              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-              sizeof(GpuContact) * all_contacts.size(), all_contacts.data(),
-              &err);
-          CHECK_EQ(err, CL_SUCCESS)
-              << "clCreateBuffer b_contacts failed: " << err;
-          cl_mem b_triples = clCreateBuffer(
-              cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-              sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
-          CHECK_EQ(err, CL_SUCCESS)
-              << "clCreateBuffer b_triples failed ("
-              << (sizeof(GpuTriple) * all_triples.size() / (1024 * 1024))
-              << " MB): " << err;
-          cl_mem b_results = clCreateBuffer(
-              cl->context, CL_MEM_WRITE_ONLY,
-              sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
-          CHECK_EQ(err, CL_SUCCESS)
-              << "clCreateBuffer b_results failed: " << err;
+          size_t chunk_size = item_end - item_start;
+          std::vector<GpuBox> active_gpu_boxes;
+          active_gpu_boxes.reserve(chunk_size);
+          std::vector<GpuResult> chunk_results(chunk_size);
 
-          int num_boxes = active_gpu_boxes.size();
-          err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
-          CHECK_EQ(err, CL_SUCCESS);
-          err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &b_contacts);
-          CHECK_EQ(err, CL_SUCCESS);
-          err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &b_triples);
-          CHECK_EQ(err, CL_SUCCESS);
-          err = clSetKernelArg(kernel, 3, sizeof(cl_mem), &b_results);
-          CHECK_EQ(err, CL_SUCCESS);
-          err = clSetKernelArg(kernel, 4, sizeof(int), &num_boxes);
-          CHECK_EQ(err, CL_SUCCESS);
+          all_contacts.clear();
+          all_triples.clear();
 
-          size_t global_work_size = ((num_boxes + 63) / 64) * 64;
-          size_t local_work_size = 64;
-          err = clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
-                                       &global_work_size, &local_work_size, 0,
-                                       nullptr, nullptr);
-          CHECK_EQ(err, CL_SUCCESS) << "clEnqueueNDRangeKernel failed: " << err;
-          err = clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
-                                    sizeof(GpuResult) * num_boxes,
-                                    active_results.data(), 0, nullptr, nullptr);
-          CHECK_EQ(err, CL_SUCCESS) << "clEnqueueReadBuffer failed: " << err;
+          struct PoolBatchInfo {
+            int contact_offset;
+            int triple_offset;
+            int num_triples;
+          };
+          std::unordered_map<uint64_t, PoolBatchInfo> active_pools;
 
-          clReleaseMemObject(b_boxes);
-          clReleaseMemObject(b_contacts);
-          clReleaseMemObject(b_triples);
-          clReleaseMemObject(b_results);
+          for (size_t i = item_start; i < item_end; i++) {
+            const auto &node = current_batch[eval_items[i].batch_idx];
+            const auto &tpool = eval_items[i].pool;
 
-        } else {
-          // Multi-threaded CPU fallback
-          ParallelComp(active_gpu_boxes.size(), [&](int64_t a) {
-            active_results[a] = EvaluateBoxCPU(active_gpu_boxes[a],
-                                               all_contacts, all_triples);
-          }, num_threads);
-        }
+            auto [it, inserted] =
+                active_pools.try_emplace(tpool->id, PoolBatchInfo{});
+            if (inserted) {
+              it->second.contact_offset = (int)all_contacts.size();
+              it->second.triple_offset = (int)all_triples.size();
+              int n_trip = (int)tpool->gpu_triples.size();
+              if (num_candidates > 0 && num_candidates < (size_t)n_trip) {
+                n_trip = (int)num_candidates;
+              }
+              it->second.num_triples = n_trip;
 
-        for (size_t a = 0; a < eval_indices.size(); a++) {
-          results[eval_indices[a]] = active_results[a];
+              all_contacts.insert(all_contacts.end(),
+                                  tpool->contacts.begin(), tpool->contacts.end());
+
+              for (int t = 0; t < n_trip; t++) {
+                GpuTriple gt = tpool->gpu_triples[t];
+                gt.c0 += it->second.contact_offset;
+                gt.c1 += it->second.contact_offset;
+                gt.c2 += it->second.contact_offset;
+                all_triples.push_back(gt);
+              }
+            }
+
+            GpuBox box;
+            box.cx = node.box.center.x;
+            box.cy = node.box.center.y;
+            box.cz = node.box.center.z;
+            box.rx = node.box.radii.x;
+            box.ry = node.box.radii.y;
+            box.rz = node.box.radii.z;
+            for (int c = 0; c < 3; c++) {
+              box.tri[c][0] = node.tri.corners[c].x;
+              box.tri[c][1] = node.tri.corners[c].y;
+              box.tri[c][2] = node.tri.corners[c].z;
+            }
+            box.chart = node.chart;
+            box.triple_offset = it->second.triple_offset;
+            box.num_triples = it->second.num_triples;
+            box.contact_offset = it->second.contact_offset;
+            box.num_contacts = (int)tpool->contacts.size();
+            box._pad = 0;
+
+            active_gpu_boxes.push_back(box);
+          }
+
+          if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
+              !all_triples.empty()) {
+
+            cl_int err = CL_SUCCESS;
+            cl_mem b_boxes = clCreateBuffer(
+                cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                sizeof(GpuBox) * active_gpu_boxes.size(), active_gpu_boxes.data(),
+                &err);
+            CHECK_EQ(err, CL_SUCCESS) << "clCreateBuffer b_boxes failed: " << err;
+            cl_mem b_contacts = clCreateBuffer(
+                cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                sizeof(GpuContact) * all_contacts.size(), all_contacts.data(),
+                &err);
+            CHECK_EQ(err, CL_SUCCESS)
+                << "clCreateBuffer b_contacts failed: " << err;
+            cl_mem b_triples = clCreateBuffer(
+                cl->context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                sizeof(GpuTriple) * all_triples.size(), all_triples.data(), &err);
+            CHECK_EQ(err, CL_SUCCESS)
+                << "clCreateBuffer b_triples failed ("
+                << (sizeof(GpuTriple) * all_triples.size() / (1024 * 1024))
+                << " MB): " << err;
+            cl_mem b_results = clCreateBuffer(
+                cl->context, CL_MEM_WRITE_ONLY,
+                sizeof(GpuResult) * active_gpu_boxes.size(), nullptr, &err);
+            CHECK_EQ(err, CL_SUCCESS)
+                << "clCreateBuffer b_results failed: " << err;
+
+            int num_boxes = active_gpu_boxes.size();
+            err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &b_boxes);
+            CHECK_EQ(err, CL_SUCCESS);
+            err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &b_contacts);
+            CHECK_EQ(err, CL_SUCCESS);
+            err = clSetKernelArg(kernel, 2, sizeof(cl_mem), &b_triples);
+            CHECK_EQ(err, CL_SUCCESS);
+            err = clSetKernelArg(kernel, 3, sizeof(cl_mem), &b_results);
+            CHECK_EQ(err, CL_SUCCESS);
+            err = clSetKernelArg(kernel, 4, sizeof(int), &num_boxes);
+            CHECK_EQ(err, CL_SUCCESS);
+
+            size_t global_work_size = ((num_boxes + 63) / 64) * 64;
+            size_t local_work_size = 64;
+            err = clEnqueueNDRangeKernel(cl->queue, kernel, 1, nullptr,
+                                         &global_work_size, &local_work_size, 0,
+                                         nullptr, nullptr);
+            CHECK_EQ(err, CL_SUCCESS) << "clEnqueueNDRangeKernel failed: " << err;
+            err = clEnqueueReadBuffer(cl->queue, b_results, CL_TRUE, 0,
+                                      sizeof(GpuResult) * num_boxes,
+                                      chunk_results.data(), 0, nullptr, nullptr);
+            CHECK_EQ(err, CL_SUCCESS) << "clEnqueueReadBuffer failed: " << err;
+
+            clReleaseMemObject(b_boxes);
+            clReleaseMemObject(b_contacts);
+            clReleaseMemObject(b_triples);
+            clReleaseMemObject(b_results);
+
+          } else {
+            // Multi-threaded CPU fallback
+            ParallelComp(active_gpu_boxes.size(), [&](int64_t a) {
+              chunk_results[a] = EvaluateBoxCPU(active_gpu_boxes[a],
+                                                 all_contacts, all_triples);
+            }, num_threads);
+          }
+
+          for (size_t i = 0; i < chunk_size; i++) {
+            results[eval_items[item_start + i].batch_idx] = chunk_results[i];
+          }
+
+          item_start = item_end;
         }
 
         for (int idx : eval_indices) {
