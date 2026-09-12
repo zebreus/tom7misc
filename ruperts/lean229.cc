@@ -52,7 +52,7 @@
 #include "yocto-math.h"
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
-                 ctr_built_triangles, ctr_loops, ctr_esc_certified);
+                 ctr_built_triangles, ctr_loops, ctr_cpu, ctr_esc_certified);
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -666,6 +666,7 @@ static GpuResult EvaluateBoxCPU(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
     const std::vector<GpuTriple> &triples) {
+  ctr_cpu++;
 
   double x0 = box.cx, y0 = box.cy, z0 = box.cz;
   double num[3][3] = {
@@ -2011,11 +2012,13 @@ struct SearchManager {
           stack.erase(stack.begin(), stack.begin() + remaining);
         } else {
           // Pure DFS: take directly from back of stack (LIFO).
-          // Crucial: do NOT run std::nth_element here! Running std::nth_element
-          // scrambles the stack order and destroys spatial locality, mixing
-          // nodes from thousands of open branches and exploding unique view triangles.
-          // Directly taking from the back keeps all nodes in the same local branch
-          // and sharing the SAME view triangle, certifying and closing branches quickly.
+          // Crucial: do NOT run std::nth_element here! Running
+          // std::nth_element scrambles the stack order and destroys
+          // spatial locality, mixing nodes from thousands of open
+          // branches and exploding unique view triangles. Directly
+          // taking from the back keeps all nodes in the same local
+          // branch and sharing the SAME view triangle, certifying and
+          // closing branches quickly.
           size_t pop_count = remaining;
           current_batch.insert(current_batch.end(), stack.end() - pop_count,
                                stack.end());
@@ -2032,22 +2035,24 @@ struct SearchManager {
       all_triples.clear();
       results.assign(count, GpuResult{});
 
-      // Periodically show the deepest node from the batch, so we can note places
-      // where we got stuck, etc.
+      // Periodically show the deepest node from the batch, so we can
+      // note places where we got stuck, etc.
       where_per.RunIf([&]{
           if (current_batch.empty()) return;
-          int best_idx = 0;
+          double completed_pct = 100.0 * CompletedFraction();
+          size_t best_idx = 0;
           for (size_t i = 1; i < current_batch.size(); i++) {
             if (current_batch[i].depth > current_batch[best_idx].depth) {
               best_idx = i;
             }
           }
           const auto &node = current_batch[best_idx];
-          status.Print("[{}] Deepest in batch: #{}\n"
+          status.Print("[{}] {:.5f}%  |  Deepest in batch: " ACYAN("#{}") "\n"
                        "  depth {}, box_depth {}, view_depth {}\n"
                        "  radii ({:.17g}, {:.17g}, {:.17g}))\n"
                        "  box ({:.17g}, {:.17g}, {:.17g})\n",
                        ANSI::Time(timer.Seconds()),
+                       completed_pct,
                        node.id,
                        node.depth, node.box_depth, node.view_depth,
                        node.box.radii.x, node.box.radii.y, node.box.radii.z,
@@ -2593,7 +2598,7 @@ struct SearchManager {
             " Cert: {} " AGREY("|")
             " Pruned: {} " AGREY("|")
             " {}⊿ " AGREY("|")
-            " {}⚡"
+            " {}/{}⚡ "
             "\n"
             "Stack: {} " AGREY("|")
             " Done: {:.4f}% " AGREY("|")
@@ -2608,6 +2613,7 @@ struct SearchManager {
             FormatNum(pruned_count.Read()),
             FormatNum(ctr_built_triangles.Read()),
             FormatNum(ctr_esc_certified.Read()),
+            FormatNum(ctr_cpu.Read()),
             FormatNum(stack.size()),
             completed_frac * 100.0,
             current_batch.empty() ? 0 : current_batch[0].depth,
