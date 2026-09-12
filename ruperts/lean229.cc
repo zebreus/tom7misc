@@ -53,6 +53,7 @@
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
                  ctr_built_triangles, ctr_loops, ctr_cpu, ctr_esc_certified);
+DECLARE_COUNTERS(difficult_count);
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -1129,7 +1130,7 @@ static std::optional<SolutionWitness> CheckSolutionWitness(
 // Checkpoint metadata
 struct CheckpointHeader {
   static constexpr uint64_t kMagic = 0x4E4F504552543232ULL; // "NOPERT22"
-  static constexpr int32_t kVersion = 4;
+  static constexpr int32_t kVersion = 5;
 
   uint64_t magic = kMagic;
   int32_t version = kVersion;
@@ -1140,16 +1141,17 @@ struct CheckpointHeader {
   int64_t pruned_count = 0;
   int64_t split_count = 0;
   uint64_t stack_size = 0;
+  int64_t difficult_count = 0;
 };
 
 // Search manager running branch-and-bound
 struct SearchManager {
   int chart = 0;
   int batch_size = 32768;
-  int max_depth = 112;
-  int max_box_depth = 84;
-  int max_view_depth = 28;
-  int suspicious_depth = 90;
+  int max_depth = 80;
+  int max_box_depth = 60;
+  int max_view_depth = 20;
+  int suspicious_depth = 70;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 8;
   int escalate_depth = 36;
@@ -1463,6 +1465,7 @@ struct SearchManager {
     hdr.certified_count = certified_count.Read();
     hdr.pruned_count = pruned_count.Read();
     hdr.split_count = split_count.Read();
+    hdr.difficult_count = difficult_count.Read();
     hdr.stack_size = stack.size();
 
     if (fwrite(&hdr, sizeof(hdr), 1, f) != 1) {
@@ -1506,27 +1509,67 @@ struct SearchManager {
     FILE *f = fopen(path.c_str(), "rb");
     if (!f) return false;
 
-    CheckpointHeader hdr;
-    if (fread(&hdr, sizeof(hdr), 1, f) != 1) {
+    uint64_t magic = 0;
+    int32_t version = 0;
+    if (fread(&magic, sizeof(magic), 1, f) != 1 ||
+        fread(&version, sizeof(version), 1, f) != 1) {
       status.Print("Failed to read checkpoint header from " AORANGE("{}") "\n",
                    path);
       fclose(f);
       return false;
     }
-    if (hdr.magic != CheckpointHeader::kMagic) {
+    if (magic != CheckpointHeader::kMagic) {
       status.Print("Checkpoint magic mismatch in " AORANGE("{}")
                    " (got 0x{:x}, expected 0x{:x})\n",
-                   path, hdr.magic, CheckpointHeader::kMagic);
+                   path, magic, CheckpointHeader::kMagic);
       fclose(f);
       return false;
     }
-    if (hdr.version != CheckpointHeader::kVersion) {
+
+    CheckpointHeader hdr;
+    if (version == 4) {
+      struct CheckpointHeaderV4 {
+        uint64_t magic;
+        int32_t version;
+        int32_t chart;
+        int64_t next_node_id;
+        int64_t evaluated_count;
+        int64_t certified_count;
+        int64_t pruned_count;
+        int64_t split_count;
+        uint64_t stack_size;
+      } v4;
+      fseek(f, 0, SEEK_SET);
+      if (fread(&v4, sizeof(v4), 1, f) != 1) {
+        status.Print("Failed to read v4 checkpoint from " AORANGE("{}") "\n", path);
+        fclose(f);
+        return false;
+      }
+      hdr.magic = v4.magic;
+      hdr.version = v4.version;
+      hdr.chart = v4.chart;
+      hdr.next_node_id = v4.next_node_id;
+      hdr.evaluated_count = v4.evaluated_count;
+      hdr.certified_count = v4.certified_count;
+      hdr.pruned_count = v4.pruned_count;
+      hdr.split_count = v4.split_count;
+      hdr.stack_size = v4.stack_size;
+      hdr.difficult_count = 0;
+    } else if (version == CheckpointHeader::kVersion) {
+      fseek(f, 0, SEEK_SET);
+      if (fread(&hdr, sizeof(hdr), 1, f) != 1) {
+        status.Print("Failed to read checkpoint from " AORANGE("{}") "\n", path);
+        fclose(f);
+        return false;
+      }
+    } else {
       status.Print("Checkpoint version mismatch in " AORANGE("{}")
                    " (got {}, expected {})\n",
-                   path, hdr.version, CheckpointHeader::kVersion);
+                   path, version, CheckpointHeader::kVersion);
       fclose(f);
       return false;
     }
+
     if (hdr.chart != chart) {
       status.Print("Checkpoint chart mismatch in " AORANGE("{}")
                    " (got chart {}, current chart {})\n",
@@ -1540,6 +1583,7 @@ struct SearchManager {
     certified_count.Reset(); certified_count += hdr.certified_count;
     pruned_count.Reset();    pruned_count += hdr.pruned_count;
     split_count.Reset();     split_count += hdr.split_count;
+    difficult_count.Reset(); difficult_count += hdr.difficult_count;
 
     stack.resize(hdr.stack_size);
     if (hdr.stack_size > 0) {
@@ -1853,6 +1897,8 @@ struct SearchManager {
   std::mutex row_mutex;
   std::string row_buffer;
   FILE *row_file = nullptr;
+  FILE *difficult_file = nullptr;
+  std::string difficult_path;
   void FlushRowsWithLock() {
     Print(row_file, "{}", row_buffer);
     row_buffer.clear();
@@ -1877,6 +1923,8 @@ struct SearchManager {
         std::format("{}/chart{}.rows.log", output_dir, chart);
     std::string ckpt_path =
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
+    difficult_path =
+        std::format("{}/chart{}.difficult", output_dir, chart);
 
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
     if (deep_escalate_depth > 0) {
@@ -1909,10 +1957,11 @@ struct SearchManager {
           resumed = true;
           status.Print(AGREEN("Resumed")
                        " from checkpoint: {} pending nodes on "
-                       "stack, {} evaluated, {} certified, {} pruned\n",
+                       "stack, {} evaluated, {} certified, {} difficult, {} pruned\n",
                        FormatNum(stack.size()),
                        FormatNum(evaluated_count.Read()),
                        FormatNum(certified_count.Read()),
+                       FormatNum(difficult_count.Read()),
                        FormatNum(pruned_count.Read()));
         } else {
           status.Print(
@@ -1936,12 +1985,39 @@ struct SearchManager {
       row_file = fopen(log_path.c_str(), "a");
       CHECK(row_file) << log_path;
       status.Print("Appending log to: {}\n", log_path);
+
+      if (std::filesystem::exists(difficult_path)) {
+        difficult_file = fopen(difficult_path.c_str(), "a");
+      } else {
+        difficult_file = fopen(difficult_path.c_str(), "w");
+        if (difficult_file) {
+          Print(difficult_file,
+                "# id parent_id depth box_depth view_depth chart "
+                "cx cy cz rx ry rz "
+                "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
+                "best_margin\n");
+          std::fflush(difficult_file);
+        }
+      }
+      CHECK(difficult_file) << difficult_path;
+      status.Print("Difficult cells file: {}\n", difficult_path);
     } else {
       std::error_code ec;
       std::filesystem::remove(log_path, ec);
       row_file = fopen(log_path.c_str(), "w");
       CHECK(row_file) << log_path;
       status.Print("Writing fresh log to: {}\n", log_path);
+
+      std::filesystem::remove(difficult_path, ec);
+      difficult_file = fopen(difficult_path.c_str(), "w");
+      CHECK(difficult_file) << difficult_path;
+      Print(difficult_file,
+            "# id parent_id depth box_depth view_depth chart "
+            "cx cy cz rx ry rz "
+            "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
+            "best_margin\n");
+      std::fflush(difficult_file);
+      status.Print("Writing fresh difficult cells to: {}\n", difficult_path);
     }
 
     Timer timer;
@@ -1950,7 +2026,6 @@ struct SearchManager {
     Periodically where_per(120.0);
     Periodically suspicious_per(30.0);
     Periodically depth_out_per(10.0);
-    uint64_t depth_out_count = 0;
 
     // Buffers for GPU batch
     std::vector<GpuBox> gpu_boxes;
@@ -2333,10 +2408,13 @@ struct SearchManager {
           bool near_depth_out = (node.depth >= max_depth - 2);
           bool deep_box_with_narrow_view =
               (node.box_depth >= max_box_depth && node.view_depth >= 20);
+          bool at_limit = (node.depth >= max_depth ||
+                           (node.box_depth >= max_box_depth &&
+                            node.view_depth >= max_view_depth));
 
-          if (!res.certified && (near_depth_out || deep_box_with_narrow_view)) {
+          if (!res.certified && (at_limit || near_depth_out || deep_box_with_narrow_view)) {
             // Stubborn leaf has reached max box depth with refined view, or tree depth limit.
-            // Safety-net escalation before depth-out:
+            // Safety-net escalation before declaring difficult / shelving:
             for (int cs : {14, 16}) {
               MaybeMiniStatus("cpu");
               if (EffectiveConeSamples(node) >= cs) continue;
@@ -2435,30 +2513,35 @@ struct SearchManager {
                 exit(0);
               }
 
-              depth_out_count++;
+              difficult_count++;
+              if (difficult_file) {
+                Print(difficult_file,
+                      "{} {} {} {} {} {} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} "
+                      "{:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g}\n",
+                      node.id, node.parent_id,
+                      (int)node.depth, (int)node.box_depth, (int)node.view_depth, (int)node.chart,
+                      node.box.center.x, node.box.center.y, node.box.center.z,
+                      node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                      node.tri.corners[0].x, node.tri.corners[0].y, node.tri.corners[0].z,
+                      node.tri.corners[1].x, node.tri.corners[1].y, node.tri.corners[1].z,
+                      node.tri.corners[2].x, node.tri.corners[2].y, node.tri.corners[2].z,
+                      res.margin);
+                std::fflush(difficult_file);
+              }
+              OutputRow(std::format("DIFFICULT {} {} {} {:.17g}\n",
+                                    node.id, node.parent_id, node.depth, res.margin));
+
               depth_out_per.RunIf([&]{
-                auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
                 status.Print(
-                    ARED("Leaf reached max depth ")
+                    ARED("Shelved difficult cell #{} ")
                     "(depth={}, box_depth={}, view_depth={}, "
-                    "radii=({:.17g}, {:.17g}, {:.17g})) "
-                    "at box ({:.17g}, {:.17g}, {:.17g})\n"
-                    "  view_c=({:.10g}, {:.10g}, {:.10g}), diam={:.10g}\n"
-                    "  tri=[({:.10g}, {:.10g}, {:.10g}), "
-                    "({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g})]\n"
-                    "  tpool: {} triples, {} contacts, top_defect={:.10g} "
-                    "(depth-outs so far: {})\n",
-                    node.depth, node.box_depth, node.view_depth,
+                    "radii=({:.6g}, {:.6g}, {:.6g})) "
+                    "at box ({:.6g}, {:.6g}, {:.6g}) "
+                    "(margin: {:.6g}, total difficult: {})\n",
+                    node.id, node.depth, node.box_depth, node.view_depth,
                     node.box.radii.x, node.box.radii.y, node.box.radii.z,
                     node.box.center.x, node.box.center.y, node.box.center.z,
-                    node.tri.Centroid().x, node.tri.Centroid().y, node.tri.Centroid().z,
-                    node.tri.AngularDiameter(),
-                    node.tri.corners[0].x, node.tri.corners[0].y, node.tri.corners[0].z,
-                    node.tri.corners[1].x, node.tri.corners[1].y, node.tri.corners[1].z,
-                    node.tri.corners[2].x, node.tri.corners[2].y, node.tri.corners[2].z,
-                    tpool->gpu_triples.size(), tpool->contacts.size(),
-                    tpool->gpu_triples.empty() ? -1.0 : tpool->gpu_triples[0].weighted_defect_upper,
-                    depth_out_count);
+                    res.margin, FormatNum(difficult_count.Read()));
               });
               continue;
             }
@@ -2623,6 +2706,7 @@ struct SearchManager {
       if (checkpoint_per.ShouldRun() || sigint_received.load()) {
         SaveCheckpoint(ckpt_path);
         FlushRows();
+        if (difficult_file) std::fflush(difficult_file);
         if (sigint_received.load()) {
           PrintDepthDistribution();
           status.Print("\n"
@@ -2650,12 +2734,19 @@ struct SearchManager {
 
     FlushRows();
     fclose(row_file);
+    if (difficult_file) {
+      std::fflush(difficult_file);
+      fclose(difficult_file);
+      difficult_file = nullptr;
+    }
     status.Print("Total evaluated: {}\n"
                  "Total certified: {}\n"
+                 "Total difficult (shelved): {}\n"
                  "Total pruned: {}\n"
                  "Total splits: {}\n",
                   evaluated_count.Read(),
                   certified_count.Read(),
+                  difficult_count.Read(),
                   pruned_count.Read(),
                   split_count.Read());
   }
@@ -2667,6 +2758,7 @@ struct SearchManager {
         "Loop: {}" BAR
         "Eval: {}" BAR
         "Cert: {}" BAR
+        "Diff: {}" BAR
         "Pruned: {}" BAR
         "{}⊿" BAR
         "{}/{}⚡ "
@@ -2674,6 +2766,7 @@ struct SearchManager {
         FormatNum(ctr_loops.Read()),
         FormatNum(evaluated_count.Read()),
         FormatNum(certified_count.Read()),
+        FormatNum(difficult_count.Read()),
         FormatNum(pruned_count.Read()),
         FormatNum(ctr_built_triangles.Read()),
         FormatNum(ctr_esc_certified.Read()),
@@ -2913,6 +3006,22 @@ struct SearchManager {
           res10.certified, res10.winning_triple, res10.margin);
     Print("Child 1.1 (box_depth 74): certified={}, winning_triple={}, margin={:.17g}\n",
           res11.certified, res11.winning_triple, res11.margin);
+
+    Print(AYELLOW("\n--- Testing shelving difficult leaf to chart0.difficult ---\n"));
+    SearchNode diff_node = node;
+    diff_node.id = next_node_id++;
+    diff_node.depth = 96;
+    diff_node.box_depth = 72;
+    diff_node.view_depth = 24;
+    this->stack.clear();
+    this->stack.push_back(diff_node);
+    this->max_depth = 96;
+    this->max_box_depth = 72;
+    this->max_view_depth = 24;
+    this->batch_size = 64;
+    this->resume = false;
+    this->output_dir = ".artifacts/test_difficult";
+    this->Run();
   }
 };
 
@@ -2989,10 +3098,10 @@ int main(int argc, char **argv) {
       Print("Usage: ./lean229.exe [options]\n"
             "  --chart <0|1|2>     Cayley chart index (default 0)\n"
             "  --batch_size <N>    Batch size for GPU/evaluator (default 32768)\n"
-            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 112)\n"
-            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 84)\n"
-            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 28)\n"
-            "  --suspicious_depth <D> Threshold to report hard points (default 90)\n"
+            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 80)\n"
+            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 60)\n"
+            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 20)\n"
+            "  --suspicious_depth <D> Threshold to report hard points (default 70)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
             "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
             "  --escalate_depth <D> Tree depth to escalate cone samples (default 36)\n"
