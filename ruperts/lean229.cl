@@ -191,9 +191,9 @@ __kernel void EvaluateBoxes(
   }
 
   // Precompute best inner vertex and unit center polynomial for each contact in this pool
-  char best_in[144];
-  double psi_center[144][10];
-  int n_contacts = box.num_contacts <= 144 ? box.num_contacts : 144;
+  char best_in[MAX_CONTACTS];
+  double psi_center[MAX_CONTACTS][10];
+  int n_contacts = box.num_contacts <= MAX_CONTACTS ? box.num_contacts : MAX_CONTACTS;
   for (int c = 0; c < n_contacts; c++) {
     const GpuContact gc = contacts[box.contact_offset + c];
     double3 edge = (double3)(gc.edge[0], gc.edge[1], gc.edge[2]);
@@ -242,6 +242,9 @@ __kernel void EvaluateBoxes(
     int loc_c0 = triple.c0 - box.contact_offset;
     int loc_c1 = triple.c1 - box.contact_offset;
     int loc_c2 = triple.c2 - box.contact_offset;
+    if (loc_c0 < 0 || loc_c0 >= n_contacts ||
+        loc_c1 < 0 || loc_c1 >= n_contacts ||
+        loc_c2 < 0 || loc_c2 >= n_contacts) continue;
 
     double C_center[10];
     for (int m = 0; m < 10; m++) {
@@ -260,6 +263,7 @@ __kernel void EvaluateBoxes(
     int in0 = (int)best_in[loc_c0];
     int in1 = (int)best_in[loc_c1];
     int in2 = (int)best_in[loc_c2];
+    if ((unsigned int)in0 >= 20 || (unsigned int)in1 >= 20 || (unsigned int)in2 >= 20) continue;
 
     const GpuContact c0 = contacts[triple.c0];
     const GpuContact c1 = contacts[triple.c1];

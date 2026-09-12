@@ -128,6 +128,9 @@ struct GpuResult {
   int inner[3];
   double margin;
 };
+static_assert(sizeof(GpuResult) == 32, "GpuResult struct size mismatch");
+
+static constexpr int MAX_GPU_CONTACTS = 256;
 
 // Projective view triangle
 struct ProjectiveTriangle {
@@ -451,6 +454,9 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
   pool->contacts = std::move(valid_contacts);
   int C = pool->contacts.size();
+  CHECK_LE(C, MAX_GPU_CONTACTS)
+      << "Triangle pool has " << C << " contacts, exceeding MAX_GPU_CONTACTS ("
+      << MAX_GPU_CONTACTS << ")";
 
   struct SortableTriple {
     GpuTriple gt;
@@ -1163,8 +1169,9 @@ struct SearchManager {
     std::string s = std::format(
         "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n"
         "#define NUM_VERTICES {}\n\n"
+        "#define MAX_CONTACTS {}\n\n"
         "__constant double VERTICES[NUM_VERTICES][3] = {{\n",
-        NUM_VERTICES);
+        NUM_VERTICES, MAX_GPU_CONTACTS);
     for (int i = 0; i < NUM_VERTICES; i++) {
       s += std::format("  {{ {:.17g}, {:.17g}, {:.17g} }},\n",
                        VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]);
