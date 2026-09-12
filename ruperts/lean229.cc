@@ -471,12 +471,7 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
       << "Triangle pool has " << C << " contacts, exceeding MAX_GPU_CONTACTS ("
       << MAX_GPU_CONTACTS << ")";
 
-  struct SortableTriple {
-    GpuTriple gt;
-    double defect_sum;
-    double min_p;
-  };
-  std::vector<SortableTriple> sortable;
+  pool->gpu_triples.reserve(C * (C - 1) * (C - 2) / 6);
 
   for (int i = 0; i < C; i++) {
     for (int j = i + 1; j < C; j++) {
@@ -532,36 +527,21 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
         if (w0_min < 0.0 || w1_min < 0.0 || w2_min < 0.0) continue;
 
-        SortableTriple st;
-        st.gt.c0 = (uint8_t)ci;
-        st.gt.c1 = (uint8_t)cj;
-        st.gt.c2 = (uint8_t)ck;
-        std::memset(st.gt._pad, 0, sizeof(st.gt._pad));
+        GpuTriple gt;
+        gt.c0 = (uint8_t)ci;
+        gt.c1 = (uint8_t)cj;
+        gt.c2 = (uint8_t)ck;
+        std::memset(gt._pad, 0, sizeof(gt._pad));
 
         vec3 w_coeffs[3] = {coeff0, coeff1, coeff2};
-        st.gt.weighted_defect_upper =
+        gt.weighted_defect_upper =
           ComputeWeightedDefectUpper(tri, pool->contacts, ci, cj, ck, w_coeffs);
-        st.defect_sum = st.gt.weighted_defect_upper;
-        st.min_p = std::min({p0, p1, p2});
-        sortable.push_back(st);
+        pool->gpu_triples.push_back(gt);
       }
     }
   }
 
-  // Pre-sort triples once per pool: zero-defect / well-centered triples first
-  // so that evaluating threads exit as early as possible.
-  std::sort(sortable.begin(), sortable.end(),
-            [](const SortableTriple &a, const SortableTriple &b) {
-              if (std::abs(a.defect_sum - b.defect_sum) > 1e-9)
-                return a.defect_sum < b.defect_sum;
-              return a.min_p > b.min_p;
-            });
-
-  pool->gpu_triples.reserve(sortable.size());
-  for (const auto &st : sortable) {
-    pool->gpu_triples.push_back(st.gt);
-  }
-
+  pool->gpu_triples.shrink_to_fit();
   return pool;
 }
 
@@ -1439,6 +1419,7 @@ struct SearchManager {
   // Row 0 is atomic counters only, so it can be updated any time.
   StatusBar status = StatusBar(4);
   Periodically mini_status_per = Periodically(1.0);
+  std::string last_op;
 
   cl_program program = nullptr;
   cl_kernel kernel = nullptr;
@@ -1979,6 +1960,7 @@ struct SearchManager {
     std::vector<SearchNode> current_batch;
 
     while (!stack.empty() && !sigint_received.load()) {
+      MaybeMiniStatus("stack");
       ctr_loops++;
       const size_t target_pool_size = (size_t)batch_size * 2;
       int count = 0;
@@ -2168,6 +2150,7 @@ struct SearchManager {
         // Collate by triangle pool ID: groups identical triangles together so GPU work-items
         // within every warp execute in lockstep on identical candidate triples, with 100%
         // broadcast cache hits and zero memory divergence.
+        MaybeMiniStatus("sort");
         std::sort(eval_items.begin(), eval_items.end(),
                   [](const EvalItem &a, const EvalItem &b) {
                     return a.pool->id < b.pool->id;
@@ -2177,20 +2160,27 @@ struct SearchManager {
         static constexpr size_t MAX_TRIPLES_PER_DISPATCH = 32 * 1024 * 1024;
         size_t item_start = 0;
         while (item_start < eval_items.size()) {
-          // Identify slice [item_start, item_end) containing at most MAX_POOLS_PER_DISPATCH pools
+          // Pass 1: Identify slice [item_start, item_end) and compute exact buffer capacities
           size_t item_end = item_start;
           uint64_t current_id = 0;
           size_t distinct_pools = 0;
-          size_t estimated_triples = 0;
+          size_t total_contacts = 0;
+          size_t total_triples = 0;
           while (item_end < eval_items.size()) {
             if (item_end == item_start || eval_items[item_end].pool->id != current_id) {
-              if (distinct_pools >= MAX_POOLS_PER_DISPATCH ||
-                  estimated_triples >= MAX_TRIPLES_PER_DISPATCH) {
-                break;
+              const auto &tpool = eval_items[item_end].pool;
+              size_t n_trip = tpool->gpu_triples.size();
+              if (num_candidates > 0 && num_candidates < n_trip) {
+                n_trip = num_candidates;
               }
-              current_id = eval_items[item_end].pool->id;
+              if (distinct_pools >= MAX_POOLS_PER_DISPATCH ||
+                  total_triples + n_trip > MAX_TRIPLES_PER_DISPATCH) {
+                if (distinct_pools > 0) break;
+              }
+              current_id = tpool->id;
               distinct_pools++;
-              estimated_triples += eval_items[item_end].pool->gpu_triples.size();
+              total_triples += n_trip;
+              total_contacts += tpool->contacts.size();
             }
             item_end++;
           }
@@ -2201,34 +2191,38 @@ struct SearchManager {
           std::vector<GpuResult> chunk_results(chunk_size);
 
           all_contacts.clear();
+          all_contacts.reserve(total_contacts);
           all_triples.clear();
+          all_triples.reserve(total_triples);
 
-          struct PoolBatchInfo {
-            int contact_offset;
-            int triple_offset;
-            int num_triples;
-          };
-          std::unordered_map<uint64_t, PoolBatchInfo> active_pools;
+          // Pass 2: Populate contacts, triples, and boxes directly without hash map.
+          // Because eval_items is sorted by pool->id, all identical pools are contiguous.
+          MaybeMiniStatus("items");
+
+          uint64_t last_pool_id = 0;
+          int cur_contact_offset = 0;
+          int cur_triple_offset = 0;
+          int cur_num_triples = 0;
+          int cur_num_contacts = 0;
 
           for (size_t i = item_start; i < item_end; i++) {
-            MaybeMiniStatus("items");
             const auto &node = current_batch[eval_items[i].batch_idx];
             const auto &tpool = eval_items[i].pool;
 
-            auto [it, inserted] =
-                active_pools.try_emplace(tpool->id, PoolBatchInfo{});
-            if (inserted) {
-              it->second.contact_offset = (int)all_contacts.size();
-              it->second.triple_offset = (int)all_triples.size();
+            if (i == item_start || tpool->id != last_pool_id) {
+              last_pool_id = tpool->id;
+              cur_contact_offset = (int)all_contacts.size();
+              cur_triple_offset = (int)all_triples.size();
+              cur_num_contacts = (int)tpool->contacts.size();
+
               int n_trip = (int)tpool->gpu_triples.size();
               if (num_candidates > 0 && num_candidates < (size_t)n_trip) {
                 n_trip = (int)num_candidates;
               }
-              it->second.num_triples = n_trip;
+              cur_num_triples = n_trip;
 
               all_contacts.insert(all_contacts.end(),
                                   tpool->contacts.begin(), tpool->contacts.end());
-
               all_triples.insert(all_triples.end(),
                                  tpool->gpu_triples.begin(),
                                  tpool->gpu_triples.begin() + n_trip);
@@ -2247,10 +2241,10 @@ struct SearchManager {
               box.tri[c][2] = node.tri.corners[c].z;
             }
             box.chart = node.chart;
-            box.triple_offset = it->second.triple_offset;
-            box.num_triples = it->second.num_triples;
-            box.contact_offset = it->second.contact_offset;
-            box.num_contacts = (int)tpool->contacts.size();
+            box.triple_offset = cur_triple_offset;
+            box.num_triples = cur_num_triples;
+            box.contact_offset = cur_contact_offset;
+            box.num_contacts = cur_num_contacts;
             box._pad = 0;
 
             active_gpu_boxes.push_back(box);
@@ -2316,6 +2310,7 @@ struct SearchManager {
 
           } else {
             // Multi-threaded CPU fallback
+            MaybeMiniStatus("cpu");
             ParallelComp(active_gpu_boxes.size(), [&](int64_t a) {
               chunk_results[a] = EvaluateBoxCPU(active_gpu_boxes[a],
                                                  all_contacts, all_triples);
@@ -2329,6 +2324,7 @@ struct SearchManager {
           item_start = item_end;
         }
 
+        MaybeMiniStatus("subdiv");
         for (int idx : eval_indices) {
           evaluated_count++;
           const auto &node = current_batch[idx];
@@ -2621,6 +2617,7 @@ struct SearchManager {
         // Only output incremental status updates if the major status output
         // hasn't run recently.
         mini_status_per.Reset();
+        last_op.clear();
       }
 
       if (checkpoint_per.ShouldRun() || sigint_received.load()) {
@@ -2684,9 +2681,14 @@ struct SearchManager {
   }
 
   void MaybeMiniStatus(std::string_view op) {
-    mini_status_per.RunIf([&]{
-        status.LineStatus(0, "{} " ABLUE("{}"), StatusCounters(), op);
-      });
+    bool op_changed = (op != last_op);
+    if (op_changed || mini_status_per.ShouldRun()) {
+      if (op_changed) {
+        mini_status_per.Reset();
+        last_op = op;
+      }
+      status.LineStatus(0, "{} " ABLUE("{}"), StatusCounters(), op);
+    }
   }
 
   void TestKnownSolution() {

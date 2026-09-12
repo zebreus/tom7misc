@@ -12,6 +12,9 @@ UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
 CC=clang
 CXX=clang++ -stdlib=libc++
+PDB_FLAG=
+else
+PDB_FLAG=-Wl,--pdb=lean229.pdb
 endif
 
 CL_LFLAGS=-lOpenCL
@@ -92,7 +95,7 @@ lean228.exe : lean228.o $(OBJECTS) $(CL_OBJECTS)
 	@echo -n "!"
 
 lean229.exe : lean229.o $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) -Wl,--pdb=lean229.pdb
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) $(PDB_FLAG)
 	@echo -n "!"
 
 topng.exe : topng.o $(OBJECTS)
