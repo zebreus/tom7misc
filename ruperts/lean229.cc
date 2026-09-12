@@ -1509,63 +1509,24 @@ struct SearchManager {
     FILE *f = fopen(path.c_str(), "rb");
     if (!f) return false;
 
-    uint64_t magic = 0;
-    int32_t version = 0;
-    if (fread(&magic, sizeof(magic), 1, f) != 1 ||
-        fread(&version, sizeof(version), 1, f) != 1) {
+    CheckpointHeader hdr;
+    if (fread(&hdr, sizeof(hdr), 1, f) != 1) {
       status.Print("Failed to read checkpoint header from " AORANGE("{}") "\n",
                    path);
       fclose(f);
       return false;
     }
-    if (magic != CheckpointHeader::kMagic) {
+    if (hdr.magic != CheckpointHeader::kMagic) {
       status.Print("Checkpoint magic mismatch in " AORANGE("{}")
                    " (got 0x{:x}, expected 0x{:x})\n",
-                   path, magic, CheckpointHeader::kMagic);
+                   path, hdr.magic, CheckpointHeader::kMagic);
       fclose(f);
       return false;
     }
-
-    CheckpointHeader hdr;
-    if (version == 4) {
-      struct CheckpointHeaderV4 {
-        uint64_t magic;
-        int32_t version;
-        int32_t chart;
-        int64_t next_node_id;
-        int64_t evaluated_count;
-        int64_t certified_count;
-        int64_t pruned_count;
-        int64_t split_count;
-        uint64_t stack_size;
-      } v4;
-      fseek(f, 0, SEEK_SET);
-      if (fread(&v4, sizeof(v4), 1, f) != 1) {
-        status.Print("Failed to read v4 checkpoint from " AORANGE("{}") "\n", path);
-        fclose(f);
-        return false;
-      }
-      hdr.magic = v4.magic;
-      hdr.version = v4.version;
-      hdr.chart = v4.chart;
-      hdr.next_node_id = v4.next_node_id;
-      hdr.evaluated_count = v4.evaluated_count;
-      hdr.certified_count = v4.certified_count;
-      hdr.pruned_count = v4.pruned_count;
-      hdr.split_count = v4.split_count;
-      hdr.stack_size = v4.stack_size;
-      hdr.difficult_count = 0;
-    } else if (version == CheckpointHeader::kVersion) {
-      fseek(f, 0, SEEK_SET);
-      if (fread(&hdr, sizeof(hdr), 1, f) != 1) {
-        status.Print("Failed to read checkpoint from " AORANGE("{}") "\n", path);
-        fclose(f);
-        return false;
-      }
-    } else {
+    if (hdr.version != CheckpointHeader::kVersion) {
       status.Print("Checkpoint version mismatch in " AORANGE("{}")
                    " (got {}, expected {})\n",
-                   path, version, CheckpointHeader::kVersion);
+                   path, hdr.version, CheckpointHeader::kVersion);
       fclose(f);
       return false;
     }
@@ -1799,6 +1760,41 @@ struct SearchManager {
     return priority_points;
   }
 
+  // Prunes priority points that are not contained in any remaining node on the
+  // stack (e.g. points that were already certified and eliminated prior to a
+  // checkpoint, or outside the initial domain).
+  void FilterPriorityPointsToStack() {
+    if (!prioritize_related || active_priority.empty() || stack.empty()) return;
+    int initial_count = (int)active_priority.size();
+    std::vector<PriorityPoint> remaining;
+    remaining.reserve(active_priority.size());
+
+    for (const auto &p : active_priority) {
+      bool found = false;
+      for (const auto &node : stack) {
+        if (p.chart == node.chart &&
+            node.box.Contains(p.w) &&
+            node.tri.ContainsRay(p.view)) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        remaining.push_back(p);
+      }
+    }
+
+    int removed = initial_count - (int)remaining.size();
+    if (removed > 0) {
+      status.Print(
+          "Filtered out " ACYAN("{}") " priority point(s) not in remaining volume "
+          "({} active remaining in stack).\n",
+          removed, remaining.size());
+    }
+    active_priority = std::move(remaining);
+    num_priority_points = (int)active_priority.size();
+  }
+
   // Computes exact completed domain volume fraction in [0.0, 1.0] by
   // evaluating uncertified leaf weights on the stack using depth-bucketed
   // Horner evaluation. Zero floating-point accumulation error.
@@ -1979,6 +1975,10 @@ struct SearchManager {
         }
         InitRoot();
       }
+    }
+
+    if (prioritize_related) {
+      FilterPriorityPointsToStack();
     }
 
     if (resumed) {
