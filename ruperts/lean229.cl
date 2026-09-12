@@ -6,6 +6,10 @@
 // Evaluates exact 27-point Bernstein control bounds for the 10-coefficient
 // quadratic displacement polynomial across each box.
 
+#ifndef TOP_N
+#define TOP_N 4
+#endif
+
 typedef struct {
   // Cayley box center
   double cx, cy, cz;
@@ -86,6 +90,35 @@ inline double Bernstein27Min(
       for (int bk = 0; bk <= 2; bk++) {
         double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
           0.25 * bk * (bi * axz + bj * ayz);
+        if (val < min_b) min_b = val;
+      }
+    }
+  }
+  return min_b;
+}
+
+inline float Bernstein27Min_f(
+    const float *C,
+    float lx, float ly, float lz,
+    float wx, float wy, float wz) {
+  float a0 =
+    (C[0] + C[1]*lx + C[2]*ly + C[3]*lz + C[4]*lx*lx +
+     C[5]*lx*ly + C[6]*lx*lz + C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz);
+  float ax = wx * (C[1] + 2.0f*C[4]*lx + C[5]*ly + C[6]*lz);
+  float ay = wy * (C[2] + C[5]*lx + 2.0f*C[7]*ly + C[8]*lz);
+  float az = wz * (C[3] + C[6]*lx + C[8]*ly + 2.0f*C[9]*lz);
+  float axx = C[4]*wx*wx, ayy = C[7]*wy*wy, azz = C[9]*wz*wz;
+  float axy = C[5]*wx*wy, axz = C[6]*wx*wz, ayz = C[8]*wy*wz;
+
+  float min_b = 1e30f;
+  for (int bi = 0; bi <= 2; bi++) {
+    float ti = 0.5f * bi * ax + (bi == 2 ? axx : 0.0f);
+    for (int bj = 0; bj <= 2; bj++) {
+      float tj = ti + 0.5f * bj * ay + (bj == 2 ? ayy : 0.0f) +
+        0.25f * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        float val = a0 + tj + 0.5f * bk * az + (bk == 2 ? azz : 0.0f) +
+          0.25f * bk * (bi * axz + bj * ayz);
         if (val < min_b) min_b = val;
       }
     }
@@ -227,8 +260,93 @@ __kernel void EvaluateBoxes(
   res.inner[2] = 0;
   res.margin = -1e30;
 
-  // Test candidate triples assigned to this box.
+#if TOP_N > 0
+  // FP32 Pre-pass: quickly screen all candidates using view_center margin.
+  // Leverages the 64x FP32 ALU advantage on sm_89 (Ada Lovelace).
+  float3 vc_f = (float3)((float)view_center.x, (float)view_center.y, (float)view_center.z);
+  float lx_f = (float)lx, ly_f = (float)ly, lz_f = (float)lz;
+  float wx_f = (float)wx, wy_f = (float)wy, wz_f = (float)wz;
+  float d_bound_f = (float)d_bound;
+  float disp_error_f = (float)disp_error;
+
+#if TOP_N == 1
+  int top_triples[1] = {-1};
+  float top_margins[1] = {0.0f};
+#else
+  int top_triples[TOP_N];
+  float top_margins[TOP_N];
+  for (int i = 0; i < TOP_N; i++) {
+    top_triples[i] = -1;
+    top_margins[i] = 0.0f;
+  }
+#endif
+
   for (int t = 0; t < box.num_triples; t++) {
+    const GpuTriple triple = triples[box.triple_offset + t];
+
+    float w0 = vc_f.x * (float)triple.w_coeff[0][0] + vc_f.y * (float)triple.w_coeff[0][1] + vc_f.z * (float)triple.w_coeff[0][2];
+    float w1 = vc_f.x * (float)triple.w_coeff[1][0] + vc_f.y * (float)triple.w_coeff[1][1] + vc_f.z * (float)triple.w_coeff[1][2];
+    float w2 = vc_f.x * (float)triple.w_coeff[2][0] + vc_f.y * (float)triple.w_coeff[2][1] + vc_f.z * (float)triple.w_coeff[2][2];
+    if (w0 <= 1e-9f || w1 <= 1e-9f || w2 <= 1e-9f) continue;
+
+    int loc_c0 = triple.c0 - box.contact_offset;
+    int loc_c1 = triple.c1 - box.contact_offset;
+    int loc_c2 = triple.c2 - box.contact_offset;
+    if (loc_c0 < 0 || loc_c0 >= n_contacts ||
+        loc_c1 < 0 || loc_c1 >= n_contacts ||
+        loc_c2 < 0 || loc_c2 >= n_contacts) continue;
+
+    float C_center_f[10];
+    for (int m = 0; m < 10; m++) {
+      C_center_f[m] = w0 * (float)psi_center[loc_c0][m] +
+                      w1 * (float)psi_center[loc_c1][m] +
+                      w2 * (float)psi_center[loc_c2][m];
+    }
+
+    float min_b_center = Bernstein27Min_f(C_center_f, lx_f, ly_f, lz_f, wx_f, wy_f, wz_f);
+    float penalty = d_bound_f * (float)triple.weighted_defect_upper;
+    float margin = min_b_center - penalty - disp_error_f;
+
+#if TOP_N == 1
+    if (margin > top_margins[0]) {
+      top_margins[0] = margin;
+      top_triples[0] = t;
+    }
+#else
+    if (margin > 0.0f) {
+      int min_slot = 0;
+      float min_m = top_margins[0];
+      for (int i = 1; i < TOP_N; i++) {
+        if (top_margins[i] < min_m) {
+          min_m = top_margins[i];
+          min_slot = i;
+        }
+      }
+      if (margin > min_m) {
+        top_margins[min_slot] = margin;
+        top_triples[min_slot] = t;
+      }
+    }
+#endif
+  }
+#endif
+
+  // Unified evaluation loop: first test top N candidates, then fallback scan
+  int num_phases = TOP_N + box.num_triples;
+  for (int step = 0; step < num_phases; step++) {
+    int t;
+#if TOP_N > 0
+    if (step < TOP_N) {
+      t = top_triples[step];
+      if (t < 0) continue;
+    } else {
+      if (res.certified) break;
+      t = step - TOP_N;
+    }
+#else
+    t = step;
+#endif
+
     const GpuTriple triple = triples[box.triple_offset + t];
 
     double defect_penalty = d_bound * triple.weighted_defect_upper;
