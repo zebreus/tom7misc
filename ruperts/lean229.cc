@@ -1436,7 +1436,9 @@ struct SearchManager {
     fclose(f);
   }
 
+  // Row 0 is atomic counters only, so it can be updated any time.
   StatusBar status = StatusBar(4);
+  Periodically mini_status_per = Periodically(1.0);
 
   cl_program program = nullptr;
   cl_kernel kernel = nullptr;
@@ -1963,11 +1965,11 @@ struct SearchManager {
 
     Timer timer;
     Periodically progress_per(1.0);
-    Periodically checkpoint_per(5.0);
+    Periodically checkpoint_per(60.0);
     Periodically where_per(120.0);
     Periodically suspicious_per(30.0);
-    Periodically depthout_per(10.0);
-    uint64_t depthout_count = 0;
+    Periodically depth_out_per(10.0);
+    uint64_t depth_out_count = 0;
 
     // Buffers for GPU batch
     std::vector<GpuBox> gpu_boxes;
@@ -2160,7 +2162,8 @@ struct SearchManager {
           int idx = eval_indices[i];
           const auto &node = current_batch[idx];
           eval_items[i] = {idx, GetTrianglePool(node.tri, EffectiveConeSamples(node))};
-        }, num_threads);
+          MaybeMiniStatus("tris");
+          }, num_threads);
 
         // Collate by triangle pool ID: groups identical triangles together so GPU work-items
         // within every warp execute in lockstep on identical candidate triples, with 100%
@@ -2208,6 +2211,7 @@ struct SearchManager {
           std::unordered_map<uint64_t, PoolBatchInfo> active_pools;
 
           for (size_t i = item_start; i < item_end; i++) {
+            MaybeMiniStatus("items");
             const auto &node = current_batch[eval_items[i].batch_idx];
             const auto &tpool = eval_items[i].pool;
 
@@ -2252,8 +2256,10 @@ struct SearchManager {
             active_gpu_boxes.push_back(box);
           }
 
+
           if (use_gpu && cl != nullptr && !active_gpu_boxes.empty() &&
               !all_triples.empty()) {
+            MaybeMiniStatus("gpu");
 
             cl_int err = CL_SUCCESS;
             cl_mem b_boxes = clCreateBuffer(
@@ -2328,14 +2334,15 @@ struct SearchManager {
           const auto &node = current_batch[idx];
           auto res = results[idx];
 
-          bool near_depthout = (node.depth >= max_depth - 2);
+          bool near_depth_out = (node.depth >= max_depth - 2);
           bool deep_box_with_narrow_view =
               (node.box_depth >= max_box_depth && node.view_depth >= 20);
 
-          if (!res.certified && (near_depthout || deep_box_with_narrow_view)) {
+          if (!res.certified && (near_depth_out || deep_box_with_narrow_view)) {
             // Stubborn leaf has reached max box depth with refined view, or tree depth limit.
             // Safety-net escalation before depth-out:
             for (int cs : {14, 16}) {
+              MaybeMiniStatus("cpu");
               if (EffectiveConeSamples(node) >= cs) continue;
               auto esc_pool = GetTrianglePool(node.tri, cs);
               GpuBox gb;
@@ -2432,8 +2439,8 @@ struct SearchManager {
                 exit(0);
               }
 
-              depthout_count++;
-              depthout_per.RunIf([&]{
+              depth_out_count++;
+              depth_out_per.RunIf([&]{
                 auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
                 status.Print(
                     ARED("Leaf reached max depth ")
@@ -2441,9 +2448,10 @@ struct SearchManager {
                     "radii=({:.17g}, {:.17g}, {:.17g})) "
                     "at box ({:.17g}, {:.17g}, {:.17g})\n"
                     "  view_c=({:.10g}, {:.10g}, {:.10g}), diam={:.10g}\n"
-                    "  tri=[({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g})]\n"
+                    "  tri=[({:.10g}, {:.10g}, {:.10g}), "
+                    "({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g})]\n"
                     "  tpool: {} triples, {} contacts, top_defect={:.10g} "
-                    "(depthouts so far: {})\n",
+                    "(depth-outs so far: {})\n",
                     node.depth, node.box_depth, node.view_depth,
                     node.box.radii.x, node.box.radii.y, node.box.radii.z,
                     node.box.center.x, node.box.center.y, node.box.center.z,
@@ -2454,7 +2462,7 @@ struct SearchManager {
                     node.tri.corners[2].x, node.tri.corners[2].y, node.tri.corners[2].z,
                     tpool->gpu_triples.size(), tpool->contacts.size(),
                     tpool->gpu_triples.empty() ? -1.0 : tpool->gpu_triples[0].weighted_defect_upper,
-                    depthout_count);
+                    depth_out_count);
               });
               continue;
             }
@@ -2591,15 +2599,11 @@ struct SearchManager {
           pool_str = AGREY("Related solution pool: inactive");
         }
 
+        std::string row0 = StatusCounters();
+
         std::string depth_hist_str = FormatDepthHistogram();
         status.Status(
-            "Loop: {} " AGREY("|")
-            " Eval: {} " AGREY("|")
-            " Cert: {} " AGREY("|")
-            " Pruned: {} " AGREY("|")
-            " {}⊿ " AGREY("|")
-            " {}/{}⚡ "
-            "\n"
+            "{}\n"
             "Stack: {} " AGREY("|")
             " Done: {:.4f}% " AGREY("|")
             " Depth: {} " AGREY("|")
@@ -2607,19 +2611,16 @@ struct SearchManager {
             " {}\n"
             "{}\n"
             "{}",
-            FormatNum(ctr_loops.Read()),
-            FormatNum(evaluated_count.Read()),
-            FormatNum(certified_count.Read()),
-            FormatNum(pruned_count.Read()),
-            FormatNum(ctr_built_triangles.Read()),
-            FormatNum(ctr_esc_certified.Read()),
-            FormatNum(ctr_cpu.Read()),
+            row0,
             FormatNum(stack.size()),
             completed_frac * 100.0,
             current_batch.empty() ? 0 : current_batch[0].depth,
             FormatNum((int64_t)rate), ANSI::Time(elapsed),
             depth_hist_str,
             pool_str);
+        // Only output incremental status updates if the major status output
+        // hasn't run recently.
+        mini_status_per.Reset();
       }
 
       if (checkpoint_per.ShouldRun() || sigint_received.load()) {
@@ -2638,7 +2639,6 @@ struct SearchManager {
         }
       }
     }
-
 
 
     if (!sigint_received.load() && stack.empty()) {
@@ -2661,6 +2661,32 @@ struct SearchManager {
                   certified_count.Read(),
                   pruned_count.Read(),
                   split_count.Read());
+  }
+
+  static std::string StatusCounters() {
+    #define BAR " " ANSI_GREY "|" ANSI_DARK_WHITE " "
+    return std::format(
+        ANSI_BG(0, 0, 80)
+        "Loop: {}" BAR
+        "Eval: {}" BAR
+        "Cert: {}" BAR
+        "Pruned: {}" BAR
+        "{}⊿" BAR
+        "{}/{}⚡ "
+        ANSI_RESET,
+        FormatNum(ctr_loops.Read()),
+        FormatNum(evaluated_count.Read()),
+        FormatNum(certified_count.Read()),
+        FormatNum(pruned_count.Read()),
+        FormatNum(ctr_built_triangles.Read()),
+        FormatNum(ctr_esc_certified.Read()),
+        FormatNum(ctr_cpu.Read()));
+  }
+
+  void MaybeMiniStatus(std::string_view op) {
+    mini_status_per.RunIf([&]{
+        status.LineStatus(0, "{} " ABLUE("{}"), StatusCounters(), op);
+      });
   }
 
   void TestKnownSolution() {
@@ -2953,7 +2979,7 @@ int main(int argc, char **argv) {
     } else if (arg == "--test_valley") {
       mgr.TestValleyPoint();
       return 0;
-    } else if (arg == "--test_depthout") {
+    } else if (arg == "--test_depth_out") {
       mgr.TestDepthOut();
       return 0;
 

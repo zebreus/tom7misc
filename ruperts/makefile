@@ -35,8 +35,9 @@ SQLITE=../sqlite
 # apt install libmimalloc-dev
 MALLOC_LFLAGS=-lmimalloc
 
-# OPT=-O -g
-OPT=-O3 -flto=thin
+# for profiling (Very Sleepy)
+# OPT=-O -g -gcodeview
+OPT=-O3 -flto=thin -g -gcodeview
 # ASAN=-g -fsanitize=address -fsanitize=undefined
 # OPT=-O
 
@@ -91,7 +92,7 @@ lean228.exe : lean228.o $(OBJECTS) $(CL_OBJECTS)
 	@echo -n "!"
 
 lean229.exe : lean229.o $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) -Wl,--pdb=lean229.pdb
 	@echo -n "!"
 
 topng.exe : topng.o $(OBJECTS)
