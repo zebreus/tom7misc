@@ -37,11 +37,9 @@ typedef struct {
 } GpuContact;
 
 typedef struct {
-  // Contact indices
-  int c0, c1, c2;
-  int _pad;
-  // Precomputed cross-product coefficients
-  double w_coeff[3][3];
+  // Local contact indices in this pool (0 to num_contacts - 1)
+  uchar c0, c1, c2;
+  uchar _pad[5];
   double weighted_defect_upper;
 } GpuTriple;
 
@@ -65,6 +63,10 @@ inline double3 Cross(double3 a, double3 b) {
 }
 
 inline double Dot(double3 a, double3 b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+inline float Dot_f(float3 a, float3 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
@@ -224,14 +226,27 @@ __kernel void EvaluateBoxes(
   }
 
   // Precompute best inner vertex and unit center polynomial for each contact in this pool
+  // Precompute best inner vertex, unit center polynomial, and edge/u vectors for each contact in this pool
   char best_in[MAX_CONTACTS];
   double psi_center[MAX_CONTACTS][10];
+  double3 edge_d[MAX_CONTACTS];
+  double3 u_d[MAX_CONTACTS];
+#if TOP_N > 0
+  float3 edge_f[MAX_CONTACTS];
+  float3 u_f[MAX_CONTACTS];
+#endif
   int n_contacts = box.num_contacts <= MAX_CONTACTS ? box.num_contacts : MAX_CONTACTS;
   for (int c = 0; c < n_contacts; c++) {
     const GpuContact gc = contacts[box.contact_offset + c];
     double3 edge = (double3)(gc.edge[0], gc.edge[1], gc.edge[2]);
-    double3 out = (double3)(VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]);
+    edge_d[c] = edge;
     double3 u = Cross(view_center, edge);
+    u_d[c] = u;
+#if TOP_N > 0
+    edge_f[c] = (float3)((float)edge.x, (float)edge.y, (float)edge.z);
+    u_f[c] = (float3)((float)u.x, (float)u.y, (float)u.z);
+#endif
+    double3 out = (double3)(VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]);
     double best_val = -1e30;
     int best_k = 0;
     for (int k = 0; k < 20; k++) {
@@ -263,7 +278,6 @@ __kernel void EvaluateBoxes(
 #if TOP_N > 0
   // FP32 Pre-pass: quickly screen all candidates using view_center margin.
   // Leverages the 64x FP32 ALU advantage on sm_89 (Ada Lovelace).
-  float3 vc_f = (float3)((float)view_center.x, (float)view_center.y, (float)view_center.z);
   float lx_f = (float)lx, ly_f = (float)ly, lz_f = (float)lz;
   float wx_f = (float)wx, wy_f = (float)wy, wz_f = (float)wz;
   float d_bound_f = (float)d_bound;
@@ -285,17 +299,15 @@ __kernel void EvaluateBoxes(
   for (int t = 0; t < box.num_triples; t++) {
     const GpuTriple triple = triples[box.triple_offset + t];
 
-    float w0 = vc_f.x * (float)triple.w_coeff[0][0] + vc_f.y * (float)triple.w_coeff[0][1] + vc_f.z * (float)triple.w_coeff[0][2];
-    float w1 = vc_f.x * (float)triple.w_coeff[1][0] + vc_f.y * (float)triple.w_coeff[1][1] + vc_f.z * (float)triple.w_coeff[1][2];
-    float w2 = vc_f.x * (float)triple.w_coeff[2][0] + vc_f.y * (float)triple.w_coeff[2][1] + vc_f.z * (float)triple.w_coeff[2][2];
-    if (w0 <= 1e-9f || w1 <= 1e-9f || w2 <= 1e-9f) continue;
+    int loc_c0 = (int)triple.c0;
+    int loc_c1 = (int)triple.c1;
+    int loc_c2 = (int)triple.c2;
+    if (loc_c0 >= n_contacts || loc_c1 >= n_contacts || loc_c2 >= n_contacts) continue;
 
-    int loc_c0 = triple.c0 - box.contact_offset;
-    int loc_c1 = triple.c1 - box.contact_offset;
-    int loc_c2 = triple.c2 - box.contact_offset;
-    if (loc_c0 < 0 || loc_c0 >= n_contacts ||
-        loc_c1 < 0 || loc_c1 >= n_contacts ||
-        loc_c2 < 0 || loc_c2 >= n_contacts) continue;
+    float w0 = Dot_f(u_f[loc_c1], edge_f[loc_c2]);
+    float w1 = Dot_f(u_f[loc_c2], edge_f[loc_c0]);
+    float w2 = Dot_f(u_f[loc_c0], edge_f[loc_c1]);
+    if (w0 <= 1e-9f || w1 <= 1e-9f || w2 <= 1e-9f) continue;
 
     float C_center_f[10];
     for (int m = 0; m < 10; m++) {
@@ -371,17 +383,15 @@ __kernel void EvaluateBoxes(
     double defect_penalty = d_bound * triple.weighted_defect_upper;
 
     // Stage 1: Fast filter at view_center (27 controls)
-    double w0 = Dot(view_center, (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1 = Dot(view_center, (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2 = Dot(view_center, (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+    int loc_c0 = (int)triple.c0;
+    int loc_c1 = (int)triple.c1;
+    int loc_c2 = (int)triple.c2;
+    if (loc_c0 >= n_contacts || loc_c1 >= n_contacts || loc_c2 >= n_contacts) continue;
 
-    int loc_c0 = triple.c0 - box.contact_offset;
-    int loc_c1 = triple.c1 - box.contact_offset;
-    int loc_c2 = triple.c2 - box.contact_offset;
-    if (loc_c0 < 0 || loc_c0 >= n_contacts ||
-        loc_c1 < 0 || loc_c1 >= n_contacts ||
-        loc_c2 < 0 || loc_c2 >= n_contacts) continue;
+    double w0 = Dot(u_d[loc_c1], edge_d[loc_c2]);
+    double w1 = Dot(u_d[loc_c2], edge_d[loc_c0]);
+    double w2 = Dot(u_d[loc_c0], edge_d[loc_c1]);
+    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
 
     double C_center[10];
     for (int m = 0; m < 10; m++) {
@@ -402,13 +412,13 @@ __kernel void EvaluateBoxes(
     int in2 = (int)best_in[loc_c2];
     if ((unsigned int)in0 >= 20 || (unsigned int)in1 >= 20 || (unsigned int)in2 >= 20) continue;
 
-    const GpuContact c0 = contacts[triple.c0];
-    const GpuContact c1 = contacts[triple.c1];
-    const GpuContact c2 = contacts[triple.c2];
+    const GpuContact c0 = contacts[box.contact_offset + loc_c0];
+    const GpuContact c1 = contacts[box.contact_offset + loc_c1];
+    const GpuContact c2 = contacts[box.contact_offset + loc_c2];
 
-    double3 edge0 = (double3)(c0.edge[0], c0.edge[1], c0.edge[2]);
-    double3 edge1 = (double3)(c1.edge[0], c1.edge[1], c1.edge[2]);
-    double3 edge2 = (double3)(c2.edge[0], c2.edge[1], c2.edge[2]);
+    double3 edge0 = edge_d[loc_c0];
+    double3 edge1 = edge_d[loc_c1];
+    double3 edge2 = edge_d[loc_c2];
 
     double3 vin0 = (double3)(VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]);
     double3 vout0 = (double3)(VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]);
@@ -419,12 +429,16 @@ __kernel void EvaluateBoxes(
     double3 vin2 = (double3)(VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]);
     double3 vout2 = (double3)(VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]);
 
-    // Stage 2: Simplex Bernstein evaluation with progressive early exit
+    // Precompute cross-product w_coeff in registers once for Stage 2
+    double3 w_coeff0 = Cross(edge1, edge2);
+    double3 w_coeff1 = Cross(edge2, edge0);
+    double3 w_coeff2 = Cross(edge0, edge1);
+
     // Step 2a: Evaluate Corner 0
     double C0[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double w0_0 = Dot(p[0], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_0 = Dot(p[0], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_0 = Dot(p[0], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_0 = Dot(p[0], w_coeff0);
+    double w1_0 = Dot(p[0], w_coeff1);
+    double w2_0 = Dot(p[0], w_coeff2);
     AccumulateContactPoly(C0, w0_0, Cross(p[0], edge0), vin0, vout0, s);
     AccumulateContactPoly(C0, w1_0, Cross(p[0], edge1), vin1, vout1, s);
     AccumulateContactPoly(C0, w2_0, Cross(p[0], edge2), vin2, vout2, s);
@@ -433,9 +447,9 @@ __kernel void EvaluateBoxes(
 
     // Step 2b: Evaluate Corner 1
     double C1[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double w0_1 = Dot(p[1], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_1 = Dot(p[1], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_1 = Dot(p[1], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_1 = Dot(p[1], w_coeff0);
+    double w1_1 = Dot(p[1], w_coeff1);
+    double w2_1 = Dot(p[1], w_coeff2);
     AccumulateContactPoly(C1, w0_1, Cross(p[1], edge0), vin0, vout0, s);
     AccumulateContactPoly(C1, w1_1, Cross(p[1], edge1), vin1, vout1, s);
     AccumulateContactPoly(C1, w2_1, Cross(p[1], edge2), vin2, vout2, s);
@@ -444,9 +458,9 @@ __kernel void EvaluateBoxes(
 
     // Step 2c: Evaluate Corner 2
     double C2[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double w0_2 = Dot(p[2], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_2 = Dot(p[2], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_2 = Dot(p[2], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_2 = Dot(p[2], w_coeff0);
+    double w1_2 = Dot(p[2], w_coeff1);
+    double w2_2 = Dot(p[2], w_coeff2);
     AccumulateContactPoly(C2, w0_2, Cross(p[2], edge0), vin0, vout0, s);
     AccumulateContactPoly(C2, w1_2, Cross(p[2], edge1), vin1, vout1, s);
     AccumulateContactPoly(C2, w2_2, Cross(p[2], edge2), vin2, vout2, s);
@@ -456,9 +470,9 @@ __kernel void EvaluateBoxes(
     // Step 2d: Midpoints (Edges 01, 12, 20)
     // Edge 01 (midpoint p[3]): Q = 2 * P(p[3]) - 0.5 * (C0 + C1)
     double M[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double w0_3 = Dot(p[3], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_3 = Dot(p[3], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_3 = Dot(p[3], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_3 = Dot(p[3], w_coeff0);
+    double w1_3 = Dot(p[3], w_coeff1);
+    double w2_3 = Dot(p[3], w_coeff2);
     AccumulateContactPoly(M, w0_3, Cross(p[3], edge0), vin0, vout0, s);
     AccumulateContactPoly(M, w1_3, Cross(p[3], edge1), vin1, vout1, s);
     AccumulateContactPoly(M, w2_3, Cross(p[3], edge2), vin2, vout2, s);
@@ -469,9 +483,9 @@ __kernel void EvaluateBoxes(
 
     // Edge 12 (midpoint p[4]): Q = 2 * P(p[4]) - 0.5 * (C1 + C2)
     for (int m = 0; m < 10; m++) M[m] = 0.0;
-    double w0_4 = Dot(p[4], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_4 = Dot(p[4], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_4 = Dot(p[4], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_4 = Dot(p[4], w_coeff0);
+    double w1_4 = Dot(p[4], w_coeff1);
+    double w2_4 = Dot(p[4], w_coeff2);
     AccumulateContactPoly(M, w0_4, Cross(p[4], edge0), vin0, vout0, s);
     AccumulateContactPoly(M, w1_4, Cross(p[4], edge1), vin1, vout1, s);
     AccumulateContactPoly(M, w2_4, Cross(p[4], edge2), vin2, vout2, s);
@@ -481,9 +495,9 @@ __kernel void EvaluateBoxes(
 
     // Edge 20 (midpoint p[5]): Q = 2 * P(p[5]) - 0.5 * (C2 + C0)
     for (int m = 0; m < 10; m++) M[m] = 0.0;
-    double w0_5 = Dot(p[5], (double3)(triple.w_coeff[0][0], triple.w_coeff[0][1], triple.w_coeff[0][2]));
-    double w1_5 = Dot(p[5], (double3)(triple.w_coeff[1][0], triple.w_coeff[1][1], triple.w_coeff[1][2]));
-    double w2_5 = Dot(p[5], (double3)(triple.w_coeff[2][0], triple.w_coeff[2][1], triple.w_coeff[2][2]));
+    double w0_5 = Dot(p[5], w_coeff0);
+    double w1_5 = Dot(p[5], w_coeff1);
+    double w2_5 = Dot(p[5], w_coeff2);
     AccumulateContactPoly(M, w0_5, Cross(p[5], edge0), vin0, vout0, s);
     AccumulateContactPoly(M, w1_5, Cross(p[5], edge1), vin1, vout1, s);
     AccumulateContactPoly(M, w2_5, Cross(p[5], edge2), vin2, vout2, s);

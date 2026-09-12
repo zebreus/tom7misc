@@ -115,12 +115,12 @@ struct GpuContact {
 };
 
 struct GpuTriple {
-  int c0, c1, c2;
-  int _pad;
-  double w_coeff[3][3];
+  // Local contact indices in this pool (0 to num_contacts - 1)
+  uint8_t c0, c1, c2;
+  uint8_t _pad[5];
   double weighted_defect_upper;
 };
-static_assert(sizeof(GpuTriple) == 96, "GpuTriple struct size mismatch");
+static_assert(sizeof(GpuTriple) == 16, "GpuTriple struct size mismatch");
 
 struct GpuResult {
   int certified;
@@ -533,17 +533,10 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
         if (w0_min < 0.0 || w1_min < 0.0 || w2_min < 0.0) continue;
 
         SortableTriple st;
-        st.gt.c0 = ci; st.gt.c1 = cj; st.gt.c2 = ck;
-        st.gt._pad = 0;
-        st.gt.w_coeff[0][0] = coeff0.x;
-        st.gt.w_coeff[0][1] = coeff0.y;
-        st.gt.w_coeff[0][2] = coeff0.z;
-        st.gt.w_coeff[1][0] = coeff1.x;
-        st.gt.w_coeff[1][1] = coeff1.y;
-        st.gt.w_coeff[1][2] = coeff1.z;
-        st.gt.w_coeff[2][0] = coeff2.x;
-        st.gt.w_coeff[2][1] = coeff2.y;
-        st.gt.w_coeff[2][2] = coeff2.z;
+        st.gt.c0 = (uint8_t)ci;
+        st.gt.c1 = (uint8_t)cj;
+        st.gt.c2 = (uint8_t)ck;
+        std::memset(st.gt._pad, 0, sizeof(st.gt._pad));
 
         vec3 w_coeffs[3] = {coeff0, coeff1, coeff2};
         st.gt.weighted_defect_upper =
@@ -572,7 +565,7 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
   return pool;
 }
 
-static constexpr size_t MAX_TRIANGLE_CACHE_SIZE = 2048;
+static constexpr size_t MAX_TRIANGLE_CACHE_SIZE = 8192;
 static std::mutex g_triangle_cache_mutex;
 static std::list<std::shared_ptr<const TrianglePool>> g_triangle_lru_list;
 static std::unordered_map<uint64_t, std::list<std::shared_ptr<const TrianglePool>>::iterator>
@@ -727,11 +720,15 @@ static GpuResult EvaluateBoxCPU(
   int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
   std::vector<int> best_in(c_count);
   std::vector<std::array<double, 10>> psi_center(c_count);
+  std::vector<vec3> edge_vec(c_count);
+  std::vector<vec3> u_vec(c_count);
   for (int c = 0; c < c_count; c++) {
     const auto &gc = contacts[c_start + c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
+    edge_vec[c] = edge;
     vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
     vec3 u = yocto::cross(view_center, edge);
+    u_vec[c] = u;
     double best_val = -1e30;
     int best_k = 0;
     for (int k = 0; k < NUM_VERTICES; k++) {
@@ -765,19 +762,16 @@ static GpuResult EvaluateBoxCPU(
 
     double defect_penalty = d_bound * trip.weighted_defect_upper;
 
+    int loc_c0 = trip.c0;
+    int loc_c1 = trip.c1;
+    int loc_c2 = trip.c2;
+    if (loc_c0 >= c_count || loc_c1 >= c_count || loc_c2 >= c_count) continue;
+
     // Stage 1: Fast filter at view_center (27 controls)
-    vec3 w_coeff0 = {trip.w_coeff[0][0], trip.w_coeff[0][1], trip.w_coeff[0][2]};
-    vec3 w_coeff1 = {trip.w_coeff[1][0], trip.w_coeff[1][1], trip.w_coeff[1][2]};
-    vec3 w_coeff2 = {trip.w_coeff[2][0], trip.w_coeff[2][1], trip.w_coeff[2][2]};
-
-    double w0 = yocto::dot(view_center, w_coeff0);
-    double w1 = yocto::dot(view_center, w_coeff1);
-    double w2 = yocto::dot(view_center, w_coeff2);
+    double w0 = yocto::dot(u_vec[loc_c1], edge_vec[loc_c2]);
+    double w1 = yocto::dot(u_vec[loc_c2], edge_vec[loc_c0]);
+    double w2 = yocto::dot(u_vec[loc_c0], edge_vec[loc_c1]);
     if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
-
-    int loc_c0 = trip.c0 - c_start;
-    int loc_c1 = trip.c1 - c_start;
-    int loc_c2 = trip.c2 - c_start;
 
     double C_center[10];
     for (int m = 0; m < 10; m++) {
@@ -797,13 +791,13 @@ static GpuResult EvaluateBoxCPU(
     int in1 = best_in[loc_c1];
     int in2 = best_in[loc_c2];
 
-    const auto &c0 = contacts[trip.c0];
-    const auto &c1 = contacts[trip.c1];
-    const auto &c2 = contacts[trip.c2];
+    const auto &c0 = contacts[c_start + loc_c0];
+    const auto &c1 = contacts[c_start + loc_c1];
+    const auto &c2 = contacts[c_start + loc_c2];
 
-    vec3 edge0 = {c0.edge[0], c0.edge[1], c0.edge[2]};
-    vec3 edge1 = {c1.edge[0], c1.edge[1], c1.edge[2]};
-    vec3 edge2 = {c2.edge[0], c2.edge[1], c2.edge[2]};
+    vec3 edge0 = edge_vec[loc_c0];
+    vec3 edge1 = edge_vec[loc_c1];
+    vec3 edge2 = edge_vec[loc_c2];
 
     vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
     vec3 vout0 = {VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]};
@@ -813,6 +807,10 @@ static GpuResult EvaluateBoxCPU(
 
     vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
     vec3 vout2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
+
+    vec3 w_coeff0 = yocto::cross(edge1, edge2);
+    vec3 w_coeff1 = yocto::cross(edge2, edge0);
+    vec3 w_coeff2 = yocto::cross(edge0, edge1);
 
     // Stage 2: Simplex Bernstein evaluation with progressive early exit
     // Corner 0
@@ -1926,13 +1924,9 @@ struct SearchManager {
               all_contacts.insert(all_contacts.end(),
                                   tpool->contacts.begin(), tpool->contacts.end());
 
-              for (int t = 0; t < n_trip; t++) {
-                GpuTriple gt = tpool->gpu_triples[t];
-                gt.c0 += it->second.contact_offset;
-                gt.c1 += it->second.contact_offset;
-                gt.c2 += it->second.contact_offset;
-                all_triples.push_back(gt);
-              }
+              all_triples.insert(all_triples.end(),
+                                 tpool->gpu_triples.begin(),
+                                 tpool->gpu_triples.begin() + n_trip);
             }
 
             GpuBox box;
