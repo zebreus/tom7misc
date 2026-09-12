@@ -753,6 +753,12 @@ static GpuResult EvaluateBoxCPU(
   res.inner[2] = 0;
   res.margin = -1e30;
 
+  int passed_w_positive = 0;
+  int passed_center = 0;
+  double best_center_margin = -1e30;
+  double best_defect = 0.0;
+  double best_min_b = 0.0;
+
   for (int t = 0; t < box.num_triples; t++) {
     const auto &trip = triples[box.triple_offset + t];
 
@@ -784,6 +790,8 @@ static GpuResult EvaluateBoxCPU(
     double w2 = yocto::dot(view_center, w_coeff2);
     if (w2 <= 1e-9) continue;
 
+    passed_w_positive++;
+
     double C_center[10];
     for (int m = 0; m < 10; m++) {
       C_center[m] = w0 * psi_center[loc_c0][m] +
@@ -792,9 +800,16 @@ static GpuResult EvaluateBoxCPU(
     }
 
     double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
-    if (min_b_center - defect_penalty - disp_error <= 0.0) {
+    double cmargin = min_b_center - defect_penalty - disp_error;
+    if (cmargin > best_center_margin) {
+      best_center_margin = cmargin;
+      best_defect = defect_penalty;
+      best_min_b = min_b_center;
+    }
+    if (cmargin <= 0.0) {
       continue;
     }
+    passed_center++;
 
     // Stage 2: Simplex Bernstein evaluation with progressive early exit
     // Only evaluated when center filter passes (~12% of triples).
@@ -891,6 +906,11 @@ static GpuResult EvaluateBoxCPU(
     res.inner[2] = in2;
     res.margin = min_162 - defect_penalty - disp_error;
     break;
+  }
+
+  if (!res.certified && box.rx < 1e-6) {
+    Print("EvalBoxCPU failed: passed_w={}, passed_center={}, best_cmargin={:.10g} (min_b={:.10g}, defect={:.10g}, disp={:.10g})\n",
+          passed_w_positive, passed_center, best_center_margin, best_min_b, best_defect, disp_error);
   }
 
   return res;
@@ -1145,9 +1165,10 @@ struct CheckpointHeader {
 struct SearchManager {
   int chart = 0;
   int batch_size = 32768;
-  int max_depth = 96;
-  int max_box_depth = 72;
-  int max_view_depth = 24;
+  int max_depth = 112;
+  int max_box_depth = 84;
+  int max_view_depth = 28;
+  int suspicious_depth = 90;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 8;
   int escalate_depth = 36;
@@ -1176,7 +1197,245 @@ struct SearchManager {
   std::vector<SearchNode> stack; // DFS LIFO stack
   int64_t next_node_id = 0;
 
-  StatusBar status = StatusBar(3);
+  static constexpr int kMaxTrackDepth = 128;
+  static constexpr int kMaxTrackK = 256;
+
+  std::atomic<uint64_t> cert_by_depth[kMaxTrackDepth]{};
+  std::atomic<uint64_t> cert_by_box_depth[kMaxTrackDepth]{};
+  std::atomic<uint64_t> cert_by_view_depth[64]{};
+
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_depth;
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_box_depth;
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_view_depth;
+
+  SearchManager() {
+    cert_k_by_depth = std::make_unique<std::atomic<uint64_t>[]>(kMaxTrackDepth * kMaxTrackK);
+    cert_k_by_box_depth = std::make_unique<std::atomic<uint64_t>[]>(kMaxTrackDepth * kMaxTrackK);
+    cert_k_by_view_depth = std::make_unique<std::atomic<uint64_t>[]>(64 * kMaxTrackK);
+    for (size_t i = 0; i < kMaxTrackDepth * kMaxTrackK; i++) {
+      cert_k_by_depth[i].store(0, std::memory_order_relaxed);
+      cert_k_by_box_depth[i].store(0, std::memory_order_relaxed);
+    }
+    for (size_t i = 0; i < 64 * kMaxTrackK; i++) {
+      cert_k_by_view_depth[i].store(0, std::memory_order_relaxed);
+    }
+  }
+
+  static double EvalKVolume(const std::atomic<uint64_t> *k_table, int row, int num_k = kMaxTrackK) {
+    if (!k_table) return 0.0;
+    double vol = 0.0;
+    for (int k = num_k - 1; k > 0; k--) {
+      uint64_t c = k_table[row * num_k + k].load(std::memory_order_relaxed);
+      vol = (vol + c) * 0.5;
+    }
+    vol += k_table[row * num_k + 0].load(std::memory_order_relaxed);
+    return vol;
+  }
+
+  void RecordCertification(const SearchNode &node) {
+    certified_count++;
+    int k = node.box_depth + 2 * node.view_depth;
+    if (node.depth < kMaxTrackDepth) {
+      cert_by_depth[node.depth].fetch_add(1, std::memory_order_relaxed);
+      if (k < kMaxTrackK && cert_k_by_depth) {
+        cert_k_by_depth[node.depth * kMaxTrackK + k].fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    if (node.box_depth < kMaxTrackDepth) {
+      cert_by_box_depth[node.box_depth].fetch_add(1, std::memory_order_relaxed);
+      if (k < kMaxTrackK && cert_k_by_box_depth) {
+        cert_k_by_box_depth[node.box_depth * kMaxTrackK + k].fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+    if (node.view_depth < 64) {
+      cert_by_view_depth[node.view_depth].fetch_add(1, std::memory_order_relaxed);
+      if (k < kMaxTrackK && cert_k_by_view_depth) {
+        cert_k_by_view_depth[node.view_depth * kMaxTrackK + k].fetch_add(1, std::memory_order_relaxed);
+      }
+    }
+  }
+
+  std::string FormatDepthHistogram() const {
+    uint64_t total = 0;
+    int max_d = 0;
+    uint64_t b0 = 0, b1 = 0, b2 = 0, b3 = 0; // <40, 40-69, 70-89, 90+
+    for (int d = 0; d < kMaxTrackDepth; d++) {
+      uint64_t cnt = cert_by_depth[d].load(std::memory_order_relaxed);
+      if (cnt > 0) {
+        total += cnt;
+        max_d = d;
+        if (d < 40) b0 += cnt;
+        else if (d < 70) b1 += cnt;
+        else if (d < 90) b2 += cnt;
+        else b3 += cnt;
+      }
+    }
+    if (total == 0) return AGREY("Cert depths: none yet");
+    double inv = 100.0 / total;
+    return std::format(
+        "Cert depths: <40: {:.1f}% " AGREY("|")
+        " 40-69: {:.1f}% " AGREY("|")
+        " 70-89: {:.1f}% " AGREY("|")
+        " 90+: {} (max {})",
+        b0 * inv, b1 * inv, b2 * inv, FormatNum(b3), max_d);
+  }
+
+  void PrintDepthDistribution() {
+    uint64_t total = 0;
+    int max_d = 0;
+    for (int d = 0; d < kMaxTrackDepth; d++) {
+      uint64_t c = cert_by_depth[d].load(std::memory_order_relaxed);
+      if (c > 0) {
+        total += c;
+        max_d = d;
+      }
+    }
+    if (total == 0) return;
+
+    double total_vol = 0.0;
+    std::vector<double> vol_by_depth(max_d + 1, 0.0);
+    for (int d = 0; d <= max_d; d++) {
+      vol_by_depth[d] = EvalKVolume(cert_k_by_depth.get(), d);
+      total_vol += vol_by_depth[d];
+    }
+
+    status.Print("\n" ABLUE("── Certified Depth Distribution (total: {}, 5D vol: {:.4f}%) ────────") "\n",
+                 FormatNum(total), total_vol * 100.0);
+    status.Print("  Depth range       Count     Count%   CumCount%         Vol%      CumVol%\n");
+    uint64_t cum_count = 0;
+    double cum_vol = 0.0;
+    for (int start = 0; start <= max_d; start += 10) {
+      int end = std::min(start + 9, max_d);
+      uint64_t bucket_cnt = 0;
+      double bucket_vol = 0.0;
+      for (int d = start; d <= end; d++) {
+        bucket_cnt += cert_by_depth[d].load(std::memory_order_relaxed);
+        bucket_vol += vol_by_depth[d];
+      }
+      cum_count += bucket_cnt;
+      cum_vol += bucket_vol;
+      if (bucket_cnt > 0) {
+        double count_pct = (100.0 * bucket_cnt) / total;
+        double cum_count_pct = (100.0 * cum_count) / total;
+        double vol_pct = bucket_vol * 100.0;
+        double cum_vol_pct = cum_vol * 100.0;
+        status.Print("  {:3d} .. {:3d}   {:11s}    {:6.2f}%    {:6.2f}%   {:10.4f}%   {:10.4f}%\n",
+                     start, end, FormatNum(bucket_cnt), count_pct, cum_count_pct, vol_pct, cum_vol_pct);
+      }
+    }
+    status.Print("  " AGREY("(Detailed discrete Depth, BoxDepth, and ViewDepth CDFs written to ")
+                 "{}/depth_histogram.txt" AGREY(")") "\n", output_dir);
+    status.Print(ABLUE("────────────────────────────────────────────────────────────────────────────") "\n\n");
+  }
+
+  void WriteDepthHistogramFile(const std::string &filename) const {
+    FILE *f = fopen(filename.c_str(), "w");
+    if (!f) return;
+    uint64_t total_nodes = 0;
+    int max_d = 0;
+    for (int d = 0; d < kMaxTrackDepth; d++) {
+      uint64_t c = cert_by_depth[d].load(std::memory_order_relaxed);
+      if (c > 0) {
+        total_nodes += c;
+        max_d = d;
+      }
+    }
+
+    double total_vol = 0.0;
+    std::vector<double> vol_by_depth(max_d + 1, 0.0);
+    for (int d = 0; d <= max_d; d++) {
+      vol_by_depth[d] = EvalKVolume(cert_k_by_depth.get(), d);
+      total_vol += vol_by_depth[d];
+    }
+
+    auto FormatPct = [](double pct) -> std::string {
+      if (pct == 0.0) return "       0.0000%";
+      if (pct >= 1e-4) return std::format("{:13.6f}%", pct);
+      return std::format("{:13.4e}%", pct);
+    };
+
+    std::fprintf(f, "# Rupert 229 Proof Search - Certification Depth CDF\n");
+    std::fprintf(f, "Total certified nodes: %llu\n", (unsigned long long)total_nodes);
+    std::fprintf(f, "Max certified depth: %d\n", max_d);
+    std::fprintf(f, "Total 5D volume certified: %s\n\n", FormatPct(total_vol * 100.0).c_str());
+
+    std::fprintf(f, "%-7s %12s %10s %11s %16s %16s\n",
+                 "Depth", "Count", "Count%", "CumCount%", "5D_Vol%", "Cum_5D_Vol%");
+
+    uint64_t cum_count = 0;
+    double cum_vol = 0.0;
+    for (int d = 0; d <= max_d; d++) {
+      uint64_t c = cert_by_depth[d].load(std::memory_order_relaxed);
+      cum_count += c;
+      cum_vol += vol_by_depth[d];
+      double count_pct = total_nodes > 0 ? (100.0 * c) / total_nodes : 0.0;
+      double cum_count_pct = total_nodes > 0 ? (100.0 * cum_count) / total_nodes : 0.0;
+      double vol_pct = vol_by_depth[d] * 100.0;
+      double cum_vol_pct = cum_vol * 100.0;
+
+      std::fprintf(f, "%5d   %12llu   %9.4f%%   %9.4f%%   %16s   %16s\n",
+                   d, (unsigned long long)c, count_pct, cum_count_pct,
+                   FormatPct(vol_pct).c_str(), FormatPct(cum_vol_pct).c_str());
+    }
+
+    // Box depth discrete CDF
+    int max_box_d = 0;
+    uint64_t total_box_nodes = 0;
+    for (int d = 0; d < kMaxTrackDepth; d++) {
+      uint64_t c = cert_by_box_depth[d].load(std::memory_order_relaxed);
+      if (c > 0) {
+        total_box_nodes += c;
+        max_box_d = d;
+      }
+    }
+    std::fprintf(f, "\n# Box Depth CDF\n");
+    std::fprintf(f, "%-10s %12s %10s %11s %16s %16s\n",
+                 "BoxDepth", "Count", "Count%", "CumCount%", "5D_Vol%", "Cum_5D_Vol%");
+    uint64_t cum_box_count = 0;
+    double cum_box_vol = 0.0;
+    for (int d = 0; d <= max_box_d; d++) {
+      uint64_t c = cert_by_box_depth[d].load(std::memory_order_relaxed);
+      cum_box_count += c;
+      double v = EvalKVolume(cert_k_by_box_depth.get(), d);
+      cum_box_vol += v;
+      double count_pct = total_box_nodes > 0 ? (100.0 * c) / total_box_nodes : 0.0;
+      double cum_count_pct = total_box_nodes > 0 ? (100.0 * cum_box_count) / total_box_nodes : 0.0;
+      std::fprintf(f, "%8d   %12llu   %9.4f%%   %9.4f%%   %16s   %16s\n",
+                   d, (unsigned long long)c, count_pct, cum_count_pct,
+                   FormatPct(v * 100.0).c_str(), FormatPct(cum_box_vol * 100.0).c_str());
+    }
+
+    // View depth discrete CDF
+    int max_view_d = 0;
+    uint64_t total_view_nodes = 0;
+    for (int d = 0; d < 64; d++) {
+      uint64_t c = cert_by_view_depth[d].load(std::memory_order_relaxed);
+      if (c > 0) {
+        total_view_nodes += c;
+        max_view_d = d;
+      }
+    }
+    std::fprintf(f, "\n# View Depth CDF\n");
+    std::fprintf(f, "%-11s %12s %10s %11s %16s %16s\n",
+                 "ViewDepth", "Count", "Count%", "CumCount%", "5D_Vol%", "Cum_5D_Vol%");
+    uint64_t cum_view_count = 0;
+    double cum_view_vol = 0.0;
+    for (int d = 0; d <= max_view_d; d++) {
+      uint64_t c = cert_by_view_depth[d].load(std::memory_order_relaxed);
+      cum_view_count += c;
+      double v = EvalKVolume(cert_k_by_view_depth.get(), d);
+      cum_view_vol += v;
+      double count_pct = total_view_nodes > 0 ? (100.0 * c) / total_view_nodes : 0.0;
+      double cum_count_pct = total_view_nodes > 0 ? (100.0 * cum_view_count) / total_view_nodes : 0.0;
+      std::fprintf(f, "%9d   %12llu   %9.4f%%   %9.4f%%   %16s   %16s\n",
+                   d, (unsigned long long)c, count_pct, cum_count_pct,
+                   FormatPct(v * 100.0).c_str(), FormatPct(cum_view_vol * 100.0).c_str());
+    }
+
+    fclose(f);
+  }
+
+  StatusBar status = StatusBar(4);
 
   cl_program program = nullptr;
   cl_kernel kernel = nullptr;
@@ -1234,6 +1493,27 @@ struct SearchManager {
       }
     }
     fclose(f);
+
+    std::string hist_path = path + ".hist";
+    FILE *hf = fopen(hist_path.c_str(), "wb");
+    if (hf) {
+      uint64_t raw_depth[128], raw_box[128], raw_view[64];
+      for (int i = 0; i < 128; i++) raw_depth[i] = cert_by_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128; i++) raw_box[i] = cert_by_box_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 64; i++) raw_view[i] = cert_by_view_depth[i].load(std::memory_order_relaxed);
+      fwrite(raw_depth, sizeof(uint64_t), 128, hf);
+      fwrite(raw_box, sizeof(uint64_t), 128, hf);
+      fwrite(raw_view, sizeof(uint64_t), 64, hf);
+
+      std::vector<uint64_t> raw_k(320 * 256);
+      for (int i = 0; i < 128 * 256; i++) raw_k[i] = cert_k_by_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128 * 256; i++) raw_k[128 * 256 + i] = cert_k_by_box_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 64 * 256; i++) raw_k[256 * 256 + i] = cert_k_by_view_depth[i].load(std::memory_order_relaxed);
+      fwrite(raw_k.data(), sizeof(uint64_t), 320 * 256, hf);
+      fclose(hf);
+    }
+    WriteDepthHistogramFile(output_dir + "/depth_histogram.txt");
+
     std::error_code ec;
     return std::filesystem::rename(tmp, path, ec), !ec;
   }
@@ -1289,6 +1569,28 @@ struct SearchManager {
       }
     }
     fclose(f);
+
+    std::string hist_path = path + ".hist";
+    FILE *hf = fopen(hist_path.c_str(), "rb");
+    if (hf) {
+      uint64_t raw_depth[128], raw_box[128], raw_view[64];
+      if (fread(raw_depth, sizeof(uint64_t), 128, hf) == 128 &&
+          fread(raw_box, sizeof(uint64_t), 128, hf) == 128 &&
+          fread(raw_view, sizeof(uint64_t), 64, hf) == 64) {
+        for (int i = 0; i < 128; i++) cert_by_depth[i].store(raw_depth[i], std::memory_order_relaxed);
+        for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(raw_box[i], std::memory_order_relaxed);
+        for (int i = 0; i < 64; i++) cert_by_view_depth[i].store(raw_view[i], std::memory_order_relaxed);
+
+        std::vector<uint64_t> raw_k(320 * 256);
+        if (fread(raw_k.data(), sizeof(uint64_t), 320 * 256, hf) == 320 * 256) {
+          for (int i = 0; i < 128 * 256; i++) cert_k_by_depth[i].store(raw_k[i], std::memory_order_relaxed);
+          for (int i = 0; i < 128 * 256; i++) cert_k_by_box_depth[i].store(raw_k[128 * 256 + i], std::memory_order_relaxed);
+          for (int i = 0; i < 64 * 256; i++) cert_k_by_view_depth[i].store(raw_k[256 * 256 + i], std::memory_order_relaxed);
+        }
+      }
+      fclose(hf);
+    }
+
     return true;
   }
 
@@ -1348,6 +1650,12 @@ struct SearchManager {
                -0.0005896488825480144},
          .view = {0.9164627443138856, 0.2030404322634455, 0.3443121541818299},
          .label = "Valley"},
+
+        {.chart = 0,
+         .w = {0.0003413856029510498, -0.00041025876998901367,
+               -0.00066292285919189442},
+         .view = {0.9164627443138856, 0.2030404322634455, 0.3443121541818299},
+         .label = "Valley transition"},
 
         {.chart = 0,
          .w = {0.00041022896766662598, -0.00049299001693725586,
@@ -1487,6 +1795,18 @@ struct SearchManager {
     certified_count.Reset();
     pruned_count.Reset();
     split_count.Reset();
+    for (int i = 0; i < 128; i++) cert_by_depth[i].store(0, std::memory_order_relaxed);
+    for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(0, std::memory_order_relaxed);
+    for (int i = 0; i < 64; i++) cert_by_view_depth[i].store(0, std::memory_order_relaxed);
+    if (cert_k_by_depth) {
+      for (size_t i = 0; i < 128 * 256; i++) {
+        cert_k_by_depth[i].store(0, std::memory_order_relaxed);
+        cert_k_by_box_depth[i].store(0, std::memory_order_relaxed);
+      }
+      for (size_t i = 0; i < 64 * 256; i++) {
+        cert_k_by_view_depth[i].store(0, std::memory_order_relaxed);
+      }
+    }
 
     SearchNode root;
     root.id = next_node_id++;
@@ -1644,6 +1964,9 @@ struct SearchManager {
     Periodically progress_per(1.0);
     Periodically checkpoint_per(5.0);
     Periodically where_per(120.0);
+    Periodically suspicious_per(30.0);
+    Periodically depthout_per(10.0);
+    uint64_t depthout_count = 0;
 
     // Buffers for GPU batch
     std::vector<GpuBox> gpu_boxes;
@@ -1709,12 +2032,18 @@ struct SearchManager {
       all_triples.clear();
       results.assign(count, GpuResult{});
 
-      // Periodically show some node from the batch, so we can note places
+      // Periodically show the deepest node from the batch, so we can note places
       // where we got stuck, etc.
       where_per.RunIf([&]{
           if (current_batch.empty()) return;
-          const auto &node = current_batch[0];
-          status.Print("[{}] #{}\n"
+          int best_idx = 0;
+          for (size_t i = 1; i < current_batch.size(); i++) {
+            if (current_batch[i].depth > current_batch[best_idx].depth) {
+              best_idx = i;
+            }
+          }
+          const auto &node = current_batch[best_idx];
+          status.Print("[{}] Deepest in batch: #{}\n"
                        "  depth {}, box_depth {}, view_depth {}\n"
                        "  radii ({:.17g}, {:.17g}, {:.17g}))\n"
                        "  box ({:.17g}, {:.17g}, {:.17g})\n",
@@ -1724,34 +2053,17 @@ struct SearchManager {
                        node.box.radii.x, node.box.radii.y, node.box.radii.z,
                        node.box.center.x, node.box.center.y, node.box.center.z);
         });
-
 
       // Mutex guards the stack and eval indices.
       std::mutex mu;
       std::vector<int> eval_indices;
       eval_indices.reserve(count);
 
-      // Periodically show some node from the batch, so we can note places
-      // where we got stuck, etc.
-      where_per.RunIf([&]{
-          if (current_batch.empty()) return;
-          const auto &node = current_batch[0];
-          status.Print("[{}] #{}\n"
-                       "  depth {}, box_depth {}, view_depth {}\n"
-                       "  radii ({:.17g}, {:.17g}, {:.17g}))\n"
-                       "  box ({:.17g}, {:.17g}, {:.17g})\n",
-                       ANSI::Time(timer.Seconds()),
-                       node.id,
-                       node.depth, node.box_depth, node.view_depth,
-                       node.box.radii.x, node.box.radii.y, node.box.radii.z,
-                       node.box.center.x, node.box.center.y, node.box.center.z);
-        });
-
       ParallelComp(count, [&](int64_t i) {
           const auto &node = current_batch[i];
           if (OutsideBall(node.box)) {
             pruned_count++;
-            certified_count++;
+            RecordCertification(node);
             OutputRow(std::format("PRUNE {} {} {} RADIUS\n",
                                   node.id, node.parent_id, node.depth));
             return;
@@ -1762,14 +2074,14 @@ struct SearchManager {
 
           if (fund.prune) {
             pruned_count++;
-            certified_count++;
+            RecordCertification(node);
             OutputRow(std::format("PRUNE {} {} {} FUNDAMENTAL {}\n",
                                   node.id, node.parent_id, node.depth,
                                   fund.direction));
 
           } else if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
             pruned_count++;
-            certified_count++;
+            RecordCertification(node);
             OutputRow(std::format("TUBE {} {} {} {:.17g}\n",
                                   node.id, node.parent_id, node.depth,
                                   tube_radius));
@@ -2050,7 +2362,7 @@ struct SearchManager {
           }
 
           if (res.certified) {
-            certified_count++;
+            RecordCertification(node);
             OutputRow(
                 std::format("CERT {} {} {} {} {:.17g} {} {} {}\n",
                             node.id, node.parent_id, node.depth,
@@ -2115,15 +2427,47 @@ struct SearchManager {
                 exit(0);
               }
 
-              status.Print(
-                  ARED("Leaf reached max depth ")
-                  "(depth={}, box_depth={}, view_depth={}, "
-                  "radii=({:.17g}, {:.17g}, {:.17g})) "
-                  "at box ({:.17g}, {:.17g}, {:.17g})!\n",
-                  node.depth, node.box_depth, node.view_depth,
-                  node.box.radii.x, node.box.radii.y, node.box.radii.z,
-                  node.box.center.x, node.box.center.y, node.box.center.z);
+              depthout_count++;
+              depthout_per.RunIf([&]{
+                auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
+                status.Print(
+                    ARED("Leaf reached max depth ")
+                    "(depth={}, box_depth={}, view_depth={}, "
+                    "radii=({:.17g}, {:.17g}, {:.17g})) "
+                    "at box ({:.17g}, {:.17g}, {:.17g})\n"
+                    "  view_c=({:.10g}, {:.10g}, {:.10g}), diam={:.10g}\n"
+                    "  tri=[({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g}), ({:.10g}, {:.10g}, {:.10g})]\n"
+                    "  tpool: {} triples, {} contacts, top_defect={:.10g} "
+                    "(depthouts so far: {})\n",
+                    node.depth, node.box_depth, node.view_depth,
+                    node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                    node.box.center.x, node.box.center.y, node.box.center.z,
+                    node.tri.Centroid().x, node.tri.Centroid().y, node.tri.Centroid().z,
+                    node.tri.AngularDiameter(),
+                    node.tri.corners[0].x, node.tri.corners[0].y, node.tri.corners[0].z,
+                    node.tri.corners[1].x, node.tri.corners[1].y, node.tri.corners[1].z,
+                    node.tri.corners[2].x, node.tri.corners[2].y, node.tri.corners[2].z,
+                    tpool->gpu_triples.size(), tpool->contacts.size(),
+                    tpool->gpu_triples.empty() ? -1.0 : tpool->gpu_triples[0].weighted_defect_upper,
+                    depthout_count);
+              });
               continue;
+            }
+
+            if (node.depth >= suspicious_depth) {
+              suspicious_per.RunIf([&]{
+                vec3 vc = node.tri.Centroid();
+                status.Print(
+                    AYELLOW("[{}] Hard point at suspicious depth (depth={}, box_depth={}, view_depth={}):\n")
+                    "  w = ({:.17g}, {:.17g}, {:.17g})\n"
+                    "  view = ({:.17g}, {:.17g}, {:.17g})\n"
+                    "  radii = ({:.10g}, {:.10g}, {:.10g})\n",
+                    ANSI::Time(timer.Seconds()),
+                    node.depth, node.box_depth, node.view_depth,
+                    node.box.center.x, node.box.center.y, node.box.center.z,
+                    vc.x, vc.y, vc.z,
+                    node.box.radii.x, node.box.radii.y, node.box.radii.z);
+              });
             }
 
             int widest = node.box.WidestAxis();
@@ -2242,19 +2586,21 @@ struct SearchManager {
           pool_str = AGREY("Related solution pool: inactive");
         }
 
+        std::string depth_hist_str = FormatDepthHistogram();
         status.Status(
             "Loop: {} " AGREY("|")
             " Eval: {} " AGREY("|")
             " Cert: {} " AGREY("|")
             " Pruned: {} " AGREY("|")
             " {}⊿ " AGREY("|")
-            " {}⚡ "
+            " {}⚡"
             "\n"
             "Stack: {} " AGREY("|")
             " Done: {:.4f}% " AGREY("|")
             " Depth: {} " AGREY("|")
             " {} boxes/s " AGREY("|")
             " {}\n"
+            "{}\n"
             "{}",
             FormatNum(ctr_loops.Read()),
             FormatNum(evaluated_count.Read()),
@@ -2266,6 +2612,7 @@ struct SearchManager {
             completed_frac * 100.0,
             current_batch.empty() ? 0 : current_batch[0].depth,
             FormatNum((int64_t)rate), ANSI::Time(elapsed),
+            depth_hist_str,
             pool_str);
       }
 
@@ -2273,6 +2620,7 @@ struct SearchManager {
         SaveCheckpoint(ckpt_path);
         FlushRows();
         if (sigint_received.load()) {
+          PrintDepthDistribution();
           status.Print("\n"
                        AYELLOW("Interrupted (SIGINT)") ".\n"
                        "Saved checkpoint with {} nodes to {}.\n"
@@ -2294,6 +2642,7 @@ struct SearchManager {
       status.Print(AGREEN("\n=== ☻ Search Completed ☻ ===\n")
                    "Took {}s.",
                    ANSI::Time(timer.Seconds()));
+      PrintDepthDistribution();
     }
 
     FlushRows();
@@ -2422,9 +2771,11 @@ struct SearchManager {
 
   void TestValleyPoint() {
     Print(AYELLOW("Testing valley hard points directly...\n"));
-    for (int test_idx = 0; test_idx < 2; test_idx++) {
+    for (int test_idx = 0; test_idx < 3; test_idx++) {
       vec3 sol_w = (test_idx == 0)
           ? vec3{0.00030419230461120605, -0.00036638975143432617, -0.0005896488825480144}
+          : (test_idx == 1)
+          ? vec3{0.0003413856029510498, -0.00041025876998901367, -0.00066292285919189442}
           : vec3{0.00041022896766662598, -0.00049299001693725586, -0.0007966756820678712};
       vec3 sol_view = yocto::normalize(vec3{0.9164627443138856, 0.2030404322634455, 0.3443121541818299});
 
@@ -2458,6 +2809,77 @@ struct SearchManager {
       this->Run();
     }
   }
+
+  void TestDepthOut() {
+    Print(AYELLOW("Testing depth-out leaf directly with EvaluateBoxCPU...\n"));
+    vec3 sol_w = {0.0003413856029510498, -0.00041025876998901367, -0.00066292285919189442};
+    vec3 sol_r = {2.9802322387695312e-08, 5.9604644775390625e-08, 3.9736429850260414e-08};
+
+    SearchNode node;
+    node.id = 0;
+    node.parent_id = -1;
+    node.depth = 96;
+    node.box_depth = 72;
+    node.view_depth = 24;
+    node.chart = 0;
+    node.box.center = sol_w;
+    node.box.radii = sol_r;
+    node.tri.corners[0] = {0.6255792583, 0.1381680762, 0.2362526655};
+    node.tri.corners[1] = {0.6255792881, 0.1381680762, 0.2362526357};
+    node.tri.corners[2] = {0.6255792656, 0.1381680987, 0.2362526357};
+
+    auto tpool = GetTrianglePool(node.tri, 14);
+    GpuBox gbox;
+    gbox.cx = node.box.center.x; gbox.cy = node.box.center.y; gbox.cz = node.box.center.z;
+    gbox.rx = node.box.radii.x;  gbox.ry = node.box.radii.y;  gbox.rz = node.box.radii.z;
+    for (int c = 0; c < 3; c++) {
+      gbox.tri[c][0] = node.tri.corners[c].x;
+      gbox.tri[c][1] = node.tri.corners[c].y;
+      gbox.tri[c][2] = node.tri.corners[c].z;
+    }
+    gbox.chart = node.chart;
+    gbox.triple_offset = 0;
+    gbox.num_triples = tpool->gpu_triples.size();
+    gbox.contact_offset = 0;
+    gbox.num_contacts = tpool->contacts.size();
+    gbox._pad = 0;
+    auto res = EvaluateBoxCPU(gbox, tpool->contacts, tpool->gpu_triples);
+    Print("At depth 96 (box_depth 72, view_depth 24): certified={}, winning_triple={}, margin={:.17g}\n",
+          res.certified, res.winning_triple, res.margin);
+
+    // Now test both halves of the bisected box (box_depth 73)
+    GpuBox gbox0 = gbox;
+    gbox0.cy = node.box.center.y - node.box.radii.y * 0.5;
+    gbox0.ry = node.box.radii.y * 0.5;
+    auto res0 = EvaluateBoxCPU(gbox0, tpool->contacts, tpool->gpu_triples);
+
+    GpuBox gbox1 = gbox;
+    gbox1.cy = node.box.center.y + node.box.radii.y * 0.5;
+    gbox1.ry = node.box.radii.y * 0.5;
+    auto res1 = EvaluateBoxCPU(gbox1, tpool->contacts, tpool->gpu_triples);
+
+    Print("Child 0 (box_depth 73): certified={}, winning_triple={}, margin={:.17g}\n",
+          res0.certified, res0.winning_triple, res0.margin);
+    Print("Child 1 (box_depth 73): certified={}, winning_triple={}, margin={:.17g}\n",
+          res1.certified, res1.winning_triple, res1.margin);
+
+    // Bisect Child 1's widest remaining axis (rx or rz)
+    // At box_depth 73, rx = 2.98e-8, ry = 2.98e-8, rz = 3.97e-8 -> widest is rz!
+    GpuBox gbox10 = gbox1;
+    gbox10.cz = gbox1.cz - gbox1.rz * 0.5;
+    gbox10.rz = gbox1.rz * 0.5;
+    auto res10 = EvaluateBoxCPU(gbox10, tpool->contacts, tpool->gpu_triples);
+
+    GpuBox gbox11 = gbox1;
+    gbox11.cz = gbox1.cz + gbox1.rz * 0.5;
+    gbox11.rz = gbox1.rz * 0.5;
+    auto res11 = EvaluateBoxCPU(gbox11, tpool->contacts, tpool->gpu_triples);
+
+    Print("Child 1.0 (box_depth 74): certified={}, winning_triple={}, margin={:.17g}\n",
+          res10.certified, res10.winning_triple, res10.margin);
+    Print("Child 1.1 (box_depth 74): certified={}, winning_triple={}, margin={:.17g}\n",
+          res11.certified, res11.winning_triple, res11.margin);
+  }
 };
 
 int main(int argc, char **argv) {
@@ -2479,6 +2901,8 @@ int main(int argc, char **argv) {
       mgr.max_box_depth = std::atoi(argv[++i]);
     } else if (arg == "--max_view_depth" && i + 1 < argc) {
       mgr.max_view_depth = std::atoi(argv[++i]);
+    } else if (arg == "--suspicious_depth" && i + 1 < argc) {
+      mgr.suspicious_depth = std::atoi(argv[++i]);
     } else if (arg == "--candidates" && i + 1 < argc) {
       mgr.num_candidates = std::atoi(argv[++i]);
     } else if (arg == "--cone_samples" && i + 1 < argc) {
@@ -2523,14 +2947,18 @@ int main(int argc, char **argv) {
     } else if (arg == "--test_valley") {
       mgr.TestValleyPoint();
       return 0;
+    } else if (arg == "--test_depthout") {
+      mgr.TestDepthOut();
+      return 0;
 
     } else if (arg == "--help" || arg == "-h") {
       Print("Usage: ./lean229.exe [options]\n"
             "  --chart <0|1|2>     Cayley chart index (default 0)\n"
             "  --batch_size <N>    Batch size for GPU/evaluator (default 32768)\n"
-            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 96)\n"
-            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 72)\n"
-            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 24)\n"
+            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 112)\n"
+            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 84)\n"
+            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 28)\n"
+            "  --suspicious_depth <D> Threshold to report hard points (default 90)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
             "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
             "  --escalate_depth <D> Tree depth to escalate cone samples (default 36)\n"
