@@ -1327,6 +1327,12 @@ struct SearchManager {
          .view = {0.3984395379, 0.8338690325, 0.3819795573},
          .label = "Small-rotation silhouette"},
 
+        {.chart = 0,
+         .w = {0.00030419230461120605, -0.00036638975143432617,
+               -0.0005896488825480144},
+         .view = {0.9164627443138856, 0.2030404322634455, 0.3443121541818299},
+         .label = "Chart 0 valley grinder"},
+
         {.chart = 2,
          .w = {-0.28256338834762573, -0.86962884664535522,
                -0.27563470602035522},
@@ -1431,6 +1437,7 @@ struct SearchManager {
       }
     }
     active_priority = priority_points;
+    num_priority_points = (int)priority_points.size();
     return priority_points;
   }
 
@@ -1624,7 +1631,11 @@ struct SearchManager {
              i >= 0 && current_batch.size() < (size_t)batch_size; i--) {
           if (ContainsUncertifiedPriority(stack[i])) {
             current_batch.push_back(stack[i]);
-            stack.erase(stack.begin() + i);
+            stack[i] = std::move(stack.back());
+            stack.pop_back();
+            if (i < (int)stack.size()) {
+              i++; // Re-check slot i with the swapped-in element
+            }
           }
         }
       }
@@ -1920,8 +1931,9 @@ struct SearchManager {
           const auto &node = current_batch[idx];
           auto res = results[idx];
 
-          if (!res.certified && (node.box_depth >= max_box_depth ||
-                                 node.depth >= max_depth - 2)) {
+          if (!res.certified && (node.depth >= max_depth - 2 ||
+                                 (node.box_depth >= max_box_depth &&
+                                  node.view_depth >= max_view_depth - 1))) {
             // Stubborn leaf has reached max box depth or tree depth limit.
             // Safety-net escalation before depth-out:
             for (int cs : {14, 16}) {
@@ -2309,6 +2321,39 @@ struct SearchManager {
     this->output_dir = ".artifacts/test_solution";
     this->Run();
   }
+
+  void TestValleyPoint() {
+    Print(AYELLOW("Testing valley hard point directly...\n"));
+    vec3 sol_w = {0.00030419230461120605, -0.00036638975143432617, -0.0005896488825480144};
+    vec3 sol_view = yocto::normalize(vec3{0.9164627443138856, 0.2030404322634455, 0.3443121541818299});
+
+    SearchNode ancestor;
+    ancestor.id = next_node_id++;
+    ancestor.parent_id = -1;
+    ancestor.depth = 80;
+    ancestor.box_depth = 64;
+    ancestor.view_depth = 16;
+    ancestor.chart = 0;
+    ancestor.box.center = sol_w;
+    ancestor.box.radii = {1e-6, 1e-6, 1e-6};
+
+    vec3 p0 = sol_view + vec3{1e-5, 0.0, 0.0};
+    vec3 p1 = sol_view + vec3{-0.5e-5, 0.866e-5, 0.0};
+    vec3 p2 = sol_view + vec3{-0.5e-5, -0.866e-5, 0.0};
+    ancestor.tri.corners[0] = yocto::normalize(p0);
+    ancestor.tri.corners[1] = yocto::normalize(p1);
+    ancestor.tri.corners[2] = yocto::normalize(p2);
+
+    this->stack.clear();
+    this->stack.push_back(ancestor);
+    this->max_depth = 96;
+    this->max_box_depth = 72;
+    this->max_view_depth = 24;
+    this->batch_size = 64;
+    this->resume = false;
+    this->output_dir = ".artifacts/test_valley";
+    this->Run();
+  }
 };
 
 int main(int argc, char **argv) {
@@ -2362,6 +2407,9 @@ int main(int argc, char **argv) {
       mgr.related_epsilon = std::atof(argv[++i]);
     } else if (arg == "--test_solution") {
       mgr.TestKnownSolution();
+      return 0;
+    } else if (arg == "--test_valley") {
+      mgr.TestValleyPoint();
       return 0;
 
     } else if (arg == "--help" || arg == "-h") {

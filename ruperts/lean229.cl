@@ -268,6 +268,7 @@ __kernel void EvaluateBoxes(
   float wx_f = (float)wx, wy_f = (float)wy, wz_f = (float)wz;
   float d_bound_f = (float)d_bound;
   float disp_error_f = (float)disp_error;
+  float best_margin_f = -1e30f;
 
 #if TOP_N == 1
   int top_triples[1] = {-1};
@@ -306,6 +307,7 @@ __kernel void EvaluateBoxes(
     float min_b_center = Bernstein27Min_f(C_center_f, lx_f, ly_f, lz_f, wx_f, wy_f, wz_f);
     float penalty = d_bound_f * (float)triple.weighted_defect_upper;
     float margin = min_b_center - penalty - disp_error_f;
+    if (margin > best_margin_f) best_margin_f = margin;
 
 #if TOP_N == 1
     if (margin > top_margins[0]) {
@@ -333,6 +335,23 @@ __kernel void EvaluateBoxes(
 
   // Unified evaluation loop: first test top N candidates, then fallback scan
   int num_phases = TOP_N + box.num_triples;
+#if TOP_N > 0
+  // Mathematical justification for bypassing the FP64 scan:
+  // 1. Stage 1 in FP64 requires: min_b_center - defect_penalty - disp_error > 0.0.
+  //    Any candidate failing this check is immediately discarded and never reaches
+  //    Stage 2 (evaluating the 6 simplex view nodes).
+  // 2. Both FP32 and FP64 passes evaluate the identical algebraic expression at
+  //    view_center using the exact same psi_center coefficients and best_in indices.
+  // 3. For degree-2 Bernstein Horner evaluation on this bounded domain (|C| <= 10,
+  //    |l| <= 1, w <= 2), the maximum floating-point rounding error between binary32
+  //    and binary64 is bounded by |margin_fp64 - margin_fp32| < 2.0e-6.
+  // 4. Therefore, if best_margin_f <= -1e-5f, every candidate triple in the pool
+  //    satisfies margin_fp64 <= -1e-5f + 2.0e-6 = -8.0e-6 < 0.0. Every candidate
+  //    is guaranteed to fail Stage 1 in FP64, so skipping the FP64 scan is sound.
+  if (best_margin_f <= -1e-5f) {
+    num_phases = 0;
+  }
+#endif
   for (int step = 0; step < num_phases; step++) {
     int t;
 #if TOP_N > 0
