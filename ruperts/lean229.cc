@@ -1142,9 +1142,14 @@ struct SearchManager {
   int cone_samples = 8;
   int escalate_depth = 36;
   int escalate_cone_samples = 12;
+  int deep_escalate_depth = 60;
+  int deep_escalate_cone_samples = 14;
   int num_threads = 8;
 
   int EffectiveConeSamples(const SearchNode &node) const {
+    if (deep_escalate_depth > 0 && node.depth >= deep_escalate_depth) {
+      return deep_escalate_cone_samples;
+    }
     if (escalate_depth > 0 && node.depth >= escalate_depth) {
       return escalate_cone_samples;
     }
@@ -1553,13 +1558,24 @@ struct SearchManager {
         std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
 
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
-    status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}), "
-                 "Max Depth: {} (box={}, view={}), Device: {}\n",
-                 chart, batch_size,
-                 num_candidates == 0 ? "all" : std::to_string(num_candidates),
-                 cone_samples, escalate_cone_samples, escalate_depth,
-                 max_depth, max_box_depth, max_view_depth,
-                 use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
+    if (deep_escalate_depth > 0) {
+      status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}, {} at depth {}), "
+                   "Max Depth: {} (box={}, view={}), Device: {}\n",
+                   chart, batch_size,
+                   num_candidates == 0 ? "all" : std::to_string(num_candidates),
+                   cone_samples, escalate_cone_samples, escalate_depth,
+                   deep_escalate_cone_samples, deep_escalate_depth,
+                   max_depth, max_box_depth, max_view_depth,
+                   use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
+    } else {
+      status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}), "
+                   "Max Depth: {} (box={}, view={}), Device: {}\n",
+                   chart, batch_size,
+                   num_candidates == 0 ? "all" : std::to_string(num_candidates),
+                   cone_samples, escalate_cone_samples, escalate_depth,
+                   max_depth, max_box_depth, max_view_depth,
+                   use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
+    }
 
     if (prioritize_related) {
       active_priority = GetPriorityPoints(related_epsilon);
@@ -1931,12 +1947,15 @@ struct SearchManager {
           const auto &node = current_batch[idx];
           auto res = results[idx];
 
-          if (!res.certified && (node.depth >= max_depth - 2 ||
-                                 (node.box_depth >= max_box_depth &&
-                                  node.view_depth >= max_view_depth - 1))) {
-            // Stubborn leaf has reached max box depth or tree depth limit.
+          bool near_depthout = (node.depth >= max_depth - 2);
+          bool deep_box_with_narrow_view =
+              (node.box_depth >= max_box_depth && node.view_depth >= 20);
+
+          if (!res.certified && (near_depthout || deep_box_with_narrow_view)) {
+            // Stubborn leaf has reached max box depth with refined view, or tree depth limit.
             // Safety-net escalation before depth-out:
             for (int cs : {14, 16}) {
+              if (EffectiveConeSamples(node) >= cs) continue;
               auto esc_pool = GetTrianglePool(node.tri, cs);
               GpuBox gb;
               gb.cx = node.box.center.x;
@@ -2383,6 +2402,10 @@ int main(int argc, char **argv) {
       mgr.escalate_depth = std::atoi(argv[++i]);
     } else if (arg == "--escalate_cone_samples" && i + 1 < argc) {
       mgr.escalate_cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--deep_escalate_depth" && i + 1 < argc) {
+      mgr.deep_escalate_depth = std::atoi(argv[++i]);
+    } else if (arg == "--deep_escalate_cone_samples" && i + 1 < argc) {
+      mgr.deep_escalate_cone_samples = std::atoi(argv[++i]);
     } else if (arg == "--threads" && i + 1 < argc) {
       mgr.num_threads = std::atoi(argv[++i]);
     } else if (arg == "--output_dir" && i + 1 < argc) {
@@ -2423,6 +2446,8 @@ int main(int argc, char **argv) {
             "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
             "  --escalate_depth <D> Tree depth to escalate cone samples (default 36)\n"
             "  --escalate_cone_samples <N> Escalated cone samples (default 12)\n"
+            "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 60)\n"
+            "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
