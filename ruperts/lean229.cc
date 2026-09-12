@@ -140,6 +140,16 @@ struct ProjectiveTriangle {
     return (corners[0] + corners[1] + corners[2]) / 3.0;
   }
 
+  double AngularDiameter() const {
+    vec3 u0 = yocto::normalize(corners[0]);
+    vec3 u1 = yocto::normalize(corners[1]);
+    vec3 u2 = yocto::normalize(corners[2]);
+    double d01 = yocto::length(u0 - u1);
+    double d12 = yocto::length(u1 - u2);
+    double d20 = yocto::length(u2 - u0);
+    return std::max({d01, d12, d20});
+  }
+
   std::array<ProjectiveTriangle, 4> Subdivide() const {
     vec3 m01 = (corners[0] + corners[1]) * 0.5;
     vec3 m12 = (corners[1] + corners[2]) * 0.5;
@@ -1160,6 +1170,7 @@ struct SearchManager {
   bool prioritize_related = true;
   double related_epsilon = 0.05;
   double tube_radius = 1e-4;
+  double split_kappa = 1.0;
   std::string output_dir = ".artifacts/nopert229";
 
   std::vector<SearchNode> stack; // DFS LIFO stack
@@ -1336,7 +1347,13 @@ struct SearchManager {
          .w = {0.00030419230461120605, -0.00036638975143432617,
                -0.0005896488825480144},
          .view = {0.9164627443138856, 0.2030404322634455, 0.3443121541818299},
-         .label = "Chart 0 valley grinder"},
+         .label = "Valley"},
+
+        {.chart = 0,
+         .w = {0.00041022896766662598, -0.00049299001693725586,
+               -0.0007966756820678712},
+         .view = {0.9164627443138856, 0.2030404322634455, 0.3443121541818299},
+         .label = "Valley depth-out"},
 
         {.chart = 2,
          .w = {-0.28256338834762573, -0.86962884664535522,
@@ -2063,19 +2080,24 @@ struct SearchManager {
             }
 
             int widest = node.box.WidestAxis();
-            // Balanced subdivision: refine box first if coarse, then alternate
-            // 3 box splits per view split so both spaces refine proportionally.
+            // Balanced subdivision: refine box first if coarse, then balance
+            // by angular diameter so that rotation uncertainty (2 * box_radius)
+            // and view triangle diameter refine proportionally without stalling.
             bool split_box;
             if (node.box_depth >= max_box_depth) {
               split_box = false;
             } else if (node.view_depth >= max_view_depth) {
               split_box = true;
             } else if (node.box.radii[widest] > 1.0 / 512.0) {
+              // Spatial partitioning phase: refine Cayley box down to 1/512
+              // early so coarse volume pruning can reject large regions rapidly.
               split_box = true;
             } else {
-              int b_rel = std::max(0, node.box_depth - 26);
-              int v_rel = std::max(0, node.view_depth - 1);
-              split_box = (b_rel < 3 * v_rel);
+              // Angular equipartition phase: balance rotation uncertainty
+              // (2 * box_radius) against view triangle diameter.
+              double rot_diam = 2.0 * node.box.radii[widest];
+              double view_diam = node.tri.AngularDiameter();
+              split_box = (rot_diam > split_kappa * view_diam);
             }
 
             if (split_box) {
@@ -2342,36 +2364,42 @@ struct SearchManager {
   }
 
   void TestValleyPoint() {
-    Print(AYELLOW("Testing valley hard point directly...\n"));
-    vec3 sol_w = {0.00030419230461120605, -0.00036638975143432617, -0.0005896488825480144};
-    vec3 sol_view = yocto::normalize(vec3{0.9164627443138856, 0.2030404322634455, 0.3443121541818299});
+    Print(AYELLOW("Testing valley hard points directly...\n"));
+    for (int test_idx = 0; test_idx < 2; test_idx++) {
+      vec3 sol_w = (test_idx == 0)
+          ? vec3{0.00030419230461120605, -0.00036638975143432617, -0.0005896488825480144}
+          : vec3{0.00041022896766662598, -0.00049299001693725586, -0.0007966756820678712};
+      vec3 sol_view = yocto::normalize(vec3{0.9164627443138856, 0.2030404322634455, 0.3443121541818299});
 
-    SearchNode ancestor;
-    ancestor.id = next_node_id++;
-    ancestor.parent_id = -1;
-    ancestor.depth = 80;
-    ancestor.box_depth = 64;
-    ancestor.view_depth = 16;
-    ancestor.chart = 0;
-    ancestor.box.center = sol_w;
-    ancestor.box.radii = {1e-6, 1e-6, 1e-6};
+      Print("Testing point {}: w=({:.8g}, {:.8g}, {:.8g})\n", test_idx, sol_w.x, sol_w.y, sol_w.z);
 
-    vec3 p0 = sol_view + vec3{1e-5, 0.0, 0.0};
-    vec3 p1 = sol_view + vec3{-0.5e-5, 0.866e-5, 0.0};
-    vec3 p2 = sol_view + vec3{-0.5e-5, -0.866e-5, 0.0};
-    ancestor.tri.corners[0] = yocto::normalize(p0);
-    ancestor.tri.corners[1] = yocto::normalize(p1);
-    ancestor.tri.corners[2] = yocto::normalize(p2);
+      SearchNode ancestor;
+      ancestor.id = next_node_id++;
+      ancestor.parent_id = -1;
+      ancestor.depth = 80;
+      ancestor.box_depth = 64;
+      ancestor.view_depth = 16;
+      ancestor.chart = 0;
+      ancestor.box.center = sol_w;
+      ancestor.box.radii = {1e-6, 1e-6, 1e-6};
 
-    this->stack.clear();
-    this->stack.push_back(ancestor);
-    this->max_depth = 96;
-    this->max_box_depth = 72;
-    this->max_view_depth = 24;
-    this->batch_size = 64;
-    this->resume = false;
-    this->output_dir = ".artifacts/test_valley";
-    this->Run();
+      vec3 p0 = sol_view + vec3{1e-5, 0.0, 0.0};
+      vec3 p1 = sol_view + vec3{-0.5e-5, 0.866e-5, 0.0};
+      vec3 p2 = sol_view + vec3{-0.5e-5, -0.866e-5, 0.0};
+      ancestor.tri.corners[0] = yocto::normalize(p0);
+      ancestor.tri.corners[1] = yocto::normalize(p1);
+      ancestor.tri.corners[2] = yocto::normalize(p2);
+
+      this->stack.clear();
+      this->stack.push_back(ancestor);
+      this->max_depth = 96;
+      this->max_box_depth = 72;
+      this->max_view_depth = 24;
+      this->batch_size = 64;
+      this->resume = false;
+      this->output_dir = ".artifacts/test_valley";
+      this->Run();
+    }
   }
 };
 
@@ -2412,6 +2440,8 @@ int main(int argc, char **argv) {
       mgr.output_dir = argv[++i];
     } else if (arg == "--tube_radius" && i + 1 < argc) {
       mgr.tube_radius = std::atof(argv[++i]);
+    } else if (arg == "--split_kappa" && i + 1 < argc) {
+      mgr.split_kappa = std::atof(argv[++i]);
     } else if (arg == "--cpu") {
       mgr.use_gpu = false;
     } else if (arg == "--gpu") {
@@ -2448,6 +2478,7 @@ int main(int argc, char **argv) {
             "  --escalate_cone_samples <N> Escalated cone samples (default 12)\n"
             "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 60)\n"
             "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
+            "  --split_kappa <K>   Box-to-view angular diameter split bias (default 1.0)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
