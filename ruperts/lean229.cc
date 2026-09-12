@@ -310,7 +310,7 @@ struct SearchNode {
   uint8_t view_depth = 0;
   uint8_t box_depth = 0;
   uint8_t chart = 0;
-  uint8_t last_split_was_view = 0;
+  uint8_t box_splits_since_view = 0;
 };
 static_assert(sizeof(SearchNode) == 144);
 
@@ -565,7 +565,7 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
   return pool;
 }
 
-static constexpr size_t MAX_TRIANGLE_CACHE_SIZE = 8192;
+static size_t g_max_triangle_cache_size = 20480;
 static std::mutex g_triangle_cache_mutex;
 static std::list<std::shared_ptr<const TrianglePool>> g_triangle_lru_list;
 static std::unordered_map<uint64_t, std::list<std::shared_ptr<const TrianglePool>>::iterator>
@@ -593,7 +593,7 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
                                  g_triangle_lru_list, it->second);
       return *(it->second);
     }
-    if (g_triangle_cache.size() >= MAX_TRIANGLE_CACHE_SIZE) {
+    if (g_triangle_cache.size() >= g_max_triangle_cache_size) {
       auto oldest = std::prev(g_triangle_lru_list.end());
       g_triangle_cache.erase((*oldest)->id);
       g_triangle_lru_list.pop_back();
@@ -1786,7 +1786,7 @@ struct SearchManager {
             child0.parent_id = node.id;
             child0.depth = node.depth + 1;
             child0.box_depth = node.box_depth + 1;
-            child0.last_split_was_view = 0;
+            child0.box_splits_since_view = node.box_splits_since_view + 1;
             child0.box = b0;
 
             SearchNode child1 = node;
@@ -1794,7 +1794,7 @@ struct SearchManager {
             child1.parent_id = node.id;
             child1.depth = node.depth + 1;
             child1.box_depth = node.box_depth + 1;
-            child1.last_split_was_view = 0;
+            child1.box_splits_since_view = node.box_splits_since_view + 1;
             child1.box = b1;
 
             if (child0.box.ContainsOrigin()) {
@@ -1820,7 +1820,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
-                child.last_split_was_view = 1;
+                child.box_splits_since_view = 0;
                 child.tri = sub_tris[t];
                 MutexLock ml(&mu);
                 stack.push_back(child);
@@ -1838,12 +1838,12 @@ struct SearchManager {
           int batch_idx;
           std::shared_ptr<const TrianglePool> pool;
         };
-        std::vector<EvalItem> eval_items;
-        eval_items.reserve(eval_indices.size());
-        for (int idx : eval_indices) {
+        std::vector<EvalItem> eval_items(eval_indices.size());
+        ParallelComp(eval_indices.size(), [&](int64_t i) {
+          int idx = eval_indices[i];
           const auto &node = current_batch[idx];
-          eval_items.push_back({idx, GetTrianglePool(node.tri, EffectiveConeSamples(node))});
-        }
+          eval_items[i] = {idx, GetTrianglePool(node.tri, EffectiveConeSamples(node))};
+        }, num_threads);
 
         // Collate by triangle pool ID: groups identical triangles together so GPU work-items
         // within every warp execute in lockstep on identical candidate triples, with 100%
@@ -2127,9 +2127,10 @@ struct SearchManager {
             }
 
             int widest = node.box.WidestAxis();
-            // Balanced subdivision: refine box first if coarse, then balance
-            // by angular diameter, constrained to never perform consecutive
-            // view splits so the batch doesn't explode with triangle pools.
+            // Balanced subdivision: refine box first down to 1/512, then balance
+            // using angular equipartition with a strict 2:1 rate-limiting constraint
+            // (at least 2 box splits between view splits) to converge to equiangular
+            // without exploding unique view triangles.
             bool split_box;
             if (node.box_depth >= max_box_depth) {
               split_box = false;
@@ -2139,15 +2140,17 @@ struct SearchManager {
               // Spatial partitioning phase: refine Cayley box down to 1/512
               // early so coarse volume pruning can reject large regions rapidly.
               split_box = true;
-            } else if (node.last_split_was_view) {
-              // Pacing constraint: only one consecutive view split allowed.
-              split_box = true;
             } else {
-              // Angular equipartition phase: balance rotation uncertainty
-              // (2 * box_radius) against view triangle diameter.
               double rot_diam = 2.0 * node.box.radii[widest];
               double view_diam = node.tri.AngularDiameter();
-              split_box = (rot_diam > split_kappa * view_diam);
+              if (rot_diam >= split_kappa * view_diam) {
+                // Box has greater angular uncertainty: split box!
+                split_box = true;
+              } else {
+                // View has greater angular uncertainty: wants view split,
+                // but rate-limit to at least 2 box splits between view splits (2:1 pacing).
+                split_box = (node.box_splits_since_view < 2);
+              }
             }
 
             if (split_box) {
@@ -2162,7 +2165,7 @@ struct SearchManager {
               child0.parent_id = node.id;
               child0.depth = node.depth + 1;
               child0.box_depth = node.box_depth + 1;
-              child0.last_split_was_view = 0;
+              child0.box_splits_since_view = node.box_splits_since_view + 1;
               child0.box = b0;
 
               SearchNode child1 = node;
@@ -2170,7 +2173,7 @@ struct SearchManager {
               child1.parent_id = node.id;
               child1.depth = node.depth + 1;
               child1.box_depth = node.box_depth + 1;
-              child1.last_split_was_view = 0;
+              child1.box_splits_since_view = node.box_splits_since_view + 1;
               child1.box = b1;
 
               if (ContainsUncertifiedPriority(child0)) {
@@ -2206,7 +2209,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
-                child.last_split_was_view = 1;
+                child.box_splits_since_view = 0;
                 child.tri = sub_tris[t];
                 stack.push_back(child);
               }
@@ -2216,7 +2219,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
-                child.last_split_was_view = 1;
+                child.box_splits_since_view = 0;
                 child.tri = sub_tris[priority_idx];
                 stack.push_back(child);
               }
@@ -2496,6 +2499,8 @@ int main(int argc, char **argv) {
       mgr.tube_radius = std::atof(argv[++i]);
     } else if (arg == "--split_kappa" && i + 1 < argc) {
       mgr.split_kappa = std::atof(argv[++i]);
+    } else if (arg == "--triangle_cache" && i + 1 < argc) {
+      g_max_triangle_cache_size = std::atoll(argv[++i]);
     } else if (arg == "--cpu") {
       mgr.use_gpu = false;
     } else if (arg == "--gpu") {
@@ -2533,6 +2538,7 @@ int main(int argc, char **argv) {
             "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 60)\n"
             "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
             "  --split_kappa <K>   Box-to-view angular diameter split bias (default 1.0)\n"
+            "  --triangle_cache <N> Maximum unique triangle pools to cache in RAM (default 20480)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
             "  --threads <T>       CPU fallback worker threads (default 8)\n"
             "  --output_dir <DIR>  Output directory for logs and checkpoints\n"
