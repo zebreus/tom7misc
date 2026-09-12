@@ -10,6 +10,7 @@
 #include <iostream>
 #include <limits>
 #include <numbers>
+#include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -434,7 +435,7 @@ static void RenderProjections(const std::vector<DifficultCell> &cells,
   std::cout << "Saved: " << output_png << "\n";
 }
 
-// Visualization 2: Silhouette & Signed Clearance Heatmap
+// Visualization 2: Silhouette & Signed Clearance Heatmap with Multi-Sample Cloud
 static void RenderSilhouette(const DifficultCell &cell,
                              const std::string &output_png) {
   constexpr int W = 2400;
@@ -442,78 +443,219 @@ static void RenderSilhouette(const DifficultCell &cell,
   ImageRGBA img(W, H);
   img.Clear32(0x10141EFF);
 
-  // Setup orthonormal view frame
-  vec3 view_dir = cell.ViewCentroid();
-  vec3 right, up;
-  ViewFrame(view_dir, &right, &up);
+  // 1. Generate 5D sample poses:
+  //    - Pose 0: Center pose (w = c, v = view centroid)
+  //    - 24 extreme corners: 8 Cayley box corners x 3 view triangle corners
+  //    - 8 Cayley corners x view centroid
+  //    - 3 view corners x Cayley center
+  //    - 18 combinations of 6 Cayley face centers x 3 view triangle edge midpoints
+  //    - 40 uniform random interior samples
+  struct PoseSample {
+    vec3 w;
+    vec3 v;
+    bool is_center = false;
+  };
+  std::vector<PoseSample> samples;
 
-  // Compute 2D vertices for outer polyhedron #229
-  std::vector<vec2> outer_verts(NUM_VERTICES);
-  for (int i = 0; i < NUM_VERTICES; i++) {
-    vec3 p = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
-    outer_verts[i] = vec2{yocto::dot(right, p), yocto::dot(up, p)};
+  // Center pose (index 0)
+  samples.push_back({.w = cell.c, .v = cell.ViewCentroid(), .is_center = true});
+
+  // 8 Cayley corners x 3 view corners + view centroid (32 samples)
+  for (double sx : {-1.0, 1.0}) {
+    for (double sy : {-1.0, 1.0}) {
+      for (double sz : {-1.0, 1.0}) {
+        vec3 cw = cell.c + vec3{sx * cell.r.x, sy * cell.r.y, sz * cell.r.z};
+        for (int k = 0; k < 3; k++) {
+          samples.push_back({.w = cw, .v = cell.v[k]});
+        }
+        samples.push_back({.w = cw, .v = cell.ViewCentroid()});
+      }
+    }
   }
 
-  // Outer convex hull
-  std::vector<int> outer_hull = Hull2D::GrahamScan(outer_verts);
-  std::vector<PolygonEdge> outer_edges = GetHullEdges(outer_verts, outer_hull);
+  // View corners with Cayley center (3 samples)
+  for (int k = 0; k < 3; k++) {
+    samples.push_back({.w = cell.c, .v = cell.v[k]});
+  }
 
-  // Compute 2D vertices for inner polyhedron #229 (rotated by Cayley w)
-  double R[3][3];
-  CayleyToMatrix(cell.c, R);
-  std::vector<vec2> inner_verts(NUM_VERTICES);
+  // 6 Cayley face centers x 3 view edge midpoints (18 samples)
+  vec3 v_mids[3] = {
+    yocto::normalize(cell.v[0] + cell.v[1]),
+    yocto::normalize(cell.v[1] + cell.v[2]),
+    yocto::normalize(cell.v[2] + cell.v[0])
+  };
+  vec3 w_faces[6] = {
+    cell.c + vec3{cell.r.x, 0, 0}, cell.c - vec3{cell.r.x, 0, 0},
+    cell.c + vec3{0, cell.r.y, 0}, cell.c - vec3{0, cell.r.y, 0},
+    cell.c + vec3{0, 0, cell.r.z}, cell.c - vec3{0, 0, cell.r.z}
+  };
+  for (const auto &wf : w_faces) {
+    for (const auto &vm : v_mids) {
+      samples.push_back({.w = wf, .v = vm});
+    }
+  }
+
+  // 40 deterministic random interior samples
+  std::mt19937_64 rng(1234567);
+  std::uniform_real_distribution<double> unif_box(-1.0, 1.0);
+  std::uniform_real_distribution<double> unif_simplex(0.0, 1.0);
+  for (int i = 0; i < 40; i++) {
+    vec3 rw = cell.c + vec3{
+      unif_box(rng) * cell.r.x,
+      unif_box(rng) * cell.r.y,
+      unif_box(rng) * cell.r.z
+    };
+    double r1 = unif_simplex(rng);
+    double r2 = unif_simplex(rng);
+    if (r1 + r2 > 1.0) {
+      r1 = 1.0 - r1;
+      r2 = 1.0 - r2;
+    }
+    double l0 = r1, l1 = r2, l2 = 1.0 - r1 - r2;
+    vec3 rv = yocto::normalize(l0 * cell.v[0] + l1 * cell.v[1] + l2 * cell.v[2]);
+    samples.push_back({.w = rw, .v = rv});
+  }
+
+  // 2. Solve nominal optimal translation t* at the CENTER pose
+  vec3 center_view = samples[0].v;
+  vec3 c_right, c_up;
+  ViewFrame(center_view, &c_right, &c_up);
+
+  std::vector<vec2> center_outer_verts(NUM_VERTICES);
+  for (int i = 0; i < NUM_VERTICES; i++) {
+    vec3 p = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
+    center_outer_verts[i] = vec2{yocto::dot(c_right, p), yocto::dot(c_up, p)};
+  }
+  std::vector<int> center_outer_hull = Hull2D::GrahamScan(center_outer_verts);
+  std::vector<PolygonEdge> center_outer_edges = GetHullEdges(center_outer_verts, center_outer_hull);
+
+  double R0[3][3];
+  CayleyToMatrix(samples[0].w, R0);
+  std::vector<vec2> center_inner_verts(NUM_VERTICES);
   for (int i = 0; i < NUM_VERTICES; i++) {
     vec3 p = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
     vec3 rp = {
-      R[0][0]*p.x + R[0][1]*p.y + R[0][2]*p.z,
-      R[1][0]*p.x + R[1][1]*p.y + R[1][2]*p.z,
-      R[2][0]*p.x + R[2][1]*p.y + R[2][2]*p.z
+      R0[0][0]*p.x + R0[0][1]*p.y + R0[0][2]*p.z,
+      R0[1][0]*p.x + R0[1][1]*p.y + R0[1][2]*p.z,
+      R0[2][0]*p.x + R0[2][1]*p.y + R0[2][2]*p.z
     };
-    inner_verts[i] = vec2{yocto::dot(right, rp), yocto::dot(up, rp)};
+    center_inner_verts[i] = vec2{yocto::dot(c_right, rp), yocto::dot(c_up, rp)};
   }
-  std::vector<int> inner_hull = Hull2D::GrahamScan(inner_verts);
+  Clearance2D c2d = MaximizeClearance2D(center_outer_edges, center_inner_verts);
+  vec2 witness_t = c2d.translation;
 
-  // Maximize clearance via translation
-  Clearance2D c2d = MaximizeClearance2D(outer_edges, inner_verts);
+  // 3. Compute geometry and 2D silhouettes for ALL samples under witness_t
+  struct SampleGeom {
+    std::vector<vec2> outer_verts;
+    std::vector<int> outer_hull;
+    std::vector<PolygonEdge> outer_edges;
+    std::vector<vec2> trans_inner;
+    std::vector<int> inner_hull;
+    std::vector<double> profile;
+  };
+  std::vector<SampleGeom> sample_geoms(samples.size());
 
-  // Translated inner vertices
-  std::vector<vec2> trans_inner(NUM_VERTICES);
-  for (int i = 0; i < NUM_VERTICES; i++) {
-    trans_inner[i] = inner_verts[i] + c2d.translation;
+  for (size_t s = 0; s < samples.size(); s++) {
+    auto &sg = sample_geoms[s];
+    vec3 right, up;
+    ViewFrame(samples[s].v, &right, &up);
+
+    sg.outer_verts.resize(NUM_VERTICES);
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      vec3 p = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
+      sg.outer_verts[i] = vec2{yocto::dot(right, p), yocto::dot(up, p)};
+    }
+    sg.outer_hull = Hull2D::GrahamScan(sg.outer_verts);
+    sg.outer_edges = GetHullEdges(sg.outer_verts, sg.outer_hull);
+
+    double R[3][3];
+    CayleyToMatrix(samples[s].w, R);
+    sg.trans_inner.resize(NUM_VERTICES);
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      vec3 p = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
+      vec3 rp = {
+        R[0][0]*p.x + R[0][1]*p.y + R[0][2]*p.z,
+        R[1][0]*p.x + R[1][1]*p.y + R[1][2]*p.z,
+        R[2][0]*p.x + R[2][1]*p.y + R[2][2]*p.z
+      };
+      sg.trans_inner[i] = vec2{yocto::dot(right, rp), yocto::dot(up, rp)} + witness_t;
+    }
+    sg.inner_hull = Hull2D::GrahamScan(sg.trans_inner);
   }
 
-  // Bounds of outer silhouette for framing
+  // 4. Polar ray cast radial clearance profiles for ALL samples
+  vec2 centroid{0, 0};
+  for (int idx : center_outer_hull) centroid += center_outer_verts[idx];
+  centroid /= (double)center_outer_hull.size();
+
+  constexpr int NUM_ANGLES = 720;
+  double global_min_profile = 1e9, global_max_profile = -1e9;
+
+  for (size_t s = 0; s < samples.size(); s++) {
+    auto &sg = sample_geoms[s];
+    sg.profile.resize(NUM_ANGLES);
+    std::vector<PolygonEdge> in_edges = GetHullEdges(sg.trans_inner, sg.inner_hull);
+
+    for (int a = 0; a < NUM_ANGLES; a++) {
+      double phi = (double)a / (double)NUM_ANGLES * 2.0 * std::numbers::pi;
+      vec2 dir{std::cos(phi), std::sin(phi)};
+
+      // Ray intersect outer hull
+      double r_out = std::numeric_limits<double>::infinity();
+      for (const auto &edge : sg.outer_edges) {
+        double den = yocto::dot(edge.normal, dir);
+        if (den < -1e-12) {
+          double r = (edge.b - yocto::dot(edge.normal, centroid)) / den;
+          if (r > 0.0) r_out = std::min(r_out, r);
+        }
+      }
+
+      // Ray intersect inner hull
+      double r_in = std::numeric_limits<double>::infinity();
+      for (const auto &edge : in_edges) {
+        double den = yocto::dot(edge.normal, dir);
+        if (den < -1e-12) {
+          double r = (edge.b - yocto::dot(edge.normal, centroid)) / den;
+          if (r > 0.0) r_in = std::min(r_in, r);
+        }
+      }
+
+      double gap = r_out - r_in;
+      sg.profile[a] = gap;
+      global_min_profile = std::min(global_min_profile, gap);
+      global_max_profile = std::max(global_max_profile, gap);
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // Panel 1 (Left): Global Silhouette & Clearance Heatmap
+  // ------------------------------------------------------------------------
   Bounds b;
-  for (const auto &v : outer_verts) b.Bound(v.x, v.y);
+  for (const auto &v : center_outer_verts) b.Bound(v.x, v.y);
   b.AddMarginFrac(0.18);
 
-  // Panel layout
   const int p_x = 40;
   const int p_y = 100;
   const int p_size = 1150;
-
   Bounds::Scaler scaler = b.ScaleToFit(p_size, p_size).FlipY();
 
   // Header
   img.BlendText2x32(40, 25, 0xFFFFFFFF, "NOPERT #229: SILHOUETTE & CLEARANCE HEATMAP");
   img.BlendText32(40, 55, 0x90A0B0FF,
-                  std::format("Representative Shelved Cell #{} (depth={}, box_depth={}, view_depth={})",
+                  std::format("Representative Shelved Cell #{} (depth={}, box_depth={}, view_depth={})  |  94 Sample Poses",
                               cell.id, cell.depth, cell.box_depth, cell.view_depth));
 
-  // 1. Render Background Signed Clearance Heatmap inside p_size x p_size
-  img.FillRect32(p_x, p_y, p_size, p_size, 0x181E2BFF);
-
-  // Function to evaluate signed distance to outer hull:
+  // Signed distance field from center outer hull
   auto SignedDistOuter = [&](const vec2 &pt) -> double {
     double min_d = std::numeric_limits<double>::infinity();
-    for (const auto &edge : outer_edges) {
+    for (const auto &edge : center_outer_edges) {
       double d = yocto::dot(edge.normal, pt) - edge.b;
       min_d = std::min(min_d, d);
     }
     return min_d;
   };
 
-  // Pre-rasterize distance field onto grid
+  img.FillRect32(p_x, p_y, p_size, p_size, 0x181E2BFF);
   for (int y = 0; y < p_size; y += 2) {
     for (int x = 0; x < p_size; x += 2) {
       double wx = scaler.UnscaleX(x);
@@ -522,11 +664,9 @@ static void RenderSilhouette(const DifficultCell &cell,
 
       uint32_t col;
       if (dist < 0.0) {
-        // Outside hull: crimson gradient
         float t = std::clamp((float)(-dist / 0.15), 0.0f, 1.0f);
         col = ColorUtil::FloatsTo32(0.2f + 0.6f * t, 0.05f, 0.1f, 1.0f);
       } else {
-        // Inside hull: teal/blue gradient with warm amber border
         if (dist < 0.015) {
           float t = (float)(dist / 0.015);
           col = ColorUtil::FloatsTo32(0.9f - 0.7f * t, 0.6f + 0.2f * t, 0.2f + 0.6f * t, 1.0f);
@@ -539,42 +679,41 @@ static void RenderSilhouette(const DifficultCell &cell,
     }
   }
 
-  // Draw contour lines: Outer Silhouette Boundary (dist = 0)
   auto WorldToScreen = [&](const vec2 &pt) -> vec2 {
     return vec2{p_x + scaler.ScaleX(pt.x), p_y + scaler.ScaleY(pt.y)};
   };
 
-  // Draw Outer Polygon edges (thick white)
-  const int num_ohull = outer_hull.size();
+  // Draw Center Outer Polygon edges (thick white)
+  const int num_ohull = center_outer_hull.size();
   for (int i = 0; i < num_ohull; i++) {
-    vec2 p1 = WorldToScreen(outer_verts[outer_hull[i]]);
-    vec2 p2 = WorldToScreen(outer_verts[outer_hull[(i + 1) % num_ohull]]);
+    vec2 p1 = WorldToScreen(center_outer_verts[center_outer_hull[i]]);
+    vec2 p2 = WorldToScreen(center_outer_verts[center_outer_hull[(i + 1) % num_ohull]]);
     img.BlendThickLine32((float)p1.x, (float)p1.y, (float)p2.x, (float)p2.y, 2.5f, 0xFFFFFFFF);
   }
 
-  // Draw Inner Polygon edges (thick neon orange)
-  const int num_ihull = inner_hull.size();
+  // Draw Center Inner Polygon edges (thick neon orange)
+  const int num_ihull = sample_geoms[0].inner_hull.size();
   for (int i = 0; i < num_ihull; i++) {
-    vec2 p1 = WorldToScreen(trans_inner[inner_hull[i]]);
-    vec2 p2 = WorldToScreen(trans_inner[inner_hull[(i + 1) % num_ihull]]);
+    vec2 p1 = WorldToScreen(sample_geoms[0].trans_inner[sample_geoms[0].inner_hull[i]]);
+    vec2 p2 = WorldToScreen(sample_geoms[0].trans_inner[sample_geoms[0].inner_hull[(i + 1) % num_ihull]]);
     img.BlendThickLine32((float)p1.x, (float)p1.y, (float)p2.x, (float)p2.y, 2.0f, 0xFF9800FF);
   }
 
-  // Identify minimum clearance vertex
+  // Identify minimum clearance vertex at center pose
   double min_clearance = std::numeric_limits<double>::infinity();
   int min_vidx = -1;
   for (int i = 0; i < NUM_VERTICES; i++) {
-    double d = SignedDistOuter(trans_inner[i]);
+    double d = SignedDistOuter(sample_geoms[0].trans_inner[i]);
     if (d < min_clearance) {
       min_clearance = d;
       min_vidx = i;
     }
   }
 
-  // Mark inner vertices
+  // Mark center inner vertices
   for (int i = 0; i < NUM_VERTICES; i++) {
-    vec2 sc = WorldToScreen(trans_inner[i]);
-    double d = SignedDistOuter(trans_inner[i]);
+    vec2 sc = WorldToScreen(sample_geoms[0].trans_inner[i]);
+    double d = SignedDistOuter(sample_geoms[0].trans_inner[i]);
     uint32_t dot_col = (d < 1e-6) ? 0xFF3D00FF : (d < 0.01) ? 0xFFEB3BFF : 0x00E676FF;
     img.BlendFilledCircle32((int)sc.x, (int)sc.y, 6, dot_col);
     img.BlendCircle32((int)sc.x, (int)sc.y, 6, 0x000000FF);
@@ -586,11 +725,10 @@ static void RenderSilhouette(const DifficultCell &cell,
     }
   }
 
-  // Frame panel
   img.BlendBox32(p_x, p_y, p_size, p_size, 0x3A4A62FF, 0x2A3A52FF);
 
   // ------------------------------------------------------------------------
-  // Panel 2 (Top Right): Microscopic Contact Zoom
+  // Panel 2 (Top Right): Microscopic Contact Zoom with Multi-Sample Cloud
   // ------------------------------------------------------------------------
   const int z_x = 1240;
   const int z_y = 100;
@@ -599,18 +737,17 @@ static void RenderSilhouette(const DifficultCell &cell,
   img.FillRect32(z_x, z_y, z_w, z_h, 0x181E2BFF);
 
   img.BlendText2x32(z_x + 30, z_y + 25, 0xFFD54FFF,
-                    "MICROSCOPIC CONTACT ZOOM");
+                    "MICROSCOPIC CONTACT ZOOM (WITH SAMPLE CLOUD)");
   img.BlendText32(z_x + 30, z_y + 55, 0x90A0B0FF,
-                  std::format("Sub-micron gap at Vertex {} approaching outer silhouette boundary", min_vidx));
+                  std::format("Sub-micron gap at Vertex {} with 94 sampled poses across 5D cell", min_vidx));
 
-  // Center zoom at min_vidx inner vertex
-  vec2 crit_pt = trans_inner[min_vidx];
-  // Dynamic zoom window: span is ~25x the gap magnitude, clamped to reasonable range
-  double z_span_x = std::max(std::abs(min_clearance) * 25.0, 5e-6);
+  vec2 crit_pt = sample_geoms[0].trans_inner[min_vidx];
+  // Zoom window size: tightly framed on the gap and motion cloud
+  double z_span_x = std::max(std::abs(min_clearance) * 8.0, 3.2e-6);
   double z_span_y = z_span_x * ((double)z_h / (double)z_w);
 
   auto ZoomToScreen = [&](const vec2 &pt) -> vec2 {
-    double rel_x = (pt.x - (crit_pt.x - z_span_x * 0.5)) / z_span_x;
+    double rel_x = (pt.x - (crit_pt.x - z_span_x * 0.45)) / z_span_x;
     double rel_y = ((crit_pt.y + z_span_y * 0.5) - pt.y) / z_span_y;
     return vec2{z_x + rel_x * z_w, z_y + rel_y * z_h};
   };
@@ -624,39 +761,69 @@ static void RenderSilhouette(const DifficultCell &cell,
     }
   };
 
-  // Draw outer hull edges inside zoom window
-  for (int i = 0; i < num_ohull; i++) {
-    vec2 p1 = outer_verts[outer_hull[i]];
-    vec2 p2 = outer_verts[outer_hull[(i + 1) % num_ohull]];
-    DrawClippedThickLine(p1, p2, 4.0f, 0xFFFFFFFF);
+  // FIRST: Draw all sample poses at alpha = 0.15 (0x26)
+  double max_vertex_motion = 0.0;
+  for (size_t s = 1; s < sample_geoms.size(); s++) {
+    const auto &sg = sample_geoms[s];
+    double motion = yocto::length(sg.trans_inner[min_vidx] - crit_pt);
+    max_vertex_motion = std::max(max_vertex_motion, motion);
+
+    // Draw sample outer hull edges (translucent white, alpha 15%)
+    for (size_t i = 0; i < sg.outer_hull.size(); i++) {
+      vec2 p1 = sg.outer_verts[sg.outer_hull[i]];
+      vec2 p2 = sg.outer_verts[sg.outer_hull[(i + 1) % sg.outer_hull.size()]];
+      DrawClippedThickLine(p1, p2, 1.5f, 0xFFFFFF26);
+    }
+
+    // Draw sample inner hull edges (translucent orange, alpha 15%)
+    for (size_t i = 0; i < sg.inner_hull.size(); i++) {
+      vec2 p1 = sg.trans_inner[sg.inner_hull[i]];
+      vec2 p2 = sg.trans_inner[sg.inner_hull[(i + 1) % sg.inner_hull.size()]];
+      DrawClippedThickLine(p1, p2, 1.5f, 0xFF980026);
+    }
+
+    // Draw sample contact vertex (translucent yellow dot, alpha 25%)
+    vec2 sc = ZoomToScreen(sg.trans_inner[min_vidx]);
+    if (sc.x >= z_x + 2 && sc.x <= z_x + z_w - 2 &&
+        sc.y >= z_y + 2 && sc.y <= z_y + z_h - 2) {
+      img.BlendFilledCircle32((int)sc.x, (int)sc.y, 4, 0xFFEB3B33);
+    }
   }
 
-  // Draw inner hull edges inside zoom window
-  for (int i = 0; i < num_ihull; i++) {
-    vec2 p1 = trans_inner[inner_hull[i]];
-    vec2 p2 = trans_inner[inner_hull[(i + 1) % num_ihull]];
-    DrawClippedThickLine(p1, p2, 3.5f, 0xFF9800FF);
+  // SECOND: Draw center pose ON TOP at alpha = 0.90 (0xE6)
+  // Outer hull edges (bold opaque white)
+  for (size_t i = 0; i < center_outer_hull.size(); i++) {
+    vec2 p1 = center_outer_verts[center_outer_hull[i]];
+    vec2 p2 = center_outer_verts[center_outer_hull[(i + 1) % center_outer_hull.size()]];
+    DrawClippedThickLine(p1, p2, 4.0f, 0xFFFFFFE6);
   }
 
-  // Inner contact vertex
+  // Inner hull edges (bold opaque orange)
+  for (size_t i = 0; i < sample_geoms[0].inner_hull.size(); i++) {
+    vec2 p1 = sample_geoms[0].trans_inner[sample_geoms[0].inner_hull[i]];
+    vec2 p2 = sample_geoms[0].trans_inner[sample_geoms[0].inner_hull[(i + 1) % sample_geoms[0].inner_hull.size()]];
+    DrawClippedThickLine(p1, p2, 3.5f, 0xFF9800E6);
+  }
+
+  // Center contact vertex (highlighted target)
   vec2 crit_sc = ZoomToScreen(crit_pt);
   if (crit_sc.x >= z_x && crit_sc.x <= z_x + z_w &&
       crit_sc.y >= z_y && crit_sc.y <= z_y + z_h) {
-    img.BlendFilledCircle32((int)crit_sc.x, (int)crit_sc.y, 10, 0xFF1744FF);
-    img.BlendThickCircle32((float)crit_sc.x, (float)crit_sc.y, 18.0f, 3.0f, 0xFFFF00FF);
+    img.BlendFilledCircle32((int)crit_sc.x, (int)crit_sc.y, 8, 0xFF1744FF);
+    img.BlendThickCircle32((float)crit_sc.x, (float)crit_sc.y, 14.0f, 2.5f, 0xFFFF00FF);
   }
 
-  // Find nearest edge and draw gap callout line
+  // Gap callout dimension line (cyan)
   int best_edge_idx = 0;
   double best_d = std::numeric_limits<double>::infinity();
-  for (size_t k = 0; k < outer_edges.size(); k++) {
-    double d = yocto::dot(outer_edges[k].normal, crit_pt) - outer_edges[k].b;
+  for (size_t k = 0; k < center_outer_edges.size(); k++) {
+    double d = yocto::dot(center_outer_edges[k].normal, crit_pt) - center_outer_edges[k].b;
     if (d < best_d) {
       best_d = d;
       best_edge_idx = (int)k;
     }
   }
-  vec2 edge_pt = crit_pt - best_d * outer_edges[best_edge_idx].normal;
+  vec2 edge_pt = crit_pt - best_d * center_outer_edges[best_edge_idx].normal;
   vec2 s_edge = ZoomToScreen(edge_pt);
 
   double gx1 = crit_sc.x, gy1 = crit_sc.y, gx2 = s_edge.x, gy2 = s_edge.y;
@@ -664,23 +831,31 @@ static void RenderSilhouette(const DifficultCell &cell,
     img.BlendThickLine32((float)gx1, (float)gy1, (float)gx2, (float)gy2, 2.0f, 0x00E5FFFF);
   }
 
-  // Callout info box
-  img.FillRect32(z_x + z_w - 360, z_y + 80, 330, 160, 0x10141EFF);
-  img.BlendBox32(z_x + z_w - 360, z_y + 80, 330, 160, 0x3A4A62FF, 0x2A3A52FF);
-  img.BlendText2x32(z_x + z_w - 340, z_y + 95, 0x4FC3F7FF, "GAP ANALYSIS");
-  img.BlendText32(z_x + z_w - 340, z_y + 125, 0xE0E0E0FF,
+  // Callout info box (drawn on top of lines)
+  const int cb_x = z_x + z_w - 420;
+  const int cb_y = z_y + 80;
+  const int cb_w = 400;
+  const int cb_h = 205;
+  img.FillRect32(cb_x, cb_y, cb_w, cb_h, 0x10141EFF);
+  img.BlendBox32(cb_x, cb_y, cb_w, cb_h, 0x3A4A62FF, 0x2A3A52FF);
+  img.BlendText2x32(cb_x + 16, cb_y + 15, 0x4FC3F7FF, "GAP & MOTION ANALYSIS");
+  img.BlendText32(cb_x + 16, cb_y + 45, 0xE0E0E0FF,
                   std::format("• Vertex ID: V{}", min_vidx));
-  img.BlendText32(z_x + z_w - 340, z_y + 145, 0x81C784FF,
-                  std::format("• Exact Gap: {:.4e}", min_clearance));
-  img.BlendText32(z_x + z_w - 340, z_y + 165, 0xFFD54FFF,
-                  std::format("• Disp Bound: {:.4e}", 3.00e-8));
-  img.BlendText32(z_x + z_w - 340, z_y + 185, 0xFF5252FF,
-                  std::format("• Net Margin: {:.4e} (FAIL)", min_clearance - 3.00e-8));
+  img.BlendText32(cb_x + 16, cb_y + 65, 0x81C784FF,
+                  std::format("• Center Gap:             {:.4e}", min_clearance));
+  img.BlendText32(cb_x + 16, cb_y + 85, 0xFFD54FFF,
+                  std::format("• View Disp Bound:        {:.4e}", 3.00e-8));
+  img.BlendText32(cb_x + 16, cb_y + 105, 0xFFAB40FF,
+                  std::format("• Total Sample Spread:    {:.4e}", max_vertex_motion));
+  img.BlendText32(cb_x + 16, cb_y + 125, 0x90A0B0FF,
+                  std::format("• Samples: {} (corners+interior)", samples.size()));
+  img.BlendText32(cb_x + 16, cb_y + 150, 0xFF5252FF,
+                  std::format("• Net Center Margin:      {:.4e} (FAIL)", min_clearance - 3.00e-8));
 
   img.BlendBox32(z_x, z_y, z_w, z_h, 0x3A4A62FF, 0x2A3A52FF);
 
   // ------------------------------------------------------------------------
-  // Panel 3 (Bottom Right): Perimeter Radial Clearance Profile g(phi)
+  // Panel 3 (Bottom Right): Perimeter Radial Clearance Profile Ribbon
   // ------------------------------------------------------------------------
   const int g_x = 1240;
   const int g_y = 700;
@@ -690,77 +865,52 @@ static void RenderSilhouette(const DifficultCell &cell,
   img.BlendBox32(g_x, g_y, g_w, g_h, 0x3A4A62FF, 0x2A3A52FF);
 
   img.BlendText2x32(g_x + 30, g_y + 25, 0x4FC3F7FF,
-                    "RADIAL CLEARANCE PROFILE: g(phi) = r_out(phi) - r_in(phi)");
+                    "RADIAL CLEARANCE PROFILE RIBBON: g(phi)");
   img.BlendText32(g_x + 30, g_y + 55, 0x90A0B0FF,
-                  "Signed clearance around perimeter (360 polar sweep around centroid)");
+                  "Perimeter clearance ribbon for 94 sampled poses across 5D cell (alpha=0.15) with center pose (alpha=0.90)");
 
-  // Polar sweep from centroid of outer hull
-  vec2 centroid{0, 0};
-  for (int idx : outer_hull) centroid += outer_verts[idx];
-  centroid /= (double)outer_hull.size();
-
-  constexpr int NUM_ANGLES = 720;
-  std::vector<double> profile(NUM_ANGLES);
-  double max_profile = -1e9, min_profile = 1e9;
-
-  for (int a = 0; a < NUM_ANGLES; a++) {
-    double phi = (double)a / (double)NUM_ANGLES * 2.0 * std::numbers::pi;
-    vec2 dir{std::cos(phi), std::sin(phi)};
-
-    // Ray intersect outer hull
-    double r_out = std::numeric_limits<double>::infinity();
-    for (const auto &edge : outer_edges) {
-      double den = yocto::dot(edge.normal, dir);
-      if (den < -1e-12) {
-        double r = (edge.b - yocto::dot(edge.normal, centroid)) / den;
-        if (r > 0.0) r_out = std::min(r_out, r);
-      }
-    }
-
-    // Ray intersect inner hull
-    std::vector<PolygonEdge> in_edges = GetHullEdges(trans_inner, inner_hull);
-    double r_in = std::numeric_limits<double>::infinity();
-    for (const auto &edge : in_edges) {
-      double den = yocto::dot(edge.normal, dir);
-      if (den < -1e-12) {
-        double r = (edge.b - yocto::dot(edge.normal, centroid)) / den;
-        if (r > 0.0) r_in = std::min(r_in, r);
-      }
-    }
-
-    double gap = r_out - r_in;
-    profile[a] = gap;
-    max_profile = std::max(max_profile, gap);
-    min_profile = std::min(min_profile, gap);
-  }
-
-  // Draw clearance graph
   const int plot_x = g_x + 60;
   const int plot_y = g_y + 110;
   const int plot_w = g_w - 120;
   const int plot_h = g_h - 190;
 
-  // Dynamically scaled y-axis
-  double plot_min = std::min(min_profile, -1e-6);
-  double plot_max = std::max(max_profile, 1e-4);
+  double plot_min = std::min(global_min_profile, -1e-6);
+  double plot_max = std::max(global_max_profile, 1e-4);
   double span_y = plot_max - plot_min;
   plot_min -= 0.08 * span_y;
   plot_max += 0.08 * span_y;
 
-  // Zero-line
+  // Zero-line (Contact / Collision threshold)
   int zero_y = plot_y + plot_h - (int)((0.0 - plot_min) / (plot_max - plot_min) * plot_h);
   img.BlendLine32(plot_x, zero_y, plot_x + plot_w, zero_y, 0xFF5252AA);
   img.BlendText32(plot_x + 10, zero_y - 15, 0xFF5252FF, "Zero Clearance (Contact / Collision Threshold)");
 
-  // Plot curve
+  // FIRST: Draw sample profile curves at alpha = 0.15 (0x26)
+  for (size_t s = 1; s < sample_geoms.size(); s++) {
+    const auto &prof = sample_geoms[s].profile;
+    for (int a = 0; a < NUM_ANGLES - 1; a++) {
+      int x1 = plot_x + a * plot_w / NUM_ANGLES;
+      int y1 = plot_y + plot_h - (int)((prof[a] - plot_min) / (plot_max - plot_min) * plot_h);
+      int x2 = plot_x + (a + 1) * plot_w / NUM_ANGLES;
+      int y2 = plot_y + plot_h - (int)((prof[a + 1] - plot_min) / (plot_max - plot_min) * plot_h);
+
+      uint32_t col = (prof[a] < 0.0) ? 0xFF525226 : 0x4FC3F726;
+      img.BlendLine32(x1, y1, x2, y2, col);
+    }
+  }
+
+  // SECOND: Draw center pose curve ON TOP at alpha = 0.90 (0xE6)
+  const auto &c_prof = sample_geoms[0].profile;
   for (int a = 0; a < NUM_ANGLES - 1; a++) {
     int x1 = plot_x + a * plot_w / NUM_ANGLES;
-    int y1 = plot_y + plot_h - (int)((profile[a] - plot_min) / (plot_max - plot_min) * plot_h);
+    int y1 = plot_y + plot_h - (int)((c_prof[a] - plot_min) / (plot_max - plot_min) * plot_h);
     int x2 = plot_x + (a + 1) * plot_w / NUM_ANGLES;
-    int y2 = plot_y + plot_h - (int)((profile[a + 1] - plot_min) / (plot_max - plot_min) * plot_h);
+    int y2 = plot_y + plot_h - (int)((c_prof[a + 1] - plot_min) / (plot_max - plot_min) * plot_h);
 
-    uint32_t col = (profile[a] < 0.0001) ? 0xFFEB3BFF : 0x4FC3F7FF;
+    uint32_t col = (c_prof[a] < 0.0) ? 0xFF1744FF : (c_prof[a] < 0.0001) ? 0xFFEB3BFF : 0x00E5FFFF;
+    // Draw bold line (+1 y offset)
     img.BlendLine32(x1, y1, x2, y2, col);
+    img.BlendLine32(x1, y1 + 1, x2, y2 + 1, col);
   }
 
   // Axis labels
@@ -770,8 +920,16 @@ static void RenderSilhouette(const DifficultCell &cell,
   img.BlendText32(plot_x + 3 * plot_w / 4, plot_y + plot_h + 10, 0x90A0B0FF, "270 deg");
   img.BlendText32(plot_x + plot_w - 40, plot_y + plot_h + 10, 0x90A0B0FF, "360 deg");
 
-  img.BlendText32(plot_x + 30, plot_y - 20, 0x90A0B0FF,
-                  std::format("Max Clearance: {:.4e}  |  Min Clearance: {:.4e}", max_profile, min_profile));
+  // Legend box inside graph panel
+  int leg_x = plot_x + plot_w - 380;
+  int leg_y = plot_y + 15;
+  img.FillRect32(leg_x, leg_y, 360, 95, 0x10141EFF);
+  img.BlendBox32(leg_x, leg_y, 360, 95, 0x3A4A62FF, 0x2A3A52FF);
+  img.BlendText32(leg_x + 15, leg_y + 12, 0x4FC3F7FF, "— Cyan Ribbon: 94 Samples across 5D Cell (α=0.15)");
+  img.BlendText32(leg_x + 15, leg_y + 32, 0x00E5FFFF, "— Bold Line: Nominal Center Pose (α=0.90)");
+  img.BlendText32(leg_x + 15, leg_y + 52, 0xFF5252FF, "— Red Line: Zero Clearance (Contact)");
+  img.BlendText32(leg_x + 15, leg_y + 72, 0x90A0B0FF,
+                  std::format("Clearance Range: [{:.2e}, {:.2e}]", global_min_profile, global_max_profile));
 
   // Footer / Status Bar
   int fy = H - 60;
