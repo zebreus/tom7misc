@@ -720,15 +720,11 @@ static GpuResult EvaluateBoxCPU(
   int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
   std::vector<int> best_in(c_count);
   std::vector<std::array<double, 10>> psi_center(c_count);
-  std::vector<vec3> edge_vec(c_count);
-  std::vector<vec3> u_vec(c_count);
   for (int c = 0; c < c_count; c++) {
     const auto &gc = contacts[c_start + c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
-    edge_vec[c] = edge;
     vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
     vec3 u = yocto::cross(view_center, edge);
-    u_vec[c] = u;
     double best_val = -1e30;
     int best_k = 0;
     for (int k = 0; k < NUM_VERTICES; k++) {
@@ -768,10 +764,25 @@ static GpuResult EvaluateBoxCPU(
     if (loc_c0 >= c_count || loc_c1 >= c_count || loc_c2 >= c_count) continue;
 
     // Stage 1: Fast filter at view_center (27 controls)
-    double w0 = yocto::dot(u_vec[loc_c1], edge_vec[loc_c2]);
-    double w1 = yocto::dot(u_vec[loc_c2], edge_vec[loc_c0]);
-    double w2 = yocto::dot(u_vec[loc_c0], edge_vec[loc_c1]);
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+    const auto &c1 = contacts[c_start + loc_c1];
+    const auto &c2 = contacts[c_start + loc_c2];
+    vec3 edge1 = {c1.edge[0], c1.edge[1], c1.edge[2]};
+    vec3 edge2 = {c2.edge[0], c2.edge[1], c2.edge[2]};
+
+    vec3 w_coeff0 = yocto::cross(edge1, edge2);
+    double w0 = yocto::dot(view_center, w_coeff0);
+    if (w0 <= 1e-9) continue;
+
+    const auto &c0 = contacts[c_start + loc_c0];
+    vec3 edge0 = {c0.edge[0], c0.edge[1], c0.edge[2]};
+
+    vec3 w_coeff1 = yocto::cross(edge2, edge0);
+    double w1 = yocto::dot(view_center, w_coeff1);
+    if (w1 <= 1e-9) continue;
+
+    vec3 w_coeff2 = yocto::cross(edge0, edge1);
+    double w2 = yocto::dot(view_center, w_coeff2);
+    if (w2 <= 1e-9) continue;
 
     double C_center[10];
     for (int m = 0; m < 10; m++) {
@@ -791,14 +802,6 @@ static GpuResult EvaluateBoxCPU(
     int in1 = best_in[loc_c1];
     int in2 = best_in[loc_c2];
 
-    const auto &c0 = contacts[c_start + loc_c0];
-    const auto &c1 = contacts[c_start + loc_c1];
-    const auto &c2 = contacts[c_start + loc_c2];
-
-    vec3 edge0 = edge_vec[loc_c0];
-    vec3 edge1 = edge_vec[loc_c1];
-    vec3 edge2 = edge_vec[loc_c2];
-
     vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
     vec3 vout0 = {VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]};
 
@@ -807,10 +810,6 @@ static GpuResult EvaluateBoxCPU(
 
     vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
     vec3 vout2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
-
-    vec3 w_coeff0 = yocto::cross(edge1, edge2);
-    vec3 w_coeff1 = yocto::cross(edge2, edge0);
-    vec3 w_coeff2 = yocto::cross(edge0, edge1);
 
     // Stage 2: Simplex Bernstein evaluation with progressive early exit
     // Corner 0
@@ -1695,25 +1694,6 @@ struct SearchManager {
           // Directly taking from the back keeps all nodes in the same local branch
           // and sharing the SAME view triangle, certifying and closing branches quickly.
           size_t pop_count = remaining;
-          // If the stack contains nodes from many disparate branches, do a short
-          // batch if we exceed 16 distinct triangle pools, provided we have enough
-          // nodes (>= 4096) to keep the GPU fully occupied.
-          if (remaining > 4096) {
-            uint64_t last_hash = 0;
-            size_t distinct = 0;
-            size_t count = 0;
-            for (auto it = stack.rbegin(); it != stack.rend() && count < remaining; ++it, ++count) {
-              uint64_t h = HashTriangle(it->tri);
-              if (count == 0 || h != last_hash) {
-                last_hash = h;
-                distinct++;
-                if (distinct > 16 && count >= 4096) {
-                  pop_count = count;
-                  break;
-                }
-              }
-            }
-          }
           current_batch.insert(current_batch.end(), stack.end() - pop_count,
                                stack.end());
           stack.erase(stack.end() - pop_count, stack.end());
@@ -1873,20 +1853,24 @@ struct SearchManager {
                     return a.pool->id < b.pool->id;
                   });
 
-        static constexpr size_t MAX_POOLS_PER_DISPATCH = 16;
+        static constexpr size_t MAX_POOLS_PER_DISPATCH = 256;
+        static constexpr size_t MAX_TRIPLES_PER_DISPATCH = 32 * 1024 * 1024;
         size_t item_start = 0;
         while (item_start < eval_items.size()) {
           // Identify slice [item_start, item_end) containing at most MAX_POOLS_PER_DISPATCH pools
           size_t item_end = item_start;
           uint64_t current_id = 0;
           size_t distinct_pools = 0;
+          size_t estimated_triples = 0;
           while (item_end < eval_items.size()) {
             if (item_end == item_start || eval_items[item_end].pool->id != current_id) {
-              if (distinct_pools >= MAX_POOLS_PER_DISPATCH) {
+              if (distinct_pools >= MAX_POOLS_PER_DISPATCH ||
+                  estimated_triples >= MAX_TRIPLES_PER_DISPATCH) {
                 break;
               }
               current_id = eval_items[item_end].pool->id;
               distinct_pools++;
+              estimated_triples += eval_items[item_end].pool->gpu_triples.size();
             }
             item_end++;
           }

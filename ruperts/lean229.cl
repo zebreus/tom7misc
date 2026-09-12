@@ -62,6 +62,14 @@ inline double3 Cross(double3 a, double3 b) {
   );
 }
 
+inline float3 Cross_f(float3 a, float3 b) {
+  return (float3)(
+    a.y * b.z - a.z * b.y,
+    a.z * b.x - a.x * b.z,
+    a.x * b.y - a.y * b.x
+  );
+}
+
 inline double Dot(double3 a, double3 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
@@ -226,26 +234,13 @@ __kernel void EvaluateBoxes(
   }
 
   // Precompute best inner vertex and unit center polynomial for each contact in this pool
-  // Precompute best inner vertex, unit center polynomial, and edge/u vectors for each contact in this pool
   char best_in[MAX_CONTACTS];
   double psi_center[MAX_CONTACTS][10];
-  double3 edge_d[MAX_CONTACTS];
-  double3 u_d[MAX_CONTACTS];
-#if TOP_N > 0
-  float3 edge_f[MAX_CONTACTS];
-  float3 u_f[MAX_CONTACTS];
-#endif
   int n_contacts = box.num_contacts <= MAX_CONTACTS ? box.num_contacts : MAX_CONTACTS;
   for (int c = 0; c < n_contacts; c++) {
     const GpuContact gc = contacts[box.contact_offset + c];
     double3 edge = (double3)(gc.edge[0], gc.edge[1], gc.edge[2]);
-    edge_d[c] = edge;
     double3 u = Cross(view_center, edge);
-    u_d[c] = u;
-#if TOP_N > 0
-    edge_f[c] = (float3)((float)edge.x, (float)edge.y, (float)edge.z);
-    u_f[c] = (float3)((float)u.x, (float)u.y, (float)u.z);
-#endif
     double3 out = (double3)(VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]);
     double best_val = -1e30;
     int best_k = 0;
@@ -283,6 +278,7 @@ __kernel void EvaluateBoxes(
   float d_bound_f = (float)d_bound;
   float disp_error_f = (float)disp_error;
   float best_margin_f = -1e30f;
+  float3 vc_f = (float3)((float)view_center.x, (float)view_center.y, (float)view_center.z);
 
 #if TOP_N == 1
   int top_triples[1] = {-1};
@@ -304,10 +300,25 @@ __kernel void EvaluateBoxes(
     int loc_c2 = (int)triple.c2;
     if (loc_c0 >= n_contacts || loc_c1 >= n_contacts || loc_c2 >= n_contacts) continue;
 
-    float w0 = Dot_f(u_f[loc_c1], edge_f[loc_c2]);
-    float w1 = Dot_f(u_f[loc_c2], edge_f[loc_c0]);
-    float w2 = Dot_f(u_f[loc_c0], edge_f[loc_c1]);
-    if (w0 <= 1e-9f || w1 <= 1e-9f || w2 <= 1e-9f) continue;
+    const GpuContact gc1 = contacts[box.contact_offset + loc_c1];
+    const GpuContact gc2 = contacts[box.contact_offset + loc_c2];
+    float3 e1 = (float3)((float)gc1.edge[0], (float)gc1.edge[1], (float)gc1.edge[2]);
+    float3 e2 = (float3)((float)gc2.edge[0], (float)gc2.edge[1], (float)gc2.edge[2]);
+
+    float3 w_coeff0 = Cross_f(e1, e2);
+    float w0 = Dot_f(vc_f, w_coeff0);
+    if (w0 <= 1e-9f) continue;
+
+    const GpuContact gc0 = contacts[box.contact_offset + loc_c0];
+    float3 e0 = (float3)((float)gc0.edge[0], (float)gc0.edge[1], (float)gc0.edge[2]);
+
+    float3 w_coeff1 = Cross_f(e2, e0);
+    float w1 = Dot_f(vc_f, w_coeff1);
+    if (w1 <= 1e-9f) continue;
+
+    float3 w_coeff2 = Cross_f(e0, e1);
+    float w2 = Dot_f(vc_f, w_coeff2);
+    if (w2 <= 1e-9f) continue;
 
     float C_center_f[10];
     for (int m = 0; m < 10; m++) {
@@ -388,10 +399,25 @@ __kernel void EvaluateBoxes(
     int loc_c2 = (int)triple.c2;
     if (loc_c0 >= n_contacts || loc_c1 >= n_contacts || loc_c2 >= n_contacts) continue;
 
-    double w0 = Dot(u_d[loc_c1], edge_d[loc_c2]);
-    double w1 = Dot(u_d[loc_c2], edge_d[loc_c0]);
-    double w2 = Dot(u_d[loc_c0], edge_d[loc_c1]);
-    if (w0 <= 1e-9 || w1 <= 1e-9 || w2 <= 1e-9) continue;
+    const GpuContact c1 = contacts[box.contact_offset + loc_c1];
+    const GpuContact c2 = contacts[box.contact_offset + loc_c2];
+    double3 edge1 = (double3)(c1.edge[0], c1.edge[1], c1.edge[2]);
+    double3 edge2 = (double3)(c2.edge[0], c2.edge[1], c2.edge[2]);
+
+    double3 w_coeff0 = Cross(edge1, edge2);
+    double w0 = Dot(view_center, w_coeff0);
+    if (w0 <= 1e-9) continue;
+
+    const GpuContact c0 = contacts[box.contact_offset + loc_c0];
+    double3 edge0 = (double3)(c0.edge[0], c0.edge[1], c0.edge[2]);
+
+    double3 w_coeff1 = Cross(edge2, edge0);
+    double w1 = Dot(view_center, w_coeff1);
+    if (w1 <= 1e-9) continue;
+
+    double3 w_coeff2 = Cross(edge0, edge1);
+    double w2 = Dot(view_center, w_coeff2);
+    if (w2 <= 1e-9) continue;
 
     double C_center[10];
     for (int m = 0; m < 10; m++) {
@@ -412,14 +438,6 @@ __kernel void EvaluateBoxes(
     int in2 = (int)best_in[loc_c2];
     if ((unsigned int)in0 >= 20 || (unsigned int)in1 >= 20 || (unsigned int)in2 >= 20) continue;
 
-    const GpuContact c0 = contacts[box.contact_offset + loc_c0];
-    const GpuContact c1 = contacts[box.contact_offset + loc_c1];
-    const GpuContact c2 = contacts[box.contact_offset + loc_c2];
-
-    double3 edge0 = edge_d[loc_c0];
-    double3 edge1 = edge_d[loc_c1];
-    double3 edge2 = edge_d[loc_c2];
-
     double3 vin0 = (double3)(VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]);
     double3 vout0 = (double3)(VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]);
 
@@ -428,11 +446,6 @@ __kernel void EvaluateBoxes(
 
     double3 vin2 = (double3)(VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]);
     double3 vout2 = (double3)(VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]);
-
-    // Precompute cross-product w_coeff in registers once for Stage 2
-    double3 w_coeff0 = Cross(edge1, edge2);
-    double3 w_coeff1 = Cross(edge2, edge0);
-    double3 w_coeff2 = Cross(edge0, edge1);
 
     // Step 2a: Evaluate Corner 0
     double C0[10] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
