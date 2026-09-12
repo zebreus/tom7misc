@@ -310,10 +310,12 @@ struct SearchNode {
   uint8_t view_depth = 0;
   uint8_t box_depth = 0;
   uint8_t chart = 0;
+  uint8_t last_split_was_view = 0;
 };
 static_assert(sizeof(SearchNode) == 144);
 
 struct TrianglePool {
+  uint64_t id = 0;
   std::vector<GpuContact> contacts;
   std::vector<GpuTriple> gpu_triples;
 };
@@ -375,9 +377,10 @@ static double ComputeWeightedDefectUpper(const ProjectiveTriangle &tri,
 }
 
 static std::shared_ptr<const TrianglePool> BuildTrianglePool(
-    const ProjectiveTriangle &tri, int cone_samples = 6) {
+    const ProjectiveTriangle &tri, int cone_samples = 6, uint64_t id = 0) {
   ctr_built_triangles++;
   auto pool = std::make_shared<TrianglePool>();
+  pool->id = id;
   vec3 view = tri.Centroid();
   double len = yocto::length(view);
   if (len < 1e-12) return pool;
@@ -571,8 +574,8 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
 
 static constexpr size_t MAX_TRIANGLE_CACHE_SIZE = 2048;
 static std::mutex g_triangle_cache_mutex;
-static std::list<std::pair<uint64_t, std::shared_ptr<const TrianglePool>>> g_triangle_lru_list;
-static std::unordered_map<uint64_t, std::list<std::pair<uint64_t, std::shared_ptr<const TrianglePool>>>::iterator>
+static std::list<std::shared_ptr<const TrianglePool>> g_triangle_lru_list;
+static std::unordered_map<uint64_t, std::list<std::shared_ptr<const TrianglePool>>::iterator>
 g_triangle_cache;
 
 static std::shared_ptr<const TrianglePool>
@@ -585,24 +588,24 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples = 6) {
     if (it != g_triangle_cache.end()) {
       g_triangle_lru_list.splice(g_triangle_lru_list.begin(),
                                  g_triangle_lru_list, it->second);
-      return it->second->second;
+      return *(it->second);
     }
   }
-  auto pool = BuildTrianglePool(tri, cone_samples);
+  auto pool = BuildTrianglePool(tri, cone_samples, h);
   {
     MutexLock ml(&g_triangle_cache_mutex);
     auto it = g_triangle_cache.find(h);
     if (it != g_triangle_cache.end()) {
       g_triangle_lru_list.splice(g_triangle_lru_list.begin(),
                                  g_triangle_lru_list, it->second);
-      return it->second->second;
+      return *(it->second);
     }
     if (g_triangle_cache.size() >= MAX_TRIANGLE_CACHE_SIZE) {
       auto oldest = std::prev(g_triangle_lru_list.end());
-      g_triangle_cache.erase(oldest->first);
+      g_triangle_cache.erase((*oldest)->id);
       g_triangle_lru_list.pop_back();
     }
-    g_triangle_lru_list.push_front({h, pool});
+    g_triangle_lru_list.push_front(pool);
     g_triangle_cache[h] = g_triangle_lru_list.begin();
     return pool;
   }
@@ -1785,6 +1788,7 @@ struct SearchManager {
             child0.parent_id = node.id;
             child0.depth = node.depth + 1;
             child0.box_depth = node.box_depth + 1;
+            child0.last_split_was_view = 0;
             child0.box = b0;
 
             SearchNode child1 = node;
@@ -1792,6 +1796,7 @@ struct SearchManager {
             child1.parent_id = node.id;
             child1.depth = node.depth + 1;
             child1.box_depth = node.box_depth + 1;
+            child1.last_split_was_view = 0;
             child1.box = b1;
 
             if (child0.box.ContainsOrigin()) {
@@ -1817,6 +1822,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
+                child.last_split_was_view = 1;
                 child.tri = sub_tris[t];
                 MutexLock ml(&mu);
                 stack.push_back(child);
@@ -1838,14 +1844,14 @@ struct SearchManager {
           int triple_offset;
           int num_triples;
         };
-        std::unordered_map<const TrianglePool*, PoolBatchInfo> active_pools;
+        std::unordered_map<uint64_t, PoolBatchInfo> active_pools;
 
         for (int idx : eval_indices) {
           const auto &node = current_batch[idx];
           auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
 
           auto [it, inserted] =
-              active_pools.try_emplace(tpool.get(), PoolBatchInfo{});
+              active_pools.try_emplace(tpool->id, PoolBatchInfo{});
           if (inserted) {
             it->second.contact_offset = (int)all_contacts.size();
             it->second.triple_offset = (int)all_triples.size();
@@ -2081,8 +2087,8 @@ struct SearchManager {
 
             int widest = node.box.WidestAxis();
             // Balanced subdivision: refine box first if coarse, then balance
-            // by angular diameter so that rotation uncertainty (2 * box_radius)
-            // and view triangle diameter refine proportionally without stalling.
+            // by angular diameter, constrained to never perform consecutive
+            // view splits so the batch doesn't explode with triangle pools.
             bool split_box;
             if (node.box_depth >= max_box_depth) {
               split_box = false;
@@ -2091,6 +2097,9 @@ struct SearchManager {
             } else if (node.box.radii[widest] > 1.0 / 512.0) {
               // Spatial partitioning phase: refine Cayley box down to 1/512
               // early so coarse volume pruning can reject large regions rapidly.
+              split_box = true;
+            } else if (node.last_split_was_view) {
+              // Pacing constraint: only one consecutive view split allowed.
               split_box = true;
             } else {
               // Angular equipartition phase: balance rotation uncertainty
@@ -2112,6 +2121,7 @@ struct SearchManager {
               child0.parent_id = node.id;
               child0.depth = node.depth + 1;
               child0.box_depth = node.box_depth + 1;
+              child0.last_split_was_view = 0;
               child0.box = b0;
 
               SearchNode child1 = node;
@@ -2119,6 +2129,7 @@ struct SearchManager {
               child1.parent_id = node.id;
               child1.depth = node.depth + 1;
               child1.box_depth = node.box_depth + 1;
+              child1.last_split_was_view = 0;
               child1.box = b1;
 
               if (ContainsUncertifiedPriority(child0)) {
@@ -2154,6 +2165,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
+                child.last_split_was_view = 1;
                 child.tri = sub_tris[t];
                 stack.push_back(child);
               }
@@ -2163,6 +2175,7 @@ struct SearchManager {
                 child.parent_id = node.id;
                 child.depth = node.depth + 1;
                 child.view_depth = node.view_depth + 1;
+                child.last_split_was_view = 1;
                 child.tri = sub_tris[priority_idx];
                 stack.push_back(child);
               }
