@@ -326,12 +326,14 @@ static inline bool InsideIdentityTube(int chart, const CayleyBox &b,
   double mx = std::abs(b.center.x) + b.radii.x;
   double my = std::abs(b.center.y) + b.radii.y;
   double mz = std::abs(b.center.z) + b.radii.z;
-  // Lean bounds ||R - I||_op via the Frobenius norm of N(w) - D(w)*I,
-  // where the sum of squared off-diagonal entries is 8 * ||w||^2.
-  // Lean's mismatchRadius ≈ sqrt(8) * ||w|| ≈ 2.8284 * ||w||.
-  static constexpr double FROBENIUS_FACTOR =
-    2.828427124746190097603377448419;
-  return FROBENIUS_FACTOR * std::sqrt(mx*mx + my*my + mz*mz) <= tube_r;
+  // Lean bounds ||R - I||_op via the exact analytical 2.0 operator norm bound
+  // (Noperthedron.Cayley.cayleyMatrix_sub_one_opNorm_le_of_norm_sq_le):
+  // ||R(w) - I||_op <= 2 * ||w||.
+  // In Lean's rational arithmetic, mismatchRadius computes this as:
+  //   2 * RationalApprox.sqrtℚUp16(mx^2 + my^2 + mz^2)
+  // where sqrtℚUp16 is a certified rational square root rounded Up to 16 decimals (10^-16).
+  static constexpr double IDENTITY_FACTOR = 2.0;
+  return IDENTITY_FACTOR * std::sqrt(mx*mx + my*my + mz*mz) <= tube_r;
 }
 
 // Full 5D pose node in branch-and-bound search
