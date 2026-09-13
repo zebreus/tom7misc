@@ -627,6 +627,24 @@ static void RenderSilhouette(const DifficultCell &cell,
     }
   }
 
+  int v1_inside_own = 0, v1_outside_own = 0;
+  double v1_min_d = 1e9, v1_max_d = -1e9;
+  for (size_t s = 0; s < samples.size(); s++) {
+    double min_d = 1e9;
+    for (const auto &e : sample_geoms[s].outer_edges) {
+      double d = yocto::dot(e.normal, sample_geoms[s].trans_inner[1]) - e.b;
+      min_d = std::min(min_d, d);
+    }
+    if (min_d > 0.0) v1_inside_own++;
+    else v1_outside_own++;
+    v1_min_d = std::min(v1_min_d, min_d);
+    v1_max_d = std::max(v1_max_d, min_d);
+  }
+  std::cout << "  Vertex 1 clearance relative to each sample's OWN outer hull:\n"
+            << "    Inside own outer hull (dist > 0):  " << v1_inside_own << "\n"
+            << "    Outside own outer hull (dist <= 0): " << v1_outside_own << "\n"
+            << "    Dist range: [" << v1_min_d << ", " << v1_max_d << "]\n";
+
   // ------------------------------------------------------------------------
   // Panel 1 (Left): Global Silhouette & Clearance Heatmap
   // ------------------------------------------------------------------------

@@ -931,6 +931,228 @@ static GpuResult EvaluateBoxCPU(
   return res;
 }
 
+// Evaluator using 2D linear programming to find the optimal translation t*
+// and center inner contact vertices before polynomial accumulation.
+// Strictly superior to EvaluateBoxCPU for tight cells while producing Lean-compliant certificates.
+static GpuResult EvaluateBoxCPULP(
+    const GpuBox &box,
+    const std::vector<GpuContact> &contacts,
+    const std::vector<GpuTriple> &triples,
+    bool use_optimal_translation = true) {
+  ctr_cpu++;
+
+  double x0 = box.cx, y0 = box.cy, z0 = box.cz;
+  double num[3][3] = {
+    {1.0 + x0*x0 - y0*y0 - z0*z0, 2.0*(x0*y0 - z0), 2.0*(x0*z0 + y0)},
+    {2.0*(x0*y0 + z0), 1.0 - x0*x0 + y0*y0 - z0*z0, 2.0*(y0*z0 - x0)},
+    {2.0*(x0*z0 - y0), 2.0*(y0*z0 + x0), 1.0 - x0*x0 - y0*y0 + z0*z0}
+  };
+  double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
+
+  vec3 s = {
+    (box.chart == 2 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 3) ? -1.0 : 1.0,
+    (box.chart == 1 || box.chart == 2) ? -1.0 : 1.0
+  };
+
+  vec3 view_center = {
+    (box.tri[0][0] + box.tri[1][0] + box.tri[2][0]) / 3.0,
+    (box.tri[0][1] + box.tri[1][1] + box.tri[2][1]) / 3.0,
+    (box.tri[0][2] + box.tri[1][2] + box.tri[2][2]) / 3.0
+  };
+
+  double ex = std::max(std::abs(box.cx - box.rx), std::abs(box.cx + box.rx));
+  double ey = std::max(std::abs(box.cy - box.ry), std::abs(box.cy + box.ry));
+  double ez = std::max(std::abs(box.cz - box.rz), std::abs(box.cz + box.rz));
+  double d_bound = 1.0 + ex*ex + ey*ey + ez*ez;
+
+  double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
+  double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
+  double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
+
+  vec3 p[6];
+  p[0] = {box.tri[0][0], box.tri[0][1], box.tri[0][2]};
+  p[1] = {box.tri[1][0], box.tri[1][1], box.tri[1][2]};
+  p[2] = {box.tri[2][0], box.tri[2][1], box.tri[2][2]};
+  p[3] = (p[0] + p[1]) * 0.5;
+  p[4] = (p[1] + p[2]) * 0.5;
+  p[5] = (p[2] + p[0]) * 0.5;
+
+  // Pre-rotate all 20 inner vertices at box center
+  vec3 rot_vin[NUM_VERTICES];
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    vec3 vin = {VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]};
+    rot_vin[k] = {
+      s.x * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
+      s.y * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
+      s.z * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
+    };
+  }
+
+  // 2D projection frame at view_center
+  vec3 norm_v = yocto::normalize(view_center);
+  vec3 right;
+  if (std::abs(norm_v.z) < 0.9) {
+    right = yocto::normalize(yocto::cross(norm_v, vec3{0, 0, 1}));
+  } else {
+    right = yocto::normalize(yocto::cross(norm_v, vec3{1, 0, 0}));
+  }
+  vec3 up = yocto::normalize(yocto::cross(right, norm_v));
+
+  vec3 t_3d{0, 0, 0};
+  if (use_optimal_translation) {
+    std::vector<vec2> outer_verts(NUM_VERTICES);
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      vec3 v = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
+      outer_verts[i] = {yocto::dot(v, right), yocto::dot(v, up)};
+    }
+    std::vector<int> outer_hull = Hull2D::QuickHull(outer_verts);
+    if (outer_hull.size() >= 3) {
+      std::vector<PolygonEdge> outer_edges = GetHullEdges(outer_verts, outer_hull);
+      std::vector<vec2> inner_verts(NUM_VERTICES);
+      for (int i = 0; i < NUM_VERTICES; i++) {
+        vec3 v_unnorm = rot_vin[i] * (1.0 / denom0);
+        inner_verts[i] = {yocto::dot(v_unnorm, right), yocto::dot(v_unnorm, up)};
+      }
+      Clearance2D opt_c = MaximizeClearance2D(outer_edges, inner_verts);
+      if (opt_c.clearance < 0.0) {
+        t_3d = opt_c.translation.x * right + opt_c.translation.y * up;
+      }
+    }
+  }
+
+  // Precompute best inner vertex and unit center polynomial for each contact in this pool
+  int c_start = box.contact_offset;
+  int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
+  std::vector<int> best_in(c_count);
+  std::vector<std::array<double, 10>> psi_center(c_count);
+  for (int c = 0; c < c_count; c++) {
+    const auto &gc = contacts[c_start + c];
+    vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
+    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
+    vec3 u = yocto::cross(view_center, edge);
+    double best_val = -1e30;
+    int best_k = 0;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      vec3 disp = (rot_vin[k] + denom0 * t_3d) - denom0 * out;
+      double v = yocto::dot(u, disp);
+      if (v > best_val) {
+        best_val = v;
+        best_k = k;
+      }
+    }
+    best_in[c] = best_k;
+
+    vec3 vin = {VERTICES[best_k][0], VERTICES[best_k][1], VERTICES[best_k][2]};
+    double poly[10] = {0.0};
+    AccumulateContactPoly(poly, 1.0, u, vin, out, s);
+    for (int m = 0; m < 10; m++) {
+      psi_center[c][m] = poly[m];
+    }
+  }
+
+  GpuResult res;
+  res.certified = 0;
+  res.winning_triple = -1;
+  res.inner[0] = 0;
+  res.inner[1] = 0;
+  res.inner[2] = 0;
+  res.margin = -1e30;
+
+  for (int t = 0; t < box.num_triples; t++) {
+    const auto &trip = triples[box.triple_offset + t];
+
+    double defect_penalty = d_bound * trip.weighted_defect_upper;
+
+    int loc_c0 = trip.c0;
+    int loc_c1 = trip.c1;
+    int loc_c2 = trip.c2;
+    if (loc_c0 >= c_count || loc_c1 >= c_count || loc_c2 >= c_count) continue;
+
+    // Stage 1: Fast filter at view_center (27 controls)
+    const auto &c1 = contacts[c_start + loc_c1];
+    const auto &c2 = contacts[c_start + loc_c2];
+    vec3 edge1 = {c1.edge[0], c1.edge[1], c1.edge[2]};
+    vec3 edge2 = {c2.edge[0], c2.edge[1], c2.edge[2]};
+
+    vec3 w_coeff0 = yocto::cross(edge1, edge2);
+    double w0 = yocto::dot(view_center, w_coeff0);
+    if (w0 <= 1e-9) continue;
+
+    const auto &c0 = contacts[c_start + loc_c0];
+    vec3 edge0 = {c0.edge[0], c0.edge[1], c0.edge[2]};
+
+    vec3 w_coeff1 = yocto::cross(edge2, edge0);
+    double w1 = yocto::dot(view_center, w_coeff1);
+    if (w1 <= 1e-9) continue;
+
+    vec3 w_coeff2 = yocto::cross(edge0, edge1);
+    double w2 = yocto::dot(view_center, w_coeff2);
+    if (w2 <= 1e-9) continue;
+
+    double C_center[10];
+    for (int m = 0; m < 10; m++) {
+      C_center[m] = w0 * psi_center[loc_c0][m] +
+                    w1 * psi_center[loc_c1][m] +
+                    w2 * psi_center[loc_c2][m];
+    }
+
+    double min_b_center = Bernstein27Min(C_center, lx, ly, lz, wx, wy, wz);
+    double cmargin = min_b_center - defect_penalty - disp_error;
+    if (cmargin <= 0.0) continue;
+
+    // Stage 2: Simplex Bernstein evaluation across 6 points
+    int in0 = best_in[loc_c0];
+    int in1 = best_in[loc_c1];
+    int in2 = best_in[loc_c2];
+    vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+    vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+    vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+    vec3 out0 = {VERTICES[c0.vertex][0], VERTICES[c0.vertex][1], VERTICES[c0.vertex][2]};
+    vec3 out1 = {VERTICES[c1.vertex][0], VERTICES[c1.vertex][1], VERTICES[c1.vertex][2]};
+    vec3 out2 = {VERTICES[c2.vertex][0], VERTICES[c2.vertex][1], VERTICES[c2.vertex][2]};
+
+    double min_162 = 1e30;
+    bool all_nodes_certified = true;
+
+    for (int i = 0; i < 6; i++) {
+      vec3 pi = p[i];
+      double w0_i = yocto::dot(pi, w_coeff0);
+      double w1_i = yocto::dot(pi, w_coeff1);
+      double w2_i = yocto::dot(pi, w_coeff2);
+
+      vec3 u0_i = yocto::cross(pi, edge0);
+      vec3 u1_i = yocto::cross(pi, edge1);
+      vec3 u2_i = yocto::cross(pi, edge2);
+
+      double C_node[10] = {0.0};
+      AccumulateContactPoly(C_node, w0_i, u0_i, vin0, out0, s);
+      AccumulateContactPoly(C_node, w1_i, u1_i, vin1, out1, s);
+      AccumulateContactPoly(C_node, w2_i, u2_i, vin2, out2, s);
+
+      double min_b = Bernstein27Min(C_node, lx, ly, lz, wx, wy, wz);
+      if (min_b < min_162) min_162 = min_b;
+
+      if (min_b - defect_penalty - disp_error <= 0.0) {
+        all_nodes_certified = false;
+        break;
+      }
+    }
+
+    if (!all_nodes_certified) continue;
+
+    res.certified = 1;
+    res.winning_triple = t;
+    res.inner[0] = in0;
+    res.inner[1] = in1;
+    res.inner[2] = in2;
+    res.margin = min_162 - defect_penalty - disp_error;
+    break;
+  }
+
+  return res;
+}
+
 // Solution witness holding outer and inner frames and confirmed clearance.
 struct SolutionWitness {
   frame3 outer_frame;
@@ -1181,8 +1403,8 @@ struct CheckpointHeader {
 struct SearchManager {
   int chart = 0;
   int batch_size = 32768;
-  int max_depth = 80;
-  int max_box_depth = 60;
+  int max_depth = 72;
+  int max_box_depth = 54;
   int max_view_depth = 20;
   int suspicious_depth = 70;
   size_t num_candidates = 0; // 0 = all
@@ -1191,6 +1413,8 @@ struct SearchManager {
   int escalate_cone_samples = 12;
   int deep_escalate_depth = 60;
   int deep_escalate_cone_samples = 14;
+  int lp_escalate_depth = 68;
+  int lp_escalate_box_depth = 50;
   int num_threads = 8;
 
   int EffectiveConeSamples(const SearchNode &node) const {
@@ -2449,12 +2673,23 @@ struct SearchManager {
                            (node.box_depth >= max_box_depth &&
                             node.view_depth >= max_view_depth));
 
-          if (!res.certified && (at_limit || near_depth_out || deep_box_with_narrow_view)) {
-            // Stubborn leaf has reached max box depth with refined view, or tree depth limit.
-            // Safety-net escalation before declaring difficult / shelving:
-            for (int cs : {14, 16}) {
-              MaybeMiniStatus("cpu");
-              if (EffectiveConeSamples(node) >= cs) continue;
+          bool should_escalate = at_limit ||
+                                 (lp_escalate_depth > 0 && node.depth >= lp_escalate_depth) ||
+                                 (lp_escalate_box_depth > 0 && node.box_depth >= lp_escalate_box_depth) ||
+                                 near_depth_out || deep_box_with_narrow_view;
+
+          if (!res.certified && should_escalate) {
+            // Safety-net escalation with EvaluateBoxCPULP before declaring difficult / shelving:
+            std::vector<int> cs_list = {EffectiveConeSamples(node)};
+            if (cs_list[0] != 14 && (at_limit || node.depth >= deep_escalate_depth)) {
+              cs_list.push_back(14);
+            }
+            if (at_limit && cs_list.back() != 16) {
+              cs_list.push_back(16);
+            }
+
+            for (int cs : cs_list) {
+              MaybeMiniStatus("cpu_lp");
               auto esc_pool = GetTrianglePool(node.tri, cs);
               GpuBox gb;
               gb.cx = node.box.center.x;
@@ -2475,7 +2710,7 @@ struct SearchManager {
               gb.num_contacts = (int)esc_pool->contacts.size();
               gb._pad = 0;
               GpuResult esc_res =
-                EvaluateBoxCPU(gb, esc_pool->contacts, esc_pool->gpu_triples);
+                EvaluateBoxCPULP(gb, esc_pool->contacts, esc_pool->gpu_triples, /*use_optimal_translation=*/true);
               if (esc_res.certified) {
                 ctr_esc_certified++;
                 res = esc_res;
@@ -3100,6 +3335,10 @@ int main(int argc, char **argv) {
       mgr.deep_escalate_depth = std::atoi(argv[++i]);
     } else if (arg == "--deep_escalate_cone_samples" && i + 1 < argc) {
       mgr.deep_escalate_cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--lp_escalate_depth" && i + 1 < argc) {
+      mgr.lp_escalate_depth = std::atoi(argv[++i]);
+    } else if (arg == "--lp_escalate_box_depth" && i + 1 < argc) {
+      mgr.lp_escalate_box_depth = std::atoi(argv[++i]);
     } else if (arg == "--threads" && i + 1 < argc) {
       mgr.num_threads = std::atoi(argv[++i]);
     } else if (arg == "--output_dir" && i + 1 < argc) {
@@ -3140,8 +3379,8 @@ int main(int argc, char **argv) {
       Print("Usage: ./lean229.exe [options]\n"
             "  --chart <0|1|2>     Cayley chart index (default 0)\n"
             "  --batch_size <N>    Batch size for GPU/evaluator (default 32768)\n"
-            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 80)\n"
-            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 60)\n"
+            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 72)\n"
+            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 54)\n"
             "  --max_view_depth <D> Maximum view triangle subdivision depth (default 20)\n"
             "  --suspicious_depth <D> Threshold to report hard points (default 70)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
@@ -3150,6 +3389,8 @@ int main(int argc, char **argv) {
             "  --escalate_cone_samples <N> Escalated cone samples (default 12)\n"
             "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 60)\n"
             "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
+            "  --lp_escalate_depth <D> Tree depth to trigger LP CPU escalation (default 68)\n"
+            "  --lp_escalate_box_depth <D> Box depth to trigger LP CPU escalation (default 50)\n"
             "  --split_kappa <K>   Box-to-view angular diameter split bias (default 1.0)\n"
             "  --triangle_cache <N> Maximum unique triangle pools to cache in RAM (default 20480)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
