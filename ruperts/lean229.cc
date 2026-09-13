@@ -2039,7 +2039,7 @@ struct SearchManager {
       row_file = fopen(log_path.c_str(), "w");
       CHECK(row_file) << log_path;
       status.Print("Writing fresh log to: {}\n", log_path);
-      OutputRow("SPLIT_VIEW 0 -1 0 1 2 3 4\n");
+      OutputRow("SV 0 -1 0 1 2 3 4\n");
 
       std::filesystem::remove(difficult_path, ec);
       difficult_file = fopen(difficult_path.c_str(), "w");
@@ -2161,7 +2161,7 @@ struct SearchManager {
           if (OutsideBall(node.box)) {
             pruned_count++;
             RecordCertification(node);
-            OutputRow(std::format("PRUNE {} {} {} RADIUS\n",
+            OutputRow(std::format("PR {} {} {} RADIUS\n",
                                   node.id, node.parent_id, node.depth));
             return;
           }
@@ -2172,14 +2172,14 @@ struct SearchManager {
           if (fund.prune) {
             pruned_count++;
             RecordCertification(node);
-            OutputRow(std::format("PRUNE {} {} {} FUNDAMENTAL {}\n",
+            OutputRow(std::format("PR {} {} {} FUNDAMENTAL {}\n",
                                   node.id, node.parent_id, node.depth,
                                   fund.direction));
 
           } else if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
             pruned_count++;
             RecordCertification(node);
-            OutputRow(std::format("TUBE {} {} {} {:.17g}\n",
+            OutputRow(std::format("TU {} {} {} {:.17g}\n",
                                   node.id, node.parent_id, node.depth,
                                   tube_radius));
 
@@ -2204,7 +2204,7 @@ struct SearchManager {
             child1.box = b1;
 
             split_count++;
-            OutputRow(std::format("SPLIT_ORIGIN {} {} {} {} {}\n",
+            OutputRow(std::format("SO {} {} {} {} {}\n",
                                   node.id, node.parent_id, node.depth,
                                   child0.id, child1.id));
 
@@ -2236,7 +2236,7 @@ struct SearchManager {
                 MutexLock ml(&mu);
                 stack.push_back(child);
               }
-              OutputRow(std::format("SPLIT_VIEW {} {} {} {} {} {} {}\n", node.id,
+              OutputRow(std::format("SV {} {} {} {} {} {} {}\n", node.id,
                                     node.parent_id, node.depth,
                                     child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
             } else {
@@ -2487,7 +2487,7 @@ struct SearchManager {
           if (res.certified) {
             RecordCertification(node);
             OutputRow(
-                std::format("CERT {} {} {} {} {:.17g} {} {} {}\n",
+                std::format("CE {} {} {} {} {:.17g} {} {} {}\n",
                             node.id, node.parent_id, node.depth,
                             res.winning_triple, res.margin,
                             res.inner[0], res.inner[1], res.inner[2]));
@@ -2565,7 +2565,7 @@ struct SearchManager {
                       res.margin);
                 std::fflush(difficult_file);
               }
-              OutputRow(std::format("DIFFICULT {} {} {} {:.17g}\n",
+              OutputRow(std::format("DF {} {} {} {:.17g}\n",
                                     node.id, node.parent_id, node.depth, res.margin));
 
               depth_out_per.RunIf([&]{
@@ -2646,7 +2646,7 @@ struct SearchManager {
               child1.box = b1;
 
               split_count++;
-              OutputRow(std::format("SPLIT {} {} {} {} {}\n",
+              OutputRow(std::format("SP {} {} {} {} {}\n",
                                     node.id, node.parent_id, node.depth,
                                     child0.id, child1.id));
 
@@ -2698,7 +2698,7 @@ struct SearchManager {
                 stack.push_back(child);
               }
 
-              OutputRow(std::format("SPLIT_VIEW {} {} {} {} {} {} {}\n",
+              OutputRow(std::format("SV {} {} {} {} {} {} {}\n",
                                     node.id, node.parent_id, node.depth,
                                     child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
             }

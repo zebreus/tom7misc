@@ -655,29 +655,39 @@ int main(int argc, char **argv) {
     node.id = id;
     node.parent_id = parent_id;
     node.depth = depth;
-    node.tag = tag;
 
-    if (tag == "CERT") {
+    if (tag == "CE" || tag == "CERT") {
+      node.tag = "CERT";
       cert_count++;
       iss >> node.winning_triple >> node.margin >> node.inner[0] >> node.inner[1] >> node.inner[2];
-    } else if (tag == "PRUNE") {
+    } else if (tag == "PR" || tag == "PRUNE") {
       std::string prune_kind;
       iss >> prune_kind;
-      if (prune_kind == "RADIUS") {
+      if (prune_kind == "RADIUS" || prune_kind == "RA") {
         node.tag = "PRUNE_RADIUS";
-      } else if (prune_kind == "FUNDAMENTAL") {
+      } else if (prune_kind == "FUNDAMENTAL" || prune_kind == "FU") {
         node.tag = "PRUNE_FUNDAMENTAL";
         iss >> node.fund_dir;
       }
-    } else if (tag == "TUBE") {
+    } else if (tag == "TU" || tag == "TUBE") {
+      node.tag = "TUBE";
       iss >> node.tube_radius;
-    } else if (tag == "SPLIT" || tag == "SPLIT_ORIGIN") {
+    } else if (tag == "SP" || tag == "SPLIT") {
+      node.tag = "SPLIT";
       int64_t c0, c1;
       if (iss >> c0 >> c1) {
         node.child_ids[0] = c0;
         node.child_ids[1] = c1;
       }
-    } else if (tag == "SPLIT_VIEW") {
+    } else if (tag == "SO" || tag == "SPLIT_ORIGIN") {
+      node.tag = "SPLIT_ORIGIN";
+      int64_t c0, c1;
+      if (iss >> c0 >> c1) {
+        node.child_ids[0] = c0;
+        node.child_ids[1] = c1;
+      }
+    } else if (tag == "SV" || tag == "SPLIT_VIEW") {
+      node.tag = "SPLIT_VIEW";
       int64_t c0, c1, c2, c3;
       if (iss >> c0 >> c1 >> c2 >> c3) {
         node.child_ids[0] = c0;
@@ -685,9 +695,11 @@ int main(int argc, char **argv) {
         node.child_ids[2] = c2;
         node.child_ids[3] = c3;
       }
-    } else if (tag == "DIFFICULT") {
+    } else if (tag == "DF" || tag == "DI" || tag == "DIFFICULT") {
       node.tag = "DIFFICULT";
       iss >> node.margin;
+    } else {
+      node.tag = tag;
     }
 
     nodes[id] = node;
