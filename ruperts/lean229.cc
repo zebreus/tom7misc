@@ -1417,18 +1417,26 @@ struct CheckpointHeader {
 struct SearchManager {
   int chart = 0;
   int batch_size = 32768;
-  int max_depth = 72;
-  int max_box_depth = 54;
-  int max_view_depth = 20;
-  int suspicious_depth = 70;
+
+  // Default parameters tuned for rapid coarse triage:
+  // By depth 31, the GPU certifies 99.999998% of the 5D configuration space (~500k cells).
+  // Capping max_depth at 40 stops the exponential fan-out into difficult valleys while
+  // the active node count is still small (~300-500 coarse cells), rather than letting them
+  // split into hundreds of thousands of tiny slivers.
+  // Setting lp_escalate_depth and lp_escalate_box_depth to 0 disables mid-tree CPU LP solves,
+  // allowing the GPU sweep to finish in 10-15 minutes without stalling on single-threaded CPU work.
+  int max_depth = 40;
+  int max_box_depth = 32;
+  int max_view_depth = 10;
+  int suspicious_depth = 36;
   size_t num_candidates = 0; // 0 = all
   int cone_samples = 8;
-  int escalate_depth = 36;
+  int escalate_depth = 32;
   int escalate_cone_samples = 12;
-  int deep_escalate_depth = 60;
+  int deep_escalate_depth = 38;
   int deep_escalate_cone_samples = 14;
-  int lp_escalate_depth = 68;
-  int lp_escalate_box_depth = 50;
+  int lp_escalate_depth = 0;
+  int lp_escalate_box_depth = 0;
   int num_threads = 8;
 
   int EffectiveConeSamples(const SearchNode &node) const {
@@ -3407,18 +3415,18 @@ int main(int argc, char **argv) {
       Print("Usage: ./lean229.exe [options]\n"
             "  --chart <0|1|2>     Cayley chart index (default 0)\n"
             "  --batch_size <N>    Batch size for GPU/evaluator (default 32768)\n"
-            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 72)\n"
-            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 54)\n"
-            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 20)\n"
-            "  --suspicious_depth <D> Threshold to report hard points (default 70)\n"
+            "  --max_depth <D>     Maximum branch-and-bound tree depth (default 40)\n"
+            "  --max_box_depth <D> Maximum Cayley box subdivision depth (default 32)\n"
+            "  --max_view_depth <D> Maximum view triangle subdivision depth (default 10)\n"
+            "  --suspicious_depth <D> Threshold to report hard points (default 36)\n"
             "  --candidates <N>    Maximum candidate triples to test per box (default 0 = all)\n"
             "  --cone_samples <N>  Silhouette cone samples per vertex (default 8)\n"
-            "  --escalate_depth <D> Tree depth to escalate cone samples (default 36)\n"
+            "  --escalate_depth <D> Tree depth to escalate cone samples (default 32)\n"
             "  --escalate_cone_samples <N> Escalated cone samples (default 12)\n"
-            "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 60)\n"
+            "  --deep_escalate_depth <D> Tree depth for second cone escalation (default 38)\n"
             "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
-            "  --lp_escalate_depth <D> Tree depth to trigger LP CPU escalation (default 68)\n"
-            "  --lp_escalate_box_depth <D> Box depth to trigger LP CPU escalation (default 50)\n"
+            "  --lp_escalate_depth <D> Tree depth to trigger LP CPU escalation (default 0 = disabled)\n"
+            "  --lp_escalate_box_depth <D> Box depth to trigger LP CPU escalation (default 0 = disabled)\n"
             "  --split_kappa <K>   Box-to-view angular diameter split bias (default 1.0)\n"
             "  --triangle_cache <N> Maximum unique triangle pools to cache in RAM (default 20480)\n"
             "  --tube_radius <R>   Identity symmetry tube radius (default 1e-4)\n"
