@@ -95,6 +95,30 @@ static constexpr double VERTICES[NUM_VERTICES][3] = {
   {  0.5910472006450693,  0.1309306622553988, -0.7643399516054460 }  // 19
 };
 
+// Lean 4 displacement error parameters:
+// In AtlasProjectiveGlobalCertificate.lean:
+//   Box.displacementError = 300 * box.dBound * tightVertexErrorQ
+//
+// How this constant is chosen and justified:
+// 1. tightVertexErrorQ = 6 / 10^16:
+//    Proved algebraically in TightApproximation.lean (theorem vertex_close_tight):
+//      ||exactVertex i - toR3 (rationalVertex i)|| <= (tightVertexErrorQ : R)
+//    This bounds the Euclidean distance between Nopert #229's exact algebraic
+//    vertices (roots of degree-16 polynomials) and the 16-decimal-digit rational
+//    approximations used for verified arithmetic.
+// 2. Factor of 300:
+//    Proved in AtlasProjectiveGlobalCertificate.lean (theorem clearedDisplacement_error):
+//    The cleared displacement is a sum over 3 contact planes in the Farkas cone.
+//    For each contact i in Fin 3, theorem weightedContact_error bounds the error by
+//    100 * dBound * tightVertexErrorQ (accounting for vertex displacement error,
+//    approximate edge cross products, view vector dot products, and cone weights).
+//    Summing over all 3 contacts gives 3 * 100 = 300 * dBound * tightVertexErrorQ.
+//
+// In double precision, 300 * 6e-16 = 1.8e-13.
+// We export TIGHT_VERTEX_ERROR to OpenCL via CLPreamble() so CPU and GPU
+// evaluations use the exact same constant from this single source of truth.
+static constexpr double TIGHT_VERTEX_ERROR = 6e-16;
+
 // Binary formats matching OpenCL kernel layouts
 struct GpuBox {
   double cx, cy, cz;
@@ -525,8 +549,17 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(
         double w2_min = std::min({yocto::dot(tri.corners[0], coeff2),
                                   yocto::dot(tri.corners[1], coeff2),
                                   yocto::dot(tri.corners[2], coeff2)});
-
-        if (w0_min < 0.0 || w1_min < 0.0 || w2_min < 0.0) continue;
+        // Ensure the view cone triangle corners are strictly interior to the
+        // contact cone. We test against a small positive epsilon (1e-11) rather
+        // than 0.0 because Lean subtracts supportError = 6/10^15 (accounting
+        // for algebraic vs rational vertex differences) when computing
+        // weightLower = min_c(w) - supportError >= 0. Testing against <= 1e-11
+        // safely eliminates exact-boundary triples (which evaluate to 0.0 in
+        // exact arithmetic or +-1e-15 float noise) and leaves ~1600x headroom
+        // above supportError, guaranteeing weightLower > 0 in Lean.
+        // Note: this epsilon applies only to the angular view weights, not the
+        // physical clearance margins between the polyhedra.
+        if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) continue;
 
         GpuTriple gt;
         gt.c0 = (uint8_t)ci;
@@ -676,7 +709,7 @@ static GpuResult EvaluateBoxCPU(
 
   double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
   double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
-  double disp_error = 300.0 * d_bound * 1e-10;
+  double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
 
   vec3 p[6];
   p[0] = {box.tri[0][0], box.tri[0][1], box.tri[0][2]};
@@ -1431,8 +1464,9 @@ struct SearchManager {
         "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n\n"
         "#define NUM_VERTICES {}\n\n"
         "#define MAX_CONTACTS {}\n\n"
+        "#define TIGHT_VERTEX_ERROR {:.17g}\n\n"
         "__constant double VERTICES[NUM_VERTICES][3] = {{\n",
-        NUM_VERTICES, MAX_GPU_CONTACTS);
+        NUM_VERTICES, MAX_GPU_CONTACTS, TIGHT_VERTEX_ERROR);
     for (int i = 0; i < NUM_VERTICES; i++) {
       s += std::format("  {{ {:.17g}, {:.17g}, {:.17g} }},\n",
                        VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]);
@@ -1869,24 +1903,22 @@ struct SearchManager {
       }
     }
 
+    SearchNode root_children[4];
+    for (int i = 0; i < 4; i++) {
+      root_children[i] = root;
+      root_children[i].id = next_node_id++;
+      root_children[i].parent_id = root.id;
+      root_children[i].view_depth = 1;
+      root_children[i].depth = 1;
+      root_children[i].tri = sub_wedges[i];
+    }
+
     for (int i = 0; i < 4; i++) {
       if (i == priority_idx) continue;
-      SearchNode child = root;
-      child.id = next_node_id++;
-      child.parent_id = root.id;
-      child.view_depth = 1;
-      child.depth = 1;
-      child.tri = sub_wedges[i];
-      stack.push_back(child);
+      stack.push_back(root_children[i]);
     }
     if (priority_idx >= 0) {
-      SearchNode child = root;
-      child.id = next_node_id++;
-      child.parent_id = root.id;
-      child.view_depth = 1;
-      child.depth = 1;
-      child.tri = sub_wedges[priority_idx];
-      stack.push_back(child);
+      stack.push_back(root_children[priority_idx]);
     }
   }
 
@@ -2007,6 +2039,7 @@ struct SearchManager {
       row_file = fopen(log_path.c_str(), "w");
       CHECK(row_file) << log_path;
       status.Print("Writing fresh log to: {}\n", log_path);
+      OutputRow("SPLIT_VIEW 0 -1 0 1 2 3 4\n");
 
       std::filesystem::remove(difficult_path, ec);
       difficult_file = fopen(difficult_path.c_str(), "w");
@@ -2151,9 +2184,6 @@ struct SearchManager {
                                   tube_radius));
 
           } else if (node.chart == 0 && node.box.ContainsOrigin()) {
-            split_count++;
-            OutputRow(std::format("SPLIT_ORIGIN {} {} {}\n",
-                                  node.id, node.parent_id, node.depth));
             int widest = node.box.WidestAxis();
             auto [b0, b1] = node.box.Split(widest);
 
@@ -2173,6 +2203,11 @@ struct SearchManager {
             child1.box_splits_since_view = node.box_splits_since_view + 1;
             child1.box = b1;
 
+            split_count++;
+            OutputRow(std::format("SPLIT_ORIGIN {} {} {} {} {}\n",
+                                  node.id, node.parent_id, node.depth,
+                                  child0.id, child1.id));
+
             if (child0.box.ContainsOrigin()) {
               MutexLock ml(&mu);
               stack.push_back(child1);
@@ -2187,9 +2222,8 @@ struct SearchManager {
             auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
             if (tpool->gpu_triples.empty()) {
               split_count++;
-              OutputRow(std::format("SPLIT_VIEW {} {} {}\n", node.id,
-                                    node.parent_id, node.depth));
               auto sub_tris = node.tri.Subdivide();
+              int64_t child_ids[4] = {-1, -1, -1, -1};
               for (int t = sub_tris.size() - 1; t >= 0; t--) {
                 SearchNode child = node;
                 child.id = next_node_id++;
@@ -2198,10 +2232,13 @@ struct SearchManager {
                 child.view_depth = node.view_depth + 1;
                 child.box_splits_since_view = 0;
                 child.tri = sub_tris[t];
+                child_ids[t] = child.id;
                 MutexLock ml(&mu);
                 stack.push_back(child);
               }
-
+              OutputRow(std::format("SPLIT_VIEW {} {} {} {} {} {} {}\n", node.id,
+                                    node.parent_id, node.depth,
+                                    child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
             } else {
               MutexLock ml(&mu);
               eval_indices.push_back(i);
@@ -2590,10 +2627,6 @@ struct SearchManager {
             }
 
             if (split_box) {
-              split_count++;
-              OutputRow(std::format("SPLIT {} {} {}\n",
-                                    node.id, node.parent_id, node.depth));
-
               auto [b0, b1] = node.box.Split(widest);
 
               SearchNode child0 = node;
@@ -2612,6 +2645,11 @@ struct SearchManager {
               child1.box_splits_since_view = node.box_splits_since_view + 1;
               child1.box = b1;
 
+              split_count++;
+              OutputRow(std::format("SPLIT {} {} {} {} {}\n",
+                                    node.id, node.parent_id, node.depth,
+                                    child0.id, child1.id));
+
               if (ContainsUncertifiedPriority(child0)) {
                 stack.push_back(child1);
                 stack.push_back(child0);
@@ -2624,9 +2662,6 @@ struct SearchManager {
               }
             } else {
               split_count++;
-              OutputRow(std::format("SPLIT_VIEW {} {} {}\n",
-                                    node.id, node.parent_id, node.depth));
-
               auto sub_tris = node.tri.Subdivide();
               int priority_idx = -1;
               for (int t = 0; t < 4; t++) {
@@ -2638,6 +2673,7 @@ struct SearchManager {
                 }
               }
 
+              int64_t child_ids[4] = {-1, -1, -1, -1};
               for (int t = sub_tris.size() - 1; t >= 0; t--) {
                 if (t == priority_idx) continue;
                 SearchNode child = node;
@@ -2647,6 +2683,7 @@ struct SearchManager {
                 child.view_depth = node.view_depth + 1;
                 child.box_splits_since_view = 0;
                 child.tri = sub_tris[t];
+                child_ids[t] = child.id;
                 stack.push_back(child);
               }
               if (priority_idx >= 0) {
@@ -2657,8 +2694,13 @@ struct SearchManager {
                 child.view_depth = node.view_depth + 1;
                 child.box_splits_since_view = 0;
                 child.tri = sub_tris[priority_idx];
+                child_ids[priority_idx] = child.id;
                 stack.push_back(child);
               }
+
+              OutputRow(std::format("SPLIT_VIEW {} {} {} {} {} {} {}\n",
+                                    node.id, node.parent_id, node.depth,
+                                    child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
             }
           }
         }

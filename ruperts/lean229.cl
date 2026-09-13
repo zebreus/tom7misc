@@ -203,7 +203,8 @@ __kernel void EvaluateBoxes(
   // Cayley box bounding interval constants (constant across all triples)
   double lx = box.cx - box.rx, ly = box.cy - box.ry, lz = box.cz - box.rz;
   double wx = 2.0 * box.rx, wy = 2.0 * box.ry, wz = 2.0 * box.rz;
-  double disp_error = 300.0 * d_bound * 1e-10;
+  // Lean displacement error: 300 * dBound * tightVertexErrorQ.
+  double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
 
   // Projective view triangle nodes (constant across all triples)
   double3 p[6];

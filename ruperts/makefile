@@ -86,15 +86,16 @@ gpuperts.exe : gpuperts.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-tiltperts.exe : tiltperts.o $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-lean228.exe : lean228.o $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
 lean229.exe : lean229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
+pack229.exe : pack229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+
+tiltperts.exe : tiltperts.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) $(PDB_FLAG)
 	@echo -n "!"
 
