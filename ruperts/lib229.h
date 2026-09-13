@@ -1,0 +1,474 @@
+#ifndef LIB229_H
+#define LIB229_H
+
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <format>
+#include <list>
+#include <memory>
+#include <mutex>
+#include <numbers>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
+#include "ruperts-util.h"
+#include "solutions.h"
+#include "status-bar.h"
+#include "timer.h"
+#include "yocto-math.h"
+
+using vec2 = yocto::vec<double, 2>;
+using vec3 = yocto::vec<double, 3>;
+
+// 20 vertices of Nopert #229, derived algebraically from repair214.cc
+// and scaled strictly inside the unit sphere for Lean's GoodPoly invariant.
+inline constexpr int NUM_VERTICES = 20;
+inline constexpr double VERTICES[NUM_VERTICES][3] = {
+  {  0.0428407320766475,  0.5680663556187131,  0.5648167326177671 }, // 0
+  { -0.1710940528198280,  0.9384169756351713,  0.3001672949030625 }, // 1
+  { -0.2791996671138589,  0.8916783831939151, -0.0420605170858861 }, // 2
+  {  0.0581211699562287,  0.6025790913331870, -0.7643399516054460 }, // 3
+
+  { -0.5270246949360691,  0.2162861152231751,  0.5648167326177671 }, // 4
+  { -0.9453585496376318,  0.1272666794475643,  0.3001672949030625 }, // 5
+  { -0.9343139787381105,  0.0100091111676232, -0.0420605170858861 }, // 6
+  { -0.5551263421462106,  0.2414836970985378, -0.7643399516054460 }, // 7
+
+  { -0.3685599064576828, -0.4343941851161148,  0.5648167326177671 }, // 8
+  { -0.4131696624115331, -0.8597618421012388,  0.3001672949030625 }, // 9
+  { -0.2982381279104400, -0.8854924122951479, -0.0420605170858861 }, // 10
+  { -0.4012081174529903, -0.4533339587973062, -0.7643399516054460 }, // 11
+
+  {  0.2992421458547392, -0.4847564861402479,  0.5648167326177671 }, // 12
+  {  0.6900056551469845, -0.6586287200963504,  0.3001672949030625 }, // 13
+  {  0.7499926789483198, -0.5572735187461599, -0.0420605170858861 }, // 14
+  {  0.3071660889979028, -0.5216594918898176, -0.7643399516054460 }, // 15
+
+  {  0.5535017234623651,  0.1347982004144742,  0.5648167326177671 }, // 16
+  {  0.8396166097220085,  0.4527069071148534,  0.3001672949030625 }, // 17
+  {  0.7617590948140895,  0.5410784366797694, -0.0420605170858861 }, // 18
+  {  0.5910472006450693,  0.1309306622553988, -0.7643399516054460 }  // 19
+};
+
+// Lean 4 displacement error parameters:
+// In AtlasProjectiveGlobalCertificate.lean:
+//   Box.displacementError = 300 * box.dBound * tightVertexErrorQ
+inline constexpr double TIGHT_VERTEX_ERROR = 6e-16;
+
+// Binary formats matching OpenCL kernel layouts
+struct GpuBox {
+  double cx, cy, cz;
+  double rx, ry, rz;
+  double tri[3][3];
+  int chart;
+  int num_triples;
+  int triple_offset;
+  int contact_offset;
+  int num_contacts;
+  int _pad;
+};
+static_assert(sizeof(GpuBox) == 144, "GpuBox struct size mismatch");
+
+struct GpuContact {
+  int vertex;
+  double edge[3];
+  double defect;
+};
+
+struct GpuTriple {
+  // Local contact indices in this pool (0 to num_contacts - 1)
+  uint8_t c0, c1, c2;
+  uint8_t _pad[5];
+  double weighted_defect_upper;
+};
+static_assert(sizeof(GpuTriple) == 16, "GpuTriple struct size mismatch");
+
+struct GpuResult {
+  int certified;
+  int winning_triple;
+  int inner[3];
+  double margin;
+};
+static_assert(sizeof(GpuResult) == 32, "GpuResult struct size mismatch");
+
+inline constexpr int MAX_GPU_CONTACTS = 256;
+
+// Projective view triangle
+struct ProjectiveTriangle {
+  std::array<vec3, 3> corners;
+
+  vec3 Centroid() const {
+    return (corners[0] + corners[1] + corners[2]) / 3.0;
+  }
+
+  double AngularDiameter() const {
+    vec3 u0 = yocto::normalize(corners[0]);
+    vec3 u1 = yocto::normalize(corners[1]);
+    vec3 u2 = yocto::normalize(corners[2]);
+    double d01 = yocto::length(u0 - u1);
+    double d12 = yocto::length(u1 - u2);
+    double d20 = yocto::length(u2 - u0);
+    return std::max({d01, d12, d20});
+  }
+
+  std::array<ProjectiveTriangle, 4> Subdivide() const {
+    vec3 m01 = (corners[0] + corners[1]) * 0.5;
+    vec3 m12 = (corners[1] + corners[2]) * 0.5;
+    vec3 m20 = (corners[2] + corners[0]) * 0.5;
+    return {{
+      {corners[0], m01, m20},
+      {m01, corners[1], m12},
+      {m20, m12, corners[2]},
+      {m01, m12, m20}
+    }};
+  }
+
+  bool ContainsRay(const vec3 &v) const {
+    double det = yocto::dot(corners[0], yocto::cross(corners[1], corners[2]));
+    if (std::abs(det) < 1e-15) return false;
+    double s = (det > 0.0) ? 1.0 : -1.0;
+    double d0 = s * yocto::dot(v, yocto::cross(corners[1], corners[2]));
+    double d1 = s * yocto::dot(v, yocto::cross(corners[2], corners[0]));
+    double d2 = s * yocto::dot(v, yocto::cross(corners[0], corners[1]));
+    return d0 >= -1e-12 && d1 >= -1e-12 && d2 >= -1e-12;
+  }
+};
+
+// 3D Cayley box
+struct CayleyBox {
+  vec3 center;
+  vec3 radii;
+
+  bool Contains(const vec3 &w) const {
+    return std::abs(w.x - center.x) <= radii.x + 1e-12 &&
+           std::abs(w.y - center.y) <= radii.y + 1e-12 &&
+           std::abs(w.z - center.z) <= radii.z + 1e-12;
+  }
+
+  int WidestAxis() const {
+    int axis = 0;
+    if (radii.y > radii[axis]) axis = 1;
+    if (radii.z > radii[axis]) axis = 2;
+    return axis;
+  }
+
+  std::pair<CayleyBox, CayleyBox> Split(int axis) const {
+    CayleyBox left = *this;
+    CayleyBox right = *this;
+    left.radii[axis] *= 0.5;
+    right.radii[axis] *= 0.5;
+    left.center[axis] -= left.radii[axis];
+    right.center[axis] += right.radii[axis];
+    return {left, right};
+  }
+
+  bool ContainsOrigin() const {
+    return std::abs(center.x) <= radii.x &&
+           std::abs(center.y) <= radii.y &&
+           std::abs(center.z) <= radii.z;
+  }
+};
+
+inline bool OutsideBall(const CayleyBox &b) {
+  double d2 = 0.0;
+  for (int c = 0; c < 3; c++) {
+    double v = std::abs(b.center[c]) - b.radii[c];
+    if (v > 0.0) d2 += v * v;
+  }
+  return d2 > 1.0;
+}
+
+struct FundamentalPruneResult {
+  bool prune = false;
+  int direction = 0; // -1 or 1
+};
+
+inline FundamentalPruneResult CheckFundamentalPrune(
+    int chart, const CayleyBox &b) {
+  if (chart == 0) {
+    if (b.center.z - b.radii.z > 1.0 / 3.0) return {true, -1};
+    if (b.center.z + b.radii.z < -1.0 / 3.0) return {true, 1};
+  } else if (chart == 1) {
+    if (b.center.y - b.radii.y > 1.0 / 3.0) return {true, 1};
+    if (b.center.y + b.radii.y < -1.0 / 3.0) return {true, -1};
+  } else if (chart == 2) {
+    if (b.center.x - b.radii.x > 1.0 / 3.0) return {true, 1};
+    if (b.center.x + b.radii.x < -1.0 / 3.0) return {true, -1};
+  }
+
+  const double K_a = -690983.0 / 1000000.0;
+  const double K_b_base = 951057.0 / 1000000.0;
+  const double approx_error = 2.0 / 125000.0; // 1.6e-5
+
+  for (int dir : {-1, 1}) {
+    double K_b = dir * K_b_base;
+    double c0 = 0.0, cx = 0.0, cy = 0.0, cz = 0.0;
+    double cxx = 0.0, cyy = 0.0, czz = 0.0, cxy = 0.0;
+
+    if (chart == 0) {
+      c0 = 2.0 * K_a;
+      cz = -4.0 * K_b;
+      czz = -2.0 * K_a;
+    } else if (chart == 1) {
+      cxx = 2.0 * K_a;
+      cyy = -2.0 * K_a;
+      cxy = 4.0 * K_b;
+    } else if (chart == 2) {
+      cxx = -2.0 * K_a;
+      cyy = 2.0 * K_a;
+      cxy = -4.0 * K_b;
+    }
+
+    double x = b.center.x, y = b.center.y, z = b.center.z;
+    double rx = b.radii.x, ry = b.radii.y, rz = b.radii.z;
+
+    double val0 = c0 + cx*x + cy*y + cz*z +
+                  cxx*x*x + cyy*y*y + czz*z*z + cxy*x*y;
+
+    double gx = cx + 2.0*cxx*x + cxy*y;
+    double gy = cy + cxy*x + 2.0*cyy*y;
+    double gz = cz + 2.0*czz*z;
+
+    double center =
+        val0 + 0.5 * (cxx * rx * rx + cyy * ry * ry + czz * rz * rz);
+    double radius =
+        (std::abs(gx) * rx + std::abs(gy) * ry + std::abs(gz) * rz) +
+        std::abs(cxy) * rx * ry +
+        0.5 * (std::abs(cxx) * rx * rx + std::abs(cyy) * ry * ry +
+               std::abs(czz) * rz * rz);
+
+    double lower = center - radius;
+    if (lower > approx_error) {
+      return {true, dir};
+    }
+  }
+
+  return {false, 0};
+}
+
+inline bool InsideIdentityTube(int chart, const CayleyBox &b,
+                               double tube_r = 1e-4) {
+  if (chart != 0) return false;
+  double mx = std::abs(b.center.x) + b.radii.x;
+  double my = std::abs(b.center.y) + b.radii.y;
+  double mz = std::abs(b.center.z) + b.radii.z;
+  static constexpr double IDENTITY_FACTOR = 2.0;
+  return IDENTITY_FACTOR * std::sqrt(mx*mx + my*my + mz*mz) <= tube_r;
+}
+
+// Search node in the branch-and-bound tree
+struct SearchNode {
+  int64_t id = 0;
+  int64_t parent_id = -1;
+  CayleyBox box;
+  ProjectiveTriangle tri;
+  uint8_t depth = 0;
+  uint8_t view_depth = 0;
+  uint8_t box_depth = 0;
+  uint8_t chart = 0;
+  uint8_t box_splits_since_view = 0;
+};
+static_assert(sizeof(SearchNode) == 144, "SearchNode struct size mismatch");
+
+struct TrianglePool {
+  uint64_t id = 0;
+  std::vector<GpuContact> contacts;
+  std::vector<GpuTriple> gpu_triples;
+};
+
+inline uint64_t HashTriangle(const ProjectiveTriangle &tri) {
+  uint64_t h = 0xcbf29ce484222325ULL;
+  for (int c = 0; c < 3; c++) {
+    uint64_t ux, uy, uz;
+    std::memcpy(&ux, &tri.corners[c].x, 8);
+    std::memcpy(&uy, &tri.corners[c].y, 8);
+    std::memcpy(&uz, &tri.corners[c].z, 8);
+    h ^= ux; h *= 0x100000001b3ULL;
+    h ^= uy; h *= 0x100000001b3ULL;
+    h ^= uz; h *= 0x100000001b3ULL;
+  }
+  return h;
+}
+
+double ComputeWeightedDefectUpper(const ProjectiveTriangle &tri,
+                                 const std::vector<GpuContact> &contacts,
+                                 int c0, int c1, int c2,
+                                 const vec3 w_coeff[3]);
+
+std::shared_ptr<const TrianglePool> BuildTrianglePool(
+    const ProjectiveTriangle &tri, int cone_samples = 6, uint64_t id = 0);
+
+std::shared_ptr<const TrianglePool> GetTrianglePool(
+    const ProjectiveTriangle &tri, int cone_samples = 6);
+
+extern size_t g_max_triangle_cache_size;
+
+GpuResult EvaluateBoxCPU(
+    const GpuBox &box,
+    const std::vector<GpuContact> &contacts,
+    const std::vector<GpuTriple> &triples);
+
+GpuResult EvaluateBoxCPULP(
+    const GpuBox &box,
+    const std::vector<GpuContact> &contacts,
+    const std::vector<GpuTriple> &triples,
+    bool use_optimal_translation = true);
+
+Polyhedron GetPolyhedron229();
+
+struct SolutionWitness {
+  frame3 outer_frame;
+  frame3 inner_frame;
+  double clearance = 0.0;
+};
+
+std::optional<SolutionWitness> CheckSolutionWitness(const SearchNode &node);
+
+// Binary checkpoint format
+struct CheckpointHeader {
+  static constexpr uint64_t kMagic = 0x4e4f504552543232ULL; // "NOPERT22"
+  static constexpr uint32_t kVersion = 2;
+  uint64_t magic = kMagic;
+  uint32_t version = kVersion;
+  uint32_t chart = 0;
+  int64_t next_node_id = 0;
+  uint64_t evaluated_count = 0;
+  uint64_t certified_count = 0;
+  uint64_t pruned_count = 0;
+  uint64_t split_count = 0;
+  uint64_t difficult_count = 0;
+  uint64_t stack_size = 0;
+};
+
+void InstallSignalHandlers();
+bool SigIntReceived();
+void SetSigInt();
+StatusBar &GetStatusBar();
+
+struct SearchManager {
+  int chart = 0;
+  int batch_size = 32768;
+
+  int max_depth = 40;
+  int max_box_depth = 32;
+  int max_view_depth = 10;
+  int suspicious_depth = 36;
+  size_t num_candidates = 0; // 0 = all
+  int cone_samples = 8;
+  int escalate_depth = 32;
+  int escalate_cone_samples = 12;
+  int deep_escalate_depth = 38;
+  int deep_escalate_cone_samples = 14;
+  int lp_escalate_depth = 0;
+  int lp_escalate_box_depth = 0;
+  int num_threads = 8;
+
+  int EffectiveConeSamples(const SearchNode &node) const {
+    if (deep_escalate_depth > 0 && node.depth >= deep_escalate_depth) {
+      return deep_escalate_cone_samples;
+    }
+    if (escalate_depth > 0 && node.depth >= escalate_depth) {
+      return escalate_cone_samples;
+    }
+    return cone_samples;
+  }
+
+  bool use_gpu = true;
+  bool resume = true;
+  bool prioritize_related = true;
+  double related_epsilon = 0.05;
+  double tube_radius = 1e-4;
+  double split_kappa = 1.0;
+  std::string output_dir = ".artifacts/nopert229";
+
+  std::vector<SearchNode> stack; // DFS LIFO stack
+  int64_t next_node_id = 0;
+
+  static constexpr int kMaxTrackDepth = 128;
+  static constexpr int kMaxTrackK = 256;
+
+  std::atomic<uint64_t> cert_by_depth[kMaxTrackDepth]{};
+  std::atomic<uint64_t> cert_by_box_depth[kMaxTrackDepth]{};
+  std::atomic<uint64_t> cert_by_view_depth[64]{};
+
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_depth;
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_box_depth;
+  std::unique_ptr<std::atomic<uint64_t>[]> cert_k_by_view_depth;
+
+  SearchManager();
+
+  static double EvalKVolume(const std::atomic<uint64_t> *k_table, int row, int num_k = kMaxTrackK) {
+    if (!k_table) return 0.0;
+    double vol = 0.0;
+    for (int k = num_k - 1; k > 0; k--) {
+      uint64_t c = k_table[row * num_k + k].load(std::memory_order_relaxed);
+      vol = (vol + c) * 0.5;
+    }
+    vol += k_table[row * num_k + 0].load(std::memory_order_relaxed);
+    return vol;
+  }
+
+  Periodically mini_status_per = Periodically(1.0);
+  std::string last_op;
+
+  cl_program program = nullptr;
+  cl_kernel kernel = nullptr;
+
+  struct PriorityPoint {
+    vec3 view;
+    vec3 w;
+    int chart = 0;
+    int solution_id = 0;
+    std::string label;
+  };
+  std::vector<PriorityPoint> active_priority;
+  int num_priority_points = 0;
+
+  std::mutex row_mutex;
+  std::string row_buffer;
+  FILE *row_file = nullptr;
+  FILE *difficult_file = nullptr;
+  std::string difficult_path;
+
+  void RecordCertification(const SearchNode &node);
+  std::string FormatDepthHistogram() const;
+  void PrintDepthDistribution();
+  void WriteDepthHistogramFile(const std::string &filename) const;
+  static std::string CLPreamble();
+  void InitOpenCL();
+  bool SaveCheckpoint(const std::string &path);
+  bool LoadCheckpoint(const std::string &path);
+  bool ContainsUncertifiedPriority(const SearchNode &node) const;
+  std::vector<PriorityPoint> GetPriorityPoints(double max_dist = 0.05);
+  void FilterPriorityPointsToStack();
+  double CompletedFraction() const;
+  void InitRoot();
+  void FlushRowsWithLock();
+  void FlushRows();
+  void OutputRow(std::string_view row);
+  void Run();
+  static std::string StatusCounters();
+  void MaybeMiniStatus(std::string_view op);
+};
+
+#endif // LIB229_H
