@@ -65,6 +65,10 @@ static void SigHandler(int) {
   sigint_received.store(true);
 }
 
+// Global status bar.
+// Row 0 is atomic counters only, so it can be updated any time.
+static StatusBar status = StatusBar(4);
+
 // 20 vertices of Nopert #229, derived algebraically from repair214.cc
 // and scaled strictly inside the unit sphere for Lean's GoodPoly invariant.
 static constexpr int NUM_VERTICES = 20;
@@ -322,7 +326,12 @@ static inline bool InsideIdentityTube(int chart, const CayleyBox &b,
   double mx = std::abs(b.center.x) + b.radii.x;
   double my = std::abs(b.center.y) + b.radii.y;
   double mz = std::abs(b.center.z) + b.radii.z;
-  return 2.0 * std::sqrt(mx*mx + my*my + mz*mz) <= tube_r;
+  // Lean bounds ||R - I||_op via the Frobenius norm of N(w) - D(w)*I,
+  // where the sum of squared off-diagonal entries is 8 * ||w||^2.
+  // Lean's mismatchRadius ≈ sqrt(8) * ||w|| ≈ 2.8284 * ||w||.
+  static constexpr double FROBENIUS_FACTOR =
+    2.828427124746190097603377448419;
+  return FROBENIUS_FACTOR * std::sqrt(mx*mx + my*my + mz*mz) <= tube_r;
 }
 
 // Full 5D pose node in branch-and-bound search
@@ -676,6 +685,7 @@ inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
 }
 
 // CPU evaluator matching Bernstein logic
+static Periodically eval_cpu_failed_per = Periodically(10.0);
 static GpuResult EvaluateBoxCPU(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
@@ -924,8 +934,12 @@ static GpuResult EvaluateBoxCPU(
   }
 
   if (!res.certified && box.rx < 1e-6) {
-    Print("EvalBoxCPU failed: passed_w={}, passed_center={}, best_cmargin={:.10g} (min_b={:.10g}, defect={:.10g}, disp={:.10g})\n",
-          passed_w_positive, passed_center, best_center_margin, best_min_b, best_defect, disp_error);
+    eval_cpu_failed_per.RunIf([&]{
+        status.Print(
+            AORANGE("‼") " EvalBoxCPU failed: passed_w={}, passed_center={}, "
+            "best_cmargin={:.17g} (min_b={:.17g}, defect={:.17g}, disp={:.17g})\n",
+            passed_w_positive, passed_center, best_center_margin, best_min_b, best_defect, disp_error);
+      });
   }
 
   return res;
@@ -1675,8 +1689,6 @@ struct SearchManager {
     fclose(f);
   }
 
-  // Row 0 is atomic counters only, so it can be updated any time.
-  StatusBar status = StatusBar(4);
   Periodically mini_status_per = Periodically(1.0);
   std::string last_op;
 
@@ -1743,17 +1755,25 @@ struct SearchManager {
     FILE *hf = fopen(hist_path.c_str(), "wb");
     if (hf) {
       uint64_t raw_depth[128], raw_box[128], raw_view[64];
-      for (int i = 0; i < 128; i++) raw_depth[i] = cert_by_depth[i].load(std::memory_order_relaxed);
-      for (int i = 0; i < 128; i++) raw_box[i] = cert_by_box_depth[i].load(std::memory_order_relaxed);
-      for (int i = 0; i < 64; i++) raw_view[i] = cert_by_view_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128; i++)
+        raw_depth[i] = cert_by_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128; i++)
+        raw_box[i] = cert_by_box_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 64; i++)
+        raw_view[i] = cert_by_view_depth[i].load(std::memory_order_relaxed);
       fwrite(raw_depth, sizeof(uint64_t), 128, hf);
       fwrite(raw_box, sizeof(uint64_t), 128, hf);
       fwrite(raw_view, sizeof(uint64_t), 64, hf);
 
       std::vector<uint64_t> raw_k(320 * 256);
-      for (int i = 0; i < 128 * 256; i++) raw_k[i] = cert_k_by_depth[i].load(std::memory_order_relaxed);
-      for (int i = 0; i < 128 * 256; i++) raw_k[128 * 256 + i] = cert_k_by_box_depth[i].load(std::memory_order_relaxed);
-      for (int i = 0; i < 64 * 256; i++) raw_k[256 * 256 + i] = cert_k_by_view_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128 * 256; i++)
+        raw_k[i] = cert_k_by_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 128 * 256; i++)
+        raw_k[128 * 256 + i] =
+            cert_k_by_box_depth[i].load(std::memory_order_relaxed);
+      for (int i = 0; i < 64 * 256; i++)
+        raw_k[256 * 256 + i] =
+            cert_k_by_view_depth[i].load(std::memory_order_relaxed);
       fwrite(raw_k.data(), sizeof(uint64_t), 320 * 256, hf);
       fclose(hf);
     }
@@ -1824,15 +1844,23 @@ struct SearchManager {
       if (fread(raw_depth, sizeof(uint64_t), 128, hf) == 128 &&
           fread(raw_box, sizeof(uint64_t), 128, hf) == 128 &&
           fread(raw_view, sizeof(uint64_t), 64, hf) == 64) {
-        for (int i = 0; i < 128; i++) cert_by_depth[i].store(raw_depth[i], std::memory_order_relaxed);
-        for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(raw_box[i], std::memory_order_relaxed);
-        for (int i = 0; i < 64; i++) cert_by_view_depth[i].store(raw_view[i], std::memory_order_relaxed);
+        for (int i = 0; i < 128; i++)
+          cert_by_depth[i].store(raw_depth[i], std::memory_order_relaxed);
+        for (int i = 0; i < 128; i++)
+          cert_by_box_depth[i].store(raw_box[i], std::memory_order_relaxed);
+        for (int i = 0; i < 64; i++)
+          cert_by_view_depth[i].store(raw_view[i], std::memory_order_relaxed);
 
         std::vector<uint64_t> raw_k(320 * 256);
         if (fread(raw_k.data(), sizeof(uint64_t), 320 * 256, hf) == 320 * 256) {
-          for (int i = 0; i < 128 * 256; i++) cert_k_by_depth[i].store(raw_k[i], std::memory_order_relaxed);
-          for (int i = 0; i < 128 * 256; i++) cert_k_by_box_depth[i].store(raw_k[128 * 256 + i], std::memory_order_relaxed);
-          for (int i = 0; i < 64 * 256; i++) cert_k_by_view_depth[i].store(raw_k[256 * 256 + i], std::memory_order_relaxed);
+          for (int i = 0; i < 128 * 256; i++)
+            cert_k_by_depth[i].store(raw_k[i], std::memory_order_relaxed);
+          for (int i = 0; i < 128 * 256; i++)
+            cert_k_by_box_depth[i].store(raw_k[128 * 256 + i],
+                                         std::memory_order_relaxed);
+          for (int i = 0; i < 64 * 256; i++)
+            cert_k_by_view_depth[i].store(raw_k[256 * 256 + i],
+                                          std::memory_order_relaxed);
         }
       }
       fclose(hf);
@@ -2961,7 +2989,7 @@ struct SearchManager {
         status.Status(
             "{}\n"
             "Stack: {} " AGREY("|")
-            " Done: {:.4f}% " AGREY("|")
+            " Done: " AFGCOLOR(161, 240, 188, "{:.4f}%") " " AGREY("|")
             " Depth: {} " AGREY("|")
             " {} boxes/s " AGREY("|")
             " {}\n"
@@ -3032,11 +3060,11 @@ struct SearchManager {
     #define BAR " " ANSI_GREY "|" ANSI_DARK_WHITE " "
     return std::format(
         ANSI_BG(0, 0, 80)
-        "Loop: {}" BAR
-        "Eval: {}" BAR
-        "Cert: {}" BAR
-        "Diff: {}" BAR
-        "Pruned: {}" BAR
+        "{}" AWHITE("×") BAR
+        "{}" AYELLOW("⊞") BAR
+        "{}" AFGCOLOR(128, 190, 128, "✔") BAR
+        "{}" ARED("☠") BAR
+        "{}≷" BAR
         "{}⊿" BAR
         "{}/{}⚡ "
         ANSI_RESET,

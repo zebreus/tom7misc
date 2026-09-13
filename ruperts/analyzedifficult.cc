@@ -966,6 +966,7 @@ static void RenderSilhouette(const DifficultCell &cell,
 // --------------------------------------------------------------------------
 
 int main(int argc, char **argv) {
+  ANSI::Init();
   std::string file_path = "chart0.difficult";
   std::string prefix = "difficult";
   int specific_cell = -1;
