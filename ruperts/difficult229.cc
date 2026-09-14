@@ -478,14 +478,15 @@ static void PrintHelp() {
         "  --chart <0|1|2>         Cayley chart index (default 0)\n"
         "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
         "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
-        "  --mixture               Use convex triple mixture branch-and-bound solver (CPU)\n"
+        "  --box_mixture           Convex triple mixture solver with box-bisection profile (recommended)\n"
+        "  --mixture               Alias for --box_mixture (convex triple mixture solver)\n"
         "  --max_components <N>    Max mixture components in mixture mode (default 4)\n"
         "  --split_kappa <K>       Rotation to view diameter ratio for splits in mixture mode (default 0.5)\n"
-        "  --max_nodes <N>         Max total nodes evaluated per cell (default 64 in mixture mode)\n"
-        "  --max_split_delta <N>   Max split depth from root per cell (default 4 in mixture mode)\n"
-        "  --max_depth <D>         Max search depth per cell (default 80 GPU / 54 mixture)\n"
-        "  --max_box_depth <D>     Max box subdivision depth (default 58 GPU / 42 mixture)\n"
-        "  --max_view_depth <D>    Max view subdivision depth (default 20 GPU / 14 mixture)\n"
+        "  --max_nodes <N>         Max total nodes evaluated per cell (default 8192 in mixture mode)\n"
+        "  --max_split_delta <N>   Max split depth from root per cell (default 20 in mixture mode)\n"
+        "  --max_depth <D>         Max search depth per cell (default 80 GPU / 68 mixture)\n"
+        "  --max_box_depth <D>     Max box subdivision depth (default 58 GPU / 60 mixture)\n"
+        "  --max_view_depth <D>    Max view subdivision depth (default 20 GPU / 8 mixture)\n"
         "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
         "  --cone_samples <N>      Base cone samples (default 8)\n"
         "  --escalate_depth <D>    First escalation depth (default 44)\n"
@@ -494,7 +495,7 @@ static void PrintHelp() {
         "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
         "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
         "  --tube_radius <R>       Identity symmetry tube radius (default 1e-4)\n"
-        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 60s in mixture)\n"
+        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 120s in mixture)\n"
         "  --threads <T>           Worker threads (default 8)\n"
         "  --cpu                   Force multi-threaded CPU execution in standard mode\n"
         "  --gpu                   Use OpenCL acceleration in standard mode (default)\n"
@@ -521,6 +522,8 @@ int main(int argc, char **argv) {
   bool max_depth_specified = false;
   bool max_box_depth_specified = false;
   bool max_view_depth_specified = false;
+  bool max_nodes_specified = false;
+  bool max_split_delta_specified = false;
   bool limit_sec_specified = false;
   int max_depth = 80;
   int max_box_depth = 58;
@@ -550,19 +553,21 @@ int main(int argc, char **argv) {
       difficult_path = argv[++i];
     } else if (arg == "--out_dir" && i + 1 < argc) {
       out_dir = argv[++i];
-    } else if (arg == "--mixture" || arg == "--mode=mixture") {
+    } else if (arg == "--box_mixture" || arg == "--mixture" || arg == "--mode=mixture") {
       mixture_mode = true;
-    } else if (arg == "--mode" && i + 1 < argc) {
+    } else if ((arg == "--mode" || arg == "--profile") && i + 1 < argc) {
       std::string_view m = argv[++i];
-      if (m == "mixture") mixture_mode = true;
+      if (m == "mixture" || m == "box_mixture") mixture_mode = true;
     } else if (arg == "--max_components" && i + 1 < argc) {
       max_components = std::atoi(argv[++i]);
     } else if (arg == "--split_kappa" && i + 1 < argc) {
       split_kappa = std::atof(argv[++i]);
     } else if (arg == "--max_nodes" && i + 1 < argc) {
       max_nodes = std::atoi(argv[++i]);
+      max_nodes_specified = true;
     } else if (arg == "--max_split_delta" && i + 1 < argc) {
       max_split_delta = std::atoi(argv[++i]);
+      max_split_delta_specified = true;
     } else if (arg == "--max_depth" && i + 1 < argc) {
       max_depth = std::atoi(argv[++i]);
       max_depth_specified = true;
@@ -617,10 +622,12 @@ int main(int argc, char **argv) {
   }
 
   if (mixture_mode) {
-    if (!max_depth_specified) max_depth = 54;
-    if (!max_box_depth_specified) max_box_depth = 48;
-    if (!max_view_depth_specified) max_view_depth = 16;
-    if (!limit_sec_specified) limit_sec = 60.0;
+    if (!max_depth_specified) max_depth = 68;
+    if (!max_box_depth_specified) max_box_depth = 60;
+    if (!max_view_depth_specified) max_view_depth = 8;
+    if (!max_nodes_specified) max_nodes = 8192;
+    if (!max_split_delta_specified) max_split_delta = 20;
+    if (!limit_sec_specified) limit_sec = 120.0;
     return RunDifficultMixture(
         chart, difficult_path, out_dir, max_depth, max_box_depth,
         max_view_depth, max_nodes, max_split_delta, cone_samples,
