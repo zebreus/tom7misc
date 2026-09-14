@@ -155,6 +155,18 @@ visualize.exe : visualize.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+TUBE_VIS_OBJECTS=tube-visualize.o $(CC_LIB)/image.o $(CC_LIB)/color-util.o $(CC_LIB)/util.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+
+tube-visualize.exe : $(TUBE_VIS_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+TUBECERT_OBJECTS=tubecert229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+
+tubecert229.exe : $(TUBECERT_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 query.exe : query.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
