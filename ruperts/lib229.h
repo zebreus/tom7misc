@@ -13,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
@@ -290,6 +291,55 @@ struct SearchNode {
 };
 static_assert(sizeof(SearchNode) == 144, "SearchNode struct size mismatch");
 
+// A difficult/shelved node recorded in chart0.difficult format
+struct DifficultCell {
+  int64_t id = 0;
+  int64_t parent_id = 0;
+  int depth = 0;
+  int box_depth = 0;
+  int view_depth = 0;
+  int chart = 0;
+  vec3 c{0, 0, 0};
+  vec3 r{0, 0, 0};
+  vec3 v[3];
+  double best_margin = 0.0;
+
+  vec3 ViewCentroid() const {
+    return yocto::normalize(v[0] + v[1] + v[2]);
+  }
+
+  SearchNode ToSearchNode() const {
+    SearchNode node;
+    node.id = id;
+    node.parent_id = parent_id;
+    node.depth = (uint8_t)std::min(255, depth);
+    node.box_depth = (uint8_t)std::min(255, box_depth);
+    node.view_depth = (uint8_t)std::min(255, view_depth);
+    node.chart = (uint8_t)std::min(255, chart);
+    node.box.center = c;
+    node.box.radii = r;
+    node.tri.corners[0] = v[0];
+    node.tri.corners[1] = v[1];
+    node.tri.corners[2] = v[2];
+    return node;
+  }
+
+  std::string ToString() const {
+    return std::format(
+        "{} {} {} {} {} {} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} "
+        "{:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g}\n",
+        id, parent_id, depth, box_depth, view_depth, chart,
+        c.x, c.y, c.z, r.x, r.y, r.z,
+        v[0].x, v[0].y, v[0].z,
+        v[1].x, v[1].y, v[1].z,
+        v[2].x, v[2].y, v[2].z,
+        best_margin);
+  }
+};
+
+std::vector<DifficultCell> ReadDifficultFile(const std::string &path);
+bool WriteDifficultFile(const std::string &path, const std::vector<DifficultCell> &cells);
+
 struct TrianglePool {
   uint64_t id = 0;
   std::vector<GpuContact> contacts;
@@ -449,6 +499,18 @@ struct SearchManager {
   FILE *row_file = nullptr;
   FILE *difficult_file = nullptr;
   std::string difficult_path;
+
+  // Output and lifecycle callbacks
+  std::function<void(std::string_view)> row_callback = nullptr;
+  std::function<void(const SearchNode &node, double margin)> difficult_callback = nullptr;
+  bool auto_init_root = true;
+  bool write_row_file = true;
+  bool write_difficult_file = true;
+  bool enable_checkpoint = true;
+  bool verbose_status = true;
+  std::atomic<bool> *stop_requested = nullptr;
+
+  void ResetState();
 
   void RecordCertification(const SearchNode &node);
   std::string FormatDepthHistogram() const;

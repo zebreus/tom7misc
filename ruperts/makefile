@@ -94,6 +94,10 @@ test229.exe : test229.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+difficult229.exe : difficult229.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 pack229.exe : pack229.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -107,8 +111,8 @@ analyzedifficult.exe : analyzedifficult.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-provecell.exe : provecell.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+provecell.exe : provecell.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
 topng.exe : topng.o $(OBJECTS)

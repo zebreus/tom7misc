@@ -1,6 +1,8 @@
 #include "lib229.h"
 
 #include <csignal>
+#include <fstream>
+#include <sstream>
 #include <system_error>
 #include "atomic-util.h"
 #include "threadutil.h"
@@ -34,6 +36,46 @@ static StatusBar status = StatusBar(4);
 
 StatusBar &GetStatusBar() {
   return status;
+}
+
+std::vector<DifficultCell> ReadDifficultFile(const std::string &path) {
+  std::vector<DifficultCell> cells;
+  std::ifstream in(path);
+  if (!in.is_open()) return cells;
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    DifficultCell cell;
+    if (iss >> cell.id >> cell.parent_id >> cell.depth >> cell.box_depth
+            >> cell.view_depth >> cell.chart
+            >> cell.c.x >> cell.c.y >> cell.c.z
+            >> cell.r.x >> cell.r.y >> cell.r.z
+            >> cell.v[0].x >> cell.v[0].y >> cell.v[0].z
+            >> cell.v[1].x >> cell.v[1].y >> cell.v[1].z
+            >> cell.v[2].x >> cell.v[2].y >> cell.v[2].z
+            >> cell.best_margin) {
+      cells.push_back(cell);
+    }
+  }
+  return cells;
+}
+
+bool WriteDifficultFile(const std::string &path, const std::vector<DifficultCell> &cells) {
+  std::string tmp_path = path + ".tmp";
+  std::ofstream out(tmp_path);
+  if (!out.is_open()) return false;
+  out << "# id parent_id depth box_depth view_depth chart "
+         "cx cy cz rx ry rz "
+         "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
+         "best_margin\n";
+  for (const auto &cell : cells) {
+    out << cell.ToString();
+  }
+  out.close();
+  std::error_code ec;
+  std::filesystem::rename(tmp_path, path, ec);
+  return !ec;
 }
 
 size_t g_max_triangle_cache_size = 20480;
@@ -1683,113 +1725,126 @@ double SearchManager::CompletedFraction() const {
   }
 
 
+void SearchManager::ResetState() {
+  stack.clear();
+  evaluated_count.Reset();
+  certified_count.Reset();
+  pruned_count.Reset();
+  split_count.Reset();
+  difficult_count.Reset();
+  row_buffer.clear();
+  for (int i = 0; i < 128; i++) cert_by_depth[i].store(0, std::memory_order_relaxed);
+  for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(0, std::memory_order_relaxed);
+  for (int i = 0; i < 64; i++) cert_by_view_depth[i].store(0, std::memory_order_relaxed);
+  if (cert_k_by_depth) {
+    for (size_t i = 0; i < 128 * 256; i++) {
+      cert_k_by_depth[i].store(0, std::memory_order_relaxed);
+      cert_k_by_box_depth[i].store(0, std::memory_order_relaxed);
+    }
+    for (size_t i = 0; i < 64 * 256; i++) {
+      cert_k_by_view_depth[i].store(0, std::memory_order_relaxed);
+    }
+  }
+}
+
 void SearchManager::InitRoot() {
-    stack.clear();
-    next_node_id = 0;
-    evaluated_count.Reset();
-    certified_count.Reset();
-    pruned_count.Reset();
-    split_count.Reset();
-    for (int i = 0; i < 128; i++) cert_by_depth[i].store(0, std::memory_order_relaxed);
-    for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(0, std::memory_order_relaxed);
-    for (int i = 0; i < 64; i++) cert_by_view_depth[i].store(0, std::memory_order_relaxed);
-    if (cert_k_by_depth) {
-      for (size_t i = 0; i < 128 * 256; i++) {
-        cert_k_by_depth[i].store(0, std::memory_order_relaxed);
-        cert_k_by_box_depth[i].store(0, std::memory_order_relaxed);
-      }
-      for (size_t i = 0; i < 64 * 256; i++) {
-        cert_k_by_view_depth[i].store(0, std::memory_order_relaxed);
-      }
-    }
+  ResetState();
+  next_node_id = 0;
 
-    SearchNode root;
-    root.id = next_node_id++;
-    root.parent_id = -1;
-    root.chart = chart;
-    root.box.center = {0.0, 0.0, 0.0};
+  SearchNode root;
+  root.id = next_node_id++;
+  root.parent_id = -1;
+  root.chart = chart;
+  root.box.center = {0.0, 0.0, 0.0};
 
-    if (chart == 0) {
-      // 5-fold fundamental domain: z in [-1/3, 1/3]
-      root.box.radii = {1.0, 1.0, 1.0 / 3.0};
-    } else if (chart == 1) {
-      // 5-fold fundamental domain: y in [-1/3, 1/3]
-      root.box.radii = {1.0, 1.0 / 3.0, 1.0};
-    } else if (chart == 2) {
-      // 5-fold fundamental domain: x in [-1/3, 1/3]
-      root.box.radii = {1.0 / 3.0, 1.0, 1.0};
-    } else {
-      root.box.radii = {1.0, 1.0, 1.0};
-    }
+  if (chart == 0) {
+    // 5-fold fundamental domain: z in [-1/3, 1/3]
+    root.box.radii = {1.0, 1.0, 1.0 / 3.0};
+  } else if (chart == 1) {
+    // 5-fold fundamental domain: y in [-1/3, 1/3]
+    root.box.radii = {1.0, 1.0 / 3.0, 1.0};
+  } else if (chart == 2) {
+    // 5-fold fundamental domain: x in [-1/3, 1/3]
+    root.box.radii = {1.0 / 3.0, 1.0, 1.0};
+  } else {
+    root.box.radii = {1.0, 1.0, 1.0};
+  }
 
-    // Root projective view is UPPER_WEDGE_PROJECTIVE_ROOT, pre-split
-    // into 4 sub-wedges.
-    ProjectiveTriangle wedge_root;
-    wedge_root.corners[0] = {1.0, 0.0, 0.0};
-    wedge_root.corners[1] = {10.0 / 41.0, 31.0 / 41.0, 0.0};
-    wedge_root.corners[2] = {0.0, 0.0, 1.0};
-    auto sub_wedges = wedge_root.Subdivide();
+  // Root projective view is UPPER_WEDGE_PROJECTIVE_ROOT, pre-split
+  // into 4 sub-wedges.
+  ProjectiveTriangle wedge_root;
+  wedge_root.corners[0] = {1.0, 0.0, 0.0};
+  wedge_root.corners[1] = {10.0 / 41.0, 31.0 / 41.0, 0.0};
+  wedge_root.corners[2] = {0.0, 0.0, 1.0};
+  auto sub_wedges = wedge_root.Subdivide();
 
-    int priority_idx = -1;
-    for (int i = 0; i < 4; i++) {
-      SearchNode child = root;
-      child.tri = sub_wedges[i];
-      if (ContainsUncertifiedPriority(child)) {
-        priority_idx = i;
-        break;
-      }
-    }
-
-    SearchNode root_children[4];
-    for (int i = 0; i < 4; i++) {
-      root_children[i] = root;
-      root_children[i].id = next_node_id++;
-      root_children[i].parent_id = root.id;
-      root_children[i].view_depth = 1;
-      root_children[i].depth = 1;
-      root_children[i].tri = sub_wedges[i];
-    }
-
-    for (int i = 0; i < 4; i++) {
-      if (i == priority_idx) continue;
-      stack.push_back(root_children[i]);
-    }
-    if (priority_idx >= 0) {
-      stack.push_back(root_children[priority_idx]);
+  int priority_idx = -1;
+  for (int i = 0; i < 4; i++) {
+    SearchNode child = root;
+    child.tri = sub_wedges[i];
+    if (ContainsUncertifiedPriority(child)) {
+      priority_idx = i;
+      break;
     }
   }
 
+  SearchNode root_children[4];
+  for (int i = 0; i < 4; i++) {
+    root_children[i] = root;
+    root_children[i].id = next_node_id++;
+    root_children[i].parent_id = root.id;
+    root_children[i].view_depth = 1;
+    root_children[i].depth = 1;
+    root_children[i].tri = sub_wedges[i];
+  }
+
+  for (int i = 0; i < 4; i++) {
+    if (i == priority_idx) continue;
+    stack.push_back(root_children[i]);
+  }
+  if (priority_idx >= 0) {
+    stack.push_back(root_children[priority_idx]);
+  }
+}
 
 void SearchManager::FlushRowsWithLock() {
+  if (row_file) {
     Print(row_file, "{}", row_buffer);
-    row_buffer.clear();
   }
-
+  row_buffer.clear();
+}
 
 void SearchManager::FlushRows() {
-    MutexLock ml(&row_mutex);
-    FlushRowsWithLock();
-  }
-
+  MutexLock ml(&row_mutex);
+  FlushRowsWithLock();
+}
 
 void SearchManager::OutputRow(std::string_view row) {
+  if (row_callback) {
+    row_callback(row);
+  }
+  if (write_row_file && row_file) {
     MutexLock ml(&row_mutex);
     row_buffer.append(row);
     if (row_buffer.size() > 32768) {
       FlushRowsWithLock();
     }
   }
+}
 
 
 void SearchManager::Run() {
+  if (write_row_file || write_difficult_file || enable_checkpoint) {
     std::filesystem::create_directories(output_dir);
-    std::string log_path =
-        std::format("{}/chart{}.rows.log", output_dir, chart);
-    std::string ckpt_path =
-        std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
-    difficult_path =
-        std::format("{}/chart{}.difficult", output_dir, chart);
+  }
+  std::string log_path =
+      std::format("{}/chart{}.rows.log", output_dir, chart);
+  std::string ckpt_path =
+      std::format("{}/chart{}.checkpoint.bin", output_dir, chart);
+  difficult_path =
+      std::format("{}/chart{}.difficult", output_dir, chart);
 
+  if (verbose_status) {
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
     if (deep_escalate_depth > 0) {
       status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}, {} at depth {}), "
@@ -1809,29 +1864,35 @@ void SearchManager::Run() {
                    max_depth, max_box_depth, max_view_depth,
                    use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
     }
+  }
 
-    if (prioritize_related) {
-      active_priority = GetPriorityPoints(related_epsilon);
-    }
+  if (prioritize_related) {
+    active_priority = GetPriorityPoints(related_epsilon);
+  }
 
-    bool resumed = false;
-    if (stack.empty()) {
-      if (resume && std::filesystem::exists(ckpt_path)) {
+  bool resumed = false;
+  if (stack.empty()) {
+    if (auto_init_root) {
+      if (enable_checkpoint && resume && std::filesystem::exists(ckpt_path)) {
         if (LoadCheckpoint(ckpt_path)) {
           resumed = true;
-          status.Print(AGREEN("Resumed")
-                       " from checkpoint: {} pending nodes on "
-                       "stack, {} evaluated, {} certified, {} difficult, {} pruned\n",
-                       FormatNum(stack.size()),
-                       FormatNum(evaluated_count.Read()),
-                       FormatNum(certified_count.Read()),
-                       FormatNum(difficult_count.Read()),
-                       FormatNum(pruned_count.Read()));
+          if (verbose_status) {
+            status.Print(AGREEN("Resumed")
+                         " from checkpoint: {} pending nodes on "
+                         "stack, {} evaluated, {} certified, {} difficult, {} pruned\n",
+                         FormatNum(stack.size()),
+                         FormatNum(evaluated_count.Read()),
+                         FormatNum(certified_count.Read()),
+                         FormatNum(difficult_count.Read()),
+                         FormatNum(pruned_count.Read()));
+          }
         } else {
-          status.Print(
-              "Failed to read checkpoint " AORANGE("{}")
-              "; starting fresh.\n",
-              ckpt_path);
+          if (verbose_status) {
+            status.Print(
+                "Failed to read checkpoint " AORANGE("{}")
+                "; starting fresh.\n",
+                ckpt_path);
+          }
           std::error_code ec;
           std::filesystem::remove(ckpt_path, ec);
           InitRoot();
@@ -1843,17 +1904,35 @@ void SearchManager::Run() {
         }
         InitRoot();
       }
+    } else {
+      // Nothing on stack and auto_init_root is false: nothing to search.
+      return;
     }
+  }
 
-    if (prioritize_related) {
-      FilterPriorityPointsToStack();
-    }
+  if (prioritize_related) {
+    FilterPriorityPointsToStack();
+  }
 
+  if (write_row_file) {
     if (resumed) {
       row_file = fopen(log_path.c_str(), "a");
       CHECK(row_file) << log_path;
-      status.Print("Appending log to: {}\n", log_path);
+      if (verbose_status) status.Print("Appending log to: {}\n", log_path);
+    } else {
+      std::error_code ec;
+      std::filesystem::remove(log_path, ec);
+      row_file = fopen(log_path.c_str(), "w");
+      CHECK(row_file) << log_path;
+      if (verbose_status) status.Print("Writing fresh log to: {}\n", log_path);
+      if (auto_init_root) {
+        OutputRow("SV 0 -1 0 1 2 3 4\n");
+      }
+    }
+  }
 
+  if (write_difficult_file) {
+    if (resumed) {
       if (std::filesystem::exists(difficult_path)) {
         difficult_file = fopen(difficult_path.c_str(), "a");
       } else {
@@ -1868,15 +1947,9 @@ void SearchManager::Run() {
         }
       }
       CHECK(difficult_file) << difficult_path;
-      status.Print("Difficult cells file: {}\n", difficult_path);
+      if (verbose_status) status.Print("Difficult cells file: {}\n", difficult_path);
     } else {
       std::error_code ec;
-      std::filesystem::remove(log_path, ec);
-      row_file = fopen(log_path.c_str(), "w");
-      CHECK(row_file) << log_path;
-      status.Print("Writing fresh log to: {}\n", log_path);
-      OutputRow("SV 0 -1 0 1 2 3 4\n");
-
       std::filesystem::remove(difficult_path, ec);
       difficult_file = fopen(difficult_path.c_str(), "w");
       CHECK(difficult_file) << difficult_path;
@@ -1886,8 +1959,9 @@ void SearchManager::Run() {
             "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
             "best_margin\n");
       std::fflush(difficult_file);
-      status.Print("Writing fresh difficult cells to: {}\n", difficult_path);
+      if (verbose_status) status.Print("Writing fresh difficult cells to: {}\n", difficult_path);
     }
+  }
 
     Timer timer;
     Periodically progress_per(1.0);
@@ -1903,7 +1977,8 @@ void SearchManager::Run() {
     std::vector<GpuResult> results;
     std::vector<SearchNode> current_batch;
 
-    while (!stack.empty() && !sigint_received.load()) {
+    while (!stack.empty() && !sigint_received.load() &&
+           !(stop_requested && stop_requested->load())) {
       MaybeMiniStatus("stack");
       ctr_loops++;
       const size_t target_pool_size = (size_t)batch_size * 2;
@@ -2398,6 +2473,9 @@ void SearchManager::Run() {
               }
 
               difficult_count++;
+              if (difficult_callback) {
+                difficult_callback(node, res.margin);
+              }
               if (difficult_file) {
                 Print(difficult_file,
                       "{} {} {} {} {} {} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} {:.17g} "
@@ -2415,18 +2493,20 @@ void SearchManager::Run() {
               OutputRow(std::format("DF {} {} {} {:.17g}\n",
                                     node.id, node.parent_id, node.depth, res.margin));
 
-              depth_out_per.RunIf([&]{
-                status.Print(
-                    ARED("Shelved difficult cell #{} ")
-                    "(depth={}, box_depth={}, view_depth={}, "
-                    "radii=({:.6g}, {:.6g}, {:.6g})) "
-                    "at box ({:.6g}, {:.6g}, {:.6g}) "
-                    "(margin: {:.6g}, total difficult: {})\n",
-                    node.id, node.depth, node.box_depth, node.view_depth,
-                    node.box.radii.x, node.box.radii.y, node.box.radii.z,
-                    node.box.center.x, node.box.center.y, node.box.center.z,
-                    res.margin, FormatNum(difficult_count.Read()));
-              });
+              if (verbose_status) {
+                depth_out_per.RunIf([&]{
+                  status.Print(
+                      ARED("Shelved difficult cell #{} ")
+                      "(depth={}, box_depth={}, view_depth={}, "
+                      "radii=({:.6g}, {:.6g}, {:.6g})) "
+                      "at box ({:.6g}, {:.6g}, {:.6g}) "
+                      "(margin: {:.6g}, total difficult: {})\n",
+                      node.id, node.depth, node.box_depth, node.view_depth,
+                      node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                      node.box.center.x, node.box.center.y, node.box.center.z,
+                      res.margin, FormatNum(difficult_count.Read()));
+                });
+              }
               continue;
             }
 
@@ -2553,7 +2633,7 @@ void SearchManager::Run() {
         }
       }
 
-      if (progress_per.ShouldRun()) {
+      if (verbose_status && progress_per.ShouldRun()) {
         double elapsed = timer.Seconds();
         double rate = evaluated_count.Read() / std::max(1e-6, elapsed);
         double completed_frac = CompletedFraction();
@@ -2592,52 +2672,69 @@ void SearchManager::Run() {
         last_op.clear();
       }
 
-      if (checkpoint_per.ShouldRun() || sigint_received.load()) {
-        SaveCheckpoint(ckpt_path);
+      bool interrupted = sigint_received.load() || (stop_requested && stop_requested->load());
+      if ((enable_checkpoint && checkpoint_per.ShouldRun()) || interrupted) {
+        if (enable_checkpoint) {
+          SaveCheckpoint(ckpt_path);
+        }
         FlushRows();
         if (difficult_file) std::fflush(difficult_file);
-        if (sigint_received.load()) {
-          PrintDepthDistribution();
-          status.Print("\n"
-                       AYELLOW("Interrupted (SIGINT)") ".\n"
-                       "Saved checkpoint with {} nodes to {}.\n"
-                       "Exiting...\n",
-                       FormatNum(stack.size()), ckpt_path);
-          std::fflush(stdout);
-          std::fflush(stderr);
+        if (interrupted) {
+          if (verbose_status) {
+            PrintDepthDistribution();
+            status.Print("\n"
+                         AYELLOW("Interrupted") ".\n");
+            if (enable_checkpoint) {
+              status.Print("Saved checkpoint with {} nodes to {}.\n",
+                           FormatNum(stack.size()), ckpt_path);
+            }
+            status.Print("Exiting...\n");
+            std::fflush(stdout);
+            std::fflush(stderr);
+          }
           break;
         }
       }
     }
 
 
-    if (!sigint_received.load() && stack.empty()) {
+    bool interrupted = sigint_received.load() || (stop_requested && stop_requested->load());
+    if (!interrupted && stack.empty()) {
       // Completed full tree!
-      std::error_code ec;
-      std::filesystem::remove(ckpt_path, ec);
-      status.Print(AGREEN("\n=== ☻ Search Completed ☻ ===\n")
-                   "Took {}s.",
-                   ANSI::Time(timer.Seconds()));
-      PrintDepthDistribution();
+      if (enable_checkpoint) {
+        std::error_code ec;
+        std::filesystem::remove(ckpt_path, ec);
+      }
+      if (verbose_status) {
+        status.Print(AGREEN("\n=== ☻ Search Completed ☻ ===\n")
+                     "Took {}s.",
+                     ANSI::Time(timer.Seconds()));
+        PrintDepthDistribution();
+      }
     }
 
     FlushRows();
-    fclose(row_file);
+    if (row_file) {
+      fclose(row_file);
+      row_file = nullptr;
+    }
     if (difficult_file) {
       std::fflush(difficult_file);
       fclose(difficult_file);
       difficult_file = nullptr;
     }
-    status.Print("Total evaluated: {}\n"
-                 "Total certified: {}\n"
-                 "Total difficult (shelved): {}\n"
-                 "Total pruned: {}\n"
-                 "Total splits: {}\n",
-                  evaluated_count.Read(),
-                  certified_count.Read(),
-                  difficult_count.Read(),
-                  pruned_count.Read(),
-                  split_count.Read());
+    if (verbose_status) {
+      status.Print("Total evaluated: {}\n"
+                   "Total certified: {}\n"
+                   "Total difficult (shelved): {}\n"
+                   "Total pruned: {}\n"
+                   "Total splits: {}\n",
+                    evaluated_count.Read(),
+                    certified_count.Read(),
+                    difficult_count.Read(),
+                    pruned_count.Read(),
+                    split_count.Read());
+    }
   }
 
 
@@ -2665,12 +2762,13 @@ std::string SearchManager::StatusCounters() {
 
 
 void SearchManager::MaybeMiniStatus(std::string_view op) {
-    bool op_changed = (op != last_op);
-    if (op_changed || mini_status_per.ShouldRun()) {
-      if (op_changed) {
-        mini_status_per.Reset();
-        last_op = op;
-      }
-      status.LineStatus(0, "{} " ABLUE("{}"), StatusCounters(), op);
+  if (!verbose_status) return;
+  bool op_changed = (op != last_op);
+  if (op_changed || mini_status_per.ShouldRun()) {
+    if (op_changed) {
+      mini_status_per.Reset();
+      last_op = op;
+    }
+    status.LineStatus(0, "{} " ABLUE("{}"), StatusCounters(), op);
   }
 }
