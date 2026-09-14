@@ -313,6 +313,20 @@ inline std::strong_ordering operator<=>(const BigRat &a, const BigRat &b) {
   return std::strong_ordering::greater;
 }
 
+inline std::strong_ordering operator<=>(const BigRat &a, int64_t b) {
+  int c = BigRat::Compare(a, BigRat(b));
+  if (c < 0) return std::strong_ordering::less;
+  else if (c == 0) return std::strong_ordering::equal;
+  return std::strong_ordering::greater;
+}
+
+inline std::strong_ordering operator<=>(int64_t a, const BigRat &b) {
+  int c = BigRat::Compare(BigRat(a), b);
+  if (c < 0) return std::strong_ordering::less;
+  else if (c == 0) return std::strong_ordering::equal;
+  return std::strong_ordering::greater;
+}
+
 inline bool operator==(const BigRat &a, const BigRat &b) {
   return BigRat::Eq(a, b);
 }

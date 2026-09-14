@@ -32,7 +32,8 @@ CL::CL(int verbose) : verbose(verbose) {
     Print(stderr, "CL:: Number of platforms: {}.\n", num_platforms);
   }
 
-  // Choose the first platform that has a GPU.
+  // Choose the first platform that has a GPU, or fall back to CPU.
+  cl_device_type chosen_device_type = CL_DEVICE_TYPE_GPU;
   int chosen_platform_id = -1;
   if (num_platforms > 0) {
     cl_platform_id *platforms =
@@ -89,7 +90,25 @@ CL::CL(int verbose) : verbose(verbose) {
     }
 
     if (chosen_platform_id == -1) {
-      LOG(FATAL) << "There were no platforms with GPUs.";
+      // Fall back to CPU.
+      for (int i = 0; i < num_platforms; i++) {
+        cl_uint platform_devices = 0;
+        if (CL_SUCCESS == clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_CPU,
+                                         0, nullptr, &platform_devices)) {
+          if (verbose > 0) {
+            Print(stderr,
+                  "      Number of CPUs: {}\n", platform_devices);
+          }
+          if (chosen_platform_id == -1) {
+            chosen_platform_id = i;
+            chosen_device_type = CL_DEVICE_TYPE_CPU;
+          }
+        }
+      }
+    }
+
+    if (chosen_platform_id == -1) {
+      LOG(FATAL) << "There were no platforms with GPUs or CPUs.";
     }
 
     if (verbose > 1) {
@@ -99,14 +118,14 @@ CL::CL(int verbose) : verbose(verbose) {
     free(platforms);
   }
 
-  // Get the GPU device.
-  CHECK(CL_SUCCESS == clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU,
+  // Get the device.
+  CHECK(CL_SUCCESS == clGetDeviceIDs(platform, chosen_device_type,
                                      0, nullptr, &num_devices));
   CHECK(num_devices > 0) << "Platform should only be selected if it "
     "reports having devices??";
 
   devices = (cl_device_id *)malloc(num_devices * sizeof (cl_device_id));
-  CHECK(CL_SUCCESS == clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU,
+  CHECK(CL_SUCCESS == clGetDeviceIDs(platform, chosen_device_type,
                                      num_devices, devices, nullptr));
 
   context = clCreateContext(nullptr, 1, devices, nullptr, nullptr, nullptr);
