@@ -1,4 +1,13 @@
+#include "base/print.h"
+#include "geom/polyhedra.h"
 #include "lib229.h"
+
+#include "ansi.h"
+#include "ruperts-util.h"
+#include "solutions.h"
+#include "yocto-math.h"
+#include <format>
+#include <string_view>
 
 void TestKnownSolution() {
   Print(AYELLOW("Testing Rupert solution detection on known solution 1662...\n"));

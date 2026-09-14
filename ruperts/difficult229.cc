@@ -1,4 +1,3 @@
-// Copyright 2026 Tom 7. All rights reserved.
 // difficult229.cc: Driver application for resolving difficult cells from lean229.
 //
 // Reads all difficult cells into memory and processes them one at a time.
@@ -11,17 +10,16 @@
 //     the cell remains in the unsolved list, and chart<chart>.difficult contains all unsolved cells.
 
 #include <algorithm>
-#include <chrono>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
-#include <iostream>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"
@@ -29,104 +27,15 @@
 #include "base/print.h"
 #include "lib229.h"
 #include "periodically.h"
+#include "ruperts-util.h"
 #include "timer.h"
 
-static void PrintHelp() {
-  Print("Usage: ./difficult229.exe [options]\n"
-        "  --chart <0|1|2>         Cayley chart index (default 0)\n"
-        "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
-        "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
-        "  --max_depth <D>         Max search depth per cell (default 64)\n"
-        "  --max_box_depth <D>     Max box subdivision depth (default 48)\n"
-        "  --max_view_depth <D>    Max view subdivision depth (default 16)\n"
-        "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
-        "  --cone_samples <N>      Base cone samples (default 8)\n"
-        "  --escalate_depth <D>    First escalation depth (default 44)\n"
-        "  --escalate_cone_samples <N> First escalated cone samples (default 12)\n"
-        "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
-        "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
-        "  --threads <T>           CPU fallback worker threads (default 8)\n"
-        "  --cpu                   Force multi-threaded CPU execution\n"
-        "  --gpu                   Use OpenCL acceleration (default)\n"
-        "  --limit <N>             Process at most N cells (default all)\n"
-        "  --cell_id <ID>          Process only specific cell ID\n"
-        "  --dry_run               Scan and report status without processing\n"
-        "  --verbose               Print verbose per-cell SearchManager status\n"
-        "  --help, -h              Show this help message\n");
-}
-
-int main(int argc, char **argv) {
-  ANSI::Init();
-  InstallSignalHandlers();
-
-  int chart = 0;
-  std::string difficult_path;
-  std::string out_dir = ".";
-  int max_depth = 64;
-  int max_box_depth = 48;
-  int max_view_depth = 16;
-  int batch_size = 4096;
-  int cone_samples = 8;
-  int escalate_depth = 44;
-  int escalate_cone_samples = 12;
-  int deep_escalate_depth = 50;
-  int deep_escalate_cone_samples = 14;
-  int num_threads = 8;
-  bool use_gpu = true;
-  int64_t limit_cells = 0;
-  int64_t target_cell_id = -1;
-  bool dry_run = false;
-  bool verbose = false;
-
-  for (int i = 1; i < argc; i++) {
-    std::string_view arg = argv[i];
-    if (arg == "--chart" && i + 1 < argc) {
-      chart = std::atoi(argv[++i]);
-    } else if (arg == "--difficult" && i + 1 < argc) {
-      difficult_path = argv[++i];
-    } else if (arg == "--out_dir" && i + 1 < argc) {
-      out_dir = argv[++i];
-    } else if (arg == "--max_depth" && i + 1 < argc) {
-      max_depth = std::atoi(argv[++i]);
-    } else if (arg == "--max_box_depth" && i + 1 < argc) {
-      max_box_depth = std::atoi(argv[++i]);
-    } else if (arg == "--max_view_depth" && i + 1 < argc) {
-      max_view_depth = std::atoi(argv[++i]);
-    } else if (arg == "--batch_size" && i + 1 < argc) {
-      batch_size = std::atoi(argv[++i]);
-    } else if (arg == "--cone_samples" && i + 1 < argc) {
-      cone_samples = std::atoi(argv[++i]);
-    } else if (arg == "--escalate_depth" && i + 1 < argc) {
-      escalate_depth = std::atoi(argv[++i]);
-    } else if (arg == "--escalate_cone_samples" && i + 1 < argc) {
-      escalate_cone_samples = std::atoi(argv[++i]);
-    } else if (arg == "--deep_escalate_depth" && i + 1 < argc) {
-      deep_escalate_depth = std::atoi(argv[++i]);
-    } else if (arg == "--deep_escalate_cone_samples" && i + 1 < argc) {
-      deep_escalate_cone_samples = std::atoi(argv[++i]);
-    } else if (arg == "--threads" && i + 1 < argc) {
-      num_threads = std::atoi(argv[++i]);
-    } else if (arg == "--cpu") {
-      use_gpu = false;
-    } else if (arg == "--gpu") {
-      use_gpu = true;
-    } else if (arg == "--limit" && i + 1 < argc) {
-      limit_cells = std::atoll(argv[++i]);
-    } else if (arg == "--cell_id" && i + 1 < argc) {
-      target_cell_id = std::atoll(argv[++i]);
-    } else if (arg == "--dry_run") {
-      dry_run = true;
-    } else if (arg == "--verbose") {
-      verbose = true;
-    } else if (arg == "--help" || arg == "-h") {
-      PrintHelp();
-      return 0;
-    } else {
-      Print("Unknown arg '{}'. Try ./difficult229.exe --help\n", arg);
-      return -1;
-    }
-  }
-
+static int RunDifficult(
+    int chart, std::string difficult_path, std::string out_dir, int max_depth,
+    int max_box_depth, int max_view_depth, int batch_size, int cone_samples,
+    int escalate_depth, int escalate_cone_samples, int deep_escalate_depth,
+    int deep_escalate_cone_samples, int num_threads, bool use_gpu,
+    int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -317,7 +226,8 @@ int main(int argc, char **argv) {
         total_rows_written += cell_rows;
         unsolved_cells.erase(unsolved_cells.begin() + i);
         WriteDifficultFile(difficult_path, unsolved_cells);
-        Print(AGREEN("  ✔ Cell #{} SOLVED in {}! ({} rows -> {}) [{} remaining in {}]\n"),
+        Print(AGREEN("  ✔")
+              " Cell #{} SOLVED in {}! ({} rows -> {}) [{} remaining in {}]\n",
               cell.id, ANSI::Time(cell_seconds), FormatNum(cell_rows),
               done_filename, FormatNum(unsolved_cells.size()), difficult_path);
         // Do not increment i; next element slid into index i.
@@ -326,7 +236,9 @@ int main(int argc, char **argv) {
       std::error_code ec;
       std::filesystem::remove(tmp_path, ec);
       total_unsolved++;
-      Print(AORANGE("  ✘ Cell #{} NOT fully certified in {} (remaining stack: {}, shelved: {}). Retaining in {}.\n"),
+      Print(AORANGE("  ✘")
+            " Cell #{} NOT fully certified in {} (remaining stack: {}, shelved: {}).\n"
+            " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
             FormatNum(new_difficult.size()), difficult_path);
       i++;
@@ -349,6 +261,109 @@ int main(int argc, char **argv) {
         FormatNum(unsolved_cells.size()), difficult_path,
         FormatNum(total_rows_written),
         ANSI::Time(total_timer.Seconds()));
+}
+
+static void PrintHelp() {
+  Print("Usage: ./difficult229.exe [options]\n"
+        "  --chart <0|1|2>         Cayley chart index (default 0)\n"
+        "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
+        "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
+        "  --max_depth <D>         Max search depth per cell (default 64)\n"
+        "  --max_box_depth <D>     Max box subdivision depth (default 48)\n"
+        "  --max_view_depth <D>    Max view subdivision depth (default 16)\n"
+        "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
+        "  --cone_samples <N>      Base cone samples (default 8)\n"
+        "  --escalate_depth <D>    First escalation depth (default 44)\n"
+        "  --escalate_cone_samples <N> First escalated cone samples (default 12)\n"
+        "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
+        "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
+        "  --threads <T>           CPU fallback worker threads (default 8)\n"
+        "  --cpu                   Force multi-threaded CPU execution\n"
+        "  --gpu                   Use OpenCL acceleration (default)\n"
+        "  --limit <N>             Process at most N cells (default all)\n"
+        "  --cell_id <ID>          Process only specific cell ID\n"
+        "  --dry_run               Scan and report status without processing\n"
+        "  --verbose               Print verbose per-cell SearchManager status\n"
+        "  --help, -h              Show this help message\n");
+}
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+  InstallSignalHandlers();
+
+  int chart = 0;
+  std::string difficult_path;
+  std::string out_dir = ".";
+  int max_depth = 64;
+  int max_box_depth = 48;
+  int max_view_depth = 16;
+  int batch_size = 4096;
+  int cone_samples = 8;
+  int escalate_depth = 44;
+  int escalate_cone_samples = 12;
+  int deep_escalate_depth = 50;
+  int deep_escalate_cone_samples = 14;
+  int num_threads = 8;
+  bool use_gpu = true;
+  int64_t limit_cells = 0;
+  int64_t target_cell_id = -1;
+  bool dry_run = false;
+  bool verbose = false;
+
+  for (int i = 1; i < argc; i++) {
+    std::string_view arg = argv[i];
+    if (arg == "--chart" && i + 1 < argc) {
+      chart = std::atoi(argv[++i]);
+    } else if (arg == "--difficult" && i + 1 < argc) {
+      difficult_path = argv[++i];
+    } else if (arg == "--out_dir" && i + 1 < argc) {
+      out_dir = argv[++i];
+    } else if (arg == "--max_depth" && i + 1 < argc) {
+      max_depth = std::atoi(argv[++i]);
+    } else if (arg == "--max_box_depth" && i + 1 < argc) {
+      max_box_depth = std::atoi(argv[++i]);
+    } else if (arg == "--max_view_depth" && i + 1 < argc) {
+      max_view_depth = std::atoi(argv[++i]);
+    } else if (arg == "--batch_size" && i + 1 < argc) {
+      batch_size = std::atoi(argv[++i]);
+    } else if (arg == "--cone_samples" && i + 1 < argc) {
+      cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--escalate_depth" && i + 1 < argc) {
+      escalate_depth = std::atoi(argv[++i]);
+    } else if (arg == "--escalate_cone_samples" && i + 1 < argc) {
+      escalate_cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--deep_escalate_depth" && i + 1 < argc) {
+      deep_escalate_depth = std::atoi(argv[++i]);
+    } else if (arg == "--deep_escalate_cone_samples" && i + 1 < argc) {
+      deep_escalate_cone_samples = std::atoi(argv[++i]);
+    } else if (arg == "--threads" && i + 1 < argc) {
+      num_threads = std::atoi(argv[++i]);
+    } else if (arg == "--cpu") {
+      use_gpu = false;
+    } else if (arg == "--gpu") {
+      use_gpu = true;
+    } else if (arg == "--limit" && i + 1 < argc) {
+      limit_cells = std::atoll(argv[++i]);
+    } else if (arg == "--cell_id" && i + 1 < argc) {
+      target_cell_id = std::atoll(argv[++i]);
+    } else if (arg == "--dry_run") {
+      dry_run = true;
+    } else if (arg == "--verbose") {
+      verbose = true;
+    } else if (arg == "--help" || arg == "-h") {
+      PrintHelp();
+      return 0;
+    } else {
+      Print("Unknown arg '{}'. Try ./difficult229.exe --help\n", arg);
+      return -1;
+    }
+  }
+
+  RunDifficult(
+      chart, difficult_path, out_dir, max_depth, max_box_depth,
+      max_view_depth, batch_size, cone_samples, escalate_depth,
+      escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
+      num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose);
 
   return 0;
 }

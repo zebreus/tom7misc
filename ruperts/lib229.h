@@ -1,5 +1,5 @@
-#ifndef LIB229_H
-#define LIB229_H
+#ifndef _RUPERTS_LIB229_H
+#define _RUPERTS_LIB229_H
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
@@ -11,31 +11,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <format>
 #include <functional>
-#include <list>
 #include <memory>
 #include <mutex>
-#include <numbers>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "ansi.h"
 #include "base/logging.h"
-#include "base/print.h"
-#include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
-#include "opencl/clutil.h"
 #include "periodically.h"
-#include "ruperts-util.h"
-#include "solutions.h"
 #include "status-bar.h"
-#include "timer.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -217,9 +206,9 @@ inline FundamentalPruneResult CheckFundamentalPrune(
     if (b.center.x + b.radii.x < -1.0 / 3.0) return {true, -1};
   }
 
-  const double K_a = -690983.0 / 1000000.0;
-  const double K_b_base = 951057.0 / 1000000.0;
-  const double approx_error = 2.0 / 125000.0; // 1.6e-5
+  static constexpr const double K_a = -690983.0 / 1000000.0;
+  static constexpr const double K_b_base = 951057.0 / 1000000.0;
+  static constexpr const double approx_error = 2.0 / 125000.0; // 1.6e-5
 
   for (int dir : {-1, 1}) {
     double K_b = dir * K_b_base;
@@ -533,4 +522,4 @@ struct SearchManager {
   void MaybeMiniStatus(std::string_view op);
 };
 
-#endif // LIB229_H
+#endif

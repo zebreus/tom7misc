@@ -1,4 +1,9 @@
+#include "base/print.h"
 #include "lib229.h"
+
+#include "ansi.h"
+#include <cstdlib>
+#include <string_view>
 
 int main(int argc, char **argv) {
   ANSI::Init();

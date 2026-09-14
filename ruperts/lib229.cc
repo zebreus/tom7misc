@@ -1,12 +1,46 @@
 #include "lib229.h"
 
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cmath>
 #include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <format>
 #include <fstream>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <numbers>
+#include <optional>
 #include <sstream>
+#include <string_view>
 #include <system_error>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <string>
+#include <list>
+
+#include "ansi.h"
 #include "atomic-util.h"
+#include "base/print.h"
+#include "geom/hull-2d.h"
+#include "geom/polyhedra.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
+#include "ruperts-util.h"
+#include "solutions.h"
+#include "status-bar.h"
 #include "threadutil.h"
+#include "timer.h"
 #include "util.h"
+#include "yocto-math.h"
 
 DECLARE_COUNTERS(evaluated_count, certified_count, pruned_count, split_count,
                  ctr_built_triangles, ctr_loops, ctr_cpu, ctr_esc_certified);
