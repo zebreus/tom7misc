@@ -94,6 +94,10 @@ test229.exe : test229.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+test_mixture.exe : test_mixture.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 difficult229.exe : difficult229.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"

@@ -375,6 +375,53 @@ GpuResult EvaluateBoxCPULP(
     bool use_optimal_translation = true,
     StatusBar *status = nullptr);
 
+// Result of certifying a node via a convex mixture of triples (N <= 4)
+// mathematically matching Lean 4's AtlasProjectiveMixedGlobalCertificate.
+struct MixtureResult {
+  bool certified = false;
+  int num_components = 0;
+  int triples[4] = {-1, -1, -1, -1};
+  int inners[4][3] = {{-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}};
+  double weights[4] = {0.0, 0.0, 0.0, 0.0};
+  double margin = -1e30;
+  int num_candidates = 0;
+};
+
+// Evaluates a box and projective triangle view using a convex mixture
+// of up to max_components (default 4) triples.
+// Prioritizes mathematical power over speed for difficult cells.
+MixtureResult EvaluateBoxCPUMixture(
+    int chart, const CayleyBox &box, const ProjectiveTriangle &tri,
+    int cone_samples = 8, int max_components = 4);
+
+struct MixtureSolveStats {
+  bool solved = false;
+  int64_t total_nodes = 0;
+  int64_t certified_leaves = 0;
+  int64_t pruned_leaves = 0;
+  int64_t rows_written = 0;
+  double worst_margin = 1e30;
+  double elapsed_seconds = 0.0;
+};
+
+// Solves a single difficult cell using a branch-and-bound tree with
+// EvaluateBoxCPUMixture, using the analytical splitting criterion.
+// Outputs standard SP, SV, PR, TU, SO, CE, and MX rows via row_callback.
+MixtureSolveStats SolveCellMixture(
+    const DifficultCell &cell,
+    int max_depth = 54,
+    int max_box_depth = 42,
+    int max_view_depth = 14,
+    int max_nodes = 64,
+    int max_split_delta = 4,
+    int cone_samples = 8,
+    int max_components = 4,
+    double split_kappa = 0.5,
+    double tube_radius = 1e-4,
+    double time_limit_sec = 10.0,
+    std::function<void(std::string_view)> row_callback = nullptr,
+    std::atomic<bool> *interrupted = nullptr);
+
 Polyhedron GetPolyhedron229();
 
 struct SolutionWitness {

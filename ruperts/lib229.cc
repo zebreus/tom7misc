@@ -927,6 +927,721 @@ Polyhedron GetPolyhedron229() {
   return poly;
 }
 
+// Computes the 27 Bernstein control points on relative Cayley box
+static inline void ComputeBernstein27Controls(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz,
+    double out_controls[27]) {
+  double a0 = C[0] + C[1]*lx + C[2]*ly + C[3]*lz +
+              C[4]*lx*lx + C[5]*lx*ly + C[6]*lx*lz +
+              C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz;
+  double ax = (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz) * wx;
+  double ay = (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz) * wy;
+  double az = (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz) * wz;
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  int idx = 0;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+                     0.25 * bk * (bi * axz + bj * ayz);
+        out_controls[idx++] = val;
+      }
+    }
+  }
+}
+
+// Euclidean projection of x onto the probability simplex sum(out) = 1, out >= 0
+static inline void ProjectToSimplex(int K, const double x[], double out[]) {
+  double u[4];
+  for (int i = 0; i < K; i++) u[i] = x[i];
+  std::sort(u, u + K, std::greater<double>());
+  double cssv[4];
+  cssv[0] = u[0];
+  for (int i = 1; i < K; i++) cssv[i] = cssv[i - 1] + u[i];
+  int rho = 0;
+  for (int i = 0; i < K; i++) {
+    if (u[i] + (1.0 - cssv[i]) / (i + 1) > 0.0) {
+      rho = i;
+    }
+  }
+  double theta = (1.0 - cssv[rho]) / (rho + 1);
+  for (int i = 0; i < K; i++) {
+    out[i] = std::max(0.0, x[i] + theta);
+  }
+}
+
+// Evaluates the worst margin across 162 controls given mixture weights alpha
+static inline double EvalMixtureMargin(
+    int K, const double *const margins[], const double alpha[], int *out_worst_idx = nullptr) {
+  double min_val = 1e30;
+  int worst_idx = 0;
+  for (int j = 0; j < 162; j++) {
+    double sum = 0.0;
+    for (int k = 0; k < K; k++) {
+      sum += alpha[k] * margins[k][j];
+    }
+    if (sum < min_val) {
+      min_val = sum;
+      worst_idx = j;
+    }
+  }
+  if (out_worst_idx) *out_worst_idx = worst_idx;
+  return min_val;
+}
+
+// Solves max_{alpha in Delta_K} min_{j=0..161} sum_{k=0}^{K-1} alpha_k margins[k][j]
+// for K in {1, 2, 3, 4}.
+static double SolveOptimalWeights(
+    int K, const double *const margins[], double out_alpha[4]) {
+  if (K == 1) {
+    out_alpha[0] = 1.0;
+    return EvalMixtureMargin(1, margins, out_alpha);
+  }
+
+  if (K == 2) {
+    // 1D golden section search on alpha[0] in [0, 1]
+    double a = 0.0, b = 1.0;
+    const double phi = (std::sqrt(5.0) - 1.0) * 0.5;
+    double x1 = b - phi * (b - a);
+    double x2 = a + phi * (b - a);
+    double a1[2] = {x1, 1.0 - x1};
+    double a2[2] = {x2, 1.0 - x2};
+    double f1 = EvalMixtureMargin(2, margins, a1);
+    double f2 = EvalMixtureMargin(2, margins, a2);
+
+    for (int iter = 0; iter < 45; iter++) {
+      if (f1 < f2) {
+        a = x1;
+        x1 = x2;
+        f1 = f2;
+        x2 = a + phi * (b - a);
+        a2[0] = x2; a2[1] = 1.0 - x2;
+        f2 = EvalMixtureMargin(2, margins, a2);
+      } else {
+        b = x2;
+        x2 = x1;
+        f2 = f1;
+        x1 = b - phi * (b - a);
+        a1[0] = x1; a1[1] = 1.0 - x1;
+        f1 = EvalMixtureMargin(2, margins, a1);
+      }
+    }
+    double best_a0 = (a + b) * 0.5;
+    out_alpha[0] = best_a0;
+    out_alpha[1] = 1.0 - best_a0;
+    return EvalMixtureMargin(2, margins, out_alpha);
+  }
+
+  // K = 3 or 4: Projected subgradient ascent + Nelder-Mead simplex polish
+  double alpha[4];
+  for (int k = 0; k < K; k++) alpha[k] = 1.0 / K;
+
+  double best_alpha[4];
+  std::memcpy(best_alpha, alpha, sizeof(double) * K);
+  double best_val = EvalMixtureMargin(K, margins, alpha);
+
+  // Projected Subgradient Ascent
+  double eta = 0.05;
+  for (int iter = 0; iter < 120; iter++) {
+    int worst_j = 0;
+    double val = EvalMixtureMargin(K, margins, alpha, &worst_j);
+    if (val > best_val) {
+      best_val = val;
+      std::memcpy(best_alpha, alpha, sizeof(double) * K);
+    }
+    double step = eta / std::sqrt(iter + 1.0);
+    double next_x[4];
+    for (int k = 0; k < K; k++) {
+      next_x[k] = alpha[k] + step * margins[k][worst_j];
+    }
+    ProjectToSimplex(K, next_x, alpha);
+  }
+
+  // Polish with Nelder-Mead simplex search on barycentric coordinates
+  double p[5][4];
+  double p_val[5];
+  std::memcpy(p[0], best_alpha, sizeof(double) * K);
+  p_val[0] = best_val;
+
+  double perturb = 0.02;
+  for (int i = 1; i <= K; i++) {
+    double unnorm[4];
+    for (int k = 0; k < K; k++) {
+      unnorm[k] = best_alpha[k] + (k == (i - 1) ? perturb : -perturb / (K - 1));
+    }
+    ProjectToSimplex(K, unnorm, p[i]);
+    p_val[i] = EvalMixtureMargin(K, margins, p[i]);
+  }
+
+  for (int iter = 0; iter < 40; iter++) {
+    for (int i = 0; i <= K; i++) {
+      for (int j = i + 1; j <= K; j++) {
+        if (p_val[j] > p_val[i]) {
+          std::swap(p_val[i], p_val[j]);
+          for (int k = 0; k < K; k++) std::swap(p[i][k], p[j][k]);
+        }
+      }
+    }
+    if (p_val[0] > best_val) {
+      best_val = p_val[0];
+      std::memcpy(best_alpha, p[0], sizeof(double) * K);
+    }
+
+    double c[4] = {0};
+    for (int i = 0; i < K; i++) {
+      for (int k = 0; k < K; k++) c[k] += p[i][k];
+    }
+    for (int k = 0; k < K; k++) c[k] /= K;
+
+    double xr[4], xr_proj[4];
+    for (int k = 0; k < K; k++) xr[k] = c[k] + 1.0 * (c[k] - p[K][k]);
+    ProjectToSimplex(K, xr, xr_proj);
+    double vr = EvalMixtureMargin(K, margins, xr_proj);
+
+    if (vr > p_val[0]) {
+      double xe[4], xe_proj[4];
+      for (int k = 0; k < K; k++) xe[k] = c[k] + 2.0 * (xr_proj[k] - c[k]);
+      ProjectToSimplex(K, xe, xe_proj);
+      double ve = EvalMixtureMargin(K, margins, xe_proj);
+      if (ve > vr) {
+        std::memcpy(p[K], xe_proj, sizeof(double) * K);
+        p_val[K] = ve;
+      } else {
+        std::memcpy(p[K], xr_proj, sizeof(double) * K);
+        p_val[K] = vr;
+      }
+    } else if (vr > p_val[K - 1]) {
+      std::memcpy(p[K], xr_proj, sizeof(double) * K);
+      p_val[K] = vr;
+    } else {
+      double xc[4], xc_proj[4];
+      for (int k = 0; k < K; k++) xc[k] = c[k] + 0.5 * (p[K][k] - c[k]);
+      ProjectToSimplex(K, xc, xc_proj);
+      double vc = EvalMixtureMargin(K, margins, xc_proj);
+      if (vc > p_val[K]) {
+        std::memcpy(p[K], xc_proj, sizeof(double) * K);
+        p_val[K] = vc;
+      } else {
+        for (int i = 1; i <= K; i++) {
+          for (int k = 0; k < K; k++) p[i][k] = p[0][k] + 0.5 * (p[i][k] - p[0][k]);
+          ProjectToSimplex(K, p[i], p[i]);
+          p_val[i] = EvalMixtureMargin(K, margins, p[i]);
+        }
+      }
+    }
+  }
+
+  std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
+  return best_val;
+}
+
+struct EvaluatedCandidateTriple {
+  int triple_idx = -1;
+  int inner[3] = {0};
+  double margins[162] = {0};
+  double min_margin = -1e30;
+};
+
+MixtureResult EvaluateBoxCPUMixture(
+    int chart, const CayleyBox &box, const ProjectiveTriangle &tri,
+    int cone_samples, int max_components) {
+  MixtureResult res;
+
+  double sx = 1.0, sy = 1.0, sz = 1.0;
+  if (chart == 1) { sy = -1.0; sz = -1.0; }
+  else if (chart == 2) { sx = -1.0; sz = -1.0; }
+  vec3 s = {sx, sy, sz};
+
+  vec3 w = box.center;
+  vec3 r = box.radii;
+
+  double lx = w.x - r.x, wx_len = 2.0 * r.x;
+  double ly = w.y - r.y, wy_len = 2.0 * r.y;
+  double lz = w.z - r.z, wz_len = 2.0 * r.z;
+
+  double ex = std::max(std::abs(box.center.x - box.radii.x), std::abs(box.center.x + box.radii.x));
+  double ey = std::max(std::abs(box.center.y - box.radii.y), std::abs(box.center.y + box.radii.y));
+  double ez = std::max(std::abs(box.center.z - box.radii.z), std::abs(box.center.z + box.radii.z));
+  double d_bound = 1.0 + ex*ex + ey*ey + ez*ez;
+  double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
+
+  auto pool = GetTrianglePool(tri, cone_samples);
+  if (!pool || pool->gpu_triples.empty()) {
+    return res;
+  }
+
+  double x0 = box.center.x, y0 = box.center.y, z0 = box.center.z;
+  double num[3][3] = {
+    {1.0 + x0*x0 - y0*y0 - z0*z0, 2.0*(x0*y0 - z0), 2.0*(x0*z0 + y0)},
+    {2.0*(x0*y0 + z0), 1.0 - x0*x0 + y0*y0 - z0*z0, 2.0*(y0*z0 - x0)},
+    {2.0*(x0*z0 - y0), 2.0*(y0*z0 + x0), 1.0 - x0*x0 - y0*y0 + z0*z0}
+  };
+  double denom0 = 1.0 + x0*x0 + y0*y0 + z0*z0;
+
+  vec3 rot_vin[NUM_VERTICES];
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    vec3 vin = {VERTICES[k][0], VERTICES[k][1], VERTICES[k][2]};
+    rot_vin[k] = {
+      s.x * (num[0][0]*vin.x + num[0][1]*vin.y + num[0][2]*vin.z),
+      s.y * (num[1][0]*vin.x + num[1][1]*vin.y + num[1][2]*vin.z),
+      s.z * (num[2][0]*vin.x + num[2][1]*vin.y + num[2][2]*vin.z)
+    };
+  }
+
+  vec3 view_center = (tri.corners[0] + tri.corners[1] + tri.corners[2]) / 3.0;
+  vec3 norm_v = yocto::normalize(view_center);
+  vec3 right;
+  if (std::abs(norm_v.z) < 0.9) {
+    right = yocto::normalize(yocto::cross(norm_v, vec3{0, 0, 1}));
+  } else {
+    right = yocto::normalize(yocto::cross(norm_v, vec3{1, 0, 0}));
+  }
+  vec3 up = yocto::normalize(yocto::cross(right, norm_v));
+
+  vec3 t_3d{0, 0, 0};
+  {
+    std::vector<vec2> outer_verts(NUM_VERTICES);
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      vec3 v = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
+      outer_verts[i] = {yocto::dot(v, right), yocto::dot(v, up)};
+    }
+    std::vector<int> outer_hull = Hull2D::QuickHull(outer_verts);
+    if (outer_hull.size() >= 3) {
+      std::vector<PolygonEdge> outer_edges = GetHullEdges(outer_verts, outer_hull);
+      std::vector<vec2> inner_verts(NUM_VERTICES);
+      for (int i = 0; i < NUM_VERTICES; i++) {
+        vec3 v_unnorm = rot_vin[i] * (1.0 / denom0);
+        inner_verts[i] = {yocto::dot(v_unnorm, right), yocto::dot(v_unnorm, up)};
+      }
+      Clearance2D opt_c = MaximizeClearance2D(outer_edges, inner_verts);
+      if (opt_c.clearance < 0.0) {
+        t_3d = opt_c.translation.x * right + opt_c.translation.y * up;
+      }
+    }
+  }
+
+  int C = pool->contacts.size();
+  std::vector<int> chosen_inners(C);
+  for (int c = 0; c < C; c++) {
+    const auto &gc = pool->contacts[c];
+    vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
+    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
+    vec3 u = yocto::cross(view_center, edge);
+    double best_val = -1e30;
+    int best_k = 0;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      vec3 disp = (rot_vin[k] + denom0 * t_3d) - denom0 * out;
+      double v = yocto::dot(u, disp);
+      if (v > best_val) {
+        best_val = v;
+        best_k = k;
+      }
+    }
+    chosen_inners[c] = best_k;
+  }
+
+  vec3 p[6];
+  p[0] = tri.corners[0];
+  p[1] = tri.corners[1];
+  p[2] = tri.corners[2];
+  p[3] = 0.5 * (tri.corners[0] + tri.corners[1]);
+  p[4] = 0.5 * (tri.corners[1] + tri.corners[2]);
+  p[5] = 0.5 * (tri.corners[2] + tri.corners[0]);
+
+  std::vector<EvaluatedCandidateTriple> evaluated;
+  evaluated.reserve(pool->gpu_triples.size());
+
+  for (size_t t = 0; t < pool->gpu_triples.size(); t++) {
+    const auto &trip = pool->gpu_triples[t];
+    int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
+
+    vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1], pool->contacts[ci0].edge[2]};
+    vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1], pool->contacts[ci1].edge[2]};
+    vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1], pool->contacts[ci2].edge[2]};
+
+    vec3 coeff0 = yocto::cross(edge1, edge2);
+    vec3 coeff1 = yocto::cross(edge2, edge0);
+    vec3 coeff2 = yocto::cross(edge0, edge1);
+
+    double w0_min = std::min({yocto::dot(tri.corners[0], coeff0), yocto::dot(tri.corners[1], coeff0), yocto::dot(tri.corners[2], coeff0)});
+    double w1_min = std::min({yocto::dot(tri.corners[0], coeff1), yocto::dot(tri.corners[1], coeff1), yocto::dot(tri.corners[2], coeff1)});
+    double w2_min = std::min({yocto::dot(tri.corners[0], coeff2), yocto::dot(tri.corners[1], coeff2), yocto::dot(tri.corners[2], coeff2)});
+
+    if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) continue;
+
+    int in0 = chosen_inners[ci0];
+    int in1 = chosen_inners[ci1];
+    int in2 = chosen_inners[ci2];
+
+    vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+    vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0], VERTICES[pool->contacts[ci0].vertex][1], VERTICES[pool->contacts[ci0].vertex][2]};
+
+    vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+    vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0], VERTICES[pool->contacts[ci1].vertex][1], VERTICES[pool->contacts[ci1].vertex][2]};
+
+    vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+    vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0], VERTICES[pool->contacts[ci2].vertex][1], VERTICES[pool->contacts[ci2].vertex][2]};
+
+    double penalty = d_bound * trip.weighted_defect_upper + disp_error;
+
+    EvaluatedCandidateTriple et;
+    et.triple_idx = (int)t;
+    et.inner[0] = in0; et.inner[1] = in1; et.inner[2] = in2;
+
+    double min_m = 1e30;
+
+    for (int node = 0; node < 6; node++) {
+      double w0 = yocto::dot(p[node], coeff0);
+      double w1 = yocto::dot(p[node], coeff1);
+      double w2 = yocto::dot(p[node], coeff2);
+
+      double C_node[10] = {0};
+      AccumulateContactPoly(C_node, w0, yocto::cross(p[node], edge0), vin0, vout0, s);
+      AccumulateContactPoly(C_node, w1, yocto::cross(p[node], edge1), vin1, vout1, s);
+      AccumulateContactPoly(C_node, w2, yocto::cross(p[node], edge2), vin2, vout2, s);
+
+      double b_ctrl[27];
+      ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
+
+      for (int m = 0; m < 27; m++) {
+        double m_val = b_ctrl[m] - penalty;
+        et.margins[node * 27 + m] = m_val;
+        if (m_val < min_m) min_m = m_val;
+      }
+    }
+
+    et.min_margin = min_m;
+
+    if (min_m > 0.0) {
+      res.certified = true;
+      res.num_components = 1;
+      res.triples[0] = (int)t;
+      res.inners[0][0] = in0; res.inners[0][1] = in1; res.inners[0][2] = in2;
+      res.weights[0] = 1.0;
+      res.margin = min_m;
+      res.num_candidates = 1;
+      return res;
+    }
+
+    if (et.min_margin > -0.05) {
+      evaluated.push_back(et);
+    }
+  }
+
+  res.num_candidates = (int)evaluated.size();
+  if (evaluated.empty()) return res;
+
+  std::sort(evaluated.begin(), evaluated.end(), [](const auto &a, const auto &b) {
+    return a.min_margin > b.min_margin;
+  });
+
+  // Strategy 1: Corner + Center Best Subset
+  int best_c0 = 0, best_c1 = 0, best_c2 = 0;
+  double max_c0 = -1e30, max_c1 = -1e30, max_c2 = -1e30;
+  int pool_size = std::min(64, (int)evaluated.size());
+  for (int i = 0; i < pool_size; i++) {
+    double min0 = 1e30, min1 = 1e30, min2 = 1e30;
+    for (int m = 0; m < 27; m++) {
+      min0 = std::min(min0, evaluated[i].margins[0 * 27 + m]);
+      min1 = std::min(min1, evaluated[i].margins[1 * 27 + m]);
+      min2 = std::min(min2, evaluated[i].margins[2 * 27 + m]);
+    }
+    if (min0 > max_c0) { max_c0 = min0; best_c0 = i; }
+    if (min1 > max_c1) { max_c1 = min1; best_c1 = i; }
+    if (min2 > max_c2) { max_c2 = min2; best_c2 = i; }
+  }
+
+  std::vector<int> corner_set = {0};
+  if (std::find(corner_set.begin(), corner_set.end(), best_c0) == corner_set.end()) corner_set.push_back(best_c0);
+  if (std::find(corner_set.begin(), corner_set.end(), best_c1) == corner_set.end()) corner_set.push_back(best_c1);
+  if (std::find(corner_set.begin(), corner_set.end(), best_c2) == corner_set.end()) corner_set.push_back(best_c2);
+
+  int K_corner = corner_set.size();
+  const double *corner_margins[4];
+  for (int k = 0; k < K_corner; k++) corner_margins[k] = evaluated[corner_set[k]].margins;
+  double corner_alpha[4] = {0};
+  double corner_margin = SolveOptimalWeights(K_corner, corner_margins, corner_alpha);
+
+  if (corner_margin > 0.0) {
+    res.certified = true;
+    res.num_components = K_corner;
+    for (int k = 0; k < K_corner; k++) {
+      int idx = corner_set[k];
+      res.triples[k] = evaluated[idx].triple_idx;
+      res.inners[k][0] = evaluated[idx].inner[0];
+      res.inners[k][1] = evaluated[idx].inner[1];
+      res.inners[k][2] = evaluated[idx].inner[2];
+      res.weights[k] = corner_alpha[k];
+    }
+    res.margin = corner_margin;
+    return res;
+  }
+
+  // Strategy 2: Multi-Start Greedy Forward Selection with Targeted Column Generation
+  int num_starts = std::min(8, (int)evaluated.size());
+  for (int start = 0; start < num_starts; start++) {
+    std::vector<int> chosen = {start};
+    double current_best_margin = evaluated[start].min_margin;
+    double current_best_alpha[4] = {1.0, 0, 0, 0};
+
+    for (int step = 2; step <= max_components; step++) {
+      int K = chosen.size();
+      const double *curr_margins[4];
+      for (int k = 0; k < K; k++) curr_margins[k] = evaluated[chosen[k]].margins;
+
+      std::vector<std::pair<double, int>> worst_controls;
+      worst_controls.reserve(162);
+      for (int j = 0; j < 162; j++) {
+        double sum = 0.0;
+        for (int k = 0; k < K; k++) sum += current_best_alpha[k] * curr_margins[k][j];
+        worst_controls.push_back({sum, j});
+      }
+      std::sort(worst_controls.begin(), worst_controls.end());
+
+      std::vector<int> cand_pool;
+      cand_pool.reserve(128);
+      for (int i = 0; i < std::min(32, (int)evaluated.size()); i++) cand_pool.push_back(i);
+
+      for (int w = 0; w < std::min(5, (int)worst_controls.size()); w++) {
+        int w_ctrl = worst_controls[w].second;
+        std::vector<std::pair<double, int>> best_at_w;
+        best_at_w.reserve(evaluated.size());
+        for (size_t c = 0; c < evaluated.size(); c++) {
+          best_at_w.push_back({evaluated[c].margins[w_ctrl], (int)c});
+        }
+        std::sort(best_at_w.begin(), best_at_w.end(), std::greater<std::pair<double, int>>());
+        for (int t = 0; t < std::min(8, (int)best_at_w.size()); t++) {
+          int c_idx = best_at_w[t].second;
+          if (std::find(cand_pool.begin(), cand_pool.end(), c_idx) == cand_pool.end()) {
+            cand_pool.push_back(c_idx);
+          }
+        }
+      }
+
+      int best_cand = -1;
+      double best_step_margin = -1e30;
+      double best_step_alpha[4] = {0};
+
+      for (int c : cand_pool) {
+        if (std::find(chosen.begin(), chosen.end(), c) != chosen.end()) continue;
+
+        std::vector<int> test_set = chosen;
+        test_set.push_back(c);
+        int test_K = test_set.size();
+        const double *test_margins[4];
+        for (int k = 0; k < test_K; k++) test_margins[k] = evaluated[test_set[k]].margins;
+
+        double alpha[4] = {0};
+        double m = SolveOptimalWeights(test_K, test_margins, alpha);
+        if (m > best_step_margin) {
+          best_step_margin = m;
+          best_cand = c;
+          std::memcpy(best_step_alpha, alpha, sizeof(double) * test_K);
+        }
+      }
+
+      if (best_cand >= 0 && best_step_margin > current_best_margin) {
+        chosen.push_back(best_cand);
+        current_best_margin = best_step_margin;
+        std::memcpy(current_best_alpha, best_step_alpha, sizeof(double) * chosen.size());
+        if (current_best_margin > 0.0) {
+          break;
+        }
+      } else {
+        break;
+      }
+    }
+
+    if (current_best_margin > res.margin) {
+      res.margin = current_best_margin;
+      res.num_components = chosen.size();
+      for (size_t k = 0; k < chosen.size(); k++) {
+        int idx = chosen[k];
+        res.triples[k] = evaluated[idx].triple_idx;
+        res.inners[k][0] = evaluated[idx].inner[0];
+        res.inners[k][1] = evaluated[idx].inner[1];
+        res.inners[k][2] = evaluated[idx].inner[2];
+        res.weights[k] = current_best_alpha[k];
+      }
+      if (current_best_margin > 0.0) {
+        res.certified = true;
+        return res;
+      }
+    }
+  }
+
+  return res;
+}
+
+MixtureSolveStats SolveCellMixture(
+    const DifficultCell &cell,
+    int max_depth,
+    int max_box_depth,
+    int max_view_depth,
+    int max_nodes,
+    int max_split_delta,
+    int cone_samples,
+    int max_components,
+    double split_kappa,
+    double tube_radius,
+    double time_limit_sec,
+    std::function<void(std::string_view)> row_callback,
+    std::atomic<bool> *interrupted) {
+  MixtureSolveStats stats;
+  Timer timer;
+
+  std::vector<SearchNode> stack;
+  SearchNode root = cell.ToSearchNode();
+  int64_t next_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
+  stack.push_back(root);
+
+  auto EmitRow = [&](std::string_view row) {
+    stats.rows_written++;
+    if (row_callback) row_callback(row);
+  };
+
+  while (!stack.empty()) {
+    if (SigIntReceived() || (interrupted && interrupted->load(std::memory_order_relaxed))) {
+      stats.solved = false;
+      stats.elapsed_seconds = timer.Seconds();
+      return stats;
+    }
+    if (time_limit_sec > 0.0 && timer.Seconds() >= time_limit_sec) {
+      stats.solved = false;
+      stats.elapsed_seconds = timer.Seconds();
+      return stats;
+    }
+    if (stats.total_nodes >= max_nodes) {
+      stats.solved = false;
+      stats.elapsed_seconds = timer.Seconds();
+      return stats;
+    }
+
+    SearchNode node = stack.back();
+    stack.pop_back();
+    stats.total_nodes++;
+
+    // 1. Pruning checks
+    if (OutsideBall(node.box)) {
+      stats.pruned_leaves++;
+      EmitRow(std::format("PR {} {} {} RADIUS\n", node.id, node.parent_id, node.depth));
+      continue;
+    }
+
+    FundamentalPruneResult fund = CheckFundamentalPrune(node.chart, node.box);
+    if (fund.prune) {
+      stats.pruned_leaves++;
+      EmitRow(std::format("PR {} {} {} FUNDAMENTAL {}\n", node.id, node.parent_id, node.depth, fund.direction));
+      continue;
+    }
+
+    if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
+      stats.pruned_leaves++;
+      EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, tube_radius));
+      continue;
+    }
+
+    if (node.chart == 0 && node.box.ContainsOrigin()) {
+      int widest = node.box.WidestAxis();
+      auto [b0, b1] = node.box.Split(widest);
+      SearchNode c0 = node; c0.id = next_id++; c0.parent_id = node.id; c0.depth++; c0.box_depth++; c0.box = b0;
+      SearchNode c1 = node; c1.id = next_id++; c1.parent_id = node.id; c1.depth++; c1.box_depth++; c1.box = b1;
+      EmitRow(std::format("SO {} {} {} {} {}\n", node.id, node.parent_id, node.depth, c0.id, c1.id));
+      if (c0.box.ContainsOrigin()) {
+        stack.push_back(c1);
+        stack.push_back(c0);
+      } else {
+        stack.push_back(c0);
+        stack.push_back(c1);
+      }
+      continue;
+    }
+
+    // 2. Mixture evaluation
+    MixtureResult res = EvaluateBoxCPUMixture(node.chart, node.box, node.tri, cone_samples, max_components);
+    if (res.certified) {
+      stats.certified_leaves++;
+      stats.worst_margin = std::min(stats.worst_margin, res.margin);
+      if (res.num_components == 1) {
+        EmitRow(std::format("CE {} {} {} {} {:.17g} {} {} {}\n",
+                            node.id, node.parent_id, node.depth,
+                            res.triples[0], res.margin,
+                            res.inners[0][0], res.inners[0][1], res.inners[0][2]));
+      } else {
+        std::string row = std::format("MX {} {} {} {} {:.17g}",
+                                      node.id, node.parent_id, node.depth,
+                                      res.num_components, res.margin);
+        for (int k = 0; k < res.num_components; k++) {
+          row += std::format(" {} {:.17g} {} {} {}",
+                             res.triples[k], res.weights[k],
+                             res.inners[k][0], res.inners[k][1], res.inners[k][2]);
+        }
+        row += "\n";
+        EmitRow(row);
+      }
+      continue;
+    }
+
+    // 3. Depth limits
+    if (node.depth >= cell.depth + max_split_delta ||
+        node.depth >= max_depth ||
+        (node.box_depth >= max_box_depth && node.view_depth >= max_view_depth)) {
+      stats.solved = false;
+      stats.worst_margin = std::min(stats.worst_margin, res.margin);
+      stats.elapsed_seconds = timer.Seconds();
+      return stats;
+    }
+
+    // 4. Analytical splitting decision
+    double rot_diam = 2.0 * node.box.radii[node.box.WidestAxis()];
+    double view_diam = node.tri.AngularDiameter();
+    bool split_box;
+    if (node.box_depth >= max_box_depth) {
+      split_box = false;
+    } else if (node.view_depth >= max_view_depth) {
+      split_box = true;
+    } else {
+      split_box = (rot_diam >= split_kappa * view_diam);
+    }
+
+    if (split_box) {
+      int widest = node.box.WidestAxis();
+      auto [b0, b1] = node.box.Split(widest);
+      SearchNode c0 = node; c0.id = next_id++; c0.parent_id = node.id; c0.depth++; c0.box_depth++; c0.box = b0;
+      SearchNode c1 = node; c1.id = next_id++; c1.parent_id = node.id; c1.depth++; c1.box_depth++; c1.box = b1;
+      EmitRow(std::format("SP {} {} {} {} {}\n", node.id, node.parent_id, node.depth, c0.id, c1.id));
+      stack.push_back(c1);
+      stack.push_back(c0);
+    } else {
+      auto sub_tris = node.tri.Subdivide();
+      int64_t c_ids[4];
+      for (int t = 0; t < 4; t++) c_ids[t] = next_id++;
+      EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                          node.id, node.parent_id, node.depth,
+                          c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+      for (int t = 3; t >= 0; t--) {
+        SearchNode c = node;
+        c.id = c_ids[t];
+        c.parent_id = node.id;
+        c.depth++;
+        c.view_depth++;
+        c.tri = sub_tris[t];
+        stack.push_back(c);
+      }
+    }
+  }
+
+  stats.solved = stack.empty();
+  stats.elapsed_seconds = timer.Seconds();
+  return stats;
+}
+
 // Check whether a leaf SearchNode contains a valid Rupert passage.
 // Converts the projective view and Cayley box into 3D frames, solves
 // for the optimal 2D translation via MaximizeClearance2D, and

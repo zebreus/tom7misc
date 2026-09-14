@@ -10,15 +10,18 @@
 //     the cell remains in the unsolved list, and chart<chart>.difficult contains all unsolved cells.
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -277,14 +280,211 @@ static int RunDifficult(
   return 0;
 }
 
+static int RunDifficultMixture(
+    int chart, std::string difficult_path, std::string out_dir, int max_depth,
+    int max_box_depth, int max_view_depth, int max_nodes, int max_split_delta,
+    int cone_samples, int max_components,
+    double split_kappa, double limit_sec, int num_threads,
+    int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
+    bool show_status = true) {
+  if (difficult_path.empty()) {
+    difficult_path = std::format("chart{}.difficult", chart);
+  }
+
+  Print(ACYAN("=== Difficult 229 Solver (Convex Mixture Mode) ===\n"));
+  Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
+  Print("Limits: max_nodes={}, max_split_delta={}, max_depth={}, max_box_depth={}, max_view_depth={}\n",
+        max_nodes, max_split_delta, max_depth, max_box_depth, max_view_depth);
+  Print("Mixture: max_components={}, split_kappa={:.2g}, limit_sec={}\n",
+        max_components, split_kappa,
+        limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none");
+  Print("Parallelism: {} worker threads (CPU)\n", num_threads);
+
+  if (!std::filesystem::exists(difficult_path)) {
+    Print(ARED("Difficult file '{}' does not exist.\n"), difficult_path);
+    return -1;
+  }
+
+  std::vector<DifficultCell> cells = ReadDifficultFile(difficult_path);
+  Print("Loaded {} cells from {}\n", cells.size(), difficult_path);
+
+  // Scan existing .done files to identify completed cells
+  std::vector<DifficultCell> unsolved_cells;
+  size_t already_done = 0;
+  for (const auto &c : cells) {
+    std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
+    if (std::filesystem::exists(done_file)) {
+      already_done++;
+    } else {
+      unsolved_cells.push_back(c);
+    }
+  }
+
+  if (already_done > 0) {
+    Print("Found {} previously completed .done files; {} cells remaining to solve.\n",
+          already_done, unsolved_cells.size());
+    WriteDifficultFile(difficult_path, unsolved_cells);
+  }
+
+  if (unsolved_cells.empty()) {
+    Print(AGREEN("All difficult cells in chart {} are already certified!\n"), chart);
+    return 0;
+  }
+
+  if (dry_run) {
+    Print("Dry run complete. {} cells need processing.\n", unsolved_cells.size());
+    return 0;
+  }
+
+  StatusBar status(1);
+  Timer total_timer;
+  std::mutex state_mu;
+  size_t total_processed = 0;
+  size_t total_solved = 0;
+  size_t total_unsolved = 0;
+  size_t total_timed_out = 0;
+  uint64_t total_rows_written = 0;
+  std::vector<DifficultCell> remaining_unsolved = unsolved_cells;
+
+  std::atomic<size_t> next_cell_idx = 0;
+  int actual_threads = std::max(1, num_threads);
+
+  auto WorkerLoop = [&]() {
+    while (!SigIntReceived()) {
+      size_t idx = next_cell_idx.fetch_add(1);
+      if (idx >= unsolved_cells.size()) break;
+      if (limit_cells > 0 && idx >= (size_t)limit_cells) break;
+
+      DifficultCell cell = unsolved_cells[idx];
+      if (target_cell_id >= 0 && cell.id != target_cell_id) continue;
+
+      size_t current_proc = 0;
+      {
+        std::lock_guard<std::mutex> lock(state_mu);
+        total_processed++;
+        current_proc = total_processed;
+        status.Print("[{}/{}] Cell #{} (depth {}, box_depth {}, view_depth {}, margin: {:.6g})...\n",
+                     current_proc, unsolved_cells.size(),
+                     cell.id, cell.depth, cell.box_depth, cell.view_depth, cell.best_margin);
+      }
+
+      std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
+      std::string done_path = std::format("{}/{}", out_dir, done_filename);
+      std::string tmp_filename = std::format("{}.tmp", done_filename);
+      std::string tmp_path = std::format("{}/{}", out_dir, tmp_filename);
+
+      FILE *tmp_fp = fopen(tmp_path.c_str(), "w");
+      if (!tmp_fp) {
+        std::lock_guard<std::mutex> lock(state_mu);
+        status.Print(ARED("Failed to create temporary file {}\n"), tmp_path);
+        continue;
+      }
+
+      uint64_t cell_rows = 0;
+      auto row_cb = [&](std::string_view row) {
+        fputs(std::string(row).c_str(), tmp_fp);
+        cell_rows++;
+      };
+
+      Timer cell_timer;
+      std::atomic<bool> cell_interrupted = false;
+      auto stats = SolveCellMixture(
+          cell, max_depth, max_box_depth, max_view_depth,
+          max_nodes, max_split_delta,
+          cone_samples, max_components, split_kappa,
+          /*tube_radius=*/1e-4, limit_sec, row_cb, &cell_interrupted);
+
+      std::fflush(tmp_fp);
+      fclose(tmp_fp);
+      tmp_fp = nullptr;
+
+      double cell_seconds = cell_timer.Seconds();
+
+      if (SigIntReceived()) {
+        std::error_code ec;
+        std::filesystem::remove(tmp_path, ec);
+        break;
+      }
+
+      if (!stats.solved) {
+        std::error_code ec;
+        std::filesystem::remove(tmp_path, ec);
+        std::lock_guard<std::mutex> lock(state_mu);
+        if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
+          total_timed_out++;
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {}. Retaining in {}.\n",
+                       cell.id, ANSI::Time(cell_seconds), difficult_path);
+        } else {
+          total_unsolved++;
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} leaves certified, worst margin: {:.6g}). Retaining in {}.\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.certified_leaves, stats.worst_margin, difficult_path);
+        }
+      } else {
+        std::error_code ec;
+        std::filesystem::rename(tmp_path, done_path, ec);
+        std::lock_guard<std::mutex> lock(state_mu);
+        if (ec) {
+          status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
+        } else {
+          total_solved++;
+          total_rows_written += cell_rows;
+          std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
+            return c.id == cell.id && c.chart == cell.chart;
+          });
+          WriteDifficultFile(difficult_path, remaining_unsolved);
+          status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]\n",
+                       cell.id, ANSI::Time(cell_seconds), cell_rows, stats.certified_leaves,
+                       done_filename, remaining_unsolved.size(), difficult_path);
+        }
+      }
+    }
+  };
+
+  std::vector<std::thread> workers;
+  for (int t = 0; t < actual_threads; t++) {
+    workers.emplace_back(WorkerLoop);
+  }
+  for (auto &w : workers) {
+    w.join();
+  }
+
+  status.Clear();
+
+  // Final synchronization of difficult file
+  WriteDifficultFile(difficult_path, remaining_unsolved);
+
+  Print(ACYAN("\n=== Mixture Solver Summary ===\n"));
+  Print("Total processed: {}\n"
+        "Total solved:    {}\n"
+        "Total failed:    {}\n"
+        "Total timed out: {}\n"
+        "Remaining:       {} in {}\n"
+        "Rows written:    {}\n"
+        "Elapsed time:    {}\n",
+        FormatNum(total_processed),
+        FormatNum(total_solved),
+        FormatNum(total_unsolved),
+        FormatNum(total_timed_out),
+        FormatNum(remaining_unsolved.size()), difficult_path,
+        FormatNum(total_rows_written),
+        ANSI::Time(total_timer.Seconds()));
+
+  return 0;
+}
+
 static void PrintHelp() {
   Print("Usage: ./difficult229.exe [options]\n"
         "  --chart <0|1|2>         Cayley chart index (default 0)\n"
         "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
         "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
-        "  --max_depth <D>         Max search depth per cell (default 80)\n"
-        "  --max_box_depth <D>     Max box subdivision depth (default 58)\n"
-        "  --max_view_depth <D>    Max view subdivision depth (default 20)\n"
+        "  --mixture               Use convex triple mixture branch-and-bound solver (CPU)\n"
+        "  --max_components <N>    Max mixture components in mixture mode (default 4)\n"
+        "  --split_kappa <K>       Rotation to view diameter ratio for splits in mixture mode (default 0.5)\n"
+        "  --max_nodes <N>         Max total nodes evaluated per cell (default 64 in mixture mode)\n"
+        "  --max_split_delta <N>   Max split depth from root per cell (default 4 in mixture mode)\n"
+        "  --max_depth <D>         Max search depth per cell (default 80 GPU / 54 mixture)\n"
+        "  --max_box_depth <D>     Max box subdivision depth (default 58 GPU / 42 mixture)\n"
+        "  --max_view_depth <D>    Max view subdivision depth (default 20 GPU / 14 mixture)\n"
         "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
         "  --cone_samples <N>      Base cone samples (default 8)\n"
         "  --escalate_depth <D>    First escalation depth (default 44)\n"
@@ -292,14 +492,14 @@ static void PrintHelp() {
         "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
         "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
         "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
-        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit)\n"
-        "  --threads <T>           CPU fallback worker threads (default 8)\n"
-        "  --cpu                   Force multi-threaded CPU execution\n"
-        "  --gpu                   Use OpenCL acceleration (default)\n"
+        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 10s in mixture)\n"
+        "  --threads <T>           Worker threads (default 8)\n"
+        "  --cpu                   Force multi-threaded CPU execution in standard mode\n"
+        "  --gpu                   Use OpenCL acceleration in standard mode (default)\n"
         "  --limit <N>             Process at most N cells (default all)\n"
         "  --cell_id <ID>          Process only specific cell ID\n"
         "  --dry_run               Scan and report status without processing\n"
-        "  --verbose               Print verbose per-cell SearchManager status\n"
+        "  --verbose               Print verbose per-cell status\n"
         "  --no_status             Disable live status bar\n"
         "  --help, -h              Show this help message\n");
 }
@@ -311,6 +511,15 @@ int main(int argc, char **argv) {
   int chart = 0;
   std::string difficult_path;
   std::string out_dir = ".";
+  bool mixture_mode = false;
+  int max_components = 4;
+  double split_kappa = 0.5;
+  int max_nodes = 64;
+  int max_split_delta = 4;
+  bool max_depth_specified = false;
+  bool max_box_depth_specified = false;
+  bool max_view_depth_specified = false;
+  bool limit_sec_specified = false;
   int max_depth = 80;
   int max_box_depth = 58;
   int max_view_depth = 20;
@@ -338,12 +547,28 @@ int main(int argc, char **argv) {
       difficult_path = argv[++i];
     } else if (arg == "--out_dir" && i + 1 < argc) {
       out_dir = argv[++i];
+    } else if (arg == "--mixture" || arg == "--mode=mixture") {
+      mixture_mode = true;
+    } else if (arg == "--mode" && i + 1 < argc) {
+      std::string_view m = argv[++i];
+      if (m == "mixture") mixture_mode = true;
+    } else if (arg == "--max_components" && i + 1 < argc) {
+      max_components = std::atoi(argv[++i]);
+    } else if (arg == "--split_kappa" && i + 1 < argc) {
+      split_kappa = std::atof(argv[++i]);
+    } else if (arg == "--max_nodes" && i + 1 < argc) {
+      max_nodes = std::atoi(argv[++i]);
+    } else if (arg == "--max_split_delta" && i + 1 < argc) {
+      max_split_delta = std::atoi(argv[++i]);
     } else if (arg == "--max_depth" && i + 1 < argc) {
       max_depth = std::atoi(argv[++i]);
+      max_depth_specified = true;
     } else if (arg == "--max_box_depth" && i + 1 < argc) {
       max_box_depth = std::atoi(argv[++i]);
+      max_box_depth_specified = true;
     } else if (arg == "--max_view_depth" && i + 1 < argc) {
       max_view_depth = std::atoi(argv[++i]);
+      max_view_depth_specified = true;
     } else if (arg == "--batch_size" && i + 1 < argc) {
       batch_size = std::atoi(argv[++i]);
     } else if (arg == "--cone_samples" && i + 1 < argc) {
@@ -360,6 +585,7 @@ int main(int argc, char **argv) {
       lp_escalate_box_depth = std::atoi(argv[++i]);
     } else if (arg == "--limit_sec" && i + 1 < argc) {
       limit_sec = std::atof(argv[++i]);
+      limit_sec_specified = true;
     } else if (arg == "--threads" && i + 1 < argc) {
       num_threads = std::atoi(argv[++i]);
     } else if (arg == "--cpu") {
@@ -383,6 +609,19 @@ int main(int argc, char **argv) {
       Print("Unknown arg '{}'. Try ./difficult229.exe --help\n", arg);
       return -1;
     }
+  }
+
+  if (mixture_mode) {
+    if (!max_depth_specified) max_depth = 54;
+    if (!max_box_depth_specified) max_box_depth = 42;
+    if (!max_view_depth_specified) max_view_depth = 14;
+    if (!limit_sec_specified) limit_sec = 10.0;
+    return RunDifficultMixture(
+        chart, difficult_path, out_dir, max_depth, max_box_depth,
+        max_view_depth, max_nodes, max_split_delta, cone_samples,
+        max_components, split_kappa,
+        limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
+        show_status);
   }
 
   RunDifficult(
