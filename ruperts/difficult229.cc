@@ -35,7 +35,8 @@ static int RunDifficult(
     int max_box_depth, int max_view_depth, int batch_size, int cone_samples,
     int escalate_depth, int escalate_cone_samples, int deep_escalate_depth,
     int deep_escalate_cone_samples, int num_threads, bool use_gpu,
-    int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose) {
+    int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
+    bool show_status = true) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -48,55 +49,40 @@ static int RunDifficult(
 
   if (!std::filesystem::exists(difficult_path)) {
     Print(ARED("Difficult file '{}' does not exist.\n"), difficult_path);
-    return 1;
+    return -1;
   }
 
-  std::vector<DifficultCell> unsolved_cells = ReadDifficultFile(difficult_path);
-  Print("Loaded {} cells from {}\n", FormatNum(unsolved_cells.size()), difficult_path);
+  std::vector<DifficultCell> cells = ReadDifficultFile(difficult_path);
+  Print("Loaded {} cells from {}\n", cells.size(), difficult_path);
+
+  // Scan existing .done files to identify completed cells
+  std::vector<DifficultCell> unsolved_cells;
+  size_t already_done = 0;
+  for (const auto &c : cells) {
+    std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
+    if (std::filesystem::exists(done_file)) {
+      already_done++;
+    } else {
+      unsolved_cells.push_back(c);
+    }
+  }
+
+  if (already_done > 0) {
+    Print("Found {} previously completed .done files; {} cells remaining to solve.\n",
+          already_done, unsolved_cells.size());
+    WriteDifficultFile(difficult_path, unsolved_cells);
+  }
 
   if (unsolved_cells.empty()) {
-    Print(AGREEN("No difficult cells to process!\n"));
+    Print(AGREEN("All difficult cells in chart {} are already certified!\n"), chart);
     return 0;
-  }
-
-  // Scan for any cells that were already solved in previous runs.
-  std::vector<DifficultCell> remaining_cells;
-  remaining_cells.reserve(unsolved_cells.size());
-  size_t already_done_count = 0;
-
-  for (const auto &cell : unsolved_cells) {
-    std::string done_file = std::format("{}/chart{}.{}.done", out_dir, cell.chart, cell.id);
-    if (std::filesystem::exists(done_file)) {
-      already_done_count++;
-    } else {
-      remaining_cells.push_back(cell);
-    }
-  }
-
-  if (already_done_count > 0) {
-    Print(AYELLOW("Found {} previously completed cells (with .done files).\n"),
-          FormatNum(already_done_count));
-    unsolved_cells = std::move(remaining_cells);
-    WriteDifficultFile(difficult_path, unsolved_cells);
-    Print("Updated {} ({} cells remaining).\n", difficult_path, FormatNum(unsolved_cells.size()));
-  }
-
-  // Clean up any stale .done.tmp files in out_dir
-  for (const auto &cell : unsolved_cells) {
-    std::string tmp_file = std::format("{}/chart{}.{}.done.tmp", out_dir, cell.chart, cell.id);
-    std::error_code ec;
-    if (std::filesystem::exists(tmp_file)) {
-      std::filesystem::remove(tmp_file, ec);
-    }
   }
 
   if (dry_run) {
-    Print("Dry run requested. {} difficult cells remain to be solved.\n",
-          FormatNum(unsolved_cells.size()));
+    Print("Dry run complete. {} cells need processing.\n", unsolved_cells.size());
     return 0;
   }
 
-  // Initialize SearchManager once to avoid repeated OpenCL recompilation.
   SearchManager mgr;
   mgr.chart = chart;
   mgr.use_gpu = use_gpu;
@@ -118,7 +104,8 @@ static int RunDifficult(
   mgr.write_row_file = false;
   mgr.write_difficult_file = false;
   mgr.enable_checkpoint = false;
-  mgr.verbose_status = verbose;
+  mgr.show_banner = false;
+  mgr.verbose_status = show_status;
 
   if (use_gpu) {
     mgr.InitOpenCL();
@@ -132,8 +119,8 @@ static int RunDifficult(
 
   for (size_t i = 0; i < unsolved_cells.size(); ) {
     if (SigIntReceived()) {
-      Print(AYELLOW("\nInterrupted by SIGINT. Preserving remaining unsolved cells in {}.\n"),
-            difficult_path);
+      mgr.status.Print(AYELLOW("\nInterrupted by SIGINT. Preserving remaining unsolved cells in {}.\n"),
+                       difficult_path);
       break;
     }
 
@@ -145,7 +132,7 @@ static int RunDifficult(
     }
 
     if (limit_cells > 0 && total_processed >= (size_t)limit_cells) {
-      Print("Reached cell processing limit of {}.\n", limit_cells);
+      mgr.status.Print("Reached cell processing limit of {}.\n", limit_cells);
       break;
     }
 
@@ -158,7 +145,7 @@ static int RunDifficult(
 
     FILE *tmp_fp = fopen(tmp_path.c_str(), "w");
     if (!tmp_fp) {
-      Print(ARED("Failed to create temporary file: {}\n"), tmp_path);
+      mgr.status.Print(ARED("Failed to create temporary file: {}\n"), tmp_path);
       i++;
       continue;
     }
@@ -193,8 +180,11 @@ static int RunDifficult(
     mgr.chart = cell.chart;
     mgr.next_node_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
     mgr.stack.push_back(cell.ToSearchNode());
+    mgr.status_detail = std::format("Cell #{}: [{}/{}] (depth {})",
+                                    cell.id, total_processed,
+                                    unsolved_cells.size(), cell.depth);
 
-    Print("[{}/{}] Cell #{} (depth {}, box_depth {}, view_depth {}, margin: {:.6g})...\n",
+    mgr.status.Print("[{}/{}] Cell #{} (depth {}, box_depth {}, view_depth {}, margin: {:.6g})...\n",
           total_processed, unsolved_cells.size(),
           cell.id, cell.depth, cell.box_depth, cell.view_depth, cell.best_margin);
 
@@ -210,7 +200,7 @@ static int RunDifficult(
     if (SigIntReceived()) {
       std::error_code ec;
       std::filesystem::remove(tmp_path, ec);
-      Print(AYELLOW("\nInterrupted during cell #{}. Cleaned up {}.\n"), cell.id, tmp_filename);
+      mgr.status.Print(AYELLOW("\nInterrupted during cell #{}. Cleaned up {}.\n"), cell.id, tmp_filename);
       break;
     }
 
@@ -219,14 +209,14 @@ static int RunDifficult(
       std::error_code ec;
       std::filesystem::rename(tmp_path, done_path, ec);
       if (ec) {
-        Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
+        mgr.status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
         i++;
       } else {
         total_solved++;
         total_rows_written += cell_rows;
         unsolved_cells.erase(unsolved_cells.begin() + i);
         WriteDifficultFile(difficult_path, unsolved_cells);
-        Print(AGREEN("  ✔")
+        mgr.status.Print(AGREEN("  ✔")
               " Cell #{} SOLVED in {}! ({} rows -> {}) [{} remaining in {}]\n",
               cell.id, ANSI::Time(cell_seconds), FormatNum(cell_rows),
               done_filename, FormatNum(unsolved_cells.size()), difficult_path);
@@ -236,7 +226,7 @@ static int RunDifficult(
       std::error_code ec;
       std::filesystem::remove(tmp_path, ec);
       total_unsolved++;
-      Print(AORANGE("  ✘")
+      mgr.status.Print(AORANGE("  ✘")
             " Cell #{} NOT fully certified in {} (remaining stack: {}, shelved: {}).\n"
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
@@ -244,6 +234,8 @@ static int RunDifficult(
       i++;
     }
   }
+
+  mgr.status.Clear();
 
   // Ensure state is cleanly persisted
   WriteDifficultFile(difficult_path, unsolved_cells);
@@ -261,6 +253,8 @@ static int RunDifficult(
         FormatNum(unsolved_cells.size()), difficult_path,
         FormatNum(total_rows_written),
         ANSI::Time(total_timer.Seconds()));
+
+  return 0;
 }
 
 static void PrintHelp() {
@@ -284,6 +278,7 @@ static void PrintHelp() {
         "  --cell_id <ID>          Process only specific cell ID\n"
         "  --dry_run               Scan and report status without processing\n"
         "  --verbose               Print verbose per-cell SearchManager status\n"
+        "  --no_status             Disable live status bar\n"
         "  --help, -h              Show this help message\n");
 }
 
@@ -309,6 +304,7 @@ int main(int argc, char **argv) {
   int64_t target_cell_id = -1;
   bool dry_run = false;
   bool verbose = false;
+  bool show_status = true;
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -350,6 +346,8 @@ int main(int argc, char **argv) {
       dry_run = true;
     } else if (arg == "--verbose") {
       verbose = true;
+    } else if (arg == "--no_status") {
+      show_status = false;
     } else if (arg == "--help" || arg == "-h") {
       PrintHelp();
       return 0;
@@ -363,7 +361,8 @@ int main(int argc, char **argv) {
       chart, difficult_path, out_dir, max_depth, max_box_depth,
       max_view_depth, batch_size, cone_samples, escalate_depth,
       escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
-      num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose);
+      num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
+      show_status);
 
   return 0;
 }

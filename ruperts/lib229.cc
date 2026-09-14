@@ -66,12 +66,6 @@ void SetSigInt() {
   sigint_received.store(true);
 }
 
-static StatusBar status = StatusBar(4);
-
-StatusBar &GetStatusBar() {
-  return status;
-}
-
 std::vector<DifficultCell> ReadDifficultFile(const std::string &path) {
   std::vector<DifficultCell> cells;
   std::ifstream in(path);
@@ -437,7 +431,8 @@ static Periodically eval_cpu_failed_per = Periodically(10.0);
 GpuResult EvaluateBoxCPU(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
-    const std::vector<GpuTriple> &triples) {
+    const std::vector<GpuTriple> &triples,
+    StatusBar *status) {
   ctr_cpu++;
 
   double x0 = box.cx, y0 = box.cy, z0 = box.cz;
@@ -683,10 +678,12 @@ GpuResult EvaluateBoxCPU(
 
   if (!res.certified && box.rx < 1e-6) {
     eval_cpu_failed_per.RunIf([&]{
-        status.Print(
-            AORANGE("‼") " EvalBoxCPU failed: passed_w={}, passed_center={}, "
-            "best_cmargin={:.17g} (min_b={:.17g}, defect={:.17g}, disp={:.17g})\n",
-            passed_w_positive, passed_center, best_center_margin, best_min_b, best_defect, disp_error);
+        if (status) {
+          status->Print(
+              AORANGE("‼") " EvalBoxCPU failed: passed_w={}, passed_center={}, "
+              "best_cmargin={:.17g} (min_b={:.17g}, defect={:.17g}, disp={:.17g})\n",
+              passed_w_positive, passed_center, best_center_margin, best_min_b, best_defect, disp_error);
+        }
       });
   }
 
@@ -700,7 +697,8 @@ GpuResult EvaluateBoxCPULP(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
     const std::vector<GpuTriple> &triples,
-    bool use_optimal_translation) {
+    bool use_optimal_translation,
+    StatusBar *status) {
   ctr_cpu++;
 
   double x0 = box.cx, y0 = box.cy, z0 = box.cz;
@@ -1138,7 +1136,7 @@ std::optional<SolutionWitness> CheckSolutionWitness(
   return std::nullopt;
 }
 
-SearchManager::SearchManager() {
+SearchManager::SearchManager() : status(4) {
     cert_k_by_depth = std::make_unique<std::atomic<uint64_t>[]>(kMaxTrackDepth * kMaxTrackK);
     cert_k_by_box_depth = std::make_unique<std::atomic<uint64_t>[]>(kMaxTrackDepth * kMaxTrackK);
     cert_k_by_view_depth = std::make_unique<std::atomic<uint64_t>[]>(64 * kMaxTrackK);
@@ -1761,6 +1759,7 @@ double SearchManager::CompletedFraction() const {
 
 void SearchManager::ResetState() {
   stack.clear();
+  ctr_loops.Reset();
   evaluated_count.Reset();
   certified_count.Reset();
   pruned_count.Reset();
@@ -1878,7 +1877,7 @@ void SearchManager::Run() {
   difficult_path =
       std::format("{}/chart{}.difficult", output_dir, chart);
 
-  if (verbose_status) {
+  if (show_banner) {
     status.Print(ACYAN("=== Nopert #229 Proof Search ===\n"));
     if (deep_escalate_depth > 0) {
       status.Print("Chart: {}, Batch Size: {}, Candidates: {}, Cone Samples: {} (escalate to {} at depth {}, {} at depth {}), "
@@ -1952,13 +1951,13 @@ void SearchManager::Run() {
     if (resumed) {
       row_file = fopen(log_path.c_str(), "a");
       CHECK(row_file) << log_path;
-      if (verbose_status) status.Print("Appending log to: {}\n", log_path);
+      if (show_banner) status.Print("Appending log to: {}\n", log_path);
     } else {
       std::error_code ec;
       std::filesystem::remove(log_path, ec);
       row_file = fopen(log_path.c_str(), "w");
       CHECK(row_file) << log_path;
-      if (verbose_status) status.Print("Writing fresh log to: {}\n", log_path);
+      if (show_banner) status.Print("Writing fresh log to: {}\n", log_path);
       if (auto_init_root) {
         OutputRow("SV 0 -1 0 1 2 3 4\n");
       }
@@ -1981,7 +1980,7 @@ void SearchManager::Run() {
         }
       }
       CHECK(difficult_file) << difficult_path;
-      if (verbose_status) status.Print("Difficult cells file: {}\n", difficult_path);
+      if (show_banner) status.Print("Difficult cells file: {}\n", difficult_path);
     } else {
       std::error_code ec;
       std::filesystem::remove(difficult_path, ec);
@@ -1993,7 +1992,7 @@ void SearchManager::Run() {
             "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
             "best_margin\n");
       std::fflush(difficult_file);
-      if (verbose_status) status.Print("Writing fresh difficult cells to: {}\n", difficult_path);
+      if (show_banner) status.Print("Writing fresh difficult cells to: {}\n", difficult_path);
     }
   }
 
@@ -2370,7 +2369,8 @@ void SearchManager::Run() {
             MaybeMiniStatus("cpu");
             ParallelComp(active_gpu_boxes.size(), [&](int64_t a) {
               chunk_results[a] = EvaluateBoxCPU(active_gpu_boxes[a],
-                                                 all_contacts, all_triples);
+                                                 all_contacts, all_triples,
+                                                 &status);
             }, num_threads);
           }
 
@@ -2431,7 +2431,8 @@ void SearchManager::Run() {
               gb.num_contacts = (int)esc_pool->contacts.size();
               gb._pad = 0;
               GpuResult esc_res =
-                EvaluateBoxCPULP(gb, esc_pool->contacts, esc_pool->gpu_triples, /*use_optimal_translation=*/true);
+                EvaluateBoxCPULP(gb, esc_pool->contacts, esc_pool->gpu_triples,
+                                 /*use_optimal_translation=*/true, &status);
               if (esc_res.certified) {
                 ctr_esc_certified++;
                 res = esc_res;
@@ -2673,7 +2674,9 @@ void SearchManager::Run() {
         double completed_frac = CompletedFraction();
 
         std::string pool_str;
-        if (prioritize_related) {
+        if (!status_detail.empty()) {
+          pool_str = status_detail;
+        } else if (prioritize_related) {
           pool_str = std::format("{}/{} priority left",
                                  active_priority.size(),
                                  num_priority_points);
@@ -2714,7 +2717,7 @@ void SearchManager::Run() {
         FlushRows();
         if (difficult_file) std::fflush(difficult_file);
         if (interrupted) {
-          if (verbose_status) {
+          if (show_banner) {
             PrintDepthDistribution();
             status.Print("\n"
                          AYELLOW("Interrupted") ".\n");
@@ -2739,7 +2742,7 @@ void SearchManager::Run() {
         std::error_code ec;
         std::filesystem::remove(ckpt_path, ec);
       }
-      if (verbose_status) {
+      if (show_banner) {
         status.Print(AGREEN("\n=== ☻ Search Completed ☻ ===\n")
                      "Took {}s.",
                      ANSI::Time(timer.Seconds()));
@@ -2757,7 +2760,7 @@ void SearchManager::Run() {
       fclose(difficult_file);
       difficult_file = nullptr;
     }
-    if (verbose_status) {
+    if (show_banner) {
       status.Print("Total evaluated: {}\n"
                    "Total certified: {}\n"
                    "Total difficult (shelved): {}\n"

@@ -365,13 +365,15 @@ extern size_t g_max_triangle_cache_size;
 GpuResult EvaluateBoxCPU(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
-    const std::vector<GpuTriple> &triples);
+    const std::vector<GpuTriple> &triples,
+    StatusBar *status = nullptr);
 
 GpuResult EvaluateBoxCPULP(
     const GpuBox &box,
     const std::vector<GpuContact> &contacts,
     const std::vector<GpuTriple> &triples,
-    bool use_optimal_translation = true);
+    bool use_optimal_translation = true,
+    StatusBar *status = nullptr);
 
 Polyhedron GetPolyhedron229();
 
@@ -402,7 +404,6 @@ struct CheckpointHeader {
 void InstallSignalHandlers();
 bool SigIntReceived();
 void SetSigInt();
-StatusBar &GetStatusBar();
 
 struct SearchManager {
   int chart = 0;
@@ -467,8 +468,10 @@ struct SearchManager {
     return vol;
   }
 
+  StatusBar status{4};
   Periodically mini_status_per = Periodically(1.0);
   std::string last_op;
+  std::string status_detail;
 
   cl_program program = nullptr;
   cl_kernel kernel = nullptr;
@@ -496,6 +499,7 @@ struct SearchManager {
   bool write_row_file = true;
   bool write_difficult_file = true;
   bool enable_checkpoint = true;
+  bool show_banner = true;
   bool verbose_status = true;
   std::atomic<bool> *stop_requested = nullptr;
 
