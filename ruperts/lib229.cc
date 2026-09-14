@@ -1765,6 +1765,7 @@ void SearchManager::ResetState() {
   pruned_count.Reset();
   split_count.Reset();
   difficult_count.Reset();
+  timed_out = false;
   row_buffer.clear();
   for (int i = 0; i < 128; i++) cert_by_depth[i].store(0, std::memory_order_relaxed);
   for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(0, std::memory_order_relaxed);
@@ -2012,6 +2013,10 @@ void SearchManager::Run() {
 
     while (!stack.empty() && !sigint_received.load() &&
            !(stop_requested && stop_requested->load())) {
+      if (max_seconds > 0.0 && timer.Seconds() >= max_seconds) {
+        timed_out = true;
+        break;
+      }
       MaybeMiniStatus("stack");
       ctr_loops++;
       const size_t target_pool_size = (size_t)batch_size * 2;
@@ -2709,6 +2714,11 @@ void SearchManager::Run() {
         last_op.clear();
       }
 
+      if (max_seconds > 0.0 && timer.Seconds() >= max_seconds) {
+        timed_out = true;
+        break;
+      }
+
       bool interrupted = sigint_received.load() || (stop_requested && stop_requested->load());
       if ((enable_checkpoint && checkpoint_per.ShouldRun()) || interrupted) {
         if (enable_checkpoint) {
@@ -2735,7 +2745,7 @@ void SearchManager::Run() {
     }
 
 
-    bool interrupted = sigint_received.load() || (stop_requested && stop_requested->load());
+    bool interrupted = sigint_received.load() || (stop_requested && stop_requested->load()) || timed_out;
     if (!interrupted && stack.empty()) {
       // Completed full tree!
       if (enable_checkpoint) {

@@ -34,7 +34,8 @@ static int RunDifficult(
     int chart, std::string difficult_path, std::string out_dir, int max_depth,
     int max_box_depth, int max_view_depth, int batch_size, int cone_samples,
     int escalate_depth, int escalate_cone_samples, int deep_escalate_depth,
-    int deep_escalate_cone_samples, int num_threads, bool use_gpu,
+    int deep_escalate_cone_samples, int lp_escalate_box_depth,
+    double limit_sec, int num_threads, bool use_gpu,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true) {
   if (difficult_path.empty()) {
@@ -43,8 +44,9 @@ static int RunDifficult(
 
   Print(ACYAN("=== Difficult 229 Solver ===\n"));
   Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
-  Print("Limits: max_depth={}, max_box_depth={}, max_view_depth={}, batch_size={}\n",
-        max_depth, max_box_depth, max_view_depth, batch_size);
+  Print("Limits: max_depth={}, max_box_depth={}, max_view_depth={}, lp_box_depth={}, limit_sec={}, batch_size={}\n",
+        max_depth, max_box_depth, max_view_depth, lp_escalate_box_depth,
+        limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none", batch_size);
   Print("Device: {}\n", use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
 
   if (!std::filesystem::exists(difficult_path)) {
@@ -96,6 +98,9 @@ static int RunDifficult(
   mgr.escalate_cone_samples = escalate_cone_samples;
   mgr.deep_escalate_depth = deep_escalate_depth;
   mgr.deep_escalate_cone_samples = deep_escalate_cone_samples;
+  mgr.lp_escalate_box_depth = lp_escalate_box_depth;
+  mgr.suspicious_depth = 64;
+  mgr.max_seconds = limit_sec;
   mgr.prioritize_related = false;
   mgr.output_dir = out_dir;
 
@@ -115,6 +120,7 @@ static int RunDifficult(
   size_t total_processed = 0;
   size_t total_solved = 0;
   size_t total_unsolved = 0;
+  size_t total_timed_out = 0;
   uint64_t total_rows_written = 0;
 
   for (size_t i = 0; i < unsolved_cells.size(); ) {
@@ -140,22 +146,20 @@ static int RunDifficult(
 
     std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
     std::string done_path = std::format("{}/{}", out_dir, done_filename);
-    std::string tmp_filename = std::format("chart{}.{}.done.tmp", cell.chart, cell.id);
+    std::string tmp_filename = std::format("{}.tmp", done_filename);
     std::string tmp_path = std::format("{}/{}", out_dir, tmp_filename);
 
     FILE *tmp_fp = fopen(tmp_path.c_str(), "w");
     if (!tmp_fp) {
-      mgr.status.Print(ARED("Failed to create temporary file: {}\n"), tmp_path);
+      mgr.status.Print(ARED("Failed to create temporary file {}\n"), tmp_path);
       i++;
       continue;
     }
 
     uint64_t cell_rows = 0;
     mgr.row_callback = [&](std::string_view row) {
-      if (tmp_fp) {
-        std::fwrite(row.data(), 1, row.size(), tmp_fp);
-        cell_rows++;
-      }
+      fputs(std::string(row).c_str(), tmp_fp);
+      cell_rows++;
     };
 
     std::vector<DifficultCell> new_difficult;
@@ -204,6 +208,20 @@ static int RunDifficult(
       break;
     }
 
+    bool timed_out = mgr.timed_out || (limit_sec > 0.0 && cell_seconds >= limit_sec);
+    if (timed_out) {
+      std::error_code ec;
+      std::filesystem::remove(tmp_path, ec);
+      total_timed_out++;
+      mgr.status.Print(AYELLOW("  ⏱")
+            " Cell #{} TIMED OUT after {} (remaining stack: {}, shelved: {}).\n"
+            " Retaining in {}.\n",
+            cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
+            FormatNum(new_difficult.size()), difficult_path);
+      i++;
+      continue;
+    }
+
     bool solved = mgr.stack.empty() && new_difficult.empty();
     if (solved) {
       std::error_code ec;
@@ -244,12 +262,14 @@ static int RunDifficult(
   Print("Total processed: {}\n"
         "Total solved:    {}\n"
         "Total failed:    {}\n"
+        "Total timed out: {}\n"
         "Remaining:       {} in {}\n"
         "Rows written:    {}\n"
         "Elapsed time:    {}\n",
         FormatNum(total_processed),
         FormatNum(total_solved),
         FormatNum(total_unsolved),
+        FormatNum(total_timed_out),
         FormatNum(unsolved_cells.size()), difficult_path,
         FormatNum(total_rows_written),
         ANSI::Time(total_timer.Seconds()));
@@ -262,15 +282,17 @@ static void PrintHelp() {
         "  --chart <0|1|2>         Cayley chart index (default 0)\n"
         "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
         "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
-        "  --max_depth <D>         Max search depth per cell (default 64)\n"
-        "  --max_box_depth <D>     Max box subdivision depth (default 48)\n"
-        "  --max_view_depth <D>    Max view subdivision depth (default 16)\n"
+        "  --max_depth <D>         Max search depth per cell (default 80)\n"
+        "  --max_box_depth <D>     Max box subdivision depth (default 58)\n"
+        "  --max_view_depth <D>    Max view subdivision depth (default 20)\n"
         "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
         "  --cone_samples <N>      Base cone samples (default 8)\n"
         "  --escalate_depth <D>    First escalation depth (default 44)\n"
         "  --escalate_cone_samples <N> First escalated cone samples (default 12)\n"
         "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
         "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
+        "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
+        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit)\n"
         "  --threads <T>           CPU fallback worker threads (default 8)\n"
         "  --cpu                   Force multi-threaded CPU execution\n"
         "  --gpu                   Use OpenCL acceleration (default)\n"
@@ -289,15 +311,17 @@ int main(int argc, char **argv) {
   int chart = 0;
   std::string difficult_path;
   std::string out_dir = ".";
-  int max_depth = 64;
-  int max_box_depth = 48;
-  int max_view_depth = 16;
+  int max_depth = 80;
+  int max_box_depth = 58;
+  int max_view_depth = 20;
   int batch_size = 4096;
   int cone_samples = 8;
   int escalate_depth = 44;
   int escalate_cone_samples = 12;
   int deep_escalate_depth = 50;
   int deep_escalate_cone_samples = 14;
+  int lp_escalate_box_depth = 54;
+  double limit_sec = 0.0;
   int num_threads = 8;
   bool use_gpu = true;
   int64_t limit_cells = 0;
@@ -332,6 +356,10 @@ int main(int argc, char **argv) {
       deep_escalate_depth = std::atoi(argv[++i]);
     } else if (arg == "--deep_escalate_cone_samples" && i + 1 < argc) {
       deep_escalate_cone_samples = std::atoi(argv[++i]);
+    } else if ((arg == "--lp_box_depth" || arg == "--lp_escalate_box_depth") && i + 1 < argc) {
+      lp_escalate_box_depth = std::atoi(argv[++i]);
+    } else if (arg == "--limit_sec" && i + 1 < argc) {
+      limit_sec = std::atof(argv[++i]);
     } else if (arg == "--threads" && i + 1 < argc) {
       num_threads = std::atoi(argv[++i]);
     } else if (arg == "--cpu") {
@@ -361,6 +389,7 @@ int main(int argc, char **argv) {
       chart, difficult_path, out_dir, max_depth, max_box_depth,
       max_view_depth, batch_size, cone_samples, escalate_depth,
       escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
+      lp_escalate_box_depth, limit_sec,
       num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
       show_status);
 

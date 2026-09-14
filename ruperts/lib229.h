@@ -501,6 +501,8 @@ struct SearchManager {
   bool enable_checkpoint = true;
   bool show_banner = true;
   bool verbose_status = true;
+  double max_seconds = 0.0;
+  bool timed_out = false;
   std::atomic<bool> *stop_requested = nullptr;
 
   void ResetState();
