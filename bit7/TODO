@@ -19,6 +19,35 @@ R S  CPU%△MEM%
 
 ▸ U+25B8
 
+0 ⟹ mix = 0 ⟹ mixQ = 0/1000 = 0 exact
+
+𝚿_
+
+𝕊
+
+θ_{rot} ≈ 2‖r‖_∞
+
+ 𝐮_c = 𝐯_c × 𝐞_c
+
+ w₀ = 𝐯  · 𝐰        = 𝐯  · (𝐞₁ × 𝐞₂)
+
+ ‖Δw‖² ∼ r².
+
+𝐞 
+
+ 𝒯 ⊂ ℝ²
+
+   • Matrix operator norm: ‖R - I‖_op ≤ r.
+      • Rotation angle θ: 2 * |sin(θ / 2)| ≤ r.
+      • Cayley coordinates w: 2 * ‖w‖₂ / √(1 + ‖w‖₂²) ≤ r (to first order, 2 * ‖w‖ ≤
+      r).
+
+"Arrows"
+https://www.compart.com/en/unicode/block/U+2190
+ R ↦ R · Q
+
+
+
 Glyphs todo:
  - unicode stars
  - other bullet points
@@ -49,10 +78,6 @@ U+0283 (ʃ): 29294
 
 obviously
 □◇○ (and ◊)
-
-obviously miscellaneous technical!
-https://www.compart.com/en/unicode/block/U+2300
-
 
 Popular from wikipedia:
 
@@ -114,6 +139,26 @@ https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
 and also PCF:
 https://en.wikipedia.org/wiki/Portable_Compiled_Format
 
+    𝐪      ∈ SO (3)
+     outer
+  
+  : Outer orientation frame defining M inward edge halfspaces 𝐧ⱼ·𝐩 ≥ bⱼ.
+  - 𝐰 ∈ ℝ³: Relative rotation vector (axis 𝐰/|𝐰|, angle |𝐰| = θ rad) for the inner polyhedron.
+  - 𝐭 ∈ ℝ²: Optimal in-plane translation maximizing the Chebyshev margin
+  
+     *
+    c (𝐰) = max  min  ⎛𝐧 ·𝐭 - d ⎞
+               𝐭    j ⎝ j      j⎠
+  
+on ω⃗ ∈ ℝ³ wit
+
+╰─ etc
+
+(‖v‖
+
+𝒪
 
 
 ▜▘ ▉   ▛▛▜   ▜
+
+

@@ -20,6 +20,7 @@ enum class Page {
   BIT7_CYRILLIC,
   BIT7_MATH,
   BIT7_SYM1,
+  BIT7_MATHFONTS,
 };
 
 struct Config {

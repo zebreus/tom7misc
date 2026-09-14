@@ -62,6 +62,7 @@ Page Config::ParsePage(std::string_view p) {
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   if (p == "bit7-math") return Page::BIT7_MATH;
   if (p == "bit7-sym1") return Page::BIT7_SYM1;
+  if (p == "bit7-mathfonts") return Page::BIT7_MATHFONTS;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -81,6 +82,8 @@ const char *Config::PageString(Page p) {
     return "bit7-math";
   case Page::BIT7_SYM1:
     return "bit7-sym1";
+  case Page::BIT7_MATHFONTS:
+    return "bit7-mathfonts";
   default:
     break;
   }
@@ -168,9 +171,11 @@ static PageInfo PageBit7Classic() {
     // Left and right single guillemets
     0x2039, 0x203A,
 
+    0x2016,  // (‖) Double vertical line
+
     // Unclaimed. Was once emoji, but I moved those to the extended
     // page.
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // ASCII, in order
@@ -778,8 +783,8 @@ static PageInfo PageBit7Extended() {
     0x26D4,
     // No Entry Sign (diagonal slash)
     0x1F6AB,
-    // Was Hourglass, now free
-    -1,
+    // White heavy check mark emoji
+    0x2705,
     // Pile of poo
     0x1F4A9,
 
@@ -2097,6 +2102,10 @@ static PageInfo PageBit7Sym1() {
   info.sections = {
     // Misc technical
     {0, 16 * 16},
+    // Geometric Shapes
+    {16 * 16, 6 * 16},
+    // Supplemental Arrows A
+    {(16 + 6) * 16, 16},
   };
 
 
@@ -2359,24 +2368,148 @@ static PageInfo PageBit7Sym1() {
     0x23fe,  // (⏾) POWER SLEEP SYMBOL
     0x23ff,  // (⏿) OBSERVER EYE SYMBOL
 
+    // Geometric shapes
+    // Square size: 25A0 > 25FC > 25FE > 25AA
+
+    0x25a0,  // (■) BLACK SQUARE
+    0x25a1,  // (□) WHITE SQUARE
+    0x25a2,  // (▢) WHITE SQUARE WITH ROUNDED CORNERS
+    0x25a3,  // (▣) WHITE SQUARE CONTAINING BLACK SMALL SQUARE
+    0x25a4,  // (▤) SQUARE WITH HORIZONTAL FILL
+    0x25a5,  // (▥) SQUARE WITH VERTICAL FILL
+    0x25a6,  // (▦) SQUARE WITH ORTHOGONAL CROSSHATCH FILL
+    0x25a7,  // (▧) SQUARE WITH UPPER LEFT TO LOWER RIGHT FILL
+    0x25a8,  // (▨) SQUARE WITH UPPER RIGHT TO LOWER LEFT FILL
+    0x25a9,  // (▩) SQUARE WITH DIAGONAL CROSSHATCH FILL
+    0x25aa,  // (▪) BLACK SMALL SQUARE
+    0x25ab,  // (▫) WHITE SMALL SQUARE
+    0x25ac,  // (▬) BLACK RECTANGLE
+    0x25ad,  // (▭) WHITE RECTANGLE
+    0x25ae,  // (▮) BLACK VERTICAL RECTANGLE
+    0x25af,  // (▯) WHITE VERTICAL RECTANGLE
+    0x25b0,  // (▰) BLACK PARALLELOGRAM
+    0x25b1,  // (▱) WHITE PARALLELOGRAM
+    0x25b2,  // (▲) BLACK UP-POINTING TRIANGLE
+    0x25b3,  // (△) WHITE UP-POINTING TRIANGLE
+    0x25b4,  // (▴) BLACK UP-POINTING SMALL TRIANGLE
+    0x25b5,  // (▵) WHITE UP-POINTING SMALL TRIANGLE
+    0x25b6,  // (▶) BLACK RIGHT-POINTING TRIANGLE
+    0x25b7,  // (▷) WHITE RIGHT-POINTING TRIANGLE
+    0x25b8,  // (▸) BLACK RIGHT-POINTING SMALL TRIANGLE
+    0x25b9,  // (▹) WHITE RIGHT-POINTING SMALL TRIANGLE
+    0x25ba,  // (►) BLACK RIGHT-POINTING POINTER
+    0x25bb,  // (▻) WHITE RIGHT-POINTING POINTER
+    0x25bc,  // (▼) BLACK DOWN-POINTING TRIANGLE
+    0x25bd,  // (▽) WHITE DOWN-POINTING TRIANGLE
+    0x25be,  // (▾) BLACK DOWN-POINTING SMALL TRIANGLE
+    0x25bf,  // (▿) WHITE DOWN-POINTING SMALL TRIANGLE
+    0x25c0,  // (◀) BLACK LEFT-POINTING TRIANGLE
+    0x25c1,  // (◁) WHITE LEFT-POINTING TRIANGLE
+    0x25c2,  // (◂) BLACK LEFT-POINTING SMALL TRIANGLE
+    0x25c3,  // (◃) WHITE LEFT-POINTING SMALL TRIANGLE
+    0x25c4,  // (◄) BLACK LEFT-POINTING POINTER
+    0x25c5,  // (◅) WHITE LEFT-POINTING POINTER
+    0x25c6,  // (◆) BLACK DIAMOND
+    0x25c7,  // (◇) WHITE DIAMOND
+    0x25c8,  // (◈) WHITE DIAMOND CONTAINING BLACK SMALL DIAMOND
+    0x25c9,  // (◉) FISHEYE
+    0x25ca,  // (◊) LOZENGE
+    0x25cb,  // (○) WHITE CIRCLE
+    0x25cc,  // (◌) DOTTED CIRCLE
+    0x25cd,  // (◍) CIRCLE WITH VERTICAL FILL
+    0x25ce,  // (◎) BULLSEYE
+    0x25cf,  // (●) BLACK CIRCLE
+    0x25d0,  // (◐) CIRCLE WITH LEFT HALF BLACK
+    0x25d1,  // (◑) CIRCLE WITH RIGHT HALF BLACK
+    0x25d2,  // (◒) CIRCLE WITH LOWER HALF BLACK
+    0x25d3,  // (◓) CIRCLE WITH UPPER HALF BLACK
+    0x25d4,  // (◔) CIRCLE WITH UPPER RIGHT QUADRANT BLACK
+    0x25d5,  // (◕) CIRCLE WITH ALL BUT UPPER LEFT QUADRANT BLACK
+    0x25d6,  // (◖) LEFT HALF BLACK CIRCLE
+    0x25d7,  // (◗) RIGHT HALF BLACK CIRCLE
+    0x25d8,  // (◘) INVERSE BULLET
+    0x25d9,  // (◙) INVERSE WHITE CIRCLE
+    0x25da,  // (◚) UPPER HALF INVERSE WHITE CIRCLE
+    0x25db,  // (◛) LOWER HALF INVERSE WHITE CIRCLE
+    0x25dc,  // (◜) UPPER LEFT QUADRANT CIRCULAR ARC
+    0x25dd,  // (◝) UPPER RIGHT QUADRANT CIRCULAR ARC
+    0x25de,  // (◞) LOWER RIGHT QUADRANT CIRCULAR ARC
+    0x25df,  // (◟) LOWER LEFT QUADRANT CIRCULAR ARC
+    0x25e0,  // (◠) UPPER HALF CIRCLE
+    0x25e1,  // (◡) LOWER HALF CIRCLE
+    0x25e2,  // (◢) BLACK LOWER RIGHT TRIANGLE
+    0x25e3,  // (◣) BLACK LOWER LEFT TRIANGLE
+    0x25e4,  // (◤) BLACK UPPER LEFT TRIANGLE
+    0x25e5,  // (◥) BLACK UPPER RIGHT TRIANGLE
+    0x25e6,  // (◦) WHITE BULLET
+    0x25e7,  // (◧) SQUARE WITH LEFT HALF BLACK
+    0x25e8,  // (◨) SQUARE WITH RIGHT HALF BLACK
+    0x25e9,  // (◩) SQUARE WITH UPPER LEFT DIAGONAL HALF BLACK
+    0x25ea,  // (◪) SQUARE WITH LOWER RIGHT DIAGONAL HALF BLACK
+    0x25eb,  // (◫) WHITE SQUARE WITH VERTICAL BISECTING LINE
+    0x25ec,  // (◬) WHITE UP-POINTING TRIANGLE WITH DOT
+    0x25ed,  // (◭) UP-POINTING TRIANGLE WITH LEFT HALF BLACK
+    0x25ee,  // (◮) UP-POINTING TRIANGLE WITH RIGHT HALF BLACK
+    0x25ef,  // (◯) LARGE CIRCLE
+    0x25f0,  // (◰) WHITE SQUARE WITH UPPER LEFT QUADRANT
+    0x25f1,  // (◱) WHITE SQUARE WITH LOWER LEFT QUADRANT
+    0x25f2,  // (◲) WHITE SQUARE WITH LOWER RIGHT QUADRANT
+    0x25f3,  // (◳) WHITE SQUARE WITH UPPER RIGHT QUADRANT
+    0x25f4,  // (◴) WHITE CIRCLE WITH UPPER LEFT QUADRANT
+    0x25f5,  // (◵) WHITE CIRCLE WITH LOWER LEFT QUADRANT
+    0x25f6,  // (◶) WHITE CIRCLE WITH LOWER RIGHT QUADRANT
+    0x25f7,  // (◷) WHITE CIRCLE WITH UPPER RIGHT QUADRANT
+    0x25f8,  // (◸) UPPER LEFT TRIANGLE
+    0x25f9,  // (◹) UPPER RIGHT TRIANGLE
+    0x25fa,  // (◺) LOWER LEFT TRIANGLE
+    0x25fb,  // (◻) WHITE MEDIUM SQUARE
+    0x25fc,  // (◼) BLACK MEDIUM SQUARE
+    0x25fd,  // (◽) WHITE MEDIUM SMALL SQUARE
+    0x25fe,  // (◾) BLACK MEDIUM SMALL SQUARE
+    0x25ff,  // (◿) LOWER RIGHT TRIANGLE
+
+    // Supplemental Arrows-A
+    0x27F0,  // (⟰) UPWARDS QUADRUPLE ARROW
+    0x27F1,  // (⟱) DOWNWARDS QUADRUPLE ARROW
+    0x27F2,  // (⟲) ANTICLOCKWISE GAPPED CIRCLE ARROW
+    0x27F3,  // (⟳) CLOCKWISE GAPPED CIRCLE ARROW
+    0x27F4,  // (⟴) RIGHT ARROW WITH CIRCLED PLUS
+    0x27F5,  // (⟵) LONG LEFTWARDS ARROW
+    0x27F6,  // (⟶) LONG RIGHTWARDS ARROW
+    0x27F7,  // (⟷) LONG LEFT RIGHT ARROW
+    0x27F8,  // (⟸) LONG LEFTWARDS DOUBLE ARROW
+    0x27F9,  // (⟹) LONG RIGHTWARDS DOUBLE ARROW
+    0x27FA,  // (⟺) LONG LEFT RIGHT DOUBLE ARROW
+    0x27FB,  // (⟻) LONG LEFTWARDS ARROW FROM BAR
+    0x27FC,  // (⟼) LONG RIGHTWARDS ARROW FROM BAR
+    0x27FD,  // (⟽) LONG LEFTWARDS DOUBLE ARROW FROM BAR
+    0x27FE,  // (⟾) LONG RIGHTWARDS DOUBLE ARROW FROM BAR
+    0x27FF,  // (⟿) LONG RIGHTWARDS SQUIGGLE ARROW
+
     // Free to a good home
-
-    // Geometric shapes? U+25A0 would fit
-
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
   CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
   return info;
 };
+
+static PageInfo PageBit7MathFonts() {
+  PageInfo info;
+  info.sections = {
+    {0, 52}, // bold A-Z, a-z
+  };
+
+  info.sections.emplace_back(info.codepoints.size(), 52);
+  for (int i = 0; i < 52; i++) {
+    info.codepoints.push_back(0x1D400 + i);
+  }
+
+  while (info.codepoints.size() < 16 * 24) info.codepoints.push_back(-1);
+
+  CHECK(info.codepoints.size() == 16 * 24) << info.codepoints.size();
+  return info;
+}
 
 static PageInfo GetPageInfo(Page p) {
   switch (p) {
@@ -2387,6 +2520,7 @@ static PageInfo GetPageInfo(Page p) {
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   case Page::BIT7_MATH: return PageBit7Math();
   case Page::BIT7_SYM1: return PageBit7Sym1();
+  case Page::BIT7_MATHFONTS: return PageBit7MathFonts();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
@@ -2587,6 +2721,20 @@ REUSE_FOR = {
   {' ', 0x202F},  // Narrow No-Break Space
   {' ', 0x205F},  // Medium Mathematical Space
   {' ', 0x3000},  // Ideographic space
+};
+
+static constexpr std::initializer_list<std::pair<int, int>>
+MONOSPACE_REUSE_FOR = {
+  {'0', 0x1D7F6}, // (𝟶) MATHEMATICAL MONOSPACE DIGIT ZERO
+  {'1', 0x1D7F7}, // (𝟷) MATHEMATICAL MONOSPACE DIGIT ONE
+  {'2', 0x1D7F8}, // (𝟸) MATHEMATICAL MONOSPACE DIGIT TWO
+  {'3', 0x1D7F9}, // (𝟹) MATHEMATICAL MONOSPACE DIGIT THREE
+  {'4', 0x1D7FA}, // (𝟺) MATHEMATICAL MONOSPACE DIGIT FOUR
+  {'5', 0x1D7FB}, // (𝟻) MATHEMATICAL MONOSPACE DIGIT FIVE
+  {'6', 0x1D7FC}, // (𝟼) MATHEMATICAL MONOSPACE DIGIT SIX
+  {'7', 0x1D7FD}, // (𝟽) MATHEMATICAL MONOSPACE DIGIT SEVEN
+  {'8', 0x1D7FE}, // (𝟾) MATHEMATICAL MONOSPACE DIGIT EIGHT
+  {'9', 0x1D7FF}, // (𝟿) MATHEMATICAL MONOSPACE DIGIT NINE
 };
 
 // Unicode has width variants for characters that normally
@@ -3127,6 +3275,13 @@ FontImage::FontImage(const Config &config) : config(config) {
   for (const auto &[src, dst] : REUSE_FOR) {
     Reuse(src, dst);
   }
+
+  if (config.fixed_width) {
+    for (const auto &[src, dst] : MONOSPACE_REUSE_FOR) {
+      Reuse(src, dst);
+    }
+  }
+
 
   WidthVariants(Reuse);
 }
