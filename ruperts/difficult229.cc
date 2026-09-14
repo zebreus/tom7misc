@@ -38,7 +38,7 @@ static int RunDifficult(
     int max_box_depth, int max_view_depth, int batch_size, int cone_samples,
     int escalate_depth, int escalate_cone_samples, int deep_escalate_depth,
     int deep_escalate_cone_samples, int lp_escalate_box_depth,
-    double limit_sec, int num_threads, bool use_gpu,
+    double tube_radius, double limit_sec, int num_threads, bool use_gpu,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true) {
   if (difficult_path.empty()) {
@@ -47,8 +47,8 @@ static int RunDifficult(
 
   Print(ACYAN("=== Difficult 229 Solver ===\n"));
   Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
-  Print("Limits: max_depth={}, max_box_depth={}, max_view_depth={}, lp_box_depth={}, limit_sec={}, batch_size={}\n",
-        max_depth, max_box_depth, max_view_depth, lp_escalate_box_depth,
+  Print("Limits: max_depth={}, max_box_depth={}, max_view_depth={}, lp_box_depth={}, tube_radius={:.3g}, limit_sec={}, batch_size={}\n",
+        max_depth, max_box_depth, max_view_depth, lp_escalate_box_depth, tube_radius,
         limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none", batch_size);
   Print("Device: {}\n", use_gpu ? "OpenCL (GPU/CPU)" : "Multi-threaded CPU");
 
@@ -102,6 +102,7 @@ static int RunDifficult(
   mgr.deep_escalate_depth = deep_escalate_depth;
   mgr.deep_escalate_cone_samples = deep_escalate_cone_samples;
   mgr.lp_escalate_box_depth = lp_escalate_box_depth;
+  mgr.tube_radius = tube_radius;
   mgr.suspicious_depth = 64;
   mgr.max_seconds = limit_sec;
   mgr.prioritize_related = false;
@@ -284,7 +285,7 @@ static int RunDifficultMixture(
     int chart, std::string difficult_path, std::string out_dir, int max_depth,
     int max_box_depth, int max_view_depth, int max_nodes, int max_split_delta,
     int cone_samples, int max_components,
-    double split_kappa, double limit_sec, int num_threads,
+    double split_kappa, double tube_radius, double limit_sec, int num_threads,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true) {
   if (difficult_path.empty()) {
@@ -295,8 +296,8 @@ static int RunDifficultMixture(
   Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
   Print("Limits: max_nodes={}, max_split_delta={}, max_depth={}, max_box_depth={}, max_view_depth={}\n",
         max_nodes, max_split_delta, max_depth, max_box_depth, max_view_depth);
-  Print("Mixture: max_components={}, split_kappa={:.2g}, limit_sec={}\n",
-        max_components, split_kappa,
+  Print("Mixture: max_components={}, split_kappa={:.2g}, tube_radius={:.3g}, limit_sec={}\n",
+        max_components, split_kappa, tube_radius,
         limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none");
   Print("Parallelism: {} worker threads (CPU)\n", num_threads);
 
@@ -392,7 +393,7 @@ static int RunDifficultMixture(
           cell, max_depth, max_box_depth, max_view_depth,
           max_nodes, max_split_delta,
           cone_samples, max_components, split_kappa,
-          /*tube_radius=*/1e-4, limit_sec, row_cb, &cell_interrupted);
+          /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted);
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -412,12 +413,12 @@ static int RunDifficultMixture(
         std::lock_guard<std::mutex> lock(state_mu);
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;
-          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {}. Retaining in {}.\n",
-                       cell.id, ANSI::Time(cell_seconds), difficult_path);
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path);
         } else {
           total_unsolved++;
-          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} leaves certified, worst margin: {:.6g}). Retaining in {}.\n",
-                       cell.id, ANSI::Time(cell_seconds), stats.certified_leaves, stats.worst_margin, difficult_path);
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path);
         }
       } else {
         std::error_code ec;
@@ -492,7 +493,8 @@ static void PrintHelp() {
         "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
         "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
         "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
-        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 10s in mixture)\n"
+        "  --tube_radius <R>       Identity symmetry tube radius (default 1e-4)\n"
+        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 60s in mixture)\n"
         "  --threads <T>           Worker threads (default 8)\n"
         "  --cpu                   Force multi-threaded CPU execution in standard mode\n"
         "  --gpu                   Use OpenCL acceleration in standard mode (default)\n"
@@ -530,6 +532,7 @@ int main(int argc, char **argv) {
   int deep_escalate_depth = 50;
   int deep_escalate_cone_samples = 14;
   int lp_escalate_box_depth = 54;
+  double tube_radius = 1e-4;
   double limit_sec = 0.0;
   int num_threads = 8;
   bool use_gpu = true;
@@ -583,6 +586,8 @@ int main(int argc, char **argv) {
       deep_escalate_cone_samples = std::atoi(argv[++i]);
     } else if ((arg == "--lp_box_depth" || arg == "--lp_escalate_box_depth") && i + 1 < argc) {
       lp_escalate_box_depth = std::atoi(argv[++i]);
+    } else if (arg == "--tube_radius" && i + 1 < argc) {
+      tube_radius = std::atof(argv[++i]);
     } else if (arg == "--limit_sec" && i + 1 < argc) {
       limit_sec = std::atof(argv[++i]);
       limit_sec_specified = true;
@@ -613,13 +618,13 @@ int main(int argc, char **argv) {
 
   if (mixture_mode) {
     if (!max_depth_specified) max_depth = 54;
-    if (!max_box_depth_specified) max_box_depth = 42;
-    if (!max_view_depth_specified) max_view_depth = 14;
-    if (!limit_sec_specified) limit_sec = 10.0;
+    if (!max_box_depth_specified) max_box_depth = 48;
+    if (!max_view_depth_specified) max_view_depth = 16;
+    if (!limit_sec_specified) limit_sec = 60.0;
     return RunDifficultMixture(
         chart, difficult_path, out_dir, max_depth, max_box_depth,
         max_view_depth, max_nodes, max_split_delta, cone_samples,
-        max_components, split_kappa,
+        max_components, split_kappa, tube_radius,
         limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
         show_status);
   }
@@ -628,7 +633,7 @@ int main(int argc, char **argv) {
       chart, difficult_path, out_dir, max_depth, max_box_depth,
       max_view_depth, batch_size, cone_samples, escalate_depth,
       escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
-      lp_escalate_box_depth, limit_sec,
+      lp_escalate_box_depth, tube_radius, limit_sec,
       num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
       show_status);
 

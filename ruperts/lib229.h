@@ -399,6 +399,8 @@ struct MixtureSolveStats {
   int64_t total_nodes = 0;
   int64_t certified_leaves = 0;
   int64_t pruned_leaves = 0;
+  int64_t ceiling_hits = 0;
+  int64_t remaining_nodes = 0;
   int64_t rows_written = 0;
   double worst_margin = 1e30;
   double elapsed_seconds = 0.0;

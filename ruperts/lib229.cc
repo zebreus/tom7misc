@@ -1228,6 +1228,8 @@ MixtureResult EvaluateBoxCPUMixture(
 
   int C = pool->contacts.size();
   std::vector<int> chosen_inners(C);
+  std::vector<double> contact_center_val(C);
+  const double wc_x = box.center.x, wc_y = box.center.y, wc_z = box.center.z;
   for (int c = 0; c < C; c++) {
     const auto &gc = pool->contacts[c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
@@ -1244,6 +1246,13 @@ MixtureResult EvaluateBoxCPUMixture(
       }
     }
     chosen_inners[c] = best_k;
+
+    vec3 vin = {VERTICES[best_k][0], VERTICES[best_k][1], VERTICES[best_k][2]};
+    double C_poly[10] = {0};
+    AccumulateContactPoly(C_poly, 1.0, u, vin, out, s);
+    contact_center_val[c] = C_poly[0] + C_poly[1]*wc_x + C_poly[2]*wc_y + C_poly[3]*wc_z +
+                            C_poly[4]*wc_x*wc_x + C_poly[5]*wc_x*wc_y + C_poly[6]*wc_x*wc_z +
+                            C_poly[7]*wc_y*wc_y + C_poly[8]*wc_y*wc_z + C_poly[9]*wc_z*wc_z;
   }
 
   vec3 p[6];
@@ -1275,6 +1284,18 @@ MixtureResult EvaluateBoxCPUMixture(
 
     if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) continue;
 
+    double penalty = d_bound * trip.weighted_defect_upper + disp_error;
+
+    // Fast center-pose screen: if the polynomial minus penalty at the center of the box
+    // and view triangle is hopelessly negative, skip full 162 Bernstein control computations.
+    double w0_c = yocto::dot(view_center, coeff0);
+    double w1_c = yocto::dot(view_center, coeff1);
+    double w2_c = yocto::dot(view_center, coeff2);
+    double center_poly = w0_c * contact_center_val[ci0] +
+                         w1_c * contact_center_val[ci1] +
+                         w2_c * contact_center_val[ci2];
+    if (center_poly - penalty < -0.005) continue;
+
     int in0 = chosen_inners[ci0];
     int in1 = chosen_inners[ci1];
     int in2 = chosen_inners[ci2];
@@ -1287,8 +1308,6 @@ MixtureResult EvaluateBoxCPUMixture(
 
     vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
     vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0], VERTICES[pool->contacts[ci2].vertex][1], VERTICES[pool->contacts[ci2].vertex][2]};
-
-    double penalty = d_bound * trip.weighted_defect_upper + disp_error;
 
     EvaluatedCandidateTriple et;
     et.triple_idx = (int)t;
@@ -1495,6 +1514,7 @@ MixtureSolveStats SolveCellMixture(
     std::atomic<bool> *interrupted) {
   MixtureSolveStats stats;
   Timer timer;
+  bool all_leaves_certified = true;
 
   std::vector<SearchNode> stack;
   SearchNode root = cell.ToSearchNode();
@@ -1514,11 +1534,13 @@ MixtureSolveStats SolveCellMixture(
     }
     if (time_limit_sec > 0.0 && timer.Seconds() >= time_limit_sec) {
       stats.solved = false;
+      stats.remaining_nodes = (int64_t)stack.size();
       stats.elapsed_seconds = timer.Seconds();
       return stats;
     }
     if (stats.total_nodes >= max_nodes) {
       stats.solved = false;
+      stats.remaining_nodes = (int64_t)stack.size();
       stats.elapsed_seconds = timer.Seconds();
       return stats;
     }
@@ -1592,10 +1614,10 @@ MixtureSolveStats SolveCellMixture(
     if (node.depth >= cell.depth + max_split_delta ||
         node.depth >= max_depth ||
         (node.box_depth >= max_box_depth && node.view_depth >= max_view_depth)) {
-      stats.solved = false;
+      all_leaves_certified = false;
+      stats.ceiling_hits++;
       stats.worst_margin = std::min(stats.worst_margin, res.margin);
-      stats.elapsed_seconds = timer.Seconds();
-      return stats;
+      continue;
     }
 
     // 4. Analytical splitting decision
@@ -1637,7 +1659,7 @@ MixtureSolveStats SolveCellMixture(
     }
   }
 
-  stats.solved = stack.empty();
+  stats.solved = all_leaves_certified && stack.empty();
   stats.elapsed_seconds = timer.Seconds();
   return stats;
 }
