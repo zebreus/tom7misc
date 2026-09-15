@@ -409,7 +409,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   out_center->y = evals[1].first / B;
   out_center->z = evals[2].first / B;
 
-  BigRat variation_error(150, 1000000000000000LL); // 150 * KAPPA
+  BigRat variation_error(150, 10000000000LL); // 150 * KAPPA (KAPPA = 10^-10 in Lean 4)
   BigRat exact_delta = (evals[0].second + evals[1].second + evals[2].second + BigRat(3) * variation_error) / B;
   *out_delta = CeilTo(exact_delta, 1000000000LL);
   return true;
