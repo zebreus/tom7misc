@@ -536,15 +536,44 @@ static int RunDifficult(
   return 0;
 }
 
+static std::unordered_map<int64_t, int> LoadSplitsFile(const std::string &path) {
+  std::unordered_map<int64_t, int> splits;
+  std::ifstream f(path);
+  if (!f.is_open()) return splits;
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    int64_t id;
+    int v;
+    if (iss >> id >> v) {
+      splits[id] = v;
+    }
+  }
+  return splits;
+}
+
+static void SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, int> &splits) {
+  std::ofstream f(path);
+  if (!f.is_open()) return;
+  f << "# id vsplits\n";
+  for (const auto &[id, v] : splits) {
+    f << id << " " << v << "\n";
+  }
+}
+
 static int RunDifficultMixture(
     int chart, std::string difficult_path, std::string out_dir, int max_depth,
     int max_box_depth, int max_view_depth, int max_nodes, int max_split_delta,
     int cone_samples, int max_components,
     double split_kappa, double tube_radius, double limit_sec, int num_threads,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
-    bool show_status = true) {
+    bool show_status = true, std::string splits_file = "") {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
+  }
+  if (splits_file.empty()) {
+    splits_file = std::format("chart{}.splits", chart);
   }
 
   Print(ACYAN("=== Difficult 229 Solver (Convex Mixture Mode) ===\n"));
@@ -594,6 +623,11 @@ static int RunDifficultMixture(
   if (unsolved_cells.empty()) {
     Print(AGREEN("All difficult cells in chart {} are already certified!\n"), chart);
     return 0;
+  }
+
+  auto splits_map = LoadSplitsFile(splits_file);
+  if (!splits_map.empty()) {
+    Print("Loaded {} cached cell view-split entries from {}\n", splits_map.size(), splits_file);
   }
 
   if (dry_run) {
@@ -679,11 +713,18 @@ static int RunDifficultMixture(
 
       Timer cell_timer;
       std::atomic<bool> cell_interrupted = false;
+      int pre_vsplits = 0;
+      {
+        std::lock_guard<std::mutex> lock(state_mu);
+        auto it = splits_map.find(cell.id);
+        if (it != splits_map.end()) pre_vsplits = it->second;
+      }
       auto stats = SolveCellMixture(
           cell, max_depth, max_box_depth, max_view_depth,
           max_nodes, max_split_delta,
           cone_samples, max_components, split_kappa,
-          /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted);
+          /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
+          pre_vsplits);
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -722,6 +763,13 @@ static int RunDifficultMixture(
         std::error_code ec;
         std::filesystem::remove(tmp_path, ec);
         std::lock_guard<std::mutex> lock(state_mu);
+        if (stats.max_view_depth_reached > cell.view_depth) {
+          int needed_vsplits = stats.max_view_depth_reached - cell.view_depth;
+          if (needed_vsplits > splits_map[cell.id]) {
+            splits_map[cell.id] = needed_vsplits;
+            SaveSplitsFile(splits_file, splits_map);
+          }
+        }
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;
           status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.{}\n",
@@ -860,6 +908,7 @@ int main(int argc, char **argv) {
   int chart = 0;
   std::string difficult_path;
   std::string out_dir = ".";
+  std::string splits_file = "";
   bool mixture_mode = false;
   bool view_mixture_mode = false;
   int max_components = 4;
@@ -880,12 +929,12 @@ int main(int argc, char **argv) {
   int escalate_depth = 44;
   int escalate_cone_samples = 12;
   int deep_escalate_depth = 50;
-  int deep_escalate_cone_samples = 14;
-  int lp_escalate_box_depth = 54;
+  int deep_escalate_cone_samples = 16;
+  int lp_escalate_box_depth = 46;
   double tube_radius = 1e-4;
   double limit_sec = 0.0;
-  int num_threads = 8;
-  bool use_gpu = true;
+  int num_threads = 1;
+  bool use_gpu = false;
   int64_t limit_cells = 0;
   int64_t target_cell_id = -1;
   bool dry_run = false;
@@ -900,6 +949,8 @@ int main(int argc, char **argv) {
       difficult_path = argv[++i];
     } else if (arg == "--out_dir" && i + 1 < argc) {
       out_dir = argv[++i];
+    } else if (arg == "--splits_file" && i + 1 < argc) {
+      splits_file = argv[++i];
     } else if (arg == "--view_mixture" || arg == "--mode=view_mixture") {
       mixture_mode = true;
       view_mixture_mode = true;
@@ -987,7 +1038,7 @@ int main(int argc, char **argv) {
         max_view_depth, max_nodes, max_split_delta, cone_samples,
         max_components, split_kappa, tube_radius,
         limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
-        show_status);
+        show_status, splits_file);
   }
 
   RunDifficult(

@@ -1218,7 +1218,7 @@ static double SolveOptimalWeights(
     ProjectToSimplex(K, next_x, alpha);
   }
 
-  if (!polish || best_val > 0.0) {
+  if ((!polish && best_val <= -0.005) || best_val > 0.0) {
     std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
     return best_val;
   }
@@ -1315,6 +1315,9 @@ struct EvaluatedCandidateTriple {
   int inner[3] = {0};
   double margins[162] = {0};
   double min_margin = -1e30;
+  vec3 grad{0, 0, 0};
+  double penalty = 0.0;
+  double box_span = 0.0;
 };
 
 MixtureResult EvaluateBoxCPUMixture(
@@ -1638,6 +1641,17 @@ MixtureResult EvaluateBoxCPUMixture(
       double b_ctrl[27];
       ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
 
+      if (node == 0) {
+        et.grad = {C_node[1], C_node[2], C_node[3]};
+        double min_b = b_ctrl[0], max_b = b_ctrl[0];
+        for (int m = 1; m < 27; m++) {
+          if (b_ctrl[m] < min_b) min_b = b_ctrl[m];
+          if (b_ctrl[m] > max_b) max_b = b_ctrl[m];
+        }
+        et.box_span = max_b - min_b;
+        et.penalty = penalty;
+      }
+
       for (int m = 0; m < 27; m++) {
         double m_val = b_ctrl[m] - penalty;
         et.margins[node * 27 + m] = m_val;
@@ -1665,6 +1679,8 @@ MixtureResult EvaluateBoxCPUMixture(
       res.inners[0][0] = in0; res.inners[0][1] = in1; res.inners[0][2] = in2;
       res.weights[0] = 1.0;
       res.margin = min_m;
+      res.view_penalty = penalty;
+      res.box_span = et.box_span;
       res.num_candidates = 1;
       return res;
     }
@@ -1723,6 +1739,13 @@ MixtureResult EvaluateBoxCPUMixture(
       res.inners[k][2] = evaluated[idx].inner[2];
       res.weights[k] = corner_alpha[k];
     }
+    double p_sum = 0.0, span_sum = 0.0;
+    for (int k = 0; k < K_corner; k++) {
+      p_sum += corner_alpha[k] * evaluated[corner_set[k]].penalty;
+      span_sum += corner_alpha[k] * evaluated[corner_set[k]].box_span;
+    }
+    res.view_penalty = p_sum;
+    res.box_span = span_sum;
     res.max_rank_looked = max_r;
     res.pool_tested = pool_size;
     res.margin = corner_margin;
@@ -1793,6 +1816,45 @@ MixtureResult EvaluateBoxCPUMixture(
         }
       }
 
+      // Opposing Support Vector search (Tom Idea Point 4):
+      // The current mixture has residual rotation gradient R = sum alpha_k * grad_k.
+      // To cancel rotation drift across the box, select candidates whose gradient
+      // opposes R (i.e. maximizing dot(grad_c, -R)).
+      vec3 residual_grad = {0, 0, 0};
+      for (int k = 0; k < K; k++) {
+        residual_grad += current_best_alpha[k] * evaluated[chosen[k]].grad;
+      }
+      double res_len = yocto::length(residual_grad);
+      if (res_len > 1e-9) {
+        struct OpposeScore {
+          double score;
+          int idx;
+          bool operator>(const OpposeScore &other) const { return score > other.score; }
+        };
+        OpposeScore opp_heap[20];
+        int opp_sz = 0;
+        int top_opp = std::min(20, (int)evaluated.size());
+        for (size_t c = 0; c < evaluated.size(); c++) {
+          double s = yocto::dot(evaluated[c].grad, -residual_grad);
+          if (opp_sz < top_opp) {
+            opp_heap[opp_sz] = {s, (int)c};
+            opp_sz++;
+            if (opp_sz == top_opp) std::make_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+          } else if (s > opp_heap[0].score) {
+            std::pop_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+            opp_heap[top_opp - 1] = {s, (int)c};
+            std::push_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+          }
+        }
+        for (int t = 0; t < opp_sz; t++) {
+          int c_idx = opp_heap[t].idx;
+          if (!in_pool[c_idx]) {
+            in_pool[c_idx] = 1;
+            cand_pool.push_back(c_idx);
+          }
+        }
+      }
+
       int best_cand = -1;
       double best_step_margin = -1e30;
       double best_step_alpha[4] = {0};
@@ -1854,8 +1916,33 @@ MixtureResult EvaluateBoxCPUMixture(
       res.pool_tested = (int)evaluated.size();
       if (current_best_margin > 0.0) {
         res.certified = true;
+        double p_sum = 0.0, span_sum = 0.0;
+        for (size_t k = 0; k < chosen.size(); k++) {
+          p_sum += current_best_alpha[k] * evaluated[chosen[k]].penalty;
+          span_sum += current_best_alpha[k] * evaluated[chosen[k]].box_span;
+        }
+        res.view_penalty = p_sum;
+        res.box_span = span_sum;
         return res;
       }
+    }
+  }
+
+  if (!evaluated.empty()) {
+    if (res.num_components > 0 && res.weights[0] > 0.0) {
+      double p_sum = 0.0, span_sum = 0.0;
+      for (int k = 0; k < res.num_components; k++) {
+        int r = res.chosen_ranks[k];
+        if (r >= 0 && r < (int)evaluated.size()) {
+          p_sum += res.weights[k] * evaluated[r].penalty;
+          span_sum += res.weights[k] * evaluated[r].box_span;
+        }
+      }
+      res.view_penalty = p_sum;
+      res.box_span = span_sum;
+    } else {
+      res.view_penalty = evaluated[0].penalty;
+      res.box_span = evaluated[0].box_span;
     }
   }
 
@@ -1875,7 +1962,8 @@ MixtureSolveStats SolveCellMixture(
     double tube_radius,
     double time_limit_sec,
     std::function<void(std::string_view)> row_callback,
-    std::atomic<bool> *interrupted) {
+    std::atomic<bool> *interrupted,
+    int pre_vsplits) {
   MixtureSolveStats stats;
   Timer timer;
   bool all_leaves_certified = true;
@@ -1884,12 +1972,44 @@ MixtureSolveStats SolveCellMixture(
   std::vector<SearchNode> stack;
   SearchNode root = cell.ToSearchNode();
   int64_t next_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
-  stack.push_back(root);
 
   auto EmitRow = [&](std::string_view row) {
     stats.rows_written++;
     if (row_callback) row_callback(row);
   };
+
+  if (pre_vsplits > 0) {
+    std::vector<SearchNode> current_level = {root};
+    for (int v = 0; v < pre_vsplits; v++) {
+      std::vector<SearchNode> next_level;
+      for (const auto &parent : current_level) {
+        auto sub_tris = parent.tri.Subdivide();
+        int64_t c0_id = next_id++;
+        int64_t c1_id = next_id++;
+        int64_t c2_id = next_id++;
+        int64_t c3_id = next_id++;
+        EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                            parent.id, parent.parent_id, parent.depth,
+                            c0_id, c1_id, c2_id, c3_id));
+        int64_t c_ids[4] = {c0_id, c1_id, c2_id, c3_id};
+        for (int t = 0; t < 4; t++) {
+          SearchNode c = parent;
+          c.id = c_ids[t];
+          c.parent_id = parent.id;
+          c.depth++;
+          c.view_depth++;
+          c.tri = sub_tris[t];
+          next_level.push_back(c);
+        }
+      }
+      current_level = std::move(next_level);
+    }
+    for (int i = (int)current_level.size() - 1; i >= 0; i--) {
+      stack.push_back(current_level[i]);
+    }
+  } else {
+    stack.push_back(root);
+  }
 
   while (!stack.empty()) {
     if (SigIntReceived() || (interrupted && interrupted->load(std::memory_order_relaxed))) {
@@ -1913,6 +2033,7 @@ MixtureSolveStats SolveCellMixture(
     SearchNode node = stack.back();
     stack.pop_back();
     stats.total_nodes++;
+    stats.max_view_depth_reached = std::max(stats.max_view_depth_reached, (int)node.view_depth);
 
     // 1. Pruning checks
     if (OutsideBall(node.box)) {
@@ -2018,14 +2139,31 @@ MixtureSolveStats SolveCellMixture(
       continue;
     }
 
-    // 4. Analytical splitting decision
+    // 4. Analytical splitting decision:
+    // Tradeoff governed by split_kappa:
+    // - View Defect Error: penalty = d_bound * weighted_defect_upper + disp_error ~ O(view_diam).
+    //   Subdividing the view triangle (SV) shrinks view defect, but has branching factor 4
+    //   and invalidates the triangle candidate pool and FarkasCageCache, dropping throughput to ~30 nodes/s.
+    // - Orientation Variation: Delta_box ~ 2 * ||grad F|| * r_box ~ O(rot_diam).
+    //   Subdividing the Cayley box (SP) has branching factor 2, preserves the candidate pool,
+    //   and achieves 60-65 nodes/s with 70%+ FarkasCageCache hit rates.
+    // - When rot_diam >= split_kappa * view_diam, box orientation error dominates -> split box (SP).
+    //   Otherwise, view defect error dominates -> split view (SV).
+    //   (See ruperts/TOM_IDEAS_ANALYSIS.md for mathematical derivation).
     double rot_diam = 2.0 * node.box.radii[node.box.WidestAxis()];
     double view_diam = node.tri.AngularDiameter();
     bool split_box;
     if (node.box_depth >= max_box_depth) {
       split_box = false;
-    } else if (node.view_depth >= max_view_depth) {
+    } else if (node.view_depth >= max_view_depth ||
+               (pre_vsplits > 0 && node.view_depth >= cell.view_depth + pre_vsplits)) {
       split_box = true;
+    } else if (res.view_penalty > 0.0 && res.box_span > 0.0) {
+      // Geometry-specific, parameter-free splitting criterion (Tom Idea Point 1):
+      // If the view defect penalty exceeds the entire variation across the box,
+      // box bisection is mathematically incapable of certifying -> split view (SV).
+      // If box variation dominates, box bisection resolves the bottleneck with branching factor 2 -> split box (SP).
+      split_box = (res.box_span >= res.view_penalty);
     } else {
       split_box = (rot_diam >= split_kappa * view_diam);
     }

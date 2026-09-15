@@ -416,6 +416,8 @@ struct MixtureResult {
   int inners[4][3] = {{-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}};
   double weights[4] = {0.0, 0.0, 0.0, 0.0};
   double margin = -1e30;
+  double view_penalty = 0.0;
+  double box_span = 0.0;
   int num_candidates = 0;
   int strategy_used = 0; // 0=single triple, 1=corner+center, 2=greedy column gen, 3=warm-start Farkas cage
   int chosen_ranks[4] = {-1, -1, -1, -1}; // 0-indexed rank in sorted evaluated[] list
@@ -440,6 +442,7 @@ struct MixtureSolveStats {
   int64_t ceiling_hits = 0;
   int64_t remaining_nodes = 0;
   int64_t rows_written = 0;
+  int max_view_depth_reached = 0;
   double worst_margin = 1e30;
   double elapsed_seconds = 0.0;
 
@@ -470,7 +473,8 @@ MixtureSolveStats SolveCellMixture(
     double tube_radius = 1e-4,
     double time_limit_sec = 10.0,
     std::function<void(std::string_view)> row_callback = nullptr,
-    std::atomic<bool> *interrupted = nullptr);
+    std::atomic<bool> *interrupted = nullptr,
+    int pre_vsplits = 0);
 
 // ============================================================================
 // Bernstein Polynomial Transformation Functions
