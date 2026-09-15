@@ -17,11 +17,15 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -32,6 +36,232 @@
 #include "periodically.h"
 #include "ruperts-util.h"
 #include "timer.h"
+
+struct VerificationResult {
+  bool valid = false;
+  uint64_t total_rows = 0;
+  uint64_t total_leaves = 0;
+  uint64_t total_splits = 0;
+  double worst_margin = 1e30;
+  std::string error_message;
+};
+
+struct ParsedDoneRow {
+  std::string tag;
+  int64_t id = -1;
+  int64_t parent_id = -1;
+  int depth = 0;
+  std::vector<int64_t> children;
+  double margin = 0.0;
+  std::string prune_kind;
+  int fund_dir = 0;
+  double tube_radius = 0.0;
+};
+
+static VerificationResult VerifyDoneFile(
+    const DifficultCell &cell, const std::string &done_path) {
+  std::ifstream infile(done_path);
+  if (!infile.is_open()) {
+    return {.valid = false, .error_message = "Could not open file"};
+  }
+
+  std::unordered_map<int64_t, ParsedDoneRow> row_map;
+  std::string line;
+  uint64_t line_no = 0;
+
+  while (std::getline(infile, line)) {
+    line_no++;
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    std::string tag;
+    int64_t id, parent_id;
+    int depth;
+    if (!(iss >> tag >> id >> parent_id >> depth)) {
+      return {.valid = false, .error_message = std::format("Malformed line on line {}: '{}'", line_no, line)};
+    }
+
+    ParsedDoneRow row;
+    row.tag = tag;
+    row.id = id;
+    row.parent_id = parent_id;
+    row.depth = depth;
+
+    if (tag == "SP" || tag == "SPLIT" || tag == "SO" || tag == "SPLIT_ORIGIN") {
+      int64_t c0, c1;
+      if (!(iss >> c0 >> c1)) {
+        return {.valid = false, .error_message = std::format("Line {}: {} missing child IDs", line_no, tag)};
+      }
+      row.children = {c0, c1};
+    } else if (tag == "SV" || tag == "SPLIT_VIEW") {
+      int64_t c0, c1, c2, c3;
+      if (!(iss >> c0 >> c1 >> c2 >> c3)) {
+        return {.valid = false, .error_message = std::format("Line {}: SV missing 4 child IDs", line_no)};
+      }
+      row.children = {c0, c1, c2, c3};
+    } else if (tag == "CE" || tag == "CERT") {
+      int triple;
+      int in0, in1, in2;
+      if (!(iss >> triple >> row.margin >> in0 >> in1 >> in2)) {
+        return {.valid = false, .error_message = std::format("Line {}: malformed CE row", line_no)};
+      }
+    } else if (tag == "MX") {
+      int num_components;
+      if (!(iss >> num_components >> row.margin)) {
+        return {.valid = false, .error_message = std::format("Line {}: malformed MX row", line_no)};
+      }
+      for (int k = 0; k < num_components; k++) {
+        int trip, in0, in1, in2;
+        double w;
+        if (!(iss >> trip >> w >> in0 >> in1 >> in2)) {
+          return {.valid = false, .error_message = std::format("Line {}: malformed MX component {}", line_no, k)};
+        }
+      }
+    } else if (tag == "PR" || tag == "PRUNE") {
+      if (!(iss >> row.prune_kind)) {
+        return {.valid = false, .error_message = std::format("Line {}: PR missing kind", line_no)};
+      }
+      if (row.prune_kind == "FUNDAMENTAL" || row.prune_kind == "FU") {
+        if (!(iss >> row.fund_dir)) {
+          return {.valid = false, .error_message = std::format("Line {}: PR FUNDAMENTAL missing direction", line_no)};
+        }
+      }
+    } else if (tag == "TU" || tag == "TUBE") {
+      if (!(iss >> row.tube_radius)) {
+        return {.valid = false, .error_message = std::format("Line {}: TU missing radius", line_no)};
+      }
+    } else if (tag == "DF" || tag == "DI" || tag == "DIFFICULT") {
+      return {.valid = false, .error_message = std::format("Line {}: contains uncertified DIFFICULT leaf", line_no)};
+    } else {
+      return {.valid = false, .error_message = std::format("Line {}: unrecognized row tag '{}'", line_no, tag)};
+    }
+
+    if (row_map.contains(id)) {
+      return {.valid = false, .error_message = std::format("Duplicate node ID {} on line {}", id, line_no)};
+    }
+    row_map[id] = std::move(row);
+  }
+
+  if (row_map.empty()) {
+    return {.valid = false, .error_message = "File is empty"};
+  }
+
+  if (!row_map.contains(cell.id)) {
+    return {.valid = false, .error_message = std::format("Root cell #{} not found in file", cell.id)};
+  }
+
+  std::vector<SearchNode> stack;
+  stack.push_back(cell.ToSearchNode());
+  std::unordered_set<int64_t> visited;
+  uint64_t leaf_count = 0;
+  uint64_t split_count = 0;
+  double worst_margin = 1e30;
+
+  while (!stack.empty()) {
+    SearchNode curr = stack.back();
+    stack.pop_back();
+
+    if (visited.contains(curr.id)) {
+      return {.valid = false, .error_message = std::format("Cycle detected at node #{}", curr.id)};
+    }
+    visited.insert(curr.id);
+
+    auto it = row_map.find(curr.id);
+    if (it == row_map.end()) {
+      return {.valid = false, .error_message = std::format("Node #{} (depth {}) missing from certificate",
+                                                           curr.id, curr.depth)};
+    }
+    const auto &row = it->second;
+
+    if (row.depth != curr.depth) {
+      return {.valid = false, .error_message = std::format("Depth mismatch for node #{}: expected {}, got {}",
+                                                           curr.id, curr.depth, row.depth)};
+    }
+
+    if (row.tag == "SP" || row.tag == "SPLIT" || row.tag == "SO" || row.tag == "SPLIT_ORIGIN") {
+      split_count++;
+      if (row.children.size() != 2) {
+        return {.valid = false, .error_message = std::format("Split node #{} has {} children (expected 2)",
+                                                             curr.id, row.children.size())};
+      }
+      int axis = curr.box.WidestAxis();
+      auto [b0, b1] = curr.box.Split(axis);
+
+      SearchNode c0 = curr;
+      c0.id = row.children[0];
+      c0.parent_id = curr.id;
+      c0.depth = (uint8_t)std::min(255, curr.depth + 1);
+      c0.box_depth = (uint8_t)std::min(255, curr.box_depth + 1);
+      c0.box = b0;
+
+      SearchNode c1 = curr;
+      c1.id = row.children[1];
+      c1.parent_id = curr.id;
+      c1.depth = (uint8_t)std::min(255, curr.depth + 1);
+      c1.box_depth = (uint8_t)std::min(255, curr.box_depth + 1);
+      c1.box = b1;
+
+      stack.push_back(c1);
+      stack.push_back(c0);
+    } else if (row.tag == "SV" || row.tag == "SPLIT_VIEW") {
+      split_count++;
+      if (row.children.size() != 4) {
+        return {.valid = false, .error_message = std::format("View split node #{} has {} children (expected 4)",
+                                                             curr.id, row.children.size())};
+      }
+      auto sub_tris = curr.tri.Subdivide();
+      for (int t = 3; t >= 0; t--) {
+        SearchNode c = curr;
+        c.id = row.children[t];
+        c.parent_id = curr.id;
+        c.depth = (uint8_t)std::min(255, curr.depth + 1);
+        c.view_depth = (uint8_t)std::min(255, curr.view_depth + 1);
+        c.tri = sub_tris[t];
+        stack.push_back(c);
+      }
+    } else if (row.tag == "PR" || row.tag == "PRUNE") {
+      leaf_count++;
+      if (row.prune_kind == "RADIUS" || row.prune_kind == "RA") {
+        if (!OutsideBall(curr.box)) {
+          return {.valid = false, .error_message = std::format("Node #{} claimed OutsideBall but check failed", curr.id)};
+        }
+      } else if (row.prune_kind == "FUNDAMENTAL" || row.prune_kind == "FU") {
+        auto fund = CheckFundamentalPrune(curr.chart, curr.box);
+        if (!fund.prune) {
+          return {.valid = false, .error_message = std::format("Node #{} claimed FundamentalPrune but check failed", curr.id)};
+        }
+      } else {
+        return {.valid = false, .error_message = std::format("Node #{} has unknown prune kind {}", curr.id, row.prune_kind)};
+      }
+    } else if (row.tag == "TU" || row.tag == "TUBE") {
+      leaf_count++;
+      if (!InsideIdentityTube(curr.chart, curr.box, row.tube_radius)) {
+        return {.valid = false, .error_message = std::format("Node #{} claimed InsideIdentityTube({}) but check failed",
+                                                             curr.id, row.tube_radius)};
+      }
+    } else if (row.tag == "CE" || row.tag == "CERT" || row.tag == "MX") {
+      leaf_count++;
+      if (row.margin <= 0.0) {
+        return {.valid = false, .error_message = std::format("Node #{} has non-positive margin {:.6g}", curr.id, row.margin)};
+      }
+      worst_margin = std::min(worst_margin, row.margin);
+    } else {
+      return {.valid = false, .error_message = std::format("Node #{} has unhandled tag '{}'", curr.id, row.tag)};
+    }
+  }
+
+  if (visited.size() != row_map.size()) {
+    return {.valid = false, .error_message = std::format("Found {} orphan rows not reachable from root",
+                                                         row_map.size() - visited.size())};
+  }
+
+  return {
+    .valid = true,
+    .total_rows = (uint64_t)row_map.size(),
+    .total_leaves = leaf_count,
+    .total_splits = split_count,
+    .worst_margin = worst_margin,
+  };
+}
 
 static int RunDifficult(
     int chart, std::string difficult_path, std::string out_dir, int max_depth,
@@ -66,14 +296,23 @@ static int RunDifficult(
   for (const auto &c : cells) {
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
-      already_done++;
+      auto v = VerifyDoneFile(c, done_file);
+      if (v.valid) {
+        Print(AGREEN("  ✔") " Cell #{} verified from {} ({} rows, {} leaves, worst margin: {:.6g}).\n",
+              c.id, done_file, v.total_rows, v.total_leaves, v.worst_margin);
+        already_done++;
+      } else {
+        Print(AORANGE("  ✘") " Cell #{} has invalid existing {} ({}). Will re-solve.\n",
+              c.id, done_file, v.error_message);
+        unsolved_cells.push_back(c);
+      }
     } else {
       unsolved_cells.push_back(c);
     }
   }
 
   if (already_done > 0) {
-    Print("Found {} previously completed .done files; {} cells remaining to solve.\n",
+    Print("Found {} previously verified .done files; {} cells remaining to solve.\n",
           already_done, unsolved_cells.size());
     WriteDifficultFile(difficult_path, unsolved_cells);
   }
@@ -150,6 +389,22 @@ static int RunDifficult(
 
     std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
     std::string done_path = std::format("{}/{}", out_dir, done_filename);
+    if (std::filesystem::exists(done_path)) {
+      auto v = VerifyDoneFile(cell, done_path);
+      if (v.valid) {
+        mgr.status.Print(AGREEN("  ✔") " Cell #{} verified from existing {} ({} rows, {} leaves, worst margin: {:.6g}). Skipping.\n",
+                         cell.id, done_filename, v.total_rows, v.total_leaves, v.worst_margin);
+        total_solved++;
+        total_rows_written += v.total_rows;
+        unsolved_cells.erase(unsolved_cells.begin() + i);
+        WriteDifficultFile(difficult_path, unsolved_cells);
+        continue;
+      } else {
+        mgr.status.Print(AORANGE("  ✘") " Cell #{} has invalid existing {} ({}). Re-solving.\n",
+                         cell.id, done_filename, v.error_message);
+      }
+    }
+
     std::string tmp_filename = std::format("{}.tmp", done_filename);
     std::string tmp_path = std::format("{}/{}", out_dir, tmp_filename);
 
@@ -315,14 +570,23 @@ static int RunDifficultMixture(
   for (const auto &c : cells) {
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
-      already_done++;
+      auto v = VerifyDoneFile(c, done_file);
+      if (v.valid) {
+        Print(AGREEN("  ✔") " Cell #{} verified from {} ({} rows, {} leaves, worst margin: {:.6g}).\n",
+              c.id, done_file, v.total_rows, v.total_leaves, v.worst_margin);
+        already_done++;
+      } else {
+        Print(AORANGE("  ✘") " Cell #{} has invalid existing {} ({}). Will re-solve.\n",
+              c.id, done_file, v.error_message);
+        unsolved_cells.push_back(c);
+      }
     } else {
       unsolved_cells.push_back(c);
     }
   }
 
   if (already_done > 0) {
-    Print("Found {} previously completed .done files; {} cells remaining to solve.\n",
+    Print("Found {} previously verified .done files; {} cells remaining to solve.\n",
           already_done, unsolved_cells.size());
     WriteDifficultFile(difficult_path, unsolved_cells);
   }
@@ -359,6 +623,29 @@ static int RunDifficultMixture(
       DifficultCell cell = unsolved_cells[idx];
       if (target_cell_id >= 0 && cell.id != target_cell_id) continue;
 
+      std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
+      std::string done_path = std::format("{}/{}", out_dir, done_filename);
+      if (std::filesystem::exists(done_path)) {
+        auto v = VerifyDoneFile(cell, done_path);
+        if (v.valid) {
+          std::lock_guard<std::mutex> lock(state_mu);
+          total_solved++;
+          total_rows_written += v.total_rows;
+          std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
+            return c.id == cell.id && c.chart == cell.chart;
+          });
+          WriteDifficultFile(difficult_path, remaining_unsolved);
+          status.Print(AGREEN("  ✔") " Cell #{} verified from existing {} ({} rows, {} leaves, worst margin: {:.6g}). [{} remaining in {}]\n",
+                       cell.id, done_filename, v.total_rows, v.total_leaves, v.worst_margin,
+                       remaining_unsolved.size(), difficult_path);
+          continue;
+        } else {
+          std::lock_guard<std::mutex> lock(state_mu);
+          status.Print(AORANGE("  ✘") " Cell #{} has invalid existing {} ({}). Re-solving.\n",
+                       cell.id, done_filename, v.error_message);
+        }
+      }
+
       size_t current_proc = 0;
       {
         std::lock_guard<std::mutex> lock(state_mu);
@@ -368,9 +655,6 @@ static int RunDifficultMixture(
                      current_proc, unsolved_cells.size(),
                      cell.id, cell.depth, cell.box_depth, cell.view_depth, cell.best_margin);
       }
-
-      std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
-      std::string done_path = std::format("{}/{}", out_dir, done_filename);
       std::string tmp_filename = std::format("{}.tmp", done_filename);
       std::string tmp_path = std::format("{}/{}", out_dir, tmp_filename);
 
