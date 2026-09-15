@@ -611,7 +611,7 @@ static int RunDifficultMixture(
   uint64_t total_rows_written = 0;
   std::vector<DifficultCell> remaining_unsolved = unsolved_cells;
 
-  int64_t total_k1 = 0, total_corner = 0, total_greedy = 0;
+  int64_t total_k1 = 0, total_corner = 0, total_greedy = 0, total_warm = 0;
   int64_t total_rank_hist[8] = {0};
   int64_t global_max_rank = 0;
   double total_eval_pool_sum = 0.0;
@@ -692,10 +692,10 @@ static int RunDifficultMixture(
       double cell_seconds = cell_timer.Seconds();
 
       std::string cand_info = std::format(
-          " [cands: avg_pool={:.0f}, max_rank={}, strat(K1/crn/grd)={}/{}/{}, hist: 0:{}, 1-3:{}, 4-7:{}, 8-15:{}, 16-31:{}, 32-63:{}, 64+:{}]",
+          " [cands: avg_pool={:.0f}, max_rank={}, strat(K1/crn/grd/wrm)={}/{}/{}/{}, hist: 0:{}, 1-3:{}, 4-7:{}, 8-15:{}, 16-31:{}, 32-63:{}, 64+:{}]",
           stats.count_evaluations > 0 ? (stats.sum_candidate_pool_size / stats.count_evaluations) : 0.0,
           stats.max_candidate_rank,
-          stats.k1_count, stats.corner_count, stats.greedy_count,
+          stats.k1_count, stats.corner_count, stats.greedy_count, stats.warm_count,
           stats.rank_histogram[0], stats.rank_histogram[1], stats.rank_histogram[2],
           stats.rank_histogram[3], stats.rank_histogram[4], stats.rank_histogram[5],
           stats.rank_histogram[6] + stats.rank_histogram[7]);
@@ -711,6 +711,7 @@ static int RunDifficultMixture(
         total_k1 += stats.k1_count;
         total_corner += stats.corner_count;
         total_greedy += stats.greedy_count;
+        total_warm += stats.warm_count;
         for (int b = 0; b < 8; b++) total_rank_hist[b] += stats.rank_histogram[b];
         global_max_rank = std::max(global_max_rank, stats.max_candidate_rank);
         total_eval_pool_sum += stats.sum_candidate_pool_size;
@@ -786,6 +787,7 @@ static int RunDifficultMixture(
         "  - Strategy K=1 (Single Triple):  {} ({:.1f}%)\n"
         "  - Strategy 1   (Corner+Center):  {} ({:.1f}%)\n"
         "  - Strategy 2   (Greedy Col-Gen): {} ({:.1f}%)\n"
+        "  - Warm-Start Farkas Cages:       {} ({:.1f}%)\n"
         "Candidate Pool Size: avg {:.1f} candidates per node\n"
         "Deepest Rank That Certified: {}\n"
         "Rank Histogram of Winning Candidates in evaluated[]:\n"
@@ -801,6 +803,7 @@ static int RunDifficultMixture(
         FormatNum(total_k1), total_certified_leaves > 0 ? (100.0 * total_k1 / total_certified_leaves) : 0.0,
         FormatNum(total_corner), total_certified_leaves > 0 ? (100.0 * total_corner / total_certified_leaves) : 0.0,
         FormatNum(total_greedy), total_certified_leaves > 0 ? (100.0 * total_greedy / total_certified_leaves) : 0.0,
+        FormatNum(total_warm), total_certified_leaves > 0 ? (100.0 * total_warm / total_certified_leaves) : 0.0,
         total_eval_count > 0 ? (total_eval_pool_sum / total_eval_count) : 0.0,
         global_max_rank,
         FormatNum(total_rank_hist[0]),

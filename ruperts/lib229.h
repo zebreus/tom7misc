@@ -377,6 +377,38 @@ GpuResult EvaluateBoxCPULP(
 
 // Result of certifying a node via a convex mixture of triples (N <= 4)
 // mathematically matching Lean 4's AtlasProjectiveMixedGlobalCertificate.
+struct FarkasCageHint {
+  uint64_t pool_id = 0;
+  int num_components = 0;
+  int triples[4] = {-1, -1, -1, -1};
+  int inners[4][3] = {{-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}, {-1, -1, -1}};
+};
+
+struct FarkasCageCache {
+  static constexpr int CAPACITY = 8;
+  FarkasCageHint entries[CAPACITY];
+  int count = 0;
+  int next_idx = 0;
+
+  void Insert(const FarkasCageHint &h) {
+    if (h.num_components < 1) return;
+    for (int i = 0; i < count; i++) {
+      if (entries[i].pool_id == h.pool_id && entries[i].num_components == h.num_components) {
+        bool match = true;
+        for (int k = 0; k < h.num_components; k++) {
+          if (entries[i].triples[k] != h.triples[k]) { match = false; break; }
+        }
+        if (match) return;
+      }
+    }
+    entries[next_idx] = h;
+    next_idx = (next_idx + 1) % CAPACITY;
+    if (count < CAPACITY) count++;
+  }
+};
+
+// Result of certifying a node via a convex mixture of triples (N <= 4)
+// mathematically matching Lean 4's AtlasProjectiveMixedGlobalCertificate.
 struct MixtureResult {
   bool certified = false;
   int num_components = 0;
@@ -385,10 +417,11 @@ struct MixtureResult {
   double weights[4] = {0.0, 0.0, 0.0, 0.0};
   double margin = -1e30;
   int num_candidates = 0;
-  int strategy_used = 0; // 0=single triple, 1=corner+center, 2=greedy column gen
+  int strategy_used = 0; // 0=single triple, 1=corner+center, 2=greedy column gen, 3=warm-start Farkas cage
   int chosen_ranks[4] = {-1, -1, -1, -1}; // 0-indexed rank in sorted evaluated[] list
   int max_rank_looked = 0; // deepest rank in evaluated[] examined
   int pool_tested = 0; // candidates in cand_pool tested
+  uint64_t pool_id = 0;
 };
 
 // Evaluates a box and projective triangle view using a convex mixture
@@ -396,7 +429,8 @@ struct MixtureResult {
 // Prioritizes mathematical power over speed for difficult cells.
 MixtureResult EvaluateBoxCPUMixture(
     int chart, const CayleyBox &box, const ProjectiveTriangle &tri,
-    int cone_samples = 8, int max_components = 4);
+    int cone_samples = 8, int max_components = 4,
+    const FarkasCageCache *cache = nullptr);
 
 struct MixtureSolveStats {
   bool solved = false;
@@ -413,6 +447,7 @@ struct MixtureSolveStats {
   int64_t k1_count = 0;
   int64_t corner_count = 0;
   int64_t greedy_count = 0;
+  int64_t warm_count = 0;
   int64_t max_candidate_rank = 0;
   int64_t rank_histogram[8] = {0}; // [0], [1-3], [4-7], [8-15], [16-31], [32-63], [64-127], [128+]
   double sum_candidate_pool_size = 0.0;

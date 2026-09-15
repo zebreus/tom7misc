@@ -368,9 +368,104 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples) {
   }
 }
 
+#if defined(__AVX2__) && defined(__FMA__)
+#include <immintrin.h>
+
+// Stores exactly 3 doubles from the lower 3 lanes of a 4-wide __m256d vector.
+static inline void Store3(double *dst, __m256d v) {
+  _mm_storeu_pd(dst, _mm256_castpd256_pd128(v));
+  _mm_store_sd(dst + 2, _mm256_extractf128_pd(v, 1));
+}
+
 double Bernstein27Min(const double C[10],
-                             double lx, double ly, double lz,
-                             double wx, double wy, double wz) {
+                     double lx, double ly, double lz,
+                     double wx, double wy, double wz) {
+  double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
+               C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
+               C[8] * ly * lz + C[9] * lz * lz);
+  double ax = wx * (C[1] + 2.0 * C[4] * lx + C[5] * ly + C[6] * lz);
+  double ay = wy * (C[2] + C[5] * lx + 2.0 * C[7] * ly + C[8] * lz);
+  double az = wz * (C[3] + C[6] * lx + C[8] * ly + 2.0 * C[9] * lz);
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  const __m256d vk_mult = _mm256_set_pd(0.0, 2.0, 1.0, 0.0);
+  const __m256d vk2_mask = _mm256_set_pd(0.0, 1.0, 0.0, 0.0);
+  const __m256d v_azz_scaled = _mm256_mul_pd(vk2_mask, _mm256_set1_pd(azz));
+
+  double half_az = 0.5 * az;
+  __m256d v_min = _mm256_set1_pd(1e30);
+
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    double bi_axz = bi * axz;
+    double bi_axy = 0.25 * bi * axy;
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + bj * bi_axy;
+      double T = a0 + tj;
+      double K_slope = half_az + 0.25 * (bi_axz + bj * ayz);
+
+      __m256d v_T = _mm256_set1_pd(T);
+      __m256d v_slope = _mm256_set1_pd(K_slope);
+      __m256d v_res = _mm256_fmadd_pd(vk_mult, v_slope, v_T);
+      v_res = _mm256_add_pd(v_res, v_azz_scaled);
+
+      v_min = _mm256_min_pd(v_min, v_res);
+    }
+  }
+
+  __m128d low = _mm256_castpd256_pd128(v_min);
+  __m128d high = _mm256_extractf128_pd(v_min, 1);
+  __m128d min128 = _mm_min_pd(low, high);
+  __m128d min_shuffle = _mm_shuffle_pd(min128, min128, 1);
+  __m128d final_min = _mm_min_sd(min128, min_shuffle);
+  return _mm_cvtsd_f64(final_min);
+}
+
+void ComputeBernstein27Controls(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz,
+    double out_controls[27]) {
+  double a0 = C[0] + C[1]*lx + C[2]*ly + C[3]*lz +
+              C[4]*lx*lx + C[5]*lx*ly + C[6]*lx*lz +
+              C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz;
+  double ax = (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz) * wx;
+  double ay = (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz) * wy;
+  double az = (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz) * wz;
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  const __m256d vk_mult = _mm256_set_pd(0.0, 2.0, 1.0, 0.0);
+  const __m256d vk2_mask = _mm256_set_pd(0.0, 1.0, 0.0, 0.0);
+  const __m256d v_azz_scaled = _mm256_mul_pd(vk2_mask, _mm256_set1_pd(azz));
+
+  double half_az = 0.5 * az;
+  int idx = 0;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    double bi_axz = bi * axz;
+    double bi_axy = 0.25 * bi * axy;
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + bj * bi_axy;
+      double T = a0 + tj;
+      double K_slope = half_az + 0.25 * (bi_axz + bj * ayz);
+
+      __m256d v_T = _mm256_set1_pd(T);
+      __m256d v_slope = _mm256_set1_pd(K_slope);
+      __m256d v_res = _mm256_fmadd_pd(vk_mult, v_slope, v_T);
+      v_res = _mm256_add_pd(v_res, v_azz_scaled);
+
+      Store3(&out_controls[idx], v_res);
+      idx += 3;
+    }
+  }
+}
+#else
+// Scalar reference fallback
+double Bernstein27Min(const double C[10],
+                     double lx, double ly, double lz,
+                     double wx, double wy, double wz) {
   double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
                C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
                C[8] * ly * lz + C[9] * lz * lz);
@@ -396,6 +491,35 @@ double Bernstein27Min(const double C[10],
   }
   return min_b;
 }
+
+void ComputeBernstein27Controls(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz,
+    double out_controls[27]) {
+  double a0 = C[0] + C[1]*lx + C[2]*ly + C[3]*lz +
+              C[4]*lx*lx + C[5]*lx*ly + C[6]*lx*lz +
+              C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz;
+  double ax = (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz) * wx;
+  double ay = (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz) * wy;
+  double az = (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz) * wz;
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  int idx = 0;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+                     0.25 * bk * (bi * axz + bj * ayz);
+        out_controls[idx++] = val;
+      }
+    }
+  }
+}
+#endif
 
 // In-register accumulation of the 10 quadratic displacement polynomial coefficients
 // for contact (vin, vout) with normal vector u, scaled by chart signs s = (sx, sy, sz).
@@ -927,34 +1051,6 @@ Polyhedron GetPolyhedron229() {
   return poly;
 }
 
-// Computes the 27 Bernstein control points on relative Cayley box
-void ComputeBernstein27Controls(
-    const double C[10],
-    double lx, double ly, double lz,
-    double wx, double wy, double wz,
-    double out_controls[27]) {
-  double a0 = C[0] + C[1]*lx + C[2]*ly + C[3]*lz +
-              C[4]*lx*lx + C[5]*lx*ly + C[6]*lx*lz +
-              C[7]*ly*ly + C[8]*ly*lz + C[9]*lz*lz;
-  double ax = (C[1] + 2.0*C[4]*lx + C[5]*ly + C[6]*lz) * wx;
-  double ay = (C[2] + C[5]*lx + 2.0*C[7]*ly + C[8]*lz) * wy;
-  double az = (C[3] + C[6]*lx + C[8]*ly + 2.0*C[9]*lz) * wz;
-  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
-  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
-
-  int idx = 0;
-  for (int bi = 0; bi <= 2; bi++) {
-    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
-    for (int bj = 0; bj <= 2; bj++) {
-      double tj = ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
-      for (int bk = 0; bk <= 2; bk++) {
-        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
-                     0.25 * bk * (bi * axz + bj * ayz);
-        out_controls[idx++] = val;
-      }
-    }
-  }
-}
 
 // Euclidean projection of x onto the probability simplex sum(out) = 1, out >= 0
 static inline void ProjectToSimplex(int K, const double x[], double out[]) {
@@ -1223,7 +1319,8 @@ struct EvaluatedCandidateTriple {
 
 MixtureResult EvaluateBoxCPUMixture(
     int chart, const CayleyBox &box, const ProjectiveTriangle &tri,
-    int cone_samples, int max_components) {
+    int cone_samples, int max_components,
+    const FarkasCageCache *cache) {
   MixtureResult res;
 
   double sx = 1.0, sy = 1.0, sz = 1.0;
@@ -1248,6 +1345,7 @@ MixtureResult EvaluateBoxCPUMixture(
   if (!pool || pool->gpu_triples.empty()) {
     return res;
   }
+  res.pool_id = pool->id;
 
   double x0 = box.center.x, y0 = box.center.y, z0 = box.center.z;
   double num[3][3] = {
@@ -1336,6 +1434,127 @@ MixtureResult EvaluateBoxCPUMixture(
   p[4] = 0.5 * (tri.corners[1] + tri.corners[2]);
   p[5] = 0.5 * (tri.corners[2] + tri.corners[0]);
 
+  // Warm-Start: If cached Farkas cages exist for this triangle pool, test them first!
+  if (cache) {
+    for (int ci = 0; ci < cache->count; ci++) {
+      const auto &hint = cache->entries[ci];
+      if (hint.pool_id != pool->id || hint.num_components < 1 || hint.num_components > max_components) {
+        continue;
+      }
+      bool hint_valid = true;
+      double hint_margins[4][162];
+      int K_hint = hint.num_components;
+      int hint_ci[4][3];
+
+      for (int h = 0; h < K_hint; h++) {
+        int t = hint.triples[h];
+        if (t < 0 || t >= (int)pool->gpu_triples.size()) {
+          hint_valid = false;
+          break;
+        }
+        const auto &trip = pool->gpu_triples[t];
+        int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
+        hint_ci[h][0] = ci0; hint_ci[h][1] = ci1; hint_ci[h][2] = ci2;
+
+        vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1], pool->contacts[ci0].edge[2]};
+        vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1], pool->contacts[ci1].edge[2]};
+        vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1], pool->contacts[ci2].edge[2]};
+
+        vec3 coeff0 = yocto::cross(edge1, edge2);
+        vec3 coeff1 = yocto::cross(edge2, edge0);
+        vec3 coeff2 = yocto::cross(edge0, edge1);
+
+        double w0_min = std::min({yocto::dot(tri.corners[0], coeff0), yocto::dot(tri.corners[1], coeff0), yocto::dot(tri.corners[2], coeff0)});
+        double w1_min = std::min({yocto::dot(tri.corners[0], coeff1), yocto::dot(tri.corners[1], coeff1), yocto::dot(tri.corners[2], coeff1)});
+        double w2_min = std::min({yocto::dot(tri.corners[0], coeff2), yocto::dot(tri.corners[1], coeff2), yocto::dot(tri.corners[2], coeff2)});
+
+        if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) {
+          hint_valid = false;
+          break;
+        }
+
+        double penalty = d_bound * trip.weighted_defect_upper + disp_error;
+
+        int in0 = chosen_inners[ci0];
+        int in1 = chosen_inners[ci1];
+        int in2 = chosen_inners[ci2];
+
+        vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+        vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0], VERTICES[pool->contacts[ci0].vertex][1], VERTICES[pool->contacts[ci0].vertex][2]};
+        vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+        vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0], VERTICES[pool->contacts[ci1].vertex][1], VERTICES[pool->contacts[ci1].vertex][2]};
+        vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+        vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0], VERTICES[pool->contacts[ci2].vertex][1], VERTICES[pool->contacts[ci2].vertex][2]};
+
+        for (int n = 0; n < 6; n++) {
+          double w0 = yocto::dot(p[n], coeff0);
+          double w1 = yocto::dot(p[n], coeff1);
+          double w2 = yocto::dot(p[n], coeff2);
+
+          double C_node[10] = {0};
+          AccumulateContactPoly(C_node, w0, yocto::cross(p[n], edge0), vin0, vout0, s);
+          AccumulateContactPoly(C_node, w1, yocto::cross(p[n], edge1), vin1, vout1, s);
+          AccumulateContactPoly(C_node, w2, yocto::cross(p[n], edge2), vin2, vout2, s);
+
+          double b_ctrl[27];
+          ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
+
+          for (int m = 0; m < 27; m++) {
+            hint_margins[h][n * 27 + m] = b_ctrl[m] - penalty;
+          }
+        }
+      }
+
+      if (hint_valid) {
+        if (K_hint == 1) {
+          double min_m = 1e30;
+          for (int j = 0; j < 162; j++) {
+            if (hint_margins[0][j] < min_m) min_m = hint_margins[0][j];
+          }
+          if (min_m > 0.0) {
+            res.certified = true;
+            res.strategy_used = 3; // warm-start Farkas cage
+            res.num_components = 1;
+            res.triples[0] = hint.triples[0];
+            res.chosen_ranks[0] = 0;
+            res.max_rank_looked = 0;
+            res.pool_tested = 1;
+            res.inners[0][0] = chosen_inners[hint_ci[0][0]];
+            res.inners[0][1] = chosen_inners[hint_ci[0][1]];
+            res.inners[0][2] = chosen_inners[hint_ci[0][2]];
+            res.weights[0] = 1.0;
+            res.margin = min_m;
+            res.num_candidates = 1;
+            return res;
+          }
+        } else {
+          const double *hint_ptrs[4];
+          for (int h = 0; h < K_hint; h++) hint_ptrs[h] = hint_margins[h];
+          double hint_alpha[4] = {0};
+          double hint_margin = SolveOptimalWeights(K_hint, hint_ptrs, hint_alpha);
+          if (hint_margin > 0.0) {
+            res.certified = true;
+            res.strategy_used = 3; // warm-start Farkas cage
+            res.num_components = K_hint;
+            for (int h = 0; h < K_hint; h++) {
+              res.triples[h] = hint.triples[h];
+              res.chosen_ranks[h] = 0;
+              res.inners[h][0] = chosen_inners[hint_ci[h][0]];
+              res.inners[h][1] = chosen_inners[hint_ci[h][1]];
+              res.inners[h][2] = chosen_inners[hint_ci[h][2]];
+              res.weights[h] = hint_alpha[h];
+            }
+            res.max_rank_looked = 0;
+            res.pool_tested = K_hint;
+            res.margin = hint_margin;
+            res.num_candidates = K_hint;
+            return res;
+          }
+        }
+      }
+    }
+  }
+
   std::vector<EvaluatedCandidateTriple> evaluated;
   evaluated.reserve(pool->gpu_triples.size());
 
@@ -1359,15 +1578,32 @@ MixtureResult EvaluateBoxCPUMixture(
 
     double penalty = d_bound * trip.weighted_defect_upper + disp_error;
 
+    bool is_hint_triple = false;
+    if (cache) {
+      for (int ci = 0; ci < cache->count && !is_hint_triple; ci++) {
+        if (cache->entries[ci].pool_id == pool->id) {
+          for (int h = 0; h < cache->entries[ci].num_components; h++) {
+            if (cache->entries[ci].triples[h] == (int)t) {
+              is_hint_triple = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
     // Fast center-pose screen: if the polynomial minus penalty at the center of the box
     // and view triangle is hopelessly negative, skip full 162 Bernstein control computations.
-    double w0_c = yocto::dot(view_center, coeff0);
-    double w1_c = yocto::dot(view_center, coeff1);
-    double w2_c = yocto::dot(view_center, coeff2);
-    double center_poly = w0_c * contact_center_val[ci0] +
-                         w1_c * contact_center_val[ci1] +
-                         w2_c * contact_center_val[ci2];
-    if (center_poly - penalty < -0.005) continue;
+    // Exempt hint triples from nearby successes so opposing gradient triples are retained.
+    if (!is_hint_triple) {
+      double w0_c = yocto::dot(view_center, coeff0);
+      double w1_c = yocto::dot(view_center, coeff1);
+      double w2_c = yocto::dot(view_center, coeff2);
+      double center_poly = w0_c * contact_center_val[ci0] +
+                           w1_c * contact_center_val[ci1] +
+                           w2_c * contact_center_val[ci2];
+      if (center_poly - penalty < -0.005) continue;
+    }
 
     int in0 = chosen_inners[ci0];
     int in1 = chosen_inners[ci1];
@@ -1387,6 +1623,7 @@ MixtureResult EvaluateBoxCPUMixture(
     et.inner[0] = in0; et.inner[1] = in1; et.inner[2] = in2;
 
     double min_m = 1e30;
+    bool early_rejected = false;
 
     for (int node = 0; node < 6; node++) {
       double w0 = yocto::dot(p[node], coeff0);
@@ -1405,8 +1642,15 @@ MixtureResult EvaluateBoxCPUMixture(
         double m_val = b_ctrl[m] - penalty;
         et.margins[node * 27 + m] = m_val;
         if (m_val < min_m) min_m = m_val;
+        if (!is_hint_triple && m_val < -0.05) {
+          early_rejected = true;
+          break;
+        }
       }
+      if (early_rejected) break;
     }
+
+    if (early_rejected) continue;
 
     et.min_margin = min_m;
 
@@ -1425,7 +1669,7 @@ MixtureResult EvaluateBoxCPUMixture(
       return res;
     }
 
-    if (et.min_margin > -0.05) {
+    if (et.min_margin > -0.05 || is_hint_triple) {
       evaluated.push_back(et);
     }
   }
@@ -1635,6 +1879,7 @@ MixtureSolveStats SolveCellMixture(
   MixtureSolveStats stats;
   Timer timer;
   bool all_leaves_certified = true;
+  FarkasCageCache cage_cache;
 
   std::vector<SearchNode> stack;
   SearchNode root = cell.ToSearchNode();
@@ -1706,7 +1951,7 @@ MixtureSolveStats SolveCellMixture(
     }
 
     // 2. Mixture evaluation
-    MixtureResult res = EvaluateBoxCPUMixture(node.chart, node.box, node.tri, cone_samples, max_components);
+    MixtureResult res = EvaluateBoxCPUMixture(node.chart, node.box, node.tri, cone_samples, max_components, &cage_cache);
     stats.count_evaluations++;
     stats.sum_candidate_pool_size += res.num_candidates;
     if (res.certified) {
@@ -1715,6 +1960,23 @@ MixtureSolveStats SolveCellMixture(
       if (res.strategy_used == 0) stats.k1_count++;
       else if (res.strategy_used == 1) stats.corner_count++;
       else if (res.strategy_used == 2) stats.greedy_count++;
+      else if (res.strategy_used == 3) {
+        stats.warm_count++;
+        if (res.num_components == 1) stats.k1_count++;
+        else stats.corner_count++;
+      }
+
+      // Update warm-start Farkas cage cache
+      FarkasCageHint new_hint;
+      new_hint.pool_id = res.pool_id;
+      new_hint.num_components = res.num_components;
+      for (int k = 0; k < res.num_components; k++) {
+        new_hint.triples[k] = res.triples[k];
+        new_hint.inners[k][0] = res.inners[k][0];
+        new_hint.inners[k][1] = res.inners[k][1];
+        new_hint.inners[k][2] = res.inners[k][2];
+      }
+      cage_cache.Insert(new_hint);
 
       int max_r = res.max_rank_looked;
       stats.max_candidate_rank = std::max(stats.max_candidate_rank, (int64_t)max_r);

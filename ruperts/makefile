@@ -102,6 +102,10 @@ lib229_test.exe : lib229_test.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+lib229_bench.exe : lib229_bench.o scalar_bernstein.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 difficult229.exe : difficult229.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
