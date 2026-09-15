@@ -385,6 +385,10 @@ struct MixtureResult {
   double weights[4] = {0.0, 0.0, 0.0, 0.0};
   double margin = -1e30;
   int num_candidates = 0;
+  int strategy_used = 0; // 0=single triple, 1=corner+center, 2=greedy column gen
+  int chosen_ranks[4] = {-1, -1, -1, -1}; // 0-indexed rank in sorted evaluated[] list
+  int max_rank_looked = 0; // deepest rank in evaluated[] examined
+  int pool_tested = 0; // candidates in cand_pool tested
 };
 
 // Evaluates a box and projective triangle view using a convex mixture
@@ -404,6 +408,15 @@ struct MixtureSolveStats {
   int64_t rows_written = 0;
   double worst_margin = 1e30;
   double elapsed_seconds = 0.0;
+
+  // Candidate depth and strategy instrumentation
+  int64_t k1_count = 0;
+  int64_t corner_count = 0;
+  int64_t greedy_count = 0;
+  int64_t max_candidate_rank = 0;
+  int64_t rank_histogram[8] = {0}; // [0], [1-3], [4-7], [8-15], [16-31], [32-63], [64-127], [128+]
+  double sum_candidate_pool_size = 0.0;
+  int64_t count_evaluations = 0;
 };
 
 // Solves a single difficult cell using a branch-and-bound tree with
@@ -424,7 +437,53 @@ MixtureSolveStats SolveCellMixture(
     std::function<void(std::string_view)> row_callback = nullptr,
     std::atomic<bool> *interrupted = nullptr);
 
+// ============================================================================
+// Bernstein Polynomial Transformation Functions
+// ============================================================================
+//
+// These functions represent quadratic polynomials in 3 variables on a 3D box
+// [lx, lx + wx] x [ly, ly + wy] x [lz, lz + wz] using the tensored degree-2
+// Bernstein basis:
+//
+//   P(x, y, z) = C[0] + C[1]*x + C[2]*y + C[3]*z +
+//                C[4]*x^2 + C[5]*x*y + C[6]*x*z +
+//                C[7]*y^2 + C[8]*y*z + C[9]*z^2
+//
+// Local coordinates (u, v, w) in [0, 1]^3 map to (x, y, z) via:
+//   x = lx + u * wx,  y = ly + v * wy,  z = lz + w * wz.
+//
+// The 1D degree-2 Bernstein basis polynomials on [0, 1] are:
+//   B_{0,2}(t) = (1 - t)^2,  B_{1,2}(t) = 2*t*(1 - t),  B_{2,2}(t) = t^2.
+//
+// The 27 control points out_controls[idx] are indexed with
+//   idx = 9 * bi + 3 * bj + bk  for bi, bj, bk in {0, 1, 2}.
+//
+// Fundamental Mathematical Invariants:
+// 1. Convex Hull Property:
+//      min_idx out_controls[idx] <= P(x, y, z) <= max_idx out_controls[idx]
+//    for all points (x, y, z) in the box.
+// 2. Corner Interpolation:
+//    At the 8 vertices of the box, the corresponding corner control points exactly
+//    interpolate P(x, y, z).
+// 3. Partition of Unity:
+//    sum_{bi, bj, bk} B_{bi,2}(u) * B_{bj,2}(v) * B_{bk,2}(w) = 1.
+//
+void ComputeBernstein27Controls(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz,
+    double out_controls[27]);
+
+// Computes the minimum value among the 27 Bernstein control points of polynomial C
+// over the box [lx, lx + wx] x [ly, ly + wy] x [lz, lz + wz].
+// This provides a guaranteed lower bound on P(x, y, z) across the box.
+double Bernstein27Min(
+    const double C[10],
+    double lx, double ly, double lz,
+    double wx, double wy, double wz);
+
 Polyhedron GetPolyhedron229();
+
 
 struct SolutionWitness {
   frame3 outer_frame;

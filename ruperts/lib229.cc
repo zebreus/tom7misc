@@ -368,7 +368,7 @@ GetTrianglePool(const ProjectiveTriangle &tri, int cone_samples) {
   }
 }
 
-inline double Bernstein27Min(const double C[10],
+double Bernstein27Min(const double C[10],
                              double lx, double ly, double lz,
                              double wx, double wy, double wz) {
   double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
@@ -928,7 +928,7 @@ Polyhedron GetPolyhedron229() {
 }
 
 // Computes the 27 Bernstein control points on relative Cayley box
-static inline void ComputeBernstein27Controls(
+void ComputeBernstein27Controls(
     const double C[10],
     double lx, double ly, double lz,
     double wx, double wy, double wz,
@@ -981,14 +981,37 @@ static inline double EvalMixtureMargin(
     int K, const double *const margins[], const double alpha[], int *out_worst_idx = nullptr) {
   double min_val = 1e30;
   int worst_idx = 0;
-  for (int j = 0; j < 162; j++) {
-    double sum = 0.0;
-    for (int k = 0; k < K; k++) {
-      sum += alpha[k] * margins[k][j];
+  if (K == 1) {
+    const double *m0 = margins[0];
+    for (int j = 0; j < 162; j++) {
+      if (m0[j] < min_val) { min_val = m0[j]; worst_idx = j; }
     }
-    if (sum < min_val) {
-      min_val = sum;
-      worst_idx = j;
+  } else if (K == 2) {
+    double a0 = alpha[0], a1 = alpha[1];
+    const double *m0 = margins[0], *m1 = margins[1];
+    for (int j = 0; j < 162; j++) {
+      double sum = a0 * m0[j] + a1 * m1[j];
+      if (sum < min_val) { min_val = sum; worst_idx = j; }
+    }
+  } else if (K == 3) {
+    double a0 = alpha[0], a1 = alpha[1], a2 = alpha[2];
+    const double *m0 = margins[0], *m1 = margins[1], *m2 = margins[2];
+    for (int j = 0; j < 162; j++) {
+      double sum = a0 * m0[j] + a1 * m1[j] + a2 * m2[j];
+      if (sum < min_val) { min_val = sum; worst_idx = j; }
+    }
+  } else if (K == 4) {
+    double a0 = alpha[0], a1 = alpha[1], a2 = alpha[2], a3 = alpha[3];
+    const double *m0 = margins[0], *m1 = margins[1], *m2 = margins[2], *m3 = margins[3];
+    for (int j = 0; j < 162; j++) {
+      double sum = a0 * m0[j] + a1 * m1[j] + a2 * m2[j] + a3 * m3[j];
+      if (sum < min_val) { min_val = sum; worst_idx = j; }
+    }
+  } else {
+    for (int j = 0; j < 162; j++) {
+      double sum = 0.0;
+      for (int k = 0; k < K; k++) sum += alpha[k] * margins[k][j];
+      if (sum < min_val) { min_val = sum; worst_idx = j; }
     }
   }
   if (out_worst_idx) *out_worst_idx = worst_idx;
@@ -998,10 +1021,19 @@ static inline double EvalMixtureMargin(
 // Solves max_{alpha in Delta_K} min_{j=0..161} sum_{k=0}^{K-1} alpha_k margins[k][j]
 // for K in {1, 2, 3, 4}.
 static double SolveOptimalWeights(
-    int K, const double *const margins[], double out_alpha[4]) {
+    int K, const double *const margins[], double out_alpha[4],
+    bool polish = true, const double *warm_alpha = nullptr) {
   if (K == 1) {
     out_alpha[0] = 1.0;
     return EvalMixtureMargin(1, margins, out_alpha);
+  }
+
+  if (warm_alpha) {
+    double warm_val = EvalMixtureMargin(K, margins, warm_alpha);
+    if (warm_val > 0.0) {
+      std::memcpy(out_alpha, warm_alpha, sizeof(double) * K);
+      return warm_val;
+    }
   }
 
   if (K == 2) {
@@ -1015,7 +1047,16 @@ static double SolveOptimalWeights(
     double f1 = EvalMixtureMargin(2, margins, a1);
     double f2 = EvalMixtureMargin(2, margins, a2);
 
-    for (int iter = 0; iter < 45; iter++) {
+    int max_iter = polish ? 45 : 15;
+    for (int iter = 0; iter < max_iter; iter++) {
+      if (f1 > 0.0) {
+        out_alpha[0] = a1[0]; out_alpha[1] = a1[1];
+        return f1;
+      }
+      if (f2 > 0.0) {
+        out_alpha[0] = a2[0]; out_alpha[1] = a2[1];
+        return f2;
+      }
       if (f1 < f2) {
         a = x1;
         x1 = x2;
@@ -1045,15 +1086,33 @@ static double SolveOptimalWeights(
   double best_alpha[4];
   std::memcpy(best_alpha, alpha, sizeof(double) * K);
   double best_val = EvalMixtureMargin(K, margins, alpha);
+  if (best_val > 0.0) {
+    std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
+    return best_val;
+  }
+
+  if (warm_alpha) {
+    double warm_val = EvalMixtureMargin(K, margins, warm_alpha);
+    if (warm_val > best_val) {
+      best_val = warm_val;
+      std::memcpy(best_alpha, warm_alpha, sizeof(double) * K);
+      std::memcpy(alpha, warm_alpha, sizeof(double) * K);
+    }
+  }
 
   // Projected Subgradient Ascent
   double eta = 0.05;
-  for (int iter = 0; iter < 120; iter++) {
+  int subgrad_iters = polish ? 100 : 25;
+  for (int iter = 0; iter < subgrad_iters; iter++) {
     int worst_j = 0;
     double val = EvalMixtureMargin(K, margins, alpha, &worst_j);
     if (val > best_val) {
       best_val = val;
       std::memcpy(best_alpha, alpha, sizeof(double) * K);
+      if (best_val > 0.0) {
+        std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
+        return best_val;
+      }
     }
     double step = eta / std::sqrt(iter + 1.0);
     double next_x[4];
@@ -1061,6 +1120,11 @@ static double SolveOptimalWeights(
       next_x[k] = alpha[k] + step * margins[k][worst_j];
     }
     ProjectToSimplex(K, next_x, alpha);
+  }
+
+  if (!polish || best_val > 0.0) {
+    std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
+    return best_val;
   }
 
   // Polish with Nelder-Mead simplex search on barycentric coordinates
@@ -1077,6 +1141,14 @@ static double SolveOptimalWeights(
     }
     ProjectToSimplex(K, unnorm, p[i]);
     p_val[i] = EvalMixtureMargin(K, margins, p[i]);
+    if (p_val[i] > best_val) {
+      best_val = p_val[i];
+      std::memcpy(best_alpha, p[i], sizeof(double) * K);
+      if (best_val > 0.0) {
+        std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
+        return best_val;
+      }
+    }
   }
 
   for (int iter = 0; iter < 40; iter++) {
@@ -1091,6 +1163,7 @@ static double SolveOptimalWeights(
     if (p_val[0] > best_val) {
       best_val = p_val[0];
       std::memcpy(best_alpha, p[0], sizeof(double) * K);
+      if (best_val > 0.0) break;
     }
 
     double c[4] = {0};
@@ -1339,8 +1412,12 @@ MixtureResult EvaluateBoxCPUMixture(
 
     if (min_m > 0.0) {
       res.certified = true;
+      res.strategy_used = 0;
       res.num_components = 1;
       res.triples[0] = (int)t;
+      res.chosen_ranks[0] = 0;
+      res.max_rank_looked = 0;
+      res.pool_tested = 1;
       res.inners[0][0] = in0; res.inners[0][1] = in1; res.inners[0][2] = in2;
       res.weights[0] = 1.0;
       res.margin = min_m;
@@ -1389,21 +1466,27 @@ MixtureResult EvaluateBoxCPUMixture(
 
   if (corner_margin > 0.0) {
     res.certified = true;
+    res.strategy_used = 1;
     res.num_components = K_corner;
+    int max_r = 0;
     for (int k = 0; k < K_corner; k++) {
       int idx = corner_set[k];
+      res.chosen_ranks[k] = idx;
+      max_r = std::max(max_r, idx);
       res.triples[k] = evaluated[idx].triple_idx;
       res.inners[k][0] = evaluated[idx].inner[0];
       res.inners[k][1] = evaluated[idx].inner[1];
       res.inners[k][2] = evaluated[idx].inner[2];
       res.weights[k] = corner_alpha[k];
     }
+    res.max_rank_looked = max_r;
+    res.pool_tested = pool_size;
     res.margin = corner_margin;
     return res;
   }
 
   // Strategy 2: Multi-Start Greedy Forward Selection with Targeted Column Generation
-  int num_starts = std::min(8, (int)evaluated.size());
+  int num_starts = std::min(6, (int)evaluated.size());
   for (int start = 0; start < num_starts; start++) {
     std::vector<int> chosen = {start};
     double current_best_margin = evaluated[start].min_margin;
@@ -1424,20 +1507,43 @@ MixtureResult EvaluateBoxCPUMixture(
       std::sort(worst_controls.begin(), worst_controls.end());
 
       std::vector<int> cand_pool;
-      cand_pool.reserve(128);
-      for (int i = 0; i < std::min(32, (int)evaluated.size()); i++) cand_pool.push_back(i);
+      cand_pool.reserve(384);
+      std::vector<uint8_t> in_pool(evaluated.size(), 0);
+      int base_pool = std::min(64, (int)evaluated.size());
+      for (int i = 0; i < base_pool; i++) {
+        cand_pool.push_back(i);
+        in_pool[i] = 1;
+      }
 
-      for (int w = 0; w < std::min(5, (int)worst_controls.size()); w++) {
+      int num_ctrls = std::min(16, (int)worst_controls.size());
+      for (int w = 0; w < num_ctrls; w++) {
         int w_ctrl = worst_controls[w].second;
-        std::vector<std::pair<double, int>> best_at_w;
-        best_at_w.reserve(evaluated.size());
+        struct CandScore {
+          double score;
+          int idx;
+          bool operator>(const CandScore &other) const { return score > other.score; }
+        };
+        CandScore heap[20];
+        int heap_sz = 0;
+        int top_T = std::min(20, (int)evaluated.size());
         for (size_t c = 0; c < evaluated.size(); c++) {
-          best_at_w.push_back({evaluated[c].margins[w_ctrl], (int)c});
+          double s = evaluated[c].margins[w_ctrl];
+          if (heap_sz < top_T) {
+            heap[heap_sz] = {s, (int)c};
+            heap_sz++;
+            if (heap_sz == top_T) {
+              std::make_heap(heap, heap + top_T, std::greater<CandScore>());
+            }
+          } else if (s > heap[0].score) {
+            std::pop_heap(heap, heap + top_T, std::greater<CandScore>());
+            heap[top_T - 1] = {s, (int)c};
+            std::push_heap(heap, heap + top_T, std::greater<CandScore>());
+          }
         }
-        std::sort(best_at_w.begin(), best_at_w.end(), std::greater<std::pair<double, int>>());
-        for (int t = 0; t < std::min(8, (int)best_at_w.size()); t++) {
-          int c_idx = best_at_w[t].second;
-          if (std::find(cand_pool.begin(), cand_pool.end(), c_idx) == cand_pool.end()) {
+        for (int t = 0; t < heap_sz; t++) {
+          int c_idx = heap[t].idx;
+          if (!in_pool[c_idx]) {
+            in_pool[c_idx] = 1;
             cand_pool.push_back(c_idx);
           }
         }
@@ -1456,12 +1562,20 @@ MixtureResult EvaluateBoxCPUMixture(
         const double *test_margins[4];
         for (int k = 0; k < test_K; k++) test_margins[k] = evaluated[test_set[k]].margins;
 
+        double warm[4] = {0};
+        double eps = 0.15;
+        for (int k = 0; k < test_K - 1; k++) warm[k] = (1.0 - eps) * current_best_alpha[k];
+        warm[test_K - 1] = eps;
+
         double alpha[4] = {0};
-        double m = SolveOptimalWeights(test_K, test_margins, alpha);
+        double m = SolveOptimalWeights(test_K, test_margins, alpha, /*polish=*/false, warm);
         if (m > best_step_margin) {
           best_step_margin = m;
           best_cand = c;
           std::memcpy(best_step_alpha, alpha, sizeof(double) * test_K);
+          if (m > 0.0) {
+            break;
+          }
         }
       }
 
@@ -1480,14 +1594,20 @@ MixtureResult EvaluateBoxCPUMixture(
     if (current_best_margin > res.margin) {
       res.margin = current_best_margin;
       res.num_components = chosen.size();
+      res.strategy_used = 2;
+      int max_r = 0;
       for (size_t k = 0; k < chosen.size(); k++) {
         int idx = chosen[k];
+        res.chosen_ranks[k] = idx;
+        max_r = std::max(max_r, idx);
         res.triples[k] = evaluated[idx].triple_idx;
         res.inners[k][0] = evaluated[idx].inner[0];
         res.inners[k][1] = evaluated[idx].inner[1];
         res.inners[k][2] = evaluated[idx].inner[2];
         res.weights[k] = current_best_alpha[k];
       }
+      res.max_rank_looked = max_r;
+      res.pool_tested = (int)evaluated.size();
       if (current_best_margin > 0.0) {
         res.certified = true;
         return res;
@@ -1587,9 +1707,25 @@ MixtureSolveStats SolveCellMixture(
 
     // 2. Mixture evaluation
     MixtureResult res = EvaluateBoxCPUMixture(node.chart, node.box, node.tri, cone_samples, max_components);
+    stats.count_evaluations++;
+    stats.sum_candidate_pool_size += res.num_candidates;
     if (res.certified) {
       stats.certified_leaves++;
       stats.worst_margin = std::min(stats.worst_margin, res.margin);
+      if (res.strategy_used == 0) stats.k1_count++;
+      else if (res.strategy_used == 1) stats.corner_count++;
+      else if (res.strategy_used == 2) stats.greedy_count++;
+
+      int max_r = res.max_rank_looked;
+      stats.max_candidate_rank = std::max(stats.max_candidate_rank, (int64_t)max_r);
+      if (max_r == 0) stats.rank_histogram[0]++;
+      else if (max_r <= 3) stats.rank_histogram[1]++;
+      else if (max_r <= 7) stats.rank_histogram[2]++;
+      else if (max_r <= 15) stats.rank_histogram[3]++;
+      else if (max_r <= 31) stats.rank_histogram[4]++;
+      else if (max_r <= 63) stats.rank_histogram[5]++;
+      else if (max_r <= 127) stats.rank_histogram[6]++;
+      else stats.rank_histogram[7]++;
       if (res.num_components == 1) {
         EmitRow(std::format("CE {} {} {} {} {:.17g} {} {} {}\n",
                             node.id, node.parent_id, node.depth,

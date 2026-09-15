@@ -611,6 +611,12 @@ static int RunDifficultMixture(
   uint64_t total_rows_written = 0;
   std::vector<DifficultCell> remaining_unsolved = unsolved_cells;
 
+  int64_t total_k1 = 0, total_corner = 0, total_greedy = 0;
+  int64_t total_rank_hist[8] = {0};
+  int64_t global_max_rank = 0;
+  double total_eval_pool_sum = 0.0;
+  int64_t total_eval_count = 0;
+
   std::atomic<size_t> next_cell_idx = 0;
   int actual_threads = std::max(1, num_threads);
 
@@ -685,10 +691,30 @@ static int RunDifficultMixture(
 
       double cell_seconds = cell_timer.Seconds();
 
-      if (SigIntReceived()) {
+      std::string cand_info = std::format(
+          " [cands: avg_pool={:.0f}, max_rank={}, strat(K1/crn/grd)={}/{}/{}, hist: 0:{}, 1-3:{}, 4-7:{}, 8-15:{}, 16-31:{}, 32-63:{}, 64+:{}]",
+          stats.count_evaluations > 0 ? (stats.sum_candidate_pool_size / stats.count_evaluations) : 0.0,
+          stats.max_candidate_rank,
+          stats.k1_count, stats.corner_count, stats.greedy_count,
+          stats.rank_histogram[0], stats.rank_histogram[1], stats.rank_histogram[2],
+          stats.rank_histogram[3], stats.rank_histogram[4], stats.rank_histogram[5],
+          stats.rank_histogram[6] + stats.rank_histogram[7]);
+
+      if (cell_interrupted || SigIntReceived()) {
         std::error_code ec;
         std::filesystem::remove(tmp_path, ec);
         break;
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(state_mu);
+        total_k1 += stats.k1_count;
+        total_corner += stats.corner_count;
+        total_greedy += stats.greedy_count;
+        for (int b = 0; b < 8; b++) total_rank_hist[b] += stats.rank_histogram[b];
+        global_max_rank = std::max(global_max_rank, stats.max_candidate_rank);
+        total_eval_pool_sum += stats.sum_candidate_pool_size;
+        total_eval_count += stats.count_evaluations;
       }
 
       if (!stats.solved) {
@@ -697,12 +723,12 @@ static int RunDifficultMixture(
         std::lock_guard<std::mutex> lock(state_mu);
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;
-          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.\n",
-                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path);
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
         } else {
           total_unsolved++;
-          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.\n",
-                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path);
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path, cand_info);
         }
       } else {
         std::error_code ec;
@@ -717,9 +743,9 @@ static int RunDifficultMixture(
             return c.id == cell.id && c.chart == cell.chart;
           });
           WriteDifficultFile(difficult_path, remaining_unsolved);
-          status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]\n",
+          status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]{}\n",
                        cell.id, ANSI::Time(cell_seconds), cell_rows, stats.certified_leaves,
-                       done_filename, remaining_unsolved.size(), difficult_path);
+                       done_filename, remaining_unsolved.size(), difficult_path, cand_info);
         }
       }
     }
@@ -754,6 +780,38 @@ static int RunDifficultMixture(
         FormatNum(total_rows_written),
         ANSI::Time(total_timer.Seconds()));
 
+  int64_t total_certified_leaves = total_k1 + total_corner + total_greedy;
+  Print(ACYAN("\n=== Candidate Search Instrumentation ===\n"));
+  Print("Total leaf certifications: {}\n"
+        "  - Strategy K=1 (Single Triple):  {} ({:.1f}%)\n"
+        "  - Strategy 1   (Corner+Center):  {} ({:.1f}%)\n"
+        "  - Strategy 2   (Greedy Col-Gen): {} ({:.1f}%)\n"
+        "Candidate Pool Size: avg {:.1f} candidates per node\n"
+        "Deepest Rank That Certified: {}\n"
+        "Rank Histogram of Winning Candidates in evaluated[]:\n"
+        "  [Rank 0]     (Top candidate):      {}\n"
+        "  [Rank 1..3]  (Ranks 1 to 3):       {}\n"
+        "  [Rank 4..7]  (Ranks 4 to 7):       {}\n"
+        "  [Rank 8..15] (Ranks 8 to 15):      {}\n"
+        "  [Rank 16..31]:                     {}\n"
+        "  [Rank 32..63]:                     {}\n"
+        "  [Rank 64..127]:                    {}\n"
+        "  [Rank 128+]:                       {}\n",
+        FormatNum(total_certified_leaves),
+        FormatNum(total_k1), total_certified_leaves > 0 ? (100.0 * total_k1 / total_certified_leaves) : 0.0,
+        FormatNum(total_corner), total_certified_leaves > 0 ? (100.0 * total_corner / total_certified_leaves) : 0.0,
+        FormatNum(total_greedy), total_certified_leaves > 0 ? (100.0 * total_greedy / total_certified_leaves) : 0.0,
+        total_eval_count > 0 ? (total_eval_pool_sum / total_eval_count) : 0.0,
+        global_max_rank,
+        FormatNum(total_rank_hist[0]),
+        FormatNum(total_rank_hist[1]),
+        FormatNum(total_rank_hist[2]),
+        FormatNum(total_rank_hist[3]),
+        FormatNum(total_rank_hist[4]),
+        FormatNum(total_rank_hist[5]),
+        FormatNum(total_rank_hist[6]),
+        FormatNum(total_rank_hist[7]));
+
   return 0;
 }
 
@@ -764,6 +822,7 @@ static void PrintHelp() {
         "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
         "  --box_mixture           Convex triple mixture solver with box-bisection profile (recommended)\n"
         "  --mixture               Alias for --box_mixture (convex triple mixture solver)\n"
+        "  --view_mixture          Convex triple mixture solver with view-refinement profile\n"
         "  --max_components <N>    Max mixture components in mixture mode (default 4)\n"
         "  --split_kappa <K>       Rotation to view diameter ratio for splits in mixture mode (default 0.5)\n"
         "  --max_nodes <N>         Max total nodes evaluated per cell (default 8192 in mixture mode)\n"
@@ -799,6 +858,7 @@ int main(int argc, char **argv) {
   std::string difficult_path;
   std::string out_dir = ".";
   bool mixture_mode = false;
+  bool view_mixture_mode = false;
   int max_components = 4;
   double split_kappa = 0.5;
   int max_nodes = 64;
@@ -837,11 +897,18 @@ int main(int argc, char **argv) {
       difficult_path = argv[++i];
     } else if (arg == "--out_dir" && i + 1 < argc) {
       out_dir = argv[++i];
-    } else if (arg == "--box_mixture" || arg == "--mixture" || arg == "--mode=mixture") {
+    } else if (arg == "--view_mixture" || arg == "--mode=view_mixture") {
+      mixture_mode = true;
+      view_mixture_mode = true;
+    } else if (arg == "--box_mixture" || arg == "--mixture" || arg == "--mode=mixture" || arg == "--mode=box_mixture") {
       mixture_mode = true;
     } else if ((arg == "--mode" || arg == "--profile") && i + 1 < argc) {
       std::string_view m = argv[++i];
       if (m == "mixture" || m == "box_mixture") mixture_mode = true;
+      if (m == "view_mixture") {
+        mixture_mode = true;
+        view_mixture_mode = true;
+      }
     } else if (arg == "--max_components" && i + 1 < argc) {
       max_components = std::atoi(argv[++i]);
     } else if (arg == "--split_kappa" && i + 1 < argc) {
@@ -906,12 +973,12 @@ int main(int argc, char **argv) {
   }
 
   if (mixture_mode) {
-    if (!max_depth_specified) max_depth = 68;
-    if (!max_box_depth_specified) max_box_depth = 60;
-    if (!max_view_depth_specified) max_view_depth = 8;
-    if (!max_nodes_specified) max_nodes = 8192;
-    if (!max_split_delta_specified) max_split_delta = 20;
-    if (!limit_sec_specified) limit_sec = 120.0;
+    if (!max_depth_specified) max_depth = view_mixture_mode ? 84 : 68;
+    if (!max_box_depth_specified) max_box_depth = 66;
+    if (!max_view_depth_specified) max_view_depth = view_mixture_mode ? 12 : 8;
+    if (!max_nodes_specified) max_nodes = view_mixture_mode ? 16384 : 8192;
+    if (!max_split_delta_specified) max_split_delta = view_mixture_mode ? 36 : 20;
+    if (!limit_sec_specified) limit_sec = 240.0;
     return RunDifficultMixture(
         chart, difficult_path, out_dir, max_depth, max_box_depth,
         max_view_depth, max_nodes, max_split_delta, cone_samples,
