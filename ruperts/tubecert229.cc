@@ -280,7 +280,7 @@ static BigRat ExactTetrahedronAxisRadius(const Vec3Q pts[4]) {
 
 // Audits a single 3-contact axis on triangle tri
 static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertificate *out_cert,
-                      Vec3Q *out_center, BigRat *out_delta) {
+                      Vec3Q *out_center, BigRat *out_delta, std::string *fail_reason = nullptr) {
   Vec3Q edges[3] = {GetExactEdge(contacts[0]), GetExactEdge(contacts[1]), GetExactEdge(contacts[2])};
   Vec3Q coeff0 = Vec3Q::Cross(edges[1], edges[2]);
   Vec3Q coeff1 = Vec3Q::Cross(edges[2], edges[0]);
@@ -310,14 +310,20 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
       if (val > w_max) w_max = val;
       if (val < w_min) w_min = val;
     }
-    if (w_min < support_error) return false;
+    if (w_min < support_error) {
+      if (fail_reason) *fail_reason = StringPrintf("w_min < support_error (m=%d, w_min=%s)", m, w_min.ToString().c_str());
+      return false;
+    }
     weight_upper[m] = w_max + support_error;
     sum_weight_upper = sum_weight_upper + weight_upper[m];
   }
 
   BigRat exact_B = sum_weight_upper * BigRat(2);
   BigRat B = CeilTo(exact_B, 1000000000LL);
-  if (B <= 0) return false;
+  if (B <= 0) {
+    if (fail_reason) *fail_reason = "B <= 0";
+    return false;
+  }
 
   out_cert->B = B;
   for (int m = 0; m < 3; m++) {
@@ -342,13 +348,19 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
         }
         s_upper = max_s + support_error;
       }
-      if (s_upper > 0) return false;
+      if (s_upper > 0) {
+        if (fail_reason) *fail_reason = StringPrintf("s_upper > 0 (m=%d, k=%d, s=%s)", m, k, s_upper.ToString().c_str());
+        return false;
+      }
       if (s_upper < best_support) {
         best_support = s_upper;
         best_w = k;
       }
     }
-    if (best_support >= 0) return false;
+    if (best_support >= 0) {
+      if (fail_reason) *fail_reason = StringPrintf("best_support >= 0 (m=%d)", m);
+      return false;
+    }
     out_cert->nonzero_witness[m] = best_w;
   }
 
@@ -418,7 +430,8 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
 // Re-audit an entire 4-axis certificate on triangle tri
 static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_cert,
                                const BigRat &target_c, const BigRat &tube_radius,
-                               LocalCertificate *out_cert) {
+                               LocalCertificate *out_cert,
+                               std::string *fail_reason = nullptr) {
   *out_cert = in_cert;
   Vec3Q centers[4];
   BigRat deltas[4];
@@ -426,7 +439,9 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
     ContactInfo contacts[3] = {in_cert.axes[a].contacts[0],
                                in_cert.axes[a].contacts[1],
                                in_cert.axes[a].contacts[2]};
-    if (!AuditAxis(tri, contacts, &out_cert->axes[a], &centers[a], &deltas[a])) {
+    std::string axis_reason;
+    if (!AuditAxis(tri, contacts, &out_cert->axes[a], &centers[a], &deltas[a], &axis_reason)) {
+      if (fail_reason) *fail_reason = StringPrintf("axis %d audit failed: %s", a, axis_reason.c_str());
       return false;
     }
   }
@@ -436,7 +451,12 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
   BigRat cover_radius = axis_radius * BigRat(19, 20) * BigRat(4, 7);
   BigRat c = FloorTo(cover_radius - delta, 1000000000LL);
 
-  if (c < target_c) return false;
+  if (c < target_c) {
+    if (fail_reason) *fail_reason = StringPrintf("c < target_c (c=%s, target=%s, cover=%s, delta=%s)",
+                                                 c.ToString().c_str(), target_c.ToString().c_str(),
+                                                 cover_radius.ToString().c_str(), delta.ToString().c_str());
+    return false;
+  }
 
   // Check containment of the 6 test points: +- 7/4 (c + delta) e_k
   BigRat scale = (c + delta) * BigRat(7, 4);
@@ -446,9 +466,16 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
                    axis == 1 ? scale * BigRat(sign) : BigRat(0),
                    axis == 2 ? scale * BigRat(sign) : BigRat(0));
       BigRat lam[4];
-      if (!Barycentric4(centers, target, lam)) return false;
+      if (!Barycentric4(centers, target, lam)) {
+        if (fail_reason) *fail_reason = "Barycentric4 degenerate";
+        return false;
+      }
       for (int i = 0; i < 4; i++) {
-        if (lam[i] < 0) return false;
+        if (lam[i] < 0) {
+          if (fail_reason) *fail_reason = StringPrintf("target axis %d sign %d not inside (lam[%d]=%s)",
+                                                       axis, sign, i, lam[i].ToString().c_str());
+          return false;
+        }
       }
     }
   }
@@ -457,7 +484,9 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
   // We want to find largest allowable r from a set of standard fractions:
   const BigRat candidate_rs[] = {
     BigRat("1/1000"), BigRat("1/2000"), BigRat("1/4000"),
-    BigRat("1/5000"), BigRat("1/8000"), BigRat("1/10000")
+    BigRat("1/5000"), BigRat("1/8000"), BigRat("1/10000"),
+    BigRat("1/20000"), BigRat("1/40000"), BigRat("1/50000"),
+    BigRat("1/100000")
   };
   BigRat certified_r(0);
   for (const auto &cand : candidate_rs) {
@@ -466,7 +495,11 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
       break;
     }
   }
-  if (certified_r < tube_radius) return false;
+  if (certified_r < tube_radius) {
+    if (fail_reason) *fail_reason = StringPrintf("certified_r < tube_radius (r=%s, target=%s, c=%s)",
+                                                 certified_r.ToString().c_str(), tube_radius.ToString().c_str(), c.ToString().c_str());
+    return false;
+  }
 
   out_cert->c = c;
   out_cert->delta = delta;
@@ -566,6 +599,9 @@ static void GenerateCandidatesForView(
   }
   std::vector<int> cycle = ConvexHull2D(projected);
   int H = cycle.size();
+  std::cout << "  Silhouette cycle (" << H << " vertices): ";
+  for (int v : cycle) std::cout << v << " ";
+  std::cout << "\n";
   if (H < 3) return;
 
   std::vector<ContactInfo> contacts;
@@ -845,7 +881,7 @@ static ClosestResult ClosestOriginFace(const std::vector<vec3> &pts, const std::
   return best;
 }
 
-static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int, 4> *out_indices) {
+static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int, 4> *out_indices, bool verbose = false) {
   int n = pts.size();
   if (n < 4) return false;
   int min_norm_idx = 0;
@@ -868,6 +904,7 @@ static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int
               double margin;
               double bary[4];
               if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                if (verbose) std::cout << "    [Wolfe] found enclosing tet on iter " << iter << " margin=" << margin << "\n";
                 *out_indices = {active[i], active[j], active[k], active[l]};
                 return true;
               }
@@ -878,7 +915,10 @@ static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int
     }
 
     ClosestResult closest = ClosestOriginFace(pts, active);
-    if (closest.support.empty()) return false;
+    if (closest.support.empty()) {
+      if (verbose) std::cout << "    [Wolfe] abort: support empty on iter " << iter << "\n";
+      return false;
+    }
     active = closest.support;
     vec3 current = closest.point;
     double norm_sq = closest.key;
@@ -890,16 +930,76 @@ static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int
       if (d < min_dot) { min_dot = d; next_index = i; }
     }
     double improvement = norm_sq - min_dot;
-    if (improvement <= 1e-13 * std::max(1.0, norm_sq)) return false;
+    if (improvement <= 1e-13 * std::max(1.0, norm_sq)) {
+      if (verbose) std::cout << "    [Wolfe] abort: no improvement on iter " << iter << " (norm_sq=" << norm_sq << ", min_dot=" << min_dot << ")\n";
+      return false;
+    }
 
-    if (std::find(active.begin(), active.end(), next_index) != active.end()) return false;
+    if (std::find(active.begin(), active.end(), next_index) != active.end()) {
+      if (verbose) std::cout << "    [Wolfe] abort: next_index already in active on iter " << iter << "\n";
+      return false;
+    }
     std::vector<int> sorted_active = active;
     std::sort(sorted_active.begin(), sorted_active.end());
-    if (seen.count({sorted_active, next_index})) return false;
+    if (seen.count({sorted_active, next_index})) {
+      if (verbose) std::cout << "    [Wolfe] abort: seen state on iter " << iter << "\n";
+      return false;
+    }
     seen.insert({sorted_active, next_index});
     active.push_back(next_index);
   }
+  if (verbose) std::cout << "    [Wolfe] abort: max iters reached\n";
   return false;
+}
+
+// Returns upper bound on margin c achievable by any tetrahedron chosen from candidates,
+// plus the maximum possible variation across triangle tri.
+// If this upper bound is less than target_c, no descendant triangle can ever reach target_c.
+static double EstimateMaxDescendantMargin(const TriangleQ &tri, const std::vector<vec3> &pts) {
+  if (pts.empty()) return -1.0;
+  double min_support = 1e30;
+  std::mt19937 rng(42);
+  std::normal_distribution<double> gauss(0.0, 1.0);
+  vec3 worst_u = {0, 0, 0};
+  for (int s = 0; s < 2000; s++) {
+    vec3 u = {gauss(rng), gauss(rng), gauss(rng)};
+    double len = yocto::length(u);
+    if (len < 1e-12) continue;
+    u = u / len;
+    double max_dot = -1e30;
+    for (const auto &p : pts) {
+      max_dot = std::max(max_dot, yocto::dot(u, p));
+    }
+    if (max_dot < min_support) {
+      min_support = max_dot;
+      worst_u = u;
+    }
+  }
+  for (int step = 0; step < 1000; step++) {
+    vec3 pert = {gauss(rng) * 0.05, gauss(rng) * 0.05, gauss(rng) * 0.05};
+    vec3 u = worst_u + pert;
+    double len = yocto::length(u);
+    if (len < 1e-12) continue;
+    u = u / len;
+    double max_dot = -1e30;
+    for (const auto &p : pts) {
+      max_dot = std::max(max_dot, yocto::dot(u, p));
+    }
+    if (max_dot < min_support) {
+      min_support = max_dot;
+      worst_u = u;
+    }
+  }
+  if (min_support <= 0) return 0.0;
+  
+  vec3 c0 = tri.corners[0].ToDouble();
+  vec3 c1 = tri.corners[1].ToDouble();
+  vec3 c2 = tri.corners[2].ToDouble();
+  double diam = std::max({yocto::length(c0 - c1), yocto::length(c1 - c2), yocto::length(c2 - c0)});
+  
+  // Chebyshev inradius factor: 19/20 * 4/7 = 76/140 = 0.542857.
+  // Maximum variation rate: outer_radius * 0.542857 <= 0.95 * 0.542857 <= 0.52.
+  return 0.542857 * min_support + 0.52 * diam;
 }
 
 static bool SynthesizeCertificate(
@@ -907,9 +1007,16 @@ static bool SynthesizeCertificate(
     int depth,
     const BigRat &target_c,
     const BigRat &tube_radius,
-    LocalCertificate *out_cert) {
+    LocalCertificate *out_cert,
+    bool verbose = false) {
 
   vec3 centroid = (tri.corners[0].ToDouble() + tri.corners[1].ToDouble() + tri.corners[2].ToDouble()) / 3.0;
+  if (verbose) {
+    std::cout << "SynthesizeCertificate: depth=" << depth
+              << " target_c=" << target_c.ToString()
+              << " tube_radius=" << tube_radius.ToString() << "\n"
+              << "  centroid=(" << centroid.x << ", " << centroid.y << ", " << centroid.z << ")\n";
+  }
 
   struct Pass {
     int cone_samples;
@@ -934,7 +1041,9 @@ static bool SynthesizeCertificate(
     passes.push_back({7, true, true, 2e-14});
   }
 
+  int pass_num = 0;
   for (const auto &pass : passes) {
+    pass_num++;
     std::vector<CandidateTriple> candidates;
     std::vector<vec3> sample_views;
     sample_views.push_back(centroid);
@@ -958,16 +1067,85 @@ static bool SynthesizeCertificate(
         }
       }
     }
+    if (verbose) {
+      std::cout << "  Pass " << pass_num << ": candidates=" << candidates.size()
+                << " (cone=" << pass.cone_samples << " bdry=" << pass.include_boundaries
+                << " corner=" << pass.include_corner_cycles << " err=" << pass.screen_support_error << ")\n";
+    }
     if (candidates.size() < 4) continue;
 
     std::vector<vec3> pts;
     pts.reserve(candidates.size());
     for (const auto &c : candidates) pts.push_back(c.normalized_a);
 
+    if (pass_num >= 2 && depth >= 12) {
+      double max_c = EstimateMaxDescendantMargin(tri, pts);
+      if (max_c < target_c.ToDouble()) {
+        static std::atomic<int> ceiling_reports{0};
+        if (ceiling_reports.fetch_add(1) < 20 || verbose) {
+          std::cout << AYELLOW("  [MARGIN CEILING DETECTED] depth=") << depth
+                    << AYELLOW(" max_achievable_c=") << max_c
+                    << AYELLOW(" < target_c=") << target_c.ToDouble()
+                    << AYELLOW(" (subdivision cannot reach target_c)") << "\n";
+        }
+      }
+    }
+
+    if (verbose) {
+      double min_support_over_sphere = 1e30;
+      vec3 worst_u = {0,0,0};
+      std::mt19937 rng_check(42);
+      std::normal_distribution<double> gauss_check(0.0, 1.0);
+      for (int s = 0; s < 50000; s++) {
+        vec3 u = {gauss_check(rng_check), gauss_check(rng_check), gauss_check(rng_check)};
+        double len = yocto::length(u);
+        if (len < 1e-12) continue;
+        u = u / len;
+        double max_dot = -1e30;
+        for (const auto &p : pts) {
+          max_dot = std::max(max_dot, yocto::dot(u, p));
+        }
+        if (max_dot < min_support_over_sphere) {
+          min_support_over_sphere = max_dot;
+          worst_u = u;
+        }
+      }
+      // Local refinement around worst_u
+      for (int step = 0; step < 20000; step++) {
+        vec3 pert = {gauss_check(rng_check) * 0.05, gauss_check(rng_check) * 0.05, gauss_check(rng_check) * 0.05};
+        vec3 u = worst_u + pert;
+        double len = yocto::length(u);
+        if (len < 1e-12) continue;
+        u = u / len;
+        double max_dot = -1e30;
+        for (const auto &p : pts) {
+          max_dot = std::max(max_dot, yocto::dot(u, p));
+        }
+        if (max_dot < min_support_over_sphere) {
+          min_support_over_sphere = max_dot;
+          worst_u = u;
+        }
+      }
+      std::cout << "    TRUE convex hull inradius <= " << min_support_over_sphere
+                << " along refined worst_u=(" << worst_u.x << ", " << worst_u.y << ", " << worst_u.z << ")\n";
+      int best_worst_u_idx = 0;
+      double max_worst_u_dot = -1e30;
+      for (size_t i = 0; i < pts.size(); i++) {
+        double d = yocto::dot(pts[i], worst_u);
+        if (d > max_worst_u_dot) { max_worst_u_dot = d; best_worst_u_idx = i; }
+      }
+      std::cout << "    Candidate with max dot along worst_u: idx=" << best_worst_u_idx
+                << " dot=" << max_worst_u_dot << " pt=(" << pts[best_worst_u_idx].x << ", "
+                << pts[best_worst_u_idx].y << ", " << pts[best_worst_u_idx].z << ") supp=("
+                << candidates[best_worst_u_idx].contacts[0].vertex << ", "
+                << candidates[best_worst_u_idx].contacts[1].vertex << ", "
+                << candidates[best_worst_u_idx].contacts[2].vertex << ")\n";
+    }
+
     std::set<int> pool_set;
     std::array<int, 4> best_indices;
     // 1. Deterministic Wolfe balanced tetrahedron search
-    bool wolfe_ok = FindBalancedTetrahedron(pts, &best_indices);
+    bool wolfe_ok = FindBalancedTetrahedron(pts, &best_indices, verbose);
     if (wolfe_ok) {
       LocalCertificate test_cert;
       for (int a = 0; a < 4; a++) {
@@ -975,9 +1153,12 @@ static bool SynthesizeCertificate(
         test_cert.axes[a].contacts[1] = candidates[best_indices[a]].contacts[1];
         test_cert.axes[a].contacts[2] = candidates[best_indices[a]].contacts[2];
       }
-      if (ReauditCertificate(tri, test_cert, target_c, tube_radius, out_cert)) {
+      std::string fail_reason;
+      if (ReauditCertificate(tri, test_cert, target_c, tube_radius, out_cert, &fail_reason)) {
+        if (verbose) std::cout << "    Wolfe tetrahedron SUCCEEDED!\n";
         return true;
       }
+      if (verbose) std::cout << "    Wolfe tetrahedron failed: " << fail_reason << "\n";
       for (int a = 0; a < 4; a++) pool_set.insert(best_indices[a]);
     }
 
@@ -1047,6 +1228,52 @@ static bool SynthesizeCertificate(
       }
     }
 
+    // 3. Rotated regular tetrahedral frame sampling across ALL candidates
+    {
+      const vec3 base_dirs[4] = {
+        vec3{ 1.0,  1.0,  1.0} / std::sqrt(3.0),
+        vec3{ 1.0, -1.0, -1.0} / std::sqrt(3.0),
+        vec3{-1.0,  1.0, -1.0} / std::sqrt(3.0),
+        vec3{-1.0, -1.0,  1.0} / std::sqrt(3.0),
+      };
+      std::uniform_real_distribution<double> uangle(0.0, 2.0 * M_PI);
+      for (int frame = 0; frame < 500; frame++) {
+        vec3 axis = {gauss(rng), gauss(rng), gauss(rng)};
+        double alen = yocto::length(axis);
+        if (alen < 1e-12) continue;
+        axis = axis / alen;
+        double angle = uangle(rng);
+        std::array<int, 4> frame_indices;
+        bool valid_frame = true;
+        for (int k = 0; k < 4; k++) {
+          vec3 v = base_dirs[k];
+          vec3 rdir = v * std::cos(angle) + yocto::cross(axis, v) * std::sin(angle) + axis * yocto::dot(axis, v) * (1.0 - std::cos(angle));
+          int best_idx = -1;
+          double max_d = -1e30;
+          for (size_t i = 0; i < pts.size(); i++) {
+            double d = yocto::dot(pts[i], rdir);
+            if (d > max_d) { max_d = d; best_idx = i; }
+          }
+          if (best_idx < 0) { valid_frame = false; break; }
+          frame_indices[k] = best_idx;
+        }
+        if (!valid_frame) continue;
+        std::sort(frame_indices.begin(), frame_indices.end());
+        if (frame_indices[0] == frame_indices[1] || frame_indices[1] == frame_indices[2] || frame_indices[2] == frame_indices[3]) continue;
+        
+        vec3 tpts[4] = {pts[frame_indices[0]], pts[frame_indices[1]], pts[frame_indices[2]], pts[frame_indices[3]]};
+        double margin;
+        double bary[4];
+        if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+          double slack = std::min({candidates[frame_indices[0]].strict_slack,
+                                   candidates[frame_indices[1]].strict_slack,
+                                   candidates[frame_indices[2]].strict_slack,
+                                   candidates[frame_indices[3]].strict_slack});
+          scored.push_back({margin, slack, frame_indices});
+        }
+      }
+    }
+
     if (scored.empty() && candidates.size() >= 4) {
       std::uniform_int_distribution<int> dist_all(0, candidates.size() - 1);
       for (int trial = 0; trial < 20000; trial++) {
@@ -1065,12 +1292,16 @@ static bool SynthesizeCertificate(
       }
     }
 
+    if (verbose) {
+      std::cout << "    Pool size: " << pool.size() << ", Scored tetrahedra: " << scored.size() << "\n";
+    }
+
     std::sort(scored.begin(), scored.end(), [](const ScoredTet &a, const ScoredTet &b) {
       if (a.margin != b.margin) return a.margin > b.margin;
       return a.slack > b.slack;
     });
 
-    int num_to_audit = std::min((int)scored.size(), 20);
+    int num_to_audit = verbose ? std::min((int)scored.size(), 100) : std::min((int)scored.size(), 20);
     for (int idx = 0; idx < num_to_audit; idx++) {
       LocalCertificate test_cert;
       for (int a = 0; a < 4; a++) {
@@ -1079,8 +1310,24 @@ static bool SynthesizeCertificate(
         test_cert.axes[a].contacts[1] = candidates[cand_idx].contacts[1];
         test_cert.axes[a].contacts[2] = candidates[cand_idx].contacts[2];
       }
-      if (ReauditCertificate(tri, test_cert, target_c, tube_radius, out_cert)) {
+      std::string fail_reason;
+      if (ReauditCertificate(tri, test_cert, target_c, tube_radius, out_cert, &fail_reason)) {
+        if (verbose) std::cout << "    Scored tet [" << idx << "] SUCCEEDED!\n";
         return true;
+      }
+      if (verbose && idx < 5) {
+        std::cout << "    Scored tet [" << idx << "] margin=" << scored[idx].margin
+                  << " slack=" << scored[idx].slack << " failed: " << fail_reason << "\n";
+        for (int a = 0; a < 4; a++) {
+          int cand_idx = scored[idx].indices[a];
+          std::cout << "      Axis " << a << ": supp=("
+                    << candidates[cand_idx].contacts[0].vertex << ", "
+                    << candidates[cand_idx].contacts[1].vertex << ", "
+                    << candidates[cand_idx].contacts[2].vertex << ") pt=("
+                    << candidates[cand_idx].normalized_a.x << ", "
+                    << candidates[cand_idx].normalized_a.y << ", "
+                    << candidates[cand_idx].normalized_a.z << ")\n";
+        }
       }
     }
   }
@@ -1141,8 +1388,8 @@ class TubeCertManager {
   int num_workers = 8;
   int checkpoint_every = 500;
   int chunk_size = 25000; // 0 = single monolithic file
-  BigRat target_c = BigRat("6/100000");
-  BigRat tube_radius = BigRat("1/10000");
+  BigRat target_c = BigRat("5/1000000");
+  BigRat tube_radius = BigRat("1/100000");
   std::string output_path = ".artifacts/nopert229/local-view-child0.json";
   std::string emit_pack_path = "";
   bool resume = true;
@@ -1647,6 +1894,9 @@ int main(int argc, char **argv) {
       mgr.resume = false;
     } else if (arg == "--test_f0") {
       std::string path = "Noperthedron/.artifacts/nopert229/local-view-child0.json.before-cpp.bak";
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        path = argv[++i];
+      }
       std::string s = Util::ReadFile(path);
       rapidjson::Document d;
       d.Parse(s.c_str());
@@ -1660,17 +1910,19 @@ int main(int argc, char **argv) {
         for (int k = 0; k < 3; k++) {
           tri.corners[k] = Vec3Q(tri_arr[k][0].GetString(), tri_arr[k][1].GetString(), tri_arr[k][2].GetString());
         }
+        int depth = f.HasMember("depth") ? f["depth"].GetInt() : 28;
         LocalCertificate cert;
-        bool ok = SynthesizeCertificate(tri, 28, mgr.target_c, mgr.tube_radius, &cert);
-        std::cout << "  Failure [" << i << "] id=" << f["id"].GetInt() << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
+        bool ok = SynthesizeCertificate(tri, depth, mgr.target_c, mgr.tube_radius, &cert);
+        std::cout << "  Failure [" << i << "] id=" << f["id"].GetInt() << " d=" << depth << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
         if (ok) successes++;
       }
       std::cout << "Total failure successes: " << successes << " / " << fails.Size() << "\n";
 
-      const auto &pend = d["pending"].GetArray();
-      int pend_d28_count = 0;
-      int pend_d28_success = 0;
-      std::cout << "Testing depth-28 pending nodes from before-cpp.bak:\n";
+      if (d.HasMember("pending") && d["pending"].IsArray()) {
+        const auto &pend = d["pending"].GetArray();
+        int pend_d28_count = 0;
+        int pend_d28_success = 0;
+        std::cout << "Testing depth-28 pending nodes from before-cpp.bak:\n";
       for (size_t i = 0; i < pend.Size(); i++) {
         const auto &p = pend[i];
         int depth = p[2].GetInt();
@@ -1686,8 +1938,62 @@ int main(int argc, char **argv) {
         std::cout << "  Pending d28 [" << pend_d28_count << "] id=" << p[0].GetInt() << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
         if (ok) pend_d28_success++;
       }
-      std::cout << "Total pending d28 successes: " << pend_d28_success << " / " << pend_d28_count << "\n";
+        std::cout << "Total pending d28 successes: " << pend_d28_success << " / " << pend_d28_count << "\n";
+      }
       return 0;
+    } else if (arg == "--diagnose_fail") {
+      int fail_idx = 0;
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        fail_idx = std::atoi(argv[++i]);
+      }
+      std::string path = "Noperthedron/.artifacts/nopert229/local-view-child0.json";
+      std::string s = Util::ReadFile(path);
+      rapidjson::Document d;
+      d.Parse(s.c_str());
+      const auto &fails = d["failures"].GetArray();
+      if (fail_idx >= (int)fails.Size()) {
+        std::cerr << "fail_idx " << fail_idx << " out of range (" << fails.Size() << " failures)\n";
+        return 1;
+      }
+      const auto &f = fails[fail_idx];
+      int f_id = 0, f_depth = 0;
+      rapidjson::Value::ConstArray tri_arr = f.IsObject() ? f["triangle"].GetArray() : f[1].GetArray();
+      if (f.IsObject()) {
+        f_id = f["id"].GetInt();
+        f_depth = f["depth"].GetInt();
+      } else {
+        f_id = f[0].GetInt();
+        f_depth = f[2].GetInt();
+      }
+      std::cout << "Diagnosing failure [" << fail_idx << "] id=" << f_id << " depth=" << f_depth << ":\n";
+      TriangleQ tri;
+      for (int k = 0; k < 3; k++) {
+        tri.corners[k] = Vec3Q(tri_arr[k][0].GetString(), tri_arr[k][1].GetString(), tri_arr[k][2].GetString());
+        std::cout << "  Corner " << k << ": (" << tri.corners[k].x.ToString() << ", "
+                  << tri.corners[k].y.ToString() << ", " << tri.corners[k].z.ToString() << ")\n";
+      }
+      LocalCertificate cert;
+      bool ok = SynthesizeCertificate(tri, f_depth, mgr.target_c, mgr.tube_radius, &cert, true);
+      std::cout << "Final synthesis result: " << (ok ? "SUCCESS" : "FAIL") << "\n";
+      return 0;
+    } else if (arg == "--diagnose_node") {
+      int node_id = std::atoi(argv[++i]);
+      if (mgr.LoadCheckpoint()) {
+        if (node_id < 0 || node_id >= (int)mgr.rows.size()) {
+          std::cerr << "Node id " << node_id << " not found in rows (size " << mgr.rows.size() << ")\n";
+          return 1;
+        }
+        const auto &r = mgr.rows[node_id];
+        std::cout << "Diagnosing node id=" << node_id << " depth=" << r.depth << ":\n";
+        for (int k = 0; k < 3; k++) {
+          std::cout << "  Corner " << k << ": (" << r.tri.corners[k].x.ToString() << ", "
+                    << r.tri.corners[k].y.ToString() << ", " << r.tri.corners[k].z.ToString() << ")\n";
+        }
+        LocalCertificate cert;
+        bool ok = SynthesizeCertificate(r.tri, r.depth, mgr.target_c, mgr.tube_radius, &cert, true);
+        std::cout << "Final synthesis result: " << (ok ? "SUCCESS" : "FAIL") << "\n";
+        return 0;
+      }
     }
   }
 
