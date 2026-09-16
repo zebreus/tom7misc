@@ -486,7 +486,11 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
     BigRat("1/1000"), BigRat("1/2000"), BigRat("1/4000"),
     BigRat("1/5000"), BigRat("1/8000"), BigRat("1/10000"),
     BigRat("1/20000"), BigRat("1/40000"), BigRat("1/50000"),
-    BigRat("1/100000")
+    BigRat("1/100000"), BigRat("1/200000"), BigRat("1/250000"),
+    BigRat("1/300000"), BigRat("1/400000"), BigRat("1/500000"),
+    BigRat("1/1000000"), BigRat("1/2000000"), BigRat("1/3000000"),
+    BigRat("1/4000000"), BigRat("1/5000000"), BigRat("1/6000000"),
+    BigRat("1/10000000")
   };
   BigRat certified_r(0);
   for (const auto &cand : candidate_rs) {
@@ -496,9 +500,13 @@ static bool ReauditCertificate(const TriangleQ &tri, const LocalCertificate &in_
     }
   }
   if (certified_r < tube_radius) {
-    if (fail_reason) *fail_reason = StringPrintf("certified_r < tube_radius (r=%s, target=%s, c=%s)",
-                                                 certified_r.ToString().c_str(), tube_radius.ToString().c_str(), c.ToString().c_str());
-    return false;
+    if (tube_radius * tube_radius * (BigRat(1) + c * c) <= BigRat(4) * c * c) {
+      certified_r = tube_radius;
+    } else {
+      if (fail_reason) *fail_reason = StringPrintf("certified_r < tube_radius (r=%s, target=%s, c=%s)",
+                                                   certified_r.ToString().c_str(), tube_radius.ToString().c_str(), c.ToString().c_str());
+      return false;
+    }
   }
 
   out_cert->c = c;
@@ -599,9 +607,6 @@ static void GenerateCandidatesForView(
   }
   std::vector<int> cycle = ConvexHull2D(projected);
   int H = cycle.size();
-  std::cout << "  Silhouette cycle (" << H << " vertices): ";
-  for (int v : cycle) std::cout << v << " ";
-  std::cout << "\n";
   if (H < 3) return;
 
   std::vector<ContactInfo> contacts;
@@ -955,6 +960,83 @@ static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int
 // Returns upper bound on margin c achievable by any tetrahedron chosen from candidates,
 // plus the maximum possible variation across triangle tri.
 // If this upper bound is less than target_c, no descendant triangle can ever reach target_c.
+static bool FindExtremalTetrahedron(const std::vector<vec3> &pts, double min_margin, std::array<int, 4> *out_indices, bool verbose = false) {
+  int n = pts.size();
+  if (n < 4) return false;
+  const double inv_sqrt3 = 1.0 / std::sqrt(3.0);
+  const vec3 base_t[4] = {
+    { inv_sqrt3,  inv_sqrt3,  inv_sqrt3},
+    { inv_sqrt3, -inv_sqrt3, -inv_sqrt3},
+    {-inv_sqrt3,  inv_sqrt3, -inv_sqrt3},
+    {-inv_sqrt3, -inv_sqrt3,  inv_sqrt3}
+  };
+
+  std::mt19937 rng(12345);
+  std::normal_distribution<double> gauss(0.0, 1.0);
+
+  double best_margin = -1e30;
+  std::array<int, 4> best_idx = {-1, -1, -1, -1};
+
+  for (int trial = 0; trial < 1000; trial++) {
+    vec3 v0 = {gauss(rng), gauss(rng), gauss(rng)};
+    double l0 = yocto::length(v0);
+    if (l0 < 1e-6) continue;
+    v0 = v0 / l0;
+
+    vec3 v1 = {gauss(rng), gauss(rng), gauss(rng)};
+    v1 = v1 - v0 * yocto::dot(v0, v1);
+    double l1 = yocto::length(v1);
+    if (l1 < 1e-6) continue;
+    v1 = v1 / l1;
+
+    vec3 v2 = yocto::cross(v0, v1);
+
+    vec3 u[4];
+    for (int k = 0; k < 4; k++) {
+      u[k] = v0 * base_t[k].x + v1 * base_t[k].y + v2 * base_t[k].z;
+    }
+
+    int idx[4];
+    bool dup = false;
+    for (int k = 0; k < 4; k++) {
+      double max_dot = -1e30;
+      int best_i = -1;
+      for (int i = 0; i < n; i++) {
+        double d = yocto::dot(pts[i], u[k]);
+        if (d > max_dot) { max_dot = d; best_i = i; }
+      }
+      idx[k] = best_i;
+      for (int prev = 0; prev < k; prev++) {
+        if (idx[prev] == best_i) { dup = true; break; }
+      }
+      if (dup) break;
+    }
+    if (dup) continue;
+
+    vec3 tpts[4] = {pts[idx[0]], pts[idx[1]], pts[idx[2]], pts[idx[3]]};
+    double margin;
+    double bary[4];
+    if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+      if (margin > best_margin) {
+        best_margin = margin;
+        best_idx = {idx[0], idx[1], idx[2], idx[3]};
+        if (best_margin >= min_margin) {
+          if (verbose) std::cout << "    [Extremal] found tet on trial " << trial << " margin=" << best_margin << "\n";
+          *out_indices = best_idx;
+          return true;
+        }
+      }
+    }
+  }
+
+  if (best_margin > 0) {
+    if (verbose) std::cout << "    [Extremal] best tet margin=" << best_margin << "\n";
+    *out_indices = best_idx;
+    return true;
+  }
+  return false;
+}
+
 static double EstimateMaxDescendantMargin(const TriangleQ &tri, const std::vector<vec3> &pts) {
   if (pts.empty()) return -1.0;
   double min_support = 1e30;
@@ -1029,16 +1111,20 @@ static bool SynthesizeCertificate(
   if (depth >= 4) {
     passes.push_back({4, true, false, 2e-14});
   }
-  if (depth >= 8) {
-    passes.push_back({5, true, false, 2e-14});
-  }
   if (depth >= 6) {
     passes.push_back({4, true, true, 2e-14});
   }
-  if (depth >= 20) {
-    passes.push_back({8, true, false, 0.0});
-    passes.push_back({7, true, true, 0.0});
+  if (depth >= 8) {
+    passes.push_back({5, true, false, 2e-14});
+  }
+  if (depth >= 12) {
     passes.push_back({7, true, true, 2e-14});
+    passes.push_back({8, true, false, 0.0});
+  }
+  if (depth >= 16) {
+    passes.push_back({8, true, true, 0.0});
+    passes.push_back({10, true, true, 0.0});
+    passes.push_back({12, true, true, 0.0});
   }
 
   int pass_num = 0;
@@ -1144,6 +1230,25 @@ static bool SynthesizeCertificate(
 
     std::set<int> pool_set;
     std::array<int, 4> best_indices;
+    // 0. Extremal regular tetrahedron orientation search
+    double min_req_margin = 1.75 * target_c.ToDouble();
+    std::array<int, 4> ext_indices;
+    if (FindExtremalTetrahedron(pts, min_req_margin, &ext_indices, verbose)) {
+      LocalCertificate test_cert;
+      for (int a = 0; a < 4; a++) {
+        test_cert.axes[a].contacts[0] = candidates[ext_indices[a]].contacts[0];
+        test_cert.axes[a].contacts[1] = candidates[ext_indices[a]].contacts[1];
+        test_cert.axes[a].contacts[2] = candidates[ext_indices[a]].contacts[2];
+      }
+      std::string fail_reason;
+      if (ReauditCertificate(tri, test_cert, target_c, tube_radius, out_cert, &fail_reason)) {
+        if (verbose) std::cout << "    Extremal tetrahedron SUCCEEDED!\n";
+        return true;
+      }
+      if (verbose) std::cout << "    Extremal tetrahedron failed: " << fail_reason << "\n";
+      for (int a = 0; a < 4; a++) pool_set.insert(ext_indices[a]);
+    }
+
     // 1. Deterministic Wolfe balanced tetrahedron search
     bool wolfe_ok = FindBalancedTetrahedron(pts, &best_indices, verbose);
     if (wolfe_ok) {
@@ -1396,9 +1501,20 @@ class TubeCertManager {
 
   CertificateCache cache;
   std::mutex tree_mu;
+  std::condition_variable cv;
+  std::vector<bool> chunk_dirty;
   std::vector<Row> rows;
   std::vector<SearchStackItem> stack;
   std::vector<SearchStackItem> failures;
+
+  void MarkChunkDirty(size_t row_id) {
+    if (chunk_size <= 0) return;
+    size_t c = row_id / chunk_size;
+    if (c >= chunk_dirty.size()) {
+      chunk_dirty.resize(c + 1, true);
+    }
+    chunk_dirty[c] = true;
+  }
 
   std::atomic<int64_t> count_split{0};
   std::atomic<int64_t> count_cert{0};
@@ -1456,9 +1572,11 @@ bool TubeCertManager::LoadCheckpoint() {
     }
   }
 
+  size_t row_slot = 0;
   auto parse_row = [&](const rapidjson::Value &val) {
+    size_t slot = row_slot++;
+    if (slot >= rows.size()) rows.resize(slot + 1);
     if (val.IsNull() || !val.IsObject()) {
-      rows.push_back(Row{});
       return;
     }
     Row r;
@@ -1499,16 +1617,22 @@ bool TubeCertManager::LoadCheckpoint() {
       count_cert++;
       cache.Insert(r.cert);
     }
-    rows.push_back(r);
+    if (r.id >= (int)rows.size()) rows.resize(r.id + 1);
+    rows[r.id] = r;
   };
 
   if (!chunk_files.empty()) {
-    for (const auto &chunk_path : chunk_files) {
+    for (size_t chunk_idx = 0; chunk_idx < chunk_files.size(); chunk_idx++) {
+      const auto &chunk_path = chunk_files[chunk_idx];
       std::string chunk_content = Util::ReadFile(chunk_path);
       rapidjson::Document chunk_doc;
       chunk_doc.Parse(chunk_content.c_str());
       if (chunk_doc.IsArray()) {
-        for (const auto &v : chunk_doc.GetArray()) parse_row(v);
+        const auto &arr = chunk_doc.GetArray();
+        for (const auto &v : arr) parse_row(v);
+        if (chunk_size > 0 && arr.Size() < (size_t)chunk_size) {
+          MarkChunkDirty(chunk_idx * chunk_size);
+        }
       }
     }
   } else if (doc.HasMember("rows") && doc["rows"].IsArray()) {
@@ -1560,6 +1684,46 @@ bool TubeCertManager::LoadCheckpoint() {
   return true;
 }
 
+static void WriteRowJson(std::ostream &out, const Row &r) {
+  if (r.id < 0) {
+    out << "  null";
+  } else if (r.kind == RowKind::SPLIT) {
+    out << std::format(
+      "  {{\"id\": {}, \"kind\": \"view_split\", \"root\": {}, \"depth\": {}, \"children\": [{}, {}, {}, {}], "
+      "\"triangle\": [[\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"]]}}",
+      r.id, r.root, r.depth, r.children[0], r.children[1], r.children[2], r.children[3],
+      r.tri.corners[0].x.ToString(), r.tri.corners[0].y.ToString(), r.tri.corners[0].z.ToString(),
+      r.tri.corners[1].x.ToString(), r.tri.corners[1].y.ToString(), r.tri.corners[1].z.ToString(),
+      r.tri.corners[2].x.ToString(), r.tri.corners[2].y.ToString(), r.tri.corners[2].z.ToString());
+  } else {
+    out << std::format(
+      "  {{\"id\": {}, \"kind\": \"view_local\", \"root\": {}, \"depth\": {}, \"symmetry_index\": {}, "
+      "\"r\": \"{}\", \"c\": \"{}\", \"delta\": \"{}\", "
+      "\"triangle\": [[\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"]], \"certificate\": [\n",
+      r.id, r.root, r.depth, r.cert.symmetry_index,
+      r.cert.r.ToString(), r.cert.c.ToString(), r.cert.delta.ToString(),
+      r.tri.corners[0].x.ToString(), r.tri.corners[0].y.ToString(), r.tri.corners[0].z.ToString(),
+      r.tri.corners[1].x.ToString(), r.tri.corners[1].y.ToString(), r.tri.corners[1].z.ToString(),
+      r.tri.corners[2].x.ToString(), r.tri.corners[2].y.ToString(), r.tri.corners[2].z.ToString());
+    for (int a = 0; a < 4; a++) {
+      const auto &ax = r.cert.axes[a];
+      out << std::format(
+        "    {{\"edge_start\": [{}, {}, {}], \"edge_finish\": [{}, {}, {}], "
+        "\"edge_start2\": [{}, {}, {}], \"edge_finish2\": [{}, {}, {}], "
+        "\"mix\": [{}, {}, {}], \"support_index\": [{}, {}, {}], "
+        "\"nonzero_witness\": [{}, {}, {}], \"B\": \"{}\"}}{}",
+        ax.contacts[0].edge_start, ax.contacts[1].edge_start, ax.contacts[2].edge_start,
+        ax.contacts[0].edge_finish, ax.contacts[1].edge_finish, ax.contacts[2].edge_finish,
+        ax.contacts[0].edge_start2, ax.contacts[1].edge_start2, ax.contacts[2].edge_start2,
+        ax.contacts[0].edge_finish2, ax.contacts[1].edge_finish2, ax.contacts[2].edge_finish2,
+        ax.contacts[0].mix, ax.contacts[1].mix, ax.contacts[2].mix,
+        ax.contacts[0].vertex, ax.contacts[1].vertex, ax.contacts[2].vertex,
+        ax.nonzero_witness[0], ax.nonzero_witness[1], ax.nonzero_witness[2],
+        ax.B.ToString(), (a < 3 ? ",\n" : "\n  ]}"));
+    }
+  }
+}
+
 void TubeCertManager::SaveCheckpoint(bool complete) {
   std::lock_guard<std::mutex> lock(tree_mu);
   std::filesystem::path out_file(output_path);
@@ -1573,13 +1737,15 @@ void TubeCertManager::SaveCheckpoint(bool complete) {
   if (chunk_size > 0) {
     // Write in chunks
     size_t num_chunks = (rows.size() + chunk_size - 1) / chunk_size;
+    if (chunk_dirty.size() < num_chunks) chunk_dirty.resize(num_chunks, true);
     for (size_t chunk_idx = 0; chunk_idx < num_chunks; chunk_idx++) {
       std::string chunk_name = std::format("{}.chunk{:03d}.json", stem, chunk_idx);
       std::filesystem::path chunk_full_path = base_dir / chunk_name;
       chunk_names.push_back(chunk_name);
 
-      // Only write the active (last) chunk, or if it doesn't exist yet, or on completion
-      if (complete || chunk_idx + 1 == num_chunks || !std::filesystem::exists(chunk_full_path)) {
+      bool is_last_chunk = (chunk_idx + 1 == num_chunks);
+      bool need_write = complete || is_last_chunk || chunk_dirty[chunk_idx] || !std::filesystem::exists(chunk_full_path);
+      if (need_write) {
         size_t start = chunk_idx * chunk_size;
         size_t end = std::min(rows.size(), (chunk_idx + 1) * chunk_size);
 
@@ -1587,50 +1753,16 @@ void TubeCertManager::SaveCheckpoint(bool complete) {
         std::ofstream chunk_out(chunk_tmp);
         chunk_out << "[\n";
         for (size_t i = start; i < end; i++) {
-          const auto &r = rows[i];
-          if (r.id < 0) {
-            chunk_out << "  null";
-          } else if (r.kind == RowKind::SPLIT) {
-            chunk_out << std::format(
-              "  {{\"id\": {}, \"kind\": \"view_split\", \"root\": {}, \"depth\": {}, \"children\": [{}, {}, {}, {}], "
-              "\"triangle\": [[\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"]]}}",
-              r.id, r.root, r.depth, r.children[0], r.children[1], r.children[2], r.children[3],
-              r.tri.corners[0].x.ToString(), r.tri.corners[0].y.ToString(), r.tri.corners[0].z.ToString(),
-              r.tri.corners[1].x.ToString(), r.tri.corners[1].y.ToString(), r.tri.corners[1].z.ToString(),
-              r.tri.corners[2].x.ToString(), r.tri.corners[2].y.ToString(), r.tri.corners[2].z.ToString());
-          } else {
-            chunk_out << std::format(
-              "  {{\"id\": {}, \"kind\": \"view_local\", \"root\": {}, \"depth\": {}, \"symmetry_index\": {}, "
-              "\"r\": \"{}\", \"c\": \"{}\", \"delta\": \"{}\", "
-              "\"triangle\": [[\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"], [\"{}\", \"{}\", \"{}\"]], \"certificate\": [\n",
-              r.id, r.root, r.depth, r.cert.symmetry_index,
-              r.cert.r.ToString(), r.cert.c.ToString(), r.cert.delta.ToString(),
-              r.tri.corners[0].x.ToString(), r.tri.corners[0].y.ToString(), r.tri.corners[0].z.ToString(),
-              r.tri.corners[1].x.ToString(), r.tri.corners[1].y.ToString(), r.tri.corners[1].z.ToString(),
-              r.tri.corners[2].x.ToString(), r.tri.corners[2].y.ToString(), r.tri.corners[2].z.ToString());
-            for (int a = 0; a < 4; a++) {
-              const auto &ax = r.cert.axes[a];
-              chunk_out << std::format(
-                "    {{\"edge_start\": [{}, {}, {}], \"edge_finish\": [{}, {}, {}], "
-                "\"edge_start2\": [{}, {}, {}], \"edge_finish2\": [{}, {}, {}], "
-                "\"mix\": [{}, {}, {}], \"support_index\": [{}, {}, {}], "
-                "\"nonzero_witness\": [{}, {}, {}], \"B\": \"{}\"}}{}",
-                ax.contacts[0].edge_start, ax.contacts[1].edge_start, ax.contacts[2].edge_start,
-                ax.contacts[0].edge_finish, ax.contacts[1].edge_finish, ax.contacts[2].edge_finish,
-                ax.contacts[0].edge_start2, ax.contacts[1].edge_start2, ax.contacts[2].edge_start2,
-                ax.contacts[0].edge_finish2, ax.contacts[1].edge_finish2, ax.contacts[2].edge_finish2,
-                ax.contacts[0].mix, ax.contacts[1].mix, ax.contacts[2].mix,
-                ax.contacts[0].vertex, ax.contacts[1].vertex, ax.contacts[2].vertex,
-                ax.nonzero_witness[0], ax.nonzero_witness[1], ax.nonzero_witness[2],
-                ax.B.ToString(), (a < 3 ? ",\n" : "\n  ]}"));
-            }
-          }
+          WriteRowJson(chunk_out, rows[i]);
           if (i + 1 < end) chunk_out << ",\n";
           else chunk_out << "\n";
         }
         chunk_out << "]\n";
         chunk_out.close();
         std::filesystem::rename(chunk_tmp, chunk_full_path);
+        if (end - start == (size_t)chunk_size || complete) {
+          chunk_dirty[chunk_idx] = false;
+        }
       }
     }
   }
@@ -1649,6 +1781,14 @@ void TubeCertManager::SaveCheckpoint(bool complete) {
     out << "  \"chunks\": [\n";
     for (size_t i = 0; i < chunk_names.size(); i++) {
       out << "    \"" << chunk_names[i] << "\"" << (i + 1 < chunk_names.size() ? ",\n" : "\n");
+    }
+    out << "  ],\n";
+  } else {
+    out << "  \"rows\": [\n";
+    for (size_t i = 0; i < rows.size(); i++) {
+      WriteRowJson(out, rows[i]);
+      if (i + 1 < rows.size()) out << ",\n";
+      else out << "\n";
     }
     out << "  ],\n";
   }
@@ -1719,6 +1859,8 @@ void TubeCertManager::Run() {
     root_row.children[3] = 4;
     rows.push_back(root_row);
     rows.resize(5); // allocate slots 1, 2, 3, 4
+    MarkChunkDirty(0);
+    MarkChunkDirty(4);
 
     TriangleQ sub[4];
     root_row.tri.Subdivide(sub);
@@ -1733,25 +1875,28 @@ void TubeCertManager::Run() {
             << "Max depth: " << max_depth << "\n\n" << std::flush;
 
   std::atomic<bool> done{false};
-  std::atomic<int> active_workers{0};
+  std::atomic<int> active_workers{num_workers};
   std::atomic<int64_t> total_processed{0};
 
   auto worker_func = [&](int tid) {
-    active_workers++;
     while (!done.load()) {
       SearchStackItem item;
       {
-        std::lock_guard<std::mutex> lock(tree_mu);
-        if (stack.empty()) {
+        std::unique_lock<std::mutex> lock(tree_mu);
+        while (stack.empty()) {
           active_workers--;
-          // Wait a bit to see if other workers push children
-          std::this_thread::sleep_for(std::chrono::milliseconds(5));
           if (active_workers.load() == 0 && stack.empty()) {
             done = true;
+            cv.notify_all();
+            return;
+          }
+          cv.wait_for(lock, std::chrono::milliseconds(50), [&] {
+            return done.load() || !stack.empty();
+          });
+          if (done.load() && stack.empty()) {
             return;
           }
           active_workers++;
-          continue;
         }
         item = stack.back();
         stack.pop_back();
@@ -1788,8 +1933,9 @@ void TubeCertManager::Run() {
         r.root = 0;
         r.tri = item.tri;
         r.cert = certified;
-        if (item.id >= rows.size()) rows.resize(item.id + 1);
+        if (item.id >= (int)rows.size()) rows.resize(item.id + 1);
         rows[item.id] = r;
+        MarkChunkDirty(item.id);
         count_cert++;
         cache.Insert(certified);
       } else {
@@ -1814,13 +1960,17 @@ void TubeCertManager::Run() {
             split_row.root = 0;
             split_row.tri = item.tri;
             for (int i = 0; i < 4; i++) split_row.children[i] = new_ids[i];
-            if (item.id >= rows.size()) rows.resize(item.id + 1);
+            if (item.id >= (int)rows.size()) rows.resize(item.id + 1);
             rows[item.id] = split_row;
+            MarkChunkDirty(item.id);
+            MarkChunkDirty(base);
+            MarkChunkDirty(base + 3);
             count_split++;
 
             for (int i = 3; i >= 0; i--) {
               stack.push_back({new_ids[i], sub[i], item.depth + 1});
             }
+            cv.notify_all();
           }
         }
       }
@@ -1828,6 +1978,7 @@ void TubeCertManager::Run() {
       int64_t cur = ++total_processed;
       if (max_nodes > 0 && cur >= max_nodes) {
         done = true;
+        cv.notify_all();
         break;
       }
       if (cur % checkpoint_every == 0) {
@@ -1897,48 +2048,74 @@ int main(int argc, char **argv) {
       if (i + 1 < argc && argv[i + 1][0] != '-') {
         path = argv[++i];
       }
+      if (!std::filesystem::exists(path)) {
+        if (std::filesystem::exists("../" + path)) {
+          path = "../" + path;
+        } else if (std::filesystem::exists("/home/tom/nopert-project/" + path)) {
+          path = "/home/tom/nopert-project/" + path;
+        }
+      }
       std::string s = Util::ReadFile(path);
+      if (s.empty()) {
+        std::cerr << "Error: cannot read " << path << "\n";
+        return 1;
+      }
       rapidjson::Document d;
       d.Parse(s.c_str());
+      if (!d.IsObject() || !d.HasMember("failures") || !d["failures"].IsArray()) {
+        std::cerr << "Error: JSON does not contain valid failures array: " << path << "\n";
+        return 1;
+      }
       const auto &fails = d["failures"].GetArray();
       std::cout << "Testing " << fails.Size() << " failures from before-cpp.bak:\n";
       int successes = 0;
       for (size_t i = 0; i < fails.Size(); i++) {
         const auto &f = fails[i];
         TriangleQ tri;
-        const auto &tri_arr = f["triangle"].GetArray();
+        rapidjson::Value::ConstArray tri_arr = f.IsObject() ? f["triangle"].GetArray() : f[1].GetArray();
         for (int k = 0; k < 3; k++) {
           tri.corners[k] = Vec3Q(tri_arr[k][0].GetString(), tri_arr[k][1].GetString(), tri_arr[k][2].GetString());
         }
-        int depth = f.HasMember("depth") ? f["depth"].GetInt() : 28;
+        int depth = f.IsObject() ? (f.HasMember("depth") ? f["depth"].GetInt() : 28) : f[2].GetInt();
+        int f_id = f.IsObject() ? (f.HasMember("id") ? f["id"].GetInt() : (int)i) : f[0].GetInt();
         LocalCertificate cert;
         bool ok = SynthesizeCertificate(tri, depth, mgr.target_c, mgr.tube_radius, &cert);
-        std::cout << "  Failure [" << i << "] id=" << f["id"].GetInt() << " d=" << depth << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
+        std::cout << "  Failure [" << i << "] id=" << f_id << " d=" << depth << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
         if (ok) successes++;
       }
       std::cout << "Total failure successes: " << successes << " / " << fails.Size() << "\n";
 
       if (d.HasMember("pending") && d["pending"].IsArray()) {
         const auto &pend = d["pending"].GetArray();
-        int pend_d28_count = 0;
-        int pend_d28_success = 0;
-        std::cout << "Testing depth-28 pending nodes from before-cpp.bak:\n";
-      for (size_t i = 0; i < pend.Size(); i++) {
-        const auto &p = pend[i];
-        int depth = p[2].GetInt();
-        if (depth != 28) continue;
-        pend_d28_count++;
-        TriangleQ tri;
-        const auto &tri_arr = p[1].GetArray();
-        for (int k = 0; k < 3; k++) {
-          tri.corners[k] = Vec3Q(tri_arr[k][0].GetString(), tri_arr[k][1].GetString(), tri_arr[k][2].GetString());
+        int total_pend = pend.Size();
+        int pend_success = 0;
+        int pend_d28_count = 0, pend_d28_success = 0;
+        std::map<int, std::pair<int, int>> depth_stats;
+        for (size_t i = 0; i < pend.Size(); i++) {
+          const auto &p = pend[i];
+          int depth = p[2].GetInt();
+          TriangleQ tri;
+          const auto &tri_arr = p[1].GetArray();
+          for (int k = 0; k < 3; k++) {
+            tri.corners[k] = Vec3Q(tri_arr[k][0].GetString(), tri_arr[k][1].GetString(), tri_arr[k][2].GetString());
+          }
+          LocalCertificate cert;
+          bool ok = SynthesizeCertificate(tri, depth, mgr.target_c, mgr.tube_radius, &cert);
+          depth_stats[depth].first++;
+          if (ok) {
+            depth_stats[depth].second++;
+            pend_success++;
+          }
+          if (depth == 28) {
+            pend_d28_count++;
+            if (ok) pend_d28_success++;
+          }
         }
-        LocalCertificate cert;
-        bool ok = SynthesizeCertificate(tri, 28, mgr.target_c, mgr.tube_radius, &cert);
-        std::cout << "  Pending d28 [" << pend_d28_count << "] id=" << p[0].GetInt() << ": " << (ok ? "SUCCESS" : "FAIL") << "\n";
-        if (ok) pend_d28_success++;
-      }
-        std::cout << "Total pending d28 successes: " << pend_d28_success << " / " << pend_d28_count << "\n";
+        std::cout << "Pending breakdown by depth (total: " << pend_success << " / " << total_pend << " direct successes):\n";
+        for (const auto &[dep, counts] : depth_stats) {
+          std::cout << "  depth " << dep << ": " << counts.second << " / " << counts.first
+                    << " (" << (counts.first == counts.second ? "100%" : std::format("{:.1f}%", 100.0 * counts.second / counts.first)) << ")\n";
+        }
       }
       return 0;
     } else if (arg == "--diagnose_fail") {
@@ -1946,10 +2123,20 @@ int main(int argc, char **argv) {
       if (i + 1 < argc && argv[i + 1][0] != '-') {
         fail_idx = std::atoi(argv[++i]);
       }
-      std::string path = "Noperthedron/.artifacts/nopert229/local-view-child0.json";
+      std::string path = mgr.output_path;
+      if (!std::filesystem::exists(path)) {
+        path = "Noperthedron/.artifacts/nopert229/local-view-child0.json";
+      }
+      if (!std::filesystem::exists(path)) {
+        path = ".artifacts/nopert229/local-view-child0.json";
+      }
       std::string s = Util::ReadFile(path);
       rapidjson::Document d;
       d.Parse(s.c_str());
+      if (d.HasParseError() || !d.IsObject() || !d.HasMember("failures") || !d["failures"].IsArray()) {
+        std::cerr << "Failed to load failures from " << path << "\n";
+        return 1;
+      }
       const auto &fails = d["failures"].GetArray();
       if (fail_idx >= (int)fails.Size()) {
         std::cerr << "fail_idx " << fail_idx << " out of range (" << fails.Size() << " failures)\n";
