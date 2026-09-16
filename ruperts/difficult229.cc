@@ -631,7 +631,8 @@ static int RunDifficultMixture(
     double split_kappa, double tube_radius, double limit_sec, int num_threads,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true, std::string splits_file = "",
-    bool rand_order = false, uint64_t rand_seed = 0) {
+    bool rand_order = false, uint64_t rand_seed = 0,
+    bool parallel_search = true) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -646,7 +647,11 @@ static int RunDifficultMixture(
   Print("Mixture: max_components={}, split_kappa={:.2g}, tube_radius={:.3g}, limit_sec={}\n",
         max_components, split_kappa, tube_radius,
         limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none");
-  Print("Parallelism: {} worker threads (CPU)\n", num_threads);
+  if (parallel_search && num_threads > 1) {
+    Print("Parallelism: {} worker threads (CPU, single-cell multi-threading with work stealing)\n", num_threads);
+  } else {
+    Print("Parallelism: {} worker threads (CPU, concurrent cell search)\n", num_threads);
+  }
 
   if (!std::filesystem::exists(difficult_path)) {
     Print(ARED("Difficult file '{}' does not exist.\n"), difficult_path);
@@ -875,12 +880,146 @@ static int RunDifficultMixture(
     }
   };
 
-  std::vector<std::thread> workers;
-  for (int t = 0; t < actual_threads; t++) {
-    workers.emplace_back(WorkerLoop);
-  }
-  for (auto &w : workers) {
-    w.join();
+  if (parallel_search && actual_threads > 1) {
+    for (size_t idx = 0; idx < unsolved_cells.size() && !SigIntReceived(); idx++) {
+      if (limit_cells > 0 && idx >= (size_t)limit_cells) break;
+
+      DifficultCell cell = unsolved_cells[idx];
+      if (target_cell_id >= 0 && cell.id != target_cell_id) continue;
+
+      std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
+      std::string done_path = std::format("{}/{}", out_dir, done_filename);
+      if (std::filesystem::exists(done_path)) {
+        auto v = VerifyDoneFile(cell, done_path);
+        if (v.valid) {
+          total_solved++;
+          total_rows_written += v.total_rows;
+          std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
+            return c.id == cell.id && c.chart == cell.chart;
+          });
+          WriteDifficultFile(difficult_path, remaining_unsolved);
+          status.Print(AGREEN("  ✔") " Cell #{} verified from existing {} ({} rows, {} leaves, worst margin: {:.6g}). [{} remaining in {}]\n",
+                       cell.id, done_filename, v.total_rows, v.total_leaves, v.worst_margin,
+                       remaining_unsolved.size(), difficult_path);
+          continue;
+        } else {
+          status.Print(AORANGE("  ✘") " Cell #{} has invalid existing {} ({}). Re-solving.\n",
+                       cell.id, done_filename, v.error_message);
+        }
+      }
+
+      total_processed++;
+      status.Print("[{}/{}] Cell #{} (depth {}, box_depth {}, view_depth {}, margin: {:.6g}) with {} threads...\n",
+                   total_processed, unsolved_cells.size(),
+                   cell.id, cell.depth, cell.box_depth, cell.view_depth, cell.best_margin,
+                   actual_threads);
+
+      std::string tmp_filename = std::format("{}.tmp", done_filename);
+      std::string tmp_path = std::format("{}/{}", out_dir, tmp_filename);
+
+      FILE *tmp_fp = fopen(tmp_path.c_str(), "w");
+      if (!tmp_fp) {
+        status.Print(ARED("Failed to create temporary file {}\n"), tmp_path);
+        continue;
+      }
+
+      uint64_t cell_rows = 0;
+      auto row_cb = [&](std::string_view row) {
+        fputs(std::string(row).c_str(), tmp_fp);
+        cell_rows++;
+      };
+
+      Timer cell_timer;
+      std::atomic<bool> cell_interrupted = false;
+      ViewQuadtree cell_tree;
+      bool has_quadtree = false;
+      auto it = splits_map.find(cell.id);
+      if (it != splits_map.end()) {
+        cell_tree = it->second;
+        has_quadtree = cell_tree.is_split;
+      }
+
+      auto stats = SolveCellMixtureParallel(
+          cell, actual_threads, max_depth, max_box_depth, max_view_depth,
+          max_nodes, max_split_delta,
+          cone_samples, max_components, split_kappa,
+          /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
+          has_quadtree ? &cell_tree : nullptr);
+
+      std::fflush(tmp_fp);
+      fclose(tmp_fp);
+      tmp_fp = nullptr;
+
+      double cell_seconds = cell_timer.Seconds();
+
+      std::string cand_info = std::format(
+          " [cands: avg_pool={:.0f}, max_rank={}, strat(K1/crn/grd/wrm)={}/{}/{}/{}, hist: 0:{}, 1-3:{}, 4-7:{}, 8-15:{}, 16-31:{}, 32-63:{}, 64+:{}]",
+          stats.count_evaluations > 0 ? (stats.sum_candidate_pool_size / stats.count_evaluations) : 0.0,
+          stats.max_candidate_rank,
+          stats.k1_count, stats.corner_count, stats.greedy_count, stats.warm_count,
+          stats.rank_histogram[0], stats.rank_histogram[1], stats.rank_histogram[2],
+          stats.rank_histogram[3], stats.rank_histogram[4], stats.rank_histogram[5],
+          stats.rank_histogram[6] + stats.rank_histogram[7]);
+
+      if (cell_interrupted || SigIntReceived()) {
+        std::error_code ec;
+        std::filesystem::remove(tmp_path, ec);
+        break;
+      }
+
+      total_k1 += stats.k1_count;
+      total_corner += stats.corner_count;
+      total_greedy += stats.greedy_count;
+      total_warm += stats.warm_count;
+      for (int b = 0; b < 8; b++) total_rank_hist[b] += stats.rank_histogram[b];
+      global_max_rank = std::max(global_max_rank, stats.max_candidate_rank);
+      total_eval_pool_sum += stats.sum_candidate_pool_size;
+      total_eval_count += stats.count_evaluations;
+
+      if (!stats.solved) {
+        std::error_code ec;
+        std::filesystem::remove(tmp_path, ec);
+        if (stats.learned_quadtree.is_split) {
+          splits_map[cell.id] = stats.learned_quadtree;
+          SaveQuadtreeSplitsFile(splits_file, splits_map);
+          status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
+                       stats.learned_quadtree.CountLeaves(), cell.id, splits_file);
+        }
+        if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
+          total_timed_out++;
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
+        } else {
+          total_unsolved++;
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path, cand_info);
+        }
+      } else {
+        std::error_code ec;
+        std::filesystem::rename(tmp_path, done_path, ec);
+        if (ec) {
+          status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
+        } else {
+          total_solved++;
+          total_rows_written += cell_rows;
+          std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
+            return c.id == cell.id && c.chart == cell.chart;
+          });
+          WriteDifficultFile(difficult_path, remaining_unsolved);
+          status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]{}\n",
+                       cell.id, ANSI::Time(cell_seconds), cell_rows, stats.certified_leaves,
+                       done_filename, remaining_unsolved.size(), difficult_path, cand_info);
+        }
+      }
+    }
+  } else {
+    std::vector<std::thread> workers;
+    for (int t = 0; t < actual_threads; t++) {
+      workers.emplace_back(WorkerLoop);
+    }
+    for (auto &w : workers) {
+      w.join();
+    }
   }
 
   status.Clear();
@@ -1019,6 +1158,7 @@ int main(int argc, char **argv) {
   bool show_status = true;
   bool rand_order = false;
   uint64_t rand_seed = 0;
+  bool parallel_search = true;
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -1082,6 +1222,10 @@ int main(int argc, char **argv) {
       limit_sec_specified = true;
     } else if (arg == "--threads" && i + 1 < argc) {
       num_threads = std::atoi(argv[++i]);
+    } else if (arg == "--parallel_search") {
+      parallel_search = true;
+    } else if (arg == "--parallel_cells") {
+      parallel_search = false;
     } else if (arg == "--cpu") {
       use_gpu = false;
     } else if (arg == "--gpu") {
@@ -1122,7 +1266,7 @@ int main(int argc, char **argv) {
         max_view_depth, max_nodes, max_split_delta, cone_samples,
         max_components, split_kappa, tube_radius,
         limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
-        show_status, splits_file, rand_order, rand_seed);
+        show_status, splits_file, rand_order, rand_seed, parallel_search);
   }
 
   RunDifficult(

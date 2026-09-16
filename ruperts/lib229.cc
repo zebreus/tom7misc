@@ -7,6 +7,7 @@
 #include <atomic>
 #include <charconv>
 #include <cmath>
+#include <condition_variable>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
@@ -15,18 +16,19 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <numbers>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
-#include <list>
 
 #include "ansi.h"
 #include "atomic-util.h"
@@ -2514,6 +2516,419 @@ MixtureSolveStats SolveCellMixture(
   }
 
   return FinishStats(all_leaves_certified && stack.empty());
+}
+
+MixtureSolveStats SolveCellMixtureParallel(
+    const DifficultCell &cell,
+    int num_threads,
+    int max_depth,
+    int max_box_depth,
+    int max_view_depth,
+    int max_nodes,
+    int max_split_delta,
+    int cone_samples,
+    int max_components,
+    double split_kappa,
+    double tube_radius,
+    double time_limit_sec,
+    std::function<void(std::string_view)> row_callback,
+    std::atomic<bool> *interrupted,
+    const ViewQuadtree *initial_quadtree) {
+  if (num_threads <= 1) {
+    return SolveCellMixture(
+        cell, max_depth, max_box_depth, max_view_depth,
+        max_nodes, max_split_delta, cone_samples, max_components,
+        split_kappa, tube_radius, time_limit_sec, row_callback,
+        interrupted, 0, initial_quadtree);
+  }
+
+  Timer timer;
+  SearchNode root = cell.ToSearchNode();
+  std::atomic<int64_t> next_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
+
+  ViewQuadtree base_tree;
+  if (initial_quadtree) {
+    base_tree = *initial_quadtree;
+  }
+
+  std::mutex row_mu;
+  auto EmitRow = [&](std::string_view row) {
+    if (row_callback) {
+      std::lock_guard<std::mutex> lk(row_mu);
+      row_callback(row);
+    }
+  };
+
+  // 1. Expand root quadtree (or start with root)
+  std::vector<SearchNode> initial_views;
+  if (base_tree.is_split) {
+    std::function<void(const SearchNode &, const ViewQuadtree &)> ExpandQuadtree =
+        [&](const SearchNode &parent, const ViewQuadtree &qnode) {
+      if (!qnode.is_split) {
+        initial_views.push_back(parent);
+        return;
+      }
+      auto sub_tris = parent.tri.Subdivide();
+      int64_t c0_id = next_id.fetch_add(1);
+      int64_t c1_id = next_id.fetch_add(1);
+      int64_t c2_id = next_id.fetch_add(1);
+      int64_t c3_id = next_id.fetch_add(1);
+      EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                          parent.id, parent.parent_id, parent.depth,
+                          c0_id, c1_id, c2_id, c3_id));
+      int64_t c_ids[4] = {c0_id, c1_id, c2_id, c3_id};
+      for (int t = 3; t >= 0; t--) {
+        SearchNode c = parent;
+        c.id = c_ids[t];
+        c.parent_id = parent.id;
+        c.depth++;
+        c.view_depth++;
+        c.tri = sub_tris[t];
+        if (qnode.children[t]) {
+          ExpandQuadtree(c, *qnode.children[t]);
+        } else {
+          initial_views.push_back(c);
+        }
+      }
+    };
+    ExpandQuadtree(root, base_tree);
+  } else {
+    initial_views.push_back(root);
+  }
+
+  // Two-tier queues:
+  // view_queue: untouched root view cones (coarsest grain, independent triangles)
+  // box_queue: stolen/shared Cayley sub-boxes (fine grain, within an active cone)
+  std::mutex work_mu;
+  std::condition_variable work_cv;
+  std::vector<SearchNode> view_queue;
+  for (auto it = initial_views.rbegin(); it != initial_views.rend(); ++it) {
+    view_queue.push_back(*it);
+  }
+  std::vector<SearchNode> box_queue;
+
+  std::mutex tree_mu;
+  ViewQuadtree dynamic_tree = base_tree;
+
+  std::atomic<int64_t> total_nodes_evaluated = 0;
+  std::atomic<int64_t> certified_leaves = 0;
+  std::atomic<int64_t> pruned_leaves = 0;
+  std::atomic<int64_t> ceiling_hits = 0;
+  std::atomic<int64_t> count_evaluations = 0;
+  std::atomic<double> sum_candidate_pool_size = 0.0;
+  std::atomic<int64_t> max_candidate_rank = 0;
+  std::atomic<int64_t> k1_count = 0, corner_count = 0, greedy_count = 0, warm_count = 0;
+  std::atomic<int64_t> rank_histogram[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  std::atomic<double> worst_margin = 1e30;
+  std::atomic<int> max_view_depth_reached = (int)cell.view_depth;
+
+  std::atomic<bool> terminate_search = false;
+  std::atomic<bool> all_leaves_certified = true;
+  std::atomic<int> active_workers = 0;
+
+  std::mutex unres_mu;
+  std::vector<SearchNode> unresolved_nodes;
+
+  int actual_threads = std::max(1, num_threads);
+
+  auto WorkerThread = [&]() {
+    FarkasCageCache cage_cache;
+    std::vector<SearchNode> local_stack;
+
+    while (true) {
+      if (terminate_search.load(std::memory_order_relaxed) ||
+          SigIntReceived() ||
+          (interrupted && interrupted->load(std::memory_order_relaxed))) {
+        terminate_search.store(true, std::memory_order_relaxed);
+        work_cv.notify_all();
+        break;
+      }
+      if (time_limit_sec > 0.0 && timer.Seconds() >= time_limit_sec) {
+        terminate_search.store(true, std::memory_order_relaxed);
+        work_cv.notify_all();
+        break;
+      }
+
+      // Tier 1 & 2 work acquisition
+      {
+        std::unique_lock<std::mutex> lock(work_mu);
+        while (view_queue.empty() && box_queue.empty() &&
+               active_workers.load() > 0 && !terminate_search.load()) {
+          work_cv.wait(lock);
+        }
+
+        if (terminate_search.load() ||
+            (view_queue.empty() && box_queue.empty() && active_workers.load() == 0)) {
+          work_cv.notify_all();
+          break;
+        }
+
+        // Prefer untouched view cone first (Tier 1)
+        if (!view_queue.empty()) {
+          local_stack.push_back(view_queue.back());
+          view_queue.pop_back();
+        } else if (!box_queue.empty()) {
+          // Steal coarse sub-boxes (Tier 2)
+          int steal_count = std::min<int>(box_queue.size(), 2);
+          for (int s = 0; s < steal_count; s++) {
+            local_stack.push_back(box_queue.back());
+            box_queue.pop_back();
+          }
+        }
+        active_workers.fetch_add(1);
+      }
+
+      // Local DFS loop
+      while (!local_stack.empty()) {
+        if (terminate_search.load(std::memory_order_relaxed) ||
+            SigIntReceived() ||
+            (interrupted && interrupted->load(std::memory_order_relaxed))) {
+          terminate_search.store(true, std::memory_order_relaxed);
+          break;
+        }
+        if (time_limit_sec > 0.0 && timer.Seconds() >= time_limit_sec) {
+          terminate_search.store(true, std::memory_order_relaxed);
+          break;
+        }
+
+        int64_t n_eval = total_nodes_evaluated.fetch_add(1);
+        if (n_eval > max_nodes) {
+          terminate_search.store(true, std::memory_order_relaxed);
+          break;
+        }
+
+        SearchNode node = local_stack.back();
+        local_stack.pop_back();
+
+        int vd = node.view_depth;
+        int cur_mvd = max_view_depth_reached.load(std::memory_order_relaxed);
+        while (vd > cur_mvd && !max_view_depth_reached.compare_exchange_weak(cur_mvd, vd)) {}
+
+        // 1. Pruning checks
+        if (OutsideBall(node.box)) {
+          pruned_leaves.fetch_add(1);
+          EmitRow(std::format("PR {} {} {} RADIUS\n", node.id, node.parent_id, node.depth));
+          continue;
+        }
+        FundamentalPruneResult fund = CheckFundamentalPrune(node.chart, node.box);
+        if (fund.prune) {
+          pruned_leaves.fetch_add(1);
+          EmitRow(std::format("PR {} {} {} FUNDAMENTAL {}\n", node.id, node.parent_id, node.depth, fund.direction));
+          continue;
+        }
+        if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
+          pruned_leaves.fetch_add(1);
+          EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, tube_radius));
+          continue;
+        }
+        if (node.chart == 0 && node.box.ContainsOrigin()) {
+          int widest = node.box.WidestAxis();
+          auto [b0, b1] = node.box.Split(widest);
+          int64_t c0_id = next_id.fetch_add(1);
+          int64_t c1_id = next_id.fetch_add(1);
+          SearchNode c0 = node; c0.id = c0_id; c0.parent_id = node.id; c0.depth++; c0.box_depth++; c0.box = b0;
+          SearchNode c1 = node; c1.id = c1_id; c1.parent_id = node.id; c1.depth++; c1.box_depth++; c1.box = b1;
+          EmitRow(std::format("SO {} {} {} {} {}\n", node.id, node.parent_id, node.depth, c0.id, c1.id));
+          if (c0.box.ContainsOrigin()) {
+            local_stack.push_back(c1);
+            local_stack.push_back(c0);
+          } else {
+            local_stack.push_back(c0);
+            local_stack.push_back(c1);
+          }
+          continue;
+        }
+
+        // 2. Mixture evaluation
+        MixtureResult res = EvaluateBoxCPUMixture(node.chart, node.box, node.tri, cone_samples, max_components, &cage_cache);
+        count_evaluations.fetch_add(1);
+        sum_candidate_pool_size.fetch_add(res.num_candidates);
+
+        if (res.certified) {
+          certified_leaves.fetch_add(1);
+          double m = res.margin;
+          double cur_wm = worst_margin.load(std::memory_order_relaxed);
+          while (m < cur_wm && !worst_margin.compare_exchange_weak(cur_wm, m)) {}
+
+          if (res.strategy_used == 0) k1_count.fetch_add(1);
+          else if (res.strategy_used == 1) corner_count.fetch_add(1);
+          else if (res.strategy_used == 2) greedy_count.fetch_add(1);
+          else if (res.strategy_used == 3) {
+            warm_count.fetch_add(1);
+            if (res.num_components == 1) k1_count.fetch_add(1);
+            else corner_count.fetch_add(1);
+          }
+
+          int max_r = res.max_rank_looked;
+          int64_t cur_mr = max_candidate_rank.load(std::memory_order_relaxed);
+          while (max_r > cur_mr && !max_candidate_rank.compare_exchange_weak(cur_mr, max_r)) {}
+
+          int bucket = 0;
+          if (max_r == 0) bucket = 0;
+          else if (max_r <= 3) bucket = 1;
+          else if (max_r <= 7) bucket = 2;
+          else if (max_r <= 15) bucket = 3;
+          else if (max_r <= 31) bucket = 4;
+          else if (max_r <= 63) bucket = 5;
+          else if (max_r <= 127) bucket = 6;
+          else bucket = 7;
+          rank_histogram[bucket].fetch_add(1);
+
+          FarkasCageHint new_hint;
+          new_hint.pool_id = res.pool_id;
+          new_hint.num_components = res.num_components;
+          for (int k = 0; k < res.num_components; k++) {
+            new_hint.triples[k] = res.triples[k];
+            new_hint.inners[k][0] = res.inners[k][0];
+            new_hint.inners[k][1] = res.inners[k][1];
+            new_hint.inners[k][2] = res.inners[k][2];
+          }
+          cage_cache.Insert(new_hint);
+
+          if (res.num_components == 1) {
+            EmitRow(std::format("CE {} {} {} {} {:.17g} {} {} {}\n",
+                                node.id, node.parent_id, node.depth,
+                                res.triples[0], res.margin,
+                                res.inners[0][0], res.inners[0][1], res.inners[0][2]));
+          } else {
+            std::string mx_row = std::format("MX {} {} {} {} {:.17g}",
+                                             node.id, node.parent_id, node.depth,
+                                             res.num_components, res.margin);
+            for (int k = 0; k < res.num_components; k++) {
+              mx_row += std::format(" {} {:.17g} {} {} {}",
+                                    res.triples[k], res.weights[k],
+                                    res.inners[k][0], res.inners[k][1], res.inners[k][2]);
+            }
+            mx_row += "\n";
+            EmitRow(mx_row);
+          }
+          continue;
+        }
+
+        // 3. Splitting
+        if (node.depth >= max_depth ||
+            (max_split_delta > 0 && (node.depth - cell.depth) >= max_split_delta)) {
+          ceiling_hits.fetch_add(1);
+          all_leaves_certified.store(false, std::memory_order_relaxed);
+          {
+            std::lock_guard<std::mutex> lk(unres_mu);
+            unresolved_nodes.push_back(node);
+          }
+          continue;
+        }
+
+        double rot_diam = 2.0 * node.box.radii[node.box.WidestAxis()];
+        double view_diam = node.tri.AngularDiameter();
+        bool split_box = ShouldSplitBox(
+            node.box_depth, max_box_depth,
+            node.view_depth, max_view_depth,
+            res.box_span, res.view_penalty,
+            rot_diam, view_diam,
+            split_kappa, base_tree.MaxDepth(), cell.view_depth);
+
+        if (split_box) {
+          int widest = node.box.WidestAxis();
+          auto [b0, b1] = node.box.Split(widest);
+          int64_t c0_id = next_id.fetch_add(1);
+          int64_t c1_id = next_id.fetch_add(1);
+          SearchNode c0 = node; c0.id = c0_id; c0.parent_id = node.id; c0.depth++; c0.box_depth++; c0.box = b0;
+          SearchNode c1 = node; c1.id = c1_id; c1.parent_id = node.id; c1.depth++; c1.box_depth++; c1.box = b1;
+          EmitRow(std::format("SP {} {} {} {} {}\n", node.id, node.parent_id, node.depth, c0.id, c1.id));
+          local_stack.push_back(c1);
+          local_stack.push_back(c0);
+        } else {
+          auto path = FindTrianglePath(root.tri, node.tri);
+          {
+            std::lock_guard<std::mutex> lk(tree_mu);
+            dynamic_tree.SplitPath(path);
+          }
+          auto sub_tris = node.tri.Subdivide();
+          int64_t c_ids[4];
+          for (int t = 0; t < 4; t++) c_ids[t] = next_id.fetch_add(1);
+          EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                              node.id, node.parent_id, node.depth,
+                              c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+          for (int t = 3; t >= 0; t--) {
+            SearchNode c = node;
+            c.id = c_ids[t];
+            c.parent_id = node.id;
+            c.depth++;
+            c.view_depth++;
+            c.tri = sub_tris[t];
+            local_stack.push_back(c);
+          }
+        }
+
+        // Tier 2 box donating: If we have excess work and other threads are idle,
+        // donate coarse boxes from the base (front) of local_stack
+        if (local_stack.size() >= 4) {
+          std::unique_lock<std::mutex> lock(work_mu, std::try_to_lock);
+          if (lock.owns_lock() && box_queue.empty()) {
+            size_t donate = local_stack.size() / 2;
+            for (size_t d = 0; d < donate; d++) {
+              box_queue.push_back(local_stack.front());
+              local_stack.erase(local_stack.begin());
+            }
+            work_cv.notify_one();
+          }
+        }
+      } // end local_stack DFS loop
+
+      {
+        std::lock_guard<std::mutex> lk(unres_mu);
+        for (const auto &n : local_stack) unresolved_nodes.push_back(n);
+        local_stack.clear();
+      }
+
+      active_workers.fetch_sub(1);
+      work_cv.notify_all();
+    }
+  };
+
+  std::vector<std::thread> workers;
+  workers.reserve(actual_threads);
+  for (int t = 0; t < actual_threads; t++) {
+    workers.emplace_back(WorkerThread);
+  }
+  for (auto &w : workers) {
+    w.join();
+  }
+
+  // Gather any unvisited queue nodes into unresolved_nodes
+  {
+    std::lock_guard<std::mutex> lock(work_mu);
+    for (const auto &n : view_queue) unresolved_nodes.push_back(n);
+    for (const auto &n : box_queue) unresolved_nodes.push_back(n);
+  }
+
+  MixtureSolveStats stats;
+  stats.total_nodes = total_nodes_evaluated.load();
+  stats.certified_leaves = certified_leaves.load();
+  stats.pruned_leaves = pruned_leaves.load();
+  stats.ceiling_hits = ceiling_hits.load();
+  stats.count_evaluations = count_evaluations.load();
+  stats.sum_candidate_pool_size = sum_candidate_pool_size.load();
+  stats.max_candidate_rank = max_candidate_rank.load();
+  stats.k1_count = k1_count.load();
+  stats.corner_count = corner_count.load();
+  stats.greedy_count = greedy_count.load();
+  stats.warm_count = warm_count.load();
+  for (int b = 0; b < 8; b++) stats.rank_histogram[b] = rank_histogram[b].load();
+  stats.worst_margin = worst_margin.load();
+  stats.max_view_depth_reached = max_view_depth_reached.load();
+  stats.remaining_nodes = (int64_t)unresolved_nodes.size();
+  stats.elapsed_seconds = timer.Seconds();
+
+  stats.solved = all_leaves_certified.load() && unresolved_nodes.empty() && !terminate_search.load();
+
+  if (!stats.solved) {
+    for (const auto &n : unresolved_nodes) {
+      auto path = FindTrianglePath(root.tri, n.tri);
+      dynamic_tree.SplitPath(path);
+    }
+  }
+  stats.learned_quadtree = std::move(dynamic_tree);
+  return stats;
 }
 
 // Check whether a leaf SearchNode contains a valid Rupert passage.

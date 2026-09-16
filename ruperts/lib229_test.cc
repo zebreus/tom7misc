@@ -543,6 +543,47 @@ static void TestViewQuadtree() {
   unlink(test_splits_out.c_str());
 }
 
+void TestParallelMixtureSolver() {
+  Print(AYELLOW("\n--- Test 9: Parallel Mixture Solver (Single Cell Multi-Threading) ---\n"));
+
+  auto cells = ReadDifficultFile("chart0.difficult");
+  CHECK_TRUE(!cells.empty(), "chart0.difficult has cells for testing");
+  if (cells.empty()) return;
+
+  const auto &test_cell = cells[0];
+
+  std::vector<std::string> rows;
+  std::mutex rows_mu;
+  auto row_cb = [&](std::string_view r) {
+    std::lock_guard<std::mutex> lk(rows_mu);
+    rows.push_back(std::string(r));
+  };
+
+  ViewQuadtree qtree = ViewQuadtree::MakeUniform(1); // 4 leaf cones
+  auto stats = SolveCellMixtureParallel(
+      test_cell,
+      /*num_threads=*/4,
+      /*max_depth=*/test_cell.depth + 4,
+      /*max_box_depth=*/test_cell.box_depth + 4,
+      /*max_view_depth=*/test_cell.view_depth + 4,
+      /*max_nodes=*/16,
+      /*max_split_delta=*/4,
+      /*cone_samples=*/8,
+      /*max_components=*/4,
+      /*split_kappa=*/0.5,
+      /*tube_radius=*/1e-4,
+      /*time_limit_sec=*/5.0,
+      row_cb,
+      /*interrupted=*/nullptr,
+      &qtree);
+
+  CHECK_TRUE(stats.total_nodes > 0, "Parallel search processed >0 nodes");
+  CHECK_TRUE(!rows.empty(), "Parallel search emitted certificate rows");
+  CHECK_TRUE(stats.learned_quadtree.CountLeaves() >= 4, "Learned quadtree preserved or refined initial 4 cones");
+  Print(AGREEN("  [OK] Parallel mixture solver ran on 4 threads, evaluated {} nodes in {:.3f}s\n"),
+        stats.total_nodes, stats.elapsed_seconds);
+}
+
 int main(int argc, char **argv) {
   Print(ACYAN("=== Running lib229 Bernstein & Splitting Unit Tests ===\n"));
 
@@ -554,6 +595,7 @@ int main(int argc, char **argv) {
   TestAnalyticalSplittingRule();
   TestCompletedFractionDifficultCell();
   TestViewQuadtree();
+  TestParallelMixtureSolver();
 
   if (g_failed_tests == 0) {
     Print(AGREEN("\nALL LIB229 UNIT TESTS PASSED WITH HIGH PRECISION!\n"));
@@ -563,3 +605,4 @@ int main(int argc, char **argv) {
     return 1;
   }
 }
+
