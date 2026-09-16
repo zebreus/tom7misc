@@ -619,8 +619,8 @@ bool SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, i
 //      min_idx out_controls[idx] <= P(x, y, z) <= max_idx out_controls[idx]
 //    for all points (x, y, z) in the box.
 // 2. Corner Interpolation:
-//    At the 8 vertices of the box, the corresponding corner control points exactly
-//    interpolate P(x, y, z).
+//    At the 8 vertices of the box, the corresponding corner control points
+//    exactly interpolate P(x, y, z).
 // 3. Partition of Unity:
 //    sum_{bi, bj, bk} B_{bi,2}(u) * B_{bj,2}(v) * B_{bk,2}(w) = 1.
 //

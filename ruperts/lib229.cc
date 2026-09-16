@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <condition_variable>
@@ -15,12 +16,14 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <list>
 #include <memory>
 #include <mutex>
 #include <numbers>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -92,10 +95,12 @@ std::vector<DifficultCell> ReadDifficultFile(const std::string &path) {
   return cells;
 }
 
-bool WriteDifficultFile(const std::string &path, const std::vector<DifficultCell> &cells) {
+bool WriteDifficultFile(const std::string &path,
+                        const std::vector<DifficultCell> &cells) {
   std::string tmp_path = path + ".tmp";
   std::ofstream out(tmp_path);
-  if (!out.is_open()) return false;
+  if (!out.is_open())
+    return false;
   out << "# id parent_id depth box_depth view_depth chart "
          "cx cy cz rx ry rz "
          "v0x v0y v0z v1x v1y v1z v2x v2y v2z "
@@ -116,9 +121,9 @@ static std::unordered_map<uint64_t, std::list<std::shared_ptr<const TrianglePool
 g_triangle_cache;
 
 double ComputeWeightedDefectUpper(const ProjectiveTriangle &tri,
-                                         const std::vector<GpuContact> &contacts,
-                                         int c0, int c1, int c2,
-                                         const vec3 w_coeff[3]) {
+                                  const std::vector<GpuContact> &contacts,
+                                  int c0, int c1, int c2,
+                                  const vec3 w_coeff[3]) {
   double total = 0.0;
   const double error = 1e-9;
   const int c_indices[3] = {c0, c1, c2};
@@ -524,10 +529,11 @@ void ComputeBernstein27Controls(
 }
 #endif
 
-// In-register accumulation of the 10 quadratic displacement polynomial coefficients
-// for contact (vin, vout) with normal vector u, scaled by chart signs s = (sx, sy, sz).
-inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
-                                  vec3 vin, vec3 vout, vec3 s) {
+// In-register accumulation of the 10 quadratic displacement polynomial
+// coefficients for contact (vin, vout) with normal vector u, scaled by chart
+// signs s = (sx, sy, sz).
+inline void AccumulateContactPoly(double C[10], double weight, vec3 u, vec3 vin,
+                                  vec3 vout, vec3 s) {
   double sx = s.x, sy = s.y, sz = s.z;
   double ux = u.x, uy = u.y, uz = u.z;
   double vx = vin.x, vy = vin.y, vz = vin.z;
@@ -553,7 +559,6 @@ inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
 }
 
 // CPU evaluator matching Bernstein logic
-
 static Periodically eval_cpu_failed_per = Periodically(10.0);
 GpuResult EvaluateBoxCPU(
     const GpuBox &box,
@@ -610,15 +615,18 @@ GpuResult EvaluateBoxCPU(
     };
   }
 
-  // Precompute best inner vertex and unit center polynomial for each contact in this pool
+  // Precompute best inner vertex and unit center polynomial for each contact in
+  // this pool
   int c_start = box.contact_offset;
-  int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
+  int c_count =
+      (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
   std::vector<int> best_in(c_count);
   std::vector<std::array<double, 10>> psi_center(c_count);
   for (int c = 0; c < c_count; c++) {
     const auto &gc = contacts[c_start + c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
-    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
+    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1],
+                VERTICES[gc.vertex][2]};
     vec3 u = yocto::cross(view_center, edge);
     double best_val = -1e30;
     int best_k = 0;
@@ -819,13 +827,12 @@ GpuResult EvaluateBoxCPU(
 
 // Evaluator using 2D linear programming to find the optimal translation t*
 // and center inner contact vertices before polynomial accumulation.
-// Strictly superior to EvaluateBoxCPU for tight cells while producing Lean-compliant certificates.
-GpuResult EvaluateBoxCPULP(
-    const GpuBox &box,
-    const std::vector<GpuContact> &contacts,
-    const std::vector<GpuTriple> &triples,
-    bool use_optimal_translation,
-    StatusBar *status) {
+// Strictly superior to EvaluateBoxCPU for tight cells while producing
+// Lean-compliant certificates.
+GpuResult EvaluateBoxCPULP(const GpuBox &box,
+                           const std::vector<GpuContact> &contacts,
+                           const std::vector<GpuTriple> &triples,
+                           bool use_optimal_translation, StatusBar *status) {
   ctr_cpu++;
 
   double x0 = box.cx, y0 = box.cy, z0 = box.cz;
@@ -895,11 +902,13 @@ GpuResult EvaluateBoxCPULP(
     }
     std::vector<int> outer_hull = Hull2D::QuickHull(outer_verts);
     if (outer_hull.size() >= 3) {
-      std::vector<PolygonEdge> outer_edges = GetHullEdges(outer_verts, outer_hull);
+      std::vector<PolygonEdge> outer_edges =
+          GetHullEdges(outer_verts, outer_hull);
       std::vector<vec2> inner_verts(NUM_VERTICES);
       for (int i = 0; i < NUM_VERTICES; i++) {
         vec3 v_unnorm = rot_vin[i] * (1.0 / denom0);
-        inner_verts[i] = {yocto::dot(v_unnorm, right), yocto::dot(v_unnorm, up)};
+        inner_verts[i] = {yocto::dot(v_unnorm, right),
+                          yocto::dot(v_unnorm, up)};
       }
       Clearance2D opt_c = MaximizeClearance2D(outer_edges, inner_verts);
       if (opt_c.clearance < 0.0) {
@@ -908,15 +917,18 @@ GpuResult EvaluateBoxCPULP(
     }
   }
 
-  // Precompute best inner vertex and unit center polynomial for each contact in this pool
+  // Precompute best inner vertex and unit center polynomial for each contact in
+  // this pool
   int c_start = box.contact_offset;
-  int c_count = (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
+  int c_count =
+      (box.num_contacts > 0) ? box.num_contacts : (int)contacts.size();
   std::vector<int> best_in(c_count);
   std::vector<std::array<double, 10>> psi_center(c_count);
   for (int c = 0; c < c_count; c++) {
     const auto &gc = contacts[c_start + c];
     vec3 edge = {gc.edge[0], gc.edge[1], gc.edge[2]};
-    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1], VERTICES[gc.vertex][2]};
+    vec3 out = {VERTICES[gc.vertex][0], VERTICES[gc.vertex][1],
+                VERTICES[gc.vertex][2]};
     vec3 u = yocto::cross(view_center, edge);
     double best_val = -1e30;
     int best_k = 0;
@@ -1076,52 +1088,71 @@ static inline void ProjectToSimplex(int K, const double x[], double out[]) {
 }
 
 // Evaluates the worst margin across 162 controls given mixture weights alpha
-static inline double EvalMixtureMargin(
-    int K, const double *const margins[], const double alpha[], int *out_worst_idx = nullptr) {
+static inline double EvalMixtureMargin(int K, const double *const margins[],
+                                       const double alpha[],
+                                       int *out_worst_idx = nullptr) {
   double min_val = 1e30;
   int worst_idx = 0;
   if (K == 1) {
     const double *m0 = margins[0];
     for (int j = 0; j < 162; j++) {
-      if (m0[j] < min_val) { min_val = m0[j]; worst_idx = j; }
+      if (m0[j] < min_val) {
+        min_val = m0[j];
+        worst_idx = j;
+      }
     }
   } else if (K == 2) {
     double a0 = alpha[0], a1 = alpha[1];
     const double *m0 = margins[0], *m1 = margins[1];
     for (int j = 0; j < 162; j++) {
       double sum = a0 * m0[j] + a1 * m1[j];
-      if (sum < min_val) { min_val = sum; worst_idx = j; }
+      if (sum < min_val) {
+        min_val = sum;
+        worst_idx = j;
+      }
     }
   } else if (K == 3) {
     double a0 = alpha[0], a1 = alpha[1], a2 = alpha[2];
     const double *m0 = margins[0], *m1 = margins[1], *m2 = margins[2];
     for (int j = 0; j < 162; j++) {
       double sum = a0 * m0[j] + a1 * m1[j] + a2 * m2[j];
-      if (sum < min_val) { min_val = sum; worst_idx = j; }
+      if (sum < min_val) {
+        min_val = sum;
+        worst_idx = j;
+      }
     }
   } else if (K == 4) {
     double a0 = alpha[0], a1 = alpha[1], a2 = alpha[2], a3 = alpha[3];
-    const double *m0 = margins[0], *m1 = margins[1], *m2 = margins[2], *m3 = margins[3];
+    const double *m0 = margins[0], *m1 = margins[1], *m2 = margins[2],
+                 *m3 = margins[3];
     for (int j = 0; j < 162; j++) {
       double sum = a0 * m0[j] + a1 * m1[j] + a2 * m2[j] + a3 * m3[j];
-      if (sum < min_val) { min_val = sum; worst_idx = j; }
+      if (sum < min_val) {
+        min_val = sum;
+        worst_idx = j;
+      }
     }
   } else {
     for (int j = 0; j < 162; j++) {
       double sum = 0.0;
-      for (int k = 0; k < K; k++) sum += alpha[k] * margins[k][j];
-      if (sum < min_val) { min_val = sum; worst_idx = j; }
+      for (int k = 0; k < K; k++)
+        sum += alpha[k] * margins[k][j];
+      if (sum < min_val) {
+        min_val = sum;
+        worst_idx = j;
+      }
     }
   }
-  if (out_worst_idx) *out_worst_idx = worst_idx;
+  if (out_worst_idx)
+    *out_worst_idx = worst_idx;
   return min_val;
 }
 
-// Solves max_{alpha in Delta_K} min_{j=0..161} sum_{k=0}^{K-1} alpha_k margins[k][j]
-// for K in {1, 2, 3, 4}.
-static double SolveOptimalWeights(
-    int K, const double *const margins[], double out_alpha[4],
-    bool polish = true, const double *warm_alpha = nullptr) {
+// Solves max_{alpha in Delta_K} min_{j=0..161} sum_{k=0}^{K-1} alpha_k
+// margins[k][j] for K in {1, 2, 3, 4}.
+static double SolveOptimalWeights(int K, const double *const margins[],
+                                  double out_alpha[4], bool polish = true,
+                                  const double *warm_alpha = nullptr) {
   if (K == 1) {
     out_alpha[0] = 1.0;
     return EvalMixtureMargin(1, margins, out_alpha);
@@ -1440,11 +1471,13 @@ MixtureResult EvaluateBoxCPUMixture(
   p[4] = 0.5 * (tri.corners[1] + tri.corners[2]);
   p[5] = 0.5 * (tri.corners[2] + tri.corners[0]);
 
-  // Warm-Start: If cached Farkas cages exist for this triangle pool, test them first!
+  // Warm-Start: If cached Farkas cages exist for this triangle pool, test them
+  // first!
   if (cache) {
     for (int ci = 0; ci < cache->count; ci++) {
       const auto &hint = cache->entries[ci];
-      if (hint.pool_id != pool->id || hint.num_components < 1 || hint.num_components > max_components) {
+      if (hint.pool_id != pool->id || hint.num_components < 1 ||
+          hint.num_components > max_components) {
         continue;
       }
       bool hint_valid = true;
@@ -1462,17 +1495,26 @@ MixtureResult EvaluateBoxCPUMixture(
         int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
         hint_ci[h][0] = ci0; hint_ci[h][1] = ci1; hint_ci[h][2] = ci2;
 
-        vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1], pool->contacts[ci0].edge[2]};
-        vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1], pool->contacts[ci1].edge[2]};
-        vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1], pool->contacts[ci2].edge[2]};
+        vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1],
+                      pool->contacts[ci0].edge[2]};
+        vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1],
+                      pool->contacts[ci1].edge[2]};
+        vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1],
+                      pool->contacts[ci2].edge[2]};
 
         vec3 coeff0 = yocto::cross(edge1, edge2);
         vec3 coeff1 = yocto::cross(edge2, edge0);
         vec3 coeff2 = yocto::cross(edge0, edge1);
 
-        double w0_min = std::min({yocto::dot(tri.corners[0], coeff0), yocto::dot(tri.corners[1], coeff0), yocto::dot(tri.corners[2], coeff0)});
-        double w1_min = std::min({yocto::dot(tri.corners[0], coeff1), yocto::dot(tri.corners[1], coeff1), yocto::dot(tri.corners[2], coeff1)});
-        double w2_min = std::min({yocto::dot(tri.corners[0], coeff2), yocto::dot(tri.corners[1], coeff2), yocto::dot(tri.corners[2], coeff2)});
+        double w0_min = std::min({yocto::dot(tri.corners[0], coeff0),
+                                  yocto::dot(tri.corners[1], coeff0),
+                                  yocto::dot(tri.corners[2], coeff0)});
+        double w1_min = std::min({yocto::dot(tri.corners[0], coeff1),
+                                  yocto::dot(tri.corners[1], coeff1),
+                                  yocto::dot(tri.corners[2], coeff1)});
+        double w2_min = std::min({yocto::dot(tri.corners[0], coeff2),
+                                  yocto::dot(tri.corners[1], coeff2),
+                                  yocto::dot(tri.corners[2], coeff2)});
 
         if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) {
           hint_valid = false;
@@ -1486,11 +1528,17 @@ MixtureResult EvaluateBoxCPUMixture(
         int in2 = chosen_inners[ci2];
 
         vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
-        vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0], VERTICES[pool->contacts[ci0].vertex][1], VERTICES[pool->contacts[ci0].vertex][2]};
+        vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0],
+                      VERTICES[pool->contacts[ci0].vertex][1],
+                      VERTICES[pool->contacts[ci0].vertex][2]};
         vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
-        vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0], VERTICES[pool->contacts[ci1].vertex][1], VERTICES[pool->contacts[ci1].vertex][2]};
+        vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0],
+                      VERTICES[pool->contacts[ci1].vertex][1],
+                      VERTICES[pool->contacts[ci1].vertex][2]};
         vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
-        vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0], VERTICES[pool->contacts[ci2].vertex][1], VERTICES[pool->contacts[ci2].vertex][2]};
+        vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0],
+                      VERTICES[pool->contacts[ci2].vertex][1],
+                      VERTICES[pool->contacts[ci2].vertex][2]};
 
         for (int n = 0; n < 6; n++) {
           double w0 = yocto::dot(p[n], coeff0);
@@ -1498,12 +1546,16 @@ MixtureResult EvaluateBoxCPUMixture(
           double w2 = yocto::dot(p[n], coeff2);
 
           double C_node[10] = {0};
-          AccumulateContactPoly(C_node, w0, yocto::cross(p[n], edge0), vin0, vout0, s);
-          AccumulateContactPoly(C_node, w1, yocto::cross(p[n], edge1), vin1, vout1, s);
-          AccumulateContactPoly(C_node, w2, yocto::cross(p[n], edge2), vin2, vout2, s);
+          AccumulateContactPoly(C_node, w0, yocto::cross(p[n], edge0), vin0,
+                                vout0, s);
+          AccumulateContactPoly(C_node, w1, yocto::cross(p[n], edge1), vin1,
+                                vout1, s);
+          AccumulateContactPoly(C_node, w2, yocto::cross(p[n], edge2), vin2,
+                                vout2, s);
 
           double b_ctrl[27];
-          ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
+          ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len,
+                                     b_ctrl);
 
           for (int m = 0; m < 27; m++) {
             hint_margins[h][n * 27 + m] = b_ctrl[m] - penalty;
@@ -1568,17 +1620,26 @@ MixtureResult EvaluateBoxCPUMixture(
     const auto &trip = pool->gpu_triples[t];
     int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
 
-    vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1], pool->contacts[ci0].edge[2]};
-    vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1], pool->contacts[ci1].edge[2]};
-    vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1], pool->contacts[ci2].edge[2]};
+    vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1],
+                  pool->contacts[ci0].edge[2]};
+    vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1],
+                  pool->contacts[ci1].edge[2]};
+    vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1],
+                  pool->contacts[ci2].edge[2]};
 
     vec3 coeff0 = yocto::cross(edge1, edge2);
     vec3 coeff1 = yocto::cross(edge2, edge0);
     vec3 coeff2 = yocto::cross(edge0, edge1);
 
-    double w0_min = std::min({yocto::dot(tri.corners[0], coeff0), yocto::dot(tri.corners[1], coeff0), yocto::dot(tri.corners[2], coeff0)});
-    double w1_min = std::min({yocto::dot(tri.corners[0], coeff1), yocto::dot(tri.corners[1], coeff1), yocto::dot(tri.corners[2], coeff1)});
-    double w2_min = std::min({yocto::dot(tri.corners[0], coeff2), yocto::dot(tri.corners[1], coeff2), yocto::dot(tri.corners[2], coeff2)});
+    double w0_min = std::min({yocto::dot(tri.corners[0], coeff0),
+                              yocto::dot(tri.corners[1], coeff0),
+                              yocto::dot(tri.corners[2], coeff0)});
+    double w1_min = std::min({yocto::dot(tri.corners[0], coeff1),
+                              yocto::dot(tri.corners[1], coeff1),
+                              yocto::dot(tri.corners[2], coeff1)});
+    double w2_min = std::min({yocto::dot(tri.corners[0], coeff2),
+                              yocto::dot(tri.corners[1], coeff2),
+                              yocto::dot(tri.corners[2], coeff2)});
 
     if (w0_min <= 1e-11 || w1_min <= 1e-11 || w2_min <= 1e-11) continue;
 
@@ -1598,9 +1659,10 @@ MixtureResult EvaluateBoxCPUMixture(
       }
     }
 
-    // Fast center-pose screen: if the polynomial minus penalty at the center of the box
-    // and view triangle is hopelessly negative, skip full 162 Bernstein control computations.
-    // Exempt hint triples from nearby successes so opposing gradient triples are retained.
+    // Fast center-pose screen: if the polynomial minus penalty at the center of
+    // the box and view triangle is hopelessly negative, skip full 162 Bernstein
+    // control computations. Exempt hint triples from nearby successes so
+    // opposing gradient triples are retained.
     if (!is_hint_triple) {
       double w0_c = yocto::dot(view_center, coeff0);
       double w1_c = yocto::dot(view_center, coeff1);
@@ -1608,7 +1670,8 @@ MixtureResult EvaluateBoxCPUMixture(
       double center_poly = w0_c * contact_center_val[ci0] +
                            w1_c * contact_center_val[ci1] +
                            w2_c * contact_center_val[ci2];
-      if (center_poly - penalty < -0.005) continue;
+      if (center_poly - penalty < -0.005)
+        continue;
     }
 
     int in0 = chosen_inners[ci0];
@@ -1616,13 +1679,19 @@ MixtureResult EvaluateBoxCPUMixture(
     int in2 = chosen_inners[ci2];
 
     vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
-    vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0], VERTICES[pool->contacts[ci0].vertex][1], VERTICES[pool->contacts[ci0].vertex][2]};
+    vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0],
+                  VERTICES[pool->contacts[ci0].vertex][1],
+                  VERTICES[pool->contacts[ci0].vertex][2]};
 
     vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
-    vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0], VERTICES[pool->contacts[ci1].vertex][1], VERTICES[pool->contacts[ci1].vertex][2]};
+    vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0],
+                  VERTICES[pool->contacts[ci1].vertex][1],
+                  VERTICES[pool->contacts[ci1].vertex][2]};
 
     vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
-    vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0], VERTICES[pool->contacts[ci2].vertex][1], VERTICES[pool->contacts[ci2].vertex][2]};
+    vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0],
+                  VERTICES[pool->contacts[ci2].vertex][1],
+                  VERTICES[pool->contacts[ci2].vertex][2]};
 
     EvaluatedCandidateTriple et;
     et.triple_idx = (int)t;
@@ -1637,12 +1706,16 @@ MixtureResult EvaluateBoxCPUMixture(
       double w2 = yocto::dot(p[node], coeff2);
 
       double C_node[10] = {0};
-      AccumulateContactPoly(C_node, w0, yocto::cross(p[node], edge0), vin0, vout0, s);
-      AccumulateContactPoly(C_node, w1, yocto::cross(p[node], edge1), vin1, vout1, s);
-      AccumulateContactPoly(C_node, w2, yocto::cross(p[node], edge2), vin2, vout2, s);
+      AccumulateContactPoly(C_node, w0, yocto::cross(p[node], edge0), vin0,
+                            vout0, s);
+      AccumulateContactPoly(C_node, w1, yocto::cross(p[node], edge1), vin1,
+                            vout1, s);
+      AccumulateContactPoly(C_node, w2, yocto::cross(p[node], edge2), vin2,
+                            vout2, s);
 
       double b_ctrl[27];
-      ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
+      ComputeBernstein27Controls(C_node, lx, ly, lz, wx_len, wy_len, wz_len,
+                                 b_ctrl);
 
       if (node == 0) {
         et.grad = {C_node[1], C_node[2], C_node[3]};
@@ -1696,9 +1769,9 @@ MixtureResult EvaluateBoxCPUMixture(
   res.num_candidates = (int)evaluated.size();
   if (evaluated.empty()) return res;
 
-  std::sort(evaluated.begin(), evaluated.end(), [](const auto &a, const auto &b) {
-    return a.min_margin > b.min_margin;
-  });
+  std::sort(
+      evaluated.begin(), evaluated.end(),
+      [](const auto &a, const auto &b) { return a.min_margin > b.min_margin; });
 
   // Strategy 1: Corner + Center Best Subset
   int best_c0 = 0, best_c1 = 0, best_c2 = 0;
@@ -1717,15 +1790,23 @@ MixtureResult EvaluateBoxCPUMixture(
   }
 
   std::vector<int> corner_set = {0};
-  if (std::find(corner_set.begin(), corner_set.end(), best_c0) == corner_set.end()) corner_set.push_back(best_c0);
-  if (std::find(corner_set.begin(), corner_set.end(), best_c1) == corner_set.end()) corner_set.push_back(best_c1);
-  if (std::find(corner_set.begin(), corner_set.end(), best_c2) == corner_set.end()) corner_set.push_back(best_c2);
+  if (std::find(corner_set.begin(), corner_set.end(), best_c0) ==
+      corner_set.end())
+    corner_set.push_back(best_c0);
+  if (std::find(corner_set.begin(), corner_set.end(), best_c1) ==
+      corner_set.end())
+    corner_set.push_back(best_c1);
+  if (std::find(corner_set.begin(), corner_set.end(), best_c2) ==
+      corner_set.end())
+    corner_set.push_back(best_c2);
 
   int K_corner = corner_set.size();
   const double *corner_margins[4];
-  for (int k = 0; k < K_corner; k++) corner_margins[k] = evaluated[corner_set[k]].margins;
+  for (int k = 0; k < K_corner; k++)
+    corner_margins[k] = evaluated[corner_set[k]].margins;
   double corner_alpha[4] = {0};
-  double corner_margin = SolveOptimalWeights(K_corner, corner_margins, corner_alpha);
+  double corner_margin =
+      SolveOptimalWeights(K_corner, corner_margins, corner_alpha);
 
   if (corner_margin > 0.0) {
     res.certified = true;
@@ -1755,7 +1836,8 @@ MixtureResult EvaluateBoxCPUMixture(
     return res;
   }
 
-  // Strategy 2: Multi-Start Greedy Forward Selection with Targeted Column Generation
+  // Strategy 2: Multi-Start Greedy Forward Selection with Targeted Column
+  // Generation
   int num_starts = std::min(6, (int)evaluated.size());
   for (int start = 0; start < num_starts; start++) {
     std::vector<int> chosen = {start};
@@ -1820,9 +1902,9 @@ MixtureResult EvaluateBoxCPUMixture(
       }
 
       // Opposing Support Vector search (Tom Idea Point 4):
-      // The current mixture has residual rotation gradient R = sum alpha_k * grad_k.
-      // To cancel rotation drift across the box, select candidates whose gradient
-      // opposes R (i.e. maximizing dot(grad_c, -R)).
+      // The current mixture has residual rotation gradient R = sum alpha_k *
+      // grad_k. To cancel rotation drift across the box, select candidates
+      // whose gradient opposes R (i.e. maximizing dot(grad_c, -R)).
       vec3 residual_grad = {0, 0, 0};
       for (int k = 0; k < K; k++) {
         residual_grad += current_best_alpha[k] * evaluated[chosen[k]].grad;
@@ -1832,7 +1914,9 @@ MixtureResult EvaluateBoxCPUMixture(
         struct OpposeScore {
           double score;
           int idx;
-          bool operator>(const OpposeScore &other) const { return score > other.score; }
+          bool operator>(const OpposeScore &other) const {
+            return score > other.score;
+          }
         };
         OpposeScore opp_heap[20];
         int opp_sz = 0;
@@ -1842,11 +1926,15 @@ MixtureResult EvaluateBoxCPUMixture(
           if (opp_sz < top_opp) {
             opp_heap[opp_sz] = {s, (int)c};
             opp_sz++;
-            if (opp_sz == top_opp) std::make_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+            if (opp_sz == top_opp)
+              std::make_heap(opp_heap, opp_heap + top_opp,
+                             std::greater<OpposeScore>());
           } else if (s > opp_heap[0].score) {
-            std::pop_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+            std::pop_heap(opp_heap, opp_heap + top_opp,
+                          std::greater<OpposeScore>());
             opp_heap[top_opp - 1] = {s, (int)c};
-            std::push_heap(opp_heap, opp_heap + top_opp, std::greater<OpposeScore>());
+            std::push_heap(opp_heap, opp_heap + top_opp,
+                           std::greater<OpposeScore>());
           }
         }
         for (int t = 0; t < opp_sz; t++) {
@@ -4695,7 +4783,8 @@ void SearchManager::Run() {
 
               OutputRow(std::format("SV {} {} {} {} {} {} {}\n",
                                     node.id, node.parent_id, node.depth,
-                                    child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
+                                    child_ids[0], child_ids[1], child_ids[2],
+                                    child_ids[3]));
             }
           }
         }
