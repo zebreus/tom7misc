@@ -19,6 +19,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 #include "base/logging.h"
@@ -476,6 +477,38 @@ MixtureSolveStats SolveCellMixture(
     std::atomic<bool> *interrupted = nullptr,
     int pre_vsplits = 0);
 
+// Returns true if the node should be bisected along its widest Cayley box axis (SP),
+// or false if the projective view triangle should be subdivided into 4 sub-triangles (SV).
+//
+// Decision hierarchy:
+// 1. Hard depth constraints:
+//    - If box_depth >= max_box_depth, cannot split box -> return false (SV).
+//    - If view_depth >= max_view_depth, cannot split view -> return true (SP).
+// 2. Pre-split constraint:
+//    - If pre_vsplits > 0 and view_depth >= root_view_depth + pre_vsplits,
+//      the view cone is locked -> return true (SP).
+// 3. Analytical Geometry-Specific Rule:
+//    - If view_penalty > 0 and box_span > 0:
+//      - If box_span >= view_penalty: box rotation error dominates -> return true (SP).
+//      - If view_penalty > box_span: view defect dominates -> return false (SV).
+// 4. Fallback Geometric Ratio:
+//    - If rot_diam >= split_kappa * view_diam -> return true (SP).
+//    - Else if box_splits_since_view >= 0 -> return (box_splits_since_view < 2).
+//    - Else -> return false (SV).
+bool ShouldSplitBox(
+    int box_depth, int max_box_depth,
+    int view_depth, int max_view_depth,
+    double box_span, double view_penalty,
+    double rot_diam, double view_diam,
+    double split_kappa = 0.5,
+    int pre_vsplits = 0,
+    int root_view_depth = 0,
+    int box_splits_since_view = -1);
+
+// Sidecar view-split cache helpers (reads/writes <cell_id> <vsplits> format).
+std::unordered_map<int64_t, int> LoadSplitsFile(const std::string &path);
+bool SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, int> &splits);
+
 // ============================================================================
 // Bernstein Polynomial Transformation Functions
 // ============================================================================
@@ -586,6 +619,9 @@ struct SearchManager {
   double related_epsilon = 0.05;
   double tube_radius = 1e-4;
   double split_kappa = 1.0;
+  int pre_vsplits = 0;
+  int root_view_depth = 0;
+  int max_view_depth_reached = 0;
   std::string output_dir = ".artifacts/nopert229";
 
   std::vector<SearchNode> stack; // DFS LIFO stack

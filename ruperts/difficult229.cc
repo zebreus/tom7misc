@@ -270,13 +270,17 @@ static int RunDifficult(
     int deep_escalate_cone_samples, int lp_escalate_box_depth,
     double tube_radius, double limit_sec, int num_threads, bool use_gpu,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
-    bool show_status = true) {
+    bool show_status = true, std::string splits_file = "") {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
+  }
+  if (splits_file.empty()) {
+    splits_file = std::format("chart{}.single.splits", chart);
   }
 
   Print(ACYAN("=== Difficult 229 Solver ===\n"));
   Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
+  Print("Splits file: {}\n", splits_file);
   Print("Limits: max_depth={}, max_box_depth={}, max_view_depth={}, lp_box_depth={}, tube_radius={:.3g}, limit_sec={}, batch_size={}\n",
         max_depth, max_box_depth, max_view_depth, lp_escalate_box_depth, tube_radius,
         limit_sec > 0.0 ? std::format("{}s", limit_sec) : "none", batch_size);
@@ -289,6 +293,11 @@ static int RunDifficult(
 
   std::vector<DifficultCell> cells = ReadDifficultFile(difficult_path);
   Print("Loaded {} cells from {}\n", cells.size(), difficult_path);
+
+  std::unordered_map<int64_t, int> splits = LoadSplitsFile(splits_file);
+  if (!splits.empty()) {
+    Print("Loaded {} cached cell view-split entries from {}\n", splits.size(), splits_file);
+  }
 
   // Scan existing .done files to identify completed cells
   std::vector<DifficultCell> unsolved_cells;
@@ -442,7 +451,47 @@ static int RunDifficult(
     mgr.ResetState();
     mgr.chart = cell.chart;
     mgr.next_node_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
-    mgr.stack.push_back(cell.ToSearchNode());
+
+    int pre_vsplits = 0;
+    auto it_s = splits.find(cell.id);
+    if (it_s != splits.end()) {
+      pre_vsplits = it_s->second;
+    }
+    mgr.pre_vsplits = pre_vsplits;
+    mgr.root_view_depth = cell.view_depth;
+
+    SearchNode root = cell.ToSearchNode();
+    if (pre_vsplits > 0) {
+      std::vector<SearchNode> current_layer = {root};
+      for (int level = 0; level < pre_vsplits; level++) {
+        std::vector<SearchNode> next_layer;
+        for (const auto &curr : current_layer) {
+          auto sub_tris = curr.tri.Subdivide();
+          int64_t c_ids[4];
+          for (int t = 0; t < 4; t++) c_ids[t] = mgr.next_node_id++;
+          mgr.row_callback(std::format("SV {} {} {} {} {} {} {}\n",
+                                       curr.id, curr.parent_id, curr.depth,
+                                       c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+          for (int t = 0; t < 4; t++) {
+            SearchNode c = curr;
+            c.id = c_ids[t];
+            c.parent_id = curr.id;
+            c.depth++;
+            c.view_depth++;
+            c.tri = sub_tris[t];
+            next_layer.push_back(c);
+          }
+        }
+        current_layer = std::move(next_layer);
+      }
+      for (auto it = current_layer.rbegin(); it != current_layer.rend(); ++it) {
+        mgr.stack.push_back(*it);
+      }
+      mgr.status.Print("  [Pre-split cell #{} into 4^{} = {} view cones]\n",
+                       cell.id, pre_vsplits, current_layer.size());
+    } else {
+      mgr.stack.push_back(root);
+    }
     mgr.status_detail = std::format("Cell #{}: [{}/{}] (depth {})",
                                     cell.id, total_processed,
                                     unsolved_cells.size(), cell.depth);
@@ -477,6 +526,15 @@ static int RunDifficult(
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
             FormatNum(new_difficult.size()), difficult_path);
+      if (mgr.max_view_depth_reached > cell.view_depth) {
+        int needed_vsplits = mgr.max_view_depth_reached - cell.view_depth;
+        if (needed_vsplits > splits[cell.id]) {
+          splits[cell.id] = needed_vsplits;
+          SaveSplitsFile(splits_file, splits);
+          mgr.status.Print("  [Learned needed view splits = {} for cell #{} -> saved to {}]\n",
+                           needed_vsplits, cell.id, splits_file);
+        }
+      }
       i++;
       continue;
     }
@@ -508,6 +566,15 @@ static int RunDifficult(
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
             FormatNum(new_difficult.size()), difficult_path);
+      if (mgr.max_view_depth_reached > cell.view_depth) {
+        int needed_vsplits = mgr.max_view_depth_reached - cell.view_depth;
+        if (needed_vsplits > splits[cell.id]) {
+          splits[cell.id] = needed_vsplits;
+          SaveSplitsFile(splits_file, splits);
+          mgr.status.Print("  [Learned needed view splits = {} for cell #{} -> saved to {}]\n",
+                           needed_vsplits, cell.id, splits_file);
+        }
+      }
       i++;
     }
   }
@@ -536,31 +603,7 @@ static int RunDifficult(
   return 0;
 }
 
-static std::unordered_map<int64_t, int> LoadSplitsFile(const std::string &path) {
-  std::unordered_map<int64_t, int> splits;
-  std::ifstream f(path);
-  if (!f.is_open()) return splits;
-  std::string line;
-  while (std::getline(f, line)) {
-    if (line.empty() || line[0] == '#') continue;
-    std::istringstream iss(line);
-    int64_t id;
-    int v;
-    if (iss >> id >> v) {
-      splits[id] = v;
-    }
-  }
-  return splits;
-}
 
-static void SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, int> &splits) {
-  std::ofstream f(path);
-  if (!f.is_open()) return;
-  f << "# id vsplits\n";
-  for (const auto &[id, v] : splits) {
-    f << id << " " << v << "\n";
-  }
-}
 
 static int RunDifficultMixture(
     int chart, std::string difficult_path, std::string out_dir, int max_depth,
@@ -1047,7 +1090,7 @@ int main(int argc, char **argv) {
       escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
       lp_escalate_box_depth, tube_radius, limit_sec,
       num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
-      show_status);
+      show_status, splits_file);
 
   return 0;
 }

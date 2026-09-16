@@ -1949,6 +1949,61 @@ MixtureResult EvaluateBoxCPUMixture(
   return res;
 }
 
+bool ShouldSplitBox(
+    int box_depth, int max_box_depth,
+    int view_depth, int max_view_depth,
+    double box_span, double view_penalty,
+    double rot_diam, double view_diam,
+    double split_kappa,
+    int pre_vsplits,
+    int root_view_depth,
+    int box_splits_since_view) {
+  if (box_depth >= max_box_depth) {
+    return false;
+  }
+  if (view_depth >= max_view_depth ||
+      (pre_vsplits > 0 && view_depth >= root_view_depth + pre_vsplits)) {
+    return true;
+  }
+  if (box_span > 0.0 && view_penalty > 0.0) {
+    return (box_span >= view_penalty);
+  }
+  if (rot_diam >= split_kappa * view_diam) {
+    return true;
+  }
+  if (box_splits_since_view >= 0) {
+    return (box_splits_since_view < 2);
+  }
+  return false;
+}
+
+std::unordered_map<int64_t, int> LoadSplitsFile(const std::string &path) {
+  std::unordered_map<int64_t, int> splits;
+  std::ifstream f(path);
+  if (!f.is_open()) return splits;
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    int64_t id;
+    int v;
+    if (iss >> id >> v) {
+      splits[id] = v;
+    }
+  }
+  return splits;
+}
+
+bool SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, int> &splits) {
+  std::ofstream f(path);
+  if (!f.is_open()) return false;
+  f << "# id vsplits\n";
+  for (const auto &[id, v] : splits) {
+    f << id << " " << v << "\n";
+  }
+  return true;
+}
+
 MixtureSolveStats SolveCellMixture(
     const DifficultCell &cell,
     int max_depth,
@@ -2152,21 +2207,12 @@ MixtureSolveStats SolveCellMixture(
     //   (See ruperts/TOM_IDEAS_ANALYSIS.md for mathematical derivation).
     double rot_diam = 2.0 * node.box.radii[node.box.WidestAxis()];
     double view_diam = node.tri.AngularDiameter();
-    bool split_box;
-    if (node.box_depth >= max_box_depth) {
-      split_box = false;
-    } else if (node.view_depth >= max_view_depth ||
-               (pre_vsplits > 0 && node.view_depth >= cell.view_depth + pre_vsplits)) {
-      split_box = true;
-    } else if (res.view_penalty > 0.0 && res.box_span > 0.0) {
-      // Geometry-specific, parameter-free splitting criterion (Tom Idea Point 1):
-      // If the view defect penalty exceeds the entire variation across the box,
-      // box bisection is mathematically incapable of certifying -> split view (SV).
-      // If box variation dominates, box bisection resolves the bottleneck with branching factor 2 -> split box (SP).
-      split_box = (res.box_span >= res.view_penalty);
-    } else {
-      split_box = (rot_diam >= split_kappa * view_diam);
-    }
+    bool split_box = ShouldSplitBox(
+        node.box_depth, max_box_depth,
+        node.view_depth, max_view_depth,
+        res.box_span, res.view_penalty,
+        rot_diam, view_diam,
+        split_kappa, pre_vsplits, cell.view_depth);
 
     if (split_box) {
       int widest = node.box.WidestAxis();
@@ -3039,6 +3085,7 @@ void SearchManager::ResetState() {
   split_count.Reset();
   difficult_count.Reset();
   timed_out = false;
+  max_view_depth_reached = 0;
   row_buffer.clear();
   for (int i = 0; i < 128; i++) cert_by_depth[i].store(0, std::memory_order_relaxed);
   for (int i = 0; i < 128; i++) cert_by_box_depth[i].store(0, std::memory_order_relaxed);
@@ -3663,6 +3710,7 @@ void SearchManager::Run() {
         for (int idx : eval_indices) {
           evaluated_count++;
           const auto &node = current_batch[idx];
+          max_view_depth_reached = std::max<int>(max_view_depth_reached, (int)node.view_depth);
           auto res = results[idx];
 
           bool near_depth_out = (node.depth >= max_depth - 2);
@@ -3845,25 +3893,20 @@ void SearchManager::Run() {
             // (at least 2 box splits between view splits) to converge to equiangular
             // without exploding unique view triangles.
             bool split_box;
-            if (node.box_depth >= max_box_depth) {
-              split_box = false;
-            } else if (node.view_depth >= max_view_depth) {
-              split_box = true;
-            } else if (node.box.radii[widest] > 1.0 / 512.0) {
+            if (node.box.radii[widest] > 1.0 / 512.0) {
               // Spatial partitioning phase: refine Cayley box down to 1/512
               // early so coarse volume pruning can reject large regions rapidly.
-              split_box = true;
+              split_box = (node.box_depth < max_box_depth);
             } else {
               double rot_diam = 2.0 * node.box.radii[widest];
               double view_diam = node.tri.AngularDiameter();
-              if (rot_diam >= split_kappa * view_diam) {
-                // Box has greater angular uncertainty: split box!
-                split_box = true;
-              } else {
-                // View has greater angular uncertainty: wants view split,
-                // but rate-limit to at least 2 box splits between view splits (2:1 pacing).
-                split_box = (node.box_splits_since_view < 2);
-              }
+              split_box = ShouldSplitBox(
+                  node.box_depth, max_box_depth,
+                  node.view_depth, max_view_depth,
+                  /*box_span=*/0.0, /*view_penalty=*/0.0,
+                  rot_diam, view_diam,
+                  split_kappa, pre_vsplits, root_view_depth,
+                  node.box_splits_since_view);
             }
 
             if (split_box) {
@@ -3902,6 +3945,7 @@ void SearchManager::Run() {
               }
             } else {
               split_count++;
+              max_view_depth_reached = std::max<int>(max_view_depth_reached, (int)node.view_depth + 1);
               auto sub_tris = node.tri.Subdivide();
               int priority_idx = -1;
               for (int t = 0; t < 4; t++) {

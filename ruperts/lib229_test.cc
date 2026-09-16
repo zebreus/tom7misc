@@ -286,17 +286,114 @@ void TestRandomizedPolynomialSuites() {
   }
 }
 
+void TestAnalyticalSplittingRule() {
+  Print("Running TestAnalyticalSplittingRule...\n");
+
+  // 1. Hard depth constraints
+  CHECK_TRUE(!ShouldSplitBox(/*box_depth=*/40, /*max_box_depth=*/40,
+                             /*view_depth=*/5, /*max_view_depth=*/14,
+                             /*box_span=*/1.0, /*view_penalty=*/0.1,
+                             /*rot_diam=*/0.5, /*view_diam=*/0.1),
+             "Max box depth forces view split (false)");
+
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/14, /*max_view_depth=*/14,
+                            /*box_span=*/0.01, /*view_penalty=*/1.0,
+                            /*rot_diam=*/0.01, /*view_diam=*/0.5),
+             "Max view depth forces box split (true)");
+
+  // 2. Pre-split root lock
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/8, /*max_view_depth=*/14,
+                            /*box_span=*/0.01, /*view_penalty=*/1.0,
+                            /*rot_diam=*/0.01, /*view_diam=*/0.5,
+                            /*split_kappa=*/0.5, /*pre_vsplits=*/2, /*root_view_depth=*/6),
+             "Pre-split depth cap forces box split (true)");
+
+  // 3. Analytical Geometry-Specific Rule:
+  // Rotation error dominates -> split box
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/6, /*max_view_depth=*/14,
+                            /*box_span=*/0.05, /*view_penalty=*/0.01,
+                            /*rot_diam=*/0.01, /*view_diam=*/0.5),
+             "Analytical rule: box_span > view_penalty selects box split");
+
+  // View defect error dominates -> split view
+  CHECK_TRUE(!ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                             /*view_depth=*/6, /*max_view_depth=*/14,
+                             /*box_span=*/0.01, /*view_penalty=*/0.05,
+                             /*rot_diam=*/0.5, /*view_diam=*/0.1),
+             "Analytical rule: view_penalty > box_span selects view split");
+
+  // Boundary equality -> favor box split (branching factor 2)
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/6, /*max_view_depth=*/14,
+                            /*box_span=*/0.02, /*view_penalty=*/0.02,
+                            /*rot_diam=*/0.01, /*view_diam=*/0.5),
+             "Analytical rule: box_span == view_penalty favors box split");
+
+  // 4. Fallback aspect ratio (kappa)
+  // rot_diam >= kappa * view_diam -> split box
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/6, /*max_view_depth=*/14,
+                            /*box_span=*/0.0, /*view_penalty=*/0.0,
+                            /*rot_diam=*/0.06, /*view_diam=*/0.10,
+                            /*split_kappa=*/0.5),
+             "Fallback kappa: rot_diam >= kappa * view_diam selects box split");
+
+  // rot_diam < kappa * view_diam with pacing
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/6, /*max_view_depth=*/14,
+                            /*box_span=*/0.0, /*view_penalty=*/0.0,
+                            /*rot_diam=*/0.02, /*view_diam=*/0.10,
+                            /*split_kappa=*/0.5, /*pre_vsplits=*/0, /*root_view_depth=*/0,
+                            /*box_splits_since_view=*/0),
+             "Fallback kappa: pacing box_splits_since_view=0 forces box split");
+
+  CHECK_TRUE(ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                            /*view_depth=*/6, /*max_view_depth=*/14,
+                            /*box_span=*/0.0, /*view_penalty=*/0.0,
+                            /*rot_diam=*/0.02, /*view_diam=*/0.10,
+                            /*split_kappa=*/0.5, /*pre_vsplits=*/0, /*root_view_depth=*/0,
+                            /*box_splits_since_view=*/1),
+             "Fallback kappa: pacing box_splits_since_view=1 forces box split");
+
+  CHECK_TRUE(!ShouldSplitBox(/*box_depth=*/30, /*max_box_depth=*/40,
+                             /*view_depth=*/6, /*max_view_depth=*/14,
+                             /*box_span=*/0.0, /*view_penalty=*/0.0,
+                             /*rot_diam=*/0.02, /*view_diam=*/0.10,
+                             /*split_kappa=*/0.5, /*pre_vsplits=*/0, /*root_view_depth=*/0,
+                             /*box_splits_since_view=*/2),
+             "Fallback kappa: pacing box_splits_since_view=2 allows view split");
+
+  // 5. Sidecar Splits File Round-Trip
+  std::string test_splits_path = "test_sidecar.splits";
+  std::unordered_map<int64_t, int> test_splits = {
+      {1265125, 1},
+      {1265469, 2},
+      {9999999, 3},
+  };
+  CHECK_TRUE(SaveSplitsFile(test_splits_path, test_splits), "SaveSplitsFile succeeds");
+  auto loaded_splits = LoadSplitsFile(test_splits_path);
+  std::remove(test_splits_path.c_str());
+  CHECK_TRUE(loaded_splits.size() == 3, "Loaded splits count matches");
+  CHECK_TRUE(loaded_splits[1265125] == 1, "Loaded splits cell 1265125 == 1");
+  CHECK_TRUE(loaded_splits[1265469] == 2, "Loaded splits cell 1265469 == 2");
+  CHECK_TRUE(loaded_splits[9999999] == 3, "Loaded splits cell 9999999 == 3");
+}
+
 int main(int argc, char **argv) {
-  Print(ACYAN("=== Running lib229 Bernstein Unit Tests ===\n"));
+  Print(ACYAN("=== Running lib229 Bernstein & Splitting Unit Tests ===\n"));
 
   TestConstantPolynomial();
   TestLinearPolynomial();
   TestPureQuadratics();
   TestGeneralQuadraticCayleyScale();
   TestRandomizedPolynomialSuites();
+  TestAnalyticalSplittingRule();
 
   if (g_failed_tests == 0) {
-    Print(AGREEN("\nALL BERNSTEIN TESTS PASSED WITH HIGH PRECISION!\n"));
+    Print(AGREEN("\nALL LIB229 UNIT TESTS PASSED WITH HIGH PRECISION!\n"));
     return 0;
   } else {
     Print(ARED("\nFAILED {} TESTS!\n"), g_failed_tests);
