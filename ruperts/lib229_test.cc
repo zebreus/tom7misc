@@ -382,6 +382,80 @@ void TestAnalyticalSplittingRule() {
   CHECK_TRUE(loaded_splits[9999999] == 3, "Loaded splits cell 9999999 == 3");
 }
 
+void TestCompletedFractionDifficultCell() {
+  Print("Running TestCompletedFractionDifficultCell...\n");
+
+  SearchManager mgr;
+  mgr.auto_init_root = false;
+
+  // Case 1: Full Chart (root_box_depth = 0, root_view_depth = 0)
+  mgr.ResetState();
+  mgr.root_box_depth = 0;
+  mgr.root_view_depth = 0;
+  CHECK_TRUE(mgr.CompletedFraction() == 1.0, "Full chart empty stack is 100% completed");
+
+  SearchNode n_chart_root;
+  n_chart_root.box_depth = 0;
+  n_chart_root.view_depth = 0;
+  mgr.stack.push_back(n_chart_root);
+  CHECK_TRUE(mgr.CompletedFraction() == 0.0, "Full chart root on stack is 0% completed");
+
+  // Split into 2 boxes: 1 remaining -> 50%
+  mgr.stack.clear();
+  SearchNode n_half = n_chart_root;
+  n_half.box_depth = 1;
+  mgr.stack.push_back(n_half);
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.5) < 1e-9, "Full chart 1 of 2 boxes remaining is 50% completed");
+
+  // Case 2: Difficult Cell (box_depth = 32, view_depth = 8)
+  mgr.ResetState();
+  mgr.root_box_depth = 32;
+  mgr.root_view_depth = 8;
+  CHECK_TRUE(mgr.CompletedFraction() == 1.0, "Difficult cell empty stack is 100% completed");
+
+  SearchNode n_diff_root;
+  n_diff_root.box_depth = 32;
+  n_diff_root.view_depth = 8;
+  mgr.stack.push_back(n_diff_root);
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.0) < 1e-9,
+             "Difficult cell root on stack is 0% completed (NOT 100%)");
+
+  // Difficult cell with 2 box children: both on stack -> 0% completed
+  mgr.stack.clear();
+  SearchNode c0 = n_diff_root; c0.box_depth = 33;
+  SearchNode c1 = n_diff_root; c1.box_depth = 33;
+  mgr.stack.push_back(c0);
+  mgr.stack.push_back(c1);
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.0) < 1e-9,
+             "Difficult cell with both box children on stack is 0% completed");
+
+  // One box child certified, one remaining -> 50% completed
+  mgr.stack.pop_back();
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.5) < 1e-9,
+             "Difficult cell with 1 of 2 box children remaining is 50% completed");
+
+  // Pre-split cell into 4 view cones: all 4 on stack -> 0% completed
+  mgr.stack.clear();
+  for (int i = 0; i < 4; i++) {
+    SearchNode vcone = n_diff_root;
+    vcone.view_depth = 9; // view split adds 1
+    mgr.stack.push_back(vcone);
+  }
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.0) < 1e-9,
+             "Difficult cell pre-split into 4 view cones on stack is 0% completed");
+
+  // 3 view cones certified, 1 remaining -> 75% completed
+  mgr.stack.resize(1);
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.75) < 1e-9,
+             "Difficult cell with 1 of 4 view cones remaining is 75% completed");
+
+  // Also verify current_batch is counted as pending volume
+  mgr.stack.clear();
+  mgr.current_batch.push_back(n_diff_root);
+  CHECK_TRUE(std::abs(mgr.CompletedFraction() - 0.0) < 1e-9,
+             "Difficult cell in active current_batch is 0% completed");
+}
+
 int main(int argc, char **argv) {
   Print(ACYAN("=== Running lib229 Bernstein & Splitting Unit Tests ===\n"));
 
@@ -391,6 +465,7 @@ int main(int argc, char **argv) {
   TestGeneralQuadraticCayleyScale();
   TestRandomizedPolynomialSuites();
   TestAnalyticalSplittingRule();
+  TestCompletedFractionDifficultCell();
 
   if (g_failed_tests == 0) {
     Print(AGREEN("\nALL LIB229 UNIT TESTS PASSED WITH HIGH PRECISION!\n"));

@@ -3066,22 +3066,33 @@ void SearchManager::FilterPriorityPointsToStack() {
   // Horner evaluation. Zero floating-point accumulation error.
 
 double SearchManager::CompletedFraction() const {
-    uint64_t stack_k[256] = {0};
-    for (const auto &node : stack) {
-      int k = node.box_depth + 2 * node.view_depth;
-      if (k < 256) stack_k[k]++;
-    }
-    double pending_vol = 0.0;
-    for (int k = 255; k > 0; k--) {
-      pending_vol = (pending_vol + stack_k[k]) * 0.5;
-    }
-    pending_vol += stack_k[0];
-    return std::clamp(1.0 - pending_vol, 0.0, 1.0);
+  int root_k = root_box_depth + 2 * root_view_depth;
+  uint64_t stack_k[256] = {0};
+  for (const auto &node : stack) {
+    int k = (node.box_depth + 2 * node.view_depth) - root_k;
+    if (k < 0) k = 0;
+    if (k < 256) stack_k[k]++;
   }
+  for (const auto &node : current_batch) {
+    int k = (node.box_depth + 2 * node.view_depth) - root_k;
+    if (k < 0) k = 0;
+    if (k < 256) stack_k[k]++;
+  }
+  double pending_vol = 0.0;
+  for (int k = 255; k > 0; k--) {
+    pending_vol = (pending_vol + stack_k[k]) * 0.5;
+  }
+  pending_vol += stack_k[0];
+  return std::clamp(1.0 - pending_vol, 0.0, 1.0);
+}
 
 
 void SearchManager::ResetState() {
   stack.clear();
+  current_batch.clear();
+  root_box_depth = 0;
+  root_view_depth = 0;
+  pre_vsplits = 0;
   ctr_loops.Reset();
   evaluated_count.Reset();
   certified_count.Reset();
@@ -3333,7 +3344,18 @@ void SearchManager::Run() {
     std::vector<GpuContact> all_contacts;
     std::vector<GpuTriple> all_triples;
     std::vector<GpuResult> results;
-    std::vector<SearchNode> current_batch;
+    current_batch.clear();
+
+    if (!auto_init_root && root_box_depth == 0 && root_view_depth == 0 && !stack.empty()) {
+      int min_b = stack[0].box_depth;
+      int min_v = stack[0].view_depth;
+      for (const auto &n : stack) {
+        min_b = std::min(min_b, (int)n.box_depth);
+        min_v = std::min(min_v, (int)n.view_depth);
+      }
+      root_box_depth = min_b;
+      root_view_depth = min_v;
+    }
 
     while (!stack.empty() && !sigint_received.load() &&
            !(stop_requested && stop_requested->load())) {

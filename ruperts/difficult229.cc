@@ -25,15 +25,17 @@
 #include <system_error>
 #include <thread>
 #include <unordered_map>
-#include <unordered_set>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/print.h"
 #include "lib229.h"
 #include "periodically.h"
+#include "randutil.h"
 #include "ruperts-util.h"
 #include "timer.h"
 
@@ -271,7 +273,7 @@ static int RunDifficult(
     double tube_radius, double limit_sec, int num_threads, bool use_gpu,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true, std::string splits_file = "",
-    int64_t max_nodes = 0) {
+    int64_t max_nodes = 0, bool rand_order = false, uint64_t rand_seed = 0) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -330,6 +332,14 @@ static int RunDifficult(
   if (unsolved_cells.empty()) {
     Print(AGREEN("All difficult cells in chart {} are already certified!\n"), chart);
     return 0;
+  }
+
+  if (rand_order && unsolved_cells.size() > 1) {
+    uint64_t seed = rand_seed != 0 ? rand_seed : ((uint64_t)time(nullptr) ^ ((uint64_t)getpid() << 32));
+    ArcFour rc(seed);
+    rc.Discard(1024);
+    Shuffle(&rc, &unsolved_cells);
+    Print("Shuffled {} unsolved cells with --rand (seed: {})\n", unsolved_cells.size(), seed);
   }
 
   if (dry_run) {
@@ -461,6 +471,7 @@ static int RunDifficult(
     }
     mgr.pre_vsplits = pre_vsplits;
     mgr.root_view_depth = cell.view_depth;
+    mgr.root_box_depth = cell.box_depth;
 
     SearchNode root = cell.ToSearchNode();
     if (pre_vsplits > 0) {
@@ -613,7 +624,8 @@ static int RunDifficultMixture(
     int cone_samples, int max_components,
     double split_kappa, double tube_radius, double limit_sec, int num_threads,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
-    bool show_status = true, std::string splits_file = "") {
+    bool show_status = true, std::string splits_file = "",
+    bool rand_order = false, uint64_t rand_seed = 0) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -668,6 +680,14 @@ static int RunDifficultMixture(
   if (unsolved_cells.empty()) {
     Print(AGREEN("All difficult cells in chart {} are already certified!\n"), chart);
     return 0;
+  }
+
+  if (rand_order && unsolved_cells.size() > 1) {
+    uint64_t seed = rand_seed != 0 ? rand_seed : ((uint64_t)time(nullptr) ^ ((uint64_t)getpid() << 32));
+    ArcFour rc(seed);
+    rc.Discard(1024);
+    Shuffle(&rc, &unsolved_cells);
+    Print("Shuffled {} unsolved cells with --rand (seed: {})\n", unsolved_cells.size(), seed);
   }
 
   auto splits_map = LoadSplitsFile(splits_file);
@@ -940,6 +960,8 @@ static void PrintHelp() {
         "  --gpu                   Use OpenCL acceleration in standard mode (default)\n"
         "  --limit <N>             Process at most N cells (default all)\n"
         "  --cell_id <ID>          Process only specific cell ID\n"
+        "  --rand                  Shuffle difficult cells order before processing\n"
+        "  --seed <N>              Random seed for --rand (default auto-seeded)\n"
         "  --dry_run               Scan and report status without processing\n"
         "  --verbose               Print verbose per-cell status\n"
         "  --no_status             Disable live status bar\n"
@@ -985,6 +1007,8 @@ int main(int argc, char **argv) {
   bool dry_run = false;
   bool verbose = false;
   bool show_status = true;
+  bool rand_order = false;
+  uint64_t rand_seed = 0;
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -1056,6 +1080,11 @@ int main(int argc, char **argv) {
       limit_cells = std::atoll(argv[++i]);
     } else if (arg == "--cell_id" && i + 1 < argc) {
       target_cell_id = std::atoll(argv[++i]);
+    } else if (arg == "--rand" || arg == "--shuffle") {
+      rand_order = true;
+    } else if (arg == "--seed" && i + 1 < argc) {
+      rand_seed = std::strtoull(argv[++i], nullptr, 10);
+      rand_order = true;
     } else if (arg == "--dry_run") {
       dry_run = true;
     } else if (arg == "--verbose") {
@@ -1083,7 +1112,7 @@ int main(int argc, char **argv) {
         max_view_depth, max_nodes, max_split_delta, cone_samples,
         max_components, split_kappa, tube_radius,
         limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
-        show_status, splits_file);
+        show_status, splits_file, rand_order, rand_seed);
   }
 
   RunDifficult(
@@ -1092,7 +1121,8 @@ int main(int argc, char **argv) {
       escalate_cone_samples, deep_escalate_depth, deep_escalate_cone_samples,
       lp_escalate_box_depth, tube_radius, limit_sec,
       num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
-      show_status, splits_file, max_nodes_specified ? max_nodes : 0);
+      show_status, splits_file, max_nodes_specified ? max_nodes : 0,
+      rand_order, rand_seed);
 
   return 0;
 }

@@ -622,10 +622,12 @@ struct SearchManager {
   double split_kappa = 1.0;
   int pre_vsplits = 0;
   int root_view_depth = 0;
+  int root_box_depth = 0;
   int max_view_depth_reached = 0;
   std::string output_dir = ".artifacts/nopert229";
 
   std::vector<SearchNode> stack; // DFS LIFO stack
+  std::vector<SearchNode> current_batch; // Active batch nodes being evaluated
   int64_t next_node_id = 0;
 
   static constexpr int kMaxTrackDepth = 128;
