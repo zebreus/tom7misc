@@ -5,7 +5,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <fstream>
 #include <string_view>
+#include <unistd.h>
 #include <vector>
 
 // Direct evaluation of quadratic polynomial:
@@ -456,6 +458,91 @@ void TestCompletedFractionDifficultCell() {
              "Difficult cell in active current_batch is 0% completed");
 }
 
+static void TestViewQuadtree() {
+  Print(AYELLOW("  Testing ViewQuadtree serialization, manipulation, and path finding...\n"));
+
+  // 1. Uniform quadtree generation
+  auto u0 = ViewQuadtree::MakeUniform(0);
+  CHECK_TRUE(!u0.is_split, "Depth 0 uniform quadtree is not split");
+  CHECK_TRUE(u0.CountLeaves() == 1, "Depth 0 uniform quadtree has 1 leaf");
+  CHECK_TRUE(u0.MaxDepth() == 0, "Depth 0 uniform quadtree has max depth 0");
+  CHECK_TRUE(u0.ToString() == ".", "Depth 0 ToString is '.'");
+
+  auto u1 = ViewQuadtree::MakeUniform(1);
+  CHECK_TRUE(u1.is_split, "Depth 1 uniform quadtree is split");
+  CHECK_TRUE(u1.CountLeaves() == 4, "Depth 1 uniform quadtree has 4 leaves");
+  CHECK_TRUE(u1.MaxDepth() == 1, "Depth 1 uniform quadtree has max depth 1");
+  CHECK_TRUE(u1.ToString() == "S . . . .", "Depth 1 ToString is 'S . . . .'");
+
+  auto u2 = ViewQuadtree::MakeUniform(2);
+  CHECK_TRUE(u2.CountLeaves() == 16, "Depth 2 uniform quadtree has 16 leaves");
+  CHECK_TRUE(u2.MaxDepth() == 2, "Depth 2 uniform quadtree has max depth 2");
+
+  // 2. FromString parsing & backward compatibility
+  auto parsed_int = ViewQuadtree::FromString("3");
+  CHECK_TRUE(parsed_int.has_value(), "Parsed integer '3' successfully");
+  CHECK_TRUE(parsed_int->CountLeaves() == 64, "Integer '3' produces 64 leaves");
+  CHECK_TRUE(parsed_int->MaxDepth() == 3, "Integer '3' produces max depth 3");
+
+  auto parsed_tree = ViewQuadtree::FromString("S . . . S . . . .");
+  CHECK_TRUE(parsed_tree.has_value(), "Parsed non-uniform quadtree successfully");
+  CHECK_TRUE(parsed_tree->CountLeaves() == 7, "Non-uniform quadtree has 7 leaves (3 + 4)");
+  CHECK_TRUE(parsed_tree->MaxDepth() == 2, "Non-uniform quadtree has max depth 2");
+  CHECK_TRUE(parsed_tree->ToString() == "S . . . S . . . .", "Non-uniform round-trips ToString exactly");
+
+  // 3. Dynamic path splitting
+  ViewQuadtree dyn_tree = ViewQuadtree::MakeUniform(1); // 4 leaves
+  std::vector<int> path1 = {3, 1}; // Split child 3, then sub-child 1
+  dyn_tree.SplitPath(path1);
+  // Root split into 4.
+  // Child 3 split into 4.
+  // Child 3.1 split into 4.
+  // Leaves: 3 (from root children 0,1,2) + 3 (from child 3's 0,2,3) + 4 (from 3.1) = 10 leaves!
+  CHECK_TRUE(dyn_tree.CountLeaves() == 10, "Splitting path [3, 1] results in 10 leaves");
+  CHECK_TRUE(dyn_tree.MaxDepth() == 3, "Splitting path [3, 1] has max depth 3");
+
+  // 4. Triangle path finding
+  ProjectiveTriangle root_tri = {
+    vec3{0.62290396341463428, 0.13881478658536586, 0.23828125},
+    vec3{0.62585746951219523, 0.13586128048780488, 0.23828125},
+    vec3{0.62681021341463428, 0.13881478658536586, 0.234375}
+  };
+  auto sub1 = root_tri.Subdivide();
+  auto path_c2 = FindTrianglePath(root_tri, sub1[2]);
+  CHECK_TRUE(path_c2.size() == 1 && path_c2[0] == 2, "Found path [2] for child 2");
+
+  auto sub2 = sub1[3].Subdivide();
+  auto path_c31 = FindTrianglePath(root_tri, sub2[1]);
+  CHECK_TRUE(path_c31.size() == 2 && path_c31[0] == 3 && path_c31[1] == 1,
+             "Found path [3, 1] for sub-triangle 3.1");
+
+  // 5. Leaf extraction
+  auto leaves = dyn_tree.GetLeaves(root_tri);
+  CHECK_TRUE((int)leaves.size() == 10, "GetLeaves extracts exactly 10 leaf triangles");
+
+  // 6. Sidecar file loading & saving
+  std::string test_splits_file = "test_quadtree.splits";
+  std::ofstream out(test_splits_file);
+  out << "# id quadtree_or_vsplits\n";
+  out << "1265114 5\n"; // legacy uniform integer
+  out << "1265194 S . . . S . . . .\n"; // hierarchical quadtree
+  out.close();
+
+  auto loaded = LoadQuadtreeSplitsFile(test_splits_file);
+  CHECK_TRUE(loaded.size() == 2, "Loaded 2 entries from test splits file");
+  CHECK_TRUE(loaded[1265114].CountLeaves() == 1024, "Loaded uniform depth 5 -> 1024 leaves");
+  CHECK_TRUE(loaded[1265194].CountLeaves() == 7, "Loaded non-uniform quadtree -> 7 leaves");
+
+  std::string test_splits_out = "test_quadtree_out.splits";
+  CHECK_TRUE(SaveQuadtreeSplitsFile(test_splits_out, loaded), "Saved quadtree splits file");
+  auto reloaded = LoadQuadtreeSplitsFile(test_splits_out);
+  CHECK_TRUE(reloaded[1265114].CountLeaves() == 1024, "Reloaded uniform tree preserves 1024 leaves");
+  CHECK_TRUE(reloaded[1265194].CountLeaves() == 7, "Reloaded non-uniform tree preserves 7 leaves");
+
+  unlink(test_splits_file.c_str());
+  unlink(test_splits_out.c_str());
+}
+
 int main(int argc, char **argv) {
   Print(ACYAN("=== Running lib229 Bernstein & Splitting Unit Tests ===\n"));
 
@@ -466,6 +553,7 @@ int main(int argc, char **argv) {
   TestRandomizedPolynomialSuites();
   TestAnalyticalSplittingRule();
   TestCompletedFractionDifficultCell();
+  TestViewQuadtree();
 
   if (g_failed_tests == 0) {
     Print(AGREEN("\nALL LIB229 UNIT TESTS PASSED WITH HIGH PRECISION!\n"));

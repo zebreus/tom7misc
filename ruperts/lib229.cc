@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <charconv>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -1977,6 +1978,253 @@ bool ShouldSplitBox(
   return false;
 }
 
+ViewQuadtree::ViewQuadtree() = default;
+ViewQuadtree::~ViewQuadtree() = default;
+ViewQuadtree::ViewQuadtree(ViewQuadtree &&) noexcept = default;
+ViewQuadtree &ViewQuadtree::operator=(ViewQuadtree &&) noexcept = default;
+
+ViewQuadtree::ViewQuadtree(const ViewQuadtree &other) : is_split(other.is_split) {
+  if (is_split) {
+    for (int i = 0; i < 4; i++) {
+      if (other.children[i]) {
+        children[i] = std::make_unique<ViewQuadtree>(*other.children[i]);
+      }
+    }
+  }
+}
+
+ViewQuadtree &ViewQuadtree::operator=(const ViewQuadtree &other) {
+  if (this == &other) return *this;
+  is_split = other.is_split;
+  for (int i = 0; i < 4; i++) {
+    if (other.is_split && other.children[i]) {
+      children[i] = std::make_unique<ViewQuadtree>(*other.children[i]);
+    } else {
+      children[i].reset();
+    }
+  }
+  return *this;
+}
+
+ViewQuadtree ViewQuadtree::MakeUniform(int depth) {
+  ViewQuadtree node;
+  if (depth <= 0) {
+    node.is_split = false;
+  } else {
+    node.is_split = true;
+    for (int i = 0; i < 4; i++) {
+      node.children[i] = std::make_unique<ViewQuadtree>(MakeUniform(depth - 1));
+    }
+  }
+  return node;
+}
+
+std::string ViewQuadtree::ToString() const {
+  if (!is_split) return ".";
+  return std::format("S {} {} {} {}",
+                     children[0] ? children[0]->ToString() : ".",
+                     children[1] ? children[1]->ToString() : ".",
+                     children[2] ? children[2]->ToString() : ".",
+                     children[3] ? children[3]->ToString() : ".");
+}
+
+std::optional<ViewQuadtree> ViewQuadtree::FromString(std::string_view s) {
+  size_t first = s.find_first_not_of(" \t\r\n");
+  if (first == std::string_view::npos) return std::nullopt;
+  size_t last = s.find_last_not_of(" \t\r\n");
+  s = s.substr(first, last - first + 1);
+
+  bool all_digits = true;
+  for (char c : s) {
+    if (!std::isdigit(static_cast<unsigned char>(c))) {
+      all_digits = false;
+      break;
+    }
+  }
+  if (all_digits && !s.empty()) {
+    int depth = 0;
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), depth);
+    if (ec == std::errc()) {
+      return MakeUniform(depth);
+    }
+  }
+
+  std::vector<std::string_view> tokens;
+  size_t i = 0;
+  while (i < s.size()) {
+    while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) i++;
+    if (i >= s.size()) break;
+    size_t start = i;
+    while (i < s.size() && s[i] != ' ' && s[i] != '\t' && s[i] != '\r' && s[i] != '\n') i++;
+    tokens.push_back(s.substr(start, i - start));
+  }
+
+  size_t tok_idx = 0;
+  std::function<std::optional<ViewQuadtree>()> Parse = [&]() -> std::optional<ViewQuadtree> {
+    if (tok_idx >= tokens.size()) return std::nullopt;
+    std::string_view tok = tokens[tok_idx++];
+    if (tok == ".") {
+      ViewQuadtree leaf;
+      leaf.is_split = false;
+      return leaf;
+    } else if (tok == "S" || tok == "s") {
+      ViewQuadtree node;
+      node.is_split = true;
+      for (int c = 0; c < 4; c++) {
+        auto child = Parse();
+        if (!child.has_value()) return std::nullopt;
+        node.children[c] = std::make_unique<ViewQuadtree>(std::move(*child));
+      }
+      return node;
+    }
+    return std::nullopt;
+  };
+
+  auto root = Parse();
+  if (!root.has_value() || tok_idx != tokens.size()) {
+    return std::nullopt;
+  }
+  return root;
+}
+
+void ViewQuadtree::SplitPath(std::span<const int> path) {
+  if (!is_split) {
+    is_split = true;
+    for (int i = 0; i < 4; i++) {
+      children[i] = std::make_unique<ViewQuadtree>();
+      children[i]->is_split = false;
+    }
+  }
+  if (!path.empty()) {
+    int c = path[0];
+    if (c >= 0 && c < 4 && children[c]) {
+      children[c]->SplitPath(path.subspan(1));
+    }
+  }
+}
+
+int ViewQuadtree::CountLeaves() const {
+  if (!is_split) return 1;
+  int count = 0;
+  for (int i = 0; i < 4; i++) {
+    count += children[i] ? children[i]->CountLeaves() : 1;
+  }
+  return count;
+}
+
+int ViewQuadtree::MaxDepth() const {
+  if (!is_split) return 0;
+  int d = 0;
+  for (int i = 0; i < 4; i++) {
+    if (children[i]) d = std::max(d, 1 + children[i]->MaxDepth());
+  }
+  return d;
+}
+
+std::vector<ViewQuadtree::LeafNode> ViewQuadtree::GetLeaves(
+    const ProjectiveTriangle &root_tri) const {
+  std::vector<ViewQuadtree::LeafNode> leaves;
+  std::vector<int> cur_path;
+
+  std::function<void(const ViewQuadtree &, const ProjectiveTriangle &)> Traverse =
+      [&](const ViewQuadtree &node, const ProjectiveTriangle &tri) {
+    if (!node.is_split) {
+      leaves.push_back({cur_path, (int)cur_path.size(), tri});
+      return;
+    }
+    auto sub = tri.Subdivide();
+    for (int i = 0; i < 4; i++) {
+      cur_path.push_back(i);
+      if (node.children[i]) {
+        Traverse(*node.children[i], sub[i]);
+      } else {
+        leaves.push_back({cur_path, (int)cur_path.size(), sub[i]});
+      }
+      cur_path.pop_back();
+    }
+  };
+
+  Traverse(*this, root_tri);
+  return leaves;
+}
+
+std::vector<int> FindTrianglePath(
+    const ProjectiveTriangle &root_tri,
+    const ProjectiveTriangle &sub_tri,
+    int max_search_depth) {
+  std::vector<int> path;
+  vec3 target = sub_tri.Centroid();
+  ProjectiveTriangle curr = root_tri;
+
+  for (int d = 0; d < max_search_depth; d++) {
+    double diff = yocto::length(curr.corners[0] - sub_tri.corners[0]) +
+                  yocto::length(curr.corners[1] - sub_tri.corners[1]) +
+                  yocto::length(curr.corners[2] - sub_tri.corners[2]);
+    if (diff < 1e-8) break;
+
+    auto sub = curr.Subdivide();
+    int best_c = -1;
+    double best_dist = 1e30;
+    for (int c = 0; c < 4; c++) {
+      if (sub[c].ContainsRay(target)) {
+        best_c = c;
+        break;
+      }
+      double dist = yocto::length(sub[c].Centroid() - target);
+      if (dist < best_dist) {
+        best_dist = dist;
+        best_c = c;
+      }
+    }
+    if (best_c >= 0) {
+      path.push_back(best_c);
+      curr = sub[best_c];
+    } else {
+      break;
+    }
+  }
+  return path;
+}
+
+std::unordered_map<int64_t, ViewQuadtree> LoadQuadtreeSplitsFile(const std::string &path) {
+  std::unordered_map<int64_t, ViewQuadtree> splits;
+  std::ifstream f(path);
+  if (!f.is_open()) return splits;
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    int64_t id;
+    if (iss >> id) {
+      std::string rest;
+      std::getline(iss, rest);
+      size_t first = rest.find_first_not_of(" \t");
+      if (first != std::string::npos) {
+        rest = rest.substr(first);
+        size_t last = rest.find_last_not_of(" \t\r\n");
+        if (last != std::string::npos) {
+          rest = rest.substr(0, last + 1);
+        }
+        auto tree = ViewQuadtree::FromString(rest);
+        if (tree.has_value()) {
+          splits[id] = std::move(*tree);
+        }
+      }
+    }
+  }
+  return splits;
+}
+
+bool SaveQuadtreeSplitsFile(const std::string &path, const std::unordered_map<int64_t, ViewQuadtree> &splits) {
+  std::ofstream f(path);
+  if (!f.is_open()) return false;
+  f << "# id quadtree_or_vsplits\n";
+  for (const auto &[id, tree] : splits) {
+    f << id << " " << tree.ToString() << "\n";
+  }
+  return true;
+}
+
 std::unordered_map<int64_t, int> LoadSplitsFile(const std::string &path) {
   std::unordered_map<int64_t, int> splits;
   std::ifstream f(path);
@@ -2018,7 +2266,8 @@ MixtureSolveStats SolveCellMixture(
     double time_limit_sec,
     std::function<void(std::string_view)> row_callback,
     std::atomic<bool> *interrupted,
-    int pre_vsplits) {
+    int pre_vsplits,
+    const ViewQuadtree *initial_quadtree) {
   MixtureSolveStats stats;
   Timer timer;
   bool all_leaves_certified = true;
@@ -2033,60 +2282,76 @@ MixtureSolveStats SolveCellMixture(
     if (row_callback) row_callback(row);
   };
 
-  if (pre_vsplits > 0) {
-    std::vector<SearchNode> current_level = {root};
-    for (int v = 0; v < pre_vsplits; v++) {
-      std::vector<SearchNode> next_level;
-      for (const auto &parent : current_level) {
-        auto sub_tris = parent.tri.Subdivide();
-        int64_t c0_id = next_id++;
-        int64_t c1_id = next_id++;
-        int64_t c2_id = next_id++;
-        int64_t c3_id = next_id++;
-        EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
-                            parent.id, parent.parent_id, parent.depth,
-                            c0_id, c1_id, c2_id, c3_id));
-        int64_t c_ids[4] = {c0_id, c1_id, c2_id, c3_id};
-        for (int t = 0; t < 4; t++) {
-          SearchNode c = parent;
-          c.id = c_ids[t];
-          c.parent_id = parent.id;
-          c.depth++;
-          c.view_depth++;
-          c.tri = sub_tris[t];
-          next_level.push_back(c);
+  ViewQuadtree base_tree;
+  if (initial_quadtree != nullptr) {
+    base_tree = *initial_quadtree;
+  } else if (pre_vsplits > 0) {
+    base_tree = ViewQuadtree::MakeUniform(pre_vsplits);
+  }
+  ViewQuadtree dynamic_tree = base_tree;
+
+  auto FinishStats = [&](bool solved) {
+    stats.solved = solved;
+    stats.remaining_nodes = (int64_t)stack.size();
+    stats.elapsed_seconds = timer.Seconds();
+    if (!stats.solved) {
+      for (const auto &n : stack) {
+        auto path = FindTrianglePath(root.tri, n.tri);
+        dynamic_tree.SplitPath(path);
+      }
+    }
+    stats.learned_quadtree = std::move(dynamic_tree);
+    return stats;
+  };
+
+  if (base_tree.is_split) {
+    std::function<void(const SearchNode &, const ViewQuadtree &)> ExpandQuadtree =
+        [&](const SearchNode &parent, const ViewQuadtree &qnode) {
+      if (!qnode.is_split) {
+        stack.push_back(parent);
+        return;
+      }
+      auto sub_tris = parent.tri.Subdivide();
+      int64_t c0_id = next_id++;
+      int64_t c1_id = next_id++;
+      int64_t c2_id = next_id++;
+      int64_t c3_id = next_id++;
+      EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                          parent.id, parent.parent_id, parent.depth,
+                          c0_id, c1_id, c2_id, c3_id));
+      int64_t c_ids[4] = {c0_id, c1_id, c2_id, c3_id};
+      for (int t = 3; t >= 0; t--) {
+        SearchNode c = parent;
+        c.id = c_ids[t];
+        c.parent_id = parent.id;
+        c.depth++;
+        c.view_depth++;
+        c.tri = sub_tris[t];
+        if (qnode.children[t]) {
+          ExpandQuadtree(c, *qnode.children[t]);
+        } else {
+          stack.push_back(c);
         }
       }
-      current_level = std::move(next_level);
-    }
-    for (int i = (int)current_level.size() - 1; i >= 0; i--) {
-      stack.push_back(current_level[i]);
-    }
+    };
+    ExpandQuadtree(root, base_tree);
   } else {
     stack.push_back(root);
   }
 
   while (!stack.empty()) {
     if (SigIntReceived() || (interrupted && interrupted->load(std::memory_order_relaxed))) {
-      stats.solved = false;
-      stats.elapsed_seconds = timer.Seconds();
-      return stats;
+      return FinishStats(false);
     }
     if (time_limit_sec > 0.0 && timer.Seconds() >= time_limit_sec) {
-      stats.solved = false;
-      stats.remaining_nodes = (int64_t)stack.size();
-      stats.elapsed_seconds = timer.Seconds();
-      return stats;
+      return FinishStats(false);
     }
     // Early exit: each node currently on the stack requires at least one evaluation
     // to certify or prune. If total_nodes + stack.size() > max_nodes, completing
     // the cell within the budget is mathematically impossible even if every remaining
     // stack node certifies immediately without further splitting.
     if (stats.total_nodes + (int64_t)stack.size() > max_nodes) {
-      stats.solved = false;
-      stats.remaining_nodes = (int64_t)stack.size();
-      stats.elapsed_seconds = timer.Seconds();
-      return stats;
+      return FinishStats(false);
     }
 
     SearchNode node = stack.back();
@@ -2227,6 +2492,9 @@ MixtureSolveStats SolveCellMixture(
       stack.push_back(c1);
       stack.push_back(c0);
     } else {
+      auto path = FindTrianglePath(root.tri, node.tri);
+      dynamic_tree.SplitPath(path);
+
       auto sub_tris = node.tri.Subdivide();
       int64_t c_ids[4];
       for (int t = 0; t < 4; t++) c_ids[t] = next_id++;
@@ -2245,9 +2513,7 @@ MixtureSolveStats SolveCellMixture(
     }
   }
 
-  stats.solved = all_leaves_certified && stack.empty();
-  stats.elapsed_seconds = timer.Seconds();
-  return stats;
+  return FinishStats(all_leaves_certified && stack.empty());
 }
 
 // Check whether a leaf SearchNode contains a valid Rupert passage.

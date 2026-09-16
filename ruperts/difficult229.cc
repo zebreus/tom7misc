@@ -297,7 +297,7 @@ static int RunDifficult(
   std::vector<DifficultCell> cells = ReadDifficultFile(difficult_path);
   Print("Loaded {} cells from {}\n", cells.size(), difficult_path);
 
-  std::unordered_map<int64_t, int> splits = LoadSplitsFile(splits_file);
+  std::unordered_map<int64_t, ViewQuadtree> splits = LoadQuadtreeSplitsFile(splits_file);
   if (!splits.empty()) {
     Print("Loaded {} cached cell view-split entries from {}\n", splits.size(), splits_file);
   }
@@ -464,44 +464,48 @@ static int RunDifficult(
     mgr.chart = cell.chart;
     mgr.next_node_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
 
-    int pre_vsplits = 0;
+    ViewQuadtree cell_tree;
+    bool has_splits = false;
     auto it_s = splits.find(cell.id);
     if (it_s != splits.end()) {
-      pre_vsplits = it_s->second;
+      cell_tree = it_s->second;
+      has_splits = cell_tree.is_split;
     }
-    mgr.pre_vsplits = pre_vsplits;
+    mgr.pre_vsplits = cell_tree.MaxDepth();
     mgr.root_view_depth = cell.view_depth;
     mgr.root_box_depth = cell.box_depth;
 
     SearchNode root = cell.ToSearchNode();
-    if (pre_vsplits > 0) {
-      std::vector<SearchNode> current_layer = {root};
-      for (int level = 0; level < pre_vsplits; level++) {
-        std::vector<SearchNode> next_layer;
-        for (const auto &curr : current_layer) {
-          auto sub_tris = curr.tri.Subdivide();
-          int64_t c_ids[4];
-          for (int t = 0; t < 4; t++) c_ids[t] = mgr.next_node_id++;
-          mgr.row_callback(std::format("SV {} {} {} {} {} {} {}\n",
-                                       curr.id, curr.parent_id, curr.depth,
-                                       c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
-          for (int t = 0; t < 4; t++) {
-            SearchNode c = curr;
-            c.id = c_ids[t];
-            c.parent_id = curr.id;
-            c.depth++;
-            c.view_depth++;
-            c.tri = sub_tris[t];
-            next_layer.push_back(c);
+    if (has_splits) {
+      std::function<void(const SearchNode &, const ViewQuadtree &)> ExpandQuadtree =
+          [&](const SearchNode &parent, const ViewQuadtree &qnode) {
+        if (!qnode.is_split) {
+          mgr.stack.push_back(parent);
+          return;
+        }
+        auto sub_tris = parent.tri.Subdivide();
+        int64_t c_ids[4];
+        for (int t = 0; t < 4; t++) c_ids[t] = mgr.next_node_id++;
+        mgr.row_callback(std::format("SV {} {} {} {} {} {} {}\n",
+                                     parent.id, parent.parent_id, parent.depth,
+                                     c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+        for (int t = 3; t >= 0; t--) {
+          SearchNode c = parent;
+          c.id = c_ids[t];
+          c.parent_id = parent.id;
+          c.depth++;
+          c.view_depth++;
+          c.tri = sub_tris[t];
+          if (qnode.children[t]) {
+            ExpandQuadtree(c, *qnode.children[t]);
+          } else {
+            mgr.stack.push_back(c);
           }
         }
-        current_layer = std::move(next_layer);
-      }
-      for (auto it = current_layer.rbegin(); it != current_layer.rend(); ++it) {
-        mgr.stack.push_back(*it);
-      }
-      mgr.status.Print("  [Pre-split cell #{} into 4^{} = {} view cones]\n",
-                       cell.id, pre_vsplits, current_layer.size());
+      };
+      ExpandQuadtree(root, cell_tree);
+      mgr.status.Print("  [Pre-split cell #{} with quadtree -> {} initial nodes]\n",
+                       cell.id, cell_tree.CountLeaves());
     } else {
       mgr.stack.push_back(root);
     }
@@ -539,14 +543,14 @@ static int RunDifficult(
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
             FormatNum(new_difficult.size()), difficult_path);
-      if (mgr.max_view_depth_reached > cell.view_depth) {
-        int needed_vsplits = mgr.max_view_depth_reached - cell.view_depth;
-        if (needed_vsplits > splits[cell.id]) {
-          splits[cell.id] = needed_vsplits;
-          SaveSplitsFile(splits_file, splits);
-          mgr.status.Print("  [Learned needed view splits = {} for cell #{} -> saved to {}]\n",
-                           needed_vsplits, cell.id, splits_file);
-        }
+      for (const auto &n : mgr.stack) {
+        auto path = FindTrianglePath(root.tri, n.tri);
+        splits[cell.id].SplitPath(path);
+      }
+      if (splits[cell.id].is_split) {
+        SaveQuadtreeSplitsFile(splits_file, splits);
+        mgr.status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
+                         splits[cell.id].CountLeaves(), cell.id, splits_file);
       }
       i++;
       continue;
@@ -579,14 +583,14 @@ static int RunDifficult(
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),
             FormatNum(new_difficult.size()), difficult_path);
-      if (mgr.max_view_depth_reached > cell.view_depth) {
-        int needed_vsplits = mgr.max_view_depth_reached - cell.view_depth;
-        if (needed_vsplits > splits[cell.id]) {
-          splits[cell.id] = needed_vsplits;
-          SaveSplitsFile(splits_file, splits);
-          mgr.status.Print("  [Learned needed view splits = {} for cell #{} -> saved to {}]\n",
-                           needed_vsplits, cell.id, splits_file);
-        }
+      for (const auto &n : mgr.stack) {
+        auto path = FindTrianglePath(root.tri, n.tri);
+        splits[cell.id].SplitPath(path);
+      }
+      if (splits[cell.id].is_split) {
+        SaveQuadtreeSplitsFile(splits_file, splits);
+        mgr.status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
+                         splits[cell.id].CountLeaves(), cell.id, splits_file);
       }
       i++;
     }
@@ -690,7 +694,7 @@ static int RunDifficultMixture(
     Print("Shuffled {} unsolved cells with --rand (seed: {})\n", unsolved_cells.size(), seed);
   }
 
-  auto splits_map = LoadSplitsFile(splits_file);
+  auto splits_map = LoadQuadtreeSplitsFile(splits_file);
   if (!splits_map.empty()) {
     Print("Loaded {} cached cell view-split entries from {}\n", splits_map.size(), splits_file);
   }
@@ -778,18 +782,23 @@ static int RunDifficultMixture(
 
       Timer cell_timer;
       std::atomic<bool> cell_interrupted = false;
-      int pre_vsplits = 0;
+      ViewQuadtree cell_tree;
+      bool has_quadtree = false;
       {
         std::lock_guard<std::mutex> lock(state_mu);
         auto it = splits_map.find(cell.id);
-        if (it != splits_map.end()) pre_vsplits = it->second;
+        if (it != splits_map.end()) {
+          cell_tree = it->second;
+          has_quadtree = cell_tree.is_split;
+        }
       }
       auto stats = SolveCellMixture(
           cell, max_depth, max_box_depth, max_view_depth,
           max_nodes, max_split_delta,
           cone_samples, max_components, split_kappa,
           /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
-          pre_vsplits);
+          /*pre_vsplits=*/0,
+          has_quadtree ? &cell_tree : nullptr);
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -828,12 +837,11 @@ static int RunDifficultMixture(
         std::error_code ec;
         std::filesystem::remove(tmp_path, ec);
         std::lock_guard<std::mutex> lock(state_mu);
-        if (stats.max_view_depth_reached > cell.view_depth) {
-          int needed_vsplits = stats.max_view_depth_reached - cell.view_depth;
-          if (needed_vsplits > splits_map[cell.id]) {
-            splits_map[cell.id] = needed_vsplits;
-            SaveSplitsFile(splits_file, splits_map);
-          }
+        if (stats.learned_quadtree.is_split) {
+          splits_map[cell.id] = stats.learned_quadtree;
+          SaveQuadtreeSplitsFile(splits_file, splits_map);
+          status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
+                       stats.learned_quadtree.CountLeaves(), cell.id, splits_file);
         }
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;

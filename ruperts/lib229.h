@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -435,6 +436,62 @@ MixtureResult EvaluateBoxCPUMixture(
     int cone_samples = 8, int max_components = 4,
     const FarkasCageCache *cache = nullptr);
 
+// ============================================================================
+// Hierarchical View Quadtree
+// ============================================================================
+//
+// Represents a 4-ary subdivision tree of a projective view triangle.
+// Serializes to / parses from a pre-order string ('S' = split, '.' = leaf):
+//   e.g. "S . . . ." (uniform depth 1: 4 leaves)
+//   e.g. "S . . . S . . . ." (non-uniform: child 3 split into 4 sub-leaves, total 7 leaves)
+// Also supports legacy single-integer depth notation: "3" -> uniform depth 3.
+//
+struct ViewQuadtree {
+  bool is_split = false;
+  std::array<std::unique_ptr<ViewQuadtree>, 4> children;
+
+  ViewQuadtree();
+  ~ViewQuadtree();
+  ViewQuadtree(const ViewQuadtree &other);
+  ViewQuadtree &operator=(const ViewQuadtree &other);
+  ViewQuadtree(ViewQuadtree &&) noexcept;
+  ViewQuadtree &operator=(ViewQuadtree &&) noexcept;
+
+  // Make a uniform quadtree of depth N (N=0 is 1 leaf, N=1 is 4 leaves, etc.)
+  static ViewQuadtree MakeUniform(int depth);
+
+  // Serialize to compact pre-order string ("S . . . .")
+  std::string ToString() const;
+
+  // Parse from pre-order string or legacy integer
+  static std::optional<ViewQuadtree> FromString(std::string_view s);
+
+  // Split a leaf along a path of child indices (each in {0, 1, 2, 3})
+  void SplitPath(std::span<const int> path);
+
+  struct LeafNode {
+    std::vector<int> path; // relative path from root
+    int depth = 0;
+    ProjectiveTriangle tri;
+  };
+
+  std::vector<LeafNode> GetLeaves(const ProjectiveTriangle &root_tri) const;
+
+  int CountLeaves() const;
+  int MaxDepth() const;
+};
+
+// Given a root projective triangle and a descendant sub-triangle,
+// computes the sequence of child indices (0..3) from root to sub-triangle.
+std::vector<int> FindTrianglePath(
+    const ProjectiveTriangle &root_tri,
+    const ProjectiveTriangle &sub_tri,
+    int max_search_depth = 12);
+
+// Sidecar helpers supporting both legacy integer and hierarchical quadtree format:
+std::unordered_map<int64_t, ViewQuadtree> LoadQuadtreeSplitsFile(const std::string &path);
+bool SaveQuadtreeSplitsFile(const std::string &path, const std::unordered_map<int64_t, ViewQuadtree> &splits);
+
 struct MixtureSolveStats {
   bool solved = false;
   int64_t total_nodes = 0;
@@ -456,6 +513,9 @@ struct MixtureSolveStats {
   int64_t rank_histogram[8] = {0}; // [0], [1-3], [4-7], [8-15], [16-31], [32-63], [64-127], [128+]
   double sum_candidate_pool_size = 0.0;
   int64_t count_evaluations = 0;
+
+  // Learned hierarchical view quadtree (captures in-search view splits + timed-out leaves)
+  ViewQuadtree learned_quadtree;
 };
 
 // Solves a single difficult cell using a branch-and-bound tree with
@@ -475,7 +535,8 @@ MixtureSolveStats SolveCellMixture(
     double time_limit_sec = 10.0,
     std::function<void(std::string_view)> row_callback = nullptr,
     std::atomic<bool> *interrupted = nullptr,
-    int pre_vsplits = 0);
+    int pre_vsplits = 0,
+    const ViewQuadtree *initial_quadtree = nullptr);
 
 // Returns true if the node should be bisected along its widest Cayley box axis (SP),
 // or false if the projective view triangle should be subdivided into 4 sub-triangles (SV).
