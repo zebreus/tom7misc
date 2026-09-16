@@ -1196,13 +1196,15 @@ class IncrementalTubeManager {
       BigRat target_r,
       BigRat target_c,
       int num_workers,
-      std::string output_dir)
+      std::string output_dir,
+      bool revalidate = false)
       : root_path_(std::move(root_path)),
         max_depth_(max_depth),
         target_r_(std::move(target_r)),
         target_c_(std::move(target_c)),
         num_workers_(num_workers),
-        output_dir_(std::move(output_dir)) {
+        output_dir_(std::move(output_dir)),
+        revalidate_(revalidate) {
 
     std::filesystem::create_directories(output_dir_);
   }
@@ -1213,6 +1215,35 @@ class IncrementalTubeManager {
     if (std::filesystem::exists(main_file)) {
       std::cout << ACYAN("Resuming tree from ") << main_file << "...\n";
       root_ = LoadTreeJson(main_file, /*load_external=*/false, output_dir_);
+      if (revalidate_ && root_) {
+        std::cout << ACYAN("Revalidating existing certificates across tree...\n");
+        int kept = 0, discarded = 0;
+        auto reval = [&](auto &self, TreeNode *node) -> void {
+          if (!node) return;
+          if (node->direct_cert.has_value()) {
+            TriangleQ tri = node->GetTriangle();
+            TubeCertificate audited;
+            if (AuditCertificateAdaptive(tri, *node->direct_cert, &audited)) {
+              node->direct_cert = audited;
+              node->direct_bounds.direct_r_lower = audited.r;
+              node->direct_bounds.direct_c_lower = audited.c;
+              cache_.Insert(audited);
+              kept++;
+            } else {
+              node->direct_cert.reset();
+              node->direct_bounds.direct_r_lower = BigRat(0);
+              node->direct_bounds.direct_c_lower = BigRat(0);
+              discarded++;
+            }
+          }
+          for (auto &c : node->children) {
+            self(self, c.get());
+          }
+        };
+        reval(reval, root_.get());
+        std::cout << "Revalidation finished: kept " << kept << " valid certs, invalidated "
+                  << discarded << " stale certs.\n";
+      }
     }
 
     if (!root_) {
@@ -1307,48 +1338,46 @@ class IncrementalTubeManager {
         bool meets_target = false;
         bool infeasible = false;
 
-        // Fast path: if this node was already evaluated in a prior checkpoint and has upper bounds recorded,
-        // reuse them and avoid redundant certificate synthesis on an already-evaluated node!
-        if (!node->direct_cert.has_value() && node->direct_bounds.direct_c_upper > BigRat(0)) {
-          if (target_c_ > BigRat(0)) {
-            infeasible = (node->direct_bounds.direct_c_upper < target_c_);
-          } else {
-            infeasible = (node->direct_bounds.direct_c_upper <= BigRat(0));
+        // 1. Audit existing cache or synthesize direct certificate
+        TubeCertificate cert;
+        bool cert_found = false;
+        std::vector<TubeCertificate> recent = cache_.GetRecent();
+        for (const auto &rc : recent) {
+          if (AuditCertificateAdaptive(tri, rc, &cert)) {
+            cert_found = true;
+            break;
           }
+        }
+
+        if (!cert_found) {
+          if (SynthesizeCertificate(tri, node->depth(), target_c_, target_r_, &cert)) {
+            cert_found = true;
+          }
+        }
+
+        if (cert_found) {
+          node->direct_cert = cert;
+          node->direct_bounds.direct_r_lower = cert.r;
+          node->direct_bounds.direct_c_lower = cert.c;
+          cache_.Insert(cert);
+        }
+
+        if (target_r_ > BigRat(0) && target_c_ > BigRat(0)) {
+          meets_target = (cert_found && cert.r >= target_r_ && cert.c >= target_c_);
         } else {
-          // 1. Audit existing cache or synthesize direct certificate
-          TubeCertificate cert;
-          bool cert_found = false;
-          std::vector<TubeCertificate> recent = cache_.GetRecent();
-          for (const auto &rc : recent) {
-            if (AuditCertificateAdaptive(tri, rc, &cert)) {
-              cert_found = true;
-              break;
+          // Any strictly positive bound meets target!
+          meets_target = (cert_found && cert.r > BigRat(0) && cert.c > BigRat(0));
+        }
+
+        // 2. If target not met, compute upper bounds to test for infeasibility
+        if (!meets_target) {
+          if (node->direct_bounds.direct_c_upper > BigRat(0)) {
+            if (target_c_ > BigRat(0)) {
+              infeasible = (node->direct_bounds.direct_c_upper < target_c_);
+            } else {
+              infeasible = (node->direct_bounds.direct_c_upper <= BigRat(0));
             }
-          }
-
-          if (!cert_found) {
-            if (SynthesizeCertificate(tri, node->depth(), target_c_, target_r_, &cert)) {
-              cert_found = true;
-            }
-          }
-
-          if (cert_found) {
-            node->direct_cert = cert;
-            node->direct_bounds.direct_r_lower = cert.r;
-            node->direct_bounds.direct_c_lower = cert.c;
-            cache_.Insert(cert);
-          }
-
-          if (target_r_ > BigRat(0) && target_c_ > BigRat(0)) {
-            meets_target = (cert_found && cert.r >= target_r_ && cert.c >= target_c_);
           } else {
-            // Any strictly positive bound meets target!
-            meets_target = (cert_found && cert.r > BigRat(0) && cert.c > BigRat(0));
-          }
-
-          // 2. If target not met, compute upper bounds to test for infeasibility
-          if (!meets_target) {
             vec3 centroid = (tri.corners[0].ToDouble() + tri.corners[1].ToDouble() + tri.corners[2].ToDouble()) / 3.0;
             std::vector<CandidateTriple> candidates;
             GenerateCandidatesForView(centroid, tri, /*evaluate_over_triangle=*/false, 4, true, 2e-14, &candidates);
@@ -1449,6 +1478,7 @@ class IncrementalTubeManager {
   BigRat target_c_;
   int num_workers_;
   std::string output_dir_;
+  bool revalidate_ = false;
 
   std::unique_ptr<TreeNode> root_;
   CertificateCache cache_;
@@ -1675,8 +1705,18 @@ static void DiagnosePath(const std::string &path) {
         }
         TubeCertificate out_cert;
         std::string fail_reason;
+        std::cout << "Trying scored tet " << idx << "...\n";
+        for (int a = 0; a < 4; a++) {
+          ContactInfo c[3] = {test_cert.axes[a].contacts[0], test_cert.axes[a].contacts[1], test_cert.axes[a].contacts[2]};
+          Vec3Q center; BigRat delta; std::string rsn;
+          bool ok = AuditAxis(tri, c, &out_cert.axes[a], &center, &delta, &rsn);
+          std::cout << "  pre-check axis " << a << ": " << (ok ? "OK" : "FAIL") << " (" << rsn << ")"
+                    << " [0]=(" << c[0].vertex << "," << c[0].edge_start << "->" << c[0].edge_finish << "," << c[0].edge_start2 << "->" << c[0].edge_finish2 << "," << c[0].mix << ")"
+                    << " [1]=(" << c[1].vertex << "," << c[1].edge_start << "->" << c[1].edge_finish << "," << c[1].edge_start2 << "->" << c[1].edge_finish2 << "," << c[1].mix << ")"
+                    << " [2]=(" << c[2].vertex << "," << c[2].edge_start << "->" << c[2].edge_finish << "," << c[2].edge_start2 << "->" << c[2].edge_finish2 << "," << c[2].mix << ")\n";
+        }
         if (AuditCertificateAdaptive(tri, test_cert, &out_cert, &fail_reason)) {
-          std::cout << AGREEN("  Scored tet SUCCESS! c = ") << out_cert.c.ToString() << ", r = " << out_cert.r.ToString() << "\n";
+          std::cout << AGREEN("  Scored tet SUCCESS! c = ") << out_cert.c.ToString() << ", r = " << out_cert.r.ToString() << ", delta = " << out_cert.delta.ToString() << "\n";
           for (int a = 0; a < 4; a++) {
             const auto &ax = out_cert.axes[a];
             std::cout << "  Axis " << a << " B=" << ax.B.ToString() << "\n";
@@ -1684,7 +1724,7 @@ static void DiagnosePath(const std::string &path) {
               std::cout << "    contact " << m << ": inner=" << ax.contacts[m].vertex
                         << " (" << ax.contacts[m].edge_start << "->" << ax.contacts[m].edge_finish << ") & ("
                         << ax.contacts[m].edge_start2 << "->" << ax.contacts[m].edge_finish2 << ") mix="
-                        << ax.contacts[m].mix << "\n";
+                        << ax.contacts[m].mix << " witness=" << ax.nonzero_witness[m] << "\n";
             }
           }
           return;
@@ -1709,6 +1749,7 @@ int main(int argc, char **argv) {
   std::string target_c_str = "1018/10000000";
   int threads = 8;
   std::string output_dir = "../.artifacts/nopert229";
+  bool revalidate = false;
 
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -1722,12 +1763,13 @@ int main(int argc, char **argv) {
     else if (arg == "--target_c" && i + 1 < argc) target_c_str = argv[++i];
     else if (arg == "--threads" && i + 1 < argc) threads = std::stoi(argv[++i]);
     else if (arg == "--output_dir" && i + 1 < argc) output_dir = argv[++i];
+    else if (arg == "--revalidate") revalidate = true;
   }
 
   BigRat target_r(target_r_str);
   BigRat target_c(target_c_str);
 
-  IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir);
+  IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
   manager.Run();
   return 0;
 }

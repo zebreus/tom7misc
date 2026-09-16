@@ -163,27 +163,6 @@ int main(int argc, char **argv) {
       // tag, id, root(0), path_len, [path_digits], symmetryIndex(0),
       // [4 axes], c, delta, r
       TubeCertificate cert = r.node->direct_cert.value();
-      if (r.rel_path == "101031") {
-        cert.c = BigRat("130143/200000000");
-        cert.r = BigRat("1/1000");
-        cert.delta = BigRat("1323929/200000000");
-        cert.axes[0].B = BigRat("2112657239/1000000000");
-        cert.axes[0].contacts[0] = {9, 8, 9, 9, 13, 200};
-        cert.axes[0].contacts[1] = {14, 13, 14, 14, 19, 0};
-        cert.axes[0].contacts[2] = {5, 2, 5, 5, 8, 1000};
-        cert.axes[1].B = BigRat("184472551/100000000");
-        cert.axes[1].contacts[0] = {13, 9, 13, 13, 14, 800};
-        cert.axes[1].contacts[1] = {14, 13, 14, 14, 19, 0};
-        cert.axes[1].contacts[2] = {3, 19, 3, 3, 2, 0};
-        cert.axes[2].B = BigRat("2055389341/1000000000");
-        cert.axes[2].contacts[0] = {13, 9, 13, 13, 14, 800};
-        cert.axes[2].contacts[1] = {14, 13, 14, 14, 19, 0};
-        cert.axes[2].contacts[2] = {2, 3, 2, 2, 5, 0};
-        cert.axes[3].B = BigRat("1697528997/1000000000");
-        cert.axes[3].contacts[0] = {13, 9, 13, 13, 14, 800};
-        cert.axes[3].contacts[1] = {19, 14, 19, 19, 3, 0};
-        cert.axes[3].contacts[2] = {5, 2, 5, 5, 8, 1000};
-      }
       out << ",1," << r.id << ",0," << r.rel_path.size();
       for (char ch : r.rel_path) {
         out << "," << (ch - '0');
