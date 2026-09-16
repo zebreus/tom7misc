@@ -180,3 +180,8 @@ void StatusBar::Remove() {
   MoveUpWithLock();
   first = true;
 }
+
+void StatusBar::Abandon() {
+  std::unique_lock<std::mutex> ml(m);
+  first = true;
+}

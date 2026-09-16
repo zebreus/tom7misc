@@ -80,6 +80,12 @@ struct StatusBar {
   // something weird.
   void Remove();
 
+  // Abandon the status bar but leave it on screen. This is intended
+  // as a final act when you're done but want to leave the last
+  // status message in the console scrollback. Don't write to the
+  // StatusBar after this.
+  void Abandon();
+
   // Advanced: By default, the status bar tries to figure out the
   // width of the terminal (or assumes 80) and then truncates status
   // lines to fit. (If status lines wrap, then it will usually mess up
