@@ -602,6 +602,7 @@ struct SearchManager {
   int lp_escalate_depth = 0;
   int lp_escalate_box_depth = 0;
   int num_threads = 8;
+  int64_t max_nodes = 0;
 
   int EffectiveConeSamples(const SearchNode &node) const {
     if (deep_escalate_depth > 0 && node.depth >= deep_escalate_depth) {

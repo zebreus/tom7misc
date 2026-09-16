@@ -2078,7 +2078,11 @@ MixtureSolveStats SolveCellMixture(
       stats.elapsed_seconds = timer.Seconds();
       return stats;
     }
-    if (stats.total_nodes >= max_nodes) {
+    // Early exit: each node currently on the stack requires at least one evaluation
+    // to certify or prune. If total_nodes + stack.size() > max_nodes, completing
+    // the cell within the budget is mathematically impossible even if every remaining
+    // stack node certifies immediately without further splitting.
+    if (stats.total_nodes + (int64_t)stack.size() > max_nodes) {
       stats.solved = false;
       stats.remaining_nodes = (int64_t)stack.size();
       stats.elapsed_seconds = timer.Seconds();
@@ -3334,6 +3338,10 @@ void SearchManager::Run() {
     while (!stack.empty() && !sigint_received.load() &&
            !(stop_requested && stop_requested->load())) {
       if (max_seconds > 0.0 && timer.Seconds() >= max_seconds) {
+        timed_out = true;
+        break;
+      }
+      if (max_nodes > 0 && evaluated_count.Read() + (int64_t)stack.size() > max_nodes) {
         timed_out = true;
         break;
       }
