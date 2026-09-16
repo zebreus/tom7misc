@@ -23,6 +23,7 @@
 #include <numeric>
 #include <set>
 #include <random>
+#include <ctime>
 
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
@@ -1496,6 +1497,7 @@ class TubeCertManager {
   BigRat target_c = BigRat("5/1000000");
   BigRat tube_radius = BigRat("1/100000");
   std::string output_path = ".artifacts/nopert229/local-view-child0.json";
+  std::string progress_log_path = "";
   std::string emit_pack_path = "";
   bool resume = true;
 
@@ -1829,11 +1831,32 @@ void TubeCertManager::SaveCheckpoint(bool complete) {
 
   double uncertified = 0.0;
   for (const auto &s : stack) uncertified += std::pow(4.0, -(s.depth - 1));
+  for (const auto &f : failures) uncertified += std::pow(4.0, -(f.depth - 1));
   double certified_pct = complete ? 100.0 : std::max(0.0, std::min(100.0, (1.0 - uncertified) * 100.0));
 
   std::cout << std::format("Checkpoint saved: rows={}, pending={}, certs={}, cache_hits={}, synth={}, certified={:.3f}%\n",
                            rows.size(), stack.size(), count_cert.load(), count_cache_hit.load(), count_synthesized.load(), certified_pct)
             << std::flush;
+
+  std::string log_path = progress_log_path;
+  if (log_path.empty() && !output_path.empty()) {
+    log_path = std::filesystem::path(output_path).replace_extension(".log").string();
+  }
+  if (!log_path.empty()) {
+    std::filesystem::path parent = std::filesystem::path(log_path).parent_path();
+    if (!parent.empty() && !std::filesystem::exists(parent)) {
+      std::filesystem::create_directories(parent);
+    }
+    bool is_new = !std::filesystem::exists(log_path) || std::filesystem::file_size(log_path) == 0;
+    std::ofstream log_out(log_path, std::ios::app);
+    if (log_out.is_open()) {
+      if (is_new) {
+        log_out << "# timestamp certs certified_pct\n";
+      }
+      time_t now = time(nullptr);
+      log_out << std::format("{} {} {:.8f}\n", (int64_t)now, count_cert.load(), certified_pct) << std::flush;
+    }
+  }
 }
 
 void TubeCertManager::Run() {
@@ -1873,6 +1896,8 @@ void TubeCertManager::Run() {
             << "Tube radius: " << tube_radius.ToString() << "\n"
             << "Target margin c: " << target_c.ToString() << "\n"
             << "Max depth: " << max_depth << "\n\n" << std::flush;
+
+  SaveCheckpoint(false);
 
   std::atomic<bool> done{false};
   std::atomic<int> active_workers{num_workers};
@@ -1981,7 +2006,19 @@ void TubeCertManager::Run() {
         cv.notify_all();
         break;
       }
-      if (cur % checkpoint_every == 0) {
+      static std::atomic<time_t> last_checkpoint_time{time(nullptr)};
+      time_t now = time(nullptr);
+      bool time_to_checkpoint = (checkpoint_every > 0 && cur % checkpoint_every == 0);
+      if (!time_to_checkpoint && (now - last_checkpoint_time.load() >= 30)) {
+        time_t last = last_checkpoint_time.load();
+        if (now - last >= 30) {
+          if (last_checkpoint_time.compare_exchange_strong(last, now)) {
+            time_to_checkpoint = true;
+          }
+        }
+      }
+      if (time_to_checkpoint) {
+        last_checkpoint_time.store(now);
         SaveCheckpoint(false);
       }
     }
@@ -2033,6 +2070,8 @@ int main(int argc, char **argv) {
       mgr.num_workers = std::atoi(argv[++i]);
     } else if (arg == "--output" || arg == "-o") {
       mgr.output_path = argv[++i];
+    } else if (arg == "--log" || arg == "--progress_log" || arg == "--progress-log") {
+      mgr.progress_log_path = argv[++i];
     } else if (arg == "--chunk_size" || arg == "--chunk-size") {
       mgr.chunk_size = std::atoi(argv[++i]);
     } else if (arg == "--checkpoint_every" || arg == "--checkpoint-every") {
