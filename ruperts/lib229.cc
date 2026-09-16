@@ -2492,6 +2492,7 @@ MixtureSolveStats SolveCellMixture(
     if (res.certified) {
       stats.certified_leaves++;
       stats.worst_margin = std::min(stats.worst_margin, res.margin);
+      // TODO: Probably should include cone_samples here so that it's easier to interpret the triangle indices.
       if (res.strategy_used == 0) stats.k1_count++;
       else if (res.strategy_used == 1) stats.corner_count++;
       else if (res.strategy_used == 2) stats.greedy_count++;
@@ -4568,6 +4569,7 @@ void SearchManager::Run() {
 
           if (res.certified) {
             RecordCertification(node);
+            // TODO: Probably should include cone_samples here so that it's easier to interpret the triangle indices.
             OutputRow(
                 std::format("CE {} {} {} {} {:.17g} {} {} {}\n",
                             node.id, node.parent_id, node.depth,
