@@ -1,0 +1,213 @@
+#ifndef RUPERTS_TUBETREE229_H_
+#define RUPERTS_TUBETREE229_H_
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "bignum/big.h"
+#include "bignum/big-overloads.h"
+#include "yocto-math.h"
+
+namespace tubetree229 {
+
+using vec3 = yocto::vec<double, 3>;
+
+// Exact 3D rational vector using GMP-backed BigRat.
+struct Vec3Q {
+  BigRat x, y, z;
+
+  Vec3Q() : x(0), y(0), z(0) {}
+  Vec3Q(BigRat x, BigRat y, BigRat z) : x(std::move(x)), y(std::move(y)), z(std::move(z)) {}
+  Vec3Q(std::string_view sx, std::string_view sy, std::string_view sz)
+      : x(std::string(sx)), y(std::string(sy)), z(std::string(sz)) {}
+
+  Vec3Q operator+(const Vec3Q &o) const { return {x + o.x, y + o.y, z + o.z}; }
+  Vec3Q operator-(const Vec3Q &o) const { return {x - o.x, y - o.y, z - o.z}; }
+  Vec3Q operator*(const BigRat &s) const { return {x * s, y * s, z * s}; }
+  Vec3Q operator/(const BigRat &s) const { return {x / s, y / s, z / s}; }
+
+  static BigRat Dot(const Vec3Q &a, const Vec3Q &b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+  }
+  static Vec3Q Cross(const Vec3Q &a, const Vec3Q &b) {
+    return {
+      a.y * b.z - a.z * b.y,
+      a.z * b.x - a.x * b.z,
+      a.x * b.y - a.y * b.x
+    };
+  }
+  static BigRat Det(const Vec3Q &a, const Vec3Q &b, const Vec3Q &c) {
+    return Dot(a, Cross(b, c));
+  }
+  vec3 ToDouble() const {
+    return {x.ToDouble(), y.ToDouble(), z.ToDouble()};
+  }
+};
+
+// Exact projective spherical triangle with 3 rational vertices.
+struct TriangleQ {
+  Vec3Q corners[3];
+
+  // Deterministic 4-way quaternary subdivision into children 0, 1, 2, 3:
+  // Child 0: (corners[0], m01, m20)
+  // Child 1: (corners[1], m12, m01)
+  // Child 2: (corners[2], m20, m12)
+  // Child 3: (m01, m12, m20)
+  void Subdivide(TriangleQ children[4]) const;
+};
+
+// Returns the canonical root upper wedge triangle:
+// Corners: (1, 0, 0), (10/41, 31/41, 0), (0, 0, 1).
+TriangleQ GetRootWedge();
+
+// Deterministically constructs the exact rational triangle corresponding to a
+// canonical base-4 path string (e.g. "0", "01", "0321").
+// An empty path "" represents the full root wedge.
+TriangleQ TriangleFromPath(std::string_view path);
+
+// Information identifying a contact point on the silhouette.
+struct ContactInfo {
+  int edge_start = 0;
+  int edge_finish = 0;
+  int edge_start2 = 0;
+  int edge_finish2 = 0;
+  int mix = 1000; // 0..1000 representing interpolation weight (mix / 1000)
+  int vertex = 0; // support vertex index (0..19 for Nopert #229)
+};
+
+// A single axis certificate consisting of 3 contacts enclosing the axis in 2D.
+struct AxisCertificate {
+  ContactInfo contacts[3];
+  int nonzero_witness[3] = {-1, -1, -1};
+  BigRat B;
+};
+
+// A complete 4-axis identity tube certificate.
+struct TubeCertificate {
+  AxisCertificate axes[4];
+  BigRat c;     // Certified net margin: FloorTo(cover_radius - delta)
+  BigRat delta; // Maximum variation bound across the triangle
+  BigRat r;     // Certified tube radius satisfying r^2 * (1 + c^2) <= 4 * c^2
+  int symmetry_index = 0;
+};
+
+// ============================================================================
+// BOUNDS ARCHITECTURE & CRITICAL NOTE ON DIRECT VS. EFFECTIVE BOUNDS
+// ============================================================================
+//
+// DIRECT BOUNDS (stored on disk):
+// - direct_r_lower, direct_c_lower: The margin and tube radius certified
+//   STRICTLY by this single triangle's attached certificate covering its entire
+//   spherical area (or 0 if no direct certificate has been found).
+// - direct_r_upper, direct_c_upper: The upper bound computed directly on this
+//   triangle via Wolfe support analysis (or 0 if not computed).
+//
+// EFFECTIVE BOUNDS (computed in memory via ComputeEffectiveBounds):
+// - The BEST AVAILABLE / EFFECTIVE bound for a triangle is NOT simply the bound
+//   recorded on the triangle itself; it is the collective bound over its children:
+//     effective_r_lower = max(direct_r_lower, min_{i=0..3}(child[i].effective_r_lower))
+//     effective_r_upper = min(direct_r_upper, max_{i=0..3}(child[i].effective_r_upper))
+// - If the children are unresolved or incomplete, effective_r_lower falls back
+//   to direct_r_lower (the parent triangle's certificate acts as an umbrella).
+//
+// DO NOT STORE EFFECTIVE BOUNDS ON DISK:
+// Storing effective bounds on disk would cause a cascading write across all
+// ancestor files up to the root whenever a single deep leaf is resolved.
+// Instead, on disk each node stores strictly its own DIRECT data, keeping
+// files small, decoupled, and safe for parallel editing.
+// ============================================================================
+
+struct NodeBounds {
+  BigRat direct_r_lower{0};
+  BigRat direct_r_upper{0};
+  BigRat direct_c_lower{0};
+  BigRat direct_c_upper{0};
+};
+
+struct EffectiveBounds {
+  BigRat r_lower{0};
+  BigRat r_upper{0};
+  BigRat c_lower{0};
+  BigRat c_upper{0};
+  bool complete = false; // true if all sub-branches are fully certified
+};
+
+struct TreeNode {
+  // Canonical base-4 hierarchical path string (e.g. "0", "013", "0321").
+  // Alphabet is strictly {'0', '1', '2', '3'}.
+  // Depth is path.size().
+  std::string path;
+
+  // Optional direct certificate covering this exact triangle.
+  std::optional<TubeCertificate> direct_cert;
+
+  // Direct bounds computed directly on this triangle.
+  NodeBounds direct_bounds;
+
+  // If external is true, this node's 4 children are stored in a separate
+  // external file named SubtreeFilename(path), e.g. "tree_013.json".
+  bool external = false;
+
+  // In-memory children (size is 4 when subdivided, empty when leaf or unexpanded external).
+  std::vector<std::unique_ptr<TreeNode>> children;
+
+  int depth() const { return static_cast<int>(path.size()); }
+  bool is_leaf() const { return children.empty() && !external; }
+  bool is_split() const { return !children.empty() || external; }
+
+  TriangleQ GetTriangle() const {
+    return TriangleFromPath(path);
+  }
+};
+
+// Recursively computes effective lower and upper bounds for node in memory.
+// Walks children if present, taking min over children for r_lower and max for r_upper,
+// and taking max with node's own direct_r_lower.
+EffectiveBounds ComputeEffectiveBounds(const TreeNode &node);
+
+// Returns the canonical subtree filename for a given path, e.g.:
+// SubtreeFilename("013", ".artifacts/nopert229") -> ".artifacts/nopert229/tree_013.json"
+std::string SubtreeFilename(std::string_view path, std::string_view base_dir = "");
+
+// Serializes a tree or subtree to JSON.
+// If shallow is true, nodes marked external = true are emitted as references
+// ("external": true) without recursing into their children.
+// If shallow is false, the full in-memory tree is serialized inline.
+bool SaveTreeJson(const TreeNode &root, const std::string &filepath, bool shallow = true);
+
+// Deserializes a tree from JSON.
+// If load_external is true and base_dir is non-empty, any node marked external = true
+// has its subtree loaded recursively from SubtreeFilename(path, base_dir).
+// If load_external is false, external nodes are retained as unexpanded stubs (external = true).
+std::unique_ptr<TreeNode> LoadTreeJson(
+    const std::string &filepath,
+    bool load_external = false,
+    std::string_view base_dir = "");
+
+// Detaches the children of node into a separate file tree_<node->path>.json in base_dir.
+// Sets node->external = true and clears node->children.
+bool DetachSubtreeToFile(TreeNode *node, const std::string &base_dir);
+
+// Attaches the children from tree_<node->path>.json in base_dir into node->children.
+// Sets node->external = false.
+bool AttachSubtreeFromFile(TreeNode *node, const std::string &base_dir);
+
+// Tree statistics.
+struct TreeStats {
+  int total_nodes = 0;
+  int leaves = 0;
+  int split_nodes = 0;
+  int external_refs = 0;
+  int direct_certificates = 0;
+  int max_depth = 0;
+};
+
+TreeStats ComputeTreeStats(const TreeNode &root);
+
+} // namespace tubetree229
+
+#endif // RUPERTS_TUBETREE229_H_
