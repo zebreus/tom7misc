@@ -596,7 +596,9 @@ static int RunDifficult(
     }
   }
 
-  mgr.status.Clear();
+  // Leave the status bar on screen; it has useful info.
+  mgr.status.Abandon();
+  Print("\n\n");
 
   // Ensure state is cleanly persisted
   WriteDifficultFile(difficult_path, unsolved_cells);
