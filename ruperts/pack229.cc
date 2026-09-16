@@ -507,6 +507,7 @@ struct ParsedNode {
   int shared_index = 0;
   int interval_id = -1;
   int triangle_id = -1;
+  std::vector<uint8_t> subdivision_path;
   NodeTag tag = NodeTag::NONE;
   uint8_t fund_dir = 1;
   int winning_triple = -1;
@@ -514,6 +515,245 @@ struct ParsedNode {
   double tube_radius = 0.0;
   std::string tube_radius_str;
 };
+
+static inline int64_t Unzigzag(int64_t z) {
+  return (z % 2 == 0) ? (z / 2) : -((z + 1) / 2);
+}
+
+struct AtlasNode {
+  int node_id = -1;
+  int children[4] = {-1, -1, -1, -1};
+  double r = 0.0;
+  BigRat r_rat;
+  int depth = 0;
+  bool is_leaf = false;
+};
+
+struct AtlasTable {
+  int initial_child = 0;
+  int symmetry_index = 0;
+  std::vector<AtlasNode> nodes;
+  bool loaded = false;
+
+  int FindEnclosingNode(const std::vector<uint8_t> &path) const {
+    if (nodes.empty()) return -1;
+    int curr = 0;
+    for (uint8_t c : path) {
+      if (c >= 4) break;
+      int next = nodes[curr].children[c];
+      if (next < 0 || next >= (int)nodes.size() || nodes[next].node_id < 0) {
+        break;
+      }
+      curr = next;
+    }
+    return curr;
+  }
+};
+
+static bool LoadAtlasPack(const std::string &path, std::vector<AtlasNode> *out_nodes) {
+  FILE *f = fopen(path.c_str(), "rb");
+  if (!f) return false;
+  fseek(f, 0, SEEK_END);
+  size_t file_size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  std::string buf;
+  buf.resize(file_size);
+  if (fread(buf.data(), 1, file_size, f) != file_size) {
+    fclose(f);
+    return false;
+  }
+  fclose(f);
+
+  const char *p = buf.data();
+  const char *end = p + file_size;
+
+  auto read_int = [&]() -> int64_t {
+    while (p < end && (*p == ' ' || *p == ',' || *p == '\n' || *p == '\r')) p++;
+    if (p >= end) return 0;
+    bool neg = false;
+    if (*p == '-') { neg = true; p++; }
+    int64_t v = 0;
+    while (p < end && *p >= '0' && *p <= '9') {
+      v = v * 10 + (*p - '0');
+      p++;
+    }
+    return neg ? -v : v;
+  };
+
+  int64_t row_count = read_int();
+  read_int(); // symmetry_index
+  int64_t root_r_num = Unzigzag(read_int());
+  int64_t root_r_den = read_int();
+
+  std::vector<AtlasNode> nodes;
+  nodes.resize(row_count);
+
+  for (int64_t i = 0; i < row_count; i++) {
+    int tag = read_int();
+    int id = read_int();
+    read_int(); // root
+    int path_len = read_int();
+    for (int k = 0; k < path_len; k++) read_int();
+    if (id < 0 || id >= row_count) continue;
+    nodes[id].node_id = id;
+    nodes[id].depth = path_len;
+
+    if (tag == 0) { // view_split
+      nodes[id].is_leaf = false;
+      for (int c = 0; c < 4; c++) {
+        nodes[id].children[c] = read_int();
+      }
+    } else if (tag == 1) { // certificate
+      nodes[id].is_leaf = true;
+      read_int(); // sym
+      for (int k = 0; k < 92; k++) read_int();
+      Unzigzag(read_int()); read_int(); // c
+      Unzigzag(read_int()); read_int(); // delta
+      int64_t r_num = Unzigzag(read_int());
+      int64_t r_den = read_int();
+      nodes[id].r = (double)r_num / (double)r_den;
+      nodes[id].r_rat = BigRat(r_num, r_den);
+    }
+  }
+
+  // Bottom-up pass for split nodes
+  for (int i = (int)nodes.size() - 1; i >= 0; i--) {
+    if (nodes[i].node_id < 0) continue;
+    if (!nodes[i].is_leaf && nodes[i].children[0] >= 0) {
+      bool all_certified = true;
+      double min_r = 1e30;
+      BigRat min_r_rat(1000, 1);
+      for (int c = 0; c < 4; c++) {
+        int ch = nodes[i].children[c];
+        if (ch < 0 || ch >= (int)nodes.size() || nodes[ch].node_id < 0 || nodes[ch].r <= 0.0) {
+          all_certified = false;
+          break;
+        }
+        min_r = std::min(min_r, nodes[ch].r);
+        if (c == 0 || nodes[ch].r_rat < min_r_rat) {
+          min_r_rat = nodes[ch].r_rat;
+        }
+      }
+      if (all_certified) {
+        nodes[i].r = min_r;
+        nodes[i].r_rat = min_r_rat;
+      }
+    }
+  }
+
+  if (nodes.size() > 0 && nodes[0].r <= 0.0 && root_r_num > 0 && root_r_den > 0) {
+    nodes[0].r = (double)root_r_num / (double)root_r_den;
+    nodes[0].r_rat = BigRat(root_r_num, root_r_den);
+  }
+
+  *out_nodes = std::move(nodes);
+  return true;
+}
+
+static bool LoadAtlasJson(const std::string &path, std::vector<AtlasNode> *out_nodes) {
+  std::ifstream infile(path);
+  if (!infile.is_open()) return false;
+
+  std::vector<AtlasNode> nodes;
+  std::string line;
+
+  while (std::getline(infile, line)) {
+    size_t id_pos = line.find("\"id\": ");
+    if (id_pos == std::string::npos) continue;
+
+    int id = 0;
+    size_t p = id_pos + 6;
+    while (p < line.size() && line[p] >= '0' && line[p] <= '9') {
+      id = id * 10 + (line[p] - '0');
+      p++;
+    }
+
+    if (id >= (int)nodes.size()) {
+      nodes.resize(id + 1);
+    }
+    nodes[id].node_id = id;
+
+    if (line.find("\"view_split\"") != std::string::npos) {
+      nodes[id].is_leaf = false;
+      size_t ch_pos = line.find("\"children\": [");
+      if (ch_pos != std::string::npos) {
+        p = ch_pos + 13;
+        for (int c = 0; c < 4; c++) {
+          while (p < line.size() && (line[p] == ' ' || line[p] == ',')) p++;
+          int ch_id = 0;
+          while (p < line.size() && line[p] >= '0' && line[p] <= '9') {
+            ch_id = ch_id * 10 + (line[p] - '0');
+            p++;
+          }
+          nodes[id].children[c] = ch_id;
+        }
+      }
+    } else if (line.find("\"view_local\"") != std::string::npos || line.find("\"certificate\"") != std::string::npos) {
+      nodes[id].is_leaf = true;
+      size_t r_pos = line.find("\"r\": \"");
+      if (r_pos != std::string::npos) {
+        p = r_pos + 6;
+        size_t end_r = line.find("\"", p);
+        if (end_r != std::string::npos) {
+          std::string r_str = line.substr(p, end_r - p);
+          size_t slash = r_str.find('/');
+          if (slash != std::string::npos) {
+            int64_t num = std::stoll(r_str.substr(0, slash));
+            int64_t den = std::stoll(r_str.substr(slash + 1));
+            nodes[id].r = (double)num / (double)den;
+            nodes[id].r_rat = BigRat(num, den);
+          } else {
+            nodes[id].r = std::stod(r_str);
+            nodes[id].r_rat = BigRat(nodes[id].r);
+          }
+        }
+      }
+    }
+  }
+
+  // Compute depths
+  if (!nodes.empty() && nodes[0].node_id >= 0) {
+    nodes[0].depth = 0;
+    for (size_t i = 0; i < nodes.size(); i++) {
+      if (nodes[i].node_id < 0 || nodes[i].is_leaf) continue;
+      for (int c = 0; c < 4; c++) {
+        int ch = nodes[i].children[c];
+        if (ch >= 0 && ch < (int)nodes.size()) {
+          nodes[ch].depth = nodes[i].depth + 1;
+        }
+      }
+    }
+  }
+
+  // Bottom-up pass to compute r for interior nodes
+  for (int i = (int)nodes.size() - 1; i >= 0; i--) {
+    if (nodes[i].node_id < 0) continue;
+    if (!nodes[i].is_leaf && nodes[i].children[0] >= 0) {
+      bool all_certified = true;
+      double min_r = 1e30;
+      BigRat min_r_rat(1000, 1);
+      for (int c = 0; c < 4; c++) {
+        int ch = nodes[i].children[c];
+        if (ch < 0 || ch >= (int)nodes.size() || nodes[ch].node_id < 0 || nodes[ch].r <= 0.0) {
+          all_certified = false;
+          break;
+        }
+        min_r = std::min(min_r, nodes[ch].r);
+        if (c == 0 || nodes[ch].r_rat < min_r_rat) {
+          min_r_rat = nodes[ch].r_rat;
+        }
+      }
+      if (all_certified) {
+        nodes[i].r = min_r;
+        nodes[i].r_rat = min_r_rat;
+      }
+    }
+  }
+
+  *out_nodes = std::move(nodes);
+  return true;
+}
 
 static BigRat ParseDecimalRat(std::string s) {
   while (!s.empty() && std::isspace(s.front())) s.erase(s.begin());
@@ -1010,6 +1250,7 @@ int main(int argc, char **argv) {
   bool fill_pending = false;
   bool legacy_sort = false;
   std::string done_dir = ".";
+  std::string atlas_dir;
 
   int pos_arg = 0;
   for (int i = 1; i < argc; i++) {
@@ -1032,6 +1273,10 @@ int main(int argc, char **argv) {
       done_dir = argv[++i];
     } else if (arg == "--no_done") {
       done_dir = "none";
+    } else if (arg == "--atlas_dir" && i + 1 < argc) {
+      atlas_dir = argv[++i];
+    } else if (arg == "--no_atlas") {
+      atlas_dir = "none";
     } else if (!arg.empty() && arg[0] != '-') {
       if (pos_arg == 0) chart = std::atoi(arg.c_str());
       else if (pos_arg == 1) in_path = arg;
@@ -1045,6 +1290,48 @@ int main(int argc, char **argv) {
 
   std::cout << "Packing chart " << chart << " from " << in_path << " into " << out_path << "...\n";
   Timer total_timer;
+
+  // Identity tube atlas loading
+  AtlasTable atlas[4];
+  if (atlas_dir.empty()) {
+    std::vector<std::string> candidates = {
+      "/home/tom/nopert-project/Noperthedron/.artifacts/nopert229",
+      "../Noperthedron/.artifacts/nopert229",
+      ".artifacts/nopert229",
+      "."
+    };
+    for (const auto &cand : candidates) {
+      if (std::filesystem::exists(cand)) {
+        atlas_dir = cand;
+        break;
+      }
+    }
+  }
+
+  if (atlas_dir != "none" && !atlas_dir.empty()) {
+    for (int t = 0; t < 4; t++) {
+      atlas[t].initial_child = t;
+      std::string pack_file = atlas_dir + "/local-view" + std::to_string(t) + ".pack";
+      std::string test_pack = atlas_dir + "/test-child" + std::to_string(t) + ".pack";
+      std::string json_file = atlas_dir + "/local-view-child" + std::to_string(t) + ".json";
+      Timer load_timer;
+      if (std::filesystem::exists(pack_file) && LoadAtlasPack(pack_file, &atlas[t].nodes)) {
+        atlas[t].loaded = true;
+      } else if (std::filesystem::exists(test_pack) && LoadAtlasPack(test_pack, &atlas[t].nodes)) {
+        atlas[t].loaded = true;
+      } else if (std::filesystem::exists(json_file) && LoadAtlasJson(json_file, &atlas[t].nodes)) {
+        atlas[t].loaded = true;
+      }
+      if (atlas[t].loaded) {
+        int cert_nodes = 0;
+        for (const auto &n : atlas[t].nodes) if (n.r > 0) cert_nodes++;
+        std::cout << "Loaded identity tube atlas for subwedge " << t << " ("
+                  << atlas[t].nodes.size() << " nodes, "
+                  << cert_nodes << " certified) in "
+                  << load_timer.Seconds() << "s.\n";
+      }
+    }
+  }
 
   // Chart setup
   CayleyBoxQ root_box;
@@ -1163,6 +1450,7 @@ int main(int argc, char **argv) {
       nodes[cid].interval_id = root_interval_idx;
       nodes[cid].triangle_id = root_sub_wedge_ids[t];
       nodes[cid].shared_index = t;
+      nodes[cid].subdivision_path.clear();
       bfs_queue.push_back(cid);
     }
   }
@@ -1204,12 +1492,14 @@ int main(int argc, char **argv) {
         nodes[c0].interval_id = iv0;
         nodes[c0].triangle_id = curr.triangle_id;
         nodes[c0].shared_index = curr.shared_index;
+        nodes[c0].subdivision_path = curr.subdivision_path;
         bfs_queue.push_back(c0);
       }
       if (c1 >= 0 && c1 < (int64_t)nodes.size() && nodes[c1].tag != NodeTag::NONE) {
         nodes[c1].interval_id = iv1;
         nodes[c1].triangle_id = curr.triangle_id;
         nodes[c1].shared_index = curr.shared_index;
+        nodes[c1].subdivision_path = curr.subdivision_path;
         bfs_queue.push_back(c1);
       }
 
@@ -1228,6 +1518,8 @@ int main(int argc, char **argv) {
           nodes[cid].interval_id = curr.interval_id;
           nodes[cid].triangle_id = sub_tri_ids[t];
           nodes[cid].shared_index = curr.shared_index;
+          nodes[cid].subdivision_path = curr.subdivision_path;
+          nodes[cid].subdivision_path.push_back((uint8_t)t);
           bfs_queue.push_back(cid);
         }
       }
@@ -1519,6 +1811,21 @@ int main(int argc, char **argv) {
       BigRat r_rat = ParseDecimalRat(node.tube_radius_str.empty() ?
                                      std::to_string(node.tube_radius) :
                                      node.tube_radius_str);
+      if (node.shared_index >= 0 && node.shared_index < 4 && atlas[node.shared_index].loaded) {
+        int best_node = atlas[node.shared_index].FindEnclosingNode(node.subdivision_path);
+        if (best_node >= 0) {
+          const auto &anode = atlas[node.shared_index].nodes[best_node];
+          if (anode.depth == (int)node.subdivision_path.size()) {
+            if (anode.r_rat >= r_rat) {
+              tube_node_id = anode.node_id;
+            } else {
+              std::cerr << "\nWarning: Node " << id << " atlas node " << anode.node_id
+                        << " radius " << anode.r_rat.ToString()
+                        << " < tube radius " << r_rat.ToString() << "\n";
+            }
+          }
+        }
+      }
       outfile << ",6," << lean_id << "," << iv_idx
               << ",0," << ZigzagRatString(r_rat)
               << "," << node.shared_index
