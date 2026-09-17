@@ -159,10 +159,66 @@ static void TestSerializationAndSubtree() {
   std::cout << "Serialization and Subtree tests PASSED.\n";
 }
 
+static void TestTubeAtlas() {
+  std::cout << "Testing TubeAtlas...\n";
+  TubeAtlas atlas;
+  CHECK(!atlas.IsLoaded());
+
+  // Load from /root/nopert-project if available
+  int loaded = atlas.LoadFromDir("/root/nopert-project");
+  std::cout << "Loaded " << loaded << " trees into TubeAtlas.\n";
+  if (loaded > 0) {
+    CHECK(atlas.IsLoaded());
+    if (atlas.IsLoaded(3)) {
+      double r3 = atlas.GetSafeRadiusForPath("3");
+      std::cout << "Tree 3 root effective r: " << r3 << "\n";
+      CHECK(r3 > 0.0);
+      CHECK_EQ(r3, 2e-7);
+
+      // Deep path under 3
+      double r_deep = atlas.GetSafeRadiusForPath("3000");
+      CHECK(r_deep >= r3);
+
+      // Check triangle lookup
+      TriangleQ t3 = TriangleFromPath("3");
+      vec3 corners[3] = {t3.corners[0].ToDouble(), t3.corners[1].ToDouble(), t3.corners[2].ToDouble()};
+      double r_tri = atlas.GetSafeRadiusForTriangle(corners);
+      CHECK_EQ(r_tri, r3);
+    }
+
+    if (atlas.IsLoaded(2)) {
+      double r2 = atlas.GetSafeRadiusForPath("2");
+      std::cout << "Tree 2 root effective r: " << r2 << "\n";
+      CHECK_EQ(r2, 2e-6);
+    }
+
+    if (atlas.IsLoaded(1)) {
+      double r1 = atlas.GetSafeRadiusForPath("1");
+      std::string s1 = atlas.GetSafeRadiusRatForPath("1").ToString();
+      std::cout << "Tree 1 root effective r: " << r1 << " (" << s1 << ")\n";
+      CHECK(std::abs(r1 - 2e-8) < 1e-15);
+    }
+
+    if (atlas.IsLoaded(0)) {
+      double r0 = atlas.GetSafeRadiusForPath("0");
+      std::cout << "Tree 0 root effective r: " << r0 << "\n";
+      CHECK_EQ(r0, 0.0); // partial tree: uncertified leaves exist
+
+      // But a certified subtree should have positive r!
+      double r03123 = atlas.GetSafeRadiusForPath("03123");
+      std::string s03123 = atlas.GetSafeRadiusRatForPath("03123").ToString();
+      std::cout << "Subtree 03123 effective r: " << r03123 << " (" << s03123 << ")\n";
+      CHECK(std::abs(r03123 - 1e-5) < 1e-12);
+    }
+  }
+  std::cout << "TubeAtlas tests PASSED.\n";
+}
+
 int main() {
   TestGeometry();
   TestBounds();
   TestSerializationAndSubtree();
+  TestTubeAtlas();
   std::cout << "\nALL TUBETREE229 TESTS PASSED SUCCESSFULLY!\n";
   return 0;
 }

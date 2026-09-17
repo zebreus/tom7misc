@@ -1,4 +1,5 @@
 #include "lib229.h"
+#include "tubetree229.h"
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
@@ -2357,7 +2358,8 @@ MixtureSolveStats SolveCellMixture(
     std::function<void(std::string_view)> row_callback,
     std::atomic<bool> *interrupted,
     int pre_vsplits,
-    const ViewQuadtree *initial_quadtree) {
+    const ViewQuadtree *initial_quadtree,
+    const tubetree229::TubeAtlas *tube_atlas) {
   MixtureSolveStats stats;
   Timer timer;
   bool all_leaves_certified = true;
@@ -2463,13 +2465,41 @@ MixtureSolveStats SolveCellMixture(
       continue;
     }
 
-    if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
+    double effective_tube_r = tube_radius;
+    if (tube_atlas && tube_atlas->IsLoaded()) {
+      double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
+      effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
+    }
+
+    if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
       stats.pruned_leaves++;
-      EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, tube_radius));
+      EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, effective_tube_r));
       continue;
     }
 
     if (node.chart == 0 && node.box.ContainsOrigin()) {
+      if (tube_atlas && tube_atlas->IsLoaded() && effective_tube_r == 0.0 && node.view_depth < max_view_depth) {
+        auto path = FindTrianglePath(root.tri, node.tri);
+        dynamic_tree.SplitPath(path);
+
+        auto sub_tris = node.tri.Subdivide();
+        int64_t c_ids[4];
+        for (int t = 0; t < 4; t++) c_ids[t] = next_id++;
+        EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                            node.id, node.parent_id, node.depth,
+                            c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+        for (int t = 3; t >= 0; t--) {
+          SearchNode c = node;
+          c.id = c_ids[t];
+          c.parent_id = node.id;
+          c.depth++;
+          c.view_depth++;
+          c.tri = sub_tris[t];
+          stack.push_back(c);
+        }
+        continue;
+      }
+
       int widest = node.box.WidestAxis();
       auto [b0, b1] = node.box.Split(widest);
       SearchNode c0 = node; c0.id = next_id++; c0.parent_id = node.id; c0.depth++; c0.box_depth++; c0.box = b0;
@@ -2622,13 +2652,14 @@ MixtureSolveStats SolveCellMixtureParallel(
     double time_limit_sec,
     std::function<void(std::string_view)> row_callback,
     std::atomic<bool> *interrupted,
-    const ViewQuadtree *initial_quadtree) {
+    const ViewQuadtree *initial_quadtree,
+    const tubetree229::TubeAtlas *tube_atlas) {
   if (num_threads <= 1) {
     return SolveCellMixture(
         cell, max_depth, max_box_depth, max_view_depth,
         max_nodes, max_split_delta, cone_samples, max_components,
         split_kappa, tube_radius, time_limit_sec, row_callback,
-        interrupted, 0, initial_quadtree);
+        interrupted, 0, initial_quadtree, tube_atlas);
   }
 
   Timer timer;
@@ -2805,12 +2836,38 @@ MixtureSolveStats SolveCellMixtureParallel(
           EmitRow(std::format("PR {} {} {} FUNDAMENTAL {}\n", node.id, node.parent_id, node.depth, fund.direction));
           continue;
         }
-        if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
+        double effective_tube_r = tube_radius;
+        if (tube_atlas && tube_atlas->IsLoaded()) {
+          double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
+          effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
+        }
+
+        if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
           pruned_leaves.fetch_add(1);
-          EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, tube_radius));
+          EmitRow(std::format("TU {} {} {} {:.17g}\n", node.id, node.parent_id, node.depth, effective_tube_r));
           continue;
         }
+
         if (node.chart == 0 && node.box.ContainsOrigin()) {
+          if (tube_atlas && tube_atlas->IsLoaded() && effective_tube_r == 0.0 && node.view_depth < max_view_depth) {
+            auto sub_tris = node.tri.Subdivide();
+            int64_t c_ids[4];
+            for (int t = 0; t < 4; t++) c_ids[t] = next_id.fetch_add(1);
+            EmitRow(std::format("SV {} {} {} {} {} {} {}\n",
+                                node.id, node.parent_id, node.depth,
+                                c_ids[0], c_ids[1], c_ids[2], c_ids[3]));
+            for (int t = 3; t >= 0; t--) {
+              SearchNode c = node;
+              c.id = c_ids[t];
+              c.parent_id = node.id;
+              c.depth++;
+              c.view_depth++;
+              c.tri = sub_tris[t];
+              local_stack.push_back(c);
+            }
+            continue;
+          }
+
           int widest = node.box.WidestAxis();
           auto [b0, b1] = node.box.Split(widest);
           int64_t c0_id = next_id.fetch_add(1);
@@ -4245,49 +4302,76 @@ void SearchManager::Run() {
                                   node.id, node.parent_id, node.depth,
                                   fund.direction));
 
-          } else if (InsideIdentityTube(node.chart, node.box, tube_radius)) {
-            pruned_count++;
-            RecordCertification(node);
-            OutputRow(std::format("TU {} {} {} {:.17g}\n",
-                                  node.id, node.parent_id, node.depth,
-                                  tube_radius));
-
-          } else if (node.chart == 0 && node.box.ContainsOrigin()) {
-            int widest = node.box.WidestAxis();
-            auto [b0, b1] = node.box.Split(widest);
-
-            SearchNode child0 = node;
-            child0.id = next_node_id++;
-            child0.parent_id = node.id;
-            child0.depth = node.depth + 1;
-            child0.box_depth = node.box_depth + 1;
-            child0.box_splits_since_view = node.box_splits_since_view + 1;
-            child0.box = b0;
-
-            SearchNode child1 = node;
-            child1.id = next_node_id++;
-            child1.parent_id = node.id;
-            child1.depth = node.depth + 1;
-            child1.box_depth = node.box_depth + 1;
-            child1.box_splits_since_view = node.box_splits_since_view + 1;
-            child1.box = b1;
-
-            split_count++;
-            OutputRow(std::format("SO {} {} {} {} {}\n",
-                                  node.id, node.parent_id, node.depth,
-                                  child0.id, child1.id));
-
-            if (child0.box.ContainsOrigin()) {
-              MutexLock ml(&mu);
-              stack.push_back(child1);
-              stack.push_back(child0);
-            } else {
-              MutexLock ml(&mu);
-              stack.push_back(child0);
-              stack.push_back(child1);
+          } else {
+            double effective_tube_r = tube_radius;
+            if (tube_atlas && tube_atlas->IsLoaded()) {
+              double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
+              effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
             }
 
-          } else {
+            if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
+              pruned_count++;
+              RecordCertification(node);
+              OutputRow(std::format("TU {} {} {} {:.17g}\n",
+                                    node.id, node.parent_id, node.depth,
+                                    effective_tube_r));
+
+            } else if (node.chart == 0 && node.box.ContainsOrigin()) {
+              if (tube_atlas && tube_atlas->IsLoaded() && effective_tube_r == 0.0 && node.view_depth < max_view_depth) {
+                split_count++;
+                auto sub_tris = node.tri.Subdivide();
+                int64_t child_ids[4] = {-1, -1, -1, -1};
+                for (int t = 3; t >= 0; t--) {
+                  SearchNode child = node;
+                  child.id = next_node_id++;
+                  child.parent_id = node.id;
+                  child.depth = node.depth + 1;
+                  child.view_depth = node.view_depth + 1;
+                  child.box_splits_since_view = 0;
+                  child.tri = sub_tris[t];
+                  child_ids[t] = child.id;
+                  MutexLock ml(&mu);
+                  stack.push_back(child);
+                }
+                OutputRow(std::format("SV {} {} {} {} {} {} {}\n", node.id,
+                                      node.parent_id, node.depth,
+                                      child_ids[0], child_ids[1], child_ids[2], child_ids[3]));
+              } else {
+                int widest = node.box.WidestAxis();
+                auto [b0, b1] = node.box.Split(widest);
+
+                SearchNode child0 = node;
+                child0.id = next_node_id++;
+                child0.parent_id = node.id;
+                child0.depth = node.depth + 1;
+                child0.box_depth = node.box_depth + 1;
+                child0.box_splits_since_view = node.box_splits_since_view + 1;
+                child0.box = b0;
+
+                SearchNode child1 = node;
+                child1.id = next_node_id++;
+                child1.parent_id = node.id;
+                child1.depth = node.depth + 1;
+                child1.box_depth = node.box_depth + 1;
+                child1.box_splits_since_view = node.box_splits_since_view + 1;
+                child1.box = b1;
+
+                split_count++;
+                OutputRow(std::format("SO {} {} {} {} {}\n",
+                                      node.id, node.parent_id, node.depth,
+                                      child0.id, child1.id));
+
+                if (child0.box.ContainsOrigin()) {
+                  MutexLock ml(&mu);
+                  stack.push_back(child1);
+                  stack.push_back(child0);
+                } else {
+                  MutexLock ml(&mu);
+                  stack.push_back(child0);
+                  stack.push_back(child1);
+                }
+              }
+            } else {
             auto tpool = GetTrianglePool(node.tri, EffectiveConeSamples(node));
             if (tpool->gpu_triples.empty()) {
               split_count++;
@@ -4313,7 +4397,8 @@ void SearchManager::Run() {
               eval_indices.push_back(i);
             }
           }
-        }, num_threads);
+        }
+      }, num_threads);
 
       if (!eval_indices.empty()) {
         struct EvalItem {

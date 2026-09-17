@@ -6,6 +6,8 @@
 #include <format>
 #include <string>
 #include <algorithm>
+#include <filesystem>
+#include <cmath>
 
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
@@ -400,6 +402,186 @@ TreeStats ComputeTreeStats(const TreeNode &root) {
   TreeStats stats;
   AccumulateStats(root, stats, root.depth());
   return stats;
+}
+
+// TubeAtlas implementations
+
+std::unique_ptr<TubeAtlas::FastNode> TubeAtlas::BuildFastNode(const TreeNode &node) {
+  auto fn = std::make_unique<TubeAtlas::FastNode>();
+  fn->path = node.path;
+  fn->direct_r_rat = node.direct_bounds.direct_r_lower;
+  if (node.direct_cert.has_value() && node.direct_cert->r > fn->direct_r_rat) {
+    fn->direct_r_rat = node.direct_cert->r;
+  }
+  fn->direct_r_lower = fn->direct_r_rat.ToDouble();
+  fn->is_leaf = node.children.empty() && !node.external;
+
+  if (node.children.size() == 4) {
+    for (int i = 0; i < 4; i++) {
+      if (node.children[i]) {
+        fn->children[i] = BuildFastNode(*node.children[i]);
+      }
+    }
+  }
+  return fn;
+}
+
+void TubeAtlas::ComputeFastEffectiveBounds(FastNode *node) {
+  if (!node) return;
+
+  bool has_4_children = true;
+  for (int i = 0; i < 4; i++) {
+    if (!node->children[i]) {
+      has_4_children = false;
+      break;
+    }
+    ComputeFastEffectiveBounds(node->children[i].get());
+  }
+
+  if (has_4_children) {
+    bool all_children_complete = true;
+    BigRat min_child_rat = node->children[0]->effective_r_rat;
+    for (int i = 0; i < 4; i++) {
+      if (node->children[i]->effective_r_rat <= BigRat(0)) {
+        all_children_complete = false;
+        break;
+      }
+      if (node->children[i]->effective_r_rat < min_child_rat) {
+        min_child_rat = node->children[i]->effective_r_rat;
+      }
+    }
+
+    if (all_children_complete) {
+      if (min_child_rat > node->direct_r_rat) {
+        node->effective_r_rat = min_child_rat;
+      } else {
+        node->effective_r_rat = node->direct_r_rat;
+      }
+    } else {
+      node->effective_r_rat = node->direct_r_rat;
+    }
+  } else {
+    node->effective_r_rat = node->direct_r_rat;
+  }
+  node->effective_r_lower = node->effective_r_rat.ToDouble();
+}
+
+int TubeAtlas::LoadFromDir(const std::string &base_dir) {
+  int count = 0;
+  for (int sw = 0; sw < 4; sw++) {
+    std::string path = base_dir + "/tree_" + std::to_string(sw) + ".json";
+    if (std::filesystem::exists(path)) {
+      if (LoadTree(sw, path)) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+bool TubeAtlas::LoadTree(int subwedge, const std::string &filepath) {
+  if (subwedge < 0 || subwedge > 3) return false;
+  auto root = LoadTreeJson(filepath, /*load_external=*/false);
+  if (!root) return false;
+
+  auto fast_root = BuildFastNode(*root);
+  ComputeFastEffectiveBounds(fast_root.get());
+  roots_[subwedge] = std::move(fast_root);
+  return true;
+}
+
+const TubeAtlas::FastNode *TubeAtlas::FindNode(std::string_view path) const {
+  if (path.empty()) return nullptr;
+  int sw = path[0] - '0';
+  if (sw < 0 || sw > 3 || !roots_[sw]) return nullptr;
+
+  const FastNode *curr = roots_[sw].get();
+  for (size_t i = 1; i < path.size(); i++) {
+    int c = path[i] - '0';
+    if (c < 0 || c > 3) break;
+    if (curr->children[c]) {
+      curr = curr->children[c].get();
+    } else {
+      break;
+    }
+  }
+  return curr;
+}
+
+double TubeAtlas::GetSafeRadiusForPath(std::string_view path) const {
+  const FastNode *node = FindNode(path);
+  if (!node) return 0.0;
+  return node->effective_r_lower;
+}
+
+BigRat TubeAtlas::GetSafeRadiusRatForPath(std::string_view path) const {
+  const FastNode *node = FindNode(path);
+  if (!node) return BigRat(0);
+  return node->effective_r_rat;
+}
+
+double TubeAtlas::GetSafeRadiusForTriangle(const vec3 corners[3], int max_depth) const {
+  vec3 w0 = {1.0, 0.0, 0.0};
+  vec3 w1 = {10.0 / 41.0, 31.0 / 41.0, 0.0};
+  vec3 w2 = {0.0, 0.0, 1.0};
+  vec3 cur_corners[3] = {w0, w1, w2};
+
+  vec3 target_cent = (corners[0] + corners[1] + corners[2]) * (1.0 / 3.0);
+  std::string path;
+
+  for (int d = 0; d < max_depth; d++) {
+    double diff = yocto::length(cur_corners[0] - corners[0]) +
+                  yocto::length(cur_corners[1] - corners[1]) +
+                  yocto::length(cur_corners[2] - corners[2]);
+    if (diff < 1e-7) break;
+
+    vec3 m01 = (cur_corners[0] + cur_corners[1]) * 0.5;
+    vec3 m12 = (cur_corners[1] + cur_corners[2]) * 0.5;
+    vec3 m20 = (cur_corners[2] + cur_corners[0]) * 0.5;
+
+    vec3 subs[4][3] = {
+      {cur_corners[0], m01, m20},
+      {m01, cur_corners[1], m12},
+      {m20, m12, cur_corners[2]},
+      {m01, m12, m20}
+    };
+
+    int best_c = -1;
+    double best_dist = 1e30;
+
+    for (int c = 0; c < 4; c++) {
+      vec3 cp = yocto::cross(subs[c][1], subs[c][2]);
+      double det = yocto::dot(subs[c][0], cp);
+      if (std::abs(det) > 1e-15) {
+        double s = (det > 0.0) ? 1.0 : -1.0;
+        double d0 = s * yocto::dot(target_cent, cp);
+        double d1 = s * yocto::dot(target_cent, yocto::cross(subs[c][2], subs[c][0]));
+        double d2 = s * yocto::dot(target_cent, yocto::cross(subs[c][0], subs[c][1]));
+        if (d0 >= -1e-11 && d1 >= -1e-11 && d2 >= -1e-11) {
+          best_c = c;
+          break;
+        }
+      }
+      vec3 sub_cent = (subs[c][0] + subs[c][1] + subs[c][2]) * (1.0 / 3.0);
+      vec3 cross_prod = yocto::cross(sub_cent, target_cent);
+      double dist = yocto::dot(cross_prod, cross_prod);
+      if (dist < best_dist) {
+        best_dist = dist;
+        best_c = c;
+      }
+    }
+
+    if (best_c >= 0) {
+      path.push_back('0' + best_c);
+      cur_corners[0] = subs[best_c][0];
+      cur_corners[1] = subs[best_c][1];
+      cur_corners[2] = subs[best_c][2];
+    } else {
+      break;
+    }
+  }
+
+  return GetSafeRadiusForPath(path);
 }
 
 } // namespace tubetree229

@@ -34,6 +34,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "lib229.h"
+#include "tubetree229.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "ruperts-util.h"
@@ -61,7 +62,8 @@ struct ParsedDoneRow {
 };
 
 static VerificationResult VerifyDoneFile(
-    const DifficultCell &cell, const std::string &done_path) {
+    const DifficultCell &cell, const std::string &done_path,
+    const tubetree229::TubeAtlas *tube_atlas = nullptr) {
   std::ifstream infile(done_path);
   if (!infile.is_open()) {
     return {.valid = false, .error_message = "Could not open file"};
@@ -240,6 +242,17 @@ static VerificationResult VerifyDoneFile(
         return {.valid = false, .error_message = std::format("Node #{} claimed InsideIdentityTube({}) but check failed",
                                                              curr.id, row.tube_radius)};
       }
+      if (tube_atlas && tube_atlas->IsLoaded()) {
+        double safe_r = tube_atlas->GetSafeRadiusForTriangle(curr.tri.corners);
+        if (safe_r <= 0.0) {
+          return {.valid = false, .error_message = std::format("Node #{} claimed TU radius {} but view is uncertified in tube atlas",
+                                                               curr.id, row.tube_radius)};
+        }
+        if (row.tube_radius > safe_r * (1.0 + 1e-9)) {
+          return {.valid = false, .error_message = std::format("Node #{} TU radius {} exceeds view's certified safe radius {}",
+                                                               curr.id, row.tube_radius, safe_r)};
+        }
+      }
     } else if (row.tag == "CE" || row.tag == "CERT" || row.tag == "MX") {
       leaf_count++;
       if (row.margin <= 0.0) {
@@ -273,7 +286,8 @@ static int RunDifficult(
     double tube_radius, double limit_sec, int num_threads, bool use_gpu,
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true, std::string splits_file = "",
-    int64_t max_nodes = 0, bool rand_order = false, uint64_t rand_seed = 0) {
+    int64_t max_nodes = 0, bool rand_order = false, uint64_t rand_seed = 0,
+    const tubetree229::TubeAtlas *tube_atlas = nullptr) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -308,7 +322,7 @@ static int RunDifficult(
   for (const auto &c : cells) {
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
-      auto v = VerifyDoneFile(c, done_file);
+      auto v = VerifyDoneFile(c, done_file, tube_atlas);
       if (v.valid) {
         Print(AGREEN("  ✔") " Cell #{} verified from {} ({} rows, {} leaves, worst margin: {:.6g}).\n",
               c.id, done_file, v.total_rows, v.total_leaves, v.worst_margin);
@@ -411,7 +425,7 @@ static int RunDifficult(
     std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
     std::string done_path = std::format("{}/{}", out_dir, done_filename);
     if (std::filesystem::exists(done_path)) {
-      auto v = VerifyDoneFile(cell, done_path);
+      auto v = VerifyDoneFile(cell, done_path, tube_atlas);
       if (v.valid) {
         mgr.status.Print(AGREEN("  ✔") " Cell #{} verified from existing {} ({} rows, {} leaves, worst margin: {:.6g}). Skipping.\n",
                          cell.id, done_filename, v.total_rows, v.total_leaves, v.worst_margin);
@@ -462,6 +476,7 @@ static int RunDifficult(
 
     mgr.ResetState();
     mgr.chart = cell.chart;
+    mgr.tube_atlas = tube_atlas;
     mgr.next_node_id = std::max<int64_t>(1000000000LL, cell.id * 1000LL);
 
     ViewQuadtree cell_tree;
@@ -596,8 +611,8 @@ static int RunDifficult(
     }
   }
 
-  // Leave the status bar on screen; it has useful info.
-  mgr.status.Abandon();
+  // Clear the status bar when done.
+  mgr.status.Clear();
   Print("\n\n");
 
   // Ensure state is cleanly persisted
@@ -632,7 +647,8 @@ static int RunDifficultMixture(
     int64_t limit_cells, int64_t target_cell_id, bool dry_run, bool verbose,
     bool show_status = true, std::string splits_file = "",
     bool rand_order = false, uint64_t rand_seed = 0,
-    bool parallel_search = true) {
+    bool parallel_search = true,
+    const tubetree229::TubeAtlas *tube_atlas = nullptr) {
   if (difficult_path.empty()) {
     difficult_path = std::format("chart{}.difficult", chart);
   }
@@ -642,6 +658,7 @@ static int RunDifficultMixture(
 
   Print(ACYAN("=== Difficult 229 Solver (Convex Mixture Mode) ===\n"));
   Print("Chart: {}, Difficult file: {}, Out dir: {}\n", chart, difficult_path, out_dir);
+  Print("Splits file: {}\n", splits_file);
   Print("Limits: max_nodes={}, max_split_delta={}, max_depth={}, max_box_depth={}, max_view_depth={}\n",
         max_nodes, max_split_delta, max_depth, max_box_depth, max_view_depth);
   Print("Mixture: max_components={}, split_kappa={:.2g}, tube_radius={:.3g}, limit_sec={}\n",
@@ -667,7 +684,7 @@ static int RunDifficultMixture(
   for (const auto &c : cells) {
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
-      auto v = VerifyDoneFile(c, done_file);
+      auto v = VerifyDoneFile(c, done_file, tube_atlas);
       if (v.valid) {
         Print(AGREEN("  ✔") " Cell #{} verified from {} ({} rows, {} leaves, worst margin: {:.6g}).\n",
               c.id, done_file, v.total_rows, v.total_leaves, v.worst_margin);
@@ -742,7 +759,7 @@ static int RunDifficultMixture(
       std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
       std::string done_path = std::format("{}/{}", out_dir, done_filename);
       if (std::filesystem::exists(done_path)) {
-        auto v = VerifyDoneFile(cell, done_path);
+        auto v = VerifyDoneFile(cell, done_path, tube_atlas);
         if (v.valid) {
           std::lock_guard<std::mutex> lock(state_mu);
           total_solved++;
@@ -805,7 +822,8 @@ static int RunDifficultMixture(
           cone_samples, max_components, split_kappa,
           /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
           /*pre_vsplits=*/0,
-          has_quadtree ? &cell_tree : nullptr);
+          has_quadtree ? &cell_tree : nullptr,
+          tube_atlas);
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -866,6 +884,10 @@ static int RunDifficultMixture(
         if (ec) {
           status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
         } else {
+          auto v = VerifyDoneFile(cell, done_path, tube_atlas);
+          if (!v.valid) {
+            status.Print(ARED("  POST-SOLVE VERIFICATION FAILED for {}: {}\n"), done_path, v.error_message);
+          }
           total_solved++;
           total_rows_written += cell_rows;
           std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
@@ -890,7 +912,7 @@ static int RunDifficultMixture(
       std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
       std::string done_path = std::format("{}/{}", out_dir, done_filename);
       if (std::filesystem::exists(done_path)) {
-        auto v = VerifyDoneFile(cell, done_path);
+        auto v = VerifyDoneFile(cell, done_path, tube_atlas);
         if (v.valid) {
           total_solved++;
           total_rows_written += v.total_rows;
@@ -944,7 +966,8 @@ static int RunDifficultMixture(
           max_nodes, max_split_delta,
           cone_samples, max_components, split_kappa,
           /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
-          has_quadtree ? &cell_tree : nullptr);
+          has_quadtree ? &cell_tree : nullptr,
+          tube_atlas);
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -1000,6 +1023,10 @@ static int RunDifficultMixture(
         if (ec) {
           status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
         } else {
+          auto v = VerifyDoneFile(cell, done_path, tube_atlas);
+          if (!v.valid) {
+            status.Print(ARED("  POST-SOLVE VERIFICATION FAILED for {}: {}\n"), done_path, v.error_message);
+          }
           total_solved++;
           total_rows_written += cell_rows;
           std::erase_if(remaining_unsolved, [&](const DifficultCell &c) {
@@ -1103,6 +1130,8 @@ static void PrintHelp() {
         "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
         "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
         "  --tube_radius <R>       Identity symmetry tube radius (default 1e-4)\n"
+        "  --tube_trees_dir <DIR>  Directory containing tree_*.json tube trees (default /root/nopert-project)\n"
+        "  --no_tube_trees         Do not load tube trees; rely solely on static tube_radius\n"
         "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 120s in mixture)\n"
         "  --threads <T>           Worker threads (default 8)\n"
         "  --cpu                   Force multi-threaded CPU execution in standard mode\n"
@@ -1148,6 +1177,8 @@ int main(int argc, char **argv) {
   int deep_escalate_cone_samples = 16;
   int lp_escalate_box_depth = 46;
   double tube_radius = 1e-4;
+  std::string tube_trees_dir = "/root/nopert-project";
+  bool no_tube_trees = false;
   double limit_sec = 0.0;
   int num_threads = 1;
   bool use_gpu = false;
@@ -1217,6 +1248,10 @@ int main(int argc, char **argv) {
       lp_escalate_box_depth = std::atoi(argv[++i]);
     } else if (arg == "--tube_radius" && i + 1 < argc) {
       tube_radius = std::atof(argv[++i]);
+    } else if (arg == "--tube_trees_dir" && i + 1 < argc) {
+      tube_trees_dir = argv[++i];
+    } else if (arg == "--no_tube_trees") {
+      no_tube_trees = true;
     } else if (arg == "--limit_sec" && i + 1 < argc) {
       limit_sec = std::atof(argv[++i]);
       limit_sec_specified = true;
@@ -1254,6 +1289,27 @@ int main(int argc, char **argv) {
     }
   }
 
+  tubetree229::TubeAtlas tube_atlas;
+  if (!no_tube_trees) {
+    if (std::filesystem::exists(tube_trees_dir)) {
+      int loaded = tube_atlas.LoadFromDir(tube_trees_dir);
+      if (loaded > 0) {
+        Print("Loaded {} identity tube trees from {}\n", loaded, tube_trees_dir);
+        for (int sw = 0; sw < 4; sw++) {
+          if (tube_atlas.IsLoaded(sw)) {
+            double r = tube_atlas.GetSafeRadiusForPath(std::to_string(sw));
+            std::string r_str = tube_atlas.GetSafeRadiusRatForPath(std::to_string(sw)).ToString();
+            Print("  Tree {}: root effective r = {:.6e} ({})\n", sw, r, r_str);
+          }
+        }
+      } else {
+        Print("Warning: No tube trees loaded from {}.\n", tube_trees_dir);
+      }
+    } else {
+      Print("Warning: Tube trees directory '{}' does not exist.\n", tube_trees_dir);
+    }
+  }
+
   if (mixture_mode) {
     if (!max_depth_specified) max_depth = view_mixture_mode ? 84 : 68;
     if (!max_box_depth_specified) max_box_depth = 66;
@@ -1266,7 +1322,8 @@ int main(int argc, char **argv) {
         max_view_depth, max_nodes, max_split_delta, cone_samples,
         max_components, split_kappa, tube_radius,
         limit_sec, num_threads, limit_cells, target_cell_id, dry_run, verbose,
-        show_status, splits_file, rand_order, rand_seed, parallel_search);
+        show_status, splits_file, rand_order, rand_seed, parallel_search,
+        &tube_atlas);
   }
 
   RunDifficult(
@@ -1276,7 +1333,8 @@ int main(int argc, char **argv) {
       lp_escalate_box_depth, tube_radius, limit_sec,
       num_threads, use_gpu, limit_cells, target_cell_id, dry_run, verbose,
       show_status, splits_file, max_nodes_specified ? max_nodes : 0,
-      rand_order, rand_seed);
+      rand_order, rand_seed,
+      &tube_atlas);
 
   return 0;
 }

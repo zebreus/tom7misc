@@ -32,6 +32,10 @@
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
 
+namespace tubetree229 {
+class TubeAtlas;
+}
+
 // 20 vertices of Nopert #229, derived algebraically from repair214.cc
 // and scaled strictly inside the unit sphere for Lean's GoodPoly invariant.
 inline constexpr int NUM_VERTICES = 20;
@@ -536,7 +540,8 @@ MixtureSolveStats SolveCellMixture(
     std::function<void(std::string_view)> row_callback = nullptr,
     std::atomic<bool> *interrupted = nullptr,
     int pre_vsplits = 0,
-    const ViewQuadtree *initial_quadtree = nullptr);
+    const ViewQuadtree *initial_quadtree = nullptr,
+    const tubetree229::TubeAtlas *tube_atlas = nullptr);
 
 // Solves a single difficult cell in parallel using num_threads worker threads.
 // Employs a two-tier work-stealing architecture:
@@ -559,7 +564,8 @@ MixtureSolveStats SolveCellMixtureParallel(
     double time_limit_sec = 10.0,
     std::function<void(std::string_view)> row_callback = nullptr,
     std::atomic<bool> *interrupted = nullptr,
-    const ViewQuadtree *initial_quadtree = nullptr);
+    const ViewQuadtree *initial_quadtree = nullptr,
+    const tubetree229::TubeAtlas *tube_atlas = nullptr);
 
 // Returns true if the node should be bisected along its widest Cayley box axis (SP),
 // or false if the projective view triangle should be subdivided into 4 sub-triangles (SV).
@@ -703,6 +709,7 @@ struct SearchManager {
   bool prioritize_related = true;
   double related_epsilon = 0.05;
   double tube_radius = 1e-4;
+  const tubetree229::TubeAtlas *tube_atlas = nullptr;
   double split_kappa = 1.0;
   int pre_vsplits = 0;
   int root_view_depth = 0;

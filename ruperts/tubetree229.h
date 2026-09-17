@@ -208,6 +208,68 @@ struct TreeStats {
 
 TreeStats ComputeTreeStats(const TreeNode &root);
 
+// Fast, thread-safe atlas of identity tube trees for querying view-dependent certified radii.
+class TubeAtlas {
+ public:
+  struct FastNode {
+    std::string path;
+    double direct_r_lower = 0.0;
+    double effective_r_lower = 0.0;
+    BigRat direct_r_rat{0};
+    BigRat effective_r_rat{0};
+    bool is_leaf = false;
+    std::unique_ptr<FastNode> children[4];
+  };
+
+  TubeAtlas() = default;
+
+  // Loads tree_0.json .. tree_3.json from base_dir.
+  // Returns number of trees successfully loaded (0..4).
+  int LoadFromDir(const std::string &base_dir);
+
+  // Loads a single tree into subwedge slot (0..3).
+  bool LoadTree(int subwedge, const std::string &filepath);
+
+  // Checks if any tree is loaded.
+  bool IsLoaded() const {
+    return roots_[0] || roots_[1] || roots_[2] || roots_[3];
+  }
+  bool IsLoaded(int subwedge) const {
+    return subwedge >= 0 && subwedge < 4 && roots_[subwedge] != nullptr;
+  }
+
+  // Returns the certified safe tube radius (as double) for a given base-4 path string (e.g. "0", "1032").
+  // If the path descends deeper than the tree, the enclosing leaf's bound applies.
+  // If the tree node has effective_r_lower > 0, returns effective_r_lower.
+  // Returns 0.0 if not certified or tree not loaded.
+  double GetSafeRadiusForPath(std::string_view path) const;
+
+  // Returns the exact rational bound.
+  BigRat GetSafeRadiusRatForPath(std::string_view path) const;
+
+  // Given triangle corners, finds its base-4 path from the root wedge
+  // and returns the safe tube radius.
+  double GetSafeRadiusForTriangle(const vec3 corners[3], int max_depth = 20) const;
+  double GetSafeRadiusForTriangle(const std::array<vec3, 3> &corners, int max_depth = 20) const {
+    return GetSafeRadiusForTriangle(corners.data(), max_depth);
+  }
+
+  // Given a base-4 path, returns the matching FastNode (or enclosing leaf) if available.
+  const FastNode *FindNode(std::string_view path) const;
+
+  // Root node pointer access for inspection / debugging.
+  const FastNode *GetRoot(int subwedge) const {
+    if (subwedge >= 0 && subwedge < 4) return roots_[subwedge].get();
+    return nullptr;
+  }
+
+ private:
+  std::unique_ptr<FastNode> roots_[4];
+
+  static std::unique_ptr<FastNode> BuildFastNode(const TreeNode &node);
+  static void ComputeFastEffectiveBounds(FastNode *node);
+};
+
 } // namespace tubetree229
 
 #endif // RUPERTS_TUBETREE229_H_
