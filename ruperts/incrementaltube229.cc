@@ -1183,12 +1183,16 @@ static bool SynthesizeCertificate(
                 double dn = yocto::dot(pts[i], -face_norm);
                 if (dn > max_neg) { max_neg = dn; best_neg = i; }
               }
-              int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
-              for (int e = 0; e < 3; e++) {
-                vec3 tpts[4] = {pts[tri_edges[e][0]], pts[tri_edges[e][1]], pts[best_pos], pts[best_neg]};
-                double margin; double bary[4];
-                if (TetrahedronOriginMargin(tpts, &margin, bary)) {
-                  scored.push_back({margin, {tri_edges[e][0], tri_edges[e][1], best_pos, best_neg}});
+              if (best_pos >= 0 && best_neg >= 0 && max_pos > 1e-9 && max_neg > 1e-9 && best_pos != best_neg) {
+                int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+                for (int e = 0; e < 3; e++) {
+                  int e0 = tri_edges[e][0], e1 = tri_edges[e][1];
+                  if (best_pos == e0 || best_pos == e1 || best_neg == e0 || best_neg == e1) continue;
+                  vec3 tpts[4] = {pts[e0], pts[e1], pts[best_pos], pts[best_neg]};
+                  double margin; double bary[4];
+                  if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                    scored.push_back({margin, {e0, e1, best_pos, best_neg}});
+                  }
                 }
               }
             }
@@ -1326,19 +1330,20 @@ class IncrementalTubeManager {
       }
       if (node->children.empty() && !node->external) {
         bool target_achieved = false;
-        if (target_r_ > BigRat(0) && target_c_ > BigRat(0)) {
-          target_achieved = node->direct_cert.has_value() &&
-                            node->direct_cert->r >= target_r_ &&
-                            node->direct_cert->c >= target_c_;
-        } else {
-          target_achieved = node->direct_cert.has_value() &&
-                            node->direct_cert->r > BigRat(0) &&
-                            node->direct_cert->c > BigRat(0);
+        if (node->direct_cert.has_value()) {
+          bool positive = (node->direct_cert->r > BigRat(0) && node->direct_cert->c > BigRat(0));
+          bool meets_r = (target_r_ <= BigRat(0)) || (node->direct_cert->r >= target_r_);
+          bool meets_c = (target_c_ <= BigRat(0)) || (node->direct_cert->c >= target_c_);
+          target_achieved = positive && meets_r && meets_c;
         }
         bool infeasible = false;
-        if (target_c_ > BigRat(0)) {
-          infeasible = node->direct_bounds.direct_c_upper > BigRat(0) &&
-                       node->direct_bounds.direct_c_upper < target_c_;
+        if (target_r_ > BigRat(0) && node->direct_bounds.direct_r_upper > BigRat(0) &&
+            node->direct_bounds.direct_r_upper < target_r_) {
+          infeasible = true;
+        }
+        if (target_c_ > BigRat(0) && node->direct_bounds.direct_c_upper > BigRat(0) &&
+            node->direct_bounds.direct_c_upper < target_c_) {
+          infeasible = true;
         }
         if (!target_achieved && !infeasible) {
           queue.push_back(node->path);
@@ -1426,22 +1431,18 @@ class IncrementalTubeManager {
           cache_.Insert(cert);
         }
 
-        if (target_r_ > BigRat(0) && target_c_ > BigRat(0)) {
-          meets_target = (cert_found && cert.r >= target_r_ && cert.c >= target_c_);
-        } else {
-          // Any strictly positive bound meets target!
-          meets_target = (cert_found && cert.r > BigRat(0) && cert.c > BigRat(0));
+        if (cert_found) {
+          bool positive = (cert.r > BigRat(0) && cert.c > BigRat(0));
+          bool meets_r = (target_r_ <= BigRat(0)) || (cert.r >= target_r_);
+          bool meets_c = (target_c_ <= BigRat(0)) || (cert.c >= target_c_);
+          meets_target = (positive && meets_r && meets_c);
         }
 
-        // 2. If target not met, compute upper bounds to test for infeasibility
+        // 2. If target not met, compute upper bounds and test for infeasibility
+        infeasible = false;
         if (!meets_target) {
-          if (node->direct_bounds.direct_c_upper > BigRat(0)) {
-            if (target_c_ > BigRat(0)) {
-              infeasible = (node->direct_bounds.direct_c_upper < target_c_);
-            } else {
-              infeasible = (node->direct_bounds.direct_c_upper <= BigRat(0));
-            }
-          } else {
+          if (node->direct_bounds.direct_c_upper <= BigRat(0) &&
+              node->direct_bounds.direct_r_upper <= BigRat(0)) {
             vec3 centroid = (tri.corners[0].ToDouble() + tri.corners[1].ToDouble() + tri.corners[2].ToDouble()) / 3.0;
             std::vector<CandidateTriple> candidates;
             GenerateCandidatesForView(centroid, tri, /*evaluate_over_triangle=*/false, 4, true, 2e-14, &candidates);
@@ -1453,16 +1454,19 @@ class IncrementalTubeManager {
             EstimateUpperBounds(tri, pts, &c_upper, &r_upper);
             node->direct_bounds.direct_c_upper = c_upper;
             node->direct_bounds.direct_r_upper = r_upper;
+          }
 
-            if (target_c_ > BigRat(0)) {
-              infeasible = (c_upper > BigRat(0) && c_upper < target_c_);
-            } else {
-              infeasible = (c_upper <= BigRat(0));
-            }
+          if (target_r_ > BigRat(0) && node->direct_bounds.direct_r_upper > BigRat(0) &&
+              node->direct_bounds.direct_r_upper < target_r_) {
+            infeasible = true;
+          }
+          if (target_c_ > BigRat(0) && node->direct_bounds.direct_c_upper > BigRat(0) &&
+              node->direct_bounds.direct_c_upper < target_c_) {
+            infeasible = true;
           }
         }
 
-        // 3. Dual-bound evaluation and subdivision decision
+        // 3. Subdivision decision
         bool max_depth_reached = (node->depth() >= max_depth_);
 
         if (meets_target) {
@@ -1777,12 +1781,16 @@ static void DiagnosePath(const std::string &path) {
                 if (dn > max_neg) { max_neg = dn; best_neg = i; }
               }
               std::cout << "    Normal piercing: best_pos=" << best_pos << " (" << max_pos << ") best_neg=" << best_neg << " (" << max_neg << ")\n";
-              int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
-              for (int e = 0; e < 3; e++) {
-                vec3 tpts[4] = {pts_dedup[tri_edges[e][0]], pts_dedup[tri_edges[e][1]], pts_dedup[best_pos], pts_dedup[best_neg]};
-                double margin; double bary[4];
-                if (TetrahedronOriginMargin(tpts, &margin, bary)) {
-                  scored.push_back({margin, {tri_edges[e][0], tri_edges[e][1], best_pos, best_neg}});
+              if (best_pos >= 0 && best_neg >= 0 && max_pos > 1e-9 && max_neg > 1e-9 && best_pos != best_neg) {
+                int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+                for (int e = 0; e < 3; e++) {
+                  int e0 = tri_edges[e][0], e1 = tri_edges[e][1];
+                  if (best_pos == e0 || best_pos == e1 || best_neg == e0 || best_neg == e1) continue;
+                  vec3 tpts[4] = {pts_dedup[e0], pts_dedup[e1], pts_dedup[best_pos], pts_dedup[best_neg]};
+                  double margin; double bary[4];
+                  if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                    scored.push_back({margin, {e0, e1, best_pos, best_neg}});
+                  }
                 }
               }
               std::cout << "    Normal piercing found " << scored.size() << " enclosing tets!\n";
