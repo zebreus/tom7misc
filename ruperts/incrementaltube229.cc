@@ -368,7 +368,10 @@ static const BigRat CANDIDATE_RS[] = {
   BigRat("1/1000000"), BigRat("1/2000000"), BigRat("1/3000000"),
   BigRat("1/4000000"), BigRat("1/5000000"), BigRat("1/6000000"),
   BigRat("1/8000000"), BigRat("1/10000000"), BigRat("1/20000000"),
-  BigRat("1/50000000"), BigRat("1/100000000")
+  BigRat("1/50000000"), BigRat("1/100000000"),
+  BigRat("1/200000000"), BigRat("1/500000000"),
+  BigRat("1/1000000000"), BigRat("1/2000000000"),
+  BigRat("1/5000000000"), BigRat("1/10000000000")
 };
 
 static bool AuditCertificateAdaptive(
@@ -394,11 +397,22 @@ static bool AuditCertificateAdaptive(
   BigRat delta = std::max({deltas[0], deltas[1], deltas[2], deltas[3]});
   BigRat axis_radius = ExactTetrahedronAxisRadius(centers);
   BigRat cover_radius = axis_radius * BigRat(19, 20) * BigRat(4, 7);
-  BigRat c = FloorTo(cover_radius - delta, 1000000000LL);
-
+  BigRat diff = cover_radius - delta;
+  if (diff <= BigRat(0)) {
+    if (fail_reason) *fail_reason = StringPrintf("cover_radius - delta <= 0 (diff=%s, cover=%s, delta=%s)",
+                                                 diff.ToString().c_str(), cover_radius.ToString().c_str(), delta.ToString().c_str());
+    return false;
+  }
+  BigRat c = FloorTo(diff, 1000000000LL);
   if (c <= BigRat(0)) {
-    if (fail_reason) *fail_reason = StringPrintf("c <= 0 (c=%s, cover=%s, delta=%s)",
-                                                 c.ToString().c_str(), cover_radius.ToString().c_str(), delta.ToString().c_str());
+    c = FloorTo(diff, 1000000000000LL);
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, 1000000000000000LL);
+  }
+  if (c <= BigRat(0)) {
+    if (fail_reason) *fail_reason = StringPrintf("c <= 0 after high precision floor (diff=%s)",
+                                                 diff.ToString().c_str());
     return false;
   }
 
@@ -492,6 +506,7 @@ struct CandidateTriple {
   ContactInfo contacts[3];
   vec3 normalized_a;
   double strict_slack = 0.0;
+  double B = 0.0;
 };
 
 static inline vec3 GetDoubleEdge(const ContactInfo &c) {
@@ -693,6 +708,7 @@ static void GenerateCandidatesForView(
         cand.contacts[2] = sel_contacts[2];
         cand.normalized_a = normalized_a;
         cand.strict_slack = strict_slack;
+        cand.B = B;
         out_candidates->push_back(cand);
       }
     }
@@ -1050,6 +1066,9 @@ static bool SynthesizeCertificate(
   if (depth >= 6) {
     passes.push_back({5, true, 2e-14});
   }
+  if (depth >= 14) {
+    passes.push_back({6, true, 2e-14});
+  }
 
   for (const auto &pass : passes) {
     std::vector<CandidateTriple> all_cands;
@@ -1090,7 +1109,32 @@ static bool SynthesizeCertificate(
       }
     }
 
-    // Try Wolfe balanced tetrahedron
+    // Try Wolfe balanced tetrahedron on well-conditioned candidates (B >= 0.8)
+    std::vector<int> good_b_indices;
+    std::vector<vec3> good_b_pts;
+    for (size_t i = 0; i < candidates.size(); i++) {
+      if (candidates[i].B >= 0.8) {
+        good_b_indices.push_back(i);
+        good_b_pts.push_back(pts[i]);
+      }
+    }
+    if (good_b_pts.size() >= 4) {
+      std::array<int, 4> good_wolfe_idx;
+      if (FindBalancedTetrahedron(good_b_pts, &good_wolfe_idx)) {
+        TubeCertificate test_cert;
+        for (int a = 0; a < 4; a++) {
+          int orig_idx = good_b_indices[good_wolfe_idx[a]];
+          test_cert.axes[a].contacts[0] = candidates[orig_idx].contacts[0];
+          test_cert.axes[a].contacts[1] = candidates[orig_idx].contacts[1];
+          test_cert.axes[a].contacts[2] = candidates[orig_idx].contacts[2];
+        }
+        if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+          return true;
+        }
+      }
+    }
+
+    // Try Wolfe balanced tetrahedron on all candidates
     std::array<int, 4> wolfe_idx;
     if (FindBalancedTetrahedron(pts, &wolfe_idx)) {
       TubeCertificate test_cert;
@@ -1502,6 +1546,12 @@ class IncrementalTubeManager {
             "[{}] Processed: {} | Queue: {} | Met Target: {} | Pruned: {} | Subdivided: {}\n",
             cur_path, processed, queue.size(), count_target_met.load(), count_pruned.load(), count_subdivided.load()
           ) << std::flush;
+        }
+
+        if (processed % 500 == 0) {
+          std::lock_guard<std::mutex> lock(queue_mu);
+          std::cout << "[CHECKPOINT] Periodic save of tree at " << processed << " nodes...\n" << std::flush;
+          SaveTreeJson(*root_, main_file, /*shallow=*/false);
         }
 
         {
