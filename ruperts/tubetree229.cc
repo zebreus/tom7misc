@@ -108,145 +108,120 @@ std::string SubtreeFilename(std::string_view path, std::string_view base_dir) {
   return std::string(base_dir) + "/" + fname;
 }
 
-template <typename Writer>
-static void SerializeNode(const TreeNode &node, Writer &writer, bool shallow) {
-  writer.StartObject();
+static void SerializeContact(const ContactInfo &ct, std::string &out) {
+  out += "{\"edge_start\": ";
+  out += std::to_string(ct.edge_start);
+  out += ", \"edge_finish\": ";
+  out += std::to_string(ct.edge_finish);
+  out += ", \"edge_start2\": ";
+  out += std::to_string(ct.edge_start2);
+  out += ", \"edge_finish2\": ";
+  out += std::to_string(ct.edge_finish2);
+  out += ", \"mix\": ";
+  out += std::to_string(ct.mix);
+  out += ", \"vertex\": ";
+  out += std::to_string(ct.vertex);
+  out += "}";
+}
 
-  writer.Key("path");
-  writer.String(node.path.c_str(), static_cast<rapidjson::SizeType>(node.path.size()));
+static void SerializeNode(const TreeNode &node, std::string &out, bool shallow) {
+  out += "{\n\"path\": \"";
+  out += node.path;
+  out += "\"";
 
   // Direct bounds
   const auto &db = node.direct_bounds;
   if (db.direct_r_lower > BigRat(0) || db.direct_r_upper > BigRat(0) ||
       db.direct_c_lower > BigRat(0) || db.direct_c_upper > BigRat(0)) {
-    writer.Key("direct_bounds");
-    writer.StartObject();
-    if (db.direct_r_lower > BigRat(0)) {
-      writer.Key("r_lower");
-      std::string s = db.direct_r_lower.ToString();
-      writer.String(s.c_str(), static_cast<rapidjson::SizeType>(s.size()));
-    }
-    if (db.direct_r_upper > BigRat(0)) {
-      writer.Key("r_upper");
-      std::string s = db.direct_r_upper.ToString();
-      writer.String(s.c_str(), static_cast<rapidjson::SizeType>(s.size()));
-    }
-    if (db.direct_c_lower > BigRat(0)) {
-      writer.Key("c_lower");
-      std::string s = db.direct_c_lower.ToString();
-      writer.String(s.c_str(), static_cast<rapidjson::SizeType>(s.size()));
-    }
-    if (db.direct_c_upper > BigRat(0)) {
-      writer.Key("c_upper");
-      std::string s = db.direct_c_upper.ToString();
-      writer.String(s.c_str(), static_cast<rapidjson::SizeType>(s.size()));
-    }
-    writer.EndObject();
+    out += ",\n\"direct_bounds\": {";
+    bool first = true;
+    auto append_bound = [&](const char *key, const BigRat &val) {
+      if (val > BigRat(0)) {
+        if (!first) out += ", ";
+        first = false;
+        out += "\"";
+        out += key;
+        out += "\": \"";
+        out += val.ToString();
+        out += "\"";
+      }
+    };
+    append_bound("r_lower", db.direct_r_lower);
+    append_bound("r_upper", db.direct_r_upper);
+    append_bound("c_lower", db.direct_c_lower);
+    append_bound("c_upper", db.direct_c_upper);
+    out += "}";
   }
 
   // Direct certificate
   if (node.direct_cert.has_value()) {
     const auto &cert = *node.direct_cert;
-    writer.Key("certificate");
-    writer.StartObject();
+    out += ",\n\"certificate\": {\n";
+    out += "\"r\": \"";
+    out += cert.r.ToString();
+    out += "\", \"c\": \"";
+    out += cert.c.ToString();
+    out += "\", \"delta\": \"";
+    out += cert.delta.ToString();
+    out += "\", \"symmetry_index\": ";
+    out += std::to_string(cert.symmetry_index);
+    out += ",\n\"axes\": [\n";
 
-    writer.Key("r");
-    std::string sr = cert.r.ToString();
-    writer.String(sr.c_str(), static_cast<rapidjson::SizeType>(sr.size()));
-
-    writer.Key("c");
-    std::string sc = cert.c.ToString();
-    writer.String(sc.c_str(), static_cast<rapidjson::SizeType>(sc.size()));
-
-    writer.Key("delta");
-    std::string sd = cert.delta.ToString();
-    writer.String(sd.c_str(), static_cast<rapidjson::SizeType>(sd.size()));
-
-    writer.Key("symmetry_index");
-    writer.Int(cert.symmetry_index);
-
-    writer.Key("axes");
-    writer.StartArray();
     for (int a = 0; a < 4; a++) {
       const auto &ax = cert.axes[a];
-      writer.StartObject();
+      out += "{\n\"B\": \"";
+      out += ax.B.ToString();
+      out += "\",\n\"nonzero_witness\": [";
+      out += std::to_string(ax.nonzero_witness[0]);
+      out += ", ";
+      out += std::to_string(ax.nonzero_witness[1]);
+      out += ", ";
+      out += std::to_string(ax.nonzero_witness[2]);
+      out += "],\n\"contacts\": [\n";
 
-      writer.Key("B");
-      std::string sb = ax.B.ToString();
-      writer.String(sb.c_str(), static_cast<rapidjson::SizeType>(sb.size()));
-
-      writer.Key("nonzero_witness");
-      writer.StartArray();
-      for (int i = 0; i < 3; i++) writer.Int(ax.nonzero_witness[i]);
-      writer.EndArray();
-
-      writer.Key("contacts");
-      writer.StartArray();
       for (int m = 0; m < 3; m++) {
-        const auto &ct = ax.contacts[m];
-        writer.StartObject();
-        writer.Key("edge_start");
-        writer.Int(ct.edge_start);
-        writer.Key("edge_finish");
-        writer.Int(ct.edge_finish);
-        writer.Key("edge_start2");
-        writer.Int(ct.edge_start2);
-        writer.Key("edge_finish2");
-        writer.Int(ct.edge_finish2);
-        writer.Key("mix");
-        writer.Int(ct.mix);
-        writer.Key("vertex");
-        writer.Int(ct.vertex);
-        writer.EndObject();
+        SerializeContact(ax.contacts[m], out);
+        if (m + 1 < 3) out += ",\n";
+        else out += "\n";
       }
-      writer.EndArray();
-
-      writer.EndObject();
+      out += "]\n}";
+      if (a + 1 < 4) out += ",\n";
+      else out += "\n";
     }
-    writer.EndArray();
-
-    writer.EndObject();
+    out += "]\n}";
   }
 
   // External reference flag
   if (node.external) {
-    writer.Key("external");
-    writer.Bool(true);
+    out += ",\n\"external\": true";
   } else if (!node.children.empty()) {
     if (shallow && node.external) {
-      writer.Key("external");
-      writer.Bool(true);
+      out += ",\n\"external\": true";
     } else {
-      writer.Key("children");
-      writer.StartArray();
-      for (const auto &child : node.children) {
-        CHECK(child != nullptr);
-        SerializeNode(*child, writer, shallow);
+      out += ",\n\"children\": [\n";
+      for (size_t i = 0; i < node.children.size(); i++) {
+        CHECK(node.children[i] != nullptr);
+        SerializeNode(*node.children[i], out, shallow);
+        if (i + 1 < node.children.size()) out += ",\n";
+        else out += "\n";
       }
-      writer.EndArray();
+      out += "]";
     }
   }
 
-  writer.EndObject();
+  out += "\n}";
 }
 
 bool SaveTreeJson(const TreeNode &root, const std::string &filepath, bool shallow) {
-  rapidjson::StringBuffer s;
-  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(s);
-  writer.SetIndent(' ', 2);
+  std::string s;
+  s.reserve(4 * 1024 * 1024);
+  s += "{\n\"format\": \"tubetree229_v1\",\n\"root_path\": \"";
+  s += root.path;
+  s += "\",\n\"tree\": ";
+  SerializeNode(root, s, shallow);
+  s += "\n}\n";
 
-  writer.StartObject();
-  writer.Key("format");
-  writer.String("tubetree229_v1");
-  writer.Key("root_path");
-  writer.String(root.path.c_str(), static_cast<rapidjson::SizeType>(root.path.size()));
-
-  writer.Key("tree");
-  SerializeNode(root, writer, shallow);
-
-  writer.EndObject();
-
-  return Util::WriteFile(filepath, std::string_view(s.GetString(), s.GetSize()));
+  return Util::WriteFile(filepath, s);
 }
 
 static inline int GetIntVal(const rapidjson::Value &v) {
