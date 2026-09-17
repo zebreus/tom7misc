@@ -1807,30 +1807,17 @@ int main(int argc, char **argv) {
       }
 
     } else if (node.tag == NodeTag::TUBE) {
-      int tube_node_id = 0;
       BigRat r_rat = ParseDecimalRat(node.tube_radius_str.empty() ?
                                      std::to_string(node.tube_radius) :
                                      node.tube_radius_str);
-      if (node.shared_index >= 0 && node.shared_index < 4 && atlas[node.shared_index].loaded) {
-        int best_node = atlas[node.shared_index].FindEnclosingNode(node.subdivision_path);
-        if (best_node >= 0) {
-          const auto &anode = atlas[node.shared_index].nodes[best_node];
-          if (anode.depth == (int)node.subdivision_path.size()) {
-            if (anode.r_rat >= r_rat) {
-              tube_node_id = anode.node_id;
-            } else {
-              std::cerr << "\nWarning: Node " << id << " atlas node " << anode.node_id
-                        << " radius " << anode.r_rat.ToString()
-                        << " < tube radius " << r_rat.ToString() << "\n";
-            }
-          }
-        }
-      }
       outfile << ",6," << lean_id << "," << iv_idx
               << ",0," << ZigzagRatString(r_rat)
               << "," << node.shared_index
-              << "," << tube_node_id
-              << ",0," << tri_idx;
+              << "," << node.subdivision_path.size();
+      for (uint8_t step : node.subdivision_path) {
+        outfile << "," << (int)step;
+      }
+      outfile << ",0," << tri_idx;
 
     } else if (node.tag == NodeTag::PRUNE_RADIUS) {
       outfile << ",7," << lean_id << "," << iv_idx
