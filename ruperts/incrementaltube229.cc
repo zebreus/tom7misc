@@ -1106,10 +1106,11 @@ static bool SynthesizeCertificate(
 
     // 3. Combinatorial exploration over exposed extreme points and ranked origin enclosing tetrahedra
     std::set<int> pool_set;
-    std::mt19937 rng(1337 + depth * 31);
-    std::normal_distribution<double> gauss(0.0, 1.0);
-    for (int d = 0; d < 256; d++) {
-      vec3 dir = {gauss(rng), gauss(rng), gauss(rng)};
+    for (int d = 0; d < 1000; d++) {
+      double y = 1.0 - (d / 999.0) * 2.0;
+      double radius = std::sqrt(std::max(0.0, 1.0 - y * y));
+      double theta = 2.39996322972865332 * d;
+      vec3 dir = {std::cos(theta) * radius, y, std::sin(theta) * radius};
       int best_hi = 0, best_lo = 0;
       double max_v = yocto::dot(pts[0], dir);
       double min_v = max_v;
@@ -1132,7 +1133,7 @@ static bool SynthesizeCertificate(
     int P = pool.size();
     if (P >= 4) {
       uint64_t comb4 = (uint64_t)P * (P - 1) * (P - 2) * (P - 3) / 24;
-      if (comb4 <= 5000) {
+      if (comb4 <= 100000) {
         for (int i = 0; i < P; i++) {
           for (int j = i + 1; j < P; j++) {
             for (int k = j + 1; k < P; k++) {
@@ -1148,17 +1149,76 @@ static bool SynthesizeCertificate(
           }
         }
       } else {
+        std::mt19937 rng(1337 + depth * 31);
         std::uniform_int_distribution<int> dist(0, P - 1);
-        for (int trial = 0; trial < 10000; trial++) {
-          int i0 = pool[dist(rng)], i1 = pool[dist(rng)], i2 = pool[dist(rng)], i3 = pool[dist(rng)];
+        for (int trial = 0; trial < 100000; trial++) {
+          int i0 = dist(rng), i1 = dist(rng), i2 = dist(rng), i3 = dist(rng);
           if (i0 == i1 || i0 == i2 || i0 == i3 || i1 == i2 || i1 == i3 || i2 == i3) continue;
-          vec3 tpts[4] = {pts[i0], pts[i1], pts[i2], pts[i3]};
+          vec3 tpts[4] = {pts[pool[i0]], pts[pool[i1]], pts[pool[i2]], pts[pool[i3]]};
           double margin;
           double bary[4];
           if (TetrahedronOriginMargin(tpts, &margin, bary)) {
-            scored.push_back({margin, {i0, i1, i2, i3}});
+            scored.push_back({margin, {pool[i0], pool[i1], pool[i2], pool[i3]}});
           }
         }
+      }
+    }
+
+    if (scored.empty()) {
+      for (int iter = 0; iter < 50; iter++) {
+        std::vector<int> cur_pool(pool_set.begin(), pool_set.end());
+        ClosestResult closest = ClosestOriginFace(pts, cur_pool);
+        if (closest.key < 1e-12) {
+          if (closest.support.size() == 3) {
+            int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
+            vec3 face_norm = yocto::cross(pts[i1] - pts[i0], pts[i2] - pts[i0]);
+            double len = yocto::length(face_norm);
+            if (len > 1e-9) {
+              face_norm = face_norm / len;
+              int best_pos = -1, best_neg = -1;
+              double max_pos = -1e30, max_neg = -1e30;
+              for (size_t i = 0; i < pts.size(); i++) {
+                double dp = yocto::dot(pts[i], face_norm);
+                if (dp > max_pos) { max_pos = dp; best_pos = i; }
+                double dn = yocto::dot(pts[i], -face_norm);
+                if (dn > max_neg) { max_neg = dn; best_neg = i; }
+              }
+              int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+              for (int e = 0; e < 3; e++) {
+                vec3 tpts[4] = {pts[tri_edges[e][0]], pts[tri_edges[e][1]], pts[best_pos], pts[best_neg]};
+                double margin; double bary[4];
+                if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                  scored.push_back({margin, {tri_edges[e][0], tri_edges[e][1], best_pos, best_neg}});
+                }
+              }
+            }
+          }
+          break;
+        }
+        vec3 v = closest.point;
+        int best_i = -1;
+        double max_dot = -1e30;
+        for (size_t i = 0; i < pts.size(); i++) {
+          double d = yocto::dot(pts[i], -v);
+          if (d > max_dot) { max_dot = d; best_i = i; }
+        }
+        if (max_dot <= 1e-12 || pool_set.count(best_i)) break;
+        pool_set.insert(best_i);
+        for (int i : cur_pool) {
+          for (int j : cur_pool) {
+            if (j <= i) continue;
+            for (int k : cur_pool) {
+              if (k <= j) continue;
+              vec3 tpts[4] = {pts[i], pts[j], pts[k], pts[best_i]};
+              double margin;
+              double bary[4];
+              if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                scored.push_back({margin, {i, j, k, best_i}});
+              }
+            }
+          }
+        }
+        if (!scored.empty()) break;
       }
     }
 
@@ -1243,6 +1303,10 @@ class IncrementalTubeManager {
         reval(reval, root_.get());
         std::cout << "Revalidation finished: kept " << kept << " valid certs, invalidated "
                   << discarded << " stale certs.\n";
+        if (discarded > 0) {
+          std::cout << ACYAN("Saving revalidated tree to ") << main_file << "...\n";
+          SaveTreeJson(*root_, main_file, /*shallow=*/false);
+        }
       }
     }
 
@@ -1276,7 +1340,7 @@ class IncrementalTubeManager {
           infeasible = node->direct_bounds.direct_c_upper > BigRat(0) &&
                        node->direct_bounds.direct_c_upper < target_c_;
         }
-        if (!target_achieved && !infeasible && node->depth() < max_depth_) {
+        if (!target_achieved && !infeasible) {
           queue.push_back(node->path);
         }
       } else {
@@ -1632,10 +1696,11 @@ static void DiagnosePath(const std::string &path) {
 
     // 3. Pool search
     std::set<int> pool_set;
-    std::mt19937 rng(1337 + path.size() * 31);
-    std::normal_distribution<double> gauss(0.0, 1.0);
-    for (int d = 0; d < 256; d++) {
-      vec3 dir = {gauss(rng), gauss(rng), gauss(rng)};
+    for (int d = 0; d < 1000; d++) {
+      double y = 1.0 - (d / 999.0) * 2.0;
+      double radius = std::sqrt(std::max(0.0, 1.0 - y * y));
+      double theta = 2.39996322972865332 * d;
+      vec3 dir = {std::cos(theta) * radius, y, std::sin(theta) * radius};
       int best_hi = 0, best_lo = 0;
       double max_v = yocto::dot(pts_dedup[0], dir);
       double min_v = max_v;
@@ -1659,7 +1724,7 @@ static void DiagnosePath(const std::string &path) {
     if (P >= 4) {
       uint64_t comb4 = (uint64_t)P * (P - 1) * (P - 2) * (P - 3) / 24;
       std::cout << "  Comb4: " << comb4 << "\n";
-      if (comb4 <= 5000) {
+      if (comb4 <= 100000) {
         for (int i = 0; i < P; i++) {
           for (int j = i + 1; j < P; j++) {
             for (int k = j + 1; k < P; k++) {
@@ -1675,17 +1740,83 @@ static void DiagnosePath(const std::string &path) {
           }
         }
       } else {
-        for (int trial = 0; trial < 10000; trial++) {
-          int i0 = pool[trial % P];
-          std::uniform_int_distribution<int> dist(0, P - 1);
-          int i1 = dist(rng), i2 = dist(rng), i3 = dist(rng);
+        std::mt19937 rng(1337 + path.size() * 31);
+        std::uniform_int_distribution<int> dist(0, P - 1);
+        for (int trial = 0; trial < 100000; trial++) {
+          int i0 = dist(rng), i1 = dist(rng), i2 = dist(rng), i3 = dist(rng);
           if (i0 == i1 || i0 == i2 || i0 == i3 || i1 == i2 || i1 == i3 || i2 == i3) continue;
-          vec3 tpts[4] = {pts_dedup[i0], pts_dedup[pool[i1]], pts_dedup[pool[i2]], pts_dedup[pool[i3]]};
+          vec3 tpts[4] = {pts_dedup[pool[i0]], pts_dedup[pool[i1]], pts_dedup[pool[i2]], pts_dedup[pool[i3]]};
           double margin;
           double bary[4];
           if (TetrahedronOriginMargin(tpts, &margin, bary)) {
-            scored.push_back({margin, {i0, pool[i1], pool[i2], pool[i3]}});
+            scored.push_back({margin, {pool[i0], pool[i1], pool[i2], pool[i3]}});
           }
+        }
+      }
+    }
+    if (scored.empty()) {
+      std::cout << "  Initial pool did not enclose origin; running cutting plane refinement...\n";
+      for (int iter = 0; iter < 50; iter++) {
+        std::vector<int> cur_pool(pool_set.begin(), pool_set.end());
+        ClosestResult closest = ClosestOriginFace(pts_dedup, cur_pool);
+        std::cout << "    iter " << iter << " closest.key: " << closest.key << " support size: " << closest.support.size() << "\n";
+        if (closest.key < 1e-12) {
+          std::cout << "    closest.key < 1e-12 (origin inside conv(cur_pool))!\n";
+          if (closest.support.size() == 3) {
+            int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
+            vec3 face_norm = yocto::cross(pts_dedup[i1] - pts_dedup[i0], pts_dedup[i2] - pts_dedup[i0]);
+            double len = yocto::length(face_norm);
+            if (len > 1e-9) {
+              face_norm = face_norm / len;
+              int best_pos = -1, best_neg = -1;
+              double max_pos = -1e30, max_neg = -1e30;
+              for (size_t i = 0; i < pts_dedup.size(); i++) {
+                double dp = yocto::dot(pts_dedup[i], face_norm);
+                if (dp > max_pos) { max_pos = dp; best_pos = i; }
+                double dn = yocto::dot(pts_dedup[i], -face_norm);
+                if (dn > max_neg) { max_neg = dn; best_neg = i; }
+              }
+              std::cout << "    Normal piercing: best_pos=" << best_pos << " (" << max_pos << ") best_neg=" << best_neg << " (" << max_neg << ")\n";
+              int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+              for (int e = 0; e < 3; e++) {
+                vec3 tpts[4] = {pts_dedup[tri_edges[e][0]], pts_dedup[tri_edges[e][1]], pts_dedup[best_pos], pts_dedup[best_neg]};
+                double margin; double bary[4];
+                if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                  scored.push_back({margin, {tri_edges[e][0], tri_edges[e][1], best_pos, best_neg}});
+                }
+              }
+              std::cout << "    Normal piercing found " << scored.size() << " enclosing tets!\n";
+            }
+          }
+          break;
+        }
+        vec3 v = closest.point;
+        int best_i = -1;
+        double max_dot = -1e30;
+        for (size_t i = 0; i < pts_dedup.size(); i++) {
+          double d = yocto::dot(pts_dedup[i], -v);
+          if (d > max_dot) { max_dot = d; best_i = i; }
+        }
+        std::cout << "    max_dot in direction -v: " << max_dot << " best_i: " << best_i << " already in pool: " << pool_set.count(best_i) << "\n";
+        if (max_dot <= 1e-12 || pool_set.count(best_i)) break;
+        pool_set.insert(best_i);
+        for (int i : cur_pool) {
+          for (int j : cur_pool) {
+            if (j <= i) continue;
+            for (int k : cur_pool) {
+              if (k <= j) continue;
+              vec3 tpts[4] = {pts_dedup[i], pts_dedup[j], pts_dedup[k], pts_dedup[best_i]};
+              double margin;
+              double bary[4];
+              if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                scored.push_back({margin, {i, j, k, best_i}});
+              }
+            }
+          }
+        }
+        if (!scored.empty()) {
+          std::cout << "    Cutting plane found " << scored.size() << " enclosing tets!\n";
+          break;
         }
       }
     }
