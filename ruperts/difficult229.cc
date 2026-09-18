@@ -553,7 +553,7 @@ static int RunDifficult(
       std::error_code ec;
       std::filesystem::remove(tmp_path, ec);
       total_timed_out++;
-      mgr.status.Print(AYELLOW("  ⏱")
+      mgr.status.Print(AORANGE("  ⏱")
             " Cell #{} TIMED OUT after {} (remaining stack: {}, shelved: {}).\n"
             " Retaining in {}.\n",
             cell.id, ANSI::Time(cell_seconds), FormatNum(mgr.stack.size()),

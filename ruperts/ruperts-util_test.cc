@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <numbers>
 #include <optional>
 #include <tuple>
 #include <vector>
@@ -288,6 +289,84 @@ static void TestMaximizeClearance2D() {
         CHECK(dot(edge.normal, shifted_v) - edge.b >= res.clearance - 1e-7);
       }
     }
+  }
+
+  // Rotated square-in-square: testing non-axis-aligned edges.
+  {
+    const double angle = std::numbers::pi / 7.0;
+    const double c = std::cos(angle);
+    const double sn = std::sin(angle);
+    auto rot = [c, sn](const vec2 &v) {
+      return vec2{v.x * c - v.y * sn, v.x * sn + v.y * c};
+    };
+
+    std::vector<vec2> rot_outer;
+    for (const vec2 &v : outer) rot_outer.push_back(rot(v));
+    const auto rot_edges = GetHullEdges(rot_outer, hull);
+
+    for (double s : {0.25, 0.5, 0.75}) {
+      const std::vector<vec2> inner = {{-s, -s}, {s, -s}, {s, s}, {-s, s}};
+      std::vector<vec2> rot_inner;
+      for (const vec2 &v : inner) rot_inner.push_back(rot(v));
+
+      const auto res = MaximizeClearance2D(rot_edges, rot_inner,
+                                           vec2{0.0, 0.0}, 0.1);
+      CHECK(std::abs(res.clearance - (1.0 - s)) < 1e-4);
+      CHECK(std::abs(res.translation.x) < 1e-4);
+      CHECK(std::abs(res.translation.y) < 1e-4);
+    }
+  }
+
+  // Regular pentagon.
+  {
+    std::vector<vec2> pent_outer;
+    std::vector<int> pent_hull;
+    for (int i = 0; i < 5; i++) {
+      double a = i * 2.0 * std::numbers::pi / 5.0;
+      pent_outer.push_back({std::cos(a), std::sin(a)});
+      pent_hull.push_back(i);
+    }
+    const auto pent_edges = GetHullEdges(pent_outer, pent_hull);
+
+    for (double s : {0.3, 0.6}) {
+      std::vector<vec2> pent_inner;
+      for (const vec2 &v : pent_outer) {
+        pent_inner.push_back({v.x * s, v.y * s});
+      }
+
+      const auto res = MaximizeClearance2D(pent_edges, pent_inner,
+                                           vec2{0.0, 0.0}, 0.1);
+      const double expected_clearance =
+          (1.0 - s) * std::cos(std::numbers::pi / 5.0);
+      CHECK(std::abs(res.clearance - expected_clearance) < 1e-4);
+      CHECK(std::abs(res.translation.x) < 1e-4);
+      CHECK(std::abs(res.translation.y) < 1e-4);
+    }
+  }
+
+  // Asymmetric triangle, shifted.
+  {
+    const std::vector<vec2> tri_outer = {{-2.0, -1.0}, {2.0, -1.0}, {0.0, 3.0}};
+    const std::vector<int> tri_hull = {0, 1, 2};
+    const auto tri_edges = GetHullEdges(tri_outer, tri_hull);
+
+    const std::vector<vec2> tri_inner = {{-1.0, -0.5}, {1.0, -0.5}, {0.0, 1.5}};
+    const vec2 t0{0.45, -0.3};
+    std::vector<vec2> tri_inner_shifted;
+    for (const vec2 &v : tri_inner) {
+      tri_inner_shifted.push_back(v + t0);
+    }
+
+    const auto res_base = MaximizeClearance2D(tri_edges, tri_inner,
+                                              vec2{0.0, 0.0}, 0.1);
+    const auto res_shifted = MaximizeClearance2D(tri_edges, tri_inner_shifted,
+                                                 vec2{0.0, 0.0}, 0.1);
+
+    CHECK(std::abs(res_shifted.clearance - res_base.clearance) < 1e-4);
+    CHECK(std::abs((res_shifted.translation.x + t0.x) - res_base.translation.x)
+          < 1e-3);
+    CHECK(std::abs((res_shifted.translation.y + t0.y) - res_base.translation.y)
+          < 1e-3);
   }
 }
 

@@ -5,6 +5,7 @@
 // with collision-safe node renumbering and streaming low-memory verification.
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -24,14 +25,17 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "bignum/big.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "geom/hull-2d.h"
+#include "nopert229.h"
 #include "timer.h"
 #include "yocto-math.h"
 
-// Exact rational vertex coordinates for Noperthedron #229
-static const BigRat VERTICES_Q[20][3] = {
+using vec3 = yocto::vec<double, 3>;
+
+// Exact rational vertex coordinates for Nopert candidate #229
+static const BigRat VERTICES_Q[NUM_VERTICES][3] = {
   {BigRat("2142036603832375/50000000000000000"), BigRat("28403317780935653/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
   {BigRat("-171094052819828/1000000000000000"), BigRat("46920848781758567/50000000000000000"), BigRat("3001672949030625/10000000000000000")},
   {BigRat("-2791996671138589/10000000000000000"), BigRat("8916783831939151/10000000000000000"), BigRat("-420605170858861/10000000000000000")},
@@ -54,51 +58,12 @@ static const BigRat VERTICES_Q[20][3] = {
   {BigRat("5910472006450693/10000000000000000"), BigRat("327326655638497/2500000000000000"), BigRat("-382169975802723/500000000000000")}
 };
 
-// Double precision vertex coordinates for candidate ranking (identical to lean229.cc)
-static const double VERTICES_D[20][3] = {
-  {0.0428407320766475, 0.5680663556187131, 0.5648167326177671},
-  {-0.171094052819828, 0.9384169756351713, 0.3001672949030625},
-  {-0.2791996671138589, 0.8916783831939151, -0.0420605170858861},
-  {0.0581211699562287, 0.602579091333187, -0.764339951605446},
-  {-0.5270246949360691, 0.2162861152231751, 0.5648167326177671},
-  {-0.9453585496376318, 0.1272666794475643, 0.3001672949030625},
-  {-0.9343139787381105, 0.0100091111676232, -0.0420605170858861},
-  {-0.5551263421462106, 0.2414836970985378, -0.764339951605446},
-  {-0.3685599064576828, -0.4343941851161148, 0.5648167326177671},
-  {-0.4131696624115331, -0.8597618421012388, 0.3001672949030625},
-  {-0.29823812791044, -0.8854924122951479, -0.0420605170858861},
-  {-0.4012081174529903, -0.4533339587973062, -0.764339951605446},
-  {0.2992421458547392, -0.4847564861402479, 0.5648167326177671},
-  {0.6900056551469845, -0.6586287200963504, 0.3001672949030625},
-  {0.7499926789483198, -0.5572735187461599, -0.0420605170858861},
-  {0.3071660889979028, -0.5216594918898176, -0.764339951605446},
-  {0.5535017234623651, 0.1347982004144742, 0.5648167326177671},
-  {0.8396166097220085, 0.4527069071148534, 0.3001672949030625},
-  {0.7617590948140895, 0.5410784366797694, -0.0420605170858861},
-  {0.5910472006450693, 0.1309306622553988, -0.764339951605446}
-};
-
-struct vec3d {
-  double x, y, z;
-  vec3d operator+(const vec3d &o) const { return {x + o.x, y + o.y, z + o.z}; }
-  vec3d operator-(const vec3d &o) const { return {x - o.x, y - o.y, z - o.z}; }
-  vec3d operator*(double s) const { return {x * s, y * s, z * s}; }
-  vec3d operator/(double s) const { return {x / s, y / s, z / s}; }
-};
-inline vec3d operator*(double s, const vec3d &v) { return v * s; }
-inline double dot(const vec3d &a, const vec3d &b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
-inline vec3d cross(const vec3d &a, const vec3d &b) {
-  return {a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x};
-}
-inline double length(const vec3d &v) { return std::sqrt(dot(v, v)); }
-inline vec3d normalize(const vec3d &v) { double l = length(v); return l > 0 ? v / l : v; }
-
 struct Vec3Q {
   BigRat x, y, z;
   Vec3Q() : x(0), y(0), z(0) {}
   Vec3Q(BigRat x, BigRat y, BigRat z) : x(x), y(y), z(z) {}
 
-  vec3d ToVec3D() const { return {x.ToDouble(), y.ToDouble(), z.ToDouble()}; }
+  vec3 ToVec3D() const { return {x.ToDouble(), y.ToDouble(), z.ToDouble()}; }
 
   Vec3Q operator+(const Vec3Q &o) const { return {x + o.x, y + o.y, z + o.z}; }
   Vec3Q operator-(const Vec3Q &o) const { return {x - o.x, y - o.y, z - o.z}; }
@@ -187,8 +152,8 @@ inline double Bernstein27Min(const double C[10],
   return min_b;
 }
 
-inline void AccumulateContactPoly(double C[10], double weight, vec3d u,
-                                  vec3d vin, vec3d vout, vec3d s) {
+inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
+                                  vec3 vin, vec3 vout, vec3 s) {
   double sx = s.x, sy = s.y, sz = s.z;
   double ux = u.x, uy = u.y, uz = u.z;
   double vx = vin.x, vy = vin.y, vz = vin.z;
@@ -214,13 +179,13 @@ struct ContactInfo {
   int edge_start2;
   int edge_finish2;
   int mix; // 0..1000
-  vec3d edge;
+  vec3 edge;
   double defect;
 };
 
 struct GpuTriple {
   int c0, c1, c2;
-  vec3d w_coeff[3];
+  vec3 w_coeff[3];
   double weighted_defect_upper;
   double min_p;
 };
@@ -230,16 +195,16 @@ struct TrianglePool {
   std::vector<GpuTriple> gpu_triples;
 };
 
-static double ComputeWeightedDefectUpper(const vec3d tri_corners[3],
+static double ComputeWeightedDefectUpper(const vec3 tri_corners[3],
                                          const std::vector<ContactInfo> &contacts,
                                          int c0, int c1, int c2,
-                                         const vec3d w_coeff[3]) {
+                                         const vec3 w_coeff[3]) {
   double total = 0.0;
   const double error = 1e-9;
   const int c_indices[3] = {c0, c1, c2};
   for (int i = 0; i < 3; i++) {
     int sel = contacts[c_indices[i]].vertex;
-    vec3d edge = contacts[c_indices[i]].edge;
+    vec3 edge = contacts[c_indices[i]].edge;
     double w_vals[3] = {
       dot(tri_corners[0], w_coeff[i]) + error,
       dot(tri_corners[1], w_coeff[i]) + error,
@@ -248,12 +213,12 @@ static double ComputeWeightedDefectUpper(const vec3d tri_corners[3],
     double upper = 0.0;
     for (int k = 0; k < 20; k++) {
       if (k == sel) continue;
-      vec3d delta = {
-        VERTICES_D[k][0] - VERTICES_D[sel][0],
-        VERTICES_D[k][1] - VERTICES_D[sel][1],
-        VERTICES_D[k][2] - VERTICES_D[sel][2]
+      vec3 delta = {
+        VERTICES[k][0] - VERTICES[sel][0],
+        VERTICES[k][1] - VERTICES[sel][1],
+        VERTICES[k][2] - VERTICES[sel][2]
       };
-      vec3d s_coeff = cross(edge, delta);
+      vec3 s_coeff = cross(edge, delta);
       double s_vals[3] = {
         dot(tri_corners[0], s_coeff) + error,
         dot(tri_corners[1], s_coeff) + error,
@@ -271,9 +236,9 @@ static double ComputeWeightedDefectUpper(const vec3d tri_corners[3],
   return total;
 }
 
-static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3d tri_corners[3], int cone_samples = 8, bool sort_triples = false) {
+static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3 tri_corners[3], int cone_samples = 8, bool sort_triples = false) {
   auto pool = std::make_shared<TrianglePool>();
-  vec3d uview = normalize((tri_corners[0] + tri_corners[1] + tri_corners[2]) / 3.0);
+  vec3 uview = normalize((tri_corners[0] + tri_corners[1] + tri_corners[2]) / 3.0);
   int min_axis = 0;
   double min_val = std::abs(uview.x);
   if (std::abs(uview.y) < min_val) {
@@ -283,17 +248,17 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3d tri_cor
   if (std::abs(uview.z) < min_val) {
     min_axis = 2;
   }
-  vec3d axis = {0, 0, 0};
+  vec3 axis = {0, 0, 0};
   if (min_axis == 0) axis.x = 1.0;
   else if (min_axis == 1) axis.y = 1.0;
   else axis.z = 1.0;
 
-  vec3d right = normalize(cross(uview, axis));
-  vec3d up = cross(uview, right);
+  vec3 right = normalize(cross(uview, axis));
+  vec3 up = cross(uview, right);
 
   std::vector<yocto::vec<double, 2>> projected(20);
   for (int i = 0; i < 20; i++) {
-    vec3d v = {VERTICES_D[i][0], VERTICES_D[i][1], VERTICES_D[i][2]};
+    vec3 v = {VERTICES[i][0], VERTICES[i][1], VERTICES[i][2]};
     projected[i] = {dot(v, right), dot(v, up)};
   }
 
@@ -307,25 +272,25 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3d tri_cor
     int next = hull[(i + 1) % H];
     int prev = hull[(i - 1 + H) % H];
 
-    vec3d v_curr = {VERTICES_D[curr][0], VERTICES_D[curr][1], VERTICES_D[curr][2]};
-    vec3d v_next = {VERTICES_D[next][0], VERTICES_D[next][1], VERTICES_D[next][2]};
-    vec3d v_prev = {VERTICES_D[prev][0], VERTICES_D[prev][1], VERTICES_D[prev][2]};
+    vec3 v_curr = {VERTICES[curr][0], VERTICES[curr][1], VERTICES[curr][2]};
+    vec3 v_next = {VERTICES[next][0], VERTICES[next][1], VERTICES[next][2]};
+    vec3 v_prev = {VERTICES[prev][0], VERTICES[prev][1], VERTICES[prev][2]};
 
-    vec3d first = v_prev - v_curr;
-    vec3d second = v_curr - v_next;
+    vec3 first = v_prev - v_curr;
+    vec3 second = v_curr - v_next;
 
     for (int s = 0; s <= cone_samples + 1; s++) {
       double lam = (double)s / (cone_samples + 1.0);
-      vec3d e = lam * first + (1.0 - lam) * second;
+      vec3 e = lam * first + (1.0 - lam) * second;
 
       double max_upper = 0.0;
       double min_upper = 1e30;
       for (int k = 0; k < 20; k++) {
         if (k == curr) continue;
-        vec3d delta = {VERTICES_D[k][0] - VERTICES_D[curr][0],
-                       VERTICES_D[k][1] - VERTICES_D[curr][1],
-                       VERTICES_D[k][2] - VERTICES_D[curr][2]};
-        vec3d coeff = cross(e, delta);
+        vec3 delta = {VERTICES[k][0] - VERTICES[curr][0],
+                       VERTICES[k][1] - VERTICES[curr][1],
+                       VERTICES[k][2] - VERTICES[curr][2]};
+        vec3 coeff = cross(e, delta);
         if (length(coeff) < 1e-12) continue;
         double upper = std::max({dot(tri_corners[0], coeff),
                                  dot(tri_corners[1], coeff),
@@ -335,10 +300,10 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3d tri_cor
       }
       if (min_upper >= 0.0) continue;
 
-      vec3d e_norm = normalize(e);
+      vec3 e_norm = normalize(e);
       bool duplicate = false;
       for (const auto &ex : valid_contacts) {
-        vec3d ex_norm = normalize(ex.edge);
+        vec3 ex_norm = normalize(ex.edge);
         if (dot(e_norm, ex_norm) > 1.0 - 1e-9) {
           duplicate = true;
           break;
@@ -369,18 +334,18 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3d tri_cor
   };
   std::vector<SortableTriple> sortable;
 
-  vec3d view = (tri_corners[0] + tri_corners[1] + tri_corners[2]) / 3.0;
+  vec3 view = (tri_corners[0] + tri_corners[1] + tri_corners[2]) / 3.0;
 
   for (int i = 0; i < C; i++) {
     for (int j = i + 1; j < C; j++) {
       for (int k = j + 1; k < C; k++) {
-        vec3d e0 = pool->contacts[i].edge;
-        vec3d e1 = pool->contacts[j].edge;
-        vec3d e2 = pool->contacts[k].edge;
+        vec3 e0 = pool->contacts[i].edge;
+        vec3 e1 = pool->contacts[j].edge;
+        vec3 e2 = pool->contacts[k].edge;
 
-        vec3d coeff0 = cross(e1, e2);
-        vec3d coeff1 = cross(e2, e0);
-        vec3d coeff2 = cross(e0, e1);
+        vec3 coeff0 = cross(e1, e2);
+        vec3 coeff1 = cross(e2, e0);
+        vec3 coeff2 = cross(e0, e1);
 
         double p0 = dot(view, coeff0);
         double p1 = dot(view, coeff1);
@@ -899,21 +864,21 @@ static bool ComputeExactComponent(const TriangleQ &tri,
   }
 
   if (check_displacement) {
-    vec3d vin0 = {VERTICES_D[inner_out[0]][0], VERTICES_D[inner_out[0]][1], VERTICES_D[inner_out[0]][2]};
-    vec3d vout0 = {VERTICES_D[contacts[0]->vertex][0], VERTICES_D[contacts[0]->vertex][1], VERTICES_D[contacts[0]->vertex][2]};
-    vec3d vin1 = {VERTICES_D[inner_out[1]][0], VERTICES_D[inner_out[1]][1], VERTICES_D[inner_out[1]][2]};
-    vec3d vout1 = {VERTICES_D[contacts[1]->vertex][0], VERTICES_D[contacts[1]->vertex][1], VERTICES_D[contacts[1]->vertex][2]};
-    vec3d vin2 = {VERTICES_D[inner_out[2]][0], VERTICES_D[inner_out[2]][1], VERTICES_D[inner_out[2]][2]};
-    vec3d vout2 = {VERTICES_D[contacts[2]->vertex][0], VERTICES_D[contacts[2]->vertex][1], VERTICES_D[contacts[2]->vertex][2]};
+    vec3 vin0 = {VERTICES[inner_out[0]][0], VERTICES[inner_out[0]][1], VERTICES[inner_out[0]][2]};
+    vec3 vout0 = {VERTICES[contacts[0]->vertex][0], VERTICES[contacts[0]->vertex][1], VERTICES[contacts[0]->vertex][2]};
+    vec3 vin1 = {VERTICES[inner_out[1]][0], VERTICES[inner_out[1]][1], VERTICES[inner_out[1]][2]};
+    vec3 vout1 = {VERTICES[contacts[1]->vertex][0], VERTICES[contacts[1]->vertex][1], VERTICES[contacts[1]->vertex][2]};
+    vec3 vin2 = {VERTICES[inner_out[2]][0], VERTICES[inner_out[2]][1], VERTICES[inner_out[2]][2]};
+    vec3 vout2 = {VERTICES[contacts[2]->vertex][0], VERTICES[contacts[2]->vertex][1], VERTICES[contacts[2]->vertex][2]};
 
-    vec3d e0 = contacts[0]->edge;
-    vec3d e1 = contacts[1]->edge;
-    vec3d e2 = contacts[2]->edge;
-    vec3d wc0 = cross(e1, e2);
-    vec3d wc1 = cross(e2, e0);
-    vec3d wc2 = cross(e0, e1);
+    vec3 e0 = contacts[0]->edge;
+    vec3 e1 = contacts[1]->edge;
+    vec3 e2 = contacts[2]->edge;
+    vec3 wc0 = cross(e1, e2);
+    vec3 wc1 = cross(e2, e0);
+    vec3 wc2 = cross(e0, e1);
 
-    vec3d tri_pts[6] = {
+    vec3 tri_pts[6] = {
       tri.corners[0].ToVec3D(),
       tri.corners[1].ToVec3D(),
       tri.corners[2].ToVec3D(),
@@ -929,7 +894,7 @@ static bool ComputeExactComponent(const TriangleQ &tri,
     double wy = 2.0 * box.radii.y.ToDouble();
     double wz = 2.0 * box.radii.z.ToDouble();
 
-    vec3d s_sgn = {1.0, 1.0, 1.0};
+    vec3 s_sgn = {1.0, 1.0, 1.0};
     double defect_penalty = triple.weighted_defect_upper * 1.0001;
     double disp_error = 1.8e-13;
 
@@ -1545,7 +1510,7 @@ int main(int argc, char **argv) {
     if (certs_by_tri[t].empty()) continue;
     const TriangleQ &tri = triangles[t];
 
-    vec3d tri_d[3];
+    vec3 tri_d[3];
     for (int c = 0; c < 3; c++) {
       tri_d[c].x = tri.corners[c].x.ToDouble();
       tri_d[c].y = tri.corners[c].y.ToDouble();
