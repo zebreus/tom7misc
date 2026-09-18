@@ -204,6 +204,16 @@ tubetree229_test.exe : tubetree229_test.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+TUBE_OBJECTS=tube229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+
+tube229_test.exe : tube229_test.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+find_close_certs.exe : find_close_certs.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 INCREMENTALTUBE_OBJECTS=incrementaltube229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 incrementaltube229.exe : $(INCREMENTALTUBE_OBJECTS)

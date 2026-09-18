@@ -1344,7 +1344,34 @@ class IncrementalTubeManager {
     }
 
     std::unordered_map<std::string, TreeNode*> node_map;
-    std::deque<std::string> queue;
+
+    // Prioritized queue: process shallower nodes first (depth-stratified buckets).
+    // Within each depth bucket, nodes are processed in FIFO order.
+    static constexpr int kMaxDepthBuckets = 64;
+    std::array<std::deque<std::string>, kMaxDepthBuckets> queues_by_depth;
+    size_t total_queue_size = 0;
+
+    auto push_queue = [&](const std::string &p) {
+      int d = std::clamp(static_cast<int>(p.size()), 0, kMaxDepthBuckets - 1);
+      queues_by_depth[d].push_back(p);
+      total_queue_size++;
+    };
+
+    auto pop_queue = [&]() -> std::string {
+      for (int d = 0; d < kMaxDepthBuckets; d++) {
+        if (!queues_by_depth[d].empty()) {
+          std::string p = std::move(queues_by_depth[d].front());
+          queues_by_depth[d].pop_front();
+          total_queue_size--;
+          return p;
+        }
+      }
+      return "";
+    };
+
+    auto queue_empty = [&]() -> bool {
+      return total_queue_size == 0;
+    };
 
     auto collect_nodes = [&](auto &self, TreeNode *node) -> void {
       if (!node) return;
@@ -1370,7 +1397,7 @@ class IncrementalTubeManager {
           infeasible = true;
         }
         if (!target_achieved && !infeasible) {
-          queue.push_back(node->path);
+          push_queue(node->path);
         }
       } else {
         for (const auto &child : node->children) {
@@ -1380,8 +1407,8 @@ class IncrementalTubeManager {
     };
     collect_nodes(collect_nodes, root_.get());
 
-    if (queue.empty() && root_->children.empty()) {
-      queue.push_back(root_->path);
+    if (queue_empty() && root_->children.empty()) {
+      push_queue(root_->path);
     }
 
     std::cout << ACYAN("Starting Incremental BFS Tube Search on ") << num_workers_ << " threads\n"
@@ -1389,7 +1416,7 @@ class IncrementalTubeManager {
               << "Target Radius: " << target_r_.ToString() << "\n"
               << "Target Margin: " << target_c_.ToString() << "\n"
               << "Max Depth: " << max_depth_ << "\n"
-              << "Initial Queue: " << queue.size() << " nodes\n\n" << std::flush;
+              << "Initial Queue: " << total_queue_size << " nodes\n\n" << std::flush;
 
     std::mutex queue_mu;
     std::condition_variable cv;
@@ -1399,6 +1426,7 @@ class IncrementalTubeManager {
     std::atomic<int64_t> count_target_met{0};
     std::atomic<int64_t> count_pruned{0};
     std::atomic<int64_t> count_subdivided{0};
+    std::atomic<int64_t> count_capped{0};
 
     auto worker_func = [&](int tid) {
       while (true) {
@@ -1406,7 +1434,7 @@ class IncrementalTubeManager {
         TreeNode *node = nullptr;
         {
           std::unique_lock<std::mutex> lock(queue_mu);
-          while (queue.empty()) {
+          while (queue_empty()) {
             if (busy_workers == 0) {
               done = true;
               cv.notify_all();
@@ -1415,8 +1443,7 @@ class IncrementalTubeManager {
             cv.wait(lock);
             if (done) return;
           }
-          cur_path = queue.front();
-          queue.pop_front();
+          cur_path = pop_queue();
           node = node_map[cur_path];
           busy_workers++;
         }
@@ -1498,7 +1525,8 @@ class IncrementalTubeManager {
         } else if (infeasible) {
           count_pruned++;
         } else if (max_depth_reached) {
-          // Bounded leaf at depth cap
+          // Cap depth splits: strictly enforce max_depth cap and do not split further.
+          count_capped++;
         } else {
           // Subdivide!
           count_subdivided++;
@@ -1514,17 +1542,28 @@ class IncrementalTubeManager {
               node->children.push_back(std::move(child));
             }
             for (const auto &np : new_paths) {
-              queue.push_back(np);
+              push_queue(np);
             }
             cv.notify_all();
           }
         }
 
+        // TODO(tom7): Idea 3 - Ancestor Pruning / Shallower Certificates:
+        // When all 4 children of an internal node possess valid certificates (or when
+        // a parent triangle is audited against recent certificates), verify if the parent
+        // can be certified with r = min(child_r), allowing the 4 child nodes to be
+        // pruned/coalesced to keep the tree compact and accelerate verification.
+
         int64_t processed = ++total_processed;
         if (processed % 100 == 0) {
+          size_t q_size = 0;
+          {
+            std::lock_guard<std::mutex> lock(queue_mu);
+            q_size = total_queue_size;
+          }
           std::cout << std::format(
-            "[{}] Processed: {} | Queue: {} | Met Target: {} | Pruned: {} | Subdivided: {}\n",
-            cur_path, processed, queue.size(), count_target_met.load(), count_pruned.load(), count_subdivided.load()
+            "[{}] Processed: {} | Queue: {} | Met Target: {} | Pruned: {} | Subdivided: {} | Capped: {}\n",
+            cur_path, processed, q_size, count_target_met.load(), count_pruned.load(), count_subdivided.load(), count_capped.load()
           ) << std::flush;
         }
 
@@ -1537,7 +1576,7 @@ class IncrementalTubeManager {
         {
           std::lock_guard<std::mutex> lock(queue_mu);
           busy_workers--;
-          if (queue.empty() && busy_workers == 0) {
+          if (queue_empty() && busy_workers == 0) {
             done = true;
             cv.notify_all();
             return;
