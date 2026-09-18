@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include "base/logging.h"
@@ -1094,6 +1095,115 @@ static void RenderFullSphere(const std::vector<LeafTriangle> &leaves,
   Printf("Saved %s (%dx%d)\n", outfile.c_str(), WIDTH, HEIGHT);
 }
 
+// Projective Triangle domain constants on the 4K canvas:
+// C0 = (1, 0, 0) -> bottom-left
+// C1 = (10/41, 31/41, 0) -> bottom-right
+// C2 = (0, 0, 1) -> top-apex
+static constexpr vec2 PROJ_P_C0{400.0, 1960.0};
+static constexpr vec2 PROJ_P_C1{2720.0, 1960.0};
+static constexpr vec2 PROJ_P_C2{1560.0, 200.0};
+
+// Convert exact 3D ray point to 2D projective barycentric screen space.
+static inline vec2 ProjectiveToBarycentric(const vec3 &p) {
+  double c2 = p.z;
+  double c1 = (41.0 / 31.0) * p.y;
+  double c0 = p.x - (10.0 / 31.0) * p.y;
+  double sum = c0 + c1 + c2;
+  if (sum <= 0.0) sum = 1.0;
+  double u0 = c0 / sum;
+  double u1 = c1 / sum;
+  double u2 = c2 / sum;
+
+  double sx = u0 * PROJ_P_C0.x + u1 * PROJ_P_C1.x + u2 * PROJ_P_C2.x;
+  double sy = u0 * PROJ_P_C0.y + u1 * PROJ_P_C1.y + u2 * PROJ_P_C2.y;
+  return vec2{sx, sy};
+}
+
+// Cohen-Sutherland 2D line segment clipping against [xmin, xmax] x [ymin, ymax].
+static bool ClipLineToBox(double &x0, double &y0, double &x1, double &y1,
+                          double xmin, double xmax, double ymin, double ymax) {
+  auto Code = [&](double x, double y) -> int {
+    int code = 0;
+    if (x < xmin) code |= 1;
+    else if (x > xmax) code |= 2;
+    if (y < ymin) code |= 4;
+    else if (y > ymax) code |= 8;
+    return code;
+  };
+
+  int c0 = Code(x0, y0);
+  int c1 = Code(x1, y1);
+
+  while (true) {
+    if ((c0 | c1) == 0) return true;
+    if (c0 & c1) return false;
+
+    int c_out = c0 ? c0 : c1;
+    double x = 0, y = 0;
+    if (c_out & 8) {
+      x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
+      y = ymax;
+    } else if (c_out & 4) {
+      x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+      y = ymin;
+    } else if (c_out & 2) {
+      y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+      x = xmax;
+    } else if (c_out & 1) {
+      y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+      x = xmin;
+    }
+
+    if (c_out == c0) {
+      x0 = x; y0 = y;
+      c0 = Code(x0, y0);
+    } else {
+      x1 = x; y1 = y;
+      c1 = Code(x1, y1);
+    }
+  }
+}
+
+// Sutherland-Hodgman polygon clipping against [xmin, xmax] x [ymin, ymax].
+static std::vector<vec2> ClipPolygonToBox(const std::vector<vec2> &poly,
+                                          double xmin, double xmax,
+                                          double ymin, double ymax) {
+  std::vector<vec2> output = poly;
+
+  auto ClipAgainstEdge = [&](double nx, double ny, double d) {
+    if (output.empty()) return;
+    std::vector<vec2> input = output;
+    output.clear();
+    for (size_t i = 0; i < input.size(); i++) {
+      vec2 curr = input[i];
+      vec2 prev = input[(i + input.size() - 1) % input.size()];
+      double d_curr = curr.x * nx + curr.y * ny - d;
+      double d_prev = prev.x * nx + prev.y * ny - d;
+      if (d_curr >= 0.0) {
+        if (d_prev < 0.0) {
+          double denom = d_curr - d_prev;
+          double t = (std::abs(denom) > 1e-12) ? (-d_prev / denom) : 0.0;
+          output.push_back(vec2{prev.x + t * (curr.x - prev.x),
+                                prev.y + t * (curr.y - prev.y)});
+        }
+        output.push_back(curr);
+      } else if (d_prev >= 0.0) {
+        double denom = d_curr - d_prev;
+        double t = (std::abs(denom) > 1e-12) ? (-d_prev / denom) : 0.0;
+        output.push_back(vec2{prev.x + t * (curr.x - prev.x),
+                              prev.y + t * (curr.y - prev.y)});
+      }
+    }
+  };
+
+  ClipAgainstEdge(1.0, 0.0, xmin);
+  ClipAgainstEdge(-1.0, 0.0, -xmax);
+  ClipAgainstEdge(0.0, 1.0, ymin);
+  ClipAgainstEdge(0.0, -1.0, -ymax);
+
+  return output;
+}
+
 // ----------------------------------------------------------------------------
 // VIEW 4: Projective Plane Triangle View (Barycentric Subdivision)
 // ----------------------------------------------------------------------------
@@ -1111,28 +1221,9 @@ static void RenderProjectivePlane(const std::vector<LeafTriangle> &leaves,
   base_img.BlendText2x32(60, 102, 0x00FFCCFF,
                          "Straight lines from apex C2 are constant phi meridians; horizontal lines are constant z parallels");
 
-  // Triangle corners on 4K screen:
-  // C0 = (1, 0, 0) -> bottom-left
-  // C1 = (10/41, 31/41, 0) -> bottom-right
-  // C2 = (0, 0, 1) -> top-apex
-  const vec2 P_C0{400.0, 1960.0};
-  const vec2 P_C1{2720.0, 1960.0};
-  const vec2 P_C2{1560.0, 200.0};
-
-  auto ProjectiveToBarycentric = [&](const vec3 &p) -> vec2 {
-    double c2 = p.z;
-    double c1 = (41.0 / 31.0) * p.y;
-    double c0 = p.x - (10.0 / 31.0) * p.y;
-    double sum = c0 + c1 + c2;
-    if (sum <= 0.0) sum = 1.0;
-    double u0 = c0 / sum;
-    double u1 = c1 / sum;
-    double u2 = c2 / sum;
-
-    double sx = u0 * P_C0.x + u1 * P_C1.x + u2 * P_C2.x;
-    double sy = u0 * P_C0.y + u1 * P_C1.y + u2 * P_C2.y;
-    return vec2{sx, sy};
-  };
+  const vec2 &P_C0 = PROJ_P_C0;
+  const vec2 &P_C1 = PROJ_P_C1;
+  const vec2 &P_C2 = PROJ_P_C2;
 
   DrawTriangle(&base_img,
                (int)P_C0.x, (int)P_C0.y,
@@ -1247,6 +1338,530 @@ static void RenderProjectivePlane(const std::vector<LeafTriangle> &leaves,
 
   base_img.Save(outfile);
   Printf("Saved %s (%dx%d)\n", outfile.c_str(), WIDTH, HEIGHT);
+}
+
+// ----------------------------------------------------------------------------
+// VIEW 5: Zoomed Subdivision Detail View (16:9 Full Screen, Projective Domain)
+// ----------------------------------------------------------------------------
+struct ZoomBox {
+  double x0 = 0.0;
+  double x1 = 0.0;
+  double y0 = 0.0;
+  double y1 = 0.0;
+  double zoom_mag = 1.0;
+  std::string focal_desc1;
+  std::string focal_desc2;
+};
+
+static ZoomBox FindZoomBox(int tree_idx, const std::vector<LeafTriangle> &all_leaves) {
+  std::vector<const LeafTriangle *> tree_leaves;
+  std::vector<const LeafTriangle *> incomp_leaves;
+  int max_depth = 0;
+
+  for (const auto &leaf : all_leaves) {
+    if (leaf.root == tree_idx) {
+      tree_leaves.push_back(&leaf);
+      max_depth = std::max(max_depth, leaf.depth);
+      if (leaf.is_incomplete) {
+        incomp_leaves.push_back(&leaf);
+      }
+    }
+  }
+
+  ZoomBox box;
+  constexpr double ASPECT = 16.0 / 9.0;
+
+  auto FitTo16By9 = [&](double min_x, double max_x,
+                        double min_y, double max_y,
+                        double margin_frac) {
+    double bw = std::max(max_x - min_x, 1e-4);
+    double bh = std::max(max_y - min_y, 1e-4);
+    double w_prime = bw * (1.0 + 2.0 * margin_frac);
+    double h_prime = bh * (1.0 + 2.0 * margin_frac);
+    double cx = (min_x + max_x) * 0.5;
+    double cy = (min_y + max_y) * 0.5;
+    double wf, hf;
+    if (w_prime / h_prime < ASPECT) {
+      wf = ASPECT * h_prime;
+      hf = h_prime;
+    } else {
+      wf = w_prime;
+      hf = w_prime / ASPECT;
+    }
+    box.x0 = cx - wf * 0.5;
+    box.x1 = cx + wf * 0.5;
+    box.y0 = cy - hf * 0.5;
+    box.y1 = cy + hf * 0.5;
+    box.zoom_mag = 3840.0 / wf;
+  };
+
+  if (!incomp_leaves.empty()) {
+    // Incomplete tree: take bounding box of incomplete regions + 5% margin
+    double min_x = 1e30, max_x = -1e30;
+    double min_y = 1e30, max_y = -1e30;
+    for (const auto *leaf : incomp_leaves) {
+      for (int v = 0; v < 3; v++) {
+        vec2 pt = ProjectiveToBarycentric(leaf->p[v]);
+        min_x = std::min(min_x, pt.x);
+        max_x = std::max(max_x, pt.x);
+        min_y = std::min(min_y, pt.y);
+        max_y = std::max(max_y, pt.y);
+      }
+    }
+    FitTo16By9(min_x, max_x, min_y, max_y, 0.05);
+    box.focal_desc1 = "Incomplete pinch canyon";
+    box.focal_desc2 = std::format("{} cells, depth 7..{}", incomp_leaves.size(), max_depth);
+    return box;
+  }
+
+  // Complete tree: choose an area that has a lot of subdivision.
+  // Evaluate bounding box of deepest leaves vs dense subdivision subtrees.
+  std::vector<const LeafTriangle *> deepest_leaves;
+  for (const auto *leaf : tree_leaves) {
+    if (leaf->depth == max_depth) {
+      deepest_leaves.push_back(leaf);
+    }
+  }
+
+  double d_min_x = 1e30, d_max_x = -1e30;
+  double d_min_y = 1e30, d_max_y = -1e30;
+  for (const auto *leaf : deepest_leaves) {
+    for (int v = 0; v < 3; v++) {
+      vec2 pt = ProjectiveToBarycentric(leaf->p[v]);
+      d_min_x = std::min(d_min_x, pt.x);
+      d_max_x = std::max(d_max_x, pt.x);
+      d_min_y = std::min(d_min_y, pt.y);
+      d_max_y = std::max(d_max_y, pt.y);
+    }
+  }
+
+  double d_width = d_max_x - d_min_x;
+  // If the deepest leaves form a compact cluster (<= 150 projective pixels),
+  // zoom in directly on the deepest leaves with 5% margin!
+  if (d_width <= 150.0 && !deepest_leaves.empty()) {
+    FitTo16By9(d_min_x, d_max_x, d_min_y, d_max_y, 0.05);
+    box.focal_desc1 = "Deepest subdivision";
+    box.focal_desc2 = std::format("{} cells at max depth {}", deepest_leaves.size(), max_depth);
+  } else {
+    // If the deepest leaves are spread along an extended boundary (like Tree 1),
+    // group leaves by depth-5 path prefix (5 digits) and find the prefix
+    // with the highest number of deep leaves:
+    std::unordered_map<std::string, std::vector<const LeafTriangle *>> prefix_map;
+    for (const auto *leaf : tree_leaves) {
+      if (leaf->path.size() >= 5) {
+        prefix_map[leaf->path.substr(0, 5)].push_back(leaf);
+      }
+    }
+
+    std::string best_prefix;
+    size_t best_count = 0;
+    for (const auto &[pref, plist] : prefix_map) {
+      if (plist.size() > best_count) {
+        best_count = plist.size();
+        best_prefix = pref;
+      }
+    }
+
+    if (!best_prefix.empty()) {
+      const auto &plist = prefix_map[best_prefix];
+      double p_min_x = 1e30, p_max_x = -1e30;
+      double p_min_y = 1e30, p_max_y = -1e30;
+      for (const auto *leaf : plist) {
+        for (int v = 0; v < 3; v++) {
+          vec2 pt = ProjectiveToBarycentric(leaf->p[v]);
+          p_min_x = std::min(p_min_x, pt.x);
+          p_max_x = std::max(p_max_x, pt.x);
+          p_min_y = std::min(p_min_y, pt.y);
+          p_max_y = std::max(p_max_y, pt.y);
+        }
+      }
+      FitTo16By9(p_min_x, p_max_x, p_min_y, p_max_y, 0.05);
+      box.focal_desc1 = std::format("Dense cluster (prefix {})", best_prefix);
+      box.focal_desc2 = std::format("{} leaves, max depth {}", plist.size(), max_depth);
+    } else {
+      // Fallback
+      FitTo16By9(d_min_x, d_max_x, d_min_y, d_max_y, 0.05);
+      box.focal_desc1 = "Subdivision detail";
+      box.focal_desc2 = std::format("Maximum depth {}", max_depth);
+    }
+  }
+
+  // For complete trees: check if all triangles in view are large.
+  // Zoom out around the focal center while all triangles in the zoomed view
+  // are large (i.e. until at least some triangle in the zoomed image is small,
+  // say <= 16 pixels tall or wide).
+  double cx = (box.x0 + box.x1) * 0.5;
+  double cy = (box.y0 + box.y1) * 0.5;
+  double cur_w = box.x1 - box.x0;
+  double cur_h = box.y1 - box.y0;
+
+  struct LeafBBox {
+    double min_x, max_x, min_y, max_y;
+    double w, h;
+  };
+  std::vector<LeafBBox> bboxes;
+  bboxes.reserve(tree_leaves.size());
+  for (const auto *leaf : tree_leaves) {
+    double lx0 = 1e30, lx1 = -1e30, ly0 = 1e30, ly1 = -1e30;
+    for (int v = 0; v < 3; v++) {
+      vec2 pt = ProjectiveToBarycentric(leaf->p[v]);
+      lx0 = std::min(lx0, pt.x);
+      lx1 = std::max(lx1, pt.x);
+      ly0 = std::min(ly0, pt.y);
+      ly1 = std::max(ly1, pt.y);
+    }
+    bboxes.push_back({lx0, lx1, ly0, ly1, lx1 - lx0, ly1 - ly0});
+  }
+
+  auto AnyTriangleSmallInView = [&](double w, double h) -> bool {
+    double mag = 3840.0 / w;
+    double vx0 = cx - w * 0.5;
+    double vx1 = cx + w * 0.5;
+    double vy0 = cy - h * 0.5;
+    double vy1 = cy + h * 0.5;
+
+    for (const auto &b : bboxes) {
+      if (b.max_x < vx0 || b.min_x > vx1 || b.max_y < vy0 || b.min_y > vy1) {
+        continue;
+      }
+      double tw = b.w * mag;
+      double th = b.h * mag;
+      // Small if <= 16 pixels tall or wide
+      if (tw <= 16.0 || th <= 16.0) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  while (!AnyTriangleSmallInView(cur_w, cur_h) && cur_w < 2400.0) {
+    cur_w *= 1.02;
+    cur_h = cur_w / ASPECT;
+  }
+
+  box.x0 = cx - cur_w * 0.5;
+  box.x1 = cx + cur_w * 0.5;
+  box.y0 = cy - cur_h * 0.5;
+  box.y1 = cy + cur_h * 0.5;
+  box.zoom_mag = 3840.0 / cur_w;
+  return box;
+}
+
+static void RenderZoomView(const std::vector<LeafTriangle> &all_leaves,
+                           int tree_idx,
+                           uint8_t line_alpha,
+                           const std::string &outfile) {
+  ImageRGBA base_img(WIDTH, HEIGHT);
+  base_img.Clear32(0x101218FF);
+
+  ZoomBox zoom_box = FindZoomBox(tree_idx, all_leaves);
+
+  auto ProjToScreen = [&](const vec2 &p) -> vec2 {
+    double sx = (p.x - zoom_box.x0) / (zoom_box.x1 - zoom_box.x0) * (double)WIDTH;
+    double sy = (p.y - zoom_box.y0) / (zoom_box.y1 - zoom_box.y0) * (double)HEIGHT;
+    return vec2{sx, sy};
+  };
+
+  ImageRGBA wireframe(WIDTH, HEIGHT);
+  wireframe.Clear32(0x00000000);
+  ImageRGBA incomplete_wireframe(WIDTH, HEIGHT);
+  incomplete_wireframe.Clear32(0x00000000);
+
+  int total_tree_leaves = 0;
+  int leaves_in_view = 0;
+  int cert_in_view = 0;
+  int incomp_in_view = 0;
+
+  // Render leaves belonging to this tree
+  for (const auto &leaf : all_leaves) {
+    if (leaf.root != tree_idx) continue;
+    total_tree_leaves++;
+
+    vec2 p0 = ProjectiveToBarycentric(leaf.p[0]);
+    vec2 p1 = ProjectiveToBarycentric(leaf.p[1]);
+    vec2 p2 = ProjectiveToBarycentric(leaf.p[2]);
+
+    // Fast bounding box rejection in projective coordinates
+    double b_min_x = std::min({p0.x, p1.x, p2.x});
+    double b_max_x = std::max({p0.x, p1.x, p2.x});
+    double b_min_y = std::min({p0.y, p1.y, p2.y});
+    double b_max_y = std::max({p0.y, p1.y, p2.y});
+    if (b_max_x < zoom_box.x0 || b_min_x > zoom_box.x1 ||
+        b_max_y < zoom_box.y0 || b_min_y > zoom_box.y1) {
+      continue;
+    }
+
+    vec2 s0 = ProjToScreen(p0);
+    vec2 s1 = ProjToScreen(p1);
+    vec2 s2 = ProjToScreen(p2);
+
+    double scr_min_x = std::min({s0.x, s1.x, s2.x});
+    double scr_max_x = std::max({s0.x, s1.x, s2.x});
+    double scr_min_y = std::min({s0.y, s1.y, s2.y});
+    double scr_max_y = std::max({s0.y, s1.y, s2.y});
+
+    if (scr_max_x < 0.0 || scr_min_x >= (double)WIDTH ||
+        scr_max_y < 0.0 || scr_min_y >= (double)HEIGHT) {
+      continue;
+    }
+
+    leaves_in_view++;
+    if (leaf.is_incomplete) incomp_in_view++;
+    else cert_in_view++;
+
+    // Draw triangle (with clipping if needed)
+    if (scr_min_x >= 0.0 && scr_max_x < (double)WIDTH &&
+        scr_min_y >= 0.0 && scr_max_y < (double)HEIGHT) {
+      // Completely on screen
+      if (leaf.is_incomplete) {
+        DrawStippledTriangle(&base_img,
+                             (int)std::round(s0.x), (int)std::round(s0.y),
+                             (int)std::round(s1.x), (int)std::round(s1.y),
+                             (int)std::round(s2.x), (int)std::round(s2.y),
+                             leaf.color);
+      } else {
+        DrawTriangle(&base_img,
+                     (int)std::round(s0.x), (int)std::round(s0.y),
+                     (int)std::round(s1.x), (int)std::round(s1.y),
+                     (int)std::round(s2.x), (int)std::round(s2.y),
+                     leaf.color);
+      }
+    } else {
+      // Straddles screen boundary: clip polygon
+      std::vector<vec2> poly = {s0, s1, s2};
+      poly = ClipPolygonToBox(poly, 0.0, (double)(WIDTH - 1), 0.0, (double)(HEIGHT - 1));
+      if (poly.size() >= 3) {
+        for (size_t i = 1; i + 1 < poly.size(); i++) {
+          if (leaf.is_incomplete) {
+            DrawStippledTriangle(&base_img,
+                                 (int)std::round(poly[0].x), (int)std::round(poly[0].y),
+                                 (int)std::round(poly[i].x), (int)std::round(poly[i].y),
+                                 (int)std::round(poly[i + 1].x), (int)std::round(poly[i + 1].y),
+                                 leaf.color);
+          } else {
+            DrawTriangle(&base_img,
+                         (int)std::round(poly[0].x), (int)std::round(poly[0].y),
+                         (int)std::round(poly[i].x), (int)std::round(poly[i].y),
+                         (int)std::round(poly[i + 1].x), (int)std::round(poly[i + 1].y),
+                         leaf.color);
+          }
+        }
+      }
+    }
+
+    // Wireframe edges: clip each edge to screen boundary
+    vec2 edge_v[3][2] = {{s0, s1}, {s1, s2}, {s2, s0}};
+    for (int e = 0; e < 3; e++) {
+      double lx0 = edge_v[e][0].x, ly0 = edge_v[e][0].y;
+      double lx1 = edge_v[e][1].x, ly1 = edge_v[e][1].y;
+      if (ClipLineToBox(lx0, ly0, lx1, ly1, 0.0, (double)(WIDTH - 1), 0.0, (double)(HEIGHT - 1))) {
+        if (leaf.is_incomplete) {
+          incomplete_wireframe.BlendLine32((int)std::round(lx0), (int)std::round(ly0),
+                                          (int)std::round(lx1), (int)std::round(ly1),
+                                          INCOMPLETE_OUTLINE_COLOR);
+        } else {
+          wireframe.BlendLine32((int)std::round(lx0), (int)std::round(ly0),
+                                (int)std::round(lx1), (int)std::round(ly1),
+                                0xFFFFFF00);
+        }
+      }
+    }
+  }
+
+  // Blend wireframes
+  for (uint32_t &p : wireframe.data()) {
+    if ((p & 0xFF) != 0) p = (p & 0xFFFFFF00) | line_alpha;
+  }
+  base_img.BlendImage(0, 0, wireframe);
+
+  for (uint32_t &p : incomplete_wireframe.data()) {
+    if ((p & 0xFF) != 0) p = (p & 0xFFFFFF00) | 0xE6;
+  }
+  base_img.BlendImage(0, 0, incomplete_wireframe);
+
+  // Canyon 1 & 2 guide lines
+  auto DrawCanyonLine = [&](const vec2 &start, const vec2 &end, uint32_t color,
+                            std::string_view label) {
+    double x0 = start.x, y0 = start.y, x1 = end.x, y1 = end.y;
+    if (ClipLineToBox(x0, y0, x1, y1, 0.0, (double)(WIDTH - 1), 0.0, (double)(HEIGHT - 1))) {
+      DrawThickSegment(&base_img, (float)x0, (float)y0, (float)x1, (float)y1, color, 3.5f);
+      int lx = (int)std::clamp((x0 + x1) * 0.5 + 15.0, 40.0, (double)(WIDTH - 300));
+      int ly = (int)std::clamp((y0 + y1) * 0.5 - 20.0, 40.0, (double)(HEIGHT - 40));
+      BlendTextOutline2x32(&base_img, lx, ly, 0x000000FF, color, label);
+    }
+  };
+
+  vec2 c1_base = ProjectiveToBarycentric(vec3{std::cos(CANYON1.phi_rad), std::sin(CANYON1.phi_rad), 0.0});
+  DrawCanyonLine(ProjToScreen(PROJ_P_C2), ProjToScreen(c1_base), 0xFF3366FF, "Canyon 1 (Az 2.22')");
+
+  double c1_proj_z = CANYON1.v.z / (CANYON1.v.x + CANYON1.v.y + CANYON1.v.z);
+  vec2 c1_left = (1.0 - c1_proj_z) * PROJ_P_C0 + c1_proj_z * PROJ_P_C2;
+  vec2 c1_right = (1.0 - c1_proj_z) * PROJ_P_C1 + c1_proj_z * PROJ_P_C2;
+  DrawCanyonLine(ProjToScreen(c1_left), ProjToScreen(c1_right), 0xFF3366FF, "Canyon 1 (Elev 9.63')");
+
+  vec2 c2_base = ProjectiveToBarycentric(vec3{std::cos(CANYON2.phi_rad), std::sin(CANYON2.phi_rad), 0.0});
+  DrawCanyonLine(ProjToScreen(PROJ_P_C2), ProjToScreen(c2_base), 0xFFD700FF, "Canyon 2 (Az 12.90')");
+
+  double c2_proj_z = CANYON2.v.z / (CANYON2.v.x + CANYON2.v.y + CANYON2.v.z);
+  vec2 c2_left = (1.0 - c2_proj_z) * PROJ_P_C0 + c2_proj_z * PROJ_P_C2;
+  vec2 c2_right = (1.0 - c2_proj_z) * PROJ_P_C1 + c2_proj_z * PROJ_P_C2;
+  DrawCanyonLine(ProjToScreen(c2_left), ProjToScreen(c2_right), 0xFFD700FF, "Canyon 2 (Elev 18.48')");
+
+  // Root Tree boundary edges
+  std::array<TriangleQ, 4> root_trees = GetRootTrees();
+  const TriangleQ &cur_root = root_trees[tree_idx];
+  vec2 rt_pts[3];
+  for (int v = 0; v < 3; v++) {
+    rt_pts[v] = ProjToScreen(ProjectiveToBarycentric(cur_root.corners[v].ToDouble()));
+  }
+  for (int e = 0; e < 3; e++) {
+    int next_e = (e + 1) % 3;
+    double x0 = rt_pts[e].x, y0 = rt_pts[e].y;
+    double x1 = rt_pts[next_e].x, y1 = rt_pts[next_e].y;
+    if (ClipLineToBox(x0, y0, x1, y1, 0.0, (double)(WIDTH - 1), 0.0, (double)(HEIGHT - 1))) {
+      DrawThickSegment(&base_img, (float)x0, (float)y0, (float)x1, (float)y1,
+                       TREE_STYLES[tree_idx].color, 2.0f);
+    }
+  }
+
+  // Draw corner brackets if any vertex of tree_idx is on-screen
+  for (int v = 0; v < 3; v++) {
+    if (rt_pts[v].x >= 0 && rt_pts[v].x < WIDTH &&
+        rt_pts[v].y >= 0 && rt_pts[v].y < HEIGHT) {
+      int prev_v = (v + 2) % 3;
+      int next_v = (v + 1) % 3;
+      DrawBracket(&base_img, (float)rt_pts[v].x, (float)rt_pts[v].y,
+                  (float)rt_pts[prev_v].x, (float)rt_pts[prev_v].y,
+                  (float)rt_pts[next_v].x, (float)rt_pts[next_v].y,
+                  TREE_STYLES[tree_idx].color, 60.0f);
+    }
+  }
+
+  // HUD Card & Mini-Map
+  const int card_w = 1120;
+  const int card_h = 300;
+  int card_x = 60;
+  // If focal area is in top half of screen, place card at bottom-left; otherwise top-left
+  int card_y = (zoom_box.y0 < 600.0) ? (HEIGHT - card_h - 60) : 60;
+
+  DrawCard(&base_img, card_x, card_y, card_w, card_h, 0x141822F0, TREE_STYLES[tree_idx].color);
+
+  // Tree Badge
+  DrawCard(&base_img, card_x + 24, card_y + 18, 120, 32,
+           TREE_STYLES[tree_idx].badge_bg, TREE_STYLES[tree_idx].color);
+  BlendTextOutline2x32(&base_img, card_x + 32, card_y + 25, 0x000000FF,
+                       TREE_STYLES[tree_idx].color, TREE_STYLES[tree_idx].name);
+
+  // Title
+  BlendTextOutline2x32(&base_img, card_x + 160, card_y + 24, 0x000000FF,
+                       0xFFFFFFFF, "SUBDIVISION DETAIL ZOOM (16:9)");
+
+  // Line 2: Magnification & projection
+  std::string line2 = std::format("Magnification: {:.1f}x  |  Projective Triangle Domain",
+                                  zoom_box.zoom_mag);
+  BlendTextOutline2x32(&base_img, card_x + 24, card_y + 60, 0x000000FF, 0x00FFCCFF, line2);
+
+  // Line 3 & 4: Focal area
+  std::string line3 = std::format("Focal: {}", zoom_box.focal_desc1);
+  BlendTextOutline2x32(&base_img, card_x + 24, card_y + 94, 0x000000FF, 0xCCCCCCFF, line3);
+  if (!zoom_box.focal_desc2.empty()) {
+    std::string line4 = std::format("       {}", zoom_box.focal_desc2);
+    BlendTextOutline2x32(&base_img, card_x + 24, card_y + 128, 0x000000FF, 0xAAAAAAFF, line4);
+  }
+
+  // Line 5 & 6: Cells in view
+  std::string line5 = std::format("In View: {} leaves ({:.1f}% of tree)",
+                                  leaves_in_view,
+                                  total_tree_leaves > 0 ? (leaves_in_view * 100.0 / total_tree_leaves) : 0.0);
+  BlendTextOutline2x32(&base_img, card_x + 24, card_y + 162, 0x000000FF, 0xEEEEEEFF, line5);
+
+  if (incomp_in_view > 0) {
+    std::string line6 = std::format("         {} certified, {} incomplete", cert_in_view, incomp_in_view);
+    BlendTextOutline2x32(&base_img, card_x + 24, card_y + 196, 0x000000FF, 0xFF88CCFF, line6);
+  } else {
+    std::string line6 = std::format("         {} certified (100% complete)", cert_in_view);
+    BlendTextOutline2x32(&base_img, card_x + 24, card_y + 196, 0x000000FF, 0x88FF88FF, line6);
+  }
+
+  // Mini colorbar
+  int bar_x = card_x + 24;
+  int bar_y = card_y + 236;
+  int bar_w = 340;
+  int bar_h = 16;
+  for (int bx = 0; bx < bar_w; bx++) {
+    float tau = (float)bx / (float)(bar_w - 1);
+    uint32_t c = ColorUtil::LinearGradient32(MARGIN_RAMP, tau);
+    for (int by = 0; by < bar_h; by++) {
+      base_img.BlendPixel32(bar_x + bx, bar_y + by, c);
+    }
+  }
+  base_img.BlendBox32(bar_x, bar_y, bar_w, bar_h, 0xFFFFFFFF, 0xFFFFFFFF);
+  BlendTextOutline2x32(&base_img, bar_x, bar_y + 20, 0x000000FF, 0xAAAAAAFF, "1e-4");
+  BlendTextOutline2x32(&base_img, bar_x + bar_w / 2 - 20, bar_y + 20, 0x000000FF, 0xAAAAAAFF, "1e-2");
+  BlendTextOutline2x32(&base_img, bar_x + bar_w - 40, bar_y + 20, 0x000000FF, 0xAAAAAAFF, "1e-1");
+
+  // Incomplete swatch if incomplete cells exist in view
+  if (incomp_in_view > 0) {
+    int sw_x = card_x + 390;
+    int sw_y = bar_y;
+    for (int py = sw_y; py < sw_y + 16; py++) {
+      for (int px = sw_x; px < sw_x + 24; px++) {
+        if (((px / 2) ^ (py / 2)) & 1) {
+          base_img.BlendPixel32(px, py, 0xFFD700FF);
+        }
+      }
+    }
+    base_img.BlendBox32(sw_x, sw_y, 24, 16, INCOMPLETE_OUTLINE_COLOR, INCOMPLETE_OUTLINE_COLOR);
+    base_img.BlendBox32(sw_x - 1, sw_y - 1, 26, 18, INCOMPLETE_OUTLINE_COLOR, INCOMPLETE_OUTLINE_COLOR);
+    BlendTextOutline2x32(&base_img, sw_x + 32, sw_y, 0x000000FF, 0xFF88CCFF,
+                         "Stippled: Incomp bound");
+  }
+
+  // Mini-Map on right of card
+  BlendTextOutline2x32(&base_img, card_x + 885, card_y + 24, 0x000000FF, 0xAAAAAAFF, "Full Domain");
+  const vec2 P0{(double)(card_x + 840), (double)(card_y + 265)};
+  const vec2 P1{(double)(card_x + 1080), (double)(card_y + 265)};
+  const vec2 P2{(double)(card_x + 960), (double)(card_y + 65)};
+  const vec2 M01{(double)(card_x + 960), (double)(card_y + 265)};
+  const vec2 M12{(double)(card_x + 1020), (double)(card_y + 165)};
+  const vec2 M20{(double)(card_x + 900), (double)(card_y + 165)};
+
+  auto DrawMiniSubTri = [&](const vec2 &a, const vec2 &b, const vec2 &c,
+                            const TreeStyle &st, const char *label, int tx, int ty) {
+    DrawTriangle(&base_img, (float)a.x, (float)a.y, (float)b.x, (float)b.y, (float)c.x, (float)c.y, st.badge_bg);
+    DrawThickSegment(&base_img, (float)a.x, (float)a.y, (float)b.x, (float)b.y, st.color, 1.5f);
+    DrawThickSegment(&base_img, (float)b.x, (float)b.y, (float)c.x, (float)c.y, st.color, 1.5f);
+    DrawThickSegment(&base_img, (float)c.x, (float)c.y, (float)a.x, (float)a.y, st.color, 1.5f);
+    BlendTextOutline2x32(&base_img, tx, ty, 0x000000FF, st.color, label);
+  };
+
+  DrawMiniSubTri(M20, M12, P2, TREE_STYLES[2], "2", card_x + 952, card_y + 125);
+  DrawMiniSubTri(P0, M01, M20, TREE_STYLES[0], "0", card_x + 892, card_y + 220);
+  DrawMiniSubTri(M01, P1, M12, TREE_STYLES[1], "1", card_x + 1012, card_y + 220);
+  DrawMiniSubTri(M12, M20, M01, TREE_STYLES[3], "3", card_x + 952, card_y + 190);
+
+  // Draw current zoom window on mini-map
+  auto MapToMini = [&](double px, double py) -> vec2 {
+    double u_x = (px - PROJ_P_C0.x) / (PROJ_P_C1.x - PROJ_P_C0.x);
+    double u_y = (py - PROJ_P_C2.y) / (PROJ_P_C0.y - PROJ_P_C2.y);
+    return vec2{card_x + 840.0 + u_x * 240.0, card_y + 65.0 + u_y * 200.0};
+  };
+
+  vec2 m0 = MapToMini(zoom_box.x0, zoom_box.y0);
+  vec2 m1 = MapToMini(zoom_box.x1, zoom_box.y1);
+  int bx0 = std::clamp((int)m0.x, card_x + 830, card_x + 1090);
+  int bx1 = std::clamp((int)m1.x, card_x + 830, card_x + 1090);
+  int by0 = std::clamp((int)m0.y, card_y + 55, card_y + 275);
+  int by1 = std::clamp((int)m1.y, card_y + 55, card_y + 275);
+  int bw = std::max(bx1 - bx0, 6);
+  int bh = std::max(by1 - by0, 4);
+
+  base_img.BlendRect32(bx0 - 1, by0 - 1, bw + 2, bh + 2, 0xFF3300C0);
+  base_img.BlendBox32(bx0 - 2, by0 - 2, bw + 4, bh + 4, 0xFFFFFFFF, 0xFFFFFFFF);
+  base_img.BlendBox32(bx0 - 3, by0 - 3, bw + 6, bh + 6, 0x000000FF, 0x000000FF);
+
+  base_img.Save(outfile);
+  Printf("Saved %s (%dx%d, %.1fx zoom)\n", outfile.c_str(), WIDTH, HEIGHT, zoom_box.zoom_mag);
 }
 
 // ----------------------------------------------------------------------------
@@ -1374,6 +1989,26 @@ int main(int argc, char **argv) {
   Printf("\nRendering View 4: Projective Plane Barycentric Triangle -> %s...\n", file_proj.c_str());
   RenderProjectivePlane(leaves, child_filter, line_alpha, file_proj);
 
-  Printf("\nAll 4 visualizations generated successfully!\n");
+  // Generate View 5: Zoomed Views (16:9 full-screen, projective projection) for each tree:
+  // For incomplete trees: bounding box of incomplete regions + 5% margin.
+  // For complete trees: area of heavy subdivision.
+  // Files: tube_zoom0.png, tube_zoom1.png, tube_zoom2.png, tube_zoom3.png.
+  for (int k = 0; k < 4; k++) {
+    if (child_filter >= 0 && child_filter != k) continue;
+    bool has_tree = false;
+    for (const auto &leaf : leaves) {
+      if (leaf.root == k) {
+        has_tree = true;
+        break;
+      }
+    }
+    if (!has_tree) continue;
+
+    std::string file_zoom = output_prefix + "zoom" + std::to_string(k) + ".png";
+    Printf("\nRendering View 5.%d: Zoomed Detail for Tree %d -> %s...\n", k, k, file_zoom.c_str());
+    RenderZoomView(leaves, k, line_alpha, file_zoom);
+  }
+
+  Printf("\nAll visualizations generated successfully!\n");
   return 0;
 }
