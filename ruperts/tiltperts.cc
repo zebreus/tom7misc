@@ -675,7 +675,8 @@ int main(int argc, char **argv) {
             "  --batch, -b <K>        Outer poses per batch (default: 256)\n"
             "  --threads, -t <W>      Search threads per pose (default: 64)\n"
             "  --steps, -s <N>        Gradient steps per trajectory (default: 25)\n"
-            "  --iters, -n <M>        Max batches to run (-1 = infinite, or seeds/batch)\n"
+            "  --iters, -n <M>        Max batches to run (-1 = infinite, default)\n"
+
             "  --forward-diff         Use forward differences (3 evals/step, default)\n"
             "  --central-diff         Use central differences (6 evals/step)\n"
             "  --dump-ptx, -d         Dump driver PTX/binary after build\n");
@@ -701,10 +702,8 @@ int main(int argc, char **argv) {
     if (poly_name == "snubcube") {
       poly_name = "nopert_229";
     }
-    if (iters == -1 && !seeds.empty()) {
-      iters = (seeds.size() + batch_size - 1) / batch_size;
-    }
   }
+
 
   SolutionDB db;
   Polyhedron target;
