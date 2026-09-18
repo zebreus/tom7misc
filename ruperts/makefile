@@ -137,9 +137,10 @@ compare_pools.exe : compare_pools.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 
 
 
-tiltperts.exe : tiltperts.o $(OBJECTS) $(CL_OBJECTS)
+tiltperts.exe : tiltperts.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) $(PDB_FLAG)
 	@echo -n "!"
+
 
 analyzedifficult.exe : analyzedifficult.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -393,3 +394,17 @@ clean :
 ifeq ($(OPT),)
   $(warning Warning: OPT is completely disabled!)
 endif
+check_tube_r.exe : check_tube_r.o tubetree229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_coords.exe : test_coords.o lib229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+generate_seeds229.exe : generate_seeds229.o lib229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+
+

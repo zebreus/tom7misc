@@ -542,6 +542,8 @@ static void RenderSilhouette(const DifficultCell &cell,
     center_inner_verts[i] = vec2{yocto::dot(c_right, rp), yocto::dot(c_up, rp)};
   }
   Clearance2D c2d = MaximizeClearance2D(center_outer_edges, center_inner_verts);
+  std::cout << "  [Center 2D Clearance]: " << c2d.clearance << " at translation ("
+            << c2d.translation.x << ", " << c2d.translation.y << ")\n";
   vec2 witness_t = c2d.translation;
 
   // 3. Compute geometry and 2D silhouettes for ALL samples under witness_t

@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <ctime>
 #include <format>
+#include <fstream>
+#include <sstream>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -29,6 +31,7 @@
 #include "timer.h"
 #include "util.h"
 #include "yocto-math.h"
+#include "lib229.h"
 
 static CL *cl = nullptr;
 
@@ -46,6 +49,49 @@ struct alignas(32) GpuOuterPose {
   int _pad[7];
   GpuEdge edges[MAX_EDGES];
 };
+
+struct SeedPoint {
+
+  quat4 q_outer = {0, 0, 0, 1};
+  vec3 w_inner = {0, 0, 0};
+  vec2 t_inner = {0, 0};
+  bool has_w = false;
+  bool has_t = false;
+};
+
+static std::vector<SeedPoint> LoadSeedPoints(const std::string &filename) {
+  std::vector<SeedPoint> seeds;
+  std::ifstream f(filename);
+  if (!f.is_open()) {
+    Print(ARED("Failed to open seed file: {}\n"), filename);
+    return seeds;
+  }
+  std::string line;
+  while (std::getline(f, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream iss(line);
+    std::vector<double> vals;
+    double v;
+    while (iss >> v) {
+      vals.push_back(v);
+    }
+    if (vals.size() < 4) continue;
+    SeedPoint sp;
+    sp.q_outer = quat4{vals[0], vals[1], vals[2], vals[3]};
+    if (vals.size() >= 7) {
+      sp.w_inner = vec3{vals[4], vals[5], vals[6]};
+      sp.has_w = true;
+    }
+    if (vals.size() >= 9) {
+      sp.t_inner = vec2{vals[7], vals[8]};
+      sp.has_t = true;
+    }
+    seeds.push_back(sp);
+  }
+  Print("Loaded " ACYAN("{}") " seed points from {}\n", seeds.size(), filename);
+  return seeds;
+}
+
 
 struct alignas(32) GpuSolution {
   int solved;
@@ -69,6 +115,8 @@ static_assert(sizeof(GpuEdge) == 32);
 static_assert(sizeof(GpuOuterPose) == 1088);
 static_assert(sizeof(GpuSolution) == 128);
 static_assert(sizeof(GpuCandidate) == 64);
+
+
 
 static inline quat4 RotationVectorToQuat(const vec3 &w) {
   const double theta = yocto::length(w);
@@ -151,7 +199,9 @@ struct TiltGPU {
           int threads_per_pose = 128,
           int max_steps = 25,
           bool dump_ptx = false,
-          bool forward_diff = true)
+          bool forward_diff = true,
+          const std::vector<SeedPoint> &seed_points = {},
+          double seed_sigma = 0.001)
       : rc(std::format("tiltgpu.{}", time(nullptr))),
         db(db),
         poly(poly),
@@ -160,7 +210,11 @@ struct TiltGPU {
         threads_per_pose(threads_per_pose),
         max_steps(max_steps),
         forward_diff(forward_diff),
+        seed_points(seed_points),
+        seed_sigma(seed_sigma),
         status(STATUS_LINES) {
+
+
     CHECK(batch_size > 0);
     CHECK(threads_per_pose > 0);
 
@@ -349,13 +403,29 @@ struct TiltGPU {
       for (int i = 0; i < batch_size; i++) {
         quat4 q_outer;
         for (;;) {
-          const int mode = RandTo(&rc, 10);
-          if (mode < 4 && poly.faces != nullptr &&
-              poly.faces->v.size() >= 2) {
-            const auto &[f1, f2] = TwoNonParallelFaces(&rc, poly);
-            q_outer = AlignFaces(poly.vertices, poly.faces->v[f1], poly.faces->v[f2]);
+          if (!seed_points.empty()) {
+            const SeedPoint &sp = seed_points[RandTo(&rc, seed_points.size())];
+            if (seed_sigma > 0.0 && RandDouble(&rc) >= 0.20) {
+              auto RandNorm = [&]() {
+                double u1 = std::max(1e-15, RandDouble(&rc));
+                double u2 = RandDouble(&rc);
+                return std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * std::numbers::pi * u2);
+              };
+              vec3 delta = {RandNorm() * seed_sigma, RandNorm() * seed_sigma, RandNorm() * seed_sigma};
+              quat4 d_q = RotationVectorToQuat(delta);
+              q_outer = yocto::normalize(d_q * sp.q_outer);
+            } else {
+              q_outer = sp.q_outer;
+            }
           } else {
-            q_outer = RandomQuaternion(&rc);
+            const int mode = RandTo(&rc, 10);
+            if (mode < 4 && poly.faces != nullptr &&
+                poly.faces->v.size() >= 2) {
+              const auto &[f1, f2] = TwoNonParallelFaces(&rc, poly);
+              q_outer = AlignFaces(poly.vertices, poly.faces->v[f1], poly.faces->v[f2]);
+            } else {
+              q_outer = RandomQuaternion(&rc);
+            }
           }
 
           const frame3 outer_frame = yocto::rotation_frame(q_outer);
@@ -377,6 +447,8 @@ struct TiltGPU {
           break;
         }
       }
+
+
 
       // Initialize the Kernel args.
       CopyBufferToGPU<GpuOuterPose>(cl->queue, host_outer_poses, outer_poses_buf);
@@ -534,8 +606,11 @@ struct TiltGPU {
   const int threads_per_pose;
   const int max_steps;
   const bool forward_diff;
+  std::vector<SeedPoint> seed_points;
+  double seed_sigma = 0.001;
 
   StatusBar status;
+
 
   cl_program program = nullptr;
   cl_kernel tilt_kernel = nullptr;
@@ -550,18 +625,14 @@ struct TiltGPU {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  cl = new CL;
-  Print(AGREEN("OpenCL initialized successfully.") "\n");
-  for (const auto &[k, v] : cl->DeviceInfo()) {
-    Print(AWHITE("{}") ": {}\n", k, v);
-  }
-  Print("\n");
-
   std::string poly_name = "snubcube";
+
+  std::string seed_file;
   int batch_size = 256;
   int threads_per_pose = 64;
   int max_steps = 25;
   int iters = -1;
+  double seed_sigma = 0.001;
   bool dump_ptx = false;
   bool forward_diff = true;
 
@@ -570,6 +641,12 @@ int main(int argc, char **argv) {
     if (arg == "--poly" || arg == "-p") {
       CHECK(i + 1 < argc);
       poly_name = argv[++i];
+    } else if (arg == "--seeds" || arg == "--seed-file") {
+      CHECK(i + 1 < argc);
+      seed_file = argv[++i];
+    } else if (arg == "--sigma") {
+      CHECK(i + 1 < argc);
+      seed_sigma = std::stod(argv[++i]);
     } else if (arg == "--batch" || arg == "-b") {
       CHECK(i + 1 < argc);
       batch_size = std::stoi(argv[++i]);
@@ -590,35 +667,70 @@ int main(int argc, char **argv) {
       forward_diff = false;
 
     } else if (arg == "--help" || arg == "-h") {
-      Print("Usage: ./tiltperts.exe [options] [polyhedron_name]\n",
+      Print("Usage: ./tiltperts.exe [options] [polyhedron_name]\n"
             "Options:\n"
             "  --poly, -p <name>      Polyhedron name (default: snubcube)\n"
+            "  --seeds, --seed-file <f> Path to seed points file (e.g. seed-points229.txt)\n"
+            "  --sigma <val>          Gaussian std dev for seed perturbation (default: 0.001)\n"
             "  --batch, -b <K>        Outer poses per batch (default: 256)\n"
             "  --threads, -t <W>      Search threads per pose (default: 64)\n"
             "  --steps, -s <N>        Gradient steps per trajectory (default: 25)\n"
-            "  --iters, -n <M>        Max batches to run (-1 = infinite)\n"
+            "  --iters, -n <M>        Max batches to run (-1 = infinite, or seeds/batch)\n"
             "  --forward-diff         Use forward differences (3 evals/step, default)\n"
             "  --central-diff         Use central differences (6 evals/step)\n"
             "  --dump-ptx, -d         Dump driver PTX/binary after build\n");
-      return -1;
+      return 0;
+
 
     } else if (arg[0] != '-') {
       poly_name = arg;
     }
   }
 
+  cl = new CL;
+  Print(AGREEN("OpenCL initialized successfully.") "\n");
+  for (const auto &[k, v] : cl->DeviceInfo()) {
+    Print(AWHITE("{}") ": {}\n", k, v);
+  }
+  Print("\n");
+
+  std::vector<SeedPoint> seeds;
+
+  if (!seed_file.empty()) {
+    seeds = LoadSeedPoints(seed_file);
+    if (poly_name == "snubcube") {
+      poly_name = "nopert_229";
+    }
+    if (iters == -1 && !seeds.empty()) {
+      iters = (seeds.size() + batch_size - 1) / batch_size;
+    }
+  }
+
   SolutionDB db;
-  Polyhedron target = db.AnyPolyhedronByName(poly_name);
+  Polyhedron target;
+  if (poly_name == "nopert_229" || poly_name == "229") {
+    target = GetPolyhedron229();
+    auto opoly = PolyhedronFromVertices(target.vertices, "nopert_229");
+    if (opoly.has_value()) {
+      target = std::move(opoly.value());
+    }
+  } else {
+    target = db.AnyPolyhedronByName(poly_name);
+  }
+
   Print("Target polyhedron: " APURPLE("{}") " ({} vertices)\n",
          target.name, target.vertices.size());
-  Print("Config: batch={}, threads_per_pose={}, steps={}, diff={}\n"
+  Print("Config: batch={}, threads_per_pose={}, steps={}, diff={}, sigma={}\n"
         "  (total work-items per launch: {})\n\n",
         batch_size, threads_per_pose, max_steps,
         forward_diff ? "forward (3 evals)" : "central (6 evals)",
+        seed_sigma,
         batch_size * threads_per_pose);
 
-  TiltGPU solver(&db, target, batch_size, threads_per_pose, max_steps, dump_ptx, forward_diff);
+  TiltGPU solver(&db, target, batch_size, threads_per_pose, max_steps, dump_ptx, forward_diff, seeds, seed_sigma);
   solver.Run(iters);
+
+
 
   delete cl;
   return 0;

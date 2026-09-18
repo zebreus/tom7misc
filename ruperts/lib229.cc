@@ -1617,7 +1617,8 @@ MixtureResult EvaluateBoxCPUMixture(
   std::vector<EvaluatedCandidateTriple> evaluated;
   evaluated.reserve(pool->gpu_triples.size());
 
-  for (size_t t = 0; t < pool->gpu_triples.size(); t++) {
+  size_t max_triples_to_test = (max_components == 1) ? 8 : 32;
+  for (size_t t = 0; t < std::min(pool->gpu_triples.size(), max_triples_to_test); t++) {
     const auto &trip = pool->gpu_triples[t];
     int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
 
@@ -1764,6 +1765,7 @@ MixtureResult EvaluateBoxCPUMixture(
 
     if (et.min_margin > -0.05 || is_hint_triple) {
       evaluated.push_back(et);
+      if (evaluated.size() >= 256) break;
     }
   }
 
@@ -2465,10 +2467,16 @@ MixtureSolveStats SolveCellMixture(
       continue;
     }
 
-    double effective_tube_r = tube_radius;
+    double effective_tube_r = 0.0;
     if (tube_atlas && tube_atlas->IsLoaded()) {
       double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
-      effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
+      if (safe_r > 0.0) {
+        effective_tube_r = safe_r;
+      } else if (tube_radius > 0.0) {
+        effective_tube_r = tube_radius;
+      }
+    } else {
+      effective_tube_r = tube_radius;
     }
 
     if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
@@ -2836,10 +2844,16 @@ MixtureSolveStats SolveCellMixtureParallel(
           EmitRow(std::format("PR {} {} {} FUNDAMENTAL {}\n", node.id, node.parent_id, node.depth, fund.direction));
           continue;
         }
-        double effective_tube_r = tube_radius;
+        double effective_tube_r = 0.0;
         if (tube_atlas && tube_atlas->IsLoaded()) {
           double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
-          effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
+          if (safe_r > 0.0) {
+            effective_tube_r = safe_r;
+          } else if (tube_radius > 0.0) {
+            effective_tube_r = tube_radius;
+          }
+        } else {
+          effective_tube_r = tube_radius;
         }
 
         if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
@@ -2954,7 +2968,14 @@ MixtureSolveStats SolveCellMixtureParallel(
         // 3. Splitting
         if (node.depth >= max_depth ||
             (max_split_delta > 0 && (node.depth - cell.depth) >= max_split_delta)) {
-          ceiling_hits.fetch_add(1);
+          int ch = ceiling_hits.fetch_add(1);
+          if (ch < 5) {
+            fprintf(stderr, "Ceiling hit #%d: depth=%d bd=%d vd=%d center=(%.3e,%.3e,%.3e) rad=(%.3e,%.3e,%.3e) res.margin=%.3e penalty=%.3e span=%.3e\n",
+                    ch, node.depth, node.box_depth, node.view_depth,
+                    node.box.center.x, node.box.center.y, node.box.center.z,
+                    node.box.radii.x, node.box.radii.y, node.box.radii.z,
+                    res.margin, res.view_penalty, res.box_span);
+          }
           all_leaves_certified.store(false, std::memory_order_relaxed);
           {
             std::lock_guard<std::mutex> lk(unres_mu);

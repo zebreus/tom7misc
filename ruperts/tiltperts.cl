@@ -21,6 +21,8 @@ typedef struct {
   GpuEdge edges[MAX_EDGES]; // 32 * 32 = 1024 bytes
 } GpuOuterPose;
 
+
+
 typedef struct {
   int solved;         // 4 bytes
   int outer_idx;      // 4 bytes
@@ -260,6 +262,8 @@ __kernel void TiltGradAscent(
   double phi = (double)dir_idx * 2.399963229728653;
   double3 u = (double3)(r_xy * cos(phi), r_xy * sin(phi), z_coord);
   double3 w = r * u;
+
+
 
   double2 best_t = (double2)(0.0, 0.0);
   double c = EvalClearanceForW(base_verts, local_edges, local_num_edges,

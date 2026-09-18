@@ -718,9 +718,12 @@ static int RunDifficultMixture(
     Print("Shuffled {} unsolved cells with --rand (seed: {})\n", unsolved_cells.size(), seed);
   }
 
-  auto splits_map = LoadQuadtreeSplitsFile(splits_file);
-  if (!splits_map.empty()) {
-    Print("Loaded {} cached cell view-split entries from {}\n", splits_map.size(), splits_file);
+  std::unordered_map<int64_t, ViewQuadtree> splits_map;
+  if (splits_file != "none" && !splits_file.empty()) {
+    splits_map = LoadQuadtreeSplitsFile(splits_file);
+    if (!splits_map.empty()) {
+      Print("Loaded {} cached cell view-split entries from {}\n", splits_map.size(), splits_file);
+    }
   }
 
   if (dry_run) {
@@ -862,7 +865,7 @@ static int RunDifficultMixture(
         std::error_code ec;
         std::filesystem::remove(tmp_path, ec);
         std::lock_guard<std::mutex> lock(state_mu);
-        if (stats.learned_quadtree.is_split) {
+        if (stats.learned_quadtree.is_split && splits_file != "none" && !splits_file.empty()) {
           splits_map[cell.id] = stats.learned_quadtree;
           SaveQuadtreeSplitsFile(splits_file, splits_map);
           status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
@@ -944,10 +947,12 @@ static int RunDifficultMixture(
         status.Print(ARED("Failed to create temporary file {}\n"), tmp_path);
         continue;
       }
+      std::vector<char> io_buf(8 * 1024 * 1024);
+      setvbuf(tmp_fp, io_buf.data(), _IOFBF, io_buf.size());
 
       uint64_t cell_rows = 0;
       auto row_cb = [&](std::string_view row) {
-        fputs(std::string(row).c_str(), tmp_fp);
+        fwrite(row.data(), 1, row.size(), tmp_fp);
         cell_rows++;
       };
 
@@ -1002,7 +1007,7 @@ static int RunDifficultMixture(
       if (!stats.solved) {
         std::error_code ec;
         std::filesystem::remove(tmp_path, ec);
-        if (stats.learned_quadtree.is_split) {
+        if (stats.learned_quadtree.is_split && splits_file != "none" && !splits_file.empty()) {
           splits_map[cell.id] = stats.learned_quadtree;
           SaveQuadtreeSplitsFile(splits_file, splits_map);
           status.Print("  [Learned view quadtree ({} leaves) for cell #{} -> saved to {}]\n",
@@ -1176,7 +1181,8 @@ int main(int argc, char **argv) {
   int deep_escalate_depth = 50;
   int deep_escalate_cone_samples = 16;
   int lp_escalate_box_depth = 46;
-  double tube_radius = 1e-4;
+  double tube_radius = 0.0;
+  bool tube_radius_specified = false;
   std::string tube_trees_dir = "/root/nopert-project";
   bool no_tube_trees = false;
   double limit_sec = 0.0;
@@ -1246,8 +1252,9 @@ int main(int argc, char **argv) {
       deep_escalate_cone_samples = std::atoi(argv[++i]);
     } else if ((arg == "--lp_box_depth" || arg == "--lp_escalate_box_depth") && i + 1 < argc) {
       lp_escalate_box_depth = std::atoi(argv[++i]);
-    } else if (arg == "--tube_radius" && i + 1 < argc) {
+    } else if ((arg == "--tube_radius" || arg == "--experiment_tube_floor") && i + 1 < argc) {
       tube_radius = std::atof(argv[++i]);
+      tube_radius_specified = true;
     } else if (arg == "--tube_trees_dir" && i + 1 < argc) {
       tube_trees_dir = argv[++i];
     } else if (arg == "--no_tube_trees") {
@@ -1308,6 +1315,14 @@ int main(int argc, char **argv) {
     } else {
       Print("Warning: Tube trees directory '{}' does not exist.\n", tube_trees_dir);
     }
+  }
+
+  if (no_tube_trees && !tube_radius_specified) {
+    tube_radius = 1e-4;
+  }
+  if (tube_radius > 0.0 && !no_tube_trees) {
+    Print(AYELLOW(">>> EXPERIMENT MODE: Tube fallback floor = {:.6e} <<<\n"), tube_radius);
+    Print(AYELLOW(">>> (Assuming uncertified canyon closes at {:.6e}; experiment artifacts kept separate) <<<\n"), tube_radius);
   }
 
   if (mixture_mode) {
