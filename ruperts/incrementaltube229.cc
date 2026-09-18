@@ -36,6 +36,7 @@
 #include "geom/hull-2d.h"
 #include "nopert229.h"
 #include "tubetree229.h"
+#include "tube229.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -1024,7 +1025,14 @@ static bool SynthesizeCertificate(
     int depth,
     const BigRat &target_c,
     const BigRat &target_r,
-    TubeCertificate *out_cert) {
+    TubeCertificate *out_cert,
+    const std::vector<ContactInfo> &extra_contacts = {},
+    const std::vector<Tube229::CandidateTriple> &extra_axes = {}) {
+
+  // Try Tube229 smart targeted synthesis first (fast, < 5 ms)
+  if (Tube229::SynthesizeCertificate(tri, depth, out_cert, extra_contacts)) {
+    return true;
+  }
 
   vec3 tri_f[3] = {
     tri.corners[0].ToDouble(),
@@ -1050,7 +1058,8 @@ static bool SynthesizeCertificate(
     passes.push_back({6, true, 2e-14});
   }
 
-  for (const auto &pass : passes) {
+  for (size_t pass_idx = 0; pass_idx < passes.size(); pass_idx++) {
+    const auto &pass = passes[pass_idx];
     std::vector<CandidateTriple> all_cands;
     std::vector<vec3> sample_views = {centroid, tri_f[0], tri_f[1], tri_f[2]};
     for (const auto &sv : sample_views) {
@@ -1058,7 +1067,19 @@ static bool SynthesizeCertificate(
       GenerateCandidatesForView(sv, tri, /*evaluate_over_triangle=*/true, pass.cone_samples, pass.include_boundaries, pass.screen_support_error, &v_cands);
       all_cands.insert(all_cands.end(), v_cands.begin(), v_cands.end());
     }
+    for (const auto &ea : extra_axes) {
+      CandidateTriple ct;
+      ct.contacts[0] = ea.contacts[0];
+      ct.contacts[1] = ea.contacts[1];
+      ct.contacts[2] = ea.contacts[2];
+      ct.normalized_a = ea.normalized_a;
+      ct.strict_slack = ea.strict_slack;
+      ct.B = ea.B;
+      all_cands.push_back(ct);
+    }
+
     if (all_cands.size() < 4) continue;
+
 
     // Deduplicate
     std::vector<CandidateTriple> candidates;
@@ -1188,10 +1209,13 @@ static bool SynthesizeCertificate(
       }
     }
 
+    bool separated_by_hyperplane = false;
     if (scored.empty()) {
       for (int iter = 0; iter < 50; iter++) {
+
         std::vector<int> cur_pool(pool_set.begin(), pool_set.end());
         ClosestResult closest = ClosestOriginFace(pts, cur_pool);
+        vec3 v = closest.point;
         if (closest.key < 1e-12) {
           if (closest.support.size() == 3) {
             int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
@@ -1218,19 +1242,37 @@ static bool SynthesizeCertificate(
                     scored.push_back({margin, {e0, e1, best_pos, best_neg}});
                   }
                 }
+                if (best_neg >= 0 && best_neg != i0 && best_neg != i1 && best_neg != i2) {
+                  vec3 tpts[4] = {pts[i0], pts[i1], pts[i2], pts[best_neg]};
+                  double margin; double bary[4];
+                  if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                    scored.push_back({margin, {i0, i1, i2, best_neg}});
+                  }
+                }
               }
+              if (!scored.empty()) break;
+              double sum_d = 0;
+              for (int p_idx : cur_pool) sum_d += yocto::dot(pts[p_idx], face_norm);
+              if (sum_d < 0) face_norm = -face_norm;
+              v = face_norm;
             }
+          } else {
+            double vlen = yocto::length(v);
+            if (vlen > 1e-15) v = v / vlen;
           }
-          break;
         }
-        vec3 v = closest.point;
+
         int best_i = -1;
         double max_dot = -1e30;
         for (size_t i = 0; i < pts.size(); i++) {
           double d = yocto::dot(pts[i], -v);
           if (d > max_dot) { max_dot = d; best_i = i; }
         }
-        if (max_dot <= 1e-12 || pool_set.count(best_i)) break;
+        if (max_dot <= 1e-12) {
+          separated_by_hyperplane = true;
+          break;
+        }
+        if (pool_set.count(best_i)) break;
         pool_set.insert(best_i);
         for (int i : cur_pool) {
           for (int j : cur_pool) {
@@ -1268,7 +1310,17 @@ static bool SynthesizeCertificate(
         }
       }
     }
+
+    if (scored.empty() && separated_by_hyperplane && pass.include_boundaries) {
+      break;
+    }
   }
+
+  // Fallback: Tube229 targeted candidate synthesis with extra contacts
+  if (Tube229::SynthesizeCertificate(tri, depth, out_cert, extra_contacts)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -1461,19 +1513,79 @@ class IncrementalTubeManager {
         // 1. Audit existing cache or synthesize direct certificate
         TubeCertificate cert;
         bool cert_found = false;
-        std::vector<TubeCertificate> recent = cache_.GetRecent();
-        for (const auto &rc : recent) {
-          if (AuditCertificateAdaptive(tri, rc, &cert)) {
+        std::vector<TubeCertificate> all_recent = cache_.GetRecent();
+        int n_check = std::min((int)all_recent.size(), 20);
+        for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_check; i--) {
+          if (AuditCertificateAdaptive(tri, all_recent[i], &cert)) {
             cert_found = true;
             break;
           }
         }
 
+        // 1b. Axis Recombination from recent certificates
+        std::vector<ContactInfo> extra_contacts;
+        auto add_contact = [&](const ContactInfo &c) {
+          for (const auto &ex : extra_contacts) {
+            if (ex.vertex == c.vertex &&
+                ex.edge_start == c.edge_start &&
+                ex.edge_finish == c.edge_finish &&
+                ex.edge_start2 == c.edge_start2 &&
+                ex.edge_finish2 == c.edge_finish2 &&
+                ex.mix == c.mix) {
+              return;
+            }
+          }
+          extra_contacts.push_back(c);
+        };
+
+        int n_recomb = std::min((int)all_recent.size(), 15);
+        for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
+          for (int a = 0; a < 4; a++) {
+            for (int m = 0; m < 3; m++) {
+              add_contact(all_recent[i].axes[a].contacts[m]);
+            }
+          }
+        }
+
+        std::vector<Tube229::CandidateTriple> valid_axes;
+        if (!cert_found && !all_recent.empty()) {
+          for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
+            const auto &rc = all_recent[i];
+            for (int a = 0; a < 4; a++) {
+              Tube229::CandidateTriple cand;
+              if (Tube229::DoubleCheckAxis(tri, rc.axes[a].contacts, &cand)) {
+                bool dup = false;
+                for (const auto &ex : valid_axes) {
+                  if (yocto::length(ex.normalized_a - cand.normalized_a) < 1e-6) {
+                    dup = true; break;
+                  }
+                }
+                if (!dup) valid_axes.push_back(cand);
+              }
+            }
+          }
+          if (valid_axes.size() >= 4) {
+            std::array<int, 4> simplex;
+            if (Tube229::FindBalancedTetrahedron(valid_axes, &simplex)) {
+              TubeCertificate recomb_cert;
+              for (int a = 0; a < 4; a++) {
+                recomb_cert.axes[a].contacts[0] = valid_axes[simplex[a]].contacts[0];
+                recomb_cert.axes[a].contacts[1] = valid_axes[simplex[a]].contacts[1];
+                recomb_cert.axes[a].contacts[2] = valid_axes[simplex[a]].contacts[2];
+              }
+              if (AuditCertificateAdaptive(tri, recomb_cert, &cert)) {
+                cert_found = true;
+              }
+            }
+          }
+        }
+
         if (!cert_found) {
-          if (SynthesizeCertificate(tri, node->depth(), target_c_, target_r_, &cert)) {
+          if (SynthesizeCertificate(tri, node->depth(), target_c_, target_r_, &cert, extra_contacts, valid_axes)) {
             cert_found = true;
           }
         }
+
 
         if (cert_found) {
           node->direct_cert = cert;
@@ -1833,6 +1945,7 @@ static void DiagnosePath(const std::string &path) {
         std::vector<int> cur_pool(pool_set.begin(), pool_set.end());
         ClosestResult closest = ClosestOriginFace(pts_dedup, cur_pool);
         std::cout << "    iter " << iter << " closest.key: " << closest.key << " support size: " << closest.support.size() << "\n";
+        vec3 v = closest.point;
         if (closest.key < 1e-12) {
           std::cout << "    closest.key < 1e-12 (origin inside conv(cur_pool))!\n";
           if (closest.support.size() == 3) {
@@ -1861,13 +1974,27 @@ static void DiagnosePath(const std::string &path) {
                     scored.push_back({margin, {e0, e1, best_pos, best_neg}});
                   }
                 }
+                if (best_neg >= 0 && best_neg != i0 && best_neg != i1 && best_neg != i2) {
+                  vec3 tpts[4] = {pts_dedup[i0], pts_dedup[i1], pts_dedup[i2], pts_dedup[best_neg]};
+                  double margin; double bary[4];
+                  if (TetrahedronOriginMargin(tpts, &margin, bary)) {
+                    scored.push_back({margin, {i0, i1, i2, best_neg}});
+                  }
+                }
               }
               std::cout << "    Normal piercing found " << scored.size() << " enclosing tets!\n";
+              if (!scored.empty()) break;
+              double sum_d = 0;
+              for (int p_idx : cur_pool) sum_d += yocto::dot(pts_dedup[p_idx], face_norm);
+              if (sum_d < 0) face_norm = -face_norm;
+              v = face_norm;
             }
+          } else {
+            double vlen = yocto::length(v);
+            if (vlen > 1e-15) v = v / vlen;
           }
-          break;
         }
-        vec3 v = closest.point;
+
         int best_i = -1;
         double max_dot = -1e30;
         for (size_t i = 0; i < pts_dedup.size(); i++) {
@@ -1943,6 +2070,13 @@ static void DiagnosePath(const std::string &path) {
     }
   }
 
+  std::cout << "\nAttempting Tube229 smart synthesis...\n";
+  TubeCertificate tube_cert;
+  if (Tube229::SynthesizeCertificate(tri, path.size(), &tube_cert)) {
+    std::cout << AGREEN("Tube229 synthesis SUCCESS!") << " c = " << tube_cert.c.ToString() << ", r = " << tube_cert.r.ToString() << "\n";
+    return;
+  }
+
   std::cout << "\nDiagnosis complete. Node failed to certify with current settings.\n";
 }
 
@@ -1956,7 +2090,7 @@ int main(int argc, char **argv) {
   std::string target_r_str = "1/6000000";
   std::string target_c_str = "1018/10000000";
   int threads = 8;
-  std::string output_dir = "../.artifacts/nopert229";
+  std::string output_dir = ".artifacts/nopert229";
   bool revalidate = false;
 
   for (int i = 1; i < argc; i++) {

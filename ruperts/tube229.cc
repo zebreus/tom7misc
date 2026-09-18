@@ -210,7 +210,6 @@ std::vector<Tube229::CandidateTriple> Tube229::GenerateCandidateTriples(
   }
 
   int V = valid.size();
-  std::cout << "      [DEBUG] contacts input: " << contacts.size() << ", valid contacts: " << V << "\n";
   for (int i = 0; i < V; i++) {
     for (int j = i + 1; j < V; j++) {
       for (int k = j + 1; k < V; k++) {
@@ -288,6 +287,104 @@ std::vector<Tube229::CandidateTriple> Tube229::GenerateCandidateTriples(
   return out_candidates;
 }
 
+bool Tube229::DoubleCheckAxis(
+    const TriangleQ &tri,
+    const ContactInfo contacts[3],
+    CandidateTriple *out_cand,
+    double screen_support_error) {
+
+  vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
+  vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
+  double vlen = yocto::length(centroid);
+  if (vlen < 1e-12) return false;
+
+  vec3 c_edges[3];
+  ContactInfo sel_contacts[3];
+  int sel_indices[3];
+  double sel_slack[3];
+
+  for (int m = 0; m < 3; m++) {
+    const auto &c = contacts[m];
+    vec3 edge = GetDoubleEdge(c);
+    int sel = c.vertex;
+    double strict_slack = 1e30;
+
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      bool tie = (k == sel) ||
+                 (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
+                 (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
+      if (tie) continue;
+      vec3 delta = Vertex(k) - Vertex(sel);
+      vec3 coeff = yocto::cross(edge, delta);
+      double u0 = yocto::dot(tri_f[0], coeff);
+      double u1 = yocto::dot(tri_f[1], coeff);
+      double u2 = yocto::dot(tri_f[2], coeff);
+      double max_u = std::max({u0, u1, u2});
+      strict_slack = std::min(strict_slack, -max_u);
+      if (max_u > screen_support_error) return false;
+    }
+    c_edges[m] = edge;
+    sel_contacts[m] = c;
+    sel_indices[m] = sel;
+    sel_slack[m] = strict_slack;
+  }
+
+  vec3 probe = {yocto::dot(tri_f[0], yocto::cross(c_edges[1], c_edges[2])),
+                yocto::dot(tri_f[0], yocto::cross(c_edges[2], c_edges[0])),
+                yocto::dot(tri_f[0], yocto::cross(c_edges[0], c_edges[1]))};
+  if (std::max({probe[0], probe[1], probe[2]}) < 0) {
+    std::swap(sel_contacts[1], sel_contacts[2]);
+    std::swap(c_edges[1], c_edges[2]);
+    std::swap(sel_indices[1], sel_indices[2]);
+    std::swap(sel_slack[1], sel_slack[2]);
+  }
+
+  vec3 weight_coeffs[3] = {
+    yocto::cross(c_edges[1], c_edges[2]),
+    yocto::cross(c_edges[2], c_edges[0]),
+    yocto::cross(c_edges[0], c_edges[1])
+  };
+
+  double max_weight_lower = -1e30;
+  double weights_at_max[3] = {0, 0, 0};
+  for (int m = 0; m < 3; m++) {
+    double w0 = yocto::dot(tri_f[0], weight_coeffs[m]);
+    double w1 = yocto::dot(tri_f[1], weight_coeffs[m]);
+    double w2 = yocto::dot(tri_f[2], weight_coeffs[m]);
+    double w_min = std::min({w0, w1, w2}) + screen_support_error;
+    double w_max = std::max({w0, w1, w2}) + screen_support_error;
+    if (w_min < 0) return false;
+    max_weight_lower = std::max(max_weight_lower, w_min);
+    weights_at_max[m] = w_max;
+  }
+  if (max_weight_lower <= 0) return false;
+
+  double strict_slack = std::min({sel_slack[0], sel_slack[1], sel_slack[2]});
+  vec3 weights = {yocto::dot(centroid, weight_coeffs[0]),
+                  yocto::dot(centroid, weight_coeffs[1]),
+                  yocto::dot(centroid, weight_coeffs[2])};
+  double B = 2.0 * (weights_at_max[0] + weights_at_max[1] + weights_at_max[2]);
+  if (B <= 1e-12) return false;
+
+  vec3 variation = {0, 0, 0};
+  for (int m = 0; m < 3; m++) {
+    vec3 lift = yocto::cross(centroid, c_edges[m]);
+    vec3 term = yocto::cross(Vertex(sel_indices[m]), lift);
+    variation = variation + term * weights[m];
+  }
+  vec3 normalized_a = variation / B;
+
+  if (out_cand) {
+    out_cand->contacts[0] = sel_contacts[0];
+    out_cand->contacts[1] = sel_contacts[1];
+    out_cand->contacts[2] = sel_contacts[2];
+    out_cand->normalized_a = normalized_a;
+    out_cand->B = B;
+    out_cand->strict_slack = strict_slack;
+  }
+  return true;
+}
+
 std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
     const TriangleQ &tri,
     const vec3 &oppose_dir,
@@ -300,11 +397,9 @@ std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
   vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
   vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
 
-  // Use a fine mix permille grid to capture intermediate support edges
-  std::vector<int> fine_mixes = {
-    0, 1, 10, 25, 50, 75, 100, 150, 200, 250, 300, 350, 400, 450, 500,
-    550, 600, 650, 700, 750, 800, 850, 900, 925, 950, 975, 990, 999, 1000
-  };
+  // Use a balanced mix permille grid to capture support edges efficiently
+  std::vector<int> fine_mixes = {0, 1, 143, 286, 429, 571, 714, 857, 999, 1000};
+
 
   std::vector<ContactInfo> raw_contacts = GenerateSilhouetteContacts(centroid, fine_mixes);
   std::vector<CandidateTriple> all_cands = GenerateCandidateTriples(tri, raw_contacts, screen_support_error);
@@ -312,9 +407,6 @@ std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
   for (const auto &c : all_cands) {
     min_dot = std::min(min_dot, yocto::dot(c.normalized_a, unit_n));
   }
-  std::cout << "    [DEBUG] raw_contacts: " << raw_contacts.size()
-            << ", all_cands: " << all_cands.size()
-            << ", min_dot: " << min_dot << "\n";
 
   // Score candidates by how strongly they oppose unit_n (maximizing a · (-unit_n), so a · unit_n < 0)
   struct ScoredTriple {
@@ -531,6 +623,98 @@ bool Tube229::FindBalancedTetrahedron(
   if (out_separating_normal) *out_separating_normal = last_current;
   return false;
 }
+
+bool Tube229::RefinePoolCuttingPlane(
+    const std::vector<vec3> &pts,
+    std::set<int> *in_out_pool,
+    std::array<int, 4> *out_simplex,
+    double *out_margin,
+    int max_iters) {
+  if (!in_out_pool || !out_simplex) return false;
+
+  for (int iter = 0; iter < max_iters; iter++) {
+    std::vector<int> cur_pool(in_out_pool->begin(), in_out_pool->end());
+    ClosestResult closest = ClosestOriginPoint(pts, cur_pool);
+    vec3 v = closest.point;
+    if (closest.key < 1e-12) {
+      if (closest.support.size() == 3) {
+        int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
+        vec3 face_norm = yocto::cross(pts[i1] - pts[i0], pts[i2] - pts[i0]);
+        double len = yocto::length(face_norm);
+        if (len > 1e-9) {
+          face_norm = face_norm / len;
+          int best_pos = -1, best_neg = -1;
+          double max_pos = -1e30, max_neg = -1e30;
+          for (size_t i = 0; i < pts.size(); i++) {
+            double dp = yocto::dot(pts[i], face_norm);
+            if (dp > max_pos) { max_pos = dp; best_pos = i; }
+            double dn = yocto::dot(pts[i], -face_norm);
+            if (dn > max_neg) { max_neg = dn; best_neg = i; }
+          }
+          if (best_pos >= 0 && best_neg >= 0 && max_pos > 1e-9 && max_neg > 1e-9 && best_pos != best_neg) {
+            int tri_edges[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+            for (int e = 0; e < 3; e++) {
+              int e0 = tri_edges[e][0], e1 = tri_edges[e][1];
+              if (best_pos == e0 || best_pos == e1 || best_neg == e0 || best_neg == e1) continue;
+              double m = 0;
+              if (PointInTetrahedron(vec3{0, 0, 0}, pts[e0], pts[e1], pts[best_pos], pts[best_neg], &m) && m > 1e-12) {
+                *out_simplex = {e0, e1, best_pos, best_neg};
+                in_out_pool->insert(best_pos);
+                in_out_pool->insert(best_neg);
+                if (out_margin) *out_margin = m;
+                return true;
+              }
+            }
+            // Also directly test the face {i0, i1, i2} with best_neg
+            if (best_neg != i0 && best_neg != i1 && best_neg != i2) {
+              double m = 0;
+              if (PointInTetrahedron(vec3{0, 0, 0}, pts[i0], pts[i1], pts[i2], pts[best_neg], &m) && m > 1e-12) {
+                *out_simplex = {i0, i1, i2, best_neg};
+                in_out_pool->insert(best_neg);
+                if (out_margin) *out_margin = m;
+                return true;
+              }
+            }
+          }
+
+          // Do not prematurely early return when normal piercing fails to cage origin.
+          // Orient face normal so active pool is on the positive side, and continue in direction -v.
+          double sum_d = 0;
+          for (int p_idx : cur_pool) sum_d += yocto::dot(pts[p_idx], face_norm);
+          if (sum_d < 0) face_norm = -face_norm;
+          v = face_norm;
+        }
+      } else {
+        double vlen = yocto::length(v);
+        if (vlen > 1e-15) v = v / vlen;
+      }
+    }
+
+    int best_i = -1;
+    double max_dot = -1e30;
+    for (size_t i = 0; i < pts.size(); i++) {
+      double d = yocto::dot(pts[i], -v);
+      if (d > max_dot) { max_dot = d; best_i = i; }
+    }
+    if (max_dot <= 1e-12 || in_out_pool->count(best_i)) break;
+    in_out_pool->insert(best_i);
+
+    for (size_t i = 0; i < cur_pool.size(); i++) {
+      for (size_t j = i + 1; j < cur_pool.size(); j++) {
+        for (size_t k = j + 1; k < cur_pool.size(); k++) {
+          double m = 0;
+          if (PointInTetrahedron(vec3{0, 0, 0}, pts[cur_pool[i]], pts[cur_pool[j]], pts[cur_pool[k]], pts[best_i], &m) && m > 1e-12) {
+            *out_simplex = {cur_pool[i], cur_pool[j], cur_pool[k], best_i};
+            if (out_margin) *out_margin = m;
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 
 // ============================================================================
 // EXACT POLYNOMIAL AND AUDIT ARITHMETIC
@@ -882,7 +1066,8 @@ bool Tube229::AuditCertificateAdaptive(
 bool Tube229::SynthesizeCertificate(
     const TriangleQ &tri,
     int depth,
-    TubeCertificate *out_cert) {
+    TubeCertificate *out_cert,
+    const std::vector<ContactInfo> &extra_contacts) {
 
   vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
   vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
@@ -890,6 +1075,23 @@ bool Tube229::SynthesizeCertificate(
   // Pass 1: standard fast sampling with cone samples
   std::vector<int> std_mixes = {0, 1, 143, 286, 429, 571, 714, 857, 999, 1000};
   std::vector<ContactInfo> contacts = GenerateSilhouetteContacts(centroid, std_mixes);
+  if (!extra_contacts.empty()) {
+    for (const auto &ec : extra_contacts) {
+      bool dup = false;
+      for (const auto &c : contacts) {
+        if (c.vertex == ec.vertex &&
+            c.edge_start == ec.edge_start &&
+            c.edge_finish == ec.edge_finish &&
+            c.edge_start2 == ec.edge_start2 &&
+            c.edge_finish2 == ec.edge_finish2 &&
+            c.mix == ec.mix) {
+          dup = true;
+          break;
+        }
+      }
+      if (!dup) contacts.push_back(ec);
+    }
+  }
   std::vector<CandidateTriple> candidates = GenerateCandidateTriples(tri, contacts, 1e-12);
 
   std::array<int, 4> simplex;

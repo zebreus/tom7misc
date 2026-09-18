@@ -243,7 +243,6 @@ static void TestSiblingCertificateOnDifficultLeaf() {
   }
 
   // Now search over axis0 and axis2 replacements on difficult leaf tri
-  bool found_diff = false;
   BigRat max_cover(0);
   for (const auto &rep0 : axis0_replacements) {
     for (const auto &rep2 : axis2_replacements) {
@@ -459,46 +458,24 @@ void TestCertificate003133OnTargetTri() {
   cert.axes[3].contacts[1] = {10, 15, 15, 19, 800, 15};
   cert.axes[3].contacts[2] = {10, 15, 15, 19, 200, 15};
 
-  std::cout << "[SWEEP] Axis 3 mix weights variation on target_tri:\n";
-  vec3 sep_norm = {-0.401011, 0.483067, 0.778355};
-  int neg_count = 0;
-  for (int m0 : {0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}) {
-    for (int m1 : {0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}) {
-      for (int m2 : {0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000}) {
-        ContactInfo contacts[3] = {
-          {2, 1, 1, 0, m0, 1},
-          {10, 15, 15, 19, m1, 15},
-          {10, 15, 15, 19, m2, 15}
-        };
-        // Double check first
-        vec3 edge0 = Tube229::GetDoubleEdge(contacts[0]);
-        vec3 edge1 = Tube229::GetDoubleEdge(contacts[1]);
-        vec3 edge2 = Tube229::GetDoubleEdge(contacts[2]);
-        vec3 cf[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
-        vec3 centroid = (cf[0] + cf[1] + cf[2]) / 3.0;
-        double w0 = yocto::dot(centroid, yocto::cross(edge1, edge2));
-        double w1 = yocto::dot(centroid, yocto::cross(edge2, edge0));
-        double w2 = yocto::dot(centroid, yocto::cross(edge0, edge1));
-        if (w0 <= 1e-6 || w1 <= 1e-6 || w2 <= 1e-6) continue;
-
-        AxisCertificate ac;
-        Vec3Q center;
-        BigRat delta;
-        std::string fail;
-        if (Tube229::AuditAxis(tri, contacts, &ac, &center, &delta, &fail)) {
-          vec3 c_f = {center.x.ToDouble(), center.y.ToDouble(), center.z.ToDouble()};
-          double dot_n = yocto::dot(c_f, sep_norm);
-          if (dot_n < 0) {
-            neg_count++;
-            std::cout << "  FOUND NEGATIVE a · n: mix=(" << m0 << ", " << m1 << ", " << m2 << ") dot_n=" << dot_n << " delta=" << delta.ToDouble() << "\n";
-            if (neg_count >= 10) goto sweep_done;
-          }
-        }
-      }
+  std::cout << "[SWEEP] Axis 2 mix variation on target_tri:\n";
+  for (int m1 : {200, 400, 600, 800, 900, 950, 990, 1000}) {
+    ContactInfo c[3] = {
+      {3, 2, 2, 1, 800, 2},
+      {1, 0, 0, 4, m1, 0},
+      {9, 10, 10, 15, 200, 10}
+    };
+    AxisCertificate ac;
+    Vec3Q center;
+    BigRat delta;
+    std::string fail;
+    bool ok = Tube229::AuditAxis(tri, c, &ac, &center, &delta, &fail);
+    std::cout << "  m1=" << m1 << " -> " << (ok ? "SUCCESS" : ("FAIL: " + fail));
+    if (ok) {
+      std::cout << " center = (" << center.x.ToDouble() << ", " << center.y.ToDouble() << ", " << center.z.ToDouble() << ") delta=" << delta.ToDouble();
     }
+    std::cout << "\n";
   }
-sweep_done:
-  std::cout << "  Total negative axes found: " << neg_count << "\n";
 
   TubeCertificate out_cert;
   std::string fail;
@@ -510,9 +487,87 @@ sweep_done:
   }
 }
 
+void TestDoubleCheckAxis() {
+  std::cout << "[RUN] TestDoubleCheckAxis\n";
+  std::string leaf_path = "031213002112121221112212122211";
+  TriangleQ tri = TriangleFromPath(leaf_path);
+
+  // Axis 1 from 003133 (valid)
+  ContactInfo ax1[3] = {
+    {15, 19, 19, 3, 200, 19},
+    {3, 2, 2, 1, 800, 2},
+    {8, 9, 9, 10, 800, 9}
+  };
+  Tube229::CandidateTriple cand1;
+  bool ok1 = Tube229::DoubleCheckAxis(tri, ax1, &cand1);
+  assert(ok1);
+  std::cout << "  Axis 1 double check: SUCCESS! norm_a = ("
+            << cand1.normalized_a.x << ", " << cand1.normalized_a.y << ", " << cand1.normalized_a.z << ")\n";
+
+  // Axis 0 from 003133 (invalid support on vertex 1)
+  ContactInfo ax0[3] = {
+    {15, 19, 19, 3, 200, 19},
+    {1, 0, 0, 4, 200, 0},
+    {8, 9, 9, 10, 800, 9}
+  };
+  Tube229::CandidateTriple cand0;
+  bool ok0 = Tube229::DoubleCheckAxis(tri, ax0, &cand0);
+  assert(!ok0);
+  std::cout << "  Axis 0 double check: correctly REJECTED (support violation)!\n";
+}
+
+void TestNearOriginFaceCuttingPlane() {
+  std::cout << "[RUN] TestNearOriginFaceCuttingPlane\n";
+
+  // Face perpendicular to z-axis, shifted by 8.854e-7 in +z direction:
+  // Closest squared distance to origin is (8.854e-7)^2 = 7.84e-13 < 1e-12.
+  const double d = 8.854e-7;
+  vec3 p0 = {0.05, 0.0, d};
+  vec3 p1 = {-0.025, 0.043301270189, d};
+  vec3 p2 = {-0.025, -0.043301270189, d};
+  // 4th point in initial pool on the SAME side (+z):
+  vec3 p3 = {0.01, 0.01, 0.08};
+  // Opposing candidate on the -z side:
+  vec3 p4 = {-0.005, -0.005, -0.05};
+
+  std::vector<vec3> pts = {p0, p1, p2, p3, p4};
+
+  // Initial pool consists only of the +z points {0, 1, 2, 3}.
+  std::set<int> pool = {0, 1, 2, 3};
+  std::array<int, 4> simplex;
+  double margin = 0;
+
+  // With the premature early return bug (where closest.key < 1e-12 unconditionally
+  // aborted without checking opposing candidates), this would fail on iteration 0.
+  // With the fix, it orients the face normal away from the pool, searches in
+  // direction -v, pulls in p4, and successfully cages the origin.
+  bool ok = Tube229::RefinePoolCuttingPlane(pts, &pool, &simplex, &margin);
+  assert(ok);
+  assert(margin > 1e-8);
+  std::cout << "  RefinePoolCuttingPlane successfully caged origin! Margin = " << margin
+            << ", simplex = [" << simplex[0] << ", " << simplex[1] << ", "
+            << simplex[2] << ", " << simplex[3] << "]\n";
+
+  // Also verify Wolfe's algorithm handles this near-origin face geometry
+  std::vector<Tube229::CandidateTriple> cands;
+  for (size_t i = 0; i < pts.size(); i++) {
+    Tube229::CandidateTriple c;
+    c.normalized_a = pts[i];
+    cands.push_back(c);
+  }
+  std::array<int, 4> wolfe_simplex;
+  bool wolfe_ok = Tube229::FindBalancedTetrahedron(cands, &wolfe_simplex);
+  assert(wolfe_ok);
+  std::cout << "  FindBalancedTetrahedron successfully caged origin!\n";
+  std::cout << "[PASS] TestNearOriginFaceCuttingPlane\n";
+}
+
 int main(int argc, char **argv) {
   std::cout << "=== Running Tube229 Unit Tests ===\n";
+  TestNearOriginFaceCuttingPlane();
+  TestDoubleCheckAxis();
   TestCertificate003133OnTargetTri();
   std::cout << "=== All Tube229 Unit Tests Passed! ===\n";
   return 0;
 }
+

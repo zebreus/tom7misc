@@ -6,6 +6,7 @@
 #include <string_view>
 #include <array>
 #include <utility>
+#include <set>
 
 #include "nopert229.h"
 #include "tubetree229.h"
@@ -76,6 +77,24 @@ class Tube229 {
       std::array<int, 4> *out_simplex,
       vec3 *out_separating_normal = nullptr);
 
+  // Refines an active point pool from pts using cutting-plane iterations to enclose the origin.
+  // Correctly handles near-origin faces (squared distance < 1e-12) without premature early return.
+  static bool RefinePoolCuttingPlane(
+      const std::vector<vec3> &pts,
+      std::set<int> *in_out_pool,
+      std::array<int, 4> *out_simplex,
+      double *out_margin = nullptr,
+      int max_iters = 50);
+
+  // Fast double-precision validation of a 3-contact axis over triangle tri.
+  // Checks support over all vertices and corners, positive weights over all corners.
+  // Returns true and fills out_cand if geometrically valid.
+  static bool DoubleCheckAxis(
+      const tubetree229::TriangleQ &tri,
+      const tubetree229::ContactInfo contacts[3],
+      CandidateTriple *out_cand = nullptr,
+      double screen_support_error = 1e-12);
+
   // Exact rational inscribed octahedron / axis radius.
   static BigRat ExactTetrahedronAxisRadius(const tubetree229::Vec3Q pts[4]);
 
@@ -99,7 +118,8 @@ class Tube229 {
   static bool SynthesizeCertificate(
       const tubetree229::TriangleQ &tri,
       int depth,
-      tubetree229::TubeCertificate *out_cert);
+      tubetree229::TubeCertificate *out_cert,
+      const std::vector<tubetree229::ContactInfo> &extra_contacts = {});
 };
 
 #endif  // _RUPERTS_TUBE229_H
