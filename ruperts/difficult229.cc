@@ -66,7 +66,8 @@ struct ParsedDoneRow {
 
 static VerificationResult VerifyDoneFile(
     const DifficultCell &cell, const std::string &done_path,
-    const tubetree229::TubeAtlas *tube_atlas = nullptr) {
+    const tubetree229::TubeAtlas *tube_atlas = nullptr,
+    bool allow_difficult = false) {
   std::ifstream infile(done_path);
   if (!infile.is_open()) {
     return {.valid = false, .error_message = "Could not open file"};
@@ -137,7 +138,10 @@ static VerificationResult VerifyDoneFile(
         return {.valid = false, .error_message = std::format("Line {}: TU missing radius", line_no)};
       }
     } else if (tag == "DF" || tag == "DI" || tag == "DIFFICULT") {
-      return {.valid = false, .error_message = std::format("Line {}: contains uncertified DIFFICULT leaf", line_no)};
+      if (!allow_difficult) {
+        return {.valid = false, .error_message = std::format("Line {}: contains uncertified DIFFICULT leaf", line_no)};
+      }
+      row.prune_kind = "DIFFICULT";
     } else {
       return {.valid = false, .error_message = std::format("Line {}: unrecognized row tag '{}'", line_no, tag)};
     }
@@ -225,6 +229,8 @@ static VerificationResult VerifyDoneFile(
         c.tri = sub_tris[t];
         stack.push_back(c);
       }
+    } else if (row.tag == "DF" || row.tag == "DI" || row.tag == "DIFFICULT") {
+      leaf_count++;
     } else if (row.tag == "PR" || row.tag == "PRUNE") {
       leaf_count++;
       if (row.prune_kind == "RADIUS" || row.prune_kind == "RA") {

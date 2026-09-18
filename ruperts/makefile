@@ -98,7 +98,7 @@ test_mixture.exe : test_mixture.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-lib229_test.exe : lib229_test.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+lib229_test.exe : lib229_test.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
@@ -108,6 +108,18 @@ lib229_bench.exe : lib229_bench.o scalar_bernstein.o lib229.o $(OBJECTS) $(CL_OB
 
 difficult229.exe : difficult229.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
+test_telescope_canyon.exe : test_telescope_canyon.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
+telescope229.exe : telescope229.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
+query_canyon_tube.exe : query_canyon_tube.o tubetree229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 pack229.exe : pack229.o $(OBJECTS)

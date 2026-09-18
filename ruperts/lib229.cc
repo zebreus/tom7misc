@@ -2468,16 +2468,10 @@ MixtureSolveStats SolveCellMixture(
       continue;
     }
 
-    double effective_tube_r = 0.0;
+    double effective_tube_r = tube_radius;
     if (tube_atlas && tube_atlas->IsLoaded()) {
       double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
-      if (safe_r > 0.0) {
-        effective_tube_r = safe_r;
-      } else if (tube_radius > 0.0) {
-        effective_tube_r = tube_radius;
-      }
-    } else {
-      effective_tube_r = tube_radius;
+      effective_tube_r = std::max(safe_r, tube_radius);
     }
 
     if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
@@ -2845,16 +2839,10 @@ MixtureSolveStats SolveCellMixtureParallel(
           EmitRow(std::format("PR {} {} {} FUNDAMENTAL {}\n", node.id, node.parent_id, node.depth, fund.direction));
           continue;
         }
-        double effective_tube_r = 0.0;
+        double effective_tube_r = tube_radius;
         if (tube_atlas && tube_atlas->IsLoaded()) {
           double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
-          if (safe_r > 0.0) {
-            effective_tube_r = safe_r;
-          } else if (tube_radius > 0.0) {
-            effective_tube_r = tube_radius;
-          }
-        } else {
-          effective_tube_r = tube_radius;
+          effective_tube_r = std::max(safe_r, tube_radius);
         }
 
         if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {
@@ -4328,7 +4316,7 @@ void SearchManager::Run() {
             double effective_tube_r = tube_radius;
             if (tube_atlas && tube_atlas->IsLoaded()) {
               double safe_r = tube_atlas->GetSafeRadiusForTriangle(node.tri.corners);
-              effective_tube_r = (safe_r > 0.0) ? safe_r : 0.0;
+              effective_tube_r = std::max(safe_r, tube_radius);
             }
 
             if (effective_tube_r > 0.0 && InsideIdentityTube(node.chart, node.box, effective_tube_r)) {

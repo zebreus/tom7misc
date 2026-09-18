@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -1103,95 +1104,114 @@ static void LoadDoneFiles(const std::string &done_dir,
   }
   std::sort(matching_files.begin(), matching_files.end());
 
-  int done_files_found = 0;
+  int done_files_found = matching_files.size();
   int done_files_merged = 0;
   int64_t total_spliced_nodes = 0;
   int64_t next_avail_id = *max_id_io + 1;
 
-  for (const auto &fpath : matching_files) {
-    done_files_found++;
-    std::ifstream f(fpath);
-    if (!f.is_open()) continue;
+  std::unordered_map<int64_t, int64_t> difficult_id_alias;
+  std::unordered_set<std::string> merged_files;
 
-    std::vector<ParsedNode> file_rows;
-    std::unordered_map<int64_t, StoredMixedCert> file_mx;
-    std::string line;
-    int64_t dummy_certs = 0;
-    while (std::getline(f, line)) {
-      if (line.empty()) continue;
-      ParsedNode pn;
-      if (ParseRow(line, &pn, &file_mx, &dummy_certs)) {
-        file_rows.push_back(pn);
-      }
-    }
-    if (file_rows.empty()) continue;
+  bool progress = true;
+  while (progress) {
+    progress = false;
+    for (const auto &fpath : matching_files) {
+      if (merged_files.count(fpath)) continue;
 
-    int64_t file_root_id = file_rows[0].id;
-    if (file_root_id < 0 || file_root_id >= (int64_t)nodes->size() ||
-        (*nodes)[file_root_id].tag == NodeTag::NONE) {
-      continue;
-    }
+      std::ifstream f(fpath);
+      if (!f.is_open()) continue;
 
-    std::unordered_map<int64_t, int64_t> id_map;
-    id_map[file_root_id] = file_root_id;
-    for (size_t i = 1; i < file_rows.size(); i++) {
-      id_map[file_rows[i].id] = next_avail_id++;
-    }
-
-    if ((*nodes)[file_root_id].tag == NodeTag::CERT || (*nodes)[file_root_id].tag == NodeTag::MX) {
-      (*cert_count_io)--;
-    }
-
-    auto &root_node = (*nodes)[file_root_id];
-    root_node.tag = file_rows[0].tag;
-    root_node.winning_triple = file_rows[0].winning_triple;
-    for (int m = 0; m < 3; m++) root_node.inner[m] = file_rows[0].inner[m];
-    root_node.tube_radius = file_rows[0].tube_radius;
-    root_node.tube_radius_str = file_rows[0].tube_radius_str;
-    root_node.fund_dir = file_rows[0].fund_dir;
-    for (int m = 0; m < 4; m++) {
-      if (file_rows[0].child_ids[m] >= 0 && id_map.count(file_rows[0].child_ids[m])) {
-        root_node.child_ids[m] = id_map[file_rows[0].child_ids[m]];
-      } else {
-        root_node.child_ids[m] = -1;
-      }
-    }
-    if (root_node.tag == NodeTag::MX) {
-      (*mixed_certs)[file_root_id] = std::move(file_mx[file_root_id]);
-    }
-    if (root_node.tag == NodeTag::CERT || root_node.tag == NodeTag::MX) {
-      (*cert_count_io)++;
-    }
-
-    if (next_avail_id >= (int64_t)nodes->size()) {
-      nodes->resize(std::max((int64_t)nodes->size() * 2, next_avail_id + 1024));
-    }
-
-    for (size_t i = 1; i < file_rows.size(); i++) {
-      ParsedNode row = file_rows[i];
-      int64_t new_id = id_map[row.id];
-      int64_t new_parent_id = id_map[row.parent_id];
-      row.id = new_id;
-      row.parent_id = new_parent_id;
-      for (int m = 0; m < 4; m++) {
-        if (row.child_ids[m] >= 0 && id_map.count(row.child_ids[m])) {
-          row.child_ids[m] = id_map[row.child_ids[m]];
-        } else {
-          row.child_ids[m] = -1;
+      std::vector<ParsedNode> file_rows;
+      std::unordered_map<int64_t, StoredMixedCert> file_mx;
+      std::string line;
+      int64_t dummy_certs = 0;
+      while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        ParsedNode pn;
+        if (ParseRow(line, &pn, &file_mx, &dummy_certs)) {
+          file_rows.push_back(pn);
         }
       }
-      if (row.tag == NodeTag::MX) {
-        (*mixed_certs)[new_id] = std::move(file_mx[file_rows[i].id]);
+      if (file_rows.empty()) continue;
+
+      int64_t file_root_id = file_rows[0].id;
+      int64_t target_node_id = file_root_id;
+      auto it_alias = difficult_id_alias.find(file_root_id);
+      if (it_alias != difficult_id_alias.end()) {
+        target_node_id = it_alias->second;
       }
-      if (row.tag == NodeTag::CERT || row.tag == NodeTag::MX) {
+
+      if (target_node_id < 0 || target_node_id >= (int64_t)nodes->size() ||
+          (*nodes)[target_node_id].tag == NodeTag::NONE) {
+        continue;
+      }
+
+      std::unordered_map<int64_t, int64_t> id_map;
+      id_map[file_root_id] = target_node_id;
+      for (size_t i = 1; i < file_rows.size(); i++) {
+        id_map[file_rows[i].id] = next_avail_id++;
+      }
+
+      if ((*nodes)[target_node_id].tag == NodeTag::CERT || (*nodes)[target_node_id].tag == NodeTag::MX) {
+        (*cert_count_io)--;
+      }
+
+      auto &root_node = (*nodes)[target_node_id];
+      root_node.tag = file_rows[0].tag;
+      root_node.winning_triple = file_rows[0].winning_triple;
+      for (int m = 0; m < 3; m++) root_node.inner[m] = file_rows[0].inner[m];
+      root_node.tube_radius = file_rows[0].tube_radius;
+      root_node.tube_radius_str = file_rows[0].tube_radius_str;
+      root_node.fund_dir = file_rows[0].fund_dir;
+      for (int m = 0; m < 4; m++) {
+        if (file_rows[0].child_ids[m] >= 0 && id_map.count(file_rows[0].child_ids[m])) {
+          root_node.child_ids[m] = id_map[file_rows[0].child_ids[m]];
+        } else {
+          root_node.child_ids[m] = -1;
+        }
+      }
+      if (root_node.tag == NodeTag::MX) {
+        (*mixed_certs)[target_node_id] = std::move(file_mx[file_root_id]);
+      }
+      if (root_node.tag == NodeTag::CERT || root_node.tag == NodeTag::MX) {
         (*cert_count_io)++;
       }
-      (*nodes)[new_id] = row;
-      all_node_ids->push_back(new_id);
-      total_spliced_nodes++;
-    }
 
-    done_files_merged++;
+      if (next_avail_id >= (int64_t)nodes->size()) {
+        nodes->resize(std::max((int64_t)nodes->size() * 2, next_avail_id + 1024));
+      }
+
+      for (size_t i = 1; i < file_rows.size(); i++) {
+        ParsedNode row = file_rows[i];
+        int64_t new_id = id_map[row.id];
+        int64_t new_parent_id = id_map[row.parent_id];
+        row.id = new_id;
+        row.parent_id = new_parent_id;
+        for (int m = 0; m < 4; m++) {
+          if (row.child_ids[m] >= 0 && id_map.count(row.child_ids[m])) {
+            row.child_ids[m] = id_map[row.child_ids[m]];
+          } else {
+            row.child_ids[m] = -1;
+          }
+        }
+        if (row.tag == NodeTag::MX) {
+          (*mixed_certs)[new_id] = std::move(file_mx[file_rows[i].id]);
+        }
+        if (row.tag == NodeTag::CERT || row.tag == NodeTag::MX) {
+          (*cert_count_io)++;
+        }
+        if (row.tag == NodeTag::DIFFICULT) {
+          difficult_id_alias[file_rows[i].id] = new_id;
+        }
+        (*nodes)[new_id] = row;
+        all_node_ids->push_back(new_id);
+        total_spliced_nodes++;
+      }
+
+      merged_files.insert(fpath);
+      done_files_merged++;
+      progress = true;
+    }
   }
 
   *max_id_io = next_avail_id - 1;
