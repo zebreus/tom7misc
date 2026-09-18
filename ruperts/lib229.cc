@@ -1,5 +1,4 @@
 #include "lib229.h"
-#include "tubetree229.h"
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
@@ -39,6 +38,7 @@
 #include "base/print.h"
 #include "geom/hull-2d.h"
 #include "geom/polyhedra.h"
+#include "nopert229.h"
 #include "opencl/clutil.h"
 #include "periodically.h"
 #include "ruperts-util.h"
@@ -46,6 +46,7 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "tubetree229.h"
 #include "util.h"
 #include "yocto-math.h"
 

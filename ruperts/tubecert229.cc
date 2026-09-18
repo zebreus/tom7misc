@@ -1,44 +1,42 @@
 // Identity Tube Local Certificate Search for Nopert #229
 // High-performance multithreaded C++ implementation with exact GMP BigRat audit.
 
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <unordered_set>
-#include <cmath>
-#include <chrono>
-#include <thread>
-#include <mutex>
+#include <algorithm>
+#include <array>
 #include <atomic>
 #include <cassert>
-#include <span>
+#include <chrono>
+#include <cmath>
+#include <ctime>
 #include <filesystem>
 #include <format>
-#include <array>
-#include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <mutex>
+#include <numbers>
 #include <numeric>
-#include <set>
 #include <random>
-#include <ctime>
+#include <set>
+#include <span>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "geom/hull-2d.h"
-#include "yocto-math.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "ansi.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "nopert229.h"
 #include "util.h"
-#include "numbers.h"
+#include "yocto-math.h"
 
 #include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/prettywriter.h"
 #include "rapidjson/error/en.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -66,29 +64,6 @@ static const BigRat VERTICES_Q[20][3] = {
   {BigRat("1679233219444017/2000000000000000"), BigRat("2263534535574267/5000000000000000"), BigRat("4802676718449/16000000000000")},
   {BigRat("1523518189628179/2000000000000000"), BigRat("2705392183398847/5000000000000000"), BigRat("-420605170858861/10000000000000000")},
   {BigRat("5910472006450693/10000000000000000"), BigRat("327326655638497/2500000000000000"), BigRat("-382169975802723/500000000000000")}
-};
-
-static const vec3 VERTICES_D[20] = {
-  {0.0428407320766475, 0.5680663556187131, 0.5648167326177671},
-  {-0.1710940528198280, 0.9384169756351713, 0.3001672949030625},
-  {-0.2791996671138589, 0.8916783831939151, -0.0420605170858861},
-  {0.0581211699562287, 0.6025790913331870, -0.7643399516054460},
-  {-0.5270246949360691, 0.2162861152231751, 0.5648167326177671},
-  {-0.9453585496376318, 0.1272666794475643, 0.3001672949030625},
-  {-0.9343139787381105, 0.0100091111676232, -0.0420605170858861},
-  {-0.5551263421462106, 0.2414836970985378, -0.7643399516054460},
-  {-0.3685599064576828, -0.4343941851161148, 0.5648167326177671},
-  {-0.4131696624115331, -0.8597618421012388, 0.3001672949030625},
-  {-0.2982381279104400, -0.8854924122951479, -0.0420605170858861},
-  {-0.4012081174529903, -0.4533339587973062, -0.7643399516054460},
-  {0.2992421458547392, -0.4847564861402479, 0.5648167326177671},
-  {0.6900056551469845, -0.6586287200963504, 0.3001672949030625},
-  {0.7499926789483198, -0.5572735187461599, -0.0420605170858861},
-  {0.3071660889979028, -0.5216594918898176, -0.7643399516054460},
-  {0.5535017234623651, 0.1347982004144742, 0.5648167326177671},
-  {0.8396166097220085, 0.4527069071148534, 0.3001672949030625},
-  {0.7617590948140895, 0.5410784366797694, -0.0420605170858861},
-  {0.5910472006450693, 0.1309306622553988, -0.7643399516054460}
 };
 
 struct Vec3Q {
@@ -568,10 +543,10 @@ struct CandidateTriple {
 };
 
 static inline vec3 GetDoubleEdge(const ContactInfo &c) {
-  vec3 v_start = VERTICES_D[c.edge_start];
-  vec3 v_finish = VERTICES_D[c.edge_finish];
-  vec3 v_start2 = VERTICES_D[c.edge_start2];
-  vec3 v_finish2 = VERTICES_D[c.edge_finish2];
+  vec3 v_start = Vertex(c.edge_start);
+  vec3 v_finish = Vertex(c.edge_finish);
+  vec3 v_start2 = Vertex(c.edge_start2);
+  vec3 v_finish2 = Vertex(c.edge_finish2);
   double mixD = c.mix / 1000.0;
   return (v_start - v_finish) * mixD + (v_start2 - v_finish2) * (1.0 - mixD);
 }
@@ -604,7 +579,10 @@ static void GenerateCandidatesForView(
 
   std::vector<vec2> projected(20);
   for (int k = 0; k < 20; k++) {
-    projected[k] = vec2{yocto::dot(VERTICES_D[k], first), yocto::dot(VERTICES_D[k], second)};
+    projected[k] = vec2{
+      yocto::dot(Vertex(k), first),
+      yocto::dot(Vertex(k), second),
+    };
   }
   std::vector<int> cycle = ConvexHull2D(projected);
   int H = cycle.size();
@@ -671,7 +649,7 @@ static void GenerateCandidatesForView(
                  (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
                  (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
       if (tie) continue;
-      vec3 delta = VERTICES_D[k] - VERTICES_D[sel];
+      vec3 delta = Vertex(k) - Vertex(sel);
       vec3 coeff = yocto::cross(edge, delta);
       double upper = std::max({yocto::dot(tri_f[0], coeff),
                                yocto::dot(tri_f[1], coeff),
@@ -753,7 +731,7 @@ static void GenerateCandidatesForView(
         vec3 variation = {0, 0, 0};
         for (int m = 0; m < 3; m++) {
           vec3 lift = yocto::cross(centroid, c_edges[m]);
-          vec3 term = yocto::cross(VERTICES_D[c_supp[m].selected], lift);
+          vec3 term = yocto::cross(Vertex(c_supp[m].selected), lift);
           variation = variation + term * weights[m];
         }
         vec3 normalized_a = variation / B;
@@ -1074,12 +1052,12 @@ static double EstimateMaxDescendantMargin(const TriangleQ &tri, const std::vecto
     }
   }
   if (min_support <= 0) return 0.0;
-  
+
   vec3 c0 = tri.corners[0].ToDouble();
   vec3 c1 = tri.corners[1].ToDouble();
   vec3 c2 = tri.corners[2].ToDouble();
   double diam = std::max({yocto::length(c0 - c1), yocto::length(c1 - c2), yocto::length(c2 - c0)});
-  
+
   // Chebyshev inradius factor: 19/20 * 4/7 = 76/140 = 0.542857.
   // Maximum variation rate: outer_radius * 0.542857 <= 0.95 * 0.542857 <= 0.52.
   return 0.542857 * min_support + 0.52 * diam;
@@ -1342,7 +1320,8 @@ static bool SynthesizeCertificate(
         vec3{-1.0,  1.0, -1.0} / std::sqrt(3.0),
         vec3{-1.0, -1.0,  1.0} / std::sqrt(3.0),
       };
-      std::uniform_real_distribution<double> uangle(0.0, 2.0 * M_PI);
+      std::uniform_real_distribution<double> uangle(0.0,
+                                                    2.0 * std::numbers::pi);
       for (int frame = 0; frame < 500; frame++) {
         vec3 axis = {gauss(rng), gauss(rng), gauss(rng)};
         double alen = yocto::length(axis);
@@ -1366,7 +1345,7 @@ static bool SynthesizeCertificate(
         if (!valid_frame) continue;
         std::sort(frame_indices.begin(), frame_indices.end());
         if (frame_indices[0] == frame_indices[1] || frame_indices[1] == frame_indices[2] || frame_indices[2] == frame_indices[3]) continue;
-        
+
         vec3 tpts[4] = {pts[frame_indices[0]], pts[frame_indices[1]], pts[frame_indices[2]], pts[frame_indices[3]]};
         double margin;
         double bary[4];

@@ -3,7 +3,9 @@
 
 #include <iostream>
 #include <fstream>
+#include <memory>
 #include <sstream>
+#include <utility>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -26,17 +28,15 @@
 #include <random>
 #include <ctime>
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "geom/hull-2d.h"
-#include "yocto-math.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "ansi.h"
-#include "util.h"
-#include "numbers.h"
-
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "geom/hull-2d.h"
+#include "nopert229.h"
 #include "tubetree229.h"
+#include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -45,29 +45,6 @@ using namespace tubetree229;
 // ============================================================================
 // POLYHEDRON #229 GEOMETRY
 // ============================================================================
-
-static const vec3 VERTICES_D[20] = {
-  {0.0428407320766475, 0.5680663556187131, 0.5648167326177671},
-  {-0.1710940528198280, 0.9384169756351713, 0.3001672949030625},
-  {-0.2791996671138589, 0.8916783831939151, -0.0420605170858861},
-  {0.0581211699562287, 0.6025790913331870, -0.7643399516054460},
-  {-0.5270246949360691, 0.2162861152231751, 0.5648167326177671},
-  {-0.9453585496376318, 0.1272666794475643, 0.3001672949030625},
-  {-0.9343139787381105, 0.0100091111676232, -0.0420605170858861},
-  {-0.5551263421462106, 0.2414836970985378, -0.7643399516054460},
-  {-0.3685599064576828, -0.4343941851161148, 0.5648167326177671},
-  {-0.4131696624115331, -0.8597618421012388, 0.3001672949030625},
-  {-0.2982381279104400, -0.8854924122951479, -0.0420605170858861},
-  {-0.4012081174529903, -0.4533339587973062, -0.7643399516054460},
-  {0.2992421458547392, -0.4847564861402479, 0.5648167326177671},
-  {0.6900056551469845, -0.6586287200963504, 0.3001672949030625},
-  {0.7499926789483198, -0.5572735187461599, -0.0420605170858861},
-  {0.3071660889979028, -0.5216594918898176, -0.7643399516054460},
-  {0.5535017234623651, 0.1347982004144742, 0.5648167326177671},
-  {0.8396166097220085, 0.4527069071148534, 0.3001672949030625},
-  {0.7617590948140895, 0.5410784366797694, -0.0420605170858861},
-  {0.5910472006450693, 0.1309306622553988, -0.7643399516054460}
-};
 
 static const std::string_view VERTICES_Q[20][3] = {
   {"17136292830659/400000000000000", "5680663556187131/10000000000000000", "5648167326177671/10000000000000000"},
@@ -510,10 +487,10 @@ struct CandidateTriple {
 };
 
 static inline vec3 GetDoubleEdge(const ContactInfo &c) {
-  vec3 v_start = VERTICES_D[c.edge_start];
-  vec3 v_finish = VERTICES_D[c.edge_finish];
-  vec3 v_start2 = VERTICES_D[c.edge_start2];
-  vec3 v_finish2 = VERTICES_D[c.edge_finish2];
+  vec3 v_start = Vertex(c.edge_start);
+  vec3 v_finish = Vertex(c.edge_finish);
+  vec3 v_start2 = Vertex(c.edge_start2);
+  vec3 v_finish2 = Vertex(c.edge_finish2);
   double mixD = c.mix / 1000.0;
   return (v_start - v_finish) * mixD + (v_start2 - v_finish2) * (1.0 - mixD);
 }
@@ -549,7 +526,10 @@ static void GenerateCandidatesForView(
 
   std::vector<vec2> projected(20);
   for (int k = 0; k < 20; k++) {
-    projected[k] = vec2{yocto::dot(VERTICES_D[k], first), yocto::dot(VERTICES_D[k], second)};
+    projected[k] = vec2{
+      yocto::dot(Vertex(k), first),
+      yocto::dot(Vertex(k), second),
+    };
   }
   std::vector<int> cycle = ConvexHull2D(projected);
   int H = cycle.size();
@@ -617,7 +597,7 @@ static void GenerateCandidatesForView(
                  (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
                  (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
       if (tie) continue;
-      vec3 delta = VERTICES_D[k] - VERTICES_D[sel];
+      vec3 delta = Vertex(k) - Vertex(sel);
       vec3 coeff = yocto::cross(edge, delta);
       double upper = evaluate_over_triangle
           ? std::max({yocto::dot(tri_f[0], coeff), yocto::dot(tri_f[1], coeff), yocto::dot(tri_f[2], coeff)}) + screen_support_error
@@ -697,7 +677,7 @@ static void GenerateCandidatesForView(
         vec3 variation = {0, 0, 0};
         for (int m = 0; m < 3; m++) {
           vec3 lift = yocto::cross(centroid, c_edges[m]);
-          vec3 term = yocto::cross(VERTICES_D[c_supp[m].selected], lift);
+          vec3 term = yocto::cross(Vertex(c_supp[m].selected), lift);
           variation = variation + term * weights[m];
         }
         vec3 normalized_a = variation / B;
@@ -1319,7 +1299,7 @@ class IncrementalTubeManager {
 
   void Run() {
     std::string main_file = SubtreeFilename(root_path_, output_dir_);
-    
+
     if (std::filesystem::exists(main_file)) {
       std::cout << ACYAN("Resuming tree from ") << main_file << "...\n";
       root_ = LoadTreeJson(main_file, /*load_external=*/false, output_dir_);

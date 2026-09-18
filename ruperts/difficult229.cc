@@ -15,9 +15,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -26,6 +28,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unistd.h>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -34,8 +37,8 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "lib229.h"
+#include "status-bar.h"
 #include "tubetree229.h"
-#include "periodically.h"
 #include "randutil.h"
 #include "ruperts-util.h"
 #include "timer.h"

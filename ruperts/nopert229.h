@@ -2,6 +2,8 @@
 #ifndef _RUPERTS_NOPERT229_H
 #define _RUPERTS_NOPERT229_H
 
+#include "yocto-math.h"
+
 // 20 vertices of Nopert #229, derived algebraically from repair214.cc
 // and scaled strictly inside the unit sphere for Lean's GoodPoly invariant.
 inline constexpr int NUM_VERTICES = 20;
@@ -32,5 +34,12 @@ inline constexpr double VERTICES[NUM_VERTICES][3] = {
   {  0.5910472006450693,  0.1309306622553988, -0.7643399516054460 }  // 19
 };
 
+inline constexpr yocto::vec<double, 3> Vertex(size_t v) {
+  return yocto::vec<double, 3>{
+    VERTICES[v][0],
+    VERTICES[v][1],
+    VERTICES[v][2],
+  };
+}
 
 #endif
