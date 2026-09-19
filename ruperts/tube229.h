@@ -50,6 +50,16 @@ class Tube229 {
       const std::vector<tubetree229::ContactInfo> &contacts,
       double screen_support_error = 1e-12);
 
+  // Generates valid candidate triples over triangle tri for a specific view direction.
+  // Computes view-specific 2D convex hull, silhouette contacts, and valid 3-contact combinations.
+  static std::vector<CandidateTriple> GenerateCandidatesForView(
+      const vec3 &view,
+      const tubetree229::TriangleQ &tri,
+      bool evaluate_over_triangle = true,
+      int cone_samples = 4,
+      bool include_boundaries = false,
+      double screen_support_error = 1e-12);
+
   // Targeted Opposing Search (Tom Idea Point 4):
   // Given an unblocked direction n, specifically finds candidate triples with a · n < 0 (maximizing a · (-n)).
   static std::vector<CandidateTriple> FindOpposingCandidates(
@@ -119,12 +129,44 @@ class Tube229 {
       tubetree229::TubeCertificate *out_cert,
       std::string *fail_reason = nullptr);
 
-  // Synthesize a valid tube certificate for triangle tri, with fallback to opposing search.
+  // Extremal regular tetrahedron orientation search.
+  static bool FindExtremalTetrahedron(
+      const std::vector<vec3> &pts,
+      std::array<int, 4> *out_indices);
+  static bool FindExtremalTetrahedron(
+      const std::vector<CandidateTriple> &candidates,
+      std::array<int, 4> *out_indices);
+
+  // Fast single-view synthesis for easy leaves:
+  // Samples centroid only, tests balanced tet, with one-shot opposing fallback.
+  static bool SynthesizeCertificateFast(
+      const tubetree229::TriangleQ &tri,
+      int depth,
+      tubetree229::TubeCertificate *out_cert,
+      const std::vector<tubetree229::ContactInfo> &extra_contacts = {},
+      const std::vector<CandidateTriple> &extra_axes = {});
+
+  // Powerful multi-view & iterative cutting-plane synthesis for hard / canyon leaves:
+  // Samples centroid + 3 corners across a rich mix permille grid, incorporates extra_axes,
+  // and executes an iterative cutting-plane loop with FindOpposingCandidates,
+  // RefinePoolCuttingPlane, and FindExtremalTetrahedron up to max_opposing_iters.
+  static bool SynthesizeCertificateIterative(
+      const tubetree229::TriangleQ &tri,
+      int depth,
+      tubetree229::TubeCertificate *out_cert,
+      const std::vector<tubetree229::ContactInfo> &extra_contacts = {},
+      const std::vector<CandidateTriple> &extra_axes = {},
+      int max_opposing_iters = 5);
+
+  // General synthesis: runs SynthesizeCertificateFast first; if that fails and !fast_only,
+  // escalates to SynthesizeCertificateIterative.
   static bool SynthesizeCertificate(
       const tubetree229::TriangleQ &tri,
       int depth,
       tubetree229::TubeCertificate *out_cert,
-      const std::vector<tubetree229::ContactInfo> &extra_contacts = {});
+      const std::vector<tubetree229::ContactInfo> &extra_contacts = {},
+      const std::vector<CandidateTriple> &extra_axes = {},
+      bool fast_only = false);
 };
 
 #endif  // _RUPERTS_TUBE229_H

@@ -360,6 +360,206 @@ bool Tube229::DoubleCheckAxis(
   return true;
 }
 
+std::vector<Tube229::CandidateTriple> Tube229::GenerateCandidatesForView(
+    const vec3 &view,
+    const TriangleQ &tri,
+    bool evaluate_over_triangle,
+    int cone_samples,
+    bool include_boundaries,
+    double screen_support_error) {
+
+  std::vector<CandidateTriple> out_candidates;
+  double vlen = yocto::length(view);
+  if (vlen < 1e-12) return out_candidates;
+  vec3 unit_view = view / vlen;
+
+  int axis_index = 0;
+  double min_abs = 1e30;
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(unit_view[i]) < min_abs) {
+      min_abs = std::abs(unit_view[i]);
+      axis_index = i;
+    }
+  }
+  vec3 axis = (axis_index == 0 ? vec3{1, 0, 0} : (axis_index == 1 ? vec3{0, 1, 0} : vec3{0, 0, 1}));
+  vec3 first = yocto::cross(unit_view, axis);
+  double first_len = yocto::length(first);
+  if (first_len < 1e-12) return out_candidates;
+  first = first / first_len;
+  vec3 second = yocto::cross(unit_view, first);
+
+  std::vector<vec2> projected(NUM_VERTICES);
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    projected[k] = vec2{
+      yocto::dot(Vertex(k), first),
+      yocto::dot(Vertex(k), second),
+    };
+  }
+  std::vector<int> cycle = ConvexHull2D(projected);
+  int H = cycle.size();
+  if (H < 3) return out_candidates;
+
+  std::vector<ContactInfo> contacts;
+  std::vector<vec3> lifts;
+  for (int pos = 0; pos < H; pos++) {
+    int vertex = cycle[pos];
+    int previous = cycle[(pos - 1 + H) % H];
+    int following = cycle[(pos + 1) % H];
+
+    std::vector<double> samples;
+    for (int s = 0; s < cone_samples; s++) {
+      samples.push_back((s + 1.0) / (cone_samples + 1.0));
+    }
+    if (include_boundaries) {
+      samples.push_back(0.0);
+      samples.push_back(0.001);
+      samples.push_back(0.999);
+      samples.push_back(1.0);
+      std::sort(samples.begin(), samples.end());
+      samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+    }
+
+    for (double lam : samples) {
+      int mix = std::clamp(static_cast<int>(std::round(1000.0 * lam)), 0, 1000);
+      ContactInfo ci;
+      ci.vertex = vertex;
+      ci.edge_start = previous;
+      ci.edge_finish = vertex;
+      ci.edge_start2 = vertex;
+      ci.edge_finish2 = following;
+      ci.mix = mix;
+      vec3 edge = GetDoubleEdge(ci);
+      vec3 lift = yocto::cross(unit_view, edge);
+      contacts.push_back(ci);
+      lifts.push_back(lift);
+    }
+  }
+
+  vec3 tri_f[3] = {
+    tri.corners[0].ToDouble(),
+    tri.corners[1].ToDouble(),
+    tri.corners[2].ToDouble()
+  };
+  vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
+
+  struct ContactSupportData {
+    vec3 edge;
+    int selected;
+    double strict_slack;
+    bool support_ok;
+  };
+
+  std::vector<ContactSupportData> supp_cache(contacts.size());
+  for (size_t i = 0; i < contacts.size(); i++) {
+    const auto &c = contacts[i];
+    vec3 edge = GetDoubleEdge(c);
+    int sel = c.vertex;
+    double strict_slack = 1e30;
+    bool ok = true;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      bool tie = (k == sel) ||
+                 (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
+                 (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
+      if (tie) continue;
+      vec3 delta = Vertex(k) - Vertex(sel);
+      vec3 coeff = yocto::cross(edge, delta);
+      double upper = evaluate_over_triangle
+          ? std::max({yocto::dot(tri_f[0], coeff), yocto::dot(tri_f[1], coeff), yocto::dot(tri_f[2], coeff)}) + screen_support_error
+          : yocto::dot(centroid, coeff) + screen_support_error;
+      strict_slack = std::min(strict_slack, -upper);
+      if (upper > 0) {
+        ok = false;
+        break;
+      }
+    }
+    supp_cache[i] = {edge, sel, strict_slack, ok};
+  }
+
+  std::vector<int> valid_idx;
+  for (size_t i = 0; i < contacts.size(); i++) {
+    if (supp_cache[i].support_ok) valid_idx.push_back(i);
+  }
+
+  int V = valid_idx.size();
+  for (int ii = 0; ii < V; ii++) {
+    int i = valid_idx[ii];
+    for (int jj = ii + 1; jj < V; jj++) {
+      int j = valid_idx[jj];
+      for (int kk = jj + 1; kk < V; kk++) {
+        int k = valid_idx[kk];
+
+        vec3 lifts_triple[3] = {lifts[i], lifts[j], lifts[k]};
+        vec3 w = {yocto::dot(unit_view, yocto::cross(lifts_triple[1], lifts_triple[2])),
+                  yocto::dot(unit_view, yocto::cross(lifts_triple[2], lifts_triple[0])),
+                  yocto::dot(unit_view, yocto::cross(lifts_triple[0], lifts_triple[1]))};
+        if (w[0] <= 1e-12 && w[1] <= 1e-12 && w[2] <= 1e-12) {
+          w = -w;
+        }
+        if (w[0] < -1e-10 || w[1] < -1e-10 || w[2] < -1e-10) continue;
+
+        ContactInfo sel_contacts[3] = {contacts[i], contacts[j], contacts[k]};
+        vec3 c_edges[3] = {supp_cache[i].edge, supp_cache[j].edge, supp_cache[k].edge};
+        ContactSupportData c_supp[3] = {supp_cache[i], supp_cache[j], supp_cache[k]};
+
+        vec3 probe = {yocto::dot(tri_f[0], yocto::cross(c_edges[1], c_edges[2])),
+                      yocto::dot(tri_f[0], yocto::cross(c_edges[2], c_edges[0])),
+                      yocto::dot(tri_f[0], yocto::cross(c_edges[0], c_edges[1]))};
+        if (std::max({probe[0], probe[1], probe[2]}) < 0) {
+          std::swap(sel_contacts[1], sel_contacts[2]);
+          std::swap(c_edges[1], c_edges[2]);
+          std::swap(c_supp[1], c_supp[2]);
+        }
+
+        vec3 weight_coeffs[3] = {
+          yocto::cross(c_edges[1], c_edges[2]),
+          yocto::cross(c_edges[2], c_edges[0]),
+          yocto::cross(c_edges[0], c_edges[1])
+        };
+
+        bool weight_ok = true;
+        double max_weight_lower = -1e30;
+        double weights_at_max[3] = {0, 0, 0};
+        for (int m = 0; m < 3; m++) {
+          double w0 = yocto::dot(tri_f[0], weight_coeffs[m]);
+          double w1 = yocto::dot(tri_f[1], weight_coeffs[m]);
+          double w2 = yocto::dot(tri_f[2], weight_coeffs[m]);
+          double w_min = std::min({w0, w1, w2}) - screen_support_error;
+          double w_max = std::max({w0, w1, w2}) + screen_support_error;
+          if (w_min < 0) { weight_ok = false; break; }
+          max_weight_lower = std::max(max_weight_lower, w_min);
+          weights_at_max[m] = w_max;
+        }
+        if (!weight_ok || max_weight_lower <= 0) continue;
+
+        double strict_slack = std::min({c_supp[0].strict_slack, c_supp[1].strict_slack, c_supp[2].strict_slack});
+
+        vec3 weights = {yocto::dot(centroid, weight_coeffs[0]),
+                        yocto::dot(centroid, weight_coeffs[1]),
+                        yocto::dot(centroid, weight_coeffs[2])};
+        double B = 2.0 * (weights_at_max[0] + weights_at_max[1] + weights_at_max[2]);
+        vec3 variation = {0, 0, 0};
+        for (int m = 0; m < 3; m++) {
+          vec3 lift = yocto::cross(centroid, c_edges[m]);
+          vec3 term = yocto::cross(Vertex(c_supp[m].selected), lift);
+          variation = variation + term * weights[m];
+        }
+        vec3 normalized_a = variation / B;
+
+        CandidateTriple cand;
+        cand.contacts[0] = sel_contacts[0];
+        cand.contacts[1] = sel_contacts[1];
+        cand.contacts[2] = sel_contacts[2];
+        cand.normalized_a = normalized_a;
+        cand.strict_slack = strict_slack;
+        cand.B = B;
+        out_candidates.push_back(cand);
+      }
+    }
+  }
+
+  return out_candidates;
+}
+
 std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
     const TriangleQ &tri,
     const vec3 &oppose_dir,
@@ -635,6 +835,84 @@ bool Tube229::FindBalancedTetrahedron(
   std::vector<vec3> pts(n);
   for (int i = 0; i < n; i++) pts[i] = candidates[i].normalized_a;
   return FindBalancedTetrahedron(pts, out_simplex, out_separating_normal);
+}
+
+bool Tube229::FindExtremalTetrahedron(
+    const std::vector<vec3> &pts,
+    std::array<int, 4> *out_indices) {
+  int n = pts.size();
+  if (n < 4) return false;
+  const double inv_sqrt3 = 1.0 / std::sqrt(3.0);
+  const vec3 base_t[4] = {
+    { inv_sqrt3,  inv_sqrt3,  inv_sqrt3},
+    { inv_sqrt3, -inv_sqrt3, -inv_sqrt3},
+    {-inv_sqrt3,  inv_sqrt3, -inv_sqrt3},
+    {-inv_sqrt3, -inv_sqrt3,  inv_sqrt3}
+  };
+
+  std::mt19937 rng(12345);
+  std::normal_distribution<double> gauss(0.0, 1.0);
+
+  double best_margin = -1.0;
+  std::array<int, 4> best_indices = {-1, -1, -1, -1};
+
+  for (int trial = 0; trial < 400; trial++) {
+    vec3 v0 = {gauss(rng), gauss(rng), gauss(rng)};
+    double l0 = yocto::length(v0);
+    if (l0 < 1e-6) continue;
+    v0 = v0 / l0;
+
+    vec3 v1 = {gauss(rng), gauss(rng), gauss(rng)};
+    v1 = v1 - v0 * yocto::dot(v0, v1);
+    double l1 = yocto::length(v1);
+    if (l1 < 1e-6) continue;
+    v1 = v1 / l1;
+
+    vec3 v2 = yocto::cross(v0, v1);
+
+    vec3 u[4];
+    for (int k = 0; k < 4; k++) {
+      u[k] = v0 * base_t[k].x + v1 * base_t[k].y + v2 * base_t[k].z;
+    }
+
+    int idx[4];
+    bool dup = false;
+    for (int k = 0; k < 4; k++) {
+      double max_dot = -1e30;
+      int best_i = -1;
+      for (int i = 0; i < n; i++) {
+        double d = yocto::dot(pts[i], u[k]);
+        if (d > max_dot) { max_dot = d; best_i = i; }
+      }
+      idx[k] = best_i;
+      for (int prev = 0; prev < k; prev++) {
+        if (idx[prev] == best_i) { dup = true; break; }
+      }
+      if (dup) break;
+    }
+    if (dup) continue;
+
+    double margin = 0;
+    if (PointInTetrahedron(vec3{0, 0, 0}, pts[idx[0]], pts[idx[1]], pts[idx[2]], pts[idx[3]], &margin) && margin > best_margin) {
+      best_margin = margin;
+      best_indices = {idx[0], idx[1], idx[2], idx[3]};
+    }
+  }
+  if (best_margin > 1e-10) {
+    *out_indices = best_indices;
+    return true;
+  }
+  return false;
+}
+
+bool Tube229::FindExtremalTetrahedron(
+    const std::vector<CandidateTriple> &candidates,
+    std::array<int, 4> *out_indices) {
+  int n = candidates.size();
+  if (n < 4) return false;
+  std::vector<vec3> pts(n);
+  for (int i = 0; i < n; i++) pts[i] = candidates[i].normalized_a;
+  return FindExtremalTetrahedron(pts, out_indices);
 }
 
 bool Tube229::RefinePoolCuttingPlane(
@@ -1076,37 +1354,80 @@ bool Tube229::AuditCertificateAdaptive(
   return true;
 }
 
-bool Tube229::SynthesizeCertificate(
+// Helper to deduplicate ContactInfo entries
+static void AddContactDeduplicated(std::vector<ContactInfo> *dest, const ContactInfo &c) {
+  for (const auto &ex : *dest) {
+    if (ex.vertex == c.vertex &&
+        ex.edge_start == c.edge_start &&
+        ex.edge_finish == c.edge_finish &&
+        ex.edge_start2 == c.edge_start2 &&
+        ex.edge_finish2 == c.edge_finish2 &&
+        ex.mix == c.mix) {
+      return;
+    }
+  }
+  dest->push_back(c);
+}
+
+// Helper to deduplicate CandidateTriple entries
+static bool AddCandidateDeduplicated(std::vector<Tube229::CandidateTriple> *dest, const Tube229::CandidateTriple &c) {
+  for (const auto &ex : *dest) {
+    if (yocto::length(ex.normalized_a - c.normalized_a) < 1e-6) {
+      return false;
+    }
+  }
+  dest->push_back(c);
+  return true;
+}
+
+// Fast single-view synthesis for easy leaves:
+// Evaluates silhouette contacts at centroid only, tests balanced tet on well-conditioned
+// candidates (B >= 0.8) and full candidate pool, with a one-shot targeted opposing search fallback.
+bool Tube229::SynthesizeCertificateFast(
     const TriangleQ &tri,
     int depth,
     TubeCertificate *out_cert,
-    const std::vector<ContactInfo> &extra_contacts) {
+    const std::vector<ContactInfo> &extra_contacts,
+    const std::vector<CandidateTriple> &extra_axes) {
 
   vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
   vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
 
-  // Pass 1: standard fast sampling with cone samples
+  // Single-view silhouette sampling at centroid with standard cone samples
   std::vector<int> std_mixes = {0, 1, 143, 286, 429, 571, 714, 857, 999, 1000};
   std::vector<ContactInfo> contacts = GenerateSilhouetteContacts(centroid, std_mixes);
-  if (!extra_contacts.empty()) {
-    for (const auto &ec : extra_contacts) {
-      bool dup = false;
-      for (const auto &c : contacts) {
-        if (c.vertex == ec.vertex &&
-            c.edge_start == ec.edge_start &&
-            c.edge_finish == ec.edge_finish &&
-            c.edge_start2 == ec.edge_start2 &&
-            c.edge_finish2 == ec.edge_finish2 &&
-            c.mix == ec.mix) {
-          dup = true;
-          break;
-        }
+  for (const auto &ec : extra_contacts) {
+    AddContactDeduplicated(&contacts, ec);
+  }
+
+  std::vector<CandidateTriple> candidates = GenerateCandidateTriples(tri, contacts, 1e-12);
+  for (const auto &ea : extra_axes) {
+    AddCandidateDeduplicated(&candidates, ea);
+  }
+
+  if (candidates.size() < 4) return false;
+
+  // 1. Try well-conditioned candidates (B >= 0.8) first to minimize delta variation
+  std::vector<CandidateTriple> good_b;
+  for (const auto &c : candidates) {
+    if (c.B >= 0.8) good_b.push_back(c);
+  }
+  if (good_b.size() >= 4) {
+    std::array<int, 4> simplex;
+    if (FindBalancedTetrahedron(good_b, &simplex)) {
+      TubeCertificate test_cert;
+      for (int a = 0; a < 4; a++) {
+        test_cert.axes[a].contacts[0] = good_b[simplex[a]].contacts[0];
+        test_cert.axes[a].contacts[1] = good_b[simplex[a]].contacts[1];
+        test_cert.axes[a].contacts[2] = good_b[simplex[a]].contacts[2];
       }
-      if (!dup) contacts.push_back(ec);
+      if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+        return true;
+      }
     }
   }
-  std::vector<CandidateTriple> candidates = GenerateCandidateTriples(tri, contacts, 1e-12);
 
+  // 2. Try all candidates
   std::array<int, 4> simplex;
   vec3 oppose_dir = {0, 0, 0};
   if (FindBalancedTetrahedron(candidates, &simplex, &oppose_dir)) {
@@ -1121,10 +1442,12 @@ bool Tube229::SynthesizeCertificate(
     }
   }
 
-  // Pass 2: Targeted Opposing Search
+  // 3. One-shot targeted opposing search fallback
   if (yocto::length(oppose_dir) > 1e-12) {
     std::vector<CandidateTriple> opposing = FindOpposingCandidates(tri, oppose_dir, 50, 1e-12);
-    candidates.insert(candidates.end(), opposing.begin(), opposing.end());
+    for (const auto &opp : opposing) {
+      AddCandidateDeduplicated(&candidates, opp);
+    }
 
     if (FindBalancedTetrahedron(candidates, &simplex)) {
       TubeCertificate test_cert;
@@ -1141,3 +1464,253 @@ bool Tube229::SynthesizeCertificate(
 
   return false;
 }
+
+// Powerful multi-view & iterative cutting-plane synthesis for hard / canyon leaves:
+// 1. Evaluates silhouette contacts across 4 distinct view angles (centroid + 3 corners of tri)
+//    to capture view-dependent silhouette edges across the entire spherical region.
+// 2. Uses a rich mix permille grid to cover boundary transitions and critical tangents.
+// 3. Executes an iterative cutting-plane loop with Wolfe's algorithm and FindOpposingCandidates,
+//    progressively querying opposing candidates in separating normal directions.
+// 4. Incorporates RefinePoolCuttingPlane and regular extremal tetrahedron searches.
+bool Tube229::SynthesizeCertificateIterative(
+    const TriangleQ &tri,
+    int depth,
+    TubeCertificate *out_cert,
+    const std::vector<ContactInfo> &extra_contacts,
+    const std::vector<CandidateTriple> &extra_axes,
+    int max_opposing_iters) {
+
+  vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
+  vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
+
+  // Multi-view generation: centroid AND all 3 corners of the spherical triangle
+  std::vector<vec3> sample_views = {centroid, tri_f[0], tri_f[1], tri_f[2]};
+
+  std::vector<CandidateTriple> candidates;
+  for (const auto &view : sample_views) {
+    auto v_cands = GenerateCandidatesForView(view, tri, /*evaluate_over_triangle=*/true, /*cone_samples=*/4, /*include_boundaries=*/false);
+    for (const auto &c : v_cands) {
+      AddCandidateDeduplicated(&candidates, c);
+    }
+  }
+
+  // Also include extra_contacts if provided
+  if (!extra_contacts.empty()) {
+    auto ec_cands = GenerateCandidateTriples(tri, extra_contacts, 1e-12);
+    for (const auto &c : ec_cands) {
+      AddCandidateDeduplicated(&candidates, c);
+    }
+  }
+
+  for (const auto &ea : extra_axes) {
+    AddCandidateDeduplicated(&candidates, ea);
+  }
+
+  // If insufficient candidates, try higher cone sampling with boundary mixes
+  if (candidates.size() < 4) {
+    for (const auto &view : sample_views) {
+      auto v_cands = GenerateCandidatesForView(view, tri, /*evaluate_over_triangle=*/true, /*cone_samples=*/10, /*include_boundaries=*/true);
+      for (const auto &c : v_cands) {
+        AddCandidateDeduplicated(&candidates, c);
+      }
+    }
+  }
+
+  if (candidates.size() < 4) return false;
+
+  // Iterative cutting-plane loop:
+  // In each round:
+  //   a. Try well-conditioned candidates (B >= 0.8) with Wolfe
+  //   b. Try all candidates with Wolfe
+  //   c. Try cutting-plane pool refinement (RefinePoolCuttingPlane)
+  //   d. If origin is not enclosed, query FindOpposingCandidates along separating normal
+  for (int iter = 0; iter <= max_opposing_iters; iter++) {
+    // 1. Try well-conditioned candidates (B >= 0.8)
+    std::vector<CandidateTriple> good_b;
+    for (const auto &c : candidates) {
+      if (c.B >= 0.8) good_b.push_back(c);
+    }
+    if (good_b.size() >= 4) {
+      std::array<int, 4> simplex;
+      if (FindBalancedTetrahedron(good_b, &simplex)) {
+        TubeCertificate test_cert;
+        for (int a = 0; a < 4; a++) {
+          test_cert.axes[a].contacts[0] = good_b[simplex[a]].contacts[0];
+          test_cert.axes[a].contacts[1] = good_b[simplex[a]].contacts[1];
+          test_cert.axes[a].contacts[2] = good_b[simplex[a]].contacts[2];
+        }
+        if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+          return true;
+        }
+      }
+    }
+
+    // 2. Try all candidates with Wolfe
+    std::array<int, 4> simplex;
+    vec3 sep_norm = {0, 0, 0};
+    if (FindBalancedTetrahedron(candidates, &simplex, &sep_norm)) {
+      TubeCertificate test_cert;
+      for (int a = 0; a < 4; a++) {
+        test_cert.axes[a].contacts[0] = candidates[simplex[a]].contacts[0];
+        test_cert.axes[a].contacts[1] = candidates[simplex[a]].contacts[1];
+        test_cert.axes[a].contacts[2] = candidates[simplex[a]].contacts[2];
+      }
+      if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+        return true;
+      }
+    }
+
+    // 3. Try cutting-plane pool refinement on all candidates
+    std::vector<vec3> pts(candidates.size());
+    for (size_t i = 0; i < candidates.size(); i++) pts[i] = candidates[i].normalized_a;
+    std::set<int> pool;
+    for (size_t i = 0; i < candidates.size(); i++) pool.insert(i);
+    std::array<int, 4> refine_simplex;
+    double margin = 0;
+    if (RefinePoolCuttingPlane(pts, &pool, &refine_simplex, &margin)) {
+      TubeCertificate test_cert;
+      for (int a = 0; a < 4; a++) {
+        test_cert.axes[a].contacts[0] = candidates[refine_simplex[a]].contacts[0];
+        test_cert.axes[a].contacts[1] = candidates[refine_simplex[a]].contacts[1];
+        test_cert.axes[a].contacts[2] = candidates[refine_simplex[a]].contacts[2];
+      }
+      if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+        return true;
+      }
+    }
+
+    // If reached max iterations or no valid separating direction, stop iterating
+    if (iter == max_opposing_iters || yocto::length(sep_norm) < 1e-12) {
+      break;
+    }
+
+    // 4. Query targeted opposing candidates opposing sep_norm
+    std::vector<CandidateTriple> opposing = FindOpposingCandidates(tri, sep_norm, 50, 1e-12);
+    if (opposing.empty()) break;
+
+    bool added_any = false;
+    for (const auto &opp : opposing) {
+      if (AddCandidateDeduplicated(&candidates, opp)) {
+        added_any = true;
+      }
+    }
+    if (!added_any) break;
+  }
+
+  // 5. Scored candidate pool search:
+  // Extract extreme vertices of candidate cloud, find all enclosing tetrahedra,
+  // rank by margin (distance to origin), and audit top candidates.
+  {
+    std::vector<vec3> pts(candidates.size());
+    for (size_t i = 0; i < candidates.size(); i++) pts[i] = candidates[i].normalized_a;
+
+    std::set<int> pool_set;
+    std::mt19937 dir_rng(42);
+    std::normal_distribution<double> dir_dist(0.0, 1.0);
+    for (int d = 0; d < 300; d++) {
+      vec3 dir = {dir_dist(dir_rng), dir_dist(dir_rng), dir_dist(dir_rng)};
+      double l = yocto::length(dir);
+      if (l < 1e-12) continue;
+      dir = dir / l;
+      int best_hi = 0, best_lo = 0;
+      double max_v = yocto::dot(pts[0], dir);
+      double min_v = max_v;
+      for (size_t i = 1; i < pts.size(); i++) {
+        double v = yocto::dot(pts[i], dir);
+        if (v > max_v) { max_v = v; best_hi = i; }
+        if (v < min_v) { min_v = v; best_lo = i; }
+      }
+      pool_set.insert(best_hi);
+      pool_set.insert(best_lo);
+    }
+    std::vector<int> pool(pool_set.begin(), pool_set.end());
+
+    struct ScoredTet {
+      double margin;
+      std::array<int, 4> indices;
+    };
+    std::vector<ScoredTet> scored;
+
+    int P = pool.size();
+    if (P >= 4) {
+      uint64_t comb4 = (uint64_t)P * (P - 1) * (P - 2) * (P - 3) / 24;
+      if (comb4 <= 200000) {
+        for (int i = 0; i < P; i++) {
+          for (int j = i + 1; j < P; j++) {
+            for (int k = j + 1; k < P; k++) {
+              for (int l = k + 1; l < P; l++) {
+                double margin = 0;
+                if (PointInTetrahedron(vec3{0, 0, 0}, pts[pool[i]], pts[pool[j]], pts[pool[k]], pts[pool[l]], &margin) && margin > 1e-6) {
+                  scored.push_back({margin, {pool[i], pool[j], pool[k], pool[l]}});
+                }
+              }
+            }
+          }
+        }
+      } else {
+        std::mt19937 rng(1337 + depth * 31);
+        std::uniform_int_distribution<int> dist(0, P - 1);
+        for (int trial = 0; trial < 100000; trial++) {
+          int i0 = dist(rng), i1 = dist(rng), i2 = dist(rng), i3 = dist(rng);
+          if (i0 == i1 || i0 == i2 || i0 == i3 || i1 == i2 || i1 == i3 || i2 == i3) continue;
+          double margin = 0;
+          if (PointInTetrahedron(vec3{0, 0, 0}, pts[pool[i0]], pts[pool[i1]], pts[pool[i2]], pts[pool[i3]], &margin) && margin > 1e-6) {
+            scored.push_back({margin, {pool[i0], pool[i1], pool[i2], pool[i3]}});
+          }
+        }
+      }
+
+      std::sort(scored.begin(), scored.end(), [](const ScoredTet &a, const ScoredTet &b) {
+        return a.margin > b.margin;
+      });
+
+      for (size_t t = 0; t < std::min(scored.size(), (size_t)30); t++) {
+        TubeCertificate test_cert;
+        for (int a = 0; a < 4; a++) {
+          test_cert.axes[a].contacts[0] = candidates[scored[t].indices[a]].contacts[0];
+          test_cert.axes[a].contacts[1] = candidates[scored[t].indices[a]].contacts[1];
+          test_cert.axes[a].contacts[2] = candidates[scored[t].indices[a]].contacts[2];
+        }
+        if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 6. Extremal regular tetrahedron orientation fallback
+  std::array<int, 4> ext_simplex;
+  if (FindExtremalTetrahedron(candidates, &ext_simplex)) {
+    TubeCertificate test_cert;
+    for (int a = 0; a < 4; a++) {
+      test_cert.axes[a].contacts[0] = candidates[ext_simplex[a]].contacts[0];
+      test_cert.axes[a].contacts[1] = candidates[ext_simplex[a]].contacts[1];
+      test_cert.axes[a].contacts[2] = candidates[ext_simplex[a]].contacts[2];
+    }
+    if (AuditCertificateAdaptive(tri, test_cert, out_cert)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// General synthesis entry point:
+// Tries Fast single-view synthesis first for efficiency.
+// If Fast fails and !fast_only, escalates to powerful Multi-View Iterative cutting-plane search.
+bool Tube229::SynthesizeCertificate(
+    const TriangleQ &tri,
+    int depth,
+    TubeCertificate *out_cert,
+    const std::vector<ContactInfo> &extra_contacts,
+    const std::vector<CandidateTriple> &extra_axes,
+    bool fast_only) {
+
+  if (SynthesizeCertificateFast(tri, depth, out_cert, extra_contacts, extra_axes)) {
+    return true;
+  }
+  if (fast_only) return false;
+
+  return SynthesizeCertificateIterative(tri, depth, out_cert, extra_contacts, extra_axes, /*max_opposing_iters=*/5);
+}
+

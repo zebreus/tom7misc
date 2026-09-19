@@ -585,13 +585,124 @@ void TestNearOriginFaceCuttingPlane() {
   std::cout << "[PASS] TestNearOriginFaceCuttingPlane\n";
 }
 
+static void TestExtremalTetrahedron() {
+  std::cout << "[RUN] TestExtremalTetrahedron\n";
+  // 1. Point set enclosing the origin (vertices of an octahedron + noise)
+  std::vector<vec3> pts = {
+    { 1.0,  0.0,  0.0},
+    {-1.0,  0.0,  0.0},
+    { 0.0,  1.0,  0.0},
+    { 0.0, -1.0,  0.0},
+    { 0.0,  0.0,  1.0},
+    { 0.0,  0.0, -1.0},
+    { 0.5,  0.5,  0.5},
+    {-0.5, -0.5, -0.5}
+  };
+  std::array<int, 4> indices;
+  bool ok = Tube229::FindExtremalTetrahedron(pts, &indices);
+  assert(ok);
+  double margin = 0;
+  bool enclosed = Tube229::PointInTetrahedron(
+      vec3{0, 0, 0}, pts[indices[0]], pts[indices[1]], pts[indices[2]], pts[indices[3]], &margin);
+  assert(enclosed && margin > 1e-6);
+  std::cout << "  FindExtremalTetrahedron found enclosing tet: ["
+            << indices[0] << ", " << indices[1] << ", " << indices[2] << ", " << indices[3]
+            << "] margin=" << margin << "\n";
+
+  // 2. Point set in upper half-space strictly excluding origin
+  std::vector<vec3> upper_pts = {
+    { 1.0,  0.0,  0.5},
+    {-1.0,  0.0,  0.5},
+    { 0.0,  1.0,  0.5},
+    { 0.0, -1.0,  0.5},
+    { 0.0,  0.0,  1.0}
+  };
+  std::array<int, 4> bad_indices;
+  bool bad_ok = Tube229::FindExtremalTetrahedron(upper_pts, &bad_indices);
+  assert(!bad_ok);
+  std::cout << "  Upper half-space points correctly rejected (cannot enclose origin).\n";
+  std::cout << "[PASS] TestExtremalTetrahedron\n";
+}
+
+static void TestSynthesizeFastAndIterative() {
+  std::cout << "[RUN] TestSynthesizeFastAndIterative\n";
+
+  // Test 1: Leaf at depth 30: "031213002112121221112212122210"
+  std::string leaf30_path = "031213002112121221112212122210";
+  TriangleQ leaf30_tri = TriangleFromPath(leaf30_path);
+  TubeCertificate leaf30_fast;
+  bool leaf30_fast_ok = Tube229::SynthesizeCertificateFast(leaf30_tri, leaf30_path.size(), &leaf30_fast);
+  std::cout << "  Leaf depth 30 \"" << leaf30_path << "\" Fast synthesis: "
+            << (leaf30_fast_ok ? "SUCCESS" : "FAILED") << "\n";
+  if (leaf30_fast_ok) {
+    std::cout << "    c = " << leaf30_fast.c.ToString() << " (" << leaf30_fast.c.ToDouble() << "), r = "
+              << leaf30_fast.r.ToString() << " (" << leaf30_fast.r.ToDouble() << ")\n";
+    assert(leaf30_fast.c > BigRat(0));
+    assert(leaf30_fast.r > BigRat(0));
+  }
+
+  TubeCertificate leaf30_iter;
+  bool leaf30_iter_ok = Tube229::SynthesizeCertificateIterative(leaf30_tri, leaf30_path.size(), &leaf30_iter);
+  std::cout << "  Leaf depth 30 \"" << leaf30_path << "\" Iterative synthesis: "
+            << (leaf30_iter_ok ? "SUCCESS" : "FAILED") << "\n";
+  if (leaf30_iter_ok) {
+    std::cout << "    c = " << leaf30_iter.c.ToString() << " (" << leaf30_iter.c.ToDouble() << "), r = "
+              << leaf30_iter.r.ToString() << " (" << leaf30_iter.r.ToDouble() << ")\n";
+    assert(leaf30_iter.c > BigRat(0));
+    assert(leaf30_iter.r > BigRat(0));
+  }
+  assert(leaf30_fast_ok);
+  assert(leaf30_iter_ok);
+
+  // Test 2: Known difficult canyon triangle "003133"
+  // Fast synthesis (centroid only) fails on this difficult canyon,
+  // while iterative multi-view cutting-plane search explores opposing normals and succeeds!
+  std::string canyon_path = "003133";
+  TriangleQ canyon_tri = TriangleFromPath(canyon_path);
+
+  TubeCertificate canyon_fast;
+  bool canyon_fast_ok = Tube229::SynthesizeCertificateFast(canyon_tri, canyon_path.size(), &canyon_fast);
+  std::cout << "  Canyon path \"003133\" Fast synthesis: " << (canyon_fast_ok ? "SUCCESS" : "FAILED") << "\n";
+  assert(!canyon_fast_ok);
+
+  TubeCertificate canyon_iter;
+  bool canyon_iter_ok = Tube229::SynthesizeCertificateIterative(canyon_tri, canyon_path.size(), &canyon_iter);
+  std::cout << "  Canyon path \"003133\" Iterative synthesis: " << (canyon_iter_ok ? "SUCCESS" : "FAILED") << "\n";
+  assert(canyon_iter_ok);
+  if (canyon_iter_ok) {
+    std::cout << "    c = " << canyon_iter.c.ToString() << " (" << canyon_iter.c.ToDouble() << "), r = "
+              << canyon_iter.r.ToString() << " (" << canyon_iter.r.ToDouble() << ")\n";
+    assert(canyon_iter.c > BigRat(0));
+    assert(canyon_iter.r > BigRat(0));
+  }
+
+  // Test 3: Depth-18 canyon triangle "031213032001032213"
+  std::string d18_path = "031213032001032213";
+  TriangleQ d18_tri = TriangleFromPath(d18_path);
+  TubeCertificate d18_cert;
+  bool d18_ok = Tube229::SynthesizeCertificate(d18_tri, d18_path.size(), &d18_cert);
+  std::cout << "  Depth-18 path \"031213032001032213\" SynthesizeCertificate: "
+            << (d18_ok ? "SUCCESS" : "FAILED") << "\n";
+  if (d18_ok) {
+    std::cout << "    c = " << d18_cert.c.ToString() << " (" << d18_cert.c.ToDouble() << "), r = "
+              << d18_cert.r.ToString() << " (" << d18_cert.r.ToDouble() << ")\n";
+    assert(d18_cert.c > BigRat(0));
+    assert(d18_cert.r > BigRat(0));
+  }
+
+  std::cout << "[PASS] TestSynthesizeFastAndIterative\n";
+}
+
 int main(int argc, char **argv) {
   std::cout << "=== Running Tube229 Unit Tests ===\n";
+  TestBasicSilhouette();
+  TestExtremalTetrahedron();
   TestNearOriginFaceCuttingPlane();
   TestDoubleCheckAxis();
   TestNodeDepth18();
   TestTargetedOpposingSearch();
   TestCertificate003133OnTargetTri();
+  TestSynthesizeFastAndIterative();
   std::cout << "=== All Tube229 Unit Tests Passed! ===\n";
   return 0;
 }
