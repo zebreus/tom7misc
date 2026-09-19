@@ -62,6 +62,9 @@ SQLITE_OBJECTS=$(SQLITE)/database.o $(SQLITE)/sqlite3.o
 
 OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) ruperts-util.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o textured-mesh.o smallest-sphere.o dyson.o z3decs.o patches.o intervals.o hypercube.o
 
+# library objects shared in Nopert 229 search. No OpenCL.
+OBJECTS_229=nopert229.o tube229.o tubetree229.o
+
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
@@ -98,7 +101,7 @@ test_mixture.exe : test_mixture.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-lib229_test.exe : lib229_test.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+lib229_test.exe : lib229_test.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
@@ -106,23 +109,23 @@ lib229_bench.exe : lib229_bench.o scalar_bernstein.o lib229.o $(OBJECTS) $(CL_OB
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-difficult229.exe : difficult229.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+difficult229.exe : difficult229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-test_telescope_canyon.exe : test_telescope_canyon.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+test_telescope_canyon.exe : test_telescope_canyon.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-telescope229.exe : telescope229.o lib229.o tubetree229.o $(OBJECTS) $(CL_OBJECTS)
+telescope229.exe : telescope229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
-query_canyon_tube.exe : query_canyon_tube.o tubetree229.o $(OBJECTS)
+query_canyon_tube.exe : query_canyon_tube.o $(OBJECTS_229) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-pack229.exe : pack229.o $(OBJECTS)
+pack229.exe : pack229.o nopert299.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -147,9 +150,8 @@ compare_pools.exe : compare_pools.o lib229.o $(OBJECTS) $(CL_OBJECTS)
 	@echo -n "!"
 
 
-
-
-tiltperts.exe : tiltperts.o lib229.o $(OBJECTS) $(CL_OBJECTS)
+# XXX: This shouldn't really depend on 229 stuff
+tiltperts.exe : tiltperts.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) $(PDB_FLAG)
 	@echo -n "!"
 
@@ -198,25 +200,25 @@ visualize.exe : visualize.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-TUBE_VIS_OBJECTS=tube-visualize.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/image.o $(CC_LIB)/color-util.o $(CC_LIB)/util.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+TUBE_VIS_OBJECTS=$(OBJECTS_229) tube-visualize.o $(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/image.o $(CC_LIB)/color-util.o $(CC_LIB)/util.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 tube-visualize.exe : $(TUBE_VIS_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-TUBECERT_OBJECTS=tubecert229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+TUBECERT_OBJECTS=$(OBJECTS_229) tubecert229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 tubecert229.exe : $(TUBECERT_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-TUBETREE_OBJECTS=tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
+TUBETREE_OBJECTS=$(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
 
 tubetree229_test.exe : tubetree229_test.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-TUBE_OBJECTS=tube229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+TUBE_OBJECTS=$(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 tube229_test.exe : tube229_test.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -226,24 +228,24 @@ find_close_certs.exe : find_close_certs.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-INCREMENTALTUBE_OBJECTS=incrementaltube229.o tube229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+INCREMENTALTUBE_OBJECTS=$(OBJECTS_229) incrementaltube229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 incrementaltube229.exe : $(INCREMENTALTUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-scratch_test_oppose.exe : scratch_test_oppose.o tube229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
+scratch_test_oppose.exe : $(OBJECTS_229) scratch_test_oppose.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 
-CONVERT_TUBECERT_OBJECTS=convert_tubecert229.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
+CONVERT_TUBECERT_OBJECTS= $(OBJECTS_229) convert_tubecert229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
 
 convert_tubecert229.exe : $(CONVERT_TUBECERT_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-EXPORT_TUBETREE_PACK_OBJECTS=export_tubetree_pack.o tubetree229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
+EXPORT_TUBETREE_PACK_OBJECTS= $(OBJECTS_229) export_tubetree_pack.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
 
 test_tri.exe : test_tri.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -414,14 +416,7 @@ iboard.exe : iboard.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-clean :
-	rm -f *.o *.exe $(OBJECTS)
-
-
-ifeq ($(OPT),)
-  $(warning Warning: OPT is completely disabled!)
-endif
-check_tube_r.exe : check_tube_r.o tubetree229.o $(OBJECTS)
+check_tube_r.exe : check_tube_r.o $(OBJECTS_229) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -434,4 +429,10 @@ generate_seeds229.exe : generate_seeds229.o lib229.o $(OBJECTS)
 	@echo -n "!"
 
 
+clean :
+	rm -f *.o *.exe $(OBJECTS)
 
+
+ifeq ($(OPT),)
+  $(warning Warning: OPT is completely disabled!)
+endif

@@ -2,7 +2,10 @@
 #ifndef _RUPERTS_NOPERT229_H
 #define _RUPERTS_NOPERT229_H
 
+#include <array>
+
 #include "yocto-math.h"
+#include "bignum/big.h"
 
 // 20 vertices of Nopert #229, derived algebraically from repair214.cc
 // and scaled strictly inside the unit sphere for Lean's GoodPoly invariant.
@@ -41,5 +44,8 @@ inline constexpr yocto::vec<double, 3> Vertex(size_t v) {
     VERTICES[v][2],
   };
 }
+
+// Get BigRat vertices (singleton).
+const std::array<std::array<BigRat, 3>, NUM_VERTICES> &GetVerticesQ();
 
 #endif

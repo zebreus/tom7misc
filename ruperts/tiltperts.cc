@@ -546,19 +546,20 @@ struct TiltGPU {
                                &fo, &fi)) {
           const auto cl_val = GetClearance(poly, fo, fi);
           if (cl_val.has_value() && cl_val.value() > 0.0) {
-            status.Clear();
-            Print("\n" AGREEN("==================================================") "\n"
-                  AWHITE("GPU + CPU POLISH FOUND VERIFIED SOLUTION FOR {}!") "\n"
-                  AYELLOW("Exact 3D Clearance: {:.17g}") "\n"
-                  "Outer poses tested: {}\n"
-                  "Search trajectories: {}\n"
-                  "Time: {}\n"
-                  AGREEN("==================================================") "\n\n",
-                  poly.name,
-                  cl_val.value(),
-                  total_outer_poses,
-                  total_trajectories,
-                  ANSI::Time(run_timer.Seconds()));
+            status.Abandon();
+            Print(
+                "\n" AGREEN("==================================================") "\n"
+                AWHITE("GPU + CPU POLISH FOUND VERIFIED SOLUTION FOR {}!") "\n"
+                AYELLOW("Exact 3D Clearance: {:.17g}") "\n"
+                "Outer poses tested: {}\n"
+                "Search trajectories: {}\n"
+                "Time: {}\n"
+                AGREEN("==================================================") "\n\n",
+                poly.name,
+                cl_val.value(),
+                total_outer_poses,
+                total_trajectories,
+                ANSI::Time(run_timer.Seconds()));
 
             const auto ratio_val = GetRatio(poly, fo, fi);
             if (ratio_val.has_value()) {
