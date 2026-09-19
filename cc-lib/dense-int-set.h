@@ -13,9 +13,9 @@
 #include "base/logging.h"
 #include "base/macros.h"
 
-// Stores ints in 0...radix-1, which radix is fixed and must be known
-// at construction time. If you have a static radix, consider
-// SmallIntSet (or ByteSet, or std::bitset).
+// Stores ints in 0...radix-1, which radix is fixed at construction
+// time. If you have a static radix, consider SmallIntSet (or ByteSet,
+// or std::bitset).
 struct DenseIntSet {
   DenseIntSet(size_t radix) : radix(radix) {
     size_t bytes = NumBytes();
@@ -119,6 +119,9 @@ struct DenseIntSet {
   void Clear() {
     memset(vec, 0, NumBytes());
   }
+
+  // Reallocates; expect O(n) time.
+  inline void Resize(size_t new_radix);
 
   // Linear time. It just uses the iterators.
   inline size_t operator[](size_t idx) const;
@@ -324,6 +327,9 @@ struct DenseIntSet {
 };
 
 
+// Implementations follow.
+
+
 inline size_t DenseIntSet::operator[](size_t idx) const {
   // PERF: This probably has to be linear time, but we can
   // unroll to process a word at a time. This should be much
@@ -335,6 +341,25 @@ inline size_t DenseIntSet::operator[](size_t idx) const {
     ++it;
   }
   return *it;
+}
+
+inline void DenseIntSet::Resize(size_t new_radix) {
+  if (new_radix == radix) return;
+  const size_t old_words = NumWords(radix);
+  const size_t new_words = NumWords(new_radix);
+  const size_t new_bytes = new_words * sizeof(uint64_t);
+
+  vec = (uint64_t *)realloc(vec, new_bytes);
+  if (new_words > old_words) {
+    memset(vec + old_words, 0, (new_words - old_words) * sizeof(uint64_t));
+  }
+  radix = new_radix;
+
+  // Zero out any discarded bits in the last word when shrinking.
+  const size_t rem = radix % 64;
+  if (rem != 0 && new_words > 0) {
+    vec[new_words - 1] &= (uint64_t{1} << rem) - 1;
+  }
 }
 
 #endif

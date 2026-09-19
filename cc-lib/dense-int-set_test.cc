@@ -201,7 +201,7 @@ static void SetOperations() {
 
   DenseIntSet s64_copy = s64;
   CHECK(s64 == s64_copy);
-  CHECK(!(s64 == s128)); << "Different radix.";
+  CHECK(s64 != s128) << "Different radix.";
 
   // We don't really say how these are ordered, but they must
   // be consistent.
@@ -209,6 +209,98 @@ static void SetOperations() {
   CHECK((empty64 < empty128) != (empty128 < empty64));
   CHECK((s64 < s128) != (s128 < s64));
   CHECK((s128 > s64) != (s64 > s128));
+}
+
+static void Resize() {
+  {
+    // Resize up.
+    DenseIntSet s(64);
+    s.Add(10);
+    s.Add(63);
+    s.Resize(128);
+    CHECK(s.Radix() == 128);
+    CHECK(s.Size() == 2);
+    CHECK(s.Contains(10));
+    CHECK(s.Contains(63));
+
+    DenseIntSet expected(128);
+    expected.Add(10);
+    expected.Add(63);
+    CHECK(s == expected);
+  }
+
+  {
+    // Shrink within a word, dropping an element.
+    DenseIntSet s(100);
+    s.Add(10);
+    s.Add(63);
+    s.Add(75);
+    s.Resize(70);
+    CHECK(s.Radix() == 70);
+    CHECK(s.Size() == 2);
+
+    DenseIntSet expected(70);
+    expected.Add(10);
+    expected.Add(63);
+
+    // operator== relies on the representation invariant that unused
+    // bits are zero.
+    CHECK(s == expected);
+    CHECK(DenseIntSet::Subset(s, expected));
+    CHECK(DenseIntSet::Subset(expected, s));
+  }
+
+  {
+    // Shrink exactly to a word boundary, dropping elements.
+    DenseIntSet s(100);
+    s.Add(10);
+    s.Add(63);
+    s.Add(64);
+    s.Add(99);
+    s.Resize(64);
+    CHECK(s.Radix() == 64);
+    CHECK(s.Size() == 2);
+
+    DenseIntSet expected(64);
+    expected.Add(10);
+    expected.Add(63);
+    CHECK(s == expected);
+  }
+
+  {
+    // Shrink, then grow, verifying truncated bits do not return.
+    DenseIntSet s(100);
+    s.Add(10);
+    s.Add(63);
+    s.Add(75);
+    s.Resize(70);
+    s.Resize(128);
+    CHECK(s.Radix() == 128);
+    CHECK(s.Size() == 2);
+
+    DenseIntSet expected(128);
+    expected.Add(10);
+    expected.Add(63);
+    CHECK(s == expected);
+  }
+
+  {
+    // Resize empty sets.
+    DenseIntSet s(10);
+    s.Resize(200);
+    CHECK(s.Radix() == 200);
+    CHECK(s.Size() == 0);
+
+    DenseIntSet expected_large(200);
+    CHECK(s == expected_large);
+
+    s.Resize(5);
+    CHECK(s.Radix() == 5);
+    CHECK(s.Size() == 0);
+
+    DenseIntSet expected_small(5);
+    CHECK(s == expected_small);
+  }
 }
 
 static void With() {
@@ -275,6 +367,7 @@ int main(int argc, char **argv) {
   Assignments();
   SetOperations();
   With();
+  Resize();
 
   Print("OK\n");
   return 0;

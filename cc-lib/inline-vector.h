@@ -77,6 +77,16 @@ struct InlineVector {
     SetSize(0);
   }
 
+  T &front() {
+    DCHECK(!empty());
+    return (*this)[0];
+  }
+
+  const T &front() const {
+    DCHECK(!empty());
+    return (*this)[0];
+  }
+
   T &back() {
     DCHECK(!empty());
     return (*this)[size() - 1];

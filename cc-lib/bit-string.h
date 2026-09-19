@@ -1,16 +1,19 @@
 
+// A string of bits, especially for generating or parsing binary data.
+// Supports span-like views of substrings.
+
 #ifndef _CC_LIB_BIT_STRING_H
 #define _CC_LIB_BIT_STRING_H
 
+#include <bit>
+#include <cstdint>
 #include <cstring>
 #include <format>
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <optional>
-#include <string_view>
-#include <bit>
 #include <functional>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "base/logging.h"
 
@@ -34,12 +37,12 @@ struct BitString {
   // Set all the bits to the same value.
   inline void Clear(bool bit = false);
 
-  /* Appends the n low-order bits to the bit buffer. */
+  // Append the n low-order bits to the bit buffer.
   inline void WriteBits(int n, uint64_t bits);
   inline void WriteBit(bool bit);
 
-  /* Get the full contents of the buffer as a string,
-     padded with zeroes at the end if necessary. */
+  // Get the full contents of the buffer as a string,
+  // padded with zeroes at the end if necessary.
   inline std::string GetString() const;
   inline std::vector<uint8_t> GetBytes() const;
 
@@ -49,7 +52,7 @@ struct BitString {
   // True if every bit is zero.
   inline bool Zero() const;
 
-  /* give the number of bytes needed to store n bits */
+  // The number of bytes needed to store n bits.
   static inline size_t Ceil(int64_t bits) {
     return (bits >> 3) + !!(bits & 7);
   }

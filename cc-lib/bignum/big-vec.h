@@ -17,6 +17,22 @@ struct BigVecQ2 {
   BigVecQ2(std::string_view sx, std::string_view sy) :
     x(sx), y(sy) {}
 
+  BigRat &operator[](size_t i) {
+    switch (i) {
+    case 0: return x;
+    case 1: return y;
+    }
+    LOG(FATAL) << "Bad index to BigVecQ2::operator[]";
+  }
+
+  const BigRat &operator[](size_t i) const {
+    switch (i) {
+    case 0: return x;
+    case 1: return y;
+    }
+    LOG(FATAL) << "Bad index to BigVecQ2::operator[]";
+  }
+
   BigVecQ2 operator+(const BigVecQ2 &o) const {
     return BigVecQ2{
       BigRat::Plus(x, o.x),
@@ -32,6 +48,7 @@ struct BigVecQ2 {
   BigVecQ2 operator*(const BigRat &s) const {
     return {BigRat::Times(x, s), BigRat::Times(y, s)};
   }
+
   BigVecQ2 operator/(const BigRat &s) const {
     return {BigRat::Div(x, s), BigRat::Div(y, s)};
   }
@@ -52,6 +69,24 @@ struct BigVecQ3 {
   BigVecQ3(std::string_view sx, std::string_view sy, std::string_view sz) :
     x(sx), y(sy), z(sz) {}
 
+  BigRat &operator[](size_t i) {
+    switch (i) {
+    case 0: return x;
+    case 1: return y;
+    case 2: return z;
+    }
+    LOG(FATAL) << "Bad index to BigVecQ3::operator[]";
+  }
+
+  const BigRat &operator[](size_t i) const {
+    switch (i) {
+    case 0: return x;
+    case 1: return y;
+    case 2: return z;
+    }
+    LOG(FATAL) << "Bad index to BigVecQ3::operator[]";
+  }
+
   BigVecQ3 operator+(const BigVecQ3 &o) const {
     return {
       BigRat::Plus(x, o.x),
@@ -69,6 +104,10 @@ struct BigVecQ3 {
   BigVecQ3 operator*(const BigRat &s) const {
     return {BigRat::Times(x, s), BigRat::Times(y, s), BigRat::Times(z, s)};
   }
+  BigVecQ3 operator*(const BigRat &b) {
+    return {BigRat::Times(x, b), BigRat::Times(y, b), BigRat::Times(z, b)};
+  }
+
   BigVecQ3 operator/(const BigRat &s) const {
     return {BigRat::Div(x, s), BigRat::Div(y, s), BigRat::Div(z, s)};
   }

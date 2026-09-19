@@ -47,8 +47,10 @@ template<class ...Args>
 inline void AppendFormat(std::string *dst,
                          std::format_string<Args...> fmt,
                          Args &&...args) {
-  (void)std::format_to(std::back_inserter(*dst), fmt,
-                       std::forward<Args>(args)...);
+  std::string s = std::format(fmt, std::forward<Args>(args)...);
+  dst->append(s);
+  // (void)std::format_to(std::back_inserter(*dst), fmt,
+  // std::forward<Args>(args)...);
 }
 #endif
 
