@@ -1027,7 +1027,8 @@ static bool SynthesizeCertificate(
     const BigRat &target_r,
     TubeCertificate *out_cert,
     const std::vector<ContactInfo> &extra_contacts = {},
-    const std::vector<Tube229::CandidateTriple> &extra_axes = {}) {
+    const std::vector<Tube229::CandidateTriple> &extra_axes = {},
+    bool fast_pass = false) {
 
   // Try Tube229 smart targeted synthesis first (fast, < 5 ms)
   if (Tube229::SynthesizeCertificate(tri, depth, out_cert, extra_contacts)) {
@@ -1048,13 +1049,13 @@ static bool SynthesizeCertificate(
   };
   std::vector<Pass> passes;
   passes.push_back({4, false, 2e-14});
-  if (depth >= 4) {
+  if (depth >= 4 && !fast_pass) {
     passes.push_back({4, true, 2e-14});
   }
-  if (depth >= 6) {
+  if (depth >= 6 && !fast_pass) {
     passes.push_back({5, true, 2e-14});
   }
-  if (depth >= 14) {
+  if (depth >= 14 && !fast_pass) {
     passes.push_back({6, true, 2e-14});
   }
 
@@ -1216,7 +1217,7 @@ static bool SynthesizeCertificate(
         std::vector<int> cur_pool(pool_set.begin(), pool_set.end());
         ClosestResult closest = ClosestOriginFace(pts, cur_pool);
         vec3 v = closest.point;
-        if (closest.key < 1e-12) {
+        if (closest.key < 1e-10) {
           if (closest.support.size() == 3) {
             int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
             vec3 face_norm = yocto::cross(pts[i1] - pts[i0], pts[i2] - pts[i0]);
@@ -1260,6 +1261,9 @@ static bool SynthesizeCertificate(
             double vlen = yocto::length(v);
             if (vlen > 1e-15) v = v / vlen;
           }
+        } else {
+          double vlen = yocto::length(v);
+          if (vlen > 1e-15) v = v / vlen;
         }
 
         int best_i = -1;
@@ -1328,6 +1332,102 @@ static bool SynthesizeCertificate(
 // INCREMENTAL BFS TUBE SEARCH MANAGER
 // ============================================================================
 
+static bool TryCertifyNode(
+    const TriangleQ &tri,
+    int depth,
+    const BigRat &target_c,
+    const BigRat &target_r,
+    const CertificateCache &cache,
+    TubeCertificate *out_cert,
+    bool fast_pass = false) {
+
+  // 1. Audit existing cache or synthesize direct certificate
+  std::vector<TubeCertificate> all_recent = cache.GetRecent();
+  int n_check = std::min((int)all_recent.size(), 20);
+  for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_check; i--) {
+    if (AuditCertificateAdaptive(tri, all_recent[i], out_cert)) {
+      if (out_cert->r > BigRat(0) && out_cert->c > BigRat(0) &&
+          (target_r <= BigRat(0) || out_cert->r >= target_r) &&
+          (target_c <= BigRat(0) || out_cert->c >= target_c)) {
+        return true;
+      }
+    }
+  }
+
+  // 1b. Axis Recombination from recent certificates
+  std::vector<ContactInfo> extra_contacts;
+  auto add_contact = [&](const ContactInfo &c) {
+    for (const auto &ex : extra_contacts) {
+      if (ex.vertex == c.vertex &&
+          ex.edge_start == c.edge_start &&
+          ex.edge_finish == c.edge_finish &&
+          ex.edge_start2 == c.edge_start2 &&
+          ex.edge_finish2 == c.edge_finish2 &&
+          ex.mix == c.mix) {
+        return;
+      }
+    }
+    extra_contacts.push_back(c);
+  };
+
+  int n_recomb = std::min((int)all_recent.size(), 15);
+  for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
+    for (int a = 0; a < 4; a++) {
+      for (int m = 0; m < 3; m++) {
+        add_contact(all_recent[i].axes[a].contacts[m]);
+      }
+    }
+  }
+
+  std::vector<Tube229::CandidateTriple> valid_axes;
+  if (!all_recent.empty()) {
+    for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
+      const auto &rc = all_recent[i];
+      for (int a = 0; a < 4; a++) {
+        Tube229::CandidateTriple cand;
+        if (Tube229::DoubleCheckAxis(tri, rc.axes[a].contacts, &cand)) {
+          bool dup = false;
+          for (const auto &ex : valid_axes) {
+            if (yocto::length(ex.normalized_a - cand.normalized_a) < 1e-6) {
+              dup = true; break;
+            }
+          }
+          if (!dup) valid_axes.push_back(cand);
+        }
+      }
+    }
+    if (valid_axes.size() >= 4) {
+      std::array<int, 4> simplex;
+      if (Tube229::FindBalancedTetrahedron(valid_axes, &simplex)) {
+        TubeCertificate recomb_cert;
+        for (int a = 0; a < 4; a++) {
+          recomb_cert.axes[a].contacts[0] = valid_axes[simplex[a]].contacts[0];
+          recomb_cert.axes[a].contacts[1] = valid_axes[simplex[a]].contacts[1];
+          recomb_cert.axes[a].contacts[2] = valid_axes[simplex[a]].contacts[2];
+        }
+        if (AuditCertificateAdaptive(tri, recomb_cert, out_cert)) {
+          if (out_cert->r > BigRat(0) && out_cert->c > BigRat(0) &&
+              (target_r <= BigRat(0) || out_cert->r >= target_r) &&
+              (target_c <= BigRat(0) || out_cert->c >= target_c)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+
+  if (SynthesizeCertificate(tri, depth, target_c, target_r, out_cert, extra_contacts, valid_axes, fast_pass)) {
+    if (out_cert->r > BigRat(0) && out_cert->c > BigRat(0) &&
+        (target_r <= BigRat(0) || out_cert->r >= target_r) &&
+        (target_c <= BigRat(0) || out_cert->c >= target_c)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
 class IncrementalTubeManager {
  public:
   IncrementalTubeManager(
@@ -1349,7 +1449,252 @@ class IncrementalTubeManager {
     std::filesystem::create_directories(output_dir_);
   }
 
+  static double SphericalArea(vec3 a, vec3 b, vec3 c) {
+    a = a / yocto::length(a);
+    b = b / yocto::length(b);
+    c = c / yocto::length(c);
+    double num = std::abs(yocto::dot(a, yocto::cross(b, c)));
+    double den = 1.0 + yocto::dot(a, b) + yocto::dot(b, c) + yocto::dot(c, a);
+    return 2.0 * std::atan2(num, den);
+  }
+
+  void ComputeAndPrintCoverage() const {
+    if (!root_) return;
+    TriangleQ root_tri = root_->GetTriangle();
+    vec3 r0 = root_tri.corners[0].ToDouble();
+    vec3 r1 = root_tri.corners[1].ToDouble();
+    vec3 r2 = root_tri.corners[2].ToDouble();
+    double total_area = SphericalArea(r0, r1, r2);
+
+    double covered_area = 0.0;
+    int covered_regions = 0;
+    int uncertified_leaves = 0;
+
+    auto traverse = [&](auto &self, const TreeNode* n) -> bool {
+      if (n->direct_cert.has_value() && n->direct_cert->r > BigRat(0)) {
+        TriangleQ tri = n->GetTriangle();
+        vec3 v0 = tri.corners[0].ToDouble();
+        vec3 v1 = tri.corners[1].ToDouble();
+        vec3 v2 = tri.corners[2].ToDouble();
+        covered_area += SphericalArea(v0, v1, v2);
+        covered_regions++;
+        return true;
+      }
+      if (n->children.size() == 4) {
+        bool all_covered = true;
+        for (int i = 0; i < 4; i++) {
+          if (!self(self, n->children[i].get())) {
+            all_covered = false;
+          }
+        }
+        return all_covered;
+      }
+      uncertified_leaves++;
+      return false;
+    };
+
+    traverse(traverse, root_.get());
+    double pct = (covered_area / total_area) * 100.0;
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "Tree Coverage: " << pct << "% (" << covered_area << " / " << total_area << " sr)\n"
+              << "Uncovered Area: " << (total_area - covered_area) << " sr (" << (100.0 - pct) << "%)\n"
+              << "Certified Regions: " << covered_regions << "\n"
+              << "Uncertified Leaves: " << uncertified_leaves << "\n\n" << std::flush;
+  }
+
+  void RunAncestorSweep(int min_depth, int max_depth) {
+    std::string main_file = SubtreeFilename(root_path_, output_dir_);
+    if (!std::filesystem::exists(main_file)) {
+      std::cerr << "Cannot run ancestor sweep: file not found: " << main_file << "\n";
+      return;
+    }
+    std::cout << ACYAN("Loading tree from ") << main_file << "...\n";
+    root_ = LoadTreeJson(main_file, /*load_external=*/false, output_dir_);
+    if (!root_) {
+      std::cerr << "Failed to load root tree.\n";
+      return;
+    }
+
+    std::cout << ACYAN("Initial Tree Status before Ancestor Sweep:\n");
+    ComputeAndPrintCoverage();
+
+    auto populate_cache = [&](auto &self, TreeNode *node) -> void {
+      if (!node) return;
+      if (node->direct_cert.has_value() && node->direct_cert->r > BigRat(0)) {
+        cache_.Insert(*node->direct_cert);
+      }
+      for (auto &c : node->children) self(self, c.get());
+    };
+    populate_cache(populate_cache, root_.get());
+
+    std::cout << ACYAN("Starting Ancestor Sweep on ") << num_workers_ << " threads\n"
+              << "Depths: " << min_depth << " to " << max_depth << "\n"
+              << "Subdivision: DISABLED (pure pruning/certification pass)\n\n" << std::flush;
+
+    auto count_subtree_leaves = [](auto &self, const TreeNode *node) -> int {
+      if (!node) return 0;
+      if (node->children.empty()) return 1;
+      int cnt = 0;
+      for (const auto &c : node->children) cnt += self(self, c.get());
+      return cnt;
+    };
+
+    auto has_uncertified_descendants = [](auto &self, const TreeNode *node) -> bool {
+      if (!node) return false;
+      if (node->direct_cert.has_value() && node->direct_cert->r > BigRat(0)) {
+        return false;
+      }
+      if (node->children.empty()) {
+        return true;
+      }
+      for (const auto &c : node->children) {
+        if (self(self, c.get())) return true;
+      }
+      return false;
+    };
+
+    int total_nodes_certified = 0;
+    int total_leaves_pruned = 0;
+    int total_leaves_upgraded = 0;
+    int total_subtrees_preserved = 0;
+
+    for (int d = min_depth; d <= max_depth; d++) {
+      std::vector<TreeNode*> target_nodes;
+      auto collect_depth = [&](auto &self, TreeNode *node) -> void {
+        if (!node) return;
+        if (node->direct_cert.has_value() && node->direct_cert->r > BigRat(0)) {
+          return;
+        }
+        if (node->depth() == d) {
+          if (!node->children.empty() && has_uncertified_descendants(has_uncertified_descendants, node)) {
+            target_nodes.push_back(node);
+          }
+          return;
+        }
+        for (auto &c : node->children) {
+          self(self, c.get());
+        }
+      };
+      collect_depth(collect_depth, root_.get());
+
+      if (target_nodes.empty()) {
+        std::cout << "Depth " << d << ": 0 uncertified candidate nodes.\n" << std::flush;
+        continue;
+      }
+
+      std::cout << ACYAN("Depth ") << d << ": " << target_nodes.size() << " uncertified nodes to test...\n" << std::flush;
+
+      std::atomic<size_t> next_idx{0};
+      std::atomic<size_t> completed_cnt{0};
+      std::mutex result_mu;
+      std::vector<std::pair<TreeNode*, TubeCertificate>> newly_certified;
+
+      auto sweep_worker = [&]() {
+        while (true) {
+          size_t idx = next_idx.fetch_add(1);
+          if (idx >= target_nodes.size()) break;
+          TreeNode *node = target_nodes[idx];
+          TriangleQ tri = node->GetTriangle();
+
+          TubeCertificate cert;
+          if (TryCertifyNode(tri, node->depth(), target_c_, target_r_, cache_, &cert, /*fast_pass=*/true)) {
+            std::lock_guard<std::mutex> lock(result_mu);
+            newly_certified.push_back({node, cert});
+          }
+          size_t done = completed_cnt.fetch_add(1) + 1;
+          if (done % 500 == 0 || done == target_nodes.size()) {
+            std::cout << "[Depth " << d << "] Tested " << done << " / " << target_nodes.size()
+                      << " nodes | Certified: " << newly_certified.size() << "\n" << std::flush;
+          }
+        }
+      };
+
+      std::vector<std::thread> workers;
+      for (int t = 0; t < num_workers_; t++) {
+        workers.emplace_back(sweep_worker);
+      }
+      for (auto &w : workers) {
+        w.join();
+      }
+
+      int pruned_this_depth = 0;
+      int upgraded_this_depth = 0;
+      int subtrees_preserved_this_depth = 0;
+
+      for (auto &[node, cert] : newly_certified) {
+        node->direct_cert = cert;
+        node->direct_bounds.direct_r_lower = cert.r;
+        node->direct_bounds.direct_c_lower = cert.c;
+        cache_.Insert(cert);
+
+        if (!node->children.empty()) {
+          bool has_better_descendant = false;
+          auto check_better = [&](auto &self, const TreeNode *n) -> void {
+            if (has_better_descendant) return;
+            if (n->direct_cert.has_value() && n->direct_cert->r > cert.r) {
+              has_better_descendant = true;
+              return;
+            }
+            for (const auto &c : n->children) {
+              self(self, c.get());
+            }
+          };
+          check_better(check_better, node);
+
+          if (!has_better_descendant) {
+            // Prune subtree: no descendant had a better bound than this ancestor cert
+            int pruned = count_subtree_leaves(count_subtree_leaves, node) - 1;
+            if (pruned > 0) pruned_this_depth += pruned;
+            node->children.clear();
+          } else {
+            // Preserve subtree to retain better descendant bounds!
+            subtrees_preserved_this_depth++;
+            auto propagate_cert = [&](auto &self, TreeNode *n) -> void {
+              if (n->children.empty()) {
+                if (!n->direct_cert.has_value() || n->direct_cert->r < cert.r) {
+                  n->direct_cert = cert;
+                  n->direct_bounds.direct_r_lower = cert.r;
+                  n->direct_bounds.direct_c_lower = cert.c;
+                  upgraded_this_depth++;
+                }
+                return;
+              }
+              for (auto &c : n->children) {
+                self(self, c.get());
+              }
+            };
+            propagate_cert(propagate_cert, node);
+          }
+        }
+      }
+
+      total_nodes_certified += newly_certified.size();
+      total_leaves_pruned += pruned_this_depth;
+      total_leaves_upgraded += upgraded_this_depth;
+      total_subtrees_preserved += subtrees_preserved_this_depth;
+
+      std::cout << "Depth " << d << " results: " << newly_certified.size() << " certified ancestors: "
+                << pruned_this_depth << " redundant leaves pruned, "
+                << subtrees_preserved_this_depth << " subtrees preserved with better bounds ("
+                << upgraded_this_depth << " uncertified/worse leaves upgraded)!\n" << std::flush;
+
+      if (!newly_certified.empty()) {
+        std::cout << ACYAN("Saving updated tree to ") << main_file << "...\n" << std::flush;
+        SaveTreeJson(*root_, main_file, /*shallow=*/false);
+      }
+    }
+
+    std::cout << "\n" << AGREEN("=== Ancestor Sweep Finished ===") << "\n"
+              << "Total Nodes Certified:    " << total_nodes_certified << "\n"
+              << "Total Leaves Pruned:      " << total_leaves_pruned << "\n"
+              << "Total Leaves Upgraded:    " << total_leaves_upgraded << "\n"
+              << "Total Subtrees Preserved: " << total_subtrees_preserved << "\n\n" << std::flush;
+
+    ComputeAndPrintCoverage();
+  }
+
   void Run() {
+
     std::string main_file = SubtreeFilename(root_path_, output_dir_);
 
     if (std::filesystem::exists(main_file)) {
@@ -1512,80 +1857,7 @@ class IncrementalTubeManager {
 
         // 1. Audit existing cache or synthesize direct certificate
         TubeCertificate cert;
-        bool cert_found = false;
-        std::vector<TubeCertificate> all_recent = cache_.GetRecent();
-        int n_check = std::min((int)all_recent.size(), 20);
-        for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_check; i--) {
-          if (AuditCertificateAdaptive(tri, all_recent[i], &cert)) {
-            cert_found = true;
-            break;
-          }
-        }
-
-        // 1b. Axis Recombination from recent certificates
-        std::vector<ContactInfo> extra_contacts;
-        auto add_contact = [&](const ContactInfo &c) {
-          for (const auto &ex : extra_contacts) {
-            if (ex.vertex == c.vertex &&
-                ex.edge_start == c.edge_start &&
-                ex.edge_finish == c.edge_finish &&
-                ex.edge_start2 == c.edge_start2 &&
-                ex.edge_finish2 == c.edge_finish2 &&
-                ex.mix == c.mix) {
-              return;
-            }
-          }
-          extra_contacts.push_back(c);
-        };
-
-        int n_recomb = std::min((int)all_recent.size(), 15);
-        for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
-          for (int a = 0; a < 4; a++) {
-            for (int m = 0; m < 3; m++) {
-              add_contact(all_recent[i].axes[a].contacts[m]);
-            }
-          }
-        }
-
-        std::vector<Tube229::CandidateTriple> valid_axes;
-        if (!cert_found && !all_recent.empty()) {
-          for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_recomb; i--) {
-            const auto &rc = all_recent[i];
-            for (int a = 0; a < 4; a++) {
-              Tube229::CandidateTriple cand;
-              if (Tube229::DoubleCheckAxis(tri, rc.axes[a].contacts, &cand)) {
-                bool dup = false;
-                for (const auto &ex : valid_axes) {
-                  if (yocto::length(ex.normalized_a - cand.normalized_a) < 1e-6) {
-                    dup = true; break;
-                  }
-                }
-                if (!dup) valid_axes.push_back(cand);
-              }
-            }
-          }
-          if (valid_axes.size() >= 4) {
-            std::array<int, 4> simplex;
-            if (Tube229::FindBalancedTetrahedron(valid_axes, &simplex)) {
-              TubeCertificate recomb_cert;
-              for (int a = 0; a < 4; a++) {
-                recomb_cert.axes[a].contacts[0] = valid_axes[simplex[a]].contacts[0];
-                recomb_cert.axes[a].contacts[1] = valid_axes[simplex[a]].contacts[1];
-                recomb_cert.axes[a].contacts[2] = valid_axes[simplex[a]].contacts[2];
-              }
-              if (AuditCertificateAdaptive(tri, recomb_cert, &cert)) {
-                cert_found = true;
-              }
-            }
-          }
-        }
-
-        if (!cert_found) {
-          if (SynthesizeCertificate(tri, node->depth(), target_c_, target_r_, &cert, extra_contacts, valid_axes)) {
-            cert_found = true;
-          }
-        }
-
+        bool cert_found = TryCertifyNode(tri, node->depth(), target_c_, target_r_, cache_, &cert);
 
         if (cert_found) {
           node->direct_cert = cert;
@@ -1593,6 +1865,7 @@ class IncrementalTubeManager {
           node->direct_bounds.direct_c_lower = cert.c;
           cache_.Insert(cert);
         }
+
 
         if (cert_found) {
           bool positive = (cert.r > BigRat(0) && cert.c > BigRat(0));
@@ -1946,8 +2219,8 @@ static void DiagnosePath(const std::string &path) {
         ClosestResult closest = ClosestOriginFace(pts_dedup, cur_pool);
         std::cout << "    iter " << iter << " closest.key: " << closest.key << " support size: " << closest.support.size() << "\n";
         vec3 v = closest.point;
-        if (closest.key < 1e-12) {
-          std::cout << "    closest.key < 1e-12 (origin inside conv(cur_pool))!\n";
+        if (closest.key < 1e-10) {
+          std::cout << "    closest.key < 1e-10 (origin inside conv(cur_pool))!\n";
           if (closest.support.size() == 3) {
             int i0 = closest.support[0], i1 = closest.support[1], i2 = closest.support[2];
             vec3 face_norm = yocto::cross(pts_dedup[i1] - pts_dedup[i0], pts_dedup[i2] - pts_dedup[i0]);
@@ -1993,6 +2266,9 @@ static void DiagnosePath(const std::string &path) {
             double vlen = yocto::length(v);
             if (vlen > 1e-15) v = v / vlen;
           }
+        } else {
+          double vlen = yocto::length(v);
+          if (vlen > 1e-15) v = v / vlen;
         }
 
         int best_i = -1;
@@ -2087,6 +2363,8 @@ static void DiagnosePath(const std::string &path) {
 int main(int argc, char **argv) {
   std::string root_path = "0";
   int max_depth = 10;
+  int min_depth = 12;
+  bool ancestor_sweep = false;
   std::string target_r_str = "1/6000000";
   std::string target_c_str = "1018/10000000";
   int threads = 8;
@@ -2101,6 +2379,8 @@ int main(int argc, char **argv) {
       return 0;
     } else if (arg == "--root_path" && i + 1 < argc) root_path = argv[++i];
     else if (arg == "--max_depth" && i + 1 < argc) max_depth = std::stoi(argv[++i]);
+    else if (arg == "--min_depth" && i + 1 < argc) min_depth = std::stoi(argv[++i]);
+    else if (arg == "--ancestor_sweep") ancestor_sweep = true;
     else if (arg == "--target_r" && i + 1 < argc) target_r_str = argv[++i];
     else if (arg == "--target_c" && i + 1 < argc) target_c_str = argv[++i];
     else if (arg == "--threads" && i + 1 < argc) threads = std::stoi(argv[++i]);
@@ -2112,6 +2392,11 @@ int main(int argc, char **argv) {
   BigRat target_c(target_c_str);
 
   IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
-  manager.Run();
+  if (ancestor_sweep) {
+    manager.RunAncestorSweep(min_depth, max_depth);
+  } else {
+    manager.Run();
+  }
   return 0;
 }
+
