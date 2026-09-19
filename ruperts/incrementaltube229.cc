@@ -27,6 +27,7 @@
 #include <set>
 #include <random>
 #include <ctime>
+#include <csignal>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -42,6 +43,13 @@
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
 using namespace tubetree229;
+
+static std::atomic<bool> g_stop_requested{false};
+
+static void SignalHandler(int sig) {
+  g_stop_requested = true;
+  std::cerr << "\n[SIGNAL] Stop requested (signal " << sig << "). Gracefully finishing in-flight tasks and saving tree...\n" << std::flush;
+}
 
 // ============================================================================
 // POLYHEDRON #229 GEOMETRY
@@ -118,7 +126,7 @@ static Vec3Q GetExactEdge(const ContactInfo &c) {
   return (v_start - v_finish) * mixQ + (v_start2 - v_finish2) * (BigRat(1) - mixQ);
 }
 
-static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
+static inline BigRat CeilTo(const BigRat &x, const BigInt &denom) {
   BigRat scaled = x * BigRat(denom);
   BigInt num = scaled.Numerator();
   BigInt den = scaled.Denominator();
@@ -128,10 +136,14 @@ static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
   } else {
     q = num / den;
   }
-  return BigRat(q, BigInt(denom));
+  return BigRat(q, denom);
 }
 
-static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
+static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
+  return CeilTo(x, BigInt(denom));
+}
+
+static inline BigRat FloorTo(const BigRat &x, const BigInt &denom) {
   BigRat scaled = x * BigRat(denom);
   BigInt num = scaled.Numerator();
   BigInt den = scaled.Denominator();
@@ -141,7 +153,11 @@ static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
   } else {
     q = (num - den + BigInt(1)) / den;
   }
-  return BigRat(q, BigInt(denom));
+  return BigRat(q, denom);
+}
+
+static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
+  return FloorTo(x, BigInt(denom));
 }
 
 // Barycentric coordinates of target inside tetrahedron (p0, p1, p2, p3)
@@ -343,7 +359,21 @@ static const BigRat CANDIDATE_RS[] = {
   BigRat("1/50000000"), BigRat("1/100000000"),
   BigRat("1/200000000"), BigRat("1/500000000"),
   BigRat("1/1000000000"), BigRat("1/2000000000"),
-  BigRat("1/5000000000"), BigRat("1/10000000000")
+  BigRat("1/5000000000"), BigRat("1/10000000000"),
+  BigRat("1/20000000000"), BigRat("1/50000000000"),
+  BigRat("1/100000000000"), BigRat("1/200000000000"), BigRat("1/500000000000"),
+  BigRat("1/1000000000000"), BigRat("1/2000000000000"), BigRat("1/5000000000000"),
+  BigRat("1/10000000000000"), BigRat("1/20000000000000"), BigRat("1/50000000000000"),
+  BigRat("1/100000000000000"), BigRat("1/200000000000000"), BigRat("1/500000000000000"),
+  BigRat("1/1000000000000000"), BigRat("1/2000000000000000"), BigRat("1/5000000000000000"),
+  BigRat("1/10000000000000000"), BigRat("1/20000000000000000"), BigRat("1/50000000000000000"),
+  BigRat("1/100000000000000000"), BigRat("1/200000000000000000"), BigRat("1/500000000000000000"),
+  BigRat("1/1000000000000000000"), BigRat("1/2000000000000000000"), BigRat("1/5000000000000000000"),
+  BigRat("1/10000000000000000000"), BigRat("1/20000000000000000000"), BigRat("1/50000000000000000000"),
+  BigRat("1/100000000000000000000"), BigRat("1/200000000000000000000"), BigRat("1/500000000000000000000"),
+  BigRat("1/1000000000000000000000"), BigRat("1/10000000000000000000000"),
+  BigRat("1/100000000000000000000000"), BigRat("1/1000000000000000000000000"),
+  BigRat("1/10000000000000000000000000") // 1e-25
 };
 
 static bool AuditCertificateAdaptive(
@@ -375,12 +405,27 @@ static bool AuditCertificateAdaptive(
                                                  diff.ToString().c_str(), cover_radius.ToString().c_str(), delta.ToString().c_str());
     return false;
   }
-  BigRat c = FloorTo(diff, 1000000000LL);
+  BigRat c = FloorTo(diff, BigInt(1000000000LL));
   if (c <= BigRat(0)) {
-    c = FloorTo(diff, 1000000000000LL);
+    c = FloorTo(diff, BigInt(1000000000000LL));
   }
   if (c <= BigRat(0)) {
-    c = FloorTo(diff, 1000000000000000LL);
+    c = FloorTo(diff, BigInt(1000000000000000LL));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = diff / BigRat(2);
   }
   if (c <= BigRat(0)) {
     if (fail_reason) *fail_reason = StringPrintf("c <= 0 after high precision floor (diff=%s)",
@@ -414,6 +459,14 @@ static bool AuditCertificateAdaptive(
     if (cand * cand * (BigRat(1) + c * c) <= BigRat(4) * c * c) {
       certified_r = cand;
       break;
+    }
+  }
+  if (certified_r <= BigRat(0) && c > BigRat(0)) {
+    // Dynamic fallback: for any c in (0, 1), r = c/2 strictly satisfies:
+    // r^2 (1 + c^2) = (c^2 / 4) * (1 + c^2) <= c^2 / 2 < 4 * c^2.
+    BigRat cand = c / BigRat(2);
+    if (cand * cand * (BigRat(1) + c * c) <= BigRat(4) * c * c) {
+      certified_r = cand;
     }
   }
   if (certified_r <= BigRat(0)) {
@@ -705,6 +758,18 @@ class CertificateCache {
     return cache_;
   }
 
+  std::vector<TubeCertificate> GetLastN(int n) const {
+    std::lock_guard<std::mutex> lock(mu_);
+    int sz = cache_.size();
+    int count = std::min(sz, n);
+    std::vector<TubeCertificate> result;
+    result.reserve(count);
+    for (int i = sz - count; i < sz; i++) {
+      result.push_back(cache_[i]);
+    }
+    return result;
+  }
+
  private:
   mutable std::mutex mu_;
   std::vector<TubeCertificate> cache_;
@@ -749,9 +814,8 @@ static bool TryCertifyNode(
     bool fast_pass = false) {
 
   // 1. Audit existing cache or synthesize direct certificate
-  std::vector<TubeCertificate> all_recent = cache.GetRecent();
-  int n_check = std::min((int)all_recent.size(), 20);
-  for (int i = (int)all_recent.size() - 1; i >= (int)all_recent.size() - n_check; i--) {
+  std::vector<TubeCertificate> all_recent = cache.GetLastN(20);
+  for (int i = (int)all_recent.size() - 1; i >= 0; i--) {
     if (AuditCertificateAdaptive(tri, all_recent[i], out_cert)) {
       if (out_cert->r > BigRat(0) && out_cert->c > BigRat(0) &&
           (target_r <= BigRat(0) || out_cert->r >= target_r) &&
@@ -855,6 +919,8 @@ class IncrementalTubeManager {
 
     std::filesystem::create_directories(output_dir_);
   }
+
+  void set_checkpoint_minutes(int m) { checkpoint_minutes_ = m; }
 
   static double SphericalArea(vec3 a, vec3 b, vec3 c) {
     a = a / yocto::length(a);
@@ -1104,6 +1170,169 @@ class IncrementalTubeManager {
     ComputeAndPrintCoverage();
   }
 
+  void RunLeafSweep(int min_depth, int max_depth) {
+    std::string main_file = SubtreeFilename(root_path_, output_dir_);
+    if (!std::filesystem::exists(main_file)) {
+      std::cerr << "Cannot run leaf sweep: file not found: " << main_file << "\n";
+      return;
+    }
+    std::cout << ACYAN("Loading tree from ") << main_file << "...\n";
+    root_ = LoadTreeJson(main_file, /*load_external=*/false, output_dir_);
+    if (!root_) {
+      std::cerr << "Failed to load root tree.\n";
+      return;
+    }
+
+    std::cout << ACYAN("Initial Tree Status before Leaf Sweep:\n");
+    ComputeAndPrintCoverage();
+
+    auto populate_cache = [&](auto &self, TreeNode *node) -> void {
+      if (!node) return;
+      if (node->direct_cert.has_value() && node->direct_cert->r > BigRat(0)) {
+        cache_.Insert(*node->direct_cert);
+      }
+      for (auto &c : node->children) self(self, c.get());
+    };
+    populate_cache(populate_cache, root_.get());
+
+    std::cout << ACYAN("Starting Leaf Sweep on ") << num_workers_ << " threads\n"
+              << "Depths: " << min_depth << " to " << max_depth << "\n"
+              << "Subdivision: DISABLED (pure certification pass on uncertified leaves)\n\n" << std::flush;
+
+    int total_leaves_tested = 0;
+    int total_leaves_certified = 0;
+    int total_leaves_failed = 0;
+
+    int step = (min_depth <= max_depth) ? 1 : -1;
+    for (int d = min_depth; (step > 0 ? d <= max_depth : d >= max_depth); d += step) {
+      if (g_stop_requested) break;
+
+      std::vector<TreeNode*> target_leaves;
+      auto collect_depth = [&](auto &self, TreeNode *node) -> void {
+        if (!node) return;
+        if (node->children.empty()) {
+          if (node->depth() == d) {
+            bool has_valid_cert = false;
+            if (node->direct_cert.has_value()) {
+              bool positive = (node->direct_cert->r > BigRat(0) && node->direct_cert->c > BigRat(0));
+              bool meets_r = (target_r_ <= BigRat(0)) || (node->direct_cert->r >= target_r_);
+              bool meets_c = (target_c_ <= BigRat(0)) || (node->direct_cert->c >= target_c_);
+              has_valid_cert = positive && meets_r && meets_c;
+            }
+            if (!has_valid_cert && !node->external) {
+              target_leaves.push_back(node);
+            }
+          }
+          return;
+        }
+        for (auto &c : node->children) {
+          self(self, c.get());
+        }
+      };
+      collect_depth(collect_depth, root_.get());
+
+      if (target_leaves.empty()) {
+        std::cout << "Depth " << d << ": 0 uncertified leaves to test.\n" << std::flush;
+        continue;
+      }
+
+      std::cout << ACYAN("Depth ") << d << ": " << target_leaves.size() << " uncertified leaves to test...\n" << std::flush;
+      std::cout << "First 5 target leaves:\n";
+      for (size_t i = 0; i < std::min((size_t)5, target_leaves.size()); i++) {
+        std::cout << "  " << target_leaves[i]->path << "\n";
+      }
+      std::cout << std::flush;
+
+      std::atomic<size_t> next_idx{0};
+      std::atomic<size_t> completed_cnt{0};
+      std::atomic<size_t> depth_certified{0};
+      std::atomic<size_t> depth_failed{0};
+      std::mutex tree_mu;
+      auto start_time = std::chrono::steady_clock::now();
+      auto last_save_time = std::chrono::steady_clock::now();
+      const double checkpoint_seconds = checkpoint_minutes_ * 60.0;
+      std::atomic<size_t> last_saved_count{0};
+
+      auto worker = [&]() {
+        while (!g_stop_requested) {
+          size_t idx = next_idx.fetch_add(1);
+          if (idx >= target_leaves.size()) break;
+          TreeNode *node = target_leaves[idx];
+          TriangleQ tri = node->GetTriangle();
+
+          TubeCertificate cert;
+          if (TryCertifyNode(tri, node->depth(), target_c_, target_r_, cache_, &cert, /*fast_pass=*/true)) {
+            std::lock_guard<std::mutex> lock(tree_mu);
+            node->direct_cert = cert;
+            node->direct_bounds.direct_r_lower = cert.r;
+            node->direct_bounds.direct_c_lower = cert.c;
+            cache_.Insert(cert);
+            depth_certified++;
+          } else {
+            depth_failed++;
+          }
+
+          size_t done = completed_cnt.fetch_add(1) + 1;
+          if (done % 500 == 0 || done == target_leaves.size()) {
+            auto now = std::chrono::steady_clock::now();
+            double elapsed = std::chrono::duration<double>(now - start_time).count();
+            double rate = elapsed > 0 ? (done / elapsed) : 0;
+            std::cout << "[" << d << "] Tested: " << done << " / " << target_leaves.size()
+                      << " | Cert: " << depth_certified.load()
+                      << " | Fail: " << depth_failed.load()
+                      << " | Rate: " << std::fixed << std::setprecision(1) << rate << " leaves/s\n" << std::flush;
+          }
+
+          // Wall-time periodic checkpoint (every checkpoint_minutes) if new certificates were found
+          if (done % 500 == 0) {
+            auto now = std::chrono::steady_clock::now();
+            double elapsed = std::chrono::duration<double>(now - last_save_time).count();
+            if (elapsed >= checkpoint_seconds && depth_certified.load() > last_saved_count.load()) {
+              std::lock_guard<std::mutex> lock(tree_mu);
+              elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - last_save_time).count();
+              if (elapsed >= checkpoint_seconds && depth_certified.load() > last_saved_count.load()) {
+                last_save_time = std::chrono::steady_clock::now();
+                last_saved_count = depth_certified.load();
+                std::cout << ACYAN("\n[CHECKPOINT] Periodic wall-time save (") << static_cast<int>(elapsed / 60.0)
+                          << "m elapsed) with " << depth_certified.load() << " certified leaves to " << main_file << "...\n" << std::flush;
+                SaveTreeJson(*root_, main_file, /*shallow=*/false);
+              }
+            }
+          }
+        }
+      };
+
+      std::vector<std::thread> threads;
+      threads.reserve(num_workers_);
+      for (int i = 0; i < num_workers_; i++) {
+        threads.emplace_back(worker);
+      }
+      for (auto &t : threads) {
+        if (t.joinable()) t.join();
+      }
+
+      total_leaves_tested += target_leaves.size();
+      total_leaves_certified += depth_certified.load();
+      total_leaves_failed += depth_failed.load();
+
+      std::cout << "Depth " << d << " results: Tested " << target_leaves.size()
+                << " | Certified: " << depth_certified.load()
+                << " | Failed: " << depth_failed.load() << "\n" << std::flush;
+
+      if (depth_certified.load() > 0) {
+        std::cout << ACYAN("Saving updated tree after depth ") << d << " to " << main_file << "...\n" << std::flush;
+        SaveTreeJson(*root_, main_file, /*shallow=*/false);
+      }
+    }
+
+    std::cout << "\n" << AGREEN("=== Leaf Sweep Finished ===") << "\n"
+              << "Total Leaves Tested:    " << total_leaves_tested << "\n"
+              << "Total Leaves Certified: " << total_leaves_certified << "\n"
+              << "Total Leaves Failed:    " << total_leaves_failed << "\n\n" << std::flush;
+
+    ComputeAndPrintCoverage();
+  }
+
   void Run() {
 
     std::string main_file = SubtreeFilename(root_path_, output_dir_);
@@ -1235,6 +1464,8 @@ class IncrementalTubeManager {
     std::atomic<int64_t> count_pruned{0};
     std::atomic<int64_t> count_subdivided{0};
     std::atomic<int64_t> count_capped{0};
+    auto last_save_time = std::chrono::steady_clock::now();
+    const double checkpoint_seconds = checkpoint_minutes_ * 60.0;
 
     auto worker_func = [&](int tid) {
       while (true) {
@@ -1242,14 +1473,19 @@ class IncrementalTubeManager {
         TreeNode *node = nullptr;
         {
           std::unique_lock<std::mutex> lock(queue_mu);
-          while (queue_empty()) {
+          while (queue_empty() || g_stop_requested) {
+            if (g_stop_requested) {
+              done = true;
+              cv.notify_all();
+              return;
+            }
             if (busy_workers == 0) {
               done = true;
               cv.notify_all();
               return;
             }
             cv.wait(lock);
-            if (done) return;
+            if (done || g_stop_requested) return;
           }
           cur_path = pop_queue();
           node = node_map[cur_path];
@@ -1363,10 +1599,19 @@ class IncrementalTubeManager {
           ) << std::flush;
         }
 
-        if (processed % 500 == 0) {
-          std::lock_guard<std::mutex> lock(queue_mu);
-          std::cout << "[CHECKPOINT] Periodic save of tree at " << processed << " nodes...\n" << std::flush;
-          SaveTreeJson(*root_, main_file, /*shallow=*/false);
+        if (processed % 1000 == 0) {
+          auto now = std::chrono::steady_clock::now();
+          double elapsed = std::chrono::duration<double>(now - last_save_time).count();
+          if (elapsed >= checkpoint_seconds) {
+            std::lock_guard<std::mutex> lock(queue_mu);
+            elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - last_save_time).count();
+            if (elapsed >= checkpoint_seconds) {
+              last_save_time = std::chrono::steady_clock::now();
+              std::cout << ACYAN("\n[CHECKPOINT] Periodic wall-time save (") << static_cast<int>(elapsed / 60.0)
+                        << "m elapsed) at " << processed << " nodes to " << main_file << "...\n" << std::flush;
+              SaveTreeJson(*root_, main_file, /*shallow=*/false);
+            }
+          }
         }
 
         {
@@ -1387,6 +1632,12 @@ class IncrementalTubeManager {
     }
     for (auto &t : threads) {
       if (t.joinable()) t.join();
+    }
+
+    if (g_stop_requested) {
+      std::cout << ACYAN("\n[CHECKPOINT] Stop requested. Saving clean checkpoint before exiting...\n") << std::flush;
+      SaveTreeJson(*root_, main_file, /*shallow=*/false);
+      return;
     }
 
     // Final save
@@ -1412,6 +1663,7 @@ class IncrementalTubeManager {
   int num_workers_;
   std::string output_dir_;
   bool revalidate_ = false;
+  int checkpoint_minutes_ = 15;
 
   std::unique_ptr<TreeNode> root_;
   CertificateCache cache_;
@@ -1773,14 +2025,19 @@ static void DiagnosePath(const std::string &path) {
 
 int main(int argc, char **argv) {
   std::string root_path = "0";
-  int max_depth = 10;
-  int min_depth = 12;
+  int max_depth = -1;
+  int min_depth = -1;
   bool ancestor_sweep = false;
+  bool leaf_sweep = false;
   std::string target_r_str = "1/6000000";
   std::string target_c_str = "1018/10000000";
   int threads = 8;
+  int checkpoint_minutes = 15;
   std::string output_dir = ".artifacts/nopert229";
   bool revalidate = false;
+
+  std::signal(SIGINT, SignalHandler);
+  std::signal(SIGTERM, SignalHandler);
 
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -1792,9 +2049,11 @@ int main(int argc, char **argv) {
     else if (arg == "--max_depth" && i + 1 < argc) max_depth = std::stoi(argv[++i]);
     else if (arg == "--min_depth" && i + 1 < argc) min_depth = std::stoi(argv[++i]);
     else if (arg == "--ancestor_sweep") ancestor_sweep = true;
+    else if (arg == "--leaf_sweep") leaf_sweep = true;
     else if (arg == "--target_r" && i + 1 < argc) target_r_str = argv[++i];
     else if (arg == "--target_c" && i + 1 < argc) target_c_str = argv[++i];
     else if (arg == "--threads" && i + 1 < argc) threads = std::stoi(argv[++i]);
+    else if (arg == "--checkpoint_minutes" && i + 1 < argc) checkpoint_minutes = std::stoi(argv[++i]);
     else if (arg == "--output_dir" && i + 1 < argc) output_dir = argv[++i];
     else if (arg == "--revalidate") revalidate = true;
   }
@@ -1802,10 +2061,22 @@ int main(int argc, char **argv) {
   BigRat target_r(target_r_str);
   BigRat target_c(target_c_str);
 
-  IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
-  if (ancestor_sweep) {
+  if (leaf_sweep) {
+    if (min_depth < 0) min_depth = 19;
+    if (max_depth < 0) max_depth = 30;
+    IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
+    manager.set_checkpoint_minutes(checkpoint_minutes);
+    manager.RunLeafSweep(min_depth, max_depth);
+  } else if (ancestor_sweep) {
+    if (min_depth < 0) min_depth = 12;
+    if (max_depth < 0) max_depth = 10;
+    IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
+    manager.set_checkpoint_minutes(checkpoint_minutes);
     manager.RunAncestorSweep(min_depth, max_depth);
   } else {
+    if (max_depth < 0) max_depth = 10;
+    IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
+    manager.set_checkpoint_minutes(checkpoint_minutes);
     manager.Run();
   }
   return 0;

@@ -1049,7 +1049,7 @@ struct QPoly {
   }
 };
 
-static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
+static inline BigRat CeilTo(const BigRat &x, const BigInt &denom) {
   BigRat scaled = x * BigRat(denom);
   BigInt num = scaled.Numerator();
   BigInt den = scaled.Denominator();
@@ -1059,10 +1059,14 @@ static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
   } else {
     q = num / den;
   }
-  return BigRat(q, BigInt(denom));
+  return BigRat(q, denom);
 }
 
-static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
+static inline BigRat CeilTo(const BigRat &x, int64_t denom) {
+  return CeilTo(x, BigInt(denom));
+}
+
+static inline BigRat FloorTo(const BigRat &x, const BigInt &denom) {
   BigRat scaled = x * BigRat(denom);
   BigInt num = scaled.Numerator();
   BigInt den = scaled.Denominator();
@@ -1072,7 +1076,11 @@ static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
   } else {
     q = (num - den + BigInt(1)) / den;
   }
-  return BigRat(q, BigInt(denom));
+  return BigRat(q, denom);
+}
+
+static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
+  return FloorTo(x, BigInt(denom));
 }
 
 static bool Barycentric4(const Vec3Q pts[4], const Vec3Q &target, BigRat lam[4]) {
@@ -1270,7 +1278,21 @@ static const BigRat CANDIDATE_RS[] = {
   BigRat("1/50000000"), BigRat("1/100000000"),
   BigRat("1/200000000"), BigRat("1/500000000"),
   BigRat("1/1000000000"), BigRat("1/2000000000"),
-  BigRat("1/5000000000"), BigRat("1/10000000000")
+  BigRat("1/5000000000"), BigRat("1/10000000000"),
+  BigRat("1/20000000000"), BigRat("1/50000000000"),
+  BigRat("1/100000000000"), BigRat("1/200000000000"), BigRat("1/500000000000"),
+  BigRat("1/1000000000000"), BigRat("1/2000000000000"), BigRat("1/5000000000000"),
+  BigRat("1/10000000000000"), BigRat("1/20000000000000"), BigRat("1/50000000000000"),
+  BigRat("1/100000000000000"), BigRat("1/200000000000000"), BigRat("1/500000000000000"),
+  BigRat("1/1000000000000000"), BigRat("1/2000000000000000"), BigRat("1/5000000000000000"),
+  BigRat("1/10000000000000000"), BigRat("1/20000000000000000"), BigRat("1/50000000000000000"),
+  BigRat("1/100000000000000000"), BigRat("1/200000000000000000"), BigRat("1/500000000000000000"),
+  BigRat("1/1000000000000000000"), BigRat("1/2000000000000000000"), BigRat("1/5000000000000000000"),
+  BigRat("1/10000000000000000000"), BigRat("1/20000000000000000000"), BigRat("1/50000000000000000000"),
+  BigRat("1/100000000000000000000"), BigRat("1/200000000000000000000"), BigRat("1/500000000000000000000"),
+  BigRat("1/1000000000000000000000"), BigRat("1/10000000000000000000000"),
+  BigRat("1/100000000000000000000000"), BigRat("1/1000000000000000000000000"),
+  BigRat("1/10000000000000000000000000") // 1e-25
 };
 
 bool Tube229::AuditCertificateAdaptive(
@@ -1302,12 +1324,27 @@ bool Tube229::AuditCertificateAdaptive(
                                                  diff.ToString().c_str(), cover_radius.ToString().c_str(), delta.ToString().c_str());
     return false;
   }
-  BigRat c = FloorTo(diff, 1000000000LL);
+  BigRat c = FloorTo(diff, BigInt(1000000000LL));
   if (c <= BigRat(0)) {
-    c = FloorTo(diff, 1000000000000LL);
+    c = FloorTo(diff, BigInt(1000000000000LL));
   }
   if (c <= BigRat(0)) {
-    c = FloorTo(diff, 1000000000000000LL);
+    c = FloorTo(diff, BigInt(1000000000000000LL));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = FloorTo(diff, BigInt("1000000000000000000000000000000"));
+  }
+  if (c <= BigRat(0)) {
+    c = diff / BigRat(2);
   }
   if (c <= BigRat(0)) {
     if (fail_reason) *fail_reason = StringPrintf("c <= 0 after high precision floor (diff=%s)",
@@ -1341,6 +1378,14 @@ bool Tube229::AuditCertificateAdaptive(
     if (cand * cand * (BigRat(1) + c * c) <= BigRat(4) * c * c) {
       certified_r = cand;
       break;
+    }
+  }
+  if (certified_r <= BigRat(0) && c > BigRat(0)) {
+    // Dynamic fallback: for any c in (0, 1), r = c/2 strictly satisfies:
+    // r^2 (1 + c^2) = (c^2 / 4) * (1 + c^2) <= c^2 / 2 < 4 * c^2.
+    BigRat cand = c / BigRat(2);
+    if (cand * cand * (BigRat(1) + c * c) <= BigRat(4) * c * c) {
+      certified_r = cand;
     }
   }
   if (certified_r <= BigRat(0)) {
