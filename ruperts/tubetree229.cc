@@ -416,10 +416,11 @@ std::unique_ptr<TubeAtlas::FastNode> TubeAtlas::BuildFastNode(const TreeNode &no
   fn->direct_r_lower = fn->direct_r_rat.ToDouble();
   fn->is_leaf = node.children.empty() && !node.external;
 
-  if (node.children.size() == 4) {
-    for (int i = 0; i < 4; i++) {
-      if (node.children[i]) {
-        fn->children[i] = BuildFastNode(*node.children[i]);
+  for (const auto &child : node.children) {
+    if (child && !child->path.empty()) {
+      int idx = child->path.back() - '0';
+      if (idx >= 0 && idx < 4) {
+        fn->children[idx] = BuildFastNode(*child);
       }
     }
   }
@@ -487,6 +488,11 @@ bool TubeAtlas::LoadTree(int subwedge, const std::string &filepath) {
   auto fast_root = BuildFastNode(*root);
   ComputeFastEffectiveBounds(fast_root.get());
   roots_[subwedge] = std::move(fast_root);
+  {
+    std::lock_guard<std::mutex> lock(cache_mutex_);
+    certified_cache_built_ = false;
+    certified_cache_.clear();
+  }
   return true;
 }
 
@@ -584,4 +590,213 @@ double TubeAtlas::GetSafeRadiusForTriangle(const vec3 corners[3], int max_depth)
   return GetSafeRadiusForPath(path);
 }
 
+void TubeAtlas::EnsureCertifiedCache() const {
+  std::lock_guard<std::mutex> lock(cache_mutex_);
+  if (certified_cache_built_) return;
+  certified_cache_.clear();
+
+  auto collect = [&](auto &self, const FastNode *node, int sw) -> void {
+    if (!node) return;
+    if (node->direct_r_lower > 0.0 || node->effective_r_lower > 0.0) {
+      TriangleQ tq = TriangleFromPath(node->path);
+      vec3 c0 = tq.corners[0].ToDouble();
+      vec3 c1 = tq.corners[1].ToDouble();
+      vec3 c2 = tq.corners[2].ToDouble();
+      vec3 cent = (c0 + c1 + c2) * (1.0 / 3.0);
+      double len = yocto::length(cent);
+      if (len > 1e-12) cent = cent * (1.0 / len);
+      certified_cache_.push_back({node, cent, {c0, c1, c2}, sw});
+    }
+    for (int i = 0; i < 4; i++) {
+      if (node->children[i]) {
+        self(self, node->children[i].get(), sw);
+      }
+    }
+  };
+
+  for (int sw = 0; sw < 4; sw++) {
+    if (roots_[sw]) {
+      collect(collect, roots_[sw].get(), sw);
+    }
+  }
+
+  certified_cache_built_ = true;
+}
+
+std::optional<NearestCertifiedNodeResult> TubeAtlas::FindNearestCertifiedNode(
+    const vec3 &direction, int subwedge) const {
+  double len = yocto::length(direction);
+  if (len < 1e-12) return std::nullopt;
+  vec3 q = direction * (1.0 / len);
+
+  EnsureCertifiedCache();
+  if (certified_cache_.empty()) return std::nullopt;
+
+  const CertifiedCacheEntry *best_contained = nullptr;
+  double best_contained_r = -1.0;
+
+  const CertifiedCacheEntry *best_nearest = nullptr;
+  double best_dot = -2.0;
+
+  for (const auto &entry : certified_cache_) {
+    if (subwedge >= 0 && entry.subwedge != subwedge) continue;
+
+    // Check containment in spherical triangle
+    vec3 cp0 = yocto::cross(entry.corners[0], entry.corners[1]);
+    vec3 cp1 = yocto::cross(entry.corners[1], entry.corners[2]);
+    vec3 cp2 = yocto::cross(entry.corners[2], entry.corners[0]);
+    double det = yocto::dot(entry.corners[0], yocto::cross(entry.corners[1], entry.corners[2]));
+    if (std::abs(det) > 1e-15) {
+      double s = (det > 0.0) ? 1.0 : -1.0;
+      bool inside = (s * yocto::dot(q, cp0) >= -1e-11) &&
+                    (s * yocto::dot(q, cp1) >= -1e-11) &&
+                    (s * yocto::dot(q, cp2) >= -1e-11);
+      if (inside) {
+        double r = std::max(entry.node->direct_r_lower, entry.node->effective_r_lower);
+        if (r > 0.0 && (r > best_contained_r ||
+            (r == best_contained_r && (!best_contained || entry.node->path.size() > best_contained->node->path.size())))) {
+          best_contained_r = r;
+          best_contained = &entry;
+        }
+      }
+    }
+
+    // Measure angular distance to triangle center
+    double dot = yocto::dot(q, entry.center);
+    if (dot > best_dot) {
+      best_dot = dot;
+      best_nearest = &entry;
+    }
+  }
+
+  if (best_contained) {
+    NearestCertifiedNodeResult res;
+    res.path = best_contained->node->path;
+    res.direct_r_lower = best_contained->node->direct_r_lower;
+    res.effective_r_lower = best_contained->node->effective_r_lower;
+    res.direct_r_rat = best_contained->node->direct_r_rat;
+    res.effective_r_rat = best_contained->node->effective_r_rat;
+    res.angular_distance = 0.0;
+    res.triangle_center = best_contained->center;
+    res.contains_direction = true;
+    return res;
+  }
+
+  if (best_nearest) {
+    NearestCertifiedNodeResult res;
+    res.path = best_nearest->node->path;
+    res.direct_r_lower = best_nearest->node->direct_r_lower;
+    res.effective_r_lower = best_nearest->node->effective_r_lower;
+    res.direct_r_rat = best_nearest->node->direct_r_rat;
+    res.effective_r_rat = best_nearest->node->effective_r_rat;
+    double clamped_dot = std::max(-1.0, std::min(1.0, best_dot));
+    res.angular_distance = std::acos(clamped_dot);
+    res.triangle_center = best_nearest->center;
+    res.contains_direction = false;
+    return res;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<NearestCertifiedNodeResult> TubeAtlas::FindNearestCertifiedNodeForTriangle(
+    const vec3 corners[3], int subwedge) const {
+  vec3 cent = (corners[0] + corners[1] + corners[2]) * (1.0 / 3.0);
+  return FindNearestCertifiedNode(cent, subwedge);
+}
+
+std::optional<NearestCertifiedNodeResult> TubeAtlas::FindNearestCertifiedNodeForPath(
+    std::string_view path, int subwedge) const {
+  TriangleQ tq = TriangleFromPath(path);
+  vec3 corners[3] = {tq.corners[0].ToDouble(), tq.corners[1].ToDouble(), tq.corners[2].ToDouble()};
+  return FindNearestCertifiedNodeForTriangle(corners, subwedge);
+}
+
+std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNode(
+    const TreeNode &root, const vec3 &direction) {
+  double len = yocto::length(direction);
+  if (len < 1e-12) return std::nullopt;
+  vec3 q = direction * (1.0 / len);
+
+  const TreeNode *best_contained = nullptr;
+  double best_contained_r = -1.0;
+  vec3 best_contained_cent{0, 0, 0};
+
+  const TreeNode *best_nearest = nullptr;
+  double best_dot = -2.0;
+  vec3 best_nearest_cent{0, 0, 0};
+
+  auto search = [&](auto &self, const TreeNode &node) -> void {
+    double r = node.direct_bounds.direct_r_lower.ToDouble();
+    if (r > 0.0) {
+      TriangleQ tq = node.GetTriangle();
+      vec3 c0 = tq.corners[0].ToDouble();
+      vec3 c1 = tq.corners[1].ToDouble();
+      vec3 c2 = tq.corners[2].ToDouble();
+      vec3 cent = (c0 + c1 + c2) * (1.0 / 3.0);
+      double clen = yocto::length(cent);
+      if (clen > 1e-12) cent = cent * (1.0 / clen);
+
+      vec3 cp0 = yocto::cross(c0, c1);
+      vec3 cp1 = yocto::cross(c1, c2);
+      vec3 cp2 = yocto::cross(c2, c0);
+      double det = yocto::dot(c0, yocto::cross(c1, c2));
+      if (std::abs(det) > 1e-15) {
+        double s = (det > 0.0) ? 1.0 : -1.0;
+        bool inside = (s * yocto::dot(q, cp0) >= -1e-11) &&
+                      (s * yocto::dot(q, cp1) >= -1e-11) &&
+                      (s * yocto::dot(q, cp2) >= -1e-11);
+        if (inside && r > 0.0 && (r > best_contained_r ||
+            (r == best_contained_r && (!best_contained || node.path.size() > best_contained->path.size())))) {
+          best_contained_r = r;
+          best_contained = &node;
+          best_contained_cent = cent;
+        }
+      }
+
+      double dot = yocto::dot(q, cent);
+      if (dot > best_dot) {
+        best_dot = dot;
+        best_nearest = &node;
+        best_nearest_cent = cent;
+      }
+    }
+    for (const auto &c : node.children) {
+      if (c) self(self, *c);
+    }
+  };
+
+  search(search, root);
+
+  if (best_contained) {
+    NearestCertifiedNodeResult res;
+    res.path = best_contained->path;
+    res.direct_r_lower = best_contained->direct_bounds.direct_r_lower.ToDouble();
+    res.effective_r_lower = res.direct_r_lower;
+    res.direct_r_rat = best_contained->direct_bounds.direct_r_lower;
+    res.effective_r_rat = res.direct_r_rat;
+    res.angular_distance = 0.0;
+    res.triangle_center = best_contained_cent;
+    res.contains_direction = true;
+    return res;
+  }
+
+  if (best_nearest) {
+    NearestCertifiedNodeResult res;
+    res.path = best_nearest->path;
+    res.direct_r_lower = best_nearest->direct_bounds.direct_r_lower.ToDouble();
+    res.effective_r_lower = res.direct_r_lower;
+    res.direct_r_rat = best_nearest->direct_bounds.direct_r_lower;
+    res.effective_r_rat = res.direct_r_rat;
+    double clamped_dot = std::max(-1.0, std::min(1.0, best_dot));
+    res.angular_distance = std::acos(clamped_dot);
+    res.triangle_center = best_nearest_cent;
+    res.contains_direction = false;
+    return res;
+  }
+
+  return std::nullopt;
+}
+
 } // namespace tubetree229
+

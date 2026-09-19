@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -208,6 +209,25 @@ struct TreeStats {
 
 TreeStats ComputeTreeStats(const TreeNode &root);
 
+// Result returned by FindNearestCertifiedNode queries.
+struct NearestCertifiedNodeResult {
+  std::string path;
+  double direct_r_lower = 0.0;
+  double effective_r_lower = 0.0;
+  BigRat direct_r_rat{0};
+  BigRat effective_r_rat{0};
+  double angular_distance = 0.0; // angular distance in radians between query direction and triangle center (0 if contained)
+  vec3 triangle_center{0.0, 0.0, 0.0};
+  bool contains_direction = false; // true if the query direction is inside the certified spherical triangle
+
+  double safe_radius() const {
+    return std::max(direct_r_lower, effective_r_lower);
+  }
+  BigRat safe_radius_rat() const {
+    return std::max(direct_r_rat, effective_r_rat);
+  }
+};
+
 // Fast, thread-safe atlas of identity tube trees for querying view-dependent certified radii.
 class TubeAtlas {
  public:
@@ -263,12 +283,47 @@ class TubeAtlas {
     return nullptr;
   }
 
+  // Finds the nearest certified node (direct_r_lower > 0 or effective_r_lower > 0)
+  // to a given 3D unit direction vector.
+  // If subwedge is in 0..3, restricts search to that tree. If -1, searches all loaded trees.
+  std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNode(
+      const vec3 &direction, int subwedge = -1) const;
+
+  // Finds the nearest certified node to a spherical view triangle.
+  std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNodeForTriangle(
+      const vec3 corners[3], int subwedge = -1) const;
+  std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNodeForTriangle(
+      const std::array<vec3, 3> &corners, int subwedge = -1) const {
+    return FindNearestCertifiedNodeForTriangle(corners.data(), subwedge);
+  }
+
+  // Finds the nearest certified node to a given base-4 path.
+  std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNodeForPath(
+      std::string_view path, int subwedge = -1) const;
+
  private:
+  struct CertifiedCacheEntry {
+    const FastNode *node = nullptr;
+    vec3 center{0.0, 0.0, 0.0};
+    vec3 corners[3];
+    int subwedge = 0;
+  };
+
   std::unique_ptr<FastNode> roots_[4];
+  mutable std::vector<CertifiedCacheEntry> certified_cache_;
+  mutable bool certified_cache_built_ = false;
+  mutable std::mutex cache_mutex_;
+
+  void EnsureCertifiedCache() const;
 
   static std::unique_ptr<FastNode> BuildFastNode(const TreeNode &node);
   static void ComputeFastEffectiveBounds(FastNode *node);
 };
+
+// Finds the nearest certified node in an in-memory TreeNode tree to a given direction.
+std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNode(
+    const TreeNode &root, const vec3 &direction);
+
 
 } // namespace tubetree229
 

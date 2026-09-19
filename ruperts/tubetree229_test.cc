@@ -214,11 +214,74 @@ static void TestTubeAtlas() {
   std::cout << "TubeAtlas tests PASSED.\n";
 }
 
+static void TestNearestCertifiedNode() {
+  std::cout << "Testing Nearest Certified Node Queries...\n";
+
+  // 1. Synthetic TreeNode test
+  TreeNode root;
+  root.path = "";
+  for (int i = 0; i < 4; i++) {
+    auto child = std::make_unique<TreeNode>();
+    child->path = std::to_string(i);
+    root.children.push_back(std::move(child));
+  }
+  // Only child 2 is certified
+  root.children[2]->direct_bounds.direct_r_lower = BigRat(1, 5000);
+
+  // Direction in child 2
+  TriangleQ t2 = TriangleFromPath("2");
+  vec3 c2 = (t2.corners[0].ToDouble() + t2.corners[1].ToDouble() + t2.corners[2].ToDouble()) * (1.0 / 3.0);
+  auto res2 = FindNearestCertifiedNode(root, c2);
+  CHECK(res2.has_value());
+  CHECK_EQ(res2->path, "2");
+  CHECK(res2->contains_direction);
+  CHECK_EQ(res2->angular_distance, 0.0);
+  CHECK_EQ(res2->direct_r_lower, 0.0002);
+
+  // Direction in child 0 (uncertified) -> should find child 2 as nearest
+  TriangleQ t0 = TriangleFromPath("0");
+  vec3 c0 = (t0.corners[0].ToDouble() + t0.corners[1].ToDouble() + t0.corners[2].ToDouble()) * (1.0 / 3.0);
+  auto res0 = FindNearestCertifiedNode(root, c0);
+  CHECK(res0.has_value());
+  CHECK_EQ(res0->path, "2");
+  CHECK(!res0->contains_direction);
+  CHECK(res0->angular_distance > 0.0);
+  CHECK_EQ(res0->direct_r_lower, 0.0002);
+
+  // 2. Real TubeAtlas test
+  TubeAtlas atlas;
+  if (atlas.LoadTree(0, "/root/nopert-project/tree_0.json")) {
+    std::cout << "Atlas loaded tree_0.json for nearest certified query...\n";
+    // Query path "03333333" -> known certified node in tree_0
+    auto res_atlas = atlas.FindNearestCertifiedNodeForPath("03333333", 0);
+    CHECK(res_atlas.has_value());
+    std::cout << "Nearest node for 03333333: path=" << res_atlas->path
+              << " r=" << res_atlas->direct_r_lower
+              << " dist=" << res_atlas->angular_distance
+              << " contained=" << res_atlas->contains_direction << "\n";
+    CHECK_EQ(res_atlas->contains_direction, true);
+    CHECK(std::abs(res_atlas->angular_distance) < 1e-12);
+    CHECK(std::abs(res_atlas->safe_radius() - 0.001) < 1e-9);
+
+    // Query path "03121" (canyon cell #1265114 view path)
+    auto res_canyon = atlas.FindNearestCertifiedNodeForPath("03121", 0);
+    CHECK(res_canyon.has_value());
+    std::cout << "Nearest node for canyon path 03121: path=" << res_canyon->path
+              << " r=" << res_canyon->direct_r_lower
+              << " dist=" << res_canyon->angular_distance << " rad\n";
+    CHECK(res_canyon->direct_r_lower > 0.0);
+  }
+
+  std::cout << "Nearest Certified Node tests PASSED.\n";
+}
+
 int main() {
   TestGeometry();
   TestBounds();
   TestSerializationAndSubtree();
   TestTubeAtlas();
+  TestNearestCertifiedNode();
   std::cout << "\nALL TUBETREE229 TESTS PASSED SUCCESSFULLY!\n";
   return 0;
 }
+

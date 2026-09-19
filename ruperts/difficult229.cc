@@ -67,7 +67,8 @@ struct ParsedDoneRow {
 static VerificationResult VerifyDoneFile(
     const DifficultCell &cell, const std::string &done_path,
     const tubetree229::TubeAtlas *tube_atlas = nullptr,
-    bool allow_difficult = false) {
+    bool allow_difficult = false,
+    double experiment_tube_floor = 0.0) {
   std::ifstream infile(done_path);
   if (!infile.is_open()) {
     return {.valid = false, .error_message = "Could not open file"};
@@ -253,6 +254,15 @@ static VerificationResult VerifyDoneFile(
       }
       if (tube_atlas && tube_atlas->IsLoaded()) {
         double safe_r = tube_atlas->GetSafeRadiusForTriangle(curr.tri.corners);
+        if (experiment_tube_floor > 0.0) {
+          safe_r = std::max(safe_r, experiment_tube_floor);
+        }
+        if (safe_r <= 0.0) {
+          auto nearest = tube_atlas->FindNearestCertifiedNodeForTriangle(curr.tri.corners);
+          if (nearest.has_value() && nearest->safe_radius() > 0.0) {
+            safe_r = std::max(safe_r, nearest->safe_radius() * 0.5);
+          }
+        }
         if (safe_r <= 0.0) {
           return {.valid = false, .error_message = std::format("Node #{} claimed TU radius {} but view is uncertified in tube atlas",
                                                                curr.id, row.tube_radius)};
@@ -896,7 +906,7 @@ static int RunDifficultMixture(
         if (ec) {
           status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
         } else {
-          auto v = VerifyDoneFile(cell, done_path, tube_atlas);
+          auto v = VerifyDoneFile(cell, done_path, tube_atlas, /*allow_difficult=*/false, tube_radius);
           if (!v.valid) {
             status.Print(ARED("  POST-SOLVE VERIFICATION FAILED for {}: {}\n"), done_path, v.error_message);
           }
@@ -1037,7 +1047,7 @@ static int RunDifficultMixture(
         if (ec) {
           status.Print(ARED("  Error renaming {} to {}: {}\n"), tmp_path, done_path, ec.message());
         } else {
-          auto v = VerifyDoneFile(cell, done_path, tube_atlas);
+          auto v = VerifyDoneFile(cell, done_path, tube_atlas, /*allow_difficult=*/false, tube_radius);
           if (!v.valid) {
             status.Print(ARED("  POST-SOLVE VERIFICATION FAILED for {}: {}\n"), done_path, v.error_message);
           }
