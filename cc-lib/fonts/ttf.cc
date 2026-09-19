@@ -808,6 +808,33 @@ string TTF::Font::ToSFD() const {
   // const char antialias_flag = antialias ? '1' : '0';
   const char antialias_flag = '1';
 
+  std::string_view gasp_and_prep;
+  if (!antialias) {
+    gasp_and_prep =
+      // 1 record; for all sizes (up to 65535), use flags 0
+      // (no grid-fitting, no grayscale anti-aliasing).
+      "GaspTable: 1 65535 0\n"
+      // The prep table (Control Value Program) runs when the font is
+      // loaded. We use the INSTCTRL instruction to disable hinting.
+      // PUSHB_2 pushes two bytes: value=1, selector=1.
+      // selector=1 is for \"inhibit grid-fitting\", and value=1 turns it on.
+      "TtTable: prep\n"
+      "PUSHB_2\n"
+      "1\n"
+      "1\n"
+      "INSTCTRL\n"
+      "PUSHB_4\n"
+      // And annoyingly, FreeType will just ignore the hinting instructions
+      // if the table isn't long enough, replacing it with its own hinting
+      // heuristics (which are bad for pixel fonts).
+      "0\n"
+      "0\n"
+      "0\n"
+      "0\n"
+      "CLEAR\n"
+      "EndTTInstrs\n";
+  }
+
   // FYI the values in the Layer: command are what tell it that
   // we are using quadratic beziers.
   const int numchars = chars.size();
@@ -860,7 +887,7 @@ DisplaySize: -48
 AntiAlias: {}
 FitToEm: 0
 WinInfo: 64 8 5
-BeginChars: 1114112 {}
+{}BeginChars: 1114112 {}
 )!",
 
 name_postscript, full_name, family_name,
@@ -871,6 +898,7 @@ ascent, descent, weight, width,
 native_linegap, native_linegap, native_linegap,
 vendor[0], vendor[1], vendor[2], vendor[3],
 antialias_flag,
+gasp_and_prep,
 numchars);
 
   auto MapX = [this, box](float x) -> int {
