@@ -1,5 +1,5 @@
 
-default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe big-numbers_test.exe big-numbers-nogmp_test.exe polynomial_test.exe polynomial-nogmp_test.exe big-interval_test.exe big-interval-nogmp_test.exe
+default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe big-numbers_test.exe big-numbers-nogmp_test.exe polynomial_test.exe polynomial-nogmp_test.exe big-interval_test.exe big-interval-nogmp_test.exe big-vec_test.exe big-vec-nogmp_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -66,6 +66,9 @@ big_bench.exe : big_bench.o big.o $(CCLIB_TEST_OBJECTS)
 big-interval_test.exe : big-interval_test.o big.o big-numbers.o big-interval.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
+big-vec_test.exe : big-vec_test.o big.o big-numbers.o $(CCLIB_TEST_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
 # Without GMP
 
 # support objects
@@ -87,6 +90,9 @@ polynomial-nogmp_test.exe : polynomial_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 big-interval-nogmp_test.exe : big-interval_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
+big-vec-nogmp_test.exe : big-vec_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 
