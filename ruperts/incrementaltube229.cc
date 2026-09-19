@@ -431,64 +431,8 @@ static bool AuditCertificateAdaptive(
 // CANDIDATE GENERATION, WOLFE SOLVER, AND UPPER BOUND ESTIMATION
 // ============================================================================
 
-static inline double Cross2(const vec2 &a, const vec2 &b) {
-  return a.x * b.y - a.y * b.x;
-}
+using CandidateTriple = Tube229::CandidateTriple;
 
-static std::vector<int> ConvexHull2D(const std::vector<vec2> &points) {
-  int n = points.size();
-  std::vector<int> p(n);
-  std::iota(p.begin(), p.end(), 0);
-  std::sort(p.begin(), p.end(), [&](int a, int b) {
-    if (points[a].x != points[b].x) return points[a].x < points[b].x;
-    return points[a].y < points[b].y;
-  });
-
-  auto half = [&](const std::vector<int> &indices) {
-    std::vector<int> ans;
-    for (int idx : indices) {
-      while (ans.size() >= 2) {
-        vec2 a = points[ans[ans.size() - 2]];
-        vec2 b = points[ans[ans.size() - 1]];
-        vec2 pt = points[idx];
-        vec2 ab = b - a;
-        vec2 bp = pt - b;
-        if (Cross2(ab, bp) > 1e-14) break;
-        ans.pop_back();
-      }
-      ans.push_back(idx);
-    }
-    return ans;
-  };
-
-  std::vector<int> lower = half(p);
-  std::vector<int> rev_p = p;
-  std::reverse(rev_p.begin(), rev_p.end());
-  std::vector<int> upper = half(rev_p);
-
-  std::vector<int> hull;
-  if (!lower.empty()) lower.pop_back();
-  if (!upper.empty()) upper.pop_back();
-  hull.insert(hull.end(), lower.begin(), lower.end());
-  hull.insert(hull.end(), upper.begin(), upper.end());
-  return hull;
-}
-
-struct CandidateTriple {
-  ContactInfo contacts[3];
-  vec3 normalized_a;
-  double strict_slack = 0.0;
-  double B = 0.0;
-};
-
-static inline vec3 GetDoubleEdge(const ContactInfo &c) {
-  vec3 v_start = Vertex(c.edge_start);
-  vec3 v_finish = Vertex(c.edge_finish);
-  vec3 v_start2 = Vertex(c.edge_start2);
-  vec3 v_finish2 = Vertex(c.edge_finish2);
-  double mixD = c.mix / 1000.0;
-  return (v_start - v_finish) * mixD + (v_start2 - v_finish2) * (1.0 - mixD);
-}
 
 static void GenerateCandidatesForView(
     const vec3 &view,
@@ -526,7 +470,7 @@ static void GenerateCandidatesForView(
       yocto::dot(Vertex(k), second),
     };
   }
-  std::vector<int> cycle = ConvexHull2D(projected);
+  std::vector<int> cycle = Tube229::ConvexHull2D(projected);
   int H = cycle.size();
   if (H < 3) return;
 
@@ -559,7 +503,7 @@ static void GenerateCandidatesForView(
       ci.edge_start2 = vertex;
       ci.edge_finish2 = following;
       ci.mix = mix;
-      vec3 edge = GetDoubleEdge(ci);
+      vec3 edge = Tube229::GetDoubleEdge(ci);
       vec3 lift = yocto::cross(unit_view, edge);
       contacts.push_back(ci);
       lifts.push_back(lift);
@@ -583,7 +527,7 @@ static void GenerateCandidatesForView(
   std::vector<ContactSupportData> supp_cache(contacts.size());
   for (size_t i = 0; i < contacts.size(); i++) {
     const auto &c = contacts[i];
-    vec3 edge = GetDoubleEdge(c);
+    vec3 edge = Tube229::GetDoubleEdge(c);
     int sel = c.vertex;
     double strict_slack = 1e30;
     bool ok = true;
@@ -809,66 +753,6 @@ static ClosestResult ClosestOriginFace(const std::vector<vec3> &pts, const std::
   return best;
 }
 
-static bool FindBalancedTetrahedron(const std::vector<vec3> &pts, std::array<int, 4> *out_indices) {
-  int n = pts.size();
-  if (n < 4) return false;
-
-  int start = 0;
-  double min_norm = yocto::dot(pts[0], pts[0]);
-  for (int i = 1; i < n; i++) {
-    double d = yocto::dot(pts[i], pts[i]);
-    if (d < min_norm) { min_norm = d; start = i; }
-  }
-
-  std::vector<int> active = {start};
-  std::set<std::pair<std::vector<int>, int>> seen;
-
-  for (int iter = 0; iter < 100; iter++) {
-    if (active.size() >= 4) {
-      int m = active.size();
-      for (int i = 0; i < m; i++) {
-        for (int j = i + 1; j < m; j++) {
-          for (int k = j + 1; k < m; k++) {
-            for (int l = k + 1; l < m; l++) {
-              vec3 tpts[4] = {pts[active[i]], pts[active[j]], pts[active[k]], pts[active[l]]};
-              double margin;
-              double bary[4];
-              if (TetrahedronOriginMargin(tpts, &margin, bary)) {
-                *out_indices = {active[i], active[j], active[k], active[l]};
-                return true;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    ClosestResult closest = ClosestOriginFace(pts, active);
-    if (closest.support.empty()) return false;
-    active = closest.support;
-    vec3 current = closest.point;
-    double norm_sq = closest.key;
-
-    int next_index = -1;
-    double min_dot = 1e30;
-    for (int i = 0; i < n; i++) {
-      double d = yocto::dot(current, pts[i]);
-      if (d < min_dot) { min_dot = d; next_index = i; }
-    }
-    double improvement = norm_sq - min_dot;
-    if (improvement <= 1e-13 * std::max(1.0, norm_sq)) return false;
-
-    if (std::find(active.begin(), active.end(), next_index) != active.end()) return false;
-
-    std::vector<int> sorted_active = active;
-    std::sort(sorted_active.begin(), sorted_active.end());
-    if (seen.count({sorted_active, next_index})) return false;
-    seen.insert({sorted_active, next_index});
-    active.push_back(next_index);
-  }
-  return false;
-}
-
 static bool FindExtremalTetrahedron(const std::vector<vec3> &pts, std::array<int, 4> *out_indices) {
   int n = pts.size();
   if (n < 4) return false;
@@ -1062,16 +946,7 @@ static bool SynthesizeCertificate(
       GenerateCandidatesForView(sv, tri, /*evaluate_over_triangle=*/true, pass.cone_samples, pass.include_boundaries, pass.screen_support_error, &v_cands);
       all_cands.insert(all_cands.end(), v_cands.begin(), v_cands.end());
     }
-    for (const auto &ea : extra_axes) {
-      CandidateTriple ct;
-      ct.contacts[0] = ea.contacts[0];
-      ct.contacts[1] = ea.contacts[1];
-      ct.contacts[2] = ea.contacts[2];
-      ct.normalized_a = ea.normalized_a;
-      ct.strict_slack = ea.strict_slack;
-      ct.B = ea.B;
-      all_cands.push_back(ct);
-    }
+    all_cands.insert(all_cands.end(), extra_axes.begin(), extra_axes.end());
 
     if (all_cands.size() < 4) continue;
 
@@ -1116,7 +991,7 @@ static bool SynthesizeCertificate(
     }
     if (good_b_pts.size() >= 4) {
       std::array<int, 4> good_wolfe_idx;
-      if (FindBalancedTetrahedron(good_b_pts, &good_wolfe_idx)) {
+      if (Tube229::FindBalancedTetrahedron(good_b_pts, &good_wolfe_idx)) {
         TubeCertificate test_cert;
         for (int a = 0; a < 4; a++) {
           int orig_idx = good_b_indices[good_wolfe_idx[a]];
@@ -1132,7 +1007,7 @@ static bool SynthesizeCertificate(
 
     // Try Wolfe balanced tetrahedron on all candidates
     std::array<int, 4> wolfe_idx;
-    if (FindBalancedTetrahedron(pts, &wolfe_idx)) {
+    if (Tube229::FindBalancedTetrahedron(pts, &wolfe_idx)) {
       TubeCertificate test_cert;
       for (int a = 0; a < 4; a++) {
         test_cert.axes[a].contacts[0] = candidates[wolfe_idx[a]].contacts[0];
@@ -2125,7 +2000,7 @@ static void DiagnosePath(const std::string &path) {
 
     // 2. Try Balanced
     std::array<int, 4> wolfe_idx;
-    if (FindBalancedTetrahedron(pts_dedup, &wolfe_idx)) {
+    if (Tube229::FindBalancedTetrahedron(pts_dedup, &wolfe_idx)) {
       std::cout << "  FindBalancedTetrahedron found tet: indices ["
                 << wolfe_idx[0] << ", " << wolfe_idx[1] << ", " << wolfe_idx[2] << ", " << wolfe_idx[3] << "]\n";
       TubeCertificate test_cert;

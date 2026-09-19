@@ -73,6 +73,11 @@ class Tube229 {
   // Wolfe's minimum norm point / balanced tetrahedron algorithm.
   // If origin is not enclosed, returns false and optionally writes separating normal to out_separating_normal.
   static bool FindBalancedTetrahedron(
+      const std::vector<vec3> &pts,
+      std::array<int, 4> *out_simplex,
+      vec3 *out_separating_normal = nullptr);
+
+  static bool FindBalancedTetrahedron(
       const std::vector<CandidateTriple> &candidates,
       std::array<int, 4> *out_simplex,
       vec3 *out_separating_normal = nullptr);

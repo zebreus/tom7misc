@@ -551,14 +551,11 @@ bool Tube229::ClosestOriginFace(
 }
 
 bool Tube229::FindBalancedTetrahedron(
-    const std::vector<CandidateTriple> &candidates,
+    const std::vector<vec3> &pts,
     std::array<int, 4> *out_simplex,
     vec3 *out_separating_normal) {
-  int n = candidates.size();
+  int n = pts.size();
   if (n < 4) return false;
-
-  std::vector<vec3> pts(n);
-  for (int i = 0; i < n; i++) pts[i] = candidates[i].normalized_a;
 
   int start = 0;
   double min_norm = yocto::dot(pts[0], pts[0]);
@@ -627,6 +624,17 @@ bool Tube229::FindBalancedTetrahedron(
   }
   if (out_separating_normal) *out_separating_normal = last_current;
   return false;
+}
+
+bool Tube229::FindBalancedTetrahedron(
+    const std::vector<CandidateTriple> &candidates,
+    std::array<int, 4> *out_simplex,
+    vec3 *out_separating_normal) {
+  int n = candidates.size();
+  if (n < 4) return false;
+  std::vector<vec3> pts(n);
+  for (int i = 0; i < n; i++) pts[i] = candidates[i].normalized_a;
+  return FindBalancedTetrahedron(pts, out_simplex, out_separating_normal);
 }
 
 bool Tube229::RefinePoolCuttingPlane(
