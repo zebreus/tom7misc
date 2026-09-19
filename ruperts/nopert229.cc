@@ -5,7 +5,7 @@
 
 #include "bignum/big.h"
 
-static const std::array<std::array<BigRat, 3>, NUM_VERTICES> &GetVerticesQ() {
+const std::array<std::array<BigRat, 3>, NUM_VERTICES> &GetVerticesQ() {
   static const std::array<std::array<BigRat, 3>, NUM_VERTICES> *v =
     new std::array<std::array<BigRat, 3>, NUM_VERTICES>{
     std::array

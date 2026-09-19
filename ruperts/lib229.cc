@@ -2053,6 +2053,9 @@ bool ShouldSplitBox(
     int pre_vsplits,
     int root_view_depth,
     int box_splits_since_view) {
+  if (box_depth >= max_box_depth && view_depth >= max_view_depth) {
+    return true;
+  }
   if (box_depth >= max_box_depth) {
     return false;
   }
@@ -2956,6 +2959,7 @@ MixtureSolveStats SolveCellMixtureParallel(
 
         // 3. Splitting
         if (node.depth >= max_depth ||
+            (node.box_depth >= max_box_depth && node.view_depth >= max_view_depth) ||
             (max_split_delta > 0 && (node.depth - cell.depth) >= max_split_delta)) {
           int ch = ceiling_hits.fetch_add(1);
           if (ch < 5) {
@@ -2980,7 +2984,7 @@ MixtureSolveStats SolveCellMixtureParallel(
             node.view_depth, max_view_depth,
             res.box_span, res.view_penalty,
             rot_diam, view_diam,
-            split_kappa, base_tree.MaxDepth(), cell.view_depth);
+            split_kappa, /*pre_vsplits=*/0, cell.view_depth);
 
         if (split_box) {
           int widest = node.box.WidestAxis();

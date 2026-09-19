@@ -703,7 +703,7 @@ static int RunDifficultMixture(
   for (const auto &c : cells) {
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
-      auto v = VerifyDoneFile(c, done_file, tube_atlas);
+      auto v = VerifyDoneFile(c, done_file, tube_atlas, /*allow_difficult=*/false, tube_radius);
       if (v.valid) {
         Print(AGREEN("  ✔") " Cell #{} verified from {} ({} rows, {} leaves, worst margin: {:.6g}).\n",
               c.id, done_file, v.total_rows, v.total_leaves, v.worst_margin);
@@ -934,7 +934,7 @@ static int RunDifficultMixture(
       std::string done_filename = std::format("chart{}.{}.done", cell.chart, cell.id);
       std::string done_path = std::format("{}/{}", out_dir, done_filename);
       if (std::filesystem::exists(done_path)) {
-        auto v = VerifyDoneFile(cell, done_path, tube_atlas);
+        auto v = VerifyDoneFile(cell, done_path, tube_atlas, /*allow_difficult=*/false, tube_radius);
         if (v.valid) {
           total_solved++;
           total_rows_written += v.total_rows;
@@ -1224,7 +1224,7 @@ int main(int argc, char **argv) {
       difficult_path = argv[++i];
     } else if (arg == "--out_dir" && i + 1 < argc) {
       out_dir = argv[++i];
-    } else if (arg == "--splits_file" && i + 1 < argc) {
+    } else if ((arg == "--splits_file" || arg == "--splits") && i + 1 < argc) {
       splits_file = argv[++i];
     } else if (arg == "--view_mixture" || arg == "--mode=view_mixture") {
       mixture_mode = true;

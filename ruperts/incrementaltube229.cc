@@ -46,29 +46,25 @@ using namespace tubetree229;
 // ============================================================================
 // POLYHEDRON #229 GEOMETRY
 // ============================================================================
+// Polyhedron #229 rational vertices (M9b exact repair derivation)
+// Access via GetVerticesQ() from nopert229.h to avoid static initialization fiasco
+// and avoid repeated string-parsing/heap allocations in tight search loops.
+static const std::array<Vec3Q, NUM_VERTICES> &GetVec3QVertices() {
+  static const std::array<Vec3Q, NUM_VERTICES> *cached = []() {
+    auto *arr = new std::array<Vec3Q, NUM_VERTICES>();
+    const auto &vs = GetVerticesQ();
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      (*arr)[i] = Vec3Q(vs[i][0], vs[i][1], vs[i][2]);
+    }
+    return arr;
+  }();
+  return *cached;
+}
 
-static const std::string_view VERTICES_Q[20][3] = {
-  {"17136292830659/400000000000000", "5680663556187131/10000000000000000", "5648167326177671/10000000000000000"},
-  {"-42773513204957/250000000000000", "9384169756351713/10000000000000000", "4802676718449/16000000000000"},
-  {"-2791996671138589/10000000000000000", "8916783831939151/10000000000000000", "-420605170858861/10000000000000000"},
-  {"581211699562287/10000000000000000", "602579091333187/1000000000000000", "-382169975802723/500000000000000"},
-  {"-5270246949360691/10000000000000000", "2162861152231751/10000000000000000", "5648167326177671/10000000000000000"},
-  {"-4726792748188159/5000000000000000", "1272666794475643/10000000000000000", "4802676718449/16000000000000"},
-  {"-1868627957476221/2000000000000000", "12511388959529/1250000000000000", "-420605170858861/10000000000000000"},
-  {"-2775631710731053/5000000000000000", "1207418485492689/5000000000000000", "-382169975802723/500000000000000"},
-  {"-921399766144207/2500000000000000", "-1085985462790287/2500000000000000", "5648167326177671/10000000000000000"},
-  {"-4131696624115331/10000000000000000", "-2149404605253097/2500000000000000", "4802676718449/16000000000000"},
-  {"-7455953197761/25000000000000", "-8854924122951479/10000000000000000", "-420605170858861/10000000000000000"},
-  {"-4012081174529903/10000000000000000", "-2266669793986531/5000000000000000", "-382169975802723/500000000000000"},
-  {"46756585289803/156250000000000", "-4847564861402479/10000000000000000", "5648167326177671/10000000000000000"},
-  {"1380011310293969/2000000000000000", "-411642950060219/625000000000000", "4802676718449/16000000000000"},
-  {"3749963394741599/5000000000000000", "-5572735187461599/10000000000000000", "-420605170858861/10000000000000000"},
-  {"767915222494757/2500000000000000", "-10188661950973/19531250000000", "-382169975802723/500000000000000"},
-  {"5535017234623651/10000000000000000", "673991002072371/5000000000000000", "5648167326177671/10000000000000000"},
-  {"1679233219444017/2000000000000000", "2263534535574267/5000000000000000", "4802676718449/16000000000000"},
-  {"1523518189628179/2000000000000000", "2705392183398847/5000000000000000", "-420605170858861/10000000000000000"},
-  {"5910472006450693/10000000000000000", "327326655638497/2500000000000000", "-382169975802723/500000000000000"}
-};
+static inline const Vec3Q &VertexQ(int v) {
+  return GetVec3QVertices()[v];
+}
+
 
 // ============================================================================
 // EXACT POLYNOMIAL AND AUDIT ARITHMETIC
@@ -114,10 +110,10 @@ struct QPoly {
 
 
 static Vec3Q GetExactEdge(const ContactInfo &c) {
-  Vec3Q v_start(VERTICES_Q[c.edge_start][0], VERTICES_Q[c.edge_start][1], VERTICES_Q[c.edge_start][2]);
-  Vec3Q v_finish(VERTICES_Q[c.edge_finish][0], VERTICES_Q[c.edge_finish][1], VERTICES_Q[c.edge_finish][2]);
-  Vec3Q v_start2(VERTICES_Q[c.edge_start2][0], VERTICES_Q[c.edge_start2][1], VERTICES_Q[c.edge_start2][2]);
-  Vec3Q v_finish2(VERTICES_Q[c.edge_finish2][0], VERTICES_Q[c.edge_finish2][1], VERTICES_Q[c.edge_finish2][2]);
+  const Vec3Q &v_start = VertexQ(c.edge_start);
+  const Vec3Q &v_finish = VertexQ(c.edge_finish);
+  const Vec3Q &v_start2 = VertexQ(c.edge_start2);
+  const Vec3Q &v_finish2 = VertexQ(c.edge_finish2);
   BigRat mixQ(c.mix, 1000);
   return (v_start - v_finish) * mixQ + (v_start2 - v_finish2) * (BigRat(1) - mixQ);
 }
@@ -241,7 +237,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   for (int m = 0; m < 3; m++) {
     out_cert->contacts[m] = contacts[m];
     int sel = contacts[m].vertex;
-    Vec3Q v_sel(VERTICES_Q[sel][0], VERTICES_Q[sel][1], VERTICES_Q[sel][2]);
+    const Vec3Q &v_sel = VertexQ(sel);
     BigRat best_support(1000000);
     int best_w = -1;
     for (int k = 0; k < 20; k++) {
@@ -250,7 +246,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
                  (contacts[m].mix == 0 && sel == contacts[m].edge_start2 && k == contacts[m].edge_finish2);
       BigRat s_upper(0);
       if (!tie) {
-        Vec3Q v_k(VERTICES_Q[k][0], VERTICES_Q[k][1], VERTICES_Q[k][2]);
+        const Vec3Q &v_k = VertexQ(k);
         Vec3Q delta = v_k - v_sel;
         Vec3Q s_coeff = Vec3Q::Cross(edges[m], delta);
         BigRat max_s = Vec3Q::Dot(tri.corners[0], s_coeff);
@@ -294,9 +290,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   QPoly polys[3];
   for (int coord = 0; coord < 3; coord++) {
     for (int i = 0; i < 3; i++) {
-      Vec3Q v_supp(VERTICES_Q[contacts[i].vertex][0],
-                   VERTICES_Q[contacts[i].vertex][1],
-                   VERTICES_Q[contacts[i].vertex][2]);
+      const Vec3Q &v_supp = VertexQ(contacts[i].vertex);
       Vec3Q lift_row[3] = {
         {BigRat(0), edges[i].z, -edges[i].y},
         {-edges[i].z, BigRat(0), edges[i].x},

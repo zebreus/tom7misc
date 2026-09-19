@@ -35,29 +35,8 @@
 
 using vec3 = yocto::vec<double, 3>;
 
-// Exact rational vertex coordinates for Nopert candidate #229
-static const BigRat VERTICES_Q[NUM_VERTICES][3] = {
-  {BigRat("2142036603832375/50000000000000000"), BigRat("28403317780935653/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
-  {BigRat("-171094052819828/1000000000000000"), BigRat("46920848781758567/50000000000000000"), BigRat("3001672949030625/10000000000000000")},
-  {BigRat("-2791996671138589/10000000000000000"), BigRat("8916783831939151/10000000000000000"), BigRat("-420605170858861/10000000000000000")},
-  {BigRat("2906058497811437/50000000000000000"), BigRat("602579091333187/1000000000000000"), BigRat("-382169975802723/500000000000000")},
-  {BigRat("-5270246949360691/10000000000000000"), BigRat("10814305761158757/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
-  {BigRat("-18907170992752637/20000000000000000"), BigRat("6363333972378213/50000000000000000"), BigRat("3001672949030625/10000000000000000")},
-  {BigRat("-9343139787381105/10000000000000000"), BigRat("100091111676232/10000000000000000"), BigRat("-420605170858861/10000000000000000")},
-  {BigRat("-5551263421462106/10000000000000000"), BigRat("1207418485492689/5000000000000000"), BigRat("-382169975802723/500000000000000")},
-  {BigRat("-1842799532288414/5000000000000000"), BigRat("-21719709255805741/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
-  {BigRat("-4131696624115331/10000000000000000"), BigRat("-42988092105061941/50000000000000000"), BigRat("3001672949030625/10000000000000000")},
-  {BigRat("-7455953197761/25000000000000"), BigRat("-8854924122951479/10000000000000000"), BigRat("-420605170858861/10000000000000000")},
-  {BigRat("-2006040587264951/5000000000000000"), BigRat("-4533339587973062/10000000000000000"), BigRat("-382169975802723/500000000000000")},
-  {BigRat("1496210729273696/5000000000000000"), BigRat("-24237824307012397/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
-  {BigRat("6900056551469845/10000000000000000"), BigRat("-3293143600481752/5000000000000000"), BigRat("3001672949030625/10000000000000000")},
-  {BigRat("7499926789483198/10000000000000000"), BigRat("-5572735187461599/10000000000000000"), BigRat("-420605170858861/10000000000000000")},
-  {BigRat("1535830444989514/5000000000000000"), BigRat("-2608297459449088/5000000000000000"), BigRat("-382169975802723/500000000000000")},
-  {BigRat("5535017234623651/10000000000000000"), BigRat("6739910020723709/50000000000000000"), BigRat("14120418315444177/25000000000000000")},
-  {BigRat("8396166097220085/10000000000000000"), BigRat("4527069071148534/10000000000000000"), BigRat("3001672949030625/10000000000000000")},
-  {BigRat("1523518189628179/2000000000000000"), BigRat("2705392183398847/5000000000000000"), BigRat("-420605170858861/10000000000000000")},
-  {BigRat("5910472006450693/10000000000000000"), BigRat("327326655638497/2500000000000000"), BigRat("-382169975802723/500000000000000")}
-};
+// Polyhedron #229 rational vertices are accessed via GetVerticesQ() from nopert229.h
+
 
 struct Vec3Q {
   BigRat x, y, z;
@@ -85,6 +64,22 @@ struct Vec3Q {
     return x == o.x && y == o.y && z == o.z;
   }
 };
+
+static const std::array<Vec3Q, NUM_VERTICES> &GetVec3QVertices() {
+  static const std::array<Vec3Q, NUM_VERTICES> *cached = []() {
+    auto *arr = new std::array<Vec3Q, NUM_VERTICES>();
+    const auto &vs = GetVerticesQ();
+    for (int i = 0; i < NUM_VERTICES; i++) {
+      (*arr)[i] = Vec3Q(vs[i][0], vs[i][1], vs[i][2]);
+    }
+    return arr;
+  }();
+  return *cached;
+}
+
+static inline const Vec3Q &VertexQ(int v) {
+  return GetVec3QVertices()[v];
+}
 
 
 struct TriangleQ {
@@ -808,12 +803,12 @@ static bool ComputeExactComponent(const TriangleQ &tri,
     int finish2 = contacts[m]->edge_finish2;
     int mix = contacts[m]->mix;
 
-    Vec3Q v_start = {VERTICES_Q[start][0], VERTICES_Q[start][1], VERTICES_Q[start][2]};
-    Vec3Q v_finish = {VERTICES_Q[finish][0], VERTICES_Q[finish][1], VERTICES_Q[finish][2]};
+    const Vec3Q &v_start = VertexQ(start);
+    const Vec3Q &v_finish = VertexQ(finish);
     Vec3Q e1 = v_start - v_finish;
 
-    Vec3Q v_start2 = {VERTICES_Q[start2][0], VERTICES_Q[start2][1], VERTICES_Q[start2][2]};
-    Vec3Q v_finish2 = {VERTICES_Q[finish2][0], VERTICES_Q[finish2][1], VERTICES_Q[finish2][2]};
+    const Vec3Q &v_start2 = VertexQ(start2);
+    const Vec3Q &v_finish2 = VertexQ(finish2);
     Vec3Q e2 = v_start2 - v_finish2;
 
     BigRat lam(mix, 1000);
@@ -939,7 +934,7 @@ static bool ComputeExactComponent(const TriangleQ &tri,
     cert_out->support_index[m] = contacts[m]->vertex;
 
     int sel = contacts[m]->vertex;
-    Vec3Q v_sel = {VERTICES_Q[sel][0], VERTICES_Q[sel][1], VERTICES_Q[sel][2]};
+    const Vec3Q &v_sel = VertexQ(sel);
     BigRat best_support = BigRat(1000000);
     int best_w = -1;
 
@@ -948,7 +943,7 @@ static bool ComputeExactComponent(const TriangleQ &tri,
                  (contacts[m]->mix == 1000 && sel == contacts[m]->edge_finish && k == contacts[m]->edge_start) ||
                  (contacts[m]->mix == 0 && sel == contacts[m]->edge_start2 && k == contacts[m]->edge_finish2);
       if (tie) continue;
-      Vec3Q v_k = {VERTICES_Q[k][0], VERTICES_Q[k][1], VERTICES_Q[k][2]};
+      const Vec3Q &v_k = VertexQ(k);
       Vec3Q delta = v_k - v_sel;
       Vec3Q s_coeff = Vec3Q::Cross(edges[m], delta);
       BigRat max_s = Vec3Q::Dot(tri.corners[0], s_coeff);

@@ -125,7 +125,7 @@ query_canyon_tube.exe : query_canyon_tube.o $(OBJECTS_229) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-pack229.exe : pack229.o nopert299.o $(OBJECTS)
+pack229.exe : pack229.o nopert229.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -215,6 +215,10 @@ tubecert229.exe : $(TUBECERT_OBJECTS)
 TUBETREE_OBJECTS=$(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
 
 tubetree229_test.exe : tubetree229_test.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+nopert229_test.exe : nopert229_test.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
