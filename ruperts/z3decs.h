@@ -16,6 +16,7 @@
 
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "bignum/polynomial.h"
 #include "geom/polyhedra.h"
@@ -92,9 +93,9 @@ struct Z3Real {
 };
 
 struct Z3Vec3 {
-  Z3Vec3(const BigVec3 &v) : Z3Vec3(Z3Real(v.x),
-                                    Z3Real(v.y),
-                                    Z3Real(v.z)) {}
+  Z3Vec3(const BigVecQ3 &v) : Z3Vec3(Z3Real(v.x),
+                                     Z3Real(v.y),
+                                     Z3Real(v.z)) {}
   Z3Vec3(Z3Real x, Z3Real y, Z3Real z) :
     x(std::move(x)), y(std::move(y)), z(std::move(z)) {}
   Z3Real x;

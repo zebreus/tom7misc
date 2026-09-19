@@ -1,6 +1,8 @@
 #ifndef RUPERTS_TUBETREE229_H_
 #define RUPERTS_TUBETREE229_H_
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -10,48 +12,16 @@
 #include <vector>
 
 #include "bignum/big.h"
-#include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "yocto-math.h"
 
 namespace tubetree229 {
 
 using vec3 = yocto::vec<double, 3>;
 
-// Exact 3D rational vector using GMP-backed BigRat.
-struct Vec3Q {
-  BigRat x, y, z;
-
-  Vec3Q() : x(0), y(0), z(0) {}
-  Vec3Q(BigRat x, BigRat y, BigRat z) : x(std::move(x)), y(std::move(y)), z(std::move(z)) {}
-  Vec3Q(std::string_view sx, std::string_view sy, std::string_view sz)
-      : x(std::string(sx)), y(std::string(sy)), z(std::string(sz)) {}
-
-  Vec3Q operator+(const Vec3Q &o) const { return {x + o.x, y + o.y, z + o.z}; }
-  Vec3Q operator-(const Vec3Q &o) const { return {x - o.x, y - o.y, z - o.z}; }
-  Vec3Q operator*(const BigRat &s) const { return {x * s, y * s, z * s}; }
-  Vec3Q operator/(const BigRat &s) const { return {x / s, y / s, z / s}; }
-
-  static BigRat Dot(const Vec3Q &a, const Vec3Q &b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-  }
-  static Vec3Q Cross(const Vec3Q &a, const Vec3Q &b) {
-    return {
-      a.y * b.z - a.z * b.y,
-      a.z * b.x - a.x * b.z,
-      a.x * b.y - a.y * b.x
-    };
-  }
-  static BigRat Det(const Vec3Q &a, const Vec3Q &b, const Vec3Q &c) {
-    return Dot(a, Cross(b, c));
-  }
-  vec3 ToDouble() const {
-    return {x.ToDouble(), y.ToDouble(), z.ToDouble()};
-  }
-};
-
 // Exact projective spherical triangle with 3 rational vertices.
 struct TriangleQ {
-  Vec3Q corners[3];
+  BigVecQ3 corners[3];
 
   // Deterministic 4-way quaternary subdivision into children 0, 1, 2, 3:
   // Child 0: (corners[0], m01, m20)
@@ -224,7 +194,7 @@ struct NearestCertifiedNodeResult {
     return std::max(direct_r_lower, effective_r_lower);
   }
   BigRat safe_radius_rat() const {
-    return std::max(direct_r_rat, effective_r_rat);
+    return BigRat::Max(direct_r_rat, effective_r_rat);
   }
 };
 

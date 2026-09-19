@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "big-polyhedra.h"
 #include "bignum/big-interval.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 
 // Vec3 where each component is an interval.
@@ -30,7 +30,7 @@ struct Vec3ival {
   std::string ToString() const;
 };
 
-inline Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
+inline Bigival Dot(const Vec3ival &a, const BigVecQ3 &b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
@@ -76,7 +76,7 @@ struct Vec2ival {
   Bigival x, y;
   Vec2ival(Bigival xx, Bigival yy) :
     x(std::move(xx)), y(std::move(yy)) {}
-  Vec2ival(BigVec2 v) : x(std::move(v.x)), y(std::move(v.y)) {}
+  Vec2ival(BigVecQ2 v) : x(std::move(v.x)), y(std::move(v.y)) {}
   Vec2ival() : x(0), y(0) {}
 
   // The exact area of the AABB.
@@ -86,7 +86,7 @@ struct Vec2ival {
 
   std::string ToString() const;
 
-  bool Contains(const BigVec2 &v) const {
+  bool Contains(const BigVecQ2 &v) const {
     return x.Contains(v.x) && y.Contains(v.y);
   }
 
@@ -100,14 +100,14 @@ struct Vec2ival {
 // Bounding ball.
 struct Ballival {
   // An exact center.
-  BigVec3 center;
+  BigVecQ3 center;
   // Upper bound on the *squared* radius.
   BigRat radius_sq;
   // TODO: We could probably have a constructor that took
   // Vec3ival center and/or Bigival radius, and computed a
   // bounding sphere from those. But we aren't using that
   // today.
-  Ballival(BigVec3 c, BigRat rsq) : center(std::move(c)),
+  Ballival(BigVecQ3 c, BigRat rsq) : center(std::move(c)),
                                     radius_sq(std::move(rsq)) {
     CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
   }
@@ -122,7 +122,7 @@ struct Ballival {
 // Bounding disc.
 struct Discival {
   // An exact center.
-  BigVec2 center;
+  BigVecQ2 center;
   // Upper bound on the squared radius.
   BigRat radius_sq;
   // Upper bound on the radius. We sometimes have this anyway,
@@ -131,12 +131,12 @@ struct Discival {
   // need to be the exact square root of radius_sq, but both
   // need to be upper bounds on the interval represented.
   std::optional<BigRat> radius;
-  Discival(BigVec2 c, BigRat r_sq) : center(std::move(c)),
+  Discival(BigVecQ2 c, BigRat r_sq) : center(std::move(c)),
                                      radius_sq(std::move(r_sq)) {
     CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
   }
 
-  Discival(BigVec2 c, BigRat r_sq, BigRat r) :
+  Discival(BigVecQ2 c, BigRat r_sq, BigRat r) :
     center(std::move(c)),
     radius_sq(std::move(r_sq)),
     radius(std::make_optional(std::move(r))) {
@@ -222,7 +222,7 @@ inline Vec3ival operator *(const Vec3ival &a,
 }
 
 inline Vec3ival operator *(const Vec3ival &a,
-                           const BigVec3 &b) {
+                           const BigVecQ3 &b) {
   return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
@@ -237,7 +237,7 @@ inline Vec2ival operator +(const Vec2ival &a,
 }
 
 inline Vec2ival operator -(const Vec2ival &a,
-                           const BigVec2 &b) {
+                           const BigVecQ2 &b) {
   return Vec2ival(a.x - b.x, a.y - b.y);
 }
 
@@ -378,7 +378,7 @@ Vec3ival ViewFromSpherical(const ViewBoundsTrig &trig);
 // tighter bounds. Precondition: The angle intervals must both
 // be less than 3 radians.
 Bigival DotProductWithView(const ViewBoundsTrig &trig,
-                           const BigVec3 &v);
+                           const BigVecQ3 &v);
 
 // Compute a bounding ball for the patch on the unit sphere
 // given by the azimuth and angle (this is the view position).
@@ -419,7 +419,7 @@ Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
 // This can certainly work on Vec3ival, but our input data at this point
 // is a single point and this is in inner loops.
 inline Vec2ival TransformPointTo2D(const Frame3ival &frame,
-                                   const BigVec3 &v) {
+                                   const BigVecQ3 &v) {
   // PERF don't even compute z component!
   Vec3ival v3 = frame.x * v.x + frame.y * v.y + frame.z * v.z + frame.o;
   return Vec2ival(std::move(v3.x), std::move(v3.y));
@@ -431,7 +431,7 @@ inline Vec2ival TransformPointTo2D(const Frame3ival &frame,
 //
 // As usual, the view cannot include the z axis.
 inline Vec2ival TransformVec(const ViewBoundsTrig &trig,
-                             const BigVec3 &v) {
+                             const BigVecQ3 &v) {
   // x = dot(v, view_frame_x_axis)
   // view_frame_x_axis = (-sin(az), cos(az), 0)
   Bigival px = trig.az.sine * -v.x + trig.az.cosine * v.y;
@@ -526,7 +526,7 @@ bool IsDiscOutsideEdge(const Vec2ival &disc_center,
 // This uses the precomputed squared smear radius, which does not
 // depend on the vertex. It's the squared radius of a ball centered
 // on the unit sphere that encloses the entire azimuth/angle patch.
-Discival GetInitialDisc(const BigVec3 &v,
+Discival GetInitialDisc(const BigVecQ3 &v,
                         const ViewBoundsTrig &trig,
                         const BigRat &smear_radius_sq,
                         const BigInt &inv_epsilon);
@@ -553,7 +553,7 @@ struct Chord3D {
   // Indices into hull.
   int start = 0, end = 0;
   // va - vb
-  BigVec3 vec;
+  BigVecQ3 vec;
   BigRat length_sq;
 };
 

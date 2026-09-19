@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "geom/polyhedra.h"
 #include "numbers.h"
@@ -371,7 +372,7 @@ void BoundArea(const Boundaries &boundaries,
   printf("Get quat in patch...\n");
   BigQuat example_q = GetBigQuatInPatch(boundaries, code);
   printf("Get view pos...\n");
-  BigVec3 example_v = ViewPosFromNonUnitQuat(example_q);
+  BigVecQ3 example_v = ViewPosFromNonUnitQuat(example_q);
 
   printf("Compute hull once...\n");
   const std::vector<int> hull =
@@ -561,7 +562,7 @@ void BoundEdges(const Boundaries &boundaries,
   printf("Get quat in patch...\n");
   BigQuat example_q = GetBigQuatInPatch(boundaries, code);
   printf("Get view pos (vector)...\n");
-  BigVec3 example_v = ViewPosFromNonUnitQuat(example_q);
+  BigVecQ3 example_v = ViewPosFromNonUnitQuat(example_q);
 
   std::string setup;
 

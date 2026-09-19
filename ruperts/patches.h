@@ -20,6 +20,7 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "geom/polyhedra.h"
 #include "yocto-math.h"
 
@@ -28,7 +29,7 @@ using frame3 = yocto::frame<double, 3>;
 
 struct Boundaries {
   // 1 bit means dot product is positive, 0 means negative.
-  uint64_t GetCode(const BigVec3 &v) const;
+  uint64_t GetCode(const BigVecQ3 &v) const;
   uint64_t GetCode(const BigQuat &q) const;
 
   // Appoximate.
@@ -39,7 +40,7 @@ struct Boundaries {
   uint64_t GetCodeSloppy(const vec3 &v) const;
 
   bool HasCodeAssumingMask(uint64_t code, uint64_t mask,
-                           const BigVec3 &v, bool include_boundary) const;
+                           const BigVecQ3 &v, bool include_boundary) const;
   // Includes boundary. Approximate.
   bool HasCodeAssumingMask(uint64_t code, uint64_t mask,
                            const vec3 &v) const;
@@ -52,7 +53,7 @@ struct Boundaries {
 
   // Exact, but note that we can't make these normals be unit length
   // because they are rational.
-  std::vector<BigVec3> big_planes;
+  std::vector<BigVecQ3> big_planes;
   BigPoly big_poly;
 
  private:
@@ -82,7 +83,7 @@ struct SignedPermutation {
     return ToMatrix() * v;
   }
 
-  BigVec3 TransformPoint(const BigVec3 &v) const {
+  BigVecQ3 TransformPoint(const BigVecQ3 &v) const {
     // PERF: Here too!
     return ToBigMatrix() * v;
   }
@@ -110,7 +111,7 @@ struct PatchInfo {
     uint64_t code;
     uint64_t mask;
     // An example of a view position that is within the patch.
-    BigVec3 example;
+    BigVecQ3 example;
     // The vertex indices that will be on the hull when anywhere in
     // this view patch.
     std::vector<int> hull;
@@ -178,8 +179,8 @@ vec3 GetVec3InPatch(ArcFour *rc,
 
 // Find some point in the patch, as a non-unit view
 // position. Slow.
-BigVec3 GetBigVec3InPatch(const Boundaries &boundaries,
-                          uint64_t code, uint64_t mask = ~uint64_t{0});
+BigVecQ3 GetBigVec3InPatch(const Boundaries &boundaries,
+                           uint64_t code, uint64_t mask = ~uint64_t{0});
 
 // Find some point in the patch, as a non-unit quaternion.
 // Slow.

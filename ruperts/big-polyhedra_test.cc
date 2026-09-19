@@ -11,6 +11,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "randutil.h"
 #include "timer.h"
@@ -46,10 +47,10 @@ static void TestBigQuickHull() {
   // exact. This idea of starting with the hull and then generating
   // points inside it would extend naturally to more test cases!
 
-  BigVec2 o("0"_r, "0"_r);
-  BigVec2 a("-1/3"_r, "-1/4"_r);
-  BigVec2 b("8"_r, "-1/4"_r);
-  BigVec2 c("-1/3"_r, "5"_r);
+  BigVecQ2 o("0"_r, "0"_r);
+  BigVecQ2 a("-1/3"_r, "-1/4"_r);
+  BigVecQ2 b("8"_r, "-1/4"_r);
+  BigVecQ2 c("-1/3"_r, "5"_r);
 
   //     -1/3, -1/4                8, -1/4
   //         a-----------------------b
@@ -62,14 +63,14 @@ static void TestBigQuickHull() {
   //     -1/3, 5
 
   ArcFour rc("qh");
-  std::vector<BigVec2> input = {o, a, b, c};
+  std::vector<BigVecQ2> input = {o, a, b, c};
   for (int i = 0; i < 5000; i++) {
     // Now add some more points in the hull. This includes
     // duplicates and colinear points.
-    const BigVec2 &p = input[RandTo(&rc, input.size())];
-    const BigVec2 &q = input[RandTo(&rc, input.size())];
+    const BigVecQ2 &p = input[RandTo(&rc, input.size())];
+    const BigVecQ2 &q = input[RandTo(&rc, input.size())];
 
-    BigVec2 avg((p.x + q.x) / "2"_r, (p.y + q.y) / "2"_r);
+    BigVecQ2 avg((p.x + q.x) / "2"_r, (p.y + q.y) / "2"_r);
     // Don't duplicate hull points, as this complicates the test.
     // (It should work correctly, though!)
     if (avg == a || avg == b || avg == c) continue;
@@ -123,16 +124,16 @@ static void TestViewPosFromQuat() {
   // Applying the rotation computed from q to the view
   // position v should yield (0, 0, 1). v should also
   // be a unit vector.
-  auto CheckView = [](const BigQuat &q, const BigVec3 &v) {
+  auto CheckView = [](const BigQuat &q, const BigVecQ3 &v) {
       CHECK(length_squared(v) == "1"_r)
         << "Must be unit. But got: v = " << VecString(v)
         << " len^2 = " << length_squared(v).ToString();
 
       // Rotating the view should give us (0, 0, 1).
       BigFrame frame = NonUnitRotationFrame(q);
-      BigVec3 transformed_v = TransformPoint(frame, v);
+      BigVecQ3 transformed_v = TransformPoint(frame, v);
 
-      const BigVec3 expected_z("0"_r, "0"_r, "1"_r);
+      const BigVecQ3 expected_z("0"_r, "0"_r, "1"_r);
       CHECK(transformed_v == expected_z)
         << "q = " << QuatString(q)
         << "v = " << VecString(v)
@@ -143,20 +144,20 @@ static void TestViewPosFromQuat() {
   // Case 1: Identity quaternion
   {
     BigQuat q_id("0"_r, "0"_r, "0"_r, "1"_r);
-    BigVec3 v_id = ViewPosFromNonUnitQuat(q_id);
-    CHECK(v_id == BigVec3("0"_r, "0"_r, "1"_r));
+    BigVecQ3 v_id = ViewPosFromNonUnitQuat(q_id);
+    CHECK(v_id == BigVecQ3("0"_r, "0"_r, "1"_r));
     CheckView(q_id, v_id);
   }
 
   {
     // This is a unit quaternion.
     BigQuat q_180y("0"_r, "1"_r, "0"_r, "0"_r);
-    BigVec3 v_180y = ViewPosFromNonUnitQuat(q_180y);
-    CHECK(v_180y == BigVec3("0"_r, "0"_r, "-1"_r));
+    BigVecQ3 v_180y = ViewPosFromNonUnitQuat(q_180y);
+    CHECK(v_180y == BigVecQ3("0"_r, "0"_r, "-1"_r));
     CheckView(q_180y, v_180y);
     // Check non-unit version.
     BigQuat q_180y_nu = q_180y * "2"_r;
-    BigVec3 v_180y_nu = ViewPosFromNonUnitQuat(q_180y_nu);
+    BigVecQ3 v_180y_nu = ViewPosFromNonUnitQuat(q_180y_nu);
     CHECK(v_180y_nu == v_180y);
     CheckView(q_180y_nu, v_180y_nu);
   }
@@ -164,29 +165,29 @@ static void TestViewPosFromQuat() {
   // Case 3: 90 deg rotation around Z axis
   {
     BigQuat q_90z("0"_r, "0"_r, "1"_r, "1"_r);
-    BigVec3 v_90z = ViewPosFromNonUnitQuat(q_90z);
-    CHECK(v_90z == BigVec3("0"_r, "0"_r, "1"_r)) << VecString(v_90z);
+    BigVecQ3 v_90z = ViewPosFromNonUnitQuat(q_90z);
+    CHECK(v_90z == BigVecQ3("0"_r, "0"_r, "1"_r)) << VecString(v_90z);
     CheckView(q_90z, v_90z);
   }
 
   {
     BigQuat q_90y("0"_r, "1"_r, "0"_r, "1"_r);
-    BigVec3 v_90y = ViewPosFromNonUnitQuat(q_90y);
-    CHECK(v_90y == BigVec3("-1"_r, "0"_r, "0"_r)) << VecString(v_90y);
+    BigVecQ3 v_90y = ViewPosFromNonUnitQuat(q_90y);
+    CHECK(v_90y == BigVecQ3("-1"_r, "0"_r, "0"_r)) << VecString(v_90y);
     CheckView(q_90y, v_90y);
   }
 
   {
     BigQuat q_xyz("1"_r, "1"_r, "1"_r, "1"_r);
-    BigVec3 v_xyz = ViewPosFromNonUnitQuat(q_xyz);
-    CHECK(v_xyz == BigVec3("0"_r, "1"_r, "0"_r)) << VecString(v_xyz);
+    BigVecQ3 v_xyz = ViewPosFromNonUnitQuat(q_xyz);
+    CHECK(v_xyz == BigVecQ3("0"_r, "1"_r, "0"_r)) << VecString(v_xyz);
     CheckView(q_xyz, v_xyz);
   }
 
   {
     // A general non-unit vector.
     BigQuat q_gen("1/2"_r, "-1/3"_r, "3/4"_r, "1/5"_r);
-    BigVec3 v_gen = ViewPosFromNonUnitQuat(q_gen);
+    BigVecQ3 v_gen = ViewPosFromNonUnitQuat(q_gen);
     CheckView(q_gen, v_gen);
   }
 

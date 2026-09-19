@@ -25,6 +25,7 @@
 #include "base/print.h"
 #include "big-csg.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "geom/hull-2d.h"
 #include "geom/mesh.h"
@@ -229,19 +230,19 @@ static BigPoly BigFootball(double theta, double phi, double stretch,
 
   BigPoly poly = BigScube(digits);
   // Stretch
-  BigVec3 axis_dir = BigVec3{
+  BigVecQ3 axis_dir = BigVecQ3{
     BigRat::FromDouble(sin(theta) * yocto::cos(phi)),
     BigRat::FromDouble(sin(theta) * yocto::sin(phi)),
     BigRat::FromDouble(cos(theta)),
   };
 
-  BigVec3 stretch_axis =
+  BigVecQ3 stretch_axis =
     (BigRat::FromDouble(stretch) - BigRat(1)) * axis_dir;
 
-  for (BigVec3 &v : poly.vertices) {
+  for (BigVecQ3 &v : poly.vertices) {
     // Project point onto axis.
     BigRat proj = dot(v, axis_dir);
-    BigVec3 parallel_change = stretch_axis * proj;
+    BigVecQ3 parallel_change = stretch_axis * proj;
     v = v + parallel_change;
   }
 

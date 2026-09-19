@@ -32,6 +32,7 @@
 #include "base/print.h"
 #include "big-polyhedra.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "opt/opt.h"
 #include "periodically.h"
@@ -58,7 +59,7 @@ struct BigSolver {
 
   BigQuat initial_outer_rot;
   BigQuat initial_inner_rot;
-  BigVec2 initial_translation;
+  BigVecQ2 initial_translation;
 
   std::mutex m;
   bool should_die = false;
@@ -93,7 +94,7 @@ struct BigSolver {
                             << VecString(dotrans);
 
     // z component does not matter, because we project along z.
-    initial_translation = BigVec2(BigRat::FromDouble(ditrans.x),
+    initial_translation = BigVecQ2(BigRat::FromDouble(ditrans.x),
                                   BigRat::FromDouble(ditrans.y));
 
     initial_outer_rot = BigQuat(BigRat::FromDouble(douter_rot.x),
@@ -114,7 +115,7 @@ struct BigSolver {
   void WriteImage(const std::string &filename,
                   const BigQuat &outer_rot,
                   const BigQuat &inner_rot,
-                  const BigVec2 &translation) {
+                  const BigVecQ2 &translation) {
 
     // Convert back and render.
     Polyhedron poly = SmallPoly(polyhedron);
@@ -141,7 +142,7 @@ struct BigSolver {
 
   void Solved(const BigQuat &outer_rot,
               const BigQuat &inner_rot,
-              const BigVec2 &translation) {
+              const BigVecQ2 &translation) {
     MutexLock ml(&m);
     // For easy ones, many threads will solve it at once, and then
     // write over each other's solutions.
@@ -261,7 +262,7 @@ struct BigSolver {
   // Run one iteration, and return the error. Error of 0.0 means
   // a solution.
   // Exclusive access to rc.
-  std::tuple<double, BigQuat, BigQuat, BigVec2> RunOne(ArcFour *rc,
+  std::tuple<double, BigQuat, BigQuat, BigVecQ2> RunOne(ArcFour *rc,
                                                        int thread_idx) {
 
     // Add tiny random jitter.
@@ -281,7 +282,7 @@ struct BigSolver {
     BigRat zero(0);
     BigQuat outer_rot;
     BigQuat inner_rot;
-    BigVec2 translation = BigVec2(zero, zero);
+    BigVecQ2 translation = BigVecQ2(zero, zero);
     std::string what;
 
     switch (RandTo(rc, 4)) {
@@ -345,7 +346,7 @@ struct BigSolver {
     auto MakeConfig = [&](const std::array<double, D> &args) {
         BigQuat orot = outer_rot;
         BigQuat irot = inner_rot;
-        BigVec2 itrans = translation;
+        BigVecQ2 itrans = translation;
 
         const auto &[ox, oy, oz, ow,
                      ix, iy, iz, iw,
@@ -386,7 +387,7 @@ struct BigSolver {
         BigRat loss(0);
         int errors = 0;
         for (int i : inner_hull) {
-          const BigVec2 &v = sinner.vertices[i];
+          const BigVecQ2 &v = sinner.vertices[i];
           if (InHull(souter.vertices, hull, v)) {
             // Include inner gradient, but scaled down
             loss -= SquaredDistanceToHull(souter.vertices, hull, v) /
@@ -467,7 +468,7 @@ static void Ratpert() {
 
   if (true) {
     BigPoly tetra(BigTetra(100));
-    for (const BigVec3 &v : tetra.vertices) {
+    for (const BigVecQ3 &v : tetra.vertices) {
       Print("  {}\n", VecString(v));
     }
     BigSolver solver(tetra, &status, {60.0 * 60.0});
@@ -479,7 +480,7 @@ static void Ratpert() {
     // Solved
     BigPoly triac(BigTriac(100));
     Print("Made triac.\n");
-    for (const BigVec3 &v : triac.vertices) {
+    for (const BigVecQ3 &v : triac.vertices) {
       Print("  {}\n", VecString(v));
     }
     BigSolver solver(triac, &status, {60.0 * 60.0});

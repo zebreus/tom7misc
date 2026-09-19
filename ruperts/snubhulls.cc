@@ -18,6 +18,7 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "bounds.h"
 #include "color-util.h"
@@ -112,7 +113,7 @@ struct Hulls {
 // Visualize a patch under its parameterization. This is
 // using doubles and samples.
 static void PlotPatch(const Boundaries &boundaries,
-                      const BigVec3 &bigv) {
+                      const BigVecQ3 &bigv) {
   Timer timer;
   uint64_t code = boundaries.GetCode(bigv);
   std::string code_string = std::format("{:b}", code);
@@ -139,7 +140,7 @@ static void PlotPatch(const Boundaries &boundaries,
     attempts++;
     vec3 s;
     std::tie(s.x, s.y, s.z) = RandomUnit3D(&rc);
-    BigVec3 bs(BigRat::ApproxDouble(s.x, 1000000),
+    BigVecQ3 bs(BigRat::ApproxDouble(s.x, 1000000),
                BigRat::ApproxDouble(s.y, 1000000),
                BigRat::ApproxDouble(s.z, 1000000));
 
@@ -149,7 +150,7 @@ static void PlotPatch(const Boundaries &boundaries,
     // are *not* in the patch increases the chance
     // that we are).
     for (uint8_t b = 0b000; b < 0b1000; b++) {
-      BigVec3 bbs((b & 0b100) ? -bs.x : bs.x,
+      BigVecQ3 bbs((b & 0b100) ? -bs.x : bs.x,
                   (b & 0b010) ? -bs.y : bs.y,
                   (b & 0b001) ? -bs.z : bs.z);
       uint64_t sample_code = boundaries.GetCode(bbs);
@@ -266,7 +267,7 @@ static void PlotPatch(const Boundaries &boundaries,
 #if 0
 // Get the patch that contains v.
 static void GeneratePatch(const Boundaries &boundaries,
-                          const BigVec3 &v) {
+                          const BigVecQ3 &v) {
   const BigPoly &poly = boundaries.poly;
 
   uint64_t code = boundaries.GetCode(v);
@@ -321,10 +322,10 @@ static void BigSnubHulls() {
   constexpr int NUM_THREADS = 8;
 
   // Parallel.
-  std::vector<BigVec3> samples;
+  std::vector<BigVecQ3> samples;
   std::vector<uint64_t> codes;
 
-  std::unordered_map<uint64_t, BigVec3> examples;
+  std::unordered_map<uint64_t, BigVecQ3> examples;
 
   auto RandomCoord = [](ArcFour *rc) -> BigRat {
       // Between 3 and 10 or -10 and -3.
@@ -344,7 +345,7 @@ static void BigSnubHulls() {
 
         if (x * x + y * y + z * z >
             BigRat(9))
-          return BigVec3(x, y, z);
+          return BigVecQ3(x, y, z);
       }
     };
 
@@ -363,7 +364,7 @@ static void BigSnubHulls() {
             next_work_idx++;
           }
 
-          BigVec3 sample_point = RandomVec(&rc);
+          BigVecQ3 sample_point = RandomVec(&rc);
 
           CHECK(!AllZero(sample_point));
 
@@ -386,7 +387,7 @@ static void BigSnubHulls() {
         }
       });
 
-  for (const BigVec3 &v : samples) {
+  for (const BigVecQ3 &v : samples) {
     CHECK(!AllZero(v));
   }
 
@@ -416,7 +417,7 @@ static void BigSnubHulls() {
           code);
 
     CHECK(examples.contains(code));
-    const BigVec3 &ex = examples[code];
+    const BigVecQ3 &ex = examples[code];
     PlotPatch(boundaries, ex);
   }
 

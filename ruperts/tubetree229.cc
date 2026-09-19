@@ -1,29 +1,32 @@
 #include "tubetree229.h"
 
-#include <iostream>
-#include <sstream>
-#include <fstream>
-#include <format>
-#include <string>
 #include <algorithm>
-#include <filesystem>
 #include <cmath>
-
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/prettywriter.h"
-#include "rapidjson/writer.h"
-#include "rapidjson/error/en.h"
+#include <filesystem>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "base/logging.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
+#include "bignum/big.h"
+#include "rapidjson/document.h"
+#include "rapidjson/error/en.h"
+#include "rapidjson/rapidjson.h"
 #include "util.h"
+#include "yocto-math.h"
 
 namespace tubetree229 {
 
 void TriangleQ::Subdivide(TriangleQ children[4]) const {
-  Vec3Q m01 = (corners[0] + corners[1]) / BigRat(2);
-  Vec3Q m12 = (corners[1] + corners[2]) / BigRat(2);
-  Vec3Q m20 = (corners[2] + corners[0]) / BigRat(2);
+  BigVecQ3 m01 = (corners[0] + corners[1]) / BigRat(2);
+  BigVecQ3 m12 = (corners[1] + corners[2]) / BigRat(2);
+  BigVecQ3 m20 = (corners[2] + corners[0]) / BigRat(2);
   children[0] = {corners[0], m01, m20};
   children[1] = {m01, corners[1], m12};
   children[2] = {m20, m12, corners[2]};
@@ -32,9 +35,9 @@ void TriangleQ::Subdivide(TriangleQ children[4]) const {
 
 TriangleQ GetRootWedge() {
   TriangleQ w;
-  w.corners[0] = Vec3Q(BigRat(1), BigRat(0), BigRat(0));
-  w.corners[1] = Vec3Q(BigRat(10, 41), BigRat(31, 41), BigRat(0));
-  w.corners[2] = Vec3Q(BigRat(0), BigRat(0), BigRat(1));
+  w.corners[0] = BigVecQ3(BigRat(1), BigRat(0), BigRat(0));
+  w.corners[1] = BigVecQ3(BigRat(10, 41), BigRat(31, 41), BigRat(0));
+  w.corners[2] = BigVecQ3(BigRat(0), BigRat(0), BigRat(1));
   return w;
 }
 
@@ -590,6 +593,10 @@ double TubeAtlas::GetSafeRadiusForTriangle(const vec3 corners[3], int max_depth)
   return GetSafeRadiusForPath(path);
 }
 
+static inline vec3 ToDouble(const BigVecQ3 &v) {
+  return vec3{v.x.ToDouble(), v.y.ToDouble(), v.z.ToDouble()};
+}
+
 void TubeAtlas::EnsureCertifiedCache() const {
   std::lock_guard<std::mutex> lock(cache_mutex_);
   if (certified_cache_built_) return;
@@ -599,9 +606,9 @@ void TubeAtlas::EnsureCertifiedCache() const {
     if (!node) return;
     if (node->direct_r_lower > 0.0 || node->effective_r_lower > 0.0) {
       TriangleQ tq = TriangleFromPath(node->path);
-      vec3 c0 = tq.corners[0].ToDouble();
-      vec3 c1 = tq.corners[1].ToDouble();
-      vec3 c2 = tq.corners[2].ToDouble();
+      vec3 c0 = ToDouble(tq.corners[0]);
+      vec3 c1 = ToDouble(tq.corners[1]);
+      vec3 c2 = ToDouble(tq.corners[2]);
       vec3 cent = (c0 + c1 + c2) * (1.0 / 3.0);
       double len = yocto::length(cent);
       if (len > 1e-12) cent = cent * (1.0 / len);
@@ -705,10 +712,15 @@ std::optional<NearestCertifiedNodeResult> TubeAtlas::FindNearestCertifiedNodeFor
   return FindNearestCertifiedNode(cent, subwedge);
 }
 
-std::optional<NearestCertifiedNodeResult> TubeAtlas::FindNearestCertifiedNodeForPath(
-    std::string_view path, int subwedge) const {
+std::optional<NearestCertifiedNodeResult>
+TubeAtlas::FindNearestCertifiedNodeForPath(std::string_view path,
+                                           int subwedge) const {
   TriangleQ tq = TriangleFromPath(path);
-  vec3 corners[3] = {tq.corners[0].ToDouble(), tq.corners[1].ToDouble(), tq.corners[2].ToDouble()};
+  vec3 corners[3] = {
+    ToDouble(tq.corners[0]),
+    ToDouble(tq.corners[1]),
+    ToDouble(tq.corners[2]),
+  };
   return FindNearestCertifiedNodeForTriangle(corners, subwedge);
 }
 
@@ -730,9 +742,9 @@ std::optional<NearestCertifiedNodeResult> FindNearestCertifiedNode(
     double r = node.direct_bounds.direct_r_lower.ToDouble();
     if (r > 0.0) {
       TriangleQ tq = node.GetTriangle();
-      vec3 c0 = tq.corners[0].ToDouble();
-      vec3 c1 = tq.corners[1].ToDouble();
-      vec3 c2 = tq.corners[2].ToDouble();
+      vec3 c0 = ToDouble(tq.corners[0]);
+      vec3 c1 = ToDouble(tq.corners[1]);
+      vec3 c2 = ToDouble(tq.corners[2]);
       vec3 cent = (c0 + c1 + c2) * (1.0 / 3.0);
       double clen = yocto::length(cent);
       if (clen > 1e-12) cent = cent * (1.0 / clen);

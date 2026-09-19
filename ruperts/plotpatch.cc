@@ -1,7 +1,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <ctime>
 #include <format>
 #include <optional>
@@ -12,7 +11,9 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bounds.h"
 #include "color-util.h"
 #include "geom/hull-2d.h"
@@ -32,7 +33,7 @@ using Mesh2D = PolyhedronMesh2D;
 // Visualize a patch under its parameterization. This is
 // using doubles and samples.
 static void PlotPatch(const Boundaries &boundaries,
-                      BigVec3 &bigv,
+                      BigVecQ3 &bigv,
                       uint64_t code, uint64_t mask) {
   Timer timer;
   uint64_t example_code = boundaries.GetCode(bigv);
@@ -67,7 +68,7 @@ static void PlotPatch(const Boundaries &boundaries,
     #if 0
     vec3 s;
     std::tie(s.x, s.y, s.z) = RandomUnit3D(&rc);
-    BigVec3 bs(BigRat::ApproxDouble(s.x, 1000000),
+    BigVecQ3 bs(BigRat::ApproxDouble(s.x, 1000000),
                BigRat::ApproxDouble(s.y, 1000000),
                BigRat::ApproxDouble(s.z, 1000000));
 
@@ -77,7 +78,7 @@ static void PlotPatch(const Boundaries &boundaries,
     // are *not* in the patch increases the chance
     // that we are).
     for (uint8_t b = 0b000; b < 0b1000; b++) {
-      BigVec3 bbs((b & 0b100) ? -bs.x : bs.x,
+      BigVecQ3 bbs((b & 0b100) ? -bs.x : bs.x,
                   (b & 0b010) ? -bs.y : bs.y,
                   (b & 0b001) ? -bs.z : bs.z);
       uint64_t sample_code = boundaries.GetCode(bbs);
@@ -190,8 +191,8 @@ static void PlotPatch(const Boundaries &boundaries,
 
   std::string filename = std::format("patch-{:b}.png", code);
   img.Save(filename);
-  printf("Wrote %s in %s\n", filename.c_str(),
-         ANSI::Time(timer.Seconds()).c_str());
+  Print("Wrote {} in {}\n", filename,
+        ANSI::Time(timer.Seconds()));
 }
 
 static std::string Usage() {
@@ -205,14 +206,13 @@ static void PlotCode(uint64_t code) {
   Boundaries boundaries(scube);
 
   uint64_t mask = GetCodeMask(boundaries, code);
-  BigVec3 example = GetBigVec3InPatch(boundaries, code, mask);
+  BigVecQ3 example = GetBigVec3InPatch(boundaries, code, mask);
 
-  printf("Code: %s\n"
-         "Mask: %s\n"
-         "Full: %s\n",
-         std::format("{:b}", code).c_str(),
-         std::format("{:b}", mask).c_str(),
-         boundaries.ColorMaskedBits(code, mask).c_str());
+  Print("Code: {:b}\n"
+        "Mask: {:b}\n"
+        "Full: {}\n",
+        code, mask,
+        boundaries.ColorMaskedBits(code, mask));
 
   PlotPatch(boundaries, example, code, mask);
 }

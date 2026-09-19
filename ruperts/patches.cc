@@ -26,6 +26,7 @@
 #include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "bounds.h"
 #include "geom/polyhedra.h"
@@ -50,10 +51,10 @@ static const char *MASK_AND_EXAMPLE_FILE = "scube-patch-mask-ex.txt";
 
 
 // 1 bit means dot product is positive, 0 means negative.
-uint64_t Boundaries::GetCode(const BigVec3 &v) const {
+uint64_t Boundaries::GetCode(const BigVecQ3 &v) const {
   uint64_t code = 0;
   for (int i = 0; i < big_planes.size(); i++) {
-    const BigVec3 &normal = big_planes[i];
+    const BigVecQ3 &normal = big_planes[i];
     BigRat d = dot(v, normal);
     int sign = BigRat::Sign(d);
     CHECK(sign != 0) << "Points exactly on the boundary are not "
@@ -67,11 +68,11 @@ uint64_t Boundaries::GetCode(const BigVec3 &v) const {
 
 bool Boundaries::HasCodeAssumingMask(
     uint64_t code, uint64_t mask,
-    const BigVec3 &v, bool include_boundary) const {
+    const BigVecQ3 &v, bool include_boundary) const {
   for (int i = 0; i < big_planes.size(); i++) {
     uint64_t pos = uint64_t{1} << i;
     if (pos & mask) {
-      const BigVec3 &normal = big_planes[i];
+      const BigVecQ3 &normal = big_planes[i];
       BigRat d = dot(v, normal);
       int s = BigRat::Sign(d);
       // Here we allow the point on the boundary.
@@ -113,7 +114,7 @@ bool Boundaries::HasCodeAssumingMask(uint64_t code, uint64_t mask,
 
 
 uint64_t Boundaries::GetCode(const BigQuat &q) const {
-  BigVec3 view = ViewPosFromNonUnitQuat(q);
+  BigVecQ3 view = ViewPosFromNonUnitQuat(q);
   return GetCode(view);
 }
 
@@ -193,8 +194,8 @@ Boundaries::Boundaries(const BigPoly &poly) : big_poly(poly) {
   // multiplying by all the denominators, then divide by the GCD.
   // This representation is canonical up to sign flips.
 
-  auto AlreadyHave = [&](const BigVec3 &n) {
-      for (const BigVec3 &m : big_planes) {
+  auto AlreadyHave = [&](const BigVecQ3 &n) {
+      for (const BigVecQ3 &m : big_planes) {
         if (AllZero(cross(n, m))) {
           return true;
         }
@@ -204,10 +205,10 @@ Boundaries::Boundaries(const BigPoly &poly) : big_poly(poly) {
 
   for (const std::vector<int> &face : poly.faces->v) {
     CHECK(face.size() >= 3);
-    const BigVec3 &a = poly.vertices[face[0]];
-    const BigVec3 &b = poly.vertices[face[1]];
-    const BigVec3 &c = poly.vertices[face[2]];
-    BigVec3 normal = ScaleToMakeIntegral(cross(c - a, b - a));
+    const BigVecQ3 &a = poly.vertices[face[0]];
+    const BigVecQ3 &b = poly.vertices[face[1]];
+    const BigVecQ3 &c = poly.vertices[face[2]];
+    BigVecQ3 normal = ScaleToMakeIntegral(cross(c - a, b - a));
     if (!AlreadyHave(normal)) {
       big_planes.push_back(normal);
     }
@@ -220,7 +221,7 @@ Boundaries::Boundaries(const BigPoly &poly) : big_poly(poly) {
   // polyhedra.
   CHECK(big_planes.size() <= 64);
 
-  for (const BigVec3 &v : big_planes) {
+  for (const BigVecQ3 &v : big_planes) {
     small_planes.push_back(SmallVec(v));
   }
 }
@@ -254,13 +255,13 @@ BigQuat RandomBigQuaternion(ArcFour *rc) {
                  BigRat::ApproxDouble(s.w, 1000000));
 }
 
-BigVec3 GetBigVec3InPatch(const Boundaries &boundaries,
+BigVecQ3 GetBigVec3InPatch(const Boundaries &boundaries,
                           uint64_t code, uint64_t mask) {
   ArcFour rc(std::format("point{}", code));
   for (;;) {
     vec3 s;
     std::tie(s.x, s.y, s.z) = RandomUnit3D(&rc);
-    BigVec3 bs(BigRat::ApproxDouble(s.x, 1000000),
+    BigVecQ3 bs(BigRat::ApproxDouble(s.x, 1000000),
                BigRat::ApproxDouble(s.y, 1000000),
                BigRat::ApproxDouble(s.z, 1000000));
 
@@ -270,7 +271,7 @@ BigVec3 GetBigVec3InPatch(const Boundaries &boundaries,
     // are *not* in the patch increases the chance
     // that we are).
     for (uint8_t b = 0b000; b < 0b1000; b++) {
-      BigVec3 bbs((b & 0b100) ? -bs.x : bs.x,
+      BigVecQ3 bbs((b & 0b100) ? -bs.x : bs.x,
                   (b & 0b010) ? -bs.y : bs.y,
                   (b & 0b001) ? -bs.z : bs.z);
       if (boundaries.HasCodeAssumingMask(code, mask, bbs,
@@ -683,7 +684,7 @@ yocto::mat<double, 3> SignedPermutation::ToMatrix() const {
 }
 
 BigMat3 SignedPermutation::ToBigMatrix() const {
-  BigVec3 zero{BigRat(0), BigRat(0), BigRat(0)};
+  BigVecQ3 zero{BigRat(0), BigRat(0), BigRat(0)};
   BigMat3 m = BigMat3{
     .x = zero,
     .y = zero,
@@ -871,7 +872,7 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
   CHECK(masks.size() == all.size());
 
 
-  std::unordered_map<uint64_t, BigVec3> examples;
+  std::unordered_map<uint64_t, BigVecQ3> examples;
 
   constexpr int NUM_SHOTGUN = 1'000'000;
   ParallelFan(8, [&](int thread_idx) {
@@ -880,7 +881,7 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
       for (int i = 0; i < NUM_SHOTGUN; i++) {
         vec3 s;
         std::tie(s.x, s.y, s.z) = RandomUnit3D(&rc);
-        BigVec3 bs(BigRat::ApproxDouble(s.x, 1000000),
+        BigVecQ3 bs(BigRat::ApproxDouble(s.x, 1000000),
                    BigRat::ApproxDouble(s.y, 1000000),
                    BigRat::ApproxDouble(s.z, 1000000));
         uint64_t code = boundaries.GetCode(bs);
@@ -921,7 +922,7 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
             for (int p = 0; p < 24; p++) {
               vec3 ss = SignedPermutation::GetPerm(p).TransformPoint(s);
               if (boundaries.HasCodeAssumingMask(code, mask, ss)) {
-                BigVec3 bs(BigRat::ApproxDouble(s.x, 100000000),
+                BigVecQ3 bs(BigRat::ApproxDouble(s.x, 100000000),
                            BigRat::ApproxDouble(s.y, 100000000),
                            BigRat::ApproxDouble(s.z, 100000000));
                 if (boundaries.HasCodeAssumingMask(code, mask, bs,
@@ -957,7 +958,7 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
     const uint64_t mask = masks[i];
     auto ei = examples.find(code);
     CHECK(ei != examples.end());
-    const BigVec3 &example = ei->second;
+    const BigVecQ3 &example = ei->second;
     AppendFormat(&contents,
                  "{:b} {:b} {} {} {}\n",
                  code, mask,
@@ -1005,7 +1006,7 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
   struct Patch {
     uint64_t code = 0;
     uint64_t mask = 0;
-    BigVec3 example;
+    BigVecQ3 example;
     bool can_be_canonical = false;
     bool can_be_positive = false;
   };
@@ -1026,7 +1027,7 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
     CHECK(omask.has_value());
     CHECK(!sz.empty());
 
-    BigVec3 v{BigRat(sx), BigRat(sy), BigRat(sz)};
+    BigVecQ3 v{BigRat(sx), BigRat(sy), BigRat(sz)};
     CHECK(!AllZero(v));
     all.push_back(Patch{
         .code = ocode.value(),
@@ -1083,7 +1084,7 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
     // Transform it into canonical patch.
     for (int i = 0; i < 24; i++) {
       SignedPermutation perm = SignedPermutation::GetPerm(i);
-      BigVec3 v = perm.TransformPoint(patch.example);
+      BigVecQ3 v = perm.TransformPoint(patch.example);
 
       uint64_t code = boundaries.GetCode(v);
       uf.Union(idx, IdxFromCode(code));
@@ -1132,10 +1133,10 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
       LOG(FATAL) << "There was no canonical patch available!?";
     };
 
-  auto GetPermTo = [&](const BigVec3 &example, uint64_t canonical_code) {
+  auto GetPermTo = [&](const BigVecQ3 &example, uint64_t canonical_code) {
       for (int p = 0; p < 24; p++) {
         SignedPermutation perm = SignedPermutation::GetPerm(p);
-        BigVec3 v = perm.TransformPoint(example);
+        BigVecQ3 v = perm.TransformPoint(example);
         if (boundaries.GetCode(v) == canonical_code) {
           return perm;
         }
@@ -1185,7 +1186,7 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
   return info;
 }
 
-static std::string BigVecString(const BigVec3 &v) {
+static std::string BigVecString(const BigVecQ3 &v) {
   return std::format("{} {} {}",
                      v.x.ToString(),
                      v.y.ToString(),
@@ -1233,7 +1234,7 @@ PatchInfo LoadPatchInfo(std::string_view filename) {
       CHECK(omask.has_value());
       CHECK(!sz.empty());
 
-      BigVec3 v{BigRat(sx), BigRat(sy), BigRat(sz)};
+      BigVecQ3 v{BigRat(sx), BigRat(sy), BigRat(sz)};
       CHECK(!AllZero(v));
 
       // Read the rest of the line as hull points.

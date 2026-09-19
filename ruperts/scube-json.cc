@@ -10,6 +10,7 @@
 #include "ansi.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 
 static constexpr int DIGITS = 24;
@@ -26,7 +27,7 @@ int main(int argc, char **argv) {
     };
 
   std::string json = "{'v': [\n";
-  for (const BigVec3 &v : scube.vertices) {
+  for (const BigVecQ3 &v : scube.vertices) {
     AppendFormat(&json, "  {{'x': {}, 'y': {}, 'z': {}}},\n",
                  Rat(v.x), Rat(v.y), Rat(v.z));
   }

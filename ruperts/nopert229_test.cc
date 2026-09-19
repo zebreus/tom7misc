@@ -4,23 +4,22 @@
 #include "nopert229.h"
 
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
-#include <iostream>
 #include <numbers>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
-#include "bignum/big.h"
+#include "base/print.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "yocto-math.h"
 
 using vec3 = yocto::vec<double, 3>;
 
 // Test 1: Verify that double and rational coordinates agree to within floating-point precision.
 static void TestDoubleRationalAgreement() {
-  std::cout << "[RUN] TestDoubleRationalAgreement\n";
-  const auto &vs_q = GetVerticesQ();
+  Print("[RUN] TestDoubleRationalAgreement\n");
 
   double max_err = 0.0;
   for (int v = 0; v < NUM_VERTICES; v++) {
@@ -29,9 +28,9 @@ static void TestDoubleRationalAgreement() {
     CHECK_EQ(v_double.y, VERTICES[v][1]);
     CHECK_EQ(v_double.z, VERTICES[v][2]);
 
-    double qx = vs_q[v][0].ToDouble();
-    double qy = vs_q[v][1].ToDouble();
-    double qz = vs_q[v][2].ToDouble();
+    double qx = VertexQ(v)[0].ToDouble();
+    double qy = VertexQ(v)[1].ToDouble();
+    double qz = VertexQ(v)[2].ToDouble();
 
     double err_x = std::abs(v_double.x - qx);
     double err_y = std::abs(v_double.y - qy);
@@ -46,15 +45,14 @@ static void TestDoubleRationalAgreement() {
     CHECK_LT(err_z, 1e-14);
   }
 
-  std::cout << "  Max coordinate discrepancy |double - Q.ToDouble| = " << max_err << "\n";
+  Print("  Max coordinate discrepancy |double - Q.ToDouble| = {}\n", max_err);
   CHECK_LT(max_err, 1e-15);
-  std::cout << "[PASS] TestDoubleRationalAgreement\n";
+  Print("[PASS] TestDoubleRationalAgreement\n");
 }
 
 // Test 2: Verify C5 rotational symmetry around the z-axis.
 static void TestC5Symmetry() {
-  std::cout << "[RUN] TestC5Symmetry\n";
-  const auto &vs_q = GetVerticesQ();
+  Print("[RUN] TestC5Symmetry\n");
 
   // Angle theta = 2*pi / 5 (72 degrees)
   constexpr double angle = 2.0 * std::numbers::pi / 5.0;
@@ -86,22 +84,22 @@ static void TestC5Symmetry() {
       CHECK_LT(dist, 1e-14);
     }
   }
-  std::cout << "  Max C5 rotation error across all orbits: " << max_rot_err << "\n";
+  Print("  Max C5 rotation error across all orbits: {}\n", max_rot_err);
   CHECK_LT(max_rot_err, 1e-15);
 
   // 2. Check that the z-coordinates are IDENTICAL across orbits for each seed.
   // Both in double precision and in exact BigRat rational representation!
   for (int s = 0; s < 4; s++) {
     double z_ref_d = VERTICES[s][2];
-    const BigRat &z_ref_q = vs_q[s][2];
+    const BigRat &z_ref_q = VertexQ(s)[2];
 
     for (int k = 1; k < 5; k++) {
       int idx = 4 * k + s;
       CHECK_EQ(VERTICES[idx][2], z_ref_d);
-      CHECK(vs_q[idx][2] == z_ref_q);
+      CHECK(VertexQ(idx)[2] == z_ref_q);
     }
   }
-  std::cout << "  Exact z-coordinate equality verified across all 5 orbits for all 4 seeds.\n";
+  Print("  Exact z-coordinate equality verified across all 5 orbits for all 4 seeds.\n");
 
   // 3. Check cylindrical radius r_xy = sqrt(x^2 + y^2) is constant across orbits for each seed.
   for (int s = 0; s < 4; s++) {
@@ -114,7 +112,7 @@ static void TestC5Symmetry() {
       CHECK_LT(diff, 1e-14);
     }
   }
-  std::cout << "  Cylindrical radius invariance verified across all 5 orbits.\n";
+  Print("  Cylindrical radius invariance verified across all 5 orbits.\n");
 
   // 4. GoodPoly invariant: All vertices strictly inside unit sphere ||v|| < 1.
   for (int v = 0; v < NUM_VERTICES; v++) {
@@ -123,25 +121,26 @@ static void TestC5Symmetry() {
     CHECK_LT(norm, 1.0);
     CHECK_GT(norm, 0.0);
   }
-  std::cout << "  GoodPoly invariant (0 < ||v|| < 1) verified for all 20 vertices.\n";
-  std::cout << "[PASS] TestC5Symmetry\n";
+  Print("  GoodPoly invariant (0 < ||v|| < 1) verified for all 20 vertices.\n");
+  Print("[PASS] TestC5Symmetry\n");
 }
 
-// Test 3: Verify GetVerticesQ singleton behavior (address stability & non-null).
+// Test 3: Verify VertexQ singleton behavior (address stability).
 static void TestSingleton() {
-  std::cout << "[RUN] TestSingleton\n";
-  const auto &ref1 = GetVerticesQ();
-  const auto &ref2 = GetVerticesQ();
+  Print("[RUN] TestSingleton\n");
+  const auto &ref1 = VertexQ(0);
+  const auto &ref2 = VertexQ(0);
   CHECK_EQ(&ref1, &ref2);
-  CHECK_EQ(ref1.size(), 20u);
-  std::cout << "[PASS] TestSingleton\n";
+  Print("[PASS] TestSingleton\n");
 }
 
 int main(int argc, char **argv) {
-  std::cout << "=== Running Nopert #229 Geometry Unit Tests ===\n";
+  ANSI::Init();
+
+  Print("=== Running Nopert #229 Geometry Unit Tests ===\n");
   TestDoubleRationalAgreement();
   TestC5Symmetry();
   TestSingleton();
-  std::cout << "=== All Nopert #229 Tests Passed! ===\n";
+  Print("=== All Nopert #229 Tests Passed! ===\n");
   return 0;
 }

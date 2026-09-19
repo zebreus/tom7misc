@@ -29,9 +29,11 @@
 #include "big-polyhedra.h"
 #include "bignum/big-interval.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "bounds.h"
 #include "geom/hull-2d.h"
+#include "geom/polygons.h"
 #include "geom/polyhedra.h"
 #include "hypercube.h"
 #include "image.h"
@@ -77,7 +79,7 @@ using Mesh2D = PolyhedronMesh2D;
 
 static StatusBar status = StatusBar(16);
 
-using Volume = Hypercube::Volume;
+using HVolume = Hypercube::Volume;
 using Pt4Data = Hypercube::Pt4Data;
 using Pt5Data = Hypercube::Pt5Data;
 using Rejection = Hypercube::Rejection;
@@ -170,7 +172,7 @@ std::optional<Sausage> GetSausage(
   // do better here with a routine that computes a disc for a rotated
   // point. It'd also make TryCorners test cheaper, since there is
   // just one radius.
-  auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
+  auto RotatePt = [&](const SinCos &endpoint, const BigVecQ2 &p) {
       return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
                       p.x * endpoint.sine + p.y * endpoint.cosine);
     };
@@ -218,11 +220,11 @@ static Discival SausageDisc(
       sausage.disc->center.y * rot_trig.mid.sine,
       sausage.disc->center.x * rot_trig.mid.sine +
       sausage.disc->center.y * rot_trig.mid.cosine);
-  BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
+  BigVecQ2 arc_center = {arc_center_ival.x.Midpoint(),
                         arc_center_ival.y.Midpoint()};
 
   // Push this center away from the origin by the bias.
-  BigVec2 bounding_center = arc_center * bias;
+  BigVecQ2 bounding_center = arc_center * bias;
 
   // Radius for the bounding disc.
   // The radius must be large enough to contain the furthest point on
@@ -491,7 +493,7 @@ struct Hypersolver {
     SmallIntSet<64> all_edges;
   };
 
-  EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
+  EdgePointMask GetEdgePointMask(ArcFour *rc, const HVolume &volume) {
     // n.b. we run this test in the opposite direction (outer loop is edges)
     // than the data structure wee're generating.
     //
@@ -633,11 +635,11 @@ struct Hypersolver {
     // Indices into hull.
     int start = 0, end = 0;
     // vb - va
-    BigVec3 vec;
+    BigVecQ3 vec;
     BigRat length_sq;
     // Cross product with each vertex in the inner hull, in hull
     // order.
-    std::vector<BigVec3> v_cx3d;
+    std::vector<BigVecQ3> v_cx3d;
   };
 
   // Return a lower bound on the inner polygon's minimum width. If the
@@ -686,7 +688,7 @@ struct Hypersolver {
       // problems and also allows us to precompute.)
       std::vector<BigRat> area_lbs;
       area_lbs.reserve(inner_hull.size());
-      for (const BigVec3 &cx3d : edge.v_cx3d) {
+      for (const BigVecQ3 &cx3d : edge.v_cx3d) {
         BigRat area = DotProductWithView(trig, cx3d).LB();
         area_lbs.push_back(std::move(area));
       }
@@ -748,7 +750,7 @@ struct Hypersolver {
   // for visualization or estimating AABB efficiency (more expensive).
   // This is where all the work happens. Thread safe and only takes
   // locks for really fast stuff (accumulating stats).
-  ProcessResult ProcessOne(ArcFour *rc, const Volume &volume, bool get_stats) {
+  ProcessResult ProcessOne(ArcFour *rc, const HVolume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
     const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
@@ -1081,7 +1083,7 @@ struct Hypersolver {
     if (get_stats) {
       outer_aabb.reserve(outer_hull.size());
       for (int vidx : outer_hull) {
-        const BigVec3 &pa = scube.vertices[vidx];
+        const BigVecQ3 &pa = scube.vertices[vidx];
         outer_aabb.push_back(TransformVec(outer_trig, pa));
       }
     }
@@ -1092,7 +1094,7 @@ struct Hypersolver {
     std::vector<Vec2ival> outer_edge;
     outer_edge.reserve(outer_hull.size());
     for (int idx = 0; idx < outer_hull.size(); idx++) {
-      const BigVec3 &edge_3d = outer_edge3d[idx];
+      const BigVecQ3 &edge_3d = outer_edge3d[idx];
       outer_edge.push_back(TransformVec(outer_trig, edge_3d));
     }
 
@@ -1102,7 +1104,7 @@ struct Hypersolver {
     for (int idx = 0; idx < outer_hull.size(); idx++) {
       // Can derive this from the original 3D edge, and we've
       // precomputed its 3D cross product.
-      const BigVec3 &edge_cross = outer_cx3d[idx];
+      const BigVecQ3 &edge_cross = outer_cx3d[idx];
 
       outer_cross_va_vb.push_back(
           DotProductWithView(outer_trig, edge_cross));
@@ -1143,7 +1145,7 @@ struct Hypersolver {
       }
 
       [[maybe_unused]]
-      const BigVec3 &original_v =
+      const BigVecQ3 &original_v =
         scube.vertices[inner_hull[inner_hull_idx]];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
 
@@ -1443,7 +1445,7 @@ struct Hypersolver {
   // Choose the parameter that has the largest width relative to
   // that dimension's maximum width.
   static int BestParameterFromSet(const Hypercube &cube,
-                                  const Volume &volume, ParameterSet params) {
+                                  const HVolume &volume, ParameterSet params) {
     CHECK(!params.Empty());
     if (params.Size() == 1) return params[0];
 
@@ -1471,7 +1473,7 @@ struct Hypersolver {
   }
 
   static std::array<double, NUM_DIMENSIONS>
-  SampleFromVolume(ArcFour *rc, const Volume &volume) {
+  SampleFromVolume(ArcFour *rc, const HVolume &volume) {
     std::array<double, NUM_DIMENSIONS> sample;
     for (int d = 0; d < NUM_DIMENSIONS; d++) {
       double w = volume[d].Width().ToDouble();
@@ -1488,7 +1490,7 @@ struct Hypersolver {
   }
 
   // Corner of the hypervolume indicated by bitmask.
-  static std::array<double, NUM_DIMENSIONS> VolumeCorner(const Volume &volume,
+  static std::array<double, NUM_DIMENSIONS> VolumeCorner(const HVolume &volume,
                                                          uint32_t corner) {
     std::array<double, NUM_DIMENSIONS> sample;
     for (int d = 0; d < NUM_DIMENSIONS; d++) {
@@ -1537,7 +1539,7 @@ struct Hypersolver {
   // Used for visualization and efficiency estimate.
   static constexpr int N_SAMPLES = 512;
   std::vector<Shadows> SampleShadows(ArcFour *rc,
-                                     const Volume &volume,
+                                     const HVolume &volume,
                                      const ProcessResult &pr) const {
 
     std::vector<Shadows> shadows;
@@ -1615,7 +1617,7 @@ struct Hypersolver {
   // the inner intervals right now) if possible. Stats must have been
   // computed and the result has to be Impossible (point_outside).
   std::optional<double> ComputeEfficiency(
-      const Volume &volume,
+      const HVolume &volume,
       const ProcessResult &pr,
       const std::vector<Shadows> &shadows) const {
     if (pr.inner.empty()) return std::nullopt;
@@ -1669,7 +1671,7 @@ struct Hypersolver {
   }
 
   void MakeSampleImage(ArcFour *rc,
-                       const Volume &volume, const ProcessResult &pr,
+                       const HVolume &volume, const ProcessResult &pr,
                        std::string_view msg) const {
     std::string filename = std::format("{}/sample-{}-{}.png",
                                        inubdir,
@@ -1916,7 +1918,7 @@ struct Hypersolver {
     status.Print("Wrote " AGREEN("{}"), filename);
   }
 
-  std::optional<uint64_t> GetCornerCode(const Volume &volume,
+  std::optional<uint64_t> GetCornerCode(const HVolume &volume,
                                         int angle, int azimuth) const {
     CHECK(angle >= 0 && angle < NUM_DIMENSIONS);
     CHECK(azimuth >= 0 && azimuth < NUM_DIMENSIONS);
@@ -1943,7 +1945,7 @@ struct Hypersolver {
   }
 
   // Split on the chosen dimension.
-  BigRat SplitOn(const Volume &volume, int dim) const {
+  BigRat SplitOn(const HVolume &volume, int dim) const {
     const Bigival &oldival = volume[dim];
 
     // TODO:
@@ -1995,7 +1997,7 @@ struct Hypersolver {
 
   // Assumes double precision works, but is otherwise exact.
   // Only used for heuristics.
-  bool VolumeInsidePatches(const Volume &volume) const {
+  bool VolumeInsidePatches(const HVolume &volume) const {
     std::optional<uint64_t> oc =
       GetCornerCode(volume, OUTER_ANGLE, OUTER_AZIMUTH);
     if (!oc.has_value() || oc.value() != outer_code)
@@ -2009,7 +2011,7 @@ struct Hypersolver {
     return true;
   }
 
-  void MaybeStatus(const Volume &volume) {
+  void MaybeStatus(const HVolume &volume) {
     status_per.RunIf([&]() {
         MutexLock ml(&mu);
         std::string rr;
@@ -2234,7 +2236,7 @@ struct Hypersolver {
     bool get_stats_next = false;
 
     for (;;) {
-      Volume volume;
+      HVolume volume;
       int64_t node_idx = -1;
 
       {
@@ -2421,7 +2423,7 @@ struct Hypersolver {
         BigRat mid = SplitOn(volume, dim);
 
         const Bigival &oldival = volume[dim];
-        Volume left = volume, right = volume;
+        HVolume left = volume, right = volume;
 
         // left side is <, right side is >=.
         left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
@@ -2479,7 +2481,7 @@ struct Hypersolver {
     for (int i = 0; i < boundaries.big_planes.size(); i++) {
       uint64_t pos = uint64_t{1} << i;
       if (TEST_ALL_PLANES || !!(pos & mask)) {
-        const BigVec3 &normal = boundaries.big_planes[i];
+        const BigVecQ3 &normal = boundaries.big_planes[i];
         Bigival d = Dot(v, normal);
         if (pos & code) {
           // Must include positive region.
@@ -2501,7 +2503,7 @@ struct Hypersolver {
     for (int i = 0; i < boundaries.big_planes.size(); i++) {
       const uint64_t pos = uint64_t{1} << i;
       if (TEST_ALL_PLANES || !!(pos & mask)) {
-        const BigVec3 &normal = boundaries.big_planes[i];
+        const BigVecQ3 &normal = boundaries.big_planes[i];
 
         // The center needs to be on the correct side
         // of the plane; the sign of the dot product gives us the
@@ -2623,8 +2625,8 @@ struct Hypersolver {
     outer_cx3d.reserve(outer_hull.size());
     outer_edge3d.reserve(outer_hull.size());
     for (int n = 0; n < outer_hull.size(); n++) {
-      const BigVec3 &va = scube.vertices[outer_hull[n]];
-      const BigVec3 &vb =
+      const BigVecQ3 &va = scube.vertices[outer_hull[n]];
+      const BigVecQ3 &vb =
         scube.vertices[outer_hull[(n + 1) % outer_hull.size()]];
 
       outer_cx3d.push_back(cross(va, vb));
@@ -2637,12 +2639,12 @@ struct Hypersolver {
       Edge3D edge;
       edge.start = start;
       edge.end = (start + 1) % inner_hull.size();
-      const BigVec3 &va = scube.vertices[inner_hull[start]];
-      const BigVec3 &vb = scube.vertices[inner_hull[edge.end]];
+      const BigVecQ3 &va = scube.vertices[inner_hull[start]];
+      const BigVecQ3 &vb = scube.vertices[inner_hull[edge.end]];
       edge.vec = vb - va;
       edge.v_cx3d.reserve(inner_hull.size());
       for (int vidx = 0; vidx < inner_hull.size(); vidx++) {
-        const BigVec3 &v = scube.vertices[inner_hull[vidx]];
+        const BigVecQ3 &v = scube.vertices[inner_hull[vidx]];
         edge.v_cx3d.push_back(cross(v - va, vb - va));
       }
       inner_edges.push_back(std::move(edge));
@@ -2678,15 +2680,15 @@ struct Hypersolver {
   // For each triangle in the triangle fan (using the vertices at
   // the hull points with the origin), compute the 3d cross product.
   // Return the sum.
-  static BigVec3 GetArea3D(const std::vector<int> &hull_indices,
+  static BigVecQ3 GetArea3D(const std::vector<int> &hull_indices,
                            const BigPoly &poly,
-                           const BigVec3 &example_view) {
+                           const BigVecQ3 &example_view) {
     CHECK(hull_indices.size() >= 3);
 
-    BigVec3 sum_3d(BigRat(0), BigRat(0), BigRat(0));
+    BigVecQ3 sum_3d(BigRat(0), BigRat(0), BigRat(0));
     for (size_t i = 0; i < hull_indices.size(); i++) {
-      const BigVec3 &pa = poly.vertices[hull_indices[i]];
-      const BigVec3 &pb =
+      const BigVecQ3 &pa = poly.vertices[hull_indices[i]];
+      const BigVecQ3 &pb =
         poly.vertices[hull_indices[(i + 1) % hull_indices.size()]];
 
       sum_3d = std::move(sum_3d) + cross(pa, pb);
@@ -2718,10 +2720,10 @@ struct Hypersolver {
   // where va is scube.vertices[outer_hull[n]]
   //   and vb is scube.vertices[outer_hull[(n + 1) % outer_hull.size()]],
   // that is, an edge of the outer hull starting at the nth vertex.
-  std::vector<BigVec3> outer_cx3d;
+  std::vector<BigVecQ3> outer_cx3d;
 
   // The vector vb-va, with va,vb as in the previous.
-  std::vector<BigVec3> outer_edge3d;
+  std::vector<BigVecQ3> outer_edge3d;
 
   // Parallel to inner_hull (index = start). Precomputation for
   // minimum width calculation. For each edge, we precompute its 3D
@@ -2745,8 +2747,8 @@ struct Hypersolver {
   // that makes up the outer (resp. inner) hull, using the origin
   // as the shared point. Exact. The dot product of a view vector
   // with this vector gives the area of the shadow!
-  BigVec3 outer_area_3d;
-  BigVec3 inner_area_3d;
+  BigVecQ3 outer_area_3d;
+  BigVecQ3 inner_area_3d;
 
   BigRat full_volume;
   double full_volume_d = 0.0;
@@ -2757,7 +2759,7 @@ struct Hypersolver {
 
   // Work queue. (Could actually use work queue here!)
   // Each element is an incomplete leaf with the given volume and index.
-  std::deque<std::pair<Volume, int64_t>> node_queue;
+  std::deque<std::pair<HVolume, int64_t>> node_queue;
   bool failed = false;
 
   // Need to keep track of the number that are currently being
@@ -2818,7 +2820,7 @@ struct Hypersolver {
     ret.reserve((hull.size() * (hull.size() - 1)) / 2);
     for (int i = 0; i < hull.size(); i++) {
       for (int j = i + 1; j < hull.size(); j++) {
-        BigVec3 v = poly.vertices[hull[j]] - poly.vertices[hull[i]];
+        BigVecQ3 v = poly.vertices[hull[j]] - poly.vertices[hull[i]];
         BigRat len_sq = dot(v, v);
         ret.push_back(Chord3D{
               .start = i,

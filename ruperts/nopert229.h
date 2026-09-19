@@ -4,8 +4,9 @@
 
 #include <array>
 
-#include "yocto-math.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
+#include "yocto-math.h"
 
 // ============================================================================
 // MATHEMATICAL BACKGROUND & COORDINATE REPRESENTATION:
@@ -85,6 +86,9 @@ inline constexpr yocto::vec<double, 3> Vertex(size_t v) {
 }
 
 // Get BigRat vertices (singleton).
+// Deprecated!
 const std::array<std::array<BigRat, 3>, NUM_VERTICES> &GetVerticesQ();
+
+const BigVecQ3 &VertexQ(size_t v);
 
 #endif

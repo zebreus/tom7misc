@@ -1,16 +1,21 @@
 #include "tubetree229.h"
 
-#include <iostream>
 #include <cassert>
 #include <filesystem>
+#include <string>
+#include <utility>
 
+#include "ansi.h"
 #include "base/logging.h"
-#include "util.h"
+#include "base/print.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
+#include "bignum/big.h"
 
 using namespace tubetree229;
 
 static void TestGeometry() {
-  std::cout << "Testing Geometry...\n";
+  Print("Testing Geometry...\n");
   TriangleQ wedge = GetRootWedge();
   CHECK_EQ(wedge.corners[0].x, BigRat(1));
   CHECK_EQ(wedge.corners[0].y, BigRat(0));
@@ -43,11 +48,11 @@ static void TestGeometry() {
   CHECK_EQ(path02.corners[0].x, ch0_sub[2].corners[0].x);
   CHECK_EQ(path02.corners[1].x, ch0_sub[2].corners[1].x);
   CHECK_EQ(path02.corners[2].x, ch0_sub[2].corners[2].x);
-  std::cout << "Geometry tests PASSED.\n";
+  Print("Geometry tests PASSED.\n");
 }
 
 static void TestBounds() {
-  std::cout << "Testing Bounds...\n";
+  Print("Testing Bounds...\n");
   // 1. Single leaf node with direct certificate
   TreeNode leaf;
   leaf.path = "0";
@@ -87,11 +92,11 @@ static void TestBounds() {
   // Crucial test: Does it fall back to the umbrella direct certificate?
   CHECK(fallback_eb.complete);
   CHECK_EQ(fallback_eb.r_lower, BigRat(1, 50000)); // Umbrella saved it!
-  std::cout << "Bounds tests PASSED.\n";
+  Print("Bounds tests PASSED.\n");
 }
 
 static void TestSerializationAndSubtree() {
-  std::cout << "Testing Serialization and Subtree detachment...\n";
+  Print("Testing Serialization and Subtree detachment...\n");
   std::string tmp_dir = "/tmp/tubetree_test";
   std::filesystem::create_directories(tmp_dir);
 
@@ -156,22 +161,22 @@ static void TestSerializationAndSubtree() {
   CHECK_EQ(s_deep.total_nodes, 9);
 
   std::filesystem::remove_all(tmp_dir);
-  std::cout << "Serialization and Subtree tests PASSED.\n";
+  Print("Serialization and Subtree tests PASSED.\n");
 }
 
 static void TestTubeAtlas() {
-  std::cout << "Testing TubeAtlas...\n";
+  Print("Testing TubeAtlas...\n");
   TubeAtlas atlas;
   CHECK(!atlas.IsLoaded());
 
   // Load from /root/nopert-project if available
   int loaded = atlas.LoadFromDir("/root/nopert-project");
-  std::cout << "Loaded " << loaded << " trees into TubeAtlas.\n";
+  Print("Loaded {} trees into TubeAtlas.\n", loaded);
   if (loaded > 0) {
     CHECK(atlas.IsLoaded());
     if (atlas.IsLoaded(3)) {
       double r3 = atlas.GetSafeRadiusForPath("3");
-      std::cout << "Tree 3 root effective r: " << r3 << "\n";
+      Print("Tree 3 root effective r: {}\n", r3);
       CHECK(r3 > 0.0);
       CHECK_EQ(r3, 2e-7);
 
@@ -188,34 +193,34 @@ static void TestTubeAtlas() {
 
     if (atlas.IsLoaded(2)) {
       double r2 = atlas.GetSafeRadiusForPath("2");
-      std::cout << "Tree 2 root effective r: " << r2 << "\n";
+      Print("Tree 2 root effective r: {}\n", r2);
       CHECK_EQ(r2, 2e-6);
     }
 
     if (atlas.IsLoaded(1)) {
       double r1 = atlas.GetSafeRadiusForPath("1");
       std::string s1 = atlas.GetSafeRadiusRatForPath("1").ToString();
-      std::cout << "Tree 1 root effective r: " << r1 << " (" << s1 << ")\n";
+      Print("Tree 1 root effective r: {} ({})\n", r1, s1);
       CHECK(std::abs(r1 - 2e-8) < 1e-15);
     }
 
     if (atlas.IsLoaded(0)) {
       double r0 = atlas.GetSafeRadiusForPath("0");
-      std::cout << "Tree 0 root effective r: " << r0 << "\n";
+      Print("Tree 0 root effective r: {}\n", r0);
       CHECK_EQ(r0, 0.0); // partial tree: uncertified leaves exist
 
       // But a certified subtree should have positive r!
       double r03123 = atlas.GetSafeRadiusForPath("03123");
       std::string s03123 = atlas.GetSafeRadiusRatForPath("03123").ToString();
-      std::cout << "Subtree 03123 effective r: " << r03123 << " (" << s03123 << ")\n";
+      Print("Subtree 03123 effective r: {} ({})\n", r03123, s03123);
       CHECK(std::abs(r03123 - 1e-5) < 1e-12);
     }
   }
-  std::cout << "TubeAtlas tests PASSED.\n";
+  Print("TubeAtlas tests PASSED.\n");
 }
 
 static void TestNearestCertifiedNode() {
-  std::cout << "Testing Nearest Certified Node Queries...\n";
+  Print("Testing Nearest Certified Node Queries...\n");
 
   // 1. Synthetic TreeNode test
   TreeNode root;
@@ -251,14 +256,13 @@ static void TestNearestCertifiedNode() {
   // 2. Real TubeAtlas test
   TubeAtlas atlas;
   if (atlas.LoadTree(0, "/root/nopert-project/tree_0.json")) {
-    std::cout << "Atlas loaded tree_0.json for nearest certified query...\n";
+    Print("Atlas loaded tree_0.json for nearest certified query...\n");
     // Query path "03333333" -> known certified node in tree_0
     auto res_atlas = atlas.FindNearestCertifiedNodeForPath("03333333", 0);
     CHECK(res_atlas.has_value());
-    std::cout << "Nearest node for 03333333: path=" << res_atlas->path
-              << " r=" << res_atlas->direct_r_lower
-              << " dist=" << res_atlas->angular_distance
-              << " contained=" << res_atlas->contains_direction << "\n";
+    Print("Nearest node for 03333333: path={} r={} dist={} contained={}\n",
+          res_atlas->path, res_atlas->direct_r_lower,
+          res_atlas->angular_distance, res_atlas->contains_direction);
     CHECK_EQ(res_atlas->contains_direction, true);
     CHECK(std::abs(res_atlas->angular_distance) < 1e-12);
     CHECK(std::abs(res_atlas->safe_radius() - 0.001) < 1e-9);
@@ -266,22 +270,25 @@ static void TestNearestCertifiedNode() {
     // Query path "03121" (canyon cell #1265114 view path)
     auto res_canyon = atlas.FindNearestCertifiedNodeForPath("03121", 0);
     CHECK(res_canyon.has_value());
-    std::cout << "Nearest node for canyon path 03121: path=" << res_canyon->path
-              << " r=" << res_canyon->direct_r_lower
-              << " dist=" << res_canyon->angular_distance << " rad\n";
+    Print("Nearest node for canyon path 03121: path={} r={} dist={} rad\n",
+          res_canyon->path, res_canyon->direct_r_lower,
+          res_canyon->angular_distance);
     CHECK(res_canyon->direct_r_lower > 0.0);
   }
 
-  std::cout << "Nearest Certified Node tests PASSED.\n";
+  Print("Nearest Certified Node tests PASSED.\n");
 }
 
 int main() {
+  ANSI::Init();
+
   TestGeometry();
   TestBounds();
   TestSerializationAndSubtree();
   TestTubeAtlas();
   TestNearestCertifiedNode();
-  std::cout << "\nALL TUBETREE229 TESTS PASSED SUCCESSFULLY!\n";
+
+  Print("\nALL TUBETREE229 TESTS PASSED SUCCESSFULLY!\n");
   return 0;
 }
 

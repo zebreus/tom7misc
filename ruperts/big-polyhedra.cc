@@ -19,6 +19,7 @@
 #include "ansi.h"
 #include "bignum/big-numbers.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "geom/hull-2d.h"
 #include "geom/point-map.h"
@@ -48,7 +49,7 @@ std::string ColorRat(const char *ansi_color,
   return std::format("{}{}" ANSI_RESET, ansi_color, s);
 }
 
-std::string VecString(const BigVec2 &v) {
+std::string VecString(const BigVecQ2 &v) {
   return std::format(
       "(x: {} ≅ {:.17g}; "
       "y: {} ≅ {:.17g})",
@@ -56,7 +57,7 @@ std::string VecString(const BigVec2 &v) {
       ColorRat(ANSI_GREEN, v.y), v.y.ToDouble());
 }
 
-std::string VecString(const BigVec3 &v) {
+std::string VecString(const BigVecQ3 &v) {
   return std::format(
       "(x: {} ≅ {:.17g}; "
       "y: {} ≅ {:.17g}; "
@@ -92,9 +93,9 @@ std::string QuatString(const BigQuat &q) {
       q.w.ToString(), q.w.ToDouble());
 }
 
-std::string PlainVecString(const BigVec2 &v) {
+std::string PlainVecString(const BigVecQ2 &v) {
   return std::format(
-      "BigVec2{{\n"
+      "BigVecQ2{{\n"
       "  x = {} ≅ {:.17g}\n"
       "  y = {} ≅ {:.17g}\n"
       "}}\n",
@@ -249,15 +250,15 @@ BigFrame NonUnitRotationFrame(const BigQuat &v) {
 }
 
 [[maybe_unused]]
-static BigVec3 ReferenceViewPosFromNonUnitQuat(const BigQuat &q) {
+static BigVecQ3 ReferenceViewPosFromNonUnitQuat(const BigQuat &q) {
   BigFrame frame = NonUnitRotationFrame(q);
   // We just apply the inverse rotation to (0, 0, 1).
   BigFrame iframe = InverseRigid(frame);
-  return TransformPoint(iframe, BigVec3(BigRat(0), BigRat(0), BigRat(1)));
+  return TransformPoint(iframe, BigVecQ3(BigRat(0), BigRat(0), BigRat(1)));
 }
 
 // Same as Reference version, but skipping work we don't need.
-BigVec3 ViewPosFromNonUnitQuat(const BigQuat &q) {
+BigVecQ3 ViewPosFromNonUnitQuat(const BigQuat &q) {
   BigRat one(1);
   BigRat two(2);
 
@@ -273,12 +274,12 @@ BigVec3 ViewPosFromNonUnitQuat(const BigQuat &q) {
   BigRat yz = q.y * q.z;
   BigRat xw = q.x * q.w;
 
-  return BigVec3(two_s * (zx - yw),
+  return BigVecQ3(two_s * (zx - yw),
                  two_s * (yz + xw),
                  one - two_s * (xx + yy));
 }
 
-BigQuat QuaternionFromViewPos(const BigVec3 &v) {
+BigQuat QuaternionFromViewPos(const BigVecQ3 &v) {
   CHECK(v.x != BigRat(0) || v.y != BigRat(0));
   LOG(FATAL) << "This doesn't work?";
 
@@ -291,9 +292,9 @@ BigQuat QuaternionFromViewPos(const BigVec3 &v) {
 }
 
 BigMesh2D Shadow(const BigPoly &poly) {
-  std::vector<BigVec2> vertices;
+  std::vector<BigVecQ2> vertices;
   vertices.reserve(poly.vertices.size());
-  for (const BigVec3 &v : poly.vertices) {
+  for (const BigVecQ3 &v : poly.vertices) {
     vertices.emplace_back(v.x, v.y);
   }
 
@@ -301,27 +302,27 @@ BigMesh2D Shadow(const BigPoly &poly) {
 }
 
 BigMesh2D RotateAndProject(const BigFrame &f, const BigPoly &poly) {
-  std::vector<BigVec2> vertices;
+  std::vector<BigVecQ2> vertices;
   vertices.reserve(poly.vertices.size());
-  for (const BigVec3 &v : poly.vertices) {
+  for (const BigVecQ3 &v : poly.vertices) {
     vertices.push_back(TransformAndProjectPoint(f, v));
   }
   return BigMesh2D{.vertices = std::move(vertices), .faces = poly.faces};
 }
 
 BigPoly Rotate(const BigFrame &f, const BigPoly &poly) {
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
   vertices.reserve(poly.vertices.size());
-  for (const BigVec3 &v : poly.vertices) {
+  for (const BigVecQ3 &v : poly.vertices) {
     vertices.push_back(TransformPoint(f, v));
   }
   return BigPoly{.vertices = std::move(vertices), .faces = poly.faces};
 }
 
-BigMesh2D Translate(const BigVec2 &t, const BigMesh2D &m) {
-  std::vector<BigVec2> vertices;
+BigMesh2D Translate(const BigVecQ2 &t, const BigMesh2D &m) {
+  std::vector<BigVecQ2> vertices;
   vertices.reserve(m.vertices.size());
-  for (const BigVec2 &v : m.vertices) {
+  for (const BigVecQ2 &v : m.vertices) {
     vertices.push_back(v + t);
   }
 
@@ -329,9 +330,9 @@ BigMesh2D Translate(const BigVec2 &t, const BigMesh2D &m) {
 }
 
 BigPoly Rotate(const BigQuat &q, const BigPoly &poly) {
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
   vertices.reserve(poly.vertices.size());
-  for (const BigVec3 &v : poly.vertices) {
+  for (const BigVecQ3 &v : poly.vertices) {
     vertices.push_back(RotatePoint(q, v));
   }
   return BigPoly{.vertices = std::move(vertices), .faces = poly.faces};
@@ -340,11 +341,11 @@ BigPoly Rotate(const BigQuat &q, const BigPoly &poly) {
 template<class GetPt>
 inline static bool PointInPolygonT(int size,
                                    const GetPt &get_pt,
-                                   const BigVec2 &point) {
+                                   const BigVecQ2 &point) {
   int winding_number = 0;
   for (int i = 0; i < size; i++) {
-    const BigVec2 p0 = get_pt(i);
-    const BigVec2 p1 = get_pt((i + 1) % size);
+    const BigVecQ2 p0 = get_pt(i);
+    const BigVecQ2 p1 = get_pt((i + 1) % size);
 
     // Check if the ray from the point to infinity intersects the edge
     if (point.y > std::min(p0.y, p1.y)) {
@@ -365,9 +366,9 @@ inline static bool PointInPolygonT(int size,
   return !!(winding_number & 1);
 }
 
-bool PointInPolygon(const std::vector<BigVec2> &vertices,
+bool PointInPolygon(const std::vector<BigVecQ2> &vertices,
                     const std::vector<int> &polygon,
-                    const BigVec2 &point) {
+                    const BigVecQ2 &point) {
   return PointInPolygonT(polygon.size(),
                          [&](int idx) {
                            return vertices[polygon[idx]];
@@ -375,8 +376,8 @@ bool PointInPolygon(const std::vector<BigVec2> &vertices,
                          point);
 }
 
-bool PointInPolygon(const std::vector<BigVec2> &polygon,
-                    const BigVec2 &point) {
+bool PointInPolygon(const std::vector<BigVecQ2> &polygon,
+                    const BigVecQ2 &point) {
   return PointInPolygonT(polygon.size(),
                          [&](int idx) {
                            return polygon[idx];
@@ -387,7 +388,7 @@ bool PointInPolygon(const std::vector<BigVec2> &polygon,
 
 // XXX Buggy? maybe it was just because quaternion multiplication
 // was wrong! ugh! test again.
-BigVec3 RotatePoint(const BigQuat &q, const BigVec3 &v) {
+BigVecQ3 RotatePoint(const BigQuat &q, const BigVecQ3 &v) {
   vec3 dv = SmallVec(v);
   quat4 dp{.x = dv.x, .y = dv.y, .z = dv.z, .w = 0.0};
 
@@ -415,7 +416,7 @@ BigVec3 RotatePoint(const BigQuat &q, const BigVec3 &v) {
   CHECK_NEAR(dpqi.w, pqi.w.ToDouble());
 
   BigQuat pp = q * pqi;
-  BigVec3 ret(std::move(pp.x), std::move(pp.y), std::move(pp.z));
+  BigVecQ3 ret(std::move(pp.x), std::move(pp.y), std::move(pp.z));
 
   CHECK_NEAR(r.x, ret.x.ToDouble());
   CHECK_NEAR(r.y, ret.y.ToDouble());
@@ -424,12 +425,12 @@ BigVec3 RotatePoint(const BigQuat &q, const BigVec3 &v) {
   return ret;
 }
 
-std::vector<int> BigHull(const std::vector<BigVec2> &bigvs) {
+std::vector<int> BigHull(const std::vector<BigVecQ2> &bigvs) {
   PointMap2<char> duplicates;
   std::vector<vec2> dvs;
   dvs.reserve(bigvs.size());
   for (int i = 0; i < bigvs.size(); i++) {
-    const BigVec2 &v = bigvs[i];
+    const BigVecQ2 &v = bigvs[i];
     vec2 dv(v.x.ToDouble(), v.y.ToDouble());
     const std::optional<int> old = duplicates.Get(dv);
     CHECK(!old.has_value()) <<
@@ -451,7 +452,7 @@ Polyhedron SmallPoly(const BigPoly &big) {
   std::vector<vec3> vertices;
   vertices.reserve(big.vertices.size());
   for (int i = 0; i < big.vertices.size(); i++) {
-    const BigVec3 &v = big.vertices[i];
+    const BigVecQ3 &v = big.vertices[i];
     vertices.push_back(vec3{
         .x = v.x.ToDouble(),
         .y = v.y.ToDouble(),
@@ -470,7 +471,7 @@ PolyhedronMesh2D SmallMesh(const BigMesh2D &big) {
   std::vector<vec2> vertices;
   vertices.reserve(big.vertices.size());
   for (int i = 0; i < big.vertices.size(); i++) {
-    const BigVec2 &v = big.vertices[i];
+    const BigVecQ2 &v = big.vertices[i];
     vertices.push_back(vec2{
         .x = v.x.ToDouble(),
         .y = v.y.ToDouble(),
@@ -483,13 +484,13 @@ PolyhedronMesh2D SmallMesh(const BigMesh2D &big) {
   };
 }
 
-BigRat SignedAreaOfConvexPoly(const std::vector<BigVec2> &pts) {
+BigRat SignedAreaOfConvexPoly(const std::vector<BigVecQ2> &pts) {
   if (pts.size() < 3) return BigRat{0};
   BigRat area{0};
   // Iterate through the polygon vertices, using the shoelace formula.
   for (size_t i = 0; i < pts.size(); i++) {
-    const BigVec2 &v0 = pts[i];
-    const BigVec2 &v1 = pts[(i + 1) % pts.size()];
+    const BigVecQ2 &v0 = pts[i];
+    const BigVecQ2 &v1 = pts[(i + 1) % pts.size()];
     area += v0.x * v1.y - v1.x * v0.y;
   }
 
@@ -503,8 +504,8 @@ BigRat SignedAreaOfHull(const BigMesh2D &mesh,
   BigRat area{0};
   // Iterate through the polygon vertices, using the shoelace formula.
   for (size_t i = 0; i < hull.size(); i++) {
-    const BigVec2 &v0 = mesh.vertices[hull[i]];
-    const BigVec2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
+    const BigVecQ2 &v0 = mesh.vertices[hull[i]];
+    const BigVecQ2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
     area += v0.x * v1.y - v1.x * v0.y;
   }
 
@@ -512,14 +513,14 @@ BigRat SignedAreaOfHull(const BigMesh2D &mesh,
 }
 
 
-BigPoly MakeBigPolyFromVertices(std::vector<BigVec3> vertices,
+BigPoly MakeBigPolyFromVertices(std::vector<BigVecQ3> vertices,
                                 const char *name) {
   // XXX check
   PointMap3<int> duplicates;
 
   std::vector<vec3> dvertices;
   dvertices.reserve(vertices.size());
-  for (const BigVec3 &v : vertices) {
+  for (const BigVecQ3 &v : vertices) {
     #ifndef BIG_USE_GMP
     LOG(FATAL) << "ToDouble only really works with GMP mode";
     #endif
@@ -539,7 +540,7 @@ BigPoly MakeBigPolyFromVertices(std::vector<BigVec3> vertices,
   CHECK(poly.vertices.size() == dvertices.size());
 
   for (int i = 0; i < poly.vertices.size(); i++) {
-    const BigVec3 &b = vertices[i];
+    const BigVecQ3 &b = vertices[i];
     const vec3 &v = poly.vertices[i];
     double x = b.x.ToDouble();
     double y = b.y.ToDouble();
@@ -561,7 +562,7 @@ BigPoly MakeBigPolyFromVertices(std::vector<BigVec3> vertices,
 
 static void AddEvenPermutations(
     const BigRat &a, const BigRat &b, const BigRat &c,
-    std::vector<BigVec3> *vertices) {
+    std::vector<BigVecQ3> *vertices) {
   // (a, b, c) - even
   // (b, c, a) - even
   // (c, a, b) - even
@@ -584,7 +585,7 @@ BigPoly BigRidode(int digits) {
   const BigRat one = BigRat(1);
   const BigRat neg_one = BigRat(-1);
 
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
   for (int b = 0b000; b < 0b1000; b++) {
     BigRat s1 = (b & 0b100) ? neg_one : one;
     BigRat s2 = (b & 0b010) ? neg_one : one;
@@ -612,7 +613,7 @@ BigPoly BigRidode(int digits) {
 }
 
 BigPoly BigDhexe(int digits) {
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
 
   // Following https://dmccooey.com/polyhedra/DeltoidalHexecontahedron.txt
 
@@ -722,7 +723,7 @@ BigPoly BigScube(int digits) {
   const BigRat b = BigRat{1} / tribonacci;
   const BigRat c = tribonacci;
 
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
 
   // 1 = negative, 0 = positive
   for (const uint8_t s : {0b100, 0b010, 0b001, 0b111}) {
@@ -756,7 +757,7 @@ BigPoly BigPhexe(int digits) {
   const BigRat phi =
     (BigRat(1) + BigRat::Sqrt(BigRat(5), inv_epsilon)) / BigRat(2);
 
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
 
   static BigRat x_term = BigRat::Sqrt(phi - BigRat(5, 27),
                                       inv_epsilon);
@@ -972,7 +973,7 @@ BigPoly BigSdode(int digits) {
   const BigRat xi_squared = xi * xi;
   const BigRat inv_xi = BigRat(1) / xi;
 
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
   auto AddEvenPermutations = [&](const BigRat &a,
                                  const BigRat &b,
                                  const BigRat &c) {
@@ -1031,7 +1032,7 @@ BigPoly BigSdode(int digits) {
 
 
 BigPoly BigTriac(int digits) {
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
 
   const BigInt inv_epsilon = BigNumbers::Pow10(digits);
 
@@ -1093,7 +1094,7 @@ BigPoly BigTriac(int digits) {
 // Convert vertices into regular floating-point vertices; we
 // just need this temporarily to compute the orientation of faces.
 static std::vector<vec3> SmallVertices(
-    std::span<const BigVec3> big_verts) {
+    std::span<const BigVecQ3> big_verts) {
   std::vector<vec3> ret(big_verts.size());
   for (int i = 0; i < ret.size(); i++)
     ret[i] = SmallVec(big_verts[i]);
@@ -1112,10 +1113,10 @@ BigPoly BigCube(int digits) {
   //   |/     |/
   //   h------g
 
-  std::vector<BigVec3> vertices;
+  std::vector<BigVecQ3> vertices;
   auto AddVertex = [&vertices](int x, int y, int z) {
       int idx = (int)vertices.size();
-      vertices.emplace_back(BigVec3{BigRat(x), BigRat(y), BigRat(z)});
+      vertices.emplace_back(BigVecQ3{BigRat(x), BigRat(y), BigRat(z)});
       return idx;
     };
   int a = AddVertex(-1, +1, +1);
@@ -1154,11 +1155,11 @@ BigPoly BigCube(int digits) {
 }
 
 BigPoly BigTetra(int digits_unused) {
-  std::vector<BigVec3> vertices{
-    BigVec3{BigRat(1), BigRat(1), BigRat(1)},
-    BigVec3{BigRat(1), BigRat(-1), BigRat(-1)},
-    BigVec3{BigRat(-1), BigRat(1), BigRat(-1)},
-    BigVec3{BigRat(-1), BigRat(-1), BigRat(1)},
+  std::vector<BigVecQ3> vertices{
+    BigVecQ3{BigRat(1), BigRat(1), BigRat(1)},
+    BigVecQ3{BigRat(1), BigRat(-1), BigRat(-1)},
+    BigVecQ3{BigRat(-1), BigRat(1), BigRat(-1)},
+    BigVecQ3{BigRat(-1), BigRat(-1), BigRat(1)},
   };
 
   return MakeBigPolyFromVertices(std::move(vertices), "tetrahedron");
@@ -1166,14 +1167,14 @@ BigPoly BigTetra(int digits_unused) {
 
 
 // Is pt strictly within the triangle a-b-c? Works with both winding orders.
-bool InTriangle(const BigVec2 &a, const BigVec2 &b, const BigVec2 &c,
-                const BigVec2 &pt) {
+bool InTriangle(const BigVecQ2 &a, const BigVecQ2 &b, const BigVecQ2 &c,
+                const BigVecQ2 &pt) {
   // The idea behind this test is that for each edge, we check
   // to see if the test point is on the same side as a reference
   // point, which is the third point of the triangle.
-  auto SameSide = [](const BigVec2 &u, const BigVec2 &v,
-                     const BigVec2 &p1, const BigVec2 &p2) {
-      BigVec2 edge = v - u;
+  auto SameSide = [](const BigVecQ2 &u, const BigVecQ2 &v,
+                     const BigVecQ2 &p1, const BigVecQ2 &p2) {
+      BigVecQ2 edge = v - u;
       BigRat c1 = cross(edge, p1 - u);
       BigRat c2 = cross(edge, p2 - u);
 
@@ -1189,12 +1190,12 @@ bool InTriangle(const BigVec2 &a, const BigVec2 &b, const BigVec2 &c,
     SameSide(c, a, b, pt);
 }
 
-bool InMesh(const BigMesh2D &mesh, const BigVec2 &pt) {
+bool InMesh(const BigMesh2D &mesh, const BigVecQ2 &pt) {
   // using the triangulation
   for (const auto &[ai, bi, ci] : mesh.faces->triangulation) {
-    const BigVec2 &a = mesh.vertices[ai];
-    const BigVec2 &b = mesh.vertices[bi];
-    const BigVec2 &c = mesh.vertices[ci];
+    const BigVecQ2 &a = mesh.vertices[ai];
+    const BigVecQ2 &b = mesh.vertices[bi];
+    const BigVecQ2 &c = mesh.vertices[ci];
 
     if (InTriangle(a, b, c, pt)) return true;
   }
@@ -1203,15 +1204,15 @@ bool InMesh(const BigMesh2D &mesh, const BigVec2 &pt) {
 }
 
 std::optional<std::tuple<int, int, int>>
-InMeshExhaustive(const BigMesh2D &mesh, const BigVec2 &pt) {
+InMeshExhaustive(const BigMesh2D &mesh, const BigVecQ2 &pt) {
 
   for (int ai = 0; ai < mesh.vertices.size(); ai++) {
-    const BigVec2 &a = mesh.vertices[ai];
+    const BigVecQ2 &a = mesh.vertices[ai];
     for (int bi = 0; bi < ai; bi++) {
-      const BigVec2 &b = mesh.vertices[bi];
+      const BigVecQ2 &b = mesh.vertices[bi];
       if (b == a) continue;
       for (int ci = 0; ci < bi; ci++) {
-        const BigVec2 &c = mesh.vertices[ci];
+        const BigVecQ2 &c = mesh.vertices[ci];
         if (c == b || c == a) continue;
 
         // XXX check for degenerate triangles.
@@ -1223,13 +1224,13 @@ InMeshExhaustive(const BigMesh2D &mesh, const BigVec2 &pt) {
   return std::nullopt;
 }
 
-int GetClosestPoint(const BigMesh2D &mesh, const BigVec2 &pt) {
+int GetClosestPoint(const BigMesh2D &mesh, const BigVecQ2 &pt) {
   CHECK(!mesh.vertices.empty());
   BigRat best_sqdist = distance_squared(mesh.vertices[0], pt);
   int best_idx = 0;
 
   for (int i = 1; i < mesh.vertices.size(); i++) {
-    const BigVec2 &a = mesh.vertices[i];
+    const BigVecQ2 &a = mesh.vertices[i];
     BigRat sqdist = distance_squared(a, pt);
     if (sqdist < best_sqdist) {
       best_sqdist = std::move(sqdist);
@@ -1240,16 +1241,16 @@ int GetClosestPoint(const BigMesh2D &mesh, const BigVec2 &pt) {
   return best_idx;
 }
 
-std::pair<int, BigRat> GetClosestPoint(const std::vector<BigVec2> &vertices,
+std::pair<int, BigRat> GetClosestPoint(const std::vector<BigVecQ2> &vertices,
                                        const std::vector<int> &hull,
-                                       const BigVec2 &pt) {
+                                       const BigVecQ2 &pt) {
   CHECK(!hull.empty());
   BigRat best_sqdist = distance_squared(vertices[hull[0]], pt);
   int best_idx = hull[0];
 
   for (int i = 1; i < hull.size(); i++) {
     int idx = hull[i];
-    const BigVec2 &a = vertices[idx];
+    const BigVecQ2 &a = vertices[idx];
     BigRat sqdist = distance_squared(a, pt);
     if (sqdist < best_sqdist) {
       best_sqdist = std::move(sqdist);
@@ -1267,13 +1268,13 @@ std::pair<int, BigRat> GetClosestPoint(const std::vector<BigVec2> &vertices,
 
 // Returns the index of the farthest point from segment (a, b).
 // Requires that all points are to the left of the segment (a,b) (or colinear).
-static int GetFarthest(const BigVec2 &a, const BigVec2 &b,
-                       const std::vector<BigVec2> &v,
+static int GetFarthest(const BigVecQ2 &a, const BigVecQ2 &b,
+                       const std::vector<BigVecQ2> &v,
                        const std::vector<int> &pts) {
   CHECK(!pts.empty());
   const BigRat dx = b.x - a.x;
   const BigRat dy = b.y - a.y;
-  auto SqDist = [&](const BigVec2 &p) -> BigRat {
+  auto SqDist = [&](const BigVecQ2 &p) -> BigRat {
       return dx * (a.y - p.y) - dy * (a.x - p.x);
     };
 
@@ -1300,7 +1301,7 @@ enum Orientation {
   CCW, COLINEAR, CW,
 };
 static Orientation GetOrientation(
-    const BigVec2 &a, const BigVec2 &b, const BigVec2 &c) {
+    const BigVecQ2 &a, const BigVecQ2 &b, const BigVecQ2 &c) {
   int s = BigRat::Sign(cross(b - a, c - a));
   if (s < 0) return CW;
   if (s > 0) return CCW;
@@ -1308,7 +1309,7 @@ static Orientation GetOrientation(
 }
 
 // Recursive call of the quickhull algorithm.
-static void QuickHullRec(const std::vector<BigVec2> &vertices,
+static void QuickHullRec(const std::vector<BigVecQ2> &vertices,
                          const std::vector<int> &pts,
                          int a, int b,
                          std::vector<int> *hull) {
@@ -1329,19 +1330,19 @@ static void QuickHullRec(const std::vector<BigVec2> &vertices,
     }
   }
 
-  const BigVec2 &aa = vertices[a];
-  const BigVec2 &bb = vertices[b];
+  const BigVecQ2 &aa = vertices[a];
+  const BigVecQ2 &bb = vertices[b];
 
   if (SELF_CHECK) {
     for (int x : pts) {
-      const BigVec2 &xx = vertices[x];
+      const BigVecQ2 &xx = vertices[x];
       CHECK(aa == xx || bb == xx ||
             GetOrientation(aa, bb, xx) == CCW);
     }
   }
 
   int f = GetFarthest(aa, bb, vertices, pts);
-  const BigVec2 &ff = vertices[f];
+  const BigVecQ2 &ff = vertices[f];
   if (VERBOSE) printf("Farthest is %d (%s)\n", f, VecString(ff).c_str());
 
   // Collect points to the left of segment (a, f) and to the left
@@ -1356,7 +1357,7 @@ static void QuickHullRec(const std::vector<BigVec2> &vertices,
   //
   std::vector<int> left, right;
   for (int i : pts) {
-    const BigVec2 &ii = vertices[i];
+    const BigVecQ2 &ii = vertices[i];
     // In the presence of exact duplicates for one of the endpoints,
     // we need to filter them out here or else we can end up in
     // infinite loops. Removing duplicates does not affect the hull.
@@ -1381,14 +1382,14 @@ static void QuickHullRec(const std::vector<BigVec2> &vertices,
 
 // QuickHull algorithm.
 // https://en.wikipedia.org/wiki/QuickHull
-std::vector<int> BigQuickHull(const std::vector<BigVec2> &vertices) {
+std::vector<int> BigQuickHull(const std::vector<BigVecQ2> &vertices) {
   std::vector<int> hull;
   if (vertices.empty()) return {};
   if (vertices.size() == 1) return {0};
   if (vertices.size() == 2) return {0, 1};
 
   // Returns true if a is lexicographically before b.
-  auto LeftOf = [](const BigVec2 &a, const BigVec2 &b) -> bool {
+  auto LeftOf = [](const BigVecQ2 &a, const BigVecQ2 &b) -> bool {
       return (a.x < b.x || (a.x == b.x && a.y < b.y));
     };
 
@@ -1428,16 +1429,16 @@ std::vector<int> BigQuickHull(const std::vector<BigVec2> &vertices) {
   return hull;
 }
 
-bool InHull(const std::vector<BigVec2> &vertices,
+bool InHull(const std::vector<BigVecQ2> &vertices,
             const std::vector<int> &hull,
-            const BigVec2 &pt) {
+            const BigVecQ2 &pt) {
   // No area.
   if (hull.size() < 3) return false;
 
   std::optional<Orientation> same_side;
   for (int i = 0; i < hull.size(); i++) {
-    const BigVec2 &a = vertices[hull[i]];
-    const BigVec2 &b = vertices[hull[(i + 1) % hull.size()]];
+    const BigVecQ2 &a = vertices[hull[i]];
+    const BigVecQ2 &b = vertices[hull[(i + 1) % hull.size()]];
 
     Orientation side = GetOrientation(a, b, pt);
     if (side == COLINEAR) return false;
@@ -1455,14 +1456,14 @@ bool InHull(const std::vector<BigVec2> &vertices,
 // It may be one of the endpoints.
 BigRat SquaredDistanceToClosestPointOnSegment(
     // Line segment
-    const BigVec2 &v0,
-    const BigVec2 &v1,
+    const BigVecQ2 &v0,
+    const BigVecQ2 &v1,
     // Point to test
-    const BigVec2 &pt) {
+    const BigVecQ2 &pt) {
   const BigRat zero(0);
   const BigRat one(1);
 
-  BigVec2 v = v1 - v0;
+  BigVecQ2 v = v1 - v0;
 
   BigRat sqlen = length_squared(v);
   if (sqlen == zero) {
@@ -1471,21 +1472,21 @@ BigRat SquaredDistanceToClosestPointOnSegment(
     return distance_squared(pt, v0);
   }
 
-  BigVec2 w = pt - v0;
+  BigVecQ2 w = pt - v0;
   BigRat t = BigRat::Max(zero, BigRat::Min(one, dot(v, w) / sqlen));
 
-  BigVec2 closest = v0 + (v * t);
+  BigVecQ2 closest = v0 + (v * t);
   return distance_squared(pt, closest);
 }
 
 
-BigRat SquaredDistanceToHull(const std::vector<BigVec2> &vertices,
+BigRat SquaredDistanceToHull(const std::vector<BigVecQ2> &vertices,
                              const std::vector<int> &hull,
-                             const BigVec2 &pt) {
+                             const BigVecQ2 &pt) {
   std::optional<BigRat> min_sqlen;
   for (int i = 0; i < hull.size(); i++) {
-    const BigVec2 &a = vertices[hull[i]];
-    const BigVec2 &b = vertices[hull[(i + 1) % hull.size()]];
+    const BigVecQ2 &a = vertices[hull[i]];
+    const BigVecQ2 &b = vertices[hull[(i + 1) % hull.size()]];
 
     BigRat sqlen = SquaredDistanceToClosestPointOnSegment(a, b, pt);
     if (!min_sqlen.has_value() || sqlen < min_sqlen.value()) {
@@ -1498,7 +1499,7 @@ BigRat SquaredDistanceToHull(const std::vector<BigVec2> &vertices,
 }
 
 #if 0
-std::pair<BigQuat, BigVec3> UnpackFrame(const BigFrame &f) {
+std::pair<BigQuat, BigVecQ3> UnpackFrame(const BigFrame &f) {
 
   auto Rotation = [](const BigFrame &a) -> BigMat3 {
       return {a.x, a.y, a.z};
@@ -1537,7 +1538,7 @@ bool ValidateSolution(const BigPoly &poly,
     "exact zero translation for the outer frame.";
 
   // z component does not matter, because we project along z.
-  BigVec2 itrans(BigRat::FromDouble(ditrans.x),
+  BigVecQ2 itrans(BigRat::FromDouble(ditrans.x),
                  BigRat::FromDouble(ditrans.y));
 
   BigQuat oq(BigRat::FromDouble(douter_rot.x),
@@ -1560,7 +1561,7 @@ bool ValidateSolution(const BigPoly &poly,
   BigMesh2D sinner = Translate(itrans, Shadow(inner));
 
   for (int i = 0; i < sinner.vertices.size(); i++) {
-    const BigVec2 &v = sinner.vertices[i];
+    const BigVecQ2 &v = sinner.vertices[i];
     const std::optional<std::tuple<int, int, int>> triangle =
       InMeshExhaustive(souter, v);
     bool in = triangle.has_value();
@@ -1570,7 +1571,7 @@ bool ValidateSolution(const BigPoly &poly,
   return true;
 }
 
-BigVec3 ScaleToMakeIntegral(const BigVec3 &v) {
+BigVecQ3 ScaleToMakeIntegral(const BigVecQ3 &v) {
   const auto &[xn, xd] = v.x.Parts();
   const auto &[yn, yd] = v.y.Parts();
   const auto &[zn, zd] = v.z.Parts();
@@ -1583,5 +1584,5 @@ BigVec3 ScaleToMakeIntegral(const BigVec3 &v) {
 
   // Now we can simplify by the GCD.
   BigInt d = BigInt::GCD(x, BigInt::GCD(y, z));
-  return BigVec3(BigRat(x, d), BigRat(y, d), BigRat(z, d));
+  return BigVecQ3(BigRat(x, d), BigRat(y, d), BigRat(z, d));
 }

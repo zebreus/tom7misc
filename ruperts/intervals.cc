@@ -11,6 +11,7 @@
 #include "ansi.h"
 #include "big-polyhedra.h"
 #include "bignum/big-interval.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 
 static constexpr bool SELF_CHECK = false;
@@ -111,7 +112,7 @@ Vec3ival ViewFromSpherical(const ViewBoundsTrig &trig) {
 // tighter bounds. As above, the angle intervals must both
 // be less than 3 radians.
 Bigival DotProductWithView(const ViewBoundsTrig &trig,
-                           const BigVec3 &v) {
+                           const BigVecQ3 &v) {
   CHECK(trig.azimuth.Width() < BigRat(3));
   CHECK(trig.angle.Width() < BigRat(3));
 
@@ -135,7 +136,7 @@ Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // Just return a conservative but degenerate ball (full unit ball)
   // if the intervals are too wide.
   if (trig.azimuth.Width() > BigRat(1) || trig.angle.Width() > BigRat(1)) {
-    return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
+    return Ballival(BigVecQ3(BigRat(0), BigRat(0), BigRat(0)),
                     BigRat(1));
   }
 
@@ -151,7 +152,7 @@ Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // This will also be true if we are reasonably close to the
   // sphere (which this will be) but there's a proof obligation
   // to revisit here.
-  BigVec3 center = BigVec3(
+  BigVecQ3 center = BigVecQ3(
       (trig.mid_an.sine * trig.mid_az.cosine).Midpoint(),
       (trig.mid_an.sine * trig.mid_az.sine).Midpoint(),
       trig.mid_an.cosine.Midpoint());
@@ -278,11 +279,11 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
   if (possible_x_extremum || possible_y_extremum) {
 
     // PERF: Avoid copying
-    std::array<BigVec2, 4> corners = {
-      BigVec2(v_in.x.LB(), v_in.y.LB()),
-      BigVec2(v_in.x.LB(), v_in.y.UB()),
-      BigVec2(v_in.x.UB(), v_in.y.LB()),
-      BigVec2(v_in.x.UB(), v_in.y.UB()),
+    std::array<BigVecQ2, 4> corners = {
+      BigVecQ2(v_in.x.LB(), v_in.y.LB()),
+      BigVecQ2(v_in.x.LB(), v_in.y.UB()),
+      BigVecQ2(v_in.x.UB(), v_in.y.LB()),
+      BigVecQ2(v_in.x.UB(), v_in.y.UB()),
     };
 
     // Determine the sign of cos and sin over the angle interval.
@@ -302,7 +303,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
 
     if (possible_y_extremum) {
       BigRat max_r_sq_pos_x(0), max_r_sq_neg_x(0);
-      for (const BigVec2 &c : corners) {
+      for (const BigVecQ2 &c : corners) {
         BigRat r_sq = dot(c, c);
         if (BigRat::Sign(r_sq) == 0) continue;
 
@@ -335,7 +336,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
     if (possible_x_extremum) {
       // The y-coordinate is extremal when the x-coordinate is zero.
       BigRat max_r_sq_pos_y(0), max_r_sq_neg_y(0);
-      for (const BigVec2 &c : corners) {
+      for (const BigVecQ2 &c : corners) {
         BigRat r_sq = dot(c, c);
         if (BigRat::Sign(r_sq) == 0) continue;
 
@@ -476,7 +477,7 @@ Discival RotateDiscInnerBias(
 
     BigRat bounding_radius = center_dist + radius;
     BigRat radius_sq = bounding_radius * bounding_radius;
-    return Discival(BigVec2(BigRat(0), BigRat(0)),
+    return Discival(BigVecQ2(BigRat(0), BigRat(0)),
                     std::move(radius_sq),
                     std::move(bounding_radius));
   }
@@ -497,11 +498,11 @@ Discival RotateDiscInnerBias(
       disc->center.y * rot_trig.mid.sine,
       disc->center.x * rot_trig.mid.sine +
       disc->center.y * rot_trig.mid.cosine);
-  BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
+  BigVecQ2 arc_center = {arc_center_ival.x.Midpoint(),
                         arc_center_ival.y.Midpoint()};
 
   // Push this center away from the origin by the bias.
-  BigVec2 bounding_center = arc_center * bias;
+  BigVecQ2 bounding_center = arc_center * bias;
 
   // Radius for the bounding disc.
   // The radius must be large enough to contain the furthest point on
@@ -516,7 +517,7 @@ Discival RotateDiscInnerBias(
   // do better here with a routine that computes a disc for a rotated
   // point. It'd also make TryCorners test cheaper, since there is
   // just one radius.
-  auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
+  auto RotatePt = [&](const SinCos &endpoint, const BigVecQ2 &p) {
       return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
                       p.x * endpoint.sine + p.y * endpoint.cosine);
     };
@@ -607,7 +608,7 @@ Discival TranslateDisc(Discival *disc,
 
   // Exact center for the bounding disc. We have our choice here, but
   // the midpoint is the best option and is easy to compute.
-  BigVec2 bound_center(
+  BigVecQ2 bound_center(
       (disc->center.x + tx).Midpoint(),
       (disc->center.y + ty).Midpoint());
 
@@ -710,7 +711,7 @@ bool IsDiscOutsideEdge(const Vec2ival &disc_center,
 }
 
 
-Discival GetInitialDisc(const BigVec3 &v,
+Discival GetInitialDisc(const BigVecQ3 &v,
                         const ViewBoundsTrig &trig,
                         const BigRat &smear_radius_sq,
                         const BigInt &inv_epsilon) {
@@ -730,8 +731,8 @@ Discival GetInitialDisc(const BigVec3 &v,
       trig.mid_an.sine * v.z);
 
   // Choose a center that is close to the center of the patch.
-  BigVec2 chosen_center(center_aabb.x.Midpoint(),
-                        center_aabb.y.Midpoint());
+  BigVecQ2 chosen_center(center_aabb.x.Midpoint(),
+                         center_aabb.y.Midpoint());
 
   // Now the radius is approximately the smear_radius, but we need to
   // account for the error from the trigonometric approximations (we have

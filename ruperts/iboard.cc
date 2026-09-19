@@ -18,8 +18,6 @@
 #include "util.h"
 #include "threadutil.h"
 
-using Volume = Hypercube::Volume;
-
 static StatusBar status(37);
 
 static constexpr int NUM_PATCHES = 36;
@@ -85,7 +83,7 @@ static void IBoard(bool full) {
   PatchInfo patch_info = LoadPatchInfo("scube-patchinfo.txt");
 
   BigRat big_pi(165707065, 52746197);
-  Volume bounds;
+  Hypercube::Volume bounds;
 
   std::vector<std::pair<uint64_t, PatchInfo::CanonicalPatch>> canonical;
   for (const auto &[cc, p] : patch_info.canonical) {

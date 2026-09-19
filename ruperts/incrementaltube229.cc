@@ -1,10 +1,9 @@
 // Identity Tube Incremental BFS Search & Dual-Bound Engine for Nopert #229
 // Implements canonical base-4 tree search using tubetree229 library.
 
+#include <iomanip>
 #include <iostream>
-#include <fstream>
 #include <memory>
-#include <sstream>
 #include <utility>
 #include <vector>
 #include <string>
@@ -33,11 +32,12 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "geom/hull-2d.h"
 #include "nopert229.h"
-#include "tubetree229.h"
 #include "tube229.h"
+#include "tubetree229.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -46,33 +46,14 @@ using namespace tubetree229;
 
 static std::atomic<bool> g_stop_requested{false};
 
+static inline vec3 ToDouble(const BigVecQ3 &v) {
+  return vec3{v.x.ToDouble(), v.y.ToDouble(), v.z.ToDouble()};
+}
+
 static void SignalHandler(int sig) {
   g_stop_requested = true;
   std::cerr << "\n[SIGNAL] Stop requested (signal " << sig << "). Gracefully finishing in-flight tasks and saving tree...\n" << std::flush;
 }
-
-// ============================================================================
-// POLYHEDRON #229 GEOMETRY
-// ============================================================================
-// Polyhedron #229 rational vertices (M9b exact repair derivation)
-// Access via GetVerticesQ() from nopert229.h to avoid static initialization fiasco
-// and avoid repeated string-parsing/heap allocations in tight search loops.
-static const std::array<Vec3Q, NUM_VERTICES> &GetVec3QVertices() {
-  static const std::array<Vec3Q, NUM_VERTICES> *cached = []() {
-    auto *arr = new std::array<Vec3Q, NUM_VERTICES>();
-    const auto &vs = GetVerticesQ();
-    for (int i = 0; i < NUM_VERTICES; i++) {
-      (*arr)[i] = Vec3Q(vs[i][0], vs[i][1], vs[i][2]);
-    }
-    return arr;
-  }();
-  return *cached;
-}
-
-static inline const Vec3Q &VertexQ(int v) {
-  return GetVec3QVertices()[v];
-}
-
 
 // ============================================================================
 // EXACT POLYNOMIAL AND AUDIT ARITHMETIC
@@ -83,7 +64,7 @@ struct QPoly {
   QPoly() {
     for (int i = 0; i < 10; i++) c[i] = BigRat(0);
   }
-  static QPoly MulLinear(const Vec3Q &a, const Vec3Q &b) {
+  static QPoly MulLinear(const BigVecQ3 &a, const BigVecQ3 &b) {
     QPoly p;
     p.c[4] = a.x * b.x;
     p.c[5] = a.x * b.y + a.y * b.x;
@@ -96,7 +77,7 @@ struct QPoly {
   void AddScaled(const BigRat &s, const QPoly &o) {
     for (int i = 0; i < 10; i++) c[i] += s * o.c[i];
   }
-  std::pair<BigRat, BigRat> EvalCentered(const Vec3Q &center, const Vec3Q &radius) const {
+  std::pair<BigRat, BigRat> EvalCentered(const BigVecQ3 &center, const BigVecQ3 &radius) const {
     BigRat val = c[0] + c[1] * center.x + c[2] * center.y + c[3] * center.z +
                  c[4] * center.x * center.x + c[5] * center.x * center.y +
                  c[6] * center.x * center.z + c[7] * center.y * center.y +
@@ -117,11 +98,11 @@ struct QPoly {
 };
 
 
-static Vec3Q GetExactEdge(const ContactInfo &c) {
-  const Vec3Q &v_start = VertexQ(c.edge_start);
-  const Vec3Q &v_finish = VertexQ(c.edge_finish);
-  const Vec3Q &v_start2 = VertexQ(c.edge_start2);
-  const Vec3Q &v_finish2 = VertexQ(c.edge_finish2);
+static BigVecQ3 GetExactEdge(const ContactInfo &c) {
+  const BigVecQ3 &v_start = VertexQ(c.edge_start);
+  const BigVecQ3 &v_finish = VertexQ(c.edge_finish);
+  const BigVecQ3 &v_start2 = VertexQ(c.edge_start2);
+  const BigVecQ3 &v_finish2 = VertexQ(c.edge_finish2);
   BigRat mixQ(c.mix, 1000);
   return (v_start - v_finish) * mixQ + (v_start2 - v_finish2) * (BigRat(1) - mixQ);
 }
@@ -161,22 +142,22 @@ static inline BigRat FloorTo(const BigRat &x, int64_t denom) {
 }
 
 // Barycentric coordinates of target inside tetrahedron (p0, p1, p2, p3)
-static bool Barycentric4(const Vec3Q pts[4], const Vec3Q &target, BigRat lam[4]) {
-  Vec3Q v0 = pts[0] - pts[3];
-  Vec3Q v1 = pts[1] - pts[3];
-  Vec3Q v2 = pts[2] - pts[3];
-  Vec3Q w = target - pts[3];
-  BigRat den = Vec3Q::Det(v0, v1, v2);
+static bool Barycentric4(const BigVecQ3 pts[4], const BigVecQ3 &target, BigRat lam[4]) {
+  BigVecQ3 v0 = pts[0] - pts[3];
+  BigVecQ3 v1 = pts[1] - pts[3];
+  BigVecQ3 v2 = pts[2] - pts[3];
+  BigVecQ3 w = target - pts[3];
+  BigRat den = BigVecQ3::Det(v0, v1, v2);
   if (den == 0) return false;
-  lam[0] = Vec3Q::Det(w, v1, v2) / den;
-  lam[1] = Vec3Q::Det(v0, w, v2) / den;
-  lam[2] = Vec3Q::Det(v0, v1, w) / den;
+  lam[0] = BigVecQ3::Det(w, v1, v2) / den;
+  lam[1] = BigVecQ3::Det(v0, w, v2) / den;
+  lam[2] = BigVecQ3::Det(v0, v1, w) / den;
   lam[3] = BigRat(1) - lam[0] - lam[1] - lam[2];
   return true;
 }
 
 // Exact tetrahedron axis radius
-static BigRat ExactTetrahedronAxisRadius(const Vec3Q pts[4]) {
+static BigRat ExactTetrahedronAxisRadius(const BigVecQ3 pts[4]) {
   BigRat zero[4];
   if (!Barycentric4(pts, {BigRat(0), BigRat(0), BigRat(0)}, zero)) return BigRat(0);
   for (int i = 0; i < 4; i++) {
@@ -185,7 +166,7 @@ static BigRat ExactTetrahedronAxisRadius(const Vec3Q pts[4]) {
   BigRat min_bound(1000000);
   for (int axis = 0; axis < 3; axis++) {
     for (int sign : {-1, 1}) {
-      Vec3Q target(axis == 0 ? BigRat(sign) : BigRat(0),
+      BigVecQ3 target(axis == 0 ? BigRat(sign) : BigRat(0),
                    axis == 1 ? BigRat(sign) : BigRat(0),
                    axis == 2 ? BigRat(sign) : BigRat(0));
       BigRat at_one[4];
@@ -204,33 +185,33 @@ static BigRat ExactTetrahedronAxisRadius(const Vec3Q pts[4]) {
 
 // Audits a single 3-contact axis on triangle tri
 static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertificate *out_cert,
-                      Vec3Q *out_center, BigRat *out_delta, std::string *fail_reason = nullptr) {
-  Vec3Q edges[3] = {GetExactEdge(contacts[0]), GetExactEdge(contacts[1]), GetExactEdge(contacts[2])};
-  Vec3Q coeff0 = Vec3Q::Cross(edges[1], edges[2]);
-  Vec3Q coeff1 = Vec3Q::Cross(edges[2], edges[0]);
-  Vec3Q coeff2 = Vec3Q::Cross(edges[0], edges[1]);
+                      BigVecQ3 *out_center, BigRat *out_delta, std::string *fail_reason = nullptr) {
+  BigVecQ3 edges[3] = {GetExactEdge(contacts[0]), GetExactEdge(contacts[1]), GetExactEdge(contacts[2])};
+  BigVecQ3 coeff0 = BigVecQ3::Cross(edges[1], edges[2]);
+  BigVecQ3 coeff1 = BigVecQ3::Cross(edges[2], edges[0]);
+  BigVecQ3 coeff2 = BigVecQ3::Cross(edges[0], edges[1]);
 
-  BigRat p0 = Vec3Q::Dot(tri.corners[0], coeff0);
-  BigRat p1 = Vec3Q::Dot(tri.corners[0], coeff1);
-  BigRat p2 = Vec3Q::Dot(tri.corners[0], coeff2);
+  BigRat p0 = BigVecQ3::Dot(tri.corners[0], coeff0);
+  BigRat p1 = BigVecQ3::Dot(tri.corners[0], coeff1);
+  BigRat p2 = BigVecQ3::Dot(tri.corners[0], coeff2);
   if (p0 < 0 && p1 < 0 && p2 < 0) {
     std::swap(contacts[1], contacts[2]);
     std::swap(edges[1], edges[2]);
-    coeff0 = Vec3Q::Cross(edges[1], edges[2]);
-    coeff1 = Vec3Q::Cross(edges[2], edges[0]);
-    coeff2 = Vec3Q::Cross(edges[0], edges[1]);
+    coeff0 = BigVecQ3::Cross(edges[1], edges[2]);
+    coeff1 = BigVecQ3::Cross(edges[2], edges[0]);
+    coeff2 = BigVecQ3::Cross(edges[0], edges[1]);
   }
 
-  Vec3Q w_coeffs[3] = {coeff0, coeff1, coeff2};
+  BigVecQ3 w_coeffs[3] = {coeff0, coeff1, coeff2};
   BigRat support_error(6, 1000000000000000LL); // 6 / 10^15
   BigRat weight_upper[3];
   BigRat sum_weight_upper(0);
 
   for (int m = 0; m < 3; m++) {
-    BigRat w_max = Vec3Q::Dot(tri.corners[0], w_coeffs[m]);
+    BigRat w_max = BigVecQ3::Dot(tri.corners[0], w_coeffs[m]);
     BigRat w_min = w_max;
     for (int c = 1; c < 3; c++) {
-      BigRat val = Vec3Q::Dot(tri.corners[c], w_coeffs[m]);
+      BigRat val = BigVecQ3::Dot(tri.corners[c], w_coeffs[m]);
       if (val > w_max) w_max = val;
       if (val < w_min) w_min = val;
     }
@@ -253,7 +234,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   for (int m = 0; m < 3; m++) {
     out_cert->contacts[m] = contacts[m];
     int sel = contacts[m].vertex;
-    const Vec3Q &v_sel = VertexQ(sel);
+    const BigVecQ3 &v_sel = VertexQ(sel);
     BigRat best_support(1000000);
     int best_w = -1;
     for (int k = 0; k < 20; k++) {
@@ -262,12 +243,12 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
                  (contacts[m].mix == 0 && sel == contacts[m].edge_start2 && k == contacts[m].edge_finish2);
       BigRat s_upper(0);
       if (!tie) {
-        const Vec3Q &v_k = VertexQ(k);
-        Vec3Q delta = v_k - v_sel;
-        Vec3Q s_coeff = Vec3Q::Cross(edges[m], delta);
-        BigRat max_s = Vec3Q::Dot(tri.corners[0], s_coeff);
+        const BigVecQ3 &v_k = VertexQ(k);
+        BigVecQ3 delta = v_k - v_sel;
+        BigVecQ3 s_coeff = BigVecQ3::Cross(edges[m], delta);
+        BigRat max_s = BigVecQ3::Dot(tri.corners[0], s_coeff);
         for (int c = 1; c < 3; c++) {
-          BigRat val = Vec3Q::Dot(tri.corners[c], s_coeff);
+          BigRat val = BigVecQ3::Dot(tri.corners[c], s_coeff);
           if (val > max_s) max_s = val;
         }
         s_upper = max_s + support_error;
@@ -289,7 +270,7 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   }
 
   // Bounding box over triangle
-  Vec3Q ball_center, ball_radius;
+  BigVecQ3 ball_center, ball_radius;
   for (int c = 0; c < 3; c++) {
     BigRat c0 = (c == 0 ? tri.corners[0].x : c == 1 ? tri.corners[0].y : tri.corners[0].z);
     BigRat c1 = (c == 0 ? tri.corners[1].x : c == 1 ? tri.corners[1].y : tri.corners[1].z);
@@ -306,13 +287,13 @@ static bool AuditAxis(const TriangleQ &tri, ContactInfo contacts[3], AxisCertifi
   QPoly polys[3];
   for (int coord = 0; coord < 3; coord++) {
     for (int i = 0; i < 3; i++) {
-      const Vec3Q &v_supp = VertexQ(contacts[i].vertex);
-      Vec3Q lift_row[3] = {
+      const BigVecQ3 &v_supp = VertexQ(contacts[i].vertex);
+      BigVecQ3 lift_row[3] = {
         {BigRat(0), edges[i].z, -edges[i].y},
         {-edges[i].z, BigRat(0), edges[i].x},
         {edges[i].y, -edges[i].x, BigRat(0)}
       };
-      Vec3Q cross_lift;
+      BigVecQ3 cross_lift;
       if (coord == 0) {
         cross_lift = {v_supp.y * lift_row[2].x - v_supp.z * lift_row[1].x,
                       v_supp.y * lift_row[2].y - v_supp.z * lift_row[1].y,
@@ -383,7 +364,7 @@ static bool AuditCertificateAdaptive(
     std::string *fail_reason = nullptr) {
 
   *out_cert = in_cert;
-  Vec3Q centers[4];
+  BigVecQ3 centers[4];
   BigRat deltas[4];
   for (int a = 0; a < 4; a++) {
     ContactInfo contacts[3] = {in_cert.axes[a].contacts[0],
@@ -436,7 +417,7 @@ static bool AuditCertificateAdaptive(
   BigRat scale = (c + delta) * BigRat(7, 4);
   for (int axis = 0; axis < 3; axis++) {
     for (int sign : {-1, 1}) {
-      Vec3Q target(axis == 0 ? scale * BigRat(sign) : BigRat(0),
+      BigVecQ3 target(axis == 0 ? scale * BigRat(sign) : BigRat(0),
                    axis == 1 ? scale * BigRat(sign) : BigRat(0),
                    axis == 2 ? scale * BigRat(sign) : BigRat(0));
       BigRat lam[4];
@@ -721,9 +702,9 @@ static void EstimateUpperBounds(
     }
   }
 
-  vec3 c0 = tri.corners[0].ToDouble();
-  vec3 c1 = tri.corners[1].ToDouble();
-  vec3 c2 = tri.corners[2].ToDouble();
+  vec3 c0 = ToDouble(tri.corners[0]);
+  vec3 c1 = ToDouble(tri.corners[1]);
+  vec3 c2 = ToDouble(tri.corners[2]);
   double diam = std::max({yocto::length(c0 - c1), yocto::length(c1 - c2), yocto::length(c2 - c0)});
 
   // c_max <= 0.542857 * max(0, min_support) + 0.52 * diam
@@ -934,9 +915,9 @@ class IncrementalTubeManager {
   void ComputeAndPrintCoverage() const {
     if (!root_) return;
     TriangleQ root_tri = root_->GetTriangle();
-    vec3 r0 = root_tri.corners[0].ToDouble();
-    vec3 r1 = root_tri.corners[1].ToDouble();
-    vec3 r2 = root_tri.corners[2].ToDouble();
+    vec3 r0 = ToDouble(root_tri.corners[0]);
+    vec3 r1 = ToDouble(root_tri.corners[1]);
+    vec3 r2 = ToDouble(root_tri.corners[2]);
     double total_area = SphericalArea(r0, r1, r2);
 
     double covered_area = 0.0;
@@ -946,9 +927,9 @@ class IncrementalTubeManager {
     auto traverse = [&](auto &self, const TreeNode* n) -> bool {
       if (n->direct_cert.has_value() && n->direct_cert->r > BigRat(0)) {
         TriangleQ tri = n->GetTriangle();
-        vec3 v0 = tri.corners[0].ToDouble();
-        vec3 v1 = tri.corners[1].ToDouble();
-        vec3 v2 = tri.corners[2].ToDouble();
+        vec3 v0 = ToDouble(tri.corners[0]);
+        vec3 v1 = ToDouble(tri.corners[1]);
+        vec3 v2 = ToDouble(tri.corners[2]);
         covered_area += SphericalArea(v0, v1, v2);
         covered_regions++;
         return true;
@@ -1526,7 +1507,9 @@ class IncrementalTubeManager {
         if (!meets_target) {
           if (node->direct_bounds.direct_c_upper <= BigRat(0) &&
               node->direct_bounds.direct_r_upper <= BigRat(0)) {
-            vec3 centroid = (tri.corners[0].ToDouble() + tri.corners[1].ToDouble() + tri.corners[2].ToDouble()) / 3.0;
+            vec3 centroid = (ToDouble(tri.corners[0]) +
+                             ToDouble(tri.corners[1]) +
+                             ToDouble(tri.corners[2])) / 3.0;
             std::vector<CandidateTriple> candidates;
             GenerateCandidatesForView(centroid, tri, /*evaluate_over_triangle=*/false, 4, true, 2e-14, &candidates);
             std::vector<vec3> pts;
@@ -1678,11 +1661,15 @@ static void DiagnosePath(const std::string &path) {
               << tri.corners[i].x.ToString() << ", "
               << tri.corners[i].y.ToString() << ", "
               << tri.corners[i].z.ToString() << ")"
-              << " (" << tri.corners[i].ToDouble().x << ", "
-              << tri.corners[i].ToDouble().y << ", "
-              << tri.corners[i].ToDouble().z << ")\n";
+              << " (" << tri.corners[i].x.ToDouble() << ", "
+              << tri.corners[i].y.ToDouble() << ", "
+              << tri.corners[i].z.ToDouble() << ")\n";
   }
-  vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
+  vec3 tri_f[3] = {
+    ToDouble(tri.corners[0]),
+    ToDouble(tri.corners[1]),
+    ToDouble(tri.corners[2]),
+  };
   vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
   std::cout << "Centroid: (" << centroid.x << ", " << centroid.y << ", " << centroid.z << ")\n";
   double diam = std::max({yocto::length(tri_f[0] - tri_f[1]), yocto::length(tri_f[1] - tri_f[2]), yocto::length(tri_f[2] - tri_f[0])});
@@ -1982,7 +1969,7 @@ static void DiagnosePath(const std::string &path) {
         std::cout << "Trying scored tet " << idx << "...\n";
         for (int a = 0; a < 4; a++) {
           ContactInfo c[3] = {test_cert.axes[a].contacts[0], test_cert.axes[a].contacts[1], test_cert.axes[a].contacts[2]};
-          Vec3Q center; BigRat delta; std::string rsn;
+          BigVecQ3 center; BigRat delta; std::string rsn;
           bool ok = AuditAxis(tri, c, &out_cert.axes[a], &center, &delta, &rsn);
           std::cout << "  pre-check axis " << a << ": " << (ok ? "OK" : "FAIL") << " (" << rsn << ")"
                     << " [0]=(" << c[0].vertex << "," << c[0].edge_start << "->" << c[0].edge_finish << "," << c[0].edge_start2 << "->" << c[0].edge_finish2 << "," << c[0].mix << ")"

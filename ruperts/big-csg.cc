@@ -1,33 +1,34 @@
 
 #include "big-csg.h"
 
-#include <set>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <format>
+#include <optional>
+#include <set>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
-#include <cstdio>
-#include <cstdlib>
-#include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "big-polyhedra.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "hashing.h"
+#include "big-polyhedra.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big-vec.h"
+#include "bignum/big.h"
 #include "bounds.h"
-#include "image.h"
 #include "dirty.h"
 #include "geom/mesh.h"
-#include "rendering.h"
 #include "geom/polyhedra.h"
+#include "hashing.h"
+#include "image.h"
+#include "rendering.h"
 
 static constexpr bool DEBUG = false;
 static constexpr bool VERBOSE = false;
@@ -36,11 +37,11 @@ static constexpr bool VERBOSE = false;
 
 namespace {
 // TODO: Use this throughout.
-static inline BigVec2 Two(const BigVec3 &v) {
-  return BigVec2{v.x, v.y};
+static inline BigVecQ2 Two(const BigVecQ3 &v) {
+  return BigVecQ2{v.x, v.y};
 }
 
-inline bool CrossIsZero(const BigVec3 &a, const BigVec3 &b) {
+inline bool CrossIsZero(const BigVecQ3 &a, const BigVecQ3 &b) {
   // PERF can just do the comparisons
   return
     BigRat::Sign(a.y * b.z - a.z * b.y) == 0 &&
@@ -49,15 +50,15 @@ inline bool CrossIsZero(const BigVec3 &a, const BigVec3 &b) {
 }
 
 [[maybe_unused]]
-inline bool IsZero(const BigVec3 &a) {
+inline bool IsZero(const BigVecQ3 &a) {
   return BigRat::Sign(a.x) == 0 &&
     BigRat::Sign(a.y) == 0 &&
     BigRat::Sign(a.z) == 0;
 }
 
-static BigVec3 TriangleNormal(const BigVec3 &a,
-                              const BigVec3 &b,
-                              const BigVec3 &c) {
+static BigVecQ3 TriangleNormal(const BigVecQ3 &a,
+                               const BigVecQ3 &b,
+                               const BigVecQ3 &c) {
   return cross(b - a, c - a);
 }
 
@@ -65,34 +66,34 @@ static BigVec3 TriangleNormal(const BigVec3 &a,
 // colinear edges and concavity. This is essentially taking
 // an area-weighted average of the normals, but is not actually
 // normalizing. We just care about the direction.
-static BigVec3 FaceNormal(const std::vector<BigVec3> &vertices,
+static BigVecQ3 FaceNormal(const std::vector<BigVecQ3> &vertices,
                           const std::vector<int> &face) {
   CHECK(face.size() >= 3);
 
-  BigVec3 total_normal{BigRat(0), BigRat(0), BigRat(0)};
-  const BigVec3 &v0 = vertices[face[0]];
+  BigVecQ3 total_normal{BigRat(0), BigRat(0), BigRat(0)};
+  const BigVecQ3 &v0 = vertices[face[0]];
   for (int i = 2; i < face.size(); i++) {
-    const BigVec3 &v1 = vertices[face[i - 1]];
-    const BigVec3 &v2 = vertices[face[i]];
+    const BigVecQ3 &v1 = vertices[face[i - 1]];
+    const BigVecQ3 &v2 = vertices[face[i]];
 
-    BigVec3 edge1 = v1 - v0;
-    BigVec3 edge2 = v2 - v0;
-    BigVec3 normal = cross(edge1, edge2);
+    BigVecQ3 edge1 = v1 - v0;
+    BigVecQ3 edge2 = v2 - v0;
+    BigVecQ3 normal = cross(edge1, edge2);
     total_normal = total_normal + normal;
   }
   return total_normal;
 }
 
-static bool ColinearPoints(const BigVec3 &a,
-                           const BigVec3 &b,
-                           const BigVec3 &c) {
-  BigVec3 ab = b - a;
-  BigVec3 bc = c - b;
+static bool ColinearPoints(const BigVecQ3 &a,
+                           const BigVecQ3 &b,
+                           const BigVecQ3 &c) {
+  BigVecQ3 ab = b - a;
+  BigVecQ3 bc = c - b;
   return CrossIsZero(ab, bc);
 }
 
 static std::vector<std::tuple<int, int, int>>
-TriangulateFace(const std::vector<BigVec3> &vertices,
+TriangulateFace(const std::vector<BigVecQ3> &vertices,
                 std::vector<int> face,
                 int face_num) {
   static constexpr bool VERBOSE = false;
@@ -102,13 +103,13 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
   std::vector<std::tuple<int, int, int>> triangles;
 
   // Need the face normal so that we can find "ears".
-  BigVec3 face_normal = FaceNormal(vertices, face);
+  BigVecQ3 face_normal = FaceNormal(vertices, face);
 
   int clip_num = 0;
 
   // Project the face to 2D (along normal) so that
   // we can do simpler in-triangle tests.
-  std::vector<BigVec2> vertices2;
+  std::vector<BigVecQ2> vertices2;
   vertices2.reserve(vertices.size());
   const BigRat norm_sq_length = dot(face_normal, face_normal);
   CHECK(BigRat::Sign(norm_sq_length) == 1) << "Degenerate normal?";
@@ -125,8 +126,8 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
         return XY;
       }
     }();
-  for (const BigVec3 &v : vertices) {
-    BigVec3 pv = v - (dot(v, face_normal) / norm_sq_length) * face_normal;
+  for (const BigVecQ3 &v : vertices) {
+    BigVecQ3 pv = v - (dot(v, face_normal) / norm_sq_length) * face_normal;
     switch (plane) {
     case XY: vertices2.emplace_back(pv.x, pv.y); break;
     case YZ: vertices2.emplace_back(pv.y, pv.z); break;
@@ -151,7 +152,7 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
     };
 
   std::vector<std::pair<double, double>> v2;
-  for (const BigVec2 &v : vertices2) {
+  for (const BigVecQ2 &v : vertices2) {
     const vec2 vv = SmallVec(v);
     v2.emplace_back(vv.x, vv.y);
   }
@@ -206,7 +207,7 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
 
   while (face.size() > 3) {
     if (DEBUG) {
-      BigVec3 face_normal2 = FaceNormal(vertices, face);
+      BigVecQ3 face_normal2 = FaceNormal(vertices, face);
       CHECK(BigRat::Sign(dot(face_normal, face_normal2)) == 1);
     }
 
@@ -222,14 +223,14 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
       int b = face[i];
       int c = face[(i + 1) % face.size()];
 
-      const BigVec3 &va = vertices[a];
-      const BigVec3 &vb = vertices[b];
-      const BigVec3 &vc = vertices[c];
+      const BigVecQ3 &va = vertices[a];
+      const BigVecQ3 &vb = vertices[b];
+      const BigVecQ3 &vc = vertices[c];
 
       // Is the vertex an "ear"?
-      BigVec3 edge1 = vb - va;
-      BigVec3 edge2 = vc - vb;
-      BigVec3 cx = cross(edge1, edge2);
+      BigVecQ3 edge1 = vb - va;
+      BigVecQ3 edge2 = vc - vb;
+      BigVecQ3 cx = cross(edge1, edge2);
 
       if (VERBOSE) {
         printf("Triangle %d-%d-%d, normal %s\n",
@@ -294,7 +295,7 @@ TriangulateFace(const std::vector<BigVec3> &vertices,
 
 static std::vector<std::tuple<int, int, int>>
 TriangulateFaces(
-    const std::vector<BigVec3> &vertices,
+    const std::vector<BigVecQ3> &vertices,
     const std::vector<std::vector<int>> &faces) {
   std::vector<std::tuple<int, int, int>> triangles;
   for (int f = 0; f < faces.size(); f++) {
@@ -396,17 +397,17 @@ static void DrawTop(const TriangularMesh3D &mesh, std::string_view filename) {
 //
 // This returns a result even if the point is not in the triangle.
 // It returns nullopt when the plane is perpendicular to xy.
-static std::optional<BigVec3> PointToPlane(
-    const BigVec3 &a, const BigVec3 &b, const BigVec3 &c,
-    const BigVec2 &pt) {
-  BigVec2 a2 = Two(a);
-  BigVec2 b2 = Two(b);
-  BigVec2 c2 = Two(c);
+static std::optional<BigVecQ3> PointToPlane(
+    const BigVecQ3 &a, const BigVecQ3 &b, const BigVecQ3 &c,
+    const BigVecQ2 &pt) {
+  BigVecQ2 a2 = Two(a);
+  BigVecQ2 b2 = Two(b);
+  BigVecQ2 c2 = Two(c);
 
   // Barycentric coordinates in 2D.
-  BigVec2 v0 = b2 - a2;
-  BigVec2 v1 = c2 - a2;
-  BigVec2 v2 = pt - a2;
+  BigVecQ2 v0 = b2 - a2;
+  BigVecQ2 v1 = c2 - a2;
+  BigVecQ2 v2 = pt - a2;
 
   BigRat d00 = dot(v0, v0);
   BigRat d01 = dot(v0, v1);
@@ -428,18 +429,18 @@ static std::optional<BigVec3> PointToPlane(
   // is also linear.
   BigRat z = u * a.z + v * b.z + w * c.z;
 
-  return {BigVec3{pt.x, pt.y, z}};
+  return {BigVecQ3{pt.x, pt.y, z}};
 }
 
-static std::optional<BigVec3> PointOnSegment(
+static std::optional<BigVecQ3> PointOnSegment(
     // First segment
-    const BigVec3 &a, const BigVec3 &b,
+    const BigVecQ3 &a, const BigVecQ3 &b,
     // Test point
-    const BigVec3 &p) {
-  BigVec3 ab = b - a;
-  BigVec3 ap = p - a;
+    const BigVecQ3 &p) {
+  BigVecQ3 ab = b - a;
+  BigVecQ3 ap = p - a;
 
-  BigVec3 cx = cross(ab, ap);
+  BigVecQ3 cx = cross(ab, ap);
   if (length_squared(cx) != BigRat(0)) {
     return std::nullopt;
   }
@@ -448,19 +449,19 @@ static std::optional<BigVec3> PointOnSegment(
   BigRat t = dot(ap, ab) / length_squared(ab);
   if (t < BigRat(0) || t > BigRat(1)) return std::nullopt;
 
-  BigVec3 isect = a + t * ab;
+  BigVecQ3 isect = a + t * ab;
   return {isect};
 }
 
-static std::optional<BigVec2> LineIntersection(
+static std::optional<BigVecQ2> LineIntersection(
     // First segment
-    const BigVec2 &p0, const BigVec2 &p1,
+    const BigVecQ2 &p0, const BigVecQ2 &p1,
     // Second segment
-    const BigVec2 &p2, const BigVec2 &p3) {
+    const BigVecQ2 &p2, const BigVecQ2 &p3) {
 
-  const BigVec2 s1 = p1 - p0;
-  const BigVec2 s2 = p3 - p2;
-  const BigVec2 m = p0 - p2;
+  const BigVecQ2 s1 = p1 - p0;
+  const BigVecQ2 s2 = p3 - p2;
+  const BigVecQ2 m = p0 - p2;
 
   const BigRat denom = s1.x * s2.y - s2.x * s1.y;
   if (denom == BigRat(0)) return std::nullopt;
@@ -471,18 +472,18 @@ static std::optional<BigVec2> LineIntersection(
     const BigRat t = (s2.x * m.y - s2.y * m.x) / denom;
 
     if (t >= BigRat(0) && t <= BigRat(1)) {
-      return {BigVec2{p0 + t * s1}};
+      return {BigVecQ2{p0 + t * s1}};
     }
   }
   return std::nullopt;
 }
 
 bool TriangleAndPolygonIntersect(
-    const BigVec2 &a, const BigVec2 &b, const BigVec2&c,
-    const std::vector<BigVec2> &polygon) {
+    const BigVecQ2 &a, const BigVecQ2 &b, const BigVecQ2&c,
+    const std::vector<BigVecQ2> &polygon) {
   for (int i = 0; i < polygon.size(); i++) {
-    const BigVec2 &v0 = polygon[i];
-    const BigVec2 &v1 = polygon[(i + 1) % polygon.size()];
+    const BigVecQ2 &v0 = polygon[i];
+    const BigVecQ2 &v1 = polygon[(i + 1) % polygon.size()];
 
     if (LineIntersection(a, b, v0, v1).has_value() ||
         LineIntersection(b, c, v0, v1).has_value() ||
@@ -501,22 +502,22 @@ struct BigPointMap3 {
     return pts.size();
   }
 
-  bool Contains(const BigVec3 &p) const {
+  bool Contains(const BigVecQ3 &p) const {
     return Get(p).has_value();
   }
 
-  std::optional<Value> Get(const BigVec3 &p) const {
+  std::optional<Value> Get(const BigVecQ3 &p) const {
     auto it = pts.find(p);
     if (it == pts.end()) return std::nullopt;
     return {it->second};
   }
 
-  void Add(const BigVec3 &q, const Value &v) {
+  void Add(const BigVecQ3 &q, const Value &v) {
     pts[q] = v;
   }
 
-  std::vector<BigVec3> Points() const {
-    std::vector<BigVec3> ret;
+  std::vector<BigVecQ3> Points() const {
+    std::vector<BigVecQ3> ret;
     ret.reserve(pts.size());
     for (const auto &[p, v] : pts) ret.push_back(p);
     return ret;
@@ -524,12 +525,12 @@ struct BigPointMap3 {
 
  private:
   // perf use kd-tree?
-  std::unordered_map<BigVec3, Value, Hashing<BigVec3>> pts;
+  std::unordered_map<BigVecQ3, Value, Hashing<BigVecQ3>> pts;
 };
 
 struct BigHoleMaker {
   // Indexed set of points.
-  std::vector<BigVec3> points;
+  std::vector<BigVecQ3> points;
   // Point map so that we can get the index of a vertex
   // that's already been added. Exact.
   BigPointMap3<int> point_index;
@@ -554,11 +555,11 @@ struct BigHoleMaker {
 
   // Return the point's index if we already have it (or a point
   // very close to it).
-  std::optional<int> GetPoint(const BigVec3 &pt) {
+  std::optional<int> GetPoint(const BigVecQ3 &pt) {
     return point_index.Get(pt);
   }
 
-  int AddPoint(const BigVec3 &pt) {
+  int AddPoint(const BigVecQ3 &pt) {
     if (auto io = GetPoint(pt)) {
       return io.value();
     }
@@ -618,15 +619,15 @@ struct BigHoleMaker {
     return false;
   }
 
-  const std::vector<BigVec2> input_polygon;
+  const std::vector<BigVecQ2> input_polygon;
   // Hole, as point indices (top, bottom).
   std::vector<std::pair<int, int>> hole;
 
   BigHoleMaker(const Polyhedron &polyhedron,
-               const std::vector<BigVec2> &polygon) :
+               const std::vector<BigVecQ2> &polygon) :
     input_polygon(polygon) {
 
-    std::vector<BigVec3> bigverts;
+    std::vector<BigVecQ3> bigverts;
     bigverts.reserve(polyhedron.vertices.size());
     for (int idx = 0; idx < polyhedron.vertices.size(); idx++) {
       const vec3 &v = polyhedron.vertices[idx];
@@ -637,7 +638,7 @@ struct BigHoleMaker {
     }
 
     for (int idx = 0; idx < polyhedron.vertices.size(); idx++) {
-      const BigVec3 &bv = bigverts[idx];
+      const BigVecQ3 &bv = bigverts[idx];
       // We would just need to remap the triangles.
       CHECK(AddPoint(bv) == idx) << "Points from the input polyhedron "
         "were merged. This can be handled, but isn't handled yet.";
@@ -647,12 +648,12 @@ struct BigHoleMaker {
     // or intersecting. The intersecting triangles will be handled in
     // the next loop.
     for (const auto &[a, b, c] : polyhedron.faces->triangulation) {
-      BigVec2 v0 = Two(bigverts[a]);
-      BigVec2 v1 = Two(bigverts[b]);
-      BigVec2 v2 = Two(bigverts[c]);
+      BigVecQ2 v0 = Two(bigverts[a]);
+      BigVecQ2 v1 = Two(bigverts[b]);
+      BigVecQ2 v2 = Two(bigverts[c]);
 
       int count = 0;
-      for (const BigVec2 &v : {v0, v1, v2}) {
+      for (const BigVecQ2 &v : {v0, v1, v2}) {
         count += PointInPolygon(polygon, v) ? 1 : 0;
       }
 
@@ -695,7 +696,7 @@ struct BigHoleMaker {
   // actual vertex. Returns the vector of vertex indices, sorted by
   // their z coordinate.
 
-  std::vector<int> ProjectThroughMesh(const BigVec2 &pt) {
+  std::vector<int> ProjectThroughMesh(const BigVecQ2 &pt) {
     if (VERBOSE) {
       printf(ACYAN("proj") " at %s (%d triangles)\n",
              VecString(pt).c_str(),
@@ -739,9 +740,9 @@ struct BigHoleMaker {
 
     for (const auto &tri : work_triangles) {
       const auto &[a, b, c] = tri;
-      const BigVec3 &va = points[a];
-      const BigVec3 &vb = points[b];
-      const BigVec3 &vc = points[c];
+      const BigVecQ3 &va = points[a];
+      const BigVecQ3 &vb = points[b];
+      const BigVecQ3 &vc = points[c];
 
       if (VERBOSE) {
         printf("For triangle\n"
@@ -770,9 +771,9 @@ struct BigHoleMaker {
         continue;
       }
 
-      const BigVec2 &va2 = {va.x, va.y};
-      const BigVec2 &vb2 = {vb.x, vb.y};
-      const BigVec2 &vc2 = {vc.x, vc.y};
+      const BigVecQ2 &va2 = {va.x, va.y};
+      const BigVecQ2 &vb2 = {vb.x, vb.y};
+      const BigVecQ2 &vc2 = {vc.x, vc.y};
 
       // The location where the point would intersect this
       // triangle (but it may be outside it).
@@ -792,7 +793,7 @@ struct BigHoleMaker {
         continue;
       }
 
-      const BigVec3 p3 = p3o.value();
+      const BigVecQ3 p3 = p3o.value();
 
       // If we already have this point, then that's going to be
       // the result (and we don't need to check anything below).
@@ -817,7 +818,7 @@ struct BigHoleMaker {
       // and the other existing vertex c, at the point p3.
       auto IntersectsEdge =
         [this, &already_split, &new_triangles, &tri, &new_points](
-            int a, int b, int c, const BigVec3 &p3) {
+            int a, int b, int c, const BigVecQ3 &p3) {
           CHECK(a < b);
           const int d = AddPoint(p3);
           // If it's actually one of the vertices, we're
@@ -867,7 +868,7 @@ struct BigHoleMaker {
 
       // Now, the point is either outside the triangle completely,
       // or properly inside it.
-      const BigVec2 p2 = {p3.x, p3.y};
+      const BigVecQ2 p2 = {p3.x, p3.y};
       if (InTriangle(va2, vb2, vc2, p2)) {
         const int d = AddPoint(p3);
         new_points.insert(d);
@@ -914,7 +915,7 @@ struct BigHoleMaker {
 
   void SaveMesh(std::string_view filename) {
     TriangularMesh3D tmp;
-    for (const BigVec3 &v : points) {
+    for (const BigVecQ3 &v : points) {
       tmp.vertices.push_back(SmallVec(v));
     }
 
@@ -930,9 +931,9 @@ struct BigHoleMaker {
   // with an edge (or vertex). The point must be strictly
   // closer to q than p. The intersection may not be on
   // an edge involving points in ignore_pts.
-  std::optional<BigVec2> GetClosestIntersection(
-      const BigVec2 &p,
-      const BigVec2 &q,
+  std::optional<BigVecQ2> GetClosestIntersection(
+      const BigVecQ2 &p,
+      const BigVecQ2 &q,
       const std::unordered_set<int> &ignore_pts,
       bool verbose = false) {
     if (verbose) {
@@ -942,10 +943,10 @@ struct BigHoleMaker {
     const BigRat sqdist_p_to_q = distance_squared(p, q);
 
     // The closest point matching the criteria.
-    std::optional<BigVec2> closest;
+    std::optional<BigVecQ2> closest;
     BigRat closest_sqdist = BigRat(0);
 
-    auto TryPoint = [&](const BigVec2 &v) {
+    auto TryPoint = [&](const BigVecQ2 &v) {
         // Must be strictly closer to q.
         const BigRat q_sqdist = distance_squared(v, q);
         if (q_sqdist < sqdist_p_to_q) {
@@ -964,8 +965,8 @@ struct BigHoleMaker {
         if (ignore_pts.contains(u) ||
             ignore_pts.contains(v)) return;
         CHECK(u < v);
-        const BigVec2 uv = Two(points[u]);
-        const BigVec2 vv = Two(points[v]);
+        const BigVecQ2 uv = Two(points[u]);
+        const BigVecQ2 vv = Two(points[v]);
         if (verbose) {
           printf("  Try edge %d-%d:\n", u, v);
         }
@@ -1009,7 +1010,7 @@ struct BigHoleMaker {
     int filename_index = 0;
     // Project the point through the polyhedron (splitting it as
     // necessary), expecting two intersections.
-    auto Sample = [this](const BigVec2 &v2) -> std::pair<int, int> {
+    auto Sample = [this](const BigVecQ2 &v2) -> std::pair<int, int> {
         std::vector<int> ps = ProjectThroughMesh(v2);
         CHECK(ps.size() == 2) << "We expect every projected point to "
           "have both a top and bottom intersection, but got: " << ps.size()
@@ -1024,8 +1025,8 @@ struct BigHoleMaker {
                         ADARKGREY("    --- in poly %d ---    ")) "\n",
                idx);
       }
-      BigVec2 p = input_polygon[idx];
-      const BigVec2 &q = input_polygon[(idx + 1) % input_polygon.size()];
+      BigVecQ2 p = input_polygon[idx];
+      const BigVecQ2 &q = input_polygon[(idx + 1) % input_polygon.size()];
 
       // Repeatedly find intersections between p and q.
 
@@ -1073,7 +1074,7 @@ struct BigHoleMaker {
           break;
         }
 
-        const BigVec2 &i2 = io.value();
+        const BigVecQ2 &i2 = io.value();
         // i2 is a point between p and q.
         // TODO: Could assert this, since we require it for
         // termination.
@@ -1327,7 +1328,7 @@ struct BigHoleMaker {
     // TODO: Improve mesh.
     // TODO: Garbage collect.
     TriangularMesh3D ret;
-    for (const BigVec3 &v : points) {
+    for (const BigVecQ3 &v : points) {
       ret.vertices.push_back(SmallVec(v));
     }
     ret.triangles = out_triangles;
@@ -1340,7 +1341,7 @@ struct BigHoleMaker {
   std::string Error() const {
     std::string out;
     AppendFormat(&out, "Input poly:\n");
-    for (const BigVec2 &v : input_polygon) {
+    for (const BigVecQ2 &v : input_polygon) {
       AppendFormat(&out, "  {{{},{}}}\n",
                    v.x.ToString(), v.y.ToString());
     }
@@ -1348,9 +1349,9 @@ struct BigHoleMaker {
   }
 
   // Are the three vectors coplanar?
-  static bool Coplanar(const BigVec3 &a,
-                       const BigVec3 &b,
-                       const BigVec3 &c) {
+  static bool Coplanar(const BigVecQ3 &a,
+                       const BigVecQ3 &b,
+                       const BigVecQ3 &c) {
     // Scalar triple product
     return BigRat::Sign(dot(a, cross(b, c))) == 0;
   }
@@ -1358,7 +1359,7 @@ struct BigHoleMaker {
   struct Face {
     // A face is always a polygon (not necessarily convex)
     // with this exact normal.
-    BigVec3 face_normal;
+    BigVecQ3 face_normal;
     std::vector<int> vertices;
 
     std::pair<int, int> Edge(int i) const {
@@ -1667,7 +1668,7 @@ struct BigHoleMaker {
 
     if (DEBUG) {
       TriangularMesh3D mesh;
-      for (const BigVec3 &v : points) {
+      for (const BigVecQ3 &v : points) {
         mesh.vertices.push_back(SmallVec(v));
       }
       mesh.triangles = triangles;
@@ -1760,16 +1761,16 @@ struct BigHoleMaker {
           printf("Consider %d with neighbors %d, %d, %d, %d\n",
                  b, i1, i2, i3, i4);
 
-          const BigVec3 &v0 = points[b];
-          const BigVec3 &v1 = points[i1];
-          const BigVec3 &v2 = points[i2];
-          const BigVec3 &v3 = points[i3];
-          const BigVec3 &v4 = points[i4];
+          const BigVecQ3 &v0 = points[b];
+          const BigVecQ3 &v1 = points[i1];
+          const BigVecQ3 &v2 = points[i2];
+          const BigVecQ3 &v3 = points[i3];
+          const BigVecQ3 &v4 = points[i4];
 
-          auto Colinear = [&](const BigVec3 &a,
-                              const BigVec3 &c) {
-              BigVec3 ab = v0 - a;
-              BigVec3 bc = c - v0;
+          auto Colinear = [&](const BigVecQ3 &a,
+                              const BigVecQ3 &c) {
+              BigVecQ3 ab = v0 - a;
+              BigVecQ3 bc = c - v0;
               return CrossIsZero(ab, bc);
             };
 
@@ -1821,7 +1822,7 @@ struct BigHoleMaker {
 
 TriangularMesh3D BigMakeHole(const Polyhedron &polyhedron,
                              const std::vector<vec2> &polygon) {
-  std::vector<BigVec2> bigpolygon;
+  std::vector<BigVecQ2> bigpolygon;
   for (const vec2 &v : polygon)
     bigpolygon.emplace_back(BigRat::FromDouble(v.x),
                             BigRat::FromDouble(v.y));

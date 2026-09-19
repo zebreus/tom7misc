@@ -1,6 +1,6 @@
 
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <format>
 #include <optional>
 #include <string>
@@ -11,6 +11,7 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "big-polyhedra.h"
+#include "bignum/big-vec.h"
 #include "bignum/big.h"
 #include "geom/polyhedra.h"
 #include "rendering.h"
@@ -57,8 +58,8 @@ static void Validate() {
     "exact zero translation for the outer frame.";
 
   // z component does not matter, because we project along z.
-  BigVec2 itrans(BigRat::FromDouble(ditrans.x),
-                 BigRat::FromDouble(ditrans.y));
+  BigVecQ2 itrans(BigRat::FromDouble(ditrans.x),
+                  BigRat::FromDouble(ditrans.y));
 
 
   printf("Outer (dbl):\n%s\n", QuatString(douter_rot).c_str());
@@ -184,7 +185,7 @@ static void Validate() {
   // for (int i = 0; i < sinner.vertices.size(); i++) {
   // for (int i : inner_hull) {
   for (int i = 0; i < sinner.vertices.size(); i++) {
-    const BigVec2 &v = sinner.vertices[i];
+    const BigVecQ2 &v = sinner.vertices[i];
     const std::optional<std::tuple<int, int, int>> triangle =
       InMeshExhaustive(souter, v);
     bool in = triangle.has_value();

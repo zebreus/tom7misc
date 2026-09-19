@@ -1,4 +1,5 @@
 
+#include "bignum/big-vec.h"
 #include "intervals.h"
 
 #include <cmath>
@@ -134,7 +135,7 @@ template<class F>
 static void Sample(const Vec2ival &v, const F &f) {
   Sample(v.x, [&](const BigRat &x_sample){
     Sample(v.y, [&](const BigRat &y_sample){
-      f(BigVec2(x_sample, y_sample));
+      f(BigVecQ2(x_sample, y_sample));
     });
   });
 }
@@ -144,7 +145,7 @@ static void TestDotProductWithView() {
   BigInt inv_epsilon_high("1000000000000000000000");
 
   auto Check = [&](const Bigival &azimuth, const Bigival &angle,
-                   const BigVec3 &v) {
+                   const BigVecQ3 &v) {
     ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
 
     Bigival result = DotProductWithView(trig, v);
@@ -194,7 +195,7 @@ static void TestDotProductWithView() {
   {
     Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
     Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
-    BigVec3 v(BigRat(-1), BigRat(2), BigRat(3));
+    BigVecQ3 v(BigRat(-1), BigRat(2), BigRat(3));
     Check(azimuth, angle, v);
   }
 
@@ -202,7 +203,7 @@ static void TestDotProductWithView() {
   {
     Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
     Bigival angle(BigRat(-2, 10), BigRat(2, 10), true, true);
-    BigVec3 v(BigRat(5), BigRat(-8), BigRat(1));
+    BigVecQ3 v(BigRat(5), BigRat(-8), BigRat(1));
     Check(azimuth, angle, v);
   }
 
@@ -211,7 +212,7 @@ static void TestDotProductWithView() {
     Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
     // Shifted angle away from the pole (z-axis).
     Bigival angle(BigRat(14, 10), BigRat(16, 10), true, true);
-    BigVec3 v(BigRat(5), BigRat(-8), BigRat(1));
+    BigVecQ3 v(BigRat(5), BigRat(-8), BigRat(1));
     Check(azimuth, angle, v);
   }
 
@@ -219,7 +220,7 @@ static void TestDotProductWithView() {
   {
     Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
     Bigival angle(BigRat(3, 10));
-    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+    BigVecQ3 v(BigRat(1), BigRat(2), BigRat(3));
 
     ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
     Bigival result = DotProductWithView(trig, v);
@@ -234,7 +235,7 @@ static void TestDotProductWithView() {
   {
     Bigival azimuth(BigRat(1, 10));
     Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
-    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+    BigVecQ3 v(BigRat(1), BigRat(2), BigRat(3));
     Check(azimuth, angle, v);
   }
 
@@ -261,7 +262,7 @@ static void TestGetBoundingAABB(std::string_view name,
     RotTrig rot_trig(angle, inv_epsilon);
     Vec2ival result = BoundingAABB(v_in, rot_trig, inv_epsilon, tx, ty);
 
-    Sample(v_in, [&](const BigVec2 &p_in) {
+    Sample(v_in, [&](const BigVecQ2 &p_in) {
         Sample(angle, [&](const BigRat &a) {
             Bigival s = Bigival::Sin(a, inv_epsilon_high);
             Bigival c = Bigival::Cos(a, inv_epsilon_high);
@@ -312,7 +313,7 @@ static void TestGetBoundingAABB(std::string_view name,
     // For an ideal 90-degree rotation, the result would be [-4, -3] x [1, 2],
     // but we can't actually get a rational pi/2.
     // Instead check that the center is contained in the result.
-    CHECK_CONTAINS_VEC2(result, BigVec2(BigRat(-7, 2), BigRat(3, 2)));
+    CHECK_CONTAINS_VEC2(result, BigVecQ2(BigRat(-7, 2), BigRat(3, 2)));
     // The result interval will have some width due to pi not being exact,
     // and sin/cos being approximations.
     CHECK(BigRat::Abs(result.x.Width()) - BigRat(1) < BigRat(1, 1024)) <<
@@ -480,12 +481,12 @@ static void BenchAABB(const F1 &f1,
       // Failure here would be surprising, but it is technically
       // possible (double samples are not necessarily contained
       // in the mathematical intervals).
-      CHECK(aabb2.Contains(BigVec2(BigRat::FromDouble(v.x),
+      CHECK(aabb2.Contains(BigVecQ2(BigRat::FromDouble(v.x),
                                    BigRat::FromDouble(v.y)))) << "(1) "
         "Note that this could fail simply due to the floating point "
         "approximations being wrong.";
 
-      CHECK(aabb2.Contains(BigVec2(BigRat::FromDouble(v.x),
+      CHECK(aabb2.Contains(BigVecQ2(BigRat::FromDouble(v.x),
                                    BigRat::FromDouble(v.y)))) << "(2) "
         "Note that this could fail simply due to the floating point "
         "approximations being wrong.";
@@ -707,10 +708,10 @@ static void TestIsDiscOutsideEdge() {
         << "cross: " << cross.ToString() << "\n";               \
     } while (0)
 
-  Discival disc(BigVec2(BigRat(5), BigRat(4)), BigRat(1));
+  Discival disc(BigVecQ2(BigRat(5), BigRat(4)), BigRat(1));
 
   auto V2 = [](int x, int y) {
-      return Vec2ival(BigVec2(BigRat(x), BigRat(y)));
+      return Vec2ival(BigVecQ2(BigRat(x), BigRat(y)));
     };
 
   // Vertical edge; disc is way outside.
@@ -745,7 +746,7 @@ static void TestIsDiscOutsideEdge() {
     // Original disc is overlapping the uncertain region.
     CHECK_DISC(disc, va, vb, false);
 
-    Discival far_disc(BigVec2(BigRat(85, 10), BigRat(4)), BigRat(3, 2));
+    Discival far_disc(BigVecQ2(BigRat(85, 10), BigRat(4)), BigRat(3, 2));
     CHECK_DISC(far_disc, va, vb, true);
   }
 
@@ -766,10 +767,10 @@ static void TestTranslateDisc() {
 
       // Sample points from the input disc to test against.
       const BigRat &radius = disc_in.Radius(inv_epsilon);
-      BigVec2 dx = BigVec2(radius, BigRat(0));
-      BigVec2 dy = BigVec2(BigRat(0), radius);
+      BigVecQ2 dx = BigVecQ2(radius, BigRat(0));
+      BigVecQ2 dy = BigVecQ2(BigRat(0), radius);
 
-      std::vector<BigVec2> points_in_disc = {
+      std::vector<BigVecQ2> points_in_disc = {
         disc_in.center,
         disc_in.center + dx,
         disc_in.center - dx,
@@ -780,21 +781,21 @@ static void TestTranslateDisc() {
       // And 4 diagonal points near the boundary.
       BigRat r_over_sqrt2 = radius / sqrt2_ub;
       points_in_disc.push_back(disc_in.center +
-                               BigVec2(r_over_sqrt2, r_over_sqrt2));
+                               BigVecQ2(r_over_sqrt2, r_over_sqrt2));
       points_in_disc.push_back(disc_in.center +
-                               BigVec2(r_over_sqrt2, -r_over_sqrt2));
+                               BigVecQ2(r_over_sqrt2, -r_over_sqrt2));
       points_in_disc.push_back(disc_in.center +
-                               BigVec2(-r_over_sqrt2, r_over_sqrt2));
+                               BigVecQ2(-r_over_sqrt2, r_over_sqrt2));
       points_in_disc.push_back(disc_in.center +
-                               BigVec2(-r_over_sqrt2, -r_over_sqrt2));
+                               BigVecQ2(-r_over_sqrt2, -r_over_sqrt2));
 
       Sample(tx, [&](const BigRat &trans_x){
           Sample(ty, [&](const BigRat &trans_y){
-              const BigVec2 translation(trans_x, trans_y);
-              for (const BigVec2 &p_in : points_in_disc) {
-                BigVec2 p_out = p_in + translation;
+              const BigVecQ2 translation(trans_x, trans_y);
+              for (const BigVecQ2 &p_in : points_in_disc) {
+                BigVecQ2 p_out = p_in + translation;
                 // Check p_out is in result disc.
-                BigVec2 delta = p_out - result.center;
+                BigVecQ2 delta = p_out - result.center;
                 BigRat dist_sq = dot(delta, delta);
                 CHECK(dist_sq <= result.radius_sq)
                   << "Sample point " << VecString(p_out)
@@ -811,7 +812,7 @@ static void TestTranslateDisc() {
 
   // Zero translation.
   {
-    Discival disc_in(BigVec2(BigRat(1), BigRat(2)), BigRat(9));
+    Discival disc_in(BigVecQ2(BigRat(1), BigRat(2)), BigRat(9));
     Bigival tx(0), ty(0);
     CheckAllSamples(disc_in, tx, ty);
     Discival result = TranslateDisc(&disc_in, tx, ty, inv_epsilon);
@@ -825,7 +826,7 @@ static void TestTranslateDisc() {
 
   // Point translation.
   {
-    Discival disc_in(BigVec2(BigRat(1, 2), BigRat(-3, 4)), BigRat(1, 16));
+    Discival disc_in(BigVecQ2(BigRat(1, 2), BigRat(-3, 4)), BigRat(1, 16));
     Bigival tx(10), ty(-20);
     CheckAllSamples(disc_in, tx, ty);
     Discival result = TranslateDisc(&disc_in, tx, ty, inv_epsilon);
@@ -838,21 +839,21 @@ static void TestTranslateDisc() {
 
   // Rectangular translation.
   {
-    Discival disc_in(BigVec2(BigRat(0), BigRat(-1, 3)), BigRat(1, 4));
+    Discival disc_in(BigVecQ2(BigRat(0), BigRat(-1, 3)), BigRat(1, 4));
     Bigival tx(10, 12, true, true), ty(-2, -1, true, true);
     CheckAllSamples(disc_in, tx, ty);
   }
 
   // Translation includes origin.
   {
-    Discival disc_in(BigVec2(BigRat(5), BigRat(5)), BigRat(4));
+    Discival disc_in(BigVecQ2(BigRat(5), BigRat(5)), BigRat(4));
     Bigival tx(-1, 1, true, true), ty(-1, 1, true, true);
     CheckAllSamples(disc_in, tx, ty);
   }
 
   // Open intervals.
   {
-    Discival disc_in(BigVec2(BigRat(0), BigRat(0)), BigRat(2, 3));
+    Discival disc_in(BigVecQ2(BigRat(0), BigRat(0)), BigRat(2, 3));
     Bigival tx(0, 1, false, true), ty(2, 3, true, false);
     CheckAllSamples(disc_in, tx, ty);
   }
@@ -1072,7 +1073,7 @@ static void TestFrameFromViewPos() {
                       Print("For v = {}...\n", VecString(v));
                     }
 
-                    const BigVec3 bv{
+                    const BigVecQ3 bv{
                       BigRat::FromDouble(v.x),
                       BigRat::FromDouble(v.y),
                       BigRat::FromDouble(v.z),
@@ -1116,7 +1117,7 @@ static void TestTransformVec() {
   BigInt inv_epsilon_high("1000000000000000000000");
 
   auto Check = [&](const Bigival &azimuth, const Bigival &angle,
-                   const BigVec3 &v) {
+                   const BigVecQ3 &v) {
       if (VERBOSE) {
         Print("-------------------\n"
               "Azimuth: {}\n"
@@ -1194,12 +1195,12 @@ static void TestTransformVec() {
   {
     Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
     Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
-    Check(azimuth, angle, BigVec3(BigRat(-1), BigRat(2), BigRat(3)));
-    Check(azimuth, angle, BigVec3(BigRat(1), BigRat(2), BigRat(3)));
-    Check(azimuth, angle, BigVec3(BigRat(2), BigRat(0), BigRat(0)));
-    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(-1, 2), BigRat(0)));
-    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(1)));
-    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(0)));
+    Check(azimuth, angle, BigVecQ3(BigRat(-1), BigRat(2), BigRat(3)));
+    Check(azimuth, angle, BigVecQ3(BigRat(1), BigRat(2), BigRat(3)));
+    Check(azimuth, angle, BigVecQ3(BigRat(2), BigRat(0), BigRat(0)));
+    Check(azimuth, angle, BigVecQ3(BigRat(0), BigRat(-1, 2), BigRat(0)));
+    Check(azimuth, angle, BigVecQ3(BigRat(0), BigRat(0), BigRat(1)));
+    Check(azimuth, angle, BigVecQ3(BigRat(0), BigRat(0), BigRat(0)));
   }
 
   // A patch that crosses the prime meridian near the equator.
@@ -1207,16 +1208,16 @@ static void TestTransformVec() {
     Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
     // Shifted angle away from the pole (z-axis).
     Bigival angle(BigRat(14, 10), BigRat(16, 10), true, true);
-    Check(azimuth, angle, BigVec3(BigRat(5), BigRat(-8), BigRat(1)));
-    Check(azimuth, angle, BigVec3(BigRat(1, 2), BigRat(0), BigRat(0)));
-    Check(azimuth, angle, BigVec3(BigRat(3, 5), BigRat(1, 2), BigRat(-2)));
+    Check(azimuth, angle, BigVecQ3(BigRat(5), BigRat(-8), BigRat(1)));
+    Check(azimuth, angle, BigVecQ3(BigRat(1, 2), BigRat(0), BigRat(0)));
+    Check(azimuth, angle, BigVecQ3(BigRat(3, 5), BigRat(1, 2), BigRat(-2)));
   }
 
   // A single point.
   {
     Bigival azimuth(BigRat(1, 7));
     Bigival angle(BigRat(2, 7));
-    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+    BigVecQ3 v(BigRat(1), BigRat(2), BigRat(3));
     ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
 
     Vec2ival result = TransformVec(trig, v);
@@ -1230,9 +1231,9 @@ static void TestTransformVec() {
   {
     Bigival azimuth(BigRat(1, 10), BigRat(2, 10), false, true);
     Bigival angle(BigRat(3, 10), BigRat(4, 10), true, false);
-    Check(azimuth, angle, BigVec3(BigRat(1), BigRat(1), BigRat(1)));
-    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(1), BigRat(0)));
-    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(-2)));
+    Check(azimuth, angle, BigVecQ3(BigRat(1), BigRat(1), BigRat(1)));
+    Check(azimuth, angle, BigVecQ3(BigRat(0), BigRat(1), BigRat(0)));
+    Check(azimuth, angle, BigVecQ3(BigRat(0), BigRat(0), BigRat(-2)));
   }
 
   printf("TransformVec OK\n");
