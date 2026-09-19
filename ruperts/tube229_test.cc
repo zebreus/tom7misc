@@ -98,20 +98,43 @@ static void TestTargetedOpposingSearch() {
     std::cout << "  Total opposing contacts found: " << opposing_contact_count
               << ", min tau · n = " << min_contact_torque_dot << "\n";
 
-    for (size_t vi = 0; vi < views.size(); vi++) {
-      std::vector<ContactInfo> sc = Tube229::GenerateSilhouetteContacts(views[vi], fine_mixes);
-      std::vector<Tube229::CandidateTriple> triples = Tube229::GenerateCandidateTriples(tri, sc, 1e-12);
-      double view_min_dot = 1e30;
-      int view_opposing_triples = 0;
-      for (const auto &t : triples) {
-        double d = yocto::dot(t.normalized_a, unit_n);
-        view_min_dot = std::min(view_min_dot, d);
-        if (d < 0) view_opposing_triples++;
+    std::vector<Tube229::CandidateTriple> opposing_cands =
+        Tube229::FindOpposingCandidates(tri, separating_norm, 50, 1e-12);
+    std::cout << "  FindOpposingCandidates(separating_norm) returned: " << opposing_cands.size() << " candidates.\n";
+    for (size_t i = 0; i < opposing_cands.size(); i++) {
+      double dot = yocto::dot(opposing_cands[i].normalized_a, unit_n);
+      assert(dot < 0.0);
+      if (i > 0) {
+        double prev_dot = yocto::dot(opposing_cands[i - 1].normalized_a, unit_n);
+        assert(prev_dot <= dot + 1e-12); // verified sorted descending by opposing strength
       }
-      std::cout << "  View " << vi << ": " << triples.size() << " triples, min a · n = "
-                << view_min_dot << ", opposing triples = " << view_opposing_triples << "\n";
+      if (i < 5) {
+        std::cout << "    opposing cand " << i << ": a · unit_n = " << dot << "\n";
+      }
     }
   }
+
+  // Rigorous verification of FindOpposingCandidates contract:
+  // Test with arbitrary test direction v_test where opposing candidates are guaranteed to exist.
+  vec3 v_test = {1.0, 0.0, 0.0};
+  int max_req = 15;
+  std::vector<Tube229::CandidateTriple> test_opp =
+      Tube229::FindOpposingCandidates(tri, v_test, max_req, 1e-12);
+  assert(!test_opp.empty());
+  assert((int)test_opp.size() <= max_req);
+  for (size_t i = 0; i < test_opp.size(); i++) {
+    double dot = yocto::dot(test_opp[i].normalized_a, v_test);
+    assert(dot < 0.0);
+    if (i > 0) {
+      double prev_dot = yocto::dot(test_opp[i - 1].normalized_a, v_test);
+      assert(prev_dot <= dot + 1e-12);
+      // Verify deduplication
+      assert(yocto::length(test_opp[i].normalized_a - test_opp[i - 1].normalized_a) >= 1e-6);
+    }
+  }
+  std::cout << "  Verified FindOpposingCandidates contract: " << test_opp.size()
+            << " candidates opposing v_test, all dot < 0, sorted, deduplicated.\n";
+
   std::cout << "[PASS] TestTargetedOpposingSearch\n";
 }
 
@@ -566,6 +589,8 @@ int main(int argc, char **argv) {
   std::cout << "=== Running Tube229 Unit Tests ===\n";
   TestNearOriginFaceCuttingPlane();
   TestDoubleCheckAxis();
+  TestNodeDepth18();
+  TestTargetedOpposingSearch();
   TestCertificate003133OnTargetTri();
   std::cout << "=== All Tube229 Unit Tests Passed! ===\n";
   return 0;

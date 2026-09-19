@@ -397,16 +397,36 @@ std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
   vec3 tri_f[3] = {tri.corners[0].ToDouble(), tri.corners[1].ToDouble(), tri.corners[2].ToDouble()};
   vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
 
-  // Use a balanced mix permille grid to capture support edges efficiently
-  std::vector<int> fine_mixes = {0, 1, 143, 286, 429, 571, 714, 857, 999, 1000};
+  // Multi-view sampling: centroid and the three triangle corners
+  std::vector<vec3> sample_views = {centroid, tri_f[0], tri_f[1], tri_f[2]};
 
+  // Fine mix permille grid to capture support edges and transition features
+  std::vector<int> fine_mixes = {
+      0, 1, 10, 50, 100, 143, 200, 286, 300, 400, 429, 500,
+      571, 600, 700, 714, 800, 857, 900, 950, 990, 999, 1000};
 
-  std::vector<ContactInfo> raw_contacts = GenerateSilhouetteContacts(centroid, fine_mixes);
-  std::vector<CandidateTriple> all_cands = GenerateCandidateTriples(tri, raw_contacts, screen_support_error);
-  double min_dot = 1e30;
-  for (const auto &c : all_cands) {
-    min_dot = std::min(min_dot, yocto::dot(c.normalized_a, unit_n));
+  // Gather and deduplicate silhouette contacts across all sample views
+  std::vector<ContactInfo> all_contacts;
+  for (const auto &view : sample_views) {
+    std::vector<ContactInfo> raw = GenerateSilhouetteContacts(view, fine_mixes);
+    for (const auto &c : raw) {
+      bool dup = false;
+      for (const auto &ex : all_contacts) {
+        if (ex.vertex == c.vertex &&
+            ex.edge_start == c.edge_start &&
+            ex.edge_finish == c.edge_finish &&
+            ex.edge_start2 == c.edge_start2 &&
+            ex.edge_finish2 == c.edge_finish2 &&
+            ex.mix == c.mix) {
+          dup = true;
+          break;
+        }
+      }
+      if (!dup) all_contacts.push_back(c);
+    }
   }
+
+  std::vector<CandidateTriple> all_cands = GenerateCandidateTriples(tri, all_contacts, screen_support_error);
 
   // Score candidates by how strongly they oppose unit_n (maximizing a · (-unit_n), so a · unit_n < 0)
   struct ScoredTriple {
@@ -426,10 +446,20 @@ std::vector<Tube229::CandidateTriple> Tube229::FindOpposingCandidates(
     return a.score > b.score;
   });
 
+  // Keep top unique candidates by normalized_a
   std::vector<CandidateTriple> result;
-  int keep = std::min<int>(max_candidates, opposing.size());
-  for (int i = 0; i < keep; i++) {
-    result.push_back(opposing[i].triple);
+  for (const auto &st : opposing) {
+    bool dup = false;
+    for (const auto &r : result) {
+      if (yocto::length(r.normalized_a - st.triple.normalized_a) < 1e-6) {
+        dup = true;
+        break;
+      }
+    }
+    if (!dup) {
+      result.push_back(st.triple);
+      if ((int)result.size() >= max_candidates) break;
+    }
   }
   return result;
 }
