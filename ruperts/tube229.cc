@@ -194,67 +194,137 @@ std::vector<Tube229::CandidateTriple> Tube229::GenerateCandidateTriples(
   }
 
   int V = valid.size();
+  if (V < 3) return out_candidates;
+  out_candidates.reserve(V * 100);
+
+  // Precompute pair quantities across valid contacts
+  struct PairInfo {
+    double lift_dot;      // dot(unit_view, cross(lift_a, lift_b))
+    double dot_tri0;      // dot(tri_f[0], cross(edge_a, edge_b))
+    double dot_cen;       // dot(centroid, cross(edge_a, edge_b))
+    double min_w;         // min over corners of dot(tri_f[c], cross(edge_a, edge_b))
+    double max_w;         // max over corners of dot(tri_f[c], cross(edge_a, edge_b))
+  };
+
+  std::vector<PairInfo> pair_table(V * V);
+  for (int a = 0; a < V; a++) {
+    for (int b = a + 1; b < V; b++) {
+      vec3 c_lift = yocto::cross(valid[a].lift, valid[b].lift);
+      double l_dot = yocto::dot(unit_view, c_lift);
+
+      vec3 c_edge = yocto::cross(valid[a].edge, valid[b].edge);
+      double d0 = yocto::dot(tri_f[0], c_edge);
+      double d1 = yocto::dot(tri_f[1], c_edge);
+      double d2 = yocto::dot(tri_f[2], c_edge);
+      double d_cen = yocto::dot(centroid, c_edge);
+
+      double min_d = std::min({d0, d1, d2});
+      double max_d = std::max({d0, d1, d2});
+
+      pair_table[a * V + b] = {l_dot, d0, d_cen, min_d, max_d};
+      pair_table[b * V + a] = {-l_dot, -d0, -d_cen, -max_d, -min_d};
+    }
+  }
+
   for (int i = 0; i < V; i++) {
+    const auto &vi = valid[i];
+    const PairInfo *row_i = &pair_table[i * V];
+
     for (int j = i + 1; j < V; j++) {
+      const auto &vj = valid[j];
+      const PairInfo &p_ij = row_i[j];
+      const PairInfo *row_j = &pair_table[j * V];
+
       for (int k = j + 1; k < V; k++) {
-        vec3 c_edges[3] = {valid[i].edge, valid[j].edge, valid[k].edge};
-        vec3 lifts[3] = {valid[i].lift, valid[j].lift, valid[k].lift};
+        const auto &vk = valid[k];
+        const PairInfo &p_jk = row_j[k];
+        const PairInfo &p_ik = row_i[k];
 
-        vec3 w = {yocto::dot(unit_view, yocto::cross(lifts[1], lifts[2])),
-                  yocto::dot(unit_view, yocto::cross(lifts[2], lifts[0])),
-                  yocto::dot(unit_view, yocto::cross(lifts[0], lifts[1]))};
-        if (w[0] <= 1e-12 && w[1] <= 1e-12 && w[2] <= 1e-12) w = -w;
-        if (w[0] < -1e-10 || w[1] < -1e-10 || w[2] < -1e-10) continue;
+        double w0 = p_jk.lift_dot;
+        double w1 = -p_ik.lift_dot;
+        double w2 = p_ij.lift_dot;
 
-        ContactInfo sel_contacts[3] = {valid[i].ci, valid[j].ci, valid[k].ci};
-        int sel_indices[3] = {valid[i].ci.vertex, valid[j].ci.vertex, valid[k].ci.vertex};
-        double sel_slack[3] = {valid[i].strict_slack, valid[j].strict_slack, valid[k].strict_slack};
+        if (w0 <= 1e-12 && w1 <= 1e-12 && w2 <= 1e-12) {
+          w0 = -w0; w1 = -w1; w2 = -w2;
+        }
+        if (w0 < -1e-10 || w1 < -1e-10 || w2 < -1e-10) continue;
 
-        vec3 probe = {yocto::dot(tri_f[0], yocto::cross(c_edges[1], c_edges[2])),
-                      yocto::dot(tri_f[0], yocto::cross(c_edges[2], c_edges[0])),
-                      yocto::dot(tri_f[0], yocto::cross(c_edges[0], c_edges[1]))};
-        if (std::max({probe[0], probe[1], probe[2]}) < 0) {
-          std::swap(sel_contacts[1], sel_contacts[2]);
-          std::swap(c_edges[1], c_edges[2]);
-          std::swap(sel_indices[1], sel_indices[2]);
-          std::swap(sel_slack[1], sel_slack[2]);
+        double probe0 = p_jk.dot_tri0;
+        double probe1 = -p_ik.dot_tri0;
+        double probe2 = p_ij.dot_tri0;
+
+        bool swap_12 = (std::max({probe0, probe1, probe2}) < 0);
+
+        double w_min[3], w_max[3], cen_w[3];
+        ContactInfo sel_contacts[3];
+        double sel_slack[3];
+        const vec3 *term[3];
+
+        if (!swap_12) {
+          w_min[0] = p_jk.min_w + screen_support_error;
+          if (w_min[0] < 0) continue;
+          w_max[0] = p_jk.max_w + screen_support_error;
+          cen_w[0] = p_jk.dot_cen;
+
+          w_min[1] = -p_ik.max_w + screen_support_error;
+          if (w_min[1] < 0) continue;
+          w_max[1] = -p_ik.min_w + screen_support_error;
+          cen_w[1] = -p_ik.dot_cen;
+
+          w_min[2] = p_ij.min_w + screen_support_error;
+          if (w_min[2] < 0) continue;
+          w_max[2] = p_ij.max_w + screen_support_error;
+          cen_w[2] = p_ij.dot_cen;
+
+          sel_contacts[0] = vi.ci;
+          sel_contacts[1] = vj.ci;
+          sel_contacts[2] = vk.ci;
+
+          sel_slack[0] = vi.strict_slack;
+          sel_slack[1] = vj.strict_slack;
+          sel_slack[2] = vk.strict_slack;
+
+          term[0] = &vi.tau;
+          term[1] = &vj.tau;
+          term[2] = &vk.tau;
+        } else {
+          w_min[0] = -p_jk.max_w + screen_support_error;
+          if (w_min[0] < 0) continue;
+          w_max[0] = -p_jk.min_w + screen_support_error;
+          cen_w[0] = -p_jk.dot_cen;
+
+          w_min[1] = -p_ij.max_w + screen_support_error;
+          if (w_min[1] < 0) continue;
+          w_max[1] = -p_ij.min_w + screen_support_error;
+          cen_w[1] = -p_ij.dot_cen;
+
+          w_min[2] = p_ik.min_w + screen_support_error;
+          if (w_min[2] < 0) continue;
+          w_max[2] = p_ik.max_w + screen_support_error;
+          cen_w[2] = p_ik.dot_cen;
+
+          sel_contacts[0] = vi.ci;
+          sel_contacts[1] = vk.ci;
+          sel_contacts[2] = vj.ci;
+
+          sel_slack[0] = vi.strict_slack;
+          sel_slack[1] = vk.strict_slack;
+          sel_slack[2] = vj.strict_slack;
+
+          term[0] = &vi.tau;
+          term[1] = &vk.tau;
+          term[2] = &vj.tau;
         }
 
-        vec3 weight_coeffs[3] = {
-          yocto::cross(c_edges[1], c_edges[2]),
-          yocto::cross(c_edges[2], c_edges[0]),
-          yocto::cross(c_edges[0], c_edges[1])
-        };
+        double max_weight_lower = std::max({w_min[0], w_min[1], w_min[2]});
+        if (max_weight_lower <= 0) continue;
 
-        bool weight_ok = true;
-        double max_weight_lower = -1e30;
-        double weights_at_max[3] = {0, 0, 0};
-        for (int m = 0; m < 3; m++) {
-          double w0 = yocto::dot(tri_f[0], weight_coeffs[m]);
-          double w1 = yocto::dot(tri_f[1], weight_coeffs[m]);
-          double w2 = yocto::dot(tri_f[2], weight_coeffs[m]);
-          double w_min = std::min({w0, w1, w2}) + screen_support_error;
-          double w_max = std::max({w0, w1, w2}) + screen_support_error;
-          if (w_min < 0) { weight_ok = false; break; }
-          max_weight_lower = std::max(max_weight_lower, w_min);
-          weights_at_max[m] = w_max;
-        }
-        if (!weight_ok || max_weight_lower <= 0) continue;
+        double B = 2.0 * (w_max[0] + w_max[1] + w_max[2]);
+        if (B <= 1e-12) continue;
 
         double strict_slack = std::min({sel_slack[0], sel_slack[1], sel_slack[2]});
 
-        vec3 weights = {yocto::dot(centroid, weight_coeffs[0]),
-                        yocto::dot(centroid, weight_coeffs[1]),
-                        yocto::dot(centroid, weight_coeffs[2])};
-        double B = 2.0 * (weights_at_max[0] + weights_at_max[1] + weights_at_max[2]);
-        if (B <= 1e-12) continue;
-
-        vec3 variation = {0, 0, 0};
-        for (int m = 0; m < 3; m++) {
-          vec3 lift = yocto::cross(centroid, c_edges[m]);
-          vec3 term = yocto::cross(Vertex(sel_indices[m]), lift);
-          variation = variation + term * weights[m];
-        }
+        vec3 variation = (*term[0]) * cen_w[0] + (*term[1]) * cen_w[1] + (*term[2]) * cen_w[2];
         vec3 normalized_a = variation / B;
 
         CandidateTriple cand;

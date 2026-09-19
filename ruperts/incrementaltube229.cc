@@ -985,14 +985,6 @@ class IncrementalTubeManager {
               << "Depths: " << min_depth << " to " << max_depth << "\n"
               << "Subdivision: DISABLED (pure pruning/certification pass)\n\n" << std::flush;
 
-    auto count_subtree_leaves = [](auto &self, const TreeNode *node) -> int {
-      if (!node) return 0;
-      if (node->children.empty()) return 1;
-      int cnt = 0;
-      for (const auto &c : node->children) cnt += self(self, c.get());
-      return cnt;
-    };
-
     auto has_uncertified_descendants = [](auto &self, const TreeNode *node) -> bool {
       if (!node) return false;
       if (node->direct_cert.has_value() && node->direct_cert->r > BigRat(0)) {
@@ -1050,6 +1042,10 @@ class IncrementalTubeManager {
           TreeNode *node = target_nodes[idx];
           TriangleQ tri = node->GetTriangle();
 
+          if (target_nodes.size() <= 50) {
+            std::cout << "Testing node " << node->path << " (depth " << node->depth() << ")...\n" << std::flush;
+          }
+
           TubeCertificate cert;
           bool certified = TryCertifyNode(tri, node->depth(), target_c_, target_r_, cache_, &cert, /*fast_pass=*/true);
           if (!certified) {
@@ -1058,11 +1054,19 @@ class IncrementalTubeManager {
           if (certified) {
             std::lock_guard<std::mutex> lock(result_mu);
             newly_certified.push_back({node, cert});
+            std::cout << AGREEN("  SUCCESS on node ") << node->path
+                      << ": c = " << cert.c.ToString() << " (" << cert.c.ToDouble() << ")"
+                      << ", r = " << cert.r.ToString() << " (" << cert.r.ToDouble() << ")\n" << std::flush;
+          } else {
+            if (target_nodes.size() <= 50) {
+              std::cout << ARED("  FAILED on node ") << node->path << "\n" << std::flush;
+            }
           }
           size_t done = completed_cnt.fetch_add(1) + 1;
-          if (done % 500 == 0 || done == target_nodes.size()) {
+          size_t print_interval = std::max((size_t)1, target_nodes.size() / 20);
+          if (done % print_interval == 0 || done == target_nodes.size()) {
             std::cout << "[Depth " << d << "] Tested " << done << " / " << target_nodes.size()
-                      << " nodes | Certified: " << newly_certified.size() << "\n" << std::flush;
+                      << " nodes (" << (done * 100 / target_nodes.size()) << "%) | Certified: " << newly_certified.size() << "\n" << std::flush;
           }
         }
       };
@@ -1075,7 +1079,6 @@ class IncrementalTubeManager {
         w.join();
       }
 
-      int pruned_this_depth = 0;
       int upgraded_this_depth = 0;
       int subtrees_preserved_this_depth = 0;
 
@@ -1086,54 +1089,32 @@ class IncrementalTubeManager {
         cache_.Insert(cert);
 
         if (!node->children.empty()) {
-          bool has_better_descendant = false;
-          auto check_better = [&](auto &self, const TreeNode *n) -> void {
-            if (has_better_descendant) return;
-            if (n->direct_cert.has_value() && n->direct_cert->r > cert.r) {
-              has_better_descendant = true;
+          // Preserve all descendant leaves; do not discard them!
+          subtrees_preserved_this_depth++;
+          auto propagate_cert = [&](auto &self, TreeNode *n) -> void {
+            if (n->children.empty()) {
+              if (!n->direct_cert.has_value() || n->direct_cert->r < cert.r) {
+                n->direct_cert = cert;
+                n->direct_bounds.direct_r_lower = cert.r;
+                n->direct_bounds.direct_c_lower = cert.c;
+                upgraded_this_depth++;
+              }
               return;
             }
-            for (const auto &c : n->children) {
+            for (auto &c : n->children) {
               self(self, c.get());
             }
           };
-          check_better(check_better, node);
-
-          if (!has_better_descendant) {
-            // Prune subtree: no descendant had a better bound than this ancestor cert
-            int pruned = count_subtree_leaves(count_subtree_leaves, node) - 1;
-            if (pruned > 0) pruned_this_depth += pruned;
-            node->children.clear();
-          } else {
-            // Preserve subtree to retain better descendant bounds!
-            subtrees_preserved_this_depth++;
-            auto propagate_cert = [&](auto &self, TreeNode *n) -> void {
-              if (n->children.empty()) {
-                if (!n->direct_cert.has_value() || n->direct_cert->r < cert.r) {
-                  n->direct_cert = cert;
-                  n->direct_bounds.direct_r_lower = cert.r;
-                  n->direct_bounds.direct_c_lower = cert.c;
-                  upgraded_this_depth++;
-                }
-                return;
-              }
-              for (auto &c : n->children) {
-                self(self, c.get());
-              }
-            };
-            propagate_cert(propagate_cert, node);
-          }
+          propagate_cert(propagate_cert, node);
         }
       }
 
       total_nodes_certified += newly_certified.size();
-      total_leaves_pruned += pruned_this_depth;
       total_leaves_upgraded += upgraded_this_depth;
       total_subtrees_preserved += subtrees_preserved_this_depth;
 
-      std::cout << "Depth " << d << " results: " << newly_certified.size() << " certified ancestors: "
-                << pruned_this_depth << " redundant leaves pruned, "
-                << subtrees_preserved_this_depth << " subtrees preserved with better bounds ("
+      std::cout << "Depth " << d << " results: " << newly_certified.size() << " certified ancestors, "
+                << subtrees_preserved_this_depth << " subtrees preserved with better/upgraded bounds ("
                 << upgraded_this_depth << " uncertified/worse leaves upgraded)!\n" << std::flush;
 
       if (!newly_certified.empty()) {
@@ -2055,8 +2036,8 @@ int main(int argc, char **argv) {
     manager.set_checkpoint_minutes(checkpoint_minutes);
     manager.RunLeafSweep(min_depth, max_depth);
   } else if (ancestor_sweep) {
-    if (min_depth < 0) min_depth = 12;
-    if (max_depth < 0) max_depth = 10;
+    if (min_depth < 0) min_depth = 1;
+    if (max_depth < 0) max_depth = 15;
     IncrementalTubeManager manager(root_path, max_depth, target_r, target_c, threads, output_dir, revalidate);
     manager.set_checkpoint_minutes(checkpoint_minutes);
     manager.RunAncestorSweep(min_depth, max_depth);
