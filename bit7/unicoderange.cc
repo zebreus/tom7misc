@@ -4,6 +4,9 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -11,29 +14,28 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "unicode-data.h"
 #include "utf8.h"
 #include "util.h"
+#include "zip.h"
 
 static void Dump(uint32_t start, uint32_t end) {
+  std::unique_ptr<UnicodeData> ud =
+    UnicodeData::FromContent(
+        ZIP::UnCCZ(Util::ReadFileBytes("../cc-lib/unicode-data.ccz")));
   std::unordered_map<uint32_t, std::string> names;
-
-  for (std::string line : Util::NormalizeLines(
-           Util::ReadFileToLines("UnicodeData.txt"))) {
-    std::vector<std::string> fields = Util::Split(line, ';');
-    if (fields.size() >= 2) {
-      uint32_t codepoint = strtol(fields[0].c_str(), nullptr, 16);
-      names[codepoint] = fields[1];
-    }
-  }
 
   // Now output.
   for (uint32_t codepoint = start; codepoint < end; codepoint++) {
+    std::optional<UnicodeData::CodepointData> oc =
+      ud->GetByCodepoint(codepoint);
+
+    std::string_view name = oc.has_value() ? oc.value().name : "??";
     Print("  0x{:04x},  // ({}) {}\n",
           codepoint,
           UTF8::Encode(codepoint),
-          names[codepoint]);
+          name);
   }
-
 }
 
 

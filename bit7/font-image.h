@@ -112,6 +112,8 @@ struct FontImage {
   // True if the glyph is totally blank.
   static bool EmptyGlyph(const Glyph &g);
 
+  static bool IsCombining(uint32_t codepoint);
+
   explicit FontImage(const Config &config);
 
   // Save the glyphs as a normalized image, using the member config.
@@ -123,14 +125,14 @@ struct FontImage {
   // Render just one page. Uses the config for the charbox sizes, etc.
   ImageRGBA ImagePage(Page p);
 
-  std::unordered_map<int, int> GetUnicode() const {
+  const std::unordered_map<uint32_t, int> &GetUnicode() const {
     return unicode_to_glyph;
   }
 
   bool MappedCodepoint(uint32_t codepoint) const;
 
   // Maps from codepoint to glyph index in vector below.
-  std::unordered_map<int, int> unicode_to_glyph;
+  std::unordered_map<uint32_t, int> unicode_to_glyph;
 
   // Map from character index (position in image) to glyph.
   std::vector<Glyph> glyphs;

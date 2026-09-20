@@ -25,28 +25,38 @@ R S  CPU%△MEM%
 
 𝕊
 
-θ_{rot} ≈ 2‖r‖_∞
-
  𝐮_c = 𝐯_c × 𝐞_c
 
- w₀ = 𝐯  · 𝐰        = 𝐯  · (𝐞₁ × 𝐞₂)
+ w₀ = 𝐯 · 𝐰 = 𝐯 · (𝐞₁ × 𝐞₂)
 
  ‖Δw‖² ∼ r².
 
 𝐞 
 
  𝒯 ⊂ ℝ²
+  
+on ω⃗ ∈ ℝ³ wit
 
-   • Matrix operator norm: ‖R - I‖_op ≤ r.
-      • Rotation angle θ: 2 * |sin(θ / 2)| ≤ r.
-      • Cayley coordinates w: 2 * ‖w‖₂ / √(1 + ‖w‖₂²) ≤ r (to first order, 2 * ‖w‖ ≤
-      r).
+╰─ etc
+
+𝒪
+
+conv(𝒜) from 0: ∀a ∈ 𝒜, ⟨u, a⟩ ≥ d_{sep}.
+
+ λ⃗(v)
 
 "Arrows"
 https://www.compart.com/en/unicode/block/U+2190
  R ↦ R · Q
 
+(δ ∼ 𝒩(0, σ²I₃))
 
+a few missing superscripts:
+U+107A5 MODIFIER LETTER SMALL Q (𐞥)
+"latin extended f"
+• C: U+A7F2 MODIFIER LETTER CAPITAL C (ꟲ)
+• F: U+A7F3 MODIFIER LETTER CAPITAL F (ꟳ)
+• Q: U+A7F4 MODIFIER LETTER CAPITAL Q (ꟴ)
 
 Glyphs todo:
  - unicode stars
@@ -60,7 +70,7 @@ Glyphs todo:
      https://www.compart.com/en/unicode/block/U+2E00
  - I want to use ↻ and friends!!
 
-Emoji TODO: 🎉 ✅
+Emoji TODO: 🎉 ✅ 📈
 
  - From mojibake: ‚ which is U+201A
     ord("ﬀ"): "ff",  # Latin typographical ligatures
@@ -74,10 +84,6 @@ Emoji TODO: 🎉 ✅
 // Common in Wikipedia:
 U+026a (ɪ): 41570  (IPA small caps?)
 U+0283 (ʃ): 29294
-
-
-obviously
-□◇○ (and ◊)
 
 Popular from wikipedia:
 
@@ -139,24 +145,40 @@ https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
 and also PCF:
 https://en.wikipedia.org/wiki/Portable_Compiled_Format
 
-    𝐪      ∈ SO (3)
-     outer
-  
-  : Outer orientation frame defining M inward edge halfspaces 𝐧ⱼ·𝐩 ≥ bⱼ.
-  - 𝐰 ∈ ℝ³: Relative rotation vector (axis 𝐰/|𝐰|, angle |𝐰| = θ rad) for the inner polyhedron.
-  - 𝐭 ∈ ℝ²: Optimal in-plane translation maximizing the Chebyshev margin
-  
-     *
-    c (𝐰) = max  min  ⎛𝐧 ·𝐭 - d ⎞
-               𝐭    j ⎝ j      j⎠
-  
-on ω⃗ ∈ ℝ³ wit
 
-╰─ etc
+from Lean "syntax" elisp:
+  '("#" "@" "!" "$" "->" "∼" "↔" "/" "==" "=" ":=" "<->" "/\\" "\\/" "∧" "∨"
+    "≠" "<" ">" "≤" "≥" "¬" "<=" ">=" "⁻¹" "⬝" "▸" "+" "*" "-" "/" "λ"
+    "→" "∃" "∀" "∘" "×" "Σ" "Π" "~" "||" "&&" "≃" "≡" "≅"
+    "ℕ" "ℤ" "ℚ" "ℝ" "ℂ" "𝔸"
+    "⬝e" "⬝i" "⬝o" "⬝op" "⬝po" "⬝h" "⬝v" "⬝hp" "⬝vp" "⬝ph" "⬝pv" "⬝r" "◾" "◾o"
 
-(‖v‖
 
-𝒪
+(--each (list ?ϊ ?ϋ ?ό ?ύ ?ώ ?Ϗ ?ϐ ?ϑ ?ϒ ?ϓ ?ϔ ?ϕ ?ϖ
+                  ?ϗ ?Ϙ ?ϙ ?Ϛ ?ϛ ?Ϝ ?ϝ ?Ϟ ?ϟ ?Ϡ ?ϡ ?Ϣ ?ϣ
+                  ?Ϥ ?ϥ ?Ϧ ?ϧ ?Ϩ ?ϩ ?Ϫ ?ϫ ?Ϭ ?ϭ ?Ϯ ?ϯ ?ϰ
+                  ?ϱ ?ϲ ?ϳ ?ϴ ?ϵ ?϶ ?Ϸ ?ϸ ?Ϲ ?Ϻ ?ϻ)
+      (modify-syntax-entry it "w" st))
+    (--each (list ?ἀ ?ἁ ?ἂ ?ἃ ?ἄ ?ἅ ?ἆ ?ἇ ?Ἀ ?Ἁ ?Ἂ ?Ἃ ?Ἄ
+                  ?Ἅ ?Ἆ ?Ἇ ?ἐ ?ἑ ?ἒ ?ἓ ?ἔ ?ἕ ?἖ ?἗ ?Ἐ ?Ἑ
+                  ?Ἒ ?Ἓ ?Ἔ ?Ἕ ?἞ ?἟ ?ἠ ?ἡ ?ἢ ?ἣ ?ἤ ?ἥ
+                  ?ἦ ?ἧ ?Ἠ ?Ἡ ?Ἢ ?Ἣ ?Ἤ ?Ἥ ?Ἦ ?Ἧ ?ἰ ?ἱ
+                  ?ἲ ?ἳ ?ἴ ?ἵ ?ἶ ?ἷ ?Ἰ ?Ἱ ?Ἲ ?Ἳ ?Ἴ ?Ἵ ?Ἶ ?Ἷ
+                  ?ὀ ?ὁ ?ὂ ?ὃ ?ὄ ?ὅ ?὆ ?὇ ?Ὀ ?Ὁ ?Ὂ ?Ὃ
+                  ?Ὄ ?Ὅ ?὎ ?὏ ?ὐ ?ὑ ?ὒ ?ὓ ?ὔ ?ὕ ?ὖ ?ὗ
+                  ?὘ ?Ὑ ?὚ ?Ὓ ?὜ ?Ὕ ?὞ ?Ὗ ?ὠ ?ὡ ?ὢ
+                  ?ὣ ?ὤ ?ὥ ?ὦ ?ὧ ?Ὠ ?Ὡ ?Ὢ ?Ὣ ?Ὤ ?Ὥ ?Ὦ
+                  ?Ὧ ?ὰ ?ά ?ὲ ?έ ?ὴ ?ή ?ὶ ?ί ?ὸ ?ό ?ὺ ?ύ ?ὼ
+                  ?ώ ?὾ ?὿ ?ᾀ ?ᾁ ?ᾂ ?ᾃ ?ᾄ ?ᾅ ?ᾆ ?ᾇ ?ᾈ
+                  ?ᾉ ?ᾊ ?ᾋ ?ᾌ ?ᾍ ?ᾎ ?ᾏ ?ᾐ ?ᾑ ?ᾒ ?ᾓ ?ᾔ
+                  ?ᾕ ?ᾖ ?ᾗ ?ᾘ ?ᾙ ?ᾚ ?ᾛ ?ᾜ ?ᾝ ?ᾞ ?ᾟ ?ᾠ ?ᾡ ?ᾢ
+                  ?ᾣ ?ᾤ ?ᾥ ?ᾦ ?ᾧ ?ᾨ ?ᾩ ?ᾪ ?ᾫ ?ᾬ ?ᾭ ?ᾮ ?ᾯ ?ᾰ
+                  ?ᾱ ?ᾲ ?ᾳ ?ᾴ ?᾵ ?ᾶ ?ᾷ ?Ᾰ ?Ᾱ ?Ὰ ?Ά ?ᾼ ?᾽
+                  ?ι ?᾿ ?῀ ?῁ ?ῂ ?ῃ ?ῄ ?῅ ?ῆ ?ῇ ?Ὲ ?Έ ?Ὴ
+                  ?Ή ?ῌ ?῍ ?῎ ?῏ ?ῐ ?ῑ ?ῒ ?ΐ ?῔ ?῕ ?ῖ ?ῗ
+                  ?Ῐ ?Ῑ ?Ὶ ?Ί ?῜ ?῝ ?῞ ?῟ ?ῠ ?ῡ ?ῢ ?ΰ ?ῤ ?ῥ
+                  ?ῦ ?ῧ ?Ῠ ?Ῡ ?Ὺ ?Ύ ?Ῥ ?῭ ?΅ ?` ?῰ ?῱ ?ῲ ?ῳ
+                  ?ῴ ?῵ ?ῶ ?ῷ ?Ὸ ?Ό ?Ὼ ?Ώ ?ῼ ?´ ?῾)
 
 
 ▜▘ ▉   ▛▛▜   ▜

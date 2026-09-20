@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd fixedersys2xbold.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe
+default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd fixedersys2xbold.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe combining.exe
 
 # Not reinstall.exe by default since it is windows-specific.
 
@@ -19,7 +19,7 @@ CC_LIB=../cc-lib
 CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I$(CC_LIB)
 LFLAGS=$(OPTFLAGS) -static
 
-CCLIB_OBJECTS=$(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o
+CCLIB_OBJECTS=$(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/unicode-data.o
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
@@ -116,6 +116,9 @@ normalize : normalize.exe fixedersys1x.png fixedersys2x.png fixedersyslight2x.pn
 	./normalize.exe fixedersys2xbold.cfg
 
 unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
+combining.exe : combining.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
