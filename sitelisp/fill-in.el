@@ -4,8 +4,10 @@
 ;; fill-in example.
 ;;
 ;; runs a subprocess with the contents of the region as its stdin.
-;; When the subprocess contains <REPLACEMENT>str</REPLACEMENT>, it
-;; replaces the region with that string.
+;; When the subprocess contains <R>str</R>, replaces the region
+;; with that string. (The actual tag is REPLACEMENT, not R, but we
+;; avoid having that string literally in this source file!)
+
 ;;
 ;; Since the process runs asynchronously, we leave an explicit
 ;; marker in the buffer that gets replaced if the fill-in subprocess
@@ -74,9 +76,10 @@
               (message "fill-in successful."))
           (message "Placeholder not found?"))))))
 
-(defun fill-in (beg end)
-  "Saves buffer, runs a command with region as stdin, and processes output."
-  (interactive "r")
+(defun fill-in (beg end &optional arg)
+  "Saves buffer, runs a command with region as stdin, and processes output.
+With prefix argument ARG (e.g., C-u), uses a faster model."
+  (interactive "r\nP")
 
   ;; Remove trailing newlines from the region, since the replacement
   ;; text does not have a newline.
@@ -94,13 +97,16 @@
   (let* ((region-text (buffer-substring-no-properties beg end))
          (filename (buffer-file-name))
          (target-buffer (current-buffer))
-         (placeholder-for-cmd "** FILL IN THE ANSWER HERE **")
+         (placeholder-for-cmd
+          (concat "** FILL IN THE "
+                  "ANSWER HERE **"))
          
          ;; Generate a short random nonce.
          (nonce (format "%06x" (random #xffffff)))
 
          (fill-in-command
           (append (list fill-in-exe filename)
+                  (when arg (list "-medium"))
                   (apply #'append
                          (mapcar (lambda (dir) (list "-dir" dir))
                                  fill-in-default-directories))
@@ -116,7 +122,7 @@
                     (if comment-start (string-trim-right comment-start) "")))
          (c-end   (if is-c-like "*/"
                     (if comment-end (string-trim-left comment-end) "")))
-         
+
          ;; Construct the exact placeholder string with the nonce.
          (placeholder
           (if (string= c-end "")
@@ -159,8 +165,10 @@
      (list #'eprocs-filter-ansi-colors
            ;; find the text in this pair of tags and pass it to
            ;; do-fill-in.
-           (eprocs-make-tag-filter 
-            "<REPLACEMENT>" "</REPLACEMENT>"
+           (eprocs-make-tag-filter
+            ;; avoid the literal string appearing in this source file
+            (concat "<" "REPLACEMENT>")
+            (concat "</" "REPLACEMENT>")
             (lambda (payload)
               (do-fill-in payload target-buffer placeholder))))
      
@@ -189,5 +197,10 @@
              (when (search-forward placeholder nil t)
                (replace-match region-text t t)))))
        (message "Error: Process failed! OS reported: %s" err)))))
+
+(defun qfill-in (beg end)
+  "Run `fill-in' with the medium model."
+  (interactive "r")
+  (fill-in beg end t))
 
 (provide 'fill-in)

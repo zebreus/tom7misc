@@ -1,4 +1,4 @@
-;;          -*- mode: emacs-lisp; coding: utf-8 -*-
+;;    -*- mode: emacs-lisp; coding: utf-8; lexical-binding: t; -*-
 
 ;; Tom 7's .emacs file!
 ;; Code licensed under the GPL.
@@ -830,6 +830,7 @@
 (autoload 'sml-mode "sml-mode" "Major mode for editing ML programs." t)
 (autoload 'aaph-mode "aaph" "Major mode for editing aphasia 2 source." t)
 (autoload 'glsl-mode "glsl-mode" nil t)
+(autoload 'leaner-mode "leaner" "A simple major mode for Lean" t)
 
 (require 'web-mode)
 
@@ -838,6 +839,7 @@
                 ("\\.cl$" . c-mode) ;; close enough...
                 ("\\.fsh$" . glsl-mode)
                 ("\\.s?html$" . web-mode)
+                ("\\.lean$" . leaner-mode)
                 ("\\.vsh$" . glsl-mode)
                 ("\\.sml$" . sml-mode)
                 ("\\.sig$" . sml-mode)
@@ -1460,6 +1462,7 @@
  '(ansi-color-blue ((t (:background "#33f" :foreground "#33f"))))
  '(ansi-color-bright-blue ((t (:background "#88f" :foreground "#88f"))))
  '(blue ((t (:foreground "skyblue"))))
+ '(bold ((t (:weight bold :family "FixederSys 2x"))))
  '(c-attribute-face ((t (:foreground "#667788"))))
  '(cleanup-action-face ((t (:foreground "#9c9"))))
  '(cleanup-pattern-face ((t (:foreground "#c99"))))
@@ -1468,10 +1471,11 @@
  '(compilation-error ((t (:foreground "#800"))))
  '(compilation-info ((t (:foreground "#393"))))
  '(cursor ((t (:background "lightskyblue" :foreground "black"))))
+ '(custom-group-tag ((t (:foreground "#88F" :weight bold))))
  '(custom-state-face ((t (:foreground "#99CC99"))) t)
  '(custom-visibility ((t (:inherit link))))
- '(diff-added ((t (:extend t :background "#005500"))))
- '(diff-removed ((t (:extend t :background "#770000"))))
+ '(diff-added ((t (:extend t :background "#224422"))))
+ '(diff-removed ((t (:extend t :background "#442222"))))
  '(ediff-even-diff-A ((t (:background "#444"))))
  '(ediff-even-diff-Ancestor ((t (:background "#444"))))
  '(ediff-even-diff-B ((t (:background "#444"))))

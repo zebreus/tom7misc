@@ -1,3 +1,5 @@
+;;  -*- lexical-binding: t; -*-
+
 ;; swich-files.el: a method of switching between matched pairs of
 ;; files and for following include directives.
 ;;

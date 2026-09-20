@@ -1,3 +1,5 @@
+;; -*- lexical-binding: t; -*-
+
 ;;; lost.el --- every 108 minutes the button must be pushed
 ;;;
 ;;; Author: Tom Murphy 7  (http://tom7.org/)

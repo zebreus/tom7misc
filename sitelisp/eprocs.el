@@ -1,5 +1,8 @@
-;;; eprocs.el --- Process utilities -*- lexical-binding: t -*-
+;;  -*- lexical-binding: t -*-
 ;;; Lexical binding is required!
+
+;;; eprocs.el --- Process utilities
+
 
 ;; custom process-based protocol for emacs helper programs that
 ;; I wrote. the "eproc" stuff should become a library of utilities,

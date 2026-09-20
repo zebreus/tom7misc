@@ -1,3 +1,5 @@
+;;   -*- lexical-binding: t; -*-
+
 ;; slide mode Copyright (c) 2004 Tom Murphy
 ;; licensed under the GNU public license (see COPYING)
 

@@ -1,3 +1,5 @@
+;; -*- lexical-binding: t; -*-
+
 ;;; aaph.el - Major mode for editing aphasia 2 source (and similar
 ;; languages, like "BoVeX").
 ;; Adapted from sml-mode.el and highly damaged by Tom 7.

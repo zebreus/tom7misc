@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 
 ;; this is typically bound to C-c c
 

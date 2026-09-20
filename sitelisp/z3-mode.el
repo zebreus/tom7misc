@@ -1,4 +1,6 @@
-;;; z3-mode.el --- A z3/SMTLIBv2 interactive development environment -*-lexical-binding: t-*-
+;;  -*-lexical-binding: t-*-
+
+;;; z3-mode.el --- A z3/SMTLIBv2 interactive development environment
 
 ;; Version: 0.0.1
 ;; Author: Zephyr Pellerin <zephyr.pellerin@gmail.com>

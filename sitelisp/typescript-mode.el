@@ -1,3 +1,5 @@
+;;   -*- lexical-binding: t; -*-
+
 ;;; typescript-mode.el --- Major mode for editing typescript
 
 ;; -----------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-
+;;  -*- lexical-binding: t; -*-
 
 ;; todo: datatype x = datatype y
 

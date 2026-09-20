@@ -1,3 +1,5 @@
+;; -*- lexical-binding: t; -*-
+
 ;;; javascript.el --- Major mode for editing JavaScript source text
 
 ;; Copyright (C) 2006 Karl Landström

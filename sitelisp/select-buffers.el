@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 
 ;; M-X select-buffers allows selecting some open buffers, and then
 ;; (when pressing enter) consolidates them into a single buffer. This
@@ -30,6 +31,12 @@
 
 (defvar select-buffers-highlight-overlays nil
   "A list of overlays to keep track of highlights.")
+
+(defvar select-buffers-selected-buffers nil
+  "List of currently selected buffers.")
+
+(defvar select-buffers-buffer-list nil
+  "List of buffers currently displayed for selection.")
 
 (defun select-buffers-redraw ()
   (let ((old-bro buffer-read-only))
@@ -228,7 +235,6 @@
 
 (defun select-buffers-topological-sort (dependency-map)
   (let ((visited (make-hash-table :test 'equal))
-        (stack nil)
         (sorted-list nil)
         (cycle-detected nil))
     (cl-labels ((visit (node)

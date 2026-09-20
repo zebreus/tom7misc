@@ -1,9 +1,10 @@
-;; $Id: id.el,v 1.1 2003/06/08 00:54:54 tom7 Exp $
+;; -*- lexical-binding: t; -*-
+;; $Id: id.el,v 1.02 2026/09/20 10:49:38 tom7 Exp $
 
 (add-hook 'write-file-hooks 'update-ids)
 
 (defun insert-id ()
-  "Inserts an ID like $Id: id.el,v 1.1 2003/06/08 00:54:54 tom7 Exp $. Uses the creator id in \"ids-creator-id\", the current buffer name, and the current time/date."
+  "Inserts an ID like $Id: id.el,v 1.02 2026/09/20 10:49:38 tom7 Exp $. Uses the creator id in \"ids-creator-id\", the current buffer name, and the current time/date."
   (interactive "*")
   (progn
     (insert "$Id: ")
@@ -13,14 +14,14 @@
     (insert (format-time-string " %Y/%m/%d %T " (current-time)))
     (insert ids-creator-id)
     (insert " Exp $")
-;;    (query-replace-regexp "$Id: id.el,v 1.1 2003/06/08 00:54:54 tom7 Exp $Id: " nil)
+;;    (query-replace-regexp "$Id: id.el,v 1.02 2026/09/20 10:49:38 tom7 Exp $Id: " nil)
 ))
 
 (defvar ids-creator-id "anonymous"
   "*Customizable creator id for update-ids hook. (\\[insert-id])")
 
 (defun update-ids ()
-  "Find any $Id: id.el,v 1.1 2003/06/08 00:54:54 tom7 Exp $ strings and update them.\n\nThe date and time are set current, the creator id by the \"ids-creator-id\" user variable."
+  "Find any $Id: id.el,v 1.02 2026/09/20 10:49:38 tom7 Exp $ strings and update them.\n\nThe date and time are set current, the creator id by the \"ids-creator-id\" user variable."
   (save-excursion
     (save-restriction
       (save-match-data

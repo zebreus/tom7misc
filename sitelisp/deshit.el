@@ -1,3 +1,4 @@
+;; -*- lexical-binding: t; -*-
 
 (defun deshit (a b c)
   (save-excursion
