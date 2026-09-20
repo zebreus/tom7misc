@@ -18,7 +18,23 @@ namespace {
 struct Row {
   uint32_t codepoint = 0;
   StringTable::Entry name = {};
+  UnicodeData::GeneralCategory category = UnicodeData::Cn;
 };
+
+static std::optional<UnicodeData::GeneralCategory> ParseCategory(
+    std::string_view s) {
+  static constexpr std::string_view NAMES[] = {
+    "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl",
+    "No", "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc",
+    "Sk", "So", "Zs", "Zl", "Zp", "Cc", "Cf", "Cs", "Co", "Cn",
+  };
+  for (size_t i = 0; i < sizeof(NAMES) / sizeof(std::string_view); i++) {
+    if (s == NAMES[i]) {
+      return (UnicodeData::GeneralCategory)i;
+    }
+  }
+  return std::nullopt;
+}
 
 // With some attempt to be compact in memory.
 struct UnicodeData_ : public UnicodeData {
@@ -30,6 +46,7 @@ struct UnicodeData_ : public UnicodeData {
       return {CodepointData{
           .codepoint = row.codepoint,
           .name = string_table.GetView(row.name),
+          .category = row.category,
         }};
     }
     return std::nullopt;
@@ -42,6 +59,7 @@ struct UnicodeData_ : public UnicodeData {
       return {CodepointData{
           .codepoint = row.codepoint,
           .name = string_table.GetView(row.name),
+          .category = row.category,
         }};
     }
     return std::nullopt;
@@ -53,14 +71,17 @@ struct UnicodeData_ : public UnicodeData {
     if (line.empty()) return;
     std::vector<std::string> cols = Util::Split(line, ';');
     // 2077;SUPERSCRIPT SEVEN;No;0;EN;<super> 0037;;7;7;N;SUPERSCRIPT DIGIT SEVEN;;;;
-    CHECK(cols.size() >= 2) << "Bad line: " << line;
+    CHECK(cols.size() >= 3) << "Bad line: " << line;
     auto co = Util::ParseHex(cols[0]);
     CHECK(co.has_value() && co.value() <=
           (uint64_t)std::numeric_limits<uint32_t>::max) <<
       "Bad line: " << line;
+    auto cat = ParseCategory(cols[2]);
+    CHECK(cat.has_value()) << "Bad category: " << cols[2];
     rows.push_back(Row{
         .codepoint = (uint32_t)co.value(),
         .name = string_table.Add(cols[1]),
+        .category = cat.value(),
       });
   }
 
@@ -105,3 +126,101 @@ std::unique_ptr<UnicodeData> UnicodeData::FromContent(
   return FromContent(std::string_view((const char *)content.data(),
                                       content.size()));
 }
+
+bool UnicodeData::IsLetter(GeneralCategory c) {
+  switch (c) {
+    case Lu:
+    case Ll:
+    case Lt:
+    case Lm:
+    case Lo:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsCasedLetter(GeneralCategory c) {
+  switch (c) {
+    case Lu:
+    case Ll:
+    case Lt:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsMark(GeneralCategory c) {
+  switch (c) {
+    case Mn:
+    case Mc:
+    case Me:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsNumber(GeneralCategory c) {
+  switch (c) {
+    case Nd:
+    case Nl:
+    case No:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsPunctuation(GeneralCategory c) {
+  switch (c) {
+    case Pc:
+    case Pd:
+    case Ps:
+    case Pe:
+    case Pi:
+    case Pf:
+    case Po:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsSymbol(GeneralCategory c) {
+  switch (c) {
+    case Sm:
+    case Sc:
+    case Sk:
+    case So:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsOther(GeneralCategory c) {
+  switch (c) {
+    case Cc:
+    case Cf:
+    case Cs:
+    case Co:
+    case Cn:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool UnicodeData::IsSeparator(GeneralCategory c) {
+  switch (c) {
+    case Zs:
+    case Zl:
+    case Zp:
+      return true;
+    default:
+      return false;
+  }
+}
+
