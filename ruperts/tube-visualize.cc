@@ -38,6 +38,10 @@ inline void Printf(const char *str) {
   std::fputs(str, stdout);
 }
 
+static inline vec3 ToDouble(const BigVecQ3 &v) {
+  return vec3{v.x.ToDouble(), v.y.ToDouble(), v.z.ToDouble()};
+}
+
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
 using namespace tubetree229;
@@ -332,7 +336,7 @@ static std::array<TriangleQ, 4> GetRootTrees() {
 // Convert exact rational triangle geometry to spherical coordinates for visualization.
 static void PopulateTriangleGeometry(const TriangleQ &triQ, LeafTriangle *leaf) {
   for (int v = 0; v < 3; v++) {
-    leaf->p[v] = triQ.corners[v].ToDouble();
+    leaf->p[v] = ToDouble(triQ.corners[v]);
     double len = std::hypot(leaf->p[v].x, leaf->p[v].y, leaf->p[v].z);
     if (len > 0.0) {
       leaf->unit_v[v] = leaf->p[v] / len;
@@ -473,9 +477,9 @@ static void RenderTreeIndicators(ImageRGBA *img,
     const auto &style = TREE_STYLES[k];
     const auto &triQ = root_trees[k];
 
-    vec2 p0 = project_fn(0, triQ.corners[0].ToDouble());
-    vec2 p1 = project_fn(1, triQ.corners[1].ToDouble());
-    vec2 p2 = project_fn(2, triQ.corners[2].ToDouble());
+    vec2 p0 = project_fn(0, ToDouble(triQ.corners[0]));
+    vec2 p1 = project_fn(1, ToDouble(triQ.corners[1]));
+    vec2 p2 = project_fn(2, ToDouble(triQ.corners[2]));
 
     // Corner brackets at each of the 3 vertices
     DrawBracket(img, (float)p0.x, (float)p0.y, (float)p1.x, (float)p1.y, (float)p2.x, (float)p2.y, style.color);
@@ -1712,7 +1716,7 @@ static void RenderZoomView(const std::vector<LeafTriangle> &all_leaves,
   const TriangleQ &cur_root = root_trees[tree_idx];
   vec2 rt_pts[3];
   for (int v = 0; v < 3; v++) {
-    rt_pts[v] = ProjToScreen(ProjectiveToBarycentric(cur_root.corners[v].ToDouble()));
+    rt_pts[v] = ProjToScreen(ProjectiveToBarycentric(ToDouble(cur_root.corners[v])));
   }
   for (int e = 0; e < 3; e++) {
     int next_e = (e + 1) % 3;
