@@ -166,6 +166,85 @@ class Tube229 {
       const std::vector<tubetree229::ContactInfo> &extra_contacts = {},
       const std::vector<CandidateTriple> &extra_axes = {},
       bool fast_only = false);
+
+  // ============================================================================
+  // DECOMPOSED & ANNULAR CERTIFICATE ROUTINES (THREE-WAY SPLIT THEOREM)
+  // ============================================================================
+
+  // Searches for a 3-contact axis certificate whose contacts lie strictly on the
+  // true projected 2D convex hull of Polyhedron #229 for triangle tri (Idea 3 from TINY_SLIVER.md).
+  //
+  // Unlike standard silhouette generation where contact chords must be incident on
+  // their support vertex, this searches over decoupled combinations of extreme hull
+  // chords and true hull support vertices.
+  //
+  // Requirements checked:
+  // - All 20 vertices have support upper bounds <= 0 across all 3 corners of tri.
+  // - Outward 2D normals enclose the origin (positive linear displacement for the inner core).
+  // - Weight lower bounds across tri are non-negative, with at least one strictly positive.
+  // - Strict negative witness exists for each contact.
+  //
+  // Returns true and populates out_cert (and optionally out_center, out_delta) on success.
+  static bool FindHullSupportAxis(
+      const tubetree229::TriangleQ &tri,
+      tubetree229::AxisCertificate *out_cert,
+      BigVecQ3 *out_center = nullptr,
+      BigRat *out_delta = nullptr,
+      std::string *fail_reason = nullptr);
+
+  // Verifies the annular dominance condition for an axis with a known support defect D:
+  //   ((1/2) * r^2 * B + D)^2 <= r_min^2 * (1 - (1/4) * r^2) * (c_cone - delta)^2 * B^2
+  //
+  // Inputs:
+  // - B: Bounding multiplier of the annular axis (> 0)
+  // - defect_D: Total support defect budget across contacts (>= 0)
+  // - c_cone: Cosine of the half-aperture of the exceptional cone (e.g. 99/100)
+  // - delta: Variation bound of the axis across tri (>= 0, with delta < c_cone)
+  // - in_out_r_min, in_out_r: If positive, tests the provided radii in exact arithmetic.
+  //   If non-positive, automatically solves for valid conservative radii satisfying
+  //   the inequality and writes them back.
+  //
+  // Returns true if the dominance condition holds with 0 < r_min < r and r^2 < 4.
+  static bool CheckAnnularDominance(
+      const BigRat &B,
+      const BigRat &defect_D,
+      const BigRat &c_cone,
+      const BigRat &delta,
+      BigRat *in_out_r_min,
+      BigRat *in_out_r);
+
+  // Evaluates whether a collection of candidate axes (e.g. inherited from a sibling cell)
+  // covers all unit directions on S^2 outside the exceptional cone around exceptional_axis:
+  //   For all omega in S^2 with dot(omega, exceptional_axis) < c_cone:
+  //     max_{j} dot(omega, axis_j) >= c_comp > 0.
+  //
+  // Also audits each candidate axis over tri to verify that its support upper bounds
+  // against all 20 vertices are <= 0.
+  //
+  // Returns true and writes out_c_comp if coverage is certified with margin > 0.
+  static bool EvaluateComplementConeCoverage(
+      const tubetree229::TriangleQ &tri,
+      const std::vector<tubetree229::AxisCertificate> &axes,
+      const vec3 &exceptional_axis_dir,
+      double c_cone_thresh,
+      BigRat *out_c_comp,
+      int sphere_samples = 50000);
+
+  // Complete synthesis of a DecomposedCertificate for difficult / canyon sliver cells:
+  // 1. Searches for the 9-vertex hull inner core axis via FindHullSupportAxis.
+  // 2. Evaluates the defect on the exceptional axis (or sibling axis 0) and computes
+  //    defect bound D and valid radii r_min, r via CheckAnnularDominance.
+  // 3. Verifies complementary direction coverage for sibling/candidate axes outside
+  //    the exceptional cone via EvaluateComplementConeCoverage.
+  // 4. Assembles the resulting DecomposedCertificate.
+  //
+  // Returns true and populates out_decomp on success.
+  static bool SynthesizeDecomposedCertificate(
+      const tubetree229::TriangleQ &tri,
+      int depth,
+      tubetree229::DecomposedCertificate *out_decomp,
+      const tubetree229::TubeCertificate *sibling_cert = nullptr,
+      std::string *fail_reason = nullptr);
 };
 
 #endif  // _RUPERTS_TUBE229_H

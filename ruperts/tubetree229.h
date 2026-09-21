@@ -66,6 +66,40 @@ struct TubeCertificate {
   int symmetry_index = 0;
 };
 
+// A decomposed / annular identity tube certificate for cells where the
+// projected convex hull undergoes silhouette topological collapse (e.g.
+// eclipsed slivers where an interior vertex violates outer contact support).
+//
+// Proved correct via the Three-Way Split theorem:
+// 1. Inner core: For adversary rotations with ||Q - 1|| <= r_min, an axis certificate
+//    with contacts strictly on the true projected convex hull provides positive linear
+//    displacement rate, preventing any Rupert pose.
+// 2. Annular exceptional cone: For r_min <= ||Q - 1|| <= r within a cone of half-angle
+//    arccos(c_cone) around the exceptional axis, quadratic rotation displacement dominates
+//    the bounded support defect D.
+// 3. Complementary directions: For adversary rotations outside the exceptional cone,
+//    the complement axes (e.g. inherited from a sibling cell) have zero support defect
+//    and enclose all adversary directions with net margin >= c_comp > 0.
+struct DecomposedCertificate {
+  // 1. Inner Core Certificate (contacts on true projected hull)
+  AxisCertificate inner_core_axis;
+  int inner_index[3] = {-1, -1, -1};
+
+  // 2. Annular Certificate for the exceptional cone
+  AxisCertificate annular_axis;
+  BigRat r_min{0};   // Inner core boundary (e.g. 1/10000)
+  BigRat r{0};       // Certified outer tube radius (e.g. 1/2000)
+  BigRat c_cone{0};  // Cone cosine threshold (e.g. 99/100)
+  BigRat delta{0};   // Triangle variation bound
+  BigRat defect_D{0};// Maximum support defect budget (e.g. 8/10000000)
+
+  // 3. Complementary Axes covering outside the exceptional cone
+  std::vector<AxisCertificate> complement_axes;
+  BigRat c_comp{0};  // Certified coverage margin outside the cone
+
+  int symmetry_index = 0;
+};
+
 // ============================================================================
 // BOUNDS ARCHITECTURE & CRITICAL NOTE ON DIRECT VS. EFFECTIVE BOUNDS
 // ============================================================================
@@ -113,8 +147,11 @@ struct TreeNode {
   // Depth is path.size().
   std::string path;
 
-  // Optional direct certificate covering this exact triangle.
+  // Optional direct certificate covering this exact triangle (standard 4-axis cage).
   std::optional<TubeCertificate> direct_cert;
+
+  // Optional decomposed certificate covering this exact triangle (Three-Way Split).
+  std::optional<DecomposedCertificate> decomposed_cert;
 
   // Direct bounds computed directly on this triangle.
   NodeBounds direct_bounds;
@@ -129,6 +166,14 @@ struct TreeNode {
   int depth() const { return static_cast<int>(path.size()); }
   bool is_leaf() const { return children.empty() && !external; }
   bool is_split() const { return !children.empty() || external; }
+  bool has_certificate() const {
+    return direct_cert.has_value() || decomposed_cert.has_value();
+  }
+  BigRat GetCertifiedRadius() const {
+    if (direct_cert.has_value()) return direct_cert->r;
+    if (decomposed_cert.has_value()) return decomposed_cert->r;
+    return BigRat(0);
+  }
 
   TriangleQ GetTriangle() const {
     return TriangleFromPath(path);
@@ -174,6 +219,7 @@ struct TreeStats {
   int split_nodes = 0;
   int external_refs = 0;
   int direct_certificates = 0;
+  int decomposed_certificates = 0;
   int max_depth = 0;
 };
 

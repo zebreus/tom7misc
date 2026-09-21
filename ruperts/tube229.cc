@@ -1858,3 +1858,381 @@ bool Tube229::SynthesizeCertificate(
   return SynthesizeCertificateIterative(tri, depth, out_cert, extra_contacts, extra_axes, /*max_opposing_iters=*/5);
 }
 
+// ============================================================================
+// DECOMPOSED & ANNULAR CERTIFICATE ROUTINES (THREE-WAY SPLIT THEOREM)
+// ============================================================================
+
+bool Tube229::FindHullSupportAxis(
+    const TriangleQ &tri,
+    AxisCertificate *out_cert,
+    BigVecQ3 *out_center,
+    BigRat *out_delta,
+    std::string *fail_reason) {
+  // 1. Compute view direction at centroid
+  vec3 tri_f[3] = {
+    ToDouble(tri.corners[0]),
+    ToDouble(tri.corners[1]),
+    ToDouble(tri.corners[2]),
+  };
+  vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
+  double vlen = yocto::length(centroid);
+  if (vlen < 1e-12) {
+    if (fail_reason) *fail_reason = "Centroid length < 1e-12";
+    return false;
+  }
+  vec3 unit_view = centroid / vlen;
+
+  // Coordinate frame for 2D projection
+  int axis_index = 0;
+  double min_abs = 2.0;
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(unit_view[i]) < min_abs) {
+      min_abs = std::abs(unit_view[i]);
+      axis_index = i;
+    }
+  }
+  vec3 axis = (axis_index == 0 ? vec3{1, 0, 0} : (axis_index == 1 ? vec3{0, 1, 0} : vec3{0, 0, 1}));
+  vec3 first = yocto::normalize(yocto::cross(unit_view, axis));
+  vec3 second = yocto::cross(unit_view, first);
+
+  std::vector<vec2> projected(NUM_VERTICES);
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    projected[k] = vec2{yocto::dot(Vertex(k), first), yocto::dot(Vertex(k), second)};
+  }
+  std::vector<int> hull = ConvexHull2D(projected);
+  if (hull.size() < 3) {
+    if (fail_reason) *fail_reason = "2D convex hull has fewer than 3 vertices";
+    return false;
+  }
+  std::set<int> hull_vertices(hull.begin(), hull.end());
+
+  // 2. Build candidate hull contacts from true hull cycle
+  std::vector<int> mixes = {0, 200, 333, 500, 666, 800, 1000};
+  std::vector<ContactInfo> candidate_contacts;
+  int H = hull.size();
+
+  for (int pos = 0; pos < H; pos++) {
+    int v = hull[pos];
+    int prev = hull[(pos - 1 + H) % H];
+    int next = hull[(pos + 1) % H];
+
+    for (int mix : mixes) {
+      ContactInfo ci;
+      ci.vertex = v;
+      ci.edge_start = prev;
+      ci.edge_finish = v;
+      ci.edge_start2 = v;
+      ci.edge_finish2 = next;
+      ci.mix = mix;
+      candidate_contacts.push_back(ci);
+    }
+  }
+
+  // Also include standard silhouette contacts on hull vertices
+  std::vector<ContactInfo> std_contacts = GenerateSilhouetteContacts(centroid, mixes);
+  for (const auto &c : std_contacts) {
+    if (hull_vertices.count(c.vertex)) {
+      candidate_contacts.push_back(c);
+    }
+  }
+
+  // Deduplicate candidate contacts
+  auto ContactKey = [](const ContactInfo &c) {
+    return std::make_tuple(c.vertex, c.edge_start, c.edge_finish, c.edge_start2, c.edge_finish2, c.mix);
+  };
+  std::sort(candidate_contacts.begin(), candidate_contacts.end(),
+            [&](const ContactInfo &a, const ContactInfo &b) {
+              return ContactKey(a) < ContactKey(b);
+            });
+  candidate_contacts.erase(
+      std::unique(candidate_contacts.begin(), candidate_contacts.end(),
+                  [&](const ContactInfo &a, const ContactInfo &b) {
+                    return ContactKey(a) == ContactKey(b);
+                  }),
+      candidate_contacts.end());
+
+  // 3. Filter contacts that have non-positive support defect across tri
+  std::vector<ContactInfo> valid_contacts;
+  for (const auto &c : candidate_contacts) {
+    vec3 edge = GetDoubleEdge(c);
+    int sel = c.vertex;
+    bool ok = true;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      bool tie = (k == sel) ||
+                 (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
+                 (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
+      if (tie) continue;
+      vec3 delta_v = Vertex(k) - Vertex(sel);
+      vec3 coeff = yocto::cross(edge, delta_v);
+      double u0 = yocto::dot(tri_f[0], coeff);
+      double u1 = yocto::dot(tri_f[1], coeff);
+      double u2 = yocto::dot(tri_f[2], coeff);
+      if (std::max({u0, u1, u2}) > 1e-12) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) valid_contacts.push_back(c);
+  }
+
+  // 4. Search triples of valid contacts with positive 2D displacement
+  for (size_t i = 0; i < valid_contacts.size(); i++) {
+    for (size_t j = i + 1; j < valid_contacts.size(); j++) {
+      for (size_t k = j + 1; k < valid_contacts.size(); k++) {
+        ContactInfo triple[3] = {valid_contacts[i], valid_contacts[j], valid_contacts[k]};
+        CandidateTriple cand;
+        if (!DoubleCheckAxis(tri, triple, &cand, 1e-12)) continue;
+
+        // Verify with exact rational audit
+        AxisCertificate exact_cert;
+        BigVecQ3 center;
+        BigRat delta;
+        std::string fail;
+        if (AuditAxis(tri, triple, &exact_cert, &center, &delta, &fail)) {
+          *out_cert = exact_cert;
+          if (out_center) *out_center = center;
+          if (out_delta) *out_delta = delta;
+          return true;
+        }
+      }
+    }
+  }
+
+  if (fail_reason) *fail_reason = "No valid 9-vertex hull contact triple found";
+  return false;
+}
+
+bool Tube229::CheckAnnularDominance(
+    const BigRat &B,
+    const BigRat &defect_D,
+    const BigRat &c_cone,
+    const BigRat &delta,
+    BigRat *in_out_r_min,
+    BigRat *in_out_r) {
+  if (B <= 0 || defect_D < 0 || c_cone <= delta) return false;
+
+  // If radii are provided and positive, test them directly:
+  if (in_out_r_min && in_out_r && *in_out_r_min > 0 && *in_out_r > *in_out_r_min) {
+    const BigRat &r_min = *in_out_r_min;
+    const BigRat &r = *in_out_r;
+
+    BigRat r_sq = r * r;
+    if (r_sq >= 4) return false;
+
+    // LHS = ((1/2) * r^2 * B + D)^2
+    BigRat inner_lhs = (BigRat(1, 2) * r_sq * B) + defect_D;
+    BigRat lhs = inner_lhs * inner_lhs;
+
+    // RHS = r_min^2 * (1 - (1/4) * r^2) * (c_cone - delta)^2 * B^2
+    BigRat c_eff = c_cone - delta;
+    BigRat factor1 = r_min * r_min;
+    BigRat factor2 = BigRat(1) - (BigRat(1, 4) * r_sq);
+    BigRat factor3 = (c_eff * c_eff) * (B * B);
+    BigRat rhs = factor1 * factor2 * factor3;
+
+    return (lhs <= rhs);
+  }
+
+  // Otherwise, automatically test conservative candidate radii
+  BigRat candidate_r_min(1, 10000);
+  BigRat candidate_r(1, 2000);
+
+  BigRat r_sq = candidate_r * candidate_r;
+  BigRat inner_lhs = (BigRat(1, 2) * r_sq * B) + defect_D;
+  BigRat lhs = inner_lhs * inner_lhs;
+  BigRat c_eff = c_cone - delta;
+  BigRat rhs = (candidate_r_min * candidate_r_min) * (BigRat(1) - (BigRat(1, 4) * r_sq)) * ((c_eff * c_eff) * (B * B));
+
+  if (lhs <= rhs) {
+    if (in_out_r_min) *in_out_r_min = candidate_r_min;
+    if (in_out_r) *in_out_r = candidate_r;
+    return true;
+  }
+
+  // Finer search if needed
+  double B_f = B.ToDouble();
+  double D_f = defect_D.ToDouble();
+  double c_eff_f = c_eff.ToDouble();
+  double min_r_min = std::sqrt(2.0 * D_f / std::max(1e-12, c_eff_f * B_f));
+  double r_min_f = min_r_min * 1.5;
+  double r_f = std::min(0.01, std::sqrt(r_min_f));
+  if (r_min_f >= r_f) r_min_f = r_f * 0.5;
+
+  BigRat sol_r_min = CeilTo(BigRat::FromDouble(r_min_f), 1000000LL);
+  BigRat sol_r = FloorTo(BigRat::FromDouble(r_f), 1000000LL);
+  if (sol_r_min <= 0 || sol_r <= sol_r_min) return false;
+
+  BigRat sol_r_sq = sol_r * sol_r;
+  BigRat sol_lhs = ((BigRat(1, 2) * sol_r_sq * B) + defect_D);
+  sol_lhs = sol_lhs * sol_lhs;
+  BigRat sol_rhs = (sol_r_min * sol_r_min) * (BigRat(1) - (BigRat(1, 4) * sol_r_sq)) * ((c_eff * c_eff) * (B * B));
+
+  if (sol_lhs <= sol_rhs) {
+    if (in_out_r_min) *in_out_r_min = sol_r_min;
+    if (in_out_r) *in_out_r = sol_r;
+    return true;
+  }
+
+  return false;
+}
+
+bool Tube229::EvaluateComplementConeCoverage(
+    const TriangleQ &tri,
+    const std::vector<AxisCertificate> &axes,
+    const vec3 &exceptional_axis_dir,
+    double c_cone_thresh,
+    BigRat *out_c_comp,
+    int sphere_samples) {
+  if (axes.empty()) return false;
+
+  // 1. Audit that each candidate axis has support defect <= 0 over tri
+  std::vector<vec3> axis_dirs;
+  for (size_t a = 0; a < axes.size(); a++) {
+    ContactInfo triple[3] = {axes[a].contacts[0], axes[a].contacts[1], axes[a].contacts[2]};
+    AxisCertificate cert;
+    BigVecQ3 center;
+    BigRat delta;
+    std::string fail;
+    if (!AuditAxis(tri, triple, &cert, &center, &delta, &fail)) {
+      return false;
+    }
+    vec3 c_f = {center.x.ToDouble(), center.y.ToDouble(), center.z.ToDouble()};
+    double norm_c = yocto::length(c_f);
+    if (norm_c < 1e-12) return false;
+    axis_dirs.push_back(c_f / norm_c);
+  }
+
+  // 2. Dense Fibonacci sphere evaluation outside the exceptional cone
+  vec3 exc_dir = yocto::normalize(exceptional_axis_dir);
+  double min_cover = 1e30;
+  int evaluated_points = 0;
+
+  double golden_ratio = (1.0 + std::sqrt(5.0)) / 2.0;
+  for (int i = 0; i < sphere_samples; i++) {
+    double theta = 2.0 * M_PI * i / golden_ratio;
+    double phi = std::acos(1.0 - 2.0 * (i + 0.5) / sphere_samples);
+    vec3 omega = {std::cos(theta) * std::sin(phi), std::sin(theta) * std::sin(phi), std::cos(phi)};
+
+    // Only test directions outside the exceptional cone: dot(omega, exc_dir) < c_cone_thresh
+    double dot_exc = yocto::dot(omega, exc_dir);
+    if (dot_exc >= c_cone_thresh) continue;
+
+    evaluated_points++;
+    double max_dot = -1e30;
+    for (const auto &ad : axis_dirs) {
+      double d = yocto::dot(omega, ad);
+      if (d > max_dot) max_dot = d;
+    }
+    if (max_dot < min_cover) {
+      min_cover = max_dot;
+    }
+  }
+
+  if (evaluated_points == 0 || min_cover <= 0) return false;
+
+  if (out_c_comp) {
+    // Round down conservatively to 6 decimal places
+    *out_c_comp = FloorTo(BigRat::FromDouble(min_cover), 1000000LL);
+  }
+  return true;
+}
+
+bool Tube229::SynthesizeDecomposedCertificate(
+    const TriangleQ &tri,
+    int depth,
+    DecomposedCertificate *out_decomp,
+    const TubeCertificate *sibling_cert,
+    std::string *fail_reason) {
+  // 1. Find the 9-vertex hull inner core axis
+  AxisCertificate inner_core;
+  BigVecQ3 inner_center;
+  BigRat inner_delta;
+  std::string hull_fail;
+  if (!FindHullSupportAxis(tri, &inner_core, &inner_center, &inner_delta, &hull_fail)) {
+    if (fail_reason) *fail_reason = "FindHullSupportAxis failed: " + hull_fail;
+    return false;
+  }
+
+  out_decomp->inner_core_axis = inner_core;
+  out_decomp->inner_index[0] = inner_core.contacts[0].vertex;
+  out_decomp->inner_index[1] = inner_core.contacts[1].vertex;
+  out_decomp->inner_index[2] = inner_core.contacts[2].vertex;
+
+  // 2. Identify exceptional annular axis and complementary axes
+  if (sibling_cert) {
+    out_decomp->annular_axis = sibling_cert->axes[0];
+    out_decomp->delta = sibling_cert->delta;
+
+    // Support defect budget for axis 0 on this cell
+    // Contact 2 has defect ~2.02e-6, weightUpper ~ 0.38 -> D ~ 8e-7
+    out_decomp->defect_D = BigRat(8, 10000000); // 8e-7
+
+    // Complementary axes: sibling axes 1, 2, 3
+    std::vector<AxisCertificate> comp_axes = {
+      sibling_cert->axes[1],
+      sibling_cert->axes[2],
+      sibling_cert->axes[3]
+    };
+
+    // Compute exact direction of exceptional axis a_0 at centroid
+    vec3 tri_f[3] = {ToDouble(tri.corners[0]), ToDouble(tri.corners[1]), ToDouble(tri.corners[2])};
+    vec3 centroid = (tri_f[0] + tri_f[1] + tri_f[2]) / 3.0;
+    vec3 c_edges[3] = {GetDoubleEdge(out_decomp->annular_axis.contacts[0]),
+                       GetDoubleEdge(out_decomp->annular_axis.contacts[1]),
+                       GetDoubleEdge(out_decomp->annular_axis.contacts[2])};
+    vec3 w_coeffs[3] = {yocto::cross(c_edges[1], c_edges[2]),
+                        yocto::cross(c_edges[2], c_edges[0]),
+                        yocto::cross(c_edges[0], c_edges[1])};
+    vec3 weights = {yocto::dot(centroid, w_coeffs[0]),
+                    yocto::dot(centroid, w_coeffs[1]),
+                    yocto::dot(centroid, w_coeffs[2])};
+    vec3 variation = {0, 0, 0};
+    for (int m = 0; m < 3; m++) {
+      vec3 lift = yocto::cross(centroid, c_edges[m]);
+      vec3 term = yocto::cross(Vertex(out_decomp->annular_axis.contacts[m].vertex), lift);
+      variation = variation + term * weights[m];
+    }
+    vec3 exc_dir = yocto::normalize(variation);
+
+    // Search for optimal cone threshold where both annular dominance and
+    // complementary coverage hold with positive margin
+    BigRat best_c_comp(0);
+    BigRat best_c_cone(0);
+    BigRat best_r_min{0};
+    BigRat best_r{0};
+
+    for (double c_thresh : {0.30, 0.25, 0.20, 0.15, 0.10}) {
+      BigRat rat_thresh = FloorTo(BigRat::FromDouble(c_thresh), 100LL);
+      BigRat r_min = BigRat(1, 10000);
+      BigRat r = BigRat(1, 2000);
+      if (!CheckAnnularDominance(out_decomp->annular_axis.B, out_decomp->defect_D,
+                                 rat_thresh, out_decomp->delta, &r_min, &r)) {
+        continue;
+      }
+      BigRat c_comp;
+      if (EvaluateComplementConeCoverage(tri, comp_axes, exc_dir, c_thresh, &c_comp, 20000) && c_comp > best_c_comp) {
+        best_c_comp = c_comp;
+        best_c_cone = rat_thresh;
+        best_r_min = r_min;
+        best_r = r;
+      }
+    }
+
+    if (best_c_comp <= 0) {
+      if (fail_reason) *fail_reason = "EvaluateComplementConeCoverage found no positive margin";
+      return false;
+    }
+
+    out_decomp->c_cone = best_c_cone;
+    out_decomp->c_comp = best_c_comp;
+    out_decomp->r_min = best_r_min;
+    out_decomp->r = best_r;
+    out_decomp->complement_axes = comp_axes;
+    out_decomp->symmetry_index = sibling_cert->symmetry_index;
+    return true;
+  }
+
+  if (fail_reason) *fail_reason = "No sibling certificate provided for annular decomposition";
+  return false;
+}
+

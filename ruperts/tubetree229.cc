@@ -59,6 +59,15 @@ EffectiveBounds ComputeEffectiveBounds(const TreeNode &node) {
   b.r_upper = node.direct_bounds.direct_r_upper;
   b.c_lower = node.direct_bounds.direct_c_lower;
   b.c_upper = node.direct_bounds.direct_c_upper;
+
+  if (node.direct_cert.has_value()) {
+    if (node.direct_cert->r > b.r_lower) b.r_lower = node.direct_cert->r;
+    if (node.direct_cert->c > b.c_lower) b.c_lower = node.direct_cert->c;
+  }
+  if (node.decomposed_cert.has_value()) {
+    if (node.decomposed_cert->r > b.r_lower) b.r_lower = node.decomposed_cert->r;
+    if (node.decomposed_cert->c_comp > b.c_lower) b.c_lower = node.decomposed_cert->c_comp;
+  }
   b.complete = (b.r_lower > BigRat(0));
 
   if (node.children.size() == 4) {
@@ -129,6 +138,58 @@ static void SerializeContact(const ContactInfo &ct, std::string &out) {
   out += "}";
 }
 
+static void SerializeAxis(const AxisCertificate &ax, std::string &out) {
+  out += "{\n\"B\": \"";
+  out += ax.B.ToString();
+  out += "\",\n\"nonzero_witness\": [";
+  out += std::to_string(ax.nonzero_witness[0]);
+  out += ", ";
+  out += std::to_string(ax.nonzero_witness[1]);
+  out += ", ";
+  out += std::to_string(ax.nonzero_witness[2]);
+  out += "],\n\"contacts\": [\n";
+
+  for (int m = 0; m < 3; m++) {
+    SerializeContact(ax.contacts[m], out);
+    if (m + 1 < 3) out += ",\n";
+    else out += "\n";
+  }
+  out += "]\n}";
+}
+
+static void SerializeDecomposedCertificate(const DecomposedCertificate &dc, std::string &out) {
+  out += ",\n\"decomposed_certificate\": {\n";
+  out += "\"r_min\": \"";
+  out += dc.r_min.ToString();
+  out += "\", \"r\": \"";
+  out += dc.r.ToString();
+  out += "\", \"c_cone\": \"";
+  out += dc.c_cone.ToString();
+  out += "\", \"delta\": \"";
+  out += dc.delta.ToString();
+  out += "\", \"defect_D\": \"";
+  out += dc.defect_D.ToString();
+  out += "\", \"c_comp\": \"";
+  out += dc.c_comp.ToString();
+  out += "\", \"symmetry_index\": ";
+  out += std::to_string(dc.symmetry_index);
+  out += ",\n\"inner_index\": [";
+  out += std::to_string(dc.inner_index[0]) + ", "
+       + std::to_string(dc.inner_index[1]) + ", "
+       + std::to_string(dc.inner_index[2]);
+  out += "],\n\"inner_core_axis\": ";
+  SerializeAxis(dc.inner_core_axis, out);
+  out += ",\n\"annular_axis\": ";
+  SerializeAxis(dc.annular_axis, out);
+  out += ",\n\"complement_axes\": [\n";
+  for (size_t i = 0; i < dc.complement_axes.size(); i++) {
+    SerializeAxis(dc.complement_axes[i], out);
+    if (i + 1 < dc.complement_axes.size()) out += ",\n";
+    else out += "\n";
+  }
+  out += "]\n}";
+}
+
 static void SerializeNode(const TreeNode &node, std::string &out, bool shallow) {
   out += "{\n\"path\": \"";
   out += node.path;
@@ -173,27 +234,16 @@ static void SerializeNode(const TreeNode &node, std::string &out, bool shallow) 
     out += ",\n\"axes\": [\n";
 
     for (int a = 0; a < 4; a++) {
-      const auto &ax = cert.axes[a];
-      out += "{\n\"B\": \"";
-      out += ax.B.ToString();
-      out += "\",\n\"nonzero_witness\": [";
-      out += std::to_string(ax.nonzero_witness[0]);
-      out += ", ";
-      out += std::to_string(ax.nonzero_witness[1]);
-      out += ", ";
-      out += std::to_string(ax.nonzero_witness[2]);
-      out += "],\n\"contacts\": [\n";
-
-      for (int m = 0; m < 3; m++) {
-        SerializeContact(ax.contacts[m], out);
-        if (m + 1 < 3) out += ",\n";
-        else out += "\n";
-      }
-      out += "]\n}";
+      SerializeAxis(cert.axes[a], out);
       if (a + 1 < 4) out += ",\n";
       else out += "\n";
     }
     out += "]\n}";
+  }
+
+  // Decomposed certificate
+  if (node.decomposed_cert.has_value()) {
+    SerializeDecomposedCertificate(*node.decomposed_cert, out);
   }
 
   // External reference flag
@@ -233,6 +283,32 @@ static inline int GetIntVal(const rapidjson::Value &v) {
   if (v.IsInt()) return v.GetInt();
   if (v.IsString()) return std::stoi(v.GetString());
   return 0;
+}
+
+static void DeserializeAxis(const rapidjson::Value &ax_val, AxisCertificate &ax) {
+  if (!ax_val.IsObject()) return;
+  if (ax_val.HasMember("B") && ax_val["B"].IsString()) {
+    ax.B = BigRat(ax_val["B"].GetString());
+  }
+  if (ax_val.HasMember("nonzero_witness") && ax_val["nonzero_witness"].IsArray()) {
+    const auto &nw = ax_val["nonzero_witness"].GetArray();
+    for (rapidjson::SizeType i = 0; i < nw.Size() && i < 3; i++) {
+      ax.nonzero_witness[i] = GetIntVal(nw[i]);
+    }
+  }
+  if (ax_val.HasMember("contacts") && ax_val["contacts"].IsArray()) {
+    const auto &ct_arr = ax_val["contacts"].GetArray();
+    for (rapidjson::SizeType m = 0; m < ct_arr.Size() && m < 3; m++) {
+      const auto &ct_val = ct_arr[m];
+      auto &ct = ax.contacts[m];
+      if (ct_val.HasMember("edge_start")) ct.edge_start = GetIntVal(ct_val["edge_start"]);
+      if (ct_val.HasMember("edge_finish")) ct.edge_finish = GetIntVal(ct_val["edge_finish"]);
+      if (ct_val.HasMember("edge_start2")) ct.edge_start2 = GetIntVal(ct_val["edge_start2"]);
+      if (ct_val.HasMember("edge_finish2")) ct.edge_finish2 = GetIntVal(ct_val["edge_finish2"]);
+      if (ct_val.HasMember("mix")) ct.mix = GetIntVal(ct_val["mix"]);
+      if (ct_val.HasMember("vertex")) ct.vertex = GetIntVal(ct_val["vertex"]);
+    }
+  }
 }
 
 static std::unique_ptr<TreeNode> DeserializeNode(
@@ -275,29 +351,7 @@ static std::unique_ptr<TreeNode> DeserializeNode(
     if (cobj.HasMember("axes") && cobj["axes"].IsArray()) {
       const auto &ax_arr = cobj["axes"].GetArray();
       for (rapidjson::SizeType a = 0; a < ax_arr.Size() && a < 4; a++) {
-        const auto &ax_val = ax_arr[a];
-        if (ax_val.HasMember("B") && ax_val["B"].IsString()) {
-          cert.axes[a].B = BigRat(ax_val["B"].GetString());
-        }
-        if (ax_val.HasMember("nonzero_witness") && ax_val["nonzero_witness"].IsArray()) {
-          const auto &nw = ax_val["nonzero_witness"].GetArray();
-          for (rapidjson::SizeType i = 0; i < nw.Size() && i < 3; i++) {
-            cert.axes[a].nonzero_witness[i] = GetIntVal(nw[i]);
-          }
-        }
-        if (ax_val.HasMember("contacts") && ax_val["contacts"].IsArray()) {
-          const auto &ct_arr = ax_val["contacts"].GetArray();
-          for (rapidjson::SizeType m = 0; m < ct_arr.Size() && m < 3; m++) {
-            const auto &ct_val = ct_arr[m];
-            auto &ct = cert.axes[a].contacts[m];
-            if (ct_val.HasMember("edge_start")) ct.edge_start = GetIntVal(ct_val["edge_start"]);
-            if (ct_val.HasMember("edge_finish")) ct.edge_finish = GetIntVal(ct_val["edge_finish"]);
-            if (ct_val.HasMember("edge_start2")) ct.edge_start2 = GetIntVal(ct_val["edge_start2"]);
-            if (ct_val.HasMember("edge_finish2")) ct.edge_finish2 = GetIntVal(ct_val["edge_finish2"]);
-            if (ct_val.HasMember("mix")) ct.mix = GetIntVal(ct_val["mix"]);
-            if (ct_val.HasMember("vertex")) ct.vertex = GetIntVal(ct_val["vertex"]);
-          }
-        }
+        DeserializeAxis(ax_arr[a], cert.axes[a]);
       }
     }
     node->direct_cert = std::move(cert);
@@ -306,6 +360,47 @@ static std::unique_ptr<TreeNode> DeserializeNode(
     }
     if (node->direct_bounds.direct_c_lower == BigRat(0)) {
       node->direct_bounds.direct_c_lower = node->direct_cert->c;
+    }
+  }
+
+  // Decomposed certificate
+  if (val.HasMember("decomposed_certificate") && val["decomposed_certificate"].IsObject()) {
+    const auto &dobj = val["decomposed_certificate"];
+    DecomposedCertificate dc;
+    if (dobj.HasMember("r_min") && dobj["r_min"].IsString()) dc.r_min = BigRat(dobj["r_min"].GetString());
+    if (dobj.HasMember("r") && dobj["r"].IsString()) dc.r = BigRat(dobj["r"].GetString());
+    if (dobj.HasMember("c_cone") && dobj["c_cone"].IsString()) dc.c_cone = BigRat(dobj["c_cone"].GetString());
+    if (dobj.HasMember("delta") && dobj["delta"].IsString()) dc.delta = BigRat(dobj["delta"].GetString());
+    if (dobj.HasMember("defect_D") && dobj["defect_D"].IsString()) dc.defect_D = BigRat(dobj["defect_D"].GetString());
+    if (dobj.HasMember("c_comp") && dobj["c_comp"].IsString()) dc.c_comp = BigRat(dobj["c_comp"].GetString());
+    if (dobj.HasMember("symmetry_index")) dc.symmetry_index = GetIntVal(dobj["symmetry_index"]);
+
+    if (dobj.HasMember("inner_index") && dobj["inner_index"].IsArray()) {
+      const auto &idx_arr = dobj["inner_index"].GetArray();
+      for (rapidjson::SizeType i = 0; i < idx_arr.Size() && i < 3; i++) {
+        dc.inner_index[i] = GetIntVal(idx_arr[i]);
+      }
+    }
+    if (dobj.HasMember("inner_core_axis") && dobj["inner_core_axis"].IsObject()) {
+      DeserializeAxis(dobj["inner_core_axis"], dc.inner_core_axis);
+    }
+    if (dobj.HasMember("annular_axis") && dobj["annular_axis"].IsObject()) {
+      DeserializeAxis(dobj["annular_axis"], dc.annular_axis);
+    }
+    if (dobj.HasMember("complement_axes") && dobj["complement_axes"].IsArray()) {
+      const auto &comp_arr = dobj["complement_axes"].GetArray();
+      dc.complement_axes.resize(comp_arr.Size());
+      for (rapidjson::SizeType i = 0; i < comp_arr.Size(); i++) {
+        DeserializeAxis(comp_arr[i], dc.complement_axes[i]);
+      }
+    }
+
+    node->decomposed_cert = std::move(dc);
+    if (node->direct_bounds.direct_r_lower == BigRat(0)) {
+      node->direct_bounds.direct_r_lower = node->decomposed_cert->r;
+    }
+    if (node->direct_bounds.direct_c_lower == BigRat(0)) {
+      node->direct_bounds.direct_c_lower = node->decomposed_cert->c_comp;
     }
   }
 
@@ -387,6 +482,7 @@ static void AccumulateStats(const TreeNode &node, TreeStats &stats, int cur_dept
   stats.total_nodes++;
   if (cur_depth > stats.max_depth) stats.max_depth = cur_depth;
   if (node.direct_cert.has_value()) stats.direct_certificates++;
+  if (node.decomposed_cert.has_value()) stats.decomposed_certificates++;
 
   if (node.external) {
     stats.external_refs++;

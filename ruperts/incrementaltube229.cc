@@ -1012,7 +1012,7 @@ class IncrementalTubeManager {
           return;
         }
         if (node->depth() == d) {
-          if (!node->children.empty() && has_uncertified_descendants(has_uncertified_descendants, node)) {
+          if (node->children.empty() || has_uncertified_descendants(has_uncertified_descendants, node)) {
             target_nodes.push_back(node);
           }
           return;
@@ -1034,9 +1034,10 @@ class IncrementalTubeManager {
       std::atomic<size_t> completed_cnt{0};
       std::mutex result_mu;
       std::vector<std::pair<TreeNode*, TubeCertificate>> newly_certified;
+      auto start_time = std::chrono::steady_clock::now();
 
       auto sweep_worker = [&]() {
-        while (true) {
+        while (!g_stop_requested) {
           size_t idx = next_idx.fetch_add(1);
           if (idx >= target_nodes.size()) break;
           TreeNode *node = target_nodes[idx];
@@ -1054,6 +1055,14 @@ class IncrementalTubeManager {
           if (certified) {
             std::lock_guard<std::mutex> lock(result_mu);
             newly_certified.push_back({node, cert});
+            node->direct_cert = cert;
+            cache_.Insert(cert);
+            if (node->direct_bounds.direct_r_lower == BigRat(0) || cert.r < node->direct_bounds.direct_r_lower) {
+              node->direct_bounds.direct_r_lower = cert.r;
+            }
+            if (node->direct_bounds.direct_c_lower == BigRat(0) || cert.c < node->direct_bounds.direct_c_lower) {
+              node->direct_bounds.direct_c_lower = cert.c;
+            }
             std::cout << AGREEN("  SUCCESS on node ") << node->path
                       << ": c = " << cert.c.ToString() << " (" << cert.c.ToDouble() << ")"
                       << ", r = " << cert.r.ToString() << " (" << cert.r.ToDouble() << ")\n" << std::flush;
@@ -1063,10 +1072,14 @@ class IncrementalTubeManager {
             }
           }
           size_t done = completed_cnt.fetch_add(1) + 1;
-          size_t print_interval = std::max((size_t)1, target_nodes.size() / 20);
+          size_t print_interval = std::min((size_t)250, std::max((size_t)1, target_nodes.size() / 20));
           if (done % print_interval == 0 || done == target_nodes.size()) {
+            auto now = std::chrono::steady_clock::now();
+            double elapsed = std::chrono::duration<double>(now - start_time).count();
+            double rate = elapsed > 0 ? (done / elapsed) : 0;
             std::cout << "[Depth " << d << "] Tested " << done << " / " << target_nodes.size()
-                      << " nodes (" << (done * 100 / target_nodes.size()) << "%) | Certified: " << newly_certified.size() << "\n" << std::flush;
+                      << " (" << (done * 100 / target_nodes.size()) << "%) | Certified: " << newly_certified.size()
+                      << " | Rate: " << std::fixed << std::setprecision(1) << rate << " nodes/s\n" << std::flush;
           }
         }
       };
@@ -1106,6 +1119,8 @@ class IncrementalTubeManager {
             }
           };
           propagate_cert(propagate_cert, node);
+        } else {
+          upgraded_this_depth++;
         }
       }
 

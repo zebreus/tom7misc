@@ -724,6 +724,141 @@ static void TestSynthesizeFastAndIterative() {
   std::cout << "[PASS] TestSynthesizeFastAndIterative\n";
 }
 
+static void TestFindHullSupportAxis() {
+  std::cout << "[RUN] TestFindHullSupportAxis\n";
+  std::string leaf_path = "031213002112122012121";
+  TriangleQ tri = TriangleFromPath(leaf_path);
+
+  AxisCertificate inner_core;
+  BigVecQ3 center;
+  BigRat delta;
+  std::string fail;
+  bool ok = Tube229::FindHullSupportAxis(tri, &inner_core, &center, &delta, &fail);
+  std::cout << "  FindHullSupportAxis on " << leaf_path << ": " << (ok ? "SUCCESS" : ("FAIL: " + fail)) << "\n";
+  CHECK(ok);
+  std::cout << "    Contacts: v=(" << inner_core.contacts[0].vertex << ", "
+            << inner_core.contacts[1].vertex << ", " << inner_core.contacts[2].vertex << ")\n";
+  std::cout << "    B = " << inner_core.B.ToString() << "\n";
+  std::cout << "    Witnesses: (" << inner_core.nonzero_witness[0] << ", "
+            << inner_core.nonzero_witness[1] << ", " << inner_core.nonzero_witness[2] << ")\n";
+  CHECK(inner_core.B > BigRat(0));
+  CHECK(inner_core.nonzero_witness[0] >= 0);
+  CHECK(inner_core.nonzero_witness[1] >= 0);
+  CHECK(inner_core.nonzero_witness[2] >= 0);
+  std::cout << "[PASS] TestFindHullSupportAxis\n";
+}
+
+static void TestCheckAnnularDominance() {
+  std::cout << "[RUN] TestCheckAnnularDominance\n";
+  BigRat B = BigRat(176, 100);
+  BigRat defect_D = BigRat(8, 10000000); // 8e-7
+  BigRat c_cone = BigRat(99, 100);       // cos(cone) = 0.99
+  BigRat delta = BigRat(333, 1000000000);// 3.33e-7
+
+  // 1. Valid test with explicit radii: r_min = 1/10000, r = 1/2000
+  BigRat r_min = BigRat(1, 10000);
+  BigRat r = BigRat(1, 2000);
+  bool ok = Tube229::CheckAnnularDominance(B, defect_D, c_cone, delta, &r_min, &r);
+  std::cout << "  CheckAnnularDominance (explicit radii): " << (ok ? "SUCCESS" : "FAIL") << "\n";
+  CHECK(ok);
+
+  // 2. Failure test with excessively large defect
+  BigRat bad_defect = BigRat(1, 10);
+  BigRat bad_r_min = r_min;
+  BigRat bad_r = r;
+  bool bad_ok = Tube229::CheckAnnularDominance(B, bad_defect, c_cone, delta, &bad_r_min, &bad_r);
+  std::cout << "  CheckAnnularDominance (excessive defect): correctly rejected (" << (!bad_ok ? "PASS" : "FAIL") << ")\n";
+  CHECK(!bad_ok);
+
+  // 3. Automatic solve mode (unspecified radii)
+  BigRat auto_r_min{0};
+  BigRat auto_r{0};
+  bool auto_ok = Tube229::CheckAnnularDominance(B, defect_D, c_cone, delta, &auto_r_min, &auto_r);
+  std::cout << "  CheckAnnularDominance (auto solve): " << (auto_ok ? "SUCCESS" : "FAIL")
+            << " r_min=" << auto_r_min.ToString() << " r=" << auto_r.ToString() << "\n";
+  CHECK(auto_ok);
+  CHECK(auto_r_min > BigRat(0));
+  CHECK(auto_r > auto_r_min);
+
+  std::cout << "[PASS] TestCheckAnnularDominance\n";
+}
+
+static void TestEvaluateComplementConeCoverage() {
+  std::cout << "[RUN] TestEvaluateComplementConeCoverage\n";
+  std::string leaf_path = "031213002112122012121";
+  TriangleQ tri = TriangleFromPath(leaf_path);
+
+  // Sibling complement axes 1, 2, 3
+  std::vector<AxisCertificate> comp_axes(3);
+  comp_axes[0].contacts[0] = {15, 19, 19, 3, 200, 19};
+  comp_axes[0].contacts[1] = {2, 1, 1, 4, 200, 1};
+  comp_axes[0].contacts[2] = {8, 9, 9, 10, 200, 9};
+
+  comp_axes[1].contacts[0] = {2, 1, 1, 4, 0, 1};
+  comp_axes[1].contacts[1] = {10, 15, 15, 19, 333, 15};
+  comp_axes[1].contacts[2] = {10, 15, 15, 19, 0, 15};
+
+  comp_axes[2].contacts[0] = {3, 2, 2, 1, 800, 2};
+  comp_axes[2].contacts[1] = {4, 8, 8, 9, 800, 8};
+  comp_axes[2].contacts[2] = {14, 15, 15, 19, 800, 15};
+
+  // Exceptional axis direction a_0
+  vec3 exc_dir = {-0.196204, 0.260296, -0.945384};
+  BigRat c_comp;
+  bool ok = Tube229::EvaluateComplementConeCoverage(tri, comp_axes, exc_dir, 0.20, &c_comp, 20000);
+  std::cout << "  EvaluateComplementConeCoverage: " << (ok ? "SUCCESS" : "FAIL")
+            << " c_comp=" << c_comp.ToString() << " (" << c_comp.ToDouble() << ")\n";
+  CHECK(ok);
+  CHECK(c_comp > BigRat(0));
+
+  std::cout << "[PASS] TestEvaluateComplementConeCoverage\n";
+}
+
+static void TestSynthesizeDecomposedCertificate() {
+  std::cout << "[RUN] TestSynthesizeDecomposedCertificate\n";
+  std::string leaf_path = "031213002112122012121";
+  TriangleQ tri = TriangleFromPath(leaf_path);
+
+  // Set up sibling certificate with verified axes
+  TubeCertificate sib_cert;
+  sib_cert.symmetry_index = 0;
+  sib_cert.delta = BigRat(333, 1000000000);
+  sib_cert.axes[0].contacts[0] = {3, 2, 2, 1, 800, 2};
+  sib_cert.axes[0].contacts[1] = {1, 4, 4, 8, 800, 4};
+  sib_cert.axes[0].contacts[2] = {13, 14, 14, 15, 200, 14};
+  sib_cert.axes[0].B = BigRat(176, 100);
+
+  sib_cert.axes[1].contacts[0] = {15, 19, 19, 3, 200, 19};
+  sib_cert.axes[1].contacts[1] = {2, 1, 1, 4, 200, 1};
+  sib_cert.axes[1].contacts[2] = {8, 9, 9, 10, 200, 9};
+
+  sib_cert.axes[2].contacts[0] = {2, 1, 1, 4, 0, 1};
+  sib_cert.axes[2].contacts[1] = {10, 15, 15, 19, 333, 15};
+  sib_cert.axes[2].contacts[2] = {10, 15, 15, 19, 0, 15};
+
+  sib_cert.axes[3].contacts[0] = {3, 2, 2, 1, 800, 2};
+  sib_cert.axes[3].contacts[1] = {4, 8, 8, 9, 800, 8};
+  sib_cert.axes[3].contacts[2] = {14, 15, 15, 19, 800, 15};
+
+  DecomposedCertificate decomp;
+  std::string fail;
+  bool ok = Tube229::SynthesizeDecomposedCertificate(tri, leaf_path.size(), &decomp, &sib_cert, &fail);
+  std::cout << "  SynthesizeDecomposedCertificate: " << (ok ? "SUCCESS" : ("FAIL: " + fail)) << "\n";
+  CHECK(ok);
+  std::cout << "    Inner Core B = " << decomp.inner_core_axis.B.ToString() << "\n";
+  std::cout << "    Annular r_min = " << decomp.r_min.ToString() << " r = " << decomp.r.ToString() << "\n";
+  std::cout << "    Cone c_cone = " << decomp.c_cone.ToString() << "\n";
+  std::cout << "    Complement c_comp = " << decomp.c_comp.ToString() << " (" << decomp.c_comp.ToDouble() << ")\n";
+  std::cout << "    Complement axes count = " << decomp.complement_axes.size() << "\n";
+  CHECK(decomp.inner_core_axis.B > BigRat(0));
+  CHECK(decomp.r_min > BigRat(0));
+  CHECK(decomp.r > decomp.r_min);
+  CHECK(decomp.c_comp > BigRat(0));
+  CHECK(decomp.complement_axes.size() == 3);
+
+  std::cout << "[PASS] TestSynthesizeDecomposedCertificate\n";
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -737,6 +872,10 @@ int main(int argc, char **argv) {
   TestCertificate003133OnTargetTri();
   TestSynthesizeFastAndIterative();
   TestSiblingCertificateOnDifficultLeaf();
+  TestFindHullSupportAxis();
+  TestCheckAnnularDominance();
+  TestEvaluateComplementConeCoverage();
+  TestSynthesizeDecomposedCertificate();
   Print("=== All Tube229 Unit Tests Passed! ===\n");
   Print("OK\n");
   return 0;

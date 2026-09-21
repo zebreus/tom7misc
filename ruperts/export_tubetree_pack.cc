@@ -15,6 +15,7 @@
 #include "tubetree229.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big-overloads.h"
 #include "timer.h"
 
 using namespace tubetree229;
@@ -24,6 +25,25 @@ static inline std::string ZigzagRatString(const BigRat &r) {
   BigInt den = r.Denominator();
   BigInt zz = (num >= 0) ? (num * 2) : ((-num) * 2 - 1);
   return zz.ToString() + "," + den.ToString();
+}
+
+static void WriteAxisPack(std::ostream &out, const AxisCertificate &axis) {
+  // edgeStart (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_start;
+  // edgeFinish (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_finish;
+  // edgeStart2 (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_start2;
+  // edgeFinish2 (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_finish2;
+  // mix (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].mix;
+  // index (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].vertex;
+  // nonzeroWitness (3)
+  for (int m = 0; m < 3; m++) out << "," << axis.nonzero_witness[m];
+  // B
+  out << "," << ZigzagRatString(axis.B);
 }
 
 struct LeanRow {
@@ -101,8 +121,9 @@ int main(int argc, char **argv) {
     q.pop();
 
     const TreeNode *n = rows[curr_idx].node;
-    bool can_prune = prune_at_cert && n->direct_cert.has_value() &&
-                     n->direct_cert->r >= eff.r_lower;
+    bool can_prune = prune_at_cert &&
+                     ((n->direct_cert.has_value() && n->direct_cert->r >= eff.r_lower) ||
+                      (n->decomposed_cert.has_value() && n->decomposed_cert->r >= eff.r_lower));
 
     if (n->children.size() == 4 && !can_prune) {
       rows[curr_idx].is_leaf = false;
@@ -122,8 +143,8 @@ int main(int argc, char **argv) {
       }
     } else {
       rows[curr_idx].is_leaf = true;
-      if (!n->direct_cert.has_value()) {
-        std::cerr << "Error: Leaf at path \"" << n->path << "\" lacks a direct certificate!\n";
+      if (!n->direct_cert.has_value() && !n->decomposed_cert.has_value()) {
+        std::cerr << "Error: Leaf at path \"" << n->path << "\" lacks any certificate!\n";
         return 1;
       }
     }
@@ -158,6 +179,36 @@ int main(int argc, char **argv) {
           << "," << r.child_ids[1]
           << "," << r.child_ids[2]
           << "," << r.child_ids[3];
+    } else if (r.node->decomposed_cert.has_value()) {
+      // Decomposed Certificate row (tag 2):
+      // Format: tag(2), id, root(0), path_len, [path_digits], symmetryIndex(0),
+      // r_min, r, c, delta, inner_indices(3), [inner_core_axis], num_complement, [complement_axes...]
+      const auto &dec = r.node->decomposed_cert.value();
+      out << ",2," << r.id << ",0," << r.rel_path.size();
+      for (char ch : r.rel_path) {
+        out << "," << (ch - '0');
+      }
+      out << "," << dec.symmetry_index;
+
+      // r_min, r, c, delta
+      out << "," << ZigzagRatString(dec.r_min)
+          << "," << ZigzagRatString(dec.r)
+          << "," << ZigzagRatString(dec.c_comp)
+          << "," << ZigzagRatString(dec.delta);
+
+      // inner indices (3)
+      out << "," << dec.inner_index[0]
+          << "," << dec.inner_index[1]
+          << "," << dec.inner_index[2];
+
+      // inner core axis
+      WriteAxisPack(out, dec.inner_core_axis);
+
+      // complement axes
+      out << "," << dec.complement_axes.size();
+      for (const auto &comp_ax : dec.complement_axes) {
+        WriteAxisPack(out, comp_ax);
+      }
     } else {
       // Certificate row (tag 1):
       // tag, id, root(0), path_len, [path_digits], symmetryIndex(0),
@@ -167,26 +218,10 @@ int main(int argc, char **argv) {
       for (char ch : r.rel_path) {
         out << "," << (ch - '0');
       }
-      out << ",0"; // symmetryIndex = 0
+      out << "," << cert.symmetry_index;
 
       for (int a = 0; a < 4; a++) {
-        const auto &axis = cert.axes[a];
-        // edgeStart (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_start;
-        // edgeFinish (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_finish;
-        // edgeStart2 (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_start2;
-        // edgeFinish2 (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].edge_finish2;
-        // mix (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].mix;
-        // index (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].vertex;
-        // nonzeroWitness (3)
-        for (int m = 0; m < 3; m++) out << "," << axis.nonzero_witness[m];
-        // B
-        out << "," << ZigzagRatString(axis.B);
+        WriteAxisPack(out, cert.axes[a]);
       }
 
       // c, delta, r
