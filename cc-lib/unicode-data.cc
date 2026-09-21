@@ -65,6 +65,19 @@ struct UnicodeData_ : public UnicodeData {
     return std::nullopt;
   }
 
+  size_t Size() const override {
+    return rows.size();
+  }
+
+  CodepointData GetByIndex(size_t index) const override {
+    CHECK(index < rows.size());
+    const Row &row = rows[index];
+    return CodepointData{
+        .codepoint = row.codepoint,
+        .name = string_table.GetView(row.name),
+        .category = row.category,
+    };
+  }
 
   void AddLine(std::string_view line) {
     Util::RemoveOuterWhitespace(&line);

@@ -1,6 +1,10 @@
 
 // This is simple wrapper for parsing UnicodeData.txt.
 // For encoding and decoding UTF-8, see utf8.h.
+/*
+  std::unique_ptr<UnicodeData> ud =
+    UnicodeData::FromContent(ZIP::UnCCZ(Util::ReadFileBytes("unicode-data.ccz")));
+*/
 
 #ifndef _CC_LIB_UNICODE_DATA_H
 #define _CC_LIB_UNICODE_DATA_H
@@ -47,7 +51,7 @@ struct UnicodeData {
 
   virtual ~UnicodeData() {}
   // e.g. FromContent(Util::ReadFile("UnicodeData.txt"));
-  // or   FromContent(ZIP::UnCCZ(Util::ReadFile("unicode-data.ccz")));
+  // or   FromContent(ZIP::UnCCZ(Util::ReadFileBytes("unicode-data.ccz")));
   static std::unique_ptr<UnicodeData> FromContent(std::string_view contents);
   static std::unique_ptr<UnicodeData> FromContent(
       std::span<const uint8_t> contents);
@@ -68,6 +72,7 @@ struct UnicodeData {
   virtual std::optional<CodepointData> GetByCodepoint(
       uint32_t codepoint) const = 0;
 
+
   // Predicates from the spec; the union of multiple categories.
   static bool IsLetter(GeneralCategory c);
   static bool IsCasedLetter(GeneralCategory c);
@@ -78,9 +83,49 @@ struct UnicodeData {
   static bool IsOther(GeneralCategory c);
   static bool IsSeparator(GeneralCategory c);
 
+  class const_iterator final {
+   public:
+    const_iterator(const UnicodeData *data, size_t index)
+        : data(data), index(index) {}
+
+    const_iterator operator++(int dummy) {
+      const_iterator old = *this;
+      index++;
+      return old;
+    }
+
+    const_iterator &operator++() {
+      index++;
+      return *this;
+    }
+
+    CodepointData operator*() const {
+      return data->GetByIndex(index);
+    }
+
+    bool operator!=(const const_iterator &other) const {
+      return index != other.index || data != other.data;
+    }
+
+   private:
+    const UnicodeData *data = nullptr;
+    size_t index = 0;
+  };
+
+  const_iterator begin() const { return const_iterator(this, 0); }
+  const_iterator end() const { return const_iterator(this, Size()); }
+
  protected:
+  friend class const_iterator;
   // Use factory.
   UnicodeData() {}
+
+  // For iteration while keeping the representation hidden.
+  virtual size_t Size() const = 0;
+  virtual CodepointData GetByIndex(size_t index) const = 0;
 };
+
+
+
 
 #endif

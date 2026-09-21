@@ -55,6 +55,13 @@ static void TestUnicodeData() {
   CHECK(!ud->GetByName("ALLIGATOR"));
   CHECK(!ud->GetByName("LATIN CAPITAL LETTER").has_value());
   CHECK(!ud->GetByName("LATIN CAPITAL LETTER BX").has_value());
+
+  int count = 0;
+  for (UnicodeData::CodepointData cp : *ud) {
+    CHECK(!cp.name.empty());
+    count++;
+  }
+  CHECK(count == 6);
 }
 
 static void TestCategories() {

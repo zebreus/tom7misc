@@ -168,6 +168,10 @@ struct TTF {
   struct Char {
     std::vector<Contour> contours;
     float width = 1.0f;
+    // If this is a "mark" (negative offset, zero width), set this to
+    // true to improve heuristics. FontImage::IsCombining gives a good
+    // default.
+    bool combining = false;
   };
 
   enum class RIBBI {
@@ -207,6 +211,11 @@ struct TTF {
 
     // Hint about whether anti-aliasing is appropriate.
     bool antialias = true;
+    // Hint about whether this is a fixed-pitch font. If true,
+    // we set header fields in an attempt to get operating systems
+    // to classify it as fixed-width (even if the widths of some
+    // combining characters are zero, say).
+    bool monospace = false;
 
     // If positive, a hint about the height of the pixel grid. This
     // improves coordinates for low-resolution bitmap fonts, and

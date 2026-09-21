@@ -29,7 +29,7 @@ template<class T>
 class optional_iterator final {
  public:
   optional_iterator(T *t) : t(t) {}
-  optional_iterator &operator++(int dummy) {
+  optional_iterator operator++(int dummy) {
     optional_iterator old(t);
     t = nullptr;
     return old;
