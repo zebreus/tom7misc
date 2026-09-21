@@ -2161,18 +2161,76 @@ bool Tube229::SynthesizeDecomposedCertificate(
   // 2. Identify exceptional annular axis and complementary axes
   if (sibling_cert) {
     out_decomp->annular_axis = sibling_cert->axes[0];
-    out_decomp->delta = sibling_cert->delta;
 
-    // Support defect budget for axis 0 on this cell
-    // Contact 2 has defect ~2.02e-6, weightUpper ~ 0.38 -> D ~ 8e-7
-    out_decomp->defect_D = BigRat(8, 10000000); // 8e-7
-
-    // Complementary axes: sibling axes 1, 2, 3
-    std::vector<AxisCertificate> comp_axes = {
-      sibling_cert->axes[1],
-      sibling_cert->axes[2],
-      sibling_cert->axes[3]
+    // Compute exact weights and defect D of annular axis across tri
+    BigVecQ3 edges[3] = {
+      GetExactEdge(out_decomp->annular_axis.contacts[0]),
+      GetExactEdge(out_decomp->annular_axis.contacts[1]),
+      GetExactEdge(out_decomp->annular_axis.contacts[2])
     };
+    BigVecQ3 coeff0 = BigVecQ3::Cross(edges[1], edges[2]);
+    BigVecQ3 coeff1 = BigVecQ3::Cross(edges[2], edges[0]);
+    BigVecQ3 coeff2 = BigVecQ3::Cross(edges[0], edges[1]);
+    BigVecQ3 w_coeffs[3] = {coeff0, coeff1, coeff2};
+
+    BigRat w_upper[3];
+    BigRat sum_w_upper(0);
+    for (int m = 0; m < 3; m++) {
+      BigRat w_max = BigVecQ3::Dot(tri.corners[0], w_coeffs[m]);
+      for (int c = 1; c < 3; c++) {
+        BigRat val = BigVecQ3::Dot(tri.corners[c], w_coeffs[m]);
+        if (val > w_max) w_max = val;
+      }
+      w_upper[m] = w_max;
+      sum_w_upper = sum_w_upper + w_max;
+    }
+    out_decomp->annular_axis.B = sum_w_upper * BigRat(2);
+
+    BigRat total_defect(0);
+    for (int m = 0; m < 3; m++) {
+      int sel = out_decomp->annular_axis.contacts[m].vertex;
+      BigVecQ3 v_sel = VertexQ(sel);
+      BigRat max_m_defect(0);
+      for (int k = 0; k < NUM_VERTICES; k++) {
+        bool tie = (k == sel) ||
+                   (out_decomp->annular_axis.contacts[m].mix == 1000 && sel == out_decomp->annular_axis.contacts[m].edge_finish && k == out_decomp->annular_axis.contacts[m].edge_start) ||
+                   (out_decomp->annular_axis.contacts[m].mix == 0 && sel == out_decomp->annular_axis.contacts[m].edge_start2 && k == out_decomp->annular_axis.contacts[m].edge_finish2);
+        if (tie) continue;
+        BigVecQ3 delta_v = VertexQ(k) - v_sel;
+        BigVecQ3 s_coeff = BigVecQ3::Cross(edges[m], delta_v);
+        BigRat max_s = BigVecQ3::Dot(tri.corners[0], s_coeff);
+        for (int c = 1; c < 3; c++) {
+          BigRat val = BigVecQ3::Dot(tri.corners[c], s_coeff);
+          if (val > max_s) max_s = val;
+        }
+        if (max_s > max_m_defect) max_m_defect = max_s;
+      }
+      total_defect = total_defect + max_m_defect * w_upper[m];
+    }
+    out_decomp->defect_D = total_defect;
+
+    // Audit complementary axes directly on tri to obtain exact bounds and deltas
+    std::vector<AxisCertificate> comp_axes(3);
+    BigRat max_comp_delta(0);
+    for (int a = 0; a < 3; a++) {
+      AxisCertificate cert;
+      BigVecQ3 center;
+      BigRat delta;
+      std::string fail;
+      ContactInfo contacts[3] = {
+        sibling_cert->axes[a + 1].contacts[0],
+        sibling_cert->axes[a + 1].contacts[1],
+        sibling_cert->axes[a + 1].contacts[2]
+      };
+      if (!AuditAxis(tri, contacts, &cert, &center, &delta, &fail)) {
+        // Fall back to sibling cert if audit on tri failed
+        cert = sibling_cert->axes[a + 1];
+        delta = sibling_cert->delta;
+      }
+      comp_axes[a] = cert;
+      if (delta > max_comp_delta) max_comp_delta = delta;
+    }
+    out_decomp->delta = max_comp_delta;
 
     // Compute exact direction of exceptional axis a_0 at centroid
     vec3 tri_f[3] = {ToDouble(tri.corners[0]), ToDouble(tri.corners[1]), ToDouble(tri.corners[2])};
@@ -2180,12 +2238,12 @@ bool Tube229::SynthesizeDecomposedCertificate(
     vec3 c_edges[3] = {GetDoubleEdge(out_decomp->annular_axis.contacts[0]),
                        GetDoubleEdge(out_decomp->annular_axis.contacts[1]),
                        GetDoubleEdge(out_decomp->annular_axis.contacts[2])};
-    vec3 w_coeffs[3] = {yocto::cross(c_edges[1], c_edges[2]),
-                        yocto::cross(c_edges[2], c_edges[0]),
-                        yocto::cross(c_edges[0], c_edges[1])};
-    vec3 weights = {yocto::dot(centroid, w_coeffs[0]),
-                    yocto::dot(centroid, w_coeffs[1]),
-                    yocto::dot(centroid, w_coeffs[2])};
+    vec3 w_coeffs_d[3] = {yocto::cross(c_edges[1], c_edges[2]),
+                          yocto::cross(c_edges[2], c_edges[0]),
+                          yocto::cross(c_edges[0], c_edges[1])};
+    vec3 weights = {yocto::dot(centroid, w_coeffs_d[0]),
+                    yocto::dot(centroid, w_coeffs_d[1]),
+                    yocto::dot(centroid, w_coeffs_d[2])};
     vec3 variation = {0, 0, 0};
     for (int m = 0; m < 3; m++) {
       vec3 lift = yocto::cross(centroid, c_edges[m]);
@@ -2203,18 +2261,25 @@ bool Tube229::SynthesizeDecomposedCertificate(
 
     for (double c_thresh : {0.30, 0.25, 0.20, 0.15, 0.10}) {
       BigRat rat_thresh = FloorTo(BigRat::FromDouble(c_thresh), 100LL);
-      BigRat r_min = BigRat(1, 10000);
-      BigRat r = BigRat(1, 2000);
-      if (!CheckAnnularDominance(out_decomp->annular_axis.B, out_decomp->defect_D,
-                                 rat_thresh, out_decomp->delta, &r_min, &r)) {
-        continue;
-      }
-      BigRat c_comp;
-      if (EvaluateComplementConeCoverage(tri, comp_axes, exc_dir, c_thresh, &c_comp, 20000) && c_comp > best_c_comp) {
-        best_c_comp = c_comp;
-        best_c_cone = rat_thresh;
-        best_r_min = r_min;
-        best_r = r;
+
+      // Search candidate radii
+      for (int r_denom : {2000, 1000, 500, 200}) {
+        for (int r_min_denom : {20000, 10000, 5000, 2000, 1000}) {
+          if (r_min_denom <= r_denom) continue;
+          BigRat r_min(1, r_min_denom);
+          BigRat r(1, r_denom);
+          if (!CheckAnnularDominance(out_decomp->annular_axis.B, out_decomp->defect_D,
+                                     rat_thresh, out_decomp->delta, &r_min, &r)) {
+            continue;
+          }
+          BigRat c_comp;
+          if (EvaluateComplementConeCoverage(tri, comp_axes, exc_dir, c_thresh, &c_comp, 20000) && c_comp > best_c_comp) {
+            best_c_comp = c_comp;
+            best_c_cone = rat_thresh;
+            best_r_min = r_min;
+            best_r = r;
+          }
+        }
       }
     }
 

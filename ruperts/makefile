@@ -222,11 +222,40 @@ nopert229_test.exe : nopert229_test.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+diagnose_tree_leaves.exe : diagnose_tree_leaves.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_canyon_tree.exe : inspect_canyon_tree.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 TUBE_OBJECTS=$(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 tube229_test.exe : tube229_test.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+test_decomp_shallow.exe : test_decomp_shallow.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+measure_canyon_depths.exe : measure_canyon_depths.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_comp_coverage.exe : test_comp_coverage.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_west_sheet.exe : inspect_west_sheet.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+apply_shallow_cert.exe : apply_shallow_cert.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 find_close_certs.exe : find_close_certs.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
