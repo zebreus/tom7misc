@@ -303,7 +303,7 @@
   (interactive "")
   (progn
     (message "toggle zoom")
-    (let ((nz (list-length zoom-settings-list)))
+    (let ((nz (length zoom-settings-list)))
       (progn
         (message (format "%d" nz))
         ;; Read from the frame's parameters, defaulting to 0 if not set
@@ -1486,6 +1486,8 @@
  '(eglot-highlight-symbol-face ((t (:background "#448"))))
  '(eglot-inlay-hint-face ((t (:foreground "#444"))))
  '(eglot-mode-line ((t (:foreground "#339"))))
+ '(eglot-semantic-macro ((t (:foreground "#bab"))))
+ '(eglot-semantic-operator ((t (:inherit nil :foreground "#ddd"))))
  '(error ((t (:foreground "#C44"))))
  '(flymake-error ((t (:background "#622" :underline (:color "#f00" :style line :position t)))))
  '(flymake-warning ((t (:background "#531"))))
@@ -1519,7 +1521,9 @@
  '(llm-edit-before-face ((t (:extend t :background "#332222"))))
  '(llm-edit-delimiter-face ((t (:extend t :background "#222255" :foreground "#8dd"))))
  '(llm-edit-file-face ((t (:foreground "#8af"))))
+ '(markdown-ts-code-block ((t (:extend t :background "black"))))
  '(minibuffer-prompt ((t (:foreground "#CCCCAA"))))
+ '(mode-line ((t (:background "grey30" :foreground "white" :box (:line-width (1 . -1) :style released-button)))))
  '(outline-mode-eight-face ((t (:foreground "#7777CC"))) t)
  '(outline-mode-five-face ((t (:foreground "#8888DD"))) t)
  '(outline-mode-four-face ((t (:foreground "#9999EE"))) t)
@@ -1599,7 +1603,13 @@
  ;; If there is more than one, they won't work right.
  '(agda2-ghci-options '("-package Agda-2.3.0"))
  '(c++-font-lock-extra-types
-   '("\\sw+_t" "\\([iof]\\|str\\)+stream\\(buf\\)?" "ios" "string" "rope" "list" "slist" "deque" "vector" "bit_vector" "set" "multiset" "map" "multimap" "hash\\(_\\(m\\(ap\\|ulti\\(map\\|set\\)\\)\\|set\\)\\)?" "stack" "queue" "priority_queue" "type_info" "iterator" "const_iterator" "reverse_iterator" "const_reverse_iterator" "reference" "const_reference" "bool"))
+   '("\\sw+_t" "\\([iof]\\|str\\)+stream\\(buf\\)?" "ios" "string" "rope"
+     "list" "slist" "deque" "vector" "bit_vector" "set" "multiset"
+     "map" "multimap"
+     "hash\\(_\\(m\\(ap\\|ulti\\(map\\|set\\)\\)\\|set\\)\\)?" "stack"
+     "queue" "priority_queue" "type_info" "iterator" "const_iterator"
+     "reverse_iterator" "const_reverse_iterator" "reference"
+     "const_reference" "bool"))
  '(c-font-lock-extra-types '("FILE" "\\sw+_t" "Lisp_Object" "bool" "string"))
  '(comint-input-ignoredups t)
  '(delete-trailing-lines nil)
