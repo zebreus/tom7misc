@@ -92,6 +92,10 @@ struct DecomposedCertificate {
   BigRat c_cone{0};  // Cone cosine threshold (e.g. 99/100)
   BigRat delta{0};   // Triangle variation bound
   BigRat defect_D{0};// Maximum support defect budget (e.g. 8/10000000)
+  std::array<BigRat, 3> defect0{BigRat(0), BigRat(0), BigRat(0)};
+  BigRat c_core{0};  // Core cosine threshold (e.g. 2/1000)
+  BigRat lam{0};     // Projection lambda
+  std::array<BigRat, 3> w{BigRat(0), BigRat(0), BigRat(0)};
 
   // 3. Complementary Axes covering outside the exceptional cone
   std::vector<AxisCertificate> complement_axes;

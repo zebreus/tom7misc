@@ -1212,7 +1212,8 @@ BigRat Tube229::ExactTetrahedronAxisRadius(const BigVecQ3 pts[4]) {
 
 bool Tube229::AuditAxis(
     const TriangleQ &tri, ContactInfo contacts[3], AxisCertificate *out_cert,
-    BigVecQ3 *out_center, BigRat *out_delta, std::string *fail_reason) {
+    BigVecQ3 *out_center, BigRat *out_delta, std::string *fail_reason,
+    const BigRat &max_allowed_defect) {
   BigVecQ3 edges[3] = {GetExactEdge(contacts[0]), GetExactEdge(contacts[1]), GetExactEdge(contacts[2])};
   BigVecQ3 coeff0 = BigVecQ3::Cross(edges[1], edges[2]);
   BigVecQ3 coeff1 = BigVecQ3::Cross(edges[2], edges[0]);
@@ -1283,8 +1284,8 @@ bool Tube229::AuditAxis(
         }
         s_upper = max_s + support_error;
       }
-      if (s_upper > 0) {
-        if (fail_reason) *fail_reason = StringPrintf("s_upper > 0 (m=%d, k=%d, s=%s)", m, k, s_upper.ToString().c_str());
+      if (s_upper > max_allowed_defect) {
+        if (fail_reason) *fail_reason = StringPrintf("s_upper > %s (m=%d, k=%d, s=%s)", max_allowed_defect.ToString().c_str(), m, k, s_upper.ToString().c_str());
         return false;
       }
       if (s_upper < best_support) {
@@ -2000,6 +2001,123 @@ bool Tube229::FindHullSupportAxis(
 
   if (fail_reason) *fail_reason = "No valid 9-vertex hull contact triple found";
   return false;
+}
+
+std::vector<Tube229::AuditedAxis> Tube229::FindAllHullSupportAxes(
+    const tubetree229::TriangleQ &tri,
+    size_t max_axes) {
+  std::vector<AuditedAxis> result;
+  vec3 c0 = ToDouble(tri.corners[0]);
+  vec3 c1 = ToDouble(tri.corners[1]);
+  vec3 c2 = ToDouble(tri.corners[2]);
+  vec3 centroid = (c0 + c1 + c2) * (1.0 / 3.0);
+  double vlen = yocto::length(centroid);
+  if (vlen < 1e-12) return result;
+  vec3 unit_view = centroid / vlen;
+
+  int axis_index = 0;
+  double min_abs = 2.0;
+  for (int i = 0; i < 3; i++) {
+    if (std::abs(unit_view[i]) < min_abs) {
+      min_abs = std::abs(unit_view[i]);
+      axis_index = i;
+    }
+  }
+  vec3 axis = (axis_index == 0 ? vec3{1, 0, 0} : (axis_index == 1 ? vec3{0, 1, 0} : vec3{0, 0, 1}));
+  vec3 first = yocto::normalize(yocto::cross(unit_view, axis));
+  vec3 second = yocto::cross(unit_view, first);
+
+  std::vector<vec2> projected(NUM_VERTICES);
+  for (int k = 0; k < NUM_VERTICES; k++) {
+    projected[k] = vec2{yocto::dot(Vertex(k), first), yocto::dot(Vertex(k), second)};
+  }
+  std::vector<int> hull = ConvexHull2D(projected);
+  if (hull.size() < 3) return result;
+  std::set<int> hull_vertices(hull.begin(), hull.end());
+
+  std::vector<int> mixes = {0, 200, 333, 500, 666, 800, 1000};
+  std::vector<ContactInfo> candidate_contacts;
+  int H = hull.size();
+
+  for (int pos = 0; pos < H; pos++) {
+    int v = hull[pos];
+    int prev = hull[(pos - 1 + H) % H];
+    int next = hull[(pos + 1) % H];
+    for (int mix : mixes) {
+      ContactInfo ci;
+      ci.vertex = v;
+      ci.edge_start = prev;
+      ci.edge_finish = v;
+      ci.edge_start2 = v;
+      ci.edge_finish2 = next;
+      ci.mix = mix;
+      candidate_contacts.push_back(ci);
+    }
+  }
+
+  std::vector<ContactInfo> std_contacts = GenerateSilhouetteContacts(centroid, mixes);
+  for (const auto &c : std_contacts) {
+    if (hull_vertices.count(c.vertex)) {
+      candidate_contacts.push_back(c);
+    }
+  }
+
+  auto ContactKey = [](const ContactInfo &c) {
+    return std::make_tuple(c.vertex, c.edge_start, c.edge_finish, c.edge_start2, c.edge_finish2, c.mix);
+  };
+  std::sort(candidate_contacts.begin(), candidate_contacts.end(),
+            [&](const ContactInfo &a, const ContactInfo &b) {
+              return ContactKey(a) < ContactKey(b);
+            });
+  candidate_contacts.erase(
+      std::unique(candidate_contacts.begin(), candidate_contacts.end(),
+                  [&](const ContactInfo &a, const ContactInfo &b) {
+                    return ContactKey(a) == ContactKey(b);
+                  }),
+      candidate_contacts.end());
+
+  vec3 tri_f[3] = {c0, c1, c2};
+  std::vector<ContactInfo> valid_contacts;
+  for (const auto &c : candidate_contacts) {
+    vec3 edge = GetDoubleEdge(c);
+    int sel = c.vertex;
+    bool ok = true;
+    for (int k = 0; k < NUM_VERTICES; k++) {
+      bool tie = (k == sel) ||
+                 (c.mix == 1000 && sel == c.edge_finish && k == c.edge_start) ||
+                 (c.mix == 0 && sel == c.edge_start2 && k == c.edge_finish2);
+      if (tie) continue;
+      vec3 delta_v = Vertex(k) - Vertex(sel);
+      vec3 coeff = yocto::cross(edge, delta_v);
+      double u0 = yocto::dot(tri_f[0], coeff);
+      double u1 = yocto::dot(tri_f[1], coeff);
+      double u2 = yocto::dot(tri_f[2], coeff);
+      if (std::max({u0, u1, u2}) > 1e-12) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) valid_contacts.push_back(c);
+  }
+
+  for (size_t i = 0; i < valid_contacts.size() && result.size() < max_axes; i++) {
+    for (size_t j = i + 1; j < valid_contacts.size() && result.size() < max_axes; j++) {
+      for (size_t k = j + 1; k < valid_contacts.size() && result.size() < max_axes; k++) {
+        ContactInfo triple[3] = {valid_contacts[i], valid_contacts[j], valid_contacts[k]};
+        CandidateTriple cand;
+        if (!DoubleCheckAxis(tri, triple, &cand, 1e-12)) continue;
+
+        AxisCertificate exact_cert;
+        BigVecQ3 center;
+        BigRat delta;
+        std::string fail;
+        if (AuditAxis(tri, triple, &exact_cert, &center, &delta, &fail)) {
+          result.push_back({exact_cert, center, delta});
+        }
+      }
+    }
+  }
+  return result;
 }
 
 bool Tube229::CheckAnnularDominance(

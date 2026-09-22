@@ -171,8 +171,20 @@ static void SerializeDecomposedCertificate(const DecomposedCertificate &dc, std:
   out += dc.defect_D.ToString();
   out += "\", \"c_comp\": \"";
   out += dc.c_comp.ToString();
+  out += "\", \"c_core\": \"";
+  out += dc.c_core.ToString();
+  out += "\", \"lam\": \"";
+  out += dc.lam.ToString();
   out += "\", \"symmetry_index\": ";
   out += std::to_string(dc.symmetry_index);
+  out += ",\n\"defect0\": [\"";
+  out += dc.defect0[0].ToString() + "\", \""
+       + dc.defect0[1].ToString() + "\", \""
+       + dc.defect0[2].ToString() + "\"]";
+  out += ",\n\"w\": [\"";
+  out += dc.w[0].ToString() + "\", \""
+       + dc.w[1].ToString() + "\", \""
+       + dc.w[2].ToString() + "\"]";
   out += ",\n\"inner_index\": [";
   out += std::to_string(dc.inner_index[0]) + ", "
        + std::to_string(dc.inner_index[1]) + ", "
@@ -373,7 +385,22 @@ static std::unique_ptr<TreeNode> DeserializeNode(
     if (dobj.HasMember("delta") && dobj["delta"].IsString()) dc.delta = BigRat(dobj["delta"].GetString());
     if (dobj.HasMember("defect_D") && dobj["defect_D"].IsString()) dc.defect_D = BigRat(dobj["defect_D"].GetString());
     if (dobj.HasMember("c_comp") && dobj["c_comp"].IsString()) dc.c_comp = BigRat(dobj["c_comp"].GetString());
+    if (dobj.HasMember("c_core") && dobj["c_core"].IsString()) dc.c_core = BigRat(dobj["c_core"].GetString());
+    if (dobj.HasMember("lam") && dobj["lam"].IsString()) dc.lam = BigRat(dobj["lam"].GetString());
     if (dobj.HasMember("symmetry_index")) dc.symmetry_index = GetIntVal(dobj["symmetry_index"]);
+
+    if (dobj.HasMember("defect0") && dobj["defect0"].IsArray()) {
+      const auto &d_arr = dobj["defect0"].GetArray();
+      for (rapidjson::SizeType i = 0; i < d_arr.Size() && i < 3; i++) {
+        if (d_arr[i].IsString()) dc.defect0[i] = BigRat(d_arr[i].GetString());
+      }
+    }
+    if (dobj.HasMember("w") && dobj["w"].IsArray()) {
+      const auto &w_arr = dobj["w"].GetArray();
+      for (rapidjson::SizeType i = 0; i < w_arr.Size() && i < 3; i++) {
+        if (w_arr[i].IsString()) dc.w[i] = BigRat(w_arr[i].GetString());
+      }
+    }
 
     if (dobj.HasMember("inner_index") && dobj["inner_index"].IsArray()) {
       const auto &idx_arr = dobj["inner_index"].GetArray();

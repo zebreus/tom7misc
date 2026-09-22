@@ -230,6 +230,65 @@ inspect_canyon_tree.exe : inspect_canyon_tree.o $(TUBETREE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+solve_canyon_params.exe : solve_canyon_params.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_canyon_bak.exe : inspect_canyon_bak.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_direct_cert_21.exe : test_direct_cert_21.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+find_close_axis21.exe : find_close_axis21.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_node2_ccone.exe : test_node2_ccone.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_hull_axis.exe : inspect_hull_axis.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_comp_cone_margin.exe : test_comp_cone_margin.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_cone_uhull.exe : test_cone_uhull.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_all_zero_axes_coverage.exe : test_all_zero_axes_coverage.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_smoke_axes_coverage.exe : test_smoke_axes_coverage.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_core_disp.exe : test_core_disp.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+find_gap_cover.exe : find_gap_cover.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_json_decomp.exe : inspect_json_decomp.o $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_hull_coverage.exe : test_hull_coverage.o  $(TUBETREE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+find_gap_cover.exe : $(CC_LIB_OBJECTS) tube229.o tubetree229.o find_gap_cover.o
+	@$(CXX) $^ -o $@ $(LFLAGS)
+
 TUBE_OBJECTS=$(OBJECTS_229) $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 
 tube229_test.exe : tube229_test.o $(TUBE_OBJECTS)
@@ -256,6 +315,519 @@ apply_shallow_cert.exe : apply_shallow_cert.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+test_decomposed_to_standard.exe : test_decomposed_to_standard.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+inspect_valid_axes.exe : inspect_valid_axes.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_convex_hull_origin.exe : test_convex_hull_origin.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_eval_comp.exe : test_eval_comp.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_inner_core_omega.exe : test_inner_core_omega.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_cert_hull.exe : test_cert_hull.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_all_axes.exe : test_all_axes.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_zero_defect_cage.exe : test_zero_defect_cage.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_audit_cage.exe : test_audit_cage.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+close_canyon_leaves.exe : close_canyon_leaves.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_canyon_axes.exe : test_canyon_axes.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_all_contacts.exe : test_all_contacts.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+test_smoke_cage.exe: test_smoke_cage.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_caging_tet.exe: test_caging_tet.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_all_canyon_leaves.exe : test_all_canyon_leaves.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+check_lean_box_eval.exe : check_lean_box_eval.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_optimal_cage.exe : find_optimal_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_new_cage_on_all.exe : test_new_cage_on_all.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_dominance_min_c.exe : test_dominance_min_c.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+verify_exact_parameters.exe : verify_exact_parameters.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_closest_core.exe : find_closest_core.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_json_decomp.exe: inspect_json_decomp.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+compute_smoke_decomp.exe: compute_smoke_decomp.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_exact_trihedral_cage.exe: find_exact_trihedral_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_cage_deficit.exe: inspect_cage_deficit.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_winning_axes.exe: print_winning_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_cage_mix.exe: tune_cage_mix.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_cage_pairs.exe: find_cage_pairs.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_ideal_cone.exe: test_ideal_cone.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_real_cone_axes.exe: find_real_cone_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_ideal_directions.exe: print_ideal_directions.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_subdivide_canyon.exe: test_subdivide_canyon.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_view_candidates.exe: test_view_candidates.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_7_11_22.exe: inspect_7_11_22.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+debug_ideal2_candidates.exe: debug_ideal2_candidates.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_axes_7_11_22.exe: tune_axes_7_11_22.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_all_valid_views.exe: find_all_valid_views.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_cage_from_17k.exe: find_cage_from_17k.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_64_77_266.exe: inspect_64_77_266.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+optimize_triple_mixes.exe: optimize_triple_mixes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_ideal_cluster_cage.exe: find_ideal_cluster_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_fine_ideal3.exe: test_fine_ideal3.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_vertex_deficits.exe: print_vertex_deficits.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+sweep_c_cone_range.exe: sweep_c_cone_range.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_close_core_axis.exe: find_close_core_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_c0_mix.exe: tune_c0_mix.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_targeted_view.exe: test_targeted_view.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_c0_defect.exe: inspect_c0_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_lean_decomposed_row.exe: print_lean_decomposed_row.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_closest_core_axis.exe: find_closest_core_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_dense_cage.exe: find_dense_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+sweep_core_angle.exe: sweep_core_angle.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_c35_cage.exe: find_c35_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CPPFLAGS) $^ -o $@ $(LDFLAGS)
+
+test_core_cage.exe : test_core_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_annulus_coverage.exe : test_annulus_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_close_core_fixed.exe : find_close_core_fixed.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_canyon_zero_defect_cover.exe : test_canyon_zero_defect_cover.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_mix_defect.exe : test_mix_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_mix_grid.exe : test_mix_grid.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_annulus_cover.exe : find_annulus_cover.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_minimal_cover.exe : find_minimal_cover.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_6axis_cage.exe : test_6axis_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_annulus_coverage.exe : test_annulus_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_core_tetrahedron.exe : test_core_tetrahedron.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_worst_dot.exe : test_worst_dot.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_hineq_overlap.exe : test_hineq_overlap.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_child_axes.exe : test_child_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+search_max_inradius.exe : search_max_inradius.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_canyon_children_cert.exe : test_canyon_children_cert.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+sweep_edge_14_15.exe : sweep_edge_14_15.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_comp_fail_region.exe : test_comp_fail_region.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_annulus_pool.exe : test_annulus_pool.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_multi_axis_cage.exe : test_multi_axis_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_zero_defect_cage.exe : test_zero_defect_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+search_core_cage.exe : search_core_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_min_cone.exe : test_min_cone.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_gap_axis.exe : find_gap_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+search_comp_core_overlap.exe : search_comp_core_overlap.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_decomp_leaves.exe : print_decomp_leaves.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_all_contacts.exe : test_all_contacts.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_cover_fail_pts.exe : test_cover_fail_pts.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_node_decomp.exe : inspect_node_decomp.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_ring_of_axes.exe : test_ring_of_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+min_angle_u0.exe : min_angle_u0.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+search_pure_zero_defect_cage.exe : search_pure_zero_defect_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+gjk_zero_defect.exe : gjk_zero_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_cage_gap.exe : test_cage_gap.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_json_decomp.exe: inspect_json_decomp.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+compute_smoke_decomp.exe: compute_smoke_decomp.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_exact_trihedral_cage.exe: find_exact_trihedral_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_cage_deficit.exe: inspect_cage_deficit.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_winning_axes.exe: print_winning_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_cage_mix.exe: tune_cage_mix.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_cage_pairs.exe: find_cage_pairs.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_ideal_cone.exe: test_ideal_cone.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_real_cone_axes.exe: find_real_cone_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_ideal_directions.exe: print_ideal_directions.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_subdivide_canyon.exe: test_subdivide_canyon.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_view_candidates.exe: test_view_candidates.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_7_11_22.exe: inspect_7_11_22.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+debug_ideal2_candidates.exe: debug_ideal2_candidates.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_axes_7_11_22.exe: tune_axes_7_11_22.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_all_valid_views.exe: find_all_valid_views.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_cage_from_17k.exe: find_cage_from_17k.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_64_77_266.exe: inspect_64_77_266.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+optimize_triple_mixes.exe: optimize_triple_mixes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_ideal_cluster_cage.exe: find_ideal_cluster_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_fine_ideal3.exe: test_fine_ideal3.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_vertex_deficits.exe: print_vertex_deficits.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+sweep_c_cone_range.exe: sweep_c_cone_range.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_close_core_axis.exe: find_close_core_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+tune_c0_mix.exe: tune_c0_mix.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_targeted_view.exe: test_targeted_view.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+inspect_c0_defect.exe: inspect_c0_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_lean_decomposed_row.exe: print_lean_decomposed_row.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_closest_core_axis.exe: find_closest_core_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_dense_cage.exe: find_dense_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+sweep_core_angle.exe: sweep_core_angle.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_c35_cage.exe: find_c35_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+print_candidate2_cert.exe: print_candidate2_cert.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_candidate2_cage.exe: test_candidate2_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+check_decomp_angle.exe: check_decomp_angle.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_c2_with_siblings.exe: test_c2_with_siblings.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+check_all_zero_defect_axes.exe: check_all_zero_defect_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_minimal_flock.exe: find_minimal_flock.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_dense_cap_coverage.exe: test_dense_cap_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_all_axes_cap_coverage.exe: test_all_axes_cap_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_flock_coverage.exe: test_flock_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_children_3253.exe: test_children_3253.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_iterative_on_6.exe: test_iterative_on_6.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_chord_axis.exe: test_chord_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_core_cage.exe : test_core_cage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_stored_core.exe : test_stored_core.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_comp_cone.exe : test_comp_cone.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_rescaled_barycentric.exe : test_rescaled_barycentric.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_lp_zero_defect.exe : test_lp_zero_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_closest_zero_defect_axis.exe : test_closest_zero_defect_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_pure_zero_defect_tetrahedron.exe : find_pure_zero_defect_tetrahedron.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_subdiv_iterative.exe : test_subdiv_iterative.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_two_core_coverage.exe : test_two_core_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_subdivide_canyon.exe : test_subdivide_canyon.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_fast_subdiv.exe : test_fast_subdiv.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_canyon_zero_defect_cages.exe : test_canyon_zero_defect_cages.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_cage_4axes.exe : find_cage_4axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_iterative.exe : test_iterative.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_canyon_subdiv_depth.exe : test_canyon_subdiv_depth.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_gap_comp_cover.exe : test_gap_comp_cover.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_annulus_all_axes.exe : test_annulus_all_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_zero_defect_outside_cone.exe : test_zero_defect_outside_cone.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+select_min_complement_axes.exe : select_min_complement_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_tetra_inradius.exe : test_tetra_inradius.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_8axis_coverage.exe : test_8axis_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_15axis_inradius.exe : test_15axis_inradius.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+apply_canyon_cages.exe : apply_canyon_cages.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_extra_axes.exe : test_extra_axes.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+find_best_core_axis.exe : find_best_core_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_shoulder_coverage.exe : test_shoulder_coverage.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_v1_axis.exe : test_v1_axis.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_polytope_weights.exe : test_polytope_weights.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_children_defect.exe : test_children_defect.o $(TUBETREE_OBJECTS)
+	$(CXX) $(CFLAGS) $^ -o $@ $(LFLAGS)
+
+test_find_cages.exe: test_find_cages.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_canyon_coverage.exe: test_canyon_coverage.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_cone_hull_cover.exe: test_cone_hull_cover.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_eclipsed_points.exe: test_eclipsed_points.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_omega_projections.exe: test_omega_projections.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_contact_sweep.exe: test_contact_sweep.o $(TUBE_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+find_all_valid_axes.exe : find_all_valid_axes.o $(TUBE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 find_close_certs.exe : find_close_certs.o $(TUBE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -271,6 +843,105 @@ incrementaltube229.exe : $(INCREMENTALTUBE_OBJECTS)
 scratch_test_oppose.exe : $(OBJECTS_229) scratch_test_oppose.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/geom/hull-2d.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/numbers.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+
+test_face_distances.exe : $(TUBETREE_OBJECTS) test_face_distances.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_scaled_barycentric.exe : $(TUBETREE_OBJECTS) test_scaled_barycentric.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_perp_inradius.exe : $(TUBETREE_OBJECTS) test_perp_inradius.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_find_opposing_axis.exe : $(TUBETREE_OBJECTS) test_find_opposing_axis.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_pure_zero_defect_cage.exe : $(TUBETREE_OBJECTS) test_pure_zero_defect_cage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_pure_zero_defect_bary.exe : $(TUBETREE_OBJECTS) test_pure_zero_defect_bary.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_2d_perp_inradius.exe : $(TUBETREE_OBJECTS) test_2d_perp_inradius.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_min_u0.exe : $(TUBETREE_OBJECTS) test_min_u0.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_core_gap.exe : $(TUBETREE_OBJECTS) test_core_gap.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_zero_defect_angles.exe : $(TUBETREE_OBJECTS) test_zero_defect_angles.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_greedy_cover.exe : $(TUBETREE_OBJECTS) test_greedy_cover.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_comp_cone.exe : $(TUBETREE_OBJECTS) test_comp_cone.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_scaled_B.exe : $(TUBETREE_OBJECTS) test_scaled_B.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_pure_cages.exe : $(TUBETREE_OBJECTS) test_pure_cages.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_uncov.exe : $(TUBETREE_OBJECTS) test_uncov.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_triple_cover.exe : $(TUBETREE_OBJECTS) test_triple_cover.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_children.exe : $(TUBETREE_OBJECTS) test_children.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_scaled_bary.exe : $(TUBETREE_OBJECTS) test_scaled_bary.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_opt_cage.exe : $(TUBETREE_OBJECTS) test_opt_cage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_5axes.exe : $(TUBETREE_OBJECTS) test_5axes.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_5axes_oct.exe : $(TUBETREE_OBJECTS) test_5axes_oct.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_max_dot.exe : $(TUBETREE_OBJECTS) test_max_dot.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_fast_pure_cage.exe : $(TUBETREE_OBJECTS) test_fast_pure_cage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_scaled_geo.exe : $(TUBETREE_OBJECTS) test_scaled_geo.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_comp_coverage.exe : $(TUBETREE_OBJECTS) test_comp_coverage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+build_row3253.exe : $(TUBETREE_OBJECTS) build_row3253.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+search_scale_cage.exe : $(TUBETREE_OBJECTS) search_scale_cage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+test_cage_scale.exe : $(TUBETREE_OBJECTS) test_cage_scale.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+find_large_cone_cage.exe : $(TUBETREE_OBJECTS) find_large_cone_cage.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+check_exact_defect.exe : $(TUBETREE_OBJECTS) check_exact_defect.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+find_aligned_core.exe : $(TUBETREE_OBJECTS) find_aligned_core.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+
+
+
+
 
 
 CONVERT_TUBECERT_OBJECTS= $(OBJECTS_229) convert_tubecert229.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/numbers.o
@@ -461,7 +1132,6 @@ test_coords.exe : test_coords.o lib229.o $(OBJECTS)
 generate_seeds229.exe : generate_seeds229.o lib229.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
-
 
 clean :
 	rm -f *.o *.exe $(OBJECTS)

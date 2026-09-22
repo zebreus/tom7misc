@@ -41,9 +41,10 @@ static void WriteAxisPack(std::ostream &out, const AxisCertificate &axis) {
   // index (3)
   for (int m = 0; m < 3; m++) out << "," << axis.contacts[m].vertex;
   // nonzeroWitness (3)
-  for (int m = 0; m < 3; m++) out << "," << axis.nonzero_witness[m];
+  for (int m = 0; m < 3; m++) out << "," << std::max(0, axis.nonzero_witness[m]);
   // B
   out << "," << ZigzagRatString(axis.B);
+
 }
 
 struct LeanRow {
@@ -153,6 +154,13 @@ int main(int argc, char **argv) {
   std::cout << "Flattened tree into " << rows.size() << " Lean rows ("
             << (prune_at_cert ? "pruned" : "full") << ").\n";
 
+  for (size_t i = 0; i < rows.size(); i++) {
+    const auto &r = rows[i];
+    if (r.node->decomposed_cert.has_value()) {
+      std::cout << "Decomposed row " << i << ": path=\"" << r.node->path << "\", rel_path=\"" << r.rel_path << "\"\n";
+    }
+  }
+
   // Serializing into Lean packed format
   std::cout << "Writing Lean packed format to " << output_path << "...\n";
   std::ofstream out(output_path, std::ios::binary);
@@ -179,37 +187,7 @@ int main(int argc, char **argv) {
           << "," << r.child_ids[1]
           << "," << r.child_ids[2]
           << "," << r.child_ids[3];
-    } else if (r.node->decomposed_cert.has_value()) {
-      // Decomposed Certificate row (tag 2):
-      // Format: tag(2), id, root(0), path_len, [path_digits], symmetryIndex(0),
-      // r_min, r, c, delta, inner_indices(3), [inner_core_axis], num_complement, [complement_axes...]
-      const auto &dec = r.node->decomposed_cert.value();
-      out << ",2," << r.id << ",0," << r.rel_path.size();
-      for (char ch : r.rel_path) {
-        out << "," << (ch - '0');
-      }
-      out << "," << dec.symmetry_index;
-
-      // r_min, r, c, delta
-      out << "," << ZigzagRatString(dec.r_min)
-          << "," << ZigzagRatString(dec.r)
-          << "," << ZigzagRatString(dec.c_comp)
-          << "," << ZigzagRatString(dec.delta);
-
-      // inner indices (3)
-      out << "," << dec.inner_index[0]
-          << "," << dec.inner_index[1]
-          << "," << dec.inner_index[2];
-
-      // inner core axis
-      WriteAxisPack(out, dec.inner_core_axis);
-
-      // complement axes
-      out << "," << dec.complement_axes.size();
-      for (const auto &comp_ax : dec.complement_axes) {
-        WriteAxisPack(out, comp_ax);
-      }
-    } else {
+    } else if (r.node->direct_cert.has_value()) {
       // Certificate row (tag 1):
       // tag, id, root(0), path_len, [path_digits], symmetryIndex(0),
       // [4 axes], c, delta, r
@@ -228,6 +206,46 @@ int main(int argc, char **argv) {
       out << "," << ZigzagRatString(cert.c)
           << "," << ZigzagRatString(cert.delta)
           << "," << ZigzagRatString(cert.r);
+    } else if (r.node->decomposed_cert.has_value()) {
+      // Decomposed Certificate row (tag 2):
+      // Format: tag(2), id, root(0), path_len, [path_digits], symmetryIndex,
+      // [4 axes: annular_axis, complement_axes[0..2]], c, delta, r,
+      // coreAxis, defect0[0..2], D0, r_min, c_cone, c_core, lam, w[0..2]
+      const auto &dec = r.node->decomposed_cert.value();
+      out << ",2," << r.id << ",0," << r.rel_path.size();
+      for (char ch : r.rel_path) {
+        out << "," << (ch - '0');
+      }
+      out << "," << dec.symmetry_index;
+
+      // 4 certificate axes: annular_axis + 3 complement axes
+      WriteAxisPack(out, dec.annular_axis);
+      for (int a = 0; a < 3; a++) {
+        WriteAxisPack(out, dec.complement_axes[a]);
+      }
+
+      // c (c_comp: complement cage margin), delta, r
+      out << "," << ZigzagRatString(dec.c_comp)
+          << "," << ZigzagRatString(dec.delta)
+          << "," << ZigzagRatString(dec.r);
+
+      // coreAxis
+      WriteAxisPack(out, dec.inner_core_axis);
+
+      // defect0[0..2], D0, r_min, c_cone, c_core, lam, w[0..2]
+      out << "," << ZigzagRatString(dec.defect0[0])
+          << "," << ZigzagRatString(dec.defect0[1])
+          << "," << ZigzagRatString(dec.defect0[2])
+          << "," << ZigzagRatString(dec.defect_D)
+          << "," << ZigzagRatString(dec.r_min)
+          << "," << ZigzagRatString(dec.c_cone)
+          << "," << ZigzagRatString(dec.c_core)
+          << "," << ZigzagRatString(dec.lam)
+          << "," << ZigzagRatString(dec.w[0])
+          << "," << ZigzagRatString(dec.w[1])
+          << "," << ZigzagRatString(dec.w[2]);
+    } else {
+      LOG(FATAL) << "Encountered leaf node without certificate: " << r.node->path;
     }
   }
 

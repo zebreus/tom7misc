@@ -119,7 +119,8 @@ class Tube229 {
       tubetree229::AxisCertificate *out_cert,
       BigVecQ3 *out_center,
       BigRat *out_delta,
-      std::string *fail_reason = nullptr);
+      std::string *fail_reason = nullptr,
+      const BigRat &max_allowed_defect = BigRat(0));
 
   // Exact adaptive rational audit of a 4-axis cage.
   static bool AuditCertificateAdaptive(
@@ -191,6 +192,16 @@ class Tube229 {
       BigVecQ3 *out_center = nullptr,
       BigRat *out_delta = nullptr,
       std::string *fail_reason = nullptr);
+
+  struct AuditedAxis {
+    tubetree229::AxisCertificate cert;
+    BigVecQ3 center;
+    BigRat delta;
+  };
+
+  static std::vector<AuditedAxis> FindAllHullSupportAxes(
+      const tubetree229::TriangleQ &tri,
+      size_t max_axes = 200);
 
   // Verifies the annular dominance condition for an axis with a known support defect D:
   //   ((1/2) * r^2 * B + D)^2 <= r_min^2 * (1 - (1/4) * r^2) * (c_cone - delta)^2 * B^2
