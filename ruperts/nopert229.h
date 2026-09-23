@@ -44,7 +44,16 @@
 //    - The double array `VERTICES` contains IEEE-754 binary64 approximations
 //      matching the exact rational fractions `VERTICES_Q` to < 1e-15 precision.
 //    - Both double and rational representations exhibit approximate C5 symmetry
-//      matching the continuous rotation to < 3e-16 Euclidean distance.
+// ============================================================================
+// NOTE / REGENERATION:
+// The canonical 27-facet rational coordinates with power-of-two denominators
+// (2^52) and exact quad planarization (defect = 0 in Q^3) are implemented in
+// ruperts/codebdd229.cc (GenerateBestPossibleRationalVertices).
+// Drop-in replacements are generated at:
+//   - C++:  vertices229_exact27.h
+//   - Lean: vertices229_exact27.lean
+//   - JSON: vertices229_exact27.json
+// See noteperts/QUAD_FACES.md for full analysis and derivation.
 // ============================================================================
 
 // 20 vertices of Nopert #229, derived algebraically from repair214.cc

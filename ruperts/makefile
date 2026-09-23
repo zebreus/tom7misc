@@ -117,6 +117,10 @@ test_telescope_canyon.exe : test_telescope_canyon.o lib229.o $(OBJECTS_229) $(OB
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
 
+test_cert_hull.exe : test_cert_hull.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
+	@echo -n "!"
+
 telescope229.exe : telescope229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
 	@echo -n "!"
@@ -126,6 +130,24 @@ query_canyon_tube.exe : query_canyon_tube.o $(OBJECTS_229) $(OBJECTS)
 	@echo -n "!"
 
 pack229.exe : pack229.o nopert229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+verify_leaf.exe : verify_leaf.o nopert229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_parent_cert.exe : test_parent_cert.o lib229.o nopert229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+scan_k1_parents.exe : scan_k1_parents.o lib229.o nopert229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+
+
+codebdd229.exe : codebdd229.o nopert229.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

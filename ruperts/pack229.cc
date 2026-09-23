@@ -320,8 +320,102 @@ static std::shared_ptr<const TrianglePool> BuildTrianglePool(const vec3 tri_corn
     }
   }
 
+  // Add multi-vertex candidate contacts for non-hull vertices whose support defect
+  // is small (<= 0.002). This equips the 5D search with multi-vertex contact bases
+  // to cover deep singular corridors near the identity tube boundary.
+  static constexpr int POLY_3D_EDGES[54][2] = {
+    {0, 1}, {0, 4}, {0, 16}, {0, 17},
+    {1, 2}, {1, 3}, {1, 4}, {1, 5}, {1, 17}, {1, 18},
+    {2, 3}, {2, 5}, {2, 6}, {2, 7},
+    {3, 7}, {3, 18}, {3, 19},
+    {4, 5}, {4, 8}, {4, 12}, {4, 16},
+    {5, 6}, {5, 8}, {5, 9},
+    {6, 7}, {6, 9}, {6, 11},
+    {7, 11}, {7, 15}, {7, 19},
+    {8, 9}, {8, 12},
+    {9, 10}, {9, 11}, {9, 12}, {9, 13},
+    {10, 11}, {10, 13}, {10, 15},
+    {11, 15},
+    {12, 13}, {12, 16},
+    {13, 14}, {13, 15}, {13, 16}, {13, 17},
+    {14, 15}, {14, 17}, {14, 19},
+    {15, 19},
+    {16, 17},
+    {17, 18}, {17, 19},
+    {18, 19},
+  };
+  std::vector<int> adj[20];
+  for (int e_idx = 0; e_idx < 54; e_idx++) {
+    int u = POLY_3D_EDGES[e_idx][0];
+    int w = POLY_3D_EDGES[e_idx][1];
+    adj[u].push_back(w);
+    adj[w].push_back(u);
+  }
+  std::unordered_set<int> hull_set(hull.begin(), hull.end());
+  for (int v = 0; v < 20; v++) {
+    if (hull_set.count(v)) continue;
+    int deg = adj[v].size();
+    for (int i = 0; i < deg; i++) {
+      for (int j = 0; j < deg; j++) {
+        if (i == j) continue;
+        int p = adj[v][i];
+        int n = adj[v][j];
+        vec3 v_v = {VERTICES[v][0], VERTICES[v][1], VERTICES[v][2]};
+        vec3 v_p = {VERTICES[p][0], VERTICES[p][1], VERTICES[p][2]};
+        vec3 v_n = {VERTICES[n][0], VERTICES[n][1], VERTICES[n][2]};
+        vec3 first = v_p - v_v;
+        vec3 second = v_v - v_n;
+        for (int s = 0; s <= cone_samples + 1; s++) {
+          double lam = (double)s / (cone_samples + 1.0);
+          vec3 e = lam * first + (1.0 - lam) * second;
+          double max_upper = 0.0;
+          double min_upper = 1e30;
+          for (int k = 0; k < 20; k++) {
+            if (k == v) continue;
+            vec3 delta = {VERTICES[k][0] - VERTICES[v][0],
+                          VERTICES[k][1] - VERTICES[v][1],
+                          VERTICES[k][2] - VERTICES[v][2]};
+            vec3 coeff = cross(e, delta);
+            if (length(coeff) < 1e-12) continue;
+            double upper = std::max({dot(tri_corners[0], coeff),
+                                     dot(tri_corners[1], coeff),
+                                     dot(tri_corners[2], coeff)});
+            if (upper > max_upper) max_upper = upper;
+            if (upper < min_upper) min_upper = upper;
+          }
+          if (min_upper >= 0.0) continue;
+          if (max_upper > 0.002) continue;
+
+          vec3 e_norm = normalize(e);
+          bool duplicate = false;
+          for (const auto &ex : valid_contacts) {
+            vec3 ex_norm = normalize(ex.edge);
+            if (dot(e_norm, ex_norm) > 1.0 - 1e-9) {
+              duplicate = true;
+              break;
+            }
+          }
+          if (duplicate) continue;
+          if (valid_contacts.size() >= 256) break;
+
+          ContactInfo c;
+          c.vertex = v;
+          c.edge_start = p;
+          c.edge_finish = v;
+          c.edge_start2 = v;
+          c.edge_finish2 = n;
+          c.mix = std::round(1000.0 * lam);
+          c.edge = e;
+          c.defect = std::max(0.0, max_upper);
+          valid_contacts.push_back(c);
+        }
+      }
+    }
+  }
+
   pool->contacts = std::move(valid_contacts);
   int C = pool->contacts.size();
+
 
   struct SortableTriple {
     GpuTriple gt;
@@ -1217,7 +1311,7 @@ static void LoadDoneFiles(const std::string &done_dir,
               << all_node_ids->size() << ").\n";
   }
 }
-
+#ifndef PACK229_NO_MAIN
 int main(int argc, char **argv) {
   int chart = 0;
   std::string in_path;
@@ -1817,3 +1911,4 @@ int main(int argc, char **argv) {
             << ANSI_RESET << " in " << total_timer.Seconds() << "s.\n";
   return 0;
 }
+#endif // PACK229_NO_MAIN

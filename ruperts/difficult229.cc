@@ -339,6 +339,10 @@ static int RunDifficult(
   std::vector<DifficultCell> unsolved_cells;
   size_t already_done = 0;
   for (const auto &c : cells) {
+    if (target_cell_id >= 0 && c.id != target_cell_id) {
+      unsolved_cells.push_back(c);
+      continue;
+    }
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
       auto v = VerifyDoneFile(c, done_file, tube_atlas);
@@ -701,6 +705,10 @@ static int RunDifficultMixture(
   std::vector<DifficultCell> unsolved_cells;
   size_t already_done = 0;
   for (const auto &c : cells) {
+    if (target_cell_id >= 0 && c.id != target_cell_id) {
+      unsolved_cells.push_back(c);
+      continue;
+    }
     std::string done_file = std::format("{}/chart{}.{}.done", out_dir, c.chart, c.id);
     if (std::filesystem::exists(done_file)) {
       auto v = VerifyDoneFile(c, done_file, tube_atlas, /*allow_difficult=*/false, tube_radius);
@@ -1136,30 +1144,24 @@ static void PrintHelp() {
         "  --chart <0|1|2>         Cayley chart index (default 0)\n"
         "  --difficult <path>      Path to difficult cells file (default chart<chart>.difficult)\n"
         "  --out_dir <path>        Output directory for .done files and rewritten difficult file (default .)\n"
-        "  --box_mixture           Convex triple mixture solver with box-bisection profile (recommended)\n"
-        "  --mixture               Alias for --box_mixture (convex triple mixture solver)\n"
-        "  --view_mixture          Convex triple mixture solver with view-refinement profile\n"
+        "  --mixture               Convex triple mixture solver (DEFAULT: pulls out all mathematical stops)\n"
+        "  --view_mixture          Convex triple mixture solver with aggressive view refinement\n"
+        "  --single_triple         Legacy single-triple mode (no mixtures, forces subdivision)\n"
+        "  --gpu                   Use legacy OpenCL acceleration in standard mode\n"
         "  --max_components <N>    Max mixture components in mixture mode (default 4)\n"
         "  --split_kappa <K>       Rotation to view diameter ratio for splits in mixture mode (default 0.5)\n"
-        "  --max_nodes <N>         Max total nodes evaluated per cell (default 8192 in mixture mode)\n"
-        "  --max_split_delta <N>   Max split depth from root per cell (default 20 in mixture mode)\n"
-        "  --max_depth <D>         Max search depth per cell (default 80 GPU / 68 mixture)\n"
-        "  --max_box_depth <D>     Max box subdivision depth (default 58 GPU / 60 mixture)\n"
-        "  --max_view_depth <D>    Max view subdivision depth (default 20 GPU / 8 mixture)\n"
+        "  --max_nodes <N>         Max total nodes evaluated per cell (default 5000000 in mixture mode)\n"
+        "  --max_split_delta <N>   Max split depth from root per cell (default 90 in mixture mode)\n"
+        "  --max_depth <D>         Max search depth per cell (default 140)\n"
+        "  --max_box_depth <D>     Max box subdivision depth (default 88)\n"
+        "  --max_view_depth <D>    Max view subdivision depth (default 20)\n"
         "  --batch_size <N>        Batch size for evaluator (default 4096)\n"
         "  --cone_samples <N>      Base cone samples (default 8)\n"
-        "  --escalate_depth <D>    First escalation depth (default 44)\n"
-        "  --escalate_cone_samples <N> First escalated cone samples (default 12)\n"
-        "  --deep_escalate_depth <D> Second escalation depth (default 50)\n"
-        "  --deep_escalate_cone_samples <N> Second escalated cone samples (default 14)\n"
-        "  --lp_box_depth <D>      Box depth to trigger CPU LP escalation (default 54)\n"
-        "  --tube_radius <R>       Identity symmetry tube radius (default 1e-4)\n"
+        "  --tube_radius <R>       Identity symmetry tube radius (default 0.0)\n"
         "  --tube_trees_dir <DIR>  Directory containing tree_*.json tube trees (default /root/nopert-project)\n"
         "  --no_tube_trees         Do not load tube trees; rely solely on static tube_radius\n"
-        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no limit in GPU / 120s in mixture)\n"
-        "  --threads <T>           Worker threads (default 8)\n"
-        "  --cpu                   Force multi-threaded CPU execution in standard mode\n"
-        "  --gpu                   Use OpenCL acceleration in standard mode (default)\n"
+        "  --limit_sec <S>         Time limit in seconds per cell (default 0 = no timeout)\n"
+        "  --threads <T>           Worker threads (default: all available CPU cores)\n"
         "  --limit <N>             Process at most N cells (default all)\n"
         "  --cell_id <ID>          Process only specific cell ID\n"
         "  --rand                  Shuffle difficult cells order before processing\n"
@@ -1178,20 +1180,20 @@ int main(int argc, char **argv) {
   std::string difficult_path;
   std::string out_dir = ".";
   std::string splits_file = "";
-  bool mixture_mode = false;
+  bool mixture_mode = true;
   bool view_mixture_mode = false;
   int max_components = 4;
   double split_kappa = 0.5;
-  int max_nodes = 64;
-  int max_split_delta = 4;
+  int max_nodes = 5000000;
+  int max_split_delta = 90;
   bool max_depth_specified = false;
   bool max_box_depth_specified = false;
   bool max_view_depth_specified = false;
   bool max_nodes_specified = false;
   bool max_split_delta_specified = false;
   bool limit_sec_specified = false;
-  int max_depth = 80;
-  int max_box_depth = 58;
+  int max_depth = 140;
+  int max_box_depth = 88;
   int max_view_depth = 20;
   int batch_size = 4096;
   int cone_samples = 8;
@@ -1205,7 +1207,7 @@ int main(int argc, char **argv) {
   std::string tube_trees_dir = "/root/nopert-project";
   bool no_tube_trees = false;
   double limit_sec = 0.0;
-  int num_threads = 1;
+  int num_threads = std::max(1u, std::thread::hardware_concurrency());
   bool use_gpu = false;
   int64_t limit_cells = 0;
   int64_t target_cell_id = -1;
@@ -1215,6 +1217,7 @@ int main(int argc, char **argv) {
   bool rand_order = false;
   uint64_t rand_seed = 0;
   bool parallel_search = true;
+
 
   for (int i = 1; i < argc; i++) {
     std::string_view arg = argv[i];
@@ -1231,9 +1234,12 @@ int main(int argc, char **argv) {
       view_mixture_mode = true;
     } else if (arg == "--box_mixture" || arg == "--mixture" || arg == "--mode=mixture" || arg == "--mode=box_mixture") {
       mixture_mode = true;
+    } else if (arg == "--single_triple" || arg == "--legacy" || arg == "--no_mixture") {
+      mixture_mode = false;
     } else if ((arg == "--mode" || arg == "--profile") && i + 1 < argc) {
       std::string_view m = argv[++i];
       if (m == "mixture" || m == "box_mixture") mixture_mode = true;
+      if (m == "single" || m == "single_triple" || m == "legacy") mixture_mode = false;
       if (m == "view_mixture") {
         mixture_mode = true;
         view_mixture_mode = true;
@@ -1291,6 +1297,7 @@ int main(int argc, char **argv) {
       use_gpu = false;
     } else if (arg == "--gpu") {
       use_gpu = true;
+      mixture_mode = false;
     } else if (arg == "--limit" && i + 1 < argc) {
       limit_cells = std::atoll(argv[++i]);
     } else if (arg == "--cell_id" && i + 1 < argc) {
@@ -1345,12 +1352,12 @@ int main(int argc, char **argv) {
   }
 
   if (mixture_mode) {
-    if (!max_depth_specified) max_depth = view_mixture_mode ? 84 : 68;
-    if (!max_box_depth_specified) max_box_depth = 66;
-    if (!max_view_depth_specified) max_view_depth = view_mixture_mode ? 12 : 8;
-    if (!max_nodes_specified) max_nodes = view_mixture_mode ? 16384 : 8192;
-    if (!max_split_delta_specified) max_split_delta = view_mixture_mode ? 36 : 20;
-    if (!limit_sec_specified) limit_sec = 240.0;
+    if (!max_depth_specified) max_depth = 140;
+    if (!max_box_depth_specified) max_box_depth = 88;
+    if (!max_view_depth_specified) max_view_depth = view_mixture_mode ? 24 : 20;
+    if (!max_nodes_specified) max_nodes = 5000000;
+    if (!max_split_delta_specified) max_split_delta = 90;
+    if (!limit_sec_specified) limit_sec = 0.0;
     return RunDifficultMixture(
         chart, difficult_path, out_dir, max_depth, max_box_depth,
         max_view_depth, max_nodes, max_split_delta, cone_samples,

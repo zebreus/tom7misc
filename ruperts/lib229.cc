@@ -255,6 +255,95 @@ std::shared_ptr<const TrianglePool> BuildTrianglePool(
     }
   }
 
+  // Add multi-vertex candidate contacts for non-hull vertices whose support defect
+  // is small (<= 0.002). This equips the 5D search with multi-vertex contact bases
+  // to cover deep singular corridors near the identity tube boundary.
+  static constexpr int POLY_3D_EDGES[54][2] = {
+    {0, 1}, {0, 4}, {0, 16}, {0, 17},
+    {1, 2}, {1, 3}, {1, 4}, {1, 5}, {1, 17}, {1, 18},
+    {2, 3}, {2, 5}, {2, 6}, {2, 7},
+    {3, 7}, {3, 18}, {3, 19},
+    {4, 5}, {4, 8}, {4, 12}, {4, 16},
+    {5, 6}, {5, 8}, {5, 9},
+    {6, 7}, {6, 9}, {6, 11},
+    {7, 11}, {7, 15}, {7, 19},
+    {8, 9}, {8, 12},
+    {9, 10}, {9, 11}, {9, 12}, {9, 13},
+    {10, 11}, {10, 13}, {10, 15},
+    {11, 15},
+    {12, 13}, {12, 16},
+    {13, 14}, {13, 15}, {13, 16}, {13, 17},
+    {14, 15}, {14, 17}, {14, 19},
+    {15, 19},
+    {16, 17},
+    {17, 18}, {17, 19},
+    {18, 19},
+  };
+  std::vector<int> adj[NUM_VERTICES];
+  for (int e_idx = 0; e_idx < 54; e_idx++) {
+    int u = POLY_3D_EDGES[e_idx][0];
+    int w = POLY_3D_EDGES[e_idx][1];
+    adj[u].push_back(w);
+    adj[w].push_back(u);
+  }
+  std::unordered_set<int> hull_set(hull.begin(), hull.end());
+  for (int v = 0; v < NUM_VERTICES; v++) {
+    if (hull_set.count(v)) continue;
+    int deg = adj[v].size();
+    for (int i = 0; i < deg; i++) {
+      for (int j = 0; j < deg; j++) {
+        if (i == j) continue;
+        int p = adj[v][i];
+        int n = adj[v][j];
+        vec3 v_v = {VERTICES[v][0], VERTICES[v][1], VERTICES[v][2]};
+        vec3 v_p = {VERTICES[p][0], VERTICES[p][1], VERTICES[p][2]};
+        vec3 v_n = {VERTICES[n][0], VERTICES[n][1], VERTICES[n][2]};
+        vec3 first = v_p - v_v;
+        vec3 second = v_v - v_n;
+        for (int s = 0; s <= cone_samples + 1; s++) {
+          double lam = (double)s / (cone_samples + 1.0);
+          vec3 e = lam * first + (1.0 - lam) * second;
+          double max_upper = 0.0;
+          double min_upper = 1e30;
+          for (int k = 0; k < NUM_VERTICES; k++) {
+            if (k == v) continue;
+            vec3 delta = {VERTICES[k][0] - VERTICES[v][0],
+                          VERTICES[k][1] - VERTICES[v][1],
+                          VERTICES[k][2] - VERTICES[v][2]};
+            vec3 coeff = yocto::cross(e, delta);
+            if (yocto::length(coeff) < 1e-12) continue;
+            double upper = std::max({yocto::dot(tri.corners[0], coeff),
+                                     yocto::dot(tri.corners[1], coeff),
+                                     yocto::dot(tri.corners[2], coeff)});
+            if (upper > max_upper) max_upper = upper;
+            if (upper < min_upper) min_upper = upper;
+          }
+          if (min_upper >= 0.0) continue;
+          if (max_upper > 0.002) continue;
+
+          vec3 e_norm = yocto::normalize(e);
+          bool duplicate = false;
+          for (const auto &ex : valid_contacts) {
+            vec3 ex_norm = yocto::normalize(
+                vec3{ex.edge[0], ex.edge[1], ex.edge[2]});
+            if (yocto::dot(e_norm, ex_norm) > 1.0 - 1e-9) {
+              duplicate = true;
+              break;
+            }
+          }
+          if (duplicate) continue;
+          if (valid_contacts.size() >= MAX_GPU_CONTACTS) break;
+
+          GpuContact c;
+          c.vertex = v;
+          c.edge[0] = e.x; c.edge[1] = e.y; c.edge[2] = e.z;
+          c.defect = std::max(0.0, max_upper);
+          valid_contacts.push_back(c);
+        }
+      }
+    }
+  }
+
   pool->contacts = std::move(valid_contacts);
   int C = pool->contacts.size();
   CHECK_LE(C, MAX_GPU_CONTACTS)
@@ -262,6 +351,7 @@ std::shared_ptr<const TrianglePool> BuildTrianglePool(
       << MAX_GPU_CONTACTS << ")";
 
   pool->gpu_triples.reserve(C * (C - 1) * (C - 2) / 6);
+
 
   for (int i = 0; i < C; i++) {
     for (int j = i + 1; j < C; j++) {
@@ -1618,8 +1708,9 @@ MixtureResult EvaluateBoxCPUMixture(
   std::vector<EvaluatedCandidateTriple> evaluated;
   evaluated.reserve(pool->gpu_triples.size());
 
-  size_t max_triples_to_test = (max_components == 1) ? 8 : 32;
-  for (size_t t = 0; t < std::min(pool->gpu_triples.size(), max_triples_to_test); t++) {
+  int full_evals = 0;
+  int max_full_evals = (max_components == 1) ? 64 : 256;
+  for (size_t t = 0; t < pool->gpu_triples.size(); t++) {
     const auto &trip = pool->gpu_triples[t];
     int ci0 = trip.c0, ci1 = trip.c1, ci2 = trip.c2;
 
@@ -1700,6 +1791,9 @@ MixtureResult EvaluateBoxCPUMixture(
     et.triple_idx = (int)t;
     et.inner[0] = in0; et.inner[1] = in1; et.inner[2] = in2;
 
+    full_evals++;
+
+
     double min_m = 1e30;
     bool early_rejected = false;
 
@@ -1768,7 +1862,9 @@ MixtureResult EvaluateBoxCPUMixture(
       evaluated.push_back(et);
       if (evaluated.size() >= 256) break;
     }
+    if (full_evals >= max_full_evals) break;
   }
+
 
   res.num_candidates = (int)evaluated.size();
   if (evaluated.empty()) return res;
