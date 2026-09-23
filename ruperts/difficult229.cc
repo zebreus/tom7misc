@@ -846,6 +846,26 @@ static int RunDifficultMixture(
           has_quadtree = cell_tree.is_split;
         }
       }
+      bool is_tty = show_status && isatty(fileno(stdout));
+      double last_print_time = 0.0;
+      auto progress_cb = [&](const MixtureProgress &prog) {
+        if (!show_status) return;
+        if (is_tty) {
+          status.Status("  [{:.1f}s] {:>8} nodes ({:.0f}/s) | {:>7} certified (depth {}..{}) | {:>6} open frontier | margin: {:.2e}",
+                        prog.elapsed_seconds, FormatNum(prog.total_nodes), prog.nodes_per_sec,
+                        FormatNum(prog.certified_leaves), prog.min_leaf_depth, prog.max_leaf_depth,
+                        FormatNum(prog.queue_nodes), prog.worst_margin);
+        } else {
+          if (prog.elapsed_seconds - last_print_time >= 15.0) {
+            last_print_time = prog.elapsed_seconds;
+            status.Print("  [progress {:>6.1f}s] {:>8} nodes ({:.0f}/s) | {:>7} certified (depth {}..{}) | {:>6} open frontier | margin: {:.2e}\n",
+                         prog.elapsed_seconds, FormatNum(prog.total_nodes), prog.nodes_per_sec,
+                         FormatNum(prog.certified_leaves), prog.min_leaf_depth, prog.max_leaf_depth,
+                         FormatNum(prog.queue_nodes), prog.worst_margin);
+          }
+        }
+      };
+
       auto stats = SolveCellMixture(
           cell, max_depth, max_box_depth, max_view_depth,
           max_nodes, max_split_delta,
@@ -853,7 +873,12 @@ static int RunDifficultMixture(
           /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
           /*pre_vsplits=*/0,
           has_quadtree ? &cell_tree : nullptr,
-          tube_atlas);
+          tube_atlas,
+          progress_cb);
+
+      if (show_status) {
+        status.Clear();
+      }
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -900,12 +925,16 @@ static int RunDifficultMixture(
         }
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;
-          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.{}\n",
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} open on frontier, worst margin: {:.6g}). Retaining in {}.{}\n",
                        cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
         } else {
           total_unsolved++;
-          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.{}\n",
-                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path, cand_info);
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, {} open on frontier, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
+        }
+        std::string hist_report = stats.FormatHistogramReport(max_depth, max_box_depth, max_view_depth);
+        if (!hist_report.empty()) {
+          status.Print("{}", hist_report);
         }
       } else {
         std::error_code ec;
@@ -927,6 +956,10 @@ static int RunDifficultMixture(
           status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]{}\n",
                        cell.id, ANSI::Time(cell_seconds), cell_rows, stats.certified_leaves,
                        done_filename, remaining_unsolved.size(), difficult_path, cand_info);
+          std::string hist_report = stats.FormatHistogramReport(max_depth, max_box_depth, max_view_depth);
+          if (!hist_report.empty()) {
+            status.Print("{}", hist_report);
+          }
         }
       }
     }
@@ -993,13 +1026,38 @@ static int RunDifficultMixture(
         has_quadtree = cell_tree.is_split;
       }
 
+      bool is_tty = show_status && isatty(fileno(stdout));
+      double last_print_time = 0.0;
+      auto progress_cb = [&](const MixtureProgress &prog) {
+        if (!show_status) return;
+        if (is_tty) {
+          status.Status("  [{:.1f}s] {:>8} nodes ({:.0f}/s) | {:>7} certified (depth {}..{}) | {:>6} open frontier | margin: {:.2e}",
+                        prog.elapsed_seconds, FormatNum(prog.total_nodes), prog.nodes_per_sec,
+                        FormatNum(prog.certified_leaves), prog.min_leaf_depth, prog.max_leaf_depth,
+                        FormatNum(prog.queue_nodes), prog.worst_margin);
+        } else {
+          if (prog.elapsed_seconds - last_print_time >= 15.0) {
+            last_print_time = prog.elapsed_seconds;
+            status.Print("  [progress {:>6.1f}s] {:>8} nodes ({:.0f}/s) | {:>7} certified (depth {}..{}) | {:>6} open frontier | margin: {:.2e}\n",
+                         prog.elapsed_seconds, FormatNum(prog.total_nodes), prog.nodes_per_sec,
+                         FormatNum(prog.certified_leaves), prog.min_leaf_depth, prog.max_leaf_depth,
+                         FormatNum(prog.queue_nodes), prog.worst_margin);
+          }
+        }
+      };
+
       auto stats = SolveCellMixtureParallel(
           cell, actual_threads, max_depth, max_box_depth, max_view_depth,
           max_nodes, max_split_delta,
           cone_samples, max_components, split_kappa,
           /*tube_radius=*/tube_radius, limit_sec, row_cb, &cell_interrupted,
           has_quadtree ? &cell_tree : nullptr,
-          tube_atlas);
+          tube_atlas,
+          progress_cb);
+
+      if (show_status) {
+        status.Clear();
+      }
 
       std::fflush(tmp_fp);
       fclose(tmp_fp);
@@ -1042,12 +1100,16 @@ static int RunDifficultMixture(
         }
         if (limit_sec > 0.0 && cell_seconds >= limit_sec) {
           total_timed_out++;
-          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} on stack, worst margin: {:.6g}). Retaining in {}.{}\n",
+          status.Print(AYELLOW("  ⏱") " Cell #{} TIMED OUT after {} ({} nodes, {} certified, {} ceiling hits, {} open on frontier, worst margin: {:.6g}). Retaining in {}.{}\n",
                        cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
         } else {
           total_unsolved++;
-          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, worst margin: {:.6g}). Retaining in {}.{}\n",
-                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.worst_margin, difficult_path, cand_info);
+          status.Print(AORANGE("  ✘") " Cell #{} NOT fully certified in {} ({} nodes, {} certified, {} ceiling hits, {} open on frontier, worst margin: {:.6g}). Retaining in {}.{}\n",
+                       cell.id, ANSI::Time(cell_seconds), stats.total_nodes, stats.certified_leaves, stats.ceiling_hits, stats.remaining_nodes, stats.worst_margin, difficult_path, cand_info);
+        }
+        std::string hist_report = stats.FormatHistogramReport(max_depth, max_box_depth, max_view_depth);
+        if (!hist_report.empty()) {
+          status.Print("{}", hist_report);
         }
       } else {
         std::error_code ec;
@@ -1068,6 +1130,10 @@ static int RunDifficultMixture(
           status.Print(AGREEN("  ✔") " Cell #{} SOLVED in {}! ({} rows, {} leaves -> {}) [{} remaining in {}]{}\n",
                        cell.id, ANSI::Time(cell_seconds), cell_rows, stats.certified_leaves,
                        done_filename, remaining_unsolved.size(), difficult_path, cand_info);
+          std::string hist_report = stats.FormatHistogramReport(max_depth, max_box_depth, max_view_depth);
+          if (!hist_report.empty()) {
+            status.Print("{}", hist_report);
+          }
         }
       }
     }

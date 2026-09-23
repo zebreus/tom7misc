@@ -466,6 +466,21 @@ std::vector<int> FindTrianglePath(
 std::unordered_map<int64_t, ViewQuadtree> LoadQuadtreeSplitsFile(const std::string &path);
 bool SaveQuadtreeSplitsFile(const std::string &path, const std::unordered_map<int64_t, ViewQuadtree> &splits);
 
+struct MixtureProgress {
+  double elapsed_seconds = 0.0;
+  int64_t total_nodes = 0;
+  int64_t certified_leaves = 0;
+  int64_t k1_count = 0;
+  int64_t mx_count = 0;
+  int min_leaf_depth = 0;
+  int max_leaf_depth = 0;
+  int64_t queue_nodes = 0;
+  double worst_margin = 1e30;
+  double nodes_per_sec = 0.0;
+};
+
+using MixtureProgressCallback = std::function<void(const MixtureProgress &)>;
+
 struct MixtureSolveStats {
   bool solved = false;
   int64_t total_nodes = 0;
@@ -488,8 +503,27 @@ struct MixtureSolveStats {
   double sum_candidate_pool_size = 0.0;
   int64_t count_evaluations = 0;
 
+  // Certified leaves depth statistics & histogram (0..159)
+  int min_leaf_depth = 999999;
+  int max_leaf_depth = 0;
+  int64_t leaf_depth_histogram[160] = {0};
+
+  // Remaining open search frontier (unresolved branch nodes on stack/queue)
+  int min_frontier_depth = 999999;
+  int max_frontier_depth = 0;
+  int min_frontier_box_depth = 999999;
+  int max_frontier_box_depth = 0;
+  int min_frontier_view_depth = 999999;
+  int max_frontier_view_depth = 0;
+  int64_t frontier_depth_histogram[160] = {0};
+  int64_t frontier_box_depth_histogram[100] = {0};
+  int64_t frontier_view_depth_histogram[30] = {0};
+
   // Learned hierarchical view quadtree (captures in-search view splits + timed-out leaves)
   ViewQuadtree learned_quadtree;
+
+  // Formats human-readable depth histograms and search frontier diagnostics
+  std::string FormatHistogramReport(int max_depth, int max_box_depth, int max_view_depth) const;
 };
 
 // Solves a single difficult cell using a branch-and-bound tree with
@@ -511,7 +545,8 @@ MixtureSolveStats SolveCellMixture(
     std::atomic<bool> *interrupted = nullptr,
     int pre_vsplits = 0,
     const ViewQuadtree *initial_quadtree = nullptr,
-    const tubetree229::TubeAtlas *tube_atlas = nullptr);
+    const tubetree229::TubeAtlas *tube_atlas = nullptr,
+    MixtureProgressCallback progress_callback = nullptr);
 
 // Solves a single difficult cell in parallel using num_threads worker threads.
 // Employs a two-tier work-stealing architecture:
@@ -535,7 +570,8 @@ MixtureSolveStats SolveCellMixtureParallel(
     std::function<void(std::string_view)> row_callback = nullptr,
     std::atomic<bool> *interrupted = nullptr,
     const ViewQuadtree *initial_quadtree = nullptr,
-    const tubetree229::TubeAtlas *tube_atlas = nullptr);
+    const tubetree229::TubeAtlas *tube_atlas = nullptr,
+    MixtureProgressCallback progress_callback = nullptr);
 
 // Returns true if the node should be bisected along its widest Cayley box axis (SP),
 // or false if the projective view triangle should be subdivided into 4 sub-triangles (SV).

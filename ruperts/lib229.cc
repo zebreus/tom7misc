@@ -2445,6 +2445,75 @@ bool SaveSplitsFile(const std::string &path, const std::unordered_map<int64_t, i
   return true;
 }
 
+std::string MixtureSolveStats::FormatHistogramReport(int max_d, int max_bd, int max_vd) const {
+  std::string out;
+
+  // 1. Certified Leaves Depth Histogram
+  if (certified_leaves > 0 && min_leaf_depth <= max_leaf_depth && max_leaf_depth < 160) {
+    out += std::format("  " ACYAN("--- Certified Leaves Depth Histogram") " ({} leaves, depth {}..{}) ---\n",
+                       FormatNum(certified_leaves), min_leaf_depth, max_leaf_depth);
+    int start_bucket = (min_leaf_depth / 5) * 5;
+    int end_bucket = (max_leaf_depth / 5) * 5;
+    for (int b = start_bucket; b <= end_bucket; b += 5) {
+      int64_t count = 0;
+      for (int i = 0; i < 5; i++) {
+        if (b + i < 160) count += leaf_depth_histogram[b + i];
+      }
+      if (count > 0) {
+        double pct = 100.0 * (double)count / (double)certified_leaves;
+        int bar_len = std::min(40, (int)std::round(pct / 2.5));
+        std::string bar(bar_len, '#');
+        out += std::format("    Depth {:>3}..{:<3}: {:>9} ({:>5.1f}%) |{}\n",
+                           b, b + 4, FormatNum(count), pct, bar);
+      }
+    }
+  }
+
+  // 2. Unresolved Open Frontier (Stack / Queue) Diagnostics
+  if (!solved && remaining_nodes > 0 && min_frontier_depth <= max_frontier_depth && max_frontier_depth < 160) {
+    out += "\n";
+    out += "  " AORANGE("================================================================================") "\n";
+    out += std::format("  " ARED("⚠ UNRESOLVED SEARCH FRONTIER WARNING:") " {} open branch nodes on queue/stack\n",
+                       FormatNum(remaining_nodes));
+    out += "  " AYELLOW("REMINDER: These are UNVISITED BRANCH POINTS, NOT COMPLETED LEAVES!") "\n";
+    int headroom = std::max(0, max_d - min_frontier_depth);
+    out += std::format("  Shallowest open node: depth {} (headroom: {} levels to max_depth {})\n",
+                       min_frontier_depth, headroom, max_d);
+    if (headroom >= 20) {
+      out += std::format("  " ARED("⚠ High expansion potential:") " a single node at depth {} can expand into\n"
+                         "  millions of sub-nodes (up to 2^{} in worst case), or stall at a ceiling!\n",
+                         min_frontier_depth, headroom);
+    }
+    out += "  " AORANGE("================================================================================") "\n";
+
+    out += std::format("  " AORANGE("--- Open Frontier Depth Breakdown") " ({} nodes, depth {}..{}) ---\n",
+                       FormatNum(remaining_nodes), min_frontier_depth, max_frontier_depth);
+    int start_bucket = (min_frontier_depth / 5) * 5;
+    int end_bucket = (max_frontier_depth / 5) * 5;
+    for (int b = start_bucket; b <= end_bucket; b += 5) {
+      int64_t count = 0;
+      for (int i = 0; i < 5; i++) {
+        if (b + i < 160) count += frontier_depth_histogram[b + i];
+      }
+      if (count > 0) {
+        double pct = 100.0 * (double)count / (double)remaining_nodes;
+        int h = std::max(0, max_d - (b + 4));
+        int bar_len = std::min(40, (int)std::round(pct / 2.5));
+        std::string bar(bar_len, '=');
+        out += std::format("    Depth {:>3}..{:<3}: {:>9} ({:>5.1f}%) |{:<20} [headroom: ~{} lvls]\n",
+                           b, b + 4, FormatNum(count), pct, bar, h);
+      }
+    }
+
+    out += std::format("  --- Frontier Box Depth:  min={}, max={} (limit: max_box_depth={}) ---\n",
+                       min_frontier_box_depth, max_frontier_box_depth, max_bd);
+    out += std::format("  --- Frontier View Depth: min={}, max={} (limit: max_view_depth={}) ---\n",
+                       min_frontier_view_depth, max_frontier_view_depth, max_vd);
+  }
+
+  return out;
+}
+
 MixtureSolveStats SolveCellMixture(
     const DifficultCell &cell,
     int max_depth,
@@ -2461,7 +2530,8 @@ MixtureSolveStats SolveCellMixture(
     std::atomic<bool> *interrupted,
     int pre_vsplits,
     const ViewQuadtree *initial_quadtree,
-    const tubetree229::TubeAtlas *tube_atlas) {
+    const tubetree229::TubeAtlas *tube_atlas,
+    MixtureProgressCallback progress_callback) {
   MixtureSolveStats stats;
   Timer timer;
   bool all_leaves_certified = true;
@@ -2492,6 +2562,21 @@ MixtureSolveStats SolveCellMixture(
       for (const auto &n : stack) {
         auto path = FindTrianglePath(root.tri, n.tri);
         dynamic_tree.SplitPath(path);
+
+        int d = std::clamp((int)n.depth, 0, 159);
+        stats.frontier_depth_histogram[d]++;
+        stats.min_frontier_depth = std::min(stats.min_frontier_depth, (int)n.depth);
+        stats.max_frontier_depth = std::max(stats.max_frontier_depth, (int)n.depth);
+
+        int bd = std::clamp((int)n.box_depth, 0, 99);
+        stats.frontier_box_depth_histogram[bd]++;
+        stats.min_frontier_box_depth = std::min(stats.min_frontier_box_depth, (int)n.box_depth);
+        stats.max_frontier_box_depth = std::max(stats.max_frontier_box_depth, (int)n.box_depth);
+
+        int vd = std::clamp((int)n.view_depth, 0, 29);
+        stats.frontier_view_depth_histogram[vd]++;
+        stats.min_frontier_view_depth = std::min(stats.min_frontier_view_depth, (int)n.view_depth);
+        stats.max_frontier_view_depth = std::max(stats.max_frontier_view_depth, (int)n.view_depth);
       }
     }
     stats.learned_quadtree = std::move(dynamic_tree);
@@ -2534,6 +2619,21 @@ MixtureSolveStats SolveCellMixture(
   }
 
   while (!stack.empty()) {
+    if (progress_callback && (stats.total_nodes % 1000 == 0)) {
+      MixtureProgress prog;
+      prog.elapsed_seconds = timer.Seconds();
+      prog.total_nodes = stats.total_nodes;
+      prog.certified_leaves = stats.certified_leaves;
+      prog.k1_count = stats.k1_count;
+      prog.mx_count = stats.corner_count + stats.greedy_count;
+      prog.min_leaf_depth = stats.min_leaf_depth;
+      prog.max_leaf_depth = stats.max_leaf_depth;
+      prog.queue_nodes = (int64_t)stack.size();
+      prog.worst_margin = stats.worst_margin;
+      prog.nodes_per_sec = prog.elapsed_seconds > 0 ? (prog.total_nodes / prog.elapsed_seconds) : 0.0;
+      progress_callback(prog);
+    }
+
     if (SigIntReceived() || (interrupted && interrupted->load(std::memory_order_relaxed))) {
       return FinishStats(false);
     }
@@ -2624,6 +2724,9 @@ MixtureSolveStats SolveCellMixture(
     if (res.certified) {
       stats.certified_leaves++;
       stats.worst_margin = std::min(stats.worst_margin, res.margin);
+      stats.min_leaf_depth = std::min(stats.min_leaf_depth, (int)node.depth);
+      stats.max_leaf_depth = std::max(stats.max_leaf_depth, (int)node.depth);
+      stats.leaf_depth_histogram[std::clamp((int)node.depth, 0, 159)]++;
       // TODO: Probably should include cone_samples here so that it's easier to interpret the triangle indices.
       if (res.strategy_used == 0) stats.k1_count++;
       else if (res.strategy_used == 1) stats.corner_count++;
@@ -2755,13 +2858,14 @@ MixtureSolveStats SolveCellMixtureParallel(
     std::function<void(std::string_view)> row_callback,
     std::atomic<bool> *interrupted,
     const ViewQuadtree *initial_quadtree,
-    const tubetree229::TubeAtlas *tube_atlas) {
+    const tubetree229::TubeAtlas *tube_atlas,
+    MixtureProgressCallback progress_callback) {
   if (num_threads <= 1) {
     return SolveCellMixture(
         cell, max_depth, max_box_depth, max_view_depth,
         max_nodes, max_split_delta, cone_samples, max_components,
         split_kappa, tube_radius, time_limit_sec, row_callback,
-        interrupted, 0, initial_quadtree, tube_atlas);
+        interrupted, 0, initial_quadtree, tube_atlas, progress_callback);
   }
 
   Timer timer;
@@ -2843,6 +2947,20 @@ MixtureSolveStats SolveCellMixtureParallel(
   std::atomic<int64_t> rank_histogram[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   std::atomic<double> worst_margin = 1e30;
   std::atomic<int> max_view_depth_reached = (int)cell.view_depth;
+  std::atomic<int> min_leaf_depth = 999999;
+  std::atomic<int> max_leaf_depth = 0;
+  int64_t global_leaf_depth_hist[160] = {0};
+  int global_min_leaf_depth = 999999;
+  int global_max_leaf_depth = 0;
+
+  auto AtomicMin = [](std::atomic<int> &atom, int val) {
+    int cur = atom.load(std::memory_order_relaxed);
+    while (val < cur && !atom.compare_exchange_weak(cur, val, std::memory_order_relaxed)) {}
+  };
+  auto AtomicMax = [](std::atomic<int> &atom, int val) {
+    int cur = atom.load(std::memory_order_relaxed);
+    while (val > cur && !atom.compare_exchange_weak(cur, val, std::memory_order_relaxed)) {}
+  };
 
   std::atomic<bool> terminate_search = false;
   std::atomic<bool> all_leaves_certified = true;
@@ -2856,6 +2974,8 @@ MixtureSolveStats SolveCellMixtureParallel(
   auto WorkerThread = [&]() {
     FarkasCageCache cage_cache;
     std::vector<SearchNode> local_stack;
+    int64_t local_leaf_hist[160] = {0};
+    int local_min_leaf_d = 999999, local_max_leaf_d = 0;
 
     while (true) {
       if (terminate_search.load(std::memory_order_relaxed) ||
@@ -2998,6 +3118,13 @@ MixtureSolveStats SolveCellMixtureParallel(
           double cur_wm = worst_margin.load(std::memory_order_relaxed);
           while (m < cur_wm && !worst_margin.compare_exchange_weak(cur_wm, m)) {}
 
+          int d = std::clamp((int)node.depth, 0, 159);
+          local_leaf_hist[d]++;
+          local_min_leaf_d = std::min(local_min_leaf_d, (int)node.depth);
+          local_max_leaf_d = std::max(local_max_leaf_d, (int)node.depth);
+          AtomicMin(min_leaf_depth, (int)node.depth);
+          AtomicMax(max_leaf_depth, (int)node.depth);
+
           if (res.strategy_used == 0) k1_count.fetch_add(1);
           else if (res.strategy_used == 1) corner_count.fetch_add(1);
           else if (res.strategy_used == 2) greedy_count.fetch_add(1);
@@ -3134,12 +3261,50 @@ MixtureSolveStats SolveCellMixtureParallel(
         std::lock_guard<std::mutex> lk(unres_mu);
         for (const auto &n : local_stack) unresolved_nodes.push_back(n);
         local_stack.clear();
+        for (int i = 0; i < 160; i++) {
+          global_leaf_depth_hist[i] += local_leaf_hist[i];
+        }
+        global_min_leaf_depth = std::min(global_min_leaf_depth, local_min_leaf_d);
+        global_max_leaf_depth = std::max(global_max_leaf_depth, local_max_leaf_d);
       }
 
       active_workers.fetch_sub(1);
       work_cv.notify_all();
     }
   };
+
+  std::atomic<bool> monitor_stop = false;
+  std::thread monitor_thread;
+  if (progress_callback) {
+    monitor_thread = std::thread([&]() {
+      double last_report = timer.Seconds();
+      while (!monitor_stop.load(std::memory_order_relaxed) &&
+             !terminate_search.load(std::memory_order_relaxed)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        double now = timer.Seconds();
+        if (now - last_report >= 2.0) {
+          last_report = now;
+          MixtureProgress prog;
+          prog.elapsed_seconds = now;
+          prog.total_nodes = total_nodes_evaluated.load(std::memory_order_relaxed);
+          prog.certified_leaves = certified_leaves.load(std::memory_order_relaxed);
+          prog.k1_count = k1_count.load(std::memory_order_relaxed);
+          prog.mx_count = corner_count.load(std::memory_order_relaxed) + greedy_count.load(std::memory_order_relaxed);
+          prog.min_leaf_depth = min_leaf_depth.load(std::memory_order_relaxed);
+          prog.max_leaf_depth = max_leaf_depth.load(std::memory_order_relaxed);
+          prog.worst_margin = worst_margin.load(std::memory_order_relaxed);
+          prog.nodes_per_sec = prog.elapsed_seconds > 0 ? (prog.total_nodes / prog.elapsed_seconds) : 0.0;
+          {
+            std::unique_lock<std::mutex> lk(work_mu, std::try_to_lock);
+            if (lk.owns_lock()) {
+              prog.queue_nodes = (int64_t)(view_queue.size() + box_queue.size());
+            }
+          }
+          progress_callback(prog);
+        }
+      }
+    });
+  }
 
   std::vector<std::thread> workers;
   workers.reserve(actual_threads);
@@ -3148,6 +3313,11 @@ MixtureSolveStats SolveCellMixtureParallel(
   }
   for (auto &w : workers) {
     w.join();
+  }
+
+  monitor_stop = true;
+  if (monitor_thread.joinable()) {
+    monitor_thread.join();
   }
 
   // Gather any unvisited queue nodes into unresolved_nodes
@@ -3174,6 +3344,31 @@ MixtureSolveStats SolveCellMixtureParallel(
   stats.max_view_depth_reached = max_view_depth_reached.load();
   stats.remaining_nodes = (int64_t)unresolved_nodes.size();
   stats.elapsed_seconds = timer.Seconds();
+
+  // Populate leaf depth statistics
+  stats.min_leaf_depth = global_min_leaf_depth;
+  stats.max_leaf_depth = global_max_leaf_depth;
+  for (int i = 0; i < 160; i++) {
+    stats.leaf_depth_histogram[i] = global_leaf_depth_hist[i];
+  }
+
+  // Populate unresolved search frontier statistics
+  for (const auto &n : unresolved_nodes) {
+    int d = std::clamp((int)n.depth, 0, 159);
+    stats.frontier_depth_histogram[d]++;
+    stats.min_frontier_depth = std::min(stats.min_frontier_depth, (int)n.depth);
+    stats.max_frontier_depth = std::max(stats.max_frontier_depth, (int)n.depth);
+
+    int bd = std::clamp((int)n.box_depth, 0, 99);
+    stats.frontier_box_depth_histogram[bd]++;
+    stats.min_frontier_box_depth = std::min(stats.min_frontier_box_depth, (int)n.box_depth);
+    stats.max_frontier_box_depth = std::max(stats.max_frontier_box_depth, (int)n.box_depth);
+
+    int vd = std::clamp((int)n.view_depth, 0, 29);
+    stats.frontier_view_depth_histogram[vd]++;
+    stats.min_frontier_view_depth = std::min(stats.min_frontier_view_depth, (int)n.view_depth);
+    stats.max_frontier_view_depth = std::max(stats.max_frontier_view_depth, (int)n.view_depth);
+  }
 
   stats.solved = all_leaves_certified.load() && unresolved_nodes.empty() && !terminate_search.load();
 
