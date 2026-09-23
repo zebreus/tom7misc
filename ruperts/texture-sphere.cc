@@ -165,7 +165,7 @@ struct ScoreMap {
       std::vector<std::pair<std::span<const double>, double>> batch_arg;
       batch_arg.reserve(batch.size());
       for (const auto &[key, val] : batch) {
-        static_assert(key.size() == 3);
+        DCHECK(key.size() == 3);
         batch_arg.emplace_back(std::span<const double>(key.data(), 3), val);
       }
       tree->InitBatch(std::move(batch_arg));

@@ -1495,7 +1495,7 @@ void ComputeTripleMargins(
                VERTICES[pool->contacts[ci2].vertex][1],
                VERTICES[pool->contacts[ci2].vertex][2]};
 
-  double C_pts[6][10] = {0};
+  double C_pts[6][10] = {};
   for (int node = 0; node < 6; node++) {
     double w0 = yocto::dot(p[node], coeff0);
     double w1 = yocto::dot(p[node], coeff1);

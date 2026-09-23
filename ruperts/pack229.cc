@@ -1870,7 +1870,7 @@ int main(int argc, char **argv) {
           double disp_error = 1.8e-13;
           double penalty = defect_penalty + disp_error;
 
-          double C_pts[6][10] = {0};
+          double C_pts[6][10] = {};
           for (int pt = 0; pt < 6; pt++) {
             double w0 = dot(tri_pts[pt], wc0);
             double w1 = dot(tri_pts[pt], wc1);
