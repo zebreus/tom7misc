@@ -148,6 +148,40 @@ inline double Bernstein27Min(const double C[10],
   return min_b;
 }
 
+inline void Bernstein27Controls(const double C[10],
+                               double lx, double ly, double lz,
+                               double wx, double wy, double wz,
+                               double out_ctrl[27]) {
+  double a0 = (C[0] + C[1] * lx + C[2] * ly + C[3] * lz + C[4] * lx * lx +
+               C[5] * lx * ly + C[6] * lx * lz + C[7] * ly * ly +
+               C[8] * ly * lz + C[9] * lz * lz);
+  double ax = wx * (C[1] + 2.0 * C[4] * lx + C[5] * ly + C[6] * lz);
+  double ay = wy * (C[2] + C[5] * lx + 2.0 * C[7] * ly + C[8] * lz);
+  double az = wz * (C[3] + C[6] * lx + C[8] * ly + 2.0 * C[9] * lz);
+  double axx = C[4] * wx * wx, ayy = C[7] * wy * wy, azz = C[9] * wz * wz;
+  double axy = C[5] * wx * wy, axz = C[6] * wx * wz, ayz = C[8] * wy * wz;
+
+  int idx = 0;
+  for (int bi = 0; bi <= 2; bi++) {
+    double ti = 0.5 * bi * ax + (bi == 2 ? axx : 0.0);
+    for (int bj = 0; bj <= 2; bj++) {
+      double tj =
+          ti + 0.5 * bj * ay + (bj == 2 ? ayy : 0.0) + 0.25 * bi * bj * axy;
+      for (int bk = 0; bk <= 2; bk++) {
+        double val = a0 + tj + 0.5 * bk * az + (bk == 2 ? azz : 0.0) +
+                     0.25 * bk * (bi * axz + bj * ayz);
+        out_ctrl[idx++] = val;
+      }
+    }
+  }
+}
+
+// Declared in lib229.h
+double SolveOptimalWeights(int K, const double *const margins[],
+                           double out_alpha[4], bool polish = true,
+                           const double *warm_alpha = nullptr,
+                           double target_margin = 0.0);
+
 inline void AccumulateContactPoly(double C[10], double weight, vec3 u,
                                   vec3 vin, vec3 vout, vec3 s) {
   double sx = s.x, sy = s.y, sz = s.z;
@@ -1101,7 +1135,7 @@ static bool ParseRow(const std::string &line,
             >> mx.mix_components[i].inner[1]
             >> mx.mix_components[i].inner[2];
       }
-      int64_t M = 10000000LL;
+      int64_t M = 1000000000000LL;
       int64_t sum_w = 0;
       for (int i = 0; i < k - 1; i++) {
         int64_t W = std::max<int64_t>(0LL, (int64_t)std::round(float_weights[i] * M));
@@ -1325,6 +1359,7 @@ int main(int argc, char **argv) {
   bool legacy_sort = false;
   std::string done_dir = ".";
   std::string atlas_dir;
+  int64_t cell_id = 0;
 
   int pos_arg = 0;
   for (int i = 1; i < argc; i++) {
@@ -1343,6 +1378,8 @@ int main(int argc, char **argv) {
       fill_pending = true;
     } else if (arg == "--legacy_sort") {
       legacy_sort = true;
+    } else if (arg == "--cell" && i + 1 < argc) {
+      cell_id = std::stoll(argv[++i]);
     } else if (arg == "--done_dir" && i + 1 < argc) {
       done_dir = argv[++i];
     } else if (arg == "--no_done") {
@@ -1357,6 +1394,12 @@ int main(int argc, char **argv) {
       else if (pos_arg == 2) out_path = arg;
       pos_arg++;
     }
+  }
+
+  if (cell_id != 0) {
+    if (in_path.empty()) in_path = "chart" + std::to_string(chart) + "." + std::to_string(cell_id) + ".done";
+    if (out_path.empty()) out_path = "chart" + std::to_string(chart) + "." + std::to_string(cell_id) + ".pack";
+    done_dir = "none";
   }
 
   if (in_path.empty()) in_path = "chart" + std::to_string(chart) + ".rows.log";
@@ -1409,27 +1452,61 @@ int main(int argc, char **argv) {
 
   // Chart setup
   CayleyBoxQ root_box;
-  root_box.center = Vec3Q(BigRat(0), BigRat(0), BigRat(0));
-  if (chart == 0) {
-    root_box.radii = Vec3Q(BigRat(1), BigRat(1), BigRat(1, 3));
-  } else if (chart == 1) {
-    root_box.radii = Vec3Q(BigRat(1), BigRat(1, 3), BigRat(1));
-  } else if (chart == 2) {
-    root_box.radii = Vec3Q(BigRat(1, 3), BigRat(1), BigRat(1));
-  } else {
-    root_box.radii = Vec3Q(BigRat(1), BigRat(1), BigRat(1));
-  }
-
   TriangleQ root_tri;
-  root_tri.corners[0] = Vec3Q(BigRat(1), BigRat(0), BigRat(0));
-  root_tri.corners[1] = Vec3Q(BigRat(10, 41), BigRat(31, 41), BigRat(0));
-  root_tri.corners[2] = Vec3Q(BigRat(0), BigRat(0), BigRat(1));
+
+  if (cell_id == 12651740028) {
+    root_box.center = Vec3Q(BigRat(1, 2048), BigRat(-1, 2048), BigRat(-1, 1024));
+    root_box.radii = Vec3Q(BigRat(1, 2048), BigRat(1, 2048), BigRat(1, 3072));
+    root_tri.corners[0] = Vec3Q(BigRat(52397, 83968), BigRat(11563, 83968), BigRat(61, 256));
+    root_tri.corners[1] = Vec3Q(BigRat(26219, 41984), BigRat(11563, 83968), BigRat(487, 2048));
+    root_tri.corners[2] = Vec3Q(BigRat(52407, 83968), BigRat(5797, 41984), BigRat(487, 2048));
+  } else if (cell_id == 12651740050) {
+    root_box.center = Vec3Q(BigRat(1, 2048), BigRat(-1, 2048), BigRat(-1, 1024));
+    root_box.radii = Vec3Q(BigRat(1, 2048), BigRat(1, 2048), BigRat(1, 3072));
+    root_tri.corners[0] = Vec3Q(BigRat(52531, 83968), BigRat(5735, 41984), BigRat(487, 2048));
+    root_tri.corners[1] = Vec3Q(BigRat(13143, 20992), BigRat(5735, 41984), BigRat(243, 1024));
+    root_tri.corners[2] = Vec3Q(BigRat(52541, 83968), BigRat(11501, 83968), BigRat(243, 1024));
+  } else if (cell_id == 12651740041) {
+    root_box.center = Vec3Q(BigRat(1, 2048), BigRat(-1, 2048), BigRat(-1, 1024));
+    root_box.radii = Vec3Q(BigRat(1, 2048), BigRat(1, 2048), BigRat(1, 3072));
+    root_tri.corners[0] = Vec3Q(BigRat(26245, 41984), BigRat(5735, 41984), BigRat(61, 256));
+    root_tri.corners[1] = Vec3Q(BigRat(1281, 2048), BigRat(279, 2048), BigRat(61, 256));
+    root_tri.corners[2] = Vec3Q(BigRat(52531, 83968), BigRat(5735, 41984), BigRat(487, 2048));
+  } else {
+    root_box.center = Vec3Q(BigRat(0), BigRat(0), BigRat(0));
+    if (chart == 0) {
+      root_box.radii = Vec3Q(BigRat(1), BigRat(1), BigRat(1, 3));
+    } else if (chart == 1) {
+      root_box.radii = Vec3Q(BigRat(1), BigRat(1, 3), BigRat(1));
+    } else if (chart == 2) {
+      root_box.radii = Vec3Q(BigRat(1, 3), BigRat(1), BigRat(1));
+    } else {
+      root_box.radii = Vec3Q(BigRat(1), BigRat(1), BigRat(1));
+    }
+
+    root_tri.corners[0] = Vec3Q(BigRat(1), BigRat(0), BigRat(0));
+    root_tri.corners[1] = Vec3Q(BigRat(10, 41), BigRat(31, 41), BigRat(0));
+    root_tri.corners[2] = Vec3Q(BigRat(0), BigRat(0), BigRat(1));
+  }
 
   std::vector<ParsedNode> nodes(100000);
   std::unordered_map<int64_t, StoredMixedCert> mixed_certs;
   std::vector<int64_t> all_node_ids;
   int64_t max_id = -1;
   int64_t cert_count = 0;
+
+  std::unordered_map<int64_t, int64_t> cell_id_map;
+  auto get_dense_id = [&](int64_t raw_id) -> int64_t {
+    if (raw_id < 0) return raw_id;
+    auto it = cell_id_map.find(raw_id);
+    if (it != cell_id_map.end()) return it->second;
+    int64_t nid = (int64_t)cell_id_map.size();
+    cell_id_map[raw_id] = nid;
+    return nid;
+  };
+  if (cell_id != 0) {
+    cell_id_map[cell_id] = 0;
+  }
 
   std::ifstream infile(in_path);
   if (!infile.is_open()) {
@@ -1445,6 +1522,19 @@ int main(int argc, char **argv) {
     ParsedNode pn;
     int64_t cert_delta = 0;
     if (!ParseRow(line, &pn, &mixed_certs, &cert_delta)) continue;
+    int64_t raw_id = pn.id;
+    if (cell_id != 0) {
+      int64_t dense_id = get_dense_id(raw_id);
+      pn.id = dense_id;
+      pn.parent_id = -1;
+      for (int c = 0; c < 4; c++) {
+        if (pn.child_ids[c] >= 0) pn.child_ids[c] = get_dense_id(pn.child_ids[c]);
+      }
+      if (pn.tag == NodeTag::MX && raw_id != dense_id) {
+        mixed_certs[dense_id] = std::move(mixed_certs[raw_id]);
+        mixed_certs.erase(raw_id);
+      }
+    }
     if (pn.id >= (int64_t)nodes.size()) {
       nodes.resize(std::max((int64_t)nodes.size() * 2, pn.id + 1024));
     }
@@ -1518,14 +1608,20 @@ int main(int argc, char **argv) {
     nodes[0].child_ids[3]
   };
 
-  for (int t = 0; t < 4; t++) {
-    int64_t cid = root_c[t];
-    if (cid >= 0 && cid < (int64_t)nodes.size() && nodes[cid].tag != NodeTag::NONE) {
-      nodes[cid].interval_id = root_interval_idx;
-      nodes[cid].triangle_id = root_sub_wedge_ids[t];
-      nodes[cid].shared_index = t;
-      nodes[cid].subdivision_path.clear();
-      bfs_queue.push_back(cid);
+  if (cell_id != 0) {
+    nodes[0].shared_index = 0;
+    nodes[0].subdivision_path.clear();
+    bfs_queue.push_back(0);
+  } else {
+    for (int t = 0; t < 4; t++) {
+      int64_t cid = root_c[t];
+      if (cid >= 0 && cid < (int64_t)nodes.size() && nodes[cid].tag != NodeTag::NONE) {
+        nodes[cid].interval_id = root_interval_idx;
+        nodes[cid].triangle_id = root_sub_wedge_ids[t];
+        nodes[cid].shared_index = t;
+        nodes[cid].subdivision_path.clear();
+        bfs_queue.push_back(cid);
+      }
     }
   }
 
@@ -1702,7 +1798,10 @@ int main(int argc, char **argv) {
             max_triple = mx.mix_components[i].winning_triple;
           }
         }
-        auto pool = get_pool_for_triple(node.depth, max_triple);
+        auto pool = get_pool(cone_samples);
+        if (max_triple >= (int)pool->gpu_triples.size()) {
+          pool = get_pool_for_triple(node.depth, max_triple);
+        }
         const CayleyBoxQ &box = intervals[node.interval_id];
         for (int i = 0; i < mx.mix_k; i++) {
           if (!ComputeExactComponent(tri,
@@ -1719,6 +1818,112 @@ int main(int argc, char **argv) {
             std::cerr << "\n" << ARED("Failed to verify mixed component ") << i << " for node " << id << "\n";
             return 1;
           }
+        }
+        vec3 tri_pts[6] = {
+          tri.corners[0].ToVec3D(),
+          tri.corners[1].ToVec3D(),
+          tri.corners[2].ToVec3D(),
+          (tri.corners[0].ToVec3D() + tri.corners[1].ToVec3D()) * 0.5,
+          (tri.corners[1].ToVec3D() + tri.corners[2].ToVec3D()) * 0.5,
+          (tri.corners[2].ToVec3D() + tri.corners[0].ToVec3D()) * 0.5
+        };
+        double lx = box.center.x.ToDouble() - box.radii.x.ToDouble();
+        double ly = box.center.y.ToDouble() - box.radii.y.ToDouble();
+        double lz = box.center.z.ToDouble() - box.radii.z.ToDouble();
+        double wx = 2.0 * box.radii.x.ToDouble();
+        double wy = 2.0 * box.radii.y.ToDouble();
+        double wz = 2.0 * box.radii.z.ToDouble();
+        vec3 s_sgn = {1.0, 1.0, 1.0};
+        if (chart == 1) { s_sgn.y = -1.0; s_sgn.z = -1.0; }
+        else if (chart == 2) { s_sgn.x = -1.0; s_sgn.z = -1.0; }
+
+        double comp_margins[4][162];
+        const double *comp_ptrs[4] = {nullptr, nullptr, nullptr, nullptr};
+
+        for (int i = 0; i < mx.mix_k; i++) {
+          int wt = mx.mix_components[i].winning_triple;
+          const auto &trip = pool->gpu_triples[wt];
+          const ContactInfo *contacts[3] = {
+            &pool->contacts[trip.c0],
+            &pool->contacts[trip.c1],
+            &pool->contacts[trip.c2]
+          };
+          int in0 = mx.mix_components[i].inner[0];
+          int in1 = mx.mix_components[i].inner[1];
+          int in2 = mx.mix_components[i].inner[2];
+
+          vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+          vec3 vout0 = {VERTICES[contacts[0]->vertex][0], VERTICES[contacts[0]->vertex][1], VERTICES[contacts[0]->vertex][2]};
+          vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+          vec3 vout1 = {VERTICES[contacts[1]->vertex][0], VERTICES[contacts[1]->vertex][1], VERTICES[contacts[1]->vertex][2]};
+          vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+          vec3 vout2 = {VERTICES[contacts[2]->vertex][0], VERTICES[contacts[2]->vertex][1], VERTICES[contacts[2]->vertex][2]};
+
+          vec3 e0 = contacts[0]->edge;
+          vec3 e1 = contacts[1]->edge;
+          vec3 e2 = contacts[2]->edge;
+          vec3 wc0 = cross(e1, e2);
+          vec3 wc1 = cross(e2, e0);
+          vec3 wc2 = cross(e0, e1);
+
+          double defect_penalty = trip.weighted_defect_upper * 1.0001;
+          double disp_error = 1.8e-13;
+          double penalty = defect_penalty + disp_error;
+
+          double C_pts[6][10] = {0};
+          for (int pt = 0; pt < 6; pt++) {
+            double w0 = dot(tri_pts[pt], wc0);
+            double w1 = dot(tri_pts[pt], wc1);
+            double w2 = dot(tri_pts[pt], wc2);
+            AccumulateContactPoly(C_pts[pt], w0, cross(tri_pts[pt], e0), vin0, vout0, s_sgn);
+            AccumulateContactPoly(C_pts[pt], w1, cross(tri_pts[pt], e1), vin1, vout1, s_sgn);
+            AccumulateContactPoly(C_pts[pt], w2, cross(tri_pts[pt], e2), vin2, vout2, s_sgn);
+          }
+
+          double C_ctrl[6][10];
+          // Corners (pt = 0, 1, 2)
+          for (int pt = 0; pt < 3; pt++) {
+            for (int c = 0; c < 10; c++) C_ctrl[pt][c] = C_pts[pt][c];
+          }
+          // Off-diagonal controls: B_ij = 2 * Q(m_ij) - 0.5 * (Q(v_i) + Q(v_j))
+          // pt = 3 is midpoint(v0, v1)
+          for (int c = 0; c < 10; c++) {
+            C_ctrl[3][c] = 2.0 * C_pts[3][c] - 0.5 * (C_pts[0][c] + C_pts[1][c]);
+          }
+          // pt = 4 is midpoint(v1, v2)
+          for (int c = 0; c < 10; c++) {
+            C_ctrl[4][c] = 2.0 * C_pts[4][c] - 0.5 * (C_pts[1][c] + C_pts[2][c]);
+          }
+          // pt = 5 is midpoint(v2, v0)
+          for (int c = 0; c < 10; c++) {
+            C_ctrl[5][c] = 2.0 * C_pts[5][c] - 0.5 * (C_pts[2][c] + C_pts[0][c]);
+          }
+
+          for (int pt = 0; pt < 6; pt++) {
+            double b_ctrl[27];
+            Bernstein27Controls(C_ctrl[pt], lx, ly, lz, wx, wy, wz, b_ctrl);
+            for (int m = 0; m < 27; m++) {
+              comp_margins[i][pt * 27 + m] = b_ctrl[m] - penalty;
+            }
+          }
+          comp_ptrs[i] = comp_margins[i];
+        }
+
+        double alpha[4] = {0};
+        double opt_val = SolveOptimalWeights(mx.mix_k, comp_ptrs, alpha, /*polish=*/true);
+        if (opt_val > 0.0) {
+          for (int i = 0; i < mx.mix_k; i++) {
+            int64_t w_num = std::llround(alpha[i] * 1000000000000.0);
+            mx.mix_weights[i] = BigRat(w_num, 1000000000000LL);
+          }
+          BigRat sum_w(0);
+          for (int i = 0; i < mx.mix_k; i++) sum_w = sum_w + mx.mix_weights[i];
+          if (sum_w > 0) {
+            for (int i = 0; i < mx.mix_k; i++) mx.mix_weights[i] = mx.mix_weights[i] / sum_w;
+          }
+        } else {
+          std::cout << "\nWarning: node " << id << " opt_val <= 0: " << opt_val
+                    << " (k=" << mx.mix_k << ")\n";
         }
         for (int i = mx.mix_k; i < 4; i++) {
           mx.mix_components[i] = mx.mix_components[0];
@@ -1741,7 +1946,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  int64_t total_lean_rows = max_id + 2;
+  int64_t total_lean_rows = (cell_id != 0) ? (max_id + 1) : (max_id + 2);
   outfile << total_lean_rows << "," << intervals.size();
 
   for (const auto &box : intervals) {
@@ -1762,22 +1967,25 @@ int main(int argc, char **argv) {
     }
   }
 
-  // Row 0: viewRoot (tag 0 in readRow)
-  // tag 0: id intervalIndex child
-  outfile << ",0,0," << root_interval_idx << ",1";
+  if (cell_id == 0) {
+    // Row 0: viewRoot (tag 0 in readRow)
+    // tag 0: id intervalIndex child
+    outfile << ",0,0," << root_interval_idx << ",1";
 
-  // Row 1: viewSplit (tag 2 in readRow)
-  // tag 2: id intervalIndex c0 c1 c2 c3 0 triangleIndex
-  outfile << ",2,1," << root_interval_idx
-          << "," << (root_c[0] + 1)
-          << "," << (root_c[1] + 1)
-          << "," << (root_c[2] + 1)
-          << "," << (root_c[3] + 1)
-          << ",0," << root_triangle_idx;
+    // Row 1: viewSplit (tag 2 in readRow)
+    // tag 2: id intervalIndex c0 c1 c2 c3 0 triangleIndex
+    outfile << ",2,1," << root_interval_idx
+            << "," << (root_c[0] + 1)
+            << "," << (root_c[1] + 1)
+            << "," << (root_c[2] + 1)
+            << "," << (root_c[3] + 1)
+            << ",0," << root_triangle_idx;
+  }
 
-  // Rows 2 .. total_lean_rows - 1: search tree nodes 0 .. max_id
-  for (int64_t lean_id = 2; lean_id < total_lean_rows; lean_id++) {
-    int64_t id = lean_id - 1;
+  // Rows start_lean_id .. total_lean_rows - 1: search tree nodes
+  int64_t start_lean_id = (cell_id != 0) ? 0 : 2;
+  for (int64_t lean_id = start_lean_id; lean_id < total_lean_rows; lean_id++) {
+    int64_t id = (cell_id != 0) ? lean_id : (lean_id - 1);
     if (id >= (int64_t)nodes.size() || nodes[id].tag == NodeTag::NONE || nodes[id].interval_id < 0) {
       if (fill_pending) {
         outfile << ",0," << lean_id << "," << root_interval_idx << "," << lean_id;
@@ -1806,8 +2014,10 @@ int main(int argc, char **argv) {
       const CayleyBoxQ &box = intervals[iv_idx];
       int axis = box.WidestAxis();
       int coord = axis + 2; // In Lean: x=2, y=3, z=4
+      int64_t lean_c0 = (cell_id != 0) ? c0 : (c0 + 1);
+      int64_t lean_c1 = (cell_id != 0) ? c1 : (c1 + 1);
       outfile << ",1," << lean_id << "," << iv_idx
-              << "," << (c0 + 1) << "," << (c1 + 1)
+              << "," << lean_c0 << "," << lean_c1
               << "," << coord << ",0," << tri_idx;
 
     } else if (node.tag == NodeTag::SPLIT_VIEW) {
@@ -1827,11 +2037,15 @@ int main(int argc, char **argv) {
           return 1;
         }
       }
+      int64_t lean_c0 = (cell_id != 0) ? node.child_ids[0] : (node.child_ids[0] + 1);
+      int64_t lean_c1 = (cell_id != 0) ? node.child_ids[1] : (node.child_ids[1] + 1);
+      int64_t lean_c2 = (cell_id != 0) ? node.child_ids[2] : (node.child_ids[2] + 1);
+      int64_t lean_c3 = (cell_id != 0) ? node.child_ids[3] : (node.child_ids[3] + 1);
       outfile << ",2," << lean_id << "," << iv_idx
-              << "," << (node.child_ids[0] + 1)
-              << "," << (node.child_ids[1] + 1)
-              << "," << (node.child_ids[2] + 1)
-              << "," << (node.child_ids[3] + 1)
+              << "," << lean_c0
+              << "," << lean_c1
+              << "," << lean_c2
+              << "," << lean_c3
               << ",0," << tri_idx;
 
     } else if (node.tag == NodeTag::DIFFICULT) {

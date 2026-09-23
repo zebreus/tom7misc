@@ -1160,7 +1160,7 @@ Polyhedron GetPolyhedron229() {
 
 
 // Euclidean projection of x onto the probability simplex sum(out) = 1, out >= 0
-static inline void ProjectToSimplex(int K, const double x[], double out[]) {
+void ProjectToSimplex(int K, const double x[], double out[]) {
   double u[4];
   for (int i = 0; i < K; i++) u[i] = x[i];
   std::sort(u, u + K, std::greater<double>());
@@ -1180,9 +1180,9 @@ static inline void ProjectToSimplex(int K, const double x[], double out[]) {
 }
 
 // Evaluates the worst margin across 162 controls given mixture weights alpha
-static inline double EvalMixtureMargin(int K, const double *const margins[],
-                                       const double alpha[],
-                                       int *out_worst_idx = nullptr) {
+double EvalMixtureMargin(int K, const double *const margins[],
+                         const double alpha[],
+                         int *out_worst_idx) {
   double min_val = 1e30;
   int worst_idx = 0;
   if (K == 1) {
@@ -1242,24 +1242,51 @@ static inline double EvalMixtureMargin(int K, const double *const margins[],
 
 // Solves max_{alpha in Delta_K} min_{j=0..161} sum_{k=0}^{K-1} alpha_k
 // margins[k][j] for K in {1, 2, 3, 4}.
-static double SolveOptimalWeights(int K, const double *const margins[],
-                                  double out_alpha[4], bool polish = true,
-                                  const double *warm_alpha = nullptr) {
+double SolveOptimalWeights(int K, const double *const margins[],
+                           double out_alpha[4], bool polish,
+                           const double *warm_alpha,
+                           double target_margin) {
+
   if (K == 1) {
     out_alpha[0] = 1.0;
     return EvalMixtureMargin(1, margins, out_alpha);
   }
 
-  if (warm_alpha) {
-    double warm_val = EvalMixtureMargin(K, margins, warm_alpha);
-    if (warm_val > 0.0) {
-      std::memcpy(out_alpha, warm_alpha, sizeof(double) * K);
-      return warm_val;
-    }
-  }
-
   if (K == 2) {
-    // 1D golden section search on alpha[0] in [0, 1]
+    // 1. Exact 1D Chebyshev Centering for K = 2.
+    // For each control point j in 0..161, we require:
+    //   w * margins[0][j] + (1 - w) * margins[1][j] >= target_margin
+    //   w * (margins[0][j] - margins[1][j]) >= target_margin - margins[1][j]
+    double w_min = 0.0, w_max = 1.0;
+    bool feasible = true;
+    for (int j = 0; j < 162; j++) {
+      double d = margins[0][j] - margins[1][j];
+      double b = target_margin - margins[1][j];
+      if (d > 0.0) {
+        double bound = b / d;
+        if (bound > w_min) w_min = bound;
+      } else if (d < 0.0) {
+        double bound = b / d;
+        if (bound < w_max) w_max = bound;
+      } else {
+        if (margins[1][j] < target_margin) {
+          feasible = false;
+          break;
+        }
+      }
+    }
+
+    if (feasible && w_min <= w_max) {
+      // The Chebyshev center is the midpoint of the feasible interval,
+      // maximizing distance to constraint boundaries.
+      double best_w = (w_min + w_max) * 0.5;
+      out_alpha[0] = best_w;
+      out_alpha[1] = 1.0 - best_w;
+      return EvalMixtureMargin(2, margins, out_alpha);
+    }
+
+    // 2. If target_margin is not achievable, run 1D golden section search to find
+    // the global maximum of the concave margin function f(w) on [0, 1].
     double a = 0.0, b = 1.0;
     const double phi = (std::sqrt(5.0) - 1.0) * 0.5;
     double x1 = b - phi * (b - a);
@@ -1269,16 +1296,8 @@ static double SolveOptimalWeights(int K, const double *const margins[],
     double f1 = EvalMixtureMargin(2, margins, a1);
     double f2 = EvalMixtureMargin(2, margins, a2);
 
-    int max_iter = polish ? 45 : 15;
+    int max_iter = polish ? 30 : 15;
     for (int iter = 0; iter < max_iter; iter++) {
-      if (f1 > 0.0) {
-        out_alpha[0] = a1[0]; out_alpha[1] = a1[1];
-        return f1;
-      }
-      if (f2 > 0.0) {
-        out_alpha[0] = a2[0]; out_alpha[1] = a2[1];
-        return f2;
-      }
       if (f1 < f2) {
         a = x1;
         x1 = x2;
@@ -1301,17 +1320,13 @@ static double SolveOptimalWeights(int K, const double *const margins[],
     return EvalMixtureMargin(2, margins, out_alpha);
   }
 
-  // K = 3 or 4: Projected subgradient ascent + Nelder-Mead simplex polish
+  // K = 3 or 4:
   double alpha[4];
   for (int k = 0; k < K; k++) alpha[k] = 1.0 / K;
 
   double best_alpha[4];
   std::memcpy(best_alpha, alpha, sizeof(double) * K);
   double best_val = EvalMixtureMargin(K, margins, alpha);
-  if (best_val > 0.0) {
-    std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
-    return best_val;
-  }
 
   if (warm_alpha) {
     double warm_val = EvalMixtureMargin(K, margins, warm_alpha);
@@ -1324,17 +1339,13 @@ static double SolveOptimalWeights(int K, const double *const margins[],
 
   // Projected Subgradient Ascent
   double eta = 0.05;
-  int subgrad_iters = polish ? 100 : 25;
+  int subgrad_iters = polish ? 60 : 25;
   for (int iter = 0; iter < subgrad_iters; iter++) {
     int worst_j = 0;
     double val = EvalMixtureMargin(K, margins, alpha, &worst_j);
     if (val > best_val) {
       best_val = val;
       std::memcpy(best_alpha, alpha, sizeof(double) * K);
-      if (best_val > 0.0) {
-        std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
-        return best_val;
-      }
     }
     double step = eta / std::sqrt(iter + 1.0);
     double next_x[4];
@@ -1344,12 +1355,17 @@ static double SolveOptimalWeights(int K, const double *const margins[],
     ProjectToSimplex(K, next_x, alpha);
   }
 
-  if ((!polish && best_val <= -0.005) || best_val > 0.0) {
+  if (!polish && best_val <= -0.005) {
     std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
     return best_val;
   }
 
-  // Polish with Nelder-Mead simplex search on barycentric coordinates
+  // Nelder-Mead simplex search on barycentric coordinates.
+  // Once target_margin is reached, run a fixed number of heuristic polish
+  // iterations to push deeper into the interior.
+  constexpr int kNelderMeadGoalPolishIters = 8;
+  int post_goal_iters = 0;
+
   double p[5][4];
   double p_val[5];
   std::memcpy(p[0], best_alpha, sizeof(double) * K);
@@ -1366,14 +1382,15 @@ static double SolveOptimalWeights(int K, const double *const margins[],
     if (p_val[i] > best_val) {
       best_val = p_val[i];
       std::memcpy(best_alpha, p[i], sizeof(double) * K);
-      if (best_val > 0.0) {
-        std::memcpy(out_alpha, best_alpha, sizeof(double) * K);
-        return best_val;
-      }
     }
   }
 
   for (int iter = 0; iter < 40; iter++) {
+    if (best_val >= target_margin) {
+      post_goal_iters++;
+      if (post_goal_iters > kNelderMeadGoalPolishIters) break;
+    }
+
     for (int i = 0; i <= K; i++) {
       for (int j = i + 1; j <= K; j++) {
         if (p_val[j] > p_val[i]) {
@@ -1385,7 +1402,6 @@ static double SolveOptimalWeights(int K, const double *const margins[],
     if (p_val[0] > best_val) {
       best_val = p_val[0];
       std::memcpy(best_alpha, p[0], sizeof(double) * K);
-      if (best_val > 0.0) break;
     }
 
     double c[4] = {0};
@@ -1436,6 +1452,88 @@ static double SolveOptimalWeights(int K, const double *const margins[],
   return best_val;
 }
 
+void ComputeTripleMargins(
+    int chart,
+    const vec3 p[6],
+    double lx, double ly, double lz,
+    double wx_len, double wy_len, double wz_len,
+    double d_bound,
+    int triple_idx,
+    const int inners[3],
+    std::shared_ptr<const TrianglePool> pool,
+    double out_margins[162]) {
+  double sx = 1.0, sy = 1.0, sz = 1.0;
+  if (chart == 1) { sy = -1.0; sz = -1.0; }
+  else if (chart == 2) { sx = -1.0; sz = -1.0; }
+  vec3 s = {sx, sy, sz};
+
+  const auto &triple = pool->gpu_triples[triple_idx];
+  int ci0 = triple.c0, ci1 = triple.c1, ci2 = triple.c2;
+
+  vec3 edge0 = {pool->contacts[ci0].edge[0], pool->contacts[ci0].edge[1], pool->contacts[ci0].edge[2]};
+  vec3 edge1 = {pool->contacts[ci1].edge[0], pool->contacts[ci1].edge[1], pool->contacts[ci1].edge[2]};
+  vec3 edge2 = {pool->contacts[ci2].edge[0], pool->contacts[ci2].edge[1], pool->contacts[ci2].edge[2]};
+
+  vec3 coeff0 = yocto::cross(edge1, edge2);
+  vec3 coeff1 = yocto::cross(edge2, edge0);
+  vec3 coeff2 = yocto::cross(edge0, edge1);
+
+  double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
+  double penalty = d_bound * triple.weighted_defect_upper + disp_error;
+
+  int in0 = inners[0], in1 = inners[1], in2 = inners[2];
+  vec3 vin0 = {VERTICES[in0][0], VERTICES[in0][1], VERTICES[in0][2]};
+  vec3 vout0 = {VERTICES[pool->contacts[ci0].vertex][0],
+               VERTICES[pool->contacts[ci0].vertex][1],
+               VERTICES[pool->contacts[ci0].vertex][2]};
+  vec3 vin1 = {VERTICES[in1][0], VERTICES[in1][1], VERTICES[in1][2]};
+  vec3 vout1 = {VERTICES[pool->contacts[ci1].vertex][0],
+               VERTICES[pool->contacts[ci1].vertex][1],
+               VERTICES[pool->contacts[ci1].vertex][2]};
+  vec3 vin2 = {VERTICES[in2][0], VERTICES[in2][1], VERTICES[in2][2]};
+  vec3 vout2 = {VERTICES[pool->contacts[ci2].vertex][0],
+               VERTICES[pool->contacts[ci2].vertex][1],
+               VERTICES[pool->contacts[ci2].vertex][2]};
+
+  double C_pts[6][10] = {0};
+  for (int node = 0; node < 6; node++) {
+    double w0 = yocto::dot(p[node], coeff0);
+    double w1 = yocto::dot(p[node], coeff1);
+    double w2 = yocto::dot(p[node], coeff2);
+
+    AccumulateContactPoly(C_pts[node], w0, yocto::cross(p[node], edge0), vin0, vout0, s);
+    AccumulateContactPoly(C_pts[node], w1, yocto::cross(p[node], edge1), vin1, vout1, s);
+    AccumulateContactPoly(C_pts[node], w2, yocto::cross(p[node], edge2), vin2, vout2, s);
+  }
+
+  double C_ctrl[6][10];
+  // Corners (pt = 0, 1, 2)
+  for (int pt = 0; pt < 3; pt++) {
+    for (int c = 0; c < 10; c++) C_ctrl[pt][c] = C_pts[pt][c];
+  }
+  // Off-diagonal controls: B_ij = 2 * Q(m_ij) - 0.5 * (Q(v_i) + Q(v_j))
+  // pt = 3 is midpoint(v0, v1)
+  for (int c = 0; c < 10; c++) {
+    C_ctrl[3][c] = 2.0 * C_pts[3][c] - 0.5 * (C_pts[0][c] + C_pts[1][c]);
+  }
+  // pt = 4 is midpoint(v1, v2)
+  for (int c = 0; c < 10; c++) {
+    C_ctrl[4][c] = 2.0 * C_pts[4][c] - 0.5 * (C_pts[1][c] + C_pts[2][c]);
+  }
+  // pt = 5 is midpoint(v2, v0)
+  for (int c = 0; c < 10; c++) {
+    C_ctrl[5][c] = 2.0 * C_pts[5][c] - 0.5 * (C_pts[2][c] + C_pts[0][c]);
+  }
+
+  for (int node = 0; node < 6; node++) {
+    double b_ctrl[27];
+    ComputeBernstein27Controls(C_ctrl[node], lx, ly, lz, wx_len, wy_len, wz_len, b_ctrl);
+    for (int m = 0; m < 27; m++) {
+      out_margins[node * 27 + m] = b_ctrl[m] - penalty;
+    }
+  }
+}
+
 struct EvaluatedCandidateTriple {
   int triple_idx = -1;
   int inner[3] = {0};
@@ -1469,6 +1567,9 @@ MixtureResult EvaluateBoxCPUMixture(
   double ez = std::max(std::abs(box.center.z - box.radii.z), std::abs(box.center.z + box.radii.z));
   double d_bound = 1.0 + ex*ex + ey*ey + ez*ez;
   double disp_error = 300.0 * d_bound * TIGHT_VERTEX_ERROR;
+
+  double box_r = std::max({r.x, r.y, r.z});
+  double safe_margin = std::min(1e-6, 1e-4 * box_r);
 
   auto pool = GetTrianglePool(tri, cone_samples);
   if (!pool || pool->gpu_triples.empty()) {
@@ -1681,7 +1782,9 @@ MixtureResult EvaluateBoxCPUMixture(
           const double *hint_ptrs[4];
           for (int h = 0; h < K_hint; h++) hint_ptrs[h] = hint_margins[h];
           double hint_alpha[4] = {0};
-          double hint_margin = SolveOptimalWeights(K_hint, hint_ptrs, hint_alpha);
+          double hint_margin = SolveOptimalWeights(K_hint, hint_ptrs, hint_alpha,
+                                                   /*polish=*/true, /*warm_alpha=*/nullptr,
+                                                   safe_margin);
           if (hint_margin > 0.0) {
             res.certified = true;
             res.strategy_used = 3; // warm-start Farkas cage
@@ -1906,7 +2009,8 @@ MixtureResult EvaluateBoxCPUMixture(
     corner_margins[k] = evaluated[corner_set[k]].margins;
   double corner_alpha[4] = {0};
   double corner_margin =
-      SolveOptimalWeights(K_corner, corner_margins, corner_alpha);
+      SolveOptimalWeights(K_corner, corner_margins, corner_alpha, /*polish=*/true,
+                          /*warm_alpha=*/nullptr, safe_margin);
 
   if (corner_margin > 0.0) {
     res.certified = true;
@@ -2065,12 +2169,12 @@ MixtureResult EvaluateBoxCPUMixture(
         warm[test_K - 1] = eps;
 
         double alpha[4] = {0};
-        double m = SolveOptimalWeights(test_K, test_margins, alpha, /*polish=*/false, warm);
+        double m = SolveOptimalWeights(test_K, test_margins, alpha, /*polish=*/false, warm, safe_margin);
         if (m > best_step_margin) {
           best_step_margin = m;
           best_cand = c;
           std::memcpy(best_step_alpha, alpha, sizeof(double) * test_K);
-          if (m > 0.0) {
+          if (m >= safe_margin) {
             break;
           }
         }
@@ -2080,7 +2184,7 @@ MixtureResult EvaluateBoxCPUMixture(
         chosen.push_back(best_cand);
         current_best_margin = best_step_margin;
         std::memcpy(current_best_alpha, best_step_alpha, sizeof(double) * chosen.size());
-        if (current_best_margin > 0.0) {
+        if (current_best_margin >= safe_margin) {
           break;
         }
       } else {
@@ -2089,6 +2193,13 @@ MixtureResult EvaluateBoxCPUMixture(
     }
 
     if (current_best_margin > res.margin) {
+      if (current_best_margin > 0.0) {
+        // Polish the winning mixture to ensure optimal Chebyshev centering
+        const double *chosen_ptrs[4];
+        for (size_t k = 0; k < chosen.size(); k++) chosen_ptrs[k] = evaluated[chosen[k]].margins;
+        current_best_margin = SolveOptimalWeights(chosen.size(), chosen_ptrs, current_best_alpha,
+                                                  /*polish=*/true, current_best_alpha, safe_margin);
+      }
       res.margin = current_best_margin;
       res.num_components = chosen.size();
       res.strategy_used = 2;

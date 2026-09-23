@@ -584,6 +584,112 @@ void TestParallelMixtureSolver() {
         stats.total_nodes, stats.elapsed_seconds);
 }
 
+static void TestNumericalWeightOptimization() {
+  Print("Running TestNumericalWeightOptimization...\n");
+
+  // 1. Test ProjectToSimplex
+  {
+    double x2[2] = {0.5, 0.5};
+    double out2[2] = {0};
+    ProjectToSimplex(2, x2, out2);
+    CHECK_TOL(out2[0], 0.5, 1e-12, "Simplex proj of [0.5, 0.5]");
+    CHECK_TOL(out2[1], 0.5, 1e-12, "Simplex proj of [0.5, 0.5]");
+
+    double x_out[2] = {-2.0, 5.0};
+    ProjectToSimplex(2, x_out, out2);
+    CHECK_TOL(out2[0], 0.0, 1e-12, "Simplex proj [-2, 5] -> 0");
+    CHECK_TOL(out2[1], 1.0, 1e-12, "Simplex proj [-2, 5] -> 1");
+
+    double x4[4] = {0.1, -0.5, 0.8, 1.2};
+    double out4[4] = {0};
+    ProjectToSimplex(4, x4, out4);
+    double sum4 = out4[0] + out4[1] + out4[2] + out4[3];
+    CHECK_TOL(sum4, 1.0, 1e-12, "Simplex proj sum = 1.0");
+    for (int k = 0; k < 4; k++) {
+      CHECK_TRUE(out4[k] >= -1e-15, "Simplex proj non-negativity");
+    }
+  }
+
+  // 2. Test EvalMixtureMargin
+  {
+    double m0[162];
+    for (int j = 0; j < 162; j++) m0[j] = 5.0;
+    m0[42] = -1.5;
+
+    const double *margins1[1] = {m0};
+    double alpha1[1] = {1.0};
+    int worst_j = -1;
+    double val1 = EvalMixtureMargin(1, margins1, alpha1, &worst_j);
+    CHECK_TOL(val1, -1.5, 1e-12, "EvalMixtureMargin K=1 value");
+    CHECK_TRUE(worst_j == 42, "EvalMixtureMargin K=1 worst index");
+
+    double m1[162];
+    for (int j = 0; j < 162; j++) m1[j] = 3.0;
+    const double *margins2[2] = {m0, m1};
+    double alpha2[2] = {0.4, 0.6};
+    double val2 = EvalMixtureMargin(2, margins2, alpha2, &worst_j);
+    // At j=42: 0.4 * (-1.5) + 0.6 * (3.0) = -0.6 + 1.8 = 1.2
+    // At other j: 0.4 * 5.0 + 0.6 * 3.0 = 2.0 + 1.8 = 3.8
+    CHECK_TOL(val2, 1.2, 1e-12, "EvalMixtureMargin K=2 value");
+    CHECK_TRUE(worst_j == 42, "EvalMixtureMargin K=2 worst index");
+  }
+
+  // 3. Test SolveOptimalWeights
+  {
+    // Construct a complementary 2-component problem where neither component
+    // is positive on its own, but their mixture has positive margin.
+    // Comp 0: +2.0 on 0..80, -1.0 on 81..161
+    // Comp 1: -1.0 on 0..80, +2.0 on 81..161
+    // At alpha = (0.5, 0.5), margin is min(0.5(2)-0.5(1), -0.5(1)+0.5(2)) = +0.5 > 0.
+    double comp0[162], comp1[162];
+    for (int j = 0; j < 81; j++) {
+      comp0[j] = 2.0;
+      comp1[j] = -1.0;
+    }
+    for (int j = 81; j < 162; j++) {
+      comp0[j] = -1.0;
+      comp1[j] = 2.0;
+    }
+
+    const double *margins2[2] = {comp0, comp1};
+    double alpha[4] = {0};
+    double m = SolveOptimalWeights(2, margins2, alpha, /*polish=*/true);
+    CHECK_TRUE(m > 0.0, "SolveOptimalWeights K=2 achieves positive margin");
+    CHECK_TOL(alpha[0], 0.5, 1e-12, "Symmetric K=2 Chebyshev center alpha[0] == 0.5");
+    CHECK_TOL(alpha[1], 0.5, 1e-12, "Symmetric K=2 Chebyshev center alpha[1] == 0.5");
+    CHECK_TOL(m, 0.5, 1e-12, "Symmetric K=2 Chebyshev center margin == 0.5");
+
+    // Asymmetric interval:
+    // Comp 0: +4 on 0..80, -1 on 81..161 -> w >= 0.2
+    // Comp 1: -1 on 0..80, +2 on 81..161 -> w <= 2/3
+    // Feasible interval: [1/5, 2/3]. Midpoint = (1/5 + 2/3)/2 = 13/30.
+    for (int j = 0; j < 81; j++) comp0[j] = 4.0;
+    double m_asym = SolveOptimalWeights(2, margins2, alpha, /*polish=*/true, nullptr, /*target_margin=*/0.0);
+    CHECK_TRUE(m_asym > 0.0, "Asymmetric K=2 achieves positive margin");
+    CHECK_TOL(alpha[0], 13.0 / 30.0, 1e-12, "Asymmetric K=2 Chebyshev center alpha[0] == 13/30");
+    CHECK_TOL(alpha[1], 17.0 / 30.0, 1e-12, "Asymmetric K=2 Chebyshev center alpha[1] == 17/30");
+
+    // Construct a 3-component problem:
+    // Comp 0: +3 on 0..53, -1 elsewhere
+    // Comp 1: +3 on 54..107, -1 elsewhere
+    // Comp 2: +3 on 108..161, -1 elsewhere
+    // Equal mixture (1/3, 1/3, 1/3) gives (1/3)*3 - (2/3)*1 = 1/3 > 0.
+    double c0[162], c1[162], c2[162];
+    for (int j = 0; j < 162; j++) {
+      c0[j] = (j < 54) ? 3.0 : -1.0;
+      c1[j] = (j >= 54 && j < 108) ? 3.0 : -1.0;
+      c2[j] = (j >= 108) ? 3.0 : -1.0;
+    }
+    const double *margins3[3] = {c0, c1, c2};
+    double alpha3[4] = {0};
+    double m3 = SolveOptimalWeights(3, margins3, alpha3, /*polish=*/true);
+    CHECK_TRUE(m3 > 0.0, "SolveOptimalWeights K=3 achieves positive margin");
+    CHECK_TOL(alpha3[0] + alpha3[1] + alpha3[2], 1.0, 1e-12, "SolveOptimalWeights K=3 weights sum to 1");
+  }
+
+  Print(AGREEN("  [OK] TestNumericalWeightOptimization passed!\n"));
+}
+
 int main(int argc, char **argv) {
   Print(ACYAN("=== Running lib229 Bernstein & Splitting Unit Tests ===\n"));
 
@@ -596,6 +702,7 @@ int main(int argc, char **argv) {
   TestCompletedFractionDifficultCell();
   TestViewQuadtree();
   TestParallelMixtureSolver();
+  TestNumericalWeightOptimization();
 
   if (g_failed_tests == 0) {
     Print(AGREEN("\nALL LIB229 UNIT TESTS PASSED WITH HIGH PRECISION!\n"));

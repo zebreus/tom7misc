@@ -411,6 +411,53 @@ MixtureResult EvaluateBoxCPUMixture(
     const FarkasCageCache *cache = nullptr);
 
 // ============================================================================
+// Numerical Mixture Weight Solvers
+// ============================================================================
+
+// Evaluates the worst-case margin across 162 Bernstein control points given
+// mixture weights alpha on the probability simplex Delta_{K-1}:
+//   f(alpha) = min_{j=0..161} sum_{k=0}^{K-1} alpha_k * margins[k][j]
+// Optionally returns the index of the worst-performing control point.
+double EvalMixtureMargin(int K, const double *const margins[],
+                         const double alpha[],
+                         int *out_worst_idx = nullptr);
+
+// Euclidean projection of a vector x in R^K onto the probability simplex
+// Delta_{K-1} = {alpha in R^K : alpha_k >= 0, sum_k alpha_k = 1}.
+void ProjectToSimplex(int K, const double x[], double out[]);
+
+// Solves for optimal mixture weights alpha in Delta_{K-1} maximizing the
+// worst-case margin over 162 Bernstein control points:
+//   max_{alpha in Delta_{K-1}} min_{j=0..161} sum_{k=0}^{K-1} alpha_k * margins[k][j]
+//
+// Parameters:
+//   K: Number of components, in {1, 2, 3, 4}.
+//   margins: Array of K pointers, each pointing to 162 control point margins.
+//   out_alpha: Output buffer of size 4 receiving the optimal weights.
+//   polish: If true, runs higher-iteration search or Nelder-Mead polish.
+//   warm_alpha: Optional prior weights for warm-starting.
+//   target_margin: Target margin threshold for Chebyshev centering or termination.
+// Returns the achieved worst-case margin.
+double SolveOptimalWeights(int K, const double *const margins[],
+                           double out_alpha[4], bool polish = true,
+                           const double *warm_alpha = nullptr,
+                           double target_margin = 0.0);
+
+// Evaluates the 162 Bernstein control values minus defect penalty and displacement error
+// for a single candidate triple across the 6 projective triangle sample points and 27 Bernstein
+// control points of the box.
+void ComputeTripleMargins(
+    int chart,
+    const vec3 p[6],
+    double lx, double ly, double lz,
+    double wx_len, double wy_len, double wz_len,
+    double d_bound,
+    int triple_idx,
+    const int inners[3],
+    std::shared_ptr<const TrianglePool> pool,
+    double out_margins[162]);
+
+// ============================================================================
 // Hierarchical View Quadtree
 // ============================================================================
 //

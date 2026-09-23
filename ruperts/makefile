@@ -129,7 +129,11 @@ query_canyon_tube.exe : query_canyon_tube.o $(OBJECTS_229) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-pack229.exe : pack229.o nopert229.o $(OBJECTS)
+pack229.exe : pack229.o lib229.o nopert229.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test_mx_debug.exe : test_mx_debug.o lib229.o nopert229.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -955,6 +959,9 @@ find_large_cone_cage.exe : $(TUBETREE_OBJECTS) find_large_cone_cage.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
 check_exact_defect.exe : $(TUBETREE_OBJECTS) check_exact_defect.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+reconstruct_cell.exe : lib229.o $(TUBETREE_OBJECTS) reconstruct_cell.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
 find_aligned_core.exe : $(TUBETREE_OBJECTS) find_aligned_core.o
