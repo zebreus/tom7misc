@@ -489,9 +489,22 @@ int main(int argc, char **argv) {
     const FontImage::Glyph &glyph = font_image.glyphs[glyph_idx];
     TTF::Char ch = Vectorize(glyph);
 
+    // If it's a combining codepoint, we place it into negative x space
+    // so that it overlaps the previous character. We then use a width
+    // of zero. The amount of negative space is determined by the width
+    // of the glyph itself (so it is essentially right-aligned against
+    // the y axis); the main use case is monospace fonts where this
+    // is the same for every glyph anyway.
+    float shift_x = 0.0f;
+    if (FontImage::IsCombining(codepoint)) {
+      shift_x = -ch.width;
+      ch.width = 0.0f;
+      ch.combining = true;
+    }
+
     ch.width *= one_pixel;
-    TTF::MapCoords([one_pixel](float x, float y) {
-        return make_pair(x * one_pixel, y * one_pixel);
+    TTF::MapCoords([one_pixel, shift_x](float x, float y) {
+        return make_pair((x + shift_x) * one_pixel, y * one_pixel);
       }, &ch);
 
     ttf_font.chars[codepoint] = std::move(ch);
@@ -502,6 +515,7 @@ int main(int argc, char **argv) {
   // Might only affect FontForge, but it at least looks better in the
   // editor without anti-aliasing.
   ttf_font.antialias = false;
+  ttf_font.monospace = config.fixed_width;
   ttf_font.bitmap_grid_height = config.charbox_height;
   // "Frog" is reserved for Tom 7!
   for (int i = 0; i < 4; i++)

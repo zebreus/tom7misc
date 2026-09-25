@@ -1488,6 +1488,8 @@
  '(eglot-mode-line ((t (:foreground "#339"))))
  '(eglot-semantic-macro ((t (:foreground "#bab"))))
  '(eglot-semantic-operator ((t (:inherit nil :foreground "#ddd"))))
+ '(eglot-semantic-readonly ((t nil)))
+ '(eglot-semantic-static ((t nil)))
  '(error ((t (:foreground "#C44"))))
  '(flymake-error ((t (:background "#622" :underline (:color "#f00" :style line :position t)))))
  '(flymake-warning ((t (:background "#531"))))

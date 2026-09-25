@@ -157,17 +157,20 @@ struct Conversation {
       console->Print(ARED("First line should be comma-separated "
                           "participants") ": {}\n",
                      lines[0]);
+      return;
     }
     participants.clear();
 
-    user_participants = {ppts[0]};
-    for (int i = 1; i < ppts.size(); i++) {
-      participants.insert(ppts[i]);
+    for (std::string &ppt : ppts) {
+      ppt = Util::LoseWhiteL(Util::LoseWhiteR(ppt));
+      participants.insert(ppt);
     }
+    user_participants = {ppts[0]};
     ShowParticipants();
 
     // Next line is preamble.
     preamble = lines[1];
+    messages.clear();
     for (int i = 2; i < (int)lines.size(); i++) {
       std::string_view line = lines[i];
       Util::RemoveOuterWhitespace(&line);
@@ -738,8 +741,8 @@ struct Conversation {
             .text = "left.",
             .is_action = true,
           });
-        if (target == user) {
-          user = *participants.begin();
+        if (user_participants.empty()) {
+          user_participants.insert(*participants.begin());
         }
       }
 
@@ -781,6 +784,7 @@ struct Conversation {
           participants.clear();
           user_participants = {ppts[0]};
           console->Print("[Reset. You are {}]\n", ppts[0]);
+          participants.insert(ppts[0]);
           for (int i = 1; i < ppts.size(); i++) {
             participants.insert(ppts[i]);
             console->Print(" * {} joined\n", ppts[i]);

@@ -1,6 +1,8 @@
 
 common from wikipedia: ../acronymine/unicode.cc
-Transform the input images to make them wider, and make more space for greek etc.
+
+Add vertical dimension to font pages.
+
 
 Probably greek lowercase "upsilon" should have its own
 glyph. For the accented versions I removed the bottom
@@ -13,6 +15,8 @@ right stem compared to latin u.
 Seen in the wild (pip install): ╸
 from more box drawing chars: https://www.compart.com/en/unicode/block/U+2500
 
+⛁ draughts (tokens)
+
 from htop:
 HR S  CPU%▽MEM%
 R S  CPU%△MEM%
@@ -20,6 +24,23 @@ R S  CPU%△MEM%
 ▸ U+25B8
 
 0 ⟹ mix = 0 ⟹ mixQ = 0/1000 = 0 exact
+
+
+a✝ :  U+271D
+
+$\R^2$
+
+ û₀
+
+ℝ²
+
+
+Now that we have support for combining chars:
+https://www.compart.com/en/unicode/block/U+0300
+https://www.compart.com/en/unicode/block/U+20D0
+
+ ╰─────────────┬────────────╯
+
 
 𝚿_
 
@@ -34,12 +55,14 @@ R S  CPU%△MEM%
 𝐞 
 
  𝒯 ⊂ ℝ²
-  
+
 on ω⃗ ∈ ℝ³ wit
 
 ╰─ etc
 
 𝒪
+
+𝟎
 
 conv(𝒜) from 0: ∀a ∈ 𝒜, ⟨u, a⟩ ≥ d_{sep}.
 
@@ -70,7 +93,7 @@ Glyphs todo:
      https://www.compart.com/en/unicode/block/U+2E00
  - I want to use ↻ and friends!!
 
-Emoji TODO: 🎉 ✅ 📈
+Emoji TODO: 🎉 ✅ 📈 💥
 
  - From mojibake: ‚ which is U+201A
     ord("ﬀ"): "ff",  # Latin typographical ligatures

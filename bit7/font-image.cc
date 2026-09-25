@@ -184,10 +184,31 @@ static PageInfo PageBit7Classic() {
     0x2B1D,  // (⬝) Black very small square
     0x2B1E,  // (⬞) White very small square
 
+    0x20D7,  // (o⃗) Combining Right Arrow Above
+    0x0300,  // (ò) Combining Grave Accent
+    0x0301,  // (ó) Combining Acute Accent
+    0x0302,  // (ô) Combining Circumflex Accent
+    0x0303,  // (õ) Combining Tilde
+    0x0304,  // (ō) Combining Macron
+    0x0305,  // (o̅) Combining Overline
+    0x0306,  // (ŏ) Combining Breve
+    0x0307,  // (ȯ) Combining Dot Above
+    0x0308,  // (ö) Combining Diaeresis
+    0x0309,  // (ỏ) Combining Hook Above
+    0x030A,  // (o̊) Combining Ring Above
+    0x030B,  // (ő) Combining Double Acute Accent
+    0x030C,  // (ǒ) Combining Caron
+    0x030D,  // (o̍) Combining Vertical Line Above
+    0x030E,  // (o̎) Combining Double Vertical Line Above
+    0x030F,  // (ȍ) Combining Double Grave Accent
+
     // Unclaimed. Was once emoji, but I moved those to the extended
     // page.
-    -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1,
+
+    0x271D,  // (✝) Latin Cross
+    0x271E,  // (✞) Shadowed White Latin Cross
+    0x271F,  // (✟) Outlined Latin Cross
 
     // ASCII, in order
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -2506,15 +2527,238 @@ static PageInfo PageBit7Sym1() {
 };
 
 static PageInfo PageBit7MathFonts() {
+  // 996 symbols in
+  // https://www.compart.com/en/unicode/block/U+1D400
+  // Just a subset here:
+  //   - We skip all the italic forms.
+  //   - Homoglyphs are copied
+  //   - No Sans/Serif variants
   PageInfo info;
-  info.sections = {
-    {0, 52}, // bold A-Z, a-z
-  };
 
-  info.sections.emplace_back(info.codepoints.size(), 52);
+  auto AddSection = [&info](size_t n) {
+      size_t start_pos = 0;
+      if (!info.sections.empty()) {
+        const auto &[ss, nn] = info.sections.back();
+        start_pos = ss + nn;
+      }
+      info.sections.emplace_back(start_pos, n);
+    };
+  auto Add = [&](const std::initializer_list<uint32_t> &cps) {
+      AddSection(cps.size());
+      for (uint32_t cp : cps) info.codepoints.push_back(cp);
+    };
+
+  // bold A-Z, a-z
+  AddSection(52);
   for (int i = 0; i < 52; i++) {
     info.codepoints.push_back(0x1D400 + i);
   }
+
+  // Bold digits 0-9.
+  AddSection(10);
+  for (int d = 0; d < 10; d++)
+    info.codepoints.push_back(0x1D7CE + d);
+
+  // Bold Greek letters and digits.
+  Add({
+    0x1D6AA,  // (𝚪) Mathematical Bold Capital Gamma
+    0x1D6AB,  // (𝚫) Mathematical Bold Capital Delta
+    0x1D6AF,  // (𝚯) Mathematical Bold Capital Theta
+    0x1D6B2,  // (𝚲) Mathematical Bold Capital Lamda
+    0x1D6B5,  // (𝚵) Mathematical Bold Capital Xi
+    0x1D6B7,  // (𝚷) Mathematical Bold Capital Pi
+    0x1D6B9,  // (𝚹) Mathematical Bold Capital Theta Symbol
+    0x1D6BA,  // (𝚺) Mathematical Bold Capital Sigma
+    0x1D6BC,  // (𝚼) Mathematical Bold Capital Upsilon
+    0x1D6BD,  // (𝚽) Mathematical Bold Capital Phi
+    0x1D6BF,  // (𝚿) Mathematical Bold Capital Psi
+    0x1D6C0,  // (𝛀) Mathematical Bold Capital Omega
+    0x1D6C1,  // (𝛁) Mathematical Bold Nabla
+    0x1D6C2,  // (𝛂) Mathematical Bold Small Alpha
+    0x1D6C3,  // (𝛃) Mathematical Bold Small Beta
+    0x1D6C4,  // (𝛄) Mathematical Bold Small Gamma
+    0x1D6C5,  // (𝛅) Mathematical Bold Small Delta
+    0x1D6C6,  // (𝛆) Mathematical Bold Small Epsilon
+    0x1D6C7,  // (𝛇) Mathematical Bold Small Zeta
+    0x1D6C8,  // (𝛈) Mathematical Bold Small Eta
+    0x1D6C9,  // (𝛉) Mathematical Bold Small Theta
+    0x1D6CA,  // (𝛊) Mathematical Bold Small Iota
+    0x1D6CB,  // (𝛋) Mathematical Bold Small Kappa
+    0x1D6CC,  // (𝛌) Mathematical Bold Small Lamda
+    0x1D6CD,  // (𝛍) Mathematical Bold Small Mu
+    0x1D6CE,  // (𝛎) Mathematical Bold Small Nu
+    0x1D6CF,  // (𝛏) Mathematical Bold Small Xi
+    0x1D6D1,  // (𝛑) Mathematical Bold Small Pi
+    0x1D6D2,  // (𝛒) Mathematical Bold Small Rho
+    0x1D6D3,  // (𝛓) Mathematical Bold Small Final Sigma
+    0x1D6D4,  // (𝛔) Mathematical Bold Small Sigma
+    0x1D6D5,  // (𝛕) Mathematical Bold Small Tau
+    0x1D6D6,  // (𝛖) Mathematical Bold Small Upsilon
+    0x1D6D7,  // (𝛗) Mathematical Bold Small Phi
+    0x1D6D8,  // (𝛘) Mathematical Bold Small Chi
+    0x1D6D9,  // (𝛙) Mathematical Bold Small Psi
+    0x1D6DA,  // (𝛚) Mathematical Bold Small Omega
+    0x1D6DB,  // (𝛛) Mathematical Bold Partial Differential
+    0x1D6DC,  // (𝛜) Mathematical Bold Epsilon Symbol
+    0x1D6DD,  // (𝛝) Mathematical Bold Theta Symbol
+    0x1D6DE,  // (𝛞) Mathematical Bold Kappa Symbol
+    0x1D6DF,  // (𝛟) Mathematical Bold Phi Symbol
+    0x1D6E0,  // (𝛠) Mathematical Bold Rho Symbol
+    0x1D6E1,  // (𝛡) Mathematical Bold Pi Symbol
+    0x1D7CA,  // (𝟊) Mathematical Bold Capital Digamma
+    0x1D7CB,  // (𝟊) Mathematical Bold Small Digamma
+    });
+
+  // Careful: script has holes, since some of these are
+  // already present in e.g. letterlike forms.
+  Add({
+    0x1D49C,  // (𝒜) Mathematical Script Capital A
+    0x1D49E,  // (𝒞) Mathematical Script Capital C
+    0x1D49F,  // (𝒟) Mathematical Script Capital D
+    0x1D4A2,  // (𝒢) Mathematical Script Capital G
+    0x1D4A5,  // (𝒥) Mathematical Script Capital J
+    0x1D4A6,  // (𝒦) Mathematical Script Capital K
+    0x1D4A9,  // (𝒩) Mathematical Script Capital N
+    0x1D4AA,  // (𝒪) Mathematical Script Capital O
+    0x1D4AB,  // (𝒫) Mathematical Script Capital P
+    0x1D4AC,  // (𝒬) Mathematical Script Capital Q
+    0x1D4AE,  // (𝒮) Mathematical Script Capital S
+    0x1D4AF,  // (𝒯) Mathematical Script Capital T
+    0x1D4B0,  // (𝒰) Mathematical Script Capital U
+    0x1D4B1,  // (𝒱) Mathematical Script Capital V
+    0x1D4B2,  // (𝒲) Mathematical Script Capital W
+    0x1D4B3,  // (𝒳) Mathematical Script Capital X
+    0x1D4B4,  // (𝒴) Mathematical Script Capital Y
+    0x1D4B5,  // (𝒵) Mathematical Script Capital Z
+    0x1D4B6,  // (𝒶) Mathematical Script Small A
+    0x1D4B7,  // (𝒷) Mathematical Script Small B
+    0x1D4B8,  // (𝒸) Mathematical Script Small C
+    0x1D4B9,  // (𝒹) Mathematical Script Small D
+    0x1D4BB,  // (𝒻) Mathematical Script Small F
+    0x1D4BD,  // (𝒽) Mathematical Script Small H
+    0x1D4BE,  // (𝒾) Mathematical Script Small I
+    0x1D4BF,  // (𝒿) Mathematical Script Small J
+    0x1D4C0,  // (𝓀) Mathematical Script Small K
+    0x1D4C1,  // (𝓁) Mathematical Script Small L
+    0x1D4C2,  // (𝓂) Mathematical Script Small M
+    0x1D4C3,  // (𝓃) Mathematical Script Small N
+    0x1D4C5,  // (𝓅) Mathematical Script Small P
+    0x1D4C6,  // (𝓆) Mathematical Script Small Q
+    0x1D4C7,  // (𝓇) Mathematical Script Small R
+    0x1D4C8,  // (𝓈) Mathematical Script Small S
+    0x1D4C9,  // (𝓉) Mathematical Script Small T
+    0x1D4CA,  // (𝓊) Mathematical Script Small U
+    0x1D4CB,  // (𝓋) Mathematical Script Small V
+    0x1D4CC,  // (𝓌) Mathematical Script Small W
+    0x1D4CD,  // (𝓍) Mathematical Script Small X
+    0x1D4CE,  // (𝓎) Mathematical Script Small Y
+    0x1D4CF,  // (𝓏) Mathematical Script Small Z
+    });
+
+  // Fraktur also has holes:
+  Add({
+    0x1D504,  // (𝔄) Mathematical Fraktur Capital A
+    0x1D505,  // (𝔅) Mathematical Fraktur Capital B
+    0x1D507,  // (𝔇) Mathematical Fraktur Capital D
+    0x1D508,  // (𝔈) Mathematical Fraktur Capital E
+    0x1D509,  // (𝔉) Mathematical Fraktur Capital F
+    0x1D50A,  // (𝔊) Mathematical Fraktur Capital G
+    0x1D50D,  // (𝔍) Mathematical Fraktur Capital J
+    0x1D50E,  // (𝔎) Mathematical Fraktur Capital K
+    0x1D50F,  // (𝔏) Mathematical Fraktur Capital L
+    0x1D510,  // (𝔐) Mathematical Fraktur Capital M
+    0x1D511,  // (𝔑) Mathematical Fraktur Capital N
+    0x1D512,  // (𝔒) Mathematical Fraktur Capital O
+    0x1D513,  // (𝔓) Mathematical Fraktur Capital P
+    0x1D514,  // (𝔔) Mathematical Fraktur Capital Q
+    0x1D516,  // (𝔖) Mathematical Fraktur Capital S
+    0x1D517,  // (𝔗) Mathematical Fraktur Capital T
+    0x1D518,  // (𝔘) Mathematical Fraktur Capital U
+    0x1D519,  // (𝔙) Mathematical Fraktur Capital V
+    0x1D51A,  // (𝔚) Mathematical Fraktur Capital W
+    0x1D51B,  // (𝔛) Mathematical Fraktur Capital X
+    0x1D51C,  // (𝔜) Mathematical Fraktur Capital Y
+    0x1D51E,  // (𝔞) Mathematical Fraktur Small A
+    0x1D51F,  // (𝔟) Mathematical Fraktur Small B
+    0x1D520,  // (𝔠) Mathematical Fraktur Small C
+    0x1D521,  // (𝔡) Mathematical Fraktur Small D
+    0x1D522,  // (𝔢) Mathematical Fraktur Small E
+    0x1D523,  // (𝔣) Mathematical Fraktur Small F
+    0x1D524,  // (𝔤) Mathematical Fraktur Small G
+    0x1D525,  // (𝔥) Mathematical Fraktur Small H
+    0x1D526,  // (𝔦) Mathematical Fraktur Small I
+    0x1D527,  // (𝔧) Mathematical Fraktur Small J
+    0x1D528,  // (𝔨) Mathematical Fraktur Small K
+    0x1D529,  // (𝔩) Mathematical Fraktur Small L
+    0x1D52A,  // (𝔪) Mathematical Fraktur Small M
+    0x1D52B,  // (𝔫) Mathematical Fraktur Small N
+    0x1D52C,  // (𝔬) Mathematical Fraktur Small O
+    0x1D52D,  // (𝔭) Mathematical Fraktur Small P
+    0x1D52E,  // (𝔮) Mathematical Fraktur Small Q
+    0x1D52F,  // (𝔯) Mathematical Fraktur Small R
+    0x1D530,  // (𝔰) Mathematical Fraktur Small S
+    0x1D531,  // (𝔱) Mathematical Fraktur Small T
+    0x1D532,  // (𝔲) Mathematical Fraktur Small U
+    0x1D533,  // (𝔳) Mathematical Fraktur Small V
+    0x1D534,  // (𝔴) Mathematical Fraktur Small W
+    0x1D535,  // (𝔵) Mathematical Fraktur Small X
+    0x1D536,  // (𝔶) Mathematical Fraktur Small Y
+    0x1D537,  // (𝔷) Mathematical Fraktur Small Z
+    });
+
+  // And so too for double-struck "blackboard bold" letters.
+  Add({
+    0x1D538,  // (𝔸) Mathematical Double-Struck Capital A
+    0x1D539,  // (𝔹) Mathematical Double-Struck Capital B
+    0x1D53B,  // (𝔻) Mathematical Double-Struck Capital D
+    0x1D53C,  // (𝔼) Mathematical Double-Struck Capital E
+    0x1D53D,  // (𝔽) Mathematical Double-Struck Capital F
+    0x1D53E,  // (𝔾) Mathematical Double-Struck Capital G
+    0x1D540,  // (𝕀) Mathematical Double-Struck Capital I
+    0x1D541,  // (𝕁) Mathematical Double-Struck Capital J
+    0x1D542,  // (𝕂) Mathematical Double-Struck Capital K
+    0x1D543,  // (𝕃) Mathematical Double-Struck Capital L
+    0x1D544,  // (𝕄) Mathematical Double-Struck Capital M
+    0x1D546,  // (𝕆) Mathematical Double-Struck Capital O
+    0x1D54A,  // (𝕊) Mathematical Double-Struck Capital S
+    0x1D54B,  // (𝕋) Mathematical Double-Struck Capital T
+    0x1D54C,  // (𝕌) Mathematical Double-Struck Capital U
+    0x1D54D,  // (𝕍) Mathematical Double-Struck Capital V
+    0x1D54E,  // (𝕎) Mathematical Double-Struck Capital W
+    0x1D54F,  // (𝕏) Mathematical Double-Struck Capital X
+    0x1D550,  // (𝕐) Mathematical Double-Struck Capital Y
+    0x1D552,  // (𝕒) Mathematical Double-Struck Small A
+    0x1D553,  // (𝕓) Mathematical Double-Struck Small B
+    0x1D554,  // (𝕔) Mathematical Double-Struck Small C
+    0x1D555,  // (𝕕) Mathematical Double-Struck Small D
+    0x1D556,  // (𝕖) Mathematical Double-Struck Small E
+    0x1D557,  // (𝕗) Mathematical Double-Struck Small F
+    0x1D558,  // (𝕘) Mathematical Double-Struck Small G
+    0x1D559,  // (𝕙) Mathematical Double-Struck Small H
+    0x1D55A,  // (𝕚) Mathematical Double-Struck Small I
+    0x1D55B,  // (𝕛) Mathematical Double-Struck Small J
+    0x1D55C,  // (𝕜) Mathematical Double-Struck Small K
+    0x1D55D,  // (𝕝) Mathematical Double-Struck Small L
+    0x1D55E,  // (𝕞) Mathematical Double-Struck Small M
+    0x1D55F,  // (𝕟) Mathematical Double-Struck Small N
+    0x1D560,  // (𝕠) Mathematical Double-Struck Small O
+    0x1D561,  // (𝕡) Mathematical Double-Struck Small P
+    0x1D562,  // (𝕢) Mathematical Double-Struck Small Q
+    0x1D563,  // (𝕣) Mathematical Double-Struck Small R
+    0x1D564,  // (𝕤) Mathematical Double-Struck Small S
+    0x1D565,  // (𝕥) Mathematical Double-Struck Small T
+    0x1D566,  // (𝕦) Mathematical Double-Struck Small U
+    0x1D567,  // (𝕧) Mathematical Double-Struck Small V
+    0x1D568,  // (𝕨) Mathematical Double-Struck Small W
+    0x1D569,  // (𝕩) Mathematical Double-Struck Small X
+    0x1D56A,  // (𝕪) Mathematical Double-Struck Small Y
+    0x1D56B,  // (𝕫) Mathematical Double-Struck Small Z
+    });
+
+  // Double-struck digits 0-9.
+  AddSection(10);
+  for (int d = 0; d < 10; d++)
+    info.codepoints.push_back(0x1D7D8 + d);
 
   while (info.codepoints.size() < 16 * 24) info.codepoints.push_back(-1);
 
@@ -2713,6 +2957,22 @@ REUSE_FOR = {
   {0x03C1, 0x2374},  // rho
   {0x03C9, 0x2375},  // omega
   {0x03B1, 0x237A},  // alpha
+
+  // math bold roman -> bold greek homoglyphs
+  {0x1D400 + ('A' - 'A'), 0x1D6A8},  // Alpha
+  {0x1D400 + ('B' - 'A'), 0x1D6A9},  // Beta
+  {0x1D400 + ('E' - 'A'), 0x1D6AC},  // Epsilon
+  {0x1D400 + ('Z' - 'A'), 0x1D6AD},  // Zeta
+  {0x1D400 + ('H' - 'A'), 0x1D6AE},  // Eta
+  {0x1D400 + ('I' - 'A'), 0x1D6B0},  // Iota
+  {0x1D400 + ('K' - 'A'), 0x1D6B1},  // Kappa
+  {0x1D400 + ('M' - 'A'), 0x1D6B3},  // Mu
+  {0x1D400 + ('N' - 'A'), 0x1D6B4},  // Nu
+  {0x1D400 + ('O' - 'A'), 0x1D6B6},  // Omicron
+  {0x1D400 + ('P' - 'A'), 0x1D6B8},  // Rho
+  {0x1D400 + ('T' - 'A'), 0x1D6BB},  // Tau
+  {0x1D400 + ('X' - 'A'), 0x1D6BE},  // Chi
+  {0x1D400 + ('o' - 'A'), 0x1D6D0},  // omicron
 
   // Various spaces. Since the font is fixed-width,
   // we just render these the same as space. Most of these
@@ -3411,8 +3671,9 @@ ImageRGBA FontImage::ImagePage(Page p) {
         // Draw a shadow glyph, mainly as a hint that this is
         // a combining character, but also to help with designing.
         // TODO: Get from config.
-        int sw = config.charbox_width - 2;
-        int xmargin = (config.charbox_width - sw) / 2;
+        const int pixel_width = config.charbox_width - config.spacing;
+        int sw = pixel_width - 2;
+        int xmargin = (pixel_width - sw) / 2;
         int sh = config.charbox_height / 3;
         int ymargin = (config.charbox_height - sh) / 2;
         out.BlendRect32(xs + xmargin, ys + ymargin, sw, sh, locolor);
