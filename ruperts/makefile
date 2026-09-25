@@ -31,8 +31,8 @@ GMP_CFLAGS=`pkg-config --cflags gmp` -DBIG_USE_GMP
 endif
 
 CC_LIB=../cc-lib
-CODEC=../codec
-SQLITE=../sqlite
+CODEC=$(shell if [ -d ../codec ]; then echo ../codec; else echo ../../codec; fi)
+SQLITE=$(shell if [ -d ../sqlite ]; then echo ../sqlite; else echo ../../sqlite; fi)
 
 # This is available on msys2 and linux. But you can safely leave it off.
 # apt install libmimalloc-dev
