@@ -207,16 +207,53 @@ int main(int argc, char **argv) {
           << "," << ZigzagRatString(cert.delta)
           << "," << ZigzagRatString(cert.r);
     } else if (r.node->decomposed_cert.has_value()) {
-      // Decomposed Certificate row (tag 2):
-      // Format: tag(2), id, root(0), path_len, [path_digits], symmetryIndex,
-      // [4 axes: annular_axis, complement_axes[0..2]], c, delta, r,
-      // coreAxis, defect0[0..2], D0, r_min, c_cone, c_core, lam, w[0..2]
       const auto &dec = r.node->decomposed_cert.value();
-      out << ",2," << r.id << ",0," << r.rel_path.size();
-      for (char ch : r.rel_path) {
-        out << "," << (ch - '0');
-      }
-      out << "," << dec.symmetry_index;
+      if (!dec.core_flock_axes.empty()) {
+        // Flock Decomposed Certificate row (tag 3):
+        // Format: tag(3), id, root(0), path_len, [path_digits], symmetryIndex,
+        // [4 axes: annular_axis, complement_axes[0..2]], c, delta, r,
+        // K, [K flock axes], defect0[0..2], D0, r_min, c_cone, c_core
+        out << ",3," << r.id << ",0," << r.rel_path.size();
+        for (char ch : r.rel_path) {
+          out << "," << (ch - '0');
+        }
+        out << "," << dec.symmetry_index;
+
+        // 4 certificate axes: annular_axis + 3 complement axes
+        WriteAxisPack(out, dec.annular_axis);
+        for (int a = 0; a < 3; a++) {
+          WriteAxisPack(out, dec.complement_axes[a]);
+        }
+
+        // c (c_comp: complement cage margin), delta, r
+        out << "," << ZigzagRatString(dec.c_comp)
+            << "," << ZigzagRatString(dec.delta)
+            << "," << ZigzagRatString(dec.r);
+
+        // K flock axes
+        out << "," << dec.core_flock_axes.size();
+        for (size_t m = 0; m < dec.core_flock_axes.size(); m++) {
+          WriteAxisPack(out, dec.core_flock_axes[m]);
+        }
+
+        // defect0[0..2], D0, r_min, c_cone, c_core
+        out << "," << ZigzagRatString(dec.defect0[0])
+            << "," << ZigzagRatString(dec.defect0[1])
+            << "," << ZigzagRatString(dec.defect0[2])
+            << "," << ZigzagRatString(dec.defect_D)
+            << "," << ZigzagRatString(dec.r_min)
+            << "," << ZigzagRatString(dec.c_cone)
+            << "," << ZigzagRatString(dec.c_core);
+      } else {
+        // Decomposed Certificate row (tag 2):
+        // Format: tag(2), id, root(0), path_len, [path_digits], symmetryIndex,
+        // [4 axes: annular_axis, complement_axes[0..2]], c, delta, r,
+        // coreAxis, defect0[0..2], D0, r_min, c_cone, c_core, lam, w[0..2]
+        out << ",2," << r.id << ",0," << r.rel_path.size();
+        for (char ch : r.rel_path) {
+          out << "," << (ch - '0');
+        }
+        out << "," << dec.symmetry_index;
 
       // 4 certificate axes: annular_axis + 3 complement axes
       WriteAxisPack(out, dec.annular_axis);
@@ -244,6 +281,7 @@ int main(int argc, char **argv) {
           << "," << ZigzagRatString(dec.w[0])
           << "," << ZigzagRatString(dec.w[1])
           << "," << ZigzagRatString(dec.w[2]);
+      }
     } else {
       LOG(FATAL) << "Encountered leaf node without certificate: " << r.node->path;
     }

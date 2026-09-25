@@ -193,13 +193,17 @@ static void SerializeDecomposedCertificate(const DecomposedCertificate &dc, std:
   SerializeAxis(dc.inner_core_axis, out);
   out += ",\n\"annular_axis\": ";
   SerializeAxis(dc.annular_axis, out);
-  out += ",\n\"complement_axes\": [\n";
-  for (size_t i = 0; i < dc.complement_axes.size(); i++) {
-    SerializeAxis(dc.complement_axes[i], out);
-    if (i + 1 < dc.complement_axes.size()) out += ",\n";
-    else out += "\n";
+  out += "]\n";
+  if (!dc.core_flock_axes.empty()) {
+    out += ",\n\"core_flock_axes\": [\n";
+    for (size_t i = 0; i < dc.core_flock_axes.size(); i++) {
+      SerializeAxis(dc.core_flock_axes[i], out);
+      if (i + 1 < dc.core_flock_axes.size()) out += ",\n";
+      else out += "\n";
+    }
+    out += "]\n";
   }
-  out += "]\n}";
+  out += "}";
 }
 
 static void SerializeNode(const TreeNode &node, std::string &out, bool shallow) {
@@ -419,6 +423,13 @@ static std::unique_ptr<TreeNode> DeserializeNode(
       dc.complement_axes.resize(comp_arr.Size());
       for (rapidjson::SizeType i = 0; i < comp_arr.Size(); i++) {
         DeserializeAxis(comp_arr[i], dc.complement_axes[i]);
+      }
+    }
+    if (dobj.HasMember("core_flock_axes") && dobj["core_flock_axes"].IsArray()) {
+      const auto &flock_arr = dobj["core_flock_axes"].GetArray();
+      dc.core_flock_axes.resize(flock_arr.Size());
+      for (rapidjson::SizeType i = 0; i < flock_arr.Size(); i++) {
+        DeserializeAxis(flock_arr[i], dc.core_flock_axes[i]);
       }
     }
 

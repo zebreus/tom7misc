@@ -82,8 +82,11 @@ struct TubeCertificate {
 //    and enclose all adversary directions with net margin >= c_comp > 0.
 struct DecomposedCertificate {
   // 1. Inner Core Certificate (contacts on true projected hull)
+  // When a multi-axis flock is used, core_flock_axes holds the K core axes.
+  // For single-axis compatibility, inner_core_axis holds a single axis.
   AxisCertificate inner_core_axis;
   int inner_index[3] = {-1, -1, -1};
+  std::vector<AxisCertificate> core_flock_axes;
 
   // 2. Annular Certificate for the exceptional cone
   AxisCertificate annular_axis;
