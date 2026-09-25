@@ -1,4 +1,4 @@
-default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe repair214.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe analyzedifficult.exe tube-visualize.exe
+default : ruperts.exe buns.exe soltostl.exe topng.exe scoreboard.exe noboard.exe query.exe visualize.exe tostl.exe noperts.exe repair214.exe imperts.exe validate.exe ratperts.exe big-polyhedra_test.exe big-csg_test.exe fixstats.exe threeperts.exe meperts.exe zuperts.exe patch-ranges.exe texture-sphere.exe mergends.exe howmanyrep.exe getmask.exe validatepatchinfo.exe computepatchinfo.exe patches_test.exe plotpatch.exe znubhulls.exe snubhulls.exe churro.exe football.exe shrinkboard.exe epsilonbench.exe mergedatabase.exe dyson_test.exe smallest-sphere_test.exe shrinkwrap.exe dyson-fit.exe squery.exe hull_test.exe tomov.exe scube-json.exe inub.exe iboard.exe ruperts-util_test.exe polyhedra_bench.exe intervals_test.exe twopatch.exe patch-sample-json.exe
 
 # by default, don't require opencl
 all: default gpuperts.exe
@@ -11,7 +11,8 @@ all: default gpuperts.exe
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
 CC=clang
-CXX=clang++ -stdlib=libc++
+LIBCXX := $(shell echo '\#include <vector>' | clang++ -stdlib=libc++ -x c++ - -c -o /dev/null 2>/dev/null && echo -stdlib=libc++)
+CXX=clang++ $(LIBCXX)
 PDB_FLAG=
 else
 PDB_FLAG=-Wl,--pdb=lean229.pdb
@@ -62,8 +63,6 @@ SQLITE_OBJECTS=$(SQLITE)/database.o $(SQLITE)/sqlite3.o
 
 OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) ruperts-util.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o big-polyhedra.o textured-mesh.o smallest-sphere.o dyson.o z3decs.o patches.o intervals.o hypercube.o
 
-# library objects shared in Nopert 229 search. No OpenCL.
-OBJECTS_229=nopert229.o tube229.o tubetree229.o annular229.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -288,132 +287,14 @@ iboard.exe : iboard.o $(OBJECTS)
 
 
 # ==============================================================================
-# Nopert #229 Core Proof Tools & Tests
-# ==============================================================================
-
 repair214.exe : repair214.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-lean229.exe : lean229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-test229.exe : test229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-lib229_test.exe : lib229_test.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-lib229_bench.exe : lib229_bench.o scalar_bernstein.o lib229.o $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-difficult229.exe : difficult229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-pack229.exe : pack229.o lib229.o nopert229.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-verify_leaf.exe : verify_leaf.o nopert229.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-codebdd229.exe : codebdd229.o nopert229.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-test_telescope_canyon.exe : test_telescope_canyon.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-test_cert_hull.exe : test_cert_hull.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-telescope229.exe : telescope229.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS)
-	@echo -n "!"
-
-query_canyon_tube.exe : query_canyon_tube.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tiltperts.exe : tiltperts.o lib229.o $(OBJECTS_229) $(OBJECTS) $(CL_OBJECTS)
+tiltperts.exe : tiltperts.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS) $(CL_LFLAGS) $(PDB_FLAG)
 	@echo -n "!"
 
-analyzedifficult.exe : analyzedifficult.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-check_tube_r.exe : check_tube_r.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-test_coords.exe : test_coords.o lib229.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-generate_seeds229.exe : generate_seeds229.o lib229.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-replace_tu_with_difficult.exe : replace_tu_with_difficult.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-# ==============================================================================
-# Identity Tube Search & Certification Tools
-# ==============================================================================
-
-annular229_test.exe : annular229_test.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tube-visualize.exe : tube-visualize.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tubecert229.exe : tubecert.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tubetree229_test.exe : tubetree229_test.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-nopert229_test.exe : nopert229_test.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tube229_test.exe : tube229_test.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-apply_shallow_cert.exe : apply_shallow_cert.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-incrementaltube229.exe : incrementaltube.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-reconstruct_cell.exe : reconstruct_cell.o lib229.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-convert_tubecert229.exe : convert_tubecert229.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-export_tubetree_pack.exe : export_tubetree_pack.o $(OBJECTS_229) $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
 
 clean :
 	rm -f *.o *.exe

@@ -31,7 +31,6 @@
 #include "timer.h"
 #include "util.h"
 #include "yocto-math.h"
-#include "lib229.h"
 
 static CL *cl = nullptr;
 
@@ -707,16 +706,10 @@ int main(int argc, char **argv) {
 
 
   SolutionDB db;
-  Polyhedron target;
-  if (poly_name == "nopert_229" || poly_name == "229") {
-    target = GetPolyhedron229();
-    auto opoly = PolyhedronFromVertices(target.vertices, "nopert_229");
-    if (opoly.has_value()) {
-      target = std::move(opoly.value());
-    }
-  } else {
-    target = db.AnyPolyhedronByName(poly_name);
+  if (poly_name == "229") {
+    poly_name = "nopert_229";
   }
+  Polyhedron target = db.AnyPolyhedronByName(poly_name);
 
   Print("Target polyhedron: " APURPLE("{}") " ({} vertices)\n",
          target.name, target.vertices.size());
