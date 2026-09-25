@@ -1,4 +1,3 @@
-// Copyright 2026 Tom 7 and Antigravity
 // Standalone conversion tool: transforms tubecert229 JSON format into canonical tubetree229 format.
 
 #include <iostream>

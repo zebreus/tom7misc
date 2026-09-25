@@ -1,9 +1,8 @@
-// Copyright 2026 Google LLC. Apache 2.0 License.
-
 #include "annular229.h"
 
 #include <iostream>
 #include <cassert>
+
 #include "base/logging.h"
 #include "base/print.h"
 #include "bignum/big-overloads.h"

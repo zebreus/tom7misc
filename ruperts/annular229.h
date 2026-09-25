@@ -1,5 +1,3 @@
-// Copyright 2026 Google LLC. Apache 2.0 License.
-//
 // Standalone library for synthesizing Decomposed Annular / Flock Certificates
 // for stubborn cells in Nopert #229 (e.g. canyon seam cells like 03121303200).
 //
