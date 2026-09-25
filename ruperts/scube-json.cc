@@ -2,12 +2,12 @@
 // Export the vertices and faces of the scube (rational approximation to
 // snub cube) in an ad hoc JSON format.
 
-#include <cstdio>
 #include <format>
 #include <string>
 #include <vector>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "bignum/big-vec.h"
@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
 
   json.append("]}");
 
-  printf("%s\n", json.c_str());
+  Print("{}\n", json);
 
   return 0;
 }
