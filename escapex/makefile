@@ -9,24 +9,23 @@
 
 # -------------------------------------------------------------------
 
-ifdef LINUX
-# makefile for linux
+# Shared across builds.
 
-# SDL_net is just compiled from the small number of sources now,
-# included in this subdirectory
-SDL_NET=SDL_net
+# cc-lib is my personal collection of C++ libraries. It should be in a
+# directory next to "escapex."
 CC_LIB=../cc-lib
 
 SDLUTILOBJECTS=$(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
-CCLIBINCLUDES= -I ../cc-lib
-CCLIBOBJECTS=$(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
+# cc-lib assumes it can include something like "base/macros.h"
+CCLIB_INCLUDES= -I ../cc-lib
+CCLIBOBJECTS=$(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o
 
-SDLNETINCLUDES=-I$(SDL_NET)
-SDLNETOBJECTS=$(SDL_NET)/SDLnet.o $(SDL_NET)/SDLnetselect.o $(SDL_NET)/SDLnetTCP.o $(SDL_NET)/SDLnetUDP.o
+ifdef LINUX
+# makefile for linux
 
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
 
-ESCOBJECTS=level.o solution.o rle.o disamb.o main.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(SDLNETOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
+ESCOBJECTS=level.o solution.o rle.o disamb.o main.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
 
 default : escape.exe
 
@@ -37,15 +36,14 @@ default : escape.exe
 LDFLAGS = -Wl,-rpath=.
 
 # -lvorbisfile -lvorbis -logg
-# -lSDL_net -lSDL_mixer
 LDLIBS = `sdl-config --libs`
 
 #  LDLIBS = -lefence
 
 # for multiuser, add -DMULTIUSER -DDATADIR=\"/tmp/escapedata/\" -DSTARTUP_LEVELS=\"/tmp/escapelevels\"
 # with appropriate paths to the static data (trailing slash for data dir; no trailing for startup)
-CPPFLAGS = `sdl-config --cflags` $(SDLNETINCLUDES) -DNOSOUND=1 -DLINUX=1
-CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIBINCLUDES)
+CPPFLAGS = `sdl-config --cflags` -DNOSOUND=1 -DLINUX=1
+CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIB_INCLUDES)
 
 escape.exe : ${ESCOBJECTS}
 	g++ -o escape.exe ${LDFLAGS} $^ ${LDLIBS}
@@ -71,7 +69,7 @@ sound_load.h : sound.pack packsound.cc
 %-console.o : %.cc
 	g++ ${CXXFLAGS} ${CPPFLAGS} -DNOSOUND=1 -DUSE_DISPLAY_FORMAT=0 $^ -c -o $@
 
-screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o
+screenshot.exe : ${ESCLIBOBJECTS} $(CCLIBOBJECTS) screenshot.o
 	g++ ${CXXFLAGS} -o $@ $^ -static
 	strip screenshot.exe
 
@@ -84,7 +82,7 @@ version : .dummy
 	make escape.exe
 
 # we should just distribute a statically linked binary?
-LIBFILES=libogg.so.0 libSDL-1.2.so.0 libSDL_net-1.2.so.0 libvorbisfile.so.3 libvorbis.so.0 libartsc.so.0 libesd.so.0
+LIBFILES=libogg.so.0 libSDL-1.2.so.0 libvorbisfile.so.3 libvorbis.so.0 libartsc.so.0 libesd.so.0
 
 # XXX Unfortunately, no machine on which to build linux binaries in 2010. (VMware?)
 RELEASEFILES=
@@ -167,15 +165,11 @@ FRAMEWORKS=OSX_build/Frameworks
 
 # No longer cavemen, we target a recent release of OS X.
 VERSION_TARGET=10.10
-# Hack from t7eshero. Maybe should be fixed.
-RPATH=-rpath @executable_path/../Frameworks
 
-# Suppress compilation commands, but show some indication of progress.
-# (Explicitly invoke bash to get shell builtin, since on OS X echo
-# otherwise treats -n literally.)
-%.o : %.cc
-	@${CXX} ${CPPFLAGS} ${CXXFLAGS} -c -o $@ $<
-	@bash -c "echo -n '.'"
+LDLIBS = `sdl-config --libs`
+CPPFLAGS = `sdl-config --cflags` -DNOSOUND=1 -DOSX=1
+CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIB_INCLUDES)
+
 
 # sound is disabled, but it's time to make it available on the OS X
 # release. Do this!
@@ -185,26 +179,31 @@ RPATH=-rpath @executable_path/../Frameworks
 #  -framework SDL_mixer
 # to the g++ line linking below
 
-CXXFLAGS=-std=c++20
+# Suppress compilation commands, but show some indication of progress.
+# (Explicitly invoke bash to get shell builtin, since on OS X echo
+# otherwise treats -n literally.)
+%.o : %.cc
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
+	@bash -c "echo -n '.'"
 
-# XXX: I added -I. here and made a symlink to the SDL include
-# directory called "SDL", since some frameworks want to include like
-# <SDL/sdl.h>. (is it just the now-deleted sdl_image, though?) Don't
-# know what the right fix is.
-CPPFLAGS= -arch x86_64 -I. -I/usr/local/include -I${FRAMEWORKS}/SDL.framework/Versions/Current/Headers -I${FRAMEWORKS}/SDL_net.framework/Versions/Current/Headers -I${FRAMEWORKS}/SDL_mixer.framework/Versions/Current/Headers -D_THREAD_SAFE -DOSX
+# don't specify arch, since we want this to work on apple silicon
+# -arch x86_64
+
+# CPPFLAGS= -I. -I/usr/local/include
 
 # XXX Suppress warning in SDL-supplied .m file, but should figure out what's going on here.
 CFLAGS=-Wno-objc-protocol-method-implementation
 
 # good for 10.11 MacBook
 # used to use /usr/local/lib
-LIBS=-L/usr/lib
+# LIBS=-L/usr/lib
 
-CCLIBOBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/sdl/sdlutil.o ../cc-lib/sdl/font.o ../cc-lib/crypt/md5.o ../cc-lib/base64.o
-
-escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o ${CCLIBOBJECTS}
+escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o graphics.o $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
 	@export MACOSX_DEPLOYMENT_TARGET=${VERSION_TARGET}
-	g++ -arch x86_64 -F${FRAMEWORKS} -framework SDL_mixer -framework SDL_net ${LIBS} -framework SDL -framework OpenGL -framework AGL -framework IOKit -framework Carbon -framework Cocoa ${RPATH} $^ -o escape.exe
+	$(CXX) $(LDLIBS) -framework OpenGL -framework IOKit -framework Carbon -framework Cocoa $^ -o escape.exe
+
+http_test.exe : http.o escape-util.o http_test.o $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 .dummy :
 
@@ -245,12 +244,9 @@ zip : escape-beta-osx.zip
 framelinks :
 	-mkdir OSX_build/Frameworks/SDL.framework/Versions
 	-mkdir OSX_build/Frameworks/SDL.framework/Versions/A
-	-mkdir OSX_build/Frameworks/SDL_net.framework/Versions
-	-mkdir OSX_build/Frameworks/SDL_net.framework/Versions/A
 	-mkdir OSX_build/Frameworks/SDL_mixer.framework/Versions
 	-mkdir OSX_build/Frameworks/SDL_mixer.framework/Versions/A
 	cd OSX_build/Frameworks/SDL.framework/Versions/A && ln -s ../../SDL SDL && ln -s ../../Headers Headers && ln -s ../../Resources Resources && cd .. && ln -s A Current
-	cd OSX_build/Frameworks/SDL_net.framework/Versions/A && ln -s ../../SDL_net SDL_net && ln -s ../../Headers Headers && ln -s ../../Resources Resources && cd .. && ln -s A Current
 
 
 # OSX_build goes inside an otherwise empty folder called
@@ -274,7 +270,6 @@ app : escape.exe
 	mkdir /tmp/Escape.app/Contents/MacOS/OSX_build
 	mkdir /tmp/Escape.app/Contents/MacOS/OSX_build/Frameworks
 	rm -f /tmp/Escape.app/Contents/Frameworks/SDL.framework/Headers/*.h
-	rm -f /tmp/Escape.app/Contents/Frameworks/SDL_net.framework/Headers/*.h
 	rm -f /tmp/Escape.app/Contents/Frameworks/SDL_mixer.framework/Headers/*.h
 	rm -rf `find /tmp/Escape.app -name CVS`
 	rm -rf `find /tmp/Escape.app -name .svn`
@@ -297,7 +292,7 @@ wc :
 	wc -l *.cc *.h
 
 clean :
-	rm -f *.o escape.exe core core.[0-9]* .DS_Store ${CCLIBOBJECTS}
+	rm -f *.o escape.exe core core.[0-9]* .DS_Store $(CCLIBOBJECTS)
 
 
 # end OSX makefile
@@ -322,18 +317,9 @@ CPPFLAGS=-O2 -I .
 # point this at the SDL (1.2 series) installation. You need to compile
 # SDL in there too; we just link in the object files.
 SDL=/c/code/SDL
-# Included with escape with some superficial local fixes, but feel
-# free to try a pristine copy instead.
-SDL_NET=SDL_net
-
 
 # assume SDL build for .o files in the current directory
 %.o : %.cc
-	@${CXX} ${CPPFLAGS} ${SDL_CXXFLAGS} -c -o $@ $<
-	@bash -c "echo -n '.'"
-
-# .. and sdl_net
-$(SDL_NET)/%.o : $(SDL_NET)/%.c
 	@${CXX} ${CPPFLAGS} ${SDL_CXXFLAGS} -c -o $@ $<
 	@bash -c "echo -n '.'"
 
@@ -342,33 +328,19 @@ SDLINCLUDES=-I$(SDL)/include
 SDLOPATH=${SDL}/build
 SDLOBJECTS=${SDLOPATH}/SDL.o ${SDLOPATH}/SDL_error.o ${SDLOPATH}/SDL_fatal.o ${SDLOPATH}/SDL_audio.o ${SDLOPATH}/SDL_audiocvt.o ${SDLOPATH}/SDL_audiodev.o ${SDLOPATH}/SDL_mixer.o ${SDLOPATH}/SDL_mixer_MMX.o ${SDLOPATH}/SDL_mixer_MMX_VC.o ${SDLOPATH}/SDL_mixer_m68k.o ${SDLOPATH}/SDL_wave.o ${SDLOPATH}/SDL_cdrom.o ${SDLOPATH}/SDL_cpuinfo.o ${SDLOPATH}/SDL_active.o ${SDLOPATH}/SDL_events.o ${SDLOPATH}/SDL_expose.o ${SDLOPATH}/SDL_keyboard.o ${SDLOPATH}/SDL_mouse.o ${SDLOPATH}/SDL_quit.o ${SDLOPATH}/SDL_resize.o ${SDLOPATH}/SDL_rwops.o ${SDLOPATH}/SDL_getenv.o ${SDLOPATH}/SDL_iconv.o ${SDLOPATH}/SDL_malloc.o ${SDLOPATH}/SDL_qsort.o ${SDLOPATH}/SDL_stdlib.o ${SDLOPATH}/SDL_string.o ${SDLOPATH}/SDL_thread.o ${SDLOPATH}/SDL_timer.o ${SDLOPATH}/SDL_RLEaccel.o ${SDLOPATH}/SDL_blit.o ${SDLOPATH}/SDL_blit_0.o ${SDLOPATH}/SDL_blit_1.o ${SDLOPATH}/SDL_blit_A.o ${SDLOPATH}/SDL_blit_N.o ${SDLOPATH}/SDL_bmp.o ${SDLOPATH}/SDL_cursor.o ${SDLOPATH}/SDL_gamma.o ${SDLOPATH}/SDL_pixels.o ${SDLOPATH}/SDL_stretch.o ${SDLOPATH}/SDL_surface.o ${SDLOPATH}/SDL_video.o ${SDLOPATH}/SDL_yuv.o ${SDLOPATH}/SDL_yuv_mmx.o ${SDLOPATH}/SDL_yuv_sw.o ${SDLOPATH}/SDL_joystick.o ${SDLOPATH}/SDL_nullevents.o ${SDLOPATH}/SDL_nullmouse.o ${SDLOPATH}/SDL_nullvideo.o ${SDLOPATH}/SDL_diskaudio.o ${SDLOPATH}/SDL_dummyaudio.o ${SDLOPATH}/SDL_sysevents.o ${SDLOPATH}/SDL_sysmouse.o ${SDLOPATH}/SDL_syswm.o ${SDLOPATH}/SDL_wingl.o ${SDLOPATH}/SDL_dibevents.o ${SDLOPATH}/SDL_dibvideo.o ${SDLOPATH}/SDL_dx5events.o ${SDLOPATH}/SDL_dx5video.o ${SDLOPATH}/SDL_dx5yuv.o ${SDLOPATH}/SDL_dibaudio.o ${SDLOPATH}/SDL_dx5audio.o ${SDLOPATH}/SDL_mmjoystick.o ${SDLOPATH}/SDL_syscdrom.o ${SDLOPATH}/SDL_sysmutex.o ${SDLOPATH}/SDL_syssem.o ${SDLOPATH}/SDL_systhread.o ${SDLOPATH}/SDL_syscond.o ${SDLOPATH}/SDL_systimer.o ${SDLOPATH}/SDL_sysloadso.o sdl-win32-main.o
 
-SDLNETINCLUDES=-I$(SDL_NET)
-SDLNETOBJECTS=$(SDL_NET)/SDLnet.o $(SDL_NET)/SDLnetselect.o $(SDL_NET)/SDLnetTCP.o $(SDL_NET)/SDLnetUDP.o
-
 LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
-LINKSDLNET= -lws2_32 -liphlpapi
 
 # objects that do not need SDL; can be linked into tools like screenshot.exe; server
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
 
 ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
 
-# cc-lib is my personal collection of C++ libraries. It should be in a
-# directory next to "escapex."
-CC_LIB=../cc-lib
-
-SDLUTILOBJECTS= $(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
-# cc-lib assumes it can include something like "base/macros.h"
-CCLIBINCLUDES=-I$(CC_LIB)
-CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
-
-
 # XXX reenable sound
 DEBUG=-g
 OPT=-O2
 #
-CXXFLAGS= -std=c++20 ${OPT} $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include $(CCLIBINCLUDES) -I.
-SDL_CXXFLAGS= ${CXXFLAGS} ${SDLINCLUDES} ${SDLNETINCLUDES}
+CXXFLAGS= -std=c++20 ${OPT} $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include $(CCLIB_INCLUDES) -I.
+SDL_CXXFLAGS= ${CXXFLAGS} ${SDLINCLUDES}
 
 
 # -Wl,-rpath=.
@@ -385,11 +357,10 @@ release_check = \
 	$(if $(filter windows,${SUBSYSTEM}),,\
 	$(error SUBSYSTEM is ${SUBSYSTEM} -- do not release in console mode!))
 
-LDFLAGS =  -L. ${LINKSDL} ${LINKSDLNET} -m64 -Wl,--subsystem,${SUBSYSTEM} ${OPT}  -static
+LDFLAGS =  -L. ${LINKSDL} -m64 -Wl,--subsystem,${SUBSYSTEM} ${OPT}  -static
 
 # -lSDL_mixer
 # at end  -lvorbisfile -lvorbis -logg
-# LDLIBS = -lSDL_net  `sdl-config --libs` -lz
 #  LDLIBS = -lefence
 
 # XXX need to specify sdl flags presumably
@@ -398,7 +369,7 @@ LDFLAGS =  -L. ${LINKSDL} ${LINKSDLNET} -m64 -Wl,--subsystem,${SUBSYSTEM} ${OPT}
 icon.o : escape.ico escape.rc
 	$(WINDRES) -i escape.rc -o $@
 
-escape.exe : ${ESCLIBOBJECTS} ${ESCOBJECTS} ${CCLIBOBJECTS} ${SDLUTILOBJECTS} ${SDLOBJECTS} ${SDLNETOBJECTS}
+escape.exe : ${ESCLIBOBJECTS} ${ESCOBJECTS} $(CCLIBOBJECTS) ${SDLUTILOBJECTS} ${SDLOBJECTS}
 	${CXX} -g -o $@ $^ ${LDFLAGS}
 
 replace.exe : replace.o escape-util.o
@@ -480,7 +451,7 @@ version : .dummy
 	make clean
 	make -j 8 escape.exe
 
-# SDL.dll SDL_net.dll zlib1.dll SDL_mixer.dll
+# SDL.dll  zlib1.dll SDL_mixer.dll
 RELEASEFILES=escape.exe replace.exe font.png fontsmall.png tiles.png tileutil.png title.png icon.png escape.txt COPYING changelog animation.png splash.png
 
 releasefiles.win32 : ${RELEASEFILES}
@@ -561,7 +532,7 @@ wc :
 	wc -l *.cc *.h
 
 clean :
-	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(SDLNETOBJECTS)
+	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.*
 
 # end mingw makefile
 endif
@@ -582,9 +553,6 @@ CFLAGS=--std=c11 -O2 -I .
 # point this at the SDL (1.2 series) installation. You need to compile
 # SDL in there too; we just link in the object files.
 SDL=/c/code/SDL
-# Included with escape with some superficial local fixes, but feel
-# free to try a pristine copy instead.
-SDL_NET=SDL_net
 
 # cc-lib is my personal collection of C++ libraries. It should be in a
 # directory next to "escapex."
@@ -599,15 +567,10 @@ OPT=-O2
 CXXFLAGS= --std=c++23 $(OPT) $(DEBUG) -DNOSOUND=1 -DWIN32 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -I. -I$(CC_LIB)
 # Additional requirements when compiling something that depends on
 # the full SDL.
-SDL_CXXFLAGS= -I$(SDL)/include -I$(SDL_NET)
+SDL_CXXFLAGS= -I$(SDL)/include
 
 # assume SDL build for .o files in the current directory
 %.o : %.cc
-	@$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
-	@bash -c "echo -n '.'"
-
-# .. and sdl_net
-$(SDL_NET)/%.o : $(SDL_NET)/%.c
 	@$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<
 	@bash -c "echo -n '.'"
 
@@ -615,13 +578,7 @@ SDLARCH=x64
 SDLOPATH=$(SDL)/build
 SDLOBJECTS=$(SDLOPATH)/SDL.o $(SDLOPATH)/SDL_error.o $(SDLOPATH)/SDL_fatal.o $(SDLOPATH)/SDL_audio.o $(SDLOPATH)/SDL_audiocvt.o $(SDLOPATH)/SDL_audiodev.o $(SDLOPATH)/SDL_mixer.o $(SDLOPATH)/SDL_mixer_MMX.o $(SDLOPATH)/SDL_mixer_MMX_VC.o $(SDLOPATH)/SDL_mixer_m68k.o $(SDLOPATH)/SDL_wave.o $(SDLOPATH)/SDL_cdrom.o $(SDLOPATH)/SDL_cpuinfo.o $(SDLOPATH)/SDL_active.o $(SDLOPATH)/SDL_events.o $(SDLOPATH)/SDL_expose.o $(SDLOPATH)/SDL_keyboard.o $(SDLOPATH)/SDL_mouse.o $(SDLOPATH)/SDL_quit.o $(SDLOPATH)/SDL_resize.o $(SDLOPATH)/SDL_rwops.o $(SDLOPATH)/SDL_getenv.o $(SDLOPATH)/SDL_iconv.o $(SDLOPATH)/SDL_malloc.o $(SDLOPATH)/SDL_qsort.o $(SDLOPATH)/SDL_stdlib.o $(SDLOPATH)/SDL_string.o $(SDLOPATH)/SDL_thread.o $(SDLOPATH)/SDL_timer.o $(SDLOPATH)/SDL_RLEaccel.o $(SDLOPATH)/SDL_blit.o $(SDLOPATH)/SDL_blit_0.o $(SDLOPATH)/SDL_blit_1.o $(SDLOPATH)/SDL_blit_A.o $(SDLOPATH)/SDL_blit_N.o $(SDLOPATH)/SDL_bmp.o $(SDLOPATH)/SDL_cursor.o $(SDLOPATH)/SDL_gamma.o $(SDLOPATH)/SDL_pixels.o $(SDLOPATH)/SDL_stretch.o $(SDLOPATH)/SDL_surface.o $(SDLOPATH)/SDL_video.o $(SDLOPATH)/SDL_yuv.o $(SDLOPATH)/SDL_yuv_mmx.o $(SDLOPATH)/SDL_yuv_sw.o $(SDLOPATH)/SDL_joystick.o $(SDLOPATH)/SDL_nullevents.o $(SDLOPATH)/SDL_nullmouse.o $(SDLOPATH)/SDL_nullvideo.o $(SDLOPATH)/SDL_diskaudio.o $(SDLOPATH)/SDL_dummyaudio.o $(SDLOPATH)/SDL_sysevents.o $(SDLOPATH)/SDL_sysmouse.o $(SDLOPATH)/SDL_syswm.o $(SDLOPATH)/SDL_wingl.o $(SDLOPATH)/SDL_dibevents.o $(SDLOPATH)/SDL_dibvideo.o $(SDLOPATH)/SDL_dx5events.o $(SDLOPATH)/SDL_dx5video.o $(SDLOPATH)/SDL_dx5yuv.o $(SDLOPATH)/SDL_dibaudio.o $(SDLOPATH)/SDL_dx5audio.o $(SDLOPATH)/SDL_mmjoystick.o $(SDLOPATH)/SDL_syscdrom.o $(SDLOPATH)/SDL_sysmutex.o $(SDLOPATH)/SDL_syssem.o $(SDLOPATH)/SDL_systhread.o $(SDLOPATH)/SDL_syscond.o $(SDLOPATH)/SDL_systimer.o $(SDLOPATH)/SDL_sysloadso.o sdl-win32-main.o
 
-SDLUTILOBJECTS= $(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
-CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
-
-SDLNETOBJECTS=$(SDL_NET)/SDLnet.o $(SDL_NET)/SDLnetselect.o $(SDL_NET)/SDLnetTCP.o $(SDL_NET)/SDLnetUDP.o
-
 LINKSDL= -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
-LINKSDLNET= -lws2_32 -liphlpapi
 
 # objects that do not need SDL; can be linked into tools like screenshot.exe; server
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
@@ -643,17 +600,16 @@ release_check = \
 	$(if $(filter windows,$(SUBSYSTEM)),,\
 	$(error SUBSYSTEM is $(SUBSYSTEM) -- do not release in console mode!))
 
-LDFLAGS =  -L. $(LINKSDL) $(LINKSDLNET) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
+LDFLAGS =  -L. $(LINKSDL) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
 
 # -lSDL_mixer
 # at end  -lvorbisfile -lvorbis -logg
-# LDLIBS = -lSDL_net  `sdl-config --libs` -lz
 #  LDLIBS = -lefence
 
 icon.o : escape.ico escape.rc
 	$(WINDRES) -i escape.rc -o $@
 
-escape.exe : $(ESCLIBOBJECTS) $(ESCOBJECTS) $(CCLIBOBJECTS) $(SDLUTILOBJECTS) $(SDLOBJECTS) $(SDLNETOBJECTS)
+escape.exe : $(ESCLIBOBJECTS) $(ESCOBJECTS) $(CCLIBOBJECTS) $(SDLUTILOBJECTS) $(SDLOBJECTS)
 	$(CXX) -g -o $@ $^ $(LDFLAGS)
 
 replace.exe : replace.o escape-util.o
@@ -735,7 +691,7 @@ version : .dummy
 	make clean
 	make -j 8 escape.exe
 
-# SDL.dll SDL_net.dll zlib1.dll SDL_mixer.dll
+# SDL.dll zlib1.dll SDL_mixer.dll
 RELEASEFILES=escape.exe replace.exe font.png fontsmall.png tiles.png tileutil.png title.png icon.png escape.txt COPYING changelog animation.png splash.png
 
 releasefiles.win32 : $(RELEASEFILES)
@@ -816,7 +772,7 @@ wc :
 	wc -l *.cc *.h
 
 clean :
-	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(SDLNETOBJECTS) $(CCLIBOBJECTS)
+	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(CCLIBOBJECTS)
 
 # end mingw makefile
 endif

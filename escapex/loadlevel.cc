@@ -957,14 +957,13 @@ void LoadLevel_::solvefrombookmarks(const string &filename,
           string af = sel->items[i].ActualFile(path);
 
           /* XXX PERF md5s are stored */
-          FILE *f = fopen(af.c_str(), "rb");
-          if (!f) {
+          std::string afc = Util::ReadFile(af);
+          if (afc.empty()) {
             Message::Bug(this, "couldn't open in recovery");
             sel->Redraw();
             continue;
           }
-          string md5 = MD5::Hashf(f);
-          fclose(f);
+          string md5 = MD5::Hash(afc);
 
           /* extend progress msg */
           {

@@ -1,6 +1,6 @@
 
 /* maximally simple interface to HTTP
-   using SDL_net */
+   using cc-lib net.h */
 
 #ifndef _ESCAPE_HTTP_H
 #define _ESCAPE_HTTP_H
@@ -12,8 +12,8 @@
 
 #include "httputil.h"
 
-/* Before using the HTTP class, you must initialize SDL_net
-   with SDLNet_Init(). */
+/* Before using the HTTP class, you must initialize the network
+   with Net::Init(). */
 
 /* results from GET/POST/etc. */
 enum class HTTPResult {

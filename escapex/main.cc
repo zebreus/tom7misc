@@ -8,7 +8,6 @@
 #include "SDL_error.h"
 #include "SDL_events.h"
 #include "SDL_keyboard.h"
-#include "SDL_net.h"
 #include "SDL_video.h"
 #include "animation.h"
 #include "base/print.h"
@@ -34,6 +33,7 @@
 #include "startup.h"
 #include "update.h"
 #include "upgrade.h"
+#include "net.h"
 
 #define DEFAULT_DIR "."
 #define SPLASH_FILE DATADIR "splash.png"
@@ -80,13 +80,7 @@ int main(int argc, char **argv) {
     audio = 1;
   }
 
-  if (SDLNet_Init() == -1) {
-    network = 0;
-    Print("(debug) SDLNet_Init: {}\n", SDLNet_GetError());
-  } else {
-    network = 1;
-  }
-
+  Net::Init();
   Sound::init();
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,

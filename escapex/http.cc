@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "SDL_net.h"
+#include "net.h"
 #include "escape-util.h"
 #include "util.h"
 
@@ -48,9 +48,8 @@ struct HTTP_ : public HTTP {
   virtual HTTPResult req_general(string req, string &res, bool tofile);
   virtual HTTPResult get_general(string path, string &arg, bool tofile);
   virtual void bye() {
-    if (conn) {
-      SDLNet_TCP_Close(conn);
-      conn = 0;
+    if (conn.IsValid()) {
+      Net::Close(&conn);
     }
   }
 
@@ -58,9 +57,9 @@ struct HTTP_ : public HTTP {
 
   string ua;
 
-  IPaddress remote;
+  std::optional<Net::Address> remote;
 
-  TCPsocket conn = 0;
+  Net::Socket conn;
 
   /* for virtual servers */
   string host;
@@ -77,16 +76,13 @@ HTTPResult HTTP_::GetTempFile(string_view path, string &out_) {
 }
 
 HTTP_::HTTP_() {
-  remote.host = 0;
-  remote.port = 0;
   log_message = nullptr;
 }
 
 HTTP_::~HTTP_() {
-  /* ? */
-  if (conn) {
+  if (conn.IsValid()) {
     DMSG(EscapeUtil::ptos(this) + " destroy\n");
-    SDLNet_TCP_Close(conn);
+    Net::Close(&conn);
   }
 }
 
@@ -94,16 +90,17 @@ void HTTP_::SetUA(string_view ua_view) {
   ua = std::string(ua_view);
 }
 
-bool HTTP_::Connect(string_view chost, int port) {
+bool HTTP_::Connect(std::string_view chost, int port) {
   DMSG(std::format("{:p} connect '{}':{}\n", (void*)this, chost, port));
 
-  /* should work for "snoot.org" or "128.2.194.11" */
-  if (SDLNet_ResolveHost(&remote, (char *)std::string(chost).c_str(), port)) {
-    DMSG(EscapeUtil::ptos(this) + " can't resolve: " +
-         (string)(SDLNet_GetError()) + "\n");
+  /* should work for "snoot.org" or "128.2.194.11"? */
+  std::vector<Net::Address> addrs = Net::Resolve(chost, port);
+  if (addrs.empty()) {
+    DMSG(std::format("can't resolve: {}\n", chost));
     return false;
   }
 
+  remote = addrs[0];
   host = chost;
 
   DMSG(EscapeUtil::ptos(this) + " ok\n");
@@ -124,12 +121,6 @@ void append(string &s, char *vec, unsigned int l) {
   }
 
   s = ret;
-}
-
-bool sendall(TCPsocket socket, string d) {
-  int len = d.length();
-  if (len != SDLNet_TCP_Send(socket, (void*)d.c_str(), len)) return false;
-  else return true;
 }
 
 HTTPResult HTTP_::Put(string_view path,
@@ -209,26 +200,23 @@ HTTPResult HTTP_::get_general(string path, string &res, bool tofile) {
 }
 
 HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
-  DMSG(EscapeUtil::ptos(this) + " conn@" + EscapeUtil::ptos(conn) +
-        " req_general: \n[" + req + "]\n");
+  DMSG(EscapeUtil::ptos(this) + " conn "
+       " req_general: \n[" + req + "]\n");
 
   /* we don't use keep-alive now. each request is a new
      connection. */
   bye();
-  if (! (conn = SDLNet_TCP_Open(&remote))) {
-    DMSG(EscapeUtil::ptos(this) + " can't connect: " +
-          (string)(SDLNet_GetError()) + "\n");
+  if (!remote || !(conn = Net::Connect(*remote))) {
+    DMSG(EscapeUtil::ptos(this) + " can't connect\n");
     return HTTPResult::ERROR_OTHER;
   }
 
   DMSG(EscapeUtil::ptos(this) + " connected.\n");
 
-  if (!sendall(conn, req)) {
+  if (!Net::SendAll(&conn, req)) {
     /* error. try again? */
-    DMSG(EscapeUtil::ptos(this) + " can't send: " +
-         (string)(SDLNet_GetError()) + "\n");
-    SDLNet_TCP_Close(conn);
-    conn = 0;
+    DMSG(EscapeUtil::ptos(this) + " can't send\n");
+    bye();
     return HTTPResult::ERROR_OTHER;
   }
 
@@ -252,9 +240,8 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
      so that we don't accidentally move into the data area.
   */
   for (;;) {
-    if (SDLNet_TCP_Recv(conn, &c, 1) != 1) {
-      DMSG(EscapeUtil::ptos(this) + " can't recv: " +
-           (string)(SDLNet_GetError()) + "\n");
+    if (Net::RecvSome(&conn, {(uint8_t*)&c, 1}) != 1) {
+      DMSG(EscapeUtil::ptos(this) + " can't recv\n");
       printf("Error in recv.\n");
       bye();
       return HTTPResult::ERROR_OTHER;
@@ -421,15 +408,14 @@ string HTTP_::readresttofile() {
   int n = 0;
 
   int x;
-  while ((x = SDLNet_TCP_Recv(conn, buf, BUFLEN)) > 0) {
+  while ((x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)BUFLEN})) > 0) {
     fwrite(buf, 1, x, ff);
     callback(n += x, -1);
   }
 
   fclose(ff);
 
-  SDLNet_TCP_Close(conn);
-  conn = 0;
+  bye();
 
   return fname;
 }
@@ -445,13 +431,12 @@ string HTTP_::readrest() {
 
   DMSG("reading rest...\n");
 
-  while ((x = SDLNet_TCP_Recv(conn, buf, BUFLEN)) > 0) {
+  while ((x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)BUFLEN})) > 0) {
     append(acc, buf, x);
     callback(n += x, -1);
   }
 
-  SDLNet_TCP_Close(conn);
-  conn = 0;
+  bye();
 
   DMSG("contents\n[" + acc + "]\n");
 
@@ -469,7 +454,7 @@ string HTTP_::readn(int n) {
   int done = 0;
   int x;
   while (rem > 0) {
-    x = SDLNet_TCP_Recv(conn, buf.data() + done, rem);
+    x = Net::RecvSome(&conn, {(uint8_t*)buf.data() + done, (size_t)rem});
     if (x <= 0) return "";
 
     done += x;
@@ -501,7 +486,7 @@ string HTTP_::readntofile(int n) {
   int done = 0;
   int x;
   while (rem > 0) {
-    x = SDLNet_TCP_Recv(conn, buf, std::min(BUFLEN,rem));
+    x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)std::min(BUFLEN,rem)});
     if (x <= 0) {
       fclose(ff);
       printf("bad exit from readntofile\n");
