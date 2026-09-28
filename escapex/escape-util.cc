@@ -1,5 +1,6 @@
 #include "escape-util.h"
 
+#include <format>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -130,15 +131,11 @@ string EscapeUtil::readfilemagic(string s, const string &mag) {
 }
 
 string itos(int i) {
-  char s[64];
-  sprintf(s, "%d", i);
-  return (string)s;
+  return std::format("{}", i);
 }
 
 string EscapeUtil::ptos(void *p) {
-  char s[64];
-  sprintf(s, "%p", p);
-  return (string)s;
+  return std::format("{:p}", p);
 }
 
 unsigned int EscapeUtil::hash(string s) {
@@ -324,12 +321,10 @@ string EscapeUtil::tempfile(string suffix) {
 
   string fname;
   do {
-    char c[128];
-    sprintf(c,
-            "%d_%d_%d",
-            tries, getpid(), random());
+    fname = std::format("{}_{}_{}{}",
+                        tries, getpid(), random(),
+                        suffix);
     tries++;
-    fname = (string)c + suffix;
   } while (existsfile(fname));
 
   return fname;
