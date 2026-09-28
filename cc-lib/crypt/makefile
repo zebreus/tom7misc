@@ -4,20 +4,27 @@ default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_t
 # For tests.
 CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o ../status-bar.o
 
+CXXFLAGS=-I ..
+
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
 else
-  # Linux and msys2
+ifeq ($(UNAME),Msys)
+  # for 64 bits on windows (msys2).
+  CXX=clang++
+  CC=clang
+  # FLTO=-flto=thin
+  CXXFLAGS+=-fsanitize=address -march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g -O $(FLTO) -static
+else
+  # Linux
   CXX=g++
   CC=gcc
+  CXXFLAGS+=-fsanitize=address -fsanitize=undefined -g -Wall -I. --std=c++23 -O
 endif
-
-# -flto=auto
-OPT=-O3 -march=native -mtune=native
-CXXFLAGS=-pipe -Wall -I.. --std=c++20 -static $(OPT)
+endif
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

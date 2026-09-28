@@ -546,5 +546,7 @@ int main(int argc, char **argv) {
   CHECK(test_xcrypt_ctr256("decrypt"));
 
   test_encrypt_ecb_verbose128();
+
+  Print("OK\n");
   return 0;
 }

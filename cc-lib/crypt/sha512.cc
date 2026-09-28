@@ -169,7 +169,13 @@ static void sha512_finalize(SHA512::Ctx *sha) {
     sha512_append_byte(sha, 0);
   }
 
-  for (int i = 15; i >= 0; i--) {
+  // The length field is 128 bits, but we only support
+  // 64-bit lengths.
+  for (int i = 0; i < 8; i++) {
+    sha512_append_byte(sha, 0);
+  }
+
+  for (int i = 7; i >= 0; i--) {
     uint8_t byte = (n_bits >> 8 * i) & 0xff;
     sha512_append_byte(sha, byte);
   }

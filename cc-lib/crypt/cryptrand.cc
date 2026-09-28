@@ -93,7 +93,7 @@ void CryptRand::Bytes(std::span<uint8_t> buffer) {
 
 CryptRand::CryptRand() {}
 
-uint64_t CryptRand::Bytes(std::span<uint8_t> buffer) {
+void CryptRand::Bytes(std::span<uint8_t> buffer) {
   FILE *f = fopen("/dev/urandom", "rb");
   CHECK(f) << "/dev/urandom not available?";
 
@@ -102,7 +102,7 @@ uint64_t CryptRand::Bytes(std::span<uint8_t> buffer) {
     int c = fgetc(f);
     CHECK(c != EOF);
     buffer[0] = c;
-    buffer = buffe.subspan(1);
+    buffer = buffer.subspan(1);
   }
 
   fclose(f);
