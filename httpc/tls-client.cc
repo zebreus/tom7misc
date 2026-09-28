@@ -29,6 +29,9 @@
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "tls.h"
+#include "hexdump.h"
+
+static constexpr bool VERBOSE = false;
 
 namespace internal {
 // Bidirectional stream of TLS Records.
@@ -79,12 +82,18 @@ void TLSStream::SendRaw(std::span<const uint8_t> bytes) {
 void TLSStream::SendTLSRecord(TLS::ContentType ct, uint8_t version_major,
                               uint8_t version_minor,
                               std::span<const uint8_t> payload) {
+
   std::array<uint8_t, 5> hdr;
   hdr[0] = (uint8_t)ct;
   hdr[1] = version_major;
   hdr[2] = version_minor;
   hdr[3] = (payload.size() >> 8) & 0xFF;
   hdr[4] = payload.size() & 0xFF;
+
+  if (VERBOSE) {
+    Print(stderr, "Hdr and payload:\n{}\n{}\n",
+          HexDump::Color(hdr), HexDump::Color(payload));
+  }
 
   SendRaw(hdr);
   SendRaw(payload);
@@ -142,6 +151,12 @@ void TLSStream::ParsePackets() {
     if (buffer.size() < length + 5) {
       // We have a partial record; wait for more data.
       break;
+    }
+
+    if (VERBOSE) {
+      Print("recv:\n{}\n",
+            HexDump::Color(std::span<const uint8_t>(buffer.data(),
+                                                    length + 5)));
     }
 
     TLS::Record rec;

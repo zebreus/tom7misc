@@ -780,24 +780,20 @@ std::string ModelUtil::GetAPIKey() {
     }
   }
 
-  {
-    Print("Try /root\n");
-    std::string key = Util::ReadFile("/root/GEMINI_API_KEY");
+  for (std::string_view path : {
+      "d://tom//GEMINI_API_KEY",
+      "/root/GEMINI_API_KEY",
+      "/Users/tom/GEMINI_API_KEY",
+      "/home/tom/GEMINI_API_KEY",
+      "~/GEMINI_API_KEY",
+    }) {
+    std::string key = Util::ReadFile(path);
     if (!key.empty())
       return Util::NormalizeWhitespace(key);
   }
 
-  {
-    Print("Try ~\n");
-    std::string key = Util::ReadFile("~/GEMINI_API_KEY");
-    if (!key.empty())
-      return Util::NormalizeWhitespace(key);
-  }
-
-  std::string api_key =
-    Util::NormalizeWhitespace(Util::ReadFile("d://tom//GEMINI_API_KEY"));
-  CHECK(!api_key.empty());
-  return api_key;
+  LOG(FATAL) << "Couldn't find GEMINI_API_KEY!";
+  return "";
 }
 
 std::set<std::string> ModelUtil::IncludeDirs(
