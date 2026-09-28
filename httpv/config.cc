@@ -232,6 +232,13 @@ Config Config::Load() {
 
       current_host->aliases.push_back(std::move(alias));
 
+    } else if (cmd == "listen-port") {
+      int p = atoi(std::string(line).c_str());
+      CHECK(p > 0) << "Port must be a positive number.";
+      CHECK(current_host.get() == nullptr) << "The listening port is "
+        "global to the process, so it must be outside of a host block.";
+      config.listen_port = p;
+
     } else if (cmd == "port") {
       int p = atoi(std::string(line).c_str());
       CHECK(p > 0) << "Port must be a positive number.";

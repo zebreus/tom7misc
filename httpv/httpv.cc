@@ -2005,7 +2005,7 @@ int main(int argc, char **arg) {
 
   {
     Server server(std::move(config));
-    server.Listen(443);
+    server.Listen(config.ListenPort());
     server.DropPrivileges();
     server.Loop();
   }

@@ -62,6 +62,8 @@ struct Config {
 
   int MaxPlaintextSize() const { return max_plaintext_size; }
 
+  int ListenPort() const { return listen_port; }
+
   enum IVStrategy {
     IV_RANDOM = 0,
     IV_ZERO = 1,
@@ -81,6 +83,8 @@ struct Config {
 
  private:
   Config();
+
+  int listen_port = 443;
 
   // Keyed by all exact aliases.
   std::unordered_map<std::string, const HostConfig *> hosts;
