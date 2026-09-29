@@ -35,10 +35,6 @@ static void EraseMatching(C *cont, F f) {
 inline static uint64 ROR64(uint64 h, int n) {
   return (h >> n) | (h << (64 - n));
 }
-/* from md5 */
-inline static uint64 F1(uint64 x, uint64 y, uint64 z) {
-  return z ^ (x & (y ^ z));
-}
 
 /* XXX it's likely that some of these operations are actually
    defaulting to 32 bits, which wastes entropy */
@@ -200,9 +196,9 @@ Solution Optimize::Opt(const Level *orig, const Solution &s) {
 
         /* now, anything we've done since then is invalidated, (this
            is where the sub-optimality comes in) so remove it. */
-	EraseMatching(&ht, [cutoff = cf.Length()](pair<const LState, int> &kv) {
-	  return kv.second > cutoff;
-	});
+  EraseMatching(&ht, [cutoff = cf.Length()](pair<const LState, int> &kv) {
+    return kv.second > cutoff;
+  });
 
       } else {
         /* new state, so insert it */
@@ -250,7 +246,7 @@ bool Optimize::TryComplete(Level *start, const Solution &prefix,
     for (const NamedSolution &ns : sources) {
       if (ns.sol.Length() >= slen) {
         /* do it! */
-	std::unique_ptr<Level> trysuf = wprefix->Clone();
+  std::unique_ptr<Level> trysuf = wprefix->Clone();
 
         const Solution &trysol = ns.sol;
 

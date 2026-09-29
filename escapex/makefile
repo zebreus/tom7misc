@@ -170,15 +170,6 @@ LDLIBS = `sdl-config --libs`
 CPPFLAGS = `sdl-config --cflags` -DNOSOUND=1 -DOSX=1
 CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIB_INCLUDES)
 
-
-# sound is disabled, but it's time to make it available on the OS X
-# release. Do this!
-# to add it, remove -DNOSOUND and add
-#
-# to CPPFLAGS and add
-#  -framework SDL_mixer
-# to the g++ line linking below
-
 # Suppress compilation commands, but show some indication of progress.
 # (Explicitly invoke bash to get shell builtin, since on OS X echo
 # otherwise treats -n literally.)
@@ -200,7 +191,7 @@ CFLAGS=-Wno-objc-protocol-method-implementation
 
 escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o graphics.o $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
 	@export MACOSX_DEPLOYMENT_TARGET=${VERSION_TARGET}
-	$(CXX) $(LDLIBS) -framework OpenGL -framework IOKit -framework Carbon -framework Cocoa $^ -o escape.exe
+	$(CXX) $(LDLIBS) -framework OpenGL -framework IOKit -framework Carbon -framework Cocoa -Wl,-headerpad_max_install_names $^ -o escape.exe
 
 http_test.exe : http.o escape-util.o http_test.o $(CCLIBOBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -237,18 +228,6 @@ releaseup : release
 
 zip : escape-beta-osx.zip
 
-# XXX Note: in 2016 I didn't need to do this stuff; svn seems to handle
-# symlinks correctly.
-# for some reason frameworks need some redundance built with symlinks
-# XXX give this deps so it knows when to run
-framelinks :
-	-mkdir OSX_build/Frameworks/SDL.framework/Versions
-	-mkdir OSX_build/Frameworks/SDL.framework/Versions/A
-	-mkdir OSX_build/Frameworks/SDL_mixer.framework/Versions
-	-mkdir OSX_build/Frameworks/SDL_mixer.framework/Versions/A
-	cd OSX_build/Frameworks/SDL.framework/Versions/A && ln -s ../../SDL SDL && ln -s ../../Headers Headers && ln -s ../../Resources Resources && cd .. && ln -s A Current
-
-
 # OSX_build goes inside an otherwise empty folder called
 # Escape.app. The folder should be renamed to Contents.
 # inside Contents/MacOS goes all of the regularly distributed
@@ -258,19 +237,16 @@ app : escape.exe
 	rm -rf /tmp/Escape.app
 	rm -f /tmp/escape-beta-osx.zip
 	rm -f escape-beta-osx.zip
-	mkdir /tmp/Escape.app
-	mkdir /tmp/Escape.app/Contents
-	mkdir /tmp/Escape.app/Contents/MacOS
+	mkdir -p /tmp/Escape.app/Contents/MacOS
 	cp -R OSX_build/* /tmp/Escape.app/Contents/
+	rm -rf /tmp/Escape.app/Contents/Frameworks
+	mkdir -p /tmp/Escape.app/Contents/Frameworks
 	cp ${RELEASEFILES} /tmp/Escape.app/Contents/MacOS/
 	cp -R triage /tmp/Escape.app/Contents/MacOS/
 	cp -R official /tmp/Escape.app/Contents/MacOS/
-	mkdir /tmp/Escape.app/Contents/MacOS/mylevels
+	mkdir -p /tmp/Escape.app/Contents/MacOS/mylevels
 	cp mylevels/index.esi /tmp/Escape.app/Contents/MacOS/mylevels/
-	mkdir /tmp/Escape.app/Contents/MacOS/OSX_build
-	mkdir /tmp/Escape.app/Contents/MacOS/OSX_build/Frameworks
-	rm -f /tmp/Escape.app/Contents/Frameworks/SDL.framework/Headers/*.h
-	rm -f /tmp/Escape.app/Contents/Frameworks/SDL_mixer.framework/Headers/*.h
+	bash macos-update-dylibs.sh /tmp/Escape.app/Contents/MacOS/escape.exe /tmp/Escape.app/Contents/Frameworks /opt/homebrew/lib/libSDL3.dylib /opt/homebrew/lib/libSDL2-2.0.0.dylib /usr/local/lib/libSDL2-2.0.0.dylib
 	rm -rf `find /tmp/Escape.app -name CVS`
 	rm -rf `find /tmp/Escape.app -name .svn`
 	rm -rf `find /tmp/Escape.app -name .DS_Store`

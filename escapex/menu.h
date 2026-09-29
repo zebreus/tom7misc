@@ -133,7 +133,7 @@ struct TextInput : public MenuItem {
   /* XXX probably want to check that the cursor is
      still inside 'input', because input can be
      changed externally */
-  int cursor = 0;
+  [[maybe_unused]] int cursor = 0;
 };
 
 struct TextPassword : public TextInput {

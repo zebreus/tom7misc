@@ -6,9 +6,17 @@
 	<string>English</string>
 	<key>CFBundleExecutable</key>
 	<string>escape.exe</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.spacebar.escape</string>
 	<key>CFBundleIconFile</key>
 	<string>Escape.icns</string>
 	<key>CFBundleName</key>
 	<string>Escape</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleSignature</key>
+  <string>????</string>
 </dict>
 </plist>

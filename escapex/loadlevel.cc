@@ -1251,14 +1251,12 @@ string LoadLevel_::Loop() {
               string file =
                 sel->items[sel->selected].ActualFile(path);
 
-              FILE *f = fopen(file.c_str(), "rb");
-              if (!f) {
+              std::string fc = Util::ReadFile(file);
+              if (fc.empty()) {
                 Message::Bug(this, "Couldn't open file to comment on");
 
               } else {
-
-                string md = MD5::Hashf(f);
-                fclose(f);
+                string md = MD5::Hash(fc);
 
                 /* This does its own error reporting */
                 CommentScreen::Comment(
@@ -1287,8 +1285,8 @@ string LoadLevel_::Loop() {
                 sel->items[sel->selected].ActualFile(path);
 
               /* XXX now in LLEntry, also comment */
-              FILE *f = fopen(file.c_str(), "rb");
-              if (!f) {
+              std::string fc = Util::ReadFile(file);
+              if (fc.empty()) {
                 Message::Bug(this, "Couldn't open file to rate");
 
               } else {
@@ -1297,8 +1295,7 @@ string LoadLevel_::Loop() {
                    invalidated */
                 sel->items[sel->selected].myrating = 0;
 
-                string md = MD5::Hashf(f);
-                fclose(f);
+                string md = MD5::Hash(fc);
 
                 std::unique_ptr<RateScreen> rs{
                   RateScreen::Create(plr,
