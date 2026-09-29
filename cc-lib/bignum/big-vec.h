@@ -112,6 +112,10 @@ struct BigVecQ3 {
     return {BigRat::Div(x, s), BigRat::Div(y, s), BigRat::Div(z, s)};
   }
 
+  inline bool operator==(const BigVecQ3 &other) const {
+    return BigRat::Eq(x, other.x) && BigRat::Eq(y, other.y) && BigRat::Eq(z, other.z);
+  }
+
   static BigRat Dot(const BigVecQ3 &a, const BigVecQ3 &b) {
     return BigRat::Plus(
         BigRat::Plus(BigRat::Times(a.x, b.x), BigRat::Times(a.y, b.y)),
