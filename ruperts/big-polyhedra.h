@@ -91,15 +91,6 @@ inline BigQuat operator *(const BigQuat &q, const BigRat &s) {
   return BigQuat(q.x * s, q.y * s, q.z * s, q.w * s);
 }
 
-// Exact equality.
-inline bool operator ==(const BigVecQ2 &a, const BigVecQ2 &b) {
-  return a.x == b.x && a.y == b.y;
-}
-
-inline bool operator ==(const BigVecQ3 &a, const BigVecQ3 &b) {
-  return a.x == b.x && a.y == b.y && a.z == b.z;
-}
-
 inline bool operator ==(const BigQuat &a, const BigQuat &b) {
   return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
