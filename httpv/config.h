@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "multi-rsa.h"
+#include "crypt/multi-rsa.h"
 #include "crypt/tls.h"
 
 struct Config {

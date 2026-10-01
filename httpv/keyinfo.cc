@@ -9,7 +9,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "bignum/big.h"
-#include "multi-rsa.h"
+#include "crypt/multi-rsa.h"
 #include "pem.h"
 #include "util.h"
 

@@ -1,6 +1,6 @@
 
-#ifndef _MULTI_RSA_H
-#define _MULTI_RSA_H
+#ifndef _CC_LIB_CRYPT_RSA_H
+#define _CC_LIB_CRYPT_RSA_H
 
 #include <optional>
 #include <span>

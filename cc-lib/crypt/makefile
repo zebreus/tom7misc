@@ -1,5 +1,5 @@
 
-default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe asn1_test.exe
+default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe asn1_test.exe multi-rsa_test.exe
 
 # For tests.
 CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o ../status-bar.o ../bignum/big.o ../bignum/bigz.o ../bignum/bign.o ../bignum/bigq.o
@@ -86,6 +86,9 @@ asn1_test.exe : asn1_test.o asn1.o $(CC_LIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 tls_test.exe : tls_test.o tls.o sha1.o sha256.o aes.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+multi-rsa_test.exe : multi-rsa_test.o multi-rsa.o asn1.o $(CC_LIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
