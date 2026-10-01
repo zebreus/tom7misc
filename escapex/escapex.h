@@ -37,9 +37,9 @@
 bool HandleVideoEvent(Drawable *parent, const SDL_Event &e);
 
 /* is the network enabled? */
-extern int network;
+extern bool have_network;
 /* is the audio subsystem started? */
-extern int audio;
+extern bool have_audio;
 
 // Single global screen buffer, used everywhere.
 extern SDL_Surface *screen;

@@ -144,7 +144,7 @@ static void setApplicationMenu(void)
     [appleMenu addItemWithTitle:title action:@selector(hide:) keyEquivalent:@"h"];
 
     menuItem = (NSMenuItem *)[appleMenu addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
-    [menuItem setKeyEquivalentModifierMask:(NSAlternateKeyMask|NSCommandKeyMask)];
+    [menuItem setKeyEquivalentModifierMask:(NSEventModifierFlagOption|NSEventModifierFlagCommand)];
 
     [appleMenu addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
 
@@ -222,7 +222,7 @@ static void CustomApplicationMain (int argc, char **argv)
     /* Create SDLMain and make it the app delegate */
     sdlMain = [[SDLMain alloc] init];
     // XXX tom7 added this cast here to suppress warning; does not know what's happening
-    [NSApp setDelegate:(id<NSFileManagerDelegate> _Nullable)sdlMain];
+    [NSApp setDelegate:(id<NSApplicationDelegate> _Nullable)sdlMain];
 
     /* Start the main event loop */
     [NSApp run];

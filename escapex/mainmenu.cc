@@ -223,7 +223,7 @@ void MainMenu_::Draw() {
               (string)BLUE + pp->name + (string)GREY " is Player #" POP +
               Util::itos(pp->webid) + POP);
   } else {
-    if (network) {
+    if (have_network) {
       fon->draw(6, y += fon->height, WHITE
                 "Press [" YELLOW "R" POP "] to register your player online!"
                 POP);
@@ -302,13 +302,13 @@ MainMenu::Result MainMenu_::Show() {
 #       ifndef MULTIUSER
         case SDLK_u:
         case SDLK_3:
-          if (network) return UPGRADE;
+          if (have_network) return UPGRADE;
           else continue;
 #       endif
 
         case SDLK_g:
         case SDLK_4:
-          if (network) return UPDATE;
+          if (have_network) return UPDATE;
           else continue;
 
         case SDLK_t: {
@@ -325,7 +325,7 @@ MainMenu::Result MainMenu_::Show() {
         }
 
         case SDLK_r: {
-          if (network && !pp->webid) return REGISTER;
+          if (have_network && !pp->webid) return REGISTER;
           else continue;
         }
 
@@ -350,15 +350,15 @@ MainMenu::Result MainMenu_::Show() {
         case MMEType::EDIT: return EDIT;
         case MMEType::QUIT: return QUIT;
         case MMEType::UPGRADE:
-    if (network) return UPGRADE;
-    else continue;
+          if (have_network) return UPGRADE;
+          else continue;
         case MMEType::UPDATE:
-    if (network) return UPDATE;
-    else continue;
+          if (have_network) return UPDATE;
+          else continue;
         case MMEType::PREFS:
-    Prefs::Show(pp);
-    Redraw();
-    continue;
+          Prefs::Show(pp);
+          Redraw();
+          continue;
         default: break;
         }
         /* ??? */
@@ -369,7 +369,7 @@ MainMenu::Result MainMenu_::Show() {
         return QUIT;
       default:
       case MSel::PEType::NONE:
-  break;
+        break;
       }
     }
   }
@@ -485,7 +485,7 @@ MainMenu_ *MainMenu_::Create(Player *plr) {
     mm->sel->items[i++].t = MMEType::LOAD_NEW;
   }
   mm->sel->items[i++].t = MMEType::EDIT;
-  if (network) {
+  if (have_network) {
 #   ifndef MULTIUSER
     mm->sel->items[i++].t = MMEType::UPGRADE;
 #   endif

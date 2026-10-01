@@ -10,8 +10,8 @@
 SDL_Surface *screen = nullptr;
 
 /* XXX should be bools */
-int network = 0;
-int audio = 0;
+bool have_network = false;
+bool have_audio = false;
 
 bool HandleVideoEvent(Drawable *parent, const SDL_Event &event) {
   switch (event.type) {

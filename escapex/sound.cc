@@ -6,7 +6,7 @@
 /* dummy implementation */
 bool Sound::enabled() { return false; }
 void Sound::mute(bool b) { }
-void Sound::init() { }
+void Sound::Init() { }
 void Sound::shutdown() { }
 void Sound::Play(sound_t s) { }
 
@@ -28,7 +28,7 @@ static bool sound_muted = false;
 /* XXX should also halt any sound playing */
 void Sound::mute(bool b) { sound_muted = b; }
 
-void Sound::init() {
+void Sound::Init() {
   if (audio) {
     /* XXX what frequency to use? */
     /* XXX fall back to mono if stereo fails */

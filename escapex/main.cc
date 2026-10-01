@@ -59,8 +59,8 @@ int main(int argc, char **argv) {
   /* clean up any stray files */
   Cleanup::Clean();
 
-  audio = 0;
-  network = 0;
+  have_audio = false;
+  have_network = false;
   if (SDL_Init(SDL_INIT_VIDEO |
                SDL_INIT_TIMER |
                SDL_INIT_AUDIO | DEBUG_PARACHUTE) < 0) {
@@ -73,15 +73,15 @@ int main(int argc, char **argv) {
       return 1;
 
     } else {
-      audio = 0;
+      have_audio = false;
     }
 
   } else {
-    audio = 1;
+    have_audio = true;
   }
 
-  Net::Init();
-  Sound::init();
+  have_network = Net::MaybeInit();
+  Sound::Init();
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
                       SDL_DEFAULT_REPEAT_INTERVAL);

@@ -21,7 +21,7 @@ struct Sound {
      mute(false) turns it back on */
   static void mute(bool domute);
 
-  static void init();
+  static void Init();
 
   /* play sound s asynchronously.
      won't play if muted or disabled */
