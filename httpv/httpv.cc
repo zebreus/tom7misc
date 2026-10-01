@@ -34,13 +34,13 @@
 #include "crypt/aes.h"
 #include "crypt/cryptrand.h"
 #include "crypt/sha256.h"
+#include "crypt/tls.h"
 #include "hexdump.h"
 #include "multi-rsa.h"
 #include "packet-parser.h"
 #include "packet-writer.h"
 #include "randutil.h"
 #include "timer.h"
-#include "tls.h"
 
 // Simple "reverse proxy" that tries to implement TLS 1.2.
 // (Very) Insecure. Incomplete. Inefficient.

@@ -1,5 +1,8 @@
 
-// This is designed for cc-lib, but still experimental.
+// Simple wrapper for sockets on both win32 and posix.
+// On windows, link with -lws2_32
+//
+// Still experimental!
 
 #ifndef _CC_LIB_NET_H
 #define _CC_LIB_NET_H
@@ -12,9 +15,6 @@
 #include <variant>
 #include <vector>
 
-// Simple wrapper for sockets on both win32 and posix.
-// On windows, link with -lws2_32
-
 // Sockets are always non-blocking after connecting, although there
 // are convenience wrappers that will do a single send or receive in a
 // blocking-like loop.
@@ -23,6 +23,9 @@ struct Net {
 
   // Essential on windows.
   static void Init();
+  // Never aborts; returns true if initialized.
+  static bool MaybeInit();
+  // Must have been previously (successfully) initialized.
   static void Shutdown();
 
   struct Address;

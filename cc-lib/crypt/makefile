@@ -1,10 +1,10 @@
 
-default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
+default : aes_test.exe sha256_test.exe sha512_test.exe sha1_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe asn1_test.exe
 
 # For tests.
-CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o ../status-bar.o
+CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o ../status-bar.o ../bignum/big.o ../bignum/bigz.o ../bignum/bign.o ../bignum/bigq.o
 
-CXXFLAGS=-I ..
+CXXFLAGS=-I.. -I. --std=c++23
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -17,12 +17,13 @@ ifeq ($(UNAME),Msys)
   CXX=clang++
   CC=clang
   # FLTO=-flto=thin
-  CXXFLAGS+=-fsanitize=address -march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g -O $(FLTO) -static
+  CXXFLAGS+=-fsanitize=address -march=native -Wall -Wextra -Wno-unused-parameter -g -O $(FLTO) -static
 else
   # Linux
   CXX=g++
   CC=gcc
-  CXXFLAGS+=-fsanitize=address -fsanitize=undefined -g -Wall -I. --std=c++23 -O
+#  CXXFLAGS+=-fsanitize=address -fsanitize=undefined -g -Wall  -O
+  CXXFLAGS+=-g -Wall -O
 endif
 endif
 
@@ -80,6 +81,12 @@ hash_bench.exe : sha256.o md5.o sha1.o hash_bench.o $(CC_LIB_OBJECTS)
 
 lfsr_test.exe : lfsr_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
+
+asn1_test.exe : asn1_test.o asn1.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+tls_test.exe : tls_test.o tls.o sha1.o sha256.o aes.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
 	rm -f *.o *.exe $(CC_LIB_OBJECTS)

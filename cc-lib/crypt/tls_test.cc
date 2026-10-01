@@ -334,6 +334,7 @@ int main(int argc, char **argv) {
 
   TestParseClientHello();
   TestSerializeClientHello();
+  TestSerializeParseServerHelloDone();
   TestParseServerHello();
   TestServerCertificate();
   TestClientKeyExchange();

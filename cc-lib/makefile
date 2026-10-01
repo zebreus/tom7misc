@@ -21,7 +21,7 @@ ifeq ($(UNAME),Msys)
   # CXXFLAGS=-fno-omit-frame-pointer -march=native -g -O3 -Wall -Wextra -Wno-unused-parameter -I. --std=c++23
   SOCK_LFLAGS= -lws2_32
 else
-  # Linux
+  # Linux, mac OS
   CXX=g++
   CC=gcc
   # no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)

@@ -272,9 +272,8 @@
          ;; Working OS X font: http://tom7.org/fixedersys/
          ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
 
-          "FixederSys 1x-16:antialias=false:hinting=false"
-         ; "FixederSys 2x-32:antialias=false:hinting=false"
-
+         ; "FixederSys 1x-16:antialias=false:hinting=false"
+         "FixederSys 2x-16:antialias=false:hinting=false"
          )
 
         (modify-frame-parameters nil

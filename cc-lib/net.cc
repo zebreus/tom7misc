@@ -161,18 +161,26 @@ void Net::Init() {
   // It is (unsigned) -1 on win32.
   static_assert(Socket().fd == INVALID_SOCKET);
 
+  CHECK(MaybeInit()) << "Could not initialize Net";
+}
+
+bool Net::MaybeInit() {
   #ifdef _WIN32
   WSADATA wsaData;
-  assert(WSAStartup(MAKEWORD(2, 2), &wsaData) == 0 &&
-         "initializing network");
+  if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    return false;
   #endif
+
   initialized = true;
+  return true;
 }
 
 void Net::Shutdown() {
+  CHECK(initialized);
   #ifdef _WIN32
   WSACleanup();
   #endif
+  initialized = false;
 }
 
 std::string Net::Address::ToString() const {

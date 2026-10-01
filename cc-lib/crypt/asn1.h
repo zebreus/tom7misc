@@ -1,6 +1,10 @@
 
-#ifndef _HTTPV_ASN1_H
-#define _HTTPV_ASN1_H
+// Simple implementation of ASN.1 basics. This is a classic
+// serialization format (similar to protocol buffers); its main modern
+// use is in cryptography protocols like TLS.
+
+#ifndef _CC_LIB_CRYPT_ASN1_H
+#define _CC_LIB_CRYPT_ASN1_H
 
 #include <span>
 #include <vector>

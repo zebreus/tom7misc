@@ -1,5 +1,14 @@
-#ifndef _HTTPV_TLS_H
-#define _HTTPV_TLS_H
+// Minimal implementation of the TLS 1.2 protocol (parsing and
+// serialization of the packets necessary to create a connection).
+//
+// This was made as part of my httpv "joke" (tom7.org/httpv), but It
+// doesn't contain anything deliberately insecure, but it is not
+// written to be secure (e.g. wiping secrets from memory). Intended
+// for casual uses like "I just want to connect to this HTTPS
+// website."
+
+#ifndef _CC_LIB_CRYPT_TLS_H
+#define _CC_LIB_CRYPT_TLS_H
 
 #include <array>
 #include <cstdint>
