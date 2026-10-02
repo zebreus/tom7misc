@@ -1,7 +1,7 @@
 
 default : httpv.exe renew.exe multi-gen.exe
 
-all : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe tls_test.exe
+all : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)
@@ -32,10 +32,10 @@ OPT=-O3
 CXXFLAGS=$(REMARKS) $(HARDEN) $(ASAN) $(OPT) $(GMP_CFLAGS) -march=native -Wall -Wno-psabi  -Wno-unused-function -Wno-sign-compare -I. -I$(CC_LIB) --std=c++23
 LFLAGS=$(ASAN) $(LHARDEN) $(GMP_LFLAGS) -flto
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/color-util.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/hexdump.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/base64.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o $(CCC_LIB)/crypt/asn1.o $(CC_LIB)/crypt/multi-rsa.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/factorization.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/color-util.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big-numbers.o $(CC_LIB)/bignum/polynomial.o $(CC_LIB)/bignum/big-interval.o $(CC_LIB)/hexdump.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/base64.o $(CC_LIB)/process-util.o $(CC_LIB)/numbers.o $(CC_LIB)/crypt/asn1.o $(CC_LIB)/crypt/multi-rsa.o $(CC_LIB)/crypt/pem.o
 
 # Objects that are plain portable C++
-HTTPV_LIB_OBJECTS=$(CC_LIB_OBJECTS) rsa.o pem.o tls.o csr.o
+HTTPV_LIB_OBJECTS=$(CC_LIB_OBJECTS) rsa.o csr.o
 
 # Objects that may require linux APIs
 SERVER_OBJECTS=config.o
@@ -61,10 +61,6 @@ keyinfo.exe : keyinfo.o $(HTTPV_LIB_OBJECTS)
 	@echo -n "!"
 
 from-ssl.exe : from-ssl.o $(HTTPV_LIB_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-tls_test.exe : tls_test.o $(HTTPV_LIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

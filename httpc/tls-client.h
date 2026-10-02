@@ -14,8 +14,8 @@
 #include "bignum/big.h"
 #include "contiguous-buffer.h"
 #include "crypt/sha256.h"
+#include "crypt/tls.h"
 #include "net.h"
-#include "tls.h"
 
 namespace internal { struct TLSStream; }
 struct TLSClient {

@@ -16,7 +16,7 @@
 
 #include "ansi.h"
 #include "base/print.h"
-#include "pem.h"
+#include "crypt/pem.h"
 #include "util.h"
 #include "hashing.h"
 

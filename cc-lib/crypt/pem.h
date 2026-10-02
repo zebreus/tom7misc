@@ -1,6 +1,9 @@
 
-#ifndef _HTTPV_PEM_H
-#define _HTTPV_PEM_H
+// PEM files are base64-encoded files like certificates and keys,
+// used in some public-key cryptography systems and TLS.
+
+#ifndef _CC_LIB_CRYPT_PEM_H
+#define _CC_LIB_CRYPT_PEM_H
 
 #include <cstdint>
 #include <span>

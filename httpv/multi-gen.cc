@@ -10,8 +10,7 @@
 #include "bignum/big.h"
 #include "crypt/cryptrand.h"
 #include "crypt/multi-rsa.h"
-
-#include "pem.h"
+#include "crypt/pem.h"
 #include "rsa.h"
 
 static MultiRSA::Key Generate(int num_factors, int bits, CryptRand *cr) {

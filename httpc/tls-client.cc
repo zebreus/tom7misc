@@ -24,12 +24,11 @@
 #include "crypt/cryptrand.h"
 #include "crypt/multi-rsa.h"
 #include "crypt/sha256.h"
-#include "csr.h"
+#include "crypt/tls.h"
+#include "hexdump.h"
 #include "net.h"
 #include "packet-parser.h"
 #include "packet-writer.h"
-#include "tls.h"
-#include "hexdump.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -337,7 +336,7 @@ bool TLSClient::DoHandshake() {
     }
 
     // Note that we don't verify the certificate chain!
-    if (auto okey = CSR::GetPublicKey(cert.chain[0])) {
+    if (auto okey = TLS::GetPublicKey(cert.chain[0])) {
       std::tie(modulus, exponent) = std::move(okey.value());
       if (verbose > 1) {
         Print(stderr, "Got key: {} {}\n",

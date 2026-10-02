@@ -238,6 +238,11 @@ struct TLS {
 
   static std::vector<uint8_t> SerializeCloseNotify();
 
+  // Get the public key that is certified from the certificate.
+  // Pass the ASN.1 DER bytes of the certificate.
+  static std::optional<std::pair<BigInt, BigInt>>
+  GetPublicKey(std::span<const uint8_t> cert_der);
+
   // For debug printing.
   static const char *CipherSuiteName(uint16_t c);
 

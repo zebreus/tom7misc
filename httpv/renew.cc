@@ -13,8 +13,9 @@
 #include "base/print.h"
 #include "config.h"
 #include "crypt/multi-rsa.h"
+#include "crypt/pem.h"
+#include "crypt/tls.h"
 #include "csr.h"
-#include "pem.h"
 #include "util.h"
 
 // Old certificates archived here.
@@ -150,7 +151,7 @@ static void Renew(bool dry_run, std::string_view domain) {
 
         CHECK(!cert_ders.empty());
         // First key is the domain itself.
-        const auto ko = CSR::GetPublicKey(cert_ders[0]);
+        const auto ko = TLS::GetPublicKey(cert_ders[0]);
         if (!ko.has_value()) {
           Print("  " ARED("(cert is malformed -- no key?)") "\n");
           continue;

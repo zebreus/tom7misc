@@ -39,11 +39,6 @@ struct CSR {
   static std::vector<uint8_t>
   SubjectPublicKeyInfo(const BigInt &modulus, const BigInt &exponent);
 
-  // Get the public key that is certified from the certificate.
-  // Pass the ASN.1 DER bytes of the certificate.
-  static std::optional<std::pair<BigInt, BigInt>>
-  GetPublicKey(std::span<const uint8_t> cert_der);
-
   // Extract the RSA modulus and exponent from an ASN.1 DER
   // SubjectPublicKeyInfo.
   static std::optional<std::pair<BigInt, BigInt>>

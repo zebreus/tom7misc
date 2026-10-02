@@ -232,39 +232,6 @@ CSR::ParseSubjectPublicKeyInfo(std::span<const uint8_t> spki_der) {
   return std::make_optional(std::make_pair(std::move(n), std::move(e)));
 }
 
-std::optional<std::pair<BigInt, BigInt>>
-CSR::GetPublicKey(std::span<const uint8_t> cert_der) {
-
-  PacketParser p(cert_der);
-  PacketParser cert = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
-  PacketParser tbs = ASN1::ParseTLV(&cert, ASN1::TAG_SEQUENCE);
-
-  if (!tbs.OK()) return std::nullopt;
-
-  // Skip optional version.
-  if (!tbs.empty() && (tbs[0] & 0xF0) == 0xA0) {
-    (void)ASN1::ParseTLV(&tbs, 0xA0);
-  }
-
-  // serialNumber, signature, issuer, validity, subject
-  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_INTEGER);
-  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
-  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
-  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
-  (void)ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
-
-  // Find the span that is the SubjectPublicKeyInfo and parse that.
-  std::span<const uint8_t> rest = tbs.View();
-
-  PacketParser spki_val = ASN1::ParseTLV(&tbs, ASN1::TAG_SEQUENCE);
-  if (!spki_val.OK()) return std::nullopt;
-
-  size_t bytes_consumed = rest.size() - tbs.size();
-  std::span<const uint8_t> spki = rest.subspan(0, bytes_consumed);
-
-  return ParseSubjectPublicKeyInfo(spki);
-}
-
 std::vector<uint8_t> CSR::GetSerialNumber(std::span<const uint8_t> cert_der) {
   PacketParser p(cert_der);
 
