@@ -104,6 +104,7 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "util.h"
 #include "yocto-math.h"
 
 using vec2 = yocto::vec<double, 2>;
@@ -1038,6 +1039,10 @@ static TimedAttackResult RunParallelTimedTiltGradAttack(
 
 struct Options {
   std::string candidate = "all";
+  // If set, evaluate only the candidate whose four root vertices are given
+  // in this file ("root0 x y z" ... "root3 x y z" lines, as written by
+  // repair-margin --optimize).
+  std::string root_file;
   double seconds_per_candidate = 1800.0;
   int num_threads = 8;
   bool quick = false;
@@ -1071,7 +1076,11 @@ static void Repair214(const Options &options, StatusBar *status) {
   pool.LoadFromDB(&db, "nopert_214");
   pool.LoadFromDB(&db, "nopert_227");
   pool.LoadFromDB(&db, "nopert_228");
-  Print("Loaded {} solution poses into rejection pool (from 214, 227, 228).\n", pool.poses.size());
+  // Near-identity "canyon" passages of #229 (= candidate M9b), found by
+  // following the first-order flexibility of the identity pose where the
+  // equatorial quad is edge-on (nopert229/notes/Q.md section 1.8).
+  pool.LoadFromDB(&db, "nopert_229");
+  Print("Loaded {} solution poses into rejection pool (from 214, 227, 228, 229).\n", pool.poses.size());
 
   // Test root coplanarity formula
   vec3 r0 = poly214.vertices[0];
@@ -1453,6 +1462,29 @@ static void Repair214(const Options &options, StatusBar *status) {
        }},
   };
 
+  if (!options.root_file.empty()) {
+    std::array<vec3, 4> file_root;
+    int found = 0;
+    for (const std::string &line : Util::NormalizeLines(Util::ReadFileToLines(options.root_file))) {
+      std::vector<std::string> tok = Util::Tokens(line, [](char c) { return c == ' '; });
+      if (tok.size() == 4 && tok[0].size() == 5 && tok[0].rfind("root", 0) == 0) {
+        const int k = tok[0][4] - '0';
+        CHECK(k >= 0 && k < 4) << line;
+        file_root[k] = vec3{std::stod(tok[1]), std::stod(tok[2]), std::stod(tok[3])};
+        found |= 1 << k;
+      }
+    }
+    CHECK(found == 15) << "Expected root0..root3 lines in " << options.root_file;
+    candidates.clear();
+    candidates.push_back({"FILE", std::format("Root file {}", options.root_file),
+                          [file_root](const std::array<vec3, 4> &) { return file_root; }});
+    Print("Evaluating only the candidate from {}\n", options.root_file);
+    for (int k = 0; k < 4; k++) {
+      Print("  root{} = ({:.17g}, {:.17g}, {:.17g})\n", k, file_root[k].x, file_root[k].y,
+            file_root[k].z);
+    }
+  }
+
   Print(AYELLOW("\n=======================================================\n"));
   Print(AYELLOW("  EVALUATING ROOT CANDIDATE NOPERTS (20V, 27F)        \n"));
   Print(AYELLOW("  Duration: {:.0f}s ({:.2f}m) per candidate | Threads: {:d}     \n"),
@@ -1461,7 +1493,8 @@ static void Repair214(const Options &options, StatusBar *status) {
   Print(AYELLOW("=======================================================\n\n"));
 
   for (const auto &spec : candidates) {
-    if (options.candidate != "all" && options.candidate != spec.id) {
+    if (options.root_file.empty() && options.candidate != "all" &&
+        options.candidate != spec.id) {
       continue;
     }
 
@@ -1488,13 +1521,14 @@ static void Repair214(const Options &options, StatusBar *status) {
     if (pool_idx >= 0) {
       Print("  Rejection pool check: max pool c = {:+.6e} (pose {})\n", pool_max_c, pool_idx);
     } else {
-      Print(AGREEN("  Rejection pool check: all 12 solution poses defeated! (c <= 0)\n"));
+      Print(AGREEN("  Rejection pool check: all {} solution poses defeated! (c <= 0)\n"),
+            pool.poses.size());
     }
 
     // Check 2: Deep Local Tilt Attack (80 iterations per known pose)
     auto local_attack = pool.LocalTiltAttack(cand_poly.value(), 80);
-    Print("  Local tilt attack (12 poses, 80 iters): survived = {}, max_c = {:+.6e}\n",
-          local_attack.survived, local_attack.max_achieved_clearance);
+    Print("  Local tilt attack ({} poses, 80 iters): survived = {}, max_c = {:+.6e}\n",
+          pool.poses.size(), local_attack.survived, local_attack.max_achieved_clearance);
 
     if (!local_attack.survived) {
       Print(ARED("  Cracked by local tilt attack!\n"));
@@ -1576,7 +1610,9 @@ int main(int argc, char **argv) {
             "  --seconds <N>                  Seconds per candidate (default: 1800 = 30m)\n"
             "  --threads <N>                  Worker threads (default: 8)\n"
             "  --quick                        Quick smoke test (5 seconds per candidate)\n"
-            "  --pool-only                    Only test known solution pool and local tilt attack\n");
+            "  --pool-only                    Only test known solution pool and local tilt attack\n"
+            "  --root-file <file>             Evaluate only the candidate with these root vertices\n"
+            "  --insert-db                    Insert surviving candidates into the database\n");
       return 0;
     } else if (arg == "--candidate" && i + 1 < argc) {
       options.candidate = argv[++i];
@@ -1589,6 +1625,8 @@ int main(int argc, char **argv) {
       options.seconds_per_candidate = 5.0;
     } else if (arg == "--pool-only") {
       options.pool_only = true;
+    } else if (arg == "--root-file" && i + 1 < argc) {
+      options.root_file = argv[++i];
     } else if (arg == "--insert-db") {
       options.insert_db = true;
     } else {

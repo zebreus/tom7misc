@@ -43,9 +43,12 @@ struct SolutionDB {
   static constexpr int METHOD_TILT = 14;
   static constexpr int METHOD_TILT_GRAD = 15;
   static constexpr int METHOD_TILT_GPU = 16;
+  // Near-identity passage at a view where the identity pose is first-order
+  // flexible (nopert229/notes/Q.md section 1.8).
+  static constexpr int METHOD_CANYON = 17;
 
   static constexpr int FIRST_METHOD = 1;
-  static constexpr int LAST_METHOD = 16;
+  static constexpr int LAST_METHOD = 17;
 
   static const char *MethodName(int m) {
     switch (m) {
@@ -66,6 +69,7 @@ struct SolutionDB {
     case METHOD_TILT: return "METHOD_TILT";
     case METHOD_TILT_GRAD: return "METHOD_TILT_GRAD";
     case METHOD_TILT_GPU: return "METHOD_TILT_GPU";
+    case METHOD_CANYON: return "METHOD_CANYON";
     default: return "UNKNOWN";
     }
   }

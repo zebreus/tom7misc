@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <ctime>
 #include <format>
 #include <fstream>
@@ -211,6 +212,8 @@ struct TiltGPU {
         forward_diff(forward_diff),
         seed_points(seed_points),
         seed_sigma(seed_sigma),
+        length_scale(LengthScale(poly)),
+        min_clearance(MinClearance(length_scale)),
         status(STATUS_LINES) {
 
 
@@ -218,7 +221,10 @@ struct TiltGPU {
     CHECK(threads_per_pose > 0);
 
     std::string defines =
-        std::format("#define NUM_VERTICES {}\n", num_vertices);
+        std::format("#define NUM_VERTICES {}\n"
+                    "#define LENGTH_SCALE {:.17g}\n"
+                    "#define MIN_CLEARANCE {:.17g}\n",
+                    num_vertices, length_scale, min_clearance);
     if (forward_diff) {
       defines += "#define FORWARD_DIFFERENCE 1\n";
     }
@@ -271,6 +277,25 @@ struct TiltGPU {
     CHECK_SUCCESS(clReleaseMemObject(candidates_buf));
   }
 
+  // Characteristic length of the polyhedron (its circumradius about the
+  // origin). Clearances, translations, and clearance gradients scale
+  // with it, so thresholds on them are expressed relative to it.
+  static double LengthScale(const Polyhedron &poly) {
+    double r = 0.0;
+    for (const vec3 &v : poly.vertices) r = std::max(r, yocto::length(v));
+    CHECK(r > 0.0);
+    return r;
+  }
+
+  // Smallest clearance we treat as a real solution: the floating-point
+  // noise floor of a clearance computation (differences of dot products
+  // of coordinates of size ~length_scale), with a generous safety factor.
+  // Anything above this is a genuine positive clearance up to rounding;
+  // the stochastic search cannot say anything finer.
+  static double MinClearance(double length_scale) {
+    return 256.0 * std::numeric_limits<double>::epsilon() * length_scale;
+  }
+
   bool RefineCandidateCPU(const GpuOuterPose &pose,
                           const GpuCandidate &cand,
                           frame3 *out_outer,
@@ -285,10 +310,10 @@ struct TiltGPU {
 
     vec3 phi = vec3{0.0, 0.0, 0.0};
     double outer_step = 2e-4;
+    const double translation_step = 1e-5 * length_scale;
 
     auto EvalOuterInner = [&](const vec3 &p_outer, const vec3 &w_inner,
-                              vec2 t_hint,
-                              double initial_step = 1e-5) -> Clearance2D {
+                              vec2 t_hint) -> Clearance2D {
       const quat4 d_qo = RotationVectorToQuat(p_outer);
       const quat4 qo = yocto::normalize(d_qo * q_outer);
       const frame3 fo = yocto::rotation_frame(qo);
@@ -303,11 +328,11 @@ struct TiltGPU {
       const frame3 fi = yocto::rotation_frame(qi);
       ProjectVertices(fi, poly.vertices, inner_verts);
 
-      return MaximizeClearance2D(eo, inner_verts, t_hint, initial_step);
+      return MaximizeClearance2D(eo, inner_verts, t_hint, translation_step);
     };
 
     for (int iter = 0; iter < 15; iter++) {
-      if (best_clearance > 1e-9) break;
+      if (best_clearance > min_clearance) break;
 
       constexpr double EPS = 1e-5;
       const double c_xp = EvalOuterInner(phi + vec3{EPS, 0, 0}, w, best_trans).clearance;
@@ -323,14 +348,14 @@ struct TiltGPU {
           (c_zp - c_zm) / (2.0 * EPS),
       };
       const double g_len = yocto::length(g_phi);
-      if (g_len < 1e-12) break;
+      if (g_len < 1e-12 * length_scale) break;
       const vec3 u_phi = g_phi / g_len;
 
       double alpha = outer_step;
       bool improved = false;
       for (int ls = 0; ls < 6; ls++) {
         const vec3 phi_cand = phi + u_phi * alpha;
-        const auto res = EvalOuterInner(phi_cand, w, best_trans, 1e-5);
+        const auto res = EvalOuterInner(phi_cand, w, best_trans);
         if (res.clearance > best_clearance) {
           best_clearance = res.clearance;
           phi = phi_cand;
@@ -347,7 +372,7 @@ struct TiltGPU {
       }
     }
 
-    if (best_clearance > 1e-9) {
+    if (best_clearance > min_clearance) {
       const quat4 d_qo = RotationVectorToQuat(phi);
       const quat4 final_qo = yocto::normalize(d_qo * q_outer);
       const frame3 fo = yocto::rotation_frame(final_qo);
@@ -358,7 +383,7 @@ struct TiltGPU {
                         yocto::rotation_frame(final_qi);
 
       const auto cl = GetClearance(poly, fo, fi);
-      if (cl.has_value() && cl.value() > 0.0) {
+      if (cl.has_value() && cl.value() > min_clearance) {
         *out_outer = fo;
         *out_inner = fi;
         return true;
@@ -489,7 +514,7 @@ struct TiltGPU {
             yocto::rotation_frame(qi);
 
         const auto cl_val = GetClearance(poly, outer_frame, inner_frame);
-        if (cl_val.has_value() && cl_val.value() > 0.0) {
+        if (cl_val.has_value() && cl_val.value() > min_clearance) {
           status.Clear();
           Print("\n" AGREEN("==================================================") "\n"
                 AWHITE("GPU FOUND VERIFIED SOLUTION FOR {}!") "\n"
@@ -537,14 +562,14 @@ struct TiltGPU {
         unflushed_highest_clearance = {batch_best_clearance};
       }
 
-      if (batch_best_clearance > -5e-5) {
+      if (batch_best_clearance > -5e-5 * length_scale) {
         const int outer_pose_idx = best_cand_idx / threads_per_pose;
         frame3 fo, fi;
         if (RefineCandidateCPU(host_outer_poses[outer_pose_idx],
                                cand_vec[best_cand_idx],
                                &fo, &fi)) {
           const auto cl_val = GetClearance(poly, fo, fi);
-          if (cl_val.has_value() && cl_val.value() > 0.0) {
+          if (cl_val.has_value() && cl_val.value() > min_clearance) {
             status.Abandon();
             Print(
                 "\n" AGREEN("==================================================") "\n"
@@ -608,6 +633,8 @@ struct TiltGPU {
   const bool forward_diff;
   std::vector<SeedPoint> seed_points;
   double seed_sigma = 0.001;
+  const double length_scale;
+  const double min_clearance;
 
   StatusBar status;
 

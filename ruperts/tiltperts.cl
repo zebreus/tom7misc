@@ -6,6 +6,17 @@
 #error "NUM_VERTICES must be defined"
 #endif
 
+// Length-dependent thresholds are relative to the polyhedron's size.
+// LENGTH_SCALE is its circumradius; MIN_CLEARANCE is the smallest
+// clearance treated as a solution (the floating-point noise floor).
+// Both are defined by the host (tiltperts.cc).
+#ifndef LENGTH_SCALE
+#error "LENGTH_SCALE must be defined"
+#endif
+#ifndef MIN_CLEARANCE
+#error "MIN_CLEARANCE must be defined"
+#endif
+
 #define MAX_EDGES 32
 
 typedef struct {
@@ -267,12 +278,12 @@ __kernel void TiltGradAscent(
 
   double2 best_t = (double2)(0.0, 0.0);
   double c = EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                              local_q_outer, w, best_t, 0.0005, &best_t);
+                              local_q_outer, w, best_t, 0.0005 * LENGTH_SCALE, &best_t);
 
   double3 best_w = w;
   double best_c = c;
 
-  if (best_c > 1e-10 && length(best_w) > 1e-8) {
+  if (best_c > MIN_CLEARANCE && length(best_w) > 1e-8) {
     if (atomic_cmpxchg((volatile __global int *)&solution->solved, 0, 1) == 0) {
       solution->outer_idx = gid;
       solution->q_outer = local_q_outer;
@@ -282,26 +293,28 @@ __kernel void TiltGradAscent(
     }
   }
 
-  // Backtracking Gradient Ascent on 3D tilt vector (w_x, w_y, w_z)
+  // Backtracking Gradient Ascent on 3D tilt vector (w_x, w_y, w_z).
+  // EPS and the step sizes are rotation angles (dimensionless).
   const double EPS = 1e-5;
   double step_size = 5e-4;
+  const double translation_step = 1e-5 * LENGTH_SCALE;
 
   for (int iter = 0; iter < max_steps; iter++) {
     if (solution->solved) break;
-    if (best_c > 1e-9) break;
+    if (best_c > MIN_CLEARANCE) break;
 
     double2 dummy_t;
 #ifdef FORWARD_DIFFERENCE
     // Forward difference gradient in 3D (3 evaluations using best_c = c(w)):
     double cx_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, translation_step, &dummy_t);
     double cy_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, translation_step, &dummy_t);
     double cz_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, translation_step, &dummy_t);
 
     double3 grad = (double3)(
       (cx_p - best_c) / EPS,
@@ -312,24 +325,24 @@ __kernel void TiltGradAscent(
     // Central difference gradient in 3D (6 evaluations):
     double cx_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(EPS, 0.0, 0.0), best_t, translation_step, &dummy_t);
     double cx_m =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w - (double3)(EPS, 0.0, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w - (double3)(EPS, 0.0, 0.0), best_t, translation_step, &dummy_t);
 
     double cy_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(0.0, EPS, 0.0), best_t, translation_step, &dummy_t);
     double cy_m =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w - (double3)(0.0, EPS, 0.0), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w - (double3)(0.0, EPS, 0.0), best_t, translation_step, &dummy_t);
 
     double cz_p =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w + (double3)(0.0, 0.0, EPS), best_t, translation_step, &dummy_t);
     double cz_m =
       EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                        local_q_outer, w - (double3)(0.0, 0.0, EPS), best_t, 1e-5, &dummy_t);
+                        local_q_outer, w - (double3)(0.0, 0.0, EPS), best_t, translation_step, &dummy_t);
 
     double3 grad = (double3)(
       (cx_p - cx_m) / (2.0 * EPS),
@@ -349,7 +362,7 @@ __kernel void TiltGradAscent(
     }
 
     double g_norm = length(grad);
-    if (g_norm < 1e-12) break;
+    if (g_norm < 1e-12 * LENGTH_SCALE) break;
     double3 u_g = grad / g_norm;
 
     double alpha = step_size;
@@ -358,7 +371,7 @@ __kernel void TiltGradAscent(
       double3 w_cand = w + alpha * u_g;
       double2 cand_t;
       double c_cand = EvalClearanceForW(base_verts, local_edges, local_num_edges,
-                                        local_q_outer, w_cand, best_t, 1e-5, &cand_t);
+                                        local_q_outer, w_cand, best_t, translation_step, &cand_t);
       if (c_cand > best_c) {
         best_c = c_cand;
         best_w = w_cand;
@@ -376,7 +389,7 @@ __kernel void TiltGradAscent(
       if (step_size < 1e-8) break;
     }
 
-    if (best_c > 1e-10 && length(best_w) > 1e-8) {
+    if (best_c > MIN_CLEARANCE && length(best_w) > 1e-8) {
       if (atomic_cmpxchg((volatile __global int *)&solution->solved, 0, 1) == 0) {
         solution->outer_idx = gid;
         solution->q_outer = local_q_outer;
