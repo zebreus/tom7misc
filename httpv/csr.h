@@ -39,11 +39,6 @@ struct CSR {
   static std::vector<uint8_t>
   SubjectPublicKeyInfo(const BigInt &modulus, const BigInt &exponent);
 
-  // Extract the RSA modulus and exponent from an ASN.1 DER
-  // SubjectPublicKeyInfo.
-  static std::optional<std::pair<BigInt, BigInt>>
-  ParseSubjectPublicKeyInfo(std::span<const uint8_t> spki_der);
-
   // For certificate renewal you often need to check the
   // expiration time of a certificate. Pass the ASN.1 DER bytes.
   // Returns 0 if the expiration cannot be parsed (so the certificate

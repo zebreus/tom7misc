@@ -12,6 +12,7 @@
 #include "bignum/big.h"
 #include "crypt/multi-rsa.h"
 #include "crypt/pem.h"
+#include "crypt/tls.h"
 #include "csr.h"
 #include "hexdump.h"
 #include "util.h"
@@ -150,7 +151,7 @@ static void TestSPKI() {
     CSR::SubjectPublicKeyInfo(original_n, original_e);
   CHECK(!spki_der.empty());
 
-  auto spki = CSR::ParseSubjectPublicKeyInfo(spki_der);
+  auto spki = TLS::ParseSubjectPublicKeyInfo(spki_der);
   CHECK(spki.has_value()) << HexDump::Color(spki_der);
 
   // Since it's DER, reserializing should give the exact same bytes.

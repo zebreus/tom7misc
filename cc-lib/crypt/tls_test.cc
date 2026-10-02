@@ -350,6 +350,19 @@ static void TestGetPublicKey() {
     n.ToString();
 }
 
+static void TestSPKI() {
+  BigInt original_n("83930703446655686381661558676537631998282957044"
+                    "071316832289146811655299598199");
+  BigInt original_e(65537);
+
+  std::vector<uint8_t> spki_der =
+    CSR::SubjectPublicKeyInfo(original_n, original_e);
+  CHECK(!spki_der.empty());
+
+  auto spki = CSR::ParseSubjectPublicKeyInfo(spki_der);
+  CHECK(spki.has_value()) << HexDump::Color(spki_der);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -362,6 +375,7 @@ int main(int argc, char **argv) {
   TestPRF();
   TestEncryptRoundTrip();
   TestGetPublicKey();
+  TestSPKI();
 
   Print("OK\n");
   return 0;

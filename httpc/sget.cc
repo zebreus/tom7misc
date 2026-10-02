@@ -18,7 +18,6 @@
 #include "contiguous-buffer.h"
 #include "net.h"
 #include "tls-client.h"
-#include "tls-client.h"
 
 int main(int argc, char* argv[]) {
   ANSI::Init();

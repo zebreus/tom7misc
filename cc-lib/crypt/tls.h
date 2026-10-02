@@ -19,6 +19,7 @@
 #include <variant>
 #include <vector>
 
+#include "bignum/big.h"
 #include "packet-parser.h"
 
 struct TLS {
@@ -237,6 +238,11 @@ struct TLS {
       const NewSessionTicket &ticket);
 
   static std::vector<uint8_t> SerializeCloseNotify();
+
+  // Extract the RSA modulus and exponent from an ASN.1 DER
+  // SubjectPublicKeyInfo.
+  static std::optional<std::pair<BigInt, BigInt>>
+  ParseSubjectPublicKeyInfo(std::span<const uint8_t> spki_der);
 
   // Get the public key that is certified from the certificate.
   // Pass the ASN.1 DER bytes of the certificate.

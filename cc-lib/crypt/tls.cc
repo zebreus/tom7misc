@@ -18,6 +18,7 @@
 #include "base/logging.h"
 #include "base/print.h"
 #include "crypt/aes.h"
+#include "crypt/asn1.h"
 #include "crypt/sha1.h"
 #include "crypt/sha256.h"
 #include "hexdump.h"
@@ -960,6 +961,38 @@ std::vector<uint8_t> TLS::MakeEncryptedRecord(
                      enc_len);
 
   return std::move(record).Release();
+}
+
+std::optional<std::pair<BigInt, BigInt>>
+TLS::ParseSubjectPublicKeyInfo(std::span<const uint8_t> spki_der) {
+  PacketParser p(spki_der);
+
+  // Unwrap the outer SubjectPublicKeyInfo Sequence
+  PacketParser spki = ASN1::ParseTLV(&p, ASN1::TAG_SEQUENCE);
+  if (!spki.OK() || !p.empty()) return std::nullopt;
+
+  // Only RSA keys are supported (1.2.840.113549.1.1.1).
+  static constexpr uint8_t RSA_OID[] =
+    { 0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01 };
+  PacketParser algo = ASN1::ParseTLV(&spki, ASN1::TAG_SEQUENCE);
+
+  if (!algo.TryStripPrefix(RSA_OID)) {
+    return std::nullopt;
+  }
+
+  PacketParser bits = ASN1::ParseTLV(&spki, ASN1::TAG_BIT_STRING);
+  // Should be no padding for keys.
+  if (bits.Byte() != 0) return std::nullopt;
+
+  // Unwrap the inner PKCS#1 RSAPublicKey Sequence
+  PacketParser rsa_key = ASN1::ParseTLV(&bits, ASN1::TAG_SEQUENCE);
+  BigInt n = ASN1::ParseInteger(&rsa_key);
+  BigInt e = ASN1::ParseInteger(&rsa_key);
+
+  if (!rsa_key.OK() || BigInt::Sign(n) != 1 || BigInt::Sign(e) != 1)
+    return std::nullopt;
+
+  return std::make_optional(std::make_pair(std::move(n), std::move(e)));
 }
 
 std::optional<std::pair<BigInt, BigInt>>
