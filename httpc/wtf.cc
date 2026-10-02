@@ -258,6 +258,7 @@ int main(int argc, char **argv) {
           Markdown::Document doc = Markdown::Parse(cf->message);
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
+
       } else if (const ModelTasks::Answer *ans =
                      std::get_if<ModelTasks::Answer>(&result)) {
         if (!ans->message.empty()) {
@@ -265,6 +266,7 @@ int main(int argc, char **argv) {
           Print("\n{}\n", Markdown::ToColorTerminal(doc));
         }
         exit(0);
+
       } else if (const ModelTasks::Failure *fail =
                      std::get_if<ModelTasks::Failure>(&result)) {
         if (!fail->message.empty()) {

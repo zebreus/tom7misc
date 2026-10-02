@@ -181,7 +181,9 @@ referred to with a different name (e.g. without the path) elsewhere.)";
      ret += "If you decide that you can answer the user's question\n"
        "without looking at any additional files, include\n"
        "the field `\"solve\": true` and use the message field to\n"
-       "explain the answer to the user.\n";
+       "explain the answer to the user. The message should use only\n"
+       "light markdown with Unicode; avoid LaTeX, tables, and other\n"
+       "advanced syntax.\n";
    }
 
    ret += "\nThe typical case is that you succeed with a list of files\n"
