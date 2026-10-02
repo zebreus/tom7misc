@@ -1,7 +1,5 @@
 
-default : httpv.exe renew.exe multi-gen.exe
-
-all : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe
+default : httpv.exe renew.exe multi-gen.exe gen.exe keyinfo.exe from-ssl.exe csr_test.exe vanity.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(findstring Linux,$(UNAME)),Linux)

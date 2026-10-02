@@ -9,8 +9,8 @@
 #include "bignum/big.h"
 #include "crypt/asn1.h"
 #include "crypt/cryptrand.h"
+#include "crypt/pem.h"
 
-#include "pem.h"
 #include "rsa.h"
 
 std::vector<uint8_t> EncodePKCS1(const RSA::Key &key) {

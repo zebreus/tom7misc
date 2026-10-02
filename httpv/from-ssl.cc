@@ -13,7 +13,7 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "crypt/multi-rsa.h"
-#include "pem.h"
+#include "crypt/pem.h"
 #include "util.h"
 
 static void ParseSSL(std::string_view filename) {

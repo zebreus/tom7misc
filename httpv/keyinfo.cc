@@ -10,7 +10,7 @@
 #include "base/print.h"
 #include "bignum/big.h"
 #include "crypt/multi-rsa.h"
-#include "pem.h"
+#include "crypt/pem.h"
 #include "util.h"
 
 static void KeyInfo(std::string_view keyfile) {
