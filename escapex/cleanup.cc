@@ -23,7 +23,7 @@ void Cleanup::Clean() {
     string dn = dire->d_name;
     string ldn = "." + (string)DIRSEP + dn;
 
-    if (EscapeUtil::isdir(ldn)) {
+    if (Util::IsDir(ldn)) {
       /* XXX could be recursive?? */
 
     } else {

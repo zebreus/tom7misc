@@ -6,8 +6,8 @@
    host certificate chain for example.
 */
 
-#ifndef _ESCAPE_HTTP_H
-#define _ESCAPE_HTTP_H
+#ifndef _ESCAPE_HTTPS_H
+#define _ESCAPE_HTTPS_H
 
 #include <functional>
 #include <string>
@@ -16,17 +16,17 @@
 
 #include "httputil.h"
 
-/* Before using the HTTP class, you must initialize the network
+/* Before using the HTTPS class, you must initialize the network
    with Net::Init(). */
 
 /* results from GET/POST/etc. */
-enum class HTTPResult {
+enum class HTTPSResult {
   OK, ERROR_404, ERROR_OTHER,
 };
 
 /* interface only */
-struct HTTP {
-  static HTTP *Create(int verbose = 0);
+struct HTTPS {
+  static HTTPS *Create(int verbose = 0);
 
   /* set user-agent */
   virtual void SetUA(std::string_view ua) = 0;
@@ -37,14 +37,14 @@ struct HTTP {
   virtual bool Connect(std::string_view host) = 0;
 
   /* download the entire thing to a string */
-  virtual HTTPResult Get(std::string_view path, std::string &out) = 0;
+  virtual HTTPSResult Get(std::string_view path, std::string &out) = 0;
 
   /* create a temp file (in the cwd) and download to that.
      return the name of the temp file */
-  virtual HTTPResult GetTempFile(std::string_view path, std::string &file) = 0;
+  virtual HTTPSResult GetTempFile(std::string_view path, std::string &file) = 0;
 
   /* use post, allowing to upload files */
-  virtual HTTPResult Put(std::string_view path,
+  virtual HTTPSResult Put(std::string_view path,
                          const std::vector<FormEntry> &items,
                          std::string &out) = 0;
 
@@ -55,7 +55,7 @@ struct HTTP {
      messages, if non-null */
   void (*log_message)(std::string_view s);
 
-  virtual ~HTTP() {};
+  virtual ~HTTPS() {};
 };
 
 #endif

@@ -3,8 +3,10 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <dirent.h>
 #include <format>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -20,6 +22,7 @@
 #include "chunks.h"
 #include "crypt/md5.h"
 #include "escape-util.h"
+#include "hashing.h"
 #include "prefs.h"
 #include "rating.h"
 #include "solution.h"
@@ -113,32 +116,32 @@ struct Player_ : public Player {
   // XXX this used to return a non-bookmark if it exists. The
   // solutions should now be kept in a canonical order where real
   // solutions go fist.
-  const Solution *GetSol(const string &md5) const override {
+  const Solution *GetSol(std::string_view md5) const override {
     const vector<NamedSolution> &sols = this->SolutionSet(md5);
     if (sols.empty()) return nullptr;
     return &sols[0].sol;
   }
 
-  int GetSolLength(const string &md5) const override {
+  int GetSolLength(std::string_view md5) const override {
     if (const Solution *s = GetSol(md5))
       return s->Length();
     return 0;
   }
 
-  void SetDefaultVerified(const string &md5) override {
+  void SetDefaultVerified(string_view md5) override {
     SetVerified(md5, 0);
   }
 
-  void SetVerified(const string &md5, int idx) override {
+  void SetVerified(string_view md5, int idx) override {
     auto it = soltable.find(md5);
     if (it == soltable.end()) return;
     assert(idx >= 0 && idx < it->second.size());
     it->second[idx].sol.verified = true;
   }
 
-  Rating *getrating(const string &md5) const override;
+  Rating *GetRating(string_view md5) const override;
 
-  void PutRating(const string &md5, Rating *rat) override;
+  void PutRating(string_view md5, Rating *rat) override;
 
   bool WriteFile() override;
 
@@ -166,14 +169,14 @@ struct Player_ : public Player {
     return out;
   }
 
-  bool HasSolution(const string &md5, const Solution &what) override {
+  bool HasSolution(std::string_view md5, const Solution &what) override {
     for (const NamedSolution &ns : SolutionSet(md5)) {
       if (Solution::Equal(ns.sol, what)) return true;
     }
     return false;
   }
 
-  const vector<NamedSolution> &SolutionSet(const string &md5) const override {
+  const vector<NamedSolution> &SolutionSet(std::string_view md5) const override {
     auto it = soltable.find(md5);
     if (it == soltable.end()) return empty_solutionset;
     else return it->second;
@@ -191,13 +194,17 @@ struct Player_ : public Player {
 
   // Keys are (raw) MD5 strings. The order of the solutions
   // matters; the first one is the default solution.
-  unordered_map<string, vector<NamedSolution>> soltable;
+  unordered_map<string, vector<NamedSolution>,
+                Hashing<string>, std::equal_to<>> soltable;
   // Rating pointers are owned.
-  unordered_map<string, Rating *> ratable;
+  unordered_map<string, Rating *,
+                Hashing<string>, std::equal_to<>> ratable;
 
   const vector<NamedSolution> empty_solutionset;
 
-  void SetSolutionSet(const string &md5, vector<NamedSolution> ns) override {
+  void SetSolutionSet(std::string_view md5v, vector<NamedSolution> ns) override {
+    // Can't do heterogeneous operations here until C++26, alas.
+    std::string md5{md5v};
     if (ns.empty()) {
       soltable.erase(md5);
     } else {
@@ -205,7 +212,7 @@ struct Player_ : public Player {
     }
   }
 
-  void AddSolution(const string &md5, NamedSolution ns,
+  void AddSolution(std::string_view md5, NamedSolution ns,
                    bool def_candidate) override;
 
   std::unique_ptr<Chunks> ch;
@@ -231,14 +238,15 @@ Player_ *Player_::Create(const string &n) {
   return p.release();
 }
 
-Rating *Player_::getrating(const string &md5) const {
+Rating *Player_::GetRating(string_view md5) const {
   auto it = ratable.find(md5);
   if (it == ratable.end()) return nullptr;
   return it->second;
 }
 
-void Player_::AddSolution(const string &md5, NamedSolution ns,
+void Player_::AddSolution(std::string_view md5v, NamedSolution ns,
                           bool def_candidate) {
+  std::string md5{md5v};
   vector<NamedSolution> &row = soltable[md5];
   if (row.empty()) {
     // Always add if we have no solutions.
@@ -292,7 +300,8 @@ void Player_::AddSolution(const string &md5, NamedSolution ns,
   }
 }
 
-void Player_::PutRating(const string &md5, Rating *rat) {
+void Player_::PutRating(string_view md5v, Rating *rat) {
+  std::string md5{md5v};
   auto it = ratable.find(md5);
   if (it != ratable.end()) {
     delete it->second;

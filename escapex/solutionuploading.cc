@@ -9,7 +9,7 @@
 #include "crypt/md5.h"
 #include "draw.h"
 #include "drawable.h"
-#include "http.h"
+#include "https.h"
 #include "httputil.h"
 #include "menu.h"
 #include "message.h"
@@ -103,7 +103,7 @@ void SolutionUploading::PromptUpload(Drawable *below,
                        "Upload anyway",
                        "Cancel")) {
 
-      std::unique_ptr<HTTP> hh{Client::Connect(plr, td.tx.get(), &td)};
+      std::unique_ptr<HTTPS> hh{Client::Connect(plr, td.tx.get(), &td)};
 
       if (hh.get() == nullptr) {
         Message::No(&td, "Couldn't connect!");

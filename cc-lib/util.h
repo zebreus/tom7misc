@@ -359,7 +359,7 @@ struct Util {
   static bool CopyFileBytes(std::string_view src, std::string_view dst);
 
   /* does this file exist and is it a directory? */
-  static bool isdir(std::string_view s);
+  static bool IsDir(std::string_view s);
 
   /* same as isdir */
   static bool existsdir(const string &d);

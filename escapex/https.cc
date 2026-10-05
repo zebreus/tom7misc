@@ -1,6 +1,5 @@
 
-#include "http.h"
-#include "httputil.h"
+#include "https.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -16,28 +15,28 @@
 #include <utility>
 #include <vector>
 
-#include "base/print.h"
 #include "escape-util.h"
+#include "httputil.h"
 #include "net.h"
 #include "tls-client.h"
 #include "util.h"
 
 using namespace std;
 
-// #define DMSG if (log_message != nullptr) (*log_message)
-#define DMSG(s) Print("{}\n", s)
+#define DMSG if (log_message != nullptr) (*log_message)
+// #define DMSG(s) Print("{}\n", s);
 
 static constexpr int PORT = 443;
 
 namespace {
-struct HTTP_ : public HTTP {
-  HTTP_(int verbose);
-  ~HTTP_() override;
+struct HTTPS_ : public HTTPS {
+  HTTPS_(int verbose);
+  ~HTTPS_() override;
   void SetUA(string_view ua) override;
   bool Connect(string_view host) override;
-  HTTPResult Get(string_view path, string &out) override;
-  HTTPResult GetTempFile(string_view path, string &file) override;
-  HTTPResult Put(string_view path,
+  HTTPSResult Get(string_view path, string &out) override;
+  HTTPSResult GetTempFile(string_view path, string &file) override;
+  HTTPSResult Put(string_view path,
                  const vector<FormEntry> &items,
                  string &out) override;
 
@@ -56,8 +55,8 @@ struct HTTP_ : public HTTP {
   virtual string ReadN(int);
   virtual string ReadNToFile(int);
 
-  virtual HTTPResult ReqGeneral(string req, string &res, bool tofile);
-  virtual HTTPResult GetGeneral(string path, string &arg, bool tofile);
+  virtual HTTPSResult ReqGeneral(string req, string &res, bool tofile);
+  virtual HTTPSResult GetGeneral(string path, string &arg, bool tofile);
   virtual void bye() {
     tls.reset();
   }
@@ -76,27 +75,27 @@ struct HTTP_ : public HTTP {
   string hostname;
 };
 
-HTTPResult HTTP_::Get(string_view path, string &out_) {
+HTTPSResult HTTPS_::Get(string_view path, string &out_) {
   DMSG(std::format("{:p} get({})\n", (void *)this, path));
   return GetGeneral(std::string(path), out_, false);
 }
 
-HTTPResult HTTP_::GetTempFile(string_view path, string &out_) {
+HTTPSResult HTTPS_::GetTempFile(string_view path, string &out_) {
   DMSG(std::format("{:p} gettempfile({})\n", (void *)this, path));
   return GetGeneral(std::string(path), out_, true);
 }
 
-HTTP_::HTTP_(int v) : verbose(v) {
+HTTPS_::HTTPS_(int v) : verbose(v) {
   log_message = nullptr;
 }
 
-HTTP_::~HTTP_() {}
+HTTPS_::~HTTPS_() {}
 
-void HTTP_::SetUA(string_view ua_view) {
+void HTTPS_::SetUA(string_view ua_view) {
   ua = std::string(ua_view);
 }
 
-bool HTTP_::Connect(std::string_view chost) {
+bool HTTPS_::Connect(std::string_view chost) {
   DMSG(std::format("{:p} connect '{}':{}\n", (void*)this, chost, PORT));
 
   /* should work for "snoot.org" or "128.2.194.11"? */
@@ -129,7 +128,7 @@ static void Append(string &s, char *vec, unsigned int l) {
   s = ret;
 }
 
-HTTPResult HTTP_::Put(string_view path,
+HTTPSResult HTTPS_::Put(string_view path,
                       const vector<FormEntry> &items,
                       string &out) {
 
@@ -194,7 +193,7 @@ HTTPResult HTTP_::Put(string_view path,
   Accept: * / * (together)
 */
 
-HTTPResult HTTP_::GetGeneral(string path, string &res, bool tofile) {
+HTTPSResult HTTPS_::GetGeneral(string path, string &res, bool tofile) {
   string req =
     "GET " + path + " HTTP/1.0\r\n"
     "User-Agent: " + ua + "\r\n"
@@ -208,7 +207,7 @@ HTTPResult HTTP_::GetGeneral(string path, string &res, bool tofile) {
 // Read up to n bytes into the buffer, blocking until there's something
 // to read, and returning -1 on error.
 // XXX: We should just rewrite the below to use ReadSome and ReadSpan.
-int HTTP_::RecvSome(uint8_t *buf, size_t len) {
+int HTTPS_::RecvSome(uint8_t *buf, size_t len) {
   if (!tls->OK()) return -1;
   while (tls->ReadSize() == 0) {
     if (!tls->OK()) return -1;
@@ -224,7 +223,7 @@ int HTTP_::RecvSome(uint8_t *buf, size_t len) {
   return read_size;
 }
 
-HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
+HTTPSResult HTTPS_::ReqGeneral(string req, string &res, bool tofile) {
   DMSG(EscapeUtil::ptos(this) + " conn "
        " req_general: \n[" + req + "]\n");
 
@@ -233,13 +232,13 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
   bye();
   if (!remote.has_value()) {
     DMSG(EscapeUtil::ptos(this) + " can't connect\n");
-    return HTTPResult::ERROR_OTHER;
+    return HTTPSResult::ERROR_OTHER;
   }
 
   Net::Socket sock = Net::Connect(remote.value());
   if (!sock.IsValid()) {
     DMSG(EscapeUtil::ptos(this) + " can't connect\n");
-    return HTTPResult::ERROR_OTHER;
+    return HTTPSResult::ERROR_OTHER;
   }
 
   DMSG(EscapeUtil::ptos(this) + " connected.\n");
@@ -249,7 +248,7 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
 
   if (!tls->OK()) {
     DMSG(EscapeUtil::ptos(this) + " can't send\n");
-    return HTTPResult::ERROR_OTHER;
+    return HTTPSResult::ERROR_OTHER;
   }
 
   tls->Send(req);
@@ -282,7 +281,7 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
       DMSG(EscapeUtil::ptos(this) + " can't recv\n");
       printf("Error in recv.\n");
       bye();
-      return HTTPResult::ERROR_OTHER;
+      return HTTPSResult::ERROR_OTHER;
     }
 
     {
@@ -310,7 +309,7 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
           /* close connection, since we don't want to read
              anything. */
           bye();
-          return HTTPResult::ERROR_404;
+          return HTTPSResult::ERROR_404;
         }
         first = 0;
 
@@ -354,7 +353,7 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
               /* bad header */
               DMSG("bad connection type\n");
               bye();
-              return HTTPResult::ERROR_OTHER;
+              return HTTPSResult::ERROR_OTHER;
             }
 
           } else {
@@ -374,14 +373,13 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
        connection is in state ready to receive data.
     */
  readcontent:
-  DMSG("\n-------- reading content now ----------\n");
 
   if (contentlen == -1) {
 
     if (connecttype != CT_CLOSE) {
       DMSG("content length but not close\n");
       bye();
-      return HTTPResult::ERROR_OTHER;
+      return HTTPSResult::ERROR_OTHER;
     }
 
     /* read until failure */
@@ -389,10 +387,10 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
     if (tofile) {
       res = ReadRestToFile();
       /* printf("rtof: %s\n", res.c_str()); */
-      return HTTPResult::OK;
+      return HTTPSResult::OK;
     } else {
       res = ReadRest();
-      return HTTPResult::OK;
+      return HTTPSResult::OK;
     }
 
   } else {
@@ -401,22 +399,22 @@ HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
     if (tofile) {
       res = ReadNToFile(contentlen);
       /* printf("ntof: %s\n", res.c_str()); */
-      return HTTPResult::OK;
+      return HTTPSResult::OK;
     } else {
       res = ReadN(contentlen);
-      return HTTPResult::OK;
+      return HTTPSResult::OK;
     }
 
   }
 
   /* XXX unreachable */
-  return HTTPResult::ERROR_OTHER;
+  return HTTPSResult::ERROR_OTHER;
 }
 
 #define BUFLEN 1024
 
 /* XXX use EscapeUtil::tempfile */
-FILE *HTTP_::TempFile(string &f) {
+FILE *HTTPS_::TempFile(string &f) {
   static int call = 0;
   int pid = EscapeUtil::getpid();
   int tries = 256;
@@ -435,7 +433,7 @@ FILE *HTTP_::TempFile(string &f) {
   return 0;
 }
 
-string HTTP_::ReadRestToFile() {
+string HTTPS_::ReadRestToFile() {
   string fname;
   FILE *ff = TempFile(fname);
 
@@ -462,7 +460,7 @@ string HTTP_::ReadRestToFile() {
   return fname;
 }
 
-string HTTP_::ReadRest() {
+string HTTPS_::ReadRest() {
   string acc;
 
   char buf[BUFLEN];
@@ -485,7 +483,7 @@ string HTTP_::ReadRest() {
   return acc;
 }
 
-string HTTP_::ReadN(int n) {
+string HTTPS_::ReadN(int n) {
   vector<char> buf;
   buf.resize(n);
 
@@ -512,7 +510,7 @@ string HTTP_::ReadN(int n) {
   return ret;
 }
 
-string HTTP_::ReadNToFile(int n) {
+string HTTPS_::ReadNToFile(int n) {
   int total = n;
   int rem = n;
 
@@ -547,6 +545,6 @@ string HTTP_::ReadNToFile(int n) {
 }  // namespace
 
 /* export through http interface */
-HTTP *HTTP::Create(int v) {
-  return new HTTP_(v);
+HTTPS *HTTPS::Create(int v) {
+  return new HTTPS_(v);
 }

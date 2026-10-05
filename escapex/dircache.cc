@@ -16,6 +16,7 @@
 #include "player.h"
 #include "progress.h"
 #include "solution.h"
+#include "util.h"
 
 using namespace std;
 
@@ -129,7 +130,7 @@ DirIndex *DirCache_::Get(const string &dir_in,
       string dn = dire->d_name;
       string ldn = dir + (string)DIRSEP + dn;
 
-      if (EscapeUtil::isdir(ldn)) {
+      if (Util::IsDir(ldn)) {
 
         /* can't include . or .., dumb to
            include CVS and .svn */

@@ -10,7 +10,10 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
+
+#include "util.h"
 
 #ifdef WIN32
    /* chdir */
@@ -39,19 +42,14 @@
 
 using namespace std;
 
-bool EscapeUtil::isdir(string f) {
-  struct stat st;
-  return !stat(f.c_str(), &st) && (st.st_mode & S_IFDIR);
-}
-
 bool EscapeUtil::existsfile(string s) {
   struct stat st;
 
   return !stat(s.c_str(), &st);
 }
 
-bool EscapeUtil::existsdir(string d) {
-  return isdir(d); /* (existsfile(d) && isdir(d.c_str())); */
+bool EscapeUtil::existsdir(std::string_view d) {
+  return Util::IsDir(d); /* (existsfile(d) && isdir(d.c_str())); */
 }
 
 /* XXX what mode? */
@@ -94,8 +92,8 @@ bool EscapeUtil::hasmagic(string s, const string &mag) {
   return hm;
 }
 
-string EscapeUtil::readfilemagic(string s, const string &mag) {
-  if (isdir(s)) return "";
+string EscapeUtil::readfilemagic(std::string_view s, const string &mag) {
+  if (Util::IsDir(s)) return "";
   if (s == "") return "";
 
   // printf("opened %s\n", s.c_str());
@@ -103,7 +101,7 @@ string EscapeUtil::readfilemagic(string s, const string &mag) {
   /* PERF try this: and see! */
   // printf("Readfile '%s'\n", s.c_str());
 
-  FILE *f = fopen(s.c_str(), "rb");
+  FILE *f = fopen(std::string(s).c_str(), "rb");
 
   if (!f) return "";
 

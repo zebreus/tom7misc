@@ -2,20 +2,21 @@
 #ifndef _ESCAPE_CLIENT_H
 #define _ESCAPE_CLIENT_H
 
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "drawable.h"
 #include "escapex.h"
 #include "graphics.h"
 #include "httputil.h"
 #include "textscroll.h"
-#include "http.h"
+#include "https.h"
 #include "chars.h"
 #include "player.h"
 #include "draw.h"
 #include "sdl/sdlutil.h"
-#include <memory>
-#include <string>
-#include <string_view>
-#include <vector>
 
 #define SUPERUSER (1)
 
@@ -32,17 +33,17 @@
 struct Client {
   using string = std::string;
 
-  static HTTP *Connect(Player *plr, TextScroll *tx, Drawable *that);
+  static HTTPS *Connect(Player *plr, TextScroll *tx, Drawable *that);
 
   /* XX add bool quiet=true; when false show progress */
   static bool QuickRPC(Player *, const string &path,
                        const string &query, string &ret);
 
   /* true on success */
-  static bool RPC(HTTP *hh, const string &path, const string &query,
+  static bool RPC(HTTPS *hh, const string &path, const string &query,
                   string &ret);
 
-  static bool RPCPut(HTTP *hh, const string &path,
+  static bool RPCPut(HTTPS *hh, const string &path,
                      const std::vector<FormEntry> &fl,
                      string &ret);
 

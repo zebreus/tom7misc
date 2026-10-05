@@ -7,9 +7,6 @@
 #include "drawable.h"
 #include "player.h"
 
-/* should be in a config somewhere */
-#define COLLECTIONSURL "/COLLECTIONS"
-
 enum class UpdateResult {
   SUCCESS, FAIL,
 };

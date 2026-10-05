@@ -44,7 +44,7 @@ static string Backslash(const string &s) {
 static void AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
     const string filename = Util::DirPlus(dir, f);
-    if (Util::isdir(filename)) {
+    if (Util::IsDir(filename)) {
       AddAllFilesRec(filename, all_files);
     } else {
       if (!filename.empty() &&

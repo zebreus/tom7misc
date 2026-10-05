@@ -1,5 +1,5 @@
 
-#include "http.h"
+#include "https.h"
 
 #include <memory>
 #include <string>
@@ -9,13 +9,13 @@
 #include "net.h"
 
 static void Basic() {
-  std::unique_ptr<HTTP> http(HTTP::Create(2));
+  std::unique_ptr<HTTPS> https(HTTPS::Create(2));
 
-  CHECK(http.get() != nullptr);
-  CHECK(http->Connect("escape.spacebar.org"));
+  CHECK(https.get() != nullptr);
+  CHECK(https->Connect("escape.spacebar.org"));
   std::string content;
-  HTTPResult r = http->Get("/", content);
-  CHECK(r == HTTPResult::OK);
+  HTTPSResult r = https->Get("/", content);
+  CHECK(r == HTTPSResult::OK);
   if (content.size() > 78) {
     content.resize(75);
     content += "...";

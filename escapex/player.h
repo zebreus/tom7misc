@@ -3,6 +3,8 @@
 #define _ESCAPE_PLAYER_H
 
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "level.h"
 #include "rating.h"
@@ -56,26 +58,26 @@ struct Player {
   /* Get the default solution (if any) for the level whose md5
      representation is "md5", or returns null. Solution remains
      owned by Player. */
-  virtual const Solution *GetSol(const std::string &md5) const = 0;
+  virtual const Solution *GetSol(std::string_view md5) const = 0;
   // Return the length of the default solution, or 0 if none.
   // (All valid solutions have positive length.)
-  virtual int GetSolLength(const std::string &md5) const = 0;
+  virtual int GetSolLength(std::string_view md5) const = 0;
 
   // Set the default solution (returned by GetSol) verified
   // for this level.
   // XXX this is gross; verification should be cached elsewhere
-  virtual void SetDefaultVerified(const std::string &md5) = 0;
+  virtual void SetDefaultVerified(std::string_view md5) = 0;
   // Set the solution within the SolutionSet at this index as
   // verified. Doesn't invalidate solution set reference. XXX
   // also gross.
-  virtual void SetVerified(const std::string &md5, int idx) = 0;
+  virtual void SetVerified(std::string_view md5, int idx) = 0;
 
-  virtual Rating *getrating(const std::string &md5) const = 0;
+  virtual Rating *GetRating(std::string_view md5) const = 0;
 
   /* Always overwriting an existing rating.
      there is just one rating per level. Takes ownership of
      the Rating object. */
-  virtual void PutRating(const std::string &md5, Rating *rat) = 0;
+  virtual void PutRating(std::string_view md5, Rating *rat) = 0;
 
   /* Record a change on disk. this will also manage
      backups of the player file. */
@@ -86,24 +88,25 @@ struct Player {
 
   /* For solution recovery; get every solution in
      the player, regardless of the level it is for */
-  virtual vector<Solution> AllSolutions() const = 0;
+  virtual std::vector<Solution> AllSolutions() const = 0;
 
   /* Return a reference to the solution set (perhaps empty) for the
      level indicated. The first solution, if any, is the default. */
-  virtual const vector<NamedSolution> &SolutionSet(const std::string &md5) const = 0;
+  virtual const std::vector<NamedSolution> &SolutionSet(
+      std::string_view md5) const = 0;
 
   // Overwrites the solution set for a particular level MD5.
-  virtual void SetSolutionSet(const std::string &md5,
+  virtual void SetSolutionSet(std::string_view md5,
                               std::vector<NamedSolution> solset) = 0;
 
   /* Simply add a new solution to the set. If def_candidate is true
      and the solution is not a bookmark, it might be made the
      default solution. The solution is always added. */
-  virtual void AddSolution(const std::string &md5, NamedSolution ns,
+  virtual void AddSolution(std::string_view md5, NamedSolution ns,
                            bool def_candidate = false) = 0;
 
   /* is this solution already in the solution set? */
-  virtual bool HasSolution(const std::string &md5, const Solution &what) = 0;
+  virtual bool HasSolution(std::string_view md5, const Solution &what) = 0;
 
   virtual ~Player() {};
 };

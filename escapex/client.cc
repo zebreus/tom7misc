@@ -12,7 +12,7 @@
 #include "drawable.h"
 #include "escape-util.h"
 #include "escapex.h"
-#include "http.h"
+#include "https.h"
 #include "httputil.h"
 #include "message.h"
 #include "player.h"
@@ -22,8 +22,8 @@
 
 using namespace std;
 
-HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
-  std::unique_ptr<HTTP> hh{HTTP::Create()};
+HTTPS *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
+  std::unique_ptr<HTTPS> hh{HTTPS::Create()};
 
   if (Prefs::GetBool(plr, PREF_DEBUG_NET))
     hh->log_message = DebugLogMessage;
@@ -60,12 +60,12 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
   return hh.release();
 }
 
-bool Client::RPC(HTTP *hh, const string &path, const string &query,
+bool Client::RPC(HTTPS *hh, const string &path, const string &query,
                  string &ret) {
   string m;
-  HTTPResult hr = hh->Get(path + (string)"?" + query, m);
+  HTTPSResult hr = hh->Get(path + (string)"?" + query, m);
 
-  if (hr == HTTPResult::OK) {
+  if (hr == HTTPSResult::OK) {
 
     if (m.length() >= 2 &&
         m[0] == 'o' &&
@@ -89,7 +89,7 @@ bool Client::QuickRPC(Player *plr, const string &path, const string &query,
           string &ret) {
   QuickTxDraw td;
 
-  std::unique_ptr<HTTP> hh{Client::Connect(plr, td.tx.get(), &td)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(plr, td.tx.get(), &td)};
 
   td.say("Connecting..");
   td.Draw();
@@ -106,13 +106,13 @@ bool Client::QuickRPC(Player *plr, const string &path, const string &query,
   return RPC(hh.get(), path, query, ret);
 }
 
-bool Client::RPCPut(HTTP *hh, const string &path,
+bool Client::RPCPut(HTTPS *hh, const string &path,
                     const std::vector<FormEntry> &fl,
                     string &ret) {
   string m;
-  HTTPResult hr = hh->Put(path, fl, m);
+  HTTPSResult hr = hh->Put(path, fl, m);
 
-  if (hr == HTTPResult::OK) {
+  if (hr == HTTPSResult::OK) {
 
     if (m.length() >= 2 &&
         m[0] == 'o' &&
@@ -127,7 +127,7 @@ bool Client::RPCPut(HTTP *hh, const string &path,
       return false;
     }
 
-  } else if (hr == HTTPResult::ERROR_404) {
+  } else if (hr == HTTPSResult::ERROR_404) {
 
     ret = "error code 404";
     return false;

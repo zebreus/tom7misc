@@ -1,6 +1,7 @@
 
 #include "commenting.h"
 
+#include <format>
 #include <memory>
 #include <string>
 
@@ -13,7 +14,7 @@
 #include "drawable.h"
 #include "escapex.h"
 #include "graphics.h"
-#include "http.h"
+#include "https.h"
 #include "httputil.h"
 #include "menu.h"
 #include "message.h"
@@ -72,7 +73,7 @@ struct CScreen : public Drawable {
 };
 }  // namespace
 
-void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
+void CommentScreen::Comment(Player *p, const Level *lev, string_view md5,
                             bool cookmode) {
   CScreen cs;
   cs.lev = lev;
@@ -89,7 +90,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
 
   cs.tx->Say(GREY "Making sure we're connected...");
   cs.Redraw();
-  std::unique_ptr<HTTP> hh{Client::Connect(p, cs.tx.get(), &cs)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(p, cs.tx.get(), &cs)};
   if (hh.get() == nullptr) {
     Message::Quick(&cs, "Can't connect to internet!",
                    "OK", "", PICS XICON POP);
@@ -148,7 +149,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
   spoiler.indent = IND;
   spoiler.disabled = cookmode;
   spoiler.checked = cookmode;
-  spoiler.question = cookmode?"Spoiler -- Cooked":"Spoiler";
+  spoiler.question = cookmode ? "Spoiler -- Cooked" : "Spoiler";
   spoiler.explanation =
     "Does this comment give away any information towards a solution\n"
     "to the level, or some other surprise best left to be discovered\n"
@@ -174,18 +175,18 @@ void CommentScreen::Comment(Player *p, const Level *lev, const string &md5,
     string res;
     bool success =
       Client::RPC(hh.get(), COMMENT_RPC,
-                  StringPrintf(
-                      "id=%d"
-                      "&seql=%d"
-                      "&seqh=%d"
-                      "&md=%s"
-                      "&comment=%s"
-                      "&spoiler=%d",
+                  std::format(
+                      "id={}"
+                      "&seql={}"
+                      "&seqh={}"
+                      "&md={}"
+                      "&comment={}"
+                      "&spoiler={}",
                       p->webid,
                       p->webseql,
                       p->webseqh,
-                      MD5::Ascii(md5).c_str(),
-                      HTTPUtil::URLEncode(com).c_str(),
+                      MD5::Ascii(md5),
+                      HTTPUtil::URLEncode(com),
                       (int)!!spoiler.checked),
                   res);
 

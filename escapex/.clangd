@@ -11,8 +11,11 @@ Diagnostics:
 InlayHints:
   Enabled: No
 
-# This is set up for development on windows with SDL in the place I
-# keep it; you might need to modify this if you want to use clangd
-# yourself.
+# This is set up for development on windows and macOS with SDL in the
+# place I keep it; you might need to modify this if you want to use
+# clangd yourself.
+
+# -DWIN32
+
 CompileFlags:
-  Add: [-xc++, -DWIN32, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -ISDL_net]
+  Add: [-xc++, -DOSX, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -I/opt/homebrew/include/SDL, -D_THREAD_SAFE]

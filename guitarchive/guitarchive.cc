@@ -29,7 +29,7 @@ void Guitarchive::AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
     const string filename = Util::DirPlus(dir, f);
     // Print("{} + {} = {}\n", dir, f, filename);
-    if (Util::isdir(filename)) {
+    if (Util::IsDir(filename)) {
       // Print("Dir: [{}]\n", filename);
       AddAllFilesRec(filename, all_files);
     } else {

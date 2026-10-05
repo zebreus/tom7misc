@@ -29,7 +29,7 @@
 #include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
-#include "http.h"
+#include "https.h"
 #include "level-base.h"
 #include "level.h"
 #include "menu.h"
@@ -827,7 +827,7 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
   string s;
   Client::QuickTxDraw td;
 
-  std::unique_ptr<HTTP> hh{Client::Connect(plr, td.tx.get(), &td)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(plr, td.tx.get(), &td)};
 
   if (hh.get() == nullptr) {
     Message::No(&td, "Couldn't connect!");
@@ -836,9 +836,9 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
 
   /* XXX register callback.. */
 
-  HTTPResult hr = hh->Get(ALLSOLS_URL + MD5::Ascii(lmd5), s);
+  HTTPSResult hr = hh->Get(ALLSOLS_URL + MD5::Ascii(lmd5), s);
 
-  if (hr == HTTPResult::OK) {
+  if (hr == HTTPSResult::OK) {
     /* parse result. see protocol.txt */
     int nsols = EscapeUtil::stoi(EscapeUtil::getline(s));
 
@@ -1625,7 +1625,7 @@ void Play::PlayRecord(const string &filename, Player *plr, bool allowrate) {
           plr->webid &&
           firstsol &&
           iscollection &&
-          !plr->getrating(md5) &&
+          !plr->GetRating(md5) &&
           Prefs::GetBool(plr, PREF_ASKRATE)) {
 
         std::unique_ptr<RateScreen> rs{

@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -15,7 +16,7 @@
 #include "drawable.h"
 #include "escape-util.h"
 #include "escapex.h"
-#include "http.h"
+#include "https.h"
 #include "textscroll.h"
 #include "util.h"
 
@@ -42,15 +43,15 @@ struct ContentEntry {
 };
 
 struct Upper_ : public Upper {
-  static Upper_ *Create(HTTP *, TextScroll *, Drawable *, string);
+  static Upper_ *Create(HTTPS *, TextScroll *, Drawable *, string_view);
 
   ~Upper_() override;
 
-  bool SetFile(const string &f, const string &md, RateStatus votes,
+  bool SetFile(string_view f, string_view md, RateStatus votes,
                int, int, int o) override;
   bool Commit() override;
 
-  void SaveDir(const string &d, const string &index) override;
+  void SaveDir(string_view d, string_view index) override;
 
   void Redraw() {
     if (below) {
@@ -59,14 +60,14 @@ struct Upper_ : public Upper {
     }
   }
 
-  void say(string s, bool nodraw = false) {
+  void say(string_view s, bool nodraw = false) {
     if (tx) {
       tx->Say(s);
       if (!nodraw) Redraw();
     }
   }
 
-  void sayover(string s, bool nodraw = false) {
+  void sayover(string_view s, bool nodraw = false) {
     if (tx) {
       tx->Unsay();
       tx->Say(s);
@@ -75,13 +76,13 @@ struct Upper_ : public Upper {
   }
 
   /* for reporting progress */
-  TextScroll *tx;
-  Drawable *below;
+  TextScroll *tx = nullptr;
+  Drawable *below = nullptr;
 
   std::unordered_map<string, OldEntry> olds;
   std::unordered_map<string, ContentEntry> contents;
 
-  HTTP *hh;
+  HTTPS *hh = nullptr;
 
   /* the directory, like "official" */
   string dirname;
@@ -96,8 +97,8 @@ struct Upper_ : public Upper {
   void insertdir(string d);
 };
 
-Upper_ *Upper_::Create(HTTP *h, TextScroll *t,
-                        Drawable *d, string f) {
+Upper_ *Upper_::Create(HTTPS *h, TextScroll *t,
+                       Drawable *d, string_view f) {
   Upper_ *ur = new Upper_();
   ur->hh = h;
   ur->tx = t;
@@ -121,12 +122,12 @@ void Upper_::init() {
   insertdir(dirname);
 }
 
-void Upper_::SaveDir(const string &d, const string &i) {
+void Upper_::SaveDir(string_view d, string_view i) {
   /* XXX: could fail if d is a file. In this
      case we're sort of in trouble, since we
      can't move d without invalidating our own
      contable. */
-  if (d != "") EscapeUtil::makedir(dirname + (string)DIRSEP + d);
+  if (d != "") EscapeUtil::makedir(dirname + (string)DIRSEP + std::string(d));
   /* XXX error checking? */
   DirIndex *di = DirIndex::Create();
   di->title = i;
@@ -138,7 +139,7 @@ void Upper_::insertdir(string src) {
 
   say((string)YELLOW"insertdir " + src + POP);
 
-  struct dirent *de;
+  struct dirent *de = nullptr;
   while ( (de = readdir(d)) ) {
 
     string basef = (string)de->d_name;
@@ -153,7 +154,7 @@ void Upper_::insertdir(string src) {
         basef == ".svn" ||
         basef == "CVS") continue;
 
-    if (EscapeUtil::isdir(f)) {
+    if (Util::IsDir(f)) {
       insertdir(f);
     } else {
       olds.insert({f, OldEntry(f)});
@@ -175,9 +176,10 @@ void Upper_::insertdir(string src) {
 Upper_::~Upper_() {
 }
 
-bool Upper_::SetFile(const string &ff, const string &md, RateStatus votes,
+bool Upper_::SetFile(string_view ff, string_view mdv, RateStatus votes,
                      int date, int speedrecord, int owner) {
-  string f = ff;
+  string f{ff};
+  std::string md{mdv};
   say((string)"SetFile(" + f + (string)", "
       GREY + md + (string)POP ")", true);
 
@@ -202,13 +204,13 @@ bool Upper_::SetFile(const string &ff, const string &md, RateStatus votes,
     string first = md.substr(0, 2);
     string last  = md.substr(2, md.length() - 2);
 
-    HTTPResult hr =
+    HTTPSResult hr =
       hh->Get((string)"/" + dirname +
               (string)"/" + first +
               (string)"/" + last, mm);
 
     switch (hr) {
-    case HTTPResult::OK: {
+    case HTTPSResult::OK: {
       ContentEntry nce{mm};
       sayover((string)"(SetFile) downloaded : " + nce.md5, true);
 
@@ -354,7 +356,7 @@ bool Upper_::Commit() {
 
 }  // namespace
 
-Upper *Upper::Create(HTTP *h, TextScroll *t,
-                     Drawable *d, const string &f) {
+Upper *Upper::Create(HTTPS *h, TextScroll *t,
+                     Drawable *d, string_view f) {
   return Upper_::Create(h, t, d, f);
 }

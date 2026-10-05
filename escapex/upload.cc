@@ -1,8 +1,9 @@
 
 #include "upload.h"
 
-#include <string>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "SDL_video.h"
@@ -12,7 +13,7 @@
 #include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
-#include "http.h"
+#include "https.h"
 #include "httputil.h"
 #include "level-base.h"
 #include "level.h"
@@ -29,7 +30,8 @@ namespace {
 struct Upload_ : public Upload {
   static Upload_ *Create();
 
-  UploadResult Up(Player *p, const string &file, const string &) override;
+  UploadResult Up(Player *p, std::string_view file,
+                  std::string_view) override;
 
   void Redraw() {
     Draw();
@@ -69,7 +71,8 @@ Upload_ *Upload_::Create() {
   return ur.release();
 }
 
-UploadResult Upload_::Up(Player *p, const string &f, const string &text) {
+UploadResult Upload_::Up(Player *p,
+                         std::string_view f, std::string_view text) {
   Redraw();
 
   const string levcont = EscapeUtil::readfilemagic(f, LEVELMAGIC);
@@ -94,7 +97,7 @@ UploadResult Upload_::Up(Player *p, const string &f, const string &text) {
   say(YELLOW + Util::itos(slong->Length()) + GREY " " LRARROW " " POP +
       Util::itos(opt.Length()) + POP);
 
-  HTTP *hh = Client::Connect(plr, tx.get(), this);
+  HTTPS *hh = Client::Connect(plr, tx.get(), this);
 
   if (!hh) return UploadResult::FAIL;
 
@@ -106,7 +109,7 @@ UploadResult Upload_::Up(Player *p, const string &f, const string &text) {
     FormEntry::Arg("id", Util::itos(plr->webid)),
     FormEntry::Arg("seql", Util::itos(plr->webseql)),
     FormEntry::Arg("seqh", Util::itos(plr->webseqh)),
-    FormEntry::Arg("text", text),
+    FormEntry::Arg("text", std::string{text}),
     FormEntry::File("lev", "lev.esx", levcont),
     FormEntry::File("sol", "sol.esx", solcont),
   };

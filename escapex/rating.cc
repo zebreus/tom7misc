@@ -16,7 +16,7 @@
 #include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
-#include "http.h"
+#include "https.h"
 #include "menu.h"
 #include "message.h"
 #include "player.h"
@@ -101,7 +101,7 @@ RateScreen_ *RateScreen_::Create(
   rr->nsolved = rr->plr->GetSolLength(levmd);
 
   /* might be 0, that's ok. */
-  rr->rat = rr->plr->getrating(levmd);
+  rr->rat = rr->plr->GetRating(levmd);
 
   rr->below = 0;
 
@@ -256,7 +256,7 @@ void RateScreen_::Rate() {
     plr->WriteFile();
 
     /* send message to server */
-    std::unique_ptr<HTTP> hh{Client::Connect(plr, tx.get(), this)};
+    std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
 
     string res;
 

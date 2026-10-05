@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
   std::vector<std::string> source;
   for (const std::string &ent : Util::ListFiles(".")) {
-    if (Util::isdir(ent)) continue;
+    if (Util::IsDir(ent)) continue;
     if (Util::MatchesWildcard("*.cc", ent) ||
         Util::MatchesWildcard("*.h", ent) ||
         (ent == "makefile") ||

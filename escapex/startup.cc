@@ -46,7 +46,7 @@ int StartUp::install_levels(string path) {
 
     if (dn == "." || dn == "..") {
       /* skip */
-    } else if (EscapeUtil::isdir(full)) {
+    } else if (Util::IsDir(full)) {
       /* in current directory... */
       // printf("makedir %s\n", dn.c_str());
       if (!EscapeUtil::makedir(dn)) return 0;

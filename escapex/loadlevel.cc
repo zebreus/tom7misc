@@ -699,7 +699,7 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
 
     string ldn = locate(de->d_name);
 
-    if (EscapeUtil::isdir(ldn)) {
+    if (Util::IsDir(ldn)) {
 
       string dn = de->d_name;
 
@@ -797,12 +797,12 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
         nsel->items[i].sizex = l->w;
         nsel->items[i].sizey = l->h;
         nsel->items[i].lev = std::move(l);
-        nsel->items[i].myrating = plr->getrating(md5c);
+        nsel->items[i].myrating = plr->GetRating(md5c);
         nsel->items[i].speedrecord = 0;
         nsel->items[i].date = 0;
         nsel->items[i].owned = false;
         nsel->items[i].managed = thisindex.get() != nullptr &&
-    thisindex->WebCollection();
+          thisindex->WebCollection();
 
         /* failure result is ignored, because the
            votes are initialized to 0 anyway */
@@ -1308,7 +1308,7 @@ string LoadLevel_::Loop() {
                 }
 
                 /* now restore the rating */
-                sel->items[sel->selected].myrating = plr->getrating(md);
+                sel->items[sel->selected].myrating = plr->GetRating(md);
                 /* XX resort? */
               }
 

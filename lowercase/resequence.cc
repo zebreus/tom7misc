@@ -50,7 +50,7 @@ static void AddAllFiles(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
     const string filename = Util::DirPlus(dir, f);
     // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
-    if (!Util::isdir(filename)) {
+    if (!Util::IsDir(filename)) {
       if (!filename.empty() &&
           // Should probably delete emacs backups..?
           filename[filename.size() - 1] != '#' &&

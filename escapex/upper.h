@@ -2,29 +2,28 @@
 #ifndef _ESCAPE_UPPER_H
 #define _ESCAPE_UPPER_H
 
-#include <string>
+#include <string_view>
 
-#include "http.h"
+#include "https.h"
 #include "textscroll.h"
 #include "drawable.h"
 #include "dirindex.h"
 
 struct Upper {
-  using string = std::string;
-
   virtual ~Upper() {};
 
   /* create an upper, using the http connection hh,
      and directory dir */
-  static Upper *Create(HTTP *hh, TextScroll *t,
-                       Drawable *below, const string &dir);
+  static Upper *Create(HTTPS *hh, TextScroll *t,
+                       Drawable *below, std::string_view dir);
 
   /* the file 'f' (which may be prefixed by directories that have been
      previously saved), should be set to the contents specified by the
      md5 hash md.
 
      returns true if we will be able to accomplish this. */
-  virtual bool SetFile(const string &f, const string &md, RateStatus votes,
+  virtual bool SetFile(std::string_view f, std::string_view md,
+                       RateStatus votes,
                        int date, int speedrecord, int owner) = 0;
 
   /* creates the directory d (if it does not exist), and ensures that
@@ -39,7 +38,7 @@ struct Upper {
 
      /
      subdir/        */
-  virtual void SaveDir(const string &d, const string &index) = 0;
+  virtual void SaveDir(std::string_view d, std::string_view index) = 0;
 
   /* return true if committing is successful. if false, then the files
      in the directory may be damaged (moved to attic) but we try to do

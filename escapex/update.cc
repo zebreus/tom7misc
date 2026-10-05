@@ -1,6 +1,7 @@
 
 #include "update.h"
 
+#include <format>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -19,7 +20,7 @@
 #include "escapex.h"
 #include "graphics.h"
 #include "handhold.h"
-#include "http.h"
+#include "https.h"
 #include "menu.h"
 #include "message.h"
 #include "player.h"
@@ -30,6 +31,9 @@
 
 #define UNSUBMARKER "unsubscribed"
 #define SHOWRATE 500
+
+// should be in a config somewhere?
+#define COLLECTIONSURL "/COLLECTIONS"
 
 namespace {
 
@@ -79,16 +83,16 @@ struct Updater_ : public Updater {
   std::unique_ptr<TextScroll> tx;
 
   CCResult CheckCollections(
-      HTTP *hh,
+      HTTPS *hh,
       std::vector<std::pair<string, string>> *collections);
 
   SelResult SelectCollections(
       const std::vector<std::pair<string, string>> &collections,
       std::vector<std::pair<string, string>> *subs);
 
-  void UpdateCollection(HTTP *hh,
-                        const string &fname,
-                        const string &showname);
+  void UpdateCollection(HTTPS *hh,
+                        string_view fname,
+                        string_view showname);
 };
 
 /* version of toggle where toggling causes the
@@ -183,14 +187,14 @@ Updater_ *Updater_::Create(Player *p) {
    (by adding items to fnames, shownames)
 */
 CCResult Updater_::CheckCollections(
-    HTTP *hh,
+    HTTPS *hh,
     std::vector<std::pair<string, string>> *collections) {
   /* first, grab COLLECTIONS. */
 
   string s;
-  HTTPResult hr = hh->Get(COLLECTIONSURL, s);
+  HTTPSResult hr = hh->Get(COLLECTIONSURL, s);
 
-  if (hr == HTTPResult::OK) {
+  if (hr == HTTPSResult::OK) {
     /* parse result. see protocol.txt */
     int ncolls = EscapeUtil::stoi(EscapeUtil::getline(s));
 
@@ -302,17 +306,17 @@ SelResult Updater_::SelectCollections(
 
 /* update a single collection "fname" using http connection hh. */
 void Updater_::UpdateCollection(
-    HTTP *hh, const string &fname, const string &showname) {
+    HTTPS *hh, std::string_view fname, std::string_view showname) {
 
   say("");
-  say((string)"Updating " BLUE + showname + (string)POP " (" YELLOW +
-      fname + (string)POP") ...");
+  say(std::format("Updating " BLUE "{}" POP " (" YELLOW
+                  "{}" POP ") ...", showname, fname));
   say("");
 
   string s;
-  HTTPResult hr = hh->Get((string)"/" + fname + (string) ".txt", s);
+  HTTPSResult hr = hh->Get(std::format("/{}.txt", fname), s);
 
-  if (hr == HTTPResult::OK) {
+  if (hr == HTTPSResult::OK) {
     /* parse result. see protocol.txt */
 
     string showname = EscapeUtil::getline(s);
@@ -414,9 +418,12 @@ void Updater_::UpdateCollection(
         say((string)RED + f + (string)" " GREY + md +
             (string)POP " (error!)" POP);
 
-        Message::Quick(this, (string)
-                       RED "Unable to complete update of " BLUE + fname +
-                       (string)POP "." POP, "Next", "", PICS XICON POP);
+        Message::Quick(
+            this,
+            std::format(
+                RED "Unable to complete update of " BLUE "{}"
+                POP "." POP, fname),
+            "Next", "", PICS XICON POP);
 
         return;
 
@@ -451,7 +458,7 @@ UpdateResult Updater_::Update(std::string_view msg) {
   /* always cancel the hint */
   HandHold::did_update();
 
-  std::unique_ptr<HTTP> hh{Client::Connect(plr, tx.get(), this)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
 
   if (hh.get() == nullptr) {
     msg = YELLOW "Couldn't connect." POP;

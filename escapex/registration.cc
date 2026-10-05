@@ -11,7 +11,7 @@
 #include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
-#include "http.h"
+#include "https.h"
 #include "httputil.h"
 #include "message.h"
 #include "player.h"
@@ -52,7 +52,7 @@ struct Registration_ : public Registration {
 };
 
 void Registration_::Registrate() {
-  std::unique_ptr<HTTP> hh{Client::Connect(plr, tx.get(), this)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
   if (hh.get() == nullptr) {
     Message::Quick(this,
                    "Couldn't connect to server.",

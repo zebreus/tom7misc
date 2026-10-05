@@ -26,7 +26,7 @@ ifdef LINUX
 
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
 
-ESCOBJECTS=level.o solution.o rle.o disamb.o main.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
+ESCOBJECTS=level.o solution.o rle.o disamb.o main.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
 
 default : escape.exe
 
@@ -190,11 +190,11 @@ CFLAGS=-Wno-objc-protocol-method-implementation
 # used to use /usr/local/lib
 # LIBS=-L/usr/lib
 
-escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o graphics.o $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
+escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o graphics.o $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
 	@export MACOSX_DEPLOYMENT_TARGET=${VERSION_TARGET}
 	$(CXX) $(LDLIBS) -framework OpenGL -framework IOKit -framework Carbon -framework Cocoa -Wl,-headerpad_max_install_names $^ -o escape.exe
 
-http_test.exe : http.o escape-util.o http_test.o $(CCLIBOBJECTS)
+https_test.exe : https.o escape-util.o https_test.o $(CCLIBOBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 .dummy :
@@ -310,7 +310,7 @@ LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 # objects that do not need SDL; can be linked into tools like screenshot.exe; server
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
 
-ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
+ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
 
 # XXX reenable sound
 DEBUG=-g
@@ -560,7 +560,7 @@ LINKSDL= -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 # objects that do not need SDL; can be linked into tools like screenshot.exe; server
 ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
 
-ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o http.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
+ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
 
 
 # -Wl,-rpath=.

@@ -186,7 +186,7 @@ std::optional<uint64_t> Util::ParseHex(std::string_view s) {
   return {out};
 }
 
-bool Util::isdir(std::string_view filename) {
+bool Util::IsDir(std::string_view filename) {
   struct stat st;
   std::string f{filename};
   return (0 == stat(f.c_str(), &st)) && (st.st_mode & S_IFDIR);
@@ -199,7 +199,7 @@ bool Util::ExistsFile(std::string_view filename) {
 }
 
 bool Util::existsdir(const string &d) {
-  return isdir(d); /* (ExistsFile(d) && isdir(d.c_str())); */
+  return IsDir(d); /* (ExistsFile(d) && isdir(d.c_str())); */
 }
 
 /* XXX what mode? */
@@ -405,7 +405,7 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
 
 std::optional<string> Util::ReadFileOpt(std::string_view sv) {
   std::string s{sv};
-  if (Util::isdir(s)) return nullopt;
+  if (Util::IsDir(s)) return nullopt;
   if (s.empty()) return nullopt;
   FILE *f = fopen(s.c_str(), "rb");
   if (f == nullptr) return nullopt;
@@ -418,7 +418,7 @@ std::optional<string> Util::ReadFileOpt(std::string_view sv) {
 
 string Util::ReadFile(std::string_view sv) {
   std::string s{sv};
-  if (Util::isdir(s)) return "";
+  if (Util::IsDir(s)) return "";
   if (s == "") return "";
 
   FILE *f = fopen(s.c_str(), "rb");
@@ -761,7 +761,7 @@ std::string Util::EscapeJS(std::string_view str) {
 
 
 vector<uint8> Util::ReadFileBytes(std::string_view filename) {
-  if (Util::isdir(filename)) return {};
+  if (Util::IsDir(filename)) return {};
   if (filename.empty()) return {};
 
   std::string s{filename};
@@ -803,7 +803,7 @@ bool Util::HasMagic(std::string_view s, std::string_view mag) {
 }
 
 string Util::ReadFileMagic(std::string_view s, std::string_view mag) {
-  if (isdir(s)) return "";
+  if (IsDir(s)) return "";
   if (s == "") return "";
 
   FILE *f = fopen(std::string(s).c_str(), "rb");

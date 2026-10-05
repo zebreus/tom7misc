@@ -23,11 +23,10 @@
 #include "escapex.h"
 #include "graphics.h"
 #include "handhold.h"
-#include "http.h"
+#include "https.h"
 #include "message.h"
 #include "player.h"
 #include "sdl/sdlutil.h"
-#include "startup.h"
 #include "textscroll.h"
 #include "util.h"
 
@@ -110,7 +109,7 @@ struct Upgrader_ : public Upgrader {
     SDL_Flip(screen);
   }
 
-  void say(const string &s) {
+  void say(string_view s) {
     if (tx.get() != nullptr) tx->Say(s);
   }
 
@@ -120,10 +119,10 @@ struct Upgrader_ : public Upgrader {
 
   Player *plr;
 
-  CUResult checkupgrade(HTTP *hh, string &msg,
+  CUResult checkupgrade(HTTPS *hh, string_view msg,
                         ulist *&download, stringlist *&ok);
 
-  UpResult doupgrade(HTTP *hh, string &msg,
+  UpResult doupgrade(HTTPS *hh, string_view msg,
                      ulist *upthese);
 
   std::unique_ptr<TextScroll> tx;
@@ -154,8 +153,9 @@ static bool md5file(std::string_view f, string &md5) {
 /* download anything in 'upthese', replacing the current
    versions on disk. Modifies the 'temporary' fields in
    upthese. */
-UpResult Upgrader_::doupgrade(HTTP *hh, string &msg,
+UpResult Upgrader_::doupgrade(HTTPS *hh, string_view msgv,
                               ulist *upthese) {
+  std::string msg{msgv};
   for (ulist *hd = upthese; hd; hd = hd->next) {
     switch (hd->head.t) {
     case UT_FILE: {
@@ -172,7 +172,7 @@ UpResult Upgrader_::doupgrade(HTTP *hh, string &msg,
       Redraw();
 
       switch (hh->GetTempFile(dl, hd->head.tempfile)) {
-      case HTTPResult::OK:
+      case HTTPSResult::OK:
         unsay();
         say((string)"    ..." GREEN "OK: " + hd->head.tempfile + POP);
         /* good. */
@@ -402,15 +402,15 @@ UpResult Upgrader_::doupgrade(HTTP *hh, string &msg,
 }
 
 /* download and ok should not contain anything */
-CUResult Upgrader_::checkupgrade(HTTP *hh,
-                                 string &msg,
+CUResult Upgrader_::checkupgrade(HTTPS *hh,
+                                 string_view msg,
                                  ulist *&download,
                                  stringlist *&ok) {
   /* start by checking for new versions of escape itself. */
   string s;
   say("Connecting...");
-  HTTPResult hr = hh->Get(UPGRADEURL, s);
-  if (hr == HTTPResult::OK) {
+  HTTPSResult hr = hh->Get(UPGRADEURL, s);
+  if (hr == HTTPSResult::OK) {
     /* parse result. see protocol.txt */
     int nfiles  = EscapeUtil::stoi(EscapeUtil::getline(s));
     int oldest  = EscapeUtil::stoi(EscapeUtil::getline(s));
@@ -546,7 +546,7 @@ UpgradeResult Upgrader_::Upgrade(string_view msg) {
   /* no matter what, cancel the hint to upgrade */
   HandHold::did_upgrade();
 
-  std::unique_ptr<HTTP> hh{Client::Connect(plr, tx.get(), this)};
+  std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
 
   if (hh.get() == nullptr) {
     msg = YELLOW "Couldn't connect." POP;

@@ -72,7 +72,7 @@ struct EscapeUtil {
   using string = std::string;
   /* only read if the file begins with the magic string */
   static bool hasmagic(string, const string &magic);
-  static string readfilemagic(string, const string &magic);
+  static string readfilemagic(std::string_view, const string &magic);
 
   static int stoi(string s);
 
@@ -164,11 +164,8 @@ struct EscapeUtil {
   // Not thread safe!
   static string tempfile(string suffix);
 
-  /* does this file exist and is it a directory? */
-  static bool isdir(string s);
-
   /* same as isdir */
-  static bool existsdir(string);
+  static bool existsdir(std::string_view);
 
   static bool makedir(string);
 

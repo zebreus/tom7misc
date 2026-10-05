@@ -1,3 +1,11 @@
+2026-10-05  Tom 7  <tom@AIR-FORTRESS>
+
+        * Switched to HTTPS for communicating with the server,
+          since this has better compatibility these days. It
+          is not secure.
+        * Redid the build on macOS. No longer depends on SDL_net,
+          and should run on Apple ARM chips now.
+
 2021-04-20  Tom 7  <Tom@STARTROPICS>
 
         * play.cc: Fix bug where solutions downloaded from

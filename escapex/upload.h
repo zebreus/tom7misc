@@ -2,7 +2,9 @@
 #ifndef _ESCAPE_UPLOAD_H
 #define _ESCAPE_UPLOAD_H
 
-#include "escapex.h"
+#include <string_view>
+
+#include "drawable.h"
 #include "player.h"
 
 /* Upload a level and its solution to the server. */
@@ -13,7 +15,8 @@ struct Upload : public Drawable {
   static Upload *Create();
   virtual ~Upload();
 
-  virtual UploadResult Up(Player *p, const string &file, const string &desc) = 0;
+  virtual UploadResult Up(Player *p,
+                          std::string_view file, std::string_view desc) = 0;
 
   void Draw() override = 0;
   void ScreenResize() override = 0;
