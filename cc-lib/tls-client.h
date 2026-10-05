@@ -1,4 +1,9 @@
 
+// Simple TLS client for casual uses, like "I want to GET a URL over
+// HTTPS." Warning: This does the handshake and encrypts, but is not
+// designed to be secure; for example, it doesn't check the validity
+// of the certificate that the server presents.
+
 #ifndef _HTTPC_TLS_CLIENT_H
 #define _HTTPC_TLS_CLIENT_H
 
@@ -19,19 +24,27 @@
 
 namespace internal { struct TLSStream; }
 struct TLSClient {
-  TLSClient(Net::Socket sock, std::string_view host);
+  // Takes an freshly opened connection. The host is essential for
+  // the ServerNameIndication extension (virtual hosts, etc.).
+  // Performs the handshake; check OK() after constructing.
+  TLSClient(Net::Socket sock, std::string_view host, int verbose = 0);
   ~TLSClient();
 
   // No output unless this is > 0.
   void SetVerbose(int v);
 
-  // True if we've reached the end of the input stream (graceful).
+  // Returns true if connected and in a good state.
+  bool OK() const;
+
+  // True if we've reached the end of the input stream (graceful if
+  // also OK()).
   inline bool ReadEOS() const;
 
   // These views of the read buffer are invalidated by any
   // other method.
   inline std::span<const uint8_t> ReadSpan() const;
   inline std::string_view ReadView() const;
+  inline size_t ReadSize() const;
   inline void RemovePrefix(size_t n);
   inline void ClearReadBuffer();
 
@@ -52,14 +65,12 @@ struct TLSClient {
   // Block until some more application data can be added to the read_buffer.
   void ReadSome();
 
-  // Synchronously perform the handshake. Returns true if successful
-  // (and then you can use Send/Read for application data).
-  // TODO: Maybe just do this in the constructor, since we need to
-  // support an invalid state anyway.
-  bool DoHandshake();
-
  private:
   int verbose = 0;
+
+  // Synchronously perform the handshake. Returns true if successful
+  // (and then you can use Send/Read for application data).
+  bool DoHandshake();
 
   // Only for plaintext handshake messages (so not Finished).
   std::optional<std::vector<uint8_t>> NextHandshakeMessage();
@@ -68,6 +79,7 @@ struct TLSClient {
 
   void ComputeKeys(const std::array<uint8_t, 48> &pre_master_secret);
 
+  // null means an error state
   std::unique_ptr<internal::TLSStream> stream;
   std::string hostname;
   ContiguousBuffer handshake_buffer;
@@ -107,5 +119,8 @@ void TLSClient::ClearReadBuffer() {
   read_buffer.clear();
 }
 
+size_t TLSClient::ReadSize() const {
+  return read_buffer.size();
+}
 
 #endif

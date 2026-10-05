@@ -104,6 +104,7 @@ void Prefs::Show(Player *plr) {
     "to in order to upgrade, register, and get new levels.\n"
     GREY "(Default: escape.spacebar.org)";
 
+  /*
   Toggle altconnect;
   altconnect.indent = IND;
   altconnect.checked = GetBool(plr, PREF_ALTCONNECT);
@@ -112,6 +113,7 @@ void Prefs::Show(Player *plr) {
     "If this option is selected, then Escape will connect on an\n"
     "alternate port, which may bypass troublesome proxies.\n"
     GREY "(Default: Unchecked)";
+  */
 
   Toggle debugnet;
   debugnet.indent = IND;
@@ -138,7 +140,7 @@ void Prefs::Show(Player *plr) {
     &spacer,
     &network,
     &servername,
-    &altconnect,
+    // &altconnect,
     &debugnet,
 
     &spacer,
@@ -154,7 +156,7 @@ void Prefs::Show(Player *plr) {
   /* XXX check InputResultKind::QUIT */
   if (res == InputResultKind::OK) {
     PutString(plr, PREF_SERVER, servername.input);
-    PutBool(plr, PREF_ALTCONNECT, altconnect.checked);
+    // PutBool(plr, PREF_ALTCONNECT, altconnect.checked);
     PutBool(plr, PREF_ASKRATE, askrate.checked);
     PutBool(plr, PREF_SHOWTUT, showtut.checked);
     PutBool(plr, PREF_BACKUP_PLAYER, backup.checked);

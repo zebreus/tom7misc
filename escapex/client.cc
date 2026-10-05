@@ -29,8 +29,6 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
     hh->log_message = DebugLogMessage;
 
   string serveraddress = Prefs::GetString(plr, PREF_SERVER);
-  int serverport =
-    Prefs::GetBool(plr, PREF_ALTCONNECT) ? 8888 : 80;
 
   if (hh.get() == nullptr) {
     if (tx) tx->Say(YELLOW "Couldn't create http object.");
@@ -45,14 +43,14 @@ HTTP *Client::Connect(Player *plr, TextScroll *tx, Drawable *that) {
 
   if (tx) tx->Say((string)
                   "Connecting to " YELLOW + serveraddress +
-                  WHITE ":" POP + Util::itos(serverport) + POP "...");
+                  POP "...");
 
   if (that) {
     that->Draw();
     SDL_Flip(screen);
   }
 
-  if (!hh->Connect(serveraddress, serverport)) {
+  if (!hh->Connect(serveraddress)) {
     if (tx) tx->Say((string)RED "Couldn't connect to "
                     YELLOW + serveraddress + POP ".");
     Message::Quick(that, "Can't connect!", "Cancel", "");

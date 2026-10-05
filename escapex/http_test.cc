@@ -9,9 +9,10 @@
 #include "net.h"
 
 static void Basic() {
-  std::unique_ptr<HTTP> http(HTTP::Create());
+  std::unique_ptr<HTTP> http(HTTP::Create(2));
+
   CHECK(http.get() != nullptr);
-  CHECK(http->Connect("localhost", 8008));
+  CHECK(http->Connect("escape.spacebar.org"));
   std::string content;
   HTTPResult r = http->Get("/", content);
   CHECK(r == HTTPResult::OK);

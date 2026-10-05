@@ -15,7 +15,6 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
-#include "contiguous-buffer.h"
 #include "net.h"
 #include "tls-client.h"
 
@@ -39,7 +38,11 @@ int main(int argc, char* argv[]) {
   Net::Socket sock = [&]() {
       for (const Net::Address &addr : addrs) {
         Net::Socket sock = Net::Connect(addr);
-        if (sock) return sock;
+        if (sock) {
+          return sock;
+        } else {
+          Print("Couldn't connect to {}\n", addr.ToString());
+        }
       }
 
       LOG(FATAL) << "Couldn't connect to any of the server's addresses.";
@@ -47,8 +50,8 @@ int main(int argc, char* argv[]) {
   CHECK(sock.IsValid());
   Print("Connected.\n");
 
-  TLSClient client(sock, hostname);
-  client.DoHandshake();
+  TLSClient client(sock, hostname, 1);
+  CHECK(client.OK());
 
   std::string request =
     std::format("GET / HTTP/1.1\r\n"

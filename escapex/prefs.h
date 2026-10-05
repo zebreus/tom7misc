@@ -10,6 +10,7 @@
 #define DEFAULT_SERVER "escape.spacebar.org"
 
 enum Pref : uint32 {
+  // Deprecated; ignored.
   PREF_ALTCONNECT = 0x100,
   PREF_SERVER = 0x101,
   PREF_ASKRATE = 0x102,

@@ -18,7 +18,8 @@ CC_LIB=../cc-lib
 SDLUTILOBJECTS=$(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
 # cc-lib assumes it can include something like "base/macros.h"
 CCLIB_INCLUDES= -I ../cc-lib
-CCLIBOBJECTS=$(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o
+CCLIB_TLS=$(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/crypt/tls.o $(CC_LIB)/crypt/asn1.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/crypt/multi-rsa.o $(CC_LIB)/tls-client.o $(CC_LIB)/hexdump.o
+CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o
 
 ifdef LINUX
 # makefile for linux

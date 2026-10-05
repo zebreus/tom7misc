@@ -144,7 +144,7 @@ struct ModelConnection {
     }
 
     client.reset(new TLSClient(std::move(sock), hostname));
-    return client->DoHandshake();
+    return client->OK();
   }
 
   void ReadSomeJSON() {

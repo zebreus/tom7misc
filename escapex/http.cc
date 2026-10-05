@@ -5,27 +5,36 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <format>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include "net.h"
+#include "base/print.h"
 #include "escape-util.h"
+#include "net.h"
+#include "tls-client.h"
 #include "util.h"
 
 using namespace std;
 
-#define DMSG if (log_message != nullptr) (*log_message)
+// #define DMSG if (log_message != nullptr) (*log_message)
+#define DMSG(s) Print("{}\n", s)
+
+static constexpr int PORT = 443;
 
 namespace {
 struct HTTP_ : public HTTP {
-  HTTP_();
+  HTTP_(int verbose);
   ~HTTP_() override;
   void SetUA(string_view ua) override;
-  bool Connect(string_view host, int port = 80) override;
+  bool Connect(string_view host) override;
   HTTPResult Get(string_view path, string &out) override;
   HTTPResult GetTempFile(string_view path, string &file) override;
   HTTPResult Put(string_view path,
@@ -36,22 +45,24 @@ struct HTTP_ : public HTTP {
     callback = std::move(cb);
   }
 
+  int RecvSome(uint8_t *buf, size_t len);
+
  private:
 
   virtual FILE *TempFile(string &f);
 
-  virtual string readrest();
-  virtual string readresttofile();
-  virtual string readn(int);
-  virtual string readntofile(int);
+  virtual string ReadRest();
+  virtual string ReadRestToFile();
+  virtual string ReadN(int);
+  virtual string ReadNToFile(int);
 
-  virtual HTTPResult req_general(string req, string &res, bool tofile);
-  virtual HTTPResult get_general(string path, string &arg, bool tofile);
+  virtual HTTPResult ReqGeneral(string req, string &res, bool tofile);
+  virtual HTTPResult GetGeneral(string path, string &arg, bool tofile);
   virtual void bye() {
-    if (conn.IsValid()) {
-      Net::Close(&conn);
-    }
+    tls.reset();
   }
+
+  int verbose = 0;
 
   std::function<void(int, int)> callback = [](int a, int b){};
 
@@ -59,56 +70,51 @@ struct HTTP_ : public HTTP {
 
   std::optional<Net::Address> remote;
 
-  Net::Socket conn;
+  std::unique_ptr<TLSClient> tls;
 
   /* for virtual servers */
-  string host;
+  string hostname;
 };
 
 HTTPResult HTTP_::Get(string_view path, string &out_) {
   DMSG(std::format("{:p} get({})\n", (void *)this, path));
-  return get_general(std::string(path), out_, false);
+  return GetGeneral(std::string(path), out_, false);
 }
 
 HTTPResult HTTP_::GetTempFile(string_view path, string &out_) {
   DMSG(std::format("{:p} gettempfile({})\n", (void *)this, path));
-  return get_general(std::string(path), out_, true);
+  return GetGeneral(std::string(path), out_, true);
 }
 
-HTTP_::HTTP_() {
+HTTP_::HTTP_(int v) : verbose(v) {
   log_message = nullptr;
 }
 
-HTTP_::~HTTP_() {
-  if (conn.IsValid()) {
-    DMSG(EscapeUtil::ptos(this) + " destroy\n");
-    Net::Close(&conn);
-  }
-}
+HTTP_::~HTTP_() {}
 
 void HTTP_::SetUA(string_view ua_view) {
   ua = std::string(ua_view);
 }
 
-bool HTTP_::Connect(std::string_view chost, int port) {
-  DMSG(std::format("{:p} connect '{}':{}\n", (void*)this, chost, port));
+bool HTTP_::Connect(std::string_view chost) {
+  DMSG(std::format("{:p} connect '{}':{}\n", (void*)this, chost, PORT));
 
   /* should work for "snoot.org" or "128.2.194.11"? */
-  std::vector<Net::Address> addrs = Net::Resolve(chost, port);
+  std::vector<Net::Address> addrs = Net::Resolve(chost, PORT);
   if (addrs.empty()) {
     DMSG(std::format("can't resolve: {}\n", chost));
     return false;
   }
 
   remote = addrs[0];
-  host = chost;
+  hostname = chost;
 
   DMSG(EscapeUtil::ptos(this) + " ok\n");
 
   return true;
 }
 
-void append(string &s, char *vec, unsigned int l) {
+static void Append(string &s, char *vec, unsigned int l) {
   unsigned int slen = s.length();
   unsigned int nlen = l + slen;
   string ret(nlen, '*');
@@ -163,21 +169,21 @@ HTTPResult HTTP_::Put(string_view path,
      crap at the beginning */
   string hdr =
     std::format(
-    "POST {} HTTP/1.0\r\n"
-    "User-Agent: {}\r\n"
-    "Host: {}\r\n"
-    "Accept: */*\r\n"
-    //    "Connection: close\r\n"
-    "Content-Type: multipart/form-data; boundary={}\r\n"
-    "Content-Length: {}\r\n"
-    "\r\n",
-    path,
-    ua,
-    host,
-    boundary,
-    clen);
+        "POST {} HTTP/1.0\r\n"
+        "User-Agent: {}\r\n"
+        "Host: {}\r\n"
+        "Accept: */*\r\n"
+        //    "Connection: close\r\n"
+        "Content-Type: multipart/form-data; boundary={}\r\n"
+        "Content-Length: {}\r\n"
+        "\r\n",
+        path,
+        ua,
+        hostname,
+        boundary,
+        clen);
 
-  return req_general(hdr + body, out, false);
+  return ReqGeneral(hdr + body, out, false);
 }
 
 
@@ -188,37 +194,65 @@ HTTPResult HTTP_::Put(string_view path,
   Accept: * / * (together)
 */
 
-HTTPResult HTTP_::get_general(string path, string &res, bool tofile) {
+HTTPResult HTTP_::GetGeneral(string path, string &res, bool tofile) {
   string req =
     "GET " + path + " HTTP/1.0\r\n"
     "User-Agent: " + ua + "\r\n"
-    "Host: " + host + "\r\n"
+    "Host: " + hostname + "\r\n"
     "Accept: */*\r\n"
     "\r\n";
 
-  return req_general(req, res, tofile);
+  return ReqGeneral(req, res, tofile);
 }
 
-HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
+// Read up to n bytes into the buffer, blocking until there's something
+// to read, and returning -1 on error.
+// XXX: We should just rewrite the below to use ReadSome and ReadSpan.
+int HTTP_::RecvSome(uint8_t *buf, size_t len) {
+  if (!tls->OK()) return -1;
+  while (tls->ReadSize() == 0) {
+    if (!tls->OK()) return -1;
+    tls->ReadSome();
+  }
+
+  std::span<const uint8_t> r = tls->ReadSpan();
+  CHECK(r.size() > 0);
+  size_t read_size = std::min(len, r.size());
+
+  memcpy(buf, r.data(), read_size);
+  tls->RemovePrefix(read_size);
+  return read_size;
+}
+
+HTTPResult HTTP_::ReqGeneral(string req, string &res, bool tofile) {
   DMSG(EscapeUtil::ptos(this) + " conn "
        " req_general: \n[" + req + "]\n");
 
   /* we don't use keep-alive now. each request is a new
      connection. */
   bye();
-  if (!remote || !(conn = Net::Connect(*remote))) {
+  if (!remote.has_value()) {
+    DMSG(EscapeUtil::ptos(this) + " can't connect\n");
+    return HTTPResult::ERROR_OTHER;
+  }
+
+  Net::Socket sock = Net::Connect(remote.value());
+  if (!sock.IsValid()) {
     DMSG(EscapeUtil::ptos(this) + " can't connect\n");
     return HTTPResult::ERROR_OTHER;
   }
 
   DMSG(EscapeUtil::ptos(this) + " connected.\n");
 
-  if (!Net::SendAll(&conn, req)) {
-    /* error. try again? */
+  // Negotiate TLS.
+  tls.reset(new TLSClient(std::move(sock), hostname, verbose));
+
+  if (!tls->OK()) {
     DMSG(EscapeUtil::ptos(this) + " can't send\n");
-    bye();
     return HTTPResult::ERROR_OTHER;
   }
+
+  tls->Send(req);
 
   DMSG(EscapeUtil::ptos(this) + " sent request.\n");
 
@@ -238,9 +272,13 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
 
      unfortunately we must read single bytes at this point
      so that we don't accidentally move into the data area.
+
+     (XXX: I think this can be cleaner by just leaving it
+     in the tls client's buffer.)
   */
   for (;;) {
-    if (Net::RecvSome(&conn, {(uint8_t*)&c, 1}) != 1) {
+
+    if (RecvSome((uint8_t*)&c, 1) != 1) {
       DMSG(EscapeUtil::ptos(this) + " can't recv\n");
       printf("Error in recv.\n");
       bye();
@@ -275,6 +313,7 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
           return HTTPResult::ERROR_404;
         }
         first = 0;
+
       } else { /* not first line */
         if (line == "") {
           /* empty line means read content! */
@@ -304,6 +343,7 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
             string l = EscapeUtil::chop(line);
             contentlen = atoi(l.c_str());
             DMSG("content length is " + Util::itos(contentlen) + "\n");
+
           } else if (field == "Connection:") {
             string how = EscapeUtil::lcase(EscapeUtil::chop(line));
             if (how == "close")
@@ -316,6 +356,7 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
               bye();
               return HTTPResult::ERROR_OTHER;
             }
+
           } else {
             /* ignored */
           }
@@ -333,6 +374,7 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
        connection is in state ready to receive data.
     */
  readcontent:
+  DMSG("\n-------- reading content now ----------\n");
 
   if (contentlen == -1) {
 
@@ -345,11 +387,11 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
     /* read until failure */
 
     if (tofile) {
-      res = readresttofile();
+      res = ReadRestToFile();
       /* printf("rtof: %s\n", res.c_str()); */
       return HTTPResult::OK;
     } else {
-      res = readrest();
+      res = ReadRest();
       return HTTPResult::OK;
     }
 
@@ -357,11 +399,11 @@ HTTPResult HTTP_::req_general(string req, string &res, bool tofile) {
     /* have content length */
 
     if (tofile) {
-      res = readntofile(contentlen);
+      res = ReadNToFile(contentlen);
       /* printf("ntof: %s\n", res.c_str()); */
       return HTTPResult::OK;
     } else {
-      res = readn(contentlen);
+      res = ReadN(contentlen);
       return HTTPResult::OK;
     }
 
@@ -393,7 +435,7 @@ FILE *HTTP_::TempFile(string &f) {
   return 0;
 }
 
-string HTTP_::readresttofile() {
+string HTTP_::ReadRestToFile() {
   string fname;
   FILE *ff = TempFile(fname);
 
@@ -408,7 +450,7 @@ string HTTP_::readresttofile() {
   int n = 0;
 
   int x;
-  while ((x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)BUFLEN})) > 0) {
+  while ((x = RecvSome((uint8_t*)buf, (size_t)BUFLEN)) > 0) {
     fwrite(buf, 1, x, ff);
     callback(n += x, -1);
   }
@@ -420,7 +462,7 @@ string HTTP_::readresttofile() {
   return fname;
 }
 
-string HTTP_::readrest() {
+string HTTP_::ReadRest() {
   string acc;
 
   char buf[BUFLEN];
@@ -431,8 +473,8 @@ string HTTP_::readrest() {
 
   DMSG("reading rest...\n");
 
-  while ((x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)BUFLEN})) > 0) {
-    append(acc, buf, x);
+  while ((x = RecvSome((uint8_t*)buf, (size_t)BUFLEN)) > 0) {
+    Append(acc, buf, x);
     callback(n += x, -1);
   }
 
@@ -443,7 +485,7 @@ string HTTP_::readrest() {
   return acc;
 }
 
-string HTTP_::readn(int n) {
+string HTTP_::ReadN(int n) {
   vector<char> buf;
   buf.resize(n);
 
@@ -454,7 +496,7 @@ string HTTP_::readn(int n) {
   int done = 0;
   int x;
   while (rem > 0) {
-    x = Net::RecvSome(&conn, {(uint8_t*)buf.data() + done, (size_t)rem});
+    x = RecvSome((uint8_t*)buf.data() + done, (size_t)rem);
     if (x <= 0) return "";
 
     done += x;
@@ -463,14 +505,14 @@ string HTTP_::readn(int n) {
   }
 
   string ret = "";
-  append(ret, buf.data(), n);
+  Append(ret, buf.data(), n);
 
   DMSG("contents\n[" + ret + "]\n");
 
   return ret;
 }
 
-string HTTP_::readntofile(int n) {
+string HTTP_::ReadNToFile(int n) {
   int total = n;
   int rem = n;
 
@@ -486,10 +528,10 @@ string HTTP_::readntofile(int n) {
   int done = 0;
   int x;
   while (rem > 0) {
-    x = Net::RecvSome(&conn, {(uint8_t*)buf, (size_t)std::min(BUFLEN,rem)});
+    x = RecvSome((uint8_t*)buf, (size_t)std::min(BUFLEN, rem));
     if (x <= 0) {
       fclose(ff);
-      printf("bad exit from readntofile\n");
+      DMSG("bad exit from ReadNToFile\n");
       return "";
     }
 
@@ -505,6 +547,6 @@ string HTTP_::readntofile(int n) {
 }  // namespace
 
 /* export through http interface */
-HTTP *HTTP::Create() {
-  return new HTTP_();
+HTTP *HTTP::Create(int v) {
+  return new HTTP_(v);
 }

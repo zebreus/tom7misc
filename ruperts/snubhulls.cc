@@ -141,8 +141,8 @@ static void PlotPatch(const Boundaries &boundaries,
     vec3 s;
     std::tie(s.x, s.y, s.z) = RandomUnit3D(&rc);
     BigVecQ3 bs(BigRat::ApproxDouble(s.x, 1000000),
-               BigRat::ApproxDouble(s.y, 1000000),
-               BigRat::ApproxDouble(s.z, 1000000));
+                BigRat::ApproxDouble(s.y, 1000000),
+                BigRat::ApproxDouble(s.z, 1000000));
 
     // Try all the signs. At most one of these will be
     // in the patch, but this should increase the

@@ -1,6 +1,10 @@
 
-/* maximally simple interface to HTTP
-   using cc-lib net.h */
+/* maximally simple interface to HTTP(S)
+   using cc-lib net.h and tls-client.h.
+
+   Note that this is not secure; it doesn't check the
+   host certificate chain for example.
+*/
 
 #ifndef _ESCAPE_HTTP_H
 #define _ESCAPE_HTTP_H
@@ -22,7 +26,7 @@ enum class HTTPResult {
 
 /* interface only */
 struct HTTP {
-  static HTTP *Create();
+  static HTTP *Create(int verbose = 0);
 
   /* set user-agent */
   virtual void SetUA(std::string_view ua) = 0;
@@ -30,7 +34,7 @@ struct HTTP {
 
   /* doesn't really connect -- just sets host:port for
      later requests. might fail if can't look up hostname. */
-  virtual bool Connect(std::string_view host, int port = 80) = 0;
+  virtual bool Connect(std::string_view host) = 0;
 
   /* download the entire thing to a string */
   virtual HTTPResult Get(std::string_view path, std::string &out) = 0;

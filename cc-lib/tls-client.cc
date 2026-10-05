@@ -47,8 +47,10 @@ struct TLSStream {
   void SetVerbose(int v) { verbose = v; }
 
   bool IsValid() const { return sock.IsValid(); }
+  bool HasError() const { return error; }
 
   void HangUp() {
+    CHECK(IsValid());
     Net::Close(&sock);
   }
 
@@ -64,16 +66,18 @@ struct TLSStream {
 
  private:
   void ParsePackets();
-  // TODO: Record state of the connection.
+
   Net::Socket sock;
   std::deque<TLS::Record> incoming;
   ContiguousBuffer buffer;
   int verbose = 0;
+  bool error = false;
 };
 
 // Send a completely raw byte span.
 void TLSStream::SendRaw(std::span<const uint8_t> bytes) {
   if (!Net::SendAll(&sock, bytes)) {
+    error = true;
     Net::Close(&sock);
   }
 }
@@ -115,6 +119,7 @@ std::optional<TLS::Record> TLSStream::NextRecord() {
 
     if (bytes <= 0) {
       // Error or graceful EndOfStream.
+      if (bytes < 0) error = true;
       Net::Close(&sock);
       return std::nullopt;
     }
@@ -133,6 +138,7 @@ void TLSStream::ParsePackets() {
         Print(stderr, ARED("Error:") " Invalid TLS record type received: {}\n",
               buffer[0]);
       }
+      error = true;
       Net::Close(&sock);
       return;
     }
@@ -143,6 +149,7 @@ void TLSStream::ParsePackets() {
         Print(stderr,
               ARED("Error:") " Record exceeds maximum length: {}\n", length);
       }
+      error = true;
       Net::Close(&sock);
       return;
     }
@@ -182,12 +189,13 @@ void TLSClient::RecordHandshakeMessage(std::span<const uint8_t> msg) {
   SHA256::UpdateSpan(&handshake_ctx, msg);
 }
 
-TLSClient::TLSClient(Net::Socket sock, std::string_view host)
+TLSClient::TLSClient(Net::Socket sock, std::string_view host, int v)
   : stream(new internal::TLSStream(std::move(sock))),
     rc(std::format("{:016x}{:016x}{}",
                    CryptRand().Word64(),
                    CryptRand().Word64(),
                    host)) {
+  SetVerbose(v);
   rc.Discard(64);
   SHA256::Init(&handshake_ctx);
   client_hello.version_major = 3;
@@ -203,10 +211,16 @@ TLSClient::TLSClient(Net::Socket sock, std::string_view host)
   TLS::ServerNameIndication sni;
   sni.hosts.emplace_back(host);
   client_hello.extensions.emplace_back(std::move(sni));
+
+  if (!DoHandshake()) {
+    if (verbose) {
+      Print("Handshake failed.\n");
+    }
+    stream.reset();
+  }
 }
 
 void TLSClient::Send(std::span<const uint8_t> bytes) {
-  // TODO: Exit the loop if the stream becomes unhealthy.
   while (!bytes.empty()) {
     const size_t chunk_size =
       std::min<size_t>(bytes.size(), TLS::MAX_PLAINTEXT_SIZE);
@@ -226,18 +240,31 @@ void TLSClient::Send(std::span<const uint8_t> bytes) {
                        iv,
                        chunk));
 
+    if (stream->HasError()) {
+      stream.reset();
+      return;
+    }
+
     // Advance the span
     bytes = bytes.subspan(chunk_size);
+
+    if (!OK()) {
+      return;
+    }
   }
 }
 
 void TLSClient::Send(std::string_view text) {
+  if (!OK()) return;
   Send(std::span((const uint8_t *)text.data(), text.size()));
 }
 
 void TLSClient::ReadSome() {
   CHECK(!read_eos) << "Precondition. In order for us to get more data "
     "from the connection, it has to still be open for reading!";
+  if (!OK()) {
+    return;
+  }
   CHECK(stream->IsValid());
   if (auto omsg = stream->NextRecord()) {
     // Always decrypt so that we keep the stream in sync.
@@ -249,8 +276,29 @@ void TLSClient::ReadSome() {
       // Only keep application data, though.
       if (omsg.value().type == TLS::APPLICATION_DATA) {
         read_buffer.Append(dec.value());
+
+      } else if (omsg.value().type == TLS::ALERT) {
+        PacketParser packet(dec.value());
+        if (std::optional<TLS::Alert> alert = TLS::ParseAlert(packet)) {
+          if (verbose) {
+            Print(stderr, AORANGE("Alert") ": {}\n",
+                  TLS::AlertDescriptionString(alert->desc));
+          }
+
+          // This is the only way we get a successful EOS.
+          if (alert.value().desc == TLS::AlertDescription::CLOSE_NOTIFY &&
+              !stream->HasError()) {
+            read_eos = true;
+          }
+
+        } else {
+          // Invalid alert.
+        }
+
+        // All alerts terminate the connection.
+        stream.reset();
+
       } else {
-        // TODO: Should probably handle fatal and close_notify here.
         if (verbose > 0) {
           Print(stderr, AORANGE("Note") ": Ignored {} packet\n",
                 TLS::ContentTypeString(omsg.value().type));
@@ -261,15 +309,22 @@ void TLSClient::ReadSome() {
       if (verbose > 0) {
         Print(stderr, ARED("Decryption failed") "!\n");
       }
-      stream->HangUp();
+
+      stream.reset();
     }
 
   } else {
-    read_eos = true;
+
+    // If we didn't get a CLOSE_NOTIFY alert, then end of stream is
+    // considered an error.
+
+    stream.reset();
   }
 }
 
 bool TLSClient::DoHandshake() {
+  CHECK(stream.get() != nullptr);
+
   auto ch = TLS::SerializeClientHello(client_hello);
   CHECK(ch.has_value()) << "Failed to serialize ClientHello";
 
@@ -307,6 +362,7 @@ bool TLSClient::DoHandshake() {
       }
       return false;
     }
+
   } else {
     if (verbose > 0) {
       Print(stderr, ARED("Error:") " Expected SERVER_HELLO.\n");
@@ -563,7 +619,12 @@ std::optional<std::vector<uint8_t>> TLSClient::NextHandshakeMessage() {
     }
 
     std::optional<TLS::Record> rec = stream->NextRecord();
-    if (!rec.has_value()) return std::nullopt;
+    if (!rec.has_value()) {
+      if (verbose > 0) {
+        Print("No more records during handshake\n");
+      }
+      return std::nullopt;
+    }
 
     if (rec.value().type == TLS::ALERT) {
       if (verbose > 0) {
@@ -623,6 +684,10 @@ void TLSClient::ComputeKeys(const std::array<uint8_t, 48> &pre_master_secret) {
   Consume(unused_server_iv);
 
   CHECK(remaining.empty());
+}
+
+bool TLSClient::OK() const {
+  return stream.get() != nullptr;
 }
 
 TLSClient::~TLSClient() {
