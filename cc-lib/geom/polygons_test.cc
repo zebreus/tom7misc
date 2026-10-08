@@ -158,21 +158,20 @@ static void TestPointLineDistance() {
 
     vec2 roside_pt = transform_point(frame, oside_pt);
 
-    // In both orientations.
-    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rside_pt), 3.0);
-    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rside_pt), 3.0);
+    // Check both functions with both orientations.
+    #define CHECK_DIST(a, b, pt, d) do {                            \
+        CHECK_NEAR(PointLineDistance(a, b, pt), d);                 \
+        CHECK_NEAR(PointLineDistance(b, a, pt), d);                 \
+        CHECK_NEAR(SquaredPointLineDistance(a, b, pt), (d) * (d));  \
+        CHECK_NEAR(SquaredPointLineDistance(a, b, pt), (d) * (d));  \
+      } while (0)
 
-    CHECK_NEAR(PointLineDistance(rlinea, rlineb, re_pt), 1.25);
-    CHECK_NEAR(PointLineDistance(rlineb, rlinea, re_pt), 1.25);
 
-    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rf_pt), 2.0);
-    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rf_pt), 2.0);
-
-    CHECK_NEAR(PointLineDistance(rlinea, rlineb, rlinea), 0.0);
-    CHECK_NEAR(PointLineDistance(rlineb, rlinea, rlinea), 0.0);
-
-    CHECK_NEAR(PointLineDistance(rlinea, rlineb, roside_pt), oside_dist);
-    CHECK_NEAR(PointLineDistance(rlineb, rlinea, roside_pt), oside_dist);
+    CHECK_DIST(rlinea, rlineb, rside_pt, 3.0);
+    CHECK_DIST(rlinea, rlineb, re_pt, 1.25);
+    CHECK_DIST(rlinea, rlineb, rf_pt, 2.0);
+    CHECK_DIST(rlinea, rlineb, rlinea, 0.0);
+    CHECK_DIST(rlinea, rlineb, roside_pt, oside_dist);
   }
 
   double spi = timer.Seconds() / ITERS;
