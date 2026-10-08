@@ -124,20 +124,22 @@ double SquaredPointLineDistance(
     // After the ending point.
     return distance_squared(pt, v1);
   } else {
-    const double tf = dotprod / sqlen;
 
     // Between the two points. The closest point on the segment
-    // will be on a line perpendicular to the segment. So we
-    // can actually use the Pythagorean theorem to get a^2 here:
+    // will be on a line perpendicular to the segment. We could
+    // use the Pythagorean theorem to get a^2 here:
     //
     //         pt    c
     //         | `-.
     //      a  |    `-.        a^2 + b^2 = c^2
     //  v1-----x-------v0      so
     //             b           a^2 = c^2 - b^2
-
-    const double bsquared = tf * dotprod;
-    return length_squared(c) - bsquared;
+    //
+    // But we get catastrophic canceling when pt is very close
+    // to the line (can even be negative). Better is to use the cross
+    // product.
+    const double cr = yocto::cross(edge, c);
+    return (cr * cr) / sqlen;
   }
   #endif
 }

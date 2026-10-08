@@ -1959,7 +1959,7 @@ Hull3D::HullFaces(const std::vector<vec3> &pts) {
   int num_faces = 0;
   convhull_3d_build(ch_pts.data(), ch_pts.size(), &out_faces, &num_faces);
 
-  printf("Got %d faces.\n", num_faces);
+  // printf("Got %d faces.\n", num_faces);
   std::vector<std::tuple<int, int, int>> hull_faces;
   for (int f = 0; f < num_faces; f++) {
     // Triangular faces.
