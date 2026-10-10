@@ -125,6 +125,13 @@ static void TestPlanarityError() {
     bad_cube.vertices[0].z += 1.0;
     CHECK(PlanarityError(bad_cube) > 0.1);
   }
+
+  {
+    // All triangular faces, so planarity error should be
+    // inherently zero.
+    Polyhedron sep = Septopert();
+    CHECK_NEAR(PlanarityError(sep), 0.0);
+  }
 }
 
 static void TestHullDistances() {

@@ -2773,6 +2773,34 @@ bool IsWellConditioned(std::span<const vec3> vs,
   return true;
 }
 
+Polyhedron Septopert() {
+  // 2^20
+  constexpr double SCALE = 1.0 / 1048576.0;
+
+  // Numerators fit in 24 bits, so these are all the exact rationals,
+  // (even as single-precision floats).
+  constexpr double a = -940638.0 / SCALE;
+  constexpr double b = 327651 / SCALE;
+  constexpr double c = 703968.0 / SCALE;
+  constexpr double d = 47788.0 / SCALE;
+  constexpr double e = -514207 / SCALE;
+
+  std::vector<vec3> vertices {
+    vec3{a, b, b},
+    {b, a, b},
+    {b, b, a},
+    {c, d, d},
+    {d, c, d},
+    {d, d, c},
+    {e, e, e},
+  };
+
+  CHECK(vertices.size() == 7);
+  return MakeConvexOrDie(
+      std::move(vertices), "septopert",
+      SYM_UNKNOWN);
+}
+
 std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
   if (name == "tetrahedron") return Tetrahedron();
   if (name == "cube") return Cube();
@@ -2808,6 +2836,7 @@ std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
 
   if (name == "noperthedron") return Noperthedron();
   if (name == "onperthedron") return Onperthedron();
+  if (name == "septopert") return Septopert();
 
   return std::nullopt;
 }

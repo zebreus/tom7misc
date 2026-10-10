@@ -330,6 +330,7 @@ Polyhedron PentagonalHexecontahedron();
 // Other special
 Polyhedron Noperthedron();
 Polyhedron Onperthedron();
+Polyhedron Septopert();
 
 // all lowercase, no spaces.
 std::optional<Polyhedron> PolyhedronByName(std::string_view name);
