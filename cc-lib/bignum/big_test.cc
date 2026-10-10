@@ -248,6 +248,33 @@ static void TestRatString() {
   }
 }
 
+static void TestRatFromDecimal() {
+  {
+    BigRat a = BigRat::FromDecimal("1.0");
+    CHECK(BigRat::Eq(a, BigRat(1, 1)));
+  }
+
+  {
+    BigRat a = BigRat::FromDecimal("0.5");
+    CHECK(BigRat::Eq(a, BigRat(1, 2)));
+  }
+
+  {
+    BigRat a = BigRat::FromDecimal("2.5");
+    CHECK(BigRat::Eq(a, BigRat(5, 2)));
+  }
+
+  {
+    BigRat a = BigRat::FromDecimal("-2.5");
+    CHECK(BigRat::Eq(a, BigRat(-5, 2)));
+  }
+
+  {
+    BigRat a = BigRat::FromDecimal("-0");
+    CHECK(BigRat::Eq(a, BigRat(0, 1)));
+  }
+}
+
 static void TestRatFromDouble() {
   // XXX test this more!
   {
@@ -2223,6 +2250,7 @@ int main(int argc, char **argv) {
   TestRatCompare();
 
   TestRatString();
+  TestRatFromDecimal();
   TestRatFromDouble();
   TestToDouble();
   TestRatToDouble();

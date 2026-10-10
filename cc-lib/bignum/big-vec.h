@@ -33,6 +33,10 @@ struct BigVecQ2 {
     LOG(FATAL) << "Bad index to BigVecQ2::operator[]";
   }
 
+  inline bool operator==(const BigVecQ2 &other) const {
+    return BigRat::Eq(x, other.x) && BigRat::Eq(y, other.y);
+  }
+
   BigVecQ2 operator+(const BigVecQ2 &o) const {
     return BigVecQ2{
       BigRat::Plus(x, o.x),

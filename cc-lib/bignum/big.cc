@@ -1712,7 +1712,6 @@ BigRat BigRat::FromDecimal(std::string_view num) {
       BigInt intpart = (i == 0) ? BigInt(0) : ParseBigInt(num.substr(0, i));
       num.remove_prefix(i + 1);
 
-      if (negative) intpart = BigInt::Negate(std::move(intpart));
 
       // Now the fractional part:
       BigInt numer = ParseBigInt(num);
@@ -1722,7 +1721,9 @@ BigRat BigRat::FromDecimal(std::string_view num) {
       BigInt denom = BigInt::Pow(BigInt(10), num.size());
 
       BigRat fracpart(std::move(numer), std::move(denom));
-      return BigRat::Plus(intpart, fracpart);
+      BigRat sum = BigRat::Plus(std::move(intpart), std::move(fracpart));
+
+      return negative ? BigRat::Negate(std::move(sum)) : sum;
     }
   }
 
