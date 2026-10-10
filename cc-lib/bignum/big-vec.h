@@ -57,10 +57,6 @@ struct BigVecQ2 {
     return {BigRat::Div(x, s), BigRat::Div(y, s)};
   }
 
-  inline bool operator==(const BigVecQ2 &other) const {
-    return BigRat::Eq(x, other.x) && BigRat::Eq(y, other.y);
-  }
-
   static BigRat Dot(const BigVecQ2 &a, const BigVecQ2 &b) {
     return BigRat::Plus(BigRat::Times(a.x, b.x), BigRat::Times(a.y, b.y));
   }
