@@ -32,8 +32,16 @@ struct Mesh3D {
 
 TriangularMesh3D LoadSTL(std::string_view filename);
 
+// Writes ASCII STL. Coordinates are printed as the shortest decimal that
+// reads back as the same double (exact for IEEE-754 readers). With exact,
+// vertex coordinates are instead printed as their exact decimal expansions
+// (every finite double has one), so that a reader using arbitrary-precision
+// decimals also gets the exact values; this can be long for values with
+// large negative binary exponents. Normals are always shortest round-trip,
+// since they are generally irrational anyway.
 void SaveAsSTL(const TriangularMesh3D &mesh, std::string_view filename,
-               std::string_view name = "", bool quiet = false);
+               std::string_view name = "", bool quiet = false,
+               bool exact = false);
 
 // TODO: Facetize TriangularMesh3D into Mesh3D?
 

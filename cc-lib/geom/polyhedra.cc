@@ -2779,11 +2779,11 @@ Polyhedron Septopert() {
 
   // Numerators fit in 24 bits, so these are all the exact rationals,
   // (even as single-precision floats).
-  constexpr double a = -940638.0 / SCALE;
-  constexpr double b = 327651 / SCALE;
-  constexpr double c = 703968.0 / SCALE;
-  constexpr double d = 47788.0 / SCALE;
-  constexpr double e = -514207 / SCALE;
+  constexpr double a = -940638.0 * SCALE;
+  constexpr double b = 327651 * SCALE;
+  constexpr double c = 703968.0 * SCALE;
+  constexpr double d = 47788.0 * SCALE;
+  constexpr double e = -514207 * SCALE;
 
   std::vector<vec3> vertices {
     vec3{a, b, b},

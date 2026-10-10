@@ -1,5 +1,7 @@
+#include <cmath>
 
 #include "mesh.h"
+#include "util.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -86,10 +88,49 @@ static void VolumeOfCube() {
 }
 
 
+// SaveAsSTL(..., exact = true) prints exact decimal expansions, and
+// LoadSTL reads the same doubles back.
+static void ExactSTL() {
+  // The Septopert (2^-20 dyadic coordinates) plus some awkward doubles.
+  const double s = 1.0 / 1048576.0;
+  TriangularMesh3D mesh;
+  mesh.vertices = {
+    vec3{-940638 * s, 327651 * s, 327651 * s},
+    vec3{47788 * s, 703968 * s, 47788 * s},
+    vec3{-514207 * s, 4.9406564584124654e-324, -0.0},
+    vec3{1.0e300, -3.0, 0.1},
+  };
+  mesh.triangles = {{0, 1, 2}, {0, 1, 3}};
+  const std::string file = "mesh_test_exact.stl";
+  SaveAsSTL(mesh, file, "exact", true, true);
+  const std::string contents = Util::ReadFile(file);
+  CHECK(contents.find("-0.8970623016357421875 ") != std::string::npos);
+  CHECK(contents.find("0.045574188232421875 ") != std::string::npos);
+  // 0.1 is not exactly one tenth as a double; its exact expansion has 55
+  // fractional digits.
+  CHECK(contents.find("0.1000000000000000055511151231257827021181583404541015625")
+        != std::string::npos);
+  TriangularMesh3D back = LoadSTL(file);
+  CHECK(back.triangles.size() == 2);
+  for (const auto &[a, b, c] : back.triangles) {
+    for (int v : {a, b, c}) {
+      const vec3 &p = back.vertices[v];
+      bool found = false;
+      for (const vec3 &q : mesh.vertices) {
+        if (p.x == q.x && p.y == q.y && p.z == q.z &&
+            std::signbit(p.z) == std::signbit(q.z)) found = true;
+      }
+      CHECK(found) << p.x << " " << p.y << " " << p.z;
+    }
+  }
+  std::remove(file.c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   VolumeOfCube();
+  ExactSTL();
 
   printf("OK\n");
   return 0;

@@ -2,6 +2,9 @@
 #include "mesh.h"
 
 #include <algorithm>
+#include <bit>
+#include <charconv>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <format>
@@ -155,9 +158,11 @@ static std::tuple<int, int, int> GetOrientedTriangle(
   for (const auto &[a, b, c] : mesh.triangles) {
     switch (ClassifyTriangle(mesh, a, b, c)) {
     case ALL_ABOVE:
-      return std::make_tuple(a, b, c);
-    case ALL_BELOW:
+      // The rest of the mesh is on the normal's side, so the normal
+      // points inward: reverse.
       return std::make_tuple(c, b, a);
+    case ALL_BELOW:
+      return std::make_tuple(a, b, c);
     case MIXED:
       // Try the next one.
       continue;
@@ -201,7 +206,7 @@ void OrientMesh(TriangularMesh3D *mesh) {
 
   for (const auto &[a, b, c] : mesh->triangles) {
     if (SameTriangle(oa, ob, oc, a, b, c)) {
-      AddTriangle(a, b, c);
+      AddTriangle(oa, ob, oc);
     } else {
       remaining.emplace_back(a, b, c);
     }
@@ -265,8 +270,29 @@ void FlipNormals(TriangularMesh3D *mesh) {
   }
 }
 
+// The exact decimal expansion of a finite double. A double is
+// m * 2^e with m odd, and 2^-k = 5^k / 10^k, so it terminates after
+// max(0, -e) fractional digits; to_chars is correctly rounded at any
+// precision, so asking for exactly that many digits prints it exactly.
+static std::string ExactDecimal(double x) {
+  CHECK(std::isfinite(x)) << x;
+  if (x == 0.0) return std::signbit(x) ? "-0" : "0";
+  int e2 = 0;
+  const double f = std::frexp(std::fabs(x), &e2);
+  // |x| = m * 2^(e2 - 53) with m < 2^53 an integer (also for subnormals).
+  const uint64_t m = (uint64_t)std::ldexp(f, 53);
+  const int e = e2 - 53 + std::countr_zero(m);
+  const int frac = std::max(0, -e);
+  std::string buf(frac + 400, '\0');
+  auto [ptr, ec] = std::to_chars(buf.data(), buf.data() + buf.size(), x,
+                                 std::chars_format::fixed, frac);
+  CHECK(ec == std::errc());
+  buf.resize(ptr - buf.data());
+  return buf;
+}
+
 void SaveAsSTL(const TriangularMesh3D &mesh, std::string_view filename,
-               std::string_view name, bool quiet) {
+               std::string_view name, bool quiet, bool exact) {
   std::string solid_name = name.empty() ? "mesh" : std::string(name);
   std::string contents = std::format("solid {}\n", solid_name);
 
@@ -280,9 +306,14 @@ void SaveAsSTL(const TriangularMesh3D &mesh, std::string_view filename,
     AppendFormat(&contents, "  facet normal {} {} {}\n",
                   normal.x, normal.y, normal.z);
     AppendFormat(&contents, "    outer loop\n");
-    AppendFormat(&contents, "      vertex {} {} {}\n", p0.x, p0.y, p0.z);
-    AppendFormat(&contents, "      vertex {} {} {}\n", p1.x, p1.y, p1.z);
-    AppendFormat(&contents, "      vertex {} {} {}\n", p2.x, p2.y, p2.z);
+    for (const vec3 *p : {&p0, &p1, &p2}) {
+      if (exact) {
+        AppendFormat(&contents, "      vertex {} {} {}\n",
+                     ExactDecimal(p->x), ExactDecimal(p->y), ExactDecimal(p->z));
+      } else {
+        AppendFormat(&contents, "      vertex {} {} {}\n", p->x, p->y, p->z);
+      }
+    }
     AppendFormat(&contents, "    endloop\n");
     AppendFormat(&contents, "  endfacet\n");
   }
