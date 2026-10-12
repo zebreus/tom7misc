@@ -16,6 +16,7 @@ InlayHints:
 # clangd yourself.
 
 # -DWIN32
+# -DOSX
 
 CompileFlags:
-  Add: [-xc++, -DOSX, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -I/opt/homebrew/include/SDL, -D_THREAD_SAFE]
+  Add: [-xc++, -DWIN32, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -I/opt/homebrew/include/SDL, -D_THREAD_SAFE]

@@ -27,6 +27,7 @@
 #include "message.h"
 #include "player.h"
 #include "sdl/sdlutil.h"
+#include "startup.h"
 #include "textscroll.h"
 #include "util.h"
 

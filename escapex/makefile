@@ -19,7 +19,8 @@ SDLUTILOBJECTS=$(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
 # cc-lib assumes it can include something like "base/macros.h"
 CCLIB_INCLUDES= -I ../cc-lib
 CCLIB_TLS=$(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/crypt/tls.o $(CC_LIB)/crypt/asn1.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha1.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/crypt/multi-rsa.o $(CC_LIB)/tls-client.o $(CC_LIB)/hexdump.o
-CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o
+
+CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
 
 ifdef LINUX
 # makefile for linux
@@ -281,15 +282,17 @@ ifdef WIN32
 default : escape.exe
 
 # Depending on your installation, this may work better for you...
-# CXX=g++
-# CC=gcc
-# WINDRES=windres
+CXX=g++
+CC=gcc
+WINDRES=windres
 # But this is how Tom compiles, specifically requesting the 64-bit compiler.
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
-WINDRES=x86_64-w64-mingw32-windres
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-g++
+# WINDRES=x86_64-w64-mingw32-windres
 
 CPPFLAGS=-O2 -I .
+
+SOCK_LFLAGS=-lws2_32
 
 # point this at the SDL (1.2 series) installation. You need to compile
 # SDL in there too; we just link in the object files.
@@ -334,7 +337,7 @@ release_check = \
 	$(if $(filter windows,${SUBSYSTEM}),,\
 	$(error SUBSYSTEM is ${SUBSYSTEM} -- do not release in console mode!))
 
-LDFLAGS =  -L. ${LINKSDL} -m64 -Wl,--subsystem,${SUBSYSTEM} ${OPT}  -static
+LDFLAGS =  -L. $(LINKSDL) $(SOCK_LFLAGS) -m64 -Wl,--subsystem,${SUBSYSTEM} ${OPT}  -static
 
 # -lSDL_mixer
 # at end  -lvorbisfile -lvorbis -logg
@@ -509,7 +512,7 @@ wc :
 	wc -l *.cc *.h
 
 clean :
-	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.*
+	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(CCLIBOBJECTS)
 
 # end mingw makefile
 endif
@@ -526,6 +529,8 @@ CC=gcc
 WINDRES=windres
 
 CFLAGS=--std=c11 -O2 -I .
+
+SOCK_LFLAGS=-lws2_32
 
 # point this at the SDL (1.2 series) installation. You need to compile
 # SDL in there too; we just link in the object files.
@@ -577,7 +582,7 @@ release_check = \
 	$(if $(filter windows,$(SUBSYSTEM)),,\
 	$(error SUBSYSTEM is $(SUBSYSTEM) -- do not release in console mode!))
 
-LDFLAGS =  -L. $(LINKSDL) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
+LDFLAGS =  -L. $(LINKSDL) $(SOCK_LFLAGS) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
 
 # -lSDL_mixer
 # at end  -lvorbisfile -lvorbis -logg
@@ -654,10 +659,10 @@ packpng.o : packpng.cc
 	$(CXX) $(CXXFLAGS) -c -o $@ $^
 
 packpng.exe : packpng.o $(CCLIBOBJECTS)
-	$(CXX) -o $@ $^ -static
+	$(CXX) $(LDFLAGS) -o $@ $^ -static
 
 screenshot.exe : $(ESCLIBOBJECTS) $(CCLIBOBJECTS) screenshot.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -static
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^ -static
 
 .dummy :
 
