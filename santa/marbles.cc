@@ -85,7 +85,7 @@ struct RevealShort : public RevealPolicy {
 };
 
 struct RevealLong : public RevealPolicy {
-  std::string_view Name() const override { return "short"; }
+  std::string_view Name() const override { return "long"; }
   bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const override {
     return !sh.Reveal(marbles, idx1, idx2);
   }
@@ -187,12 +187,211 @@ struct AssignParen : public AssignmentPolicy {
   }
 };
 
+
+
+struct AssignRepair : public AssignmentPolicy {
+  std::string_view Name() const override { return "repair"; }
+  std::vector<std::pair<int, int>> GetAssignment(
+      int num_players,
+      const std::vector<int> &marbles) const override {
+
+    // * Take the same "matching parenthesis" matching as above,
+    // using the first rotation that never goes negative.
+
+    // Edge between giver and receiver. A relative offset. Points
+    // forward (positive) for giving marbles (private) or backwards
+    // (negative) for receiving marbles (declared).
+    std::vector<int> edge;
+
+    const int n = num_players * 2;
+    CHECK(marbles.size() == n);
+    edge.resize(n, 0);
+
+    int current_sum = 0;
+    int min_sum = 0;
+    int min_idx = -1;
+    for (int i = 0; i < n; i++) {
+      current_sum += (marbles[i] < 0 ? 1 : -1);
+      if (current_sum < min_sum) {
+        min_sum = current_sum;
+        min_idx = i;
+      }
+    }
+
+    int start_idx = min_idx + 1;
+
+    std::vector<int> open_stack;
+    open_stack.reserve(num_players);
+
+    for (int i = 0; i < n; i++) {
+      int idx = (start_idx + i) % n;
+      int m = marbles[idx];
+      if (m < 0) {
+        open_stack.push_back(i);
+      } else {
+        CHECK(!open_stack.empty());
+        int open_i = open_stack.back();
+        open_stack.pop_back();
+        int dist = i - open_i;
+        int open_idx = (start_idx + open_i) % n;
+        edge[open_idx] = dist;
+        edge[idx] = -dist;
+      }
+    }
+
+    // Now we have an assignment, but we want to reduce the
+    // probability of self-assignment. We do that by shortening edges
+    // that are too long (we ask that participants reveal the marble
+    // that makes the gap after that marble longest, meaning that the
+    // n/2-1 marbles after them are not their own). We need a
+    // deterministic algorithm.
+
+    int attempts_left = num_players * num_players;
+
+    const int SAFE_EDGE = num_players;
+
+    auto SetFwdEdge = [&edge, n](int idx, int len) {
+        CHECK(idx >= 0 && idx < n);
+        // 0-length edges are prohibited.
+        CHECK(len > 0 && len < n - 1);
+
+        edge[idx] = len;
+        edge[(idx + len) % n] = -len;
+      };
+
+
+    while (attempts_left--) {
+      int neediest_idx = -1;
+
+      for (int i = 0; i < edge.size(); i++) {
+        CHECK(edge[i] != 0);
+        if (edge[i] > 0) {
+          // Only consider the forward edges.
+          if (edge[i] > SAFE_EDGE) {
+            // Take longest unsafe edge, breaking ties by the
+            // earliest (in original marble order).
+            if (neediest_idx == -1 || edge[i] > edge[neediest_idx]) {
+              neediest_idx = i;
+            }
+          }
+        }
+      }
+
+      // Success.
+      if (neediest_idx == -1) break;
+
+      // Now we swap the edge to make it shorter.
+      // There are multiple ways we could do this, but an easy
+      // way to know we are making it shorter (without creating
+      // a new problem) is to swap it with a pair that is
+      // contained entirely within the interval. So try that
+      // first.
+
+      constexpr bool ONLY_CONSERVATIVE = false;
+
+      if (ONLY_CONSERVATIVE) {
+        const int long_edge = neediest_idx;
+        const int long_edge_len = edge[long_edge];
+        for (int i = 1; i < long_edge_len; i++) {
+          int cand = (long_edge + i) % n;
+          const int cand_len = edge[cand];
+          // forward edges only
+          if (cand_len > 0) {
+            if (i + cand_len < long_edge_len) {
+              // Useful swap. Take it.
+              SetFwdEdge(neediest_idx, i + cand_len);
+              SetFwdEdge(cand, long_edge_len - i);
+              goto ok;
+            }
+          }
+        }
+
+      } else {
+        // As above, but the swap with the candidate that
+        // minimizes the two lengths after the swap.
+        //   We could use:
+        //     * The sum (this is just the candidate's length)
+        //     * Sum of squares
+        //     * Max
+        enum Metric {
+          MINIMIZE_SUM,
+          MINIMIZE_SUM_SQ,
+          MINIMIZE_MAX,
+        };
+        constexpr Metric METRIC = MINIMIZE_SUM;
+
+        const int long_edge = neediest_idx;
+        const int long_edge_len = edge[long_edge];
+        int best_i = -1;
+        int best_sum = n * 2 + 1;
+        for (int i = 1; i < long_edge_len; i++) {
+          int cand = (long_edge + i) % n;
+          const int cand_len = edge[cand];
+
+          // forward edges only
+          if (cand_len > 0) {
+            if (i + cand_len < long_edge_len) {
+              int new_len1 = i + cand_len;
+              int new_len2 = long_edge_len - i;
+              // The sum of the above is just cand_len.
+              int sum = [&]{
+                  switch (METRIC) {
+                  case MINIMIZE_SUM: return cand_len;
+                  case MINIMIZE_SUM_SQ: return new_len1 * new_len1 + new_len2 * new_len2;
+                  case MINIMIZE_MAX: return std::max(new_len1, new_len2);
+                  default:
+                    LOG(FATAL) << "Bad metric?";
+                    return 0;
+                  }
+                }();
+
+              if (best_i == -1 || sum < best_sum) {
+                best_i = i;
+                best_sum = sum;
+              }
+            }
+          }
+        }
+
+        if (best_i != -1) {
+          int cand = (long_edge + best_i) % n;
+          const int cand_len = edge[cand];
+          SetFwdEdge(neediest_idx, best_i + cand_len);
+          SetFwdEdge(cand, long_edge_len - best_i);
+          goto ok;
+        }
+
+      }
+
+
+      // TODO: Can have other fallback policies here.
+
+    ok:;
+    }
+
+    std::vector<std::pair<int, int>> ret;
+    ret.reserve(num_players);
+    for (int i = 0; i < n; i++) {
+      if (edge[i] > 0) {
+        int giver = -marbles[i];
+        int receiver = marbles[(i + edge[i]) % n];
+        CHECK(giver > 0 && receiver > 0);
+        ret.push_back({giver, receiver});
+      }
+    }
+
+    return ret;
+  }
+
+};
+
+
 static void Simulate() {
   ArcFour rc("marbles");
 
   // Configure the algorithm.
   std::unique_ptr<RevealPolicy> rpolicy(new RevealShort);
-  std::unique_ptr<AssignmentPolicy> apolicy(new AssignParen);
+  std::unique_ptr<AssignmentPolicy> apolicy(new AssignRepair);
 
 
   Print("Reveal: {}\tAssign: {}\n",
