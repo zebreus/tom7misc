@@ -22,6 +22,12 @@
 // Nonzero integer. They come in pairs of x and -x.
 using Marble = int;
 
+struct RevealPolicy {
+  virtual std::string_view Name() const = 0;
+  virtual bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const = 0;
+  virtual ~RevealPolicy() {}
+};
+
 // Apply policy to reveal your marble.
 // The positive marble is the one that's revealed,
 // so we express our choice by swapping our marbles
@@ -31,82 +37,102 @@ using Marble = int;
 
 // This one never swaps, as though we picked the marble
 // to reveal ahead of time.
-[[maybe_unused]]
-bool RevealFixed(const std::vector<Marble> &marbles, int idx1, int idx2) {
-  return false;
-}
+struct RevealFixed : public RevealPolicy {
+  std::string_view Name() const override { return "fixed"; }
+  bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const override {
+    return false;
+  }
+};
 
 // If the marbles are adjacent (modularly) then reveal the
 // first one.
-[[maybe_unused]]
-bool RevealNotAdjacent(const std::vector<Marble> &marbles, int idx1, int idx2) {
-  bool adjacent = (idx1 + 1) % marbles.size() == idx2;
-  int m1 = marbles[idx1];
-  int m2 = marbles[idx2];
-  CHECK((m1 < 0 && m2 > 0) ||
-        (m1 > 0 && m2 < 0));
-  // swap in just this situation
-  if (adjacent && m1 < 0) return true;
-  return false;
-}
+struct RevealNotAdjacent : public RevealPolicy {
+  std::string_view Name() const override { return "not-adjacent"; }
+  bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const override {
+    bool adjacent = (idx1 + 1) % marbles.size() == idx2;
+    int m1 = marbles[idx1];
+    int m2 = marbles[idx2];
+    CHECK((m1 < 0 && m2 > 0) ||
+          (m1 > 0 && m2 < 0));
+    // swap in just this situation
+    if (adjacent && m1 < 0) return true;
+    return false;
+  }
+};
 
 // There are two gaps between marbles (considered modularly): The short
 // gap and the long gap. Consider the short gap. This reveals the marble
 // at the beginning of the short gap.
-[[maybe_unused]]
-bool RevealShort(const std::vector<Marble> &marbles, int idx1, int idx2) {
-  int n = marbles.size();
-  int m1 = marbles[idx1];
-  int m2 = marbles[idx2];
-  CHECK((m1 < 0 && m2 > 0) ||
-        (m1 > 0 && m2 < 0));
+struct RevealShort : public RevealPolicy {
+  std::string_view Name() const override { return "short"; }
+  bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const override {
+    int n = marbles.size();
+    int m1 = marbles[idx1];
+    int m2 = marbles[idx2];
+    CHECK((m1 < 0 && m2 > 0) ||
+          (m1 > 0 && m2 < 0));
 
-  int dist1 = idx2 - idx1;
-  int dist2 = n - dist1;
+    int dist1 = idx2 - idx1;
+    int dist2 = n - dist1;
 
-  if (dist1 < dist2) {
-    return m1 < 0;
-  } else if (dist2 < dist1) {
-    return m2 < 0;
+    if (dist1 < dist2) {
+      return m1 < 0;
+    } else if (dist2 < dist1) {
+      return m2 < 0;
+    }
+    return false;
   }
-  return false;
-}
+};
 
-[[maybe_unused]]
-bool RevealLong(const std::vector<Marble> &marbles, int idx1, int idx2) {
-  return !RevealShort(marbles, idx1, idx2);
-}
+struct RevealLong : public RevealPolicy {
+  std::string_view Name() const override { return "short"; }
+  bool Reveal(const std::vector<Marble> &marbles, int idx1, int idx2) const override {
+    return !sh.Reveal(marbles, idx1, idx2);
+  }
 
+ private:
+  const RevealShort sh;
+};
 
 // Policy for extracting the assignment (as edges from (giver, receiver))
 // from the marbles.
-[[maybe_unused]]
-std::vector<std::pair<int, int>> GetAssignmentOrdered(
-    int num_players,
-    const std::vector<int> &marbles) {
-  CHECK(marbles.size() == num_players * 2);
-  std::vector<int> declared, secret;
-  declared.reserve(num_players);
-  secret.reserve(num_players);
-  for (int m : marbles) {
-    if (m < 0) secret.push_back(m);
-    else declared.push_back(m);
+struct AssignmentPolicy {
+  virtual std::string_view Name() const = 0;
+  virtual std::vector<std::pair<int, int>> GetAssignment(
+      int num_players,
+      const std::vector<int> &marbles) const = 0;
+  virtual ~AssignmentPolicy() {}
+};
+
+struct AssignOrdered : public AssignmentPolicy  {
+  std::string_view Name() const override { return "ordered"; }
+  std::vector<std::pair<int, int>> GetAssignment(
+      int num_players,
+      const std::vector<int> &marbles) const override {
+    CHECK(marbles.size() == num_players * 2);
+    std::vector<int> declared, secret;
+    declared.reserve(num_players);
+    secret.reserve(num_players);
+    for (int m : marbles) {
+      if (m < 0) secret.push_back(m);
+      else declared.push_back(m);
+    }
+
+    std::vector<std::pair<int, int>> ret;
+    ret.reserve(num_players);
+
+    // Each player computes their position in the secret list,
+    // and that tells them the position of their recipient in
+    // the declared list.
+    for (int pos = 0; pos < secret.size(); pos++) {
+      int giver = -secret[pos];
+      int receiver = declared[pos];
+      ret.push_back({giver, receiver});
+    }
+
+    return ret;
   }
-
-  std::vector<std::pair<int, int>> ret;
-  ret.reserve(num_players);
-
-  // Each player computes their position in the secret list,
-  // and that tells them the position of their recipient in
-  // the declared list.
-  for (int pos = 0; pos < secret.size(); pos++) {
-    int giver = -secret[pos];
-    int receiver = declared[pos];
-    ret.push_back({giver, receiver});
-  }
-
-  return ret;
-}
+};
 
 // Assignment policy: Consider secret marbles to be "open parens"
 // and declared marbles to be "close parens". Think of the string
@@ -117,50 +143,61 @@ std::vector<std::pair<int, int>> GetAssignmentOrdered(
 // such position. This string gives us the assignment: The owner
 // of the secret marble (open paren) gives to the owner of the
 // declared marble (matching close paren).
-[[maybe_unused]]
-std::vector<std::pair<int, int>> GetAssignmentParen(
-    int num_players,
-    const std::vector<int> &marbles) {
-  CHECK(marbles.size() == num_players * 2);
-  int n = num_players * 2;
+struct AssignParen : public AssignmentPolicy {
+  std::string_view Name() const override { return "paren"; }
+  std::vector<std::pair<int, int>> GetAssignment(
+      int num_players,
+      const std::vector<int> &marbles) const override {
+    CHECK(marbles.size() == num_players * 2);
+    int n = num_players * 2;
 
-  int current_sum = 0;
-  int min_sum = 0;
-  int min_idx = -1;
-  for (int i = 0; i < n; i++) {
-    current_sum += (marbles[i] < 0 ? 1 : -1);
-    if (current_sum < min_sum) {
-      min_sum = current_sum;
-      min_idx = i;
+    int current_sum = 0;
+    int min_sum = 0;
+    int min_idx = -1;
+    for (int i = 0; i < n; i++) {
+      current_sum += (marbles[i] < 0 ? 1 : -1);
+      if (current_sum < min_sum) {
+        min_sum = current_sum;
+        min_idx = i;
+      }
     }
-  }
 
-  int start_idx = min_idx + 1;
+    int start_idx = min_idx + 1;
 
-  std::vector<std::pair<int, int>> ret;
-  ret.reserve(num_players);
-  std::vector<int> open_stack;
-  open_stack.reserve(num_players);
+    std::vector<std::pair<int, int>> ret;
+    ret.reserve(num_players);
+    std::vector<int> open_stack;
+    open_stack.reserve(num_players);
 
-  for (int i = 0; i < n; i++) {
-    int idx = (start_idx + i) % n;
-    int m = marbles[idx];
-    if (m < 0) {
-      open_stack.push_back(-m);
-    } else {
-      CHECK(!open_stack.empty());
-      int giver = open_stack.back();
-      open_stack.pop_back();
-      int receiver = m;
-      ret.push_back({giver, receiver});
+    for (int i = 0; i < n; i++) {
+      int idx = (start_idx + i) % n;
+      int m = marbles[idx];
+      if (m < 0) {
+        open_stack.push_back(-m);
+      } else {
+        CHECK(!open_stack.empty());
+        int giver = open_stack.back();
+        open_stack.pop_back();
+        int receiver = m;
+        ret.push_back({giver, receiver});
+      }
     }
-  }
 
-  return ret;
-}
+    return ret;
+  }
+};
 
 static void Simulate() {
   ArcFour rc("marbles");
+
+  // Configure the algorithm.
+  std::unique_ptr<RevealPolicy> rpolicy(new RevealShort);
+  std::unique_ptr<AssignmentPolicy> apolicy(new AssignParen);
+
+
+  Print("Reveal: {}\tAssign: {}\n",
+        rpolicy->Name(),
+        apolicy->Name());
 
   // output in TSV format
   Print("players\tvalid\tself recpt.\tmutual gift\tsingle cycle\n");
@@ -192,13 +229,13 @@ static void Simulate() {
         }
 
         CHECK(v.size() == 2 && v[0] < v[1]) << "Bug";
-        if (RevealShort(marbles, v[0], v[1])) {
+        if (rpolicy->Reveal(marbles, v[0], v[1])) {
           std::swap(marbles[v[0]], marbles[v[1]]);
         }
       }
 
       std::vector<std::pair<int, int>> assignment =
-        GetAssignmentParen(num_players, marbles);
+        apolicy->GetAssignment(num_players, marbles);
 
       std::vector<int> next_node(num_players + 1, 0);
       bool has_self_recipient = false;
