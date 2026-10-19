@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -248,7 +249,8 @@ struct AssignRepair : public AssignmentPolicy {
 
     int attempts_left = num_players * num_players;
 
-    const int SAFE_EDGE = num_players;
+    // An edge of this length might be a self-edge.
+    const int UNSAFE_EDGE = num_players;
 
     auto SetFwdEdge = [&edge, n](int idx, int len) {
         CHECK(idx >= 0 && idx < n);
@@ -261,112 +263,120 @@ struct AssignRepair : public AssignmentPolicy {
 
 
     while (attempts_left--) {
-      int neediest_idx = -1;
-
+      // Collect all unsafe forward edges, so that we can
+      // continue through the list even if an early one cannot
+      // currently be repaired.
+      std::vector<int> unsafe;
       for (int i = 0; i < edge.size(); i++) {
         CHECK(edge[i] != 0);
-        if (edge[i] > 0) {
-          // Only consider the forward edges.
-          if (edge[i] > SAFE_EDGE) {
-            // Take longest unsafe edge, breaking ties by the
-            // earliest (in original marble order).
-            if (neediest_idx == -1 || edge[i] > edge[neediest_idx]) {
-              neediest_idx = i;
-            }
-          }
+        if (edge[i] >= UNSAFE_EDGE) {
+          unsafe.push_back(i);
         }
       }
 
       // Success.
-      if (neediest_idx == -1) break;
+      if (unsafe.empty()) break;
 
-      // Now we swap the edge to make it shorter.
-      // There are multiple ways we could do this, but an easy
-      // way to know we are making it shorter (without creating
-      // a new problem) is to swap it with a pair that is
-      // contained entirely within the interval. So try that
-      // first.
+      // Try longest unsafe edges first, breaking ties by the
+      // earliest (in original marble order).
+      std::sort(unsafe.begin(), unsafe.end(),
+                [&edge](int a, int b) {
+                  if (edge[a] != edge[b]) return edge[a] > edge[b];
+                  return a < b;
+                });
 
-      constexpr bool ONLY_CONSERVATIVE = false;
+      const bool improved = [&]{
+        for (int neediest_idx : unsafe) {
+          // Now we swap the edge to make it shorter.
+          // There are multiple ways we could do this, but an easy
+          // way to know we are making it shorter (without creating
+          // a new problem) is to swap it with a pair that is
+          // contained entirely within the interval. So try that
+          // first.
 
-      if (ONLY_CONSERVATIVE) {
-        const int long_edge = neediest_idx;
-        const int long_edge_len = edge[long_edge];
-        for (int i = 1; i < long_edge_len; i++) {
-          int cand = (long_edge + i) % n;
-          const int cand_len = edge[cand];
-          // forward edges only
-          if (cand_len > 0) {
-            if (i + cand_len < long_edge_len) {
-              // Useful swap. Take it.
-              SetFwdEdge(neediest_idx, i + cand_len);
-              SetFwdEdge(cand, long_edge_len - i);
-              goto ok;
-            }
-          }
-        }
+          constexpr bool ONLY_CONSERVATIVE = false;
 
-      } else {
-        // As above, but the swap with the candidate that
-        // minimizes the two lengths after the swap.
-        //   We could use:
-        //     * The sum (this is just the candidate's length)
-        //     * Sum of squares
-        //     * Max
-        enum Metric {
-          MINIMIZE_SUM,
-          MINIMIZE_SUM_SQ,
-          MINIMIZE_MAX,
-        };
-        constexpr Metric METRIC = MINIMIZE_SUM;
-
-        const int long_edge = neediest_idx;
-        const int long_edge_len = edge[long_edge];
-        int best_i = -1;
-        int best_sum = n * 2 + 1;
-        for (int i = 1; i < long_edge_len; i++) {
-          int cand = (long_edge + i) % n;
-          const int cand_len = edge[cand];
-
-          // forward edges only
-          if (cand_len > 0) {
-            if (i + cand_len < long_edge_len) {
-              int new_len1 = i + cand_len;
-              int new_len2 = long_edge_len - i;
-              // The sum of the above is just cand_len.
-              int sum = [&]{
-                  switch (METRIC) {
-                  case MINIMIZE_SUM: return cand_len;
-                  case MINIMIZE_SUM_SQ: return new_len1 * new_len1 + new_len2 * new_len2;
-                  case MINIMIZE_MAX: return std::max(new_len1, new_len2);
-                  default:
-                    LOG(FATAL) << "Bad metric?";
-                    return 0;
-                  }
-                }();
-
-              if (best_i == -1 || sum < best_sum) {
-                best_i = i;
-                best_sum = sum;
+          if (ONLY_CONSERVATIVE) {
+            const int long_edge = neediest_idx;
+            const int long_edge_len = edge[long_edge];
+            for (int i = 1; i < long_edge_len; i++) {
+              int cand = (long_edge + i) % n;
+              const int cand_len = edge[cand];
+              // forward edges only
+              if (cand_len > 0) {
+                if (i + cand_len < long_edge_len) {
+                  // Useful swap. Take it.
+                  SetFwdEdge(neediest_idx, i + cand_len);
+                  SetFwdEdge(cand, long_edge_len - i);
+                  return true;
+                }
               }
             }
+
+          } else {
+            // As above, but the swap with the candidate that
+            // minimizes the two lengths after the swap.
+            //   We could use:
+            //     * The sum (this is just the candidate's length)
+            //     * Sum of squares
+            //     * Max
+            enum Metric {
+              MINIMIZE_SUM,
+              MINIMIZE_SUM_SQ,
+              MINIMIZE_MAX,
+            };
+            constexpr Metric METRIC = MINIMIZE_SUM;
+
+            const int long_edge = neediest_idx;
+            const int long_edge_len = edge[long_edge];
+            int best_i = -1;
+            int best_sum = n * 2 + 1;
+            for (int i = 1; i < long_edge_len; i++) {
+              int cand = (long_edge + i) % n;
+              const int cand_len = edge[cand];
+
+              // forward edges only
+              if (cand_len > 0) {
+                if (i + cand_len < long_edge_len) {
+                  int new_len1 = i + cand_len;
+                  int new_len2 = long_edge_len - i;
+                  // The sum of the above is just cand_len.
+                  int sum = [&]{
+                      switch (METRIC) {
+                      case MINIMIZE_SUM: return cand_len;
+                      case MINIMIZE_SUM_SQ:
+                        return new_len1 * new_len1 + new_len2 * new_len2;
+                      case MINIMIZE_MAX: return std::max(new_len1, new_len2);
+                      default:
+                        LOG(FATAL) << "Bad metric?";
+                        return 0;
+                      }
+                    }();
+
+                  if (best_i == -1 || sum < best_sum) {
+                    best_i = i;
+                    best_sum = sum;
+                  }
+                }
+              }
+            }
+
+            if (best_i != -1) {
+              int cand = (long_edge + best_i) % n;
+              const int cand_len = edge[cand];
+              SetFwdEdge(neediest_idx, best_i + cand_len);
+              SetFwdEdge(cand, long_edge_len - best_i);
+              return true;
+            }
           }
+
+          // TODO: Can have other fallback policies here.
         }
+        return false;
+      }();
 
-        if (best_i != -1) {
-          int cand = (long_edge + best_i) % n;
-          const int cand_len = edge[cand];
-          SetFwdEdge(neediest_idx, best_i + cand_len);
-          SetFwdEdge(cand, long_edge_len - best_i);
-          goto ok;
-        }
-
-      }
-
-
-      // TODO: Can have other fallback policies here.
-
-    ok:;
+      // Nothing could be improved.
+      if (!improved) break;
     }
 
     std::vector<std::pair<int, int>> ret;
