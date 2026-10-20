@@ -277,6 +277,15 @@ static void TestStructure() {
   CheckPoly(NAntiPrism(4, 1.0), 8, 16, 10);
 
   CheckPoly(Noperthedron(), 90, 240, 152);
+  {
+    // The vertices are C1 (norm 1) and C2, C3 (norms in (0.98, 0.99))
+    // under rotations (Steininger-Yurkevich Def. 6, as formalized).
+    Polyhedron nop = Noperthedron();
+    for (const auto &v : nop.vertices) {
+      const double r = yocto::length(v);
+      CHECK((r > 0.98 && r < 0.99) || std::abs(r - 1.0) < 1.0e-12) << r;
+    }
+  }
 
   CheckPoly(Septopert(), 7, 15, 10);
   CheckPoly(Triakis1120(), 8, 18, 12);
