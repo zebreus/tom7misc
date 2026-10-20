@@ -35,11 +35,10 @@ static std::string_view InternalModelName(Model model) {
   switch (model) {
   default:
     LOG(FATAL) << "Bad model?";
-  case Model::GEMINI_BEST: return "gemini-pro-latest";
-    // Supposedly the best until there's a 3.5 pro, but
-    // anecdotally it makes more objective mistakes (e.g.
-    // malformed json)
-    // case Model::GEMINI_BEST: return "gemini-3.5-flash";
+  case Model::GEMINI_BEST:
+    // Tried and true, but likely just outdated now.
+    // return "gemini-pro-latest";
+    return "gemini-4-argon";
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
     // Careful: It doesn't work!
   case Model::GEMINI_FASTEST: return "gemini-flash-lite-latest";

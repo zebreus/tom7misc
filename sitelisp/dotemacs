@@ -1438,6 +1438,10 @@
 
 (add-hook 'after-save-hook #'auto-recompile-elisp)
 
+;; return in markdown tables is terrible; turn it off
+(with-eval-after-load 'markdown-ts-mode
+  (keymap-unset markdown-ts-in-table-mode-map "<return>" t))
+
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
@@ -1629,6 +1633,7 @@
  '(js-curly-indent-offset 0)
  '(js-expr-indent-offset 2)
  '(js-indent-level 2)
+ '(package-selected-packages '(nael))
  '(password-cache-expiry 21600)
  '(show-paren-delay 0.0)
  '(show-paren-style 'expression)
