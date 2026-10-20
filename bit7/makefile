@@ -3,7 +3,21 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd fixedersys2xbold.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe wikipedia-unicode.exe unicoderange.exe combining.exe
 
-# Not reinstall.exe by default since it is windows-specific.
+# Not reinstall.exe by default since it only supports Windows and Mac.
+
+UNAME := $(shell uname -s)
+ifeq ($(findstring MINGW,$(UNAME)),MINGW)
+PLATFORM_LFLAGS=-static
+REINSTALL_LIBS=-lgdi32 -ladvapi32 -luser32
+else ifeq ($(findstring MSYS,$(UNAME)),MSYS)
+PLATFORM_LFLAGS=-static
+REINSTALL_LIBS=-lgdi32 -ladvapi32 -luser32
+else
+# mac, linux
+CC=clang
+PLATFORM_CXXFLAGS := -stdlib=libc++
+REINSTALL_LIBS=
+endif
 
 # ASAN=true
 
@@ -16,8 +30,8 @@ endif
 
 CC_LIB=../cc-lib
 
-CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I$(CC_LIB)
-LFLAGS=$(OPTFLAGS) -static
+CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I$(CC_LIB) $(PLATFORM_CXXFLAGS)
+LFLAGS=$(OPTFLAGS) $(PLATFORM_LFLAGS)
 
 CCLIB_OBJECTS=$(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/unicode-data.o
 
@@ -78,6 +92,9 @@ merge2x.exe : merge2x.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 	./makesfd.exe dfx-pasement.cfg $@
 
+dfx-wetar.sfd : dfx-wetar.png dfx-wetar.cfg makesfd.exe
+	./makesfd.exe dfx-wetar.cfg $@
+
 dfx-snooty.sfd : dfx-snooty.png dfx-snooty.cfg makesfd.exe
 	./makesfd.exe dfx-snooty.cfg $@
 
@@ -125,7 +142,7 @@ getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_O
 	$(CXX) $(LFLAGS) $^ -o $@
 
 reinstall.exe : reinstall.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
-	$(CXX) $(LFLAGS) $^ -o $@ -lgdi32 -ladvapi32 -luser32
+	$(CXX) $(LFLAGS) $^ -o $@ $(REINSTALL_LIBS)
 
 WIKIPEDIA_OBJECTS = $(CC_LIB)/wikipedia.o $(RE2_OBJECTS)
 

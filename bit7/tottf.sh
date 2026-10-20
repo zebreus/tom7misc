@@ -3,15 +3,23 @@
 # See:
 # https://fontforge.org/docs/scripting/scripting-alpha.html
 
-FONTFORGE="/c/Program Files (x86)/FontForgeBuilds/bin/fontforge.exe"
+if command -v fontforge >/dev/null 2>&1; then
+    FONTFORGE="fontforge"
+    INPUT_SFD="$1"
+    OUTPUT_TTF="$2"
+else
+    # Windows.
+    FONTFORGE="/c/Program Files (x86)/FontForgeBuilds/bin/fontforge.exe"
+    # Also need to convert paths.
+    INPUT_SFD=$(cygpath -w "$1")
+    OUTPUT_TTF=$(cygpath -w "$2")
+fi
 
 if [ "$#" -ne 2 ]; then
     echo "Usage: $0 font.sfd font.ttf"
     exit 1
 fi
 
-INPUT_SFD=$(cygpath -w "$1")
-OUTPUT_TTF=$(cygpath -w "$2")
 
 FONTFORGE_VERBOSE=1
 

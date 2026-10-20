@@ -20,6 +20,8 @@ right stem compared to latin u.
 
  ⧉ index
 
+⇒
+
 ☒ History  ☒ Upstream  ☐ Naming  ✔ Submit
 
 10⁻² to 10⁻⁰·⁵,
@@ -32,10 +34,6 @@ Seen in the wild (pip install): ╸
 from more box drawing chars: https://www.compart.com/en/unicode/block/U+2500
 
 ⛁ draughts (tokens)
-
-from htop:
-HR S  CPU%▽MEM%
-R S  CPU%△MEM%
 
 ▸ U+25B8
 
