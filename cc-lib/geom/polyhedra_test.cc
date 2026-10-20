@@ -158,10 +158,13 @@ static void TestStructure() {
       CHECK(p.faces.get() != nullptr);
       const Faces &faces = *p.faces;
 
-      CHECK((int)p.vertices.size() == vs);
+      CHECK((int)p.vertices.size() == vs) <<
+        p.name << ": Got " << p.vertices.size() << " want " << vs;
       CHECK(faces.NumVertices() == vs);
-      CHECK((int)faces.v.size() == fs);
-      CHECK((int)faces.edges.size() == es);
+      CHECK((int)faces.edges.size() == es) <<
+        p.name << ": Got " << faces.edges.size() << " want " << es;
+      CHECK((int)faces.v.size() == fs) <<
+        p.name << ": Got " << faces.v.size() << " want " << fs;
 
       // Euler characteristic: V - E + F = 2
       CHECK(vs - es + fs == 2);
@@ -274,6 +277,9 @@ static void TestStructure() {
   CheckPoly(NAntiPrism(4, 1.0), 8, 16, 10);
 
   CheckPoly(Noperthedron(), 90, 240, 152);
+
+  CheckPoly(Septopert(), 7, 15, 10);
+  CheckPoly(Triakis1120(), 8, 18, 12);
 }
 
 static void TestGetByName() {
@@ -281,6 +287,7 @@ static void TestGetByName() {
   CHECK(po.has_value());
   CHECK(po.value().faces->NumFaces() == 6);
   CHECK(po.value().faces->NumVertices() == 8);
+
 
   CHECK(!PolyhedronByName("").has_value());
   CHECK(!PolyhedronByName("fakeohedron").has_value());

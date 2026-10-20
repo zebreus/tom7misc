@@ -328,9 +328,14 @@ Polyhedron DisdyakisTriacontahedron();
 Polyhedron PentagonalHexecontahedron();
 
 // Other special
+// Noperthedron, the first Nopert proved (Yurkevich, Steininger)
 Polyhedron Noperthedron();
+// Dual of the Noperthedron -- it's easily Rupert!
 Polyhedron Onperthedron();
+// 7-vertex Nopert (Tom 7)
 Polyhedron Septopert();
+// 8-vertex Nopert (Zeng, Renshaw)
+Polyhedron Triakis1120();
 
 // all lowercase, no spaces.
 std::optional<Polyhedron> PolyhedronByName(std::string_view name);

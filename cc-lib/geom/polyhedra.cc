@@ -2801,6 +2801,26 @@ Polyhedron Septopert() {
       SYM_UNKNOWN);
 }
 
+Polyhedron Triakis1120() {
+  constexpr double SCALE = 1.0 / 1048576.0;
+
+  std::vector<vec3> vertices = {
+    vec3{0.5, 0.5, 0.5},
+    {0.5, -0.5, -0.5},
+    {-0.5, 0.5, -0.5},
+    {-0.5, -0.5, 0.5},
+    {-11.0 / 40.0, -11.0 / 40.0, -11.0 / 40.0},
+    {-11.0 / 40.0, 11.0 / 40.0, 11.0 / 40.0},
+    {11.0 / 40.0, -11.0 / 40.0, 11.0 / 40.0},
+    {11.0 / 40.0, 11.0 / 40.0, -11.0 / 40.0},
+  };
+
+  CHECK(vertices.size() == 8);
+  return MakeConvexOrDie(
+      std::move(vertices), "triakis1120",
+      SYM_UNKNOWN);
+}
+
 std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
   if (name == "tetrahedron") return Tetrahedron();
   if (name == "cube") return Cube();
@@ -2837,6 +2857,7 @@ std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
   if (name == "noperthedron") return Noperthedron();
   if (name == "onperthedron") return Onperthedron();
   if (name == "septopert") return Septopert();
+  if (name == "triakis1120") return Triakis1120();
 
   return std::nullopt;
 }

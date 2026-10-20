@@ -8,7 +8,8 @@ CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/
 # OPT=-fsanitize=address -O
 OPT=-O3 $(FLTO)
 
-CXXFLAGS=-I.. $(OPT) -march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g -static
+# -static
+CXXFLAGS=-I.. $(OPT) -march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
