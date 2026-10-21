@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <deque>
 #include <utility>
 #include <vector>
 
@@ -392,7 +393,66 @@ struct AssignRepair : public AssignmentPolicy {
 
     return ret;
   }
+};
 
+// Like AssignParen, but using a queue instead of a stack.
+// This will naturally produce shorter edges in the first place.
+// So we have e.g.  ((()())())((()))
+//                  abcAdBCeDEfghFGH
+// Since (when participants are compliant) the gap is always <= n,
+// the worst case is
+//              88888888
+//      (((((((())))))))
+//      abcdefghABCDEFGH
+// where everybody has a self-gift! But you can get self-gifts
+// without that pessimal arrangement:
+//
+//          4    8887777
+//      (((()(((()))))))
+//      abcdAefghBCDEFGH
+//
+// basically if the running count reaches n, you're in trouble.
+struct AssignFIFO : public AssignmentPolicy {
+  std::string_view Name() const override { return "fifo"; }
+  std::vector<std::pair<int, int>> GetAssignment(
+      int num_players,
+      const std::vector<int> &marbles) const override {
+    CHECK(marbles.size() == num_players * 2);
+    int n = num_players * 2;
+
+    int current_sum = 0;
+    int min_sum = 0;
+    int min_idx = -1;
+    for (int i = 0; i < n; i++) {
+      current_sum += (marbles[i] < 0 ? 1 : -1);
+      if (current_sum < min_sum) {
+        min_sum = current_sum;
+        min_idx = i;
+      }
+    }
+
+    int start_idx = min_idx + 1;
+
+    std::vector<std::pair<int, int>> ret;
+    ret.reserve(num_players);
+    std::deque<int> open_queue;
+
+    for (int i = 0; i < n; i++) {
+      int idx = (start_idx + i) % n;
+      int m = marbles[idx];
+      if (m < 0) {
+        open_queue.push_back(-m);
+      } else {
+        CHECK(!open_queue.empty());
+        int giver = open_queue.front();
+        open_queue.pop_front();
+        int receiver = m;
+        ret.push_back({giver, receiver});
+      }
+    }
+
+    return ret;
+  }
 };
 
 
@@ -401,7 +461,7 @@ static void Simulate() {
 
   // Configure the algorithm.
   std::unique_ptr<RevealPolicy> rpolicy(new RevealShort);
-  std::unique_ptr<AssignmentPolicy> apolicy(new AssignRepair);
+  std::unique_ptr<AssignmentPolicy> apolicy(new AssignFIFO);
 
 
   Print("Reveal: {}\tAssign: {}\n",
@@ -413,7 +473,7 @@ static void Simulate() {
 
   for (int num_players = 3; num_players < 30; num_players++) {
 
-    static constexpr int ROUNDS = 100000;
+    static constexpr int ROUNDS = 10000000;
 
     std::vector<int> marbles;
 
@@ -500,7 +560,7 @@ static void Simulate() {
       }
     }
 
-    Print("{}\t{:.4f}\t{:.4f}\t{:.4f}\t{:.4f}\n",
+    Print("{}\t{:.4f}%\t{:.4f}%\t{:.4f}%\t{:.4f}%\n",
           num_players,
           100.0 * valid_rounds / ROUNDS,
           100.0 * self_recipient_rounds / ROUNDS,
