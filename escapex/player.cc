@@ -358,7 +358,7 @@ void Player_::DeleteOldBackups() {
   if (n > N_BACKUPS) {
 
     string delme = std::format("{}.{}", basename, oldest);
-    if (EscapeUtil::existsfile(delme) && EscapeUtil::remove(delme)) {
+    if (Util::ExistsFile(delme) && EscapeUtil::remove(delme)) {
       /* try deleting again */
       /* printf("deleted backup #%d\n", oldest); */
       DeleteOldBackups();
@@ -373,7 +373,7 @@ bool Player_::WriteFile() {
 
     /* did we already back up in this epoch? */
     string tf = BackupFile(fname, epoch);
-    if (!EscapeUtil::existsfile(tf)) {
+    if (!Util::ExistsFile(tf)) {
       writef_text(tf);
     }
     DeleteOldBackups();

@@ -129,8 +129,8 @@ static void Append(string &s, char *vec, unsigned int l) {
 }
 
 HTTPSResult HTTPS_::Put(string_view path,
-                      const vector<FormEntry> &items,
-                      string &out) {
+                        const vector<FormEntry> &items,
+                        string &out) {
 
   /* large positive randomish number */
   int bnd = 0x10000000 | (0x7FFFFFFE & (EscapeUtil::random()));
@@ -413,19 +413,12 @@ HTTPSResult HTTPS_::ReqGeneral(string req, string &res, bool tofile) {
 
 #define BUFLEN 1024
 
-/* XXX use EscapeUtil::tempfile */
+// XXX better to use mktmp or similar.
 FILE *HTTPS_::TempFile(string &f) {
-  static int call = 0;
-  int pid = EscapeUtil::getpid();
   int tries = 256;
-  call++;
   while (tries--) {
-    std::string fname =
-      std::format("dl{}{:04X}{:04X}.deleteme", call, pid,
-                  (int)(0xFFFF & EscapeUtil::random()));
-
-    FILE *ret = EscapeUtil::open_new(fname);
-    if (ret) {
+    std::string fname = EscapeUtil::TempFile(f);
+    if (FILE *ret = EscapeUtil::OpenNew(fname)) {
       f = fname;
       return ret;
     }

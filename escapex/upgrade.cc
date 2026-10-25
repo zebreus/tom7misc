@@ -485,7 +485,7 @@ CUResult Upgrader_::checkupgrade(HTTPS *hh,
 #       endif
       } else if (md[0] == '*') {
         /* delete */
-        if (EscapeUtil::existsfile(lfi)) {
+        if (Util::ExistsFile(lfi)) {
           say(Font::pad(fi, 16) +
               (string)RED " (" PICS TRASHCAN POP ")" POP);
           upitem uu;

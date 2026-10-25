@@ -69,12 +69,12 @@ static string normalize(string dir) {
 /* read index, but don't put in table */
 std::unique_ptr<DirIndex> DirCache_::GetIdx(const string &dir_in) {
   const string dir = normalize(dir_in);
-  string ifile = dir + (string)DIRSEP WEBINDEXNAME;
+  string ifile = EscapeUtil::DirPlus(dir, WEBINDEXNAME);
   std::unique_ptr<DirIndex> idx{DirIndex::FromFile(ifile)};
 
   /* also try old name */
   if (idx.get() == nullptr) {
-    idx.reset(DirIndex::FromFile(dir + (string)DIRSEP DIRINDEXNAME));
+    idx.reset(DirIndex::FromFile(EscapeUtil::DirPlus(dir, DIRINDEXNAME)));
   }
   return idx;
 }
@@ -93,7 +93,7 @@ DirIndex *DirCache_::Get(const string &dir_in,
   if (it == table.end()) {
     /* no entry. put it in the cache. */
 
-    if (EscapeUtil::existsfile(dir + DIRSEP + IGNOREFILE)) {
+    if (Util::ExistsFile(EscapeUtil::DirPlus(dir, IGNOREFILE))) {
       /* ignored dir */
       table[dir] = make_unique<DirEntry>(dir, nullptr, 0, 0);
       tot = 0;
@@ -128,7 +128,7 @@ DirIndex *DirCache_::Get(const string &dir_in,
       if (prog) prog(pd, num, total, dir, PROGRESS_TICKS);
 
       string dn = dire->d_name;
-      string ldn = dir + (string)DIRSEP + dn;
+      string ldn = EscapeUtil::DirPlus(dir, dn);
 
       if (Util::IsDir(ldn)) {
 

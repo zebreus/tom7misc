@@ -112,7 +112,7 @@ void subtoggle::DoCheck() {
     /* try to subscribe */
     if (EscapeUtil::existsdir(fname)) {
       /* delete unsub file from dir */
-      if (EscapeUtil::remove(fname + (string)DIRSEP + UNSUBMARKER)) {
+      if (EscapeUtil::remove(EscapeUtil::DirPlus(fname, UNSUBMARKER))) {
 
         checked = true;
 
@@ -138,7 +138,7 @@ void subtoggle::DoCheck() {
     /* try to unsubscribe */
 
     if (Util::WriteFile(
-            fname + (string)DIRSEP + UNSUBMARKER,
+            EscapeUtil::DirPlus(fname, UNSUBMARKER),
             (string)"delete this file to resubscribe to " + fname +
             (string)"\n")) {
 
@@ -265,7 +265,7 @@ SelResult Updater_::SelectCollections(
        subscribed if 'triage' subdir exists
        AND 'triage/unsubscribed' does not exist */
     if (EscapeUtil::existsdir(filename)) {
-      if (EscapeUtil::existsfile(filename + (string)DIRSEP + UNSUBMARKER)) {
+      if (Util::ExistsFile(EscapeUtil::DirPlus(filename, UNSUBMARKER))) {
         b->checked = false;
       } else {
         b->checked = true;

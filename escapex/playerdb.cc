@@ -292,7 +292,7 @@ string PlayerDB_::MakeFilename(string name) {
      and if it does, change the
      player filename. */
 
-  if (EscapeUtil::existsfile(ou)) return "";
+  if (Util::ExistsFile(ou)) return "";
 
   return ou;
 }

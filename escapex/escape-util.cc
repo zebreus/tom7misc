@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+#include <mutex>
 
 #include "util.h"
 
@@ -41,12 +42,6 @@
 #endif
 
 using namespace std;
-
-bool EscapeUtil::existsfile(string s) {
-  struct stat st;
-
-  return !stat(s.c_str(), &st);
-}
 
 bool EscapeUtil::existsdir(std::string_view d) {
   return Util::IsDir(d); /* (existsfile(d) && isdir(d.c_str())); */
@@ -220,9 +215,9 @@ int EscapeUtil::stoi(string s) {
 
 /* XXX race. should use creat
    with O_EXCL on unix, at least. */
-FILE *EscapeUtil::open_new(string fname) {
-  if (!existsfile(fname))
-    return fopen(fname.c_str(), "wb+");
+FILE *EscapeUtil::OpenNew(std::string_view fname) {
+  if (!Util::ExistsFile(fname))
+    return fopen(std::string(fname).c_str(), "wb+");
   else return 0;
 }
 
@@ -314,8 +309,11 @@ string EscapeUtil::losewhitel(const string &s) {
   return "";
 }
 
-string EscapeUtil::tempfile(string suffix) {
+string EscapeUtil::TempFile(std::string_view suffix) {
   static int tries = 0;
+
+  static std::mutex mu;
+  std::unique_lock<std::mutex> ml(mu);
 
   string fname;
   do {
@@ -323,7 +321,7 @@ string EscapeUtil::tempfile(string suffix) {
                         tries, getpid(), random(),
                         suffix);
     tries++;
-  } while (existsfile(fname));
+  } while (Util::ExistsFile(fname));
 
   return fname;
 }
@@ -505,7 +503,7 @@ bool EscapeUtil::library_matches(char k, const string &s) {
    Windows 98, though.
 */
 bool EscapeUtil::remove(string f) {
-  if (!existsfile(f.c_str())) return true;
+  if (!Util::ExistsFile(f.c_str())) return true;
   else {
 # ifdef WIN32
     /* We can do this by:
@@ -581,13 +579,13 @@ bool EscapeUtil::copy(string src, string dst) {
   return true;
 }
 
-string EscapeUtil::dirplus(const string &dir_, const string &file) {
-  if (dir_.empty()) return file;
-  if (!file.empty() && file[0] == DIRSEPC) return file;
-  string dir = dir_;
+string EscapeUtil::DirPlus(std::string_view dir_in, std::string_view file) {
+  if (dir_in.empty()) return std::string{file};
+  if (!file.empty() && file[0] == DIRSEPC) return std::string{file};
+  string dir{dir_in};
   if (dir[dir.size() - 1] != DIRSEPC)
     dir += DIRSEPC;
-  return dir + file;
+  return std::format("{}{}", dir, file);
 }
 
 void EscapeUtil::toattic(string f) {
@@ -603,7 +601,7 @@ void EscapeUtil::toattic(string f) {
   while (tries--) {
     string dest = (string)ATTIC_DIR + DIRSEP +
                   itos(random()) + (string)"_" + nf;
-    if (!existsfile(dest)) {
+    if (!Util::ExistsFile(dest)) {
       // printf("move(%s,%s)\n", f.c_str(), dest.c_str());
       move(f, dest);
       return;

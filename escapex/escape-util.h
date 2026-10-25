@@ -86,12 +86,10 @@ struct EscapeUtil {
   static string lcase(string in);
   static string ucase(string in);
 
-  static bool existsfile(string);
-
-  /* dirplus("/usr/local", "core") and
-     dirplus("/usr/local/", core")  both give  "/usr/local/core"
-     dirplus("/usr/local", "/etc/passwd")  gives "/etc/passwd"  */
-  static string dirplus(const string &dir, const string &file);
+  /* DirPlus("/usr/local", "core") and
+     DirPlus("/usr/local/", core")  both give  "/usr/local/core"
+     DirPlus("/usr/local", "/etc/passwd")  gives "/etc/passwd"  */
+  static string DirPlus(std::string_view dir, std::string_view file);
 
   /* spec is a character spec like "A-Z0-9`,."
      XXX document */
@@ -111,7 +109,7 @@ struct EscapeUtil {
   static bool library_matches(char k, const string &s);
 
   /* open a new file. if it exists, return 0 */
-  static FILE *open_new(string s);
+  static FILE *OpenNew(std::string_view s);
   static int random();
   /* random in 0.0 .. 1.0 */
   static float randfrac();
@@ -161,8 +159,11 @@ struct EscapeUtil {
   /* make a copy by reading/writing */
   static bool copy(string src, string dst);
 
-  // Not thread safe!
-  static string tempfile(string suffix);
+  // Gives you a filename that doesn't exist, based on the
+  // suffix. Since it doesn't create the file, there's an
+  // inherent (but low probability) risk that it gets
+  // created by someone else before you use the name, though.
+  static string TempFile(std::string_view suffix);
 
   /* same as isdir */
   static bool existsdir(std::string_view);

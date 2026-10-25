@@ -82,7 +82,7 @@ void LevelDB::addsourcedir(string s) {
     if (strcmp(".", de->d_name) &&
         strcmp("..", de->d_name)) {
       count++;
-      addsourcefile(EscapeUtil::dirplus(s, de->d_name));
+      addsourcefile(EscapeUtil::DirPlus(s, de->d_name));
     }
   }
 

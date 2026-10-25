@@ -21,12 +21,18 @@ CCLIB_TLS=$(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o
 
 CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/net.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
 
+# Core of escape, which can be used for headless rendering, level generation
+# and solving, etc.
+ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
+
+ESCOBJECTS=main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
+
+
+# ------------ platform specific builds ----------------
+
 ifdef LINUX
 # makefile for linux
 
-ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
-
-ESCOBJECTS=level.o solution.o rle.o disamb.o main.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
 
 default : escape.exe
 
@@ -93,7 +99,7 @@ RELEASEFILES=
 releasefiles.linux : ${RELEASEFILES}
 	echo ${RELEASEFILES} > releasefiles.linux
 
-mkupgrade.exe : mkupgrade.o ../cc-lib/crypt/md5.o
+mkupgrade.exe : mkupgrade.o $(CC_LIB)/crypt/md5.o
 	g++ $^ -o mkupgrade.exe
 
 CURRENT : .dummy escape.exe releasefiles.linux symlinks.linux deletefiles.linux mkupgrade.exe
@@ -158,18 +164,16 @@ endif
 ifdef OSX
 # makefile for OSX
 
-# XXX reinstate sdl_mixer before doing another release!
-
 default : escape.exe
 
 FRAMEWORKS=OSX_build/Frameworks
 
-# No longer cavemen, we target a recent release of OS X.
-VERSION_TARGET=10.10
+# No longer cavemen, we target a "recent" release of OS X.
+VERSION_TARGET=12
 
 LDLIBS = `sdl-config --libs`
 CPPFLAGS = `sdl-config --cflags` -DNOSOUND=1 -DOSX=1
-CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIB_INCLUDES)
+CXXFLAGS = --std=c++23 -g -Wall -O3 -Wno-sign-compare $(CCLIB_INCLUDES)
 
 # Suppress compilation commands, but show some indication of progress.
 # (Explicitly invoke bash to get shell builtin, since on OS X echo
@@ -178,19 +182,7 @@ CXXFLAGS = --std=c++20 -g -Wall -O2 -Wno-sign-compare $(CCLIB_INCLUDES)
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 	@bash -c "echo -n '.'"
 
-# don't specify arch, since we want this to work on apple silicon
-# -arch x86_64
-
-# CPPFLAGS= -I. -I/usr/local/include
-
-# XXX Suppress warning in SDL-supplied .m file, but should figure out what's going on here.
-CFLAGS=-Wno-objc-protocol-method-implementation
-
-# good for 10.11 MacBook
-# used to use /usr/local/lib
-# LIBS=-L/usr/lib
-
-escape.exe : escapex.o browse.o main.o rle.o level.o solution.o disamb.o loadlevel.o play.o escape-util.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o sdlmain.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o graphics.o $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
+escape.exe : $(ESCOBJECTS) $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
 	@export MACOSX_DEPLOYMENT_TARGET=${VERSION_TARGET}
 	$(CXX) $(LDLIBS) -framework OpenGL -framework IOKit -framework Carbon -framework Cocoa -Wl,-headerpad_max_install_names $^ -o escape.exe
 
@@ -207,8 +199,8 @@ version : .dummy
 
 RELEASEFILES=escape.exe font.png fontsmall.png tiles.png tileutil.png title.png icon.png escape.txt COPYING changelog animation.png splash.png
 
-mkupgrade.exe : mkupgrade.cc ../cc-lib/crypt/md5.cc
-	g++ ${CPPFLAGS} ${CXXFLAGS} -DOSX mkupgrade.cc ../cc-lib/crypt/md5.cc -o mkupgrade.exe
+mkupgrade.exe : mkupgrade.cc $(CC_LIB)/crypt/md5.cc
+	g++ ${CPPFLAGS} ${CXXFLAGS} -DOSX mkupgrade.cc $(CC_LIB)/crypt/md5.cc -o mkupgrade.exe
 
 releasefiles.osx :
 	echo ${RELEASEFILES} > releasefiles.osx
@@ -293,10 +285,6 @@ SOCK_LFLAGS=-lws2_32
 # SDL in there too; we just link in the object files.
 SDL=/c/code/SDL
 
-# cc-lib is my personal collection of C++ libraries. It should be in a
-# directory next to "escapex."
-CC_LIB=../cc-lib
-
 SDLINCLUDES=-I$(SDL)/include
 
 DEBUG=-g
@@ -318,12 +306,6 @@ SDLOPATH=$(SDL)/build
 SDLOBJECTS=$(SDLOPATH)/SDL.o $(SDLOPATH)/SDL_error.o $(SDLOPATH)/SDL_fatal.o $(SDLOPATH)/SDL_audio.o $(SDLOPATH)/SDL_audiocvt.o $(SDLOPATH)/SDL_audiodev.o $(SDLOPATH)/SDL_mixer.o $(SDLOPATH)/SDL_mixer_MMX.o $(SDLOPATH)/SDL_mixer_MMX_VC.o $(SDLOPATH)/SDL_mixer_m68k.o $(SDLOPATH)/SDL_wave.o $(SDLOPATH)/SDL_cdrom.o $(SDLOPATH)/SDL_cpuinfo.o $(SDLOPATH)/SDL_active.o $(SDLOPATH)/SDL_events.o $(SDLOPATH)/SDL_expose.o $(SDLOPATH)/SDL_keyboard.o $(SDLOPATH)/SDL_mouse.o $(SDLOPATH)/SDL_quit.o $(SDLOPATH)/SDL_resize.o $(SDLOPATH)/SDL_rwops.o $(SDLOPATH)/SDL_getenv.o $(SDLOPATH)/SDL_iconv.o $(SDLOPATH)/SDL_malloc.o $(SDLOPATH)/SDL_qsort.o $(SDLOPATH)/SDL_stdlib.o $(SDLOPATH)/SDL_string.o $(SDLOPATH)/SDL_thread.o $(SDLOPATH)/SDL_timer.o $(SDLOPATH)/SDL_RLEaccel.o $(SDLOPATH)/SDL_blit.o $(SDLOPATH)/SDL_blit_0.o $(SDLOPATH)/SDL_blit_1.o $(SDLOPATH)/SDL_blit_A.o $(SDLOPATH)/SDL_blit_N.o $(SDLOPATH)/SDL_bmp.o $(SDLOPATH)/SDL_cursor.o $(SDLOPATH)/SDL_gamma.o $(SDLOPATH)/SDL_pixels.o $(SDLOPATH)/SDL_stretch.o $(SDLOPATH)/SDL_surface.o $(SDLOPATH)/SDL_video.o $(SDLOPATH)/SDL_yuv.o $(SDLOPATH)/SDL_yuv_mmx.o $(SDLOPATH)/SDL_yuv_sw.o $(SDLOPATH)/SDL_joystick.o $(SDLOPATH)/SDL_nullevents.o $(SDLOPATH)/SDL_nullmouse.o $(SDLOPATH)/SDL_nullvideo.o $(SDLOPATH)/SDL_diskaudio.o $(SDLOPATH)/SDL_dummyaudio.o $(SDLOPATH)/SDL_sysevents.o $(SDLOPATH)/SDL_sysmouse.o $(SDLOPATH)/SDL_syswm.o $(SDLOPATH)/SDL_wingl.o $(SDLOPATH)/SDL_dibevents.o $(SDLOPATH)/SDL_dibvideo.o $(SDLOPATH)/SDL_dx5events.o $(SDLOPATH)/SDL_dx5video.o $(SDLOPATH)/SDL_dx5yuv.o $(SDLOPATH)/SDL_dibaudio.o $(SDLOPATH)/SDL_dx5audio.o $(SDLOPATH)/SDL_mmjoystick.o $(SDLOPATH)/SDL_syscdrom.o $(SDLOPATH)/SDL_sysmutex.o $(SDLOPATH)/SDL_syssem.o $(SDLOPATH)/SDL_systhread.o $(SDLOPATH)/SDL_syscond.o $(SDLOPATH)/SDL_systimer.o $(SDLOPATH)/SDL_sysloadso.o sdl-win32-main.o
 
 LINKSDL= -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
-
-# objects that do not need SDL; can be linked into tools like screenshot.exe; server
-ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
-
-ESCOBJECTS= main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o icon.o browse.o backgrounds.o escapex.o
-
 
 # -Wl,-rpath=.
 
@@ -436,8 +418,8 @@ RELEASEFILES=escape.exe replace.exe font.png fontsmall.png tiles.png tileutil.pn
 releasefiles.win32 : $(RELEASEFILES)
 	echo $(RELEASEFILES) > releasefiles.win32
 
-mkupgrade.exe : mkupgrade.cc ../cc-lib/crypt/md5.cc
-	$(CXX) $(CXXFLAGS) -DWIN32 mkupgrade.cc ../cc-lib/crypt/md5.cc -o mkupgrade.exe
+mkupgrade.exe : mkupgrade.cc $(CC_LIB)/crypt/md5.cc
+	$(CXX) $(CXXFLAGS) -DWIN32 mkupgrade.cc $(CC_LIB)/crypt/md5.cc -o mkupgrade.exe
 
 CURRENT : .dummy escape.exe releasefiles.win32 symlinks.win32 deletefiles.win32 mkupgrade.exe
 	@:$(call release_check)
