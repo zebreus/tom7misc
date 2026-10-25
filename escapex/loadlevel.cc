@@ -751,7 +751,7 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
 
     } else {
 
-      string contents = EscapeUtil::readfilemagic(ldn, LEVELMAGIC);
+      string contents = Util::ReadFileMagic(ldn, LEVELMAGIC);
 
       /* try to read it, passing along corruption flag */
       std::unique_ptr<Level> l = Level::FromString(contents, allow_corrupted);
@@ -1095,7 +1095,7 @@ string LoadLevel_::Loop() {
     Menu::Create(0, "Really delete?",
                              items,
                              false);
-              InputResultKind res = mm->menuize();
+              InputResultKind res = mm->Menuize();
         mm.reset();
 
               if (res == InputResultKind::OK) {
@@ -1376,7 +1376,7 @@ string LoadLevel_::Loop() {
                              &can,
                            },
                            false);
-            InputResultKind res = mm->menuize();
+            InputResultKind res = mm->Menuize();
 
             if (res == InputResultKind::OK) {
               solvefrombookmarks(filename.input, everything.checked);
@@ -1457,7 +1457,7 @@ string LoadLevel_::Loop() {
                                  &can,
                                },
                                false);
-                InputResultKind res = mm->menuize();
+                InputResultKind res = mm->Menuize();
                 mm.reset();
 
                 if (res != InputResultKind::OK) {

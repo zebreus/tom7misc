@@ -182,7 +182,7 @@ void LevelDB::donate(int max_files, int max_verifies, int max_ticks) {
 
       /* XXX else could be a multilevel file, once we
          support those. */
-      if (EscapeUtil::hasmagic(s, LEVELMAGIC)) {
+      if (Util::HasMagic(s, LEVELMAGIC)) {
         string c = Util::ReadFile(s);
         std::unique_ptr<Level> l = Level::FromString(c, true);
         if (l.get() != nullptr) {

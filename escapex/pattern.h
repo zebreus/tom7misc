@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "escape-util.h"
+#include "util.h"
 
 /* The pattern matcher is to escape levels what
    emacs's regular expression matcher is to text.
@@ -77,7 +78,7 @@ struct Pattern {
       p->tab[i].t = HType::ERROR;
 
     /* ignore whitespace */
-    string s = EscapeUtil::replace(s_in, " ", "");
+    string s = Util::Replace(s_in, " ", "");
 
     p->nregs = 0;
     p->w = -1;

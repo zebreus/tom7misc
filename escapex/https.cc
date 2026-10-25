@@ -299,9 +299,9 @@ HTTPSResult HTTPS_::ReqGeneral(string req, string &res, bool tofile) {
       if (first) {
 
         /* HTTP/1.x */
-        EscapeUtil::chop(line);
+        Util::chop(line);
         /* 200 */
-        string status = EscapeUtil::chop(line);
+        string status = Util::chop(line);
 
         if (status != "200") {
           /* XXX or whatever ... */
@@ -322,7 +322,7 @@ HTTPSResult HTTPS_::ReqGeneral(string req, string &res, bool tofile) {
 
           DMSG("header line [" + line + "]\n");
 
-          string field = EscapeUtil::chop(line);
+          string field = Util::chop(line);
 
           /*
             HTTP/1.1 200 OK
@@ -339,12 +339,12 @@ HTTPSResult HTTPS_::ReqGeneral(string req, string &res, bool tofile) {
           */
 
           if (field == "Content-Length:") {
-            string l = EscapeUtil::chop(line);
+            string l = Util::chop(line);
             contentlen = atoi(l.c_str());
             DMSG("content length is " + Util::itos(contentlen) + "\n");
 
           } else if (field == "Connection:") {
-            string how = EscapeUtil::lcase(EscapeUtil::chop(line));
+            string how = EscapeUtil::lcase(Util::chop(line));
             if (how == "close")
               connecttype = CT_CLOSE;
             else if (how == "keepalive")

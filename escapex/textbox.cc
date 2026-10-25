@@ -77,13 +77,13 @@ void TextBox::SetText(string_view s) {
 
 }
 
-void TextBox::size(int &w, int &h) {
+void TextBox::Size(int &w, int &h) {
   /* text area plus boundary, scroll indicator */
   w = fon->width * (charsw + 3);
   h = fon->height * (charsh + 3) - (fon->height >> 1);
 }
 
-void TextBox::draw(int posx, int posy, int f) {
+void TextBox::Draw(int posx, int posy, int f) {
 
   /* draw header and skip */
   fon->draw(posx, posy, question);
@@ -339,7 +339,7 @@ void TextBox::goto_end() {
   while (after) right(false);
 }
 
-InputResult TextBox::key(SDL_Event e) {
+InputResult TextBox::Key(SDL_Event e) {
 
   int key = e.key.keysym.sym;
 
@@ -347,7 +347,7 @@ InputResult TextBox::key(SDL_Event e) {
     switch (key) {
     case SDLK_TAB:
     case SDLK_ESCAPE:
-      return MenuItem::key(e);
+      return MenuItem::Key(e);
 
     case SDLK_DOWN:
       down();

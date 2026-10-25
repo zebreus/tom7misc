@@ -70,9 +70,6 @@ struct vallist {
 
 struct EscapeUtil {
   using string = std::string;
-  /* only read if the file begins with the magic string */
-  static bool hasmagic(string, const string &magic);
-  static string readfilemagic(std::string_view, const string &magic);
 
   static int stoi(string s);
 
@@ -120,10 +117,6 @@ struct EscapeUtil {
   /* same, for open file. */
   static string fgetline(FILE *f);
 
-  /* chop the first token (ignoring whitespace) off
-     of line, modifying line. */
-  static string chop(string &line);
-
   /* number of entries (not . or ..) in dir d */
   static int DirSize(std::string_view d);
 
@@ -136,12 +129,6 @@ struct EscapeUtil {
   static bool endswith(string big_, string small_);
   /* starts */
   static bool startswith(string big_, string small_);
-
-  /* split the string up to the first
-     occurrence of character c. The character
-     is deleted from both the returned string and
-     the line */
-  static string chopto(char c, string &line);
 
   /* erase any whitespace up to the first
      non-whitespace char. */
@@ -182,9 +169,6 @@ struct EscapeUtil {
 
   /* move a file into an 'attic' backup dir */
   static void toattic(string f);
-
-  /* replace all occurrences of 'findme' with 'replacewith' in 'src' */
-  static string replace(string src, string findme, string replacewith);
 
   /* returns false if failed/unsupported */
   static bool setclipboard(string);

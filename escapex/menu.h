@@ -7,8 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include <SDL.h>
-
 #include "SDL_events.h"
 #include "SDL_video.h"
 #include "chars.h"
@@ -62,25 +60,25 @@ struct MenuItem {
   /* stuff that all menuitems have */
 
   /* some controls can be focused, some not */
-  virtual bool focusable() { return !disabled; }
+  virtual bool Focusable() { return !disabled; }
 
-  virtual void size(int &width, int &height) = 0;
-  virtual void draw(int x, int y, int focused) = 0;
+  virtual void Size(int &width, int &height) = 0;
+  virtual void Draw(int x, int y, int focused) = 0;
 
   /* mouse click relative to menuitem */
-  virtual InputResult click(int x, int y) {
+  virtual InputResult Click(int x, int y) {
     /* XXX send key 'enter' */
     return InputResult(InputResultKind::REJECT);
   }
 
   /* displayed at the bottom of the screen to
      explain how to use the control */
-  virtual std::string helptext() = 0;
+  virtual std::string HelpText() = 0;
 
   /* some default behavior here */
   /* process a keypress.
      assume e.type = SDL_KEYDOWN */
-  virtual InputResult key(SDL_Event e);
+  virtual InputResult Key(SDL_Event e);
 
   MenuItem() {}
   virtual ~MenuItem() {}
@@ -89,10 +87,10 @@ struct MenuItem {
 /* unselectable labels */
 struct Label : public MenuItem {
   std::string text;
-  virtual bool focusable() { return false; }
-  virtual std::string helptext() { return ""; }
-  virtual void draw(int x, int y, int f);
-  virtual void size(int &w, int &h);
+  virtual bool Focusable() { return false; }
+  virtual std::string HelpText() { return ""; }
+  virtual void Draw(int x, int y, int f);
+  virtual void Size(int &w, int &h);
   virtual ~Label() {}
 };
 
@@ -100,10 +98,10 @@ struct Label : public MenuItem {
 struct VSpace : public MenuItem {
   int height = 0;
   explicit VSpace(int n) : height(n) {}
-  virtual bool focusable() { return false; }
-  virtual std::string helptext() { return ""; }
-  virtual void draw(int x, int y, int f) { }
-  virtual void size(int &w, int &h) {
+  virtual bool Focusable() { return false; }
+  virtual std::string HelpText() { return ""; }
+  virtual void Draw(int x, int y, int f) { }
+  virtual void Size(int &w, int &h) {
     w = 1;
     h = height;
   }
@@ -116,17 +114,17 @@ struct TextInput : public MenuItem {
   /* immediately accept when pressing 'enter'? */
   bool accept_on_enter = false;
 
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Enter a single line of text.";
   }
-  void draw(int x, int y, int) override;
-  void size(int &w, int &h) override;
-  InputResult key(SDL_Event e) override;
+  void Draw(int x, int y, int) override;
+  void Size(int &w, int &h) override;
+  InputResult Key(SDL_Event e) override;
 
   TextInput() {}
 
  protected:
-  virtual void draw_ch(int x, int y, int, char passwordchar = 0);
+  virtual void DrawCh(int x, int y, int, char passwordchar = 0);
 
  private:
   /* cursor before nth character in input */
@@ -137,11 +135,11 @@ struct TextInput : public MenuItem {
 };
 
 struct TextPassword : public TextInput {
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Enter a password.";
   }
-  void draw(int x, int y, int i) override {
-    draw_ch(x, y, i, '*');
+  void Draw(int x, int y, int i) override {
+    DrawCh(x, y, i, '*');
   }
 };
 
@@ -149,14 +147,14 @@ struct Toggle : public MenuItem {
   std::string question;
   bool checked = false;
 
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Press " BLUE "enter" POP " or "
       BLUE "space" POP " to toggle.";
   }
-  void draw(int x, int y, int) override;
-  void size(int &w, int &h) override;
-  InputResult key(SDL_Event e) override;
-  InputResult click(int, int) override;
+  void Draw(int x, int y, int) override;
+  void Size(int &w, int &h) override;
+  InputResult Key(SDL_Event e) override;
+  InputResult Click(int, int) override;
 };
 
 struct Slider : public MenuItem {
@@ -175,16 +173,16 @@ struct Slider : public MenuItem {
      least length(low) + length(hi) + 1 */
   int nsegs = 0;
 
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Press " BLUE "left" POP " or " BLUE "right" POP
            " to change the setting.";
   }
 
   Slider(int lows, int highs, int segs);
-  void draw(int x, int y, int f) override;
-  void size(int &w, int &h) override;
-  InputResult key(SDL_Event e) override;
-  InputResult click(int, int) override;
+  void Draw(int x, int y, int f) override;
+  void Size(int &w, int &h) override;
+  InputResult Key(SDL_Event e) override;
+  InputResult Click(int, int) override;
 
   /* selected position along line (value in the inclusive
      interval (lowest, highest)) */
@@ -200,7 +198,7 @@ struct Okay : public MenuItem {
   int *ptr = nullptr;
   int myval = 0;
 
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Press " BLUE "enter" POP " to confirm.";
   }
 
@@ -209,18 +207,18 @@ struct Okay : public MenuItem {
   Okay(std::string text, int *ptr = nullptr, int myval = 0)
     : text(std::move(text)), ptr(ptr), myval(myval) {}
 
-  void draw(int x, int y, int f) override;
-  void size(int &w, int &h) override;
+  void Draw(int x, int y, int f) override;
+  void Size(int &w, int &h) override;
 
-  InputResult key(SDL_Event e) override;
+  InputResult Key(SDL_Event e) override;
 
-  InputResult click(int, int) override {
-    activate();
+  InputResult Click(int, int) override {
+    Activate();
     return InputResult(InputResultKind::OK);
   }
 
  protected:
-  virtual void activate() {
+  virtual void Activate() {
     /* set pointer if applicable */
     if (ptr) *ptr = myval;
   }
@@ -229,16 +227,16 @@ struct Okay : public MenuItem {
 struct Cancel : public MenuItem {
   std::string text = "Cancel";
 
-  std::string helptext() override {
+  std::string HelpText() override {
     return "Press " BLUE "enter" POP " to cancel. "
            GREY "(" BLUE "esc" POP " also cancels at any time.)";
   }
 
-  void draw(int x, int y, int f) override;
-  void size(int &w, int &h) override;
-  InputResult key(SDL_Event e) override;
+  void Draw(int x, int y, int f) override;
+  void Size(int &w, int &h) override;
+  InputResult Key(SDL_Event e) override;
 
-  InputResult click(int, int) override {
+  InputResult Click(int, int) override {
     return InputResult(InputResultKind::CANCEL);
   }
 };
@@ -264,7 +262,7 @@ struct Menu : public Drawable {
 
   /* enter modal mode and return the final result of
      the menu. expect OK, CANCEL, or QUIT */
-  InputResultKind menuize();
+  InputResultKind Menuize();
 
   /* all menuitems will still be available */
   virtual ~Menu();
@@ -277,10 +275,10 @@ struct Menu : public Drawable {
   Menu() {}
 
   void Redraw();
-  bool skip_ok(int);
-  void fixup(int);
-  void nextfocus(int dir);
-  InputResult clickselect(int x, int y);
+  bool SkipOK(int);
+  void FixUp(int);
+  void NextFocus(int dir);
+  InputResult ClickSelect(int x, int y);
 
   Drawable *below = nullptr;
   std::string title;

@@ -1,27 +1,29 @@
-#include "rle.h"
+#include "escape-rle.h"
 
+#include <cstdlib>
 #include <string>
 #include <vector>
+#include <string_view>
+#include <format>
+
+#include "base/logging.h"
+#include "base/print.h"
 
 using namespace std;
 
-static void RoundTrip(const char *name, const vector<int> &v) {
+static void RoundTrip(std::string_view name, const vector<int> &v) {
   const string encoded = EscapeRLE::Encode(v.size(), v.data());
 
   unsigned int idx = 0;
   int *decoded = EscapeRLE::Decode(encoded, idx, v.size());
 
-  if (decoded == nullptr) {
-    printf("On test %s, failed to decode!\n", name);
-    exit(-1);
-  }
+  CHECK(decoded != nullptr) <<
+    std::format("On test {}, failed to decode!\n", name);
 
   for (int i = 0; i < v.size(); i++) {
-    if (v[i] != decoded[i]) {
-      printf("On test %s, index %d does not match (%d in vs %d out).\n",
-             name, i, v[i], decoded[i]);
-      exit(-1);
-    }
+    CHECK(v[i] == decoded[i]) <<
+      std::format("On test {}, index {} does not match ({} in vs {} out).\n",
+                  name, i, v[i], decoded[i]);
   }
 
   free(decoded);
@@ -103,6 +105,6 @@ int main(int argc, char **argv) {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
   });
 
-  printf("OK!\n");
+  Print("OK\n");
   return 0;
 }

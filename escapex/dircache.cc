@@ -147,7 +147,7 @@ DirIndex *DirCache_::Get(const string &dir_in,
         }
 
       } else {
-        string contents = EscapeUtil::readfilemagic(ldn, LEVELMAGIC);
+        string contents = Util::ReadFileMagic(ldn, LEVELMAGIC);
 
         std::unique_ptr<Level> l = Level::FromString(contents);
 

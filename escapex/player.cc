@@ -492,15 +492,15 @@ Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
     /* maybe this is the end? */
     if (l == RATMARKER) break;
 
-    string mda = EscapeUtil::chop(l);
+    string mda = Util::chop(l);
     string md;
     if (!MD5::UnAscii(mda, md)) FF_FAIL(((string)"bad md5 " + mda).c_str());
 
-    string next = EscapeUtil::chop(l);
+    string next = Util::chop(l);
 
     if (next == "*") {
       /* default first */
-      string nsolstring = Base64::Decode(EscapeUtil::chop(l));
+      string nsolstring = Base64::Decode(Util::chop(l));
       NamedSolution ns;
       if (!NamedSolution::FromString(nsolstring, &ns)) {
         FF_FAIL("bad namedsolution");
@@ -511,7 +511,7 @@ Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
       /* now, any number of other solutions */
       for (;;) {
         if (!cf->GetLine(l)) FF_FAIL("expected more solutions");
-        string tok = EscapeUtil::chop(l);
+        string tok = Util::chop(l);
         if (tok == "!") break;
         else {
           NamedSolution ns;
@@ -546,10 +546,10 @@ Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
 
     if (l == PREFMARKER) break;
 
-    string md = EscapeUtil::chop(l);
+    string md = Util::chop(l);
     if (!MD5::UnAscii(md, md)) FF_FAIL("bad rating md5");
 
-    string ratstring = Base64::Decode(EscapeUtil::chop(l));
+    string ratstring = Base64::Decode(Util::chop(l));
     Rating *rat = Rating::FromString(ratstring);
 
     if (!rat) FF_FAIL("bad rating");

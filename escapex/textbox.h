@@ -11,11 +11,11 @@
 struct TextBox : public MenuItem {
   using string = std::string;
 
-  string helptext() override {
+  string HelpText() override {
     return "Use like a normal simple editor. " BLUE "Tab" POP " exits.";
   }
-  void draw(int x, int y, int f) override;
-  void size(int &w, int &h) override;
+  void Draw(int x, int y, int f) override;
+  void Size(int &w, int &h) override;
   ~TextBox() override { Clear(); }
 
   string GetText();
@@ -23,7 +23,7 @@ struct TextBox : public MenuItem {
      might want to call goto_end after setting. */
   void SetText(std::string_view);
 
-  InputResult key(SDL_Event e) override;
+  InputResult Key(SDL_Event e) override;
 
   TextBox(int cw, int ch) : charsw(cw), charsh(ch) {}
 

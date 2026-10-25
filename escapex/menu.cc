@@ -15,24 +15,24 @@
 #include "chars.h"
 #include "draw.h"
 #include "drawable.h"
-#include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
 #include "message.h"
 #include "sdl/font.h"
 #include "sdl/sdlutil.h"
+#include "util.h"
 
 /* PERF: can optimize many of these width calculations.
    PERF: no need to append strings so often */
 
 #define TOPBARHEIGHT (fon->height * 2 + 4)
 
-void Slider::size(int &w, int &h) {
+void Slider::Size(int &w, int &h) {
   w = fon->sizex(scrollbar + " " + question);
   h = fon->height + fonsmall->height + 2;
 }
 
-InputResult Slider::key(SDL_Event e) {
+InputResult Slider::Key(SDL_Event e) {
   int key = e.key.keysym.sym;
 
   switch (key) {
@@ -40,7 +40,7 @@ InputResult Slider::key(SDL_Event e) {
     pos++; break;
   case SDLK_LEFT:
     pos--; break;
-  default: return MenuItem::key(e);
+  default: return MenuItem::Key(e);
   }
 
   if (pos < lowest) pos = lowest;
@@ -49,7 +49,7 @@ InputResult Slider::key(SDL_Event e) {
   return InputResult(InputResultKind::UPDATED);
 }
 
-InputResult Slider::click(int x, int y) {
+InputResult Slider::Click(int x, int y) {
   int sidew = fon->sizex(question + " ");
 
   int restw = (nsegs - 1) * (fon->width - fon->overlap);
@@ -75,7 +75,7 @@ InputResult Slider::click(int x, int y) {
   return InputResult(InputResultKind::UPDATED);
 }
 
-void Slider::draw(int xpos, int ypos, int foc) {
+void Slider::Draw(int xpos, int ypos, int foc) {
   int off = fon->sizex(question + " ");
 
   fon->draw(xpos, ypos + (fon->height / 3),
@@ -109,12 +109,12 @@ Slider::Slider(int lows, int highs, int segs)
   scrollbar += SLIDERIGHT POP;
 }
 
-void Toggle::size(int &w, int &h) {
+void Toggle::Size(int &w, int &h) {
   w = fon->sizex(question + " [ ]");
   h = fon->height;
 }
 
-void Toggle::draw(int xpos, int ypos, int f) {
+void Toggle::Draw(int xpos, int ypos, int f) {
   string pre = disabled?GREY:"";
   fon->draw(xpos, ypos,
             pre +
@@ -130,7 +130,7 @@ void Toggle::draw(int xpos, int ypos, int f) {
               YELLOW LCHECKMARK POP);
 }
 
-InputResult Toggle::key(SDL_Event e) {
+InputResult Toggle::Key(SDL_Event e) {
   int kk = e.key.keysym.sym;
 
   switch (kk) {
@@ -138,22 +138,22 @@ InputResult Toggle::key(SDL_Event e) {
   case SDLK_SPACE:
     checked = !checked;
     return InputResult(InputResultKind::UPDATED);
-  default: return MenuItem::key(e);
+  default: return MenuItem::Key(e);
   }
 
 }
 
-InputResult Toggle::click(int x, int y) {
+InputResult Toggle::Click(int x, int y) {
   checked = !checked;
   return InputResult(InputResultKind::UPDATED);
 }
 
-void Label::size(int &w, int &h) {
+void Label::Size(int &w, int &h) {
   h = fon->height;
   w = fon->sizex(text);
 }
 
-void Label::draw(int xpos, int ypos, int f) {
+void Label::Draw(int xpos, int ypos, int f) {
   /* never focused */
   fon->draw(xpos, ypos, text);
 }
@@ -162,7 +162,7 @@ void Label::draw(int xpos, int ypos, int f) {
 /* XXX allow cursor to move within input */
 /* XXX add 'cursor' graphic to font */
 /* XXX draw differently when disabled */
-void TextInput::draw_ch(int xpos, int ypos, int f, char c) {
+void TextInput::DrawCh(int xpos, int ypos, int f, char c) {
   string i = input;
 
   if (c) {
@@ -182,20 +182,20 @@ void TextInput::draw_ch(int xpos, int ypos, int f, char c) {
   }
 }
 
-void TextInput::draw(int xp, int yp, int f) {
-  draw_ch(xp, yp, f, 0);
+void TextInput::Draw(int xp, int yp, int f) {
+  DrawCh(xp, yp, f, 0);
 }
 
 /* XXX width should take into account
    potential length of input string, not just
    its current size */
-void TextInput::size(int &w, int &h) {
+void TextInput::Size(int &w, int &h) {
   /* space and cursor */
   w = fon->sizex(question + " _" + input);
   h = fon->height;
 }
 
-InputResult TextInput::key(SDL_Event e) {
+InputResult TextInput::Key(SDL_Event e) {
 
   int key = e.key.keysym.sym;
 
@@ -204,7 +204,7 @@ InputResult TextInput::key(SDL_Event e) {
        e.key.keysym.sym == SDLK_RETURN) &&
       accept_on_enter) return InputResult(InputResultKind::OK);
 
-  InputResult def = MenuItem::key(e);
+  InputResult def = MenuItem::Key(e);
   switch (def.kind()) {
   default: return def;
   case InputResultKind::NOTHING:
@@ -236,20 +236,20 @@ InputResult TextInput::key(SDL_Event e) {
 }
 
 /* only accept 'return' */
-InputResult Okay::key(SDL_Event e) {
+InputResult Okay::Key(SDL_Event e) {
 
   int key = e.key.keysym.sym;
 
   switch (key) {
   case SDLK_RETURN:
-    activate();
+    Activate();
     return InputResult(InputResultKind::OK);
-  default: return MenuItem::key(e);
+  default: return MenuItem::Key(e);
   }
 
 }
 
-static void drawbutton(int x, int y, int w, int h, int f) {
+static void DrawButton(int x, int y, int w, int h, int f) {
 
   SDL_Rect r;
   r.x = x;
@@ -292,9 +292,9 @@ static void drawbutton(int x, int y, int w, int h, int f) {
 }
 
 /* XXX disabled? */
-void Okay::draw(int x, int y, int f) {
+void Okay::Draw(int x, int y, int f) {
 
-  drawbutton(x, y + 1, fon->sizex(text), fon->height, f);
+  DrawButton(x, y + 1, fon->sizex(text), fon->height, f);
 
   if (f) {
     fon->draw(x + 2, y + 2, YELLOW + text + POP);
@@ -303,28 +303,28 @@ void Okay::draw(int x, int y, int f) {
   }
 }
 
-void Okay::size(int &w, int &h) {
+void Okay::Size(int &w, int &h) {
   w = fon->sizex(text) + 4;
   h = fon->height + 4;
 }
 
 
 
-InputResult Cancel::key(SDL_Event e) {
+InputResult Cancel::Key(SDL_Event e) {
 
   int key = e.key.keysym.sym;
 
   switch (key) {
   case SDLK_RETURN:
     return InputResult(InputResultKind::CANCEL);
-  default: return MenuItem::key(e);
+  default: return MenuItem::Key(e);
   }
 
 }
 
 /* XXX disabled? */
-void Cancel::draw(int x, int y, int f) {
-  drawbutton(x, y + 1, fon->sizex(text), fon->height, f);
+void Cancel::Draw(int x, int y, int f) {
+  DrawButton(x, y + 1, fon->sizex(text), fon->height, f);
 
   if (f) {
     fon->draw(x + 2, y + 2, YELLOW + text + POP);
@@ -333,7 +333,7 @@ void Cancel::draw(int x, int y, int f) {
   }
 }
 
-void Cancel::size(int &w, int &h) {
+void Cancel::Size(int &w, int &h) {
   w = fon->sizex(text) + 4;
   h = fon->height + 4;
 }
@@ -342,7 +342,7 @@ void Cancel::size(int &w, int &h) {
 /* default keys for menuitems:
    up, tab, down, return, escape
 */
-InputResult MenuItem::key(SDL_Event e) {
+InputResult MenuItem::Key(SDL_Event e) {
 
   int key = e.key.keysym.sym;
 
@@ -424,7 +424,7 @@ void Menu::Draw() {
   yoff += fon->height;
 
   /* ensure the selected control is on the screen! */
-  fixup((h - (stath + fon->height)) - yoff);
+  FixUp((h - (stath + fon->height)) - yoff);
 
   if (skip != 0) {
     fon->draw(x, 2 + posy + (yoff - fon->height),
@@ -443,7 +443,7 @@ void Menu::Draw() {
     int yo = yoff;
     for (int n = skip; n < items.size(); n++) {
       int iw, ih;
-      items[n]->size(iw, ih); iw += items[n]->indent;
+      items[n]->Size(iw, ih); iw += items[n]->indent;
       /* give a line of leeway between control area and status area */
       if (yo + ih < (h - (stath + fon->height))) {
         /* room for this control */
@@ -476,12 +476,12 @@ void Menu::Draw() {
   /* now draw the controls */
   for (int n = skip; n < items.size(); n++) {
     int iw, ih;
-    items[n]->size(iw, ih); iw += items[n]->indent;
+    items[n]->Size(iw, ih); iw += items[n]->indent;
     /* give a line of leeway between control area and status area */
     if (yoff + ih < (h - (stath + fon->height))) {
       /* room for this control */
 
-      items[n]->draw(x + items[n]->indent, posy + yoff, n == selected);
+      items[n]->Draw(x + items[n]->indent, posy + yoff, n == selected);
 
       yoff += ih;
 
@@ -506,7 +506,7 @@ void Menu::Draw() {
   /* XXX need a way to draw this in a subtler color */
   yoff += fon->drawlines(x, posy + yoff, items[selected]->explanation);
   fon->draw(x, posy + h - (fon->height + 2),
-            GREY + items[selected]->helptext() + POP);
+            GREY + items[selected]->HelpText() + POP);
 
 }
 
@@ -514,7 +514,7 @@ void Menu::Draw() {
 /* check if the current value of 'skip' places
    the control on-screen for the given vspace
    (height of control area) */
-bool Menu::skip_ok(int vspace) {
+bool Menu::SkipOK(int vspace) {
   /*
     if the control itself is bigger than the screen, we can't fit it at all,
     but this is still the best possible skip
@@ -529,7 +529,7 @@ bool Menu::skip_ok(int vspace) {
   int ch = 0;
   for (int z = skip; z < items.size();) {
     int ww, hh;
-    items[z]->size(ww, hh);
+    items[z]->Size(ww, hh);
 
     ch += hh;
 
@@ -553,13 +553,13 @@ bool Menu::skip_ok(int vspace) {
 /* set skip according to the amount of space
    available for controls (vspace) and the
    currently selected control. */
-void Menu::fixup(int vspace) {
+void Menu::FixUp(int vspace) {
 
   /* no preposterous skips */
   if (skip < 0 || skip >= items.size()) skip = 0;
 
   /* don't do anything if the skip is okay as-is */
-  if (skip_ok(vspace)) return;
+  if (SkipOK(vspace)) return;
 
   /*
      otherwise, find the minimum skip such that
@@ -575,7 +575,7 @@ void Menu::fixup(int vspace) {
   */
 
   for (skip = 0; skip < items.size(); skip++) {
-    if (skip_ok(vspace)) return;
+    if (SkipOK(vspace)) return;
   }
 }
 
@@ -610,18 +610,18 @@ void Menu::ScreenResize() {
 
   for (int i = 0; i < items.size(); i++) {
     int tw, th;
-    items[i]->size(tw, th); tw += items[i]->indent;
+    items[i]->Size(tw, th); tw += items[i]->indent;
     toth += th;
     maxw = std::max(maxw, tw);
 
     maxw = std::max(maxw,
-                    fon->sizex(items[i]->helptext()));
+                    fon->sizex(items[i]->HelpText()));
 
     string ex = items[i]->explanation;
 
     int thisl = 0;
     while (ex != "") {
-      string hi = EscapeUtil::chopto('\n', ex);
+      string hi = Util::ChopTo('\n', ex);
       maxw = std::max(maxw, fon->sizex(hi));
       thisl++;
     }
@@ -749,9 +749,9 @@ void Menu::ScreenResize() {
 }
 
 /* XXX loops forever if no focusable */
-void Menu::nextfocus(int d) {
+void Menu::NextFocus(int d) {
   for (;;) {
-    if (items[selected]->focusable()) return;
+    if (items[selected]->Focusable()) return;
     selected += d;
     if (selected < 0) selected = items.size() - 1;
     if (selected >= items.size()) selected = 0;
@@ -759,14 +759,14 @@ void Menu::nextfocus(int d) {
 }
 
 /* relative to menu */
-InputResult Menu::clickselect(int xc, int yc) {
+InputResult Menu::ClickSelect(int xc, int yc) {
   /* current y offset (from posy). start in the
      control area */
   int y = TOPBARHEIGHT;
 
   for (int n = skip; n < items.size(); n++) {
     int iw, ih;
-    items[n]->size(iw, ih);
+    items[n]->Size(iw, ih);
     iw += items[n]->indent;
     /* give a line of leeway between control area and status area */
     if (y + ih < (h - (stath + fon->height))) {
@@ -781,8 +781,8 @@ InputResult Menu::clickselect(int xc, int yc) {
 
         /* at a minimum, select this one if it is
            focusable */
-        if (items[n]->focusable()) selected = n;
-        InputResult res = items[n]->click(xc, yc - y);
+        if (items[n]->Focusable()) selected = n;
+        InputResult res = items[n]->Click(xc, yc - y);
         Redraw();
         return res;
       }
@@ -810,15 +810,17 @@ InputResult Menu::clickselect(int xc, int yc) {
   case InputResultKind::NEXT:                         \
     selected++;                                       \
     selected %= items.size();                         \
-    nextfocus(1);                                     \
+    NextFocus(1);                                     \
     Redraw();                                         \
     break;                                            \
                                                       \
   case InputResultKind::PREV:                         \
     if (!selected) {                                  \
       selected = items.size() - 1;                    \
-    } else --selected;                                \
-    nextfocus(-1);                                    \
+    } else {                                          \
+      --selected;                                     \
+    }                                                 \
+    NextFocus(-1);                                    \
     Redraw();                                         \
     break;                                            \
                                                       \
@@ -827,10 +829,10 @@ InputResult Menu::clickselect(int xc, int yc) {
     break;                                            \
   }
 
-InputResultKind Menu::menuize() {
+InputResultKind Menu::Menuize() {
   /* always start out at the beginning */
   selected = 0;
-  nextfocus(1);
+  NextFocus(1);
   ScreenResize();
 
   Redraw();
@@ -858,7 +860,7 @@ InputResultKind Menu::menuize() {
               y < (posy + h)) {
 
             InputResult res =
-              clickselect(x - posx, y - posy);
+              ClickSelect(x - posx, y - posy);
             PROCESSRESULT(res);
           } else if (y >= posy &&
                      y <= (posy + TOPBARHEIGHT)) {
@@ -909,7 +911,7 @@ InputResultKind Menu::menuize() {
       return InputResultKind::QUIT;
     case SDL_KEYDOWN: {
 
-      InputResult res = items[selected]->key(e);
+      InputResult res = items[selected]->Key(e);
       PROCESSRESULT(res);
       break;
     }

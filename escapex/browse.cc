@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include "SDL.h"
 #include "dircache.h"
 #include "chars.h"
 

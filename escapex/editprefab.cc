@@ -3,6 +3,7 @@
 #include <memory>
 #include <stdlib.h>
 #include <string>
+#include <cassert>
 
 #include "draw.h"
 #include "escape-util.h"
@@ -71,7 +72,7 @@ void Editor::prefab() {
                     &spacer,
                     &can},
                    false);
-    InputResultKind res = mm->menuize();
+    InputResultKind res = mm->Menuize();
     mm.reset();
 
     if (res == InputResultKind::OK) {
@@ -157,7 +158,7 @@ void Editor::pffile() {
                   &spacer,
                   &ok, &can},
                  false);
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
   mm.reset();
 
   if (res == InputResultKind::OK) {
@@ -293,7 +294,7 @@ void Editor::pftimer() {
                   &spacer,
                   &ok, &can},
                  false);
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
   mm.reset();
 
   if (res == InputResultKind::OK) {

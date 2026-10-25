@@ -8,6 +8,7 @@
 
 #include "escape-util.h"
 #include "checkfile.h"
+#include "util.h"
 
 #define INDEX_IGNORED_FIELDS 6
 
@@ -122,7 +123,7 @@ DirIndex *DirIndex::FromFile(const string &f) {
   if (dr.get() == nullptr) return nullptr;
 
   /* read old index files */
-  string iii = EscapeUtil::readfilemagic(f, INDEXMAGIC);
+  string iii = Util::ReadFileMagic(f, INDEXMAGIC);
 
   /* chop off magic, then erase leading whitespace */
   if (iii != "") {
@@ -154,16 +155,16 @@ DirIndex *DirIndex::FromFile(const string &f) {
     while (cf->GetLine(s)) {
       RAEntry rr;
 
-      rr.filename = EscapeUtil::chop(s);
-      rr.v.nvotes = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.v.difficulty = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.v.style = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.v.rigidity = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.v.cooked = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.v.solved = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.date = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.speedrecord = EscapeUtil::stoi(EscapeUtil::chop(s));
-      rr.owner = EscapeUtil::stoi(EscapeUtil::chop(s));
+      rr.filename = Util::chop(s);
+      rr.v.nvotes = EscapeUtil::stoi(Util::chop(s));
+      rr.v.difficulty = EscapeUtil::stoi(Util::chop(s));
+      rr.v.style = EscapeUtil::stoi(Util::chop(s));
+      rr.v.rigidity = EscapeUtil::stoi(Util::chop(s));
+      rr.v.cooked = EscapeUtil::stoi(Util::chop(s));
+      rr.v.solved = EscapeUtil::stoi(Util::chop(s));
+      rr.date = EscapeUtil::stoi(Util::chop(s));
+      rr.speedrecord = EscapeUtil::stoi(Util::chop(s));
+      rr.owner = EscapeUtil::stoi(Util::chop(s));
 
       dr->tab.insert({rr.filename, rr});
     }
@@ -174,8 +175,8 @@ DirIndex *DirIndex::FromFile(const string &f) {
 }
 
 bool DirIndex::IsIndex(const string &f) {
-  return EscapeUtil::hasmagic(f, INDEXMAGIC) ||
-         EscapeUtil::hasmagic(f, INDEX3MAGIC);
+  return Util::HasMagic(f, INDEXMAGIC) ||
+         Util::HasMagic(f, INDEX3MAGIC);
 }
 
 DirIndex *DirIndex::Create() {

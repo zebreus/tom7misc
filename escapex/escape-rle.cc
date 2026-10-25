@@ -1,16 +1,18 @@
-#include "rle.h"
+#include "escape-rle.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <stdlib.h>
-#include <vector>
-#include <string>
-#include <cstdint>
 #include <cstring>
+#include <stdlib.h>
+#include <string>
+#include <string_view>
+#include <vector>
 
 // n.b. should not depend on SDL; used by the server.
-#include <assert.h>
+
 
 using namespace std;
 using uint32 = uint32_t;
@@ -27,7 +29,7 @@ struct Extentf {
   ~Extentf() { if (ptr) free(ptr); }
 };
 
-// Maybe promote this to its own library in cc-lib?
+// XXX use cc-lib/bit-string.h
 /* treats strings as buffers of bits */
 struct BitBuffer {
   /* read n bits from the string s from bit offset idx.
@@ -36,7 +38,7 @@ struct BitBuffer {
      if an error occurs (such as going beyond the end of the string),
      then return false, perhaps destroying idx and output */
   template<class UINT>
-  static bool nbits(const string &s, int n,
+  static bool NBits(std::string_view s, int n,
                     unsigned int &idx, UINT &output);
 
   /* create a new empty bit buffer */
@@ -44,30 +46,31 @@ struct BitBuffer {
 
   /* appends bits to the bit buffer */
   template<class UINT>
-  void writebits(int width, UINT thebits);
+  void WriteBits(int width, UINT thebits);
 
   /* get the contents of the buffer as a string,
      padded at the end if necessary */
-  string getstring();
+  string GetString();
 
   /* give the number of bytes needed to store n bits */
-  static int ceil(int bits);
+  static int Ceil(int bits);
 
 
   ~BitBuffer() { free(data); }
 
-  private:
+ private:
   unsigned char *data;
   int size;
   int bits;
 };
 
-int BitBuffer::ceil(int bits) {
+int BitBuffer::Ceil(int bits) {
   return (bits >> 3) + !!(bits & 7);
 }
 
 template<class UINT>
-bool BitBuffer::nbits(const string &s, int n, unsigned int &idx, UINT &out) {
+bool BitBuffer::NBits(std::string_view s, int n,
+                      unsigned int &idx, UINT &out) {
 # define NTHBIT(x) !! (s[(x) >> 3] & (((UINT)1) << (7 - ((x) & 7))))
 
   out = 0;
@@ -84,21 +87,21 @@ bool BitBuffer::nbits(const string &s, int n, unsigned int &idx, UINT &out) {
 # undef NTHBIT
 }
 
-string BitBuffer::getstring() {
-  int n = ceil(bits);
+string BitBuffer::GetString() {
+  int n = Ceil(bits);
   if (data) return string((char *)data, n);
   else return "";
 }
 
 template<class UINT>
-void BitBuffer::writebits(int n, UINT b) {
+void BitBuffer::WriteBits(int n, UINT b) {
   /* assumes position already holds 0 */
 # define WRITEBIT(x, v) data[(x) >> 3] |= ((!!v) << (7 - ((x) & 7)))
 
   /* printf("writebits(%d, %d)\n", n, b); */
 
   for (int i = 0; i < n; i++) {
-    int bytes_needed = ceil(bits + 1);
+    int bytes_needed = Ceil(bits + 1);
 
     /* allocate more */
     if (bytes_needed > size) {
@@ -125,7 +128,7 @@ void BitBuffer::writebits(int n, UINT b) {
 }  // namespace
 
 
-int *EscapeRLE::Decode(const string &s, unsigned int &idx_bytes, int n) {
+int *EscapeRLE::Decode(std::string_view s, unsigned int &idx_bytes, int n) {
   int *out = (int*)malloc(n * sizeof (int));
   unsigned int idx = idx_bytes * 8;
 
@@ -134,13 +137,13 @@ int *EscapeRLE::Decode(const string &s, unsigned int &idx_bytes, int n) {
 
   /* number of bytes used to represent one integer. */
   unsigned int bytecount;
-  if (!BitBuffer::nbits(s, 8, idx, bytecount)) return nullptr;
+  if (!BitBuffer::NBits(s, 8, idx, bytecount)) return nullptr;
   int bits;
 
   unsigned int framebits = 8;
   if (bytecount & 128) {
     if (bytecount & 64) {
-      if (!BitBuffer::nbits(s, 5, idx, framebits)) return nullptr;
+      if (!BitBuffer::NBits(s, 5, idx, framebits)) return nullptr;
       // Framebits of 0 leads to only invalid frames (anti-runs of
       // length 0), and so is illegal.
       if (framebits <= 0 || framebits > 32) return nullptr;
@@ -162,24 +165,24 @@ int *EscapeRLE::Decode(const string &s, unsigned int &idx_bytes, int n) {
   int oi = 0;
 
   while (oi < n) {
-    if (!BitBuffer::nbits(s, framebits, idx, run)) return nullptr;
+    if (!BitBuffer::NBits(s, framebits, idx, run)) return nullptr;
 
     /* printf("[%d] run: %d\n", idx, run); */
     if (run == 0) {
       /* anti-run */
-      if (!BitBuffer::nbits(s, framebits, idx, run)) return nullptr;
+      if (!BitBuffer::NBits(s, framebits, idx, run)) return nullptr;
 
       /* printf("  .. [%d] anti %d\n", idx, run); */
       if (run == 0) return nullptr; /* illegal */
       for (unsigned int m = 0; m < run; m++) {
         unsigned int ch;
-        if (!BitBuffer::nbits(s, bits, idx, ch)) return nullptr;
+        if (!BitBuffer::NBits(s, bits, idx, ch)) return nullptr;
         if (oi >= n) return nullptr;
         out[oi++] = ch;
       }
     } else {
       unsigned int ch;
-      if (!BitBuffer::nbits(s, bits, idx, ch)) return nullptr;
+      if (!BitBuffer::NBits(s, bits, idx, ch)) return nullptr;
 
       for (unsigned int m = 0; m < run; m++) {
         if (oi >= n) return nullptr;
@@ -188,7 +191,7 @@ int *EscapeRLE::Decode(const string &s, unsigned int &idx_bytes, int n) {
     }
   }
   eo.release();
-  idx_bytes = BitBuffer::ceil(idx);
+  idx_bytes = BitBuffer::Ceil(idx);
   return out;
 }
 
@@ -366,20 +369,20 @@ string EscapeRLE::Encode(int n, const int *a) {
   // If framebits is not the default, we also set the next bit,
   // then emit 5 more with the framebits.
   if (framebits != 8) {
-    ou.writebits(8, 0b11000000 | valuebits);
-    ou.writebits(5, framebits);
+    ou.WriteBits(8, 0b11000000 | valuebits);
+    ou.WriteBits(5, framebits);
   } else {
-    ou.writebits(8, 0b10000000 | valuebits);
+    ou.WriteBits(8, 0b10000000 | valuebits);
     // (using default framebits == 8)
   }
 
   for (const Item &item : items) {
     switch (item.type) {
     case FRAME:
-      ou.writebits(framebits, item.value);
+      ou.WriteBits(framebits, item.value);
       break;
     case VALUE:
-      ou.writebits(valuebits, item.value);
+      ou.WriteBits(valuebits, item.value);
       break;
     default:
       assert(false);
@@ -389,5 +392,5 @@ string EscapeRLE::Encode(int n, const int *a) {
   // printf("Wrote n=%d in %d items, framebits %u (%u) valuebits %u (%u)\n",
   // n, (int)items.size(), framebits, maxf, valuebits, maxv);
 
-  return ou.getstring();
+  return ou.GetString();
 }

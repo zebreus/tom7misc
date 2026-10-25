@@ -169,7 +169,7 @@ void CommentScreen::Comment(Player *p, const Level *lev, string_view md5,
   mm->alpha = 230;
 
   /* XXX look for InputResultKind::QUIT too */
-  if (InputResultKind::OK == mm->menuize()) {
+  if (InputResultKind::OK == mm->Menuize()) {
     string com = body.GetText();
 
     string res;

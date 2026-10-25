@@ -236,7 +236,7 @@ void RateScreen_::Rate() {
     Menu::Create(this, "Change Your Rating", items, false);
 
   /* XXX look for InputResultKind::QUIT too */
-  if (InputResultKind::OK == mm->menuize()) {
+  if (InputResultKind::OK == mm->Menuize()) {
 
     /* Send to the server. */
 

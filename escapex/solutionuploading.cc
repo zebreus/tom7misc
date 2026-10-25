@@ -86,7 +86,7 @@ void SolutionUploading::PromptUpload(Drawable *below,
   /* display menu */
   std::unique_ptr<Menu> mm =
     Menu::Create(below, "Upload solution?", items, false);
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
   mm.reset();
 
   if (res == InputResultKind::OK) {

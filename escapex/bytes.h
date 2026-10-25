@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 
+#include "packet-parser.h"
+
 // For portability, we avoid assuming any endianness in escape file
 // formats, instead working only with byte vectors (usually stored in
 // strings).
@@ -34,20 +36,11 @@ inline std::string BigEndian32(int i) {
 // Read a four-byte string at idx in the string (no bounds checking).
 // Advances the index by four.
 inline uint32_t ReadBigEndian32(const std::string &s, unsigned int &idx) {
-  // XXX maybe this casting is overkill but I don't want to get bit by
-  // some conversion/sign extension and I am not in a good position to
-  // test right this second!
-  auto Byte32 = [&s](int i) -> uint32_t {
-      uint8_t b = s[i];
-      return (uint32_t)b;
-    };
-  const uint32_t ret =
-    (Byte32(idx) << 24) |
-    (Byte32(idx + 1) << 16) |
-    (Byte32(idx + 2) << 8) |
-    Byte32(idx + 3);
+  PacketParser pp(s);
+  pp.Skip(idx);
+  uint32_t u = pp.W32();
   idx += 4;
-  return ret;
+  return u;
 }
 
 

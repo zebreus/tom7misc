@@ -13,7 +13,7 @@
 #include "bytes.h"
 #include "disamb.h"
 #include "level-base.h"
-#include "rle.h"
+#include "escape-rle.h"
 #include "solution.h"
 
 /* This code is non-SDL, so it should be portable! */

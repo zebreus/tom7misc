@@ -23,7 +23,7 @@ CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o
 
 # Core of escape, which can be used for headless rendering, level generation
 # and solving, etc.
-ESCLIBOBJECTS=level.o solution.o rle.o disamb.o escape-util.o graphics.o
+ESCLIBOBJECTS=level.o solution.o escape-rle.o disamb.o escape-util.o graphics.o
 
 ESCOBJECTS=main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
 
@@ -189,6 +189,12 @@ escape.exe : $(ESCOBJECTS) $(CCLIBOBJECTS) $(SDLUTILOBJECTS)
 https_test.exe : https.o escape-util.o https_test.o $(CCLIBOBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+solution_test.exe : solution_test.o $(ESCLIBOBJECTS) $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+escape-rle_test.exe : escape-rle_test.o $(ESCLIBOBJECTS) $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 .dummy :
 
 version : .dummy
@@ -343,7 +349,7 @@ packsound.exe : packsound.o $(CCLIBOBJECTS)
 	$(CXX) -o $@ $^ $(LDFLAGS) -static
 	strip packsound.exe
 
-rle_test.exe : lib/rle.o lib/rle_test.o
+escape-rle_test.exe : escape-rle.o escape-rle_test.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -static
 	strip rle_test.exe
 

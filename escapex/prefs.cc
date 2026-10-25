@@ -150,7 +150,7 @@ void Prefs::Show(Player *plr) {
 
   std::unique_ptr<Menu> mm =
     Menu::Create(0, "Escape Preferences Menu", items, false);
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
   mm.reset();
 
   /* XXX check InputResultKind::QUIT */

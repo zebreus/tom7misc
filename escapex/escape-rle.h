@@ -45,11 +45,10 @@
 #define _ESCAPE_RLE_H
 
 #include <string>
+#include <string_view>
 
 // XXX Since this deals with bits, we should specify the bit width of
 // ints being encoded (or template).
-
-// XXX write tests!
 
 struct EscapeRLE {
   /* idx a starting position (measured in bytes) in 'string' for the
@@ -59,7 +58,7 @@ struct EscapeRLE {
 
      Returns a malloc-allocated array, which becomes owned by the caller.
   */
-  static int *Decode(const std::string &s, unsigned int &idx_bytes, int n);
+  static int *Decode(std::string_view s, unsigned int &idx_bytes, int n);
 
   /* encode n ints in 'a', and return it as a string.
      This uses a greedy strategy that is not optimal.

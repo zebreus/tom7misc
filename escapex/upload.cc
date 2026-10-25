@@ -75,7 +75,7 @@ UploadResult Upload_::Up(Player *p,
                          std::string_view f, std::string_view text) {
   Redraw();
 
-  const string levcont = EscapeUtil::readfilemagic(f, LEVELMAGIC);
+  const string levcont = Util::ReadFileMagic(f, LEVELMAGIC);
 
   plr = p;
 

@@ -210,14 +210,14 @@ struct BookmarkItem : public MenuItem {
 
   Drawable *below = nullptr;
 
-  string helptext() override {
+  string HelpText() override {
     return "Press " BLUE "enter" POP " to load this bookmark.";
   }
 
   string bookmenu;
   string solmenu;
 
-  void draw(int x, int y, int f) override {
+  void Draw(int x, int y, int f) override {
     Drawing dr;
     dr.posx = x;
     dr.posy = y + 2;
@@ -254,7 +254,7 @@ struct BookmarkItem : public MenuItem {
                      (solved ? solmenu : bookmenu) + POP);
   }
 
-  void size(int &w, int &h) override {
+  void Size(int &w, int &h) override {
     /* XXX also author, date.. */
     w = THUMBW + 8 +
       std::max(fon->sizex(ns.name), fonsmall->sizex(solmenu));
@@ -267,7 +267,7 @@ struct BookmarkItem : public MenuItem {
 
   }
 
-  InputResult key(SDL_Event e) override {
+  InputResult Key(SDL_Event e) override {
 
     switch (e.key.keysym.sym) {
     case SDLK_RETURN:
@@ -342,11 +342,11 @@ struct BookmarkItem : public MenuItem {
       return InputResult(InputResultKind::OK);
 
     default:
-      return MenuItem::key(e);
+      return MenuItem::Key(e);
     }
   }
 
-  InputResult click(int, int) override {
+  InputResult Click(int, int) override {
     SDL_Event e;
     /* XXX is this enough to make it a legal key? */
     /* XXX should be a library call */
@@ -354,7 +354,7 @@ struct BookmarkItem : public MenuItem {
     e.key.keysym.sym = SDLK_RETURN;
     e.key.keysym.unicode = SDLK_RETURN;
     e.key.keysym.mod = (SDLMod) 0;
-    return key(e);
+    return Key(e);
   }
 
   struct act {
@@ -672,7 +672,7 @@ void Play_::Bookmarks(const Level *start,
     mm->alpha = 230;
 
 
-    InputResultKind k = mm->menuize();
+    InputResultKind k = mm->Menuize();
 
     switch (k) {
     case InputResultKind::NEXT: case InputResultKind::PREV:
@@ -853,8 +853,8 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
       string moves = Base64::Decode(EscapeUtil::getline(s));
 
       /* this is the solution id, which we don't need */
-      (void) EscapeUtil::stoi(EscapeUtil::chop(line1));
-      int date = EscapeUtil::stoi(EscapeUtil::chop(line1));
+      (void) EscapeUtil::stoi(Util::chop(line1));
+      int date = EscapeUtil::stoi(Util::chop(line1));
       string name = EscapeUtil::losewhitel(line1);
 
       Solution s;

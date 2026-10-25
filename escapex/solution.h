@@ -2,9 +2,11 @@
 #define _ESCAPE_SOLUTION_H
 
 #include <string>
-#include "level-base.h"
-#include <assert.h>
+#include <cassert>
+#include <string_view>
 #include <vector>
+
+#include "level-base.h"
 
 /* a solution is just a list of moves */
 struct Solution {
@@ -27,7 +29,7 @@ struct Solution {
 
   std::string ToString() const;
 
-  static bool FromString(const std::string &s, Solution *sol);
+  static bool FromString(std::string_view s, Solution *sol);
 
   Solution() {}
   ~Solution() {}

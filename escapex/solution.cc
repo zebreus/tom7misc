@@ -3,21 +3,30 @@
 
 #include <string>
 #include <cstdint>
+#include <string_view>
 
-#include "rle.h"
+#include "level-base.h"
+#include "escape-rle.h"
 #include "bytes.h"
+#include "packet-writer.h"
+#include "packet-parser.h"
 
 using namespace std;
 
 string Solution::ToString() const {
-  return BigEndian32(Length()) + EscapeRLE::Encode(Length(), (int *)dirs.data());
+  PacketWriter pw;
+  pw.W32(Length());
+  pw.Bytes(EscapeRLE::Encode(Length(), (int *)dirs.data()));
+  return pw.ToString();
 }
 
 // static
-bool Solution::FromString(const string &s, Solution *sol) {
-  if (s.length() < 4) return false;
+bool Solution::FromString(std::string_view s, Solution *sol) {
+  PacketParser pp(s);
+
+  uint32_t len = pp.W32();
+
   unsigned int idx = 0;
-  int len = ReadBigEndian32(s, idx);
   if (len < 0) return false;
 
   dir *dd = EscapeRLE::Decode(s, idx, len);
@@ -29,13 +38,15 @@ bool Solution::FromString(const string &s, Solution *sol) {
   for (int i = 0; i < len; i++) sol->Append(dd[i]);
   sol->verified = false;
 
+  if (!pp.OK()) return false;
+
   return true;
 }
 
 // static
 bool Solution::Equal(const Solution &l, const Solution &r) {
   if (l.dirs.size() != r.dirs.size()) return false;
-  for (int i = 0; i < (int)l.dirs.size(); i++) {
+  for (size_t i = 0; i < l.dirs.size(); i++) {
     if (l.dirs[i] != r.dirs[i]) return false;
   }
   return true;

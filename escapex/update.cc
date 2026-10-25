@@ -100,8 +100,8 @@ struct Updater_ : public Updater {
 struct subtoggle : public Toggle {
   string fname;
 
-  virtual InputResult key(SDL_Event e);
-  virtual InputResult click(int x, int y);
+  virtual InputResult Key(SDL_Event e);
+  virtual InputResult Click(int x, int y);
 
   void DoCheck();
 };
@@ -153,12 +153,12 @@ void subtoggle::DoCheck() {
   }
 }
 
-InputResult subtoggle::click(int, int) {
+InputResult subtoggle::Click(int, int) {
   DoCheck();
   return InputResult(InputResultKind::UPDATED);
 }
 
-InputResult subtoggle::key(SDL_Event e) {
+InputResult subtoggle::Key(SDL_Event e) {
   int kk = e.key.keysym.sym;
 
   switch (kk) {
@@ -166,7 +166,7 @@ InputResult subtoggle::key(SDL_Event e) {
   case SDLK_SPACE:
     DoCheck();
     return InputResult(InputResultKind::UPDATED);
-  default: return MenuItem::key(e);
+  default: return MenuItem::Key(e);
   }
 
 }
@@ -205,8 +205,8 @@ CCResult Updater_::CheckCollections(
     while (ncolls--) {
       string line = EscapeUtil::getline(s);
 
-      string fname = EscapeUtil::chop(line);
-      int minv  = EscapeUtil::stoi(EscapeUtil::chop(line));
+      string fname = Util::chop(line);
+      int minv  = EscapeUtil::stoi(Util::chop(line));
       string showname = line;
 
       int usable = EscapeUtil::stoi(VERSION) >= minv;
@@ -282,7 +282,7 @@ SelResult Updater_::SelectCollections(
     Menu::Create(this, "Select your collection subscriptions.", items, false);
   if (mm.get() == nullptr) return SelResult::FAIL;
 
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
   mm.reset();
 
   if (res == InputResultKind::OK) {
@@ -347,7 +347,7 @@ void Updater_::UpdateCollection(
     while (ndirs--) {
       string line = EscapeUtil::getline(s);
 
-      string d = EscapeUtil::chop(line);
+      string d = Util::chop(line);
       string name = EscapeUtil::losewhitel(line);
 
       /* sanity check d. */
@@ -361,7 +361,7 @@ void Updater_::UpdateCollection(
       }
 
       /* on win32, rewrite / to \ */
-      EscapeUtil::replace(d, "/", DIRSEP);
+      Util::Replace(d, "/", DIRSEP);
 
       up->SaveDir(d, name);
     }
@@ -376,8 +376,8 @@ void Updater_::UpdateCollection(
 
       /* printf("line: '%s'\n", line.c_str()); */
 
-      string f = EscapeUtil::chop(line);
-      string md = EscapeUtil::chop(line);
+      string f = Util::chop(line);
+      string md = Util::chop(line);
 
       /* sanity check f. This may be relative
          to the current directory, so it is the
@@ -393,16 +393,16 @@ void Updater_::UpdateCollection(
 
       RateStatus votes;
 
-      votes.nvotes = EscapeUtil::stoi(EscapeUtil::chop(line));
-      votes.difficulty = EscapeUtil::stoi(EscapeUtil::chop(line));
-      votes.style = EscapeUtil::stoi(EscapeUtil::chop(line));
-      votes.rigidity = EscapeUtil::stoi(EscapeUtil::chop(line));
-      votes.cooked = EscapeUtil::stoi(EscapeUtil::chop(line));
-      votes.solved = EscapeUtil::stoi(EscapeUtil::chop(line));
+      votes.nvotes = EscapeUtil::stoi(Util::chop(line));
+      votes.difficulty = EscapeUtil::stoi(Util::chop(line));
+      votes.style = EscapeUtil::stoi(Util::chop(line));
+      votes.rigidity = EscapeUtil::stoi(Util::chop(line));
+      votes.cooked = EscapeUtil::stoi(Util::chop(line));
+      votes.solved = EscapeUtil::stoi(Util::chop(line));
 
-      int date = EscapeUtil::stoi(EscapeUtil::chop(line));
-      int speedrecord = EscapeUtil::stoi(EscapeUtil::chop(line));
-      int owner = EscapeUtil::stoi(EscapeUtil::chop(line));
+      int date = EscapeUtil::stoi(Util::chop(line));
+      int speedrecord = EscapeUtil::stoi(Util::chop(line));
+      int owner = EscapeUtil::stoi(Util::chop(line));
 
       /* require file and md5, but not any of the voting stuff
          (they will default to 0) */

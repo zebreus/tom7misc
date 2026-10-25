@@ -161,11 +161,10 @@ UpResult Upgrader_::doupgrade(HTTPS *hh, string_view msgv,
     switch (hd->head.t) {
     case UT_FILE: {
 
-      string fnodotdot = EscapeUtil::replace(hd->head.filename, "..", "@");
+      string fnodotdot = Util::Replace(hd->head.filename, "..", "@");
 
-      string dl = (string)"/" + (string)PLATFORM +
-        (string)"/" + EscapeUtil::replace(fnodotdot,
-                                    "/", "_");
+      string dl = std::format("/{}/{}",
+                              PLATFORM, Util::Replace(fnodotdot, "/", "_"));
 
       say((string)"Downloading " GREEN + dl + (string) POP " ...");
 
@@ -222,7 +221,7 @@ UpResult Upgrader_::doupgrade(HTTPS *hh, string_view msgv,
     string tf = h->head.tempfile;
 
     /* the local destination */
-    string local = EscapeUtil::replace(h->head.filename, "/", DIRSEP);
+    string local = Util::Replace(h->head.filename, "/", DIRSEP);
 
     if (h->head.t == UT_FILE) {
 
@@ -299,7 +298,7 @@ UpResult Upgrader_::doupgrade(HTTPS *hh, string_view msgv,
        hr = hr->next) {
 
     string todel =
-      EscapeUtil::replace(hr->head.filename, "/", DIRSEP);
+      Util::Replace(hr->head.filename, "/", DIRSEP);
 
     if (hr->head.t == UT_DELETE) {
       if (EscapeUtil::remove(todel)) {
@@ -433,13 +432,13 @@ CUResult Upgrader_::checkupgrade(HTTPS *hh,
     for (int j = 0; j < nfiles; j++) {
       string fl = EscapeUtil::getline(s);
       /* filename */
-      string fi = EscapeUtil::chop(fl);
-      string lfi = EscapeUtil::replace(fi, "/", DIRSEP);
+      string fi = Util::chop(fl);
+      string lfi = Util::Replace(fi, "/", DIRSEP);
 
       /* encodings (ignored) */
-      EscapeUtil::chop(fl);
+      Util::chop(fl);
       /* md5 */
-      string md = EscapeUtil::chop(fl);
+      string md = Util::chop(fl);
       /* ignore remainder of fl for now ... */
 
       if (fi == "" || md == "") {

@@ -56,73 +56,6 @@ bool EscapeUtil::makedir(string d) {
 # endif
 }
 
-static bool hasmagicf(FILE *f, const string &mag) {
-  char *hdr = (char*)malloc(mag.length());
-  if (!hdr) return false;
-
-  /* we may not even be able to read sizeof(header) bytes! */
-  if (mag.length() != fread(hdr, 1, mag.length(), f)) {
-    free(hdr);
-    return false;
-  }
-
-  for (unsigned int i = 0; i < mag.length(); i++) {
-    if (hdr[i] != mag[i]) {
-      free(hdr);
-      return false;
-    }
-  }
-
-  free(hdr);
-  return true;
-}
-
-bool EscapeUtil::hasmagic(string s, const string &mag) {
-  FILE *f = fopen(s.c_str(), "rb");
-  if (!f) return false;
-
-  bool hm = hasmagicf(f, mag);
-
-  fclose(f);
-  return hm;
-}
-
-string EscapeUtil::readfilemagic(std::string_view s, const string &mag) {
-  if (Util::IsDir(s)) return "";
-  if (s == "") return "";
-
-  // printf("opened %s\n", s.c_str());
-
-  /* PERF try this: and see! */
-  // printf("Readfile '%s'\n", s.c_str());
-
-  FILE *f = fopen(std::string(s).c_str(), "rb");
-
-  if (!f) return "";
-
-
-  if (!hasmagicf(f, mag)) {
-    fclose(f);
-    return "";
-  }
-
-  /* ok, now just read file */
-
-  fseek(f, 0, SEEK_END);
-  int size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-
-  char *ss = (char*)malloc(size);
-  fread(ss, 1, size, f);
-
-  fclose(f);
-
-  string ret = string(ss, size);
-  free(ss);
-
-  return ret;
-}
-
 string itos(int i) {
   return std::format("{}", i);
 }
@@ -246,50 +179,6 @@ string EscapeUtil::fgetline(FILE *f) {
     }
   }
   return out;
-}
-
-/* PERF use substr instead of accumulating: this is used
-   frequently in the net stuff */
-/* return first token in line, removing it from 'line' */
-string EscapeUtil::chop(string &line) {
-  for (unsigned int i = 0; i < line.length(); i++) {
-    if (line[i] != ' ') {
-      string acc;
-      for (unsigned int j = i; j < line.length(); j++) {
-        if (line[j] == ' ') {
-          line = line.substr(j, line.length() - j);
-          return acc;
-        } else acc += line[j];
-      }
-      line = "";
-      return acc;
-    }
-  }
-  /* all whitespace */
-  line = "";
-  return "";
-}
-
-/* PERF same */
-string EscapeUtil::chopto(char c, string &line) {
-  string acc;
-  for (unsigned int i = 0; i < line.length(); i++) {
-    if (line[i] != c) {
-      acc += line[i];
-    } else {
-      if (i < (line.length() - 1)) {
-        line = line.substr(i + 1, line.length() - (i + 1));
-        return acc;
-      } else {
-        line = "";
-        return acc;
-      }
-    }
-  }
-  /* character didn't appear; treat as an invisible
-     occurrence at the end */
-  line = "";
-  return acc;
 }
 
 string EscapeUtil::losewhitel(const string &s) {
@@ -633,25 +522,6 @@ void EscapeUtil::createpathfor(string f) {
 FILE *EscapeUtil::fopenp(string f, string m) {
   createpathfor(f);
   return fopen(f.c_str(), m.c_str());
-}
-
-string EscapeUtil::replace(string src, string findme, string rep) {
-  int idx = src.length() - 1;
-
-  if (findme.length() < 1) return src;
-
-  /* idx represents the position in src which, for all chars greater
-     than it, there begins no match of findme */
-  while (idx >= 0 && idx != (signed)string::npos) {
-    idx = src.rfind(findme, idx);
-    if (idx != (signed)string::npos) {
-      /* do replacement */
-      src.replace(idx, findme.length(), rep);
-      /* want to ensure termination even if rep contains findmes */
-      idx -= findme.length();
-    } else break;
-  }
-  return src;
 }
 
 #if WIN32

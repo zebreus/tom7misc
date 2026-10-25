@@ -48,7 +48,7 @@ string Prompt::select() {
     Menu::Create(below, GREY "Input Required",
                  {&inp, &spacer, &ok, &can},
                  false);
-  InputResultKind res = mm->menuize();
+  InputResultKind res = mm->Menuize();
 
   if (res == InputResultKind::OK) {
     return inp.input;

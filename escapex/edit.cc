@@ -756,7 +756,7 @@ void Editor::Resize() {
                                           {&twidth, &theight, &ok},
                                           false);
 
-  if (mm->menuize() == InputResultKind::OK) {
+  if (mm->Menuize() == InputResultKind::OK) {
     int nnw = atoi(twidth.input.c_str());
     int nnh = atoi(theight.input.c_str());
 
