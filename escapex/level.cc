@@ -222,7 +222,7 @@ bool Level::Sanitize() {
       tiles[i] = T_BLACK;
     }
 
-    if (otiles[i] >= NUM_TILES || tiles[i] < 0) {
+    if (otiles[i] >= NUM_TILES || otiles[i] < 0) {
       FSDEBUG printf("insane: bad otile: %d\n", otiles[i]);
       was_sane = false;
       otiles[i] = T_BLACK;
