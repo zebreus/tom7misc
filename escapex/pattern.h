@@ -3,11 +3,17 @@
 
 #include "level.h"
 
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "base/logging.h"
+#include "base/print.h"
 #include "escape-util.h"
+#include "generator.h"
+#include "level-base.h"
 #include "util.h"
 
 /* The pattern matcher is to escape levels what
@@ -29,9 +35,9 @@ struct Match {
      pattern is matched upside down, then up()
      returns DIR_DOWN */
   dir up() const { return up_dir; }
-  dir down() const { return dir_reverse(up_dir); }
+  dir down() const { return DirReverse(up_dir); }
   dir right() const { return right_dir; }
-  dir left() const { return dir_reverse(right_dir); }
+  dir left() const { return DirReverse(right_dir); }
 
   /* any 'register' set in the original pattern
      can be fetched here. false if no such
@@ -39,7 +45,7 @@ struct Match {
   bool getindex(int reg, int &x, int &y) {
     if (reg < nregs) {
       int idx = regs[reg];
-      lev->where(idx, x, y);
+      lev->Where(idx, x, y);
       return true;
     } else return false;
   }
@@ -99,7 +105,7 @@ struct Pattern {
             p->w = thisline;
           } else {
             if (p->w != thisline) {
-              printf("pattern width mismatch\n");
+              Print("pattern width mismatch\n");
               return 0;
             }
           }
@@ -194,7 +200,7 @@ struct Pattern {
           /* printf("now dirsleft %d, thisdir %s\n", dirsleft, dirstring(this_dir).c_str()); */
 
           int x, y;
-          lev->where(g.item(), x, y);
+          lev->Where(g.item(), x, y);
 
           int sd = this_dir;
 
@@ -240,8 +246,7 @@ struct Pattern {
             rdxy = 1;
             break;
           default:
-            printf("bad dir!");
-            abort();
+            LOG(FATAL) << "bad dir!";
           }
 
           /* bounds check. we already know
@@ -279,7 +284,7 @@ struct Pattern {
             unsigned char code = pat->chars[vi];
             switch (pat->tab[code].t) {
             case HType::MATCHTILE:
-              if (pat->tab[code].u.tile != lev->tileat(rx, ry)) goto no_match;
+              if (pat->tab[code].u.tile != lev->TileAt(rx, ry)) goto no_match;
               break;
             case HType::FN:
               if (!pat->tab[code].u.f(lev, inf, rx, ry)) goto no_match;
@@ -288,7 +293,7 @@ struct Pattern {
             }
 
             /* set reg, if any */
-            if (pat->regs[vi] >= 0) r[pat->regs[vi]] = lev->index(rx, ry);
+            if (pat->regs[vi] >= 0) r[pat->regs[vi]] = lev->Index(rx, ry);
           }
 
           /* successful match */
@@ -296,7 +301,7 @@ struct Pattern {
           {
             /* XXX this should be derived from rdxx, etc.
                (so that we can support flips) */
-            const int rd = turnright(sd);
+            const int rd = TurnRight(sd);
 
             /*
               printf("regs are:\n");
@@ -306,7 +311,7 @@ struct Pattern {
               printf("\n");
             */
 
-            return new Match(lev->index(x, y), sd, rd,
+            return new Match(lev->Index(x, y), sd, rd,
                              pat->nregs, std::move(r), lev);
           }
           /* unsuccessful */

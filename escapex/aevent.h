@@ -31,8 +31,6 @@
 
 */
 
-using dir = int;
-
 enum atag { tag_fly, tag_push, tag_jiggle, tag_breaks, tag_swap,
             tag_walk, tag_press, tag_stand, tag_toggle, tag_button,
             tag_trap, tag_pushgreen, tag_litewire, tag_liteup,

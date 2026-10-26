@@ -91,7 +91,7 @@ void Disamb::serialup(Level *l, PtrList<AEvent> **& etail) {
         bots[i] != serial) {
       {
         DIS_PUSHEVENT(stand, e);
-        l->where(l->boti[i], e->x, e->y);
+        l->Where(l->boti[i], e->x, e->y);
         // printf("  %d stand bot %d (@ %d/%d)\n", bots[i], i, e->x, e->y);
         e->d = l->botd[i];
         e->entt = l->bott[i];

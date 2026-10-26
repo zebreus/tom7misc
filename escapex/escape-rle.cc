@@ -1,4 +1,5 @@
 #include "escape-rle.h"
+#include "packet-parser.h"
 
 #include <algorithm>
 #include <cassert>
@@ -193,6 +194,25 @@ int *EscapeRLE::Decode(std::string_view s, unsigned int &idx_bytes, int n) {
   eo.release();
   idx_bytes = BitBuffer::Ceil(idx);
   return out;
+}
+
+std::vector<int> EscapeRLE::Decode(PacketParser *p, size_t n) {
+  if (!p->OK()) return {};
+
+  unsigned int idx = 0;
+  int *d = Decode(p->StringView(), idx, n);
+  if (d == nullptr) {
+    p->Error();
+    return {};
+  }
+
+  // Consume the RLE bytes.
+  p->Skip(idx);
+  std::vector<int> ret(n);
+  memcpy(ret.data(), d, sizeof (int) * n);
+  free(d);
+
+  return ret;
 }
 
 /* We avoid using "real" compression schemes

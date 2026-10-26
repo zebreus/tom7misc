@@ -5,6 +5,7 @@
 #include <string>
 #include <cassert>
 
+#include "base/logging.h"
 #include "draw.h"
 #include "escape-util.h"
 #include "level-base.h"
@@ -29,7 +30,7 @@ bool Editor::moveplayersafe() {
             x < (selection.x + selection.w) &&
             y < (selection.y + selection.h)) continue;
 
-        if (level->botat(x, y)) continue;
+        if (level->BotAt(x, y)) continue;
 
         level->guyx = x;
         level->guyy = y;
@@ -201,15 +202,15 @@ void Editor::pffile() {
             */
             ) {
 
-          level->settile(dstx, dsty,
-                          small->tileat(srcx, srcy));
-          level->osettile(dstx, dsty,
-                            small->otileat(srcx, srcy));
-          if (Level::needsdest(level->tileat(dstx, dsty)) ||
-              Level::needsdest(level->otileat(dstx, dsty))) {
+          level->SetTile(dstx, dsty,
+                          small->TileAt(srcx, srcy));
+          level->SetOTile(dstx, dsty,
+                            small->OTileAt(srcx, srcy));
+          if (Level::NeedsDest(level->TileAt(dstx, dsty)) ||
+              Level::NeedsDest(level->OTileAt(dstx, dsty))) {
 
             int sdx, sdy;
-            small->getdest(srcx, srcy, sdx, sdy);
+            small->GetDest(srcx, srcy, sdx, sdy);
             sdx += (dstx - srcx);
             sdy += (dsty - srcy);
             /* then make sure it's in bounds... */
@@ -217,7 +218,7 @@ void Editor::pffile() {
             if (sdx >= level->w) sdx = level->w - 1;
             if (sdy < 0) sdy = 0;
             if (sdy >= level->w) sdy = level->w - 1;
-            level->setdest(dstx, dsty, sdx, sdy);
+            level->SetDestk(dstx, dsty, sdx, sdy);
           }
         }
 
@@ -226,7 +227,7 @@ void Editor::pffile() {
     /* bots */
     for (int i = 0; i < small->nbots; i++) {
       int xx, yy;
-      small->where(small->boti[i], xx, yy);
+      small->Where(small->boti[i], xx, yy);
 
       xx += selection.x - xo;
       yy += selection.y - yo;
@@ -362,8 +363,7 @@ void Editor::pftimer() {
    the timer and then return true.
 */
 bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
-
-  if (j < 0 || j > i) abort();
+  CHECK(j >= 0 && j < i);
 
   if (j < i) {
     /* wlog we will assume that M_i > M_i+1, also
@@ -400,7 +400,7 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
     /* black out selection */
     for (int x = selection.x; x < selection.x + selection.w; x++) {
       for (int y = selection.y; y < selection.y + selection.h; y++) {
-        level->settile(x, y, T_BLACK);
+        level->SetTile(x, y, T_BLACK);
         clearbot(x, y);
       }
     }
@@ -421,9 +421,9 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
 
       /* set up bot for trigger */
       addbot(trigx, trigy, B_DALEK);
-      level->settile(trigx + dx * (i + 1), trigy, T_RPANEL);
+      level->SetTile(trigx + dx * (i + 1), trigy, T_RPANEL);
       /* target self, I guess? */
-      level->setdest(trigx + dx * (i + 1), trigy,
+      level->SetDestk(trigx + dx * (i + 1), trigy,
                      trigx + dx * (i + 1), trigy);
 
       for (int z = 0; z < i; z++) {
@@ -439,23 +439,23 @@ bool Editor::timer_try(int *M, int *A, int j, int i, int n, bool rev) {
 
         /* clear a path */
         for (int x = home; x != rootx + dx * selection.w; x += dx) {
-          level->settile(x, y, T_ROUGH);
+          level->SetTile(x, y, T_ROUGH);
         }
 
         /* teleporter at far right. */
-        level->settile(rootx + dx * (selection.w - 1), y, T_TRANSPORT);
-        level->setdest(rootx + dx * (selection.w - 1), y, home, y);
+        level->SetTile(rootx + dx * (selection.w - 1), y, T_TRANSPORT);
+        level->SetDestk(rootx + dx * (selection.w - 1), y, home, y);
 
         /* make panel */
-        level->settile(home, y, T_PANEL);
-        level->setdest(home, y, trigx + dx * (1 + z), trigy);
+        level->SetTile(home, y, T_PANEL);
+        level->SetDestk(home, y, trigx + dx * (1 + z), trigy);
 
-        level->settile(trigx + dx * (1 + z), trigy, T_BLACK);
-        level->osettile(trigx + dx * (1 + z), trigy, T_RSTEEL);
+        level->SetTile(trigx + dx * (1 + z), trigy, T_BLACK);
+        level->SetOTile(trigx + dx * (1 + z), trigy, T_RSTEEL);
         /* do a pre-emptive swap if bot starts home, since he'll be
            on the panel */
         if (A[z] == 0)
-          level->swapo(level->index(trigx + dx * (1 + z), trigy));
+          level->SwapO(level->Index(trigx + dx * (1 + z), trigy));
 
         if (level->nbots >= LEVEL_MAX_ROBOTS) {
           Message::Bug(this, "oops, exceeded bots! bug!");

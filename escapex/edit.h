@@ -96,14 +96,14 @@ struct Editor : public Drawable {
 
   void setlayer(int x, int y, int t) {
     if (layer) {
-      level->osettile(x, y, t);
+      level->SetOTile(x, y, t);
     } else {
-      level->settile(x, y, t);
+      level->SetTile(x, y, t);
     }
   }
 
   int layerat(int x, int y) const {
-    return layer ? level->otileat(x, y) : level->tileat(x, y);
+    return layer ? level->OTileAt(x, y) : level->OTileAt(x, y);
   }
 
   void blinktile(int, int, Uint32);

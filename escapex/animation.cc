@@ -12,7 +12,6 @@
 #include "chars.h"
 #include "dirt.h"
 #include "draw.h"
-#include "escape-util.h"
 #include "escapex.h"
 #include "graphics.h"
 #include "level-base.h"
@@ -783,7 +782,7 @@ using alist = PtrList<Animation>;
 static inline SDL_Surface *FACING_FRAME(dir d, bot entt, int data) {
   switch (entt) {
   default:
-    if (Level::isbomb(entt)) {
+    if (Level::IsBomb(entt)) {
       if (data < 0) return Animation::pic_bomb_still[0];
       else return Animation::pic_bomb_lit[data][0];
     }
@@ -818,7 +817,7 @@ static inline int OVERLAP(bot entt) {
   case B_PLAYER: return GUY_OVERLAPY;
 
   default:
-    if (Level::isbomb(entt)) return BOMB_OVERLAPY;
+    if (Level::IsBomb(entt)) return BOMB_OVERLAPY;
     else return BROKEN_OVERLAPY; /* ??? */
   }
 }
@@ -955,7 +954,7 @@ void Animation::start(Drawing &dr,
           !(wx == al->lx && wy == al->ly)
             && /* still on screen */
             dr.OnScreen(wx, wy, dummy, dummy);
-          dr.lev->travel(wx, wy, dd, wx, wy)) {
+          dr.lev->Travel(wx, wy, dd, wx, wy)) {
         nt++;
       }
 
@@ -1004,7 +1003,7 @@ void Animation::start(Drawing &dr,
           !(wx == at->lx && wy == at->ly)
             && /* still on screen */
             dr.OnScreen(wx, wy, dummy, dummy);
-          dr.lev->travel(wx, wy, dd, wx, wy)) {
+          dr.lev->Travel(wx, wy, dd, wx, wy)) {
         nt++;
       }
 
@@ -1106,7 +1105,7 @@ void Animation::start(Drawing &dr,
 
     int xx, yy, dx, dy, dxx, dyy;
     if (dr.OnScreen(ag->srcx, ag->srcy, xx, yy) &&
-        dr.lev->travel(ag->srcx, ag->srcy, ag->d, dx, dy) &&
+        dr.lev->Travel(ag->srcx, ag->srcy, ag->d, dx, dy) &&
         dr.OnScreen(dx, dy, dxx, dyy)) {
 
       int ax = xx;
@@ -1158,9 +1157,9 @@ void Animation::start(Drawing &dr,
       for (dir dd = FIRST_DIR_SELF; dd <= LAST_DIR; dd++) {
         int bx, by;
         int bbx, bby;
-        if (dr.lev->travel(ab->x, ab->y, dd, bx, by)
+        if (dr.lev->Travel(ab->x, ab->y, dd, bx, by)
             && dr.OnScreen(bx, by, bbx, bby)) {
-          alist::push(anims, new AnPlaceTile(dr.lev->tileat(bx, by), bbx, bby));
+          alist::push(anims, new AnPlaceTile(dr.lev->TileAt(bx, by), bbx, bby));
         }
       }
 
@@ -1382,7 +1381,7 @@ void Animation::start(Drawing &dr,
          the default destructor and a union.
       */
 
-      int what = dr.lev->tileat(cx, cy);
+      int what = dr.lev->TileAt(cx, cy);
 
       AFrame *frames_jiggle;
 
@@ -1420,7 +1419,7 @@ void Animation::start(Drawing &dr,
         alist::push(anims, aw);
       }
 
-      dr.lev->travel(cx, cy, aj->d, cx, cy);
+      dr.lev->Travel(cx, cy, aj->d, cx, cy);
       waitn += WAIT_BETWEEN_JIGGLE;
     }
 
@@ -1444,7 +1443,7 @@ void Animation::start(Drawing &dr,
 
     /* compute the amount that is on screen, in pixels */
     while (dleft-- &&
-          dr.lev->travel(x, y, af->d, x, y) &&
+          dr.lev->Travel(x, y, af->d, x, y) &&
           dr.OnScreen(x, y, destx, desty)) {
       dist += TILESIZE(af->d);
     }
@@ -1567,7 +1566,7 @@ void Animation::start(Drawing &dr,
     push_t *ap = &(ae->u.push);
 
     int dx, dy, sx, sy, sdx, sdy;
-    if (dr.lev->travel(ap->srcx, ap->srcy, ap->d, dx, dy) &&
+    if (dr.lev->Travel(ap->srcx, ap->srcy, ap->d, dx, dy) &&
         dr.OnScreen(ap->srcx, ap->srcy, sx, sy) &&
         dr.OnScreen(dx, dy, sdx, sdy)) {
 
@@ -1664,7 +1663,7 @@ void Animation::start(Drawing &dr,
     walk_t *aw = &(ae->u.walk);
 
     int dx, dy, sx, sy, sdx, sdy;
-    if (dr.lev->travel(aw->srcx, aw->srcy, aw->d, dx, dy) &&
+    if (dr.lev->Travel(aw->srcx, aw->srcy, aw->d, dx, dy) &&
         dr.OnScreen(aw->srcx, aw->srcy, sx, sy) &&
         dr.OnScreen(dx, dy, sdx, sdy)) {
 
@@ -1701,7 +1700,7 @@ void Animation::start(Drawing &dr,
 #      undef INPLACE
 
       default:
-        if (Level::isbomb(aw->entt)) {
+        if (Level::IsBomb(aw->entt)) {
 
           overlapy = BOMB_OVERLAPY;
 
@@ -1774,7 +1773,7 @@ bool AnFlying::Think(unsigned int now) {
 
   {
     int dx = 0, dy = 0;
-    dirchange(d, dx, dy);
+    DirChange(d, dx, dy);
     px += dx * go;
     py += dy * go;
   }
@@ -2056,7 +2055,7 @@ void Animation::clearsprites(Drawing &dr) {
     int x, y;
     if (dr.lev->bott[i] != B_DELETED &&
         dr.lev->bott[i] != B_BOMB_X) {
-      dr.lev->where(dr.lev->boti[i], x, y);
+      dr.lev->Where(dr.lev->boti[i], x, y);
       /* can be conservative here so that we don't have to
          dispatch on bot type */
       clearent(dr, x, y, MAX_OVERLAPY);
@@ -2067,7 +2066,7 @@ void Animation::clearsprites(Drawing &dr) {
 void Animation::clearent(Drawing &dr, int entx, int enty, int overlap) {
   int sx, sy;
 
-  int ta1 = dr.lev->tileat(entx, enty);
+  int ta1 = dr.lev->TileAt(entx, enty);
   if (dr.OnScreen(entx, enty, sx, sy)) {
     if (ta1 == T_EXIT) {
       Drawing::DrawTileU(sx, sy, TU_EXITOPEN);
@@ -2077,11 +2076,11 @@ void Animation::clearent(Drawing &dr, int entx, int enty, int overlap) {
   }
 
   if (enty > 0 && dr.OnScreen(entx, enty - 1, sx, sy)) {
-    int ta2 = dr.lev->tileat(entx, enty - 1);
+    int ta2 = dr.lev->TileAt(entx, enty - 1);
     /* XXX draw openexit if ent above */
     if (ta2 == T_EXIT &&
-        (dr.lev->botat(entx, enty - 1) ||
-         dr.lev->playerat(entx, enty - 1))) {
+        (dr.lev->BotAt(entx, enty - 1) ||
+         dr.lev->PlayerAt(entx, enty - 1))) {
       Drawing::DrawTileU(sx, sy, TU_EXITOPEN);
     } else Drawing::DrawTile(sx, sy, ta2);
   } else if (enty == 0 && dr.OnScreen(entx, enty, sx, sy)) {
@@ -2172,7 +2171,7 @@ bool Animation::init_anims(alist *anims, unsigned int now) {
 
 void AnLaser::Draw() {
   int chx = 0, chy = 0;
-  dirchange(d, chx, chy);
+  DirChange(d, chx, chy);
 
   int px = sx;
   int py = sy;

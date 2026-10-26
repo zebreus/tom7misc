@@ -1,14 +1,20 @@
 
 #include "optimize.h"
 
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <utility>
 #include <vector>
 #include <unordered_map>
 
-#include "escapex.h"
-#include "message.h"
-#include "solution.h"
-#include "player.h"
+#include "base.h"
+#include "base/print.h"
+#include "level-base.h"
 #include "level.h"
+#include "message.h"
+#include "player.h"
+#include "solution.h"
 
 // To map-util?
 template<class C, class F>
@@ -116,7 +122,7 @@ struct LState {
        the Level "impossible" (and ones like it) get
        optimized to a zero-length solution, which won't
        verify */
-    if (ll->iswon() && initial) thiskey ^= 0xFFFF0000FFFF0000ULL;
+    if (ll->IsWon() && initial) thiskey ^= 0xFFFF0000FFFF0000ULL;
 
     /* 0 is used for something special */
     if (!thiskey) thiskey++;
@@ -196,9 +202,9 @@ Solution Optimize::Opt(const Level *orig, const Solution &s) {
 
         /* now, anything we've done since then is invalidated, (this
            is where the sub-optimality comes in) so remove it. */
-  EraseMatching(&ht, [cutoff = cf.Length()](pair<const LState, int> &kv) {
-    return kv.second > cutoff;
-  });
+        EraseMatching(&ht, [cutoff = cf.Length()](pair<const LState, int> &kv) {
+            return kv.second > cutoff;
+          });
 
       } else {
         /* new state, so insert it */
@@ -208,7 +214,7 @@ Solution Optimize::Opt(const Level *orig, const Solution &s) {
   }
 
   if (!Level::Verify(orig, cf)) {
-    printf("Result didn't verify!!\n");
+    Print("Result didn't verify!!\n");
     return s;
   }
 
@@ -246,7 +252,7 @@ bool Optimize::TryComplete(Level *start, const Solution &prefix,
     for (const NamedSolution &ns : sources) {
       if (ns.sol.Length() >= slen) {
         /* do it! */
-  std::unique_ptr<Level> trysuf = wprefix->Clone();
+        std::unique_ptr<Level> trysuf = wprefix->Clone();
 
         const Solution &trysol = ns.sol;
 

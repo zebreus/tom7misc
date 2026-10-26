@@ -46,6 +46,9 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
+
+#include "packet-parser.h"
 
 // XXX Since this deals with bits, we should specify the bit width of
 // ints being encoded (or template).
@@ -59,6 +62,10 @@ struct EscapeRLE {
      Returns a malloc-allocated array, which becomes owned by the caller.
   */
   static int *Decode(std::string_view s, unsigned int &idx_bytes, int n);
+
+  // Decodes the RLE vector at the head of the packet (consuming it); on
+  // any error, it puts the packet parser in an error state.
+  static std::vector<int> Decode(PacketParser *p, size_t n);
 
   /* encode n ints in 'a', and return it as a string.
      This uses a greedy strategy that is not optimal.

@@ -195,6 +195,9 @@ solution_test.exe : solution_test.o $(ESCLIBOBJECTS) $(CCLIBOBJECTS)
 escape-rle_test.exe : escape-rle_test.o $(ESCLIBOBJECTS) $(CCLIBOBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+level_test.exe : level_test.o $(ESCLIBOBJECTS) $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 .dummy :
 
 version : .dummy

@@ -4,6 +4,7 @@
 #include <string>
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "level-base.h"
 #include "escape-rle.h"
@@ -24,23 +25,20 @@ string Solution::ToString() const {
 bool Solution::FromString(std::string_view s, Solution *sol) {
   PacketParser pp(s);
 
-  uint32_t len = pp.W32();
+  size_t len = pp.W32();
+  if (!pp.OK()) return false;
 
-  unsigned int idx = 0;
-  if (len < 0) return false;
+  std::vector<int> dd = EscapeRLE::Decode(&pp, len);
+  if (!pp.OK()) return false;
 
-  dir *dd = EscapeRLE::Decode(s, idx, len);
-
-  if (!dd) return false;
+  CHECK(dd.size() == len);
 
   sol->Clear();
-  sol->dirs.reserve(len);
+  sol->dirs.reserve(dd.size());
   for (int i = 0; i < len; i++) sol->Append(dd[i]);
   sol->verified = false;
 
-  if (!pp.OK()) return false;
-
-  return true;
+  return pp.Empty() && pp.OK();
 }
 
 // static

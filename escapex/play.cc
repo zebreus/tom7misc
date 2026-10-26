@@ -377,7 +377,7 @@ struct BookmarkItem : public MenuItem {
     ns = *n;
     int unused = 0;
     lev->Play(ns.sol, unused);
-    solved = lev->iswon() && ns.sol.Length();
+    solved = lev->IsWon() && ns.sol.Length();
     action.a = BMA_NONE;
     plr = p;
     levmd5 = md;
@@ -489,7 +489,7 @@ PlayState Play_::CurState() {
   dir unusedd;
   if (solpos != 0 && lev->IsDead(unused, unused, unusedd))
     return PlayState::DEAD;
-  else if (solpos != 0 && lev->iswon())
+  else if (solpos != 0 && lev->IsWon())
     return PlayState::WON;
   else return PlayState::OKAY;
 }

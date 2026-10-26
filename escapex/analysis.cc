@@ -3,7 +3,6 @@
 
 #include <memory>
 
-#include "aevent.h"
 #include "level-base.h"
 #include "union-find.h"
 #include "level.h"
@@ -45,10 +44,10 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
   for (int y = 0; y < lev->h; y++) {
     for (int x = 0; x < lev->w; x++) {
 
-      if (IsEmpty(lev->tileat(x, y))) {
+      if (IsEmpty(lev->TileAt(x, y))) {
         std::unique_ptr<Level> cl = lev->Clone();
 
-        cl->warp(cl->guyx, cl->guyy, x, y);
+        cl->Warp(cl->guyx, cl->guyy, x, y);
 
         /* mustn't be dead already! */
         int dummy; dir unused;
@@ -59,25 +58,25 @@ std::unique_ptr<UnionFind> Analysis::Reachable(Level *lev) {
 
           /* we can't be walking off the map! */
           int destx, desty;
-          if (!lev->travel(x, y, d, destx, desty)) continue;
+          if (!lev->Travel(x, y, d, destx, desty)) continue;
 
           /* PERF could save some work by checking if they're
              already unioned */
-          if (IsEmpty(lev->tileat(destx, desty)) &&
+          if (IsEmpty(lev->TileAt(destx, desty)) &&
               cc->Move(d) && !cc->IsDead(dummy, dummy, unused)) {
             /* good. now just check the opposite... */
             std::unique_ptr<Level> co = cl->Clone();
 
-            co->warp(cl->guyx, cl->guyy, destx, desty);
+            co->Warp(cl->guyx, cl->guyy, destx, desty);
 
-            if (co->Move(dir_reverse(d)) &&
+            if (co->Move(DirReverse(d)) &&
                 !co->IsDead(dummy, dummy, unused)) {
 
               /* these two spots are mutually accessible,
                  so union them */
 
-              of->Union(lev->index(x, y),
-                        lev->index(destx, desty));
+              of->Union(lev->Index(x, y),
+                        lev->Index(destx, desty));
 
             }
           } /* else can't move! */
@@ -102,7 +101,7 @@ static bool Separator(Level *lev, int x, int y,
   /* must be currently empty.
      this could be relaxed to blocks
      that allow lasers through... */
-  if (!Analysis::IsEmpty(lev->tileat(x, y))) return false;
+  if (!Analysis::IsEmpty(lev->TileAt(x, y))) return false;
 
   /* don't include degenerate cases */
   if (x == x1 && y == y1) return false;
@@ -112,11 +111,11 @@ static bool Separator(Level *lev, int x, int y,
   std::unique_ptr<UnionFind> orig = Analysis::Reachable(lev);
 
   /* original equivalence class that we're in. */
-  int oclass = orig->Find(lev->index(x1, y1));
+  int oclass = orig->Find(lev->Index(x1, y1));
 
   std::unique_ptr<Level> nlev = lev->Clone();
 
-  nlev->settile(x, y, tile);
+  nlev->SetTile(x, y, tile);
 
   std::unique_ptr<UnionFind> fresh = Analysis::Reachable(nlev.get());
 
@@ -132,7 +131,7 @@ static bool Separator(Level *lev, int x, int y,
   }
 # endif
 
-  int expect = fresh->Find(nlev->index(x1, y1));
+  int expect = fresh->Find(nlev->Index(x1, y1));
 
   /* now see if there are any newly separated regions. */
 
@@ -140,10 +139,10 @@ static bool Separator(Level *lev, int x, int y,
     for (y2 = 0; y2 < lev->h; y2++)
       for (x2 = 0; x2 < lev->w; x2++) {
         /* check that they used to be the same */
-        if (orig->Find(lev->index(x2, y2)) == oclass) {
+        if (orig->Find(lev->Index(x2, y2)) == oclass) {
 
           /* but now different! */
-          if (fresh->Find(nlev->index(x2, y2)) != expect) {
+          if (fresh->Find(nlev->Index(x2, y2)) != expect) {
 
             /*
               printf("may separate: oclass=%d, expect=%d, actual=%d\n",
@@ -159,8 +158,8 @@ static bool Separator(Level *lev, int x, int y,
       }
     return false;
   } else {
-    if (orig->Find(lev->index(x2, y2)) == oclass &&
-        fresh->Find(nlev->index(x2, y2)) != expect &&
+    if (orig->Find(lev->Index(x2, y2)) == oclass &&
+        fresh->Find(nlev->Index(x2, y2)) != expect &&
         (x2 != x || y2 != y)) return true;
     else return false;
   }

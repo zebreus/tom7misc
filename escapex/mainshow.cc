@@ -96,7 +96,7 @@ void MainShow_::step() {
     newguy();
   }
 
-  if (level->iswon()) {
+  if (level->IsWon()) {
     tx->Say(GREEN "Yeah!");
     newexit();
   }
@@ -148,11 +148,11 @@ void MainShow_::randomspot(int &x, int &y) {
 }
 
 void MainShow_::newexit() {
-  level->settile(exitx, exity, T_FLOOR);
+  level->SetTile(exitx, exity, T_FLOOR);
 
   randomspot(exitx, exity);
 
-  level->settile(exitx, exity, T_EXIT);
+  level->SetTile(exitx, exity, T_EXIT);
 
   exittime = 5 + (EscapeUtil::random() % EXIT_FREQ);
 }
@@ -174,32 +174,32 @@ void MainShow_::newlevel() {
      we'd probably win eventually. */
   for (int y = 0; y < level->h; y++) {
     for (int x = 0; x < level->w; x++) {
-      level->settile(x, y, T_FLOOR);
+      level->SetTile(x, y, T_FLOOR);
 
       /* sometimes put something other than floor */
       if (!(EscapeUtil::random() & 127))
-        level->settile(x, y, T_LASER);
+        level->SetTile(x, y, T_LASER);
 
       if (!(EscapeUtil::random() & 63))
-        level->settile(x, y, T_BLUE);
+        level->SetTile(x, y, T_BLUE);
 
       if (!(EscapeUtil::random() & 63))
-        level->settile(x, y, T_GREY);
+        level->SetTile(x, y, T_GREY);
 
       if (!(EscapeUtil::random() & 63))
-        level->settile(x, y, T_HOLE);
+        level->SetTile(x, y, T_HOLE);
 
       if (!(EscapeUtil::random() & 63)) {
-        level->settile(x, y, T_TRANSPORT);
+        level->SetTile(x, y, T_TRANSPORT);
         int dx = 1, dy = 1;
         randomspot(dx, dy);
-        level->setdest(x, y, dx, dy);
+        level->SetDestk(x, y, dx, dy);
       }
 
 
       if (x == 0 || x == (level->w - 1) ||
           y == 0 || y == (level->h - 1))
-        level->settile(x, y, T_BLUE);
+        level->SetTile(x, y, T_BLUE);
     }
   }
 

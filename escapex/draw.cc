@@ -161,7 +161,7 @@ void Drawing::DrawBot(bot b, dir d,
 
   switch (b) {
   default:
-    if (Level::isbomb(b)) {
+    if (Level::IsBomb(b)) {
 
       switch (data) {
         /* XXX draw fuse in these cases */
@@ -363,7 +363,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
 
       if (xx < lev->w && yy < lev->h) {
 
-        int tile = layer? lev->otileat(xx,yy) : lev->tileat(xx, yy);
+        int tile = layer? lev->OTileAt(xx,yy) : lev->TileAt(xx, yy);
 
         /* draw the tile--but if it is the exit and we're standing
            on it, draw the door open (even if we are dead) */
@@ -372,7 +372,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
         if (!dim &&
             tile == T_EXIT &&
             ((lev->guyx == xx &&
-              lev->guyy == yy) || lev->botat(xx, yy))) {
+              lev->guyy == yy) || lev->BotAt(xx, yy))) {
 
           DrawTileU(posx + margin + (TILEW >> zoomfactor) * (xx - scrollx),
                     posy + margin + (TILEH >> zoomfactor) * (yy - scrolly),
@@ -405,7 +405,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
     int gy = posy + margin + ((TILEH >> zoomfactor) * (lev->guyy - scrolly)) + (TILEW >> (zoomfactor + 1));
 
     int chx = 0, chy = 0;
-    dirchange(dd, chx, chy);
+    DirChange(dd, chx, chy);
 
 #   if 0
     char msg[128];
@@ -480,7 +480,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
                         lev->bota[i]);
     }
     /* and player */
-    bots.emplace_back(lev->index(lev->guyx, lev->guyy),
+    bots.emplace_back(lev->Index(lev->guyx, lev->guyy),
                       B_PLAYER,
                       lev->guyd,
                       0);
@@ -494,7 +494,7 @@ void Drawing::DrawLev(int layer, /* dir facing, */
     for (const BB &bot : bots) {
       int bsx, bsy;
       int bx, by;
-      lev->where(bot.i, bx, by);
+      lev->Where(bot.i, bx, by);
 
       if (OnScreen(bx, by, bsx, bsy)) {
         if (bot.e == B_PLAYER) {
@@ -530,7 +530,7 @@ void Drawing::DrawBotNums(SDL_Surface *surf) {
   if (!zoomfactor) {
     for (int b = 0; b < lev->nbots; b++) {
       int bx, by;
-      lev->where(lev->boti[b], bx, by);
+      lev->Where(lev->boti[b], bx, by);
       int bsx, bsy;
       if (OnScreen(bx, by, bsx, bsy)) {
         string ss = YELLOW + Util::itos(b + 1);
@@ -556,11 +556,11 @@ void Drawing::DrawDests(SDL_Surface *surf, bool shuffle) {
         sx += TILEW >> (1 + zoomfactor);
         sy += TILEH >> (1 + zoomfactor);
 
-        if (Level::needsdest(lev->tileat(wx, wy)) ||
-            Level::needsdest(lev->otileat(wx, wy))) {
-          int d = lev->destat(wx, wy);
+        if (Level::NeedsDest(lev->TileAt(wx, wy)) ||
+            Level::NeedsDest(lev->OTileAt(wx, wy))) {
+          int d = lev->DestAt(wx, wy);
           int dx, dy, px, py;
-          lev->where(d, dx, dy);
+          lev->Where(d, dx, dy);
 
           if (OnScreen(dx, dy, px, py)) {
 
@@ -725,10 +725,10 @@ void Drawing::DrawSmall(int y,
             (string)YELLOW "Author: " BLUE + l->author + POP POP);
 
   fon->draw(textx, texty += fon->height,
-            (string)YELLOW "Size:   " + (l->iscorrupted() ? RED : GREEN) +
+            (string)YELLOW "Size:   " + (l->IsCorrupted() ? RED : GREEN) +
             Util::itos(l->w) + (string)GREY "x" POP +
             Util::itos(l->h) + POP POP +
-            (string)((l->iscorrupted()) ? RED " corrupted!" POP : ""));
+            (string)((l->IsCorrupted()) ? RED " corrupted!" POP : ""));
 
   texty += fon->height + 2;
 

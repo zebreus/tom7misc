@@ -8,28 +8,46 @@
 
 #include "base/logging.h"
 #include "base/print.h"
+#include "packet-parser.h"
 
 using namespace std;
 
 static void RoundTrip(std::string_view name, const vector<int> &v) {
   const string encoded = EscapeRLE::Encode(v.size(), v.data());
 
-  unsigned int idx = 0;
-  int *decoded = EscapeRLE::Decode(encoded, idx, v.size());
+  {
+    unsigned int idx = 0;
+    int *decoded = EscapeRLE::Decode(encoded, idx, v.size());
 
-  CHECK(decoded != nullptr) <<
-    std::format("On test {}, failed to decode!\n", name);
+    CHECK(decoded != nullptr) <<
+      std::format("On test {}, failed to decode!\n", name);
 
-  for (int i = 0; i < v.size(); i++) {
-    CHECK(v[i] == decoded[i]) <<
-      std::format("On test {}, index {} does not match ({} in vs {} out).\n",
-                  name, i, v[i], decoded[i]);
+    for (int i = 0; i < v.size(); i++) {
+      CHECK(v[i] == decoded[i]) <<
+        std::format("On test {}, index {} does not match ({} in vs {} out).\n",
+                    name, i, v[i], decoded[i]);
+    }
+    free(decoded);
   }
 
-  free(decoded);
+  {
+    PacketParser pp(encoded);
+    std::vector<int> d = EscapeRLE::Decode(&pp, v.size());
+    CHECK(pp.OK());
+    CHECK(pp.Empty());
+    CHECK(d.size() == v.size());
+
+    for (int i = 0; i < v.size(); i++) {
+      CHECK(v[i] == d[i]) <<
+        std::format("On test {} (PacketParser), index {} does not match "
+                    "({} in vs {} out).\n",
+                    name, i, v[i], d[i]);
+    }
+
+  }
 }
 
-int main(int argc, char **argv) {
+static void RunTests() {
   RoundTrip("empty", {});
   RoundTrip("zero", {0});
   RoundTrip("one", {1});
@@ -104,6 +122,11 @@ int main(int argc, char **argv) {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
   });
+}
+
+int main(int argc, char **argv) {
+
+  RunTests();
 
   Print("OK\n");
   return 0;

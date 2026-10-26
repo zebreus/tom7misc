@@ -71,9 +71,9 @@ struct Browse_ : public Browse {
   bool allow_corrupted;
 
   /* save query we performed. */
-  static lquery lastquery;
+  [[maybe_unused]] static lquery lastquery;
   /* and last MD5 we selected */
-  static string lastmd5;
+  [[maybe_unused]] static string lastmd5;
 };
 
 void Browse_::makebackground() {

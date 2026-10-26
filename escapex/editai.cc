@@ -22,12 +22,12 @@ static bool pred_any(Level *, void *_, int x, int y) {
 }
 
 static bool pred_gold_or_sphere(Level *lev, void *_, int x, int y) {
-  const int t = lev->tileat(x, y);
-  return t == T_GOLD || Level::issphere(t);
+  const int t = lev->TileAt(x, y);
+  return t == T_GOLD || Level::IsSphere(t);
 }
 
 static bool pred_stops_gold(Level *lev, void *_, int x, int y) {
-  switch (lev->tileat(x, y)) {
+  switch (lev->TileAt(x, y)) {
   case T_FLOOR:
   case T_PANEL:
   case T_RPANEL:
@@ -66,7 +66,7 @@ void Editor::DoRandom() {
     FullClear(T_BLUE);
 
     /* start with seed */
-    level->settile(1 + EscapeUtil::random() % (level->w - 2),
+    level->SetTile(1 + EscapeUtil::random() % (level->w - 2),
                     1 + EscapeUtil::random() % (level->h - 2),
                     T_EXIT);
 
@@ -100,7 +100,7 @@ void Editor::DoRandom() {
           int y = 1 + ((iy + randy) % innerh);
           int x = 1 + ((ix + randx) % innerw);
 
-          if (level->tileat(x, y) != T_BLUE) {
+          if (level->TileAt(x, y) != T_BLUE) {
             /* try all dirs, but start with a
                random one. */
 
@@ -112,30 +112,30 @@ void Editor::DoRandom() {
               int nx, ny, /* temp */
                   bx, by; /* one beyond target */
 
-              if (level->travel(x, y, sd, tx, ty) &&
+              if (level->Travel(x, y, sd, tx, ty) &&
                   /* must be blue, otherwise this won't be a change */
-                  level->tileat(tx, ty) == T_BLUE &&
+                  level->TileAt(tx, ty) == T_BLUE &&
                   /* to its left must be blue. */
-                  level->travel(tx, ty, turnleft(sd), nx, ny) &&
-                  level->tileat(nx, ny) == T_BLUE &&
+                  level->Travel(tx, ty, TurnLeft(sd), nx, ny) &&
+                  level->TileAt(nx, ny) == T_BLUE &&
                   /* ... and right */
-                  level->travel(tx, ty, turnright(sd), nx, ny) &&
-                  level->tileat(nx, ny) == T_BLUE &&
+                  level->Travel(tx, ty, TurnRight(sd), nx, ny) &&
+                  level->TileAt(nx, ny) == T_BLUE &&
                   /* and beyond it ... */
-                  level->travel(tx, ty, sd, bx, by) &&
+                  level->Travel(tx, ty, sd, bx, by) &&
                   /* must have blue to its left */
-                  level->travel(bx, by, turnleft(sd), nx, ny) &&
-                  level->tileat(nx, ny) == T_BLUE &&
+                  level->Travel(bx, by, TurnLeft(sd), nx, ny) &&
+                  level->TileAt(nx, ny) == T_BLUE &&
                   /* ... and right */
-                  level->travel(bx, by, turnright(sd), nx, ny) &&
-                  level->tileat(nx, ny) == T_BLUE &&
+                  level->Travel(bx, by, TurnRight(sd), nx, ny) &&
+                  level->TileAt(nx, ny) == T_BLUE &&
                   /* if maze, we can't be connecting with
                      another corridor. */
                   (randtype == RT_MAZE2 ||
-                   (level->tileat(bx, by) == T_BLUE))) {
+                   (level->TileAt(bx, by) == T_BLUE))) {
 
                 hadchange = 1;
-                level->settile(tx, ty, T_FLOOR);
+                level->SetTile(tx, ty, T_FLOOR);
                 break; /* from try loop */
               }
 
@@ -180,19 +180,19 @@ void Editor::DoRandom() {
              'which'th one that succeeds */
 
           /* consider setting xx,yy if no diagonal floors. */
-#             define TRY(xx, yy) \
-                if (level->tileat( xx,       yy     ) == T_BLUE && \
-                    level->tileat((xx) - 1, (yy) - 1) == T_BLUE && \
-                    level->tileat((xx) + 1, (yy) - 1) == T_BLUE && \
-                    level->tileat((xx) + 1, (yy) + 1) == T_BLUE && \
-                    level->tileat((xx) - 1, (yy) + 1) == T_BLUE) { \
-                   if (which) which--; \
-                   else { \
-                      level->settile(xx, yy, T_FLOOR); \
-                      hadchange = 1; \
-                      break; \
-                   } \
-                }
+          #define TRY(xx, yy)                                      \
+            if (level->TileAt( xx,       yy     ) == T_BLUE &&     \
+                level->TileAt((xx) - 1, (yy) - 1) == T_BLUE &&     \
+                level->TileAt((xx) + 1, (yy) - 1) == T_BLUE &&     \
+                level->TileAt((xx) + 1, (yy) + 1) == T_BLUE &&     \
+                level->TileAt((xx) - 1, (yy) + 1) == T_BLUE) {     \
+              if (which) which--;                                  \
+              else {                                               \
+                level->SetTile(xx, yy, T_FLOOR);                   \
+                hadchange = 1;                                     \
+                break;                                             \
+              }                                                    \
+            }
 
           /* try each of the cases */
           if (x > 0 &&
@@ -214,7 +214,7 @@ void Editor::DoRandom() {
               y < (level->h - 2)) {
             TRY(x + 1, y + 1);
           }
-#             undef TRY
+          #undef TRY
 
         }
       }
@@ -270,13 +270,13 @@ void Editor::DoRandom() {
 
             /* consider setting xx,yy if no diagonal floors. */
 #             define TRY(xx, yy) \
-                if (level->tileat((xx) - 1, (yy) - 1) == T_BLUE && \
-                    level->tileat((xx) + 1, (yy) - 1) == T_BLUE && \
-                    level->tileat((xx) + 1, (yy) + 1) == T_BLUE && \
-                    level->tileat((xx) - 1, (yy) + 1) == T_BLUE) { \
+                if (level->TileAt((xx) - 1, (yy) - 1) == T_BLUE && \
+                    level->TileAt((xx) + 1, (yy) - 1) == T_BLUE && \
+                    level->TileAt((xx) + 1, (yy) + 1) == T_BLUE && \
+                    level->TileAt((xx) - 1, (yy) + 1) == T_BLUE) { \
                    if (which) which--; \
                    else { \
-                      level->settile(xx, yy, T_FLOOR); \
+                      level->SetTile(xx, yy, T_FLOOR); \
                       hadchange = 1; \
                       break; \
                    } \
@@ -340,10 +340,10 @@ void Editor::DoRandom() {
 
       for (int y = 0; y < (level->h - 1); y++) {
         for (int x = 0; x < (level->w - 1); x++) {
-          if (level->tileat(x, y) == T_BLUE &&
-              level->tileat(x + 1, y) == T_BLUE &&
-              level->tileat(x + y, y + 1) == T_BLUE &&
-              level->tileat(x, y + 1) == T_BLUE) {
+          if (level->TileAt(x, y) == T_BLUE &&
+              level->TileAt(x + 1, y) == T_BLUE &&
+              level->TileAt(x + y, y + 1) == T_BLUE &&
+              level->TileAt(x, y + 1) == T_BLUE) {
 
             /* found 2x2 blue square. */
 
@@ -359,15 +359,15 @@ void Editor::DoRandom() {
               /* XXX if looking=1 ... nonterm?? why? */
 
               /* consider setting rx ry if xx xy checks out */
-#             define TRY(rx, ry, xx, yy) \
-                if (level->tileat(xx, yy) == T_BLUE) { \
-                   looking = 0; \
-                   if (which) which--; \
-                   else { \
-                      level->settile(rx, ry, T_FLOOR); \
-                      hadchange = 1; \
-                      break; \
-                   } \
+              #define TRY(rx, ry, xx, yy)              \
+                if (level->TileAt(xx, yy) == T_BLUE) { \
+                  looking = 0;                         \
+                  if (which) which--;                  \
+                  else {                               \
+                    level->SetTile(rx, ry, T_FLOOR);   \
+                    hadchange = 1;                     \
+                    break;                             \
+                  }                                    \
                 }
 
               /* try each of the cases */
@@ -390,7 +390,8 @@ void Editor::DoRandom() {
                   y < (level->h - 2)) {
                 TRY(x + 1, y + 1, x + 2, y + 2);
               }
-#             undef TRY
+              #undef TRY
+
             } while (looking);
           }
         }
@@ -417,10 +418,10 @@ void Editor::DoRandom() {
       int d = 1 + (EscapeUtil::random() & 3);
 
       /* draw until we hit something. */
-      level->settile(x, y, current);
-      while (level->travel(x, y, d, x, y)) {
-        if (level->tileat(x, y) != current)
-          level->settile(x, y, current);
+      level->SetTile(x, y, current);
+      while (level->Travel(x, y, d, x, y)) {
+        if (level->TileAt(x, y) != current)
+          level->SetTile(x, y, current);
         else break;
       }
     }
@@ -446,7 +447,7 @@ void Editor::DoRandom() {
       while ((m = ms_test->next())) {
         int x = 0, y = 0;
         m->getindex(0, x, y);
-        level->settile(x, y, T_FLOOR);
+        level->SetTile(x, y, T_FLOOR);
         delete m;
       }
     }
@@ -563,8 +564,8 @@ bool Editor::retract_gold() {
       m->getindex(1, x, y);
 
       bool sph = false;
-      int oldtile = level->tileat(x, y);
-      if (Level::issphere(oldtile)) sph = true;
+      int oldtile = level->TileAt(x, y);
+      if (Level::IsSphere(oldtile)) sph = true;
 
       /* now try going left as far as possible
          from the gold block */
@@ -587,14 +588,14 @@ bool Editor::retract_gold() {
       bool best_has_ricochet = false;
 
       int gx, gy;
-      while (level->travel(targx, targy, left, gx, gy)) {
+      while (level->Travel(targx, targy, left, gx, gy)) {
         /* as long as there's even a place for the guy to
            stand... */
         /* printf("try targ %d/%d\n", targx, targy); */
 
         /* we're done if target is non-floor */
         /* XX could include panels */
-        if (level->tileat(targx, targy) != T_FLOOR) break;
+        if (level->TileAt(targx, targy) != T_FLOOR) break;
 
         /* this is a candidate if we can place the guy in
            a 'pushing position' that he can reach. this
@@ -603,16 +604,16 @@ bool Editor::retract_gold() {
 
         if (sph) {
           /* move guy left until first non-sphere space */
-          while (Level::issphere(level->tileat(gx, gy))) {
-            if (!level->travel(gx, gy, left, gx, gy)) goto no_more_motion;
+          while (Level::IsSphere(level->TileAt(gx, gy))) {
+            if (!level->Travel(gx, gy, left, gx, gy)) goto no_more_motion;
           }
         }
 
         /* the space has to be reachable by the guy. but we
            can still potentially continue if this space is
            not occupiable. */
-        if (reach->Find(level->index(level->guyx, level->guyy)) ==
-            reach->Find(level->index(gx, gy))) {
+        if (reach->Find(level->Index(level->guyx, level->guyy)) ==
+            reach->Find(level->Index(gx, gy))) {
 
           /*
           printf("candidate! guy: %d/%d gold: %d/%d\n",
@@ -623,12 +624,12 @@ bool Editor::retract_gold() {
              to repeat this process for this new location) */
           int ux, uy;
           int dx, dy;
-          if (level->travel(targx, targy, m->up(), ux, uy) &&
-              level->travel(targx, targy, m->down(), dx, dy) &&
+          if (level->Travel(targx, targy, m->up(), ux, uy) &&
+              level->Travel(targx, targy, m->down(), dx, dy) &&
               ((pred_stops_gold(level.get(), 0, ux, uy) &&
-                level->tileat(dx, dy) == T_FLOOR) ||
+                level->TileAt(dx, dy) == T_FLOOR) ||
                (pred_stops_gold(level.get(), 0, dx, dy) &&
-                level->tileat(ux, uy) == T_FLOOR))) {
+                level->TileAt(ux, uy) == T_FLOOR))) {
 
             /* then this new place is definitely better */
             /* printf("  ... ricocheting!\n"); */
@@ -655,7 +656,7 @@ bool Editor::retract_gold() {
           }
         }
         /* now try next spot ... */
-        if (!level->travel(targx, targy, left, targx, targy)) break;
+        if (!level->Travel(targx, targy, left, targx, targy)) break;
       }
 
     no_more_motion:;
@@ -664,8 +665,8 @@ bool Editor::retract_gold() {
 
       if (bestx >= 0) {
         /* ... */
-        level->settile(x, y, T_FLOOR);
-        level->settile(bestx, besty, oldtile);
+        level->SetTile(x, y, T_FLOOR);
+        level->SetTile(bestx, besty, oldtile);
         level->guyx = bgx;
         level->guyy = bgy;
         return true;
@@ -758,8 +759,8 @@ bool Editor::retract_hole() {
                dirstring(m->up()).c_str(), dirstring(m->right()).c_str());
         */
 
-        level->settile(x, y, T_HOLE);
-        level->settile(x1, y1, T_GREY);
+        level->SetTile(x, y, T_HOLE);
+        level->SetTile(x1, y1, T_GREY);
 
         /* maybe check we're not dead here? I'm not sure this is
            correct in every case. */
@@ -886,7 +887,8 @@ string Editor::ainame(int i) {
   case RT_MAZEBUG2: return RED "Maze bug 2" POP BLUE ": Disabled." POP;
   case RT_ROOMS: return YELLOW "Rooms" POP BLUE ": Creates \"rooms\" with the foreground tile." POP;
   case RT_CRAZY: return RED "Crazy" POP BLUE ": For testing." POP;
-  case RT_RETRACT1: return YELLOW "Retract 1" POP BLUE ": Disabled." POP; /* Retracts one move in a variety of ways." POP; */
+  //  Retracts one move in a variety of ways.
+  case RT_RETRACT1: return YELLOW "Retract 1" POP BLUE ": Disabled." POP;
   case RT_RETRACTGOLD:
     return YELLOW "Retract Gold" POP BLUE ": Retracts motion of a gold block (or sphere)." POP;
   default: return (string)RED "No Description for Randtype #" + Util::itos(i);

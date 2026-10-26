@@ -9,7 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "aevent.h"
 #include "bytes.h"
 #include "disamb.h"
 #include "level-base.h"
@@ -18,7 +17,7 @@
 
 /* This code is non-SDL, so it should be portable! */
 
-bool Level::allowbeam(int tt) {
+bool Level::AllowBeam(int tt) {
   switch (tt) {
   case T_FLOOR:
   case T_ELECTRIC:
@@ -47,7 +46,7 @@ bool Level::allowbeam(int tt) {
    is deadly */
 bool Level::IsDead(int &tilex, int &tiley, dir &d) const {
   /* are we in the same square as a bot? Then we die. */
-  if (botat(guyx, guyy)) {
+  if (BotAt(guyx, guyy)) {
     tilex = guyx;
     tiley = guyy;
     d = DIR_NONE;
@@ -58,12 +57,12 @@ bool Level::IsDead(int &tilex, int &tiley, dir &d) const {
      then die. */
   for (dir db = FIRST_DIR_SELF; db <= LAST_DIR; db++) {
     int xx, yy;
-    if (travel(guyx, guyy, db, xx, yy)) {
+    if (Travel(guyx, guyy, db, xx, yy)) {
 
       /* nb, botat might not be correct, since it
          returns the lowest bot; so just loop
          manually: */
-      int z = index(xx, yy);
+      int z = Index(xx, yy);
       for (int m = 0; m < nbots; m++) {
         // printf("Bot %d type %d @ %d\n", m, bott[m], boti[m]);
         if (boti[m] == z && bott[m] == B_BOMB_X) {
@@ -83,17 +82,17 @@ bool Level::IsDead(int &tilex, int &tiley, dir &d) const {
   for (dir dd = FIRST_DIR; dd <= LAST_DIR; dd++) {
     int lx = guyx, ly = guyy;
 
-    while (travel(lx, ly, dd, lx, ly)) {
-      if (tileat(lx, ly) == T_LASER) {
+    while (Travel(lx, ly, dd, lx, ly)) {
+      if (TileAt(lx, ly) == T_LASER) {
         tilex = lx;
         tiley = ly;
-        d = dir_reverse(dd);
+        d = DirReverse(dd);
         return true;
       }
-      int tt = tileat(lx, ly);
-      if (!allowbeam(tt)) break;
+      int tt = TileAt(lx, ly);
+      if (!AllowBeam(tt)) break;
       /* all robots also block lasers. */
-      if (botat(lx, ly)) break;
+      if (BotAt(lx, ly)) break;
     }
   }
 
@@ -101,7 +100,7 @@ bool Level::IsDead(int &tilex, int &tiley, dir &d) const {
 }
 
 
-void Level::swapo(int idx) {
+void Level::SwapO(int idx) {
   int tmp = tiles[idx];
   tiles[idx] = otiles[idx];
   otiles[idx] = tmp;
@@ -136,28 +135,28 @@ Tile Level::RealPanel(int f) {
   }
 }
 
-bool Level::issphere(int t) {
+bool Level::IsSphere(int t) {
   return (t == T_SPHERE ||
           t == T_RSPHERE ||
           t == T_GSPHERE ||
           t == T_BSPHERE);
 }
 
-bool Level::issteel(int t) {
+bool Level::IsSteel(int t) {
   return (t == T_STEEL ||
           t == T_RSTEEL ||
           t == T_GSTEEL ||
           t == T_BSTEEL);
 }
 
-bool Level::ispanel(int t) {
+bool Level::IsPanel(int t) {
   return (t == T_PANEL ||
           t == T_RPANEL ||
           t == T_GPANEL ||
           t == T_BPANEL);
 }
 
-bool Level::triggers(int tile, int panel) {
+bool Level::Triggers(int tile, int panel) {
   /* "anything" triggers grey panels */
   if (panel == T_PANEL) return true;
   if (panel == T_RPANEL) {
@@ -173,7 +172,7 @@ bool Level::triggers(int tile, int panel) {
   return false;
 }
 
-#include "move2016.h"
+#include "move2016.h"  // IWYU pragma: keep
 
 #define FSDEBUG if (0)
 
@@ -187,7 +186,7 @@ void Level::ClearMap() {
   }
 }
 
-bool Level::sanitize() {
+bool Level::Sanitize() {
   bool was_sane = true;
 
   int len = w * h;
@@ -231,7 +230,7 @@ bool Level::sanitize() {
 
     // Determine the flags that should be set.
     int expected_flags = TF_NONE;
-    if (ispanel(tiles[i])) {
+    if (IsPanel(tiles[i])) {
       expected_flags |= TF_HASPANEL;
       switch (tiles[i]) {
       case T_RPANEL: expected_flags |= TF_RPANELH | TF_RPANELL; break;
@@ -239,7 +238,7 @@ bool Level::sanitize() {
       case T_BPANEL: expected_flags |= TF_RPANELL; break;
       }
     }
-    if (ispanel(otiles[i])) {
+    if (IsPanel(otiles[i])) {
       expected_flags |= TF_OPANEL;
       switch (otiles[i]) {
       case T_RPANEL: expected_flags |= TF_ROPANELH | TF_ROPANELL; break;
@@ -279,7 +278,7 @@ bool Level::sanitize() {
        about them overlapping. */
     for (int i = 0; i < nbots; i++) {
       int x, y;
-      where(boti[i], x, y);
+      Where(boti[i], x, y);
 
       /* This might put bad bots on top of one another at position 0,
          but we delete them later. */
@@ -329,10 +328,10 @@ bool Level::sanitize() {
        be a local one, so do that fast existence check.
      */
     for (int i = 0; i < nbots - 1; i++) {
-      if (isbomb(bott[i]) && !isbomb(bott[i + 1])) {
+      if (IsBomb(bott[i]) && !IsBomb(bott[i + 1])) {
         was_sane = false;
         /* Preserves relative bot order. */
-        fixup_botorder();
+        FixupBotOrder();
         break;
       }
     }
@@ -341,7 +340,7 @@ bool Level::sanitize() {
   return was_sane;
 }
 
-void Level::fixup_botorder() {
+void Level::FixupBotOrder() {
   /* other fields are constant */
   struct BB {
     bot t;
@@ -353,7 +352,7 @@ void Level::fixup_botorder() {
     int j = 0;
     /* first put in non-bombs */
     for (int i = 0; i < nbots; i++) {
-      if (!isbomb(bott[i])) {
+      if (!IsBomb(bott[i])) {
         bots[j].t = bott[i];
         bots[j].i = boti[i];
         j++;
@@ -362,7 +361,7 @@ void Level::fixup_botorder() {
 
     /* then bombs */
     for (int i = 0; i < nbots; i++) {
-      if (isbomb(bott[i])) {
+      if (IsBomb(bott[i])) {
         bots[j].t = bott[i];
         bots[j].i = boti[i];
         j++;
@@ -499,7 +498,7 @@ std::unique_ptr<Level> Level::FromString(string s, bool allow_corrupted) {
 
   if (l->tiles && l->otiles && l->dests && l->flags) {
     /* check level's sanity, one last time */
-    l->corrupted = (!l->sanitize()) || l->corrupted;
+    l->corrupted = (!l->Sanitize()) || l->corrupted;
 
     if (!l->corrupted || allow_corrupted) {
       FSDEBUG printf("success\n");
@@ -526,7 +525,7 @@ std::unique_ptr<Level> Level::FromString(string s, bool allow_corrupted) {
     }
 
     if (l->otiles && l->dests && l->flags) {
-      l->sanitize();
+      l->Sanitize();
       l->corrupted = true;
       return l;
     } else {
@@ -539,7 +538,7 @@ std::unique_ptr<Level> Level::FromString(string s, bool allow_corrupted) {
   }
 }
 
-string Level::tostring() const {
+string Level::ToString() const {
   string ou;
 
   /* magic */
@@ -571,9 +570,9 @@ string Level::tostring() const {
 /* is the tile at x,y connected to anything in
    direction d? (For instance, is there a light
    in direction d?) */
-bool Level::isconnected(int pulsex, int pulsey, dir pd) const {
-  while (travel(pulsex, pulsey, pd, pulsex, pulsey)) {
-    int targ = tileat(pulsex, pulsey);
+bool Level::IsConnected(int pulsex, int pulsey, dir pd) const {
+  while (Travel(pulsex, pulsey, pd, pulsex, pulsey)) {
+    int targ = TileAt(pulsex, pulsey);
 
     switch (targ) {
     case T_REMOTE: return true; /* (and the pulse continues...) */
@@ -581,22 +580,22 @@ bool Level::isconnected(int pulsex, int pulsey, dir pd) const {
     case T_RLIGHT: return true;
     case T_GLIGHT: return true;
     case T_TRANSPONDER:
-      if (!travel(pulsex, pulsey, pd, pulsex, pulsey))
+      if (!Travel(pulsex, pulsey, pd, pulsex, pulsey))
         return false;
       else {
         /* keep going until we hit another transponder. */
         do {
-          int ta = tileat(pulsex, pulsey);
-          if (!allowbeam(ta) ||
-              botat(pulsex, pulsey) ||
-              playerat(pulsex, pulsey)) {
+          int ta = TileAt(pulsex, pulsey);
+          if (!AllowBeam(ta) ||
+              BotAt(pulsex, pulsey) ||
+              PlayerAt(pulsex, pulsey)) {
             /* hit something. is it a transponder? */
             if (ta == T_TRANSPONDER) {
               break; /* do */
             } else return false;
           }
           /* otherwise keep going... */
-        } while (travel(pulsex, pulsey, pd, pulsex, pulsey));
+        } while (Travel(pulsex, pulsey, pd, pulsex, pulsey));
         /* either we've hit the transponder and the pulse
            continues, or we've fallen off the edge of the
            level (while fails). In the second case, the
@@ -768,7 +767,7 @@ bool Level::VerifyPrefix(const Level *lev, const Solution &s,
       /* potentially fail *after* each move */
       int dummy; dir dumb;
       if (l->IsDead(dummy, dummy, dumb)) return false;
-      if (l->iswon()) {
+      if (l->IsWon()) {
         *out_ref = std::move(out);
         return true;
       }
@@ -798,7 +797,7 @@ bool Level::PlayPrefix(const Solution &s, int &moves, int start, int len) {
       /* potentially fail *after* each move */
       int dummy; dir dumb;
       if (IsDead(dummy, dummy, dumb)) return false;
-      if (iswon()) return true;
+      if (IsWon()) return true;
     }
 
     /* else perhaps a 'strict' mode where this
@@ -813,7 +812,7 @@ bool Level::Play(const Solution &s, int &moves) {
 }
 
 /* must be called with sensible sizes (so that malloc won't fail) */
-void Level::resize(int neww, int newh) {
+void Level::Resize(int neww, int newh) {
   int bytes = neww * newh * sizeof (int);
 
   int * nt, * no, * nd, * nf;
@@ -855,7 +854,7 @@ void Level::resize(int neww, int newh) {
     int bi = 0;
     for (int b = 0; b < nbots; b++) {
       int bx, by;
-      where(boti[b], bx, by);
+      Where(boti[b], bx, by);
       if (bx < neww && bx >= 0 &&
           by < newh && by >= 0) {
         /* keep bot */
@@ -886,7 +885,7 @@ void Level::resize(int neww, int newh) {
   /* sanitization moves the guy back on the board,
      as well as making any destinations point within
      the level */
-  sanitize();
+  Sanitize();
 }
 
 

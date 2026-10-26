@@ -4,6 +4,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 
 // n.b. Don't let this module depend on SDL. The server needs to be
 // able to link it in.
@@ -18,7 +19,7 @@ using namespace std;
 
 template<class T> struct PtrList;
 
-inline dir turnleft(dir d) {
+inline dir TurnLeft(dir d) {
   switch (d) {
   case DIR_UP: return DIR_LEFT;
   case DIR_DOWN: return DIR_RIGHT;
@@ -29,7 +30,7 @@ inline dir turnleft(dir d) {
   }
 }
 
-inline dir turnright(dir d) {
+inline dir TurnRight(dir d) {
   switch (d) {
   case DIR_UP: return DIR_RIGHT;
   case DIR_DOWN: return DIR_LEFT;
@@ -40,7 +41,7 @@ inline dir turnright(dir d) {
   }
 }
 
-inline void dirchange(dir d, int &dx, int &dy) {
+inline void DirChange(dir d, int &dx, int &dy) {
   switch (d) {
   case DIR_UP:
     dx = 0;
@@ -61,7 +62,7 @@ inline void dirchange(dir d, int &dx, int &dy) {
   }
 }
 
-inline string dirstring(dir d) {
+inline std::string_view DirString(dir d) {
   switch (d) {
   case DIR_UP: return "up";
   case DIR_LEFT: return "left";
@@ -73,7 +74,7 @@ inline string dirstring(dir d) {
   }
 }
 
-inline dir dir_reverse(dir d) {
+inline dir DirReverse(dir d) {
   switch (d) {
   case DIR_UP: return DIR_DOWN;
   case DIR_LEFT: return DIR_RIGHT;
@@ -179,13 +180,13 @@ struct Level {
   /* true if corrupted on load. never saved */
   bool corrupted = false;
 
-  bool iscorrupted() const {
+  bool IsCorrupted() const {
     return corrupted;
   }
 
   /* go straight to the target. no animation */
-  void warp(int &entx, int &enty, int targx, int targy) {
-    int target = tileat(targx, targy);
+  void Warp(int &entx, int &enty, int targx, int targy) {
+    int target = TileAt(targx, targy);
 
     CheckStepOff(entx, enty);
     /* XXX can be incorrect --
@@ -197,65 +198,65 @@ struct Level {
 
     switch (target) {
     case T_PANEL:
-      swapo(destat(targx,targy));
+      SwapO(DestAt(targx,targy));
       break;
     default:;
     }
   }
 
-  void where(int idx, int &x, int &y) const {
+  void Where(int idx, int &x, int &y) const {
     x = idx % w;
     y = idx / w;
   }
 
-  int index(int x, int y) const {
+  int Index(int x, int y) const {
     return (y * w) + x;
   }
 
-  int tileat(int x, int y) const {
+  int TileAt(int x, int y) const {
     return tiles[y * w + x];
   }
 
-  int otileat(int x, int y) const {
+  int OTileAt(int x, int y) const {
     return otiles[y * w + x];
   }
 
-  int destat(int x, int y) const {
+  int DestAt(int x, int y) const {
     return dests[y * w + x];
   }
 
-  void settile(int x, int y, int t) {
+  void SetTile(int x, int y, int t) {
     tiles[y * w + x] = t;
   }
 
-  void osettile(int x, int y, int t) {
+  void SetOTile(int x, int y, int t) {
     otiles[y * w + x] = t;
   }
 
-  void setdest(int x, int y, int xd, int yd) {
+  void SetDestk(int x, int y, int xd, int yd) {
     dests[y * w + x] = yd * w + xd;
   }
 
-  void getdest(int x, int y, int &xd, int &yd) const {
+  void GetDest(int x, int y, int &xd, int &yd) const {
     xd = dests[y * w + x] % w;
     yd = dests[y * w + x] / w;
   }
 
-  void swapo(int idx);
+  void SwapO(int idx);
 
-  int flagat(int x, int y) const {
+  int FlagAt(int x, int y) const {
     return flags[y * w + x];
   }
 
-  void setflag(int x, int y, int f) {
+  void SetFlag(int x, int y, int f) {
     flags[y * w + x] = f;
   }
 
-  bool iswon() const {
-    return tileat(guyx, guyy) == T_EXIT;
+  bool IsWon() const {
+    return TileAt(guyx, guyy) == T_EXIT;
   }
 
-  bool travel(int x, int y, dir d, int &nx, int &ny) const {
+  bool Travel(int x, int y, dir d, int &nx, int &ny) const {
     switch (d) {
       /* sometimes useful, for instance looping over all
          affected tiles when bombing */
@@ -302,7 +303,7 @@ struct Level {
   std::unique_ptr<Level> Clone() const;
 
   /* writes current state into a string */
-  string tostring() const;
+  string ToString() const;
 
   /* null on error. if allow_corrupted is true, it returns a
      valid level with as much data from the original as
@@ -318,11 +319,11 @@ struct Level {
      (blocks on panels, lit bombs, etc.) are not considered
      sane; only levels that one could create in the editor.
      returns true if the level was already sane. */
-  bool sanitize();
+  bool Sanitize();
 
   /* Rearrange the bots in place to be in canonical order
      (bombs must be last). */
-  void fixup_botorder();
+  void FixupBotOrder();
 
   /* play to see if it wins, does not modify level or sol */
   static bool Verify(const Level *lev, const Solution &s);
@@ -330,7 +331,7 @@ struct Level {
      somewhere along the way. If the return is false, then out is in
      an unspecified state. */
   static bool VerifyPrefix(const Level *lev, const Solution &s,
-         Solution *out);
+                           Solution *out);
 
   /* execute solution. returns early (# moves set in moves)
      if we die (return false) or win (return true). false upon
@@ -340,19 +341,19 @@ struct Level {
      length must be <= s.Length(). */
   bool PlayPrefix(const Solution &s, int &moves, int start, int length);
 
-  void resize(int neww, int newh);
+  void Resize(int neww, int newh);
 
-  static bool issphere(int t);
-  static bool issteel(int t);
-  static bool ispanel(int t);
-  static bool triggers(int tile, int panel);
-  static bool allowbeam(int tile);
-  static bool isbomb(bot b) {
+  static bool IsSphere(int t);
+  static bool IsSteel(int t);
+  static bool Triggers(int tile, int panel);
+  static bool AllowBeam(int tile);
+  static bool IsBomb(bot b) {
     return ((int)b >= (int)B_BOMB_0 &&
             (int)b <= (int)B_BOMB_MAX);
   }
 
-  static bool ispanel(int t, int &ref) {
+  static bool IsPanel(int t);
+  static bool IsPanel(int t, int &ref) {
     if (t == T_PANEL) { ref = PANEL_REGULAR; return true; }
     if (t == T_BPANEL) { ref = PANEL_BLUE; return true; }
     if (t == T_GPANEL) { ref = PANEL_GREEN; return true; }
@@ -360,17 +361,18 @@ struct Level {
     return false;
   }
 
-  static bool needsdest(int t) {
+  static bool NeedsDest(int t) {
     int dummy;
-    return (t == T_REMOTE || t == T_TRANSPORT || ispanel(t, dummy));
+    return (t == T_REMOTE || t == T_TRANSPORT || IsPanel(t, dummy));
   }
 
+  bool IsConnected(int x, int y, dir d) const;
 
   /* return the lowest index bot at a specific location
      (if there's one there). We count B_DELETED and B_BOMB_X
      as not bots. */
-  bool botat(int x, int y, int &i) const {
-    int z = index(x, y);
+  bool BotAt(int x, int y, int &i) const {
+    int z = Index(x, y);
     for (int m = 0; m < nbots; m++) {
       if (boti[m] == z &&
           bott[m] != B_DELETED &&
@@ -382,19 +384,17 @@ struct Level {
     return false;
   }
 
-  bool isconnected(int x, int y, dir d) const;
-
-  bool botat(int x, int y) const {
+  bool BotAt(int x, int y) const {
     int dummy;
-    return botat(x, y, dummy);
+    return BotAt(x, y, dummy);
   }
 
-  bool playerat(int x, int y) const {
+  bool PlayerAt(int x, int y) const {
     return (x == guyx) && (y == guyy);
   }
 
   /* pre: b is bomb */
-  static int bombmaxfuse(bot b) {
+  static int BombMaxFuse(bot b) {
     return (int)b - (int)B_BOMB_0;
   }
 
@@ -404,7 +404,7 @@ struct Level {
 
   void CheckStepOff(int x, int y);
   void ClearMap();
-  void clearflag(int fl) {
+  void ClearFlag(int fl) {
     for (int i = 0; i < w * h; i++) {
       flags[i] &= ~fl;
     }
@@ -520,7 +520,7 @@ struct Level {
     return false;
   }
 
-  bool hasframers() {
+  bool HasFramers() {
     for (int i = 0; i < w * h; i++) {
       if (tiles[i] == T_HEARTFRAMER) return true;
     }
@@ -540,7 +540,7 @@ struct Level {
       guyx = x;
       guyy = y;
     } else {
-      boti[enti] = index(x, y);
+      boti[enti] = Index(x, y);
     }
   }
 

@@ -793,7 +793,7 @@ int LoadLevel_::ChangeDir(string what, bool remember) {
         nsel->items[i].fname = de->d_name;
         nsel->items[i].name = l->title;
         nsel->items[i].author = l->author;
-        nsel->items[i].corrupted = l->iscorrupted();
+        nsel->items[i].corrupted = l->IsCorrupted();
         nsel->items[i].sizex = l->w;
         nsel->items[i].sizey = l->h;
         nsel->items[i].lev = std::move(l);
