@@ -23,7 +23,7 @@ CCLIBOBJECTS=$(CCLIB_TLS) $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/util.o
 
 # Core of escape, which can be used for headless rendering, level generation
 # and solving, etc.
-ESCLIBOBJECTS=level.o solution.o escape-rle.o disamb.o escape-util.o graphics.o
+ESCLIBOBJECTS=level.o moving.o solution.o escape-rle.o disamb.o escape-util.o graphics.o
 
 ESCOBJECTS=main.o loadlevel.o play.o player.o playerdb.o prompt.o draw.o drawable.o edit.o editprefab.o mainmenu.o upgrade.o https.o httputil.o textscroll.o message.o update.o editai.o dircache.o upper.o registration.o upload.o rating.o menu.o prefs.o chunks.o dirindex.o textbox.o analysis.o generator.o primes.o commenting.o cleanup.o mainshow.o handhold.o animation.o dirt.o sound.o optimize.o solutionuploading.o client.o progress.o leveldb.o startup.o backgrounds.o escapex.o browse.o $(CCLIBOBJECTS) $(ESCLIBOBJECTS) $(SDLUTILOBJECTS)
 

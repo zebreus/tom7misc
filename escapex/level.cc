@@ -9,13 +9,20 @@
 #include <string>
 #include <utility>
 
+#include "aevent.h"
 #include "bytes.h"
 #include "disamb.h"
 #include "level-base.h"
 #include "escape-rle.h"
 #include "solution.h"
 
+// XXX
+// Make this class data-onlu.
+#include "moving.h"
+
 /* This code is non-SDL, so it should be portable! */
+
+Level::Level() {}
 
 bool Level::AllowBeam(int tt) {
   switch (tt) {
@@ -125,16 +132,6 @@ void Level::SwapO(int idx) {
                     TF_ROPANELL | TF_ROPANELH));
 }
 
-Tile Level::RealPanel(int f) {
-  if (f & TF_RPANELH) {
-    if (f & TF_RPANELL) return T_RPANEL;
-    else return T_GPANEL;
-  } else {
-    if (f & TF_RPANELL) return T_BPANEL;
-    else return T_PANEL;
-  }
-}
-
 bool Level::IsSphere(int t) {
   return (t == T_SPHERE ||
           t == T_RSPHERE ||
@@ -172,7 +169,18 @@ bool Level::Triggers(int tile, int panel) {
   return false;
 }
 
-#include "move2016.h"  // IWYU pragma: keep
+bool Level::Move(dir d) {
+  return Moving::Move(this, d);
+}
+
+bool Level::MoveAnimate(dir d, Disamb *ctx, PtrList<AEvent> *&events) {
+  return Moving::MoveAnimate(this, d, ctx, events);
+}
+
+void Level::Warp(int &entx, int &enty, int targx, int targy) {
+  return Moving::Warp(this, entx, enty, targx, targy);
+}
+
 
 #define FSDEBUG if (0)
 
@@ -889,16 +897,3 @@ void Level::Resize(int neww, int newh) {
 }
 
 
-bool Level::Move(dir d) {
-  NullDisamb ctx;
-  AList *events = nullptr;
-  AList **tail = &events;
-  return MoveMaybeAnimate<false, NullDisamb>(d, &ctx, events, tail);
-}
-
-bool Level::MoveAnimate(dir d, Disamb *ctx, AList *&events) {
-  AList **tail = &events;
-  return MoveMaybeAnimate<true, Disamb>(d, ctx, events, tail);
-}
-
-Level::Level() {}

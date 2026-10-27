@@ -1,14 +1,14 @@
-// New move header. Include just once!
-#ifndef _ESCAPE_MOVE2016_H
-#define _ESCAPE_MOVE2016_H
+#include "moving.h"
 
 #include <cstdlib>
+#include <cassert>
 
 #include "disamb.h"
 #include "level-base.h"
 #include "level.h"
 #include "aevent.h"
 #include "ptrlist.h"
+#include "base/print.h"
 
 using AList = PtrList<AEvent>;
 
@@ -22,14 +22,140 @@ using AList = PtrList<AEvent>;
 // sucks to have to know what variables are in scope and avoid certain
 // symbols inside the lambdas...
 
+  /* is the tile bombable? */
+static bool Bombable(int t) {
+  switch (t) {
+    /* some level of danger */
+  case T_EXIT:
+  case T_SLEEPINGDOOR:
+    /* useful */
+  case T_LASER:
+
+    /* obvious */
+  case T_BROKEN:
+  case T_GREY:
+  case T_RED:
+  case T_GREEN:
+
+    /* a soft metal. ;) */
+  case T_GOLD:
+
+  case T_NS:
+  case T_WE:
+  case T_NW:
+  case T_NE:
+  case T_SW:
+  case T_SE:
+  case T_NSWE:
+  case T_TRANSPONDER:
+  case T_BUTTON:
+  case T_BLIGHT:
+  case T_GLIGHT:
+  case T_RLIGHT:
+  case T_REMOTE:
+
+    /* ?? sure? */
+  case T_BLUE:
+    /* don't want walls made of this
+       ugly thing */
+  case T_STOP:
+
+    /* but doesn't count as picking it up */
+  case T_HEARTFRAMER:
+
+    /* ?? easier */
+  case T_PANEL:
+  case T_RPANEL:
+  case T_GPANEL:
+  case T_BPANEL:
+
+    return true;
+
+  case T_FLOOR:
+
+    /* obvious */
+  case T_HOLE:
+  case T_ELECTRIC:
+  case T_BLACK:
+  case T_ROUGH:
+
+    /* for symmetry with holes.
+       maybe could become holes,
+       but that is just more
+       complicated */
+  case T_TRAP1:
+  case T_TRAP2:
+
+
+    /* useful for level designers */
+  case T_LEFT:
+  case T_RIGHT:
+  case T_UP:
+  case T_DOWN:
+
+    /* Seems sturdy */
+  case T_TRANSPORT:
+  case T_ON:
+  case T_OFF:
+  case T_1:
+  case T_0:
+
+    /* made of metal */
+  case T_STEEL:
+  case T_BSTEEL:
+  case T_RSTEEL:
+  case T_GSTEEL:
+
+  case T_LR:
+  case T_UD:
+
+  case T_SPHERE:
+  case T_BSPHERE:
+  case T_RSPHERE:
+  case T_GSPHERE:
+
+    /* shouldn't bomb the floorlike things,
+       so also their 'up' counterparts */
+  case T_BUP:
+  case T_BDOWN:
+  case T_GUP:
+  case T_GDOWN:
+  case T_RUP:
+  case T_RDOWN:
+
+    return false;
+  }
+
+  assert(!"illegal tile");
+  return false;
+}
+
+static Tile RealPanel(int f) {
+  if (f & TF_RPANELH) {
+    if (f & TF_RPANELL) return T_RPANEL;
+    else return T_GPANEL;
+  } else {
+    if (f & TF_RPANELL) return T_BPANEL;
+    else return T_PANEL;
+  }
+}
+
+static bool HasFramers(const Level &level) {
+  for (int i = 0; i < level.Width() * level.Height(); i++) {
+    if (level.tiles[i] == T_HEARTFRAMER) return true;
+  }
+  return false;
+}
+
+
 // TODO: No need to wrap *calls* to these macros in if (ANIMATING) ...
 
 #define AFFECT2016(x, y) do {                   \
-    (void)ctx->affect((x), (y), this, etail);   \
+    (void)ctx->affect((x), (y), level, etail);   \
   } while (0)
 
 #define AFFECTI2016(i) do {                     \
-    (void)ctx->affecti((i), this, etail);       \
+    (void)ctx->affecti((i), level, etail);       \
   } while (0)
 
 // This new version of the macro looks more like a function call.
@@ -72,8 +198,8 @@ using AList = PtrList<AEvent>;
 #define AFFECTENT2016(entid, fn) do {                                   \
     const int affectent_ei = (entid);                                   \
     if (ANIMATING) {                                                    \
-      if (affectent_ei == -1) ctx->preaffectplayer(this, etail);        \
-      else ctx->preaffectbot(affectent_ei, this, etail);                \
+      if (affectent_ei == -1) ctx->preaffectplayer(level, etail);       \
+      else ctx->preaffectbot(affectent_ei, level, etail);               \
     }                                                                   \
     (fn)();                                                             \
     if (ANIMATING) {                                                    \
@@ -82,13 +208,13 @@ using AList = PtrList<AEvent>;
     }                                                                   \
   } while (0)
 
-#define BOTEXPLODE2016(botidx) do {                   \
-    if (ANIMATING) {                                  \
-      const int botexplode_botidx = (botidx);         \
-      PUSHMOVE2016(botexplode, [&](botexplode_t *e) { \
-        Where(boti[botexplode_botidx], e->x, e->y);   \
-      });                                             \
-    }                                                 \
+#define BOTEXPLODE2016(botidx) do {                                 \
+    if (ANIMATING) {                                                \
+      const int botexplode_botidx = (botidx);                       \
+      PUSHMOVE2016(botexplode, [&](botexplode_t *e) {               \
+          level->Where(level->boti[botexplode_botidx], e->x, e->y); \
+        });                                                         \
+    }                                                               \
   } while (0)
 
 #define WALKEDEX2016(d, ex, ey, ei, push) do {                          \
@@ -97,11 +223,11 @@ using AList = PtrList<AEvent>;
       const int walked_ex = (ex), walked_ey = (ey);                     \
       const int walked_ei = (ei);                                       \
       const bool walked_push = (push);                                  \
-      const int walked_under = TileAt(walked_ex, walked_ey);            \
+      const int walked_under = level->TileAt(walked_ex, walked_ey);     \
       const bot walked_entt =                                           \
-        (walked_ei == -1) ? B_PLAYER : bott[walked_ei];                 \
+        (walked_ei == -1) ? B_PLAYER : level->bott[walked_ei];          \
       const int walked_data =                                           \
-        (walked_ei == -1) ? 0 : bota[walked_ei];                        \
+        (walked_ei == -1) ? 0 : level->bota[walked_ei];                 \
       PUSHMOVE2016(walk, ([&](walk_t *e) {                              \
         e->srcx = walked_ex;                                            \
         e->srcy = walked_ey;                                            \
@@ -122,7 +248,8 @@ using AList = PtrList<AEvent>;
       const int teleportout_x = (xx);                                   \
       const int teleportout_y = (yy);                                   \
       const bot teleportout_entt =                                      \
-        (teleportout_ei == -1) ? B_PLAYER : bott[teleportout_ei];       \
+        (teleportout_ei == -1) ?                                        \
+        B_PLAYER : level->bott[teleportout_ei];                         \
       PUSHMOVE2016(teleportout, ([&](teleportout_t *e) {                \
         e->x = teleportout_x;                                           \
         e->y = teleportout_y;                                           \
@@ -137,7 +264,8 @@ using AList = PtrList<AEvent>;
       const int teleportin_x = (xx);                                    \
       const int teleportin_y = (yy);                                    \
       const bot teleportout_entt =                                      \
-        (teleportin_ei == -1) ? B_PLAYER : bott[teleportin_ei];         \
+        (teleportin_ei == -1) ?                                         \
+        B_PLAYER : level->bott[teleportin_ei];                          \
       PUSHMOVE2016(teleportin, [&](teleportin_t *e) {                   \
         e->x = teleportin_x;                                            \
         e->y = teleportin_y;                                            \
@@ -199,14 +327,14 @@ using AList = PtrList<AEvent>;
     }                                                   \
   } while (0)
 
-# define PUSHED2016(d, w, x, y, u, z, h) do {   \
-    if (ANIMATING) {          \
+# define PUSHED2016(d, w, x, y, u, z, h) do {           \
+    if (ANIMATING) {                                    \
       const dir pushed_d = (d);                         \
       const int pushed_w = (w);                         \
       const int pushed_x = (x), pushed_y = (y);         \
       const int pushed_u = (u);                         \
-      const bool pushed_z = (z), pushed_h = (h);  \
-      PUSHMOVE2016(push, ([&](push_t *e) {    \
+      const bool pushed_z = (z), pushed_h = (h);        \
+      PUSHMOVE2016(push, ([&](push_t *e) {              \
         e->srcx = pushed_x;                             \
         e->srcy = pushed_y;                             \
         e->d = pushed_d;                                \
@@ -224,10 +352,10 @@ using AList = PtrList<AEvent>;
 
 // Modifies the in-scope entity position variables, as well as updating
 // the permanent location. XXX maybe this is a bad idea?
-#define SETENTPOS2016(xx, yy) do {   \
-    entx = xx;                       \
-    enty = yy;                       \
-    SetEntPos(enti, entx, enty);     \
+#define SETENTPOS2016(xx, yy) do {          \
+    entx = xx;                              \
+    enty = yy;                              \
+    level->SetEntPos(enti, entx, enty);     \
   } while (0)
 
 // Note that this macro has the side-effect of actually doing the
@@ -236,28 +364,29 @@ using AList = PtrList<AEvent>;
     const int swapo_idx = (idx);              \
     PUSHMOVE2016(swap, ([&](swap_t *e) {      \
       int xx, yy;                             \
-      Where(swapo_idx, xx, yy);               \
+      level->Where(swapo_idx, xx, yy);        \
       e->x = xx;                              \
       e->y = yy;                              \
-      e->was = TileAt(xx, yy);                \
-      e->now = OTileAt(xx, yy);               \
+      e->was = level->TileAt(xx, yy);         \
+      e->now = level->OTileAt(xx, yy);        \
     }));                                      \
-    SwapO(swapo_idx);                         \
+    level->SwapO(swapo_idx);                  \
   } while (0)
 
+// Swap tiles t1 and t2 throughout the level foreground.
 #define SWAPTILES2016(t1, t2, d) do {                 \
     const int st_t1 = (t1), st_t2 = (t2), st_d = (d); \
-    for (int y = 0; y < h; y++) {                     \
-      for (int x = 0; x < w; x++) {                   \
-        const int t = TileAt(x, y);                   \
+    for (int y = 0; y < level->Height(); y++) {       \
+      for (int x = 0; x < level->Width(); x++) {      \
+        const int t = level->TileAt(x, y);            \
         if (t == st_t1) {                             \
           AFFECT2016(x, y);                           \
           TOGGLE2016(x, y, t, st_d);                  \
-          SetTile(x, y, st_t2);                       \
+          level->SetTile(x, y, st_t2);                \
         } else if (t == st_t2) {                      \
           AFFECT2016(x, y);                           \
           TOGGLE2016(x, y, t, st_d);                  \
-          SetTile(x, y, st_t1);                       \
+          level->SetTile(x, y, st_t1);                \
         }                                             \
       }                                               \
     }                                                 \
@@ -269,21 +398,23 @@ using AList = PtrList<AEvent>;
 #define CHECKLEAVEPANEL2016(xx, yy) do {                                \
     const int checkleavepanel_xx = (xx);                                \
     const int checkleavepanel_yy = (yy);                                \
-    if (TileAt(checkleavepanel_xx, checkleavepanel_yy) == T_PANEL) {    \
-      AFFECTI2016(DestAt(checkleavepanel_xx, checkleavepanel_yy));      \
-      SWAPO2016(DestAt(checkleavepanel_xx, checkleavepanel_yy));        \
+    if (level->TileAt(checkleavepanel_xx, checkleavepanel_yy) ==        \
+        T_PANEL) {                                                      \
+      AFFECTI2016(                                                      \
+          level->DestAt(checkleavepanel_xx, checkleavepanel_yy));       \
+      SWAPO2016(level->DestAt(checkleavepanel_xx, checkleavepanel_yy)); \
     }                                                                   \
   } while (0)
 
 #define CHECKTRAP2016(xx, yy) do {                                      \
     const int checktrap_xx = (xx), checktrap_yy = (yy);                 \
-    if (TileAt(checktrap_xx, checktrap_yy) == T_TRAP1) {                \
+    if (level->TileAt(checktrap_xx, checktrap_yy) == T_TRAP1) {         \
       AFFECT2016(checktrap_xx, checktrap_yy);                           \
-      SetTile(checktrap_xx, checktrap_yy, T_HOLE);                      \
+      level->SetTile(checktrap_xx, checktrap_yy, T_HOLE);               \
       TRAP2016(checktrap_xx, checktrap_yy, T_TRAP1);                    \
-    } else if (TileAt(checktrap_xx, checktrap_yy) == T_TRAP2) {         \
+    } else if (level->TileAt(checktrap_xx, checktrap_yy) == T_TRAP2) {  \
       AFFECT2016(checktrap_xx, checktrap_yy);                           \
-      SetTile(checktrap_xx, checktrap_yy, T_TRAP1);                     \
+      level->SetTile(checktrap_xx, checktrap_yy, T_TRAP1);              \
       TRAP2016(checktrap_xx, checktrap_yy, T_TRAP2);                    \
     }                                                                   \
   } while (0)
@@ -310,16 +441,17 @@ using AList = PtrList<AEvent>;
     const int cbd_xx = (xx), cbd_yy = (yy);                 \
     const int cbd_me = (me);                                \
     if (cbd_me != B_PLAYER) { /* checked at end of turn */  \
-      const int mei = Index(cbd_xx, cbd_yy);                \
-      for (int b = 0; b < nbots; b++) {                     \
-        if (cbd_me != b && bott[b] != B_DELETED &&          \
-            bott[b] != B_BOMB_X &&                          \
-            mei == boti[b]) {                               \
+      const int mei = level->Index(cbd_xx, cbd_yy);         \
+      for (int b = 0; b < level->nbots; b++) {              \
+        if (cbd_me != b &&                                  \
+            level->bott[b] != B_DELETED &&                  \
+            level->bott[b] != B_BOMB_X &&                   \
+            mei == level->boti[b]) {                        \
           /* yes! delete other bot and make me */           \
           /* broken. */                                     \
           AFFECTI2016(mei);                                 \
-          bott[b] = B_DELETED;                              \
-          bott[cbd_me] = B_BROKEN;                          \
+          level->bott[b] = B_DELETED;                       \
+          level->bott[cbd_me] = B_BROKEN;                   \
           /* AFFECTENT;  */                                 \
           BOTEXPLODE2016(b);                                \
         }                                                   \
@@ -327,31 +459,19 @@ using AList = PtrList<AEvent>;
     }                                                       \
   } while (0)
 
-
-/* generate callable version of this macro */
-void Level::CheckStepOff(int x, int y) {
-  using DAB = NullDisamb;
-  NullDisamb ctx_;
-  DAB *ctx = &ctx_;
-  AList *events = nullptr;
-  AList **etail = &events;
-  static constexpr bool ANIMATING = false;
-  CHECKSTEPOFF2016(x, y);
-}
-
 template<bool ANIMATING, class DAB>
-void Level::Bombsplode(int now,
-                       int b, DAB *ctx, AList *&events,
-                       AList **&etail) {
-  bott[b] = B_BOMB_X;
-  int x, y;
-  Where(boti[b], x, y);
+void Moving::Bombsplode(Level *level,
+                        int now,
+                        int b, DAB *ctx, AList *&events,
+                        AList **&etail) {
+  level->bott[b] = B_BOMB_X;
+  const auto &[x, y] = level->Where(level->boti[b]);
 
   /* animate first */
   if (ANIMATING) {
     for (dir dd = FIRST_DIR_SELF; dd < LAST_DIR; dd++) {
       int bx, by;
-      if (Travel(x, y, dd, bx, by)) {
+      if (level->Travel(x, y, dd, bx, by)) {
         AFFECT2016(bx, by);
       }
     }
@@ -364,35 +484,35 @@ void Level::Bombsplode(int now,
 
   for (dir dd = FIRST_DIR_SELF; dd <= LAST_DIR; dd++) {
     int bx, by;
-    if (Travel(x, y, dd, bx, by)) {
-      if (Bombable(TileAt(bx, by))) {
+    if (level->Travel(x, y, dd, bx, by)) {
+      if (Bombable(level->TileAt(bx, by))) {
         /* animate? */
-        SetTile(bx, by, T_FLOOR);
+        level->SetTile(bx, by, T_FLOOR);
         /* clear flags */
-        SetFlag(bx, by, FlagAt(bx, by) & ~(TF_HASPANEL |
-                                           TF_RPANELL  |
-                                           TF_RPANELH));
+        level->SetFlag(bx, by, level->FlagAt(bx, by) & ~(TF_HASPANEL |
+                                                         TF_RPANELL  |
+                                                         TF_RPANELH));
       }
 
 
-      int z = Index(bx, by);
-      for (int bdie = 0; bdie < nbots; bdie++) {
-        if (boti[bdie] == z) {
+      int z = level->Index(bx, by);
+      for (int bdie = 0; bdie < level->nbots; bdie++) {
+        if (level->boti[bdie] == z) {
           AFFECTENT2016(bdie, []{});
 
-          bot bd = bott[bdie];
+          bot bd = level->bott[bdie];
           if (bd == B_DELETED ||
               bd == B_BOMB_X) /* ignore */ continue;
 
           if (Level::IsBomb(bd)) {
             /* chain reaction */
             if (bdie < now) {
-              Bombsplode<ANIMATING, DAB>(now, bdie, ctx, events, etail);
+              Bombsplode<ANIMATING, DAB>(level, now, bdie, ctx, events, etail);
               break;
             } else {
               /* will explode this turn (unless a bot
                  pushes it??) */
-              bota[bdie] = 0;
+              level->bota[bdie] = 0;
               break;
             }
           } else {
@@ -407,7 +527,7 @@ void Level::Bombsplode(int now,
                they should be rejected by the sanitizer as
                well. */
             BOTEXPLODE2016(bdie);
-            bott[bdie] = B_DELETED;
+            level->bott[bdie] = B_DELETED;
             break;
           } /* isbomb? */
         } /* bot here? */
@@ -420,13 +540,14 @@ void Level::Bombsplode(int now,
 
 // Assumes target = T_TRANSPORT.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntTransport(dir d, int enti, Capabilities cap,
-                             int entx, int enty, int newx, int newy,
-                             DAB *ctx, AList *&events,
-                             AList **&etail) {
+bool Moving::MoveEntTransport(Level *level,
+                              dir d, int enti, Capabilities cap,
+                              int entx, int enty, int newx, int newy,
+                              DAB *ctx, AList *&events,
+                              AList **&etail) {
   /* not if there's an entity there */
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   if (cap & (CAP_CANTELEPORT | CAP_ISPLAYER)) {
     AFFECT2016(newx, newy);
@@ -437,11 +558,11 @@ bool Level::MoveEntTransport(dir d, int enti, Capabilities cap,
 
     TELEPORTOUT2016(enti, newx, newy);
 
-    int targx, targy;
-    Where(dests[w * newy + newx], targx, targy);
+    const auto &[targx, targy] =
+      level->Where(level->dests[level->Index(newx, newy)]);
 
     /* cache this, since stepping off might change it */
-    const int targ = TileAt(targx, targy);
+    const int targ = level->TileAt(targx, targy);
 
     CHECKSTEPOFF2016(entx, enty);
     SETENTPOS2016(targx, targy);
@@ -451,16 +572,17 @@ bool Level::MoveEntTransport(dir d, int enti, Capabilities cap,
 
     /* teleporting always faces the player down;
        there's just one animation. */
-    SetEntDir(enti, DIR_DOWN);
+    level->SetEntDir(enti, DIR_DOWN);
 
     TELEPORTIN2016(enti, targx, targy);
 
     switch (targ) {
     case T_PANEL:
-      AFFECTI2016(DestAt(targx, targy));
-      SWAPO2016(DestAt(targx, targy));
+      AFFECTI2016(level->DestAt(targx, targy));
+      SWAPO2016(level->DestAt(targx, targy));
       break;
-    default:;
+    default:
+      break;
     }
 
     CHECKBOTDEATH2016(targx, targy, enti);
@@ -472,15 +594,16 @@ bool Level::MoveEntTransport(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_EXIT.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntExit(dir d, int enti, Capabilities cap,
-                        int entx, int enty, int newx, int newy,
-                        DAB *ctx, AList *&events,
-                        AList **&etail) {
+bool Moving::MoveEntExit(Level *level,
+                         dir d, int enti, Capabilities cap,
+                         int entx, int enty, int newx, int newy,
+                         DAB *ctx, AList *&events,
+                         AList **&etail) {
   /* XXX check cap */
 
   /* can't push bots off exits */
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   CHECKSTEPOFF2016(entx, enty);
 
@@ -502,26 +625,27 @@ bool Level::MoveEntExit(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_ON.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntOn(dir d, int enti, Capabilities cap,
-                      int entx, int enty, int newx, int newy,
-                      DAB *ctx, AList *&events,
-                      AList **&etail) {
+bool Moving::MoveEntOn(Level *level,
+                       dir d, int enti, Capabilities cap,
+                       int entx, int enty, int newx, int newy,
+                       DAB *ctx, AList *&events,
+                       AList **&etail) {
   /* can't activate if someone stands on it */
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      if (TileAt(x, y) == T_ELECTRIC) {
+  for (int y = 0; y < level->Height(); y++) {
+    for (int x = 0; x < level->Width(); x++) {
+      if (level->TileAt(x, y) == T_ELECTRIC) {
         AFFECT2016(x, y);
         TOGGLE2016(x, y, T_ELECTRIC, std::abs(x - newx) + std::abs(y - newy));
-        SetTile(x, y, T_FLOOR);
+        level->SetTile(x, y, T_FLOOR);
       }
     }
   }
 
   AFFECT2016(newx, newy);
-  SetTile(newx, newy, T_OFF);
+  level->SetTile(newx, newy, T_OFF);
   /* XXX animate pushing, but not moving */
   BUTTON2016(newx, newy, T_ON);
   return true;
@@ -529,10 +653,11 @@ bool Level::MoveEntOn(dir d, int enti, Capabilities cap,
 
 // Assumes target is one of RSPHERE, GSPHERE, BSPHERE, SPHERE, or GOLD.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
-                            int entx, int enty, int newx, int newy,
-                            DAB *ctx, AList *&events,
-                            AList **&etail) {
+bool Moving::MoveEntGoldlike(Level *level,
+                             int target, dir d, int enti, Capabilities cap,
+                             int entx, int enty, int newx, int newy,
+                             DAB *ctx, AList *&events,
+                             AList **&etail) {
   /* spheres allow pushing in a line:
      ->OOOO  becomes OOO   ---->O
 
@@ -542,20 +667,20 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
   */
   const int firstx = newx, firsty = newy;
   int tnx, tny;
-  while (IsSphere(TileAt(newx, newy)) &&
-         !(PlayerAt(newx, newy) ||
-           BotAt(newx, newy)) &&
-         Travel(newx, newy, d, tnx, tny) &&
-         IsSphere(TileAt(tnx, tny))) {
+  while (Level::IsSphere(level->TileAt(newx, newy)) &&
+         !(level->PlayerAt(newx, newy) ||
+           level->BotAt(newx, newy)) &&
+         level->Travel(newx, newy, d, tnx, tny) &&
+         Level::IsSphere(level->TileAt(tnx, tny))) {
     newx = tnx;
     newy = tny;
-    target = TileAt(tnx, tny);
+    target = level->TileAt(tnx, tny);
   }
 
   /* can't push if we ran into entity */
   /* XXX jiggle anyway */
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   if (ANIMATING) {
     /* if we passed through any spheres,
@@ -564,7 +689,7 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
       /* affect whole row */
       for (int ix = firstx, iy = firsty;
            (firstx != newx && firsty != newy);
-           Travel(ix, iy, d, ix, iy)) {
+           level->Travel(ix, iy, d, ix, iy)) {
         (void)firstx;
         (void)newx;
         (void)firsty;
@@ -586,24 +711,24 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
 
   /* remove gold block */
   AFFECT2016(goldx, goldy);
-  const int replacement = (FlagAt(goldx, goldy) & TF_HASPANEL) ?
-    RealPanel(FlagAt(goldx, goldy)) :
+  const int replacement = (level->FlagAt(goldx, goldy) & TF_HASPANEL) ?
+    RealPanel(level->FlagAt(goldx, goldy)) :
     T_FLOOR;
 
-  SetTile(goldx, goldy, replacement);
+  level->SetTile(goldx, goldy, replacement);
 
   int tgoldx, tgoldy;
 
-  while (Travel(goldx, goldy, d, tgoldx, tgoldy)) {
-    int next = TileAt(tgoldx, tgoldy);
+  while (level->Travel(goldx, goldy, d, tgoldx, tgoldy)) {
+    int next = level->TileAt(tgoldx, tgoldy);
     if (!(next == T_ELECTRIC ||
           next == T_PANEL ||
           next == T_BPANEL ||
           next == T_RPANEL ||
           next == T_GPANEL ||
           next == T_FLOOR) ||
-        BotAt(tgoldx, tgoldy) ||
-        PlayerAt(tgoldx, tgoldy)) break;
+        level->BotAt(tgoldx, tgoldy) ||
+        level->PlayerAt(tgoldx, tgoldy)) break;
 
     goldx = tgoldx;
     goldy = tgoldy;
@@ -612,7 +737,7 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
 
     // Otherwise, going to fly through this spot.
     if (ANIMATING) {
-      const bool did = ctx->affect(goldx, goldy, this, etail);
+      const bool did = ctx->affect(goldx, goldy, level, etail);
       if (false)
         printf("%d %d: %s %d %d\n", goldx, goldy, did ? "did" : "not",
                ctx->SerialAt(goldx, goldy),
@@ -623,11 +748,11 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
   /* goldx is dest, newx is source */
   if (goldx != newx ||
       goldy != newy) {
-    const int landon = TileAt(goldx, goldy);
+    const int landon = level->TileAt(goldx, goldy);
     const bool doswap = ([&]{
       /* untrigger from source */
-      if (FlagAt(newx, newy) & TF_HASPANEL) {
-        const int pan = RealPanel(FlagAt(newx,newy));
+      if (level->FlagAt(newx, newy) & TF_HASPANEL) {
+        const int pan = RealPanel(level->FlagAt(newx,newy));
         /* any */
         /* XXX2016? use Level::triggers here */
         if (pan == T_PANEL ||
@@ -651,7 +776,7 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
     /* XXX may have already affected this
        if the gold block didn't move at all */
     AFFECT2016(goldx, goldy);
-    SetTile(goldx, goldy, target);
+    level->SetTile(goldx, goldy, target);
 
     const bool zapped = ([&]{
       if (landon == T_ELECTRIC) {
@@ -660,7 +785,7 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
            that we just left, the electric has
            been swapped into the o world (along
            with the gold). So swap there. */
-        SetTile(goldx, goldy, T_ELECTRIC);
+        level->SetTile(goldx, goldy, T_ELECTRIC);
         return true;
       }
       return false;
@@ -681,20 +806,20 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
     }
 
     if (doswapt) {
-      AFFECTI2016(DestAt(goldx, goldy));
-      SWAPO2016(DestAt(goldx, goldy));
+      AFFECTI2016(level->DestAt(goldx, goldy));
+      SWAPO2016(level->DestAt(goldx, goldy));
     }
 
     if (doswap) {
-      AFFECTI2016(DestAt(newx, newy));
-      SWAPO2016(DestAt(newx, newy));
+      AFFECTI2016(level->DestAt(newx, newy));
+      SWAPO2016(level->DestAt(newx, newy));
     }
 
     return true;
 
   } else {
     /* didn't move; put it back */
-    SetTile(newx, newy, target);
+    level->SetTile(newx, newy, target);
 
     /* TODO: animate it when 'stuck' */
     return false;
@@ -704,10 +829,11 @@ bool Level::MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
 
 // assumes target is T_BUTTON.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
-                          int entx, int enty, int newx, int newy,
-                          DAB *ctx, AList *&events,
-                          AList **&etail) {
+bool Moving::MoveEntButton(Level *level,
+                           dir d, int enti, Capabilities cap,
+                           int entx, int enty, int newx, int newy,
+                           DAB *ctx, AList *&events,
+                           AList **&etail) {
   /* careful: the order in which swaps happen
      matters, because an earlier pulse could
      block beams for a later one (by raising floor).
@@ -740,8 +866,8 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
   /* need to delay swaps to the end. */
   int bswaps = 0, rswaps = 0, gswaps = 0;
 
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   /* but always push a button pressing anim */
   AFFECT2016(newx, newy);
@@ -750,7 +876,7 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
   for (dir dd = FIRST_DIR; dd <= LAST_DIR; dd++) {
     // if animation is off, then don't pre-scan
     if (!ANIMATING ||
-        IsConnected(newx, newy, dd)) {
+        level->IsConnected(newx, newy, dd)) {
 
       /* send a pulse in that direction. */
       int pulsex = newx, pulsey = newy;
@@ -759,8 +885,8 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
       int dist = 0;
 
       while (pd != DIR_NONE &&
-             Travel(pulsex, pulsey, pd, pulsex, pulsey)) {
-        const int targ = TileAt(pulsex, pulsey);
+             level->Travel(pulsex, pulsey, pd, pulsex, pulsey)) {
+        const int targ = level->TileAt(pulsex, pulsey);
 
         /* liteup animation if a wire. note: this code
            would lite up any tile (floor, exit, etc.) except
@@ -780,7 +906,7 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
                XXX: The result is correct but not desirable; wires
                pause in the middle of their electricity. Probably
                should arrange it so it all goes in one shot. */
-            if (ctx->affect(pulsex, pulsey, this, etail)) {
+            if (ctx->affect(pulsex, pulsey, level, etail)) {
               dist = 0;
             }
             LITEWIRE2016(pulsex, pulsey, targ, pd, dist);
@@ -801,13 +927,13 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
               e->delay = dist;
             }));
           }
-          remotes = new SwapList(DestAt(pulsex, pulsey), remotes);
+          remotes = new SwapList(level->DestAt(pulsex, pulsey), remotes);
 
           /* since this counts as being connected so far, we want to
              make sure that the circuit continues before animating
              it ... */
           if (ANIMATING) {
-            if (!IsConnected(pulsex, pulsey, pd)) pd = DIR_NONE;
+            if (!level->IsConnected(pulsex, pulsey, pd)) pd = DIR_NONE;
           }
           continue;
 
@@ -834,16 +960,16 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
           // printf("transponder at %d/%d\n", pulsex, pulsey);
           const int transx = pulsex;
           const int transy = pulsey;
-          if (!Travel(pulsex, pulsey, pd, pulsex, pulsey)) {
+          if (!level->Travel(pulsex, pulsey, pd, pulsex, pulsey)) {
             pd = DIR_NONE;
           } else {
             /* keep going until we hit another transponder. */
             do {
-              const int ta = TileAt(pulsex, pulsey);
+              const int ta = level->TileAt(pulsex, pulsey);
               // printf(" ... at %d/%d: %d\n", pulsex, pulsey, ta);
-              if (!AllowBeam(ta) ||
-                  BotAt(pulsex, pulsey) ||
-                  PlayerAt(pulsex, pulsey)) {
+              if (!level->AllowBeam(ta) ||
+                  level->BotAt(pulsex, pulsey) ||
+                  level->PlayerAt(pulsex, pulsey)) {
                 /* hit something. is it a transponder? */
                 if (ta == T_TRANSPONDER) {
                   /* okay, then we are on the 'old' tile with
@@ -869,7 +995,7 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
                 AFFECT2016(pulsex, pulsey);
               }
               /* otherwise keep going... */
-            } while (Travel(pulsex, pulsey, pd, pulsex, pulsey));
+            } while (level->Travel(pulsex, pulsey, pd, pulsex, pulsey));
           }
 
           break;
@@ -941,16 +1067,15 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
     SwapList *t = remotes;
     remotes = remotes->next;
     if (ANIMATING) {
-      int x, y;
-      Where(t->target, x, y);
-      if (false) printf("(was %d %d) ",
-                        ctx->SerialAt(x, y),
-                        ctx->Serial());
-      bool did = ctx->affecti(t->target, this, etail);
-      if (false) printf("%d=%d,%d: %s %d %d\n",
-                        t->target, x, y, did ? "did" : "not",
-                        ctx->SerialAt(x, y),
-                        ctx->Serial());
+      const auto &[x, y] = level->Where(t->target);
+      if (false) Print("(was {} []) ",
+                       ctx->SerialAt(x, y),
+                       ctx->Serial());
+      bool did = ctx->affecti(t->target, level, etail);
+      if (false) Print("{}={},{}: {} {} {}\n",
+                       t->target, x, y, did ? "did" : "not",
+                       ctx->SerialAt(x, y),
+                       ctx->Serial());
       // AFFECTI(t->target);
     }
     SWAPO2016(t->target);
@@ -962,12 +1087,13 @@ bool Level::MoveEntButton(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_HEARTFRAMER.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntHeartframer(dir d, int enti, Capabilities cap,
-                               int entx, int enty, int newx, int newy,
-                               DAB *ctx, AList *&events,
-                               AList **&etail) {
-  if (BotAt(newx, newy) ||
-      PlayerAt(newx, newy)) return false;
+bool Moving::MoveEntHeartframer(Level *level,
+                                dir d, int enti, Capabilities cap,
+                                int entx, int enty, int newx, int newy,
+                                DAB *ctx, AList *&events,
+                                AList **&etail) {
+  if (level->BotAt(newx, newy) ||
+      level->PlayerAt(newx, newy)) return false;
 
   /* only the player can pick up
      heart framers */
@@ -977,7 +1103,7 @@ bool Level::MoveEntHeartframer(dir d, int enti, Capabilities cap,
     WALKED2016(d, true);
 
     /* snag heart framer */
-    SetTile(newx, newy, T_FLOOR);
+    level->SetTile(newx, newy, T_FLOOR);
 
     PUSHMOVE2016(getheartframer, [&](getheartframer_t *e) {
       e->x = newx;
@@ -986,43 +1112,42 @@ bool Level::MoveEntHeartframer(dir d, int enti, Capabilities cap,
 
     /* any heart framers left? */
 
-    if (!HasFramers()) {
-      for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-          const int t = TileAt(x, y);
+    if (!HasFramers(*level)) {
+      for (int y = 0; y < level->Height(); y++) {
+        for (int x = 0; x < level->Width(); x++) {
+          const int t = level->TileAt(x, y);
           if (t == T_SLEEPINGDOOR) {
             AFFECT2016(x, y);
             PUSHMOVE2016(wakeupdoor, [&](wakeupdoor_t *e) {
               e->x = x; e->y = y;
             });
-            SetTile(x, y, T_EXIT);
+            level->SetTile(x, y, T_EXIT);
           }
         }
       }
 
       /* also bots */
-      for (int i = 0; i < nbots; i++) {
-        const int orig_bott = bott[i];
+      for (int i = 0; i < level->nbots; i++) {
+        const int orig_bott = level->bott[i];
         switch (orig_bott) {
         case B_DALEK_ASLEEP:
         case B_HUGBOT_ASLEEP:
           AFFECTENT2016(i, [&]() {
-            AFFECTI2016(boti[i]);
+            AFFECTI2016(level->boti[i]);
           });
 
-          bott[i] =
+          level->bott[i] =
             (orig_bott == B_DALEK_ASLEEP) ?
             B_DALEK : B_HUGBOT;
           PUSHMOVE2016(stand, [&](stand_t *e) {
-            Where(boti[i], e->x, e->y);
-            e->d = botd[i];
-            e->entt = bott[i];
-            e->data = bota[i];
+              level->Where(level->boti[i], e->x, e->y);
+              e->d = level->botd[i];
+              e->entt = level->bott[i];
+              e->data = level->bota[i];
           });
 
           if (ANIMATING) {
-            int xx, yy;
-            Where(boti[i], xx, yy);
+            const auto &[xx, yy] = level->Where(level->boti[i]);
 
             PUSHMOVE2016(wakeup, [&](wakeup_t *e) {
               e->x = xx;
@@ -1031,7 +1156,8 @@ bool Level::MoveEntHeartframer(dir d, int enti, Capabilities cap,
           }
           break;
 
-        default:;
+        default:
+          break;
         }
       }
     }
@@ -1048,12 +1174,13 @@ bool Level::MoveEntHeartframer(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_ELECTRIC.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntElectric(dir d, int enti, Capabilities cap,
-                            int entx, int enty, int newx, int newy,
-                            DAB *ctx, AList *&events,
-                            AList **&etail) {
-  if (BotAt(newx, newy) ||
-      PlayerAt(newx, newy)) return false;
+bool Moving::MoveEntElectric(Level *level,
+                             dir d, int enti, Capabilities cap,
+                             int entx, int enty, int newx, int newy,
+                             DAB *ctx, AList *&events,
+                             AList **&etail) {
+  if (level->BotAt(newx, newy) ||
+      level->PlayerAt(newx, newy)) return false;
   /* some bots are stupid enough
      to zap themselves */
   if (enti != B_PLAYER &&
@@ -1064,10 +1191,10 @@ bool Level::MoveEntElectric(dir d, int enti, Capabilities cap,
     WALKED2016(d, false);
 
     /* change where it is */
-    boti[enti] = Index(newx, newy);
+    level->boti[enti] = level->Index(newx, newy);
 
     /* then kill it */
-    bott[enti] = B_DELETED;
+    level->bott[enti] = B_DELETED;
     AFFECTENT2016(enti, []{});
     BOTEXPLODE2016(enti);
 
@@ -1081,15 +1208,16 @@ bool Level::MoveEntElectric(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_BROKEN.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntBroken(dir d, int enti, Capabilities cap,
-                          int entx, int enty, int newx, int newy,
-                          DAB *ctx, AList *&events,
-                          AList **&etail) {
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+bool Moving::MoveEntBroken(Level *level,
+                           dir d, int enti, Capabilities cap,
+                           int entx, int enty, int newx, int newy,
+                           DAB *ctx, AList *&events,
+                           AList **&etail) {
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   AFFECT2016(newx, newy);
-  SetTile(newx, newy, T_FLOOR);
+  level->SetTile(newx, newy, T_FLOOR);
 
   PUSHMOVE2016(breaks, ([&](breaks_t *e) {
     e->x = newx;
@@ -1100,20 +1228,21 @@ bool Level::MoveEntBroken(dir d, int enti, Capabilities cap,
 
 // Assumes target == T_GREEN.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntGreen(dir d, int enti, Capabilities cap,
-                         int entx, int enty, int newx, int newy,
-                         DAB *ctx, AList *&events,
-                         AList **&etail) {
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+bool Moving::MoveEntGreen(Level *level,
+                          dir d, int enti, Capabilities cap,
+                          int entx, int enty, int newx, int newy,
+                          DAB *ctx, AList *&events,
+                          AList **&etail) {
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   int destx, desty;
-  if (Travel(newx, newy, d, destx, desty) &&
-      TileAt(destx, desty) == T_FLOOR &&
-      !BotAt(destx, desty) &&
-      !PlayerAt(destx, desty)) {
-    SetTile(destx, desty, T_BLUE);
-    SetTile(newx, newy, T_FLOOR);
+  if (level->Travel(newx, newy, d, destx, desty) &&
+      level->TileAt(destx, desty) == T_FLOOR &&
+      !level->BotAt(destx, desty) &&
+      !level->PlayerAt(destx, desty)) {
+    level->SetTile(destx, desty, T_BLUE);
+    level->SetTile(newx, newy, T_FLOOR);
 
     AFFECT2016(destx, desty);
     AFFECT2016(newx, newy);
@@ -1141,15 +1270,16 @@ bool Level::MoveEntGreen(dir d, int enti, Capabilities cap,
 // Assumes target is one of RPANEL, GPANEL, BPANEL, TRAP1, TRAP2,
 // FLOOR, ROUGH, RDOWN, GDOWN, BDOWN, or PANEL.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
-                             int entx, int enty, int newx, int newy,
-                             DAB *ctx, AList *&events,
-                             AList **&etail) {
+bool Moving::MoveEntFloorlike(Level *level,
+                              int target, dir d, int enti, Capabilities cap,
+                              int entx, int enty, int newx, int newy,
+                              DAB *ctx, AList *&events,
+                              AList **&etail) {
   bool pushing = false;
   int pushent = 0;
-  if (PlayerAt(newx, newy)) {
+  if (level->PlayerAt(newx, newy)) {
     /* if player is on bot, can't push */
-    if (BotAt(newx, newy)) return false;
+    if (level->BotAt(newx, newy)) return false;
     /* push? */
     if (cap & CAP_PUSHPLAYER) {
       pushing = true;
@@ -1158,7 +1288,7 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
     } else if (cap & CAP_CRUSHPLAYER) {
       pushing = false;
     } else return false;
-  } else if (BotAt(newx, newy, pushent)) {
+  } else if (level->BotAt(newx, newy, pushent)) {
     /* push? */
     if (cap & CAP_PUSHBOTS) {
       /* check that the target bot is pushable */
@@ -1174,8 +1304,8 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
        we have the capability to push that entity. But we have to
        check what lives beyond this spot. */
     int farx, fary;
-    if (Travel(newx, newy, d, farx, fary)) {
-      int ftarget = TileAt(farx, fary);
+    if (level->Travel(newx, newy, d, farx, fary)) {
+      int ftarget = level->TileAt(farx, fary);
       switch (ftarget) {
       case T_ELECTRIC:
         /* only bots pushed into electric */
@@ -1197,8 +1327,8 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
         return false;
       }
       /* also check bot -- can't push two in a row */
-      if (BotAt(farx, fary)) return false;
-      if (PlayerAt(farx, fary)) return false;
+      if (level->BotAt(farx, fary)) return false;
+      if (level->PlayerAt(farx, fary)) return false;
 
       /* affect first, then make anims */
 
@@ -1210,8 +1340,8 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
           /* if a bomb, light and reset fuse */
           /* XXX animate? */
           if (pushent != -1 &&
-              IsBomb(bott[pushent]))
-            bota[pushent] = ((int)bott[pushent] - (int)B_BOMB_0);
+              Level::IsBomb(level->bott[pushent]))
+            level->bota[pushent] = ((int)level->bott[pushent] - (int)B_BOMB_0);
 
           // XXX2016: This inverts the order that postaffect
           // ran vs the move.h approach. (But it looks like that
@@ -1227,18 +1357,18 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
 
       /* okay, push! */
       if (pushent == B_PLAYER) {
-        guyx = farx;
-        guyy = fary;
+        level->guyx = farx;
+        level->guyy = fary;
       } else {
-        int id = Index(farx, fary);
-        boti[pushent] = id;
+        int id = level->Index(farx, fary);
+        level->boti[pushent] = id;
       }
 
       /* handle leaving current (pusher) pos */
       CHECKTRAP2016(entx, enty);
       /* but still need to check panels, later... */
       const int srcx = entx, srcy = enty;
-      const bool swapsrc = TileAt(entx, enty) == T_PANEL;
+      const bool swapsrc = level->TileAt(entx, enty) == T_PANEL;
 
       /* then move me. */
       SETENTPOS2016(newx, newy);
@@ -1247,7 +1377,7 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
       if (ftarget == T_ELECTRIC &&
           pushent != -1) {
         /* can't be player: kill bot */
-        bott[pushent] = B_DELETED;
+        level->bott[pushent] = B_DELETED;
         AFFECT2016(farx, fary);
         BOTEXPLODE2016(pushent);
       }
@@ -1265,14 +1395,14 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
 
       /* first, if pusher stepped off a panel, it swaps */
       if (swapsrc) {
-        AFFECTI2016(DestAt(srcx, srcy));
-        SWAPO2016(DestAt(srcx, srcy));
+        AFFECTI2016(level->DestAt(srcx, srcy));
+        SWAPO2016(level->DestAt(srcx, srcy));
       }
 
       /* pushed ent is stepping onto new panel, perhaps */
       if (ftarget == T_PANEL) {
-        AFFECTI2016(DestAt(farx, fary));
-        SWAPO2016(DestAt(farx, fary));
+        AFFECTI2016(level->DestAt(farx, fary));
+        SWAPO2016(level->DestAt(farx, fary));
       }
 
       return true;
@@ -1299,8 +1429,8 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
 
     if (target == T_PANEL) {
       // printf(" %d   step on panel...\n", enti);
-      AFFECTI2016(DestAt(newx, newy));
-      SWAPO2016(DestAt(newx, newy));
+      AFFECTI2016(level->DestAt(newx, newy));
+      SWAPO2016(level->DestAt(newx, newy));
     }
 
     return true;
@@ -1309,10 +1439,11 @@ bool Level::MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
 
 // Target should be STEEL, RSTEEL, GSTEEL or BSTEEL.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
-                         int entx, int enty, int newx, int newy,
-                         DAB *ctx, AList *&events,
-                         AList **&etail) {
+bool Moving::MoveEntSteel(Level *level,
+                          int target, dir d, int enti, Capabilities cap,
+                          int entx, int enty, int newx, int newy,
+                          DAB *ctx, AList *&events,
+                          AList **&etail) {
   /* three phases. first, see if we can push this
      whole column one space.
 
@@ -1324,20 +1455,20 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
     int curx = newx, cury = newy;
     /* go until not steel, or if we hit a robot
        anywhere along this, end */
-    while (!BotAt(curx, cury) && !PlayerAt(curx, cury) &&
-           Travel(curx, cury, d, destx, desty) &&
-           IsSteel(TileAt(destx, desty))) {
+    while (!level->BotAt(curx, cury) && !level->PlayerAt(curx, cury) &&
+           level->Travel(curx, cury, d, destx, desty) &&
+           Level::IsSteel(level->TileAt(destx, desty))) {
       curx = destx;
       cury = desty;
     }
   }
 
   /* entity in our column or at the end? sorry */
-  if (BotAt(destx, desty) ||
-      PlayerAt(destx, desty)) return false;
+  if (level->BotAt(destx, desty) ||
+      level->PlayerAt(destx, desty)) return false;
 
   /* what did we hit? */
-  const int hittile = TileAt(destx, desty);
+  const int hittile = level->TileAt(destx, desty);
   const bool zap = hittile == T_ELECTRIC;
   switch (hittile) {
     /* nb if we "hit" steel, then it's steel to the edge of the
@@ -1371,7 +1502,7 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
     {
       int xx = destx, yy = desty;
       do {
-        Travel(xx, yy, revd, xx, yy);
+        level->Travel(xx, yy, revd, xx, yy);
         AFFECT2016(xx, yy);
       } while (! (xx == newx && yy == newy));
       AFFECT2016(newx, newy);
@@ -1381,10 +1512,10 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
       int xx = destx, yy = desty;
       bool zappy = zap;
       do {
-        Travel(xx, yy, revd, xx, yy);
-        int replacement = (FlagAt(xx, yy) & TF_HASPANEL) ?
-          RealPanel(FlagAt(xx,yy)) : T_FLOOR;
-        int what = TileAt(xx, yy);
+        level->Travel(xx, yy, revd, xx, yy);
+        int replacement = (level->FlagAt(xx, yy) & TF_HASPANEL) ?
+          RealPanel(level->FlagAt(xx,yy)) : T_FLOOR;
+        int what = level->TileAt(xx, yy);
         PUSHED2016(d, what, xx, yy, replacement, zappy, false);
 
         /* only last one can zap */
@@ -1398,8 +1529,8 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
     int movex = destx, movey = desty;
     while (! (movex == newx && movey == newy)) {
       int nextx = 0, nexty = 0;
-      Travel(movex, movey, revd, nextx, nexty);
-      SetTile(movex, movey, TileAt(nextx, nexty));
+      level->Travel(movex, movey, revd, nextx, nexty);
+      level->SetTile(movex, movey, level->TileAt(nextx, nexty));
       movex = nextx;
       movey = nexty;
     }
@@ -1407,9 +1538,9 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
 
   /* and one more, for the tile that we're stepping onto */
   {
-    const int replacement = (FlagAt(newx, newy) & TF_HASPANEL) ?
-      RealPanel(FlagAt(newx,newy)) : T_FLOOR;
-    SetTile(newx, newy, replacement);
+    const int replacement = (level->FlagAt(newx, newy) & TF_HASPANEL) ?
+      RealPanel(level->FlagAt(newx,newy)) : T_FLOOR;
+    level->SetTile(newx, newy, replacement);
   }
 
   /* reconcile panels.
@@ -1441,28 +1572,28 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
     int lookx = destx, looky = desty;
     int prevt = T_FLOOR; /* anything that doesn't trigger */
     while (! (lookx == newx && looky == newy)) {
-      const int heret = TileAt(lookx, looky);
+      const int heret = level->TileAt(lookx, looky);
 
       /* triggerstatus for this location (lookx, looky) */
       const bool triggerstatus_now =
-        (FlagAt(lookx, looky) & TF_HASPANEL) &&
-        Triggers(heret, RealPanel(FlagAt(lookx, looky)));
+        (level->FlagAt(lookx, looky) & TF_HASPANEL) &&
+        Level::Triggers(heret, RealPanel(level->FlagAt(lookx, looky)));
 
       const bool triggerstatus_old =
-        (FlagAt(lookx, looky) & TF_HASPANEL) &&
-        IsSteel(prevt) &&
-        Triggers(prevt, RealPanel(FlagAt(lookx, looky)));
+        (level->FlagAt(lookx, looky) & TF_HASPANEL) &&
+        level->IsSteel(prevt) &&
+        Level::Triggers(prevt, RealPanel(level->FlagAt(lookx, looky)));
 
       if (triggerstatus_now != triggerstatus_old) {
-        SetFlag(lookx, looky, FlagAt(lookx, looky) | TF_TEMP);
+        level->SetFlag(lookx, looky, level->FlagAt(lookx, looky) | TF_TEMP);
       } else {
-        SetFlag(lookx, looky, FlagAt(lookx, looky) & ~TF_TEMP);
+        level->SetFlag(lookx, looky, level->FlagAt(lookx, looky) & ~TF_TEMP);
       }
 
       prevt = heret;
 
       int nextx = 0, nexty = 0;
-      Travel(lookx, looky, revd, nextx, nexty);
+      level->Travel(lookx, looky, revd, nextx, nexty);
 
       lookx = nextx;
       looky = nexty;
@@ -1470,11 +1601,11 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
 
     /* first panel is slightly different */
     {
-      const int first = TileAt(newx, newy);
+      const int first = level->TileAt(newx, newy);
       const bool trig_now = first == T_PANEL;
       const bool trig_old =
-        IsPanel(first) &&
-        Triggers(prevt, RealPanel(FlagAt(newx, newy)));
+        level->IsPanel(first) &&
+        Level::Triggers(prevt, RealPanel(level->FlagAt(newx, newy)));
 
       if (trig_old != trig_now) {
         swapnew = true;
@@ -1485,7 +1616,7 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
   /* zap, if necessary, before swapping. This was
      already animated above. */
   if (zap) {
-    SetTile(destx, desty, T_ELECTRIC);
+    level->SetTile(destx, desty, T_ELECTRIC);
   }
 
   /* now we can start swapping. */
@@ -1495,23 +1626,23 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
      only one destination per location */
 
   if (swapnew) {
-    AFFECTI2016(DestAt(newx, newy));
-    SWAPO2016(DestAt(newx, newy));
+    AFFECTI2016(level->DestAt(newx, newy));
+    SWAPO2016(level->DestAt(newx, newy));
   }
 
   {
     int lookx = destx, looky = desty;
     while (! (lookx == newx && looky == newy)) {
 
-      if (FlagAt(lookx, looky) & TF_TEMP) {
-        AFFECTI2016(DestAt(lookx, looky));
-        SWAPO2016(DestAt(lookx, looky));
-        SetFlag(lookx, looky, FlagAt(lookx, looky) & ~TF_TEMP);
+      if (level->FlagAt(lookx, looky) & TF_TEMP) {
+        AFFECTI2016(level->DestAt(lookx, looky));
+        SWAPO2016(level->DestAt(lookx, looky));
+        level->SetFlag(lookx, looky, level->FlagAt(lookx, looky) & ~TF_TEMP);
       }
 
       /* next */
       int nextx = 0, nexty = 0;
-      Travel(lookx, looky, revd, nextx, nexty);
+      level->Travel(lookx, looky, revd, nextx, nexty);
       lookx = nextx;
       looky = nexty;
     }
@@ -1526,19 +1657,20 @@ bool Level::MoveEntSteel(int target, dir d, int enti, Capabilities cap,
 }
 
 template<bool ANIMATING, class DAB>
-bool Level::MoveEnt01(int target, dir d, int enti, Capabilities cap,
-                      int entx, int enty, int newx, int newy,
-                      DAB *ctx, AList *&events,
-                      AList **&etail) {
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+bool Moving::MoveEnt01(Level *level,
+                       int target, dir d, int enti, Capabilities cap,
+                       int entx, int enty, int newx, int newy,
+                       DAB *ctx, AList *&events,
+                       AList **&etail) {
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   const int opp = (target == T_0 ? T_1 : T_0);
 
   SWAPTILES2016(T_UD, T_LR, 0);
 
   AFFECT2016(newx, newy);
-  SetTile(newx, newy, opp);
+  level->SetTile(newx, newy, opp);
   BUTTON2016(newx, newy, target);
 
   return true;
@@ -1547,13 +1679,14 @@ bool Level::MoveEnt01(int target, dir d, int enti, Capabilities cap,
 // For target = T_TRANSPONDER, T_RED, T_NSWE, T_NS, T_NE, T_NW, T_SE,
 // T_SW, T_WE, T_LR, T_UD, T_GREY.
 template<bool ANIMATING, class DAB>
-bool Level::MoveEntPushable(int target, dir d, int enti, Capabilities cap,
-                            int entx, int enty, int newx, int newy,
-                            DAB *ctx, AList *&events,
-                            AList **&etail) {
+bool Moving::MoveEntPushable(Level *level,
+                             int target, dir d, int enti, Capabilities cap,
+                             int entx, int enty, int newx, int newy,
+                             DAB *ctx, AList *&events,
+                             AList **&etail) {
   /* don't push a block that an entity stands on! */
-  if (PlayerAt(newx, newy) ||
-      BotAt(newx, newy)) return false;
+  if (level->PlayerAt(newx, newy) ||
+      level->BotAt(newx, newy)) return false;
 
   // These can only be pushed in the correct direction.
   if (target == T_LR && (d == DIR_UP || d == DIR_DOWN)) return false;
@@ -1564,31 +1697,32 @@ bool Level::MoveEntPushable(int target, dir d, int enti, Capabilities cap,
      don't change because our feet are on it. if it's a colored panel,
      don't change because neither the man nor the block can activate
      it.) But we do need to put a panel there instead of floor. */
-  const int replacement = (FlagAt(newx, newy) & TF_HASPANEL)?
-    RealPanel(FlagAt(newx,newy)) : T_FLOOR;
+  const int replacement = (level->FlagAt(newx, newy) & TF_HASPANEL)?
+    RealPanel(level->FlagAt(newx, newy)) : T_FLOOR;
 
   bool doswap = false;
   bool zap = false;
   bool hole = false;
   int destx, desty;
 
-  if (!Travel(newx, newy, d, destx, desty))
+  if (!level->Travel(newx, newy, d, destx, desty))
     return false;
-  if (PlayerAt(destx, desty) || BotAt(destx, desty))
+  if (level->PlayerAt(destx, desty) ||
+      level->BotAt(destx, desty))
     return false;
-  const int destt = TileAt(destx, desty);
+  const int destt = level->TileAt(destx, desty);
   switch (destt) {
   case T_FLOOR:
     /* easy */
-    SetTile(destx, desty, target);
-    SetTile(newx, newy, replacement);
+    level->SetTile(destx, desty, target);
+    level->SetTile(newx, newy, replacement);
     break;
   case T_ELECTRIC:
     if (target == T_LR || target == T_UD)
       return false;
 
     /* Zap! */
-    SetTile(newx, newy, replacement);
+    level->SetTile(newx, newy, replacement);
     zap = true;
     break;
   case T_HOLE:
@@ -1596,8 +1730,8 @@ bool Level::MoveEntPushable(int target, dir d, int enti, Capabilities cap,
     if (target != T_GREY)
       return false;
 
-    SetTile(destx, desty, T_FLOOR);
-    SetTile(newx, newy, replacement);
+    level->SetTile(destx, desty, T_FLOOR);
+    level->SetTile(newx, newy, replacement);
     hole = true;
     break;
     /* all panels are pretty much the same */
@@ -1611,8 +1745,8 @@ bool Level::MoveEntPushable(int target, dir d, int enti, Capabilities cap,
     /* delay the swap */
     /* (can only push down grey panels */
     doswap = (destt == T_PANEL);
-    SetTile(destx, desty, target);
-    SetTile(newx, newy, replacement);
+    level->SetTile(destx, desty, target);
+    level->SetTile(newx, newy, replacement);
     break;
   default:
     return false;
@@ -1632,21 +1766,21 @@ bool Level::MoveEntPushable(int target, dir d, int enti, Capabilities cap,
   SETENTPOS2016(newx, newy);
 
   if (doswap) {
-    AFFECTI2016(DestAt(destx, desty));
-    SWAPO2016(DestAt(destx, desty));
+    AFFECTI2016(level->DestAt(destx, desty));
+    SWAPO2016(level->DestAt(destx, desty));
   }
 
   return true;
 }
 
 template<bool ANIMATING, class DAB>
-bool Level::MoveEnt(dir d, int enti, Capabilities cap,
-                    int entx, int enty,
-                    DAB *ctx, AList *&events, AList **&etail) {
+bool Moving::MoveEnt(Level *level, dir d, int enti, Capabilities cap,
+                     int entx, int enty,
+                     DAB *ctx, AList *&events, AList **&etail) {
 
   int newx = 0, newy = 0;
-  if (Travel(entx, enty, d, newx, newy)) {
-    const int target = TileAt(newx, newy);
+  if (level->Travel(entx, enty, d, newx, newy)) {
+    const int target = level->TileAt(newx, newy);
     switch (target) {
 
     /* these aren't pressed by the player so act like floor */
@@ -1667,18 +1801,21 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
     /* panels are mostly the same */
     case T_PANEL:
       return MoveEntFloorlike<ANIMATING, DAB>(
+          level,
           target, d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_EXIT:
       return MoveEntExit<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_ON:
       return MoveEntOn<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
@@ -1686,6 +1823,7 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
     case T_0:
     case T_1:
       return MoveEnt01<ANIMATING, DAB>(
+          level,
           target, d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
@@ -1696,30 +1834,35 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
     case T_SPHERE:
     case T_GOLD:
       return MoveEntGoldlike<ANIMATING, DAB>(
+          level,
           target, d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_TRANSPORT:
       return MoveEntTransport<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_BUTTON:
       return MoveEntButton<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_BROKEN:
       return MoveEntBroken<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_GREEN:
       return MoveEntGreen<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
@@ -1729,6 +1872,7 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
     case T_GSTEEL:
     case T_BSTEEL:
       return MoveEntSteel<ANIMATING, DAB>(
+          level,
           target, d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
@@ -1749,18 +1893,21 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
 
     case T_GREY:
       return MoveEntPushable<ANIMATING, DAB>(
+          level,
           target, d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_HEARTFRAMER:
       return MoveEntHeartframer<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
 
     case T_ELECTRIC:
       return MoveEntElectric<ANIMATING, DAB>(
+          level,
           d, enti,
           cap, entx, enty,
           newx, newy, ctx, events, etail);
@@ -1797,71 +1944,73 @@ bool Level::MoveEnt(dir d, int enti, Capabilities cap,
    motion in 'events.' Finally, call postanimate
    to add in winning or death events. */
 template<bool ANIMATING, class DAB>
-void Level::PostAnimate(DAB *ctx, AList *&events, AList **&etail) {
+void Moving::PostAnimate(Level *level,
+                         DAB *ctx, AList *&events, AList **&etail) {
   /* make sure there is animation for everything */
-  ctx->serialup(this, etail);
+  ctx->serialup(level, etail);
 
   int lx, ly; dir from;
-  if (IsDead(lx, ly, from)) {
+  if (level->IsDead(lx, ly, from)) {
     /* XXX or affect? */
 
     /* lite up laser tile (lx, ly), too  ... if laser death */
     AFFECTENT2016(B_PLAYER, []{});
     PUSHMOVE2016(lasered, ([&](lasered_t *e) {
-      e->x = guyx;
-      e->y = guyy;
-      e->lx = lx;
-      e->ly = ly;
-      e->from = DirReverse(from);
-    }));
+        e->x = level->guyx;
+        e->y = level->guyy;
+        e->lx = lx;
+        e->ly = ly;
+        e->from = DirReverse(from);
+      }));
 
-    ctx->serialup(this, etail);
+    ctx->serialup(level, etail);
 
-  } else if (IsWon()) {
+  } else if (level->IsWon()) {
 
     AFFECTENT2016(B_PLAYER, []{});
 
     PUSHMOVE2016(winner, ([&](winner_t *e) {
-      e->x = guyx;
-      e->y = guyy;
+      e->x = level->guyx;
+      e->y = level->guyy;
     }));
 
-    ctx->serialup(this, etail);
+    ctx->serialup(level, etail);
   }
 }
 
 template<bool ANIMATING, class DAB>
-bool Level::MoveMaybeAnimate(dir d, DAB *ctx, AList *&events, AList **&etail) {
+bool Moving::MoveMaybeAnimate(Level *level,
+                              dir d, DAB *ctx, AList *&events, AList **&etail) {
   ctx->clear();
   /* change our orientation, even if we don't move.
      TODO: animate this! */
-  guyd = d;
+  level->guyd = d;
 
   /* player always moves first */
   const bool player_moved = MoveEnt<ANIMATING, DAB>(
-      d, -1, (Capabilities)GUYCAP, guyx, guyy,
+      level,
+      d, -1, (Capabilities)GUYCAP, level->guyx, level->guyy,
       ctx, events, etail);
 
   if (player_moved) {
-    for (int b = 0; b < nbots; b++) {
+    for (int b = 0; b < level->nbots; b++) {
 
-      int x, y;
-      Where(boti[b], x, y);
+      const auto &[x, y] = level->Where(level->boti[b]);
 
       dir bd = DIR_NONE; /* dir to go */
       dir bd2 = DIR_NONE; /* second choice */
       Capabilities bcap = (Capabilities)0; /* its capabilities */
 
-      if (Level::IsBomb(bott[b])) {
+      if (Level::IsBomb(level->bott[b])) {
         /* bombs never move */
         bd = DIR_NONE;
 
-        if (bota[b] == 0) {
+        if (level->bota[b] == 0) {
           /* time's up: explodes */
-          Bombsplode<ANIMATING, DAB>(b, b, ctx, events, etail);
-        } else if (bota[b] > 0) {
+          Bombsplode<ANIMATING, DAB>(level, b, b, ctx, events, etail);
+        } else if (level->bota[b] > 0) {
           /* fuse burns */
-          bota[b]--;
+          level->bota[b]--;
           /* XXX animate? */
         } else {
           /* unlit: do nothing */
@@ -1869,11 +2018,11 @@ bool Level::MoveMaybeAnimate(dir d, DAB *ctx, AList *&events, AList **&etail) {
         continue;
 
       } else {
-        switch (bott[b]) {
+        switch (level->bott[b]) {
           /* nb, not isbomb */
         case B_BOMB_X:
           /* disappear */
-          bott[b] = B_DELETED;
+          level->bott[b] = B_DELETED;
           /* no animation since it's already invisible */
           bd = DIR_NONE;
           break;
@@ -1885,21 +2034,21 @@ bool Level::MoveMaybeAnimate(dir d, DAB *ctx, AList *&events, AList **&etail) {
           /* dalek always moves towards player, favoring
              left/right movement */
 
-          if (x == guyx) {
+          if (x == level->guyx) {
             /* same column? move up/down */
-            if (y < guyy) bd = DIR_DOWN;
-            else if (y > guyy) bd = DIR_UP;
+            if (y < level->guyy) bd = DIR_DOWN;
+            else if (y > level->guyy) bd = DIR_UP;
             else bd = DIR_NONE; /* on player !! EXTERMINATE */
           } else {
-            if (x > guyx) bd = DIR_LEFT;
+            if (x > level->guyx) bd = DIR_LEFT;
             else bd = DIR_RIGHT;
 
             /* but still set second choice */
-            if (y < guyy) bd2 = DIR_DOWN;
-            else if (y > guyy) bd2 = DIR_UP;
+            if (y < level->guyy) bd2 = DIR_DOWN;
+            else if (y > level->guyy) bd2 = DIR_UP;
           }
 
-          switch (bott[b]) {
+          switch (level->bott[b]) {
           default: /* impossible */
           case B_DALEK: bcap = DALEKCAP; break;
           case B_HUGBOT: bcap = HUGBOTCAP; break;
@@ -1913,23 +2062,66 @@ bool Level::MoveMaybeAnimate(dir d, DAB *ctx, AList *&events, AList **&etail) {
 
       if (bd != DIR_NONE) {
         const bool bot_moved = MoveEnt<ANIMATING, DAB>(
+            level,
             bd, b, bcap, x, y, ctx, events, etail);
 
         /* try second choice */
         if (!bot_moved && bd2 != DIR_NONE) {
-          MoveEnt<ANIMATING, DAB>(bd2, b, bcap, x, y,
+          MoveEnt<ANIMATING, DAB>(level,
+                                  bd2, b, bcap, x, y,
                                   ctx, events, etail);
         }
       }
     }
 
-    PostAnimate<ANIMATING, DAB>(ctx, events, etail);
+    PostAnimate<ANIMATING, DAB>(level, ctx, events, etail);
     return true;
   } else {
-    PostAnimate<ANIMATING, DAB>(ctx, events, etail);
+    PostAnimate<ANIMATING, DAB>(level, ctx, events, etail);
     return false;
   }
 }
 
+bool Moving::Move(Level *level, dir d) {
+  NullDisamb ctx;
+  AList *events = nullptr;
+  AList **tail = &events;
+  return MoveMaybeAnimate<false, NullDisamb>(level, d, &ctx, events, tail);
+}
 
-#endif
+bool Moving::MoveAnimate(Level *level, dir d, Disamb *ctx, AList *&events) {
+  AList **tail = &events;
+  return MoveMaybeAnimate<true, Disamb>(level, d, ctx, events, tail);
+}
+
+
+void Moving::Warp(Level *level, int &entx, int &enty, int targx, int targy) {
+  int target = level->TileAt(targx, targy);
+
+  CheckStepOff(level, entx, enty);
+  /* XXX can be incorrect --
+     need to use SETENTPOS, since we need to reflect
+     this immediately in the boti array
+     (so that serialup knows where the bot is standing) */
+  entx = targx;
+  enty = targy;
+
+  switch (target) {
+  case T_PANEL:
+    level->SwapO(level->DestAt(targx,targy));
+    break;
+  default:
+    break;
+  }
+}
+
+/* generate callable version of this macro */
+void Moving::CheckStepOff(Level *level, int x, int y) {
+  using DAB = NullDisamb;
+  NullDisamb ctx_;
+  DAB *ctx = &ctx_;
+  AList *events = nullptr;
+  AList **etail = &events;
+  static constexpr bool ANIMATING = false;
+  CHECKSTEPOFF2016(x, y);
+}

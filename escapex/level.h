@@ -5,6 +5,8 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <utility>
 
 // n.b. Don't let this module depend on SDL. The server needs to be
 // able to link it in.
@@ -147,6 +149,9 @@ struct Level {
   string title;
   string author;
 
+  int Width() const { return w; }
+  int Height() const { return h; }
+
   int w = 0;
   int h = 0;
 
@@ -184,29 +189,16 @@ struct Level {
     return corrupted;
   }
 
-  /* go straight to the target. no animation */
-  void Warp(int &entx, int &enty, int targx, int targy) {
-    int target = TileAt(targx, targy);
+  // go straight to the target. no animation
+  // Deprecated: Use Moving::Warp.
+  void Warp(int &entx, int &enty, int targx, int targy);
 
-    CheckStepOff(entx, enty);
-    /* XXX can be incorrect --
-       need to use SETENTPOS, since we need to reflect
-       this immediately in the boti array
-       (so that serialup knows where the bot is standing) */
-    entx = targx;
-    enty = targy;
-
-    switch (target) {
-    case T_PANEL:
-      SwapO(DestAt(targx,targy));
-      break;
-    default:;
-    }
+  std::pair<int, int> Where(int idx) const {
+    return std::make_pair(idx % w, idx / w);
   }
 
   void Where(int idx, int &x, int &y) const {
-    x = idx % w;
-    y = idx / w;
+    std::tie(x, y) = Where(idx);
   }
 
   int Index(int x, int y) const {
@@ -293,10 +285,12 @@ struct Level {
      or standing on a non-deleted bot. */
   bool IsDead(int &tilex, int &tiley, dir &d) const;
 
-  /* returns true if move had effect. */
+  // returns true if move had effect.
+  // Deprecated: Call Moving::Move.
   bool Move(dir d);
 
-  /* see animation.h for documentation */
+  // see animation.h for documentation.
+  // Deprecated: Call Moving::MoveAnimate.
   bool MoveAnimate(dir d, Disamb *ctx, PtrList<AEvent> *&events);
 
   /* create clone of current state. */
@@ -398,135 +392,6 @@ struct Level {
     return (int)b - (int)B_BOMB_0;
   }
 
- private:
-
-  static Tile RealPanel(int f);
-
-  void CheckStepOff(int x, int y);
-  void ClearMap();
-  void ClearFlag(int fl) {
-    for (int i = 0; i < w * h; i++) {
-      flags[i] &= ~fl;
-    }
-  }
-
-  /* is the tile bombable? */
-  static bool Bombable(int t) {
-    switch (t) {
-      /* some level of danger */
-    case T_EXIT:
-    case T_SLEEPINGDOOR:
-      /* useful */
-    case T_LASER:
-
-      /* obvious */
-    case T_BROKEN:
-    case T_GREY:
-    case T_RED:
-    case T_GREEN:
-
-      /* a soft metal. ;) */
-    case T_GOLD:
-
-    case T_NS:
-    case T_WE:
-    case T_NW:
-    case T_NE:
-    case T_SW:
-    case T_SE:
-    case T_NSWE:
-    case T_TRANSPONDER:
-    case T_BUTTON:
-    case T_BLIGHT:
-    case T_GLIGHT:
-    case T_RLIGHT:
-    case T_REMOTE:
-
-      /* ?? sure? */
-    case T_BLUE:
-      /* don't want walls made of this
-         ugly thing */
-    case T_STOP:
-
-      /* but doesn't count as picking it up */
-    case T_HEARTFRAMER:
-
-
-      /* ?? easier */
-    case T_PANEL:
-    case T_RPANEL:
-    case T_GPANEL:
-    case T_BPANEL:
-
-      return true;
-
-    case T_FLOOR:
-
-      /* obvious */
-    case T_HOLE:
-    case T_ELECTRIC:
-    case T_BLACK:
-    case T_ROUGH:
-
-      /* for symmetry with holes.
-         maybe could become holes,
-         but that is just more
-         complicated */
-    case T_TRAP1:
-    case T_TRAP2:
-
-
-      /* useful for level designers */
-    case T_LEFT:
-    case T_RIGHT:
-    case T_UP:
-    case T_DOWN:
-
-      /* Seems sturdy */
-    case T_TRANSPORT:
-    case T_ON:
-    case T_OFF:
-    case T_1:
-    case T_0:
-
-      /* made of metal */
-    case T_STEEL:
-    case T_BSTEEL:
-    case T_RSTEEL:
-    case T_GSTEEL:
-
-    case T_LR:
-    case T_UD:
-
-    case T_SPHERE:
-    case T_BSPHERE:
-    case T_RSPHERE:
-    case T_GSPHERE:
-
-      /* shouldn't bomb the floorlike things,
-         so also their 'up' counterparts */
-    case T_BUP:
-    case T_BDOWN:
-    case T_GUP:
-    case T_GDOWN:
-    case T_RUP:
-    case T_RDOWN:
-
-      return false;
-    }
-
-    /* illegal tile */
-    abort();
-    return false;
-  }
-
-  bool HasFramers() {
-    for (int i = 0; i < w * h; i++) {
-      if (tiles[i] == T_HEARTFRAMER) return true;
-    }
-    return false;
-  }
-
   void SetEntDir(int enti, dir d) {
     if (enti == B_PLAYER) {
       guyd = d;
@@ -544,104 +409,14 @@ struct Level {
     }
   }
 
-  using AList = PtrList<AEvent>;
+ private:
 
-  template<bool ANIMATING, class DAB>
-  void PostAnimate(DAB *ctx, AList *&events, AList **&etail);
-
-  /* pass the entity index, or -1 for the player */
-  template<bool ANIMATING, class DAB>
-  bool MoveEnt(dir d, int enti, Capabilities cap,
-               int entx, int enty,
-               DAB *ctx, AList *&events, AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  void Bombsplode(int now,
-                  int bombi, DAB *ctx, AList *&events,
-                  AList **& etail);
-
-  // n.b. Not all of these have the same signature!
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntTransport(dir d, int enti, Capabilities cap,
-                        int entx, int enty, int newx, int newy,
-                        DAB *ctx, AList *&events,
-                        AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntExit(dir d, int enti, Capabilities cap,
-                   int entx, int enty, int newx, int newy,
-                   DAB *ctx, AList *&events,
-                   AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntOn(dir d, int enti, Capabilities cap,
-                 int entx, int enty, int newx, int newy,
-                 DAB *ctx, AList *&events,
-                 AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntGoldlike(int target, dir d, int enti, Capabilities cap,
-                       int entx, int enty, int newx, int newy,
-                       DAB *ctx, AList *&events,
-                       AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntButton(dir d, int enti, Capabilities cap,
-                     int entx, int enty, int newx, int newy,
-                     DAB *ctx, AList *&events,
-                     AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntHeartframer(dir d, int enti, Capabilities cap,
-                          int entx, int enty, int newx, int newy,
-                          DAB *ctx, AList *&events,
-                          AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntElectric(dir d, int enti, Capabilities cap,
-                       int entx, int enty, int newx, int newy,
-                       DAB *ctx, AList *&events,
-                       AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntBroken(dir d, int enti, Capabilities cap,
-                     int entx, int enty, int newx, int newy,
-                     DAB *ctx, AList *&events,
-                     AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntGreen(dir d, int enti, Capabilities cap,
-                    int entx, int enty, int newx, int newy,
-                    DAB *ctx, AList *&events,
-                    AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntFloorlike(int target, dir d, int enti, Capabilities cap,
-                        int entx, int enty, int newx, int newy,
-                        DAB *ctx, AList *&events,
-                        AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntSteel(int target, dir d, int enti, Capabilities cap,
-                    int entx, int enty, int newx, int newy,
-                    DAB *ctx, AList *&events,
-                    AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEnt01(int target, dir d, int enti, Capabilities cap,
-                 int entx, int enty, int newx, int newy,
-                 DAB *ctx, AList *&events,
-                 AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveEntPushable(int target, dir d, int enti, Capabilities cap,
-                       int entx, int enty, int newx, int newy,
-                       DAB *ctx, AList *&events,
-                       AList **&etail);
-
-  template<bool ANIMATING, class DAB>
-  bool MoveMaybeAnimate(dir d, DAB *ctx, AList *&events, AList **&etail);
+  void ClearMap();
+  void ClearFlag(int fl) {
+    for (int i = 0; i < w * h; i++) {
+      flags[i] &= ~fl;
+    }
+  }
 
   Level();
   NOT_COPYABLE(Level);
