@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -247,6 +248,12 @@ struct PacketWriter {
   std::span<uint8_t> MutableView() { return std::span(payload); }
   uint8_t *data() { return payload.data(); }
   std::vector<uint8_t> &&Release() && { return std::move(payload); }
+  std::string ToString() {
+    std::string ret;
+    ret.resize(payload.size());
+    memcpy(ret.data(), payload.data(), payload.size());
+    return ret;
+  }
 
  private:
   std::vector<uint8_t> payload;

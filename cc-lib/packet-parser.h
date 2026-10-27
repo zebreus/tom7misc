@@ -277,6 +277,10 @@ struct PacketParser {
 
   const uint8_t *data() const { return rest.data(); }
 
+  std::string_view StringView() const {
+    return std::string_view((const char *)rest.data(), rest.size());
+  }
+
  private:
   static inline bool SpanEq(std::span<const uint8_t> a,
                             std::span<const uint8_t> b) {

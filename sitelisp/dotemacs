@@ -276,6 +276,14 @@
          "FixederSys 2x-16:antialias=false:hinting=false"
          )
 
+        (set-fontset-font t 'unicode-bmp
+                          "FixederSys 2x-16:antialias=false:hinting=false"
+                          ;; Don't prepend; for unknown reasons
+                          ;; it won't find lots of glyphs that we do have,
+                          ;; and falls back to some other ones.
+                                        ; nil 'prepend
+                          )
+
         (modify-frame-parameters nil
             (list '(top . 42) '(width . 80) '(height . 40)))
         ))
@@ -291,7 +299,9 @@
 
 (defvar zoom-settings-list
   (list
-   (list "FixederSys 2x-24:antialias=none" 80 64)
+                                        ; (list "FixederSys 2x-24:antialias=none" 80 64)
+   ;; XXX we should define small, medium, large for each platform.
+   (list "FixederSys 2x-16:antialias=false:hinting=false" 80 64)
    (list "FixederSys 1x-12:antialias=none" 80 128)
    (list "FixederSys 2x-48:antialias=none" 80 32)
    )

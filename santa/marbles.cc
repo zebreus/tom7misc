@@ -412,6 +412,18 @@ struct AssignRepair : public AssignmentPolicy {
 //      abcdAefghBCDEFGH
 //
 // basically if the running count reaches n, you're in trouble.
+//
+//
+// How often does this occur? The denominator is the nth catalan
+// numbers (number of sequences with balanced parentheses).
+//
+// The numerator counts all sequences that fail. These are also
+// balanced parenthesis sequences.
+//
+// say failures(len, depth) is the number of distinct strings of
+// length 2*len that reach the given depth or higher. Then we have
+// a recurrence: ...
+
 struct AssignFIFO : public AssignmentPolicy {
   std::string_view Name() const override { return "fifo"; }
   std::vector<std::pair<int, int>> GetAssignment(

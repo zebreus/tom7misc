@@ -20,7 +20,11 @@ right stem compared to latin u.
 
  ⧉ index
 
-⇒
+Q♮, 
+
+    ⇒
+
+ F ∈ ⇑(convexHull ℝ) '' {b | b ⊆ ↑P.verts}
 
 ☒ History  ☒ Upstream  ☐ Naming  ✔ Submit
 
@@ -186,12 +190,6 @@ https://en.wikipedia.org/wiki/Portable_Compiled_Format
 
 
 from Lean "syntax" elisp:
-  '("#" "@" "!" "$" "->" "∼" "↔" "/" "==" "=" ":=" "<->" "/\\" "\\/" "∧" "∨"
-    "≠" "<" ">" "≤" "≥" "¬" "<=" ">=" "⁻¹" "⬝" "▸" "+" "*" "-" "/" "λ"
-    "→" "∃" "∀" "∘" "×" "Σ" "Π" "~" "||" "&&" "≃" "≡" "≅"
-    "ℕ" "ℤ" "ℚ" "ℝ" "ℂ" "𝔸"
-    "⬝e" "⬝i" "⬝o" "⬝op" "⬝po" "⬝h" "⬝v" "⬝hp" "⬝vp" "⬝ph" "⬝pv" "⬝r" "◾" "◾o"
-
 
 (--each (list ?ϊ ?ϋ ?ό ?ύ ?ώ ?Ϗ ?ϐ ?ϑ ?ϒ ?ϓ ?ϔ ?ϕ ?ϖ
                   ?ϗ ?Ϙ ?ϙ ?Ϛ ?ϛ ?Ϝ ?ϝ ?Ϟ ?ϟ ?Ϡ ?ϡ ?Ϣ ?ϣ
