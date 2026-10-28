@@ -234,7 +234,10 @@ int main(int argc, char **argv) {
   // Construct prompt to guess at files to include (cheap model).
   Timer include_timer;
   std::vector<std::string> to_include = [&] -> std::vector<std::string> {
-      if (fast) return {file};
+      if (fast) {
+        if (file.empty()) return {};
+        return {file};
+      }
       CHECK(question.has_value());
 
       std::unique_ptr<ModelClient> client =

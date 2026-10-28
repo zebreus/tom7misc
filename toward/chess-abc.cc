@@ -28,12 +28,13 @@
 #include "verilog.h"
 #include "prop-util.h"
 
-static constexpr bool SAMPLE_ONLY = true;
+static constexpr bool SAMPLE_ONLY = false;
+static constexpr bool DUMP_Z3 = false;
 
 static constexpr bool USE_ABC = true;
 static constexpr bool ALWAYS_ABC = false;
-static constexpr bool USE_EXDC = false;
-static constexpr bool EXTENDED_EXDC = false;
+static constexpr bool USE_EXDC = true;
+static constexpr bool EXTENDED_EXDC = true;
 static constexpr bool ABC_XAG = true;
 static constexpr bool FINAL_SIMPLIFY = false;
 
@@ -393,20 +394,21 @@ static void Generate(const CellLibrary &library,
                 color,
                 fin_size, fin_shared_size);
 
-  Prop valid_board = GetEXDC(board, true, true);
-  std::string z3 =
-    PropUtil::CompareZ3(world, prop, fin, valid_board);
-  Util::WriteFile(std::format("chess/z3-debug-{}-{}.smt2",
-                              ChessProp::Square(m.src_row, m.src_col),
-                              ChessProp::Square(m.dst_row, m.dst_col)),
-                  z3);
+  if (DUMP_Z3) {
+    Prop valid_board = GetEXDC(board, true, true);
+    std::string z3 =
+      PropUtil::CompareZ3(world, prop, fin, valid_board);
+    Util::WriteFile(std::format("chess/z3-debug-{}-{}.smt2",
+                                ChessProp::Square(m.src_row, m.src_col),
+                                ChessProp::Square(m.dst_row, m.dst_col)),
+                    z3);
+  }
 
   if (ALWAYS_ABC || fin_shared_size < orig_shared_size) {
     Output(fin);
   } else {
     Output(prop);
   }
-
 }
 
 static void Generate() {

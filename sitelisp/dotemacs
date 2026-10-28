@@ -174,8 +174,6 @@
                 )))
   )
 
-
-
 (defun frame-settings (f)
   (progn
     (if (null f) () (select-frame f))
@@ -204,94 +202,85 @@
     (cond
      ((eq window-system 'w32)
       (progn
-        (set-frame-font
-         ;; use M-x menu-set-font followed by M-x describe-font to
-         ;; create these mysterious strings.
+        (setq dotemacs-font-medium "FixederSys 2x-24:antialias=false:hinting=false")
+        (setq dotemacs-font-large "FixederSys 2x-48:antialias=false:hinting=false")
+        (setq dotemacs-font-small "FixederSys 1x-12:antialias=false:hinting=false")        
+        (setq dotemacs-zoom-medium (list dotemacs-font-medium 80 64))
+        (setq dotemacs-zoom-small (list dotemacs-font-small 80 128))
+        (setq dotemacs-zoom- "FixederSys 2x-48:antialias=none" 80 32)
 
-         ;; windows vista?
-         ;; -*-FixedSys-*-r-*-*-13-*-*-*-c-*-fontset-standard"
-         ;; windows 7
-         ;; works great but retired because it's too small and no unicode
-
-         ;; this works great on win 10 ca 2021, but seemingly can't get
-         ;; big enough for 4k displays
-         ;; "-raster-Fixedsys-normal-normal-normal-mono-15-*-*-*-c-*-iso8859-1"
-
-         ;; or Mono-bold
-         ;; good on 4k. 2021
-         ; (concat "-outline-DejaVu Sans Mono-normal-normal-normal-mono-"
-         ; "22"
-         ; "-*-*-*-c-*-iso8859-1")
-         ; )
-
-         ;; looks ok but has some subtle "anti"-aliasing color artifacts
-         ;; "-outline-FixederSys 1x-thin-normal-normal-mono-"
-         ;; "32-*-*-*-c-*-iso8859-1"
-         ;; on win32, this is a good way to specify fonts, it seems
-
-         ;; looks amazing, chunky
-         ;; "FixederSys 1x-24:antialias=none"
-
-         ;; hand tweaked to use full resolution; superior!
-
-         ;; on mac, antialias=false is right, not =none (has no effect)
-         ;; "FixederSys 1x-16:antialias=false:hinting=false"
-         ;; "FixederSys 2x-24:antialias=none"
-         ;; "FixederSys Light 2x-24:antialias=none"
-
-         ;; huge!
-          "FixederSys 2x-24:antialias=none:hinting=false"
-         )
+        ;; XXX Can move this stuff outside the case, but need to
+        ;; test?
+        (set-frame-font dotemacs-font-medium)
 
         ;; without this, emacs thinks my font doesn't have greek :(
         ;; XXX need to figure out a better way to specify this,
         ;; including switching it when we change the zoom
-        (set-fontset-font t 'greek-iso8859-7
-                          "FixederSys 2x-24:antialias=none")
+        (set-fontset-font t 'greek-iso8859-7 dotemacs-font-medium)
 
         ;; this seems like a pretty good approach. We lose replacements
         ;; for some wild characters, but it does still fall through
         ;; for many
-        (set-fontset-font t 'unicode-bmp "FixederSys 2x-24:antialias=none")
+        (set-fontset-font t 'unicode-bmp dotemacs-font-medium)
 
-         (modify-frame-parameters nil
-           (list '(top . 20) '(width . 80) '(height . 64))) ;; XX to 99
-         ;; to see frame parameters:
-         ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
-         ))
+        ;; XXX use zoom-medium? do this outside the case?
+        ;; to see frame parameters:
+        ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
+        (modify-frame-parameters nil
+         (list '(top . 20) '(width . 80) '(height . 63)))
+        )
+      ) ;; windows
+
+     ;; X and Wayland
      ((or (eq window-system 'x)
           (eq window-system 'pgtk))
 
+        (setq dotemacs-font-medium "FixederSys 2x-24:antialias=false:hinting=false")
+        (setq dotemacs-font-large "FixederSys 2x-48:antialias=false:hinting=false")
+        (setq dotemacs-font-small "FixederSys 1x-12:antialias=false:hinting=false")        
+        (setq dotemacs-zoom-medium (list dotemacs-font-medium 80 64))
+        (setq dotemacs-zoom-small (list dotemacs-font-small 80 128))
+        (setq dotemacs-zoom-large (list dotemacs-font-large 80 32))
 
-      (set-frame-font
-       ;; "-misc-fixed-bold-r-normal--13-100-100-100-c-70-iso8859-1"
-       "-Frog-FixederSys 1x-thin-normal-normal-*-16-*-*-*-m-0-iso10646-1"))
+        (set-frame-font dotemacs-font-medium)
+        
+        ) ;; Linux
+     
      ((eq window-system 'ns)
       (progn
-        (set-frame-font
-         ;; Working OS X font: http://tom7.org/fixedersys/
-         ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
+        ;; Note that in macOS, the default 72 DPI means that
+        ;; we specify 16 points to get 32 pixels.
 
-         ; "FixederSys 1x-16:antialias=false:hinting=false"
-         "FixederSys 2x-16:antialias=false:hinting=false"
-         )
+        (setq dotemacs-font-medium "FixederSys 2x-32:antialias=false:hinting=false")
+        (setq dotemacs-font-large "FixederSys 2x-16:antialias=false:hinting=false")
+        (setq dotemacs-font-small "FixederSys 1x-8:antialias=false:hinting=false")        
+        (setq dotemacs-zoom-medium (list dotemacs-font-medium 80 40))
+        (setq dotemacs-zoom-small (list dotemacs-font-small 80 78))
+        (setq dotemacs-zoom-large (list dotemacs-font-large 80 28))
 
-        (set-fontset-font t 'unicode-bmp
-                          "FixederSys 2x-16:antialias=false:hinting=false"
+        (set-frame-font dotemacs-font-medium)
+        
+        (set-fontset-font t 'unicode-bmp dotemacs-font-medium
                           ;; Don't prepend; for unknown reasons
                           ;; it won't find lots of glyphs that we do have,
                           ;; and falls back to some other ones.
-                                        ; nil 'prepend
+                          ; nil 'prepend
                           )
 
         (modify-frame-parameters nil
             (list '(top . 42) '(width . 80) '(height . 40)))
-        ))
-     (t
-      (modify-frame-parameters f (list '(height . 72)))
-      ))
-
-    ))
+        )
+      )  ;; mac OS
+      
+    (t
+     ;; XXX should add fallback so that font/zoom variables are
+     ;; not nil
+     
+     (modify-frame-parameters f (list '(height . 72)))
+     )
+    )  ;; platform case
+    
+    )) ;; frame settings
 
 (add-hook 'after-make-frame-functions 'frame-settings)
 
@@ -299,13 +288,13 @@
 
 (defvar zoom-settings-list
   (list
-                                        ; (list "FixederSys 2x-24:antialias=none" 80 64)
+   ; (list "FixederSys 2x-24:antialias=none" 80 64)
    ;; XXX we should define small, medium, large for each platform.
-   (list "FixederSys 2x-16:antialias=false:hinting=false" 80 64)
-   (list "FixederSys 1x-12:antialias=none" 80 128)
-   (list "FixederSys 2x-48:antialias=none" 80 32)
+   dotemacs-zoom-medium
+   dotemacs-zoom-small
+   dotemacs-zoom-large
    )
-  "*List of font, width, height for zoom toggle. Experimental.")
+  "*List of font, win width, win height for zoom toggle. Experimental.")
 
 (defun toggle-zoom ()
   "*Go to the next zoom for this frame. Experimental."

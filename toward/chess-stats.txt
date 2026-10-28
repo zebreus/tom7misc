@@ -1,4 +1,25 @@
 
+Maybe as good as it gets?
+
+
+
+
+BUGS FIXED; no exdc though
+
+4096 props loaded.
+Total size: 11727068 nodes
+Total shared: 3307294 nodes
+Errors: 0
+Node counts:
+  ITE: 125252
+  AND: 233703
+   OR: 381092
+  NOT: 127071
+  XOR: 0
+ NAND: 136247
+  NOR: 399668
+
+
 All good opts from before, but now using Attacked2
 for normal moves. A nice reduction!
 
