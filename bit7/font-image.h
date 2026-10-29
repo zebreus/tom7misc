@@ -21,6 +21,7 @@ enum class Page {
   BIT7_MATH,
   BIT7_SYM1,
   BIT7_MATHFONTS,
+  BIT7_MATH2,
 };
 
 struct Config {
@@ -69,8 +70,10 @@ struct Config {
   int chars_across = 16;
   int chars_down = 8;
 
+  // Number of pages arrayed per row (horizontal) in the image.
+  int pages_across = 8;
   // Describes how the glyphs on each page are encoded.
-  // This also tells us how many pages there are (across).
+  // This also tells us how many pages there are in total.
   std::vector<Page> pages;
 
   // Additional space between lines, in pixels.

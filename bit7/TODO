@@ -12,7 +12,17 @@ right stem compared to latin u.
 
 （✿ ͡◕ ᴗ◕)つ━━✫
 
-✢*·✢✶
+*·✢✶
+
+𝕜 E
+
+ing set Σ₃″ ∪ E′ (all c
+
+giving `∀ᶠ ε, TiltCert V 
+
+self_mem_nhdsWithin : ∀ᶠ η in 𝓝[>] (
+
+ R ↦ H_u R g.
 
 ❯ server ok
 
@@ -32,26 +42,8 @@ Q♮,
 
 completed|✖" -A
 
-s·dirᵀQ·dir
-
 Seen in the wild (pip install): ╸
 from more box drawing chars: https://www.compart.com/en/unicode/block/U+2500
-
-⛁ draughts (tokens)
-
-▸ U+25B8
-
-0 ⟹ mix = 0 ⟹ mixQ = 0/1000 = 0 exact
-
-
-a✝ :  U+271D
-
-$\R^2$
-
- û₀
-
-ℝ²
-
 
 Now that we have support for combining chars:
 https://www.compart.com/en/unicode/block/U+0300
@@ -60,15 +52,18 @@ https://www.compart.com/en/unicode/block/U+20D0
  ╰─────────────┬────────────╯
 
 
+{x ∈ A | ∀ ⦃x₁⦄, x₁ ∈ A → ∀ ⦃x₂⦄, x₂ ∈ A → x ∈ openSegment 𝕜 x₁ x₂ → x₁ = x}
+
+⛶ ⛝
+
+e `hᵢ`'s a
+
+   ╭──────────────────────────────────────────────────────────────────────────────────────────╮
+   │ ⌕ Search settings…                                                                       │
+   ╰──────────────────────────────────────────────────────────────────────────────────────────╯
+
+
 𝚿_
-
-𝕊
-
- 𝐮_c = 𝐯_c × 𝐞_c
-
- w₀ = 𝐯 · 𝐰 = 𝐯 · (𝐞₁ × 𝐞₂)
-
- ‖Δw‖² ∼ r².
 
 𝐞 
 
@@ -100,6 +95,12 @@ U+107A5 MODIFIER LETTER SMALL Q (𐞥)
 • Q: U+A7F4 MODIFIER LETTER CAPITAL Q (ꟴ)
 
 also: ᵈ
+
+s h✝. You
+
+s h✝. You
+
+F′ (U+2032)
 
 Glyphs todo:
  - unicode stars

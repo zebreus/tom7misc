@@ -92,6 +92,8 @@ const char *Config::PageString(Page p) {
     return "bit7-sym1";
   case Page::BIT7_MATHFONTS:
     return "bit7-mathfonts";
+  case Page::BIT7_MATH2:
+    return "bit7-math2";
   default:
     break;
   }
@@ -165,8 +167,8 @@ static PageInfo PageBit7Classic() {
 
     // Ideographic full stop (big japanese period)
     0x3002,
-    // turnstile (a.k.a. right tack)
-    0x22A2,
+    // quarter note
+    0x2669,
 
 
     // INTERROBANG
@@ -202,9 +204,10 @@ static PageInfo PageBit7Classic() {
     0x030E,  // (o̎) Combining Double Vertical Line Above
     0x030F,  // (ȍ) Combining Double Grave Accent
 
-    // Unclaimed. Was once emoji, but I moved those to the extended
-    // page.
-    -1, -1, -1, -1,
+    0x266C,  // (♬) Beamed sixteenth notes
+    0x266D,  // (♭) Music flat sign
+    0x266E,  // (♮) Music natural sign
+    0x266F,  // (♯) Music sharp sign
 
     0x271D,  // (✝) Latin Cross
     0x271E,  // (✞) Shadowed White Latin Cross
@@ -273,14 +276,16 @@ static PageInfo PageBit7Classic() {
     // Line 2:
     // eta, theta, iota, kappa, lambda, mu, (no nu), xi, (no omicron)
     0x03B7, 0x03B8, 0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BE,
-    // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi (the letter,
+    // pi, rho, (final) sigma, sigma, tau, phi (the letter,
     // which is typically loopy), (no chi), omega
     0x03C0, 0x03C1, 0x03C2, 0x03C3, 0x03C4, 0x03C6, 0x03C8, 0x03C9,
     // mathematical phi symbol (closed)
     0x03D5,
+    // upsilon (out of order because it used to be remapped from u)
+    0x03C5,
 
     // TODO: More greeks
-    -1, -1, -1, -1,
+    -1, -1, -1,
     // cont'd
     -1, -1, -1, -1, -1, -1, -1, -1,
 
@@ -838,10 +843,14 @@ static PageInfo PageBit7Extended() {
 
     0x1F9A5,  // sloth
     0x1f389,  // party popper
-
     -1,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    0x26C0,  // (⛀) white draughts man
+    0x26C1,  // (⛁) white draughts king
+    0x26C2,  // (⛂) black draughts man
+    0x26C3,  // (⛃) black draughts king
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -2766,6 +2775,53 @@ static PageInfo PageBit7MathFonts() {
   return info;
 }
 
+
+static PageInfo PageBit7Math2() {
+  PageInfo info;
+  info.sections = {
+    {0, 16 * 2},
+  };
+
+
+  info.codepoints = {
+    0x2032,  // (′) Prime
+    0x2033,  // (″) Double Prime
+    0x2034,  // (‴) Triple Prime
+    0x2035,  // (‵) Reversed Prime
+    0x2036,  // (‶) Reversed Double Prime
+    0x2037,  // (‷) Reversed Triple Prime
+    -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  };
+
+  CHECK(info.codepoints.size() == 16 * 24);
+  return info;
+};
+
+
 static PageInfo GetPageInfo(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
@@ -2776,6 +2832,7 @@ static PageInfo GetPageInfo(Page p) {
   case Page::BIT7_MATH: return PageBit7Math();
   case Page::BIT7_SYM1: return PageBit7Sym1();
   case Page::BIT7_MATHFONTS: return PageBit7MathFonts();
+  case Page::BIT7_MATH2: return PageBit7Math2();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
@@ -2855,7 +2912,6 @@ REUSE_FOR = {
   {'X', 0x03A7},
   {'v', 0x03BD},
   {'o', 0x03BF},
-  {'u', 0x03C5},
   {'x', 0x03C7},
   {'j', 0x03F3},
 
@@ -3172,6 +3228,11 @@ Config Config::ParseConfig(std::string_view cfgfile) {
   if (m.find("chars-down") != m.end())
     config.chars_down = atoi(m["chars-down"].c_str());
 
+  if (m.find("pages-across") != m.end()) {
+    config.pages_across = atoi(m["pages-across"].c_str());
+    CHECK(config.pages_across > 0);
+  }
+
   if (m.find("extra-linespacing") != m.end())
     config.extra_linespacing = atoi(m["extra-linespacing"].c_str());
 
@@ -3487,26 +3548,39 @@ FontImage::FontImage(const Config &config) : config(config) {
   const int page_width = config.chars_across * config.charbox_width;
   const int page_height = config.chars_down * config.charbox_height;
   const int spaced_page_width = page_width + config.page_spacing;
-#if 0
-  CHECK(page_width * config.pages.size() - config.page_spacing ==
-        input->Width() &&
-        page_height == input->Height()) <<
-    "Image with configured charboxes " << config.charbox_width << "x"
-                                       << config.charbox_height <<
-    " should be " << (config.chars_across * config.charbox_width) << "x"
-                  << (config.chars_down * config.charbox_height) << " but got "
-                  << input->Width() << "x" << input->Height();
-#endif
+  const int spaced_page_height = page_height + config.page_spacing;
 
-  // Currently, pages are always arranged horizontally.
+  #if 0
+  if (!config.pages.empty()) {
+    const int expected_pages_across = std::min(config.pages_across,
+                                               (int)config.pages.size());
+    const int expected_pages_down =
+        (config.pages.size() + config.pages_across - 1) / config.pages_across;
+    const int expected_width =
+        expected_pages_across * spaced_page_width - config.page_spacing;
+    const int expected_height =
+        expected_pages_down * spaced_page_height - config.page_spacing;
+
+    CHECK(expected_width == input->Width() && expected_height == input->Height())
+        << "Image with configured charboxes " << config.charbox_width << "x"
+        << config.charbox_height << " should be " << expected_width << "x"
+        << expected_height << " but got " << input->Width() << "x"
+        << input->Height();
+  }
+  #endif
+
   auto LoadPages = [&](const ImageRGBA &img) {
     for (int page_num = 0; page_num < (int)config.pages.size(); page_num++) {
+      const int px = page_num % config.pages_across;
+      const int py = page_num / config.pages_across;
+
       const Page &p = config.pages[page_num];
-      const int page_x = page_num * spaced_page_width;
+      const int srcx = px * spaced_page_width;
+      const int srcy = py * spaced_page_height;
 
       ImageRGBA page_img(page_width, page_height);
 
-      page_img.CopyImageRect(0, 0, img, page_x, 0,
+      page_img.CopyImageRect(0, 0, img, srcx, srcy,
                              page_width, page_height);
       AddPage(page_img, p);
     }
@@ -3715,19 +3789,30 @@ ImageRGBA FontImage::ImagePage(Page p) {
 }
 
 void FontImage::SaveImage(std::string_view filename) {
-  const int pages_across = (int)config.pages.size();
+  if (config.pages.empty()) return;
+
+  const int pages_across =
+    std::min(config.pages_across, (int)config.pages.size());
+  const int pages_down =
+    (config.pages.size() + config.pages_across - 1) / config.pages_across;
   const int page_width = config.chars_across * config.charbox_width;
   const int page_height = config.chars_down * config.charbox_height;
   const int spaced_page_width = page_width + config.page_spacing;
 
+  const int spaced_page_height = page_height + config.page_spacing;
+
+
   ImageRGBA out(pages_across * spaced_page_width - config.page_spacing,
-                page_height);
+                pages_down * spaced_page_height - config.page_spacing);
   out.Clear32(0x440044FF);
 
   for (int i = 0; i < (int)config.pages.size(); i++) {
-    const Page p = config.pages[i];
+    int px = i % pages_across;
+    int py = i / pages_across;
+    const Page &p = config.pages[i];
     ImageRGBA pimg = ImagePage(p);
-    out.CopyImageRect(i * spaced_page_width, 0, pimg,
+    out.CopyImageRect(px * spaced_page_width,
+                      py * spaced_page_height, pimg,
                       0, 0, page_width, page_height);
   }
 
@@ -3756,6 +3841,7 @@ int BitmapFont::Width(int cp) const {
   return font.glyphs[glyph_idx].pic.Width();
 }
 
+// TODO: Support combining characters here.
 void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
                           uint32_t color,
                           std::string_view s) const {
