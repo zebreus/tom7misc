@@ -49,21 +49,14 @@ struct BigZHeader {
   BzSign          Sign = BZ_ZERO;
 };
 
- /*
-  * define a dummy positive value to declare a Digits vector.
-  * BigZ is allocated with required size. Choose a rather large value
-  * to prevent 'smart' compilers to exchange fields.
-  */
-
-#define BZ_DUMMY_SIZE   32
-
 struct BigZStruct {
         BigZHeader Header;
         /*
          * Digit vector should be the last field to allow allocation
-         * of the real size (BZ_DUMMY_SIZE is never used).
+         * of the real size. Note this uses a compiler extension,
+         * but this is available in gcc, clang, and msvc.
          */
-        BigNumDigit       Digits[ BZ_DUMMY_SIZE ];
+        BigNumDigit       Digits[ ];
 };
 
 typedef struct BigZStruct * __BigZ;
