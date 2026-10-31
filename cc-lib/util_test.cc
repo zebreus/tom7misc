@@ -125,6 +125,7 @@ static void TestWhitespace() {
   CHECK_EQ(" p", Util::LoseWhiteR(" p \n\r \n"));
   CHECK_EQ("  p\nq", Util::LoseWhiteR("  p\nq\n\r \n"));
   CHECK_EQ("rrr", Util::LoseWhiteR("rrr"));
+  CHECK_EQ("asdf", Util::LoseOuterWhitespace(" asdf\n\n"));
 
   CHECK_EQ("", Util::NormalizeWhitespace(""));
   CHECK_EQ("", Util::NormalizeWhitespace(" "));

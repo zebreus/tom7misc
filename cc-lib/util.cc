@@ -1158,7 +1158,7 @@ string Util::ChopTo(char c, string &line) {
   return acc;
 }
 
-string Util::LoseWhiteL(const string &s) {
+string Util::LoseWhiteL(std::string_view s) {
   for (unsigned int i = 0; i < s.length(); i ++) {
     switch(s[i]) {
     case ' ':
@@ -1168,7 +1168,7 @@ string Util::LoseWhiteL(const string &s) {
       /* keep going ... */
       break;
     default:
-      return s.substr(i, s.length() - i);
+      return std::string(s.substr(i, s.length() - i));
     }
   }
   /* all whitespace */
@@ -1190,6 +1190,11 @@ string Util::LoseWhiteR(string s) {
   }
   // All whitespace.
   return "";
+}
+
+string Util::LoseOuterWhitespace(std::string_view s) {
+  RemoveOuterWhitespace(&s);
+  return std::string(s);
 }
 
 bool Util::IsWhitespace(char c) {

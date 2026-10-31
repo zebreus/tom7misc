@@ -289,11 +289,12 @@ struct Util {
      the line */
   static string ChopTo(char c, string &line);
 
-  /* erase any whitespace up to the first
-     non-whitespace char. */
-  static string LoseWhiteL(const string &s);
+  // Erase any whitespace up to the first non-whitespace char.
+  static string LoseWhiteL(std::string_view s);
   // Remove trailing whitespace.
   static string LoseWhiteR(string s);
+  // From both sides.
+  static std::string LoseOuterWhitespace(std::string_view s);
 
   // All whitespace becomes a single space. Leading and trailing
   // whitespace is dropped.
