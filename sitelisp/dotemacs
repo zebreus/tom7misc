@@ -242,6 +242,8 @@
         (setq dotemacs-zoom-small (list dotemacs-font-small 80 128))
         (setq dotemacs-zoom-large (list dotemacs-font-large 80 32))
 
+        (set-fontset-font t 'unicode-bmp dotemacs-font-medium)
+        
         (set-frame-font dotemacs-font-medium)
         
         ) ;; Linux
