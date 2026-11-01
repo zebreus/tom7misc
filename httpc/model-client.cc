@@ -26,7 +26,7 @@
 #include "utf8.h"
 #include "util.h"
 
-static constexpr bool SAVE_HTTP = true;
+static constexpr bool FORCE_SAVE_HTTP = false;
 
 static constexpr std::string_view API_HOST =
   "generativelanguage.googleapis.com";
@@ -458,6 +458,7 @@ struct ModelConnection {
 
   int verbose = 0;
   std::function<void(std::string_view)> Info;
+  bool log = false;
 };
 
 struct ModelResponseImpl : public ModelResponse {
@@ -567,9 +568,15 @@ struct ModelClientImpl : public ModelClient {
   std::string model_name;
   std::string api_key;
   int verbose = 1;
+  bool log = false;
 
   void SetVerbose(int v) override {
     verbose = v;
+  }
+
+
+  void SetLog(bool log_in) override {
+    log = log_in;
   }
 
   std::unique_ptr<ModelResponse> Run(std::string_view prompt) override {
@@ -630,7 +637,7 @@ struct ModelClientImpl : public ModelClient {
     std::optional<std::string> result;
 
     auto SaveDebug = [&](ModelResponseImpl *resp, int attempt) {
-        if (SAVE_HTTP) {
+        if (log || FORCE_SAVE_HTTP) {
           if (resp != nullptr && resp->conn.get()) {
             std::string filename = std::format("http.{}.{}.txt",
                                                time(nullptr), attempt);
@@ -778,6 +785,10 @@ struct TestModelClientImpl : public ModelClient {
     verbose = v;
   }
 
+  void SetLog(bool b) override {
+    log = b;
+  }
+
   std::string Info() const override {
     return "test-model";
   }
@@ -793,6 +804,7 @@ struct TestModelClientImpl : public ModelClient {
 
   std::function<std::string(std::string_view)> fn;
   int verbose = 0;
+  bool log = false;
 };
 
 }  // namespace

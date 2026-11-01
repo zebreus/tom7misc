@@ -35,6 +35,7 @@ struct ModelClient {
   static std::optional<Model> IsModelFlag(std::string_view arg);
 
   virtual void SetVerbose(int v) = 0;
+  virtual void SetLog(bool log) = 0;
 
   virtual std::string Info() const = 0;
 
