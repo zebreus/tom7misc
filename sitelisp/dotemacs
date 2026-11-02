@@ -289,13 +289,11 @@
 (frame-settings nil)
 
 (defvar zoom-settings-list
-  (list
-   ; (list "FixederSys 2x-24:antialias=none" 80 64)
-   ;; XXX we should define small, medium, large for each platform.
-   dotemacs-zoom-medium
-   dotemacs-zoom-small
-   dotemacs-zoom-large
-   )
+  ;; only for the ones that are defined and nonempty
+  (delq nil
+	(list (bound-and-true-p dotemacs-zoom-medium)
+              (bound-and-true-p dotemacs-zoom-small)
+              (bound-and-true-p dotemacs-zoom-large)))
   "*List of font, win width, win height for zoom toggle. Experimental.")
 
 (defun toggle-zoom ()
