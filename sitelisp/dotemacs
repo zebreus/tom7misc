@@ -207,7 +207,7 @@
         (setq dotemacs-font-small "FixederSys 1x-12:antialias=false:hinting=false")        
         (setq dotemacs-zoom-medium (list dotemacs-font-medium 80 64))
         (setq dotemacs-zoom-small (list dotemacs-font-small 80 128))
-        (setq dotemacs-zoom- "FixederSys 2x-48:antialias=none" 80 32)
+        (setq dotemacs-zoom-large (list dotemacs-font-large 80 32))
 
         ;; XXX Can move this stuff outside the case, but need to
         ;; test?
