@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_GEOM_TREE_2D_H
 #define _CC_LIB_GEOM_TREE_2D_H
 
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -76,7 +77,7 @@ struct Tree2D {
   }
 
   static inline double Dist(Pos a, Pos b) {
-    return sqrt(SqDist(a, b));
+    return std::sqrt(SqDist(a, b));
   }
 
   void InsertTo(Node *node, bool horiz, Pos pos, T t);
@@ -394,7 +395,7 @@ Tree2D<Num, T>::Closest(Pos pos) const {
   std::vector<std::pair<double, const Node *>> q = {{0.0, root.get()}};
 
   while (!q.empty()) {
-    const auto &[node_sqdist, node] = q.back();
+    const auto [node_sqdist, node] = q.back();
     q.pop_back();
     CHECK(node != nullptr);
     // No need to search if every point in there is further than
@@ -442,7 +443,7 @@ Tree2D<Num, T>::Closest(Pos pos) const {
 
   CHECK(best != nullptr) << "This should find something since count > 0.";
   return std::make_tuple(std::get<0>(*best), std::get<1>(*best),
-                         sqrt(best_sq_dist));
+                         std::sqrt(best_sq_dist));
 
 }
 

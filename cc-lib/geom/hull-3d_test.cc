@@ -130,7 +130,7 @@ static void TestOctahedron() {
 
     if (VERBOSE > 1) {
       Print("Hull of:\n");
-      for (int i = 0; i < vertices.size(); i++) {
+      for (size_t i = 0; i < vertices.size(); i++) {
         Print("  #{}: {}\n", i, VecString(vertices[i]));
       }
     }

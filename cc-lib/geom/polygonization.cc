@@ -243,8 +243,6 @@ class Triangle {
   bool IsInterior() const { return interior_; }
   void SetInterior(bool b) { interior_ = b; }
 
-  bool CircumcicleContains(const Point &) const;
-
  private:
 
   bool IsCounterClockwise() const;
@@ -591,23 +589,6 @@ void Triangle::SetDelunayEdgeCW(const Point &p, bool e) {
   } else {
     delaunay_edge[0] = e;
   }
-}
-
-bool Triangle::CircumcicleContains(const Point &point) const {
-  CHECK(IsCounterClockwise());
-  const double dx = points_[0]->x - point.x;
-  const double dy = points_[0]->y - point.y;
-  const double ex = points_[1]->x - point.x;
-  const double ey = points_[1]->y - point.y;
-  const double fx = points_[2]->x - point.x;
-  const double fy = points_[2]->y - point.y;
-
-  const double ap = dx * dx + dy * dy;
-  const double bp = ex * ex + ey * ey;
-  const double cp = fx * fx + fy * fy;
-
-  return (dx * (fy * bp - cp * ey) - dy * (fx * bp - cp * ex) +
-          ap * (fx * ey - fy * ex)) < 0;
 }
 
 bool Triangle::IsCounterClockwise() const {
@@ -1031,10 +1012,6 @@ class Sweep {
                                              const Point *pb) const;
   double Angle(const Point *origin, const Point *pa, const Point *pb) const;
 
-  // Returns the angle between 3 front nodes.
-  // node - middle node
-  double HoleAngle(const Node &node) const;
-
   // The basin angle is decided against the horizontal line [1,0].
   double BasinAngle(const Node &node) const;
 
@@ -1436,22 +1413,6 @@ double Sweep::BasinAngle(const Node &node) const {
   const double ax = node.point->x - node.next->next->point->x;
   const double ay = node.point->y - node.next->next->point->y;
   return atan2(ay, ax);
-}
-
-double Sweep::HoleAngle(const Node &node) const {
-  /* Complex plane
-   * ab = cosA +i*sinA
-   * ab = (ax + ay*i)(bx + by*i) = (ax*bx + ay*by) + i(ax*by-ay*bx)
-   * atan2(y,x) computes the principal value of the argument function
-   * applied to the complex number x+iy
-   * Where x = ax*bx + ay*by
-   *       y = ax*by - ay*bx
-   */
-  const double ax = node.next->point->x - node.point->x;
-  const double ay = node.next->point->y - node.point->y;
-  const double bx = node.prev->point->x - node.point->x;
-  const double by = node.prev->point->y - node.point->y;
-  return atan2(ax * by - ay * bx, ax * bx + ay * by);
 }
 
 bool Sweep::Legalize(SweepContext &tcx, Triangle &t) {

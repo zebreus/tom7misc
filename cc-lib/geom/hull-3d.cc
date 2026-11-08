@@ -685,11 +685,6 @@ void convhull_3d_build_alloc
     int fVec[CONVHULL_3D_MAX_DIMENSIONS+1];
     int face_tmp[2];
 
-    /* Check to make sure that faces are correctly oriented */
-    int bVec[CONVHULL_3D_MAX_DIMENSIONS+1];
-    for(i=0; i<d+1; i++)
-        bVec[i] = i;
-
     /* A contains the coordinates of the points forming a simplex */
     memset(A, 0, sizeof(A));
     for(k=0; k<(d+1); k++){
@@ -1374,11 +1369,6 @@ void convhull_nd_build_alloc
     CH_FLOAT A[(CONVHULL_ND_MAX_DIMENSIONS+1)*(CONVHULL_ND_MAX_DIMENSIONS+1)];
     int fVec[CONVHULL_ND_MAX_DIMENSIONS+1];
     int face_tmp[2];
-
-    /* Check to make sure that faces are correctly oriented */
-    int bVec[CONVHULL_ND_MAX_DIMENSIONS+1];
-    for(i=0; i<d+1; i++)
-        bVec[i] = i;
 
     /* A contains the coordinates of the points forming a simplex */
     memset(A, 0, sizeof(A));

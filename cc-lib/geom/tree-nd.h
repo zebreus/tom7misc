@@ -3,6 +3,7 @@
 #define _CC_LIB_GEOM_TREE_ND_H
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <functional>
 #include <iostream>
@@ -128,7 +129,7 @@ struct TreeND {
 
   inline double Dist(std::span<const Num> a,
                      std::span<const Num> b) const {
-    return sqrt(SqDist(a, b));
+    return std::sqrt(SqDist(a, b));
   }
 
   inline bool SamePos(std::span<const Num> a,
@@ -741,7 +742,7 @@ TreeND<Num, T>::Closest(std::span<const Num> pos) const {
   std::span<const Num> ppos = LeafPos(*best_leaf, best_leaf_idx);
   return std::make_tuple(std::vector<Num>(ppos.begin(), ppos.end()),
                          LeafData(*best_leaf, best_leaf_idx),
-                         sqrt(best_sq_dist));
+                         std::sqrt(best_sq_dist));
 }
 
 
@@ -842,7 +843,7 @@ TreeND<Num, T>::DebugClosest(std::span<const Num> pos) const {
   std::span<const Num> ppos = LeafPos(*best_leaf, best_leaf_idx);
   ret.res = std::make_tuple(std::vector<Num>(ppos.begin(), ppos.end()),
                             LeafData(*best_leaf, best_leaf_idx),
-                            sqrt(best_sq_dist));
+                            std::sqrt(best_sq_dist));
   return ret;
 }
 

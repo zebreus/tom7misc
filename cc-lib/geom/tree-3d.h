@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_GEOM_TREE_3D_H
 #define _CC_LIB_GEOM_TREE_3D_H
 
+#include <cmath>
 #include <cstdio>
 #include <iostream>
 #include <memory>
@@ -67,6 +68,7 @@ struct Tree3D {
   static inline bool Classify(Pos pos, Axis axis, double value) {
     const auto &[x, y, z] = pos;
     switch (axis) {
+    default: std::unreachable();
     case Axis::X: return x <= value;
     case Axis::Y: return y <= value;
     case Axis::Z: return z <= value;
@@ -83,7 +85,7 @@ struct Tree3D {
   }
 
   static inline double Dist(Pos a, Pos b) {
-    return sqrt(SqDist(a, b));
+    return std::sqrt(SqDist(a, b));
   }
 
   void InsertTo(Node *node, Axis axis, Pos pos, T t);
@@ -255,9 +257,10 @@ Tree3D<Num, T>::LookUp(Pos pos, double radius) const {
       // Project the lookup point to the split axis.
       const Pos axispt = [&]{
           switch (split->axis) {
-          case Axis::X : return std::make_tuple(split->value, y, z);
-          case Axis::Y : return std::make_tuple(x, split->value, z);
-          case Axis::Z : return std::make_tuple(x, y, split->value);
+          default: std::unreachable();
+          case Axis::X: return std::make_tuple(split->value, y, z);
+          case Axis::Y: return std::make_tuple(x, split->value, z);
+          case Axis::Z: return std::make_tuple(x, y, split->value);
           }
         }();
 
@@ -439,6 +442,7 @@ Tree3D<Num, T>::Closest(Pos pos) const {
       // the split axis.
       double sdist = [&]{
           switch (split->axis) {
+          default: std::unreachable();
           case Axis::X: return split->value - x;
           case Axis::Y: return split->value - y;
           case Axis::Z: return split->value - z;
@@ -480,7 +484,7 @@ Tree3D<Num, T>::Closest(Pos pos) const {
 
   CHECK(best != nullptr) << "This should find something since count > 0.";
   return std::make_tuple(std::get<0>(*best), std::get<1>(*best),
-                         sqrt(best_sq_dist));
+                         std::sqrt(best_sq_dist));
 
 }
 

@@ -1032,7 +1032,7 @@ Polyhedron Dodecahedron() {
   }
 
   if (VERBOSE) {
-    for (int i = 0; i < vertices.size(); i++) {
+    for (size_t i = 0; i < vertices.size(); i++) {
       const vec3 &v = vertices[i];
       Print("v " AWHITE("{}")
             ". (" ARED("{:.3f}") ", " AGREEN("{:.3f}") ", " ABLUE("{:.3f}")
@@ -2773,7 +2773,7 @@ bool IsWellConditioned(std::span<const vec3> vs,
   return true;
 }
 
-Polyhedron Septopert() {
+Polyhedron SeptopertClassic() {
   // 2^20
   constexpr double SCALE = 1.0 / 1048576.0;
 
@@ -2801,9 +2801,24 @@ Polyhedron Septopert() {
       SYM_UNKNOWN);
 }
 
-Polyhedron Triakis1120() {
-  constexpr double SCALE = 1.0 / 1048576.0;
+Polyhedron Septopert() {
+  std::vector<vec3> vertices {
+    {-7,  7,  7},
+    { 7, -7,  7},
+    { 7,  7, -7},
+    { 3, -4, -4},
+    {-4,  3, -4},
+    {-4, -4,  3},
+    { 7,  7,  7},
+  };
 
+  CHECK(vertices.size() == 7);
+  return MakeConvexOrDie(
+      std::move(vertices), "septopert",
+      SYM_UNKNOWN);
+}
+
+Polyhedron Triakis1120() {
   std::vector<vec3> vertices = {
     vec3{0.5, 0.5, 0.5},
     {0.5, -0.5, -0.5},
@@ -2856,6 +2871,7 @@ std::optional<Polyhedron> PolyhedronByName(std::string_view name) {
 
   if (name == "noperthedron") return Noperthedron();
   if (name == "onperthedron") return Onperthedron();
+  if (name == "septopertclassic") return SeptopertClassic();
   if (name == "septopert") return Septopert();
   if (name == "triakis1120") return Triakis1120();
 

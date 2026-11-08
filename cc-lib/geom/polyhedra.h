@@ -333,6 +333,7 @@ Polyhedron Noperthedron();
 // Dual of the Noperthedron -- it's easily Rupert!
 Polyhedron Onperthedron();
 // 7-vertex Nopert (Tom 7)
+Polyhedron SeptopertClassic();
 Polyhedron Septopert();
 // 8-vertex Nopert (Zeng, Renshaw)
 Polyhedron Triakis1120();
