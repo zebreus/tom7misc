@@ -38,7 +38,8 @@ static std::string_view InternalModelName(Model model) {
   case Model::GEMINI_BEST:
     // Tried and true, but likely just outdated now.
     // return "gemini-pro-latest";
-    return "gemini-4-argon";
+    // return "gemini-4-argon";
+    return "gemini-4-carbon";
   case Model::GEMINI_MEDIUM: return "gemini-flash-latest";
     // Careful: It doesn't work!
   case Model::GEMINI_FASTEST: return "gemini-flash-lite-latest";
