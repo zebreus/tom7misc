@@ -74,6 +74,15 @@ static bool VectorContains(const std::vector<A> &vec, const A &a) {
   return false;
 }
 
+template<class A, class F>
+static bool VectorAll(const std::vector<A> &vec,
+                      const F &f) {
+  for (const auto &aa : vec) {
+    if (!f(aa)) return false;
+  }
+  return true;
+}
+
 // Rotate right in place. A positive offset means each element moves
 // to the right (wrapping around).
 template<class A>

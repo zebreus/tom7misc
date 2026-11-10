@@ -51,6 +51,8 @@
 (require 'edit)
 (require 'wtf)
 
+(provide 'fancy-find-file)
+
 (defun spacebar ()
   "Opens up spacebar via tramp, using the path that's easy to
    forget!"
