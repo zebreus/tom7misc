@@ -408,7 +408,7 @@ bool EscapeUtil::remove(string f) {
        rename it away. */
     if (0 == unlink(f.c_str())) return true;
 
-    string fname = tempfile(".deleteme");
+    string fname = TempFile(".deleteme");
     if (0 == rename(f.c_str(), fname.c_str())) return true;
 
 # else /* posix */

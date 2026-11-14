@@ -1,7 +1,7 @@
 <!doctype html>
 <html><head>
 <title>Escape Puzzle Game: Download for Windows XP, Mac OS X, Linux</title>
-<meta name=keywords content="escape, puzzle game, lolo, chip's challenge, windows, macintosh, mac, win, linux, games, SDL, free, freeware, shareware, GPL, open source, puzzle, tiles, grid, sokoban, boxes, push, level editor, internet, download, zip, instructions, help, source code, tutorial, SDL, SDL_net, SDL_image">
+<meta name=keywords content="escape, puzzle game, lolo, chip's challenge, windows, macintosh, mac, win, linux, games, SDL, free, freeware, shareware, GPL, open source, puzzle, tiles, grid, sokoban, boxes, push, level editor, internet, download, zip, instructions, help, source code, tutorial, SDL">
 <meta name=description content="Download instructions for Escape (Windows / Mac OS X / Linux).">
 <link rel=stylesheet type="text/css" href="escape.css" title="escape" />
 <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
@@ -179,13 +179,7 @@ repository at Sourceforge.</p>
 compliance the source code to those libraries can be downloaded <b><a
 href="source/SDL/">here</a></b>, however, it's probably a better idea
 to download them from their homes on the web. 
-  (<b><a href="http://www.libsdl.org/download-1.2.php">SDL</a></b>,
-   <b><a href="http://www.libsdl.org/projects/SDL_net/">SDL_net</a></b>,
-<!-- TODO: With a new source release, sdl_image is no longer used -->
-   <b><a href="http://www.libsdl.org/projects/SDL_image/">SDL_image</a></b>,
-<!-- TODO: With a new source release, sdl_mixer is included -->
-   <b><a href="http://www.libsdl.org/projects/SDL_mixer/">SDL_mixer</a></b>)
-</p>
+  (<b><a href="http://www.libsdl.org/download-1.2.php">SDL</a></b>) </p>
 
 </td></tr></table>
 
@@ -221,11 +215,11 @@ He also includes some sound effects!</p>
 <span class=tiny>August 1996</span>
 
 <p align=justify>For historic interest, here is the original Escape
-for DOS, from 20 years ago. It should run in DosBox or other DOS
+for DOS, from 30 years ago. It should run in DosBox or other DOS
 emulators. It includes about 100 levels. Note: Levels created with the
 built-in editor are not compatible with the modern Escape,
 because I fixed bugs in the behavior of some tiles, and switched to
-a new level format some 10 years ago.</p>
+a new level format some 20 years ago.</p>
 
 </td></tr></table>
 

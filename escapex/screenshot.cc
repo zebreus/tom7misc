@@ -75,7 +75,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
       case B_DELETED: return;
 
       default:
-        if (Level::isbomb(type)) {
+        if (Level::IsBomb(type)) {
           overlapy = BOMB_OVERLAPY;
           img = &graphics.bomb_still;
         }
@@ -87,7 +87,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
 
   for (int y = 0; y < level.h; y++) {
     for (int x = 0; x < level.w; x++) {
-      int t = level.tileat(x, y);
+      int t = level.TileAt(x, y);
       auto [sx, sy] = Graphics::TileXY(t);
 
       // TODO: open exit special case
@@ -100,8 +100,7 @@ static ImageRGBA MakeScreenshot(const Graphics &graphics,
   vector<Ent> ents;
   ents.emplace_back(level.guyx, level.guyy, B_PLAYER);
   for (int i = 0; i < level.nbots; i++) {
-    int x, y;
-    level.where(level.boti[i], x, y);
+    const auto &[x, y] = level.Where(level.boti[i]);
     ents.emplace_back(x, y, level.bott[i]);
   }
 

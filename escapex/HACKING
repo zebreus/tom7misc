@@ -79,11 +79,11 @@ After this, "export LINUX=true" and "make" should just work.
  ** Windows **
 
 Visual Studio is no longer supported. You can try at revision 2869,
-but why? I use the x86_64 mingw, installed through cygwin, and invoke
-it using its full names like x86_64-w64-mingw32-g++ to avoid confusion
-(cygwin also provides its own g++ etc. Be very cautious about buying
-into anything you see on the net; there are so many traps!) This
-approach builds 64-bit native windows executables with free tools.
+but why? I use clang64 on msys2, by starting the clang64 environment
+and just invoking gcc and g++. You might be able to get it to compile
+with gcc; in the past I've used x86_64-w64-mingw32-g++ via cygwin,
+but I think clang on msys2 is the least annoying approach in 2026.
+This approach builds 64-bit native windows executables with free tools.
 
 Managing libraries like SDL on win32 is a nightmare because there are
 multiple different standards for where they should go, what object file
@@ -99,19 +99,12 @@ libsdl.org. You want the 1.2 versions, and the source code (NOT
 libraries because the source code just gets compiled into Escape).
 These contain directories like "SDL-1.2.15". Put these next to
 the escape source directory but rename them to SDL and SDL_mixer
-(no version number). SDL_net is so small that now I'm just including
-in a subdirectory in the escape source, saving some trouble.
+(no version number). I no longer use SDL_net, since my cc-lib
+has a simple cross-platform network library.
 
 If all is well, you should be able to just "export WIN32=true" and
-"make". I do this from cygwin's bash, but it should work from other
-shells too, I think.
-
-In 2026, I'm using msys2, which is kept up to date with new compiler
-releases (clang) and easier to manage. Basically I install and use
-the clang64 environment for development, and then just running "g++"
-gets you the newest clang targeting x86_64-w64-windows-gnu, including
-various libraries. I will probably switch to this and simplify away
-the mingw build. use "export WIN64=true" for this.
+"make". I do this from msys2 bash (in mintty), but it should work from
+other shells too, I think.
 
  ** Understanding the code **
 
@@ -186,8 +179,10 @@ needs to be updated anyway for the new Apple chips. Why they always
 gotta change it?
 
 On 4 Jan 2026 (r6867) I got this compiling on Windows 11 using msys2's
-clang64 environment. Not too bad. I'm now on fairly modern C++ (C++23)
-so that I can use libraries in cc-lib.
+clang64 environment, and switched to it completely in October 2026.
+Not too bad. I'm now on fairly modern C++ (C++23) so that I can use
+libraries in cc-lib. I got rid of SDL_net, and modernized the macOS
+build.
 
 
  ** Things to know **
