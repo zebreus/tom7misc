@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -71,6 +72,63 @@ std::optional<Model> ModelClient::IsModelFlag(std::string_view arg) {
   return std::nullopt;
 }
 
+// This groups the full FinishReason set into a simplified colletion.
+enum class FinishReason {
+  NATURAL_STOP,
+  MAX_TOKENS,
+  PROHIBITED,
+  INTERNAL_ERROR,
+  TOO_MANY_TOOL_CALLS,
+  CONTINUATION,
+  OTHER,
+  UNKNOWN,
+};
+
+static std::string_view FinishReasonString(FinishReason fr) {
+  switch (fr) {
+  case FinishReason::NATURAL_STOP: return "NATURAL_STOP";
+  case FinishReason::MAX_TOKENS: return "MAX_TOKENS";
+  case FinishReason::PROHIBITED: return "PROHIBITED";
+  case FinishReason::INTERNAL_ERROR: return "INTERNAL_ERROR";
+  case FinishReason::TOO_MANY_TOOL_CALLS: return "TOO_MANY_TOOL_CALLS";
+  case FinishReason::CONTINUATION: return "CONTINUATION";
+  case FinishReason::OTHER: return "OTHER";
+  case FinishReason::UNKNOWN: return "UNKNOWN";
+  default: return "??";
+  }
+}
+
+static FinishReason ParseFinishReason(std::string_view s) {
+  static const std::unordered_map<std::string_view, FinishReason> *m =
+    new std::unordered_map<std::string_view, FinishReason>{
+    {"STOP", FinishReason::NATURAL_STOP},
+    {"MAX_TOKENS", FinishReason::MAX_TOKENS},
+    {"SAFETY", FinishReason::PROHIBITED},
+    {"RECITATION", FinishReason::PROHIBITED},
+    {"LANGUAGE", FinishReason::PROHIBITED},
+    {"OTHER", FinishReason::OTHER},
+    {"BLOCKLIST", FinishReason::PROHIBITED},
+    {"PROHIBITED_CONTENT", FinishReason::PROHIBITED},
+    {"SPII", FinishReason::PROHIBITED},
+    {"MALFORMED_FUNCTION_CALL", FinishReason::INTERNAL_ERROR},
+    {"IMAGE_SAFETY", FinishReason::PROHIBITED},
+    {"IMAGE_PROHIBITED_CONTENT", FinishReason::PROHIBITED},
+    {"IMAGE_OTHER", FinishReason::OTHER},
+    {"NO_IMAGE", FinishReason::INTERNAL_ERROR},
+    {"IMAGE_RECITATION", FinishReason::PROHIBITED},
+    {"UNEXPECTED_TOOL_CALL", FinishReason::INTERNAL_ERROR},
+    {"TOO_MANY_TOOL_CALLS", FinishReason::TOO_MANY_TOOL_CALLS},
+    {"MISSING_THOUGHT_SIGNATURE", FinishReason::INTERNAL_ERROR},
+    {"MALFORMED_RESPONSE", FinishReason::INTERNAL_ERROR},
+    {"ESCALATION", FinishReason::INTERNAL_ERROR},
+    {"PUP_LIMITED_DISABLED", FinishReason::PROHIBITED},
+    {"CONTINUATION", FinishReason::CONTINUATION},
+  };
+
+  auto it = m->find(s);
+  if (it == m->end()) return FinishReason::UNKNOWN;
+  return it->second;
+}
 
 ModelClient::ModelClient() {}
 ModelClient::~ModelClient() {}
@@ -94,6 +152,21 @@ static std::string EscapeJS(std::string_view input) {
     }
   }
   return out;
+}
+
+static std::optional<std::string> ParseString(std::string_view value) {
+  if (value.size() >= 2 &&
+      value[0] == '\"' &&
+      value.back() == '\"') {
+    value.remove_prefix(1);
+    value.remove_suffix(1);
+
+    if (std::optional<std::string> unesc = Util::UnescapeJS(value)) {
+      return unesc;
+    }
+  }
+
+  return std::nullopt;
 }
 
 namespace {
@@ -153,7 +226,7 @@ struct ModelConnection {
     #define RE_IN_QUOTES R"_((?:[^"\\]|\\.))_"
 
     static RE2 pattern(
-        "\"(text|totalTokenCount|finishReason)\"\\s*:\\s*"
+        "\"(text|totalTokenCount|promptTokenCount|finishReason)\"\\s*:\\s*"
         "("
         "(?:\\d+)"
         "|"
@@ -207,27 +280,14 @@ struct ModelConnection {
             sec_to_first = {timer.Seconds()};
           }
 
-          if (value.size() >= 2 &&
-              value[0] == '\"' &&
-              value.back() == '\"') {
-            value.remove_prefix(1);
-            value.remove_suffix(1);
+          if (const std::optional<std::string> vs = ParseString(value)) {
+            model_response.append(vs.value());
 
-            std::optional<std::string> unesc = Util::UnescapeJS(value);
-
-            if (!unesc.has_value()) {
-              if (Info) {
-                Info(std::format("Could not unescape JSON: {}", value));
-              }
-              json_state = JSONState::BUSTED;
-              return;
-            }
-
-            model_response.append(unesc.value());
           } else {
             if (Info) {
-              Info(std::format("Expected quoted string for text, but got: {}",
-                               value));
+              Info(std::format(
+                       "Expected quoted JSON string for text, but got: {}",
+                       value));
             }
             json_state = JSONState::BUSTED;
             return;
@@ -262,9 +322,33 @@ struct ModelConnection {
           }
 
         } else if (key == "finishReason") {
-          json_state = JSONState::COMPLETED;
 
-          sec_to_complete = {timer.Seconds()};
+          if (const std::optional<std::string> vs = ParseString(value)) {
+            finish_reason = ParseFinishReason(vs.value());
+
+            if (finish_reason == FinishReason::NATURAL_STOP ||
+                finish_reason == FinishReason::MAX_TOKENS) {
+
+              json_state = JSONState::COMPLETED;
+              sec_to_complete = {timer.Seconds()};
+            } else {
+              if (Info) {
+                Info(std::format("Unnatural finish reason: {}", vs.value()));
+              }
+              json_state = JSONState::BUSTED;
+              return;
+            }
+
+          } else {
+            if (Info) {
+              Info(std::format(
+                       "Expected quoted JSON string for text, but got: {}",
+                       value));
+            }
+            json_state = JSONState::BUSTED;
+            return;
+          }
+
           break;
 
         } else {
@@ -287,6 +371,29 @@ struct ModelConnection {
     if (client->ReadEOS()) {
       if (Info && verbose > 1) {
         Info(std::format("HTTP stream closed.\n"));
+      }
+      http_state = HTTPState::BUSTED;
+      return;
+    }
+
+    // If the connection died without a TLS close_notify (e.g. the TCP
+    // connection was closed or reset), the client is no longer OK but
+    // doesn't report EOS, and ReadSome would return immediately with
+    // no data forever.
+    if (!client->OK()) {
+      if (Info) {
+        Info("HTTP connection lost.\n");
+      }
+      http_state = HTTPState::BUSTED;
+      return;
+    }
+
+    // The body is complete, but the caller needs more (e.g. the JSON
+    // never had a finishReason). No more data is coming, so don't
+    // block on the keep-alive connection.
+    if (http_state == HTTPState::COMPLETED) {
+      if (Info) {
+        Info("HTTP response ended before the JSON was complete.\n");
       }
       http_state = HTTPState::BUSTED;
       return;
@@ -442,6 +549,7 @@ struct ModelConnection {
   size_t json_preparsed_to = 0;
   ContiguousBuffer json;
   std::string model_response;
+  FinishReason finish_reason = FinishReason::UNKNOWN;
   int64_t prompt_token_count = 0;
   int64_t total_token_count = 0;
 
@@ -650,6 +758,9 @@ struct ModelClientImpl : public ModelClient {
         }
       };
 
+    // Set when an attempt fails in a way that retrying won't help.
+    bool give_up = false;
+
     for (int attempt = 0;
          !result.has_value() && attempt < num_attempts;
          attempt++) {
@@ -678,6 +789,21 @@ struct ModelClientImpl : public ModelClient {
           }
           if (resp->Completed()) {
             SaveDebug(resp.get(), attempt);
+            if (resp->Text().empty()) {
+              if (status.get() != nullptr) {
+
+                // e.g. finishReason MAX_TOKENS, when a thinking model
+                // spends the whole output budget thinking. This is
+                // expensive and likely to happen again, so don't retry.
+                status->Print(ARED("Error") ": The model returned no text "
+                              "(finishReason {}, {} total tokens).\n",
+                              FinishReasonString(resp->conn->finish_reason),
+                              resp->TotalTokens());
+              }
+
+              give_up = true;
+              return std::nullopt;
+            }
             return {std::string(resp->Text())};
 
           } else if (resp->Failed()) {
@@ -710,7 +836,7 @@ struct ModelClientImpl : public ModelClient {
 
       }();
 
-      if (result.has_value())
+      if (result.has_value() || give_up)
         break;
 
       {
