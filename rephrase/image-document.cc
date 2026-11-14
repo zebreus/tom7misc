@@ -35,9 +35,10 @@ using Transform = Document::Transform;
 
 ImageFont::ImageFont(std::string_view name,
                      std::string_view filename) : name(name) {
-  Print("Trying to load " AWHITE("{}") "\n", filename);
-  ttf.reset(new TTF(filename));
+  ttf = TTF::Load(filename);
+  CHECK(ttf.get() != nullptr) << "Couldn't load font: " << filename;
   if (VERBOSE) {
+    Print("Font " AWHITE("{}") "\n", filename);
     Print("** {} **\n", filename);
     stbtt__print_tables(ttf->FontInfo());
   }
