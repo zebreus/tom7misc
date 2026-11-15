@@ -855,7 +855,7 @@ void Play_::BookmarkDownload(Player *plr, const string &lmd5) {
       /* this is the solution id, which we don't need */
       (void) EscapeUtil::stoi(Util::chop(line1));
       int date = EscapeUtil::stoi(Util::chop(line1));
-      string name = EscapeUtil::losewhitel(line1);
+      string name = Util::LoseWhiteL(line1);
 
       Solution s;
       if (!Solution::FromString(moves, &s)) {

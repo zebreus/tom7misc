@@ -3,6 +3,7 @@
 #define _ESCAPE_GRAPHICS_H
 
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "image.h"
@@ -68,7 +69,7 @@ struct Graphics {
   // Loads graphics when constructed.
   // Expects tiles.png, tileutil.png, animation.png etc.
   // in the supplied data dir. Returns nullptr upon failure.
-  static Graphics *Create(const std::string &data_dir);
+  static Graphics *Create(std::string_view data_dir);
   virtual ~Graphics();
 
   const ImageRGBA tiles, tileutil;
@@ -84,7 +85,7 @@ struct Graphics {
                           (t / SRCTILESW) * TILEH);
   }
 
-private:
+ private:
   // Use Create.
   Graphics(const ImageRGBA &tiles_png,
            const ImageRGBA &tileutil_png,

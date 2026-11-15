@@ -163,7 +163,7 @@ void MMEntry::draw(int x, int y, bool sel) {
 # ifndef MULTIUSER
   case MMEType::UPGRADE:
     Drawing::DrawTileU(sxi, y, TU_3, 0, screen);
-    if (HandHold::recommend_upgrade())
+    if (HandHold::RecommendUpgrade())
       fon->draw(sxr, ctry, RECOMMENDED_TEXT);
 
     fon->draw(sx, ctry, "Upgrade Escape from internet.");
@@ -173,7 +173,7 @@ void MMEntry::draw(int x, int y, bool sel) {
   case MMEType::UPDATE:
     Drawing::DrawTileU(sxi, y, TU_4, 0, screen);
     /* don't show more than one recommendation */
-    if (HandHold::recommend_update() && !HandHold::recommend_upgrade())
+    if (HandHold::RecommendUpdate() && !HandHold::RecommendUpgrade())
       fon->draw(sxr, ctry, RECOMMENDED_TEXT);
 
     fon->draw(sx, ctry, "Get new levels from internet.");

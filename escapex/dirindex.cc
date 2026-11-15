@@ -2,12 +2,16 @@
 
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
-#include "escape-util.h"
+#include "base/print.h"
 #include "checkfile.h"
+#include "escape-util.h"
+#include "hashing.h"
 #include "util.h"
 
 #define INDEX_IGNORED_FIELDS 6
@@ -27,7 +31,7 @@ struct RAEntry {
   int speedrecord = 0;
   int owner = 0;
 
-  RAEntry(string s, RateStatus vv, int d, int sr, int o)
+  RAEntry(string_view s, RateStatus vv, int d, int sr, int o)
     : filename(s), v(vv), date(d), speedrecord(sr), owner(o) {}
   RAEntry() {}
 };
@@ -35,26 +39,27 @@ struct RAEntry {
 struct DirIndex_ : public DirIndex {
   static DirIndex_ *Create();
 
-  void WriteFile(const string &) override;
+  void WriteFile(std::string_view) override;
 
   ~DirIndex_() override {}
 
-  void AddEntry(const string &filename, RateStatus v,
+  void AddEntry(std::string_view filename, RateStatus v,
     int date, int speedrecord, int owner) override;
 
-  bool GetEntry(const string &filename,
+  bool GetEntry(std::string_view filename,
     RateStatus &v, int &date, int &speed, int &o) override;
 
   bool WebCollection() const override { return isweb; }
 
   /* mapping filenames to RAEntry */
-  unordered_map<string, RAEntry> tab;
+  unordered_map<std::string, RAEntry,
+                Hashing<std::string>, std::equal_to<>> tab;
 
   int isweb = 0;
 };
 
 
-bool DirIndex_::GetEntry(const string &filename,
+bool DirIndex_::GetEntry(std::string_view filename,
        RateStatus &v, int &d, int &sr, int &o) {
   auto it = tab.find(filename);
   if (it == tab.end()) return false;
@@ -77,25 +82,25 @@ DirIndex_ *DirIndex_::Create() {
   return dr.release();
 }
 
-void DirIndex_::WriteFile(const string &fname) {
-  FILE *f = fopen(fname.c_str(), "wb");
+void DirIndex_::WriteFile(std::string_view fname) {
+  FILE *f = fopen(std::string(fname).c_str(), "wb");
   if (!f) return; /* XXX? */
 
-  fprintf(f, INDEX3MAGIC "\n");
+  Print(f, "{}", INDEX3MAGIC "\n");
 
   /* single line gives title */
-  fprintf(f, "%s\n", title.c_str());
+  Print(f, "{}\n", title);
 
   /* a few ignored lines */
-  for (int i = 0; i < INDEX_IGNORED_FIELDS; i++) fprintf(f, "\n");
+  for (int i = 0; i < INDEX_IGNORED_FIELDS; i++) Print(f, "\n");
 
   /* XXX sort first */
 
   /* then write each file */
   for (const auto &p : tab) {
     const RAEntry &ent = p.second;
-    fprintf(f, "%s %d %d %d %d %d %d %d %d %d\n",
-      ent.filename.c_str(),
+    Print(f, "{} {} {} {} {} {} {} {} {} {}\n",
+      ent.filename,
       ent.v.nvotes,
       ent.v.difficulty,
       ent.v.style,
@@ -110,14 +115,14 @@ void DirIndex_::WriteFile(const string &fname) {
   fclose(f);
 }
 
-void DirIndex_::AddEntry(const string &f, RateStatus v,
-       int date, int speedrecord, int owner) {
-  tab[f] = RAEntry(f, v, date, speedrecord, owner);
+void DirIndex_::AddEntry(std::string_view f, RateStatus v,
+                         int date, int speedrecord, int owner) {
+  tab[std::string(f)] = RAEntry(f, v, date, speedrecord, owner);
 }
 
 }  // namespace
 
-DirIndex *DirIndex::FromFile(const string &f) {
+DirIndex *DirIndex::FromFile(std::string_view f) {
   std::unique_ptr<DirIndex_> dr{DirIndex_::Create()};
 
   if (dr.get() == nullptr) return nullptr;
@@ -127,10 +132,10 @@ DirIndex *DirIndex::FromFile(const string &f) {
 
   /* chop off magic, then erase leading whitespace */
   if (iii != "") {
-    dr->title = EscapeUtil::losewhitel(iii.substr
-                                       (strlen(INDEXMAGIC),
-                                        iii.length() -
-                                        strlen(INDEXMAGIC)));
+    dr->title = Util::LoseWhiteL(iii.substr
+                                 (strlen(INDEXMAGIC),
+                                  iii.length() -
+                                  strlen(INDEXMAGIC)));
 
     /* hashtable remains empty */
     return dr.release();
@@ -174,7 +179,7 @@ DirIndex *DirIndex::FromFile(const string &f) {
   }
 }
 
-bool DirIndex::IsIndex(const string &f) {
+bool DirIndex::IsIndex(std::string_view f) {
   return Util::HasMagic(f, INDEXMAGIC) ||
          Util::HasMagic(f, INDEX3MAGIC);
 }

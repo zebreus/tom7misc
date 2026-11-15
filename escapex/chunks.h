@@ -6,10 +6,12 @@
 #include <string>
 #include <optional>
 #include <memory>
+#include <string_view>
 #include <vector>
 #include <map>
 
 #include "base.h"
+#include "packet-parser.h"
 
 /* associative chunk database. */
 
@@ -21,7 +23,8 @@ struct Chunk {
   uint32_t key = 0;
 
   std::string ToString() const;
-  static std::optional<Chunk> FromString(const std::string &s);
+  static std::optional<Chunk> FromString(std::string_view s);
+  static std::optional<Chunk> Parse(PacketParser pp);
   Chunk() {}
   Chunk(uint32_t, int32_t);
   Chunk(uint32_t, bool);
@@ -39,7 +42,7 @@ struct Chunks {
   static std::unique_ptr<Chunks> Create();
 
   /* revive marshalled chunks */
-  static std::unique_ptr<Chunks> FromString(const std::string &s);
+  static std::unique_ptr<Chunks> FromString(std::string_view s);
 
   /* marshall to string */
   virtual std::string ToString() const;

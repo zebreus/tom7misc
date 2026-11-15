@@ -127,17 +127,6 @@ string EscapeUtil::ensureext(string f, string ext) {
   }
 }
 
-bool EscapeUtil::endswith(string big, string small_) {
-  if (small_.length() > big.length()) return false;
-  return big.substr(big.length() - small_.length(),
-                    small_.length()) == small_;
-}
-
-bool EscapeUtil::startswith(string big, string small_) {
-  if (small_.length() > big.length()) return false;
-  return big.substr(0, small_.length()) == small_;
-}
-
 int EscapeUtil::getpid() {
   return ::getpid();
 }
@@ -179,23 +168,6 @@ string EscapeUtil::fgetline(FILE *f) {
     }
   }
   return out;
-}
-
-string EscapeUtil::losewhitel(const string &s) {
-  for (unsigned int i = 0; i < s.length(); i++) {
-    switch (s[i]) {
-    case ' ':
-    case '\n':
-    case '\r':
-    case '\t':
-      /* keep going ... */
-      break;
-    default:
-      return s.substr(i, s.length() - i);
-    }
-  }
-  /* all whitespace */
-  return "";
 }
 
 string EscapeUtil::TempFile(std::string_view suffix) {

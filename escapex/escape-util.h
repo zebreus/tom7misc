@@ -125,15 +125,6 @@ struct EscapeUtil {
      . */
   static string cdup(const string &dir);
 
-  /* true iff big ends with small */
-  static bool endswith(string big_, string small_);
-  /* starts */
-  static bool startswith(string big_, string small_);
-
-  /* erase any whitespace up to the first
-     non-whitespace char. */
-  static string losewhitel(const string &s);
-
   /* try to remove the file. If it
      doesn't exist or is successfully
      removed, then return true. */

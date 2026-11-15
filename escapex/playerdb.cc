@@ -203,7 +203,7 @@ PlayerDB_ *PlayerDB_::create() {
     /* only bother with .esp files, particularly
        to avoid importing backups */
     /* printf("%s...\n", f.c_str()); */
-    if (EscapeUtil::endswith(f, ".esp")) {
+    if (Util::EndsWith(f, ".esp")) {
       pdb->sel->Resize(MENUITEMS + n + 1);
       pdb->sel->items[n].kind = K_PLAYER;
       pdb->sel->items[n].fname = f;

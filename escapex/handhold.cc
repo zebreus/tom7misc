@@ -31,10 +31,10 @@ static bool hh_write() {
                          BigEndian32(hh_lastupgrade));
 }
 
-void HandHold::init() {
+void HandHold::Init() {
   string hh = Util::ReadFileMagic(HANDHOLD_FILE, HANDHOLD_MAGIC);
 
-  unsigned int idx = HANDHOLD_MAGIC.size();
+  unsigned  idx = HANDHOLD_MAGIC.size();
   if (hh.length() == (idx + (2 * 4))) {
     hh_lastupdate = ReadBigEndian32(hh, idx);
     hh_lastupgrade = ReadBigEndian32(hh, idx);
@@ -48,7 +48,7 @@ void HandHold::init() {
   }
 }
 
-void HandHold::firsttime() {
+void HandHold::FirstTime() {
   Message::Quick(
       0,
       GREEN "Welcome to Escape!\n"
@@ -79,22 +79,22 @@ void HandHold::firsttime() {
 }
 
 
-void HandHold::did_update() {
+void HandHold::DidUpdate() {
   hh_lastupdate = time(0);
   hh_write();
 }
 
-void HandHold::did_upgrade() {
+void HandHold::DidUpgrade() {
   hh_lastupgrade = time(0);
   hh_write();
 }
 
 
-bool HandHold::recommend_update() {
+bool HandHold::RecommendUpdate() {
   return hh_ok && hh_lastupdate < (time(0) - UPDATE_INTERVAL);
 }
 
-bool HandHold::recommend_upgrade() {
+bool HandHold::RecommendUpgrade() {
 # ifdef MULTIUSER
   return false;
 # else

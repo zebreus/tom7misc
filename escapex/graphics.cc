@@ -2,19 +2,19 @@
 #include "graphics.h"
 
 #include <memory>
-#include <string>
+#include <string_view>
 
 #include "image.h"
 #include "util.h"
 
-static constexpr char TILES_PNG[] = "tiles.png";
-static constexpr char TILEUTIL_PNG[] = "tileutil.png";
-static constexpr char ANIMATION_PNG[] = "animation.png";
+static constexpr std::string_view TILES_PNG = "tiles.png";
+static constexpr std::string_view TILEUTIL_PNG = "tileutil.png";
+static constexpr std::string_view ANIMATION_PNG = "animation.png";
 
 Graphics::~Graphics() {}
 
 
-Graphics *Graphics::Create(const std::string &data_dir) {
+Graphics *Graphics::Create(std::string_view data_dir) {
   std::unique_ptr<ImageRGBA> tiles_png(
       ImageRGBA::Load(Util::DirPlus(data_dir, TILES_PNG)));
   if (tiles_png.get() == nullptr) return nullptr;

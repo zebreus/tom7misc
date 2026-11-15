@@ -73,7 +73,7 @@ bool Client::RPC(HTTPS *hh, const string &path, const string &query,
 
       /* drop first token */
       (void)Util::chop(m);
-      ret = EscapeUtil::losewhitel(m);
+      ret = Util::LoseWhiteL(m);
       return true;
     } else {
       ret = m;
@@ -119,8 +119,8 @@ bool Client::RPCPut(HTTPS *hh, const string &path,
         m[1] == 'k') {
 
       /* drop first token */
-      (void) Util::chop(m);
-      ret = EscapeUtil::losewhitel(m);
+      (void)Util::chop(m);
+      ret = Util::LoseWhiteL(m);
       return true;
     } else {
       ret = m;

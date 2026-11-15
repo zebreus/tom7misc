@@ -544,7 +544,7 @@ CUResult Upgrader_::checkupgrade(HTTPS *hh,
 
 UpgradeResult Upgrader_::Upgrade(string_view msg) {
   /* no matter what, cancel the hint to upgrade */
-  HandHold::did_upgrade();
+  HandHold::DidUpgrade();
 
   std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
 

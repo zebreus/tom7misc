@@ -15,6 +15,7 @@
 */
 
 #include <string>
+#include <string_view>
 
 #define DIRINDEXNAME "index.esi"
 #define WEBINDEXNAME "webindex.esi"
@@ -32,29 +33,27 @@ struct RateStatus {
 };
 
 struct DirIndex {
-  using string = std::string;
-
   /* make an empty index, suitable for later writing to disk */
   static DirIndex *Create();
 
   virtual ~DirIndex() {}
 
   /* read from disk */
-  static DirIndex *FromFile(const string &f);
+  static DirIndex *FromFile(std::string_view f);
 
-  static bool IsIndex(const string &f);
+  static bool IsIndex(std::string_view f);
 
-  virtual void WriteFile(const string &f) = 0;
-  virtual void AddEntry(const string &filename, RateStatus v,
+  virtual void WriteFile(std::string_view f) = 0;
+  virtual void AddEntry(std::string_view filename, RateStatus v,
                         int date, int speedrecord, int owner) = 0;
 
-  virtual bool GetEntry(const string &filename, RateStatus &v,
+  virtual bool GetEntry(std::string_view filename, RateStatus &v,
                         int &date, int &speedrecord, int &owner) = 0;
 
   /* true if this is a managed collection */
   virtual bool WebCollection() const = 0;
 
-  string title;
+  std::string title;
 };
 
 #endif

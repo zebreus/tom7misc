@@ -145,12 +145,12 @@ struct Player_ : public Player {
 
   bool WriteFile() override;
 
-  static Player_ *FromFile(const string &file);
+  static Player_ *FromFile(std::string_view file);
   /* call with file already open with cursor
      after the player magic. (Also pass filename
      since the player remembers this.)
      caller will close checkfile */
-  static Player_ *fromfile_text(string fname, CheckFile *);
+  static Player_ *FromFileText(std::string_view fname, CheckFile *);
 
   /* XX this one is wrong now; it returns "levels solved"
      not total number of solutions */
@@ -459,7 +459,7 @@ bool Player_::writef_text(const string &file) {
 } while (0)
 // #define FF_FAIL(s) return 0;
 
-Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
+Player_ *Player_::FromFileText(std::string_view filename, CheckFile *cf) {
   std::unique_ptr<Player_> p {Player_::Create("")};
   if (!p.get()) FF_FAIL("out of memory?");
   p->fname = filename;
@@ -571,7 +571,7 @@ Player_ *Player_::fromfile_text(string filename, CheckFile *cf) {
 }
 
 
-Player_ *Player_::FromFile(const string &file) {
+Player_ *Player_::FromFile(std::string_view file) {
   std::unique_ptr<CheckFile> cf{CheckFile::Create(file)};
   if (cf.get() == nullptr) return nullptr;
 
@@ -579,7 +579,7 @@ Player_ *Player_::FromFile(const string &file) {
   if (!cf->Read(PLAYERTEXT_MAGIC.size(), s)) return nullptr;
 
   /* binary or text format? */
-  if (s == PLAYERTEXT_MAGIC) return fromfile_text(file, cf.get());
+  if (s == PLAYERTEXT_MAGIC) return FromFileText(file, cf.get());
   else return nullptr;
 }
 

@@ -348,7 +348,7 @@ void Updater_::UpdateCollection(
       string line = EscapeUtil::getline(s);
 
       string d = Util::chop(line);
-      string name = EscapeUtil::losewhitel(line);
+      string name = Util::LoseWhiteL(line);
 
       /* sanity check d. */
       if (d.length() < 1 || d[0] == '/' ||
@@ -456,7 +456,7 @@ void Updater_::UpdateCollection(
 /* very similar to upgrade... maybe abstract it? */
 UpdateResult Updater_::Update(std::string_view msg) {
   /* always cancel the hint */
-  HandHold::did_update();
+  HandHold::DidUpdate();
 
   std::unique_ptr<HTTPS> hh{Client::Connect(plr, tx.get(), this)};
 

@@ -328,6 +328,7 @@ release_check = \
 	$(if $(filter windows,$(SUBSYSTEM)),,\
 	$(error SUBSYSTEM is $(SUBSYSTEM) -- do not release in console mode!))
 
+TEST_LDFLAGS= $(SOCK_LFLAGS) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
 LDFLAGS =  -L. $(LINKSDL) $(SOCK_LFLAGS) -m64 -Wl,--subsystem,$(SUBSYSTEM) $(OPT)  -static
 
 # -lSDL_mixer
@@ -350,9 +351,11 @@ packsound.exe : packsound.o $(CCLIBOBJECTS)
 	$(CXX) -o $@ $^ $(LDFLAGS) -static
 	strip packsound.exe
 
-escape-rle_test.exe : escape-rle.o escape-rle_test.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ -static
-	strip rle_test.exe
+escape-rle_test.exe : escape-rle.o escape-rle_test.o $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) $(TEST_LDFLAGS) -o $@ $^ -static
+
+chunks_test.exe : chunks_test.o chunks.o $(CCLIBOBJECTS)
+	$(CXX) $(CXXFLAGS) $(TEST_LDFLAGS) -o $@ $^ -static
 
 sound.o : sound.cc sound_load.h
 	$(CXX) $(CXXFLAGS) $(SDL_CXXFLAGS) -c -o $@ $<

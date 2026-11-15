@@ -28,7 +28,7 @@ void Cleanup::Clean() {
 
     } else {
 
-      if (EscapeUtil::endswith(dn, ".deleteme")) {
+      if (Util::EndsWith(dn, ".deleteme")) {
         /* printf(" remove '%s'\n", ldn.c_str()); */
         EscapeUtil::remove(ldn);
       }

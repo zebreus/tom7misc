@@ -6,12 +6,15 @@
 #include <string>
 #include <optional>
 #include <memory>
+#include <string_view>
+#include <utility>
 #include <vector>
 #include <map>
 
 #include "base.h"
 #include "base/print.h"
 #include "bytes.h"
+#include "packet-parser.h"
 
 using int32 = int32_t;
 using uint32 = uint32_t;
@@ -36,27 +39,30 @@ string Chunk::ToString() const {
   abort();
 }
 
-std::optional<Chunk> Chunk::FromString(const string &s) {
-  /* no type field */
-  if (s.length() < 8) return {};
-  uint32 idx = 0;
-  uint32 key = (unsigned int)ReadBigEndian32(s, idx);
-  ChunkType ty = (ChunkType)ReadBigEndian32(s, idx);
+std::optional<Chunk> Chunk::Parse(PacketParser pp) {
+  uint32 key = pp.W32();
+  ChunkType ty = (ChunkType)pp.W32();
+
+  if (!pp.OK()) return std::nullopt;
 
   switch (ty) {
   case CT_INVALID:
     return {};
   case CT_BOOL:
-    if (s.length() < 12) return {};
-    else return {Chunk(key, (bool)ReadBigEndian32(s, idx))};
+    if (pp.size() < 4) return std::nullopt;
+    else return {Chunk(key, (bool)pp.W32())};
   case CT_INT32:
-    if (s.length() < 12) return {};
-    else return {Chunk(key, (int)ReadBigEndian32(s, idx))};
+    if (pp.size() < 4) return std::nullopt;
+    else return {Chunk(key, (int)pp.W32())};
   case CT_STRING:
-    return {Chunk(key, (string)s.substr(8, s.length() - 8))};
+    return {Chunk(key, pp.String())};
   default:
     return {};
   }
+}
+
+std::optional<Chunk> Chunk::FromString(std::string_view s) {
+  return Parse(PacketParser(s));
 }
 
 std::unique_ptr<Chunks> Chunks::Create() {
@@ -85,26 +91,28 @@ string Chunks::ToString() const {
 }
 
 /* exhausts the input string */
-std::unique_ptr<Chunks> Chunks::FromString(const string &s) {
-  uint32 idx = 0;
+std::unique_ptr<Chunks> Chunks::FromString(std::string_view s) {
   vector<Chunk> dat;
 
-  while (idx < s.length()) {
-    int len = ReadBigEndian32(s, idx);
+  PacketParser pp(s);
 
-    if (idx + len > s.length()) {
+  while (pp.OK() && !pp.empty()) {
+    uint32_t len = pp.W32();
+    if (!pp.OK() || len > pp.size()) {
       Print("bad length\n");
       return nullptr;
     }
-    string ch = s.substr(idx, len); idx += len;
 
-    if (const std::optional<Chunk> c = Chunk::FromString(ch)) {
-      dat.push_back(c.value());
+    PacketParser ppc = pp.Subpacket(len);
+
+    if (const std::optional<Chunk> c = Chunk::Parse(ppc)) {
+      dat.push_back(std::move(c.value()));
     } else {
       return nullptr;
     }
   }
 
+  if (!pp.OK()) return nullptr;
   return std::unique_ptr<Chunks>(new Chunks(dat));
 }
 

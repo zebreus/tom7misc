@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include "packet-parser.h"
 
@@ -35,7 +36,7 @@ inline std::string BigEndian32(int i) {
 
 // Read a four-byte string at idx in the string (no bounds checking).
 // Advances the index by four.
-inline uint32_t ReadBigEndian32(const std::string &s, unsigned int &idx) {
+inline uint32_t ReadBigEndian32(std::string_view s, unsigned int &idx) {
   PacketParser pp(s);
   pp.Skip(idx);
   uint32_t u = pp.W32();

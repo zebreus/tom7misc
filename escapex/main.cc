@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
       /* If there are no players, assume this is the
          first launch. */
       if (pdb->firsttime()) {
-        HandHold::firsttime();
+        HandHold::FirstTime();
       }
 
       plr.reset(pdb->chooseplayer());

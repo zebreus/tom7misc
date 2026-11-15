@@ -4,12 +4,18 @@
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "base.h"
 #include "escape-util.h"
 
 /* nicer interface to files. automatically closes
-   on destroy, automatically checks eof. */
+   on destroy, automatically checks eof.
+
+   TODO: Probably better to just read the whole file
+   into memory and use PacketParser. Our files are
+   generally under a megabyte.
+*/
 
 /* XXX also check eof when these functions are called */
 
@@ -37,8 +43,8 @@ struct CheckFile {
     fclose(ff);
   }
 
-  static std::unique_ptr<CheckFile> Create(const string &f) {
-    FILE *ff = fopen(f.c_str(), "rb");
+  static std::unique_ptr<CheckFile> Create(std::string_view f) {
+    FILE *ff = fopen(std::string(f).c_str(), "rb");
     if (ff == nullptr) return nullptr;
     return std::unique_ptr<CheckFile>(new CheckFile{ff});
   }
