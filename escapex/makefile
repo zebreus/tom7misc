@@ -166,8 +166,6 @@ ifdef OSX
 
 default : escape.exe
 
-FRAMEWORKS=OSX_build/Frameworks
-
 # No longer cavemen, we target a "recent" release of OS X.
 VERSION_TARGET=12
 
