@@ -37,6 +37,11 @@ struct ModelClient {
   virtual void SetVerbose(int v) = 0;
   virtual void SetLog(bool log) = 0;
 
+  // Use nullopt for no limit. This may internally update the
+  // limit higher if unsupported.
+  virtual void SetMaxTokens(std::optional<int> max_tokens) = 0;
+  virtual void SetThinkingBudget(std::optional<int> max_tokens) = 0;
+
   virtual std::string Info() const = 0;
 
   // Simple blocking inference call. When verbose, this creates a

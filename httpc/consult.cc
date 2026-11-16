@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <ctime>
 #include <format>
 #include <memory>
@@ -55,6 +56,10 @@ static std::string ConsultAs(
   }
   client->SetVerbose(verbose);
   client->SetLog(log);
+  // Carbon has a problem where sometimes it exhausts its own
+  // context thinking, ugh.
+  client->SetMaxTokens(8192);
+  client->SetThinkingBudget(16384);
 
   std::string bg = MakeBackground(bgdocs);
 
@@ -134,6 +139,8 @@ static bool Consult(
   }
   client->SetVerbose(verbose);
   client->SetLog(log);
+  client->SetMaxTokens(16384);
+  client->SetThinkingBudget(32768);
 
   std::string bg = MakeBackground(bgdocs);
 

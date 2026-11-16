@@ -1,5 +1,6 @@
 #include "model-client.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 #include <format>
@@ -17,6 +18,7 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/print.h"
+#include "base/stringprintf.h"
 #include "contiguous-buffer.h"
 #include "hexdump.h"
 #include "net.h"
@@ -676,6 +678,8 @@ struct ModelClientImpl : public ModelClient {
 
   std::string model_name;
   std::string api_key;
+  std::optional<int> max_output_tokens;
+  std::optional<int> thinking_budget;
   int verbose = 1;
   bool log = false;
 
@@ -686,6 +690,18 @@ struct ModelClientImpl : public ModelClient {
 
   void SetLog(bool log_in) override {
     log = log_in;
+  }
+
+  void SetMaxTokens(std::optional<int> max_tokens) override {
+    max_output_tokens = max_tokens;
+  }
+
+  void SetThinkingBudget(std::optional<int> max_tokens) override {
+    if (max_tokens.has_value()) {
+      thinking_budget = std::max(512, max_tokens.value());
+    } else {
+      thinking_budget = std::nullopt;
+    }
   }
 
   std::unique_ptr<ModelResponse> Run(std::string_view prompt) override {
@@ -706,8 +722,36 @@ struct ModelClientImpl : public ModelClient {
       std::format("/v1beta/models/{}:streamGenerateContent", model_name);
 
     std::string payload =
-      std::format(R"({{"contents": [{{"parts": [{{"text": "{}"}}]}}]}})",
+      std::format(R"({{"contents": [{{"parts": [{{"text": "{}"}}]}}])",
                   EscapeJS(prompt));
+
+    // generationConfig.
+    {
+      payload.append(", \"generationConfig\": {");
+      bool has_gc_field = false;
+
+      if (max_output_tokens.has_value()) {
+        AppendFormat(&payload,
+                     "{}\"maxOutputTokens\": {}",
+                     has_gc_field ? " ," : "",
+                     max_output_tokens.value());
+        has_gc_field = true;
+      }
+
+      if (thinking_budget.has_value()) {
+        AppendFormat(&payload,
+                     "{}\"thinkingConfig\": {{"
+                     "\"thinkingBudget\": {}"
+                     "}}",
+                     has_gc_field ? " ," : "",
+                     thinking_budget.value());
+        has_gc_field = true;
+      }
+
+      payload.append("}");
+    }
+
+    payload.append("}");
 
     std::string request =
       std::format(
@@ -919,6 +963,9 @@ struct TestModelClientImpl : public ModelClient {
   std::string Info() const override {
     return "test-model";
   }
+
+  void SetMaxTokens(std::optional<int>) override {}
+  void SetThinkingBudget(std::optional<int>) override {}
 
   std::string Infer(std::string_view prompt, int max_attempts) override {
     return fn(prompt);
