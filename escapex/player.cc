@@ -469,9 +469,12 @@ Player_ *Player_::FromFileText(std::string_view filename, CheckFile *cf) {
   /* strip newline after magic */
   if (!(cf->GetLine(s) && s == "")) FF_FAIL("newline after magic");
 
-  if (!cf->GetLine(s)) FF_FAIL("no webid"); p->webid = EscapeUtil::stoi(s);
-  if (!cf->GetLine(s)) FF_FAIL("no seqh");  p->webseqh = EscapeUtil::stoi(s);
-  if (!cf->GetLine(s)) FF_FAIL("no seql");  p->webseql = EscapeUtil::stoi(s);
+  if (!cf->GetLine(s)) FF_FAIL("no webid");
+  p->webid = EscapeUtil::stoi(s);
+  if (!cf->GetLine(s)) FF_FAIL("no seqh");
+  p->webseqh = EscapeUtil::stoi(s);
+  if (!cf->GetLine(s)) FF_FAIL("no seql");
+  p->webseql = EscapeUtil::stoi(s);
 
   /* ignored fields for now */
   for (int z = 0; z < IGNORED_FIELDS; z++) {

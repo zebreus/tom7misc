@@ -279,15 +279,16 @@ UpResult Upgrader_::doupgrade(HTTPS *hh, string_view msgv,
         /* XXX ought try several prefixes in case this has happened before */
         if (!rename(src.c_str(), (src + ".deleteme").c_str())) {
           say((string) RED "Can't rename it either!");
-          incomplete = true;
-        } else {
-          symlink(dst.c_str(), src.c_str());
-          say(src + GREEN " " LRARROW " " POP + dst);
         }
-      } else {
-        symlink(dst.c_str(), src.c_str());
-        say(src + GREEN " " LRARROW " " POP + dst);
       }
+
+      if (0 == symlink(dst.c_str(), src.c_str())) {
+        say(src + GREEN " " LRARROW " " POP + dst);
+      } else {
+        say((string) RED "Symlinking failed!");
+        incomplete = true;
+      }
+
 
     }
   }

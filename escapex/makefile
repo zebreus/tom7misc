@@ -59,14 +59,11 @@ escape.exe : ${ESCOBJECTS}
 default : escape.exe
 
 #  -lvorbisfile -lvorbis -logg
-packsound.exe : escape-util-console.o packsound-console.o
+packsound.exe : escape-util-console.o packsound-console.o $(CCLIBOBJECTS)
 	g++ -o $@ $^ `sdl-config --static-libs`
 	strip packsound.exe
 
 sound.o : sound.cc sound_load.h
-	g++ ${CXXFLAGS} ${CPPFLAGS} -c -o $@ $<
-
-level.o : level.cc move2016.h
 	g++ ${CXXFLAGS} ${CPPFLAGS} -c -o $@ $<
 
 sound_load.h : sound.pack packsound.cc
@@ -154,7 +151,7 @@ wc :
 	wc -l *.cc *.h
 
 clean :
-	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.*
+	rm -f *.o escape.exe core core.[0-9]* gmon.out escape-src.tar.bz2 escape-beta.tar.gz vgcore.* $(CCLIBOBJECTS)
 
 # end linux makefile
 endif
