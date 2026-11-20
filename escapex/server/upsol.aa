@@ -30,7 +30,9 @@ in
      do  name seq "" andthen failm "solution must have a title"
 
      (* get solution *)
-     val solloc = requires [sol.location]
+     val solloc = (case getupload "sol" of
+                       SOME (loc, _) => loc
+                     | NONE => die "required: sol")
      val solmd5 = md5file solloc
 
      val sol = Escape.sfromfile solloc

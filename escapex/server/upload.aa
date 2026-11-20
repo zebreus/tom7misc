@@ -19,11 +19,15 @@ in
          do debug [[itos userid] = [username]]
 
          (* get level *)
-         val levloc = requires "lev.location"
+         val levloc = (case getupload "lev" of
+                           SOME (loc, _) => loc
+                         | NONE => die "required: lev")
          val levmd5 = md5file levloc
 
          (* get solution *)
-         val solloc = requires "sol.location"
+         val solloc = (case getupload "sol" of
+                           SOME (loc, _) => loc
+                         | NONE => die "required: sol")
          val solmd5 = md5file solloc
 
          do debug [[levloc], [solloc]]
