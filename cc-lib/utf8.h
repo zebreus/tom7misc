@@ -446,7 +446,7 @@ constexpr std::optional<uint32_t> UTF8::DecodeOpt(std::string_view sv) {
 constexpr uint32_t UTF8::Codepoint(std::string_view sv) {
   std::optional<uint32_t> co = DecodeOpt(sv);
   if (!co.has_value()) {
-    throw "Invalid UTF-8 sequence provided to UTF8::Codepoint";
+    assert(!"Invalid UTF-8 sequence provided to UTF8::Codepoint");
   }
   return co.value();
 }
