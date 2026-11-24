@@ -642,11 +642,11 @@ void Menu::ScreenResize() {
   h = toth + stath + 1;
 
   /*
-  printf("h: %d\n"
-         "stath: %d\n"
-         "toth: %d\n"
-         "maxl: %d\n",
-         h, stath, toth, maxl);
+  Print("h: {}\n"
+        "stath: {}\n"
+        "toth: {}\n"
+        "maxl: {}\n",
+        h, stath, toth, maxl);
   */
 
   /* if the result is too wide, shrink it

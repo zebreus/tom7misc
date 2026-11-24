@@ -2,7 +2,7 @@
 #define _ESCAPE_DIRINDEX_H
 
 /* a directory index provides meta-information about a directory in a
-   managed collection (ie, triage). it includes:
+   managed collection (e.g., triage). it includes:
      * a nice name (title) for the directory
      * global ratings for each level
      * dates that the levels were created (can be used to sort)
@@ -47,8 +47,9 @@ struct DirIndex {
   virtual void AddEntry(std::string_view filename, RateStatus v,
                         int date, int speedrecord, int owner) = 0;
 
-  virtual bool GetEntry(std::string_view filename, RateStatus &v,
-                        int &date, int &speedrecord, int &owner) = 0;
+  virtual bool GetEntry(
+      std::string_view filename, RateStatus &v,
+      int &date, int &speedrecord, int &owner) const = 0;
 
   /* true if this is a managed collection */
   virtual bool WebCollection() const = 0;

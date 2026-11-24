@@ -22,24 +22,24 @@ struct Disamb {
   ~Disamb();
 
   /* sets everything to serial 0 */
-  void clear();
+  void Clear();
 
   /* affect a location. This might
      cause the serial to increase. Call this
      before creating the associated animation. Returns true if
      the serial did increase. */
-  bool affect(int x, int y, Level *l, PtrList<AEvent> **& etail);
-  bool affecti(int idx, Level *l, PtrList<AEvent> **& etail);
+  bool Affect(int x, int y, Level *l, PtrList<AEvent> **& etail);
+  bool Affecti(int idx, Level *l, PtrList<AEvent> **& etail);
 
   /* should be paired with calls to 'affect'
      for the squares that these things live in */
-  void preaffectplayer(Level *l, PtrList<AEvent> **& etail);
-  void preaffectbot(int i, Level *l, PtrList<AEvent> **& etail);
+  void PreAffectPlayer(Level *l, PtrList<AEvent> **& etail);
+  void PreAffectBot(int i, Level *l, PtrList<AEvent> **& etail);
 
-  void postaffectplayer();
-  void postaffectbot(int i);
+  void PostAffectPlayer();
+  void PostAffectBot(int i);
 
-  void serialup(Level *l, PtrList<AEvent> **& etail);
+  void SerialUp(Level *l, PtrList<AEvent> **& etail);
 
   unsigned int Serial() const { return serial; }
 
@@ -69,28 +69,28 @@ struct NullDisamb {
   ~NullDisamb() {};
 
   /* sets everything to serial 0 */
-  void clear() {}
+  void Clear() {}
 
   /* affect a location. This might
      cause the serial to increase. Call this
      before creating the associated animation. Returns true if
      the serial did increase. */
-  bool affect(int x, int y, Level *l, PtrList<AEvent> **& etail) {
+  bool Affect(int x, int y, Level *l, PtrList<AEvent> **& etail) {
     return false;
   }
-  bool affecti(int idx, Level *l, PtrList<AEvent> **& etail) {
+  bool Affecti(int idx, Level *l, PtrList<AEvent> **& etail) {
     return false;
   }
 
   /* should be paired with calls to 'affect'
      for the squares that these things live in */
-  void preaffectplayer(Level *l, PtrList<AEvent> **& etail) {}
-  void preaffectbot(int i, Level *l, PtrList<AEvent> **& etail) {}
+  void PreAffectPlayer(Level *l, PtrList<AEvent> **& etail) {}
+  void PreAffectBot(int i, Level *l, PtrList<AEvent> **& etail) {}
 
-  void postaffectplayer() {}
-  void postaffectbot(int i) {}
+  void PostAffectPlayer() {}
+  void PostAffectBot(int i) {}
 
-  void serialup(Level *l, PtrList<AEvent> **& etail) {}
+  void SerialUp(Level *l, PtrList<AEvent> **& etail) {}
 
   unsigned int Serial() const { return 0U; }
 

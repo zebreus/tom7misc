@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "base.h"
+#include "base/print.h"
 #include "chunks.h"
 #include "player.h"
 #include "menu.h"
@@ -217,8 +218,8 @@ int32 Prefs::GetInt(Player *plr, uint32 k) {
   if (c && c->type == CT_INT32) {
     return c->i;
   } else {
-    printf("c: %p\n", c);
-    if (c) printf("c->type %d\n", c->type);
+    Print("c: {:p}\n", (void*)c);
+    if (c) Print("c->type {}\n", (int)c->type);
     Message::Bug(0, "int pref unavailable: " RED + Util::itos(k));
     return 0;
   }

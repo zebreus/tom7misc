@@ -193,7 +193,7 @@ Solution Optimize::Opt(const Level *orig, const Solution &s) {
 
       auto it = ht.find(ls);
       if (it != ht.end()) {
-        // printf("   found! at %d\n", existing->pos);
+        // Print("   found! at {}\n", existing->pos);
         /* Well, some prefix of the existing solution
            already gets us here. Instead of making this
            move, we should just backtrack to the point
@@ -220,8 +220,8 @@ Solution Optimize::Opt(const Level *orig, const Solution &s) {
 
   if (cf.Length() < s.Length()) {
     /*
-    printf("Correct result: %d moves->%d moves\n",
-           s->length, cf->length);
+    Print("Correct result: {} moves->{} moves\n",
+          s->length, cf->length);
     */
     return cf;
   } else {
@@ -271,7 +271,7 @@ bool Optimize::TryComplete(Level *start, const Solution &prefix,
         }
       }
     }
-    // printf("No suffixes of length %d...\n", slen);
+    // Print("No suffixes of length {}...\n", slen);
   }
 
   return false;

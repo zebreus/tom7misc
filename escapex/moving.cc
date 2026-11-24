@@ -151,11 +151,11 @@ static bool HasFramers(const Level &level) {
 // TODO: No need to wrap *calls* to these macros in if (ANIMATING) ...
 
 #define AFFECT2016(x, y) do {                   \
-    (void)ctx->affect((x), (y), level, etail);   \
+    (void)ctx->Affect((x), (y), level, etail);   \
   } while (0)
 
 #define AFFECTI2016(i) do {                     \
-    (void)ctx->affecti((i), level, etail);       \
+    (void)ctx->Affecti((i), level, etail);       \
   } while (0)
 
 // This new version of the macro looks more like a function call.
@@ -198,13 +198,13 @@ static bool HasFramers(const Level &level) {
 #define AFFECTENT2016(entid, fn) do {                                   \
     const int affectent_ei = (entid);                                   \
     if (ANIMATING) {                                                    \
-      if (affectent_ei == -1) ctx->preaffectplayer(level, etail);       \
-      else ctx->preaffectbot(affectent_ei, level, etail);               \
+      if (affectent_ei == -1) ctx->PreAffectPlayer(level, etail);       \
+      else ctx->PreAffectBot(affectent_ei, level, etail);               \
     }                                                                   \
     (fn)();                                                             \
     if (ANIMATING) {                                                    \
-      if (affectent_ei == -1) ctx->postaffectplayer();                  \
-      else ctx->postaffectbot(affectent_ei);                            \
+      if (affectent_ei == -1) ctx->PostAffectPlayer();                  \
+      else ctx->PostAffectBot(affectent_ei);                            \
     }                                                                   \
   } while (0)
 
@@ -737,7 +737,7 @@ bool Moving::MoveEntGoldlike(Level *level,
 
     // Otherwise, going to fly through this spot.
     if (ANIMATING) {
-      const bool did = ctx->affect(goldx, goldy, level, etail);
+      const bool did = ctx->Affect(goldx, goldy, level, etail);
       if (false)
         printf("%d %d: %s %d %d\n", goldx, goldy, did ? "did" : "not",
                ctx->SerialAt(goldx, goldy),
@@ -906,7 +906,7 @@ bool Moving::MoveEntButton(Level *level,
                XXX: The result is correct but not desirable; wires
                pause in the middle of their electricity. Probably
                should arrange it so it all goes in one shot. */
-            if (ctx->affect(pulsex, pulsey, level, etail)) {
+            if (ctx->Affect(pulsex, pulsey, level, etail)) {
               dist = 0;
             }
             LITEWIRE2016(pulsex, pulsey, targ, pd, dist);
@@ -1071,7 +1071,7 @@ bool Moving::MoveEntButton(Level *level,
       if (false) Print("(was {} []) ",
                        ctx->SerialAt(x, y),
                        ctx->Serial());
-      bool did = ctx->affecti(t->target, level, etail);
+      bool did = ctx->Affecti(t->target, level, etail);
       if (false) Print("{}={},{}: {} {} {}\n",
                        t->target, x, y, did ? "did" : "not",
                        ctx->SerialAt(x, y),
@@ -1947,7 +1947,7 @@ template<bool ANIMATING, class DAB>
 void Moving::PostAnimate(Level *level,
                          DAB *ctx, AList *&events, AList **&etail) {
   /* make sure there is animation for everything */
-  ctx->serialup(level, etail);
+  ctx->SerialUp(level, etail);
 
   int lx, ly; dir from;
   if (level->IsDead(lx, ly, from)) {
@@ -1963,7 +1963,7 @@ void Moving::PostAnimate(Level *level,
         e->from = DirReverse(from);
       }));
 
-    ctx->serialup(level, etail);
+    ctx->SerialUp(level, etail);
 
   } else if (level->IsWon()) {
 
@@ -1974,14 +1974,14 @@ void Moving::PostAnimate(Level *level,
       e->y = level->guyy;
     }));
 
-    ctx->serialup(level, etail);
+    ctx->SerialUp(level, etail);
   }
 }
 
 template<bool ANIMATING, class DAB>
 bool Moving::MoveMaybeAnimate(Level *level,
                               dir d, DAB *ctx, AList *&events, AList **&etail) {
-  ctx->clear();
+  ctx->Clear();
   /* change our orientation, even if we don't move.
      TODO: animate this! */
   level->guyd = d;
@@ -2102,7 +2102,7 @@ void Moving::Warp(Level *level, int &entx, int &enty, int targx, int targy) {
   /* XXX can be incorrect --
      need to use SETENTPOS, since we need to reflect
      this immediately in the boti array
-     (so that serialup knows where the bot is standing) */
+     (so that SerialUp knows where the bot is standing) */
   entx = targx;
   enty = targy;
 

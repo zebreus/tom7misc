@@ -44,10 +44,11 @@ struct DirIndex_ : public DirIndex {
   ~DirIndex_() override {}
 
   void AddEntry(std::string_view filename, RateStatus v,
-    int date, int speedrecord, int owner) override;
+                int date, int speedrecord, int owner) override;
 
-  bool GetEntry(std::string_view filename,
-    RateStatus &v, int &date, int &speed, int &o) override;
+  bool GetEntry(
+      std::string_view filename,
+      RateStatus &v, int &date, int &speed, int &o) const override;
 
   bool WebCollection() const override { return isweb; }
 
@@ -60,7 +61,7 @@ struct DirIndex_ : public DirIndex {
 
 
 bool DirIndex_::GetEntry(std::string_view filename,
-       RateStatus &v, int &d, int &sr, int &o) {
+                         RateStatus &v, int &d, int &sr, int &o) const {
   auto it = tab.find(filename);
   if (it == tab.end()) return false;
 

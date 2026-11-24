@@ -19,7 +19,7 @@ Disamb *Disamb::Create(const Level *l) {
   d->h = l->h;
   d->serials = (unsigned int *)malloc(d->w * d->h * sizeof(unsigned int));
   if (!d->serials) return nullptr;
-  d->clear();
+  d->Clear();
   return d.release();
 }
 
@@ -27,7 +27,7 @@ Disamb::~Disamb() {
   free(serials);
 }
 
-void Disamb::clear() {
+void Disamb::Clear() {
   serial = 1;
   player = 0;
   for (int i = 0; i < LEVEL_MAX_ROBOTS; i++) {
@@ -39,17 +39,17 @@ void Disamb::clear() {
   }
 }
 
-bool Disamb::affect(int x, int y, Level *l, PtrList<AEvent> **& etail) {
-  return affecti(y * w + x, l, etail);
+bool Disamb::Affect(int x, int y, Level *l, PtrList<AEvent> **& etail) {
+  return Affecti(y * w + x, l, etail);
 }
 
-bool Disamb::affecti(int i, Level *l, PtrList<AEvent> **& etail) {
+bool Disamb::Affecti(int i, Level *l, PtrList<AEvent> **& etail) {
   /* was this last updated in this same
      serial? if so, we need to move to
      the next serial. */
 
   if (serials[i] == serial) {
-    serialup(l, etail);
+    SerialUp(l, etail);
     serials[i] = serial;
     return true;
   } else {
@@ -69,7 +69,7 @@ bool Disamb::affecti(int i, Level *l, PtrList<AEvent> **& etail) {
 /* maintain the invariant that in every serial within the list
    etail, there is at least one animation for every active
    entity */
-void Disamb::serialup(Level *l, PtrList<AEvent> **& etail) {
+void Disamb::SerialUp(Level *l, PtrList<AEvent> **& etail) {
   //  printf("serialup(old serial = %d)!\n", serial);
 
   if (serial != player) {
@@ -107,18 +107,18 @@ void Disamb::serialup(Level *l, PtrList<AEvent> **& etail) {
 }
 
 /* XXX should these also do the same check that affecti does? */
-void Disamb::preaffectplayer(Level *l, PtrList<AEvent> **& etail) {
-  if (player == serial) serialup(l, etail);
+void Disamb::PreAffectPlayer(Level *l, PtrList<AEvent> **& etail) {
+  if (player == serial) SerialUp(l, etail);
 }
 
-void Disamb::postaffectplayer() {
+void Disamb::PostAffectPlayer() {
   player = serial;
 }
 
-void Disamb::preaffectbot(int i, Level *l, PtrList<AEvent> **& etail) {
-  if (bots[i] == serial) serialup(l, etail);
+void Disamb::PreAffectBot(int i, Level *l, PtrList<AEvent> **& etail) {
+  if (bots[i] == serial) SerialUp(l, etail);
 }
 
-void Disamb::postaffectbot(int i) {
+void Disamb::PostAffectBot(int i) {
   bots[i] = serial;
 }
