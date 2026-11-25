@@ -14,6 +14,14 @@
 #include <span>
 #include <vector>
 
+// Avoid various optimizations that might cause the compiler
+// to not actually run memset.
+typedef void *(*memset_t)(void *,int,size_t);
+static volatile memset_t memset_func = memset;
+static void Cleanse(void *v, size_t len) {
+  (*memset_func)(v, 0, len);
+}
+
 static inline uint32_t rol(uint32_t w, int bits) {
   return std::rotl<uint32_t>(w, bits);
 }
@@ -108,7 +116,7 @@ static void SHA1Transform(uint32_t state[5], const uint8_t buffer[64]) {
 
   /* Wipe variables */
   a = b = c = d = e = 0;
-  memset((void *volatile)w, 0, sizeof(w));
+  Cleanse((void *)w, sizeof(w));
 }
 
 /* SHA1Init - Initialize new context */
@@ -180,10 +188,10 @@ void SHA1::Finalize(Ctx *context, uint8_t *digest) {
     memcpy(digest + i * 4, &word, 4);
   }
 
-  memset((void* volatile)context->buffer, 0, 64);
-  memset((void* volatile)context->state, 0, 20);
-  memset((void* volatile)context->count, 0, 8);
-  memset((void* volatile)finalcount, 0, 8);
+  Cleanse((void*)context->buffer, 64);
+  Cleanse((void*)context->state, 20);
+  Cleanse((void*)context->count, 8);
+  Cleanse((void*)finalcount, 8);
 }
 
 std::vector<uint8_t> SHA1::FinalVector(SHA1::Ctx *ctx) {
@@ -237,5 +245,11 @@ SHA1::HMAC(std::span<const uint8_t> key,
   Init(&ctx);
   Update(&ctx, outer_key_pad.data(), outer_key_pad.size());
   Update(&ctx, inner_hash.data(), inner_hash.size());
+
+  Cleanse(processed_key.data(), processed_key.size());
+  Cleanse(inner_key_pad.data(), inner_key_pad.size());
+  Cleanse(outer_key_pad.data(), outer_key_pad.size());
+  Cleanse(inner_hash.data(), inner_hash.size());
+
   return FinalArray(&ctx);
 }
