@@ -699,7 +699,7 @@ struct Session {
     fsize_limit.rlim_max = 0;
     if (setrlimit(RLIMIT_FSIZE, &fsize_limit) == -1) {
       if (VERBOSE >= 1) {
-        perror("setrlimit(RLIMIT_CPU)");
+        perror("setrlimit(RLIMIT_FSIZE)");
       }
     }
 
@@ -2002,10 +2002,11 @@ int main(int argc, char **arg) {
   ANSI::Init();
 
   Config config = Config::Load();
+  const int listen_port = config.ListenPort();
 
   {
     Server server(std::move(config));
-    server.Listen(config.ListenPort());
+    server.Listen(listen_port);
     server.DropPrivileges();
     server.Loop();
   }
