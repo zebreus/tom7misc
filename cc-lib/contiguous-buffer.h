@@ -19,6 +19,7 @@ struct ContiguousBuffer {
   explicit ContiguousBuffer(int initial_size = 16384) {
     allocated = initial_size;
     buf = (uint8_t*)malloc(initial_size);
+    CHECK(buf != nullptr) << "Unable to allocate " << initial_size;
   }
 
   ~ContiguousBuffer() {
@@ -68,17 +69,23 @@ struct ContiguousBuffer {
     const size_t nbytes = end - start;
     if (nbytes + data.size() > allocated) {
       // Need to grow the vector to accommodate.
-      // XXX PERF realloc
+      // PERF: Should consider policy for realloc. Realloc may be doing
+      // a redunant copy when we have slack (start > 0), which assumes
+      // that its benefits for the allocator outweigh that.
       const size_t new_alloc = nbytes + data.size() + (allocated >> 1);
-      uint8_t *new_buf = (uint8_t*)malloc(new_alloc);
-
-      // Always copy to the beginning of the buffer.
-      memcpy(new_buf, buf + start, nbytes);
-      start = 0;
-      end = nbytes;
+      buf = (uint8_t*)realloc(buf, new_alloc);
+      CHECK(buf) << "Unable to allocate " << new_alloc;
       allocated = new_alloc;
-      free(buf);
-      buf = new_buf;
+
+      // Because we used realloc, the contents are already copied (or
+      // preserved), but we want to shift to remove slack if any.
+      if (start > 0) {
+        // Always copy to the beginning of the buffer.
+        memmove(buf, buf + start, nbytes);
+        start = 0;
+      }
+      end = nbytes;
+
     } else if (end + data.size() > allocated) {
       // We have enough space, but too much slack at the
       // beginning. Move to compact.
