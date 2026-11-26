@@ -644,6 +644,25 @@ static void TestMatchSpec() {
   CHECK(!Util::MatchSpec("9a-", '8'));
   CHECK(!Util::MatchSpec("9a-", 'b'));
 
+  // A single character right after a range.
+  CHECK(Util::MatchSpec("a-cx", 'x'));
+  CHECK(Util::MatchSpec("a-cxy", 'x'));
+  CHECK(Util::MatchSpec("a-cxy", 'y'));
+  CHECK(Util::MatchSpec("0-9_", '_'));
+  CHECK(!Util::MatchSpec("^a-cx", 'x'));
+  CHECK(Util::MatchSpec("^a-cx", 'd'));
+
+  // Bytes >= 0x80 (negative as char).
+  CHECK(Util::MatchSpec("\xC8", (char)0xC8));
+  CHECK(Util::MatchSpec("\x80-\xFF", (char)0x80));
+  CHECK(Util::MatchSpec("\x80-\xFF", (char)0xC8));
+  CHECK(Util::MatchSpec("\x80-\xFF", (char)0xFF));
+  CHECK(!Util::MatchSpec("\x80-\xFF", 'a'));
+  CHECK(Util::MatchSpec("a-\xFF", 'z'));
+  CHECK(Util::MatchSpec("a-\xFF", (char)0xC8));
+  CHECK(!Util::MatchSpec("a-\xFF", 'A'));
+  CHECK(!Util::MatchSpec("^\x80-\xFF", (char)0xC8));
+  CHECK(Util::MatchSpec("^\x80-\xFF", 'a'));
 
   // With string inputs.
   CHECK(Util::MatchSpec("", ""));

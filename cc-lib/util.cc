@@ -1442,17 +1442,21 @@ bool Util::MatchSpec(std::string_view spec, char c) {
     match = !match;
   }
 
-  // now loop looking for c in string, or ranges.
+  uint8_t cc = (uint8_t)c;
+
+  // now loop looking for cc in string, or ranges.
   for (size_t i = 0; i < spec.length(); i ++) {
+    const uint8_t s = spec[i];
     //  handle ranges, if it's not the first or last char.
-    if (spec[i] == '-' && i > 0 && i < (spec.length() - 1)) {
-      if (spec[i - 1] <= c &&
-          spec[i + 1] >= c) return match;
-      // skip dash and next char.
-      i += 2;
+    if (s == '-' && i > 0 && i + 1 < spec.length()) {
+      const uint8_t lb = spec[i - 1];
+      const uint8_t ub = spec[i + 1];
+      if (lb <= cc && ub >= cc) return match;
+      // skip dash, and then for loop skips the ending char.
+      i++;
     } else {
-      // ok if starts range, since they are inclusive.
-      if (spec[i] == c) return match;
+      // ok if s starts range, since they are inclusive.
+      if (s == cc) return match;
     }
   }
 
