@@ -51,7 +51,7 @@
 (require 'edit)
 (require 'wtf)
 
-(provide 'fancy-find-file)
+(require 'fancy-find-file)
 
 (defun spacebar ()
   "Opens up spacebar via tramp, using the path that's easy to
@@ -1647,7 +1647,7 @@
  '(js-curly-indent-offset 0)
  '(js-expr-indent-offset 2)
  '(js-indent-level 2)
- '(package-selected-packages '(markdown-mode markdown-ts-mode nael treesit-auto))
+ '(package-selected-packages '(markdown-ts-mode nael treesit-auto))
  '(password-cache-expiry 21600)
  '(show-paren-delay 0.0)
  '(show-paren-style 'expression)

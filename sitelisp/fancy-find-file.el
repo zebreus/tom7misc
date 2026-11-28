@@ -3,22 +3,42 @@
 ;; Takes a file path (with optional :line:col) like from an error
 ;; message, attempting to extract one from the copy-paste buffer
 ;; as the default if possible. Opens that file if it can be found
-;; by matching parents of the current file.
+;; by matching parents of the current file, or failing that, parents
+;; of other open files ordered by recency.
+
+(defun fff-start-directories ()
+  "Return starting directories to search, ordered by buffer recency."
+  (let ((dirs nil))
+    (when default-directory
+      (push (file-name-as-directory (expand-file-name default-directory))
+            dirs))
+    (dolist (buf (buffer-list (selected-frame)))
+      (let ((file (buffer-file-name buf)))
+        (when file
+          (push (file-name-as-directory
+                 (file-name-directory (expand-file-name file)))
+                dirs))))
+    (delete-dups (nreverse dirs))))
 
 (defun fff-resolve-path-upwards (rel-path)
-  "Walk up from `default-directory` looking for existing file REL-PATH."
+  "Walk up from `default-directory` and open files looking for REL-PATH."
   (if (and (file-name-absolute-p rel-path) (file-regular-p rel-path))
       rel-path
-    (let ((dir (expand-file-name default-directory))
+    (let ((start-dirs (fff-start-directories))
+          (checked nil)
           (found nil))
-      (while (and dir (not found))
-        (let ((candidate (expand-file-name rel-path dir)))
-          (if (file-regular-p candidate)
-              (setq found candidate)
-            (let ((parent (file-name-directory (directory-file-name dir))))
-              (setq dir (if (or (null parent) (equal parent dir))
-                            nil
-                          parent))))))
+      (while (and start-dirs (not found))
+        (let ((dir (pop start-dirs)))
+          (while (and dir (not found) (not (member dir checked)))
+            (push dir checked)
+            (let ((candidate (expand-file-name rel-path dir)))
+              (if (file-regular-p candidate)
+                  (setq found candidate)
+                (let ((parent (file-name-directory
+                               (directory-file-name dir))))
+                  (setq dir (if (or (null parent) (equal parent dir))
+                                nil
+                              parent))))))))
       found)))
 
 (defun fff-parse-error-string (str)
@@ -109,6 +129,6 @@ existing file. If `:LINE` (or `:LINE:COL`) follows the filename, jump there."
           (when (and found-col (> found-col 0))
             (move-to-column (1- found-col))))))))
 
-(global-set-key (kbd "C-x g") #'do-fancy-find-file)
+(global-set-key (kbd "C-x C-g") #'do-fancy-find-file)
 
 (provide 'fancy-find-file)
