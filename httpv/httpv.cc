@@ -114,7 +114,7 @@ struct Connection {
     return state == State::ONLY_WRITE || state == State::DUPLEX;
   }
 
-  bool Full() const {
+  bool SendBufferFull() const {
     return send_buf.size() >= BUFFER_SIZE;
   }
 
@@ -490,7 +490,7 @@ struct BackendConnection : public Connection {
     idle_timer.Reset();
   }
 
-  bool ReadIsFull() const {
+  bool ReadBufferFull() const {
     return read_pos == read_buf.size();
   }
 
@@ -736,14 +736,19 @@ struct Session {
       // (localhost) and is sending a large file, but the
       // client does not. In this case we certainly don't want
       // to buffer the entire file in RAM.
-      if (client.Connected() && client.CanRead() && !backend.Full())
+      //
+      // Since we respond to handshake and heartbeat messages
+      // to the client directly, we also won't read if its send
+      // buffer is currently full.
+      if (client.Connected() && client.CanRead() &&
+          !backend.SendBufferFull() && !client.SendBufferFull())
         epoll_set |= PollSet::CLIENT_READ;
 
       // The backend also has buffered reads because we might not
       // have negotiated an encrypted channel with the client yet;
       // and so we can't send proxied traffic to them.
       if (backend.Connected() && backend.CanRead() &&
-          !backend.ReadIsFull() && !client.Full())
+          !backend.ReadBufferFull() && !client.SendBufferFull())
         epoll_set |= PollSet::BACKEND_READ;
 
       // And ask for write events if we have buffered data.
