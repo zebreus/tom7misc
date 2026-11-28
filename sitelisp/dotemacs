@@ -259,9 +259,9 @@
         ;; Note that in macOS, the default 72 DPI means that
         ;; we specify 16 points to get 32 pixels.
 
-        (setq dotemacs-font-medium "FixederSys 2x-32:antialias=false:hinting=false")
-        (setq dotemacs-font-large "FixederSys 2x-16:antialias=false:hinting=false")
+        (setq dotemacs-font-medium "FixederSys 2x-16:antialias=false:hinting=false")
         (setq dotemacs-font-small "FixederSys 1x-8:antialias=false:hinting=false")        
+        (setq dotemacs-font-large "FixederSys 2x-32:antialias=false:hinting=false")
         (setq dotemacs-zoom-medium (list dotemacs-font-medium 80 40))
         (setq dotemacs-zoom-small (list dotemacs-font-small 80 78))
         (setq dotemacs-zoom-large (list dotemacs-font-large 80 28))
@@ -433,7 +433,7 @@
 
 (defun greek ()
   "Create a temporary buffer with useful symbols for copy-paste."
-  (interactive "*")
+  (interactive)
   (let ((b (switch-to-buffer "*greek*")))
     (erase-buffer)
     (insert
