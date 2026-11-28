@@ -1,6 +1,7 @@
 #include "edit.h"
 
 #include <cmath>
+#include <format>
 #include <memory>
 #include <string>
 
@@ -12,21 +13,20 @@
 #include "message.h"
 #include "pattern.h"
 #include "union-find.h"
-#include "util.h"
 
 using namespace std;
 
 /* matches anything */
-static bool pred_any(Level *, void *_, int x, int y) {
+static bool PredAny(Level *, void *_, int x, int y) {
   return true;
 }
 
-static bool pred_gold_or_sphere(Level *lev, void *_, int x, int y) {
+static bool PredGoldOrSphere(Level *lev, void *_, int x, int y) {
   const int t = lev->TileAt(x, y);
   return t == T_GOLD || Level::IsSphere(t);
 }
 
-static bool pred_stops_gold(Level *lev, void *_, int x, int y) {
+static bool PredStopsGold(Level *lev, void *_, int x, int y) {
   switch (lev->TileAt(x, y)) {
   case T_FLOOR:
   case T_PANEL:
@@ -67,8 +67,8 @@ void Editor::DoRandom() {
 
     /* start with seed */
     level->SetTile(1 + EscapeUtil::random() % (level->w - 2),
-                    1 + EscapeUtil::random() % (level->h - 2),
-                    T_EXIT);
+                   1 + EscapeUtil::random() % (level->h - 2),
+                   T_EXIT);
 
     /* look for this
 
@@ -438,7 +438,7 @@ void Editor::DoRandom() {
     if (pat_test.get() != nullptr) {
       pat_test->settile('G', T_GREY);
       pat_test->settile('B', T_BLUE);
-      pat_test->setpredicate('.', pred_any);
+      pat_test->setpredicate('.', PredAny);
 
       Match::stream *ms_test =
         pat_test->findall(level.get(), 0);
@@ -458,12 +458,12 @@ void Editor::DoRandom() {
 
   case RT_RETRACT1: {
     /* reverse1 never 'clears' */
-    retract1();
+    Retract1();
     break;
   }
 
   case RT_RETRACTGOLD: {
-    if (!retract_gold()) {
+    if (!RetractGold()) {
       dr.message = RED "Unable to retract.";
     }
     break;
@@ -539,7 +539,7 @@ void Editor::DoRandom() {
    that's against a gold-stopping tile by 'sucking' it
    into a space from which we can kick it.
 */
-bool Editor::retract_gold() {
+bool Editor::RetractGold() {
   /* XX could also be at edge of map -- might want a way to
      specify that pattern */
   std::unique_ptr<Pattern<void>> bgold = Pattern<void>::Create("\\0 \\1GS\n");
@@ -548,8 +548,8 @@ bool Editor::retract_gold() {
 
     /* XX could include panels */
     bgold->settile(' ', T_FLOOR);
-    bgold->setpredicate('G', pred_gold_or_sphere);
-    bgold->setpredicate('S', pred_stops_gold);
+    bgold->setpredicate('G', PredGoldOrSphere);
+    bgold->setpredicate('S', PredStopsGold);
 
     std::unique_ptr<UnionFind> reach = Analysis::Reachable(level.get());
 
@@ -573,8 +573,8 @@ bool Editor::retract_gold() {
       const int left = m->left();
 
       /*
-      printf("match at %d/%d, left: %s\n",
-              x, y, dirstring(left).c_str());
+      Print("match at {}/{}, left: {}\n",
+            x, y, dirstring(left));
       */
 
       /* place to put the gold block. man must be to its
@@ -591,7 +591,7 @@ bool Editor::retract_gold() {
       while (level->Travel(targx, targy, left, gx, gy)) {
         /* as long as there's even a place for the guy to
            stand... */
-        /* printf("try targ %d/%d\n", targx, targy); */
+        /* Print("try targ {}/{}\n", targx, targy); */
 
         /* we're done if target is non-floor */
         /* XX could include panels */
@@ -616,8 +616,8 @@ bool Editor::retract_gold() {
             reach->Find(level->Index(gx, gy))) {
 
           /*
-          printf("candidate! guy: %d/%d gold: %d/%d\n",
-                 gx, gy, targx, targy);
+          Print("candidate! guy: {}/{} gold: {}/{}\n",
+                gx, gy, targx, targy);
           */
 
           /* is this a ricochet? (that means we can expect
@@ -626,13 +626,13 @@ bool Editor::retract_gold() {
           int dx, dy;
           if (level->Travel(targx, targy, m->up(), ux, uy) &&
               level->Travel(targx, targy, m->down(), dx, dy) &&
-              ((pred_stops_gold(level.get(), 0, ux, uy) &&
+              ((PredStopsGold(level.get(), 0, ux, uy) &&
                 level->TileAt(dx, dy) == T_FLOOR) ||
-               (pred_stops_gold(level.get(), 0, dx, dy) &&
+               (PredStopsGold(level.get(), 0, dx, dy) &&
                 level->TileAt(ux, uy) == T_FLOOR))) {
 
             /* then this new place is definitely better */
-            /* printf("  ... ricocheting!\n"); */
+            /* Print("  ... ricocheting!\n"); */
             best_has_ricochet = true;
 
             bgx = gx;
@@ -661,7 +661,7 @@ bool Editor::retract_gold() {
 
     no_more_motion:;
 
-      /* printf("looked at all candidates\n"); */
+      /* Print("looked at all candidates\n"); */
 
       if (bestx >= 0) {
         /* ... */
@@ -672,7 +672,7 @@ bool Editor::retract_gold() {
         return true;
 
       } else {
-        /* printf("no motion possible.\n"); */
+        /* Print("no motion possible.\n"); */
 
       }
     }
@@ -689,7 +689,7 @@ bool Editor::retract_gold() {
    randomly walk it somewhere that we can
    reach.
 */
-bool Editor::retract_grey() {
+bool Editor::RetractGrey() {
 
   return false;
 }
@@ -706,7 +706,7 @@ bool Editor::retract_grey() {
    [player] [grey] [hole]
 
  */
-bool Editor::retract_hole() {
+bool Editor::RetractHole() {
   /* FIXME Crash on empty level (pattern code) */
 
   /* XXX it should be possible to create test functions that depend on
@@ -743,8 +743,8 @@ bool Editor::retract_hole() {
       m->getindex(1, x1, y1);
 
       /*
-        printf("match! r2 at %d/%d up: %s right: %s\n", x, y,
-        dirstring(m->up()).c_str(), dirstring(m->right()).c_str());
+        Print("match! r2 at {}/{} up: {} right: {}\n", x, y,
+              dirstring(m->up())., dirstring(m->right()));
       */
 
       if (Analysis::DoesSep(level.get(), x, y,
@@ -755,8 +755,8 @@ bool Editor::retract_hole() {
                             level->guyy, x1, y1, T_HOLE)) {
 
         /*
-        printf("fullmatch! at %d/%d up: %s right: %s\n", x, y,
-               dirstring(m->up()).c_str(), dirstring(m->right()).c_str());
+        Print("fullmatch! at {}/{} up: {} right: {}\n", x, y,
+              dirstring(m->up()), dirstring(m->right()));
         */
 
         level->SetTile(x, y, T_HOLE);
@@ -777,7 +777,7 @@ bool Editor::retract_hole() {
 }
 
 
-void Editor::retract1() {
+void Editor::Retract1() {
 
   Message::No(this, "disabled--retract1 is buggy!");
   return;
@@ -789,8 +789,8 @@ void Editor::retract1() {
   for (Generator g{2}; g.anyleft(); g.next()) {
     switch (g.item()) {
     default:
-    case 0: if (retract_gold()) goto done; else break;
-    case 1: if (retract_hole()) goto done; else break;
+    case 0: if (RetractGold()) goto done; else break;
+    case 1: if (RetractHole()) goto done; else break;
     }
   }
 
@@ -814,9 +814,9 @@ void Editor::retract1() {
   {
     for (int y = 0; y < level->h; y++) {
       for (int x = 0; x < level->w; x++) {
-        printf("%4d ", rr->Find(level->index(x, y)));
+        Print("{:4d} ", rr->Find(level->index(x, y)));
       }
-      printf("\n");
+      Print("\n");
     }
   }
 # endif
@@ -839,8 +839,8 @@ void Editor::retract1() {
                         level->guyy, ox, oy)) {
 
       /*
-        printf("separates xx,yy = %d/%d, ox,oy %d/%d\n",
-        xx, yy, ox, oy);
+        Print("separates xx,yy = {}/{}, ox,oy {}/{}\n",
+              xx, yy, ox, oy);
       */
 
       level->settile(xx, yy, T_STOP);
@@ -868,8 +868,8 @@ void Editor::retract1() {
       int x, y;
       level->where(m->top_left(), x, y);
       /*
-      printf("match! at %d/%d up: %s right: %s\n", x, y,
-             dirstring(m->up()).c_str(), dirstring(m->right()).c_str());
+      Print("match! at {}/{} up: {} right: {}\n", x, y,
+            dirstring(m->up()), dirstring(m->right()));
       */
 
       m->destroy();
@@ -878,19 +878,33 @@ void Editor::retract1() {
 #endif
 }
 
-string Editor::ainame(int i) {
+string Editor::AIName(int i) {
   switch (i) {
-  case RT_MAZE: return YELLOW "Maze" POP BLUE ": Creates a maze using the foreground tile." POP;
-  case RT_MAZE2: return YELLOW "Maze 2" POP BLUE ": Like maze, but passages may cross." POP;
-  case RT_CORRIDORS: return YELLOW "Corridors" POP BLUE ": Makes unconnected width-1 corridors." POP;
-  case RT_MAZEBUG1: return RED "Maze bug" POP BLUE ": Disabled." POP;
-  case RT_MAZEBUG2: return RED "Maze bug 2" POP BLUE ": Disabled." POP;
-  case RT_ROOMS: return YELLOW "Rooms" POP BLUE ": Creates \"rooms\" with the foreground tile." POP;
-  case RT_CRAZY: return RED "Crazy" POP BLUE ": For testing." POP;
+  case RT_MAZE:
+    return YELLOW "Maze" POP BLUE ": "
+      "Creates a maze using the foreground tile." POP;
+  case RT_MAZE2:
+    return YELLOW "Maze 2" POP BLUE ": "
+      "Like maze, but passages may cross." POP;
+  case RT_CORRIDORS:
+    return YELLOW "Corridors" POP BLUE ": "
+      "Makes unconnected width-1 corridors." POP;
+  case RT_MAZEBUG1:
+    return RED "Maze bug" POP BLUE ": Disabled." POP;
+  case RT_MAZEBUG2:
+    return RED "Maze bug 2" POP BLUE ": Disabled." POP;
+  case RT_ROOMS:
+    return YELLOW "Rooms" POP BLUE ": "
+      "Creates \"rooms\" with the foreground tile." POP;
+  case RT_CRAZY:
+    return RED "Crazy" POP BLUE ": For testing." POP;
   //  Retracts one move in a variety of ways.
-  case RT_RETRACT1: return YELLOW "Retract 1" POP BLUE ": Disabled." POP;
+  case RT_RETRACT1:
+    return YELLOW "Retract 1" POP BLUE ": Disabled." POP;
   case RT_RETRACTGOLD:
-    return YELLOW "Retract Gold" POP BLUE ": Retracts motion of a gold block (or sphere)." POP;
-  default: return (string)RED "No Description for Randtype #" + Util::itos(i);
+    return YELLOW "Retract Gold" POP BLUE ": "
+      "Retracts motion of a gold block (or sphere)." POP;
+  default:
+    return std::format(RED "No Description for Randtype #{}", i);
   }
 }

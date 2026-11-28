@@ -6,6 +6,7 @@
 #include <math.h>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <time.h>
 #include <utility>
 
@@ -153,7 +154,7 @@ void Editor::Clear(Tile bg, Tile fg) {
 }
 
 /* for debugging, since it pauses everything */
-void Editor::blinktile(int destx, int desty, uint32_t color) {
+void Editor::BlinkTile(int destx, int desty, uint32_t color) {
   int xx, yy;
   if (dr.OnScreen(destx, desty, xx, yy)) {
     SDL_Rect dst;
@@ -173,7 +174,7 @@ void Editor::Draw() {
   int tx, ty;
   int sdx = -1, sdy = -1;
   if (dr.InMap(mousex, mousey, tx, ty)) {
-    if (Level::NeedsDest(layerat(tx, ty))) {
+    if (Level::NeedsDest(LayerAt(tx, ty))) {
       level->GetDest(tx, ty, sdx, sdy);
     }
   }
@@ -410,7 +411,7 @@ void Editor::PlayerStart() {
 
   int x, y;
 
-  if (getdest(x, y, "Click to choose player start.")) {
+  if (GetDest(x, y, "Click to choose player start.")) {
     if (!level->BotAt(x, y)) {
       level->guyx = x;
       level->guyy = y;
@@ -428,7 +429,7 @@ void Editor::erasebot() {
   ClearSelection();
 
   int x, y;
-  if (getdest(x, y, (string)"Click on bot to erase.")) {
+  if (GetDest(x, y, "Click on bot to erase.")) {
 
     if (!clearbot(x, y))
       dr.message = "No bot there!";
@@ -460,7 +461,7 @@ bool Editor::clearbot(int x, int y) {
 
 void Editor::firstbot() {
   int x, y;
-  if (getdest(x, y, (string)"click on bot to make #1")) {
+  if (GetDest(x, y, "click on bot to make #1")) {
 
     int i;
     if (level->BotAt(x, y, i)) {
@@ -489,7 +490,7 @@ void Editor::firstbot() {
 
 void Editor::sleepwake() {
   int x, y;
-  if (getdest(x, y, (string)"click on bot sleep/wake")) {
+  if (GetDest(x, y, "click on bot sleep/wake")) {
 
     int i;
     if (level->BotAt(x, y, i)) {
@@ -533,10 +534,10 @@ void Editor::placebot(bot b) {
 
   string msg =
     (level->nbots < LEVEL_MAX_ROBOTS) ?
-    ("Click to place bot of type " + Util::itos((int)b)) :
+    std::format("Click to place bot of type {}", (int)b) :
     (RED "Out of bots!" POP " -- click existing bot to change type.");
 
-  if (getdest(x, y, msg)) {
+  if (GetDest(x, y, msg)) {
 
     int ai;
     if (level->PlayerAt(x, y)) {
@@ -551,9 +552,10 @@ void Editor::placebot(bot b) {
       if (level->nbots < LEVEL_MAX_ROBOTS) {
         addbot(x, y, b);
       } else {
-        Message::No(this,
-                    "Maximum robots (" + Util::itos(LEVEL_MAX_ROBOTS) +
-                    ") reached!");
+        Message::No(
+            this,
+            std::format("Maximum robots ({}) reached!",
+                        LEVEL_MAX_ROBOTS));
         Redraw();
       }
     }
@@ -880,11 +882,11 @@ void Editor::Edit(const Level *origlev) {
           if (otx != ntx ||
               oty != nty) {
             /* draw line. */
-      for (const std::pair<int, int> point :
-       Line<int>{otx, oty, ntx, nty}) {
-        int cx = point.first, cy = point.second;
-        setlayer(cx, cy, current);
-      }
+            for (const std::pair<int, int> point :
+                   Line<int>{otx, oty, ntx, nty}) {
+              int cx = point.first, cy = point.second;
+              SetLayer(cx, cy, current);
+            }
 
             changed = 1;
             /* always draw */
@@ -893,8 +895,8 @@ void Editor::Edit(const Level *origlev) {
             /* draw pixel */
 
             if ((layer ? level->OTileAt(ntx, nty) :
-     level->TileAt(ntx, nty)) != current) {
-              setlayer(ntx, nty, current);
+                 level->TileAt(ntx, nty)) != current) {
+              SetLayer(ntx, nty, current);
               yesdraw = 1;
               changed = 1;
             }
@@ -905,7 +907,7 @@ void Editor::Edit(const Level *origlev) {
            if any. */
         int tx, ty;
         if (dr.InMap(mousex, mousey, tx, ty)) {
-          if (Level::NeedsDest(layerat(tx, ty))) {
+          if (Level::NeedsDest(LayerAt(tx, ty))) {
             if (level->DestAt(tx, ty) != olddest) {
               olddest = level->DestAt(tx, ty);
               yesdraw = 1;
@@ -1020,95 +1022,97 @@ void Editor::Edit(const Level *origlev) {
               if (n == POS_LAYER) {
                 layer = !layer;
                 Redraw();
-              } else switch (edit_menuitem[n]) {
+              } else {
+                switch (edit_menuitem[n]) {
 
-              case TU_SIZE:
-                Resize();
-                break;
+                case TU_SIZE:
+                  Resize();
+                  break;
 
-              case TU_PLAYERSTART:
-                PlayerStart();
-                break;
+                case TU_PLAYERSTART:
+                  PlayerStart();
+                  break;
 
-              case TU_DALEK:
-                placebot(B_DALEK);
-                break;
+                case TU_DALEK:
+                  placebot(B_DALEK);
+                  break;
 
-              case TU_BOMB:
-                placebot(currentbomb);
-                break;
+                case TU_BOMB:
+                  placebot(currentbomb);
+                  break;
 
-              case TU_HUGBOT:
-                placebot(B_HUGBOT);
-                break;
+                case TU_HUGBOT:
+                  placebot(B_HUGBOT);
+                  break;
 
-              case TU_BROKEN:
-                placebot(B_BROKEN);
-                break;
+                case TU_BROKEN:
+                  placebot(B_BROKEN);
+                  break;
 
-              case TU_ERASE_BOT:
-                erasebot();
-                break;
+                case TU_ERASE_BOT:
+                  erasebot();
+                  break;
 
-              case TU_FIRST_BOT:
-                firstbot();
-                break;
+                case TU_FIRST_BOT:
+                  firstbot();
+                  break;
 
-              case TU_LOAD:
-                load();
-                break;
+                case TU_LOAD:
+                  load();
+                  break;
 
-              case TU_AUTHOR:
-                setauthor();
-                break;
+                case TU_AUTHOR:
+                  setauthor();
+                  break;
 
-              case TU_TITLE:
-                settitle();
-                break;
+                case TU_TITLE:
+                  settitle();
+                  break;
 
-              case TU_RANDOM:
-                DoRandom();
-                break;
+                case TU_RANDOM:
+                  DoRandom();
+                  break;
 
-              case TU_RANDTYPE:
-                randtype++;
-                randtype %= NUM_RANDTYPES;
-                dr.message = ainame(randtype);
-                Redraw();
-                break;
+                case TU_RANDTYPE:
+                  randtype++;
+                  randtype %= NUM_RANDTYPES;
+                  dr.message = AIName(randtype);
+                  Redraw();
+                  break;
 
-              case TU_BOMBTIMER:
-                next_bombtimer();
-                break;
+                case TU_BOMBTIMER:
+                  next_bombtimer();
+                  break;
 
-              case TU_SAVEAS:
-                saveas();
-                break;
+                case TU_SAVEAS:
+                  saveas();
+                  break;
 
-              case TU_SLEEPWAKE:
-                sleepwake();
-                break;
+                case TU_SLEEPWAKE:
+                  sleepwake();
+                  break;
 
-              case TU_PREFAB:
-                prefab();
-                break;
+                case TU_PREFAB:
+                  prefab();
+                  break;
 
-              case TU_SAVE:
-                if (filename.empty()) saveas();
-                else save();
-                break;
+                case TU_SAVE:
+                  if (filename.empty()) saveas();
+                  else save();
+                  break;
 
-              case TU_PLAY:
-                playlev();
-                break;
+                case TU_PLAY:
+                  playlev();
+                  break;
 
-              case TU_CLEAR:
-                Clear(T_FLOOR, (Tile)current);
-                break;
-              default:
-                break;
+                case TU_CLEAR:
+                  Clear(T_FLOOR, (Tile)current);
+                  break;
+
+                default:
+                  break;
+                }
               }
-
             } /* else outside menu */
 
 
@@ -1121,16 +1125,16 @@ void Editor::Edit(const Level *origlev) {
                          tx, ty)) {
               /* drawing area */
 
-              int old = layerat(tx, ty);
-              setlayer(tx, ty, current);
+              int old = LayerAt(tx, ty);
+              SetLayer(tx, ty, current);
 
               if (Level::NeedsDest(current)) {
 
                 int xx, yy;
-                if (getdest(xx, yy, "Click to set destination.")) {
+                if (GetDest(xx, yy, "Click to set destination.")) {
                   level->SetDestk(tx, ty, xx, yy);
                 } else {
-                  setlayer(tx, ty, old);
+                  SetLayer(tx, ty, old);
                 }
                 olddest = level->DestAt(tx, ty);
 
@@ -1766,7 +1770,7 @@ void Editor::next_bombtimer() {
   Redraw();
 }
 
-bool Editor::getdest(int &x, int &y, string msg) {
+bool Editor::GetDest(int &x, int &y, std::string_view msg) {
   ClearSelection();
 
   SDL_Event event;

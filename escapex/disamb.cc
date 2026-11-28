@@ -70,10 +70,10 @@ bool Disamb::Affecti(int i, Level *l, PtrList<AEvent> **& etail) {
    etail, there is at least one animation for every active
    entity */
 void Disamb::SerialUp(Level *l, PtrList<AEvent> **& etail) {
-  //  printf("serialup(old serial = %d)!\n", serial);
+  // Print("serialup(old serial = {})!\n", serial);
 
   if (serial != player) {
-    // printf("  %d (stand player @ %d/%d)\n", player, l->guyx, l->guyy);
+    // Print("  {} (stand player @ {}/{})\n", player, l->guyx, l->guyy);
     {
       DIS_PUSHEVENT(stand, e);
       e->x = l->guyx;
@@ -92,7 +92,7 @@ void Disamb::SerialUp(Level *l, PtrList<AEvent> **& etail) {
       {
         DIS_PUSHEVENT(stand, e);
         l->Where(l->boti[i], e->x, e->y);
-        // printf("  %d stand bot %d (@ %d/%d)\n", bots[i], i, e->x, e->y);
+        // Print("  {} stand bot {} (@ {}/{})\n", bots[i], i, e->x, e->y);
         e->d = l->botd[i];
         e->entt = l->bott[i];
         e->data = l->bota[i];

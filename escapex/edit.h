@@ -85,16 +85,16 @@ struct Editor : public Drawable {
   void FullClear(Tile t);
 
   /* stuff for ai */
-  void retract1();
-  bool retract_grey();
-  bool retract_hole();
-  bool retract_gold();
+  void Retract1();
+  bool RetractGrey();
+  bool RetractHole();
+  bool RetractGold();
 
-  string ainame(int a);
+  string AIName(int a);
 
-  void videoresize(SDL_ResizeEvent *eventp);
+  void VideoResize(SDL_ResizeEvent *eventp);
 
-  void setlayer(int x, int y, int t) {
+  void SetLayer(int x, int y, int t) {
     if (layer) {
       level->SetOTile(x, y, t);
     } else {
@@ -102,13 +102,13 @@ struct Editor : public Drawable {
     }
   }
 
-  int layerat(int x, int y) const {
+  int LayerAt(int x, int y) const {
     return layer ? level->OTileAt(x, y) : level->OTileAt(x, y);
   }
 
-  void blinktile(int, int, Uint32);
+  void BlinkTile(int, int, Uint32);
 
-  bool getdest(int &x, int &y, string msg);
+  bool GetDest(int &x, int &y, std::string_view msg);
 
   bool showdests = false;
 

@@ -12,9 +12,7 @@
 #include <ctime>
 
 #include "SDL_video.h"
-#include "aevent.h"
 #include "animation.h"
-#include "base/stringprintf.h"
 #include "chars.h"
 #include "dirindex.h"
 #include "escape-util.h"
@@ -408,10 +406,10 @@ void Drawing::DrawLev(int layer, /* dir facing, */
     DirChange(dd, chx, chy);
 
 #   if 0
-    char msg[128];
-    sprintf(msg, " %d/%d "LRARROW" %d/%d (dir: %s = %d/%d)",
-            px, py, gx, gy, dirstring(dd).c_str(),
-            chx, chy);
+    std::string msg =
+      std::format(" {}/{} "LRARROW" {}/{} (dir: {} = {}/{})",
+                  px, py, gx, gy, dirstring(dd),
+                  chx, chy);
 
     fon->drawto(surf, 2, surf->h - (3*(fon->height + 1)), msg);
 #   endif
@@ -775,13 +773,13 @@ void Drawing::DrawSmall(int y,
 
   if (myrating) {
     fonsmall->draw(ratex, ratey += fonsmall->height,
-                   StringPrintf(" Rated "
-                                RED   "difficulty %d" POP "  "
-                                GREEN "style %d" POP "  "
-                                BLUE  "rigidity %d" POP,
-                                myrating->difficulty,
-                                myrating->style,
-                                myrating->rigidity));
+                   std::format(" Rated "
+                               RED   "difficulty {}" POP "  "
+                               GREEN "style {}" POP "  "
+                               BLUE  "rigidity {}" POP,
+                               myrating->difficulty,
+                               myrating->style,
+                               myrating->rigidity));
     /* XX show cooked */
   } else {
     fonsmall->draw(ratex, ratey += fonsmall->height, GREY "Not rated.");
@@ -800,11 +798,11 @@ void Drawing::DrawSmall(int y,
     int gcook = (int)((float)(100 * votes->cooked) / (float)votes->nvotes);
 
     fonsmall->draw(ratex, ratey += fonsmall->height,
-                   StringPrintf(" Rated "
-                                RED   "difficulty %d" POP "  "
-                                GREEN "style %d" POP "  "
-                                BLUE  "rigidity %d" POP,
-                                gd, gs, gr));
+                   std::format(" Rated "
+                               RED   "difficulty {}" POP "  "
+                               GREEN "style {}" POP "  "
+                               BLUE  "rigidity {}" POP,
+                               gd, gs, gr));
 
     ratey += 2;
 
