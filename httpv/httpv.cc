@@ -529,7 +529,7 @@ struct BackendConnection : public Connection {
   std::array<uint8_t, BUFFER_SIZE> read_buf;
 };
 
-// epoll poll set (file desriptor) for a pair of bidirectional
+// epoll poll set (file descriptor) for a pair of bidirectional
 // connections. Starts with neither side connected.
 struct PollSet {
   static constexpr uint32_t CLIENT_WRITE = 1 << 1;
@@ -758,6 +758,12 @@ struct Session {
       if (backend.Connected() && backend.CanWrite() && backend.HasSendData())
         epoll_set |= PollSet::BACKEND_WRITE;
 
+      // Make sure only the currently-open file descriptors are in the poll
+      // set.
+      // XXX cleaner way to do this?
+      if (!client.Connected()) poll_set.DisconnectClient();
+      if (!backend.Connected()) poll_set.DisconnectBackend();
+
       poll_set.UpdatePollSet(epoll_set);
 
       if (VERBOSE >= 4 || poll_set.Bits() != prev_poll_bits) {
@@ -847,11 +853,6 @@ struct Session {
           backend.IdleTime() > BACKEND_IDLE_TIMEOUT_SEC) {
         backend.Shutdown("idle timeout");
       }
-
-      // XXX cleaner way to do this?
-      if (!client.Connected()) poll_set.DisconnectClient();
-      if (!backend.Connected()) poll_set.DisconnectBackend();
-
 
       ProcessPackets();
 
